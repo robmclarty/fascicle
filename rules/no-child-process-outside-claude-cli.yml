@@ -1,0 +1,14 @@
+id: no-child-process-outside-claude-cli
+message: "node:child_process may only be imported from the claude_cli provider adapter. All other engine code talks to models via the Vercel AI SDK boundary."
+severity: error
+language: typescript
+files:
+  - packages/engine/src/**/*.ts
+ignores:
+  - packages/engine/src/providers/claude_cli/**/*.ts
+rule:
+  any:
+    - pattern: import $$$ from 'node:child_process'
+    - pattern: import $$$ from "node:child_process"
+    - pattern: import $$$ from 'child_process'
+    - pattern: import $$$ from "child_process"

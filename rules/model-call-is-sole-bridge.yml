@@ -1,0 +1,23 @@
+id: model-call-is-sole-bridge
+message: "model_call.ts is the only file in packages/fascicle/src/ allowed to import value symbols from @repo/core and/or @repo/engine. Re-exports (export ... from) are fine; direct value imports must be confined to model_call.ts so the bridge between the composition and engine layers stays in exactly one file."
+severity: error
+language: typescript
+files:
+  - packages/fascicle/src/**/*.ts
+ignores:
+  - packages/fascicle/src/model_call.ts
+  - packages/fascicle/src/**/*.test.ts
+rule:
+  any:
+    - pattern: import { $$$ } from '@repo/core'
+    - pattern: import { $$$ } from "@repo/core"
+    - pattern: import { $$$ } from '@repo/engine'
+    - pattern: import { $$$ } from "@repo/engine"
+    - pattern: import $NAME from '@repo/core'
+    - pattern: import $NAME from "@repo/core"
+    - pattern: import $NAME from '@repo/engine'
+    - pattern: import $NAME from "@repo/engine"
+    - pattern: import * as $NAME from '@repo/core'
+    - pattern: import * as $NAME from "@repo/core"
+    - pattern: import * as $NAME from '@repo/engine'
+    - pattern: import * as $NAME from "@repo/engine"

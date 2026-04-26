@@ -1,0 +1,15 @@
+id: no-process-env-in-core
+message: package source must not read process.env or process.cwd. Only @repo/config is permitted to touch process.env; engine code accepts cwd via ClaudeCliProviderConfig.default_cwd. Every other package receives credentials and paths as function arguments. The claude_cli auth module and the forward_standard_env helper are explicit, audited exceptions — they implement the oauth inherit-env surface users opt into via ClaudeCliProviderConfig.inherit_env.
+severity: error
+language: typescript
+files:
+  - packages/*/src/**/*.ts
+ignores:
+  - packages/config/src/**/*.ts
+  - packages/engine/src/providers/claude_cli/auth.ts
+  - packages/fascicle/src/forward_standard_env.ts
+  - packages/fascicle/src/forward_standard_env.test.ts
+rule:
+  any:
+    - pattern: process.env
+    - pattern: process.cwd()

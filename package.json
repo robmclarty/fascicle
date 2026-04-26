@@ -1,0 +1,114 @@
+{
+  "name": "@robmclarty/fascicle",
+  "version": "0.1.13",
+  "description": "Composable TypeScript toolkit for agentic workflows. Plain values, no framework, no ambient state.",
+  "license": "Apache-2.0",
+  "author": {
+    "name": "Rob McLarty",
+    "email": "hello@robmclarty.com",
+    "url": "https://robmclarty.com"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=24.0.0",
+    "pnpm": ">=9.0.0"
+  },
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/robmclarty/fascicle.git"
+  },
+  "homepage": "https://github.com/robmclarty/fascicle#readme",
+  "bugs": {
+    "url": "https://github.com/robmclarty/fascicle/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "check": "node scripts/check.mjs",
+    "check:all": "node scripts/check.mjs --all",
+    "check:json": "node scripts/check.mjs --json",
+    "check:bail": "node scripts/check.mjs --bail",
+    "check:fix": "pnpm exec oxlint --type-aware --fix && pnpm exec fallow fix",
+    "check:mutation": "stryker run",
+    "check:publish": "node scripts/check-publish.mjs",
+    "check:security": "pnpm audit --audit-level=high",
+    "prepublishOnly": "pnpm check:all && pnpm build && pnpm check:publish",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "types": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "@ai-sdk/anthropic": "^3.0.0",
+    "@ai-sdk/google": "^3.0.0",
+    "@ai-sdk/openai": "^3.0.0",
+    "@ai-sdk/openai-compatible": "^2.0.0",
+    "@openrouter/ai-sdk-provider": "^2.0.0",
+    "ai": "^6.0.0",
+    "ai-sdk-ollama": "^3.0.0",
+    "zod": "^4.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@ai-sdk/anthropic": {
+      "optional": true
+    },
+    "@ai-sdk/google": {
+      "optional": true
+    },
+    "@ai-sdk/openai": {
+      "optional": true
+    },
+    "@ai-sdk/openai-compatible": {
+      "optional": true
+    },
+    "@openrouter/ai-sdk-provider": {
+      "optional": true
+    },
+    "ai-sdk-ollama": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@arethetypeswrong/cli": "0.18.2",
+    "@ast-grep/cli": "0.42.1",
+    "@repo/fascicle": "workspace:*",
+    "@repo/observability": "workspace:*",
+    "@repo/stores": "workspace:*",
+    "@stryker-mutator/core": "9.6.1",
+    "@stryker-mutator/vitest-runner": "9.6.1",
+    "@types/node": "24.12.2",
+    "@vitest/coverage-v8": "4.1.4",
+    "cspell": "10.0.0",
+    "fallow": "2.40.3",
+    "markdownlint-cli2": "0.22.0",
+    "oxlint": "1.60.0",
+    "oxlint-tsgolint": "0.21.1",
+    "tsdown": "0.21.9",
+    "tsx": "4.21.0",
+    "typescript": "6.0.3",
+    "vitest": "4.1.4",
+    "zod": "4.3.6"
+  },
+  "pnpm": {
+    "overrides": {
+      "tunnel": "npm:@noble/secp256k1@2.1.0",
+      "smol-toml": ">=1.6.1"
+    }
+  }
+}

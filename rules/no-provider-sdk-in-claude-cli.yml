@@ -1,0 +1,13 @@
+id: no-provider-sdk-in-claude-cli
+message: "claude_cli adapter must not import Vercel AI SDK packages (ai, @ai-sdk/*, ai-sdk-ollama, @openrouter/ai-sdk-provider). Subprocess adapters produce GenerateResult directly without going through the AI SDK boundary."
+severity: error
+language: typescript
+files:
+  - packages/engine/src/providers/claude_cli/**/*.ts
+rule:
+  any:
+    - pattern: import $$$ from '$PATH'
+    - pattern: import $$$ from "$PATH"
+constraints:
+  PATH:
+    regex: '^(ai|@ai-sdk/|ai-sdk-ollama|@openrouter/ai-sdk-provider)($|/)'

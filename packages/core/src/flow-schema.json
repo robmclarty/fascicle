@@ -1,0 +1,217 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://robmclarty.dev/schemas/flow-schema.json",
+  "title": "fascicle Flow DSL",
+  "description": "YAML/JSON representation of a composition tree. Documentation-only in v1. See spec.md §5.17.",
+  "type": "array",
+  "items": { "$ref": "#/$defs/compose_entry" },
+  "$defs": {
+    "compose_entry": {
+      "type": "object",
+      "required": ["compose"],
+      "properties": {
+        "compose": { "type": "string" }
+      },
+      "allOf": [{ "$ref": "#/$defs/node" }]
+    },
+    "node": {
+      "type": "object",
+      "anyOf": [
+        { "required": ["step"] },
+        { "required": ["sequence"] },
+        { "required": ["parallel"] },
+        { "required": ["branch"] },
+        { "required": ["map"] },
+        { "required": ["pipe"] },
+        { "required": ["retry"] },
+        { "required": ["fallback"] },
+        { "required": ["timeout"] },
+        { "required": ["adversarial"] },
+        { "required": ["ensemble"] },
+        { "required": ["tournament"] },
+        { "required": ["consensus"] },
+        { "required": ["checkpoint"] },
+        { "required": ["suspend"] },
+        { "required": ["scope"] },
+        { "required": ["ref"] }
+      ],
+      "properties": {
+        "step": { "$ref": "#/$defs/step_config" },
+        "sequence": { "$ref": "#/$defs/sequence_config" },
+        "parallel": { "$ref": "#/$defs/parallel_config" },
+        "branch": { "$ref": "#/$defs/branch_config" },
+        "map": { "$ref": "#/$defs/map_config" },
+        "pipe": { "$ref": "#/$defs/pipe_config" },
+        "retry": { "$ref": "#/$defs/retry_config" },
+        "fallback": { "$ref": "#/$defs/fallback_config" },
+        "timeout": { "$ref": "#/$defs/timeout_config" },
+        "adversarial": { "$ref": "#/$defs/adversarial_config" },
+        "ensemble": { "$ref": "#/$defs/ensemble_config" },
+        "tournament": { "$ref": "#/$defs/tournament_config" },
+        "consensus": { "$ref": "#/$defs/consensus_config" },
+        "checkpoint": { "$ref": "#/$defs/checkpoint_config" },
+        "suspend": { "$ref": "#/$defs/suspend_config" },
+        "scope": { "$ref": "#/$defs/scope_config" },
+        "ref": { "type": "string" }
+      }
+    },
+    "step_config": {
+      "type": "object",
+      "required": ["fn"],
+      "properties": {
+        "id": { "type": "string" },
+        "fn": { "type": "string" }
+      }
+    },
+    "sequence_config": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/node" }
+    },
+    "parallel_config": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/node" }
+    },
+    "branch_config": {
+      "type": "object",
+      "required": ["when", "then", "otherwise"],
+      "properties": {
+        "when": { "type": "string" },
+        "then": { "$ref": "#/$defs/node" },
+        "otherwise": { "$ref": "#/$defs/node" }
+      }
+    },
+    "map_config": {
+      "type": "object",
+      "required": ["items", "do"],
+      "properties": {
+        "items": { "type": "string" },
+        "do": { "$ref": "#/$defs/node" },
+        "concurrency": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "pipe_config": {
+      "type": "object",
+      "required": ["of", "fn"],
+      "properties": {
+        "of": { "$ref": "#/$defs/node" },
+        "fn": { "type": "string" }
+      }
+    },
+    "retry_config": {
+      "type": "object",
+      "required": ["do", "max_attempts"],
+      "properties": {
+        "do": { "$ref": "#/$defs/node" },
+        "max_attempts": { "type": "integer", "minimum": 1 },
+        "backoff_ms": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "fallback_config": {
+      "type": "object",
+      "required": ["primary", "backup"],
+      "properties": {
+        "primary": { "$ref": "#/$defs/node" },
+        "backup": { "$ref": "#/$defs/node" }
+      }
+    },
+    "timeout_config": {
+      "type": "object",
+      "required": ["do", "ms"],
+      "properties": {
+        "do": { "$ref": "#/$defs/node" },
+        "ms": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "adversarial_config": {
+      "type": "object",
+      "required": ["build", "critique", "accept", "max_rounds"],
+      "properties": {
+        "build": { "$ref": "#/$defs/node" },
+        "critique": { "$ref": "#/$defs/node" },
+        "accept": { "type": "string" },
+        "max_rounds": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "ensemble_config": {
+      "type": "object",
+      "required": ["members", "score"],
+      "properties": {
+        "members": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/node" }
+        },
+        "score": { "type": "string" },
+        "select": { "type": "string", "enum": ["max", "min"] }
+      }
+    },
+    "tournament_config": {
+      "type": "object",
+      "required": ["members", "compare"],
+      "properties": {
+        "members": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/node" }
+        },
+        "compare": { "type": "string" }
+      }
+    },
+    "consensus_config": {
+      "type": "object",
+      "required": ["members", "agree", "max_rounds"],
+      "properties": {
+        "members": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/node" }
+        },
+        "agree": { "type": "string" },
+        "max_rounds": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "checkpoint_config": {
+      "type": "object",
+      "required": ["do", "key"],
+      "properties": {
+        "do": { "$ref": "#/$defs/node" },
+        "key": { "type": "string" }
+      }
+    },
+    "suspend_config": {
+      "type": "object",
+      "required": ["id", "on", "resume_schema", "combine"],
+      "properties": {
+        "id": { "type": "string" },
+        "on": { "type": "string" },
+        "resume_schema": { "type": "string" },
+        "combine": { "type": "string" }
+      }
+    },
+    "scope_config": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/scope_entry" }
+    },
+    "scope_entry": {
+      "type": "object",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["stash", "do"],
+          "properties": {
+            "stash": { "type": "string" },
+            "do": { "$ref": "#/$defs/node" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["use", "do"],
+          "properties": {
+            "use": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "do": { "$ref": "#/$defs/node" }
+          }
+        }
+      ]
+    }
+  }
+}

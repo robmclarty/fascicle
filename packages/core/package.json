@@ -1,0 +1,17 @@
+{
+  "name": "@repo/core",
+  "version": "0.1.13",
+  "description": "Composition layer for fascicle. 16 primitives, run(), describe(), shared types, typed errors.",
+  "type": "module",
+  "private": true,
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@repo/observability": "workspace:*",
+    "@repo/stores": "workspace:*"
+  }
+}

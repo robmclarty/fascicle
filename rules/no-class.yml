@@ -1,0 +1,13 @@
+id: no-class
+message: Prefer functional/procedural style over classes. Use modules and closures instead. (Exception - typed errors in packages/core/src/errors.ts and packages/engine/src/errors.ts.)
+severity: error
+language: typescript
+files:
+  - packages/*/src/**/*.ts
+ignores:
+  - packages/core/src/errors.ts
+  - packages/engine/src/errors.ts
+rule:
+  any:
+    - kind: class_declaration
+    - kind: abstract_class_declaration

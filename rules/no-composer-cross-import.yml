@@ -1,0 +1,28 @@
+id: no-composer-cross-import
+message: Composer files must not import other composers. Share through the step<i, o> value contract via types/runner/streaming/cleanup.
+severity: error
+language: typescript
+files:
+  - packages/core/src/sequence.ts
+  - packages/core/src/parallel.ts
+  - packages/core/src/branch.ts
+  - packages/core/src/map.ts
+  - packages/core/src/pipe.ts
+  - packages/core/src/retry.ts
+  - packages/core/src/fallback.ts
+  - packages/core/src/timeout.ts
+  - packages/core/src/adversarial.ts
+  - packages/core/src/ensemble.ts
+  - packages/core/src/tournament.ts
+  - packages/core/src/consensus.ts
+  - packages/core/src/checkpoint.ts
+  - packages/core/src/suspend.ts
+  - packages/core/src/scope.ts
+  - packages/core/src/step.ts
+rule:
+  any:
+    - pattern: import $$$ from '$PATH'
+    - pattern: import $$$ from "$PATH"
+constraints:
+  PATH:
+    regex: '^\./(sequence|parallel|branch|map|pipe|retry|fallback|timeout|adversarial|ensemble|tournament|consensus|checkpoint|suspend|scope|step)(\.js)?$'

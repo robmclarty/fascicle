@@ -1,0 +1,13 @@
+id: no-adapter-import-from-core
+message: "@repo/core must not import from adapter packages. Adapters are injected via run_context."
+severity: error
+language: typescript
+files:
+  - packages/core/src/**/*.ts
+rule:
+  any:
+    - pattern: import $$$ from '$PATH'
+    - pattern: import $$$ from "$PATH"
+constraints:
+  PATH:
+    regex: '^@repo/(observability|stores|engine|fascicle)(/.*)?$'

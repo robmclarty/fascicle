@@ -1,0 +1,13 @@
+id: no-kind-switch-in-runner
+message: "runner.ts must not branch on step.kind. Composers own their own execution by registering via register_kind(...). See constraints.md §3 (runner does not special-case kinds)."
+severity: error
+language: typescript
+files:
+  - packages/core/src/runner.ts
+rule:
+  any:
+    - pattern: switch ($$$.kind) { $$$ }
+    - pattern: |
+        if ($$$.kind === $VAL) { $$$ }
+    - pattern: |
+        if ($$$.kind == $VAL) { $$$ }

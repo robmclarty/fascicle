@@ -1,0 +1,19 @@
+id: no-core-value-import-in-engine
+message: "@repo/engine must not import values from @repo/core. Only `import type` is permitted (engine talks to core via types; the orchestrator is composed at the application layer). Exception: packages/engine/src/errors.ts re-exports core's aborted_error (see NOTES.md D5)."
+severity: error
+language: typescript
+files:
+  - packages/engine/src/**/*.ts
+ignores:
+  - packages/engine/src/errors.ts
+rule:
+  any:
+    - pattern: import { $$$ } from '$PATH'
+    - pattern: import { $$$ } from "$PATH"
+    - pattern: import $NAME from '$PATH'
+    - pattern: import $NAME from "$PATH"
+    - pattern: import * as $NAME from '$PATH'
+    - pattern: import * as $NAME from "$PATH"
+constraints:
+  PATH:
+    regex: '^@repo/core(/.*)?$'

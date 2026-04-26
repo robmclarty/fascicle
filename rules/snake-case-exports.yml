@@ -1,0 +1,18 @@
+id: snake-case-exports
+message: Exported functions and values must be snake_case or SCREAMING_SNAKE_CASE. No camelCase. (Types/interfaces are PascalCase - out of scope for this rule.)
+severity: error
+language: typescript
+files:
+  - packages/core/src/**/*.ts
+  - packages/engine/src/**/*.ts
+ignores:
+  - packages/core/src/**/*.test.ts
+  - packages/engine/src/**/*.test.ts
+rule:
+  any:
+    - pattern: export function $NAME($$$) { $$$ }
+    - pattern: export async function $NAME($$$) { $$$ }
+    - pattern: export const $NAME = $$$
+constraints:
+  NAME:
+    regex: '^[a-z][a-zA-Z0-9_]*[A-Z]'

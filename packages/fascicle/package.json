@@ -1,0 +1,14 @@
+{
+  "name": "@repo/fascicle",
+  "version": "0.1.13",
+  "description": "Fascicle umbrella: single-install entry point that re-exports @repo/core.",
+  "type": "module",
+  "private": true,
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@repo/core": "workspace:*",
+    "@repo/engine": "workspace:*"
+  }
+}
