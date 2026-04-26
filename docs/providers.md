@@ -53,7 +53,7 @@ pnpm add @ai-sdk/anthropic
 ```
 
 ```ts
-import { create_engine } from '@robmclarty/fascicle';
+import { create_engine } from 'fascicle';
 
 const engine = create_engine({
   providers: {

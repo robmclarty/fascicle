@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Build the umbrella @robmclarty/fascicle bundle via tsdown.
+ * Build the umbrella fascicle bundle via tsdown.
  *
  * Pipeline:
  *   1. Delete ./dist/.

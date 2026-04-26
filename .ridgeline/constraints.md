@@ -11,7 +11,7 @@
 
 A constraint is a non-negotiable: something that, if changed, requires revisiting the entire design. Constraints are the load-bearing walls. They are not opinions about API aesthetics (that belongs in `taste.md`), and they are not interface definitions or behavioral semantics (that belongs in each build's `spec.md`).
 
-This document covers project-wide rules that apply to every package in the workspace — the composition layer (`@robmclarty/core`), the AI engine layer (`@robmclarty/engine`), and adapter packages (`@robmclarty/observability`, `@robmclarty/stores`, `@robmclarty/fascicle` umbrella). Where a rule is layer-specific, it is called out explicitly. Treat any item here as fixed unless a formal design revision is opened.
+This document covers project-wide rules that apply to every package in the workspace — the composition layer (`@robmclarty/core`), the AI engine layer (`@robmclarty/engine`), and adapter packages (`@robmclarty/observability`, `@robmclarty/stores`, `fascicle` umbrella). Where a rule is layer-specific, it is called out explicitly. Treat any item here as fixed unless a formal design revision is opened.
 
 On conflicts with per-build `spec.md` or `constraints.md`: **this file wins**.
 
@@ -67,7 +67,7 @@ Strict downward dependency direction, modeled as sibling workspace packages:
 ```
 Application code (your harnesses, workflows, agents)
       ↓
-@robmclarty/fascicle (umbrella; re-exports @robmclarty/core, and @robmclarty/engine when engine ships)
+fascicle (umbrella; re-exports @robmclarty/core, and @robmclarty/engine when engine ships)
       ↓
 @robmclarty/core        (composition layer)
       ↓
@@ -192,7 +192,7 @@ Subprocess-backed provider adapters live under `packages/engine/src/providers/<p
 |---|---|---|
 | `@robmclarty/observability` | `@robmclarty/core` (workspace) | `langfuse` ^3 (optional) |
 | `@robmclarty/stores` | `@robmclarty/core` (workspace) | none |
-| `@robmclarty/fascicle` (umbrella) | `@robmclarty/core` (workspace); `@robmclarty/engine` (workspace) when engine ships | none |
+| `fascicle` (umbrella) | `@robmclarty/core` (workspace); `@robmclarty/engine` (workspace) when engine ships | none |
 
 ### Dev-only (never `dependencies` or `peerDependencies`)
 
@@ -468,7 +468,7 @@ A pnpm workspace publishing five npm packages under the `@robmclarty` scope. Eac
 | `@robmclarty/engine` | `packages/engine/` | AI engine layer — `create_engine`, `generate`, provider routing, alias and pricing tables |
 | `@robmclarty/observability` | `packages/observability/` | trajectory logger adapters (filesystem JSONL default; langfuse peer) |
 | `@robmclarty/stores` | `packages/stores/` | checkpoint store adapters (filesystem default) |
-| `@robmclarty/fascicle` | `packages/fascicle/` | umbrella meta-package; re-exports the composition API from `@robmclarty/core`, and (when engine ships) the engine API from `@robmclarty/engine` for single-install users |
+| `fascicle` | `packages/fascicle/` | umbrella meta-package; re-exports the composition API from `@robmclarty/core`, and (when engine ships) the engine API from `@robmclarty/engine` for single-install users |
 
 - **License:** Apache 2.0.
 - **Build:** ESM `.js` + `.d.ts` via `tsdown`, per publishable package. Source maps included. No minification of library output. `tsup` and `unbuild` are not used; `tsdown` is the library-shaped counterpart to `vite build` from the same VoidZero toolchain that backs Vitest.
@@ -485,7 +485,7 @@ A pnpm workspace publishing five npm packages under the `@robmclarty` scope. Eac
 - flipping a subprocess provider's default `tool_bridge` (or equivalent behavior switch) → **major** (caller-visible behavior change)
 - adding patterns to a frozen error-pattern array (e.g. `CLI_AUTH_ERROR_PATTERNS`) → **minor**; removing → **major**
 - internal refactors with no public surface change → **patch**
-- layer packages version independently; `@robmclarty/fascicle` pins matching minors of the packages it re-exports, and a breaking change in any underlying layer bumps the umbrella correspondingly
+- layer packages version independently; `fascicle` pins matching minors of the packages it re-exports, and a breaking change in any underlying layer bumps the umbrella correspondingly
 
 ---
 

@@ -63,7 +63,7 @@ import {
   get_openai_api_key,
   get_ollama_base_url,
 } from '@repo/config';
-import { create_engine } from '@robmclarty/fascicle';
+import { create_engine } from 'fascicle';
 
 const anthropic_key = get_anthropic_api_key();
 const openai_key    = get_openai_api_key();
@@ -78,7 +78,7 @@ const engine = create_engine({
 });
 ```
 
-Consumers of `@robmclarty/fascicle` can replicate the pattern directly against `process.env`; they are not bound by the workspace's `no-process-env` rule. The rule exists to keep the published library free of ambient env reads, not to dictate how you wire your own harness.
+Consumers of `fascicle` can replicate the pattern directly against `process.env`; they are not bound by the workspace's `no-process-env` rule. The rule exists to keep the published library free of ambient env reads, not to dictate how you wire your own harness.
 
 ## Aliases
 
@@ -330,7 +330,7 @@ try {
 Minimal Anthropic:
 
 ```ts
-import { create_engine } from '@robmclarty/fascicle';
+import { create_engine } from 'fascicle';
 
 const engine = create_engine({
   providers: { anthropic: { api_key: process.env.ANTHROPIC_API_KEY! } },

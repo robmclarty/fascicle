@@ -46,7 +46,7 @@ pnpm exec tsc --noEmit         # just types
 
 This is a pnpm workspace. Source lives under `packages/<name>/src/`, never at the repo root.
 
-**Two-name discipline.** Inside the workspace every package uses the `@repo/*` prefix and stays private; the only name that reaches npm is `@robmclarty/fascicle`, bundled from the umbrella (`packages/fascicle/src/index.ts`). See [README.md#names](./README.md#names) and `.ridgeline/taste.md` Principle 15 (Umbrella-is-the-seam).
+**Two-name discipline.** Inside the workspace every package uses the `@repo/*` prefix and stays private; the only name that reaches npm is `fascicle`, bundled from the umbrella (`packages/fascicle/src/index.ts`). See [README.md](./README.md) and `.ridgeline/taste.md` Principle 15 (Umbrella-is-the-seam).
 
 - **Cross-package imports go through workspace names**, not relative paths. Use `import { x } from '@repo/other'`, never `import { x } from '../../other/src/x.js'`. Enforced by ast-grep rules in `rules/` and by fallow's boundary checker.
 - **Runtime dependencies live in the package that imports them.** Declare them in `packages/<name>/package.json`. Inter-package deps use `"workspace:*"`. `scripts/check-deps.mjs` audits the `core`/`engine` production-deps invariant on every `pnpm check`.

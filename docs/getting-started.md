@@ -7,7 +7,7 @@ A 10-minute tour: install, compose your first flow, run it, observe what happene
 From npm (as a consumer):
 
 ```bash
-pnpm add @robmclarty/fascicle zod
+pnpm add fascicle zod
 ```
 
 From this repo (as a contributor):
@@ -19,14 +19,14 @@ pnpm check
 
 `pnpm check` is the single source of truth for "is the repo healthy". Exit 0 means the workspace is in shape.
 
-> **One package, monorepo for enforcement.** Consumers install **one** thing: `@robmclarty/fascicle`. Inside this repo the code is split into `@repo/core`, `@repo/engine`, `@repo/observability`, `@repo/stores`, and `@repo/fascicle` (umbrella) so the workspace graph, `fallow`, and the ast-grep rules in `rules/` can police architectural boundaries directly (e.g. core cannot import adapters, only `packages/config/` reads `process.env`). The `@repo/*` packages are never published.
+> **One package, monorepo for enforcement.** Consumers install **one** thing: `fascicle`. Inside this repo the code is split into `@repo/core`, `@repo/engine`, `@repo/observability`, `@repo/stores`, and `@repo/fascicle` (umbrella) so the workspace graph, `fallow`, and the ast-grep rules in `rules/` can police architectural boundaries directly (e.g. core cannot import adapters, only `packages/config/` reads `process.env`). The `@repo/*` packages are never published.
 
 ## Your first flow
 
 A flow is a value. Build one with `step(...)` and compose with `sequence`, `parallel`, `branch`, and friends.
 
 ```ts
-import { run, sequence, step } from '@robmclarty/fascicle';
+import { run, sequence, step } from 'fascicle';
 
 const increment = step('increment', (n: number) => n + 1);
 const double    = step('double',    (n: number) => n * 2);
@@ -69,7 +69,7 @@ Full surface and signatures: [`packages/core/README.md`](../packages/core/README
 `run(flow, input, options?)` executes the flow and returns its output. `run.stream(flow, input, options?)` returns `{ events, result }` so you can observe the run as it unfolds.
 
 ```ts
-import { run } from '@robmclarty/fascicle';
+import { run } from 'fascicle';
 
 // one-shot
 const out = await run(flow, input);
@@ -103,7 +103,7 @@ Adapters are plain objects that conform to `TrajectoryLogger` and `CheckpointSto
 The engine layer handles provider routing. Bridge it into a flow with `model_call`:
 
 ```ts
-import { create_engine, model_call, sequence, run } from '@robmclarty/fascicle';
+import { create_engine, model_call, sequence, run } from 'fascicle';
 
 const engine = create_engine({
   providers: { anthropic: { api_key: process.env.ANTHROPIC_API_KEY! } },

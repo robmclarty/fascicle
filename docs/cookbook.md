@@ -24,7 +24,7 @@ Short, worked patterns you can copy into a harness. Each pattern assumes the con
 `retry(inner, policy)` re-runs on failure with exponential backoff. Use it for composition-level transients (a downstream service being unhealthy, not a 429 — the engine handles 429s itself via its own `RetryPolicy`).
 
 ```ts
-import { retry, step } from '@robmclarty/fascicle';
+import { retry, step } from 'fascicle';
 
 const fetch_manifest = retry(
   step('fetch_manifest', async (url: string) => {
@@ -41,7 +41,7 @@ const fetch_manifest = retry(
 Compose `timeout(...)` with `fallback(...)` when the primary must respond within a deadline or the flow must degrade gracefully.
 
 ```ts
-import { fallback, timeout, step } from '@robmclarty/fascicle';
+import { fallback, timeout, step } from 'fascicle';
 
 const primary = step('model-1', async (q: string) => ask_model_a(q));
 const backup  = step('model-2', async (q: string) => ask_model_b(q));
@@ -56,7 +56,7 @@ If `primary` blows past 10s it throws `timeout_error`, `fallback` catches, and `
 `map` runs a step per array element, optionally capped so you don't melt a downstream:
 
 ```ts
-import { map, step } from '@robmclarty/fascicle';
+import { map, step } from 'fascicle';
 
 const summarise = step('summarise', async (doc: string) => ask_model({ prompt: doc }));
 
@@ -72,7 +72,7 @@ const summarise_all = map({
 Run N judges, pick the highest scorer. The [`examples/ensemble_judge.ts`](../examples/ensemble_judge.ts) file uses stubs; the real shape with `model_call`:
 
 ```ts
-import { ensemble, model_call, pipe, step } from '@robmclarty/fascicle';
+import { ensemble, model_call, pipe, step } from 'fascicle';
 import { z } from 'zod';
 
 const verdict_schema = z.object({
@@ -104,7 +104,7 @@ const jury = ensemble({
 Build a candidate, have a judge critique, loop until the judge accepts or `max_rounds` runs out. See [`examples/adversarial_build.ts`](../examples/adversarial_build.ts).
 
 ```ts
-import { adversarial, model_call, pipe } from '@robmclarty/fascicle';
+import { adversarial, model_call, pipe } from 'fascicle';
 import { z } from 'zod';
 
 const critique_schema = z.object({
@@ -139,7 +139,7 @@ The build step's `ModelCallInput` receives `{ input, prior, critique }` on round
 Run the same (or different) steps concurrently; accept only when a quorum agrees:
 
 ```ts
-import { consensus, model_call, pipe } from '@robmclarty/fascicle';
+import { consensus, model_call, pipe } from 'fascicle';
 
 const classify = (id: string, model: string) =>
   pipe(
@@ -163,7 +163,7 @@ const flow = consensus({
 Single-elimination bracket, comparing pairs until a winner remains:
 
 ```ts
-import { tournament, step } from '@robmclarty/fascicle';
+import { tournament, step } from 'fascicle';
 
 const compare = step('compare', async ([a, b]: [string, string]) => {
   const r = await engine.generate({
@@ -186,7 +186,7 @@ const bracket = tournament({
 `checkpoint` memoizes by key. The store is injected via `RunOptions`.
 
 ```ts
-import { checkpoint, step } from '@robmclarty/fascicle';
+import { checkpoint, step } from 'fascicle';
 import { filesystem_store } from '@repo/stores';
 
 const build_index = checkpoint(
@@ -206,7 +206,7 @@ Always prefix your key with a flow name or content hash — the store is shared 
 `suspend(...)` pauses the flow. The harness catches `suspended_error`, collects input out-of-band, then resumes.
 
 ```ts
-import { run, suspend, suspended_error } from '@robmclarty/fascicle';
+import { run, suspend, suspended_error } from 'fascicle';
 import { z } from 'zod';
 import { filesystem_store } from '@repo/stores';
 
@@ -241,7 +241,7 @@ See [`examples/suspend_resume.ts`](../examples/suspend_resume.ts).
 Give the model tools; it calls them; the engine runs the `execute` closures and feeds the output back until the model stops asking or `max_steps` is hit.
 
 ```ts
-import { model_call, run } from '@robmclarty/fascicle';
+import { model_call, run } from 'fascicle';
 import { z } from 'zod';
 
 const get_weather = {
@@ -290,7 +290,7 @@ A denied approval throws `tool_approval_denied_error`.
 Pass a schema; the engine validates, repairs (up to `schema_repair_attempts`, default 1), or throws.
 
 ```ts
-import { model_call, run } from '@robmclarty/fascicle';
+import { model_call, run } from 'fascicle';
 import { z } from 'zod';
 
 const plan_schema = z.object({
@@ -317,7 +317,7 @@ const out = await run(plan, 'migrate the payments service to pg17');
 Plain `run` drops streaming events. `run.stream` delivers them:
 
 ```ts
-import { model_call, run } from '@robmclarty/fascicle';
+import { model_call, run } from 'fascicle';
 
 const ask = model_call({ engine, model: 'sonnet' });
 
@@ -350,7 +350,7 @@ One JSON object per line. Use `jq` or anything else to inspect.
 For custom sinks, write an object that satisfies `TrajectoryLogger`:
 
 ```ts
-import type { TrajectoryLogger } from '@robmclarty/fascicle';
+import type { TrajectoryLogger } from 'fascicle';
 
 const console_logger: TrajectoryLogger = {
   record: (event) => console.log(JSON.stringify(event)),
@@ -370,7 +370,7 @@ const console_logger: TrajectoryLogger = {
 When a downstream step needs a value produced upstream but the chain does not naturally carry it:
 
 ```ts
-import { scope, stash, use, step } from '@robmclarty/fascicle';
+import { scope, stash, use, step } from 'fascicle';
 
 const flow = scope([
   stash('user', step('lookup', async (email: string) => find_user(email))),
@@ -386,7 +386,7 @@ const flow = scope([
 Prefer Anthropic; fall back to OpenAI if it fails:
 
 ```ts
-import { fallback, model_call } from '@robmclarty/fascicle';
+import { fallback, model_call } from 'fascicle';
 
 const primary  = model_call({ engine, model: 'sonnet',  id: 'primary'  });
 const backup   = model_call({ engine, model: 'gpt-4o',  id: 'backup'   });
@@ -405,7 +405,7 @@ const ask = fallback(retry(primary, { max_attempts: 2, backoff_ms: 500 }), backu
 One engine, both providers:
 
 ```ts
-import { create_engine, model_call } from '@robmclarty/fascicle';
+import { create_engine, model_call } from 'fascicle';
 
 const engine = create_engine({
   providers: {

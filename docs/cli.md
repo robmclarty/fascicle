@@ -20,7 +20,7 @@ It does **not** replace the `anthropic` AI SDK adapter. Use `anthropic` for dire
 ## Minimal setup
 
 ```ts
-import { create_engine, model_call, run } from '@robmclarty/fascicle';
+import { create_engine, model_call, run } from 'fascicle';
 
 const engine = create_engine({
   providers: { claude_cli: { auth_mode: 'oauth' } },
@@ -75,7 +75,7 @@ Under `oauth`, the subprocess env seeds from `process.env` so the `claude` binar
 If you need a minimal-but-functional env under `api_key`, use the helper:
 
 ```ts
-import { forward_standard_env, create_engine } from '@robmclarty/fascicle';
+import { forward_standard_env, create_engine } from 'fascicle';
 
 const engine = create_engine({
   providers: {

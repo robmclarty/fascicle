@@ -19,7 +19,7 @@ A harness is three things:
 3. **A surrounding program** — CLI parsing, HTTP handler, whatever delivers input and disposes of output.
 
 ```ts
-import { run, sequence, step } from '@robmclarty/fascicle';
+import { run, sequence, step } from 'fascicle';
 
 // 1. Flow
 const flow = sequence([
@@ -44,7 +44,7 @@ Save that as `hello.ts`, run with `pnpm exec tsx hello.ts hello world from agent
 When you want the flow to talk to an LLM, use `model_call`. It is the single sanctioned bridge between the composition layer and the engine layer.
 
 ```ts
-import { create_engine, model_call, sequence, run } from '@robmclarty/fascicle';
+import { create_engine, model_call, sequence, run } from 'fascicle';
 
 const engine = create_engine({
   providers: { anthropic: { api_key: process.env.ANTHROPIC_API_KEY! } },
@@ -117,7 +117,7 @@ await pump;
 For human-in-the-loop flows, use `suspend`. The first call throws `suspended_error`; the operator supplies `resume_data` on the next invocation:
 
 ```ts
-import { suspend, suspended_error } from '@robmclarty/fascicle';
+import { suspend, suspended_error } from 'fascicle';
 import { z } from 'zod';
 
 const flow = suspend({
@@ -166,7 +166,7 @@ The error path carries a `.path` array with the step ids that led to the failure
 
 ## Where to put the harness
 
-In this repo, reference harnesses live at the root under [`examples/`](../examples/). Your own harness lives in your own project — fascicle is a library, not an app scaffold. Import from `@robmclarty/fascicle` (or `@repo/fascicle` if you are contributing inside this workspace) and write the harness wherever your program belongs.
+In this repo, reference harnesses live at the root under [`examples/`](../examples/). Your own harness lives in your own project — fascicle is a library, not an app scaffold. Import from `fascicle` (or `@repo/fascicle` if you are contributing inside this workspace) and write the harness wherever your program belongs.
 
 The canonical starting point is [`examples/hello.ts`](../examples/hello.ts). Run it:
 
@@ -175,7 +175,7 @@ pnpm exec tsx examples/hello.ts
 pnpm exec tsx examples/hello.ts "your custom input here"
 ```
 
-> **Monorepo note.** This repo is a single installable package (`@robmclarty/fascicle`) split into `@repo/*` workspace packages to enforce architectural boundaries (e.g. core cannot import from adapters, engine cannot reach into providers). Internally you will see `@repo/core`, `@repo/engine`, `@repo/observability`, `@repo/stores`, and `@repo/fascicle`. They are never published separately — the umbrella bundle is the only public surface.
+> **Monorepo note.** This repo is a single installable package (`fascicle`) split into `@repo/*` workspace packages to enforce architectural boundaries (e.g. core cannot import from adapters, engine cannot reach into providers). Internally you will see `@repo/core`, `@repo/engine`, `@repo/observability`, `@repo/stores`, and `@repo/fascicle`. They are never published separately — the umbrella bundle is the only public surface.
 
 ## Checklist
 

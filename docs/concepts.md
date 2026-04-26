@@ -6,8 +6,8 @@ The mental model behind fascicle. Read this once — the rest of the docs assume
 
 fascicle ships two independently useful layers, re-exported from one package.
 
-- **Composition layer** (`@repo/core`, surfaced via `@robmclarty/fascicle`). 16 primitives for composing work out of plain values. No network, no LLM calls, no ambient state.
-- **Engine layer** (`@repo/engine`, surfaced via `@robmclarty/fascicle`). `create_engine(config)` returns a unified `generate` surface over seven provider adapters. No composition, no step plumbing.
+- **Composition layer** (`@repo/core`, surfaced via `fascicle`). 16 primitives for composing work out of plain values. No network, no LLM calls, no ambient state.
+- **Engine layer** (`@repo/engine`, surfaced via `fascicle`). `create_engine(config)` returns a unified `generate` surface over seven provider adapters. No composition, no step plumbing.
 
 They are glued by exactly one value: `model_call` (in the umbrella package). That is the only file allowed to import values from both layers — an ast-grep rule in `rules/` enforces it. Everything else either composes or generates, never both.
 
@@ -64,7 +64,7 @@ Each primitive is described in full with signatures at [`packages/core/README.md
 `run(flow, input, options?)` executes a flow to completion. It constructs a fresh `RunContext`, runs the flow, runs cleanup handlers in LIFO, and returns the output.
 
 ```ts
-import { run } from '@robmclarty/fascicle';
+import { run } from 'fascicle';
 
 const output = await run(flow, input);
 ```
@@ -171,7 +171,7 @@ For embedded runtimes — tests, Lambda, worker threads, anything that owns its 
 Most chains thread values implicitly via `sequence` and `parallel`. When that is not enough — two non-adjacent steps need to agree on a value, or a child step needs a configuration value its parent produced — use `scope`:
 
 ```ts
-import { scope, stash, use, step } from '@robmclarty/fascicle';
+import { scope, stash, use, step } from 'fascicle';
 
 const flow = scope([
   stash('user_id', step('lookup', async (email: string) => find_user(email))),
@@ -186,7 +186,7 @@ const flow = scope([
 `checkpoint(inner, { key })` memoizes an inner step by key, using a `CheckpointStore` injected via `RunOptions`.
 
 ```ts
-import { checkpoint, step } from '@robmclarty/fascicle';
+import { checkpoint, step } from 'fascicle';
 import { filesystem_store } from '@repo/stores';
 
 const flow = checkpoint(
@@ -208,7 +208,7 @@ Key rules:
 `suspend(...)` pauses a flow until external input arrives. The first run throws `suspended_error`; the caller stores the suspended state, collects input out-of-band, then calls `run(...)` again with `resume_data` to continue.
 
 ```ts
-import { run, suspend, suspended_error } from '@robmclarty/fascicle';
+import { run, suspend, suspended_error } from 'fascicle';
 import { z } from 'zod';
 
 const flow = suspend({
@@ -236,7 +236,7 @@ const out = await run(flow, { brief: 'beta' }, {
 
 ## Errors
 
-Typed errors live in `@robmclarty/fascicle`:
+Typed errors live in `fascicle`:
 
 | Class                            | Thrown by                                             |
 | -------------------------------- | ----------------------------------------------------- |

@@ -111,7 +111,7 @@ The corollary: adapters go in sibling packages, not the root of `@robmclarty/cor
 
 ### 15. Umbrella-is-the-seam
 
-**Rule:** the workspace publishes exactly one npm package. The composition, engine, observability, and stores layers stay as separate workspace packages under the `@repo/*` prefix, but they do not reach npm. `packages/fascicle/src/index.ts` is the umbrella; `tsdown` bundles it into a single `dist/` that publishes as `@robmclarty/fascicle`. Workspace-internal deps are inlined into the bundle; `ai`, `zod`, and every `@ai-sdk/*` stay external as peer dependencies.
+**Rule:** the workspace publishes exactly one npm package. The composition, engine, observability, and stores layers stay as separate workspace packages under the `@repo/*` prefix, but they do not reach npm. `packages/fascicle/src/index.ts` is the umbrella; `tsdown` bundles it into a single `dist/` that publishes as `fascicle`. Workspace-internal deps are inlined into the bundle; `ai`, `zod`, and every `@ai-sdk/*` stay external as peer dependencies.
 
 **Why:** multi-package publication is a path we could take later; taking it now doubles the coordination tax (version alignment, dep-graph alignment, peer-dep alignment across N tarballs) before a single user has asked for slim installs. An umbrella with a bundled `dist/` is the simpler shape. Each layer stays a separate workspace package under `@repo/*` so `constraints.md` §3's boundary rules keep their teeth internally — `@repo/core` cannot import `@repo/engine`, and ast-grep rules mechanically enforce that even inside a pnpm workspace where everything is symlinked together. The `@repo/*` prefix is the internal-vs-public signal; it makes the answer to "will this reach a user?" trivially visible at any import site. Revisit multi-package publish when a user concretely asks for slim installs and the coordination cost is worth paying for at least one named consumer.
 
@@ -160,8 +160,8 @@ The corollary: adapters go in sibling packages, not the root of `@robmclarty/cor
 A flow that exercises most of the surface, reading top-to-bottom:
 
 ```typescript
-import { step, scope, stash, use, checkpoint, adversarial, ensemble, pipe } from '@robmclarty/fascicle'
-import { run } from '@robmclarty/fascicle'
+import { step, scope, stash, use, checkpoint, adversarial, ensemble, pipe } from 'fascicle'
+import { run } from 'fascicle'
 
 const multi_judge = ensemble({
   members: {
