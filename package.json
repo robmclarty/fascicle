@@ -49,7 +49,7 @@
     "check:mutation": "stryker run",
     "check:publish": "node scripts/check-publish.mjs",
     "check:security": "pnpm audit --audit-level=high",
-    "prepublishOnly": "pnpm check:all && pnpm build && pnpm check:publish",
+    "prepublishOnly": "pnpm check && pnpm build && pnpm check:publish",
     "test": "vitest run",
     "test:watch": "vitest",
     "types": "tsc --noEmit"
