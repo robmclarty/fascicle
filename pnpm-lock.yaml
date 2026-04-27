@@ -92,6 +92,25 @@ importers:
         specifier: 4.3.6
         version: 4.3.6
 
+  examples/amplify:
+    dependencies:
+      '@repo/fascicle':
+        specifier: workspace:*
+        version: link:../../packages/fascicle
+      '@repo/observability':
+        specifier: workspace:*
+        version: link:../../packages/observability
+      vitest:
+        specifier: '*'
+        version: 4.1.4(@opentelemetry/api@1.9.0)(@types/node@24.12.2)(@vitest/coverage-v8@4.1.4)(vite@8.0.8(@types/node@24.12.2)(esbuild@0.27.7)(tsx@4.21.0)(yaml@2.8.3))
+      zod:
+        specifier: '*'
+        version: 4.3.6
+    devDependencies:
+      tsx:
+        specifier: '*'
+        version: 4.21.0
+
   examples/red-green-refactor:
     dependencies:
       '@repo/fascicle':

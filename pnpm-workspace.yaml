@@ -1,6 +1,7 @@
 packages:
   - 'packages/*'
   - 'examples/red-green-refactor'
+  - 'examples/amplify'
 
 allowBuilds:
   '@ast-grep/cli': true

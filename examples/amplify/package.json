@@ -1,0 +1,23 @@
+{
+  "name": "@repo/example-amplify",
+  "version": "0.0.0",
+  "description": "Self-improvement loop example: propose → cascade-eval → keep-best on a starter script, with a pluggable Metric protocol.",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "amplify": "tsx src/main.ts",
+    "gen-fixture": "tsx target/fixtures/gen.ts",
+    "bench": "tsx target/bench.ts",
+    "test": "vitest run --config vitest.config.ts",
+    "test:target": "vitest run --config target/vitest.config.ts"
+  },
+  "dependencies": {
+    "@repo/fascicle": "workspace:*",
+    "@repo/observability": "workspace:*",
+    "vitest": "*",
+    "zod": "*"
+  },
+  "devDependencies": {
+    "tsx": "*"
+  }
+}
