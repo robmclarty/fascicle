@@ -36,4 +36,22 @@ describe('step', () => {
   it('throws when a non-function is passed as the step fn', () => {
     expect(() => step('bad', undefined as unknown as (x: number) => number)).toThrow(TypeError);
   });
+
+  it('attaches optional metadata when supplied as the third argument', () => {
+    const labelled = step('inc', (x: number) => x + 1, {
+      display_name: 'Increment',
+      description: 'Adds one to its input',
+      port_labels: { in: 'count', out: 'count + 1' },
+    });
+    expect(labelled.meta).toEqual({
+      display_name: 'Increment',
+      description: 'Adds one to its input',
+      port_labels: { in: 'count', out: 'count + 1' },
+    });
+  });
+
+  it('omits meta when not supplied', () => {
+    const plain = step('p', (x: number) => x);
+    expect(plain.meta).toBeUndefined();
+  });
 });

@@ -60,4 +60,29 @@ describe('fascicle umbrella re-export', () => {
     const result = await umbrella.run(flow, 1, { install_signal_handlers: false });
     expect(result).toBe(2);
   });
+
+  it('re-exports the studio-facing surfaces (STEP_KINDS, schemas)', () => {
+    expect(Array.isArray(umbrella.STEP_KINDS)).toBe(true);
+    expect(umbrella.STEP_KINDS).toContain('sequence');
+    expect(typeof umbrella.is_step_kind).toBe('function');
+    expect(typeof umbrella.trajectory_event_schema).toBe('object');
+    expect(typeof umbrella.span_start_event_schema).toBe('object');
+    expect(typeof umbrella.span_end_event_schema).toBe('object');
+    expect(typeof umbrella.emit_event_schema).toBe('object');
+    expect(typeof umbrella.custom_event_schema).toBe('object');
+  });
+
+  it('parses a wire trajectory event through the umbrella schema', () => {
+    const event = { kind: 'span_start', span_id: 's:1', name: 'sequence', run_id: 'r-1' };
+    const parsed = umbrella.trajectory_event_schema.parse(event);
+    expect(parsed.kind).toBe('span_start');
+  });
+
+  it('echoes step meta through the umbrella step() and describe.json()', () => {
+    const labelled = umbrella.step('inc', (n: number) => n + 1, {
+      display_name: 'Increment',
+    });
+    expect(labelled.meta?.display_name).toBe('Increment');
+    expect(umbrella.describe.json(labelled).meta?.display_name).toBe('Increment');
+  });
 });

@@ -16,7 +16,7 @@
  */
 
 import { describe_cycle_error } from './errors.js';
-import type { Step } from './types.js';
+import type { Step, StepMetadata } from './types.js';
 
 const INDENT = '  ';
 
@@ -36,6 +36,7 @@ export type FlowNode = {
   readonly id: string;
   readonly config?: Readonly<{ [key: string]: FlowValue }>;
   readonly children?: ReadonlyArray<FlowNode>;
+  readonly meta?: StepMetadata;
 };
 
 export type DescribeOptions = {
@@ -139,6 +140,7 @@ function render_json(
       id: string;
       config?: { [key: string]: FlowValue };
       children?: FlowNode[];
+      meta?: StepMetadata;
     } = { kind: node.kind, id: node.id };
     if (node.config) {
       const config: { [key: string]: FlowValue } = {};
@@ -149,6 +151,9 @@ function render_json(
     }
     if (node.children && node.children.length > 0) {
       result.children = node.children.map((child) => render_json(child, path, strict));
+    }
+    if (node.meta) {
+      result.meta = node.meta;
     }
     return result as FlowNode;
   } finally {

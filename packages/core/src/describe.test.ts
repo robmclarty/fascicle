@@ -22,6 +22,26 @@ vdescribe('describe (text)', () => {
     expect(out).toContain('step');
   });
 
+  it('echoes step meta on describe.json output when present', () => {
+    const labelled = step('inc', (x: number) => x + 1, {
+      display_name: 'Increment',
+      description: 'Adds one',
+      port_labels: { in: 'count', out: 'count + 1' },
+    });
+    const tree = describe.json(labelled);
+    expect(tree.meta).toEqual({
+      display_name: 'Increment',
+      description: 'Adds one',
+      port_labels: { in: 'count', out: 'count + 1' },
+    });
+  });
+
+  it('omits meta on describe.json output when the step has none', () => {
+    const plain = step('p', (x: number) => x);
+    const tree = describe.json(plain);
+    expect(tree.meta).toBeUndefined();
+  });
+
   it('renders function config values as <fn:name> when a name is available', () => {
     const synthetic = {
       id: 'synthetic',

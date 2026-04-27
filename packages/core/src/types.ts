@@ -46,6 +46,15 @@ export type RunContext = {
 
 export type StepFn<i, o> = (input: i, ctx: RunContext) => Promise<o> | o;
 
+export type StepMetadata = {
+  readonly display_name?: string;
+  readonly description?: string;
+  readonly port_labels?: Readonly<{
+    readonly in?: string;
+    readonly out?: string;
+  }>;
+};
+
 export type Step<i, o> = {
   readonly id: string;
   readonly kind: string;
@@ -53,4 +62,5 @@ export type Step<i, o> = {
   readonly config?: Readonly<Record<string, unknown>>;
   readonly children?: ReadonlyArray<Step<unknown, unknown>>;
   readonly anonymous?: boolean;
+  readonly meta?: StepMetadata;
 };

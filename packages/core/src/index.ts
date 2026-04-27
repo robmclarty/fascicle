@@ -40,9 +40,28 @@ export type {
   CheckpointStore,
   RunContext,
   Step,
+  StepMetadata,
   TrajectoryEvent,
   TrajectoryLogger,
 } from './types.js';
+
+export { is_step_kind, STEP_KINDS } from './step_kinds.js';
+export type { StepKind } from './step_kinds.js';
+
+export {
+  custom_event_schema,
+  emit_event_schema,
+  span_end_event_schema,
+  span_start_event_schema,
+  trajectory_event_schema,
+} from './trajectory.js';
+export type {
+  CustomTrajectoryEvent,
+  EmitEvent,
+  ParsedTrajectoryEvent,
+  SpanEndEvent,
+  SpanStartEvent,
+} from './trajectory.js';
 
 export const flow_schema = flow_schema_data;
 

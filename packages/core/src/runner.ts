@@ -85,6 +85,36 @@ const noop_logger: TrajectoryLogger = {
   end_span: () => {},
 };
 
+/**
+ * Wrap a logger so every emitted event automatically carries `run_id`.
+ *
+ * Studios and other downstream consumers can multiplex events across runs
+ * by reading this field. Callers may still set their own `run_id` on a record;
+ * we don't overwrite it.
+ */
+function stamp_run_id(inner: TrajectoryLogger, run_id: string): TrajectoryLogger {
+  return {
+    record: (event) => {
+      if ('run_id' in event) {
+        inner.record(event);
+        return;
+      }
+      inner.record({ ...event, run_id });
+    },
+    start_span: (name, meta) => {
+      if (meta && 'run_id' in meta) return inner.start_span(name, meta);
+      return inner.start_span(name, { ...meta, run_id });
+    },
+    end_span: (id, meta) => {
+      if (meta && 'run_id' in meta) {
+        inner.end_span(id, meta);
+        return;
+      }
+      inner.end_span(id, { ...meta, run_id });
+    },
+  };
+}
+
 export async function dispatch_step<i, o>(
   flow: Step<i, o>,
   input: i,
@@ -128,20 +158,21 @@ function start_run<i, o>(
   const base_logger = options.trajectory ?? noop_logger;
   const streaming = high_water_mark !== null;
 
-  let logger: TrajectoryLogger = base_logger;
+  const controller = new AbortController();
+  const run_id = randomUUID();
+
+  let logger: TrajectoryLogger = stamp_run_id(base_logger, run_id);
   let stream_events: AsyncIterable<TrajectoryEvent> = empty_async_iterable();
   let close_stream: (() => void) | null = null;
 
   if (streaming) {
-    const channel = create_streaming_channel(base_logger, high_water_mark);
+    const channel = create_streaming_channel(logger, high_water_mark);
     logger = channel.logger;
     stream_events = channel.events;
     close_stream = channel.close;
   }
 
-  const controller = new AbortController();
   const cleanup = create_cleanup_registry(logger);
-  const run_id = randomUUID();
 
   const ctx: RunContext = {
     run_id,
