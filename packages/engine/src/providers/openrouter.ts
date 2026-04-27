@@ -29,6 +29,10 @@ type OpenrouterSdk = {
   }) => (model_id: string) => unknown;
 };
 
+// OpenRouter forwards the effort string verbatim to the upstream model.
+// `low`/`medium`/`high` work everywhere; `xhigh`/`max` flow through but
+// only the upstream model decides what they mean. Models that don't
+// recognize the value drop it silently.
 export function translate_openrouter_effort(effort: EffortLevel): EffortTranslation {
   if (effort === 'none') return { provider_options: {}, effort_ignored: false };
   return {

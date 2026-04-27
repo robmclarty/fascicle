@@ -14,8 +14,8 @@ describe('translate_lmstudio_effort', () => {
     });
   });
 
-  it('sets effort_ignored=true for low/medium/high (no reasoning support)', () => {
-    for (const effort of ['low', 'medium', 'high'] as const) {
+  it('sets effort_ignored=true for every non-none level (no reasoning support)', () => {
+    for (const effort of ['low', 'medium', 'high', 'xhigh', 'max'] as const) {
       const translated = translate_lmstudio_effort(effort);
       expect(translated.provider_options).toEqual({});
       expect(translated.effort_ignored).toBe(true);

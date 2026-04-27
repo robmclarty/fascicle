@@ -24,6 +24,17 @@ describe('translate_openrouter_effort', () => {
       expect(translated.effort_ignored).toBe(false);
     }
   });
+
+  it('forwards xhigh and max verbatim; upstream model decides interpretation', () => {
+    for (const effort of ['xhigh', 'max'] as const) {
+      const translated = translate_openrouter_effort(effort);
+      expect(
+        (translated.provider_options['openrouter'] as { reasoning: { effort: string } })
+          .reasoning.effort,
+      ).toBe(effort);
+      expect(translated.effort_ignored).toBe(false);
+    }
+  });
 });
 
 describe('normalize_openrouter_usage', () => {

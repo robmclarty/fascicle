@@ -27,10 +27,14 @@ type OpenaiSdk = {
   }) => (model_id: string) => unknown;
 };
 
+// OpenAI's reasoning effort enum is `low | medium | high` only.
+// `xhigh` and `max` clamp to `high` until OpenAI exposes more levels.
 const OPENAI_REASONING_EFFORT: Record<Exclude<EffortLevel, 'none'>, string> = {
   low: 'low',
   medium: 'medium',
   high: 'high',
+  xhigh: 'high',
+  max: 'high',
 };
 
 export function translate_openai_effort(effort: EffortLevel): EffortTranslation {

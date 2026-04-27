@@ -9,7 +9,7 @@
     ".stryker-tmp/**",
     "docs/**",
     ".ridgeline/**",
-    "research/**",
+    "**/research/**",
     "spec/**",
     "pnpm-lock.yaml",
     "package.json"
@@ -50,6 +50,7 @@
     "oxlintrc",
     "pnpm",
     "resolv",
+    "Reflexion",
     "ridgeline",
     "robmclarty",
     "sandboxing",
@@ -66,6 +67,7 @@
     "unconfigured",
     "vdescribe",
     "vitest",
+    "xhigh",
     "zerr"
   ]
 }

@@ -25,6 +25,18 @@ describe('translate_google_effort', () => {
       expect(translated.effort_ignored).toBe(false);
     }
   });
+
+  it('clamps xhigh and max to high since Google exposes no level above high', () => {
+    for (const effort of ['xhigh', 'max'] as const) {
+      const translated = translate_google_effort(effort);
+      expect(
+        (translated.provider_options['google'] as {
+          thinkingConfig: { thinkingBudget: string };
+        }).thinkingConfig.thinkingBudget,
+      ).toBe('high');
+      expect(translated.effort_ignored).toBe(false);
+    }
+  });
 });
 
 describe('normalize_google_usage', () => {

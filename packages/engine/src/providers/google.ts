@@ -23,10 +23,14 @@ type GoogleSdk = {
   }) => (model_id: string) => unknown;
 };
 
+// Google's thinkingBudget enum is `low | medium | high` (or numeric).
+// `xhigh` and `max` clamp to `high` until Google exposes more levels.
 const GOOGLE_THINKING_BUDGET: Record<Exclude<EffortLevel, 'none'>, string> = {
   low: 'low',
   medium: 'medium',
   high: 'high',
+  xhigh: 'high',
+  max: 'high',
 };
 
 export function translate_google_effort(effort: EffortLevel): EffortTranslation {

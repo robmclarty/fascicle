@@ -31,6 +31,19 @@ describe('translate_anthropic_effort', () => {
         .budget_tokens,
     ).toBe(20000);
   });
+
+  it('maps xhigh and max to higher budget tokens per CLI ceilings', () => {
+    const xhigh = translate_anthropic_effort('xhigh');
+    expect(
+      (xhigh.provider_options['anthropic'] as { thinking: { budget_tokens: number } }).thinking
+        .budget_tokens,
+    ).toBe(32000);
+    const max = translate_anthropic_effort('max');
+    expect(
+      (max.provider_options['anthropic'] as { thinking: { budget_tokens: number } }).thinking
+        .budget_tokens,
+    ).toBe(64000);
+  });
 });
 
 describe('normalize_anthropic_usage', () => {

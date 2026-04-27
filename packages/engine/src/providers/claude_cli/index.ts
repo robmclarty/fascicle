@@ -15,6 +15,7 @@
 import { z } from 'zod';
 import type {
   AliasTarget,
+  EffortLevel,
   GenerateOptions,
   GenerateResult,
   Message,
@@ -78,9 +79,30 @@ const SUPPORTED: ReadonlySet<ProviderCapability> = new Set<ProviderCapability>([
   'tools',
   'schema',
   'streaming',
+  'reasoning',
 ]);
 
 const PROVIDER_NAME = 'claude_cli';
+
+// Map fascicle's EffortLevel to Claude Code's CLAUDE_CODE_EFFORT_LEVEL env var.
+// The CLI supports `low | medium | high | xhigh | max | auto`; we expose all
+// non-`none` levels of fascicle's EffortLevel and let the user opt out via
+// `effort: 'none'` (which results in no env var being set, deferring to whatever
+// is already in the inherited environment).
+const CLAUDE_CLI_EFFORT_VALUES: Record<Exclude<EffortLevel, 'none'>, string> = {
+  low: 'low',
+  medium: 'medium',
+  high: 'high',
+  xhigh: 'xhigh',
+  max: 'max',
+};
+
+export function effort_env_for_claude_cli(
+  effort: EffortLevel | undefined,
+): Record<string, string> {
+  if (effort === undefined || effort === 'none') return {};
+  return { CLAUDE_CODE_EFFORT_LEVEL: CLAUDE_CLI_EFFORT_VALUES[effort] };
+}
 
 function extract_call_opts(opts: GenerateOptions<unknown>): ClaudeCliCallOptions {
   const raw = opts.provider_options?.['claude_cli'];
@@ -343,6 +365,7 @@ export function create_claude_cli_adapter(init: ProviderInit): SubprocessProvide
       const stdin_text = extract_prompt_text(opts.prompt);
 
       const env = build_env(config, call_opts.env, resolved_auth_mode);
+      Object.assign(env, effort_env_for_claude_cli(opts.effort));
 
       const sandbox_plan = build_sandbox_plan(resolved_binary, config.sandbox);
 

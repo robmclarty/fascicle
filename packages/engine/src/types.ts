@@ -13,7 +13,7 @@ import type { z } from 'zod';
 import type { TrajectoryLogger } from '@repo/core';
 import type { ClaudeCliProviderConfig } from './providers/claude_cli/types.js';
 
-export type EffortLevel = 'none' | 'low' | 'medium' | 'high';
+export type EffortLevel = 'none' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 
 export type FinishReason =
   | 'stop'

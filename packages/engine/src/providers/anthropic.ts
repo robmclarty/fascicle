@@ -28,6 +28,8 @@ const ANTHROPIC_THINKING_BUDGETS: Record<EffortLevel, number> = {
   low: 1024,
   medium: 5000,
   high: 20000,
+  xhigh: 32000,
+  max: 64000,
 };
 
 export function translate_anthropic_effort(effort: EffortLevel): EffortTranslation {

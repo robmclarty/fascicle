@@ -23,6 +23,16 @@ describe('translate_openai_effort', () => {
       expect(translated.effort_ignored).toBe(false);
     }
   });
+
+  it('clamps xhigh and max to high since OpenAI exposes no level above high', () => {
+    for (const effort of ['xhigh', 'max'] as const) {
+      const translated = translate_openai_effort(effort);
+      expect(
+        (translated.provider_options['openai'] as { reasoningEffort: string }).reasoningEffort,
+      ).toBe('high');
+      expect(translated.effort_ignored).toBe(false);
+    }
+  });
 });
 
 describe('normalize_openai_usage', () => {
