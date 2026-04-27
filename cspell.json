@@ -10,11 +10,13 @@
     "docs/**",
     ".ridgeline/**",
     "research/**",
+    "spec/**",
     "pnpm-lock.yaml",
     "package.json"
   ],
   "words": [
     "accum",
+    "codegen",
     "agnix",
     "bwrap",
     "checkpointed",

@@ -15,6 +15,7 @@
     "docs/**",
     ".ridgeline/**",
     "research/**",
+    "spec/**",
     "CHANGELOG.md"
   ]
 }
