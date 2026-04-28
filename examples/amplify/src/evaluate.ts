@@ -70,9 +70,9 @@ function trim_to_tail(buf: string): string {
   return buf.length <= TAIL_BYTES ? buf : `…\n${buf.slice(buf.length - TAIL_BYTES)}`;
 }
 
-async function check_syntax(impl_path: string, cwd: string): Promise<SpawnResult> {
+async function check_syntax(_impl_path: string, cwd: string): Promise<SpawnResult> {
   return run_command(
-    ['pnpm', 'exec', 'tsc', '--noEmit', '--target', 'ES2024', '--module', 'NodeNext', '--moduleResolution', 'NodeNext', '--strict', '--skipLibCheck', impl_path],
+    ['pnpm', 'exec', 'tsc', '--noEmit', '-p', '.'],
     cwd,
     {},
     SYNTAX_TIMEOUT_MS,
