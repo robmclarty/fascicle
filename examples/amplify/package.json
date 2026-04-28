@@ -6,6 +6,7 @@
   "private": true,
   "scripts": {
     "amplify": "tsx src/main.ts",
+    "demo": "bash scripts/demo.sh",
     "gen-fixture": "tsx target/fixtures/gen.ts",
     "bench": "tsx target/bench.ts",
     "test": "vitest run --config vitest.config.ts",
