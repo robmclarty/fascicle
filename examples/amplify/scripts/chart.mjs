@@ -14,7 +14,7 @@ const RUNS_DIR = join(PKG_DIR, '.runs');
 function find_latest_run() {
   const entries = readdirSync(RUNS_DIR)
     .map((name) => ({ name, mtime: statSync(join(RUNS_DIR, name)).mtimeMs }))
-    .sort((a, b) => b.mtime - a.mtime);
+    .toSorted((a, b) => b.mtime - a.mtime);
   if (entries.length === 0) throw new Error(`no runs found in ${RUNS_DIR}`);
   return join(RUNS_DIR, entries[0].name);
 }
