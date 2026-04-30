@@ -38,6 +38,8 @@ The composition stays portable; only the runtime ships.
 
 The `amplify` example hints at this. A `learn` or `distill` primitive that takes a flow plus trajectories and proposes improvements is novel territory most agent libraries don't touch.
 
+> Status: `learn` shipped in `@repo/composites`. `distill` deferred — see [self-improvement-and-agents.md](./self-improvement-and-agents.md). Examples: [`examples/learn.ts`](../../examples/learn.ts) (analyzer-only) and [`examples/learn_reviewer.ts`](../../examples/learn_reviewer.ts) (analyzes trajectories from the reviewer agent).
+
 ### `improve` composite — generic bounded improvement loop
 
 The kernel inside `amplify`, with the opinions stripped out: a bounded round loop with parallel proposers, a winner-pick, a lessons accumulator, and plateau detection. Inject `propose` (a step that produces candidates), `score` (a step that ranks them), and `apply` (a step that commits the winner). Strip the filesystem mutation, the test-suite gate, the subprocess research — those stay in `amplify`-the-example.
@@ -47,6 +49,8 @@ The online counterpart to `learn`. Only worth extracting once a real consumer wa
 ### Domain agents on top
 
 Code reviewer, research agent, doc generator. Useful as proof of the abstraction, but adds maintenance surface and doesn't deepen the library itself.
+
+> Status: shipped in `@repo/agents` — `reviewer` and `documenter` are markdown-defined via the `define_agent` loader; `researcher` is bespoke TS using `loop`. See [self-improvement-and-agents.md](./self-improvement-and-agents.md). Examples: [`examples/reviewer.ts`](../../examples/reviewer.ts), [`examples/documenter.ts`](../../examples/documenter.ts), [`examples/researcher.ts`](../../examples/researcher.ts).
 
 ## Recommendation
 
