@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.3.4 — 2026-04-30
+
+### Internal
+- Switch to ASI-only style: trailing statement semicolons and multi-line interface/type-member separators removed across all TS sources.
+- Add ast-grep rules (`no-semicolons`, `no-semicolons-types`) and a small orchestrator script (`scripts/strip-semicolons.mjs`) wired into `check:fix` to enforce the style going forward.
+
 ## v0.3.3 — 2026-04-29
 
 ### Added

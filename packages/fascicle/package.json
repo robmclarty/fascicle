@@ -1,6 +1,6 @@
 {
   "name": "@repo/fascicle",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "description": "Fascicle umbrella: single-install entry point that re-exports @repo/core.",
   "type": "module",
   "private": true,
