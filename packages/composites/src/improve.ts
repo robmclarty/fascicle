@@ -17,12 +17,14 @@
  *
  * Implemented as a `compose`d `scope` of (seed) → (init state) → (loop) →
  * (unwrap). The loop body is itself a small `scope` that snapshots prior
- * state, builds a round input, dispatches `propose` then `score`, and merges
- * the outcome back into state via `use`. State threading is the entire job.
+ * state, builds a round input, dispatches the proposers + scorer via
+ * `ensemble_step`, and merges the outcome back into state via `use`.
+ * State threading is the entire job.
  */
 
-import { compose, loop, map, parallel, scope, step, stash, use } from '@repo/core';
+import { compose, loop, scope, step, stash, use } from '@repo/core';
 import type { LoopResult, Step } from '@repo/core';
+import { ensemble_step } from './ensemble_step.js';
 
 export type Candidate<c> = {
   readonly content: c;
@@ -102,57 +104,52 @@ export function improve<i, c>(
   const lessons_capacity = Math.max(0, config.lessons_capacity ?? 5);
   const { max_rounds, max_wallclock_ms, patience } = budget;
 
-  const proposer_ids: ReadonlyArray<string> = Array.from(
-    { length: proposers_per_round },
-    (_, i) => `p${i}`,
-  );
-
   const proposers: Record<string, Step<ImproveRoundInput<c>, Candidate<c>>> = {};
-  for (const id of proposer_ids) {
-    proposers[id] = propose;
+  for (let i = 0; i < proposers_per_round; i += 1) {
+    proposers[`p${String(i)}`] = propose;
   }
-  const fan_out_propose = parallel(proposers);
 
-  const candidates_to_array = step(
-    'improve_candidates_to_array',
-    (record: Record<string, Candidate<c>>): ReadonlyArray<Candidate<c>> =>
-      proposer_ids
-        .map((id) => {
-          const candidate = record[id];
-          return candidate === undefined ? undefined : { ...candidate, proposer_id: id };
-        })
-        .filter((c0): c0 is Candidate<c> => c0 !== undefined),
-  );
-
-  const score_each = map<ReadonlyArray<Candidate<c>>, Candidate<c>, ScoredCandidate<c>>({
-    items: (candidates) => candidates,
-    do: score,
+  const round_ensemble = ensemble_step<
+    ImproveRoundInput<c>,
+    Candidate<c>,
+    ScoredCandidate<c>
+  >({
+    name: 'improve_round',
+    members: proposers,
+    score,
+    rank_by: (s) => s.score,
   });
 
-  const pick_winner = use(
+  type RoundResult = {
+    readonly winner_id: string;
+    readonly winner: Candidate<c>;
+    readonly winner_scored: ScoredCandidate<c>;
+    readonly scored: Record<string, ScoredCandidate<c>>;
+  };
+
+  const project_round = use(
     [PRIOR_KEY],
-    (vars, scored: ReadonlyArray<ScoredCandidate<c>>, ctx): ScoredCandidate<c> => {
+    (vars, ensemble_result: RoundResult, ctx): ScoredCandidate<c> => {
       // oxlint-disable-next-line typescript/no-unsafe-type-assertion
       const prior = vars[PRIOR_KEY] as ImproveState<c>;
       const round = prior.round + 1;
-      for (const s of scored) {
+      for (const slot_id of Object.keys(ensemble_result.scored)) {
+        const scored = ensemble_result.scored[slot_id];
+        if (scored === undefined) continue;
         ctx.trajectory.record({
           kind: 'improve.candidate',
           round,
-          proposer_id: s.candidate.proposer_id,
-          score: s.score,
-          accepted: s.accepted,
-          ...(s.reason === undefined ? {} : { reason: s.reason }),
+          proposer_id: slot_id,
+          score: scored.score,
+          accepted: scored.accepted,
+          ...(scored.reason === undefined ? {} : { reason: scored.reason }),
         });
       }
-      let winner: ScoredCandidate<c> | undefined;
-      for (const s of scored) {
-        if (winner === undefined || s.score > winner.score) winner = s;
-      }
-      if (winner === undefined) {
-        throw new Error('improve: no candidates produced in round');
-      }
-      return winner;
+      const w = ensemble_result.winner_scored;
+      return {
+        ...w,
+        candidate: { ...w.candidate, proposer_id: ensemble_result.winner_id },
+      };
     },
   );
 
@@ -233,10 +230,8 @@ export function improve<i, c>(
   const body = scope([
     stash(PRIOR_KEY, step('improve_snapshot', (s: ImproveState<c>) => s)),
     to_round_input,
-    fan_out_propose,
-    candidates_to_array,
-    score_each,
-    pick_winner,
+    round_ensemble,
+    project_round,
     merge_outcome,
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion
   ]) as Step<ImproveState<c>, ImproveState<c>>;

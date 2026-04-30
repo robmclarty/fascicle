@@ -23,6 +23,9 @@ export type { ConsensusConfig, ConsensusResult } from './consensus.js';
 export { ensemble } from './ensemble.js';
 export type { EnsembleConfig, EnsembleResult } from './ensemble.js';
 
+export { ensemble_step } from './ensemble_step.js';
+export type { EnsembleStepConfig, EnsembleStepResult } from './ensemble_step.js';
+
 export { improve } from './improve.js';
 export type {
   Candidate,
