@@ -23,5 +23,14 @@ export type { ConsensusConfig, ConsensusResult } from './consensus.js';
 export { ensemble } from './ensemble.js';
 export type { EnsembleConfig, EnsembleResult } from './ensemble.js';
 
+export { learn } from './learn.js';
+export type {
+  Improvement,
+  LearnConfig,
+  LearnInput,
+  LearnResult,
+  TrajectorySource,
+} from './learn.js';
+
 export { tournament } from './tournament.js';
 export type { BracketRecord, TournamentConfig, TournamentResult } from './tournament.js';
