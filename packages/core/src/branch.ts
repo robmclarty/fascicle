@@ -8,10 +8,11 @@
  * See spec.md §5.4.
  */
 
-import { dispatch_step, register_kind } from './runner.js';
+import { dispatch_step, register_kind, resolve_span_label } from './runner.js';
 import type { RunContext, Step } from './types.js';
 
 export type BranchConfig<i, o> = {
+  readonly name?: string;
   readonly when: (input: i) => boolean | Promise<boolean>;
   readonly then: Step<i, o>;
   readonly otherwise: Step<i, o>;
@@ -26,7 +27,7 @@ function next_id(): string {
 
 export function branch<i, o>(config: BranchConfig<i, o>): Step<i, o> {
   const id = next_id();
-  const { when, then: then_step, otherwise: otherwise_step } = config;
+  const { when, then: then_step, otherwise: otherwise_step, name } = config;
 
   const run_fn = async (input: i, ctx: RunContext): Promise<o> => {
     const cond = await when(input);
@@ -34,17 +35,21 @@ export function branch<i, o>(config: BranchConfig<i, o>): Step<i, o> {
     return dispatch_step(next_step, input, ctx);
   };
 
+  const config_meta: Record<string, unknown> = { when, then: then_step, otherwise: otherwise_step };
+  if (name !== undefined) config_meta['display_name'] = name;
+
   return {
     id,
     kind: 'branch',
     children: [then_step, otherwise_step],
-    config: { when, then: then_step, otherwise: otherwise_step },
+    config: config_meta,
     run: run_fn,
   };
 }
 
 register_kind('branch', async (flow, input, ctx) => {
-  const span_id = ctx.trajectory.start_span('branch', { id: flow.id });
+  const label = resolve_span_label(flow, 'branch');
+  const span_id = ctx.trajectory.start_span(label, { id: flow.id });
   try {
     const out = await flow.run(input, ctx);
     ctx.trajectory.end_span(span_id, { id: flow.id });

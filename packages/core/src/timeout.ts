@@ -15,7 +15,7 @@
  */
 
 import { aborted_error, timeout_error } from './errors.js';
-import { dispatch_step, register_kind } from './runner.js';
+import { dispatch_step, register_kind, resolve_span_label } from './runner.js';
 import type { RunContext, Step } from './types.js';
 
 let timeout_counter = 0;
@@ -25,7 +25,15 @@ function next_id(): string {
   return `timeout_${timeout_counter}`;
 }
 
-export function timeout<i, o>(inner: Step<i, o>, ms: number): Step<i, o> {
+export type TimeoutOptions = {
+  readonly name?: string;
+};
+
+export function timeout<i, o>(
+  inner: Step<i, o>,
+  ms: number,
+  options?: TimeoutOptions,
+): Step<i, o> {
   const id = next_id();
 
   const run_fn = async (input: i, ctx: RunContext): Promise<o> => {
@@ -62,17 +70,21 @@ export function timeout<i, o>(inner: Step<i, o>, ms: number): Step<i, o> {
     }
   };
 
+  const config_meta: Record<string, unknown> = { ms };
+  if (options?.name !== undefined) config_meta['display_name'] = options.name;
+
   return {
     id,
     kind: 'timeout',
     children: [inner],
-    config: { ms },
+    config: config_meta,
     run: run_fn,
   };
 }
 
 register_kind('timeout', async (flow, input, ctx) => {
-  const span_id = ctx.trajectory.start_span('timeout', { id: flow.id });
+  const label = resolve_span_label(flow, 'timeout');
+  const span_id = ctx.trajectory.start_span(label, { id: flow.id });
   try {
     const out = await flow.run(input, ctx);
     ctx.trajectory.end_span(span_id, { id: flow.id });

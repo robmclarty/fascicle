@@ -18,6 +18,8 @@ export const STEP_KINDS = [
   'retry',
   'fallback',
   'timeout',
+  'loop',
+  'compose',
   'adversarial',
   'ensemble',
   'tournament',

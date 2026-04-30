@@ -13,10 +13,11 @@
  * See spec.md §5.14, §6.3.
  */
 
-import { dispatch_step, register_kind } from './runner.js';
+import { dispatch_step, register_kind, resolve_span_label } from './runner.js';
 import type { RunContext, Step } from './types.js';
 
 export type CheckpointConfig<i> = {
+  readonly name?: string;
   readonly key: string | ((input: i) => string);
 };
 
@@ -63,17 +64,21 @@ export function checkpoint<i, o>(inner: Step<i, o>, config: CheckpointConfig<i>)
     return result;
   };
 
+  const config_meta: Record<string, unknown> = { key: key_spec };
+  if (config.name !== undefined) config_meta['display_name'] = config.name;
+
   return {
     id,
     kind: 'checkpoint',
     children: [inner],
-    config: { key: key_spec },
+    config: config_meta,
     run: run_fn,
   };
 }
 
 register_kind('checkpoint', async (flow, input, ctx) => {
-  const span_id = ctx.trajectory.start_span('checkpoint', { id: flow.id });
+  const label = resolve_span_label(flow, 'checkpoint');
+  const span_id = ctx.trajectory.start_span(label, { id: flow.id });
   try {
     const out = await flow.run(input, ctx);
     ctx.trajectory.end_span(span_id, { id: flow.id });

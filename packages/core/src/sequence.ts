@@ -8,7 +8,7 @@
  * See spec.md §5.2 and §6.1.
  */
 
-import { dispatch_step, register_kind } from './runner.js';
+import { dispatch_step, register_kind, resolve_span_label } from './runner.js';
 import type { RunContext, Step } from './types.js';
 
 type AnyStep = Step<unknown, unknown>;
@@ -30,8 +30,13 @@ function next_id(): string {
   return `sequence_${sequence_counter}`;
 }
 
+export type SequenceOptions = {
+  readonly name?: string;
+};
+
 export function sequence<const children extends readonly AnyStep[]>(
   children: children,
+  options?: SequenceOptions,
 ): Step<FirstInput<children>, LastOutput<children>> {
   const id = next_id();
   const children_ref = children;
@@ -42,17 +47,23 @@ export function sequence<const children extends readonly AnyStep[]>(
     }
     return acc;
   };
+
+  const config_meta: Record<string, unknown> | undefined =
+    options?.name === undefined ? undefined : { display_name: options.name };
+
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion
   return {
     id,
     kind: 'sequence',
     children,
+    ...(config_meta ? { config: config_meta } : {}),
     run: run_fn,
   } as Step<FirstInput<children>, LastOutput<children>>;
 }
 
 register_kind('sequence', async (flow, input, ctx) => {
-  const span_id = ctx.trajectory.start_span('sequence', { id: flow.id });
+  const label = resolve_span_label(flow, 'sequence');
+  const span_id = ctx.trajectory.start_span(label, { id: flow.id });
   try {
     const out = await flow.run(input, ctx);
     ctx.trajectory.end_span(span_id, { id: flow.id });

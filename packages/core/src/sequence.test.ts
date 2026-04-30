@@ -50,6 +50,19 @@ describe('sequence', () => {
     expect(spans).toContain('step');
   });
 
+  it('honors a user-supplied name as the span label (universal name? contract)', async () => {
+    const { logger, events } = recording_logger();
+    const flow = sequence(
+      [step('a', (x: number) => x + 1), step('b', (x: number) => x * 2)],
+      { name: 'my-flow' },
+    );
+
+    await run(flow, 1, { trajectory: logger, install_signal_handlers: false });
+
+    const spans = events.filter((e) => e.kind === 'span_start').map((e) => e['name']);
+    expect(spans[0]).toBe('my-flow');
+  });
+
   it('records error on span end when a child throws', async () => {
     const { logger, events } = recording_logger();
     const flow = sequence([

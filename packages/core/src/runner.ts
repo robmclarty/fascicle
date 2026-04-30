@@ -38,6 +38,23 @@ export function register_kind(kind: string, fn: Dispatcher): void {
   dispatch.set(kind, fn);
 }
 
+/**
+ * Resolve the trajectory span label for a step. Prefers a non-empty
+ * `display_name` from `flow.config`; otherwise falls back to the supplied
+ * default (typically the step's `kind`).
+ *
+ * Dispatch handlers use this so that any composer carrying a user-supplied
+ * `name` surfaces under that label in the trajectory, while unconfigured
+ * composers retain their kind-based label.
+ */
+export function resolve_span_label(
+  flow: Step<unknown, unknown>,
+  fallback: string,
+): string {
+  const display = flow.config?.['display_name'];
+  return typeof display === 'string' && display.length > 0 ? display : fallback;
+}
+
 export type RunOptions = {
   readonly install_signal_handlers?: boolean;
   readonly trajectory?: TrajectoryLogger;

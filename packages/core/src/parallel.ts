@@ -13,7 +13,7 @@
  */
 
 import { aborted_error } from './errors.js';
-import { dispatch_step, register_kind } from './runner.js';
+import { dispatch_step, register_kind, resolve_span_label } from './runner.js';
 import type { RunContext, Step } from './types.js';
 
 type AnyStep = Step<unknown, unknown>;
@@ -31,8 +31,13 @@ function next_id(): string {
   return `parallel_${parallel_counter}`;
 }
 
+export type ParallelOptions = {
+  readonly name?: string;
+};
+
 export function parallel<i, children extends Record<string, Step<i, unknown>>>(
   members: children,
+  options?: ParallelOptions,
 ): Step<i, ParallelOutputs<children>> {
   const id = next_id();
   const entries: ReadonlyArray<readonly [string, AnyStep]> = Object.entries(members);
@@ -86,17 +91,21 @@ export function parallel<i, children extends Record<string, Step<i, unknown>>>(
     }
   };
 
+  const config_meta: Record<string, unknown> = { keys };
+  if (options?.name !== undefined) config_meta['display_name'] = options.name;
+
   return {
     id,
     kind: 'parallel',
     children: child_list,
-    config: { keys },
+    config: config_meta,
     run: run_fn,
   };
 }
 
 register_kind('parallel', async (flow, input, ctx) => {
-  const span_id = ctx.trajectory.start_span('parallel', { id: flow.id });
+  const label = resolve_span_label(flow, 'parallel');
+  const span_id = ctx.trajectory.start_span(label, { id: flow.id });
   try {
     const out = await flow.run(input, ctx);
     ctx.trajectory.end_span(span_id, { id: flow.id });

@@ -13,10 +13,11 @@
  */
 
 import { aborted_error } from './errors.js';
-import { dispatch_step, register_kind } from './runner.js';
+import { dispatch_step, register_kind, resolve_span_label } from './runner.js';
 import type { RunContext, Step } from './types.js';
 
 export type MapConfig<input, item, result> = {
+  readonly name?: string;
   readonly items: (input: input) => ReadonlyArray<item> | Promise<ReadonlyArray<item>>;
   readonly do: Step<item, result>;
   readonly concurrency?: number;
@@ -33,7 +34,7 @@ export function map<input, item, result>(
   config: MapConfig<input, item, result>,
 ): Step<input, result[]> {
   const id = next_id();
-  const { items, do: per_item, concurrency } = config;
+  const { items, do: per_item, concurrency, name } = config;
 
   const run_fn = async (input: input, ctx: RunContext): Promise<result[]> => {
     const list = await items(input);
@@ -101,17 +102,22 @@ export function map<input, item, result>(
     }
   };
 
+  const config_meta: Record<string, unknown> = { items };
+  if (concurrency !== undefined) config_meta['concurrency'] = concurrency;
+  if (name !== undefined) config_meta['display_name'] = name;
+
   return {
     id,
     kind: 'map',
     children: [per_item],
-    ...(concurrency === undefined ? { config: { items } } : { config: { items, concurrency } }),
+    config: config_meta,
     run: run_fn,
   };
 }
 
 register_kind('map', async (flow, input, ctx) => {
-  const span_id = ctx.trajectory.start_span('map', { id: flow.id });
+  const label = resolve_span_label(flow, 'map');
+  const span_id = ctx.trajectory.start_span(label, { id: flow.id });
   try {
     const out = await flow.run(input, ctx);
     ctx.trajectory.end_span(span_id, { id: flow.id });

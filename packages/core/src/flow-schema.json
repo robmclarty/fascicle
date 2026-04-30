@@ -26,6 +26,8 @@
         { "required": ["retry"] },
         { "required": ["fallback"] },
         { "required": ["timeout"] },
+        { "required": ["loop"] },
+        { "required": ["compose_node"] },
         { "required": ["adversarial"] },
         { "required": ["ensemble"] },
         { "required": ["tournament"] },
@@ -45,6 +47,8 @@
         "retry": { "$ref": "#/$defs/retry_config" },
         "fallback": { "$ref": "#/$defs/fallback_config" },
         "timeout": { "$ref": "#/$defs/timeout_config" },
+        "loop": { "$ref": "#/$defs/loop_config" },
+        "compose_node": { "$ref": "#/$defs/compose_node_config" },
         "adversarial": { "$ref": "#/$defs/adversarial_config" },
         "ensemble": { "$ref": "#/$defs/ensemble_config" },
         "tournament": { "$ref": "#/$defs/tournament_config" },
@@ -120,6 +124,26 @@
       "properties": {
         "do": { "$ref": "#/$defs/node" },
         "ms": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "compose_node_config": {
+      "type": "object",
+      "required": ["name", "do"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "do": { "$ref": "#/$defs/node" }
+      }
+    },
+    "loop_config": {
+      "type": "object",
+      "required": ["body", "max_rounds"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "init": { "type": "string" },
+        "body": { "$ref": "#/$defs/node" },
+        "guard": { "$ref": "#/$defs/node" },
+        "finish": { "type": "string" },
+        "max_rounds": { "type": "integer", "minimum": 1 }
       }
     },
     "adversarial_config": {

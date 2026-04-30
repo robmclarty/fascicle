@@ -77,9 +77,12 @@ function render_text(
   }
   path.add(node);
   try {
-    lines.push(`${prefix}${node.kind}(${node.id})`);
+    const display = node.config?.['display_name'];
+    const label = typeof display === 'string' && display.length > 0 ? display : node.kind;
+    lines.push(`${prefix}${label}(${node.id})`);
     if (node.config) {
       for (const [key, value] of Object.entries(node.config)) {
+        if (key === 'display_name') continue;
         lines.push(`${prefix}${INDENT}${key}: ${render_value_text(value, path, strict)}`);
       }
     }

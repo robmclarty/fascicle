@@ -15,11 +15,12 @@
 
 import { z } from 'zod';
 import { resume_validation_error, suspended_error } from './errors.js';
-import { dispatch_step, register_kind } from './runner.js';
+import { dispatch_step, register_kind, resolve_span_label } from './runner.js';
 import type { RunContext, Step } from './types.js';
 
 export type SuspendConfig<i, o, resume> = {
   readonly id: string;
+  readonly name?: string;
   readonly on: (input: i, ctx: RunContext) => Promise<void> | void;
   readonly resume_schema: z.ZodType<resume>;
   readonly combine: (
@@ -66,16 +67,20 @@ export function suspend<i, o, resume>(config: SuspendConfig<i, o, resume>): Step
     return result;
   };
 
+  const config_meta: Record<string, unknown> = { id: suspend_id };
+  if (config.name !== undefined) config_meta['display_name'] = config.name;
+
   return {
     id: suspend_id,
     kind: 'suspend',
-    config: { id: suspend_id },
+    config: config_meta,
     run: run_fn,
   };
 }
 
 register_kind('suspend', async (flow, input, ctx) => {
-  const span_id = ctx.trajectory.start_span('suspend', { id: flow.id });
+  const label = resolve_span_label(flow, 'suspend');
+  const span_id = ctx.trajectory.start_span(label, { id: flow.id });
   try {
     const out = await flow.run(input, ctx);
     ctx.trajectory.end_span(span_id, { id: flow.id });

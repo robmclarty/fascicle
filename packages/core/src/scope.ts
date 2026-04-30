@@ -14,7 +14,7 @@
  * See spec.md §5.16.
  */
 
-import { dispatch_step, register_kind } from './runner.js';
+import { dispatch_step, register_kind, resolve_span_label } from './runner.js';
 import type { RunContext, Step } from './types.js';
 
 type AnyStep = Step<unknown, unknown>;
@@ -50,8 +50,21 @@ function next_use_id(): string {
   return `use_${use_counter}`;
 }
 
+export type ScopeOptions = {
+  readonly name?: string;
+};
+
+export type StashOptions = {
+  readonly name?: string;
+};
+
+export type UseOptions = {
+  readonly name?: string;
+};
+
 export function scope<const children extends readonly AnyStep[]>(
   children: children,
+  options?: ScopeOptions,
 ): Step<unknown, LastOutput<children>> {
   const id = next_scope_id();
   const children_ref = children;
@@ -68,16 +81,24 @@ export function scope<const children extends readonly AnyStep[]>(
     return acc;
   };
 
+  const config_meta: Record<string, unknown> | undefined =
+    options?.name === undefined ? undefined : { display_name: options.name };
+
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion
   return {
     id,
     kind: 'scope',
     children,
+    ...(config_meta ? { config: config_meta } : {}),
     run: run_fn,
   } as Step<unknown, LastOutput<children>>;
 }
 
-export function stash<i, v>(key: string, source: Step<i, v>): Step<i, v> {
+export function stash<i, v>(
+  key: string,
+  source: Step<i, v>,
+  options?: StashOptions,
+): Step<i, v> {
   const id = next_stash_id();
 
   const run_fn = async (input: i, ctx: RunContext): Promise<v> => {
@@ -90,11 +111,14 @@ export function stash<i, v>(key: string, source: Step<i, v>): Step<i, v> {
     return value;
   };
 
+  const config_meta: Record<string, unknown> = { key };
+  if (options?.name !== undefined) config_meta['display_name'] = options.name;
+
   return {
     id,
     kind: 'stash',
     children: [source],
-    config: { key },
+    config: config_meta,
     run: run_fn,
   };
 }
@@ -106,6 +130,7 @@ export function use<const keys extends readonly string[], i, o>(
     input: i,
     ctx: RunContext,
   ) => Promise<o> | o,
+  options?: UseOptions,
 ): Step<i, o> {
   const id = next_use_id();
 
@@ -121,16 +146,20 @@ export function use<const keys extends readonly string[], i, o>(
     return fn(projection as { [k in keys[number]]: unknown }, input, ctx);
   };
 
+  const config_meta: Record<string, unknown> = { keys: [...keys] };
+  if (options?.name !== undefined) config_meta['display_name'] = options.name;
+
   return {
     id,
     kind: 'use',
-    config: { keys: [...keys] },
+    config: config_meta,
     run: run_fn,
   };
 }
 
 register_kind('scope', async (flow, input, ctx) => {
-  const span_id = ctx.trajectory.start_span('scope', { id: flow.id });
+  const label = resolve_span_label(flow, 'scope');
+  const span_id = ctx.trajectory.start_span(label, { id: flow.id });
   try {
     const out = await flow.run(input, ctx);
     ctx.trajectory.end_span(span_id, { id: flow.id });
@@ -145,7 +174,8 @@ register_kind('scope', async (flow, input, ctx) => {
 });
 
 register_kind('stash', async (flow, input, ctx) => {
-  const span_id = ctx.trajectory.start_span('stash', { id: flow.id });
+  const label = resolve_span_label(flow, 'stash');
+  const span_id = ctx.trajectory.start_span(label, { id: flow.id });
   try {
     const out = await flow.run(input, ctx);
     ctx.trajectory.end_span(span_id, { id: flow.id });
@@ -160,7 +190,8 @@ register_kind('stash', async (flow, input, ctx) => {
 });
 
 register_kind('use', async (flow, input, ctx) => {
-  const span_id = ctx.trajectory.start_span('use', { id: flow.id });
+  const label = resolve_span_label(flow, 'use');
+  const span_id = ctx.trajectory.start_span(label, { id: flow.id });
   try {
     const out = await flow.run(input, ctx);
     ctx.trajectory.end_span(span_id, { id: flow.id });

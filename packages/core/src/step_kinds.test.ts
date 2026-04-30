@@ -3,9 +3,11 @@ import { z } from 'zod';
 import { adversarial } from './adversarial.js';
 import { branch } from './branch.js';
 import { checkpoint } from './checkpoint.js';
+import { compose } from './compose.js';
 import { consensus } from './consensus.js';
 import { ensemble } from './ensemble.js';
 import { fallback } from './fallback.js';
+import { loop } from './loop.js';
 import { map } from './map.js';
 import { parallel } from './parallel.js';
 import { pipe } from './pipe.js';
@@ -28,9 +30,11 @@ describe('STEP_KINDS registry', () => {
         'adversarial',
         'branch',
         'checkpoint',
+        'compose',
         'consensus',
         'ensemble',
         'fallback',
+        'loop',
         'map',
         'parallel',
         'pipe',
@@ -59,6 +63,12 @@ describe('STEP_KINDS registry', () => {
       retry(dummy, { max_attempts: 1 }),
       fallback(dummy, dummy),
       timeout(dummy, 100),
+      loop({
+        init: (n: number) => n,
+        body: step('inc', (n: number) => n + 1),
+        finish: (n) => n,
+        max_rounds: 1,
+      }),
       adversarial({
         build: builder,
         critique: critic,
@@ -68,6 +78,7 @@ describe('STEP_KINDS registry', () => {
       ensemble({ members: { a: dummy, b: dummy }, score: () => 1 }),
       tournament({ members: { a: dummy, b: dummy }, compare: () => 'a' as const }),
       consensus({ members: { a: dummy, b: dummy }, agree: () => true, max_rounds: 1 }),
+      compose('named', dummy),
       checkpoint(dummy, { key: () => 'k' }),
       suspend({
         id: 'pause',

@@ -13,12 +13,13 @@
  */
 
 import { aborted_error } from './errors.js';
-import { dispatch_step, register_kind } from './runner.js';
+import { dispatch_step, register_kind, resolve_span_label } from './runner.js';
 import type { RunContext, Step } from './types.js';
 
 const DEFAULT_BACKOFF_MS = 1_000;
 
 export type RetryConfig = {
+  readonly name?: string;
   readonly max_attempts: number;
   readonly backoff_ms?: number;
   readonly on_error?: (err: unknown, attempt: number) => void;
@@ -80,6 +81,7 @@ export function retry<i, o>(inner: Step<i, o>, config: RetryConfig): Step<i, o> 
 
   const config_meta: Record<string, unknown> = { max_attempts, backoff_ms };
   if (on_error) config_meta['on_error'] = on_error;
+  if (config.name !== undefined) config_meta['display_name'] = config.name;
 
   return {
     id,
@@ -91,7 +93,8 @@ export function retry<i, o>(inner: Step<i, o>, config: RetryConfig): Step<i, o> 
 }
 
 register_kind('retry', async (flow, input, ctx) => {
-  const span_id = ctx.trajectory.start_span('retry', { id: flow.id });
+  const label = resolve_span_label(flow, 'retry');
+  const span_id = ctx.trajectory.start_span(label, { id: flow.id });
   try {
     const out = await flow.run(input, ctx);
     ctx.trajectory.end_span(span_id, { id: flow.id });
