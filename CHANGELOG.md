@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.3.1 — 2026-04-29
+
+### Internal
+- Colocated unit tests under `__tests__/` subfolders (e.g. `packages/core/src/branch.ts` ↔ `packages/core/src/__tests__/branch.test.ts`); cross-cutting tests under `packages/<name>/test/` are unchanged.
+
 ## v0.3.0 — 2026-04-29
 
 ### Added
