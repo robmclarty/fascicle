@@ -493,7 +493,7 @@ A pnpm workspace publishing five npm packages under the `@robmclarty` scope. Eac
 
 - **Runner:** `vitest`. Consistent across every package.
 - **Coverage:** every composer has a unit test for its happy path and each documented failure mode. Every happy path and every typed error path in `generate` has a unit test. Failure modes in each build's `spec.md` map to at least one named test in that spec's success criteria.
-- **Test location:** tests colocate with source (`foo.ts` alongside `foo.test.ts`). Cross-cutting harnesses live under `packages/<name>/test/` (e.g. `packages/core/test/cleanup/` for SIGINT harness, `packages/core/test/integration/` for cross-composer tests, `packages/engine/test/integration/` for cross-layer tests).
+- **Test location:** unit tests colocate with source under a `__tests__/` subfolder (`foo.ts` ↔ `__tests__/foo.test.ts` in the same directory). Cross-cutting harnesses live under `packages/<name>/test/` (e.g. `packages/core/test/cleanup/` for SIGINT harness, `packages/core/test/integration/` for cross-composer tests, `packages/engine/test/integration/` for cross-layer tests).
 - **Mocking:**
   - composition layer: at the step function boundary. Composers under test receive `step(...)` values whose `fn` is a test double. The runner and composers are never mocked.
   - engine layer: at the AI SDK boundary OR at HTTP level via `msw`. The codebase may use either, but a single test file should be consistent.

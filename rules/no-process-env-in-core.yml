@@ -8,7 +8,7 @@ ignores:
   - packages/config/src/**/*.ts
   - packages/engine/src/providers/claude_cli/auth.ts
   - packages/fascicle/src/forward_standard_env.ts
-  - packages/fascicle/src/forward_standard_env.test.ts
+  - packages/fascicle/src/__tests__/forward_standard_env.test.ts
 rule:
   any:
     - pattern: process.env

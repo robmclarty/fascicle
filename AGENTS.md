@@ -38,7 +38,7 @@ pnpm exec tsc --noEmit         # just types
 - **Named exports.** No default exports. Enforced by `rules/no-default-export.yml`.
 - **Naming:** `snake_case` for variables and functions, `PascalCase` for types and interfaces, `SCREAMING_SNAKE_CASE` for constants. Exports are enforced by `rules/snake-case-exports.yml`.
 - **File extensions:** import with `.js` even from `.ts` files (NodeNext resolution).
-- **Tests colocated:** `foo.ts` and `foo.test.ts` live in the same directory.
+- **Tests colocated in `__tests__/`:** unit tests for `foo.ts` live at `__tests__/foo.test.ts` next to it (e.g. `packages/core/src/branch.ts` ↔ `packages/core/src/__tests__/branch.test.ts`). Cross-cutting tests (integration, signal handling, fixtures) live under `packages/<name>/test/` instead.
 - **Coverage floor:** 70% lines/functions/branches/statements. Raise it as the codebase matures.
 - **Architectural boundaries are enforced.** The rest of `rules/` uses ast-grep to police layer separation between `core`, `engine`, adapters, and the `claude_cli` provider — e.g. no adapter SDK imports in `core`, no cross-composer imports, no `process.env` reads in `core`, no provider SDKs outside provider packages, no `child_process` outside `claude_cli`. Read `rules/` before adding a new package or cross-package import.
 
