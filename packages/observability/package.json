@@ -1,6 +1,6 @@
 {
   "name": "@repo/observability",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Trajectory logger adapters for fascicle. Filesystem JSONL default, optional langfuse peer.",
   "type": "module",
   "private": true,

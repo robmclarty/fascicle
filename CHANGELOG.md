@@ -1,5 +1,31 @@
 # Changelog
 
+## v0.3.0 — 2026-04-29
+
+### Added
+
+- New core primitives `loop` and `compose`, plus a universal `name?` option on every composer.
+- New `learn` composer in `@repo/composites` for offline self-improvement, with file-path and directory sources, exported from the package index.
+- `amplify` self-improvement loop example with a demo helper providing chart, measure, and reset utilities.
+- `learn` example with smoke test.
+- `EffortLevel` extended with `xhigh` and `max`, and reasoning support added to the `claude_cli` adapter.
+- `spec/plans/ideas.md` capturing possible directions to build on fascicle.
+
+### Changed
+
+- `adversarial`, `ensemble`, `tournament`, and `consensus` extracted from `@repo/core` into a new `@repo/composites` package.
+
+### Fixed
+
+- `loop` type parameter renamed from `out` to `o` so tsx can parse the source.
+
+### Internal
+
+- Codegraph config plus ignore rules for db/cache files.
+- Gitignored the rgr example trajectory output (per-run telemetry).
+- Repaired the amplify cascade under tsc 6.x and `pnpm exec`.
+- Imported adversarial types directly in the rgr harness; drive-by lint fixes for `pnpm check:all`.
+
 ## v0.2.0 — 2026-04-26
 
 ### Added
