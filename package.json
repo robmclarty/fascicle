@@ -87,6 +87,7 @@
   "devDependencies": {
     "@arethetypeswrong/cli": "0.18.2",
     "@ast-grep/cli": "0.42.1",
+    "@repo/agents": "workspace:*",
     "@repo/fascicle": "workspace:*",
     "@repo/observability": "workspace:*",
     "@repo/stores": "workspace:*",
