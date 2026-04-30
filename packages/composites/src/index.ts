@@ -23,6 +23,18 @@ export type { ConsensusConfig, ConsensusResult } from './consensus.js';
 export { ensemble } from './ensemble.js';
 export type { EnsembleConfig, EnsembleResult } from './ensemble.js';
 
+export { improve } from './improve.js';
+export type {
+  Candidate,
+  HistoryEntry,
+  ImproveBudget,
+  ImproveConfig,
+  ImproveResult,
+  ImproveRoundInput,
+  Lesson,
+  ScoredCandidate,
+} from './improve.js';
+
 export { learn } from './learn.js';
 export type {
   Improvement,

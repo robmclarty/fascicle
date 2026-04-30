@@ -42,9 +42,11 @@ The `amplify` example hints at this. A `learn` or `distill` primitive that takes
 
 ### `improve` composite — generic bounded improvement loop
 
-The kernel inside `amplify`, with the opinions stripped out: a bounded round loop with parallel proposers, a winner-pick, a lessons accumulator, and plateau detection. Inject `propose` (a step that produces candidates), `score` (a step that ranks them), and `apply` (a step that commits the winner). Strip the filesystem mutation, the test-suite gate, the subprocess research — those stay in `amplify`-the-example.
+The kernel inside `amplify`, with the opinions stripped out: a bounded round loop with parallel proposers, a winner-pick, a lessons accumulator, and plateau detection. Inject `propose` (a step that produces candidates) and `score` (a step that ranks them). Strip the filesystem mutation, the test-suite gate, the subprocess research — those stay in `amplify`-the-example.
 
-The online counterpart to `learn`. Only worth extracting once a real consumer wants the pattern minus amplify's specifics; premature today.
+The online counterpart to `learn`.
+
+> Status: shipped in `@repo/composites`. `apply` was omitted as an amplify-domain leak — callers wrap the result if they need side effects. Example: [`examples/improve.ts`](../../examples/improve.ts) (toy "walk toward TARGET" demo).
 
 ### Domain agents on top
 
