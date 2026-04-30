@@ -21,6 +21,8 @@
     "bwrap",
     "checkpointed",
     "checkpointing",
+    "codegraph",
+    "Codegraph",
     "Corsa",
     "cspell",
     "dedup",
