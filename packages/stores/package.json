@@ -1,6 +1,6 @@
 {
   "name": "@repo/stores",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "Checkpoint store adapters for fascicle. Filesystem-backed default.",
   "type": "module",
   "private": true,

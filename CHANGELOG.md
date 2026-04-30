@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.3.3 — 2026-04-29
+
+### Added
+- `improve` composite in `@repo/composites`: bounded online self-improvement loop with parallel proposers, structured lessons accumulator, plateau detection, and configurable wall-clock + round budgets. Online counterpart to `learn`. Example at `examples/improve.ts`.
+- `ensemble_step` composite: Step-based sibling of `ensemble` for cases where scoring is itself a `Step`. Returns `winner_id`, `winner`, structured `winner_scored`, and the full `scored` map.
+
 ## v0.3.2 — 2026-04-29
 
 ### Added
