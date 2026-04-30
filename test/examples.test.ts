@@ -3,6 +3,7 @@ import { run_adversarial_build } from '../examples/adversarial_build.js';
 import { run_checkpoint_resume } from '../examples/checkpoint_resume.js';
 import { run_ensemble_judge } from '../examples/ensemble_judge.js';
 import { run_hello } from '../examples/hello.js';
+import { run_learn } from '../examples/learn.js';
 import { run_streaming_chat } from '../examples/streaming_chat.js';
 import { run_suspend_resume } from '../examples/suspend_resume.js';
 import { run_trajectory_logger } from '../examples/trajectory_logger.js';
@@ -53,5 +54,13 @@ describe('examples smoke', () => {
     expect(result).toBe(11);
     expect(span_names).toContain('sequence');
     expect(jsonl_line_count).toBeGreaterThan(0);
+  });
+
+  it('learn reads a synthetic JSONL trajectory and produces analyzer proposals', async () => {
+    const { events_considered, run_ids, proposals } = await run_learn();
+    expect(events_considered).toBe(5);
+    expect(run_ids).toEqual(['run-a', 'run-b']);
+    const targets = proposals.map((p) => p.target).toSorted();
+    expect(targets).toEqual(['emit', 'span_end', 'span_start']);
   });
 });
