@@ -15,3 +15,6 @@ tsconfig.tsbuildinfo
 .ridgeline/builds/*/state.json
 .ridgeline/builds/*/budget.json
 .ridgeline/builds/*/*.jsonl
+
+# rgr example trajectory output
+examples/red-green-refactor/.trajectory/
