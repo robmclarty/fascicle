@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.3.2 — 2026-04-29
+
+### Added
+- `@repo/agents` package: markdown-driven `define_agent` loader plus `reviewer`, `documenter`, and `researcher` agents. `reviewer` and `documenter` are markdown-defined; `researcher` is bespoke TypeScript that drives `loop` from core over injected `search`/`fetch` callables, with a per-round summarizer that itself uses `define_agent`.
+- Examples wiring each new agent against an in-process stub engine, plus an end-to-end `learn_reviewer` demo that runs the reviewer over three diffs (writing JSONL via `filesystem_logger`) and feeds the directory to `learn` to derive prompt-tightening proposals.
+
+### Internal
+- Tightened `learn` tests in `@repo/composites` around truncation events and `flow_description` equality.
+
 ## v0.3.1 — 2026-04-29
 
 ### Internal
