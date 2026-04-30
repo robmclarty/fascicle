@@ -45,7 +45,7 @@
     "check:all": "node scripts/check.mjs --all",
     "check:json": "node scripts/check.mjs --json",
     "check:bail": "node scripts/check.mjs --bail",
-    "check:fix": "pnpm exec oxlint --type-aware --fix && pnpm exec fallow fix",
+    "check:fix": "pnpm exec oxlint --type-aware --fix && node scripts/strip-semicolons.mjs && pnpm exec fallow fix",
     "check:mutation": "stryker run",
     "check:publish": "node scripts/check-publish.mjs",
     "check:security": "pnpm audit --audit-level=high",

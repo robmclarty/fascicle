@@ -1,0 +1,43 @@
+id: no-semicolons
+message: Drop the trailing semicolon. ASI is fine.
+severity: error
+language: typescript
+files:
+  - "packages/**/*.ts"
+  - "test/**/*.ts"
+  - "examples/**/*.ts"
+ignores:
+  - "**/*.d.ts"
+  - "**/dist/**"
+  - "**/node_modules/**"
+rule:
+  pattern: $X
+  regex: ';$'
+  any:
+    - kind: import_statement
+    - kind: export_statement
+    - kind: expression_statement
+    - kind: return_statement
+    - kind: throw_statement
+    - kind: break_statement
+    - kind: continue_statement
+    - kind: debugger_statement
+    - kind: do_statement
+    - kind: type_alias_declaration
+    - all:
+        - kind: lexical_declaration
+        - not:
+            inside:
+              kind: for_statement
+    - all:
+        - kind: variable_declaration
+        - not:
+            inside:
+              kind: for_statement
+transform:
+  STRIPPED:
+    replace:
+      source: $X
+      replace: ';$'
+      by: ''
+fix: $STRIPPED

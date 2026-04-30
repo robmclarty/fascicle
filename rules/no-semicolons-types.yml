@@ -1,0 +1,25 @@
+id: no-semicolons-types
+message: Drop the type-member separator semicolon. Newlines work as separators.
+severity: error
+language: typescript
+files:
+  - "packages/**/*.ts"
+  - "test/**/*.ts"
+  - "examples/**/*.ts"
+ignores:
+  - "**/*.d.ts"
+  - "**/dist/**"
+  - "**/node_modules/**"
+rule:
+  pattern: $X
+  any:
+    - kind: interface_body
+    - kind: object_type
+  regex: ';\n'
+transform:
+  STRIPPED:
+    replace:
+      source: $X
+      replace: ';\n'
+      by: "\n"
+fix: $STRIPPED
