@@ -16,6 +16,7 @@
  */
 
 export * from '@repo/core';
+export * from '@repo/composites';
 
 export { create_engine } from '@repo/engine';
 

@@ -1,9 +1,7 @@
+import { aborted_error, run, step } from '@repo/core';
+import type { TrajectoryEvent, TrajectoryLogger } from '@repo/core';
 import { afterEach, describe, expect, it } from 'vitest';
-import { aborted_error } from './errors.js';
-import { run } from './runner.js';
-import { step } from './step.js';
 import { tournament } from './tournament.js';
-import type { TrajectoryEvent, TrajectoryLogger } from './types.js';
 
 function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -29,7 +27,7 @@ function recording_logger(): { logger: TrajectoryLogger; events: TrajectoryEvent
   return { logger, events };
 }
 
-describe('tournament', () => {
+describe('tournament (composite)', () => {
   afterEach(() => {
     for (const l of process.listeners('SIGINT')) process.off('SIGINT', l);
     for (const l of process.listeners('SIGTERM')) process.off('SIGTERM', l);
@@ -109,7 +107,7 @@ describe('tournament', () => {
     expect(aborts.has('b')).toBe(true);
   });
 
-  it('wraps execution in a tournament span', async () => {
+  it('wraps execution in a "tournament" span', async () => {
     const { logger, events } = recording_logger();
     const flow = tournament({
       members: {
@@ -125,5 +123,24 @@ describe('tournament', () => {
     const end = events.find((e) => e.kind === 'span_end' && e['span_id'] === start?.['span_id']);
     expect(end).toBeDefined();
     expect(end?.['error']).toBeUndefined();
+  });
+
+  it('honors a user-provided name override', async () => {
+    const { logger, events } = recording_logger();
+    const flow = tournament({
+      name: 'bracket-runoff',
+      members: {
+        a: step('a', () => 1),
+        b: step('b', () => 2),
+      },
+      compare: () => 'a',
+    });
+
+    await run(flow, 'x', { trajectory: logger, install_signal_handlers: false });
+    const labels = events
+      .filter((e) => e.kind === 'span_start')
+      .map((e) => e['name'] as string);
+    expect(labels).toContain('bracket-runoff');
+    expect(labels).not.toContain('tournament');
   });
 });

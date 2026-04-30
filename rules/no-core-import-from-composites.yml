@@ -1,0 +1,13 @@
+id: no-core-import-from-composites
+message: "@repo/core must not import from @repo/composites. Composites depend on core, never the reverse."
+severity: error
+language: typescript
+files:
+  - packages/core/src/**/*.ts
+rule:
+  any:
+    - pattern: import $$$ from '$PATH'
+    - pattern: import $$$ from "$PATH"
+constraints:
+  PATH:
+    regex: '^@repo/composites(/.*)?$'

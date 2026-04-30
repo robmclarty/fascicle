@@ -1,8 +1,7 @@
+import { run, step } from '@repo/core';
+import type { TrajectoryEvent, TrajectoryLogger } from '@repo/core';
 import { describe, expect, it } from 'vitest';
 import { adversarial } from './adversarial.js';
-import { run } from './runner.js';
-import { step } from './step.js';
-import type { TrajectoryEvent, TrajectoryLogger } from './types.js';
 
 function recording_logger(): { logger: TrajectoryLogger; events: TrajectoryEvent[] } {
   const events: TrajectoryEvent[] = [];
@@ -24,7 +23,7 @@ function recording_logger(): { logger: TrajectoryLogger; events: TrajectoryEvent
   return { logger, events };
 }
 
-describe('adversarial', () => {
+describe('adversarial (composite)', () => {
   it('converges when critique accepts on round 2 (spec §10 test 8)', async () => {
     let build_calls = 0;
     const build = step(
@@ -53,7 +52,7 @@ describe('adversarial', () => {
     expect(critique_calls).toBe(2);
   });
 
-  it('returns non-converged with last candidate when max_rounds reached (criterion 9, F3)', async () => {
+  it('returns non-converged with last candidate when max_rounds reached', async () => {
     const build = step(
       'build',
       (input: { input: number; prior?: string; critique?: string }) =>
@@ -105,7 +104,7 @@ describe('adversarial', () => {
     expect(seen[2]).toEqual({ prior: 'c_2', critique: 'notes_2_c_2' });
   });
 
-  it('wraps inner execution in an adversarial span', async () => {
+  it('wraps inner execution in an "adversarial" span', async () => {
     const { logger, events } = recording_logger();
     const flow = adversarial({
       build: step('b', () => 'x'),
@@ -120,5 +119,23 @@ describe('adversarial', () => {
     const end = events.find((e) => e.kind === 'span_end' && e['span_id'] === start?.['span_id']);
     expect(end).toBeDefined();
     expect(end?.['error']).toBeUndefined();
+  });
+
+  it('honors a user-provided name override', async () => {
+    const { logger, events } = recording_logger();
+    const flow = adversarial({
+      name: 'critic-loop',
+      build: step('b', () => 'x'),
+      critique: step('c', () => ({ notes: 'ok', verdict: 'pass' })),
+      accept: () => true,
+      max_rounds: 1,
+    });
+
+    await run(flow, 'input', { trajectory: logger, install_signal_handlers: false });
+    const labels = events
+      .filter((e) => e.kind === 'span_start')
+      .map((e) => e['name'] as string);
+    expect(labels).toContain('critic-loop');
+    expect(labels).not.toContain('adversarial');
   });
 });

@@ -127,6 +127,12 @@ importers:
         specifier: '*'
         version: 4.21.0
 
+  packages/composites:
+    dependencies:
+      '@repo/core':
+        specifier: workspace:*
+        version: link:../core
+
   packages/config:
     dependencies:
       zod:
@@ -178,6 +184,9 @@ importers:
 
   packages/fascicle:
     dependencies:
+      '@repo/composites':
+        specifier: workspace:*
+        version: link:../composites
       '@repo/core':
         specifier: workspace:*
         version: link:../core

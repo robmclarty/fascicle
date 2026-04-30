@@ -1,9 +1,7 @@
+import { aborted_error, run, step } from '@repo/core';
+import type { TrajectoryEvent, TrajectoryLogger } from '@repo/core';
 import { afterEach, describe, expect, it } from 'vitest';
 import { consensus } from './consensus.js';
-import { aborted_error } from './errors.js';
-import { run } from './runner.js';
-import { step } from './step.js';
-import type { TrajectoryEvent, TrajectoryLogger } from './types.js';
 
 function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -29,7 +27,7 @@ function recording_logger(): { logger: TrajectoryLogger; events: TrajectoryEvent
   return { logger, events };
 }
 
-describe('consensus', () => {
+describe('consensus (composite)', () => {
   afterEach(() => {
     for (const l of process.listeners('SIGINT')) process.off('SIGINT', l);
     for (const l of process.listeners('SIGTERM')) process.off('SIGTERM', l);
@@ -128,7 +126,7 @@ describe('consensus', () => {
     expect(aborts.toSorted()).toEqual(['a', 'b']);
   });
 
-  it('wraps execution in a consensus span', async () => {
+  it('wraps execution in a "consensus" span', async () => {
     const { logger, events } = recording_logger();
     const flow = consensus({
       members: {
@@ -145,5 +143,25 @@ describe('consensus', () => {
     const end = events.find((e) => e.kind === 'span_end' && e['span_id'] === start?.['span_id']);
     expect(end).toBeDefined();
     expect(end?.['error']).toBeUndefined();
+  });
+
+  it('honors a user-provided name override', async () => {
+    const { logger, events } = recording_logger();
+    const flow = consensus({
+      name: 'agreement-loop',
+      members: {
+        a: step('a', () => 'x'),
+        b: step('b', () => 'x'),
+      },
+      agree: (r) => r['a'] === r['b'],
+      max_rounds: 1,
+    });
+
+    await run(flow, 'input', { trajectory: logger, install_signal_handlers: false });
+    const labels = events
+      .filter((e) => e.kind === 'span_start')
+      .map((e) => e['name'] as string);
+    expect(labels).toContain('agreement-loop');
+    expect(labels).not.toContain('consensus');
   });
 });

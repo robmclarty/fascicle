@@ -13,8 +13,9 @@ describe('fascicle umbrella re-export', () => {
     expect(typeof umbrella.describe.json).toBe('function');
   });
 
-  it('re-exports every composer factory', () => {
+  it('re-exports every composer factory (core primitives + composites)', () => {
     const expected = [
+      // core primitives
       'step',
       'sequence',
       'parallel',
@@ -24,15 +25,18 @@ describe('fascicle umbrella re-export', () => {
       'retry',
       'fallback',
       'timeout',
-      'adversarial',
-      'ensemble',
-      'tournament',
-      'consensus',
+      'loop',
+      'compose',
       'checkpoint',
       'suspend',
       'scope',
       'stash',
       'use',
+      // composites
+      'adversarial',
+      'ensemble',
+      'tournament',
+      'consensus',
     ] as const;
     for (const name of expected) {
       expect(

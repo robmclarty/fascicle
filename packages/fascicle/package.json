@@ -8,6 +8,7 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
+    "@repo/composites": "workspace:*",
     "@repo/core": "workspace:*",
     "@repo/engine": "workspace:*"
   }

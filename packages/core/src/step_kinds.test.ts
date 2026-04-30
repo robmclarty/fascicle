@@ -1,11 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { adversarial } from './adversarial.js';
 import { branch } from './branch.js';
 import { checkpoint } from './checkpoint.js';
 import { compose } from './compose.js';
-import { consensus } from './consensus.js';
-import { ensemble } from './ensemble.js';
 import { fallback } from './fallback.js';
 import { loop } from './loop.js';
 import { map } from './map.js';
@@ -18,10 +15,13 @@ import { step } from './step.js';
 import { is_step_kind, STEP_KINDS } from './step_kinds.js';
 import { suspend } from './suspend.js';
 import { timeout } from './timeout.js';
-import { tournament } from './tournament.js';
 
 const dummy = step('dummy', (n: number) => n);
-const critic = step('critic', () => ({ notes: '' }));
+
+// Kinds whose factories live outside @repo/core (in @repo/composites).
+// Their constructor coverage is asserted in packages/composites/src/coverage.test.ts;
+// here we only verify they are still listed in STEP_KINDS.
+const COMPOSITE_KINDS = new Set<string>(['adversarial', 'ensemble', 'tournament', 'consensus']);
 
 describe('STEP_KINDS registry', () => {
   it('STEP_KINDS contains exactly the documented set', () => {
@@ -51,8 +51,7 @@ describe('STEP_KINDS registry', () => {
     );
   });
 
-  it('every constructed primitive has a kind that STEP_KINDS recognizes', () => {
-    const builder = step('builder', (i: { input: number }) => i.input);
+  it('every constructed core primitive has a kind that STEP_KINDS recognizes', () => {
     const constructed = [
       dummy,
       sequence([dummy]),
@@ -69,15 +68,6 @@ describe('STEP_KINDS registry', () => {
         finish: (n) => n,
         max_rounds: 1,
       }),
-      adversarial({
-        build: builder,
-        critique: critic,
-        accept: () => true,
-        max_rounds: 1,
-      }),
-      ensemble({ members: { a: dummy, b: dummy }, score: () => 1 }),
-      tournament({ members: { a: dummy, b: dummy }, compare: () => 'a' as const }),
-      consensus({ members: { a: dummy, b: dummy }, agree: () => true, max_rounds: 1 }),
       compose('named', dummy),
       checkpoint(dummy, { key: () => 'k' }),
       suspend({
@@ -95,8 +85,11 @@ describe('STEP_KINDS registry', () => {
       expect(is_step_kind(built.kind)).toBe(true);
     }
 
+    // Every kind in STEP_KINDS that's NOT a composite must be constructable from core.
+    // Composite kinds are covered by packages/composites/src/coverage.test.ts.
     const constructed_kinds = new Set(constructed.map((s) => s.kind));
     for (const kind of STEP_KINDS) {
+      if (COMPOSITE_KINDS.has(kind)) continue;
       expect(constructed_kinds).toContain(kind);
     }
   });

@@ -1,0 +1,13 @@
+{
+  "name": "@repo/composites",
+  "version": "0.2.0",
+  "description": "Built-in composite patterns for fascicle (ensemble, tournament, consensus, adversarial). Implemented entirely on top of @repo/core primitives.",
+  "type": "module",
+  "private": true,
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@repo/core": "workspace:*"
+  }
+}
