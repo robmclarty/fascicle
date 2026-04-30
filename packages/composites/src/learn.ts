@@ -18,7 +18,9 @@
  * Three source kinds: `events` (in-memory), `paths` (explicit JSONL files),
  * `dir` (recursive *.jsonl walk). File reads honor `ctx.abort` at file-level
  * granularity; malformed lines are skipped and surface as `learn.parse_error`
- * trajectory events with 1-indexed line offsets.
+ * trajectory events with 1-indexed line offsets. When `max_events` clips the
+ * filtered set, a `learn.truncated` event records `available`, `kept`, and the
+ * configured cap.
  */
 
 import { readFile, readdir } from 'node:fs/promises';
@@ -168,7 +170,16 @@ export function learn<i extends LearnInput, o>(
     async (prior: unknown, ctx): Promise<MetaPlus> => {
       const all = await resolve_events(source, ctx);
       const filtered = filter ? all.filter(filter) : all;
-      const capped = filtered.length > max ? filtered.slice(0, max) : filtered;
+      const truncated = filtered.length > max;
+      const capped = truncated ? filtered.slice(0, max) : filtered;
+      if (truncated) {
+        ctx.trajectory.record({
+          kind: 'learn.truncated',
+          available: filtered.length,
+          kept: capped.length,
+          max_events: max,
+        });
+      }
       return {
         events_considered: capped.length,
         run_ids: collect_run_ids(capped),

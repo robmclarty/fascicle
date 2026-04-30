@@ -1,7 +1,7 @@
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { aborted_error, run, step } from '@repo/core';
+import { aborted_error, describe as describe_flow, run, step } from '@repo/core';
 import type { TrajectoryEvent, TrajectoryLogger } from '@repo/core';
 import { afterEach, describe, expect, it } from 'vitest';
 import { learn, type LearnInput } from '../learn.js';
@@ -55,7 +55,7 @@ describe('learn (composite)', () => {
 
     const result = await run(flow, 'my-prior', { install_signal_handlers: false });
     expect(captured).toBeDefined();
-    expect(captured?.flow_description).toContain('trivial');
+    expect(captured?.flow_description).toBe(describe_flow(trivial_flow));
     expect(captured?.events).toHaveLength(2);
     expect(captured?.prior).toBe('my-prior');
     expect(result.proposals).toEqual({ proposals: ['ok'] });
@@ -85,11 +85,12 @@ describe('learn (composite)', () => {
     expect(result.events_considered).toBe(2);
   });
 
-  it('caps events at max_events', async () => {
+  it('caps events at max_events and records a learn.truncated event', async () => {
     const events = Array.from(
       { length: 100 },
       (_, i): TrajectoryEvent => ({ kind: 'x', run_id: `r${String(i)}` }),
     );
+    const { logger, events: recorded } = recording_logger();
     const flow = learn({
       flow: trivial_flow,
       source: { kind: 'events', events },
@@ -97,9 +98,35 @@ describe('learn (composite)', () => {
       analyzer: step('a', (input: LearnInput) => input.events.length),
     });
 
-    const result = await run(flow, undefined, { install_signal_handlers: false });
+    const result = await run(flow, undefined, {
+      trajectory: logger,
+      install_signal_handlers: false,
+    });
     expect(result.events_considered).toBe(7);
     expect(result.proposals).toBe(7);
+
+    const truncated = recorded.find((e) => e.kind === 'learn.truncated');
+    expect(truncated).toBeDefined();
+    expect(truncated?.['available']).toBe(100);
+    expect(truncated?.['kept']).toBe(7);
+    expect(truncated?.['max_events']).toBe(7);
+  });
+
+  it('does not record learn.truncated when input fits under max_events', async () => {
+    const events: ReadonlyArray<TrajectoryEvent> = [
+      { kind: 'x', run_id: 'r1' },
+      { kind: 'x', run_id: 'r2' },
+    ];
+    const { logger, events: recorded } = recording_logger();
+    const flow = learn({
+      flow: trivial_flow,
+      source: { kind: 'events', events },
+      max_events: 10,
+      analyzer: step('a', () => 'done'),
+    });
+
+    await run(flow, undefined, { trajectory: logger, install_signal_handlers: false });
+    expect(recorded.find((e) => e.kind === 'learn.truncated')).toBeUndefined();
   });
 
   it('deduplicates run_ids', async () => {
