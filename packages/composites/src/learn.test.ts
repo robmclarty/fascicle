@@ -1,3 +1,6 @@
+import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { aborted_error, run, step } from '@repo/core';
 import type { TrajectoryEvent, TrajectoryLogger } from '@repo/core';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -177,24 +180,164 @@ describe('learn (composite)', () => {
     expect(labels).not.toContain('learn');
   });
 
-  it('throws "not implemented" for "paths" and "dir" sources', async () => {
-    const flow_paths = learn({
-      flow: trivial_flow,
-      source: { kind: 'paths', paths: ['/tmp/x.jsonl'] },
-      analyzer: step('a', () => 'done'),
-    });
-    await expect(run(flow_paths, undefined, { install_signal_handlers: false })).rejects.toThrow(
-      /not implemented/,
-    );
+  it('reads "paths" source: parses JSONL files and forwards events to analyzer', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'learn-paths-'));
+    try {
+      const events_a: TrajectoryEvent[] = [
+        { kind: 'span_start', span_id: 's1', name: 'a', run_id: 'run-1' },
+        { kind: 'custom', run_id: 'run-1', payload: 'first' },
+      ];
+      const events_b: TrajectoryEvent[] = [
+        { kind: 'span_end', span_id: 's1', run_id: 'run-1' },
+      ];
+      const events_c: TrajectoryEvent[] = [
+        { kind: 'custom', run_id: 'run-2', payload: 'second' },
+        { kind: 'custom', run_id: 'run-2', payload: 'third' },
+      ];
+      const path_a = join(dir, 'a.jsonl');
+      const path_b = join(dir, 'b.jsonl');
+      const path_c = join(dir, 'c.jsonl');
+      await writeFile(path_a, events_a.map((e) => JSON.stringify(e)).join('\n') + '\n');
+      await writeFile(path_b, events_b.map((e) => JSON.stringify(e)).join('\n'));
+      await writeFile(path_c, events_c.map((e) => JSON.stringify(e)).join('\n') + '\n\n');
 
-    const flow_dir = learn({
-      flow: trivial_flow,
-      source: { kind: 'dir', dir: '/tmp/runs' },
-      analyzer: step('a', () => 'done'),
-    });
-    await expect(run(flow_dir, undefined, { install_signal_handlers: false })).rejects.toThrow(
-      /not implemented/,
-    );
+      let captured: LearnInput | undefined;
+      const flow = learn({
+        flow: trivial_flow,
+        source: { kind: 'paths', paths: [path_a, path_b, path_c] },
+        analyzer: step('a', (input: LearnInput) => {
+          captured = input;
+          return 'ok';
+        }),
+      });
+
+      const result = await run(flow, undefined, { install_signal_handlers: false });
+      expect(captured?.events).toHaveLength(5);
+      expect(captured?.events.map((e) => e.kind)).toEqual([
+        'span_start',
+        'custom',
+        'span_end',
+        'custom',
+        'custom',
+      ]);
+      expect(result.events_considered).toBe(5);
+      expect(result.run_ids).toEqual(['run-1', 'run-2']);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('reads "dir" source: walks recursively, sorts paths, ignores non-jsonl', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'learn-dir-'));
+    try {
+      const nested = join(dir, 'nested');
+      const deeper = join(nested, 'deeper');
+      await mkdir(deeper, { recursive: true });
+
+      const e_root: TrajectoryEvent = { kind: 'root', run_id: 'r-root' };
+      const e_nested: TrajectoryEvent = { kind: 'nested', run_id: 'r-nested' };
+      const e_deeper: TrajectoryEvent = { kind: 'deeper', run_id: 'r-deeper' };
+
+      // sorted order across full paths: dir/a.jsonl, dir/nested/b.jsonl, dir/nested/deeper/c.jsonl
+      await writeFile(join(dir, 'a.jsonl'), JSON.stringify(e_root) + '\n');
+      await writeFile(join(nested, 'b.jsonl'), JSON.stringify(e_nested) + '\n');
+      await writeFile(join(deeper, 'c.jsonl'), JSON.stringify(e_deeper) + '\n');
+
+      // non-jsonl files at multiple levels
+      await writeFile(join(dir, 'ignore.txt'), 'not jsonl');
+      await writeFile(join(nested, 'also.json'), '{"kind":"json-not-jsonl"}');
+      await writeFile(join(deeper, 'README.md'), '# nope');
+
+      let captured: LearnInput | undefined;
+      const flow = learn({
+        flow: trivial_flow,
+        source: { kind: 'dir', dir },
+        analyzer: step('a', (input: LearnInput) => {
+          captured = input;
+          return 'ok';
+        }),
+      });
+
+      const result = await run(flow, undefined, { install_signal_handlers: false });
+      expect(captured?.events.map((e) => e.kind)).toEqual(['root', 'nested', 'deeper']);
+      expect(result.events_considered).toBe(3);
+      expect(result.run_ids).toEqual(['r-root', 'r-nested', 'r-deeper']);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('skips malformed lines and emits learn.parse_error trajectory events', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'learn-bad-'));
+    try {
+      const file = join(dir, 'mixed.jsonl');
+      const valid_a: TrajectoryEvent = { kind: 'first', run_id: 'r' };
+      const valid_b: TrajectoryEvent = { kind: 'second', run_id: 'r' };
+      // line 1: valid; line 2: invalid JSON; line 3: valid JSON but missing kind; line 4: valid
+      const content = [
+        JSON.stringify(valid_a),
+        '{not valid json',
+        JSON.stringify({ no_kind: true }),
+        JSON.stringify(valid_b),
+      ].join('\n');
+      await writeFile(file, content);
+
+      let captured: LearnInput | undefined;
+      const { logger, events: recorded } = recording_logger();
+      const flow = learn({
+        flow: trivial_flow,
+        source: { kind: 'paths', paths: [file] },
+        analyzer: step('a', (input: LearnInput) => {
+          captured = input;
+          return 'ok';
+        }),
+      });
+
+      const result = await run(flow, undefined, {
+        trajectory: logger,
+        install_signal_handlers: false,
+      });
+
+      expect(captured?.events).toHaveLength(2);
+      expect(captured?.events.map((e) => e.kind)).toEqual(['first', 'second']);
+      expect(result.events_considered).toBe(2);
+
+      const parse_errors = recorded.filter((e) => e.kind === 'learn.parse_error');
+      expect(parse_errors).toHaveLength(2);
+      expect(parse_errors[0]?.['path']).toBe(file);
+      expect(parse_errors[0]?.['line']).toBe(2);
+      expect(parse_errors[1]?.['path']).toBe(file);
+      expect(parse_errors[1]?.['line']).toBe(3);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('propagates abort while reading files', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'learn-abort-'));
+    try {
+      const event: TrajectoryEvent = { kind: 'x', run_id: 'r' };
+      const line = JSON.stringify(event) + '\n';
+      const big_payload = line.repeat(2_000);
+      const paths = Array.from({ length: 200 }, (_, i) =>
+        join(dir, `file_${String(i).padStart(4, '0')}.jsonl`),
+      );
+      await Promise.all(paths.map((p) => writeFile(p, big_payload)));
+
+      const flow = learn({
+        flow: trivial_flow,
+        source: { kind: 'paths', paths },
+        analyzer: step('a', () => 'done'),
+      });
+
+      const pending = run(flow, undefined);
+      await wait(20);
+      process.emit('SIGINT');
+
+      await expect(pending).rejects.toBeInstanceOf(aborted_error);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 
   it('propagates abort during analyzer execution', async () => {
