@@ -1,9 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { run_adversarial_build } from '../examples/adversarial_build.js';
 import { run_checkpoint_resume } from '../examples/checkpoint_resume.js';
+import { run_documenter } from '../examples/documenter.js';
 import { run_ensemble_judge } from '../examples/ensemble_judge.js';
 import { run_hello } from '../examples/hello.js';
 import { run_learn } from '../examples/learn.js';
+import { run_learn_reviewer } from '../examples/learn_reviewer.js';
+import { run_researcher } from '../examples/researcher.js';
+import { run_reviewer } from '../examples/reviewer.js';
 import { run_streaming_chat } from '../examples/streaming_chat.js';
 import { run_suspend_resume } from '../examples/suspend_resume.js';
 import { run_trajectory_logger } from '../examples/trajectory_logger.js';
@@ -62,5 +66,38 @@ describe('examples smoke', () => {
     expect(run_ids).toEqual(['run-a', 'run-b']);
     const targets = proposals.map((p) => p.target).toSorted();
     expect(targets).toEqual(['emit', 'span_end', 'span_start']);
+  });
+
+  it('reviewer produces parsed findings and a non-empty summary against a stub engine', async () => {
+    const { review } = await run_reviewer();
+    expect(review.findings.length).toBeGreaterThan(0);
+    expect(review.findings[0]?.severity).toBe('major');
+    expect(review.summary.length).toBeGreaterThan(0);
+  });
+
+  it('documenter returns a parsed { doc, inferred_purpose } against a stub engine', async () => {
+    const { result } = await run_documenter();
+    expect(result.doc.length).toBeGreaterThan(0);
+    expect(result.doc.startsWith('/**')).toBe(true);
+    expect(result.inferred_purpose.length).toBeGreaterThan(0);
+  });
+
+  it('researcher integrates a single round of search/fetch/summarize against stubs', async () => {
+    const { result } = await run_researcher();
+    expect(result.brief.length).toBeGreaterThan(0);
+    expect(result.sources.length).toBeGreaterThan(0);
+    expect(result.sources[0]?.url.startsWith('https://')).toBe(true);
+  });
+
+  it('learn_reviewer aggregates reviewer trajectories into prompt-tightening proposals', async () => {
+    const { events_considered, run_ids, proposals, per_agent } = await run_learn_reviewer();
+    expect(run_ids).toHaveLength(3);
+    expect(events_considered).toBeGreaterThan(0);
+    expect(proposals).toHaveLength(1);
+    expect(proposals[0]?.target).toBe('reviewer');
+    expect(proposals[0]?.kind).toBe('prompt');
+    expect(per_agent['reviewer']?.calls).toBe(3);
+    expect(per_agent['reviewer']?.input_tokens).toBe(750);
+    expect(per_agent['reviewer']?.output_tokens).toBe(270);
   });
 });
