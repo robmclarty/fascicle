@@ -9,14 +9,14 @@
  * construction.
  */
 
-import { spawn } from 'node:child_process';
-import { join } from 'node:path';
+import { spawn } from 'node:child_process'
+import { join } from 'node:path'
 
-import type { Metric } from '../src/types.js';
+import type { Metric } from '../src/types.js'
 
-const BENCH_TIMEOUT_MS = 60_000;
+const BENCH_TIMEOUT_MS = 60_000
 
-type SpawnResult = { stdout: string; stderr: string; exit_code: number };
+type SpawnResult = { stdout: string; stderr: string; exit_code: number }
 
 function spawn_capture(
   cmd: ReadonlyArray<string>,
@@ -25,39 +25,39 @@ function spawn_capture(
   timeout_ms: number,
 ): Promise<SpawnResult> {
   return new Promise((resolve, reject) => {
-    const head = cmd[0];
-    const tail = cmd.slice(1);
+    const head = cmd[0]
+    const tail = cmd.slice(1)
     if (head === undefined) {
-      reject(new Error('spawn: empty command'));
-      return;
+      reject(new Error('spawn: empty command'))
+      return
     }
     const proc = spawn(head, tail, {
       cwd,
       stdio: ['ignore', 'pipe', 'pipe'],
       env: { ...process.env, ...env },
-    });
-    const timer = setTimeout(() => proc.kill('SIGKILL'), timeout_ms);
-    let stdout = '';
-    let stderr = '';
+    })
+    const timer = setTimeout(() => proc.kill('SIGKILL'), timeout_ms)
+    let stdout = ''
+    let stderr = ''
     proc.stdout.on('data', (b: Buffer) => {
-      stdout += b.toString();
-    });
+      stdout += b.toString()
+    })
     proc.stderr.on('data', (b: Buffer) => {
-      stderr += b.toString();
-    });
+      stderr += b.toString()
+    })
     proc.on('error', (err) => {
-      clearTimeout(timer);
-      reject(err);
-    });
+      clearTimeout(timer)
+      reject(err)
+    })
     proc.on('close', (code) => {
-      clearTimeout(timer);
-      resolve({ stdout, stderr, exit_code: code ?? -1 });
-    });
-  });
+      clearTimeout(timer)
+      resolve({ stdout, stderr, exit_code: code ?? -1 })
+    })
+  })
 }
 
 export function make_metric(target_dir: string): Metric {
-  const bench_script = join(target_dir, 'bench.ts');
+  const bench_script = join(target_dir, 'bench.ts')
   return {
     name: 'speed',
     direction: 'minimize',
@@ -74,20 +74,20 @@ export function make_metric(target_dir: string): Metric {
         target_dir,
         { IMPL_PATH: impl_path, BENCH_RUNS: '5' },
         BENCH_TIMEOUT_MS,
-      );
+      )
       if (result.exit_code !== 0) {
-        throw new Error(`bench failed (exit ${String(result.exit_code)}): ${result.stderr}`);
+        throw new Error(`bench failed (exit ${String(result.exit_code)}): ${result.stderr}`)
       }
-      const lines = result.stdout.trim().split('\n');
-      const last = lines[lines.length - 1];
+      const lines = result.stdout.trim().split('\n')
+      const last = lines[lines.length - 1]
       if (last === undefined) {
-        throw new Error('bench produced no output');
+        throw new Error('bench produced no output')
       }
-      const ms = Number.parseFloat(last);
+      const ms = Number.parseFloat(last)
       if (!Number.isFinite(ms)) {
-        throw new Error(`bench output not a number: "${last}"`);
+        throw new Error(`bench output not a number: "${last}"`)
       }
-      return ms;
+      return ms
     },
-  };
+  }
 }

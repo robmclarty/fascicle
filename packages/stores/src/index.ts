@@ -7,5 +7,5 @@
  * values from core (only types).
  */
 
-export { filesystem_store } from './filesystem.js';
-export type { FilesystemStoreOptions } from './filesystem.js';
+export { filesystem_store } from './filesystem.js'
+export type { FilesystemStoreOptions } from './filesystem.js'

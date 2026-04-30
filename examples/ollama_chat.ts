@@ -16,28 +16,28 @@
  *   OLLAMA_MODEL=qwen2.5:3b pnpm exec tsx examples/ollama_chat.ts
  */
 
-import { z } from 'zod';
+import { z } from 'zod'
 
-import { run, sequence, step } from '@repo/fascicle';
+import { run, sequence, step } from '@repo/fascicle'
 
 const ollama_chat_response = z.object({
   message: z.object({ content: z.string() }),
-});
+})
 
 type chat_message = {
-  readonly role: 'system' | 'user' | 'assistant';
-  readonly content: string;
-};
+  readonly role: 'system' | 'user' | 'assistant'
+  readonly content: string
+}
 
 type ollama_config = {
-  readonly host: string;
-  readonly model: string;
-};
+  readonly host: string
+  readonly model: string
+}
 
 const resolve_config = (): ollama_config => ({
   host: process.env['OLLAMA_HOST'] ?? 'http://localhost:11434',
   model: process.env['OLLAMA_MODEL'] ?? 'llama3.2:3b',
-});
+})
 
 const ollama_chat = async (
   config: ollama_config,
@@ -47,13 +47,13 @@ const ollama_chat = async (
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ model: config.model, messages, stream: false }),
-  });
+  })
   if (!res.ok) {
-    throw new Error(`ollama ${String(res.status)}: ${await res.text()}`);
+    throw new Error(`ollama ${String(res.status)}: ${await res.text()}`)
   }
-  const body = ollama_chat_response.parse(await res.json());
-  return body.message.content.trim();
-};
+  const body = ollama_chat_response.parse(await res.json())
+  return body.message.content.trim()
+}
 
 const draft = step('draft', async (topic: string): Promise<string> =>
   ollama_chat(resolve_config(), [
@@ -63,7 +63,7 @@ const draft = step('draft', async (topic: string): Promise<string> =>
     },
     { role: 'user', content: topic },
   ]),
-);
+)
 
 const refine = step('refine', async (text: string): Promise<string> =>
   ollama_chat(resolve_config(), [
@@ -74,25 +74,25 @@ const refine = step('refine', async (text: string): Promise<string> =>
     },
     { role: 'user', content: text },
   ]),
-);
+)
 
-const flow = sequence([draft, refine]);
+const flow = sequence([draft, refine])
 
 export async function run_ollama_chat(
   topic = 'why small local language models are useful for prototyping agentic workflows',
 ): Promise<{ readonly topic: string; readonly output: string }> {
-  const output = await run(flow, topic, { install_signal_handlers: false });
-  return { topic, output };
+  const output = await run(flow, topic, { install_signal_handlers: false })
+  return { topic, output }
 }
 
 if (import.meta.url === `file://${process.argv[1] ?? ''}`) {
-  const topic = process.argv[2];
+  const topic = process.argv[2]
   run_ollama_chat(topic)
     .then(({ topic: t, output }) => {
-      console.log(`topic:\n  ${t}\n\noutput:\n${output}\n`);
+      console.log(`topic:\n  ${t}\n\noutput:\n${output}\n`)
     })
     .catch((err: unknown) => {
-      console.error(err);
-      process.exit(1);
-    });
+      console.error(err)
+      process.exit(1)
+    })
 }

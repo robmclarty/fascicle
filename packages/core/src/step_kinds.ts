@@ -29,10 +29,10 @@ export const STEP_KINDS = [
   'scope',
   'stash',
   'use',
-] as const;
+] as const
 
-export type StepKind = (typeof STEP_KINDS)[number];
+export type StepKind = (typeof STEP_KINDS)[number]
 
 export function is_step_kind(value: unknown): value is StepKind {
-  return typeof value === 'string' && (STEP_KINDS as readonly string[]).includes(value);
+  return typeof value === 'string' && (STEP_KINDS as readonly string[]).includes(value)
 }

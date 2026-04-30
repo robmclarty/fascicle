@@ -22,9 +22,9 @@
  * omit on the aggregated CostBreakdown.
  */
 
-import type { CostBreakdown, Pricing, PricingTable, UsageTotals } from './types.js';
+import type { CostBreakdown, Pricing, PricingTable, UsageTotals } from './types.js'
 
-export const FREE_PROVIDERS: ReadonlySet<string> = new Set(['ollama', 'lmstudio']);
+export const FREE_PROVIDERS: ReadonlySet<string> = new Set(['ollama', 'lmstudio'])
 
 export const DEFAULT_PRICING: PricingTable = Object.freeze({
   'anthropic:claude-opus-4-7': {
@@ -65,14 +65,14 @@ export const DEFAULT_PRICING: PricingTable = Object.freeze({
 
   'google:gemini-2.5-pro': { input_per_million: 1.25, output_per_million: 5.0 },
   'google:gemini-2.5-flash': { input_per_million: 0.075, output_per_million: 0.3 },
-});
+})
 
 export function pricing_key(provider: string, model_id: string): string {
-  return `${provider}:${model_id}`;
+  return `${provider}:${model_id}`
 }
 
 function round6(value: number): number {
-  return Math.round(value * 1e6) / 1e6;
+  return Math.round(value * 1e6) / 1e6
 }
 
 /**
@@ -92,60 +92,60 @@ export function compute_cost(
   provider: string,
 ): CostBreakdown | undefined {
   if (pricing === undefined) {
-    if (!FREE_PROVIDERS.has(provider)) return undefined;
+    if (!FREE_PROVIDERS.has(provider)) return undefined
     const breakdown: CostBreakdown = {
       total_usd: 0,
       input_usd: 0,
       output_usd: 0,
       currency: 'USD',
       is_estimate: true,
-    };
-    return breakdown;
+    }
+    return breakdown
   }
 
-  const input_tokens = usage.input_tokens;
-  const output_tokens = usage.output_tokens;
-  const cached = usage.cached_input_tokens ?? 0;
-  const cache_write = usage.cache_write_tokens ?? 0;
-  const reasoning = usage.reasoning_tokens ?? 0;
+  const input_tokens = usage.input_tokens
+  const output_tokens = usage.output_tokens
+  const cached = usage.cached_input_tokens ?? 0
+  const cache_write = usage.cache_write_tokens ?? 0
+  const reasoning = usage.reasoning_tokens ?? 0
 
-  const fresh_input = Math.max(0, input_tokens - cached - cache_write);
-  const cached_rate = pricing.cached_input_per_million ?? pricing.input_per_million;
-  const cache_write_rate = pricing.cache_write_per_million ?? pricing.input_per_million;
-  const has_reasoning_rate = pricing.reasoning_per_million !== undefined;
-  const reasoning_rate = pricing.reasoning_per_million ?? pricing.output_per_million;
+  const fresh_input = Math.max(0, input_tokens - cached - cache_write)
+  const cached_rate = pricing.cached_input_per_million ?? pricing.input_per_million
+  const cache_write_rate = pricing.cache_write_per_million ?? pricing.input_per_million
+  const has_reasoning_rate = pricing.reasoning_per_million !== undefined
+  const reasoning_rate = pricing.reasoning_per_million ?? pricing.output_per_million
 
-  const input_usd_raw = (fresh_input * pricing.input_per_million) / 1e6;
-  const cached_usd_raw = (cached * cached_rate) / 1e6;
-  const cache_write_usd_raw = (cache_write * cache_write_rate) / 1e6;
-  const reasoning_usd_raw = (reasoning * reasoning_rate) / 1e6;
-  const plain_output_tokens = Math.max(0, output_tokens - reasoning);
-  const plain_output_usd_raw = (plain_output_tokens * pricing.output_per_million) / 1e6;
+  const input_usd_raw = (fresh_input * pricing.input_per_million) / 1e6
+  const cached_usd_raw = (cached * cached_rate) / 1e6
+  const cache_write_usd_raw = (cache_write * cache_write_rate) / 1e6
+  const reasoning_usd_raw = (reasoning * reasoning_rate) / 1e6
+  const plain_output_tokens = Math.max(0, output_tokens - reasoning)
+  const plain_output_usd_raw = (plain_output_tokens * pricing.output_per_million) / 1e6
 
-  const input_usd = round6(input_usd_raw);
+  const input_usd = round6(input_usd_raw)
 
-  let output_usd_raw = plain_output_usd_raw;
-  let surface_reasoning_usd: number | undefined;
+  let output_usd_raw = plain_output_usd_raw
+  let surface_reasoning_usd: number | undefined
   if (reasoning > 0) {
     if (has_reasoning_rate) {
-      surface_reasoning_usd = round6(reasoning_usd_raw);
+      surface_reasoning_usd = round6(reasoning_usd_raw)
     } else {
-      output_usd_raw = plain_output_usd_raw + reasoning_usd_raw;
+      output_usd_raw = plain_output_usd_raw + reasoning_usd_raw
     }
   }
-  const output_usd = round6(output_usd_raw);
+  const output_usd = round6(output_usd_raw)
 
-  let cached_input_usd: number | undefined;
-  let cache_write_usd: number | undefined;
-  if (cached > 0) cached_input_usd = round6(cached_usd_raw);
-  if (cache_write > 0) cache_write_usd = round6(cache_write_usd_raw);
+  let cached_input_usd: number | undefined
+  let cache_write_usd: number | undefined
+  if (cached > 0) cached_input_usd = round6(cached_usd_raw)
+  if (cache_write > 0) cache_write_usd = round6(cache_write_usd_raw)
 
   const total_raw =
     input_usd_raw +
     cached_usd_raw +
     cache_write_usd_raw +
     (surface_reasoning_usd !== undefined ? reasoning_usd_raw : 0) +
-    output_usd_raw;
+    output_usd_raw
 
   const breakdown: CostBreakdown = {
     total_usd: round6(total_raw),
@@ -153,9 +153,9 @@ export function compute_cost(
     output_usd,
     currency: 'USD',
     is_estimate: true,
-  };
-  if (cached_input_usd !== undefined) breakdown.cached_input_usd = cached_input_usd;
-  if (cache_write_usd !== undefined) breakdown.cache_write_usd = cache_write_usd;
-  if (surface_reasoning_usd !== undefined) breakdown.reasoning_usd = surface_reasoning_usd;
-  return breakdown;
+  }
+  if (cached_input_usd !== undefined) breakdown.cached_input_usd = cached_input_usd
+  if (cache_write_usd !== undefined) breakdown.cache_write_usd = cache_write_usd
+  if (surface_reasoning_usd !== undefined) breakdown.reasoning_usd = surface_reasoning_usd
+  return breakdown
 }

@@ -6,9 +6,9 @@
  */
 
 export type Behavior = {
-  readonly id: string;
-  readonly description: string;
-};
+  readonly id: string
+  readonly description: string
+}
 
 export const SEED_BEHAVIORS: readonly Behavior[] = [
   {
@@ -23,4 +23,4 @@ export const SEED_BEHAVIORS: readonly Behavior[] = [
     id: 'subtract_basic',
     description: '`subtract(a, b)` returns `a - b`.',
   },
-];
+]

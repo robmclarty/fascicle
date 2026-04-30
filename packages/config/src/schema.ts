@@ -1,10 +1,10 @@
-import { z } from 'zod';
+import { z } from 'zod'
 
 const optional_string = z
   .string()
   .trim()
   .min(1)
-  .optional();
+  .optional()
 
 export const CONFIG_SCHEMA = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
@@ -26,6 +26,6 @@ export const CONFIG_SCHEMA = z.object({
   OPENROUTER_BASE_URL: optional_string,
   OPENROUTER_HTTP_REFERER: optional_string,
   OPENROUTER_X_TITLE: optional_string,
-});
+})
 
-export type Config = z.infer<typeof CONFIG_SCHEMA>;
+export type Config = z.infer<typeof CONFIG_SCHEMA>

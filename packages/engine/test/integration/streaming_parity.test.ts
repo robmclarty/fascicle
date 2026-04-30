@@ -7,20 +7,20 @@
  * streaming — they read the result, streaming is a pure observation seam.
  */
 
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   build_mock_ai_module,
   build_mock_registry_module,
   enqueue_generate_text,
   enqueue_stream,
   reset_mock_state,
-} from '../fixtures/mock_ai.js';
+} from '../fixtures/mock_ai.js'
 
-vi.mock('ai', async () => build_mock_ai_module());
-vi.mock('../../src/providers/registry.js', async () => build_mock_registry_module());
+vi.mock('ai', async () => build_mock_ai_module())
+vi.mock('../../src/providers/registry.js', async () => build_mock_registry_module())
 
-import { create_engine } from '../../src/create_engine.js';
-import type { GenerateResult, StreamChunk } from '../../src/types.js';
+import { create_engine } from '../../src/create_engine.js'
+import type { GenerateResult, StreamChunk } from '../../src/types.js'
 
 function strip_tc(tc: GenerateResult['tool_calls'][number]): Record<string, unknown> {
   return {
@@ -29,7 +29,7 @@ function strip_tc(tc: GenerateResult['tool_calls'][number]): Record<string, unkn
     input: tc.input,
     output: tc.output,
     error: tc.error,
-  };
+  }
 }
 
 function normalize_result<t>(r: GenerateResult<t>): Record<string, unknown> {
@@ -48,24 +48,24 @@ function normalize_result<t>(r: GenerateResult<t>): Record<string, unknown> {
     finish_reason: r.finish_reason,
     model_resolved: r.model_resolved,
     cost: r.cost,
-  };
+  }
 }
 
-beforeEach(() => reset_mock_state());
-afterEach(() => reset_mock_state());
+beforeEach(() => reset_mock_state())
+afterEach(() => reset_mock_state())
 
 describe('streaming parity', () => {
   it('plain completion yields equal results with and without on_chunk', async () => {
-    const engine = create_engine({ providers: { anthropic: { api_key: 'k' } } });
-
+    const engine = create_engine({ providers: { anthropic: { api_key: 'k' } } })
+  
     enqueue_generate_text({
       text: 'hello world',
       toolCalls: [],
       finishReason: 'stop',
       usage: { inputTokens: 12, outputTokens: 3 },
-    });
-    const non_streamed = await engine.generate({ model: 'claude-opus', prompt: 'hi' });
-
+    })
+    const non_streamed = await engine.generate({ model: 'claude-opus', prompt: 'hi' })
+  
     enqueue_stream([
       { type: 'text-delta', text: 'hello ' },
       { type: 'text-delta', text: 'world' },
@@ -74,18 +74,18 @@ describe('streaming parity', () => {
         finishReason: 'stop',
         usage: { inputTokens: 12, outputTokens: 3 },
       },
-    ]);
-    const chunks: StreamChunk[] = [];
+    ])
+    const chunks: StreamChunk[] = []
     const streamed = await engine.generate({
       model: 'claude-opus',
       prompt: 'hi',
       on_chunk: (c) => {
-        chunks.push(c);
+        chunks.push(c)
       },
-    });
-
-    expect(normalize_result(streamed)).toEqual(normalize_result(non_streamed));
-    expect(chunks.length).toBeGreaterThan(0);
-    expect(chunks.at(-1)?.kind).toBe('finish');
-  });
-});
+    })
+  
+    expect(normalize_result(streamed)).toEqual(normalize_result(non_streamed))
+    expect(chunks.length).toBeGreaterThan(0)
+    expect(chunks.at(-1)?.kind).toBe('finish')
+  })
+})

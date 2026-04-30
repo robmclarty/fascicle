@@ -8,69 +8,69 @@
  * subsequent handlers still execute. See constraints.md §5.2 / spec.md §6.8.
  */
 
-import type { CleanupFn, TrajectoryLogger } from './types.js';
+import type { CleanupFn, TrajectoryLogger } from './types.js'
 
-const HANDLER_TIMEOUT_MS = 5_000;
+const HANDLER_TIMEOUT_MS = 5_000
 
 export type CleanupRegistry = {
-  readonly register: (fn: CleanupFn) => void;
-  readonly run_all: () => Promise<void>;
-};
+  readonly register: (fn: CleanupFn) => void
+  readonly run_all: () => Promise<void>
+}
 
 export function create_cleanup_registry(trajectory: TrajectoryLogger): CleanupRegistry {
-  const handlers: CleanupFn[] = [];
-  let ran = false;
+  const handlers: CleanupFn[] = []
+  let ran = false
 
   function register(fn: CleanupFn): void {
     if (ran) {
       trajectory.record({
         kind: 'cleanup_registered_after_flush',
-      });
-      return;
+      })
+      return
     }
-    handlers.push(fn);
+    handlers.push(fn)
   }
 
   async function run_all(): Promise<void> {
-    if (ran) return;
-    ran = true;
+    if (ran) return
+    ran = true
     for (let i = handlers.length - 1; i >= 0; i -= 1) {
-      const fn = handlers[i];
-      if (!fn) continue;
-      await run_one(fn, trajectory);
+      const fn = handlers[i]
+      if (!fn) continue
+      await run_one(fn, trajectory)
     }
   }
 
-  return { register, run_all };
+  return { register, run_all }
 }
 
 async function run_one(fn: CleanupFn, trajectory: TrajectoryLogger): Promise<void> {
-  let timeout_id: ReturnType<typeof setTimeout> | null = null;
+  let timeout_id: ReturnType<typeof setTimeout> | null = null
   try {
     await new Promise<void>((resolve) => {
       timeout_id = setTimeout(() => {
-        trajectory.record({ kind: 'cleanup_timeout', timeout_ms: HANDLER_TIMEOUT_MS });
-        resolve();
-      }, HANDLER_TIMEOUT_MS);
-
+        trajectory.record({ kind: 'cleanup_timeout', timeout_ms: HANDLER_TIMEOUT_MS })
+        resolve()
+      }, HANDLER_TIMEOUT_MS)
+    
       Promise.resolve()
         .then(() => fn())
         .then(
           () => {
-            if (timeout_id) clearTimeout(timeout_id);
-            resolve();
+            if (timeout_id) clearTimeout(timeout_id)
+            resolve()
           },
           (err: unknown) => {
-            if (timeout_id) clearTimeout(timeout_id);
+            if (timeout_id) clearTimeout(timeout_id)
             trajectory.record({
               kind: 'cleanup_error',
               error: err instanceof Error ? err.message : String(err),
-            });
-            resolve();
+            })
+            resolve()
           },
-        );
-    });
+        )
+    })
   } finally {
-    if (timeout_id) clearTimeout(timeout_id);
+    if (timeout_id) clearTimeout(timeout_id)
   }
 }

@@ -45,7 +45,7 @@ import {
   sequence,
   step,
   type GenerateResult,
-} from '@repo/fascicle';
+} from '@repo/fascicle'
 
 // ── (define engine ...) ──────────────────────────────────────────────────────
 // Straight `const`. This is the one spot where Lisp and JS agree exactly: a
@@ -56,7 +56,7 @@ const engine = create_engine({
     model: 'cli-sonnet',
     system: 'Reply in one short sentence. No preamble.',
   },
-});
+})
 
 // ── (define (hello input) ...) ───────────────────────────────────────────────
 // Single-expression function body via arrow + implicit return. In Lisp every
@@ -81,7 +81,7 @@ const hello = (input: string): Promise<string> =>
     ]),
     input,
     { install_signal_handlers: false },
-  );
+  )
 
 // ── exported entry point ─────────────────────────────────────────────────────
 // `async` + single expression body keeps this as one expression: the return
@@ -91,7 +91,7 @@ const hello = (input: string): Promise<string> =>
 export const run_hello_claude_cli_lisp = async (
   input = 'say hello to fascicle',
 ): Promise<{ readonly input: string; readonly output: string }> =>
-  ({ input, output: await hello(input) });
+  ({ input, output: await hello(input) })
 
 // ── (define (main argv) ...) ─────────────────────────────────────────────────
 // The whole CLI block is a single expression. Two Lisp techniques do the work:
@@ -119,5 +119,5 @@ if (import.meta.url === `file://${process.argv[1] ?? ''}`) {
       ))
       .catch((err: unknown) => (console.error(err), process.exit(1)))
       .finally(() => void engine.dispose())
-  )(process.argv.slice(2).join(' '));
+  )(process.argv.slice(2).join(' '))
 }

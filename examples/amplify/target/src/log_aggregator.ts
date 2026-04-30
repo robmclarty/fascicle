@@ -18,40 +18,40 @@
  * the gate stage.
  */
 
-import { readFile } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises'
 
-export type ServiceCounts = Readonly<Record<string, number>>;
+export type ServiceCounts = Readonly<Record<string, number>>
 
-const ESCAPE_REGEX_RE = /[.*+?^${}()|[\]\\]/g;
+const ESCAPE_REGEX_RE = /[.*+?^${}()|[\]\\]/g
 
 function escape_regex(s: string): string {
-  return s.replace(ESCAPE_REGEX_RE, '\\$&');
+  return s.replace(ESCAPE_REGEX_RE, '\\$&')
 }
 
 function count_errors_for_service(log_text: string, service: string): number {
   const pattern = new RegExp(
     `\\bERROR\\b[^\\n]*\\bservice=${escape_regex(service)}(?=\\s|$)`,
     'gm',
-  );
-  const matches = log_text.match(pattern);
-  return matches === null ? 0 : matches.length;
+  )
+  const matches = log_text.match(pattern)
+  return matches === null ? 0 : matches.length
 }
 
 export function aggregate(
   log_text: string,
   services: ReadonlyArray<string>,
 ): ServiceCounts {
-  const out: Record<string, number> = {};
+  const out: Record<string, number> = {}
   for (const s of services) {
-    out[s] = count_errors_for_service(log_text, s);
+    out[s] = count_errors_for_service(log_text, s)
   }
-  return Object.freeze(out);
+  return Object.freeze(out)
 }
 
 export async function aggregate_file(
   path: string,
   services: ReadonlyArray<string>,
 ): Promise<ServiceCounts> {
-  const text = await readFile(path, 'utf8');
-  return aggregate(text, services);
+  const text = await readFile(path, 'utf8')
+  return aggregate(text, services)
 }

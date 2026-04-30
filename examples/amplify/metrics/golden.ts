@@ -10,11 +10,11 @@
  * exact output" — e.g., refactoring a stable function for clarity.
  */
 
-import { readFile, writeFile } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { readFile, writeFile } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
+import { join } from 'node:path'
 
-import type { Metric } from '../src/types.js';
+import type { Metric } from '../src/types.js'
 
 const SAMPLE_INPUT = [
   'INFO  service=auth ok',
@@ -22,51 +22,51 @@ const SAMPLE_INPUT = [
   'WARN  service=billing slow',
   'ERROR service=billing card declined',
   'ERROR service=auth rate-limited',
-].join('\n');
-const SAMPLE_SERVICES = ['auth', 'billing', 'search'] as const;
+].join('\n')
+const SAMPLE_SERVICES = ['auth', 'billing', 'search'] as const
 
 type AggregateFn = (
   text: string,
   services: ReadonlyArray<string>,
-) => Record<string, number>;
+) => Record<string, number>
 
 function is_record(v: unknown): v is Record<string, unknown> {
-  return typeof v === 'object' && v !== null;
+  return typeof v === 'object' && v !== null
 }
 
 function get_aggregate(mod: unknown): AggregateFn {
   if (!is_record(mod)) {
-    throw new Error('golden metric: module did not load as an object');
+    throw new Error('golden metric: module did not load as an object')
   }
-  const fn = mod['aggregate'];
+  const fn = mod['aggregate']
   if (typeof fn !== 'function') {
-    throw new Error('golden metric: module is missing exported function "aggregate"');
+    throw new Error('golden metric: module is missing exported function "aggregate"')
   }
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-  return fn as AggregateFn;
+  return fn as AggregateFn
 }
 
 async function run_impl(impl_path: string): Promise<string> {
-  const mod: unknown = await import(impl_path);
-  const aggregate = get_aggregate(mod);
-  const result = aggregate(SAMPLE_INPUT, SAMPLE_SERVICES);
-  return JSON.stringify(result, null, 2);
+  const mod: unknown = await import(impl_path)
+  const aggregate = get_aggregate(mod)
+  const result = aggregate(SAMPLE_INPUT, SAMPLE_SERVICES)
+  return JSON.stringify(result, null, 2)
 }
 
 function similarity(a: string, b: string): number {
-  if (a === b) return 1;
-  const max_len = Math.max(a.length, b.length);
-  if (max_len === 0) return 1;
-  let matches = 0;
-  const min_len = Math.min(a.length, b.length);
+  if (a === b) return 1
+  const max_len = Math.max(a.length, b.length)
+  if (max_len === 0) return 1
+  let matches = 0
+  const min_len = Math.min(a.length, b.length)
   for (let i = 0; i < min_len; i++) {
-    if (a[i] === b[i]) matches++;
+    if (a[i] === b[i]) matches++
   }
-  return matches / max_len;
+  return matches / max_len
 }
 
 export function make_metric(target_dir: string): Metric {
-  const golden_path = join(target_dir, 'fixtures', 'golden.json');
+  const golden_path = join(target_dir, 'fixtures', 'golden.json')
   return {
     name: 'golden',
     direction: 'maximize',
@@ -78,13 +78,13 @@ export function make_metric(target_dir: string): Metric {
       timeout_ms: 60_000,
     },
     score: async (impl_path: string): Promise<number> => {
-      const actual = await run_impl(impl_path);
+      const actual = await run_impl(impl_path)
       if (!existsSync(golden_path)) {
-        await writeFile(golden_path, actual, 'utf8');
-        return 1;
+        await writeFile(golden_path, actual, 'utf8')
+        return 1
       }
-      const golden = await readFile(golden_path, 'utf8');
-      return similarity(actual, golden);
+      const golden = await readFile(golden_path, 'utf8')
+      return similarity(actual, golden)
     },
-  };
+  }
 }

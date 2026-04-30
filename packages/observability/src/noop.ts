@@ -6,13 +6,13 @@
  * a cheap fallback in tests that do not care about trajectory output.
  */
 
-import { randomUUID } from 'node:crypto';
-import type { TrajectoryLogger } from '@repo/core';
+import { randomUUID } from 'node:crypto'
+import type { TrajectoryLogger } from '@repo/core'
 
 export function noop_logger(): TrajectoryLogger {
   return {
     record: () => {},
     start_span: (name) => `${name}:${randomUUID().slice(0, 8)}`,
     end_span: () => {},
-  };
+  }
 }

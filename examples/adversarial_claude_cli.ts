@@ -27,7 +27,7 @@
  *   pnpm exec tsx examples/adversarial_claude_cli.ts "your PRD here"
  */
 
-import { z } from 'zod';
+import { z } from 'zod'
 
 import {
   adversarial,
@@ -38,24 +38,24 @@ import {
   sequence,
   step,
   type GenerateResult,
-} from '@repo/fascicle';
+} from '@repo/fascicle'
 
 const engine = create_engine({
   providers: { claude_cli: { auth_mode: 'oauth' } },
-});
+})
 
 type build_in = {
-  readonly input: string;
-  readonly prior?: string;
-  readonly critique?: string;
-};
+  readonly input: string
+  readonly prior?: string
+  readonly critique?: string
+}
 
 const critique_schema = z.object({
   verdict: z.enum(['pass', 'fail']),
   notes: z.string(),
-});
+})
 
-type Critique = z.infer<typeof critique_schema>;
+type Critique = z.infer<typeof critique_schema>
 
 const compose_build_prompt = step(
   'compose_build_prompt',
@@ -72,7 +72,7 @@ const compose_build_prompt = step(
         i.critique,
         '',
         'Return the revised plan as plain markdown. No preamble.',
-      ].join('\n');
+      ].join('\n')
     }
     return [
       '# PRD',
@@ -80,15 +80,15 @@ const compose_build_prompt = step(
       '',
       'Return a concrete, ordered implementation plan as plain markdown.',
       'No preamble.',
-    ].join('\n');
+    ].join('\n')
   },
-);
+)
 
 const extract_text = step(
   'extract_text',
   (r: GenerateResult<unknown>): string =>
     typeof r.content === 'string' ? r.content : JSON.stringify(r.content),
-);
+)
 
 const build = sequence([
   compose_build_prompt,
@@ -103,12 +103,12 @@ const build = sequence([
       'plain markdown only.',
   }),
   extract_text,
-]);
+])
 
 const extract_critique = step(
   'extract_critique',
   (r: GenerateResult<Critique>): Critique => r.content,
-);
+)
 
 const critique = sequence([
   model_call<Critique>({
@@ -124,14 +124,14 @@ const critique = sequence([
       'found so the builder can address it on the next round.',
   }),
   extract_critique,
-]);
+])
 
 const flow = adversarial<string, string>({
   build,
   critique,
   accept: (c) => c['verdict'] === 'pass',
   max_rounds: 3,
-});
+})
 
 const default_prd = [
   '# Rate-limit middleware for the public API',
@@ -146,44 +146,44 @@ const default_prd = [
   '',
   'Stack: Node 22, Fastify, Redis available. Must ship behind a feature ',
   'flag and roll out region by region.',
-].join('\n');
+].join('\n')
 
 export async function run_adversarial_claude_cli(
   input: string = default_prd,
 ): Promise<{
-  readonly input: string;
-  readonly candidate: string;
-  readonly converged: boolean;
-  readonly rounds: number;
+  readonly input: string
+  readonly candidate: string
+  readonly converged: boolean
+  readonly rounds: number
 }> {
-  const result = await run(flow, input, { install_signal_handlers: false });
+  const result = await run(flow, input, { install_signal_handlers: false })
   return {
     input,
     candidate: result.candidate,
     converged: result.converged,
     rounds: result.rounds,
-  };
+  }
 }
 
 if (import.meta.url === `file://${process.argv[1] ?? ''}`) {
-  const argv_input = process.argv.slice(2).join(' ');
-  const chosen = argv_input.length > 0 ? argv_input : undefined;
+  const argv_input = process.argv.slice(2).join(' ')
+  const chosen = argv_input.length > 0 ? argv_input : undefined
   run_adversarial_claude_cli(chosen)
     .then(({ candidate, converged, rounds }) => {
-      console.log(`converged=${String(converged)} rounds=${String(rounds)}\n`);
-      console.log(candidate);
+      console.log(`converged=${String(converged)} rounds=${String(rounds)}\n`)
+      console.log(candidate)
     })
     .catch((err: unknown) => {
       if (err instanceof schema_validation_error) {
-        console.error('schema_validation_error from critic:');
-        console.error(`  raw_text:  ${err.raw_text}`);
-        console.error(`  zod_error: ${JSON.stringify(err.zod_error)}`);
+        console.error('schema_validation_error from critic:')
+        console.error(`  raw_text:  ${err.raw_text}`)
+        console.error(`  zod_error: ${JSON.stringify(err.zod_error)}`)
       } else {
-        console.error(err);
+        console.error(err)
       }
-      process.exit(1);
+      process.exit(1)
     })
     .finally(() => {
-      void engine.dispose();
-    });
+      void engine.dispose()
+    })
 }

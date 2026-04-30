@@ -20,83 +20,83 @@
  *   - non-zero — expected: the flow was aborted (a real SIGINT arrived).
  */
 
-import { writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
-import { aborted_error } from '../../src/errors.js';
-import { run } from '../../src/runner.js';
-import { step } from '../../src/step.js';
+import { writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
+import { aborted_error } from '../../src/errors.js'
+import { run } from '../../src/runner.js'
+import { step } from '../../src/step.js'
 
 function require_marker_dir(): string {
-  const value = process.env['MARKER_DIR'];
+  const value = process.env['MARKER_DIR']
   if (!value) {
-    process.stderr.write('MARKER_DIR not set\n');
-    process.exit(2);
+    process.stderr.write('MARKER_DIR not set\n')
+    process.exit(2)
   }
-  return value;
+  return value
 }
 
-const marker_dir = require_marker_dir();
+const marker_dir = require_marker_dir()
 
 async function write_marker(name: string, body: string): Promise<void> {
-  await writeFile(join(marker_dir, name), body);
+  await writeFile(join(marker_dir, name), body)
 }
 
 async function main(): Promise<void> {
   const long_running = step('slow_io', async (_: number, ctx) => {
     ctx.on_cleanup(async () => {
-      await write_marker('cleanup.ok', 'cleanup_ran');
-    });
-
-    await write_marker('ready', 'ready');
-
+      await write_marker('cleanup.ok', 'cleanup_ran')
+    })
+  
+    await write_marker('ready', 'ready')
+  
     try {
       await new Promise<void>((_resolve, reject) => {
         const deadline = setTimeout(() => {
-          reject(new Error('harness timeout: SIGINT never arrived'));
-        }, 70_000);
+          reject(new Error('harness timeout: SIGINT never arrived'))
+        }, 70_000)
         ctx.abort.addEventListener(
           'abort',
           () => {
-            clearTimeout(deadline);
-            const reason = ctx.abort.reason;
-            reject(reason instanceof Error ? reason : new Error(`aborted: ${String(reason)}`));
+            clearTimeout(deadline)
+            const reason = ctx.abort.reason
+            reject(reason instanceof Error ? reason : new Error(`aborted: ${String(reason)}`))
           },
           { once: true },
-        );
-      });
-      return 0;
+        )
+      })
+      return 0
     } catch (io_error) {
-      const reason = ctx.abort.reason;
+      const reason = ctx.abort.reason
       const payload = {
         reason_is_aborted_error: reason instanceof aborted_error,
         reason_name: reason instanceof Error ? reason.name : typeof reason,
         reason_message: reason instanceof Error ? reason.message : String(reason),
         io_error_name: io_error instanceof Error ? io_error.name : typeof io_error,
-      };
-      await write_marker('abort-reason.json', JSON.stringify(payload));
-      throw io_error;
+      }
+      await write_marker('abort-reason.json', JSON.stringify(payload))
+      throw io_error
     }
-  });
+  })
 
-  await run(long_running, 0);
+  await run(long_running, 0)
 }
 
 async function write_exit_reason(error: unknown): Promise<void> {
-  const name = error instanceof Error ? error.name : typeof error;
-  const message = error instanceof Error ? error.message : String(error);
+  const name = error instanceof Error ? error.name : typeof error
+  const message = error instanceof Error ? error.message : String(error)
   await writeFile(
     join(marker_dir, 'exit-reason.json'),
     JSON.stringify({ name, message, is_aborted_error: error instanceof aborted_error }),
-  );
+  )
 }
 
 try {
-  await main();
-  process.exit(0);
+  await main()
+  process.exit(0)
 } catch (error: unknown) {
   try {
-    await write_exit_reason(error);
+    await write_exit_reason(error)
   } finally {
-    process.exit(1);
+    process.exit(1)
   }
 }

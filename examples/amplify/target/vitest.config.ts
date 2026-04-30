@@ -1,9 +1,9 @@
-import { dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { dirname } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
-import { defineConfig } from 'vitest/config';
+import { defineConfig } from 'vitest/config'
 
-const HERE = dirname(fileURLToPath(import.meta.url));
+const HERE = dirname(fileURLToPath(import.meta.url))
 
 export default defineConfig({
   test: {
@@ -12,4 +12,4 @@ export default defineConfig({
     pool: 'forks',
     reporters: ['default'],
   },
-});
+})

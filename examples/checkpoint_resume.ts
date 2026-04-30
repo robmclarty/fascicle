@@ -11,43 +11,43 @@
  * Deterministic stub — no engine layer, no network, no LLM calls.
  */
 
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
-import { checkpoint, run, step } from '@repo/fascicle';
-import { filesystem_store } from '@repo/stores';
+import { checkpoint, run, step } from '@repo/fascicle'
+import { filesystem_store } from '@repo/stores'
 
-type build_spec = { readonly hash: string };
+type build_spec = { readonly hash: string }
 
 export async function run_checkpoint_resume(): Promise<{
-  readonly first: string;
-  readonly second: string;
-  readonly call_count: number;
+  readonly first: string
+  readonly second: string
+  readonly call_count: number
 }> {
-  let call_count = 0;
+  let call_count = 0
 
   const inner = step('expensive_build', (spec: build_spec): string => {
-    call_count += 1;
-    return `index:${spec.hash}`;
-  });
+    call_count += 1
+    return `index:${spec.hash}`
+  })
 
-  const flow = checkpoint(inner, { key: (spec) => `expensive_build:${spec.hash}` });
+  const flow = checkpoint(inner, { key: (spec) => `expensive_build:${spec.hash}` })
 
-  const root_dir = await mkdtemp(join(tmpdir(), 'fascicle-checkpoint-'));
-  const store = filesystem_store({ root_dir });
+  const root_dir = await mkdtemp(join(tmpdir(), 'fascicle-checkpoint-'))
+  const store = filesystem_store({ root_dir })
 
   try {
     const first = await run(flow, { hash: 'abc123' }, {
       install_signal_handlers: false,
       checkpoint_store: store,
-    });
+    })
     const second = await run(flow, { hash: 'abc123' }, {
       install_signal_handlers: false,
       checkpoint_store: store,
-    });
-    return { first, second, call_count };
+    })
+    return { first, second, call_count }
   } finally {
-    await rm(root_dir, { recursive: true, force: true });
+    await rm(root_dir, { recursive: true, force: true })
   }
 }

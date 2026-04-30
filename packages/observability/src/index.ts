@@ -7,6 +7,6 @@
  * values from core (only types).
  */
 
-export { noop_logger } from './noop.js';
-export { filesystem_logger } from './filesystem.js';
-export type { FilesystemLoggerOptions } from './filesystem.js';
+export { noop_logger } from './noop.js'
+export { filesystem_logger } from './filesystem.js'
+export type { FilesystemLoggerOptions } from './filesystem.js'

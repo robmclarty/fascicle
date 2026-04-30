@@ -11,16 +11,16 @@
  *   pnpm exec tsx examples/documenter.ts
  */
 
-import { documenter, type DocumenterOutput } from '@repo/agents';
-import { run } from '@repo/fascicle';
-import type { Engine, GenerateOptions, GenerateResult } from '@repo/fascicle';
+import { documenter, type DocumenterOutput } from '@repo/agents'
+import { run } from '@repo/fascicle'
+import type { Engine, GenerateOptions, GenerateResult } from '@repo/fascicle'
 
 function make_stub_engine(canned: DocumenterOutput): Engine {
   return {
     generate: async <t = string>(
       opts: GenerateOptions<t>,
     ): Promise<GenerateResult<t>> => {
-      const parsed = opts.schema ? opts.schema.parse(canned) : canned;
+      const parsed = opts.schema ? opts.schema.parse(canned) : canned
       return {
         // oxlint-disable-next-line typescript/no-unsafe-type-assertion
         content: parsed as t,
@@ -29,7 +29,7 @@ function make_stub_engine(canned: DocumenterOutput): Engine {
         usage: { input_tokens: 80, output_tokens: 40 },
         finish_reason: 'stop',
         model_resolved: { provider: 'stub', model_id: 'documenter-canned' },
-      };
+      }
     },
     register_alias: () => {},
     unregister_alias: () => {},
@@ -39,7 +39,7 @@ function make_stub_engine(canned: DocumenterOutput): Engine {
     resolve_price: () => undefined,
     list_prices: () => ({}),
     dispose: async () => {},
-  };
+  }
 }
 
 const canned: DocumenterOutput = {
@@ -52,14 +52,14 @@ const canned: DocumenterOutput = {
     ' */',
   ].join('\n'),
   inferred_purpose: 'Reduces an array of numbers to its arithmetic sum.',
-};
+}
 
 export async function run_documenter(): Promise<{
-  readonly result: DocumenterOutput;
+  readonly result: DocumenterOutput
 }> {
-  const engine = make_stub_engine(canned);
+  const engine = make_stub_engine(canned)
   try {
-    const agent = documenter({ engine });
+    const agent = documenter({ engine })
     const result = await run(
       agent,
       {
@@ -72,21 +72,21 @@ export async function run_documenter(): Promise<{
         style: 'tsdoc',
       },
       { install_signal_handlers: false },
-    );
-    return { result };
+    )
+    return { result }
   } finally {
-    await engine.dispose();
+    await engine.dispose()
   }
 }
 
 if (import.meta.url === `file://${process.argv[1] ?? ''}`) {
   run_documenter()
     .then(({ result }) => {
-      console.log(`inferred purpose: ${result.inferred_purpose}\n`);
-      console.log(result.doc);
+      console.log(`inferred purpose: ${result.inferred_purpose}\n`)
+      console.log(result.doc)
     })
     .catch((err: unknown) => {
-      console.error(err);
-      process.exit(1);
-    });
+      console.error(err)
+      process.exit(1)
+    })
 }

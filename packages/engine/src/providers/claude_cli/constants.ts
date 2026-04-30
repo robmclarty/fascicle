@@ -7,17 +7,17 @@
  * them (constraints §7 invariant 25).
  */
 
-export const CLI_BINARY_DEFAULT = 'claude';
+export const CLI_BINARY_DEFAULT = 'claude'
 
-export const DEFAULT_STARTUP_TIMEOUT_MS = 120_000;
+export const DEFAULT_STARTUP_TIMEOUT_MS = 120_000
 
-export const DEFAULT_STALL_TIMEOUT_MS = 300_000;
+export const DEFAULT_STALL_TIMEOUT_MS = 300_000
 
-export const SIGKILL_ESCALATION_MS = 2000;
+export const SIGKILL_ESCALATION_MS = 2000
 
-export const CACHE_READ_MULTIPLIER = 0.1;
+export const CACHE_READ_MULTIPLIER = 0.1
 
-export const CACHE_WRITE_MULTIPLIER = 1.25;
+export const CACHE_WRITE_MULTIPLIER = 1.25
 
 export const CLI_AUTH_ERROR_PATTERNS: ReadonlyArray<string> = Object.freeze([
   'authentication',
@@ -25,7 +25,7 @@ export const CLI_AUTH_ERROR_PATTERNS: ReadonlyArray<string> = Object.freeze([
   'forbidden',
   'oauth token has expired',
   'invalid_api_key',
-]);
+])
 
 export const DEFAULT_SETTING_SOURCES: ReadonlyArray<'user' | 'project' | 'local'> =
-  Object.freeze(['project', 'local']);
+  Object.freeze(['project', 'local'])

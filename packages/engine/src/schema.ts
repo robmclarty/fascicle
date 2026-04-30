@@ -6,13 +6,13 @@
  * module exposes the parse primitive and the canonical repair-prompt shape.
  */
 
-import type { z } from 'zod';
-import type { Message } from './types.js';
-import { schema_validation_error } from './errors.js';
+import type { z } from 'zod'
+import type { Message } from './types.js'
+import { schema_validation_error } from './errors.js'
 
 export type ParseOutcome<t> =
   | { ok: true; value: t }
-  | { ok: false; error: unknown };
+  | { ok: false; error: unknown }
 
 /**
  * Attempt to parse `text` as JSON and validate it with `schema`. Returns a
@@ -23,15 +23,15 @@ export function parse_with_schema<t>(
   schema: z.ZodType<t>,
   text: string,
 ): ParseOutcome<t> {
-  let parsed_json: unknown;
+  let parsed_json: unknown
   try {
-    parsed_json = JSON.parse(text);
+    parsed_json = JSON.parse(text)
   } catch (err: unknown) {
-    return { ok: false, error: err };
+    return { ok: false, error: err }
   }
-  const result = schema.safeParse(parsed_json);
-  if (result.success) return { ok: true, value: result.data };
-  return { ok: false, error: result.error };
+  const result = schema.safeParse(parsed_json)
+  if (result.success) return { ok: true, value: result.data }
+  return { ok: false, error: result.error }
 }
 
 /**
@@ -40,13 +40,13 @@ export function parse_with_schema<t>(
  * user-inspectable in trajectory output.
  */
 export function build_repair_message(zod_error: unknown): Message {
-  const serialized = format_zod_error(zod_error);
+  const serialized = format_zod_error(zod_error)
   return {
     role: 'user',
     content:
       `Your previous response did not match the expected schema. Error: ${serialized}. ` +
       'Please provide a corrected response that strictly conforms to the schema.',
-  };
+  }
 }
 
 /**
@@ -58,20 +58,20 @@ export function throw_schema_validation(zod_error: unknown, raw_text: string): n
     `schema validation failed: ${format_zod_error(zod_error)}`,
     zod_error,
     raw_text,
-  );
+  )
 }
 
 function format_zod_error(err: unknown): string {
-  if (err === null || err === undefined) return 'unknown error';
-  if (typeof err === 'string') return err;
-  if (err instanceof Error) return err.message;
+  if (err === null || err === undefined) return 'unknown error'
+  if (typeof err === 'string') return err
+  if (err instanceof Error) return err.message
   if (typeof err === 'object' && 'message' in err) {
-    const msg = (err as { message?: unknown }).message;
-    if (typeof msg === 'string') return msg;
+    const msg = (err as { message?: unknown }).message
+    if (typeof msg === 'string') return msg
   }
   try {
-    return JSON.stringify(err) ?? 'unknown error';
+    return JSON.stringify(err) ?? 'unknown error'
   } catch {
-    return 'unknown error';
+    return 'unknown error'
   }
 }

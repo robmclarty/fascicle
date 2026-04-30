@@ -12,13 +12,13 @@
  *     claude_cli: { env: forward_standard_env() },
  *   }
  */
-const STANDARD_KEYS = ['PATH', 'HOME', 'SHELL', 'USER', 'LOGNAME', 'LANG', 'TMPDIR'] as const;
+const STANDARD_KEYS = ['PATH', 'HOME', 'SHELL', 'USER', 'LOGNAME', 'LANG', 'TMPDIR'] as const
 
 export function forward_standard_env(): Record<string, string> {
-  const out: Record<string, string> = {};
+  const out: Record<string, string> = {}
   for (const key of STANDARD_KEYS) {
-    const v = process.env[key];
-    if (typeof v === 'string') out[key] = v;
+    const v = process.env[key]
+    if (typeof v === 'string') out[key] = v
   }
-  return out;
+  return out
 }

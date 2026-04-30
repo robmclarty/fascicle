@@ -16,8 +16,8 @@
  *   - finish is the last chunk of the call.
  */
 
-import type { FinishReason, StreamChunk, UsageTotals } from './types.js';
-import { on_chunk_error } from './errors.js';
+import type { FinishReason, StreamChunk, UsageTotals } from './types.js'
+import { on_chunk_error } from './errors.js'
 
 export type RawProviderStreamEvent =
   | { type: 'text-delta'; id?: string; delta: string }
@@ -27,7 +27,7 @@ export type RawProviderStreamEvent =
   | { type: 'tool-input-end'; id: string; input: unknown }
   | { type: 'tool-result'; id: string; output?: unknown; error?: { message: string } }
   | { type: 'finish-step'; finish_reason: FinishReason; usage: UsageTotals }
-  | { type: 'finish'; finish_reason: FinishReason; usage: UsageTotals };
+  | { type: 'finish'; finish_reason: FinishReason; usage: UsageTotals }
 
 /**
  * Normalize a single AI SDK v6 stream event into a StreamChunk with the
@@ -39,20 +39,20 @@ export function normalize_chunk(
 ): StreamChunk | undefined {
   switch (event.type) {
     case 'text-delta':
-      return { kind: 'text', text: event.delta, step_index };
+      return { kind: 'text', text: event.delta, step_index }
     case 'reasoning-delta':
-      return { kind: 'reasoning', text: event.delta, step_index };
+      return { kind: 'reasoning', text: event.delta, step_index }
     case 'tool-input-start':
-      return { kind: 'tool_call_start', id: event.id, name: event.tool_name, step_index };
+      return { kind: 'tool_call_start', id: event.id, name: event.tool_name, step_index }
     case 'tool-input-delta':
-      return { kind: 'tool_call_input_delta', id: event.id, delta: event.delta, step_index };
+      return { kind: 'tool_call_input_delta', id: event.id, delta: event.delta, step_index }
     case 'tool-input-end':
-      return { kind: 'tool_call_end', id: event.id, input: event.input, step_index };
+      return { kind: 'tool_call_end', id: event.id, input: event.input, step_index }
     case 'tool-result': {
-      const chunk: StreamChunk = { kind: 'tool_result', id: event.id, step_index };
-      if (event.output !== undefined) chunk.output = event.output;
-      if (event.error !== undefined) chunk.error = event.error;
-      return chunk;
+      const chunk: StreamChunk = { kind: 'tool_result', id: event.id, step_index }
+      if (event.output !== undefined) chunk.output = event.output
+      if (event.error !== undefined) chunk.error = event.error
+      return chunk
     }
     case 'finish-step':
       return {
@@ -60,18 +60,18 @@ export function normalize_chunk(
         step_index,
         finish_reason: event.finish_reason,
         usage: event.usage,
-      };
+      }
     case 'finish':
-      return { kind: 'finish', finish_reason: event.finish_reason, usage: event.usage };
+      return { kind: 'finish', finish_reason: event.finish_reason, usage: event.usage }
     default:
-      return undefined;
+      return undefined
   }
 }
 
 export type ChunkDispatcher = {
-  readonly dispatch: (chunk: StreamChunk) => Promise<void>;
-  readonly aborted: () => boolean;
-};
+  readonly dispatch: (chunk: StreamChunk) => Promise<void>
+  readonly aborted: () => boolean
+}
 
 /**
  * Build a dispatcher around a user-supplied on_chunk. Catches sync throws and
@@ -83,20 +83,20 @@ export type ChunkDispatcher = {
 export function create_chunk_dispatcher(
   on_chunk: ((chunk: StreamChunk) => void | Promise<void>) | undefined,
 ): ChunkDispatcher {
-  let failed = false;
+  let failed = false
   return {
     aborted: () => failed,
     async dispatch(chunk: StreamChunk): Promise<void> {
-      if (on_chunk === undefined || failed) return;
+      if (on_chunk === undefined || failed) return
       try {
-        const maybe = on_chunk(chunk);
+        const maybe = on_chunk(chunk)
         if (maybe !== undefined && typeof maybe.then === 'function') {
-          await maybe;
+          await maybe
         }
       } catch (err: unknown) {
-        failed = true;
-        throw new on_chunk_error('on_chunk callback failed', err);
+        failed = true
+        throw new on_chunk_error('on_chunk callback failed', err)
       }
     },
-  };
+  }
 }

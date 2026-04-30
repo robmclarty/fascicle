@@ -5,8 +5,8 @@
  * per-engine register_alias method, never via mutation of the defaults.
  */
 
-import type { AliasTable, AliasTarget } from './types.js';
-import { model_not_found_error } from './errors.js';
+import type { AliasTable, AliasTarget } from './types.js'
+import { model_not_found_error } from './errors.js'
 
 const KNOWN_PROVIDERS = new Set<string>([
   'anthropic',
@@ -16,7 +16,7 @@ const KNOWN_PROVIDERS = new Set<string>([
   'lmstudio',
   'openrouter',
   'claude_cli',
-]);
+])
 
 export const DEFAULT_ALIASES: AliasTable = Object.freeze({
   'claude-opus': { provider: 'anthropic', model_id: 'claude-opus-4-7' },
@@ -43,7 +43,7 @@ export const DEFAULT_ALIASES: AliasTable = Object.freeze({
   'or:gpt-4o': { provider: 'openrouter', model_id: 'openai/gpt-4o' },
   'or:gemini-pro': { provider: 'openrouter', model_id: 'google/gemini-2.5-pro' },
   'or:llama-3.3-70b': { provider: 'openrouter', model_id: 'meta-llama/llama-3.3-70b-instruct' },
-});
+})
 
 /**
  * Resolve a model identifier to a concrete `{ provider, model_id }`.
@@ -56,18 +56,18 @@ export const DEFAULT_ALIASES: AliasTable = Object.freeze({
  * 3. Otherwise throw `model_not_found_error`.
  */
 export function resolve_model(table: AliasTable, model: string): AliasTarget {
-  const colon = model.indexOf(':');
+  const colon = model.indexOf(':')
   if (colon > 0) {
-    const prefix = model.slice(0, colon);
+    const prefix = model.slice(0, colon)
     if (KNOWN_PROVIDERS.has(prefix)) {
-      return { provider: prefix, model_id: model.slice(colon + 1) };
+      return { provider: prefix, model_id: model.slice(colon + 1) }
     }
   }
-  const hit = table[model];
-  if (hit !== undefined) return hit;
-  throw new model_not_found_error(model, Object.keys(table));
+  const hit = table[model]
+  if (hit !== undefined) return hit
+  throw new model_not_found_error(model, Object.keys(table))
 }
 
 export function is_known_provider(name: string): boolean {
-  return KNOWN_PROVIDERS.has(name);
+  return KNOWN_PROVIDERS.has(name)
 }

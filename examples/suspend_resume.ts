@@ -7,8 +7,8 @@
  * Deterministic stub `fn` bodies — no engine layer, no network, no LLM calls.
  */
 
-import { z } from 'zod';
-import { run, suspend, suspended_error } from '@repo/fascicle';
+import { z } from 'zod'
+import { run, suspend, suspended_error } from '@repo/fascicle'
 
 const flow = suspend({
   id: 'approve',
@@ -18,24 +18,24 @@ const flow = suspend({
   resume_schema: z.object({ approved: z.boolean() }),
   combine: (input: { readonly brief: string }, resume) =>
     resume.approved ? `shipped:${input.brief}` : `rejected:${input.brief}`,
-});
+})
 
 export async function run_suspend_resume(): Promise<{
-  readonly suspended: boolean;
-  readonly resumed: string;
+  readonly suspended: boolean
+  readonly resumed: string
 }> {
-  let suspended = false;
+  let suspended = false
   try {
-    await run(flow, { brief: 'beta feature' }, { install_signal_handlers: false });
+    await run(flow, { brief: 'beta feature' }, { install_signal_handlers: false })
   } catch (err) {
-    if (err instanceof suspended_error) suspended = true;
-    else throw err;
+    if (err instanceof suspended_error) suspended = true
+    else throw err
   }
 
   const resumed = await run(flow, { brief: 'beta feature' }, {
     install_signal_handlers: false,
     resume_data: { approve: { approved: true } },
-  });
+  })
 
-  return { suspended, resumed };
+  return { suspended, resumed }
 }

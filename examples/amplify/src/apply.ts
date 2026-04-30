@@ -12,36 +12,36 @@
  *      proposes because ensemble's `score` callback runs sequentially.
  */
 
-import { readFile, writeFile, mkdir } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { readFile, writeFile, mkdir } from 'node:fs/promises'
+import { dirname, join } from 'node:path'
 
-import type { CandidateSpec } from './types.js';
+import type { CandidateSpec } from './types.js'
 
 export type CandidateArchive = {
-  readonly proposer_id: string;
-  readonly archive_path: string;
-};
+  readonly proposer_id: string
+  readonly archive_path: string
+}
 
 export async function archive_candidate(
   round_dir: string,
   spec: CandidateSpec,
 ): Promise<CandidateArchive> {
-  const archive_path = join(round_dir, `${spec.proposer_id}.ts`);
-  await mkdir(dirname(archive_path), { recursive: true });
-  await writeFile(archive_path, spec.content, 'utf8');
-  return { proposer_id: spec.proposer_id, archive_path };
+  const archive_path = join(round_dir, `${spec.proposer_id}.ts`)
+  await mkdir(dirname(archive_path), { recursive: true })
+  await writeFile(archive_path, spec.content, 'utf8')
+  return { proposer_id: spec.proposer_id, archive_path }
 }
 
-export type RestoreFn = () => Promise<void>;
+export type RestoreFn = () => Promise<void>
 
 export async function swap_in(target_path: string, content: string): Promise<RestoreFn> {
-  const original = await readFile(target_path, 'utf8');
-  await writeFile(target_path, content, 'utf8');
+  const original = await readFile(target_path, 'utf8')
+  await writeFile(target_path, content, 'utf8')
   return async () => {
-    await writeFile(target_path, original, 'utf8');
-  };
+    await writeFile(target_path, original, 'utf8')
+  }
 }
 
 export async function commit_parent(target_path: string, content: string): Promise<void> {
-  await writeFile(target_path, content, 'utf8');
+  await writeFile(target_path, content, 'utf8')
 }

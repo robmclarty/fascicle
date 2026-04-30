@@ -14,64 +14,64 @@
  *     forms.
  */
 
-import type { RetryFailureKind, RetryPolicy } from './types.js';
-import { aborted_error, provider_error, rate_limit_error } from './errors.js';
+import type { RetryFailureKind, RetryPolicy } from './types.js'
+import { aborted_error, provider_error, rate_limit_error } from './errors.js'
 
 export const DEFAULT_RETRY: RetryPolicy = {
   max_attempts: 3,
   initial_delay_ms: 500,
   max_delay_ms: 30_000,
   retry_on: ['rate_limit', 'provider_5xx', 'network'],
-};
+}
 
 export type RetryableError =
   | { kind: 'rate_limit'; retry_after_ms?: number; status?: number; message?: string }
   | { kind: 'provider_5xx'; status?: number; body?: string; message?: string }
   | { kind: 'network'; message?: string }
-  | { kind: 'timeout'; message?: string };
+  | { kind: 'timeout'; message?: string }
 
 export function parse_retry_after(value: string | null | undefined): number | undefined {
-  if (value === null || value === undefined) return undefined;
-  const trimmed = value.trim();
-  if (trimmed.length === 0) return undefined;
+  if (value === null || value === undefined) return undefined
+  const trimmed = value.trim()
+  if (trimmed.length === 0) return undefined
   if (/^\d+(\.\d+)?$/.test(trimmed)) {
-    return Math.max(0, Math.floor(Number(trimmed) * 1000));
+    return Math.max(0, Math.floor(Number(trimmed) * 1000))
   }
-  const parsed = Date.parse(trimmed);
-  if (Number.isNaN(parsed)) return undefined;
-  return Math.max(0, parsed - Date.now());
+  const parsed = Date.parse(trimmed)
+  if (Number.isNaN(parsed)) return undefined
+  return Math.max(0, parsed - Date.now())
 }
 
 function compute_backoff(policy: RetryPolicy, attempt: number): number {
-  const base = policy.initial_delay_ms * 2 ** attempt;
-  const jitter = Math.random() * policy.initial_delay_ms;
-  return Math.min(base + jitter, policy.max_delay_ms);
+  const base = policy.initial_delay_ms * 2 ** attempt
+  const jitter = Math.random() * policy.initial_delay_ms
+  return Math.min(base + jitter, policy.max_delay_ms)
 }
 
 function wait_ms(ms: number, abort?: AbortSignal): Promise<void> {
   return new Promise<void>((resolve, reject) => {
     if (ms <= 0) {
-      resolve();
-      return;
+      resolve()
+      return
     }
     if (abort?.aborted === true) {
-      reject(new aborted_error('aborted', { reason: abort.reason }));
-      return;
+      reject(new aborted_error('aborted', { reason: abort.reason }))
+      return
     }
     const timer = setTimeout(() => {
-      if (abort !== undefined) abort.removeEventListener('abort', on_abort);
-      resolve();
-    }, ms);
+      if (abort !== undefined) abort.removeEventListener('abort', on_abort)
+      resolve()
+    }, ms)
     const on_abort = (): void => {
-      clearTimeout(timer);
-      reject(new aborted_error('aborted', { reason: abort?.reason }));
-    };
-    abort?.addEventListener('abort', on_abort, { once: true });
-  });
+      clearTimeout(timer)
+      reject(new aborted_error('aborted', { reason: abort?.reason }))
+    }
+    abort?.addEventListener('abort', on_abort, { once: true })
+  })
 }
 
 function is_retryable(kind: RetryFailureKind, policy: RetryPolicy): boolean {
-  return policy.retry_on.includes(kind);
+  return policy.retry_on.includes(kind)
 }
 
 /**
@@ -86,97 +86,97 @@ export async function retry_with_policy<t>(
   policy: RetryPolicy = DEFAULT_RETRY,
   abort?: AbortSignal,
 ): Promise<t> {
-  let attempt = 0;
-  let last_rate_limit_after: number | undefined;
+  let attempt = 0
+  let last_rate_limit_after: number | undefined
   while (true) {
     if (abort?.aborted === true) {
-      throw new aborted_error('aborted', { reason: abort.reason });
+      throw new aborted_error('aborted', { reason: abort.reason })
     }
     try {
-      return await fn(attempt);
+      return await fn(attempt)
     } catch (err: unknown) {
-      const retryable = classify_retryable(err);
-      if (retryable === undefined) throw err;
-      if (!is_retryable(retryable.kind, policy)) throw err;
-      attempt += 1;
+      const retryable = classify_retryable(err)
+      if (retryable === undefined) throw err
+      if (!is_retryable(retryable.kind, policy)) throw err
+      attempt += 1
       if (attempt >= policy.max_attempts) {
         if (retryable.kind === 'rate_limit') {
           const metadata: { attempts: number; retry_after_ms?: number; status?: number } = {
             attempts: attempt,
-          };
-          if (retryable.retry_after_ms !== undefined) metadata.retry_after_ms = retryable.retry_after_ms;
-          else if (last_rate_limit_after !== undefined) metadata.retry_after_ms = last_rate_limit_after;
-          if (retryable.status !== undefined) metadata.status = retryable.status;
+          }
+          if (retryable.retry_after_ms !== undefined) metadata.retry_after_ms = retryable.retry_after_ms
+          else if (last_rate_limit_after !== undefined) metadata.retry_after_ms = last_rate_limit_after
+          if (retryable.status !== undefined) metadata.status = retryable.status
           throw new rate_limit_error(
             retryable.message ?? `rate limited after ${attempt} attempts`,
             metadata,
-          );
+          )
         }
         const cause_kind =
-          retryable.kind === 'provider_5xx' ? 'provider_5xx' : 'network';
+          retryable.kind === 'provider_5xx' ? 'provider_5xx' : 'network'
         const metadata: { status?: number; body?: string; cause_kind: typeof cause_kind } = {
           cause_kind,
-        };
+        }
         if (retryable.kind === 'provider_5xx') {
-          if (retryable.status !== undefined) metadata.status = retryable.status;
-          if (retryable.body !== undefined) metadata.body = retryable.body;
+          if (retryable.status !== undefined) metadata.status = retryable.status
+          if (retryable.body !== undefined) metadata.body = retryable.body
         }
         throw new provider_error(
           retryable.message ?? `${retryable.kind} after ${attempt} attempts`,
           metadata,
-        );
+        )
       }
 
-      let delay = compute_backoff(policy, attempt - 1);
+      let delay = compute_backoff(policy, attempt - 1)
       if (retryable.kind === 'rate_limit' && retryable.retry_after_ms !== undefined) {
         // When the server supplies Retry-After, honor it even if it exceeds
         // max_delay_ms; the server's instruction outranks the local backoff cap.
-        delay = Math.max(delay, retryable.retry_after_ms);
-        last_rate_limit_after = retryable.retry_after_ms;
+        delay = Math.max(delay, retryable.retry_after_ms)
+        last_rate_limit_after = retryable.retry_after_ms
       }
-      await wait_ms(delay, abort);
+      await wait_ms(delay, abort)
     }
   }
 }
 
 function read_string(err: object, key: string): string | undefined {
-  const value: unknown = Reflect.get(err, key);
-  return typeof value === 'string' ? value : undefined;
+  const value: unknown = Reflect.get(err, key)
+  return typeof value === 'string' ? value : undefined
 }
 
 function read_number(err: object, key: string): number | undefined {
-  const value: unknown = Reflect.get(err, key);
-  return typeof value === 'number' ? value : undefined;
+  const value: unknown = Reflect.get(err, key)
+  return typeof value === 'number' ? value : undefined
 }
 
 function classify_retryable(err: unknown): RetryableError | undefined {
-  if (err === null || typeof err !== 'object') return undefined;
-  const kind = read_string(err, 'kind');
+  if (err === null || typeof err !== 'object') return undefined
+  const kind = read_string(err, 'kind')
   if (kind === 'rate_limit') {
-    const base: RetryableError = { kind: 'rate_limit' };
-    const retry_after = read_number(err, 'retry_after_ms');
-    if (retry_after !== undefined) base.retry_after_ms = retry_after;
-    const status = read_number(err, 'status');
-    if (status !== undefined) base.status = status;
-    const message = read_string(err, 'message');
-    if (message !== undefined) base.message = message;
-    return base;
+    const base: RetryableError = { kind: 'rate_limit' }
+    const retry_after = read_number(err, 'retry_after_ms')
+    if (retry_after !== undefined) base.retry_after_ms = retry_after
+    const status = read_number(err, 'status')
+    if (status !== undefined) base.status = status
+    const message = read_string(err, 'message')
+    if (message !== undefined) base.message = message
+    return base
   }
   if (kind === 'provider_5xx') {
-    const base: RetryableError = { kind: 'provider_5xx' };
-    const status = read_number(err, 'status');
-    if (status !== undefined) base.status = status;
-    const body = read_string(err, 'body');
-    if (body !== undefined) base.body = body;
-    const message = read_string(err, 'message');
-    if (message !== undefined) base.message = message;
-    return base;
+    const base: RetryableError = { kind: 'provider_5xx' }
+    const status = read_number(err, 'status')
+    if (status !== undefined) base.status = status
+    const body = read_string(err, 'body')
+    if (body !== undefined) base.body = body
+    const message = read_string(err, 'message')
+    if (message !== undefined) base.message = message
+    return base
   }
   if (kind === 'network' || kind === 'timeout') {
-    const base: RetryableError = { kind };
-    const message = read_string(err, 'message');
-    if (message !== undefined) base.message = message;
-    return base;
+    const base: RetryableError = { kind }
+    const message = read_string(err, 'message')
+    if (message !== undefined) base.message = message
+    return base
   }
-  return undefined;
+  return undefined
 }

@@ -13,16 +13,16 @@
  *   pnpm exec tsx examples/researcher.ts
  */
 
-import { researcher, type ResearcherOutput, type SummarizerOutput } from '@repo/agents';
-import { run } from '@repo/fascicle';
-import type { Engine, GenerateOptions, GenerateResult } from '@repo/fascicle';
+import { researcher, type ResearcherOutput, type SummarizerOutput } from '@repo/agents'
+import { run } from '@repo/fascicle'
+import type { Engine, GenerateOptions, GenerateResult } from '@repo/fascicle'
 
 function make_stub_engine(canned: SummarizerOutput): Engine {
   return {
     generate: async <t = string>(
       opts: GenerateOptions<t>,
     ): Promise<GenerateResult<t>> => {
-      const parsed = opts.schema ? opts.schema.parse(canned) : canned;
+      const parsed = opts.schema ? opts.schema.parse(canned) : canned
       return {
         // oxlint-disable-next-line typescript/no-unsafe-type-assertion
         content: parsed as t,
@@ -31,7 +31,7 @@ function make_stub_engine(canned: SummarizerOutput): Engine {
         usage: { input_tokens: 300, output_tokens: 120 },
         finish_reason: 'stop',
         model_resolved: { provider: 'stub', model_id: 'researcher-canned' },
-      };
+      }
     },
     register_alias: () => {},
     unregister_alias: () => {},
@@ -41,7 +41,7 @@ function make_stub_engine(canned: SummarizerOutput): Engine {
     resolve_price: () => undefined,
     list_prices: () => ({}),
     dispose: async () => {},
-  };
+  }
 }
 
 const corpus: Readonly<Record<string, { readonly title: string; readonly contents: string }>> = {
@@ -55,7 +55,7 @@ const corpus: Readonly<Record<string, { readonly title: string; readonly content
     contents:
       'A flow stays a value until you call run(); only then do effects run. Tests build the same value without I/O.',
   },
-};
+}
 
 const canned_summary: SummarizerOutput = {
   notes:
@@ -76,12 +76,12 @@ const canned_summary: SummarizerOutput = {
       quote: 'A flow stays a value until you call run().',
     },
   ],
-};
+}
 
 export async function run_researcher(): Promise<{
-  readonly result: ResearcherOutput;
+  readonly result: ResearcherOutput
 }> {
-  const engine = make_stub_engine(canned_summary);
+  const engine = make_stub_engine(canned_summary)
   try {
     const agent = researcher({
       engine,
@@ -98,32 +98,32 @@ export async function run_researcher(): Promise<{
         },
       ],
       fetch: async (url) => corpus[url]?.contents ?? '',
-    });
+    })
     const result = await run(
       agent,
       { query: 'what makes fascicle different', depth: 'shallow' },
       { install_signal_handlers: false },
-    );
-    return { result };
+    )
+    return { result }
   } finally {
-    await engine.dispose();
+    await engine.dispose()
   }
 }
 
 if (import.meta.url === `file://${process.argv[1] ?? ''}`) {
   run_researcher()
     .then(({ result }) => {
-      console.log(`brief: ${result.brief}\n`);
-      console.log('sources:');
+      console.log(`brief: ${result.brief}\n`)
+      console.log('sources:')
       for (const s of result.sources) {
-        const t = s.title ? ` — ${s.title}` : '';
-        console.log(`  - ${s.url}${t}`);
-        if (s.quote) console.log(`      "${s.quote}"`);
+        const t = s.title ? ` — ${s.title}` : ''
+        console.log(`  - ${s.url}${t}`)
+        if (s.quote) console.log(`      "${s.quote}"`)
       }
-      console.log(`\nnotes:\n${result.notes}`);
+      console.log(`\nnotes:\n${result.notes}`)
     })
     .catch((err: unknown) => {
-      console.error(err);
-      process.exit(1);
-    });
+      console.error(err)
+      process.exit(1)
+    })
 }

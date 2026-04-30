@@ -17,52 +17,52 @@
  * primitives. Read it as documentation.
  */
 
-import { compose, loop, pipe, scope, stash, step, use } from '@repo/core';
-import type { Step } from '@repo/core';
+import { compose, loop, pipe, scope, stash, step, use } from '@repo/core'
+import type { Step } from '@repo/core'
 
 export type AdversarialBuildInput<input, candidate> = {
-  readonly input: input;
-  readonly prior?: candidate;
-  readonly critique?: string;
-};
+  readonly input: input
+  readonly prior?: candidate
+  readonly critique?: string
+}
 
-export type AdversarialCritiqueResult = { readonly notes: string } & Record<string, unknown>;
+export type AdversarialCritiqueResult = { readonly notes: string } & Record<string, unknown>
 
 export type AdversarialResult<candidate> = {
-  readonly candidate: candidate;
-  readonly converged: boolean;
-  readonly rounds: number;
-};
+  readonly candidate: candidate
+  readonly converged: boolean
+  readonly rounds: number
+}
 
 export type AdversarialConfig<input, candidate> = {
-  readonly name?: string;
-  readonly build: Step<AdversarialBuildInput<input, candidate>, candidate>;
-  readonly critique: Step<candidate, AdversarialCritiqueResult>;
-  readonly accept: (critique_result: AdversarialCritiqueResult) => boolean;
-  readonly max_rounds: number;
-};
+  readonly name?: string
+  readonly build: Step<AdversarialBuildInput<input, candidate>, candidate>
+  readonly critique: Step<candidate, AdversarialCritiqueResult>
+  readonly accept: (critique_result: AdversarialCritiqueResult) => boolean
+  readonly max_rounds: number
+}
 
 type AdversarialState<input, candidate> = {
-  readonly input: input;
-  readonly candidate?: candidate;
-  readonly critique_notes?: string;
-  readonly last_critique?: AdversarialCritiqueResult;
-};
+  readonly input: input
+  readonly candidate?: candidate
+  readonly critique_notes?: string
+  readonly last_critique?: AdversarialCritiqueResult
+}
 
 function build_input_from_state<i, c>(
   s: AdversarialState<i, c>,
 ): AdversarialBuildInput<i, c> {
-  if (s.candidate === undefined) return { input: s.input };
-  if (s.critique_notes === undefined) return { input: s.input, prior: s.candidate };
-  return { input: s.input, prior: s.candidate, critique: s.critique_notes };
+  if (s.candidate === undefined) return { input: s.input }
+  if (s.critique_notes === undefined) return { input: s.input, prior: s.candidate }
+  return { input: s.input, prior: s.candidate, critique: s.critique_notes }
 }
 
 export function adversarial<input, candidate>(
   config: AdversarialConfig<input, candidate>,
 ): Step<input, AdversarialResult<candidate>> {
-  const { build, critique, accept, max_rounds } = config;
+  const { build, critique, accept, max_rounds } = config
 
-  type S = AdversarialState<input, candidate>;
+  type S = AdversarialState<input, candidate>
 
   const body: Step<S, S> = scope([
     stash('state', step('snapshot', (s: S) => s)),
@@ -70,23 +70,23 @@ export function adversarial<input, candidate>(
     build,
     use(['state'], (vars, candidate: candidate) => {
       // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-      const prior = vars['state'] as S;
-      return { ...prior, candidate };
+      const prior = vars['state'] as S
+      return { ...prior, candidate }
     }),
-  ]) as Step<S, S>;
+  ]) as Step<S, S>
 
   const guard: Step<S, { stop: boolean; state: S }> = scope([
     stash('state', step('snapshot', (s: S) => s)),
     step('extract_candidate', (s: S) => {
       if (s.candidate === undefined) {
-        throw new Error('adversarial: guard reached without a candidate');
+        throw new Error('adversarial: guard reached without a candidate')
       }
-      return s.candidate;
+      return s.candidate
     }),
     critique,
     use(['state'], (vars, critique_result: AdversarialCritiqueResult) => {
       // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-      const prior = vars['state'] as S;
+      const prior = vars['state'] as S
       return {
         stop: accept(critique_result),
         state: {
@@ -94,9 +94,9 @@ export function adversarial<input, candidate>(
           last_critique: critique_result,
           critique_notes: critique_result.notes,
         },
-      };
+      }
     }),
-  ]) as Step<S, { stop: boolean; state: S }>;
+  ]) as Step<S, { stop: boolean; state: S }>
 
   const inner = pipe(
     loop<input, S, candidate>({
@@ -105,9 +105,9 @@ export function adversarial<input, candidate>(
       guard,
       finish: (s) => {
         if (s.candidate === undefined) {
-          throw new Error('adversarial: finished without a candidate');
+          throw new Error('adversarial: finished without a candidate')
         }
-        return s.candidate;
+        return s.candidate
       },
       max_rounds,
     }),
@@ -116,7 +116,7 @@ export function adversarial<input, candidate>(
       converged: result.converged,
       rounds: result.rounds,
     }),
-  );
+  )
 
-  return compose(config.name ?? 'adversarial', inner);
+  return compose(config.name ?? 'adversarial', inner)
 }

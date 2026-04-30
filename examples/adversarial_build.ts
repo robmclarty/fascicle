@@ -8,15 +8,15 @@
  * Deterministic stub `fn` bodies — no engine layer, no network, no LLM calls.
  */
 
-import { adversarial, ensemble, pipe, run, step } from '@repo/fascicle';
+import { adversarial, ensemble, pipe, run, step } from '@repo/fascicle'
 
-type build_in = { readonly input: string; readonly prior?: string; readonly critique?: string };
-type critique_out = { readonly verdict: 'pass' | 'fail'; readonly notes: string; readonly confidence: number };
+type build_in = { readonly input: string; readonly prior?: string; readonly critique?: string }
+type critique_out = { readonly verdict: 'pass' | 'fail'; readonly notes: string; readonly confidence: number }
 
-const build_fn = step('build', (i: build_in) => `candidate(${i.input})`);
+const build_fn = step('build', (i: build_in) => `candidate(${i.input})`)
 
 const judge = (id: string, verdict: 'pass' | 'fail', confidence: number) =>
-  step(id, (_candidate: string): critique_out => ({ verdict, notes: `${id}-notes`, confidence }));
+  step(id, (_candidate: string): critique_out => ({ verdict, notes: `${id}-notes`, confidence }))
 
 const jury = ensemble({
   members: {
@@ -25,19 +25,19 @@ const jury = ensemble({
     haiku: judge('judge_haiku', 'pass', 0.6),
   },
   score: (r: critique_out) => r.confidence,
-});
+})
 
 const flow = adversarial<string, string>({
   build: build_fn,
   critique: pipe(jury, (r: { winner: critique_out }) => r.winner),
   accept: (c) => c['verdict'] === 'pass',
   max_rounds: 3,
-});
+})
 
 export async function run_adversarial_build(): Promise<{
-  readonly candidate: string;
-  readonly converged: boolean;
-  readonly rounds: number;
+  readonly candidate: string
+  readonly converged: boolean
+  readonly rounds: number
 }> {
-  return run(flow, 'brief-text', { install_signal_handlers: false });
+  return run(flow, 'brief-text', { install_signal_handlers: false })
 }

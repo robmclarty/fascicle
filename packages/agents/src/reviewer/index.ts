@@ -7,19 +7,19 @@
  * user message.
  */
 
-import type { Step } from '@repo/core';
-import type { Engine } from '@repo/engine';
-import { define_agent } from '../define_agent.js';
+import type { Step } from '@repo/core'
+import type { Engine } from '@repo/engine'
+import { define_agent } from '../define_agent.js'
 import {
   reviewer_output_schema,
   type ReviewerInput,
   type ReviewerOutput,
-} from './schema.js';
+} from './schema.js'
 
 export type ReviewerConfig = {
-  readonly engine: Engine;
-  readonly name?: string;
-};
+  readonly engine: Engine
+  readonly name?: string
+}
 
 export function reviewer(config: ReviewerConfig): Step<ReviewerInput, ReviewerOutput> {
   return define_agent<ReviewerInput, ReviewerOutput>({
@@ -31,8 +31,8 @@ export function reviewer(config: ReviewerConfig): Step<ReviewerInput, ReviewerOu
       const focus =
         input.focus && input.focus.length > 0
           ? `Focus areas: ${input.focus.join(', ')}.\n\n`
-          : '';
-      return `${focus}Diff:\n\n${input.diff}`;
+          : ''
+      return `${focus}Diff:\n\n${input.diff}`
     },
-  });
+  })
 }

@@ -22,7 +22,7 @@ import {
   sequence,
   step,
   type GenerateResult,
-} from '@repo/fascicle';
+} from '@repo/fascicle'
 
 const engine = create_engine({
   providers: { claude_cli: { auth_mode: 'oauth' } },
@@ -30,38 +30,38 @@ const engine = create_engine({
     model: 'cli-sonnet',
     system: 'Reply in one short sentence. No preamble.',
   },
-});
+})
 
-const ask = model_call({ engine });
+const ask = model_call({ engine })
 
 const extract = step(
   'extract',
   (result: GenerateResult<unknown>): string =>
     typeof result.content === 'string' ? result.content : JSON.stringify(result.content),
-);
+)
 
-const flow = sequence([ask, extract]);
+const flow = sequence([ask, extract])
 
 export async function run_hello_claude_cli(
   input = 'say hello to fascicle',
 ): Promise<{ readonly input: string; readonly output: string }> {
-  const output = await run(flow, input, { install_signal_handlers: false });
-  return { input, output };
+  const output = await run(flow, input, { install_signal_handlers: false })
+  return { input, output }
 }
 
 if (import.meta.url === `file://${process.argv[1] ?? ''}`) {
-  const argv_input = process.argv.slice(2).join(' ');
-  const chosen = argv_input.length > 0 ? argv_input : undefined;
+  const argv_input = process.argv.slice(2).join(' ')
+  const chosen = argv_input.length > 0 ? argv_input : undefined
   run_hello_claude_cli(chosen)
     .then(({ input, output }) => {
-      console.log(`input:  ${input}`);
-      console.log(`output: ${output}`);
+      console.log(`input:  ${input}`)
+      console.log(`output: ${output}`)
     })
     .catch((err: unknown) => {
-      console.error(err);
-      process.exit(1);
+      console.error(err)
+      process.exit(1)
     })
     .finally(() => {
-      void engine.dispose();
-    });
+      void engine.dispose()
+    })
 }

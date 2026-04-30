@@ -19,14 +19,14 @@ import {
   type ImproveResult,
   type ImproveRoundInput,
   type ScoredCandidate,
-} from '@repo/fascicle';
+} from '@repo/fascicle'
 
-const TARGET = 7;
+const TARGET = 7
 
 const seed = step('seed', () => ({
   content: 0,
   score: -((0 - TARGET) ** 2),
-}));
+}))
 
 const propose = step(
   'propose',
@@ -35,21 +35,21 @@ const propose = step(
     proposer_id: 'p0',
     rationale: `walk toward target=${String(TARGET)}`,
   }),
-);
+)
 
 const score = step(
   'score',
   (candidate: Candidate<number>): ScoredCandidate<number> => {
-    const value = candidate.content;
-    const distance_squared = (value - TARGET) ** 2;
+    const value = candidate.content
+    const distance_squared = (value - TARGET) ** 2
     return {
       candidate,
       score: -distance_squared,
       accepted: true,
       reason: distance_squared === 0 ? 'on target' : `off by ${String(value - TARGET)}`,
-    };
+    }
   },
-);
+)
 
 export async function run_improve(): Promise<ImproveResult<number>> {
   const flow = improve<unknown, number>({
@@ -57,26 +57,26 @@ export async function run_improve(): Promise<ImproveResult<number>> {
     propose,
     score,
     budget: { max_rounds: 12, patience: 2 },
-  });
-  return run(flow, undefined, { install_signal_handlers: false });
+  })
+  return run(flow, undefined, { install_signal_handlers: false })
 }
 
 if (import.meta.url === `file://${process.argv[1] ?? ''}`) {
   run_improve()
     .then((result) => {
-      console.log(`stopped by: ${result.stopped_by}`);
-      console.log(`rounds:     ${String(result.rounds_used)}`);
-      console.log(`best:       value=${String(result.best.content)} score=${String(result.best.score)}`);
-      console.log('history:');
+      console.log(`stopped by: ${result.stopped_by}`)
+      console.log(`rounds:     ${String(result.rounds_used)}`)
+      console.log(`best:       value=${String(result.best.content)} score=${String(result.best.score)}`)
+      console.log('history:')
       for (const entry of result.history) {
-        const mark = entry.accepted ? '+' : ' ';
+        const mark = entry.accepted ? '+' : ' '
         console.log(
           `  ${mark} round ${String(entry.round)}: value=${String(entry.winner.candidate.content)} score=${String(entry.winner.score)}`,
-        );
+        )
       }
     })
     .catch((err: unknown) => {
-      console.error(err);
-      process.exit(1);
-    });
+      console.error(err)
+      process.exit(1)
+    })
 }

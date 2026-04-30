@@ -19,12 +19,12 @@ import type {
   GenerateResult,
   ProviderInit,
   UsageTotals,
-} from '../types.js';
+} from '../types.js'
 
 export type EffortTranslation = {
-  provider_options: Record<string, unknown>;
-  effort_ignored: boolean;
-};
+  provider_options: Record<string, unknown>
+  effort_ignored: boolean
+}
 
 export type ProviderCapability =
   | 'text'
@@ -32,84 +32,84 @@ export type ProviderCapability =
   | 'schema'
   | 'streaming'
   | 'image_input'
-  | 'reasoning';
+  | 'reasoning'
 
 export type RawProviderUsage = {
-  input_tokens?: number;
-  output_tokens?: number;
-  reasoning_tokens?: number;
-  cached_input_tokens?: number;
-  cache_write_tokens?: number;
+  input_tokens?: number
+  output_tokens?: number
+  reasoning_tokens?: number
+  cached_input_tokens?: number
+  cache_write_tokens?: number
   // Vercel AI SDK v6 also surfaces details via *Details containers; adapters
   // accept the flattened shape above for testability.
   input_token_details?: {
-    cached_tokens?: number;
-    cache_creation_input_tokens?: number;
-  };
+    cached_tokens?: number
+    cache_creation_input_tokens?: number
+  }
   output_token_details?: {
-    reasoning_tokens?: number;
-  };
-  [k: string]: unknown;
-};
+    reasoning_tokens?: number
+  }
+  [k: string]: unknown
+}
 
 export type AiSdkProviderAdapter = {
-  readonly kind: 'ai_sdk';
-  readonly name: string;
-  readonly build_model: (model_id: string) => Promise<unknown>;
-  readonly translate_effort: (effort: EffortLevel) => EffortTranslation;
-  readonly normalize_usage: (raw: RawProviderUsage | undefined) => UsageTotals;
-  readonly supports: (capability: ProviderCapability) => boolean;
-};
+  readonly kind: 'ai_sdk'
+  readonly name: string
+  readonly build_model: (model_id: string) => Promise<unknown>
+  readonly translate_effort: (effort: EffortLevel) => EffortTranslation
+  readonly normalize_usage: (raw: RawProviderUsage | undefined) => UsageTotals
+  readonly supports: (capability: ProviderCapability) => boolean
+}
 
 export type SubprocessProviderAdapter = {
-  readonly kind: 'subprocess';
-  readonly name: string;
+  readonly kind: 'subprocess'
+  readonly name: string
   readonly generate: <t>(
     opts: GenerateOptions<t>,
     resolved: AliasTarget,
-  ) => Promise<GenerateResult<t>>;
-  readonly dispose: () => Promise<void>;
-  readonly supports: (capability: ProviderCapability) => boolean;
-};
+  ) => Promise<GenerateResult<t>>
+  readonly dispose: () => Promise<void>
+  readonly supports: (capability: ProviderCapability) => boolean
+}
 
-export type ProviderAdapter = AiSdkProviderAdapter | SubprocessProviderAdapter;
+export type ProviderAdapter = AiSdkProviderAdapter | SubprocessProviderAdapter
 
-export type ProviderFactory = (init: ProviderInit) => ProviderAdapter;
+export type ProviderFactory = (init: ProviderInit) => ProviderAdapter
 
 export function default_normalize_usage(
   raw: RawProviderUsage | undefined,
 ): UsageTotals {
-  if (raw === undefined) return { input_tokens: 0, output_tokens: 0 };
-  const input_tokens = typeof raw.input_tokens === 'number' ? raw.input_tokens : 0;
-  const output_tokens = typeof raw.output_tokens === 'number' ? raw.output_tokens : 0;
-  const totals: UsageTotals = { input_tokens, output_tokens };
-  if (typeof raw.reasoning_tokens === 'number') totals.reasoning_tokens = raw.reasoning_tokens;
+  if (raw === undefined) return { input_tokens: 0, output_tokens: 0 }
+  const input_tokens = typeof raw.input_tokens === 'number' ? raw.input_tokens : 0
+  const output_tokens = typeof raw.output_tokens === 'number' ? raw.output_tokens : 0
+  const totals: UsageTotals = { input_tokens, output_tokens }
+  if (typeof raw.reasoning_tokens === 'number') totals.reasoning_tokens = raw.reasoning_tokens
   else if (typeof raw.output_token_details?.reasoning_tokens === 'number') {
-    totals.reasoning_tokens = raw.output_token_details.reasoning_tokens;
+    totals.reasoning_tokens = raw.output_token_details.reasoning_tokens
   }
-  if (typeof raw.cached_input_tokens === 'number') totals.cached_input_tokens = raw.cached_input_tokens;
+  if (typeof raw.cached_input_tokens === 'number') totals.cached_input_tokens = raw.cached_input_tokens
   else if (typeof raw.input_token_details?.cached_tokens === 'number') {
-    totals.cached_input_tokens = raw.input_token_details.cached_tokens;
+    totals.cached_input_tokens = raw.input_token_details.cached_tokens
   }
-  if (typeof raw.cache_write_tokens === 'number') totals.cache_write_tokens = raw.cache_write_tokens;
+  if (typeof raw.cache_write_tokens === 'number') totals.cache_write_tokens = raw.cache_write_tokens
   else if (typeof raw.input_token_details?.cache_creation_input_tokens === 'number') {
-    totals.cache_write_tokens = raw.input_token_details.cache_creation_input_tokens;
+    totals.cache_write_tokens = raw.input_token_details.cache_creation_input_tokens
   }
-  return totals;
+  return totals
 }
 
 export async function load_optional_peer<t>(
   specifier: string,
 ): Promise<t> {
-  let mod: unknown;
+  let mod: unknown
   try {
-    mod = await import(specifier);
+    mod = await import(specifier)
   } catch (err: unknown) {
-    const detail = err instanceof Error ? err.message : JSON.stringify(err);
+    const detail = err instanceof Error ? err.message : JSON.stringify(err)
     const message =
-      `missing peer dependency '${specifier}'. Install it with: pnpm add ${specifier}. Cause: ${detail}`;
-    throw new Error(message, { cause: err });
+      `missing peer dependency '${specifier}'. Install it with: pnpm add ${specifier}. Cause: ${detail}`
+    throw new Error(message, { cause: err })
   }
   // eslint-disable-next-line typescript-eslint/no-unsafe-type-assertion
-  return mod as t;
+  return mod as t
 }

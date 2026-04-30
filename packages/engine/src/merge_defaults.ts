@@ -13,30 +13,30 @@ export function merge_provider_options(
   defaults: Readonly<Record<string, Readonly<Record<string, unknown>>>> | undefined,
   call: Record<string, unknown> | undefined,
 ): Record<string, unknown> | undefined {
-  if (defaults === undefined && call === undefined) return undefined;
-  if (defaults === undefined) return call;
+  if (defaults === undefined && call === undefined) return undefined
+  if (defaults === undefined) return call
   if (call === undefined) {
-    const out: Record<string, unknown> = {};
+    const out: Record<string, unknown> = {}
     for (const [provider, inner] of Object.entries(defaults)) {
-      out[provider] = { ...inner };
+      out[provider] = { ...inner }
     }
-    return out;
+    return out
   }
-  const out: Record<string, unknown> = {};
+  const out: Record<string, unknown> = {}
   for (const [provider, inner] of Object.entries(defaults)) {
-    out[provider] = { ...inner };
+    out[provider] = { ...inner }
   }
   for (const [provider, inner] of Object.entries(call)) {
-    const existing = out[provider];
+    const existing = out[provider]
     if (is_plain_object(existing) && is_plain_object(inner)) {
-      out[provider] = { ...existing, ...inner };
+      out[provider] = { ...existing, ...inner }
     } else {
-      out[provider] = inner;
+      out[provider] = inner
     }
   }
-  return out;
+  return out
 }
 
 function is_plain_object(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value);
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
 }

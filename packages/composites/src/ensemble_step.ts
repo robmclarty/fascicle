@@ -19,42 +19,42 @@
  * underlying `parallel` and `map` contracts.
  */
 
-import { compose, map, parallel, scope, stash, step, use } from '@repo/core';
-import type { Step } from '@repo/core';
+import { compose, map, parallel, scope, stash, step, use } from '@repo/core'
+import type { Step } from '@repo/core'
 
 export type EnsembleStepConfig<i, o, ranked> = {
-  readonly name?: string;
-  readonly members: Record<string, Step<i, o>>;
-  readonly score: Step<o, ranked>;
-  readonly rank_by: (r: ranked) => number;
-  readonly select?: 'max' | 'min';
-};
+  readonly name?: string
+  readonly members: Record<string, Step<i, o>>
+  readonly score: Step<o, ranked>
+  readonly rank_by: (r: ranked) => number
+  readonly select?: 'max' | 'min'
+}
 
 export type EnsembleStepResult<o, ranked> = {
-  readonly winner_id: string;
-  readonly winner: o;
-  readonly winner_scored: ranked;
-  readonly scored: Record<string, ranked>;
-};
+  readonly winner_id: string
+  readonly winner: o
+  readonly winner_scored: ranked
+  readonly scored: Record<string, ranked>
+}
 
-const RESULTS_KEY = '__ensemble_step_results';
-const ITEM_KEY = '__ensemble_step_item';
+const RESULTS_KEY = '__ensemble_step_results'
+const ITEM_KEY = '__ensemble_step_item'
 
-type Pair<o> = { readonly id: string; readonly value: o };
-type ScoredPair<ranked> = { readonly id: string; readonly scored: ranked };
+type Pair<o> = { readonly id: string; readonly value: o }
+type ScoredPair<ranked> = { readonly id: string; readonly scored: ranked }
 
 export function ensemble_step<i, o, ranked>(
   config: EnsembleStepConfig<i, o, ranked>,
 ): Step<i, EnsembleStepResult<o, ranked>> {
-  const { members, score, rank_by } = config;
-  const select: 'max' | 'min' = config.select ?? 'max';
-  const keys = Object.keys(members);
+  const { members, score, rank_by } = config
+  const select: 'max' | 'min' = config.select ?? 'max'
+  const keys = Object.keys(members)
 
   if (keys.length === 0) {
-    throw new Error('ensemble_step: at least one member required');
+    throw new Error('ensemble_step: at least one member required')
   }
 
-  const fan_out = parallel(members);
+  const fan_out = parallel(members)
 
   const score_one = scope([
     stash(ITEM_KEY, step('ensemble_step_item_snapshot', (item: Pair<o>) => item)),
@@ -62,65 +62,65 @@ export function ensemble_step<i, o, ranked>(
     score,
     use([ITEM_KEY], (vars, scored: ranked): ScoredPair<ranked> => {
       // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-      const item = vars[ITEM_KEY] as Pair<o>;
-      return { id: item.id, scored };
+      const item = vars[ITEM_KEY] as Pair<o>
+      return { id: item.id, scored }
     }),
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-  ]) as Step<Pair<o>, ScoredPair<ranked>>;
+  ]) as Step<Pair<o>, ScoredPair<ranked>>
 
   const to_pairs = step(
     'ensemble_step_to_pairs',
     (results: Record<string, o>): ReadonlyArray<Pair<o>> => {
-      const out: Pair<o>[] = [];
+      const out: Pair<o>[] = []
       for (const id of keys) {
         if (id in results) {
           // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-          out.push({ id, value: results[id] as o });
+          out.push({ id, value: results[id] as o })
         }
       }
-      return out;
+      return out
     },
-  );
+  )
 
   const score_each = map<ReadonlyArray<Pair<o>>, Pair<o>, ScoredPair<ranked>>({
     items: (pairs) => pairs,
     do: score_one,
-  });
+  })
 
   const pick = use(
     [RESULTS_KEY],
     (vars, scored_pairs: ReadonlyArray<ScoredPair<ranked>>): EnsembleStepResult<o, ranked> => {
       // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-      const results = vars[RESULTS_KEY] as Record<string, o>;
-      const scored: Record<string, ranked> = {};
-      let winner_id: string | undefined;
-      let winner_rank: number | undefined;
-      let winner_scored: ranked | undefined;
+      const results = vars[RESULTS_KEY] as Record<string, o>
+      const scored: Record<string, ranked> = {}
+      let winner_id: string | undefined
+      let winner_rank: number | undefined
+      let winner_scored: ranked | undefined
       for (const pair of scored_pairs) {
-        scored[pair.id] = pair.scored;
-        const rank = rank_by(pair.scored);
+        scored[pair.id] = pair.scored
+        const rank = rank_by(pair.scored)
         const better =
           winner_rank === undefined
             ? true
             : select === 'max'
               ? rank > winner_rank
-              : rank < winner_rank;
+              : rank < winner_rank
         if (better) {
-          winner_id = pair.id;
-          winner_rank = rank;
-          winner_scored = pair.scored;
+          winner_id = pair.id
+          winner_rank = rank
+          winner_scored = pair.scored
         }
       }
       if (winner_id === undefined || winner_scored === undefined) {
-        throw new Error('ensemble_step: no members produced a result');
+        throw new Error('ensemble_step: no members produced a result')
       }
-      const winner = results[winner_id];
+      const winner = results[winner_id]
       if (winner === undefined) {
-        throw new Error('ensemble_step: winner missing from results');
+        throw new Error('ensemble_step: winner missing from results')
       }
-      return { winner_id, winner, winner_scored, scored };
+      return { winner_id, winner, winner_scored, scored }
     },
-  );
+  )
 
   const inner = scope([
     stash(RESULTS_KEY, fan_out),
@@ -128,7 +128,7 @@ export function ensemble_step<i, o, ranked>(
     score_each,
     pick,
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-  ]) as Step<i, EnsembleStepResult<o, ranked>>;
+  ]) as Step<i, EnsembleStepResult<o, ranked>>
 
-  return compose(config.name ?? 'ensemble_step', inner);
+  return compose(config.name ?? 'ensemble_step', inner)
 }

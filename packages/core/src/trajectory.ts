@@ -21,7 +21,7 @@
  * a parse / re-serialize round-trip without loss.
  */
 
-import { z } from 'zod';
+import { z } from 'zod'
 
 export const span_start_event_schema = z
   .object({
@@ -29,36 +29,36 @@ export const span_start_event_schema = z
     span_id: z.string(),
     name: z.string(),
   })
-  .passthrough();
+  .passthrough()
 
 export const span_end_event_schema = z
   .object({
     kind: z.literal('span_end'),
     span_id: z.string(),
   })
-  .passthrough();
+  .passthrough()
 
 export const emit_event_schema = z
   .object({
     kind: z.literal('emit'),
   })
-  .passthrough();
+  .passthrough()
 
 export const custom_event_schema = z
   .object({
     kind: z.string(),
   })
-  .passthrough();
+  .passthrough()
 
 export const trajectory_event_schema = z.union([
   span_start_event_schema,
   span_end_event_schema,
   emit_event_schema,
   custom_event_schema,
-]);
+])
 
-export type SpanStartEvent = z.infer<typeof span_start_event_schema>;
-export type SpanEndEvent = z.infer<typeof span_end_event_schema>;
-export type EmitEvent = z.infer<typeof emit_event_schema>;
-export type CustomTrajectoryEvent = z.infer<typeof custom_event_schema>;
-export type ParsedTrajectoryEvent = z.infer<typeof trajectory_event_schema>;
+export type SpanStartEvent = z.infer<typeof span_start_event_schema>
+export type SpanEndEvent = z.infer<typeof span_end_event_schema>
+export type EmitEvent = z.infer<typeof emit_event_schema>
+export type CustomTrajectoryEvent = z.infer<typeof custom_event_schema>
+export type ParsedTrajectoryEvent = z.infer<typeof trajectory_event_schema>

@@ -8,30 +8,30 @@
  * Deterministic stub `fn` bodies — no engine layer, no network, no LLM calls.
  */
 
-import { run, step } from '@repo/fascicle';
+import { run, step } from '@repo/fascicle'
 
 const flow = step('chat', async (prompt: string, ctx): Promise<string> => {
-  const chunks = [prompt, ' ...', ' done'];
+  const chunks = [prompt, ' ...', ' done']
   for (const text of chunks) {
-    ctx.emit({ text });
+    ctx.emit({ text })
   }
-  return chunks.join('');
-});
+  return chunks.join('')
+})
 
 export async function run_streaming_chat(): Promise<{
-  readonly tokens: ReadonlyArray<string>;
-  readonly result: string;
+  readonly tokens: ReadonlyArray<string>
+  readonly result: string
 }> {
-  const handle = run.stream(flow, 'hello', { install_signal_handlers: false });
-  const tokens: string[] = [];
+  const handle = run.stream(flow, 'hello', { install_signal_handlers: false })
+  const tokens: string[] = []
   const reader = (async (): Promise<void> => {
     for await (const event of handle.events) {
       if (event.kind === 'emit' && typeof event['text'] === 'string') {
-        tokens.push(event['text']);
+        tokens.push(event['text'])
       }
     }
-  })();
-  const result = await handle.result;
-  await reader;
-  return { tokens, result };
+  })()
+  const result = await handle.result
+  await reader
+  return { tokens, result }
 }

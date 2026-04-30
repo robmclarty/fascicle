@@ -13,16 +13,16 @@
  *   pnpm exec tsx examples/reviewer.ts
  */
 
-import { reviewer, type ReviewerOutput } from '@repo/agents';
-import { run } from '@repo/fascicle';
-import type { Engine, GenerateOptions, GenerateResult } from '@repo/fascicle';
+import { reviewer, type ReviewerOutput } from '@repo/agents'
+import { run } from '@repo/fascicle'
+import type { Engine, GenerateOptions, GenerateResult } from '@repo/fascicle'
 
 function make_stub_engine(canned: ReviewerOutput): Engine {
   return {
     generate: async <t = string>(
       opts: GenerateOptions<t>,
     ): Promise<GenerateResult<t>> => {
-      const parsed = opts.schema ? opts.schema.parse(canned) : canned;
+      const parsed = opts.schema ? opts.schema.parse(canned) : canned
       return {
         // oxlint-disable-next-line typescript/no-unsafe-type-assertion
         content: parsed as t,
@@ -31,7 +31,7 @@ function make_stub_engine(canned: ReviewerOutput): Engine {
         usage: { input_tokens: 200, output_tokens: 80 },
         finish_reason: 'stop',
         model_resolved: { provider: 'stub', model_id: 'reviewer-canned' },
-      };
+      }
     },
     register_alias: () => {},
     unregister_alias: () => {},
@@ -41,7 +41,7 @@ function make_stub_engine(canned: ReviewerOutput): Engine {
     resolve_price: () => undefined,
     list_prices: () => ({}),
     dispose: async () => {},
-  };
+  }
 }
 
 const sample_diff = `\
@@ -54,7 +54,7 @@ const sample_diff = `\
 +  }
    return total;
  }
-`;
+`
 
 const canned: ReviewerOutput = {
   findings: [
@@ -74,39 +74,39 @@ const canned: ReviewerOutput = {
   ],
   summary:
     'One blocking compile-time mistake (const reassignment) and one missing test for the new branch. Fix the const before merging.',
-};
+}
 
 export async function run_reviewer(diff = sample_diff): Promise<{
-  readonly diff: string;
-  readonly review: ReviewerOutput;
+  readonly diff: string
+  readonly review: ReviewerOutput
 }> {
-  const engine = make_stub_engine(canned);
+  const engine = make_stub_engine(canned)
   try {
-    const agent = reviewer({ engine });
+    const agent = reviewer({ engine })
     const review = await run(
       agent,
       { diff, focus: ['correctness', 'tests'] },
       { install_signal_handlers: false },
-    );
-    return { diff, review };
+    )
+    return { diff, review }
   } finally {
-    await engine.dispose();
+    await engine.dispose()
   }
 }
 
 if (import.meta.url === `file://${process.argv[1] ?? ''}`) {
   run_reviewer()
     .then(({ review }) => {
-      console.log(`summary: ${review.summary}\n`);
+      console.log(`summary: ${review.summary}\n`)
       for (const f of review.findings) {
-        const where = f.file ? ` ${f.file}${f.line === undefined ? '' : `:${String(f.line)}`}` : '';
-        console.log(`[${f.severity}] (${f.category})${where}`);
-        console.log(`  ${f.message}`);
-        if (f.suggestion) console.log(`  suggestion: ${f.suggestion}`);
+        const where = f.file ? ` ${f.file}${f.line === undefined ? '' : `:${String(f.line)}`}` : ''
+        console.log(`[${f.severity}] (${f.category})${where}`)
+        console.log(`  ${f.message}`)
+        if (f.suggestion) console.log(`  suggestion: ${f.suggestion}`)
       }
     })
     .catch((err: unknown) => {
-      console.error(err);
-      process.exit(1);
-    });
+      console.error(err)
+      process.exit(1)
+    })
 }
