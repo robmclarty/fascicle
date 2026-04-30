@@ -24,22 +24,13 @@ import {
   step,
   timeout,
   use,
+  type AdversarialBuildInput,
+  type AdversarialCritiqueResult,
+  type AdversarialResult,
   type Engine,
   type GenerateResult,
   type Step,
 } from '@repo/fascicle';
-
-type AdversarialBuildInput<input, candidate> = {
-  readonly input: input;
-  readonly prior?: candidate;
-  readonly critique?: string;
-};
-
-type AdversarialResult<candidate> = {
-  readonly candidate: candidate;
-  readonly converged: boolean;
-  readonly rounds: number;
-};
 
 import {
   assert_one_test_added,
@@ -106,7 +97,7 @@ export function build_cycle(engine: Engine): Step<Behavior, undefined> {
       verdict: v.passed ? ('pass' as const) : ('fail' as const),
       notes: v.tail,
     })),
-    accept: (c) => c['verdict'] === 'pass',
+    accept: (c: AdversarialCritiqueResult) => c['verdict'] === 'pass',
     max_rounds: GREEN_MAX_ROUNDS,
   });
 
