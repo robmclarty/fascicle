@@ -27,17 +27,17 @@ export type LoopGuardResult<state> = {
   readonly state: state;
 };
 
-export type LoopConfig<i, state, out> = {
+export type LoopConfig<i, state, o> = {
   readonly name?: string;
   readonly init: (input: i) => state;
   readonly body: Step<state, state>;
   readonly guard?: Step<state, LoopGuardResult<state>>;
-  readonly finish: (state: state, round: number) => out;
+  readonly finish: (state: state, round: number) => o;
   readonly max_rounds: number;
 };
 
-export type LoopResult<out> = {
-  readonly value: out;
+export type LoopResult<o> = {
+  readonly value: o;
   readonly converged: boolean;
   readonly rounds: number;
 };
@@ -55,14 +55,14 @@ function throw_if_aborted(ctx: RunContext): void {
   throw reason instanceof Error ? reason : new aborted_error('aborted', { reason });
 }
 
-export function loop<i, state, out>(
-  config: LoopConfig<i, state, out>,
-): Step<i, LoopResult<out>> {
+export function loop<i, state, o>(
+  config: LoopConfig<i, state, o>,
+): Step<i, LoopResult<o>> {
   const { init, body, guard, finish, name } = config;
   const rounds_limit = Math.max(1, Math.floor(config.max_rounds));
   const id = next_id(name);
 
-  const run_fn = async (input: i, ctx: RunContext): Promise<LoopResult<out>> => {
+  const run_fn = async (input: i, ctx: RunContext): Promise<LoopResult<o>> => {
     let state = init(input);
     let round = 0;
     let converged = false;
