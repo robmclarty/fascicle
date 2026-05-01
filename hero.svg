@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 380" role="img" aria-labelledby="hero-title hero-desc">
+  <title id="hero-title">Step&lt;i, o&gt; — the single shape</title>
+  <desc id="hero-desc">An LLM call, a plain function, and a tool call are all Step&lt;i, o&gt;. Compositions of Steps are themselves Step&lt;i, o&gt;.</desc>
+  <defs>
+    <linearGradient id="step-grad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#fff8d6"/>
+      <stop offset="100%" stop-color="#ffe6a0"/>
+    </linearGradient>
+    <style>
+      .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+      .sans { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; }
+      .name { font-size: 13px; font-weight: 600; fill: #1f2328; }
+      .sub  { font-size: 11px; fill: #6e7781; }
+      .glyph { font-size: 17px; font-weight: 700; }
+      .step-name { font-size: 38px; font-weight: 800; fill: #1f2328; letter-spacing: -0.02em; }
+      .step-sig  { font-size: 38px; font-weight: 800; fill: #7d5e00; letter-spacing: -0.02em; }
+      .step-line { font-size: 12.5px; fill: #57606a; }
+      .compo-name { font-size: 12.5px; font-weight: 600; fill: #1f2328; }
+      .compo-sub  { font-size: 10.5px; fill: #6e7781; font-style: italic; }
+      .flow { stroke: #d4a72c; stroke-width: 1.5; fill: none; stroke-dasharray: 5 5; opacity: 0.85; }
+      @keyframes flow-in  { from { stroke-dashoffset: 20; } to { stroke-dashoffset: 0; } }
+      @keyframes flow-out { from { stroke-dashoffset: 0;  } to { stroke-dashoffset: -20; } }
+      .flow-in  { animation: flow-in  1.5s linear infinite; }
+      .flow-out { animation: flow-out 1.5s linear infinite; }
+      @media (prefers-reduced-motion: reduce) {
+        .flow-in, .flow-out { animation: none; }
+      }
+    </style>
+  </defs>
+
+  <g transform="translate(40, 24)">
+    <rect width="240" height="68" rx="10" fill="#fff4c2" stroke="#d4a72c" stroke-width="1.5"/>
+    <text x="22" y="44" class="mono glyph" fill="#9a7700">&#x26A1;&#xFE0E;</text>
+    <text x="48" y="32" class="mono name">model_call({…})</text>
+    <text x="48" y="52" class="mono sub">an LLM call</text>
+  </g>
+  <g transform="translate(320, 24)">
+    <rect width="240" height="68" rx="10" fill="#dafbe1" stroke="#3fb950" stroke-width="1.5"/>
+    <text x="22" y="44" class="mono glyph" fill="#1a7f37">&#x03BB;</text>
+    <text x="48" y="32" class="mono name">step('parse', fn)</text>
+    <text x="48" y="52" class="mono sub">a plain function</text>
+  </g>
+  <g transform="translate(600, 24)">
+    <rect width="240" height="68" rx="10" fill="#ddf4ff" stroke="#54aeff" stroke-width="1.5"/>
+    <text x="22" y="44" class="mono glyph" fill="#0969da">&#x2699;&#xFE0E;</text>
+    <text x="48" y="32" class="mono name">tool({…})</text>
+    <text x="48" y="52" class="mono sub">a tool call</text>
+  </g>
+
+  <path d="M160 92 V128 H440 V152" class="flow flow-in"/>
+  <path d="M440 92 V152" class="flow flow-in"/>
+  <path d="M720 92 V128 H440 V152" class="flow flow-in"/>
+
+  <rect x="220" y="152" width="440" height="86" rx="14" fill="url(#step-grad)" stroke="#d4a72c" stroke-width="2.5"/>
+  <text x="440" y="198" text-anchor="middle" class="mono"><tspan class="step-name">Step</tspan><tspan class="step-sig">&lt;i, o&gt;</tspan></text>
+  <text x="440" y="222" text-anchor="middle" class="sans step-line">one shape. 16 primitives. 7 providers.</text>
+
+  <path d="M440 238 V263 H160 V285" class="flow flow-out"/>
+  <path d="M440 238 V285" class="flow flow-out"/>
+  <path d="M440 238 V263 H720 V285" class="flow flow-out"/>
+
+  <g transform="translate(40, 285)">
+    <rect width="240" height="68" rx="10" fill="none" stroke="#d0d7de" stroke-width="1.25"/>
+    <text x="120" y="34" text-anchor="middle" class="mono compo-name">sequence([a, b, c])</text>
+    <text x="120" y="54" text-anchor="middle" class="mono compo-sub">a → b → c</text>
+  </g>
+  <g transform="translate(320, 285)">
+    <rect width="240" height="68" rx="10" fill="none" stroke="#d0d7de" stroke-width="1.25"/>
+    <text x="120" y="34" text-anchor="middle" class="mono compo-name">parallel({a, b})</text>
+    <text x="120" y="54" text-anchor="middle" class="mono compo-sub">a ∥ b</text>
+  </g>
+  <g transform="translate(600, 285)">
+    <rect width="240" height="68" rx="10" fill="none" stroke="#d0d7de" stroke-width="1.25"/>
+    <text x="120" y="34" text-anchor="middle" class="mono compo-name">retry(step, 3)</text>
+    <text x="120" y="54" text-anchor="middle" class="mono compo-sub">+ 13 more primitives</text>
+  </g>
+</svg>
