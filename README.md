@@ -1,7 +1,5 @@
 # Fascicle
 
-![fascicle-viewer running against an amplify trajectory: span tree on the left, event log on the right, $2.55 cost rolled up in the header](./screenshot.png)
-
 Compose agents out of LLM calls, tool calls, and plain functions. Everything is a `Step<i, o>`. Wire steps together with 16 primitives (`sequence`, `parallel`, `branch`, `retry`, `ensemble`, `checkpoint`, …) and run them as plain values. One `generate` surface fronts seven provider adapters: Anthropic, OpenAI, Google, OpenRouter, Ollama, LM Studio, and a `claude_cli` subprocess that drives the Claude Code CLI.
 
 No framework lifecycle. No ambient state. No decorators. Adapters are passed in per run.
@@ -86,6 +84,8 @@ await run(flow, input, {
 Full details: [docs/providers.md](./docs/providers.md). The `claude_cli` adapter has its own guide: [docs/cli.md](./docs/cli.md).
 
 ## Live dev dashboard
+
+![fascicle-viewer running against an amplify trajectory: span tree on the left, event log on the right, $2.55 cost rolled up in the header](./screenshot.png)
 
 The `fascicle-viewer` bin ships with the umbrella package. Point it at a trajectory file and it opens a browser tree of spans, errors, and emits as the run executes:
 
