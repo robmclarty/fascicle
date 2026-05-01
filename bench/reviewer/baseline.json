@@ -1,0 +1,87 @@
+{
+  "flow_name": "reviewer",
+  "run_id": "bench-1777610889917-vmhrv3",
+  "cases": [
+    {
+      "case_id": "sql-injection",
+      "ok": true,
+      "output": {
+        "findings": [
+          {
+            "severity": "blocker",
+            "file": "src/db.ts",
+            "line": 4,
+            "category": "security",
+            "message": "Concatenated user input into raw SQL: a classic injection vector.",
+            "suggestion": "Use a parameterised query."
+          }
+        ],
+        "summary": "one blocker security issue."
+      },
+      "scores": {
+        "flagged_correctly": {
+          "score": 1,
+          "reason": "flagged security"
+        },
+        "severity_match": {
+          "score": 1,
+          "reason": "severity blocker"
+        }
+      },
+      "duration_ms": 1,
+      "cost_usd": 0
+    },
+    {
+      "case_id": "missing-test",
+      "ok": true,
+      "output": {
+        "findings": [
+          {
+            "severity": "minor",
+            "category": "tests",
+            "message": "New refund() lacks any test coverage."
+          }
+        ],
+        "summary": "add a test for refund()."
+      },
+      "scores": {
+        "flagged_correctly": {
+          "score": 1,
+          "reason": "flagged tests"
+        },
+        "severity_match": {
+          "score": 1,
+          "reason": "severity minor"
+        }
+      },
+      "duration_ms": 0,
+      "cost_usd": 0
+    },
+    {
+      "case_id": "safe-rename",
+      "ok": true,
+      "output": {
+        "findings": [],
+        "summary": "safe rename, no issues."
+      },
+      "scores": {
+        "severity_match": {
+          "score": 1,
+          "reason": "no findings"
+        }
+      },
+      "duration_ms": 0,
+      "cost_usd": 0
+    }
+  ],
+  "summary": {
+    "pass_rate": 1,
+    "mean_scores": {
+      "flagged_correctly": 1,
+      "severity_match": 1
+    },
+    "total_duration_ms": 1,
+    "total_cost_usd": 0,
+    "mean_cost_usd": 0
+  }
+}

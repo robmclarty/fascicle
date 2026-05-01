@@ -1,0 +1,26 @@
+[
+  {
+    "id": "sql-injection",
+    "input": {
+      "diff": "--- a/src/db.ts\n+++ b/src/db.ts\n@@\n-const sql = `SELECT * FROM users WHERE name = '${name}'`\n+const sql = `SELECT * FROM users WHERE name = '${name}'`\n",
+      "focus": ["security"]
+    },
+    "meta": { "expects_severity": "blocker", "expects_category": "security" }
+  },
+  {
+    "id": "missing-test",
+    "input": {
+      "diff": "--- a/src/checkout.ts\n+++ b/src/checkout.ts\n@@\n+export function refund(amount: number) { return -amount }\n",
+      "focus": ["tests"]
+    },
+    "meta": { "expects_severity": "minor", "expects_category": "tests" }
+  },
+  {
+    "id": "safe-rename",
+    "input": {
+      "diff": "--- a/src/util.ts\n+++ b/src/util.ts\n@@\n-export function getCwd() { return process.cwd() }\n+export function get_cwd() { return process.cwd() }\n",
+      "focus": ["style"]
+    },
+    "meta": { "expects_severity": null }
+  }
+]

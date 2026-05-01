@@ -49,3 +49,30 @@ export type {
 
 export { tournament } from './tournament.js'
 export type { BracketRecord, TournamentConfig, TournamentResult } from './tournament.js'
+
+export { bench, normalize_score } from './bench.js'
+export type {
+  BenchCase,
+  BenchOptions,
+  BenchReport,
+  BenchSummary,
+  CaseResult,
+  Judge,
+  JudgeArgs,
+  Score,
+} from './bench.js'
+
+export { judge_equals, judge_llm, judge_with } from './judges.js'
+export type { JudgeLlmConfig, JudgeWithFn } from './judges.js'
+
+export {
+  read_baseline,
+  regression_compare,
+  write_baseline,
+} from './regression.js'
+export type {
+  PerCaseDelta,
+  RegressionCompareOptions,
+  RegressionDelta,
+  RegressionReport,
+} from './regression.js'

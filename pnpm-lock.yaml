@@ -153,6 +153,9 @@ importers:
       '@repo/core':
         specifier: workspace:*
         version: link:../core
+      '@repo/observability':
+        specifier: workspace:*
+        version: link:../observability
 
   packages/config:
     dependencies:
