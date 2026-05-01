@@ -1,6 +1,6 @@
 # Fascicle Viewer — Plan
 
-A minimal, in-repo dev tool for visualizing a fascicle run as it executes (or after the fact). Single HTML page dashboard. Two transports: file-tail (primary) and HTTP push (opt-in, low-latency). Lives inside this monorepo as `@repo/viewer`, ships as a published-but-separate `fascicle-viewer` devDependency. Distinct from the larger `spec/studio.md` PDR, which remains the long-term north star — this is the small, immediately-useful sibling.
+A minimal, in-repo dev tool for visualizing a fascicle run as it executes (or after the fact). Single HTML page dashboard. Two transports: file-tail (primary) and HTTP push (opt-in, low-latency). Lives inside this monorepo as `@repo/viewer` and ships as part of the `fascicle` umbrella; runtime install graph is `node:*` plus `zod` plus `@repo/core` — no HTTP-server deps to leak. Distinct from the larger `spec/studio.md` PDR, which remains the long-term north star — this is the small, immediately-useful sibling.
 
 > Status: plan accepted, ready to implement. Scope is "watch a flow run; see which step is firing." Nothing more.
 
@@ -51,7 +51,7 @@ The user controls which transport applies via the same mechanism they already us
 
 ## 3. Package layout
 
-New package under `packages/viewer/`. Internal name `@repo/viewer`; published name `fascicle-viewer`. Not bundled into the `fascicle` umbrella — keeping `fascicle`'s install graph free of HTTP-server deps.
+New package under `packages/viewer/`. Internal name `@repo/viewer`; ships as part of the `fascicle` umbrella (no separate published artifact). The runtime install graph is `node:*` plus `zod` plus `@repo/core` — no HTTP-server deps to leak.
 
 ```
 packages/viewer/
@@ -88,7 +88,7 @@ The viewer is allowed runtime deps, isolated to this package. Aim to use only `n
 - `@repo/viewer` may import types and `trajectory_event_schema` from `@repo/core`. It must NOT import `@repo/engine`, `@repo/composites`, or any provider SDK.
 - New ast-grep rule (or extension of existing rules) to assert the above. The boundary is "viewer is a dev tool that reads the wire format; it has no business knowing about the engine."
 - `fallow` adds `packages/viewer` as a root.
-- `scripts/check-deps.mjs` asserts `fascicle-viewer` does not appear in `fascicle`'s dependency graph.
+- `scripts/check-deps.mjs` asserts `@repo/viewer` IS present in `@repo/fascicle`'s dependency graph (the umbrella owns the bin and the programmatic surface).
 
 ---
 
@@ -233,7 +233,7 @@ These are tempting and wrong for v1.
 4. **Auth, multi-user, accounts.** Localhost only.
 5. **Pretty visuals / aesthetic direction.** Boring grey-on-light-grey. Functional.
 6. **Streaming model output preview.** Out of scope; the JSONL file already has it for grep.
-7. **Bundling into the `fascicle` umbrella.** Keep the runtime install graph clean.
+7. ~~Bundling into the `fascicle` umbrella.~~ Reversed in `spec/eval.md` wedge 1: viewer ships as part of the umbrella. Runtime install graph stays clean because viewer has no HTTP-server deps (only `node:*`, `zod`, and `@repo/core`).
 8. **Browser bundle / Vite / Tailwind / React.** Vanilla HTML+JS, no build step.
 9. **WebSocket transport.** SSE is sufficient and half the code.
 10. **Plugin system, theme system, layout persistence.** Reload-stable URL params at most.

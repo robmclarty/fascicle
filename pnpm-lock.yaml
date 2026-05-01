@@ -214,6 +214,9 @@ importers:
       '@repo/engine':
         specifier: workspace:*
         version: link:../engine
+      '@repo/viewer':
+        specifier: workspace:*
+        version: link:../viewer
 
   packages/observability:
     dependencies:

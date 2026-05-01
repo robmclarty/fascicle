@@ -22,6 +22,9 @@
       "import": "./dist/index.js"
     }
   },
+  "bin": {
+    "fascicle-viewer": "./dist/bin/fascicle-viewer.js"
+  },
   "files": [
     "dist",
     "README.md",

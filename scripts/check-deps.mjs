@@ -147,30 +147,27 @@ async function check_publishability() {
   );
 }
 
-async function check_viewer_isolation() {
-  // The viewer ships as a separate published package (fascicle-viewer). It
-  // must NOT appear in the @repo/fascicle umbrella's dependency graph, so the
-  // runtime install graph of `fascicle` stays free of HTTP-server deps. See
-  // spec/viewer.md §3.
+async function check_viewer_inclusion() {
+  // The viewer ships as part of the @repo/fascicle umbrella so users get
+  // `start_viewer` and the `fascicle-viewer` bin from a single install. The
+  // viewer has no HTTP-server deps (node:* + zod + @repo/core only), so
+  // including it does not bloat fascicle's runtime install graph. See
+  // spec/eval.md wedge 1.
   const pkg = await read_pkg(FASCICLE_PKG);
-  const all = {
-    ...(pkg.dependencies ?? {}),
-    ...(pkg.peerDependencies ?? {}),
-    ...(pkg.optionalDependencies ?? {}),
-  };
-  if (Object.prototype.hasOwnProperty.call(all, '@repo/viewer')) {
+  const deps = pkg.dependencies ?? {};
+  if (!Object.prototype.hasOwnProperty.call(deps, '@repo/viewer')) {
     fail(
-      `@repo/viewer must not appear in @repo/fascicle's dependency graph. ` +
-        `Viewer is a separate dev tool (fascicle-viewer); ${FASCICLE_PKG} should not depend on it.`,
+      `@repo/viewer must appear in @repo/fascicle's dependencies. ` +
+        `The umbrella owns the bin and the programmatic start_viewer surface; ${FASCICLE_PKG} must depend on it.`,
     );
   }
-  console.log(`check-deps: viewer isolation ok (@repo/viewer not in @repo/fascicle deps)`);
+  console.log(`check-deps: viewer inclusion ok (@repo/viewer present in @repo/fascicle deps)`);
 }
 
 async function main() {
   await check_core();
   await check_engine();
-  await check_viewer_isolation();
+  await check_viewer_inclusion();
   await check_publishability();
 }
 

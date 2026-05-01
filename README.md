@@ -83,6 +83,26 @@ await run(flow, input, {
 
 Full details: [docs/providers.md](./docs/providers.md). The `claude_cli` adapter has its own guide: [docs/cli.md](./docs/cli.md).
 
+## Live dev dashboard
+
+The `fascicle-viewer` bin ships with the umbrella package. Point it at a trajectory file and it opens a browser tree of spans, errors, and emits as the run executes:
+
+```bash
+pnpm dlx fascicle-viewer .trajectory.jsonl
+```
+
+Or embed it programmatically:
+
+```typescript
+import { start_viewer } from 'fascicle';
+
+const handle = await start_viewer({ port: 4242 });
+// later
+await handle.close();
+```
+
+For zero-latency streaming from inside a long-running flow, pair it with `http_logger` from `@repo/observability`. See [packages/viewer/README.md](./packages/viewer/README.md) for the full transport story.
+
 ## Where to go next
 
 - [docs/getting-started.md](./docs/getting-started.md) — install and run your first flow
@@ -93,7 +113,7 @@ Full details: [docs/providers.md](./docs/providers.md). The `claude_cli` adapter
 - [docs/cookbook.md](./docs/cookbook.md) — retries, fan-out, judges, HITL, tool loops
 - [docs/writing-a-harness.md](./docs/writing-a-harness.md) — building a runner around fascicle
 - [examples/](./examples/) — runnable reference flows
-- [packages/viewer/README.md](./packages/viewer/README.md) — `fascicle-viewer`, the dev dashboard for live trajectory streams
+- [packages/viewer/README.md](./packages/viewer/README.md) — viewer details and transport options
 
 ## Contributing
 

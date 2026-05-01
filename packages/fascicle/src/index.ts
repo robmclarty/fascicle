@@ -68,3 +68,6 @@ export { model_call } from './model_call.js'
 export type { ModelCallConfig, ModelCallInput } from './model_call.js'
 
 export { forward_standard_env } from './forward_standard_env.js'
+
+export { run_viewer_cli, start_viewer } from '@repo/viewer'
+export type { StartViewerOptions, ViewerHandle } from '@repo/viewer'

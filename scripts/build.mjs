@@ -17,7 +17,7 @@
  */
 
 import { spawn } from 'node:child_process';
-import { readFile, rm, stat } from 'node:fs/promises';
+import { copyFile, mkdir, readFile, rm, stat } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
@@ -27,6 +27,11 @@ const REPO_ROOT = resolve(__dirname, '..');
 const DIST_DIR = join(REPO_ROOT, 'dist');
 const DIST_JS = join(DIST_DIR, 'index.js');
 const DIST_DTS = join(DIST_DIR, 'index.d.ts');
+const DIST_STATIC_DIR = join(DIST_DIR, 'static');
+const DIST_STATIC_HTML = join(DIST_STATIC_DIR, 'viewer.html');
+const VIEWER_HTML_SRC = join(REPO_ROOT, 'packages', 'viewer', 'src', 'static', 'viewer.html');
+const DIST_BIN_DIR = join(DIST_DIR, 'bin');
+const DIST_BIN_VIEWER = join(DIST_BIN_DIR, 'fascicle-viewer.js');
 
 const EXPECTED_NAMED = [
   // 16 composition primitives
@@ -179,6 +184,19 @@ async function main() {
     process.exit(1);
   }
 
+  process.stderr.write(`▸ build: copying viewer static assets\n`);
+  await mkdir(DIST_STATIC_DIR, { recursive: true });
+  await copyFile(VIEWER_HTML_SRC, DIST_STATIC_HTML);
+  const html_stat = await stat(DIST_STATIC_HTML);
+  if (html_stat.size === 0) {
+    console.error(`\nbuild: ${DIST_STATIC_HTML} copied as empty file`);
+    process.exit(1);
+  }
+
+  process.stderr.write(`▸ build: writing fascicle-viewer bin shim\n`);
+  await mkdir(DIST_BIN_DIR, { recursive: true });
+  await write_viewer_bin_shim(DIST_BIN_VIEWER);
+
   process.stderr.write(`▸ build: smoke-importing ${DIST_JS}\n`);
   const mod = await import(pathToFileURL(DIST_JS).href);
   const missing = EXPECTED_NAMED.filter((name) => typeof mod[name] === 'undefined');
@@ -190,10 +208,34 @@ async function main() {
     console.error(`\nbuild: smoke test missing describe.json namespace member`);
     process.exit(1);
   }
+  if (typeof mod.start_viewer !== 'function') {
+    console.error(`\nbuild: smoke test missing start_viewer export`);
+    process.exit(1);
+  }
+  if (typeof mod.run_viewer_cli !== 'function') {
+    console.error(`\nbuild: smoke test missing run_viewer_cli export`);
+    process.exit(1);
+  }
 
   process.stderr.write(
     `\n✔ build ok (${js_stat.size} bytes js, ${dts_stat.size} bytes d.ts, ${EXPECTED_NAMED.length} named exports + describe.json verified)\n`,
   );
+}
+
+async function write_viewer_bin_shim(path) {
+  const { writeFile, chmod } = await import('node:fs/promises');
+  const shim = `#!/usr/bin/env node
+import { pathToFileURL } from 'node:url';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const here = dirname(fileURLToPath(import.meta.url));
+const dist_index = resolve(here, '..', 'index.js');
+const mod = await import(pathToFileURL(dist_index).href);
+await mod.run_viewer_cli(process.argv.slice(2));
+`;
+  await writeFile(path, shim, 'utf8');
+  await chmod(path, 0o755);
 }
 
 main().catch((err) => {

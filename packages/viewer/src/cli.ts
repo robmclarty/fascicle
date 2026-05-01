@@ -9,7 +9,8 @@
  * Flags: --port <n> --host <h> --buffer <n> --no-open --help
  *
  * Defaults bind 127.0.0.1:4242 and open the user's default browser. SIGINT
- * shuts everything down cleanly.
+ * shuts everything down cleanly. The CLI body is exposed as `run_viewer_cli`
+ * so the umbrella's bin shim can drive it from a bundled `dist/index.js`.
  */
 
 import { spawn } from 'node:child_process'
@@ -102,8 +103,8 @@ function open_browser(url: string): void {
   }
 }
 
-async function main(): Promise<void> {
-  const args = parse(process.argv.slice(2))
+export async function run_viewer_cli(argv: readonly string[]): Promise<void> {
+  const args = parse(argv)
 
   if (args.path !== undefined && !existsSync(args.path)) {
     process.stderr.write(
@@ -156,7 +157,13 @@ function describe_error(err: unknown): string {
   }
 }
 
-void main().catch((err: unknown) => {
-  process.stderr.write(`fascicle-viewer: ${describe_error(err)}\n`)
-  process.exit(1)
-})
+const invoked_directly =
+  typeof process.argv[1] === 'string' &&
+  (process.argv[1].endsWith('/cli.ts') || process.argv[1].endsWith('/cli.js'))
+
+if (invoked_directly) {
+  void run_viewer_cli(process.argv.slice(2)).catch((err: unknown) => {
+    process.stderr.write(`fascicle-viewer: ${describe_error(err)}\n`)
+    process.exit(1)
+  })
+}

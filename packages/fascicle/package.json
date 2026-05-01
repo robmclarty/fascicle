@@ -10,6 +10,7 @@
   "dependencies": {
     "@repo/composites": "workspace:*",
     "@repo/core": "workspace:*",
-    "@repo/engine": "workspace:*"
+    "@repo/engine": "workspace:*",
+    "@repo/viewer": "workspace:*"
   }
 }
