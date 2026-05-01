@@ -25,7 +25,8 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { create_engine, run, type EffortLevel } from '@repo/fascicle'
-import { filesystem_logger } from '@repo/observability'
+import { filesystem_logger, http_logger, tee_logger } from '@repo/observability'
+import type { TrajectoryLogger } from '@repo/fascicle'
 
 import { build_loop } from './loop.js'
 import { load_metric } from './metric.js'
@@ -154,9 +155,25 @@ export async function run_amplify(argv: ReadonlyArray<string>): Promise<void> {
     defaults: { model: 'cli-opus', effort: cli.effort },
   })
 
-  const trajectory = filesystem_logger({
+  const file_sink = filesystem_logger({
     output_path: join(run_dir, 'trajectory.jsonl'),
   })
+  const viewer_url = process.env['AMPLIFY_VIEWER_URL']
+  const trajectory: TrajectoryLogger = viewer_url === undefined
+    ? file_sink
+    : tee_logger(
+        file_sink,
+        http_logger({
+          url: viewer_url,
+          on_error: (err) => {
+            const message = err instanceof Error ? err.message : String(err)
+            console.warn(`amplify: viewer push failed: ${message}`)
+          },
+        }),
+      )
+  if (viewer_url !== undefined) {
+    console.log(`live-pushing trajectory to ${viewer_url}`)
+  }
 
   const loop = build_loop({
     engine,

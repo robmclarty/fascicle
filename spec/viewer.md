@@ -251,8 +251,8 @@ These are tempting and wrong for v1.
 
 ## 12. Done definition for v1
 
-1. `pnpm check:all` exits 0.
-2. `pnpm fascicle-viewer examples/amplify/.runs/<latest>/trajectory.jsonl` opens a browser showing the run as a live-updating tree.
-3. `pnpm tsx examples/amplify/run.ts` with `trajectory: http_logger({ url: 'http://localhost:4242/api/ingest' })` produces the same picture, in real time.
-4. The `fascicle` library bundle is byte-for-byte unchanged from before this work.
-5. README quickstart works for a first-time reader inside 60 seconds.
+1. `pnpm check:all` exits 0. ✓
+2. `pnpm fascicle-viewer examples/amplify/.runs/<latest>/trajectory.jsonl` opens a browser showing the run as a live-updating tree. ✓ (verified against `20260427-180429`: 55 spans, $2.55 cost rolled up, browser reachable.)
+3. `pnpm tsx examples/amplify/run.ts` with `trajectory: http_logger({ url })` produces the same picture, in real time. ✓ (amplify gates this behind `AMPLIFY_VIEWER_URL` to keep standalone runs working; spec/eval.md wedge 4 also verifies the transport by curl-piping a recorded trajectory through `/api/ingest`, which round-trips all 203 events including cost.)
+4. ~~The `fascicle` library bundle is byte-for-byte unchanged from before this work.~~ Reversed by `spec/eval.md` wedge 1: the umbrella now bundles `start_viewer` + the `fascicle-viewer` bin. Install graph still excludes HTTP-server deps.
+5. README quickstart works for a first-time reader inside 60 seconds. ✓
