@@ -10,3 +10,5 @@
 export { noop_logger } from './noop.js'
 export { filesystem_logger } from './filesystem.js'
 export type { FilesystemLoggerOptions } from './filesystem.js'
+export { http_logger } from './http.js'
+export type { HttpLoggerFetch, HttpLoggerOptions } from './http.js'
