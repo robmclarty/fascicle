@@ -7,6 +7,7 @@ entry = [
   "packages/*/test/**/*.test.ts",
   "packages/*/test/**/*.mjs",
   "packages/*/test/**/*-harness.ts",
+  "packages/viewer/src/cli.ts",
   "test/**/*.test.ts",
   "stryker.config.mjs",
 ]

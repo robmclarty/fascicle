@@ -1,0 +1,312 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>fascicle viewer</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --fg: #1f2328;
+        --muted: #57606a;
+        --bg: #f6f7f8;
+        --panel: #ffffff;
+        --border: #d0d7de;
+        --accent: #b08900;
+        --accent-soft: #fff4c2;
+        --error: #a53a2c;
+        --error-soft: #fbe1dc;
+        --pulse: #cce4ff;
+      }
+      * { box-sizing: border-box }
+      html, body { margin: 0; height: 100% }
+      body {
+        font: 13px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        color: var(--fg);
+        background: var(--bg);
+      }
+      header {
+        display: flex; align-items: center; gap: 12px;
+        padding: 8px 12px;
+        background: var(--panel);
+        border-bottom: 1px solid var(--border);
+      }
+      header h1 { margin: 0; font: inherit; font-weight: 600 }
+      header .conn { color: var(--muted) }
+      header .conn.ok { color: #1a7f37 }
+      header .conn.err { color: var(--error) }
+      header label { color: var(--muted) }
+      header select { font: inherit; padding: 2px 4px; border: 1px solid var(--border); background: #fff }
+      main {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        gap: 0;
+        height: calc(100vh - 38px);
+      }
+      section { overflow: auto; padding: 8px 12px; background: var(--panel); }
+      section + section { border-left: 1px solid var(--border) }
+      h2 { margin: 0 0 8px 0; font: inherit; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em }
+      ul.tree { list-style: none; margin: 0; padding-left: 0 }
+      ul.tree ul { list-style: none; margin: 0; padding-left: 16px; border-left: 1px dotted var(--border) }
+      .node {
+        display: flex; gap: 8px; align-items: baseline;
+        padding: 2px 6px; border-radius: 4px;
+      }
+      .node .name { font-weight: 600 }
+      .node .id { color: var(--muted); font-size: 11px }
+      .node .elapsed { margin-left: auto; color: var(--muted); font-size: 11px }
+      .node.running { background: var(--accent-soft); animation: pulse 1.6s ease-in-out infinite }
+      .node.errored { background: var(--error-soft); color: var(--error) }
+      .node.suspended { background: #ececec; font-style: italic }
+      .node.emit-flash { background: var(--pulse); transition: background 200ms }
+      @keyframes pulse {
+        0%, 100% { background: var(--accent-soft) }
+        50% { background: #ffe690 }
+      }
+      .log {
+        font-size: 12px;
+      }
+      .log .row {
+        display: grid; grid-template-columns: 80px 90px 130px 1fr;
+        gap: 8px; padding: 2px 0; border-bottom: 1px solid var(--border);
+        cursor: pointer;
+      }
+      .log .row:hover { background: var(--bg) }
+      .log .row .ts { color: var(--muted) }
+      .log .row .kind { font-weight: 600 }
+      .log .row .span { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+      .log .row .payload { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--muted) }
+      .log .row.err .kind { color: var(--error) }
+      details { margin: 6px 0 }
+      details > pre { background: var(--bg); padding: 8px; overflow: auto; margin: 4px 0 0 0; border: 1px solid var(--border); border-radius: 4px }
+      .empty { color: var(--muted); padding: 16px 0 }
+      footer { color: var(--muted); padding: 4px 12px; border-top: 1px solid var(--border); background: var(--panel); font-size: 11px }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>fascicle viewer</h1>
+      <span class="conn" id="conn">connecting…</span>
+      <label>run:
+        <select id="run-filter"><option value="">all</option></select>
+      </label>
+      <span style="margin-left:auto" id="counts"></span>
+    </header>
+    <main>
+      <section>
+        <h2>spans</h2>
+        <div id="tree"></div>
+      </section>
+      <section>
+        <h2>events</h2>
+        <div class="log" id="log"></div>
+      </section>
+    </main>
+    <footer id="footer">localhost dev tool — no auth, no persistence</footer>
+    <script>
+      (() => {
+        const $tree = document.getElementById('tree')
+        const $log = document.getElementById('log')
+        const $conn = document.getElementById('conn')
+        const $filter = document.getElementById('run-filter')
+        const $counts = document.getElementById('counts')
+
+        const spans = new Map()
+        const roots = []
+        const log_rows = []
+        const run_ids = new Set()
+        let active_run = ''
+        let total = 0
+        let errors = 0
+
+        function empty_message(text) {
+          const div = document.createElement('div')
+          div.className = 'empty'
+          div.textContent = text
+          return div
+        }
+
+        $tree.replaceChildren(empty_message('waiting for events…'))
+
+        $filter.addEventListener('change', () => {
+          active_run = $filter.value
+          render_tree()
+          render_log()
+        })
+
+        function set_conn(state, label) {
+          $conn.className = 'conn ' + state
+          $conn.textContent = label
+        }
+
+        function ensure_run(id) {
+          if (!id || run_ids.has(id)) return
+          run_ids.add(id)
+          const opt = document.createElement('option')
+          opt.value = id
+          opt.textContent = id
+          $filter.appendChild(opt)
+        }
+
+        function span_visible(span) {
+          if (!active_run) return true
+          return span.run_id === active_run
+        }
+
+        function format_elapsed(span) {
+          if (!span.started_at) return ''
+          const end = span.ended_at ?? Date.now()
+          const ms = Math.max(0, end - span.started_at)
+          if (ms < 1000) return ms + 'ms'
+          return (ms / 1000).toFixed(2) + 's'
+        }
+
+        function render_tree() {
+          if (spans.size === 0) {
+            $tree.replaceChildren(empty_message('waiting for events…'))
+            return
+          }
+          const ul = document.createElement('ul')
+          ul.className = 'tree'
+          for (const id of roots) {
+            const span = spans.get(id)
+            if (!span || !span_visible(span)) continue
+            ul.appendChild(render_node(span))
+          }
+          $tree.replaceChildren(ul)
+        }
+
+        function render_node(span) {
+          const li = document.createElement('li')
+          const node = document.createElement('div')
+          node.className = 'node ' + span.state
+          if (span.flash_until && span.flash_until > Date.now()) node.classList.add('emit-flash')
+          const name = document.createElement('span')
+          name.className = 'name'
+          name.textContent = span.name
+          const sid = document.createElement('span')
+          sid.className = 'id'
+          sid.textContent = span.span_id
+          const elapsed = document.createElement('span')
+          elapsed.className = 'elapsed'
+          elapsed.textContent = format_elapsed(span)
+          node.appendChild(name)
+          node.appendChild(sid)
+          node.appendChild(elapsed)
+          li.appendChild(node)
+          if (span.children.length) {
+            const ul = document.createElement('ul')
+            for (const cid of span.children) {
+              const child = spans.get(cid)
+              if (child) ul.appendChild(render_node(child))
+            }
+            li.appendChild(ul)
+          }
+          return li
+        }
+
+        function render_log() {
+          const visible = log_rows.filter((r) => !active_run || r.run_id === active_run)
+          const slice = visible.slice(-200)
+          $log.replaceChildren()
+          for (const row of slice) {
+            const div = document.createElement('div')
+            div.className = 'row' + (row.kind === 'error' ? ' err' : '')
+            const ts = document.createElement('span'); ts.className = 'ts'
+            ts.textContent = new Date(row.ts).toLocaleTimeString()
+            const kind = document.createElement('span'); kind.className = 'kind'; kind.textContent = row.kind
+            const span = document.createElement('span'); span.className = 'span'; span.textContent = row.span_id ?? ''
+            const payload = document.createElement('span'); payload.className = 'payload'
+            payload.textContent = row.preview
+            div.appendChild(ts); div.appendChild(kind); div.appendChild(span); div.appendChild(payload)
+            div.addEventListener('click', () => {
+              const open = div.nextSibling
+              if (open && open.tagName === 'DETAILS') { open.remove(); return }
+              const det = document.createElement('details')
+              det.open = true
+              const pre = document.createElement('pre')
+              pre.textContent = JSON.stringify(row.event, null, 2)
+              det.appendChild(pre)
+              div.after(det)
+            })
+            $log.appendChild(div)
+          }
+          $counts.textContent = total + ' events · ' + errors + ' errors'
+        }
+
+        function preview(event) {
+          const { kind, span_id, run_id, parent_span_id, name, ...rest } = event
+          const txt = JSON.stringify(rest)
+          return txt.length > 100 ? txt.slice(0, 100) + '…' : txt
+        }
+
+        function ingest(event) {
+          total++
+          ensure_run(event.run_id)
+          const ts = Date.now()
+          if (event.kind === 'span_start') {
+            const span = {
+              span_id: event.span_id,
+              name: event.name,
+              run_id: event.run_id,
+              parent_span_id: event.parent_span_id,
+              state: 'running',
+              children: [],
+              started_at: ts,
+              ended_at: null,
+              flash_until: 0,
+            }
+            spans.set(event.span_id, span)
+            if (event.parent_span_id && spans.has(event.parent_span_id)) {
+              spans.get(event.parent_span_id).children.push(event.span_id)
+            } else {
+              roots.push(event.span_id)
+            }
+          } else if (event.kind === 'span_end') {
+            const span = spans.get(event.span_id)
+            if (span) {
+              span.ended_at = ts
+              const has_error = event.error !== undefined
+              span.state = has_error ? 'errored' : 'done'
+              if (has_error) errors++
+            }
+          } else if (event.kind === 'emit') {
+            const span = spans.get(event.span_id)
+            if (span) span.flash_until = ts + 200
+          } else if (event.kind === 'error') {
+            errors++
+            const span = spans.get(event.span_id)
+            if (span) span.state = 'errored'
+          } else if (event.kind === 'suspend') {
+            const span = spans.get(event.span_id)
+            if (span) span.state = 'suspended'
+          }
+          log_rows.push({
+            ts,
+            kind: event.kind,
+            span_id: event.span_id,
+            run_id: event.run_id,
+            event,
+            preview: preview(event),
+          })
+          if (log_rows.length > 5000) log_rows.splice(0, log_rows.length - 5000)
+          render_tree()
+          render_log()
+        }
+
+        function connect() {
+          const es = new EventSource('/api/events')
+          es.addEventListener('open', () => set_conn('ok', 'live'))
+          es.addEventListener('error', () => set_conn('err', 'reconnecting…'))
+          es.addEventListener('trajectory', (e) => {
+            try { ingest(JSON.parse(e.data)) } catch {}
+          })
+          es.addEventListener('close', () => { es.close(); set_conn('err', 'closed') })
+        }
+
+        connect()
+        setInterval(render_tree, 250)
+      })()
+    </script>
+  </body>
+</html>

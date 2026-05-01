@@ -52,6 +52,9 @@ importers:
       '@repo/stores':
         specifier: workspace:*
         version: link:packages/stores
+      '@repo/viewer':
+        specifier: workspace:*
+        version: link:packages/viewer
       '@stryker-mutator/core':
         specifier: 9.6.1
         version: 9.6.1(@types/node@24.12.2)
@@ -226,6 +229,15 @@ importers:
       '@repo/core':
         specifier: workspace:*
         version: link:../core
+
+  packages/viewer:
+    dependencies:
+      '@repo/core':
+        specifier: workspace:*
+        version: link:../core
+      zod:
+        specifier: ^4.0.0
+        version: 4.3.6
 
 packages:
 

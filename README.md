@@ -93,6 +93,7 @@ Full details: [docs/providers.md](./docs/providers.md). The `claude_cli` adapter
 - [docs/cookbook.md](./docs/cookbook.md) — retries, fan-out, judges, HITL, tool loops
 - [docs/writing-a-harness.md](./docs/writing-a-harness.md) — building a runner around fascicle
 - [examples/](./examples/) — runnable reference flows
+- [packages/viewer/README.md](./packages/viewer/README.md) — `fascicle-viewer`, the dev dashboard for live trajectory streams
 
 ## Contributing
 

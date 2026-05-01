@@ -1,0 +1,13 @@
+id: no-engine-import-from-viewer
+message: "@repo/viewer is a dev tool that reads the wire format. It must not import @repo/engine, @repo/composites, @repo/agents, @repo/fascicle, or any provider SDK. Types and trajectory_event_schema come from @repo/core only."
+severity: error
+language: typescript
+files:
+  - packages/viewer/src/**/*.ts
+rule:
+  any:
+    - pattern: import $$$ from '$PATH'
+    - pattern: import $$$ from "$PATH"
+constraints:
+  PATH:
+    regex: '^(@repo/(engine|composites|agents|fascicle|stores|observability)(/.*)?|@ai-sdk/.*|@openrouter/.*|ai-sdk-ollama|ai|langfuse)$'

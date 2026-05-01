@@ -52,7 +52,8 @@
     "prepublishOnly": "pnpm check && pnpm build && pnpm check:publish",
     "test": "vitest run",
     "test:watch": "vitest",
-    "types": "tsc --noEmit"
+    "types": "tsc --noEmit",
+    "fascicle-viewer": "tsx packages/viewer/src/cli.ts"
   },
   "peerDependencies": {
     "@ai-sdk/anthropic": "^3.0.0",
@@ -91,6 +92,7 @@
     "@repo/fascicle": "workspace:*",
     "@repo/observability": "workspace:*",
     "@repo/stores": "workspace:*",
+    "@repo/viewer": "workspace:*",
     "@stryker-mutator/core": "9.6.1",
     "@stryker-mutator/vitest-runner": "9.6.1",
     "@types/node": "24.12.2",

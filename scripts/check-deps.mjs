@@ -28,6 +28,7 @@ import {
 const PACKAGES_DIR = join(REPO_ROOT, 'packages');
 const CORE_PKG = join(PACKAGES_DIR, 'core', 'package.json');
 const ENGINE_PKG = join(PACKAGES_DIR, 'engine', 'package.json');
+const FASCICLE_PKG = join(PACKAGES_DIR, 'fascicle', 'package.json');
 
 const CORE_ALLOWED = new Set(['zod']);
 const ENGINE_ALLOWED = new Set(['@repo/core', 'ai', 'zod']);
@@ -146,9 +147,30 @@ async function check_publishability() {
   );
 }
 
+async function check_viewer_isolation() {
+  // The viewer ships as a separate published package (fascicle-viewer). It
+  // must NOT appear in the @repo/fascicle umbrella's dependency graph, so the
+  // runtime install graph of `fascicle` stays free of HTTP-server deps. See
+  // spec/viewer.md §3.
+  const pkg = await read_pkg(FASCICLE_PKG);
+  const all = {
+    ...(pkg.dependencies ?? {}),
+    ...(pkg.peerDependencies ?? {}),
+    ...(pkg.optionalDependencies ?? {}),
+  };
+  if (Object.prototype.hasOwnProperty.call(all, '@repo/viewer')) {
+    fail(
+      `@repo/viewer must not appear in @repo/fascicle's dependency graph. ` +
+        `Viewer is a separate dev tool (fascicle-viewer); ${FASCICLE_PKG} should not depend on it.`,
+    );
+  }
+  console.log(`check-deps: viewer isolation ok (@repo/viewer not in @repo/fascicle deps)`);
+}
+
 async function main() {
   await check_core();
   await check_engine();
+  await check_viewer_isolation();
   await check_publishability();
 }
 
