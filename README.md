@@ -121,6 +121,10 @@ For zero-latency streaming from inside a long-running flow, pair it with `http_l
 
 ## Contributing
 
+Fascicle is early and not accepting outside pull requests yet. Bug reports and feature ideas via GitHub Issues are welcome. See [CONTRIBUTING.md](./CONTRIBUTING.md).
+
+## Development
+
 This repo is a pnpm workspace. Internally the code is split into `@repo/core`, `@repo/engine`, `@repo/observability`, `@repo/stores`, and `@repo/fascicle` (umbrella). Only the umbrella reaches npm as `fascicle`. The split exists to enforce architectural boundaries (e.g. `@repo/core` cannot import adapters; only `@repo/config` reads `process.env`); fallow and the ast-grep rules in `rules/` police them.
 
 ```bash
