@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.3.5 — 2026-04-30
+
+### Added
+- `@repo/viewer` package and `fascicle-viewer` CLI: minimal in-repo dev dashboard for visualizing a fascicle run as it executes. Single static HTML page (vanilla JS, no build step), an SSE-fed span tree with active/error/emit highlighting, and a click-to-expand event log. Two transports feed one in-process broadcaster: file-tail (`fascicle-viewer .trajectory.jsonl`) for the primary case and HTTP push (`fascicle-viewer --listen` plus the new `http_logger`) for low-latency or remote attach. Localhost-only by default. Programmatic embed via `start_viewer({...})`. See `packages/viewer/README.md`.
+- `http_logger` adapter in `@repo/observability`: a `TrajectoryLogger` that POSTs each event as one line of NDJSON to a configured URL. Drops on transport error, never blocks the user flow. Wire format mirrors `filesystem_logger` byte-for-byte and parses back via `trajectory_event_schema`.
+
+### Internal
+- New ast-grep boundary rule (`rules/no-engine-import-from-viewer.yml`) keeps the viewer dev tool isolated from `@repo/engine`, composites, agents, the umbrella, stores, observability, and any provider SDK.
+- `scripts/check-deps.mjs` gains a `check_viewer_isolation` invariant: `@repo/viewer` must not appear in `@repo/fascicle`'s dependency graph, so the published `fascicle` install graph stays free of HTTP-server deps.
+- `spec/viewer.md` documents the v1 plan, scope boundaries, and the explicit non-goals that separate this dev tool from the larger `spec/studio.md` PDR.
+
 ## v0.3.4 — 2026-04-30
 
 ### Internal
