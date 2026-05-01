@@ -1,5 +1,25 @@
 # Changelog
 
+## v0.3.6 — 2026-04-30
+
+### Added
+- `bench` primitive in `@repo/composites`: online counterpart to `learn`. `bench(flow, cases, judges, options?)` runs a flow against a fixture set, scores each output via judges, and returns a structured `BenchReport` with per-case results and summary (pass_rate, mean_scores per judge, total/mean cost). Per-case observability via `trajectory_dir` (one JSONL per case) and `live_url` (push to a viewer); both can be combined. Cost is tracked in-process by intercepting `cost` events on the trajectory pipeline.
+- `judge_equals`, `judge_with`, `judge_llm` in `@repo/composites`: stock judges over `{ input, output, meta }`. `judge_llm` takes a `Step<string, string>` model so composites stays engine-free; users wire their own `model_call({...})` into the judge.
+- `regression_compare`, `read_baseline`, `write_baseline`: diff two `BenchReport`s against `pass_rate`, per-judge means, and a relative cost threshold (default 10%). Doesn't short-circuit; full delta + per-case report.
+- `tee_logger` adapter in `@repo/observability`: fan one `TrajectoryLogger` contract out to N sinks. First sink's `start_span` id is canonical; per-sink ids are translated back on `end_span`; sinks that throw don't derail the others.
+- `examples/bench_reviewer.ts` + `bench/reviewer/{cases.json,baseline.json}`: end-to-end driver against `@repo/agents`'s `reviewer`. `WRITE_BASELINE=1` records, subsequent runs compare and exit 1 on regression.
+- Cost rendering in the viewer: per-span cost badges that roll up the tree, plus a header running total (`<n> events · <m> errors · $<total>`). Run filter narrows the total. Cost attribution uses an open-span stack per `run_id`; format is 4 decimals under $0.01, 2 decimals otherwise.
+- `examples/amplify` opt-in viewer push via `AMPLIFY_VIEWER_URL`: tees the on-disk trajectory with `http_logger` when set; standalone runs without the env var keep the existing single-sink behaviour.
+
+### Changed
+- The viewer ships as part of the `fascicle` umbrella. `start_viewer` is importable from `'fascicle'`; the `fascicle-viewer` bin ships with the published tarball at `dist/bin/fascicle-viewer.js` (with `dist/static/viewer.html` copied alongside). `scripts/check-deps.mjs` now asserts inclusion (was: isolation). Runtime install graph stays free of HTTP-server deps because the viewer only uses `node:*` + `zod` + `@repo/core`.
+- README promotes the viewer to a headline surface section with `pnpm dlx fascicle-viewer` and the programmatic `start_viewer` shape.
+
+### Internal
+- `scripts/build.mjs` copies `viewer.html` into `dist/static/` and writes a tiny `dist/bin/fascicle-viewer.js` shim that drives `run_viewer_cli` from the bundled umbrella; smoke test asserts `start_viewer` and `run_viewer_cli` are exported.
+- `spec/eval.md` records the four-wedge plan and seven open questions surfaced during execution (judge_llm wiring, judge abstention encoding, bench parallelism, baseline `run_id` non-determinism, two viewer UI papercuts, and the live-amplify dogfood result: 51 events, $0.1725 cost, both transports verified end-to-end).
+- `spec/viewer.md` reframed packaging and §12 done-def items 2–3 marked verified.
+
 ## v0.3.5 — 2026-04-30
 
 ### Added
