@@ -52,9 +52,11 @@
         display: flex; gap: 8px; align-items: baseline;
         padding: 2px 6px; border-radius: 4px;
       }
-      .node .name { font-weight: 600 }
+      .node .label { font-weight: 600 }
+      .node .kind { color: var(--muted); font-size: 11px; padding: 0 4px; border: 1px solid var(--border); border-radius: 3px }
       .node .id { color: var(--muted); font-size: 11px }
       .node .elapsed { margin-left: auto; color: var(--muted); font-size: 11px }
+      .node .cost { color: var(--accent); font-size: 11px; padding-left: 6px; font-variant-numeric: tabular-nums }
       .node.running { background: var(--accent-soft); animation: pulse 1.6s ease-in-out infinite }
       .node.errored { background: var(--error-soft); color: var(--error) }
       .node.suspended { background: #ececec; font-style: italic }
@@ -115,6 +117,9 @@
         const roots = []
         const log_rows = []
         const run_ids = new Set()
+        const open_stacks = new Map() // run_id -> [span_id...] (deepest last)
+        const cost_by_run = new Map() // run_id -> total cost in usd
+        let unattributed_cost = 0     // cost events with no matching run / open span
         let active_run = ''
         let total = 0
         let errors = 0
@@ -161,6 +166,22 @@
           return (ms / 1000).toFixed(2) + 's'
         }
 
+        function format_cost(usd) {
+          // < 1¢ shown to 4 decimals, otherwise to 2 decimals (per spec/eval.md §5)
+          if (usd < 0.01) return '$' + usd.toFixed(4)
+          return '$' + usd.toFixed(2)
+        }
+
+        function span_cost_total(span) {
+          // Direct cost on this span plus the rolled-up cost of every descendant.
+          let sum = span.cost_self
+          for (const cid of span.children) {
+            const child = spans.get(cid)
+            if (child) sum += span_cost_total(child)
+          }
+          return sum
+        }
+
         function render_tree() {
           if (spans.size === 0) {
             $tree.replaceChildren(empty_message('waiting for events…'))
@@ -181,18 +202,31 @@
           const node = document.createElement('div')
           node.className = 'node ' + span.state
           if (span.flash_until && span.flash_until > Date.now()) node.classList.add('emit-flash')
-          const name = document.createElement('span')
-          name.className = 'name'
-          name.textContent = span.name
+          const label = document.createElement('span')
+          label.className = 'label'
+          label.textContent = span.label
+          node.appendChild(label)
+          if (span.kind && span.kind !== span.label) {
+            const kind = document.createElement('span')
+            kind.className = 'kind'
+            kind.textContent = span.kind
+            node.appendChild(kind)
+          }
           const sid = document.createElement('span')
           sid.className = 'id'
           sid.textContent = span.span_id
           const elapsed = document.createElement('span')
           elapsed.className = 'elapsed'
           elapsed.textContent = format_elapsed(span)
-          node.appendChild(name)
           node.appendChild(sid)
           node.appendChild(elapsed)
+          const cost = span_cost_total(span)
+          if (cost > 0) {
+            const cost_el = document.createElement('span')
+            cost_el.className = 'cost'
+            cost_el.textContent = format_cost(cost)
+            node.appendChild(cost_el)
+          }
           li.appendChild(node)
           if (span.children.length) {
             const ul = document.createElement('ul')
@@ -231,7 +265,15 @@
             })
             $log.appendChild(div)
           }
-          $counts.textContent = total + ' events · ' + errors + ' errors'
+          let cost_total
+          if (active_run) {
+            cost_total = cost_by_run.get(active_run) ?? 0
+          } else {
+            cost_total = unattributed_cost
+            for (const v of cost_by_run.values()) cost_total += v
+          }
+          const cost_label = cost_total > 0 ? ' · ' + format_cost(cost_total) : ''
+          $counts.textContent = total + ' events · ' + errors + ' errors' + cost_label
         }
 
         function preview(event) {
@@ -247,7 +289,8 @@
           if (event.kind === 'span_start') {
             const span = {
               span_id: event.span_id,
-              name: event.name,
+              label: event.id ?? event.name,
+              kind: event.name,
               run_id: event.run_id,
               parent_span_id: event.parent_span_id,
               state: 'running',
@@ -255,6 +298,7 @@
               started_at: ts,
               ended_at: null,
               flash_until: 0,
+              cost_self: 0,
             }
             spans.set(event.span_id, span)
             if (event.parent_span_id && spans.has(event.parent_span_id)) {
@@ -262,6 +306,9 @@
             } else {
               roots.push(event.span_id)
             }
+            const stack_key = event.run_id ?? ''
+            if (!open_stacks.has(stack_key)) open_stacks.set(stack_key, [])
+            open_stacks.get(stack_key).push(event.span_id)
           } else if (event.kind === 'span_end') {
             const span = spans.get(event.span_id)
             if (span) {
@@ -270,6 +317,21 @@
               span.state = has_error ? 'errored' : 'done'
               if (has_error) errors++
             }
+            const stack_key = event.run_id ?? ''
+            const stack = open_stacks.get(stack_key)
+            if (stack) {
+              const idx = stack.lastIndexOf(event.span_id)
+              if (idx !== -1) stack.splice(idx, 1)
+            }
+          } else if (event.kind === 'cost') {
+            const usd = typeof event.total_usd === 'number' ? event.total_usd : 0
+            const run_key = event.run_id ?? ''
+            cost_by_run.set(run_key, (cost_by_run.get(run_key) ?? 0) + usd)
+            const stack = open_stacks.get(run_key)
+            const target_id = stack && stack.length > 0 ? stack[stack.length - 1] : null
+            const target = target_id ? spans.get(target_id) : null
+            if (target) target.cost_self += usd
+            else unattributed_cost += usd
           } else if (event.kind === 'emit') {
             const span = spans.get(event.span_id)
             if (span) span.flash_until = ts + 200
