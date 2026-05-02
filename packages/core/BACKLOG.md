@@ -103,7 +103,7 @@ These are tracked in spec.md §13 but summarized here for BACKLOG readers.
 Taken from spec.md §10, surfaced here so the first post-v1 retrospective
 has a checklist:
 
-- Which of the 16 primitives get used daily, weekly, never?
+- Which of the 18 primitives get used daily, weekly, never?
 - Does `scope` + `stash` + `use` earn its complexity, or does
   output-chaining cover the real cases?
 - Is `tournament` redundant with `ensemble`?

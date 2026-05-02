@@ -6,7 +6,7 @@ The mental model behind fascicle. Read this once — the rest of the docs assume
 
 fascicle ships two independently useful layers, re-exported from one package.
 
-- **Composition layer** (`@repo/core`, surfaced via `fascicle`). 16 primitives for composing work out of plain values. No network, no LLM calls, no ambient state.
+- **Composition layer** (`@repo/core` + `@repo/composites`, surfaced via `fascicle`). 18 primitives for composing work out of plain values. No network, no LLM calls, no ambient state.
 - **Engine layer** (`@repo/engine`, surfaced via `fascicle`). `create_engine(config)` returns a unified `generate` surface over seven provider adapters. No composition, no step plumbing.
 
 They are glued by exactly one value: `model_call` (in the umbrella package). That is the only file allowed to import values from both layers — an ast-grep rule in `rules/` enforces it. Everything else either composes or generates, never both.
@@ -48,6 +48,8 @@ pipe        post-process an inner step's output with a plain function
 retry       re-run on failure with exponential backoff
 fallback    run a backup if the primary throws
 timeout     cancel an inner step after N ms
+loop        bounded iteration with carry-state and optional convergence guard
+compose     label a composite step for trajectory output
 adversarial build, critique, loop until accept or max_rounds
 ensemble    run N members, pick highest by score
 tournament  single-elimination bracket

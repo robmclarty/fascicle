@@ -21,6 +21,8 @@ no ambient state.
 | `retry` | composer | re-run an inner step with exponential backoff |
 | `fallback` | composer | run a backup step on primary failure |
 | `timeout` | composer | cancel an inner step after a deadline |
+| `loop` | composer | bounded iteration with carry-state and optional guard |
+| `compose` | composer | label a composite step for trajectory output |
 | `adversarial` | composer | build-and-critique loop |
 | `ensemble` | composer | N-of-M pick best by score |
 | `tournament` | composer | single-elimination bracket |
@@ -58,7 +60,7 @@ This one invariant buys the rest:
 - **No coupling.** Steps are values, not registered entities. Two
   unrelated flows never share state unless the caller injects it.
 
-## The 16 primitives
+## The 18 primitives
 
 Copy these one-liners into an LLM's system prompt and it can write flows
 from English specifications:
@@ -74,6 +76,10 @@ from English specifications:
   failure with exponential backoff.
 - `fallback(primary, backup)` — run `backup` if `primary` throws.
 - `timeout(inner, ms)` — cancel `inner` after `ms`.
+- `loop({ init, body, guard?, finish, max_rounds })` — bounded iteration
+  with carry-state. Non-convergence is data, not error.
+- `compose(name, inner)` — label a composite step so it shows up by intent
+  in trajectories and `describe` output.
 - `adversarial({ build, critique, accept, max_rounds })` — propose, critique,
   loop.
 - `ensemble({ members, score, select? })` — pick the best of several.

@@ -3,7 +3,9 @@
  *
  * Side-effect imports ensure every composer registers itself with the runner
  * at module load. Importing anything from `@repo/core` populates the
- * dispatch table with all 16 primitives.
+ * dispatch table with the core primitives. Built-in composites
+ * (adversarial, ensemble, tournament, consensus) live in @repo/composites
+ * and surface through the umbrella package.
  */
 
 import flow_schema_data from './flow-schema.json' with { type: 'json' }

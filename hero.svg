@@ -53,7 +53,7 @@
 
   <rect x="220" y="152" width="440" height="86" rx="14" fill="url(#step-grad)" stroke="#d4a72c" stroke-width="2.5"/>
   <text x="440" y="198" text-anchor="middle" class="mono"><tspan class="step-name">Step</tspan><tspan class="step-sig">&lt;i, o&gt;</tspan></text>
-  <text x="440" y="222" text-anchor="middle" class="sans step-line">one shape. 16 primitives. 7 providers.</text>
+  <text x="440" y="222" text-anchor="middle" class="sans step-line">one shape. 18 primitives. 7 providers.</text>
 
   <path d="M440 238 V263 H160 V285" class="flow flow-out"/>
   <path d="M440 238 V285" class="flow flow-out"/>
@@ -72,6 +72,6 @@
   <g transform="translate(600, 285)">
     <rect width="240" height="68" rx="10" fill="none" stroke="#d0d7de" stroke-width="1.25"/>
     <text x="120" y="34" text-anchor="middle" class="mono compo-name">retry(step, 3)</text>
-    <text x="120" y="54" text-anchor="middle" class="mono compo-sub">+ 13 more primitives</text>
+    <text x="120" y="54" text-anchor="middle" class="mono compo-sub">+ 15 more primitives</text>
   </g>
 </svg>

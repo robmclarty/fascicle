@@ -2,7 +2,7 @@
 
 ![Step<i, o> — an LLM call, a plain function, and a tool call are all Step<i, o>; a composition of Steps is itself a Step<i, o>](./hero.svg)
 
-Compose agents out of LLM calls, tool calls, and plain functions. Everything is a `Step<i, o>`. Wire steps together with 16 primitives (`sequence`, `parallel`, `branch`, `retry`, `ensemble`, `checkpoint`, …) and run them as plain values. One `generate` surface fronts seven provider adapters: Anthropic, OpenAI, Google, OpenRouter, Ollama, LM Studio, and a `claude_cli` subprocess that drives the Claude Code CLI.
+Compose agents out of LLM calls, tool calls, and plain functions. Everything is a `Step<i, o>`. Wire steps together with 18 primitives (`sequence`, `parallel`, `branch`, `retry`, `loop`, `ensemble`, `checkpoint`, …) and run them as plain values. One `generate` surface fronts seven provider adapters: Anthropic, OpenAI, Google, OpenRouter, Ollama, LM Studio, and a `claude_cli` subprocess that drives the Claude Code CLI.
 
 No framework lifecycle. No ambient state. No decorators. Adapters are passed in per run.
 
@@ -53,7 +53,30 @@ try {
 
 ## What's in the box
 
-**Composition primitives (16).** `step`, `sequence`, `parallel`, `branch`, `map`, `pipe`, `retry`, `fallback`, `timeout`, `adversarial`, `ensemble`, `tournament`, `consensus`, `checkpoint`, `suspend`, `scope`/`stash`/`use`. Plus `run`, `run.stream`, and `describe`. Every composer takes `Step<i, o>` and returns `Step<i, o>`. Anything that fits a step fits any composition of steps.
+**Composition primitives (18).** Every composer takes `Step<i, o>` and returns `Step<i, o>`. Anything that fits a step fits any composition of steps.
+
+| Primitive | Shape |
+| --- | --- |
+| `step` | lift a plain function into `Step<i, o>` |
+| `sequence` | run A then B then C, threading the value |
+| `parallel` | run a named map of steps concurrently |
+| `branch` | route on a predicate of the input |
+| `map` | run a step per array element, optional concurrency cap |
+| `pipe` | post-process an inner step's output with a plain function |
+| `retry` | re-run on failure with exponential backoff |
+| `fallback` | run a backup if the primary throws |
+| `timeout` | cancel an inner step after N ms |
+| `loop` | bounded iteration with carry-state and an optional convergence guard |
+| `compose` | label a composite so it shows up by intent in trajectories |
+| `adversarial` | build, critique, repeat until accept or `max_rounds` |
+| `ensemble` | run N members, pick the highest-scoring result |
+| `tournament` | single-elimination bracket |
+| `consensus` | run N concurrently, accept only if `>= quorum` agree |
+| `checkpoint` | memoize an inner step by key in a `CheckpointStore` |
+| `suspend` | pause for external input; resume later with `resume_data` |
+| `scope` / `stash` / `use` | named state across non-adjacent steps |
+
+Plus `run`, `run.stream`, and `describe`.
 
 **AI engine.** `create_engine(config)` returns one `generate` surface across seven providers. Aliases (`sonnet`, `opus`, `gpt-4o`, `cli-sonnet`, …) resolve to `provider:model_id`. Reasoning effort (`'low' | 'medium' | 'high'`) is translated per provider. Cost estimation uses a pricing table with per-engine overrides.
 

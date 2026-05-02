@@ -39,7 +39,7 @@ console.log(result); // 4
 
 That's all of it. Every composable unit is a `Step<i, o>`. Every composer returns a `Step<i, o>`. You can nest arbitrarily.
 
-## The 16 primitives
+## The 18 primitives
 
 The composition layer is small on purpose:
 
@@ -54,6 +54,8 @@ The composition layer is small on purpose:
 | `retry`               | Re-run on failure with a backoff policy.                    |
 | `fallback`            | Try A, fall back to B on failure.                           |
 | `timeout`             | Abort a step after N milliseconds.                          |
+| `loop`                | Bounded iteration with carry-state and an optional guard.   |
+| `compose`             | Label a composite step for trajectory output.               |
 | `adversarial`         | Build, critique, repeat until accept or `max_rounds`.       |
 | `ensemble`            | Run N members, pick the highest-scoring result.             |
 | `tournament`          | Pairwise compare members, pick the bracket winner.          |
