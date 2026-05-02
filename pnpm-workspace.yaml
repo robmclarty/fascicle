@@ -2,6 +2,7 @@ packages:
   - 'packages/*'
   - 'examples/red-green-refactor'
   - 'examples/amplify'
+  - 'examples/mcp-server'
 
 allowBuilds:
   '@ast-grep/cli': true
