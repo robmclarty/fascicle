@@ -1,0 +1,276 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 410" role="img" aria-labelledby="myc-title myc-desc">
+  <title id="myc-title">fascicle — a substrate for agents</title>
+  <desc id="myc-desc">Three mushrooms — model_call, step, and tool — fruit from a shared mycelium network in the soil. Each mushroom is a Step&lt;i, o&gt;; the threads weaving them together are compositions.</desc>
+
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#fbf5e2"/>
+      <stop offset="100%" stop-color="#f3e9cc"/>
+    </linearGradient>
+    <linearGradient id="soil" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#b89668"/>
+      <stop offset="55%" stop-color="#8d6c40"/>
+      <stop offset="100%" stop-color="#5e4424"/>
+    </linearGradient>
+    <linearGradient id="cap-ochre" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#daa05a"/>
+      <stop offset="100%" stop-color="#9a5f1f"/>
+    </linearGradient>
+    <linearGradient id="cap-burgundy" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#a4492e"/>
+      <stop offset="100%" stop-color="#6a2517"/>
+    </linearGradient>
+    <linearGradient id="cap-sage" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#9aac63"/>
+      <stop offset="100%" stop-color="#566532"/>
+    </linearGradient>
+    <radialGradient id="hub-glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#fbf4e0" stop-opacity="0.55"/>
+      <stop offset="100%" stop-color="#fbf4e0" stop-opacity="0"/>
+    </radialGradient>
+    <style>
+      .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+      .sans { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; }
+      .label    { font-size: 12px; font-weight: 700; fill: #2c1d10; letter-spacing: 0.02em; }
+      .sublabel { font-size: 10px; fill: #6b4f2e; font-style: italic; }
+      .caption  { font-size: 12.5px; fill: #2c1d10; }
+      .stem-fill { fill: #f1e1be; }
+      .stroke-dark { stroke: #2c1d10; }
+      .gill { stroke: #6b4a28; stroke-width: 0.55; opacity: 0.7; stroke-linecap: round; }
+      .myc-thick { stroke: #f7ebc8; fill: none; stroke-linecap: round; opacity: 0.95; }
+      .myc-mid   { stroke: #f4e3b8; fill: none; stroke-linecap: round; opacity: 0.75; }
+      .myc-thin  { stroke: #ecd9a6; fill: none; stroke-linecap: round; opacity: 0.55; }
+      .myc-node  { fill: #fbf4e0; stroke: #5a3f22; stroke-width: 0.4; }
+    </style>
+  </defs>
+
+  <rect width="880" height="220" fill="url(#sky)"/>
+  <rect y="210" width="880" height="170" fill="url(#soil)"/>
+
+  <path d="M0 213 Q 60 207, 130 212 T 260 214 T 400 209 T 540 213 T 680 207 T 800 212 L 880 211 L 880 215 L 0 215 Z"
+        fill="#8a6536" opacity="0.45"/>
+
+  <g fill="#3a2818" opacity="0.35">
+    <circle cx="60"  cy="280" r="0.9"/>
+    <circle cx="220" cy="320" r="1.1"/>
+    <circle cx="380" cy="260" r="0.7"/>
+    <circle cx="540" cy="340" r="1"/>
+    <circle cx="660" cy="290" r="0.8"/>
+    <circle cx="780" cy="310" r="1"/>
+    <circle cx="100" cy="350" r="0.7"/>
+    <circle cx="320" cy="300" r="0.8"/>
+    <circle cx="600" cy="270" r="0.7"/>
+    <circle cx="450" cy="345" r="0.9"/>
+    <circle cx="170" cy="265" r="0.6"/>
+    <circle cx="730" cy="345" r="0.7"/>
+  </g>
+
+  <circle cx="180" cy="222" r="42" fill="url(#hub-glow)"/>
+  <circle cx="440" cy="232" r="48" fill="url(#hub-glow)"/>
+  <circle cx="700" cy="222" r="42" fill="url(#hub-glow)"/>
+
+  <g class="myc-thick" stroke-width="2.1">
+    <path d="M 180 222 C 240 240, 320 252, 380 248 S 420 240, 440 232"/>
+    <path d="M 440 232 C 500 244, 560 256, 620 252 S 680 240, 700 222"/>
+    <path d="M 180 224 C 250 268, 360 296, 440 244"/>
+    <path d="M 700 224 C 630 268, 520 296, 440 244"/>
+  </g>
+  <g class="myc-mid" stroke-width="1.3">
+    <path d="M 180 226 C 250 248, 330 260, 440 240"/>
+    <path d="M 700 226 C 630 248, 550 260, 440 240"/>
+    <path d="M 180 228 C 260 280, 360 308, 440 252"/>
+    <path d="M 700 228 C 620 280, 520 308, 440 252"/>
+  </g>
+
+  <g class="myc-mid" stroke-width="1.05">
+    <path d="M 180 220 C 150 245, 110 268, 78 296"/>
+    <path d="M 180 220 C 195 260, 178 308, 162 352"/>
+    <path d="M 180 220 C 240 258, 252 308, 268 360"/>
+    <path d="M 180 220 C 130 240, 90 248, 50 252"/>
+    <path d="M 440 230 C 418 270, 398 314, 388 362"/>
+    <path d="M 440 230 C 462 278, 484 322, 502 364"/>
+    <path d="M 440 230 C 380 258, 332 280, 288 292"/>
+    <path d="M 440 230 C 498 252, 548 282, 588 320"/>
+    <path d="M 700 220 C 728 248, 768 270, 808 292"/>
+    <path d="M 700 220 C 720 270, 730 312, 740 360"/>
+    <path d="M 700 220 C 680 262, 660 312, 648 362"/>
+    <path d="M 700 220 C 760 240, 810 248, 854 252"/>
+  </g>
+
+  <g class="myc-thin" stroke-width="0.65">
+    <path d="M 78 296 C 88 322, 70 346, 50 366"/>
+    <path d="M 78 296 C 110 312, 130 332, 142 362"/>
+    <path d="M 162 352 C 180 362, 202 366, 224 370"/>
+    <path d="M 268 360 C 290 352, 312 346, 334 360"/>
+    <path d="M 388 362 C 412 366, 432 360, 452 366"/>
+    <path d="M 502 364 C 522 354, 542 360, 562 366"/>
+    <path d="M 588 320 C 608 340, 628 352, 648 366"/>
+    <path d="M 740 360 C 760 352, 782 356, 802 366"/>
+    <path d="M 808 292 C 832 312, 852 332, 870 354"/>
+    <path d="M 288 292 C 264 312, 232 322, 210 342"/>
+    <path d="M 288 292 C 308 314, 328 322, 354 332"/>
+    <path d="M 200 280 C 232 286, 268 292, 298 296"/>
+    <path d="M 460 280 C 492 286, 528 292, 558 296"/>
+    <path d="M 350 326 C 380 330, 410 334, 440 338"/>
+    <path d="M 600 312 C 630 318, 660 322, 688 326"/>
+    <path d="M 130 322 C 162 326, 192 330, 222 336"/>
+    <path d="M 720 290 C 750 296, 778 302, 800 306"/>
+    <path d="M 110 250 C 142 256, 162 262, 178 268"/>
+    <path d="M 770 250 C 738 256, 718 262, 702 268"/>
+    <path d="M 380 250 C 410 256, 432 262, 446 268"/>
+    <path d="M 500 252 C 472 258, 452 262, 442 268"/>
+    <path d="M 240 332 C 270 338, 296 342, 320 346"/>
+    <path d="M 560 332 C 590 338, 616 342, 640 346"/>
+  </g>
+
+  <g class="myc-node">
+    <circle cx="180" cy="220" r="2.8"/>
+    <circle cx="440" cy="230" r="3"/>
+    <circle cx="700" cy="220" r="2.8"/>
+    <circle cx="78"  cy="296" r="1.7"/>
+    <circle cx="162" cy="352" r="1.3"/>
+    <circle cx="268" cy="360" r="1.3"/>
+    <circle cx="388" cy="362" r="1.3"/>
+    <circle cx="502" cy="364" r="1.3"/>
+    <circle cx="588" cy="320" r="1.7"/>
+    <circle cx="740" cy="360" r="1.3"/>
+    <circle cx="808" cy="292" r="1.7"/>
+    <circle cx="288" cy="292" r="1.5"/>
+    <circle cx="350" cy="326" r="1.1"/>
+    <circle cx="648" cy="366" r="1.1"/>
+    <circle cx="50"  cy="252" r="1.2"/>
+    <circle cx="854" cy="252" r="1.2"/>
+  </g>
+
+  <!-- Mushroom 1: model_call — tall ochre, morel/chanterelle silhouette -->
+  <g transform="translate(180, 0)">
+    <path d="M -7 215 Q -11 188, -8 158 L 8 158 Q 11 188, 7 215 Z"
+          class="stem-fill stroke-dark" stroke-width="1.2"/>
+    <path d="M -28 158
+             Q -36 146, -30 126
+             Q -26 100, -18 82
+             Q -10 70, 0 68
+             Q 10 70, 18 82
+             Q 26 100, 30 126
+             Q 36 146, 28 158
+             Q 22 165, 12 162
+             Q 6 168, 0 167
+             Q -6 168, -12 162
+             Q -22 165, -28 158 Z"
+          fill="url(#cap-ochre)" stroke="#2c1d10" stroke-width="1.4"/>
+    <path d="M -18 96 Q -8 80, 6 76" stroke="#f5cf95" stroke-width="1.4" fill="none" opacity="0.7" stroke-linecap="round"/>
+    <path d="M -28 158 Q -14 162, 0 161 Q 14 162, 28 158" stroke="#4a1c0a" stroke-width="0.8" fill="none" opacity="0.55"/>
+    <g class="gill">
+      <line x1="-18" y1="160" x2="-18" y2="165"/>
+      <line x1="-12" y1="162" x2="-12" y2="166"/>
+      <line x1="-6"  y1="163" x2="-6"  y2="166"/>
+      <line x1="0"   y1="163" x2="0"   y2="166"/>
+      <line x1="6"   y1="163" x2="6"   y2="166"/>
+      <line x1="12"  y1="162" x2="12"  y2="166"/>
+      <line x1="18"  y1="160" x2="18"  y2="165"/>
+    </g>
+  </g>
+
+  <!-- Mushroom 2: step — classic dome, burgundy with cream spots -->
+  <g transform="translate(440, 0)">
+    <path d="M -10 215 Q -13 184, -10 158 L 10 158 Q 13 184, 10 215 Z"
+          class="stem-fill stroke-dark" stroke-width="1.3"/>
+    <path d="M -13 178 Q -16 181, -11 183 L 11 183 Q 16 181, 13 178 Z"
+          fill="#e8d4a8" stroke="#2c1d10" stroke-width="0.9"/>
+    <path d="M -42 145 Q -50 108, -28 86 Q 0 70, 28 86 Q 50 108, 42 145 Q 38 159, 0 161 Q -38 159, -42 145 Z"
+          fill="url(#cap-burgundy)" stroke="#2c1d10" stroke-width="1.4"/>
+    <g fill="#fbf4e0" opacity="0.88">
+      <ellipse cx="-22" cy="105" rx="3.6" ry="2.6"/>
+      <ellipse cx="-5"  cy="91"  rx="3"   ry="2.1"/>
+      <ellipse cx="14"  cy="100" rx="3.5" ry="2.5"/>
+      <ellipse cx="28"  cy="115" rx="2.5" ry="1.8"/>
+      <ellipse cx="-30" cy="125" rx="2.5" ry="1.8"/>
+      <ellipse cx="6"   cy="120" rx="2.6" ry="1.9"/>
+      <ellipse cx="22"  cy="132" rx="2.2" ry="1.6"/>
+    </g>
+    <path d="M -28 100 Q -10 80, 16 82" stroke="#d97a55" stroke-width="1.2" fill="none" opacity="0.45" stroke-linecap="round"/>
+    <path d="M -42 145 Q 0 152, 42 145" stroke="#3a1208" stroke-width="0.8" fill="none" opacity="0.55"/>
+    <g class="gill">
+      <line x1="-32" y1="153" x2="-32" y2="159"/>
+      <line x1="-22" y1="155" x2="-22" y2="160"/>
+      <line x1="-12" y1="156" x2="-12" y2="160"/>
+      <line x1="0"   y1="156" x2="0"   y2="160"/>
+      <line x1="12"  y1="156" x2="12"  y2="160"/>
+      <line x1="22"  y1="155" x2="22"  y2="160"/>
+      <line x1="32"  y1="153" x2="32"  y2="159"/>
+    </g>
+  </g>
+
+  <!-- Mushroom 3: tool — small sage cluster -->
+  <g transform="translate(700, 0)">
+    <g transform="translate(-22, 0)">
+      <path d="M -5 215 Q -6 196, -4 178 L 4 178 Q 6 196, 5 215 Z"
+            class="stem-fill stroke-dark" stroke-width="1"/>
+      <path d="M -14 178 Q -17 154, -8 144 Q 0 139, 8 144 Q 17 154, 14 178 Q 12 184, 0 184 Q -12 184, -14 178 Z"
+            fill="url(#cap-sage)" stroke="#2c1d10" stroke-width="1.1"/>
+      <path d="M -10 154 Q -2 144, 6 146" stroke="#cad89a" stroke-width="0.9" fill="none" opacity="0.6" stroke-linecap="round"/>
+      <g class="gill">
+        <line x1="-8" y1="180" x2="-8" y2="184"/>
+        <line x1="-3" y1="181" x2="-3" y2="184"/>
+        <line x1="2"  y1="181" x2="2"  y2="184"/>
+        <line x1="7"  y1="180" x2="7"  y2="184"/>
+      </g>
+    </g>
+    <g transform="translate(2, 0)">
+      <path d="M -7 215 Q -10 182, -5 152 L 5 152 Q 10 182, 7 215 Z"
+            class="stem-fill stroke-dark" stroke-width="1.2"/>
+      <path d="M -20 152 Q -25 118, -10 98 Q 0 90, 10 98 Q 25 118, 20 152 Q 16 160, 0 161 Q -16 160, -20 152 Z"
+            fill="url(#cap-sage)" stroke="#2c1d10" stroke-width="1.3"/>
+      <path d="M -14 108 Q -4 92, 8 96" stroke="#d4dfa4" stroke-width="1.1" fill="none" opacity="0.65" stroke-linecap="round"/>
+      <path d="M -20 152 Q 0 158, 20 152" stroke="#2c3a14" stroke-width="0.7" fill="none" opacity="0.5"/>
+      <g class="gill">
+        <line x1="-12" y1="155" x2="-12" y2="160"/>
+        <line x1="-6"  y1="156" x2="-6"  y2="160"/>
+        <line x1="0"   y1="156" x2="0"   y2="160"/>
+        <line x1="6"   y1="156" x2="6"   y2="160"/>
+        <line x1="12"  y1="155" x2="12"  y2="160"/>
+      </g>
+    </g>
+    <g transform="translate(26, 0)">
+      <path d="M -5 215 Q -6 192, -4 174 L 4 174 Q 6 192, 5 215 Z"
+            class="stem-fill stroke-dark" stroke-width="1"/>
+      <path d="M -13 174 Q -16 148, -7 138 Q 0 134, 7 138 Q 16 148, 13 174 Q 11 180, 0 180 Q -11 180, -13 174 Z"
+            fill="url(#cap-sage)" stroke="#2c1d10" stroke-width="1.1"/>
+      <path d="M -9 148 Q -2 138, 6 140" stroke="#cad89a" stroke-width="0.9" fill="none" opacity="0.6" stroke-linecap="round"/>
+      <g class="gill">
+        <line x1="-8" y1="176" x2="-8" y2="180"/>
+        <line x1="-3" y1="177" x2="-3" y2="180"/>
+        <line x1="2"  y1="177" x2="2"  y2="180"/>
+        <line x1="7"  y1="176" x2="7"  y2="180"/>
+      </g>
+    </g>
+  </g>
+
+  <g class="myc-thin" stroke-width="0.7">
+    <path d="M 174 215 C 168 220, 162 224, 156 228"/>
+    <path d="M 186 215 C 192 220, 198 224, 204 228"/>
+    <path d="M 432 215 C 424 222, 416 228, 408 234"/>
+    <path d="M 448 215 C 456 222, 464 228, 472 234"/>
+    <path d="M 678 215 C 672 220, 666 224, 660 228"/>
+    <path d="M 700 215 C 706 220, 714 224, 722 228"/>
+    <path d="M 726 215 C 732 220, 740 224, 748 228"/>
+  </g>
+
+  <g class="mono">
+    <text x="180" y="38" text-anchor="middle" class="label">model_call</text>
+    <text x="180" y="52" text-anchor="middle" class="sublabel">an LLM call</text>
+
+    <text x="440" y="38" text-anchor="middle" class="label">step</text>
+    <text x="440" y="52" text-anchor="middle" class="sublabel">a plain function</text>
+
+    <text x="700" y="38" text-anchor="middle" class="label">tool</text>
+    <text x="700" y="52" text-anchor="middle" class="sublabel">a tool call</text>
+  </g>
+
+  <rect y="380" width="880" height="30" fill="#f3e9cc"/>
+  <line x1="0" y1="380" x2="880" y2="380" stroke="#8a6536" stroke-width="0.5" opacity="0.6"/>
+
+  <text x="440" y="400" text-anchor="middle" class="sans caption">
+    a substrate for agents — every mushroom is a <tspan class="mono" font-weight="700">Step&lt;i, o&gt;</tspan>, every thread is a composition
+  </text>
+</svg>
