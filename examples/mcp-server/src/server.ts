@@ -54,9 +54,12 @@ server.registerTool(
     description: 'Return the input string reversed.',
     inputSchema: { text: z.string() },
   },
-  async ({ text }) => ({
-    content: [{ type: 'text', text: [...text].reverse().join('') }],
-  }),
+  async ({ text }) => {
+    const segments = Array.from(new Intl.Segmenter().segment(text), (s) => s.segment)
+    return {
+      content: [{ type: 'text', text: segments.toReversed().join('') }],
+    }
+  },
 )
 
 server.registerTool(

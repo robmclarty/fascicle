@@ -53,24 +53,17 @@ try {
   await client.close()
 }
 
+function is_record(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object'
+}
+
 function text_of(result: unknown): string {
-  if (
-    result === null ||
-    typeof result !== 'object' ||
-    !('content' in result) ||
-    !Array.isArray((result as { content: unknown }).content)
-  ) {
+  if (!is_record(result) || !Array.isArray(result['content'])) {
     return ''
   }
-  const parts = (result as { content: ReadonlyArray<unknown> }).content
-  for (const part of parts) {
-    if (
-      part !== null &&
-      typeof part === 'object' &&
-      (part as { type?: unknown }).type === 'text' &&
-      typeof (part as { text?: unknown }).text === 'string'
-    ) {
-      return (part as { text: string }).text
+  for (const part of result['content']) {
+    if (is_record(part) && part['type'] === 'text' && typeof part['text'] === 'string') {
+      return part['text']
     }
   }
   return ''
