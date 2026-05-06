@@ -138,12 +138,23 @@ type TrajectoryLogger = {
 };
 ```
 
-`@repo/observability` ships two adapters:
+The `fascicle/adapters` subpath ships four trajectory loggers:
 
-- `noop_logger` — drops everything. The default.
+- `noop_logger` — drops everything. The default when no `trajectory` is passed.
 - `filesystem_logger({ output_path })` — appends JSON lines to a file.
+- `http_logger({ url })` — POSTs each event as NDJSON; pairs with the viewer's `/api/ingest`.
+- `tee_logger(a, b, ...)` — fans one logger contract out to many sinks.
 
 Writing your own is the expected path once you outgrow the defaults (push to Honeycomb, DynamoDB, a TUI, whatever).
+
+### Adapter limits
+
+The bundled loggers have two known limits worth understanding before you wire them into anything long-running:
+
+- **`filesystem_logger` writes synchronously.** It calls `appendFileSync` on every `record`, `start_span`, and `end_span`. That keeps the implementation a dozen lines and makes failures easy to reason about, but it blocks the event loop on each write. Fine for dev tools, CLIs, and short batch runs; not what you want on a hot request path. Swap in a custom logger that buffers and flushes asynchronously if that matters.
+- **Span stacks are not async-context-aware.** `filesystem_logger` and `http_logger` track open spans on an in-memory stack, so the recorded `parent_span_id` is "whichever span opened most recently." Two siblings spawned concurrently from the same parent will both see whichever opened last as their parent until proper async-context propagation lands. The wire format is internally consistent within a single sink; what's lossy is the cross-sibling ordering under concurrency.
+
+`http_logger` additionally swallows transport errors by default — pass `on_error` to surface them. Trajectory writes are never load-bearing; a logger that throws does not fail the run.
 
 ### What gets recorded
 
@@ -189,7 +200,7 @@ const flow = scope([
 
 ```ts
 import { checkpoint, step } from 'fascicle';
-import { filesystem_store } from '@repo/stores';
+import { filesystem_store } from 'fascicle/adapters';
 
 const flow = checkpoint(
   step('expensive', async (spec: { hash: string }) => compute(spec)),

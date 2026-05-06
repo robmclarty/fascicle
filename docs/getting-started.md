@@ -89,8 +89,7 @@ const final = await handle.result;
 Two adapter slots live on the run options: `trajectory` (observation) and `checkpoint_store` (persistence for `checkpoint` and `suspend`).
 
 ```ts
-import { filesystem_logger } from '@repo/observability';
-import { filesystem_store }  from '@repo/stores';
+import { filesystem_logger, filesystem_store } from 'fascicle/adapters';
 
 await run(flow, input, {
   trajectory: filesystem_logger({ output_path: '.trajectory.jsonl' }),
@@ -98,7 +97,7 @@ await run(flow, input, {
 });
 ```
 
-Adapters are plain objects that conform to `TrajectoryLogger` and `CheckpointStore` from `@repo/core`. Writing your own is the expected path once you outgrow the defaults.
+Adapters are plain objects that conform to `TrajectoryLogger` and `CheckpointStore` (both exported from `fascicle`). Writing your own is the expected path once you outgrow the defaults — the bundled `filesystem_logger` writes synchronously and uses an in-memory span stack, so for long-running servers or heavily concurrent flows you'll want a custom logger. See [docs/concepts.md](./concepts.md#adapter-limits).
 
 ## Calling a model
 

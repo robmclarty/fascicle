@@ -79,8 +79,7 @@ Key rules:
 Two seams on `RunOptions` let you observe and persist without touching flow code:
 
 ```ts
-import { filesystem_logger } from '@repo/observability';
-import { filesystem_store }  from '@repo/stores';
+import { filesystem_logger, filesystem_store } from 'fascicle/adapters';
 
 await run(flow, input, {
   trajectory: filesystem_logger({ output_path: '.trajectory.jsonl' }),
@@ -89,7 +88,7 @@ await run(flow, input, {
 });
 ```
 
-Both adapter slots accept anything that conforms to `TrajectoryLogger` / `CheckpointStore` from `@repo/core`. Roll your own to push events to Honeycomb, DynamoDB, a tmpfs, whatever fits your deployment.
+Both adapter slots accept anything that conforms to `TrajectoryLogger` / `CheckpointStore` (both exported from `fascicle`). Roll your own to push events to Honeycomb, DynamoDB, a tmpfs, whatever fits your deployment. The bundled `filesystem_logger` is sync and uses an in-memory span stack — fine for dev tools, see [concepts.md](./concepts.md#adapter-limits) before using it in long-running servers.
 
 ## Stream to a consumer
 

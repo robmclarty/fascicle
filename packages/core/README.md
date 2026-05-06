@@ -115,8 +115,7 @@ await run(flow, 1, { install_signal_handlers: false });
 Inject adapters on a per-run basis:
 
 ```typescript
-import { filesystem_logger } from '@repo/observability';
-import { filesystem_store } from '@repo/stores';
+import { filesystem_logger, filesystem_store } from 'fascicle/adapters';
 
 await run(flow, input, {
   trajectory: filesystem_logger({ output_path: '/tmp/run.jsonl' }),

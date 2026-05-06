@@ -80,17 +80,18 @@ Plus `run`, `run.stream`, and `describe`.
 
 **AI engine.** `create_engine(config)` returns one `generate` surface across seven providers. Aliases (`sonnet`, `opus`, `gpt-4o`, `cli-sonnet`, …) resolve to `provider:model_id`. Reasoning effort (`'low' | 'medium' | 'high'`) is translated per provider. Cost estimation uses a pricing table with per-engine overrides.
 
-**Adapters injected per run.**
+**Adapters injected per run.** Trajectory loggers and checkpoint stores ship under the `fascicle/adapters` subpath:
 
 ```typescript
-import { filesystem_logger } from '@repo/observability';
-import { filesystem_store } from '@repo/stores';
+import { filesystem_logger, filesystem_store } from 'fascicle/adapters';
 
 await run(flow, input, {
   trajectory: filesystem_logger({ output_path: '.trajectory.jsonl' }),
   checkpoint_store: filesystem_store({ root_dir: '.checkpoints' }),
 });
 ```
+
+`filesystem_logger` writes synchronously and the bundled span stacks aren't async-context-aware — fine for dev tools and short-lived runs, see [docs/concepts.md](./docs/concepts.md#adapter-limits) before wiring it into a long-running server. The `TrajectoryLogger` and `CheckpointStore` contracts (exported from `fascicle`) are tiny — roll your own to push events to Honeycomb, S3, etc.
 
 `run.stream(flow, input)` returns `{ events, result }` for incremental observation.
 
@@ -128,7 +129,7 @@ const handle = await start_viewer({ port: 4242 });
 await handle.close();
 ```
 
-For zero-latency streaming from inside a long-running flow, pair it with `http_logger` from `@repo/observability`. See [packages/viewer/README.md](./packages/viewer/README.md) for the full transport story.
+For zero-latency streaming from inside a long-running flow, pair it with `http_logger` from `fascicle/adapters`. See [packages/viewer/README.md](./packages/viewer/README.md) for the full transport story.
 
 ## Where to go next
 

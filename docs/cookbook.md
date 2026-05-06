@@ -187,7 +187,7 @@ const bracket = tournament({
 
 ```ts
 import { checkpoint, step } from 'fascicle';
-import { filesystem_store } from '@repo/stores';
+import { filesystem_store } from 'fascicle/adapters';
 
 const build_index = checkpoint(
   step('index', async (spec: { hash: string }) => expensive_index(spec)),
@@ -208,7 +208,7 @@ Always prefix your key with a flow name or content hash — the store is shared 
 ```ts
 import { run, suspend, suspended_error } from 'fascicle';
 import { z } from 'zod';
-import { filesystem_store } from '@repo/stores';
+import { filesystem_store } from 'fascicle/adapters';
 
 const approve = suspend({
   id: 'approve',
@@ -338,14 +338,14 @@ process.stdout.write('\n');
 ## Observing a run with a filesystem logger
 
 ```ts
-import { filesystem_logger } from '@repo/observability';
+import { filesystem_logger } from 'fascicle/adapters';
 
 await run(flow, input, {
   trajectory: filesystem_logger({ output_path: '.trajectory.jsonl' }),
 });
 ```
 
-One JSON object per line. Use `jq` or anything else to inspect.
+One JSON object per line. Use `jq` or anything else to inspect. Note `filesystem_logger` writes synchronously and uses an in-memory span stack — see [concepts.md](./concepts.md#adapter-limits) before using it on a hot path.
 
 For custom sinks, write an object that satisfies `TrajectoryLogger`:
 

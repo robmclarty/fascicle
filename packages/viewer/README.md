@@ -31,7 +31,7 @@ For zero-latency live attach, remote dev where the file isn't accessible,
 or long-running flows in a container:
 
 ```ts
-import { http_logger } from '@repo/observability'
+import { http_logger } from 'fascicle/adapters'
 
 await run(flow, input, {
   trajectory: http_logger({ url: 'http://localhost:4242/api/ingest' }),
