@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.3.7 — 2026-05-05
+
+### Added
+- Public `fascicle/adapters` subpath exposing `filesystem_logger`, `filesystem_store`, `http_logger`, `tee_logger`, and `noop_logger`. Previously these adapters lived in workspace-private packages and were unreachable by `npm install fascicle` consumers despite being referenced throughout the docs.
+- Minimal stdio MCP server example under `examples/mcp-server/`, demonstrating how to expose a `Step<i, o>` as an MCP tool.
+- `CONTRIBUTING.md` with contribution guidelines, linked from the README.
+
+### Changed
+- README hero illustration is now an animated mycelium diagram showing model_call, step, and tool fruiting from a shared substrate; viewer screenshot moved into the live-dashboard section.
+- Documented two adapter limits in `docs/concepts.md`: `filesystem_logger` writes synchronously via `appendFileSync`, and the in-memory span stack in `filesystem_logger`/`http_logger` is not async-context-aware. README, getting-started, cookbook, and writing-a-harness all cross-reference the new "Adapter limits" section.
+- README primitives count corrected to 18, with `loop` and `compose` listed in the table.
+
+### Internal
+- Added `docs/plans/menu.md` cataloguing considered-but-unshipped work.
+
 ## v0.3.6 — 2026-04-30
 
 ### Added
