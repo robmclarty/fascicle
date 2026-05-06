@@ -15,7 +15,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { run, sequence, step, type TrajectoryLogger } from '@repo/fascicle'
-import { filesystem_logger } from '@repo/observability'
+import { filesystem_logger } from '@repo/fascicle/adapters'
 
 const double = step('double', (n: number): number => n * 2)
 const increment = step('increment', (n: number): number => n + 1)

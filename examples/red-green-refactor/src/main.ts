@@ -17,7 +17,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { create_engine, run } from '@repo/fascicle'
-import { filesystem_logger } from '@repo/observability'
+import { filesystem_logger } from '@repo/fascicle/adapters'
 
 import { SEED_BEHAVIORS, type Behavior } from './behaviors.js'
 import { build_cycle } from './harness.js'

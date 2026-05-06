@@ -16,7 +16,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { checkpoint, run, step } from '@repo/fascicle'
-import { filesystem_store } from '@repo/stores'
+import { filesystem_store } from '@repo/fascicle/adapters'
 
 type build_spec = { readonly hash: string }
 

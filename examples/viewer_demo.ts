@@ -18,7 +18,7 @@ import {
   sequence,
   step,
 } from '@repo/fascicle'
-import { filesystem_logger } from '@repo/observability'
+import { filesystem_logger } from '@repo/fascicle/adapters'
 
 const sleep = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms))

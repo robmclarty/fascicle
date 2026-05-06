@@ -25,7 +25,7 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { create_engine, run, type EffortLevel } from '@repo/fascicle'
-import { filesystem_logger, http_logger, tee_logger } from '@repo/observability'
+import { filesystem_logger, http_logger, tee_logger } from '@repo/fascicle/adapters'
 import type { TrajectoryLogger } from '@repo/fascicle'
 
 import { build_loop } from './loop.js'

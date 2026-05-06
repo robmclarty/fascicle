@@ -10,7 +10,6 @@
   },
   "dependencies": {
     "@repo/fascicle": "workspace:*",
-    "@repo/observability": "workspace:*",
     "vitest": "*"
   },
   "devDependencies": {

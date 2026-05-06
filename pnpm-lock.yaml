@@ -103,9 +103,6 @@ importers:
       '@repo/fascicle':
         specifier: workspace:*
         version: link:../../packages/fascicle
-      '@repo/observability':
-        specifier: workspace:*
-        version: link:../../packages/observability
       vitest:
         specifier: '*'
         version: 4.1.4(@opentelemetry/api@1.9.0)(@types/node@24.12.2)(@vitest/coverage-v8@4.1.4)(vite@8.0.8(@types/node@24.12.2)(esbuild@0.27.7)(tsx@4.21.0)(yaml@2.8.3))
@@ -135,9 +132,6 @@ importers:
       '@repo/fascicle':
         specifier: workspace:*
         version: link:../../packages/fascicle
-      '@repo/observability':
-        specifier: workspace:*
-        version: link:../../packages/observability
       vitest:
         specifier: '*'
         version: 4.1.4(@opentelemetry/api@1.9.0)(@types/node@24.12.2)(@vitest/coverage-v8@4.1.4)(vite@8.0.8(@types/node@24.12.2)(esbuild@0.27.7)(tsx@4.21.0)(yaml@2.8.3))
@@ -230,6 +224,12 @@ importers:
       '@repo/engine':
         specifier: workspace:*
         version: link:../engine
+      '@repo/observability':
+        specifier: workspace:*
+        version: link:../observability
+      '@repo/stores':
+        specifier: workspace:*
+        version: link:../stores
       '@repo/viewer':
         specifier: workspace:*
         version: link:../viewer

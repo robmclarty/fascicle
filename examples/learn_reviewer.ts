@@ -31,7 +31,7 @@ import {
   type Improvement,
   type LearnInput,
 } from '@repo/fascicle'
-import { filesystem_logger } from '@repo/observability'
+import { filesystem_logger } from '@repo/fascicle/adapters'
 
 function make_stub_engine(canned: ReviewerOutput): Engine {
   return {

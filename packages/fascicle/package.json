@@ -5,12 +5,15 @@
   "type": "module",
   "private": true,
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./adapters": "./src/adapters.ts"
   },
   "dependencies": {
     "@repo/composites": "workspace:*",
     "@repo/core": "workspace:*",
     "@repo/engine": "workspace:*",
+    "@repo/observability": "workspace:*",
+    "@repo/stores": "workspace:*",
     "@repo/viewer": "workspace:*"
   }
 }
