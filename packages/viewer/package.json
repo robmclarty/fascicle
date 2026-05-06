@@ -1,6 +1,6 @@
 {
   "name": "@repo/viewer",
-  "version": "0.3.7",
+  "version": "0.3.8",
   "description": "Fascicle viewer: minimal in-repo dev dashboard for visualizing a fascicle run as it executes. File-tail or HTTP push, single static HTML page, no build step.",
   "type": "module",
   "private": true,

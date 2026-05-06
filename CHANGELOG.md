@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.3.8 — 2026-05-06
+
+### Fixed
+- `examples/mcp-server/` lint failures that blocked `prepublishOnly`: rewrote the `reverse_text` tool to use `Intl.Segmenter` + `Array#toReversed()` (grapheme-correct, lint-clean), and replaced the chained `as` casts in `client.ts:text_of` with a small `is_record` user-defined type guard. Smoke test output unchanged.
+
 ## v0.3.7 — 2026-05-05
 
 ### Added

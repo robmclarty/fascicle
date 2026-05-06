@@ -1,6 +1,6 @@
 {
   "name": "@repo/engine",
-  "version": "0.3.7",
+  "version": "0.3.8",
   "description": "AI engine layer for fascicle. Provider routing, alias resolution, generate(). Wraps Vercel AI SDK v6.",
   "type": "module",
   "private": true,

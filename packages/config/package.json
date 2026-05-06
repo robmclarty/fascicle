@@ -1,6 +1,6 @@
 {
   "name": "@repo/config",
-  "version": "0.3.7",
+  "version": "0.3.8",
   "description": "Env loader + zod-validated config accessors for fascicle. The only package permitted to read process.env.",
   "type": "module",
   "private": true,
