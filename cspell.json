@@ -29,6 +29,7 @@
     "dedup",
     "defaultable",
     "dogfood",
+    "ENOENT",
     "fascicle",
     "esbuild",
     "fallow",
