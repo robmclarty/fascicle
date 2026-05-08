@@ -16,6 +16,7 @@
 import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { parseArgs } from 'node:util'
+import { fileURLToPath } from 'node:url'
 import { start_viewer } from './index.js'
 
 type CliArgs = {
@@ -157,9 +158,15 @@ function describe_error(err: unknown): string {
   }
 }
 
+// ESM main-module detection. The bundler inlines this file into dist/index.js,
+// so a fragile suffix check (`endsWith('/cli.js')`) would fire whenever a
+// consumer's own entry script happened to be named cli.js — see
+// https://nodejs.org/api/esm.html#importmetaurl. Compare the resolved path of
+// this module against argv[1] so the auto-execute only fires when the file is
+// run directly (e.g. `tsx packages/viewer/src/cli.ts`), not when imported.
 const invoked_directly =
-  typeof process.argv[1] === 'string' &&
-  (process.argv[1].endsWith('/cli.ts') || process.argv[1].endsWith('/cli.js'))
+  process.argv[1] !== undefined &&
+  process.argv[1] === fileURLToPath(import.meta.url)
 
 if (invoked_directly) {
   void run_viewer_cli(process.argv.slice(2)).catch((err: unknown) => {

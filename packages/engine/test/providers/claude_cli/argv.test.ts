@@ -7,6 +7,7 @@
  * interpolation.
  */
 
+import { readFileSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -244,19 +245,35 @@ describe('build_sandbox_plan', () => {
     expect(plan.prefix_args[idx + 2]).toBe('/tmp/out')
   })
 
-  it('greywall plan: spawn_cmd is greywall; uses --allow-host + --rw', () => {
+  it('greywall plan: spawn_cmd is greywall; writes settings JSON with hosts/paths', () => {
     const plan = build_sandbox_plan('claude', {
       kind: 'greywall',
-      network_allowlist: ['h.example'],
-      additional_write_paths: ['/w'],
+      network_allowlist: ['h.example', 'api.anthropic.com'],
+      additional_write_paths: ['/w', '/tmp/out'],
     })
     expect(plan.spawn_cmd).toBe('greywall')
-    expect(plan.prefix_args).toContain('--allow-host')
-    expect(plan.prefix_args).toContain('h.example')
-    expect(plan.prefix_args).toContain('--rw')
-    expect(plan.prefix_args).toContain('/w')
-    const terminator = plan.prefix_args.indexOf('--')
-    expect(plan.prefix_args[terminator + 1]).toBe('claude')
+    expect(plan.prefix_args[0]).toBe('--settings')
+    const settings_path = plan.prefix_args[1]
+    expect(typeof settings_path).toBe('string')
+    expect(plan.prefix_args[2]).toBe('--')
+    expect(plan.prefix_args[3]).toBe('claude')
+
+    if (typeof settings_path !== 'string') throw new Error('unreachable')
+    const payload = JSON.parse(readFileSync(settings_path, 'utf8')) as {
+      network: { allowHosts: string[] }
+      filesystem: { allowWrite: string[] }
+    }
+    expect(payload.network.allowHosts).toEqual(['h.example', 'api.anthropic.com'])
+    expect(payload.filesystem.allowWrite).toEqual(['/w', '/tmp/out'])
+  })
+
+  it('greywall plan with caller-supplied settings_path skips temp-file generation', () => {
+    const plan = build_sandbox_plan('claude', {
+      kind: 'greywall',
+      settings_path: '/etc/greywall/custom.json',
+    })
+    expect(plan.spawn_cmd).toBe('greywall')
+    expect(plan.prefix_args).toEqual(['--settings', '/etc/greywall/custom.json', '--', 'claude'])
   })
 })
 

@@ -8,7 +8,25 @@
  * Both wrappers allow the binary to execute while restricting network reach
  * to the allowlist and write access to additional paths on top of the
  * sandbox's default-read-only filesystem.
+ *
+ * greywall 0.3+ removed the `--allow-host` and `--rw` flags; policy now
+ * lives in a JSON settings file passed via `--settings <path>`. Schema is
+ * documented in `greywall --help`:
+ *
+ *     {
+ *       "network":    { "allowHosts": [...] },
+ *       "filesystem": { "allowWrite": [...] }
+ *     }
+ *
+ * `filesystem.allowWrite` is honored directly; `network.allowHosts` is
+ * preserved for documentation/forward-compat (greywall ignores unknown
+ * fields and host-level allowlisting is currently enforced at the
+ * greyproxy layer).
  */
+
+import { mkdtempSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
 import type { SandboxProviderConfig } from './types.js'
 
@@ -72,16 +90,19 @@ function build_greywall_args(
   binary: string,
   sandbox: Extract<SandboxProviderConfig, { kind: 'greywall' }>,
 ): ReadonlyArray<string> {
-  const args: string[] = []
-  const allowlist = sandbox.network_allowlist ?? []
-  for (const host of allowlist) {
-    args.push('--allow-host', host)
+  const settings_path = sandbox.settings_path ?? write_greywall_settings(sandbox)
+  return ['--settings', settings_path, '--', binary]
+}
+
+function write_greywall_settings(
+  sandbox: Extract<SandboxProviderConfig, { kind: 'greywall' }>,
+): string {
+  const dir = mkdtempSync(join(tmpdir(), `fascicle-greywall-${process.pid}-`))
+  const path = join(dir, 'greywall.json')
+  const payload = {
+    network: { allowHosts: [...(sandbox.network_allowlist ?? [])] },
+    filesystem: { allowWrite: [...(sandbox.additional_write_paths ?? [])] },
   }
-  const write_paths = sandbox.additional_write_paths ?? []
-  for (const p of write_paths) {
-    args.push('--rw', p)
-  }
-  args.push('--')
-  args.push(binary)
-  return args
+  writeFileSync(path, JSON.stringify(payload, null, 2), 'utf8')
+  return path
 }

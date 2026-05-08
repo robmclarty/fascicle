@@ -99,7 +99,7 @@ describe('build_env — auth_mode: oauth', () => {
     expect(env['ANTHROPIC_API_KEY']).toBeUndefined()
   })
 
-  it('inherit_env: false keeps env strict (no process.env)', () => {
+  it('inherit_env: false keeps env strict (no process.env, no standard keys)', () => {
     const env = build_env({ inherit_env: false }, undefined, 'oauth')
     expect(Object.keys(env).length).toBe(0)
   })
@@ -140,15 +140,24 @@ describe('build_env — auth_mode: oauth', () => {
 })
 
 describe('build_env — auth_mode: api_key', () => {
-  it('does not inherit process.env (inherit_env is oauth-only)', () => {
+  it('seeds standard process-env keys (PATH/HOME/etc) but not arbitrary vars', () => {
     const marker = 'AGENT_KIT_APIKEY_INHERIT_TEST'
     process.env[marker] = 'yes'
+    process.env['PATH'] = process.env['PATH'] ?? '/usr/bin'
     try {
-      const env = build_env({ api_key: 'k', inherit_env: true }, undefined, 'api_key')
+      const env = build_env({ api_key: 'k' }, undefined, 'api_key')
       expect(env[marker]).toBeUndefined()
+      expect(env['PATH']).toBeDefined()
     } finally {
       delete process.env[marker]
     }
+  })
+
+  it('inherit_env: false strips even the standard keys', () => {
+    process.env['PATH'] = process.env['PATH'] ?? '/usr/bin'
+    const env = build_env({ api_key: 'k', inherit_env: false }, undefined, 'api_key')
+    expect(env['PATH']).toBeUndefined()
+    expect(env['ANTHROPIC_API_KEY']).toBe('k')
   })
 
   it('sets ANTHROPIC_API_KEY from provider config', () => {
@@ -206,6 +215,68 @@ describe('build_env — auth_mode: auto', () => {
     )
     expect(env['PATH']).toBe('/bin')
     expect(env['BAD']).toBeUndefined()
+  })
+})
+
+describe('build_env — standard env keys are seeded across every auth mode (regression)', () => {
+  // Without these, `spawn('greywall' | 'bwrap' | 'claude', …)` resolves
+  // relative to an empty PATH and fails with ENOENT — a sandbox-enabled
+  // run under auto/api_key mode would never even reach the CLI.
+  const STANDARD_KEYS = ['PATH', 'HOME', 'SHELL', 'USER', 'LOGNAME', 'LANG', 'TMPDIR'] as const
+
+  function with_standard_env<T>(fn: () => T): T {
+    const prior: Partial<Record<string, string | undefined>> = {}
+    for (const k of STANDARD_KEYS) {
+      prior[k] = process.env[k]
+      process.env[k] = `value-${k}`
+    }
+    try {
+      return fn()
+    } finally {
+      for (const k of STANDARD_KEYS) {
+        const v = prior[k]
+        if (v === undefined) delete process.env[k]
+        else process.env[k] = v
+      }
+    }
+  }
+
+  for (const mode of ['auto', 'oauth', 'api_key'] as const) {
+    it(`PATH is present under auth_mode: ${mode}`, () => {
+      with_standard_env(() => {
+        const config = mode === 'api_key' ? { api_key: 'k' } : {}
+        const env = build_env(config, undefined, mode)
+        expect(env['PATH']).toBe('value-PATH')
+      })
+    })
+  }
+
+  it('oauth strips ANTHROPIC_API_KEY even when present in process.env', () => {
+    const prior = process.env['ANTHROPIC_API_KEY']
+    process.env['ANTHROPIC_API_KEY'] = 'leaked'
+    try {
+      const env = build_env({}, undefined, 'oauth')
+      expect(env['ANTHROPIC_API_KEY']).toBeUndefined()
+    } finally {
+      if (prior === undefined) delete process.env['ANTHROPIC_API_KEY']
+      else process.env['ANTHROPIC_API_KEY'] = prior
+    }
+  })
+
+  it('api_key sets ANTHROPIC_API_KEY from config', () => {
+    const env = build_env({ api_key: 'sk-123' }, undefined, 'api_key')
+    expect(env['ANTHROPIC_API_KEY']).toBe('sk-123')
+  })
+
+  it('inherit_env: false strips standard keys under every auth mode', () => {
+    with_standard_env(() => {
+      for (const mode of ['auto', 'oauth', 'api_key'] as const) {
+        const config = mode === 'api_key' ? { api_key: 'k', inherit_env: false } : { inherit_env: false }
+        const env = build_env(config, undefined, mode)
+        expect(env['PATH'], `mode=${mode}`).toBeUndefined()
+        expect(env['HOME'], `mode=${mode}`).toBeUndefined()
+      }
+    })
   })
 })
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.4.0 — 2026-05-07
+
+### Fixed
+- `claude_cli` adapter: `build_env` now seeds the standard process-env keys (`PATH`, `HOME`, `SHELL`, `USER`, `LOGNAME`, `LANG`, `TMPDIR`) under every `auth_mode` (was: only inherited under `oauth`). Sandbox-enabled runs under `auto`/`api_key` previously spawned with an empty `PATH` and failed with `ENOENT` looking up `greywall`/`bwrap`. Set `inherit_env: false` to opt out of the standard-key seeding.
+- `claude_cli` adapter: greywall sandbox plan now writes a temp settings JSON (`{ network: { allowHosts }, filesystem: { allowWrite } }`) and forwards `--settings <path>` instead of the removed `--allow-host`/`--rw` flags. greywall 0.3.0+ rejected the old flags as unknown and exited 1. Consumers managing their own settings file can pass `sandbox.settings_path` to skip the temp-file generation.
+- `fascicle-viewer` CLI: replaced the fragile `argv[1].endsWith('/cli.ts'|'/cli.js')` self-execution guard with an `import.meta.url`-based check. The umbrella bundles `cli.ts` into `dist/index.js`, so any consumer whose entry script was named `cli.js` was accidentally hijacked into running the viewer at import time.
+
 ## v0.3.8 — 2026-05-06
 
 ### Fixed

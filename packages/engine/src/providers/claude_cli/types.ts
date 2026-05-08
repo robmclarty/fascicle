@@ -21,6 +21,14 @@ export type SandboxProviderConfig =
       readonly kind: 'greywall'
       readonly network_allowlist?: ReadonlyArray<string>
       readonly additional_write_paths?: ReadonlyArray<string>
+      /**
+       * greywall 0.3+ takes filesystem/network policy from a JSON settings
+       * file. By default the adapter writes a temp settings file derived
+       * from `network_allowlist`/`additional_write_paths`. Set to forward
+       * a caller-managed settings file directly via `--settings` instead.
+       * The temp-file path is then skipped entirely.
+       */
+      readonly settings_path?: string
     }
 
 export type ClaudeCliProviderConfig = {
@@ -28,10 +36,12 @@ export type ClaudeCliProviderConfig = {
   readonly auth_mode?: AuthMode
   readonly api_key?: string
   /**
-   * Under `auth_mode: 'oauth'` the subprocess env seeds from `process.env`
-   * by default so it can reach the logged-in `claude` session. Set to
-   * `false` to opt out and start from an empty env (the api_key-mode
-   * default). Ignored outside oauth mode.
+   * The subprocess env seeds the standard process-env keys
+   * (PATH/HOME/SHELL/USER/LOGNAME/LANG/TMPDIR) by default under every
+   * auth mode so the spawn target (sandbox wrapper or the claude binary)
+   * can be resolved on PATH. Under `auth_mode: 'oauth'` the *full*
+   * `process.env` is inherited so the CLI can reach the logged-in OAuth
+   * session. Set to `false` to opt out and start from an empty env.
    */
   readonly inherit_env?: boolean
   readonly default_cwd?: string
