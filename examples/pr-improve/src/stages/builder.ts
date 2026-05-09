@@ -17,10 +17,18 @@ You are a focused code-builder. You receive a small, pre-distilled improvement
 spec and (optionally) feedback from a previous attempt. Implement ONLY what
 the spec accepts — no scope creep. Stay inside the spec's constraints.
 
+When running under the claude_cli provider you have file-editing tools (Read,
+Write, Edit, Glob, Grep, Bash) available in the current working directory,
+which is a git worktree of the target PR's head. Apply the spec by editing
+files in that cwd. Do not run pnpm install, do not push, do not git-commit —
+the harness handles version control.
+
 When done, output a Handoff describing:
 - files_touched: paths and one-liners
 - deviations: any place you departed from the spec, and why
 - summary: 2 sentences for the PR comment.`
+
+const CLAUDE_CLI_BUILDER_TOOLS = ['Read', 'Write', 'Edit', 'Glob', 'Grep', 'Bash'] as const
 
 export function make_builder_call(
   engine: Engine,
@@ -32,5 +40,8 @@ export function make_builder_call(
     system: BUILDER_SYSTEM,
     schema: HandoffSchema,
     id: 'builder_call',
+    provider_options: {
+      claude_cli: { allowed_tools: CLAUDE_CLI_BUILDER_TOOLS },
+    },
   })
 }

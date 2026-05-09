@@ -126,15 +126,16 @@ export function build_flow(engine: Engine, models: FlowModels): Step<PRContext, 
     max_rounds: MAX_BUILD_REVIEW_ROUNDS,
   })
 
-  const emit_no_changes: Step<unknown, FinalResult> = use([K.PR], (s) => ({
+  const emit_no_changes: Step<unknown, FinalResult> = use([K.PR, K.SUGGESTIONS], (s) => ({
     kind: 'no_changes_proposed',
     pr: read_pr(s),
+    suggestions: read_suggestions(s),
   }))
 
   const with_build: Step<PragmatistOutput, FinalResult> = scope([
     stash(K.LOOP_RESULT, build_review_loop),
-    use([K.PR, K.SPEC, K.LOOP_RESULT], (s) =>
-      assemble_final_result(read_pr(s), read_spec(s), read_loop_result(s)),
+    use([K.PR, K.SPEC, K.LOOP_RESULT, K.SUGGESTIONS], (s) =>
+      assemble_final_result(read_pr(s), read_spec(s), read_loop_result(s), read_suggestions(s)),
     ),
   ])
 

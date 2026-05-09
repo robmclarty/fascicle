@@ -84,8 +84,17 @@ export type PRContext = {
 }
 
 export type FinalResult =
-  | { readonly kind: 'no_changes_proposed'; readonly pr: PRContext }
-  | { readonly kind: 'did_not_converge'; readonly pr: PRContext; readonly rounds: number }
+  | {
+      readonly kind: 'no_changes_proposed'
+      readonly pr: PRContext
+      readonly suggestions: ReadonlyArray<Suggestion>
+    }
+  | {
+      readonly kind: 'did_not_converge'
+      readonly pr: PRContext
+      readonly rounds: number
+      readonly suggestions: ReadonlyArray<Suggestion>
+    }
   | {
       readonly kind: 'improvement_ready'
       readonly pr: PRContext
@@ -93,4 +102,5 @@ export type FinalResult =
       readonly handoff: Handoff
       readonly verdict: Extract<BuildVerdict, { kind: 'pass' }>
       readonly comment_body: string
+      readonly suggestions: ReadonlyArray<Suggestion>
     }
