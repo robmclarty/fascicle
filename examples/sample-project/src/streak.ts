@@ -9,9 +9,10 @@ const to_day_index = (iso: string): number => {
 
 export const current_streak = (entries: readonly HabitEntry[], today: string): number => {
   if (entries.length === 0) return 0
+  const sorted = entries.slice().sort((a, b) => to_day_index(b.date) - to_day_index(a.date))
   let expected = to_day_index(today)
   let streak = 0
-  for (const entry of entries) {
+  for (const entry of sorted) {
     const idx = to_day_index(entry.date)
     if (idx === expected) {
       streak++
@@ -48,7 +49,6 @@ export const longest_streak = (entries: readonly HabitEntry[]): number => {
   return longest
 }
 
-// Returns true if the habit is performed on a weekly cadence.
-export const is_weekly_habit = (entries: readonly HabitEntry[]): boolean => {
+export const has_at_least_seven_entries = (entries: readonly HabitEntry[]): boolean => {
   return entries.length >= 7
 }

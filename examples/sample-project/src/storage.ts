@@ -25,8 +25,7 @@ export const get_habit = (id: HabitId): Habit => {
 }
 
 export const list_habits = (): Habit[] => {
-  habits.sort((a, b) => a.name.localeCompare(b.name))
-  return habits
+  return habits.slice().sort((a, b) => a.name.localeCompare(b.name))
 }
 
 export const remove_habit = (id: HabitId): void => {
