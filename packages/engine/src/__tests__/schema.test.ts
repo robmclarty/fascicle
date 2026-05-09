@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
 import {
   build_repair_message,
+  build_repair_prompt_text,
   parse_with_schema,
   throw_schema_validation,
 } from '../schema.js'
@@ -27,6 +28,36 @@ describe('parse_with_schema', () => {
     const outcome = parse_with_schema(user_schema, '{"name":"ada","age":"thirty"}')
     expect(outcome.ok).toBe(false)
   })
+
+  it('parses JSON wrapped in a ```json fence', () => {
+    const fenced = '```json\n{"name":"ada","age":36}\n```'
+    const outcome = parse_with_schema(user_schema, fenced)
+    expect(outcome.ok).toBe(true)
+    if (outcome.ok) expect(outcome.value).toEqual({ name: 'ada', age: 36 })
+  })
+
+  it('parses JSON wrapped in a plain ``` fence (no language tag)', () => {
+    const fenced = '```\n{"name":"ada","age":36}\n```'
+    const outcome = parse_with_schema(user_schema, fenced)
+    expect(outcome.ok).toBe(true)
+  })
+
+  it('parses JSON wrapped in a fence with surrounding whitespace', () => {
+    const fenced = '\n\n```json\n{"name":"ada","age":36}\n```\n\n'
+    const outcome = parse_with_schema(user_schema, fenced)
+    expect(outcome.ok).toBe(true)
+  })
+
+  it('returns ok: false when fenced content is itself invalid JSON', () => {
+    const fenced = '```json\n{not json}\n```'
+    const outcome = parse_with_schema(user_schema, fenced)
+    expect(outcome.ok).toBe(false)
+  })
+
+  it('does not strip fences when only one side is present', () => {
+    const outcome = parse_with_schema(user_schema, '```json\n{"name":"ada","age":36}')
+    expect(outcome.ok).toBe(false)
+  })
 })
 
 describe('build_repair_message', () => {
@@ -36,6 +67,19 @@ describe('build_repair_message', () => {
     expect(message.content as string).toContain('did not match the expected schema')
     expect(message.content as string).toContain('expected number, got string')
     expect(message.content as string).toContain('strictly conforms to the schema')
+  })
+
+  it('explicitly forbids markdown code fences and prose in the response', () => {
+    const message = build_repair_message(new Error('boom'))
+    expect(message.content as string).toContain('no markdown code fences')
+    expect(message.content as string).toContain('no surrounding prose')
+  })
+})
+
+describe('build_repair_prompt_text', () => {
+  it('returns a string with the same content as build_repair_message', () => {
+    const err = new Error('expected number, got string')
+    expect(build_repair_prompt_text(err)).toBe(build_repair_message(err).content)
   })
 })
 

@@ -46,6 +46,7 @@ import { FREE_PROVIDERS, pricing_key } from './pricing.js'
 import { parse_retry_after, retry_with_policy } from './retry.js'
 import {
   build_repair_message,
+  format_zod_error,
   parse_with_schema,
   throw_schema_validation,
 } from './schema.js'
@@ -57,6 +58,7 @@ import {
   create_pricing_missing_dedup,
   end_generate_span,
   record_effort_ignored,
+  record_schema_validation_failed,
   start_generate_span,
 } from './trajectory.js'
 import { sum_usage } from './usage.js'
@@ -660,6 +662,11 @@ export async function generate<T = string>(
         schema_satisfied = true
         break
       }
+      record_schema_validation_failed(trajectory, {
+        attempt: repair_remaining === schema_repair_attempts ? 'initial' : 'repair',
+        zod_issues: format_zod_error(parse.error),
+        raw_text: text,
+      })
       if (repair_remaining <= 0 || total_steps >= max_steps) {
         throw_schema_validation(parse.error, text)
       }

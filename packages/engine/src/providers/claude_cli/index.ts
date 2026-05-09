@@ -64,12 +64,17 @@ import {
   provider_capability_error,
   schema_validation_error,
 } from '../../errors.js'
-import { parse_with_schema } from '../../schema.js'
+import {
+  build_repair_prompt_text,
+  format_zod_error,
+  parse_with_schema,
+} from '../../schema.js'
 import {
   create_option_ignored_dedup,
   end_generate_span,
   end_step_span,
   record_cost,
+  record_schema_validation_failed,
   start_generate_span,
   start_step_span,
 } from '../../trajectory.js'
@@ -430,6 +435,11 @@ export function create_claude_cli_adapter(init: ProviderInit): SubprocessProvide
           if (attempt.ok) {
             parsed_content = attempt.value
           } else {
+            record_schema_validation_failed(trajectory, {
+              attempt: 'initial',
+              zod_issues: format_zod_error(attempt.error),
+              raw_text: parsed.final_text,
+            })
             const repair_session_id = parsed.session_id
             if (repair_session_id === undefined) {
               throw new schema_validation_error(
@@ -438,21 +448,23 @@ export function create_claude_cli_adapter(init: ProviderInit): SubprocessProvide
                 parsed.final_text,
               )
             }
-            const repair_prompt =
-              'Your previous response did not match the expected schema. ' +
-              'Return ONLY a JSON value that conforms to the provided --json-schema.'
             const repair_call_opts: ClaudeCliCallOptions = {
               ...call_opts,
               session_id: repair_session_id,
             }
             const repair_outcome = await run_cli(spawn_runtime, {
               ...base_args,
-              stdin_text: repair_prompt,
+              stdin_text: build_repair_prompt_text(attempt.error),
               call_opts: repair_call_opts,
             })
             parsed = repair_outcome.parsed
             const retry = parse_with_schema(opts.schema, parsed.final_text)
             if (!retry.ok) {
+              record_schema_validation_failed(trajectory, {
+                attempt: 'repair',
+                zod_issues: format_zod_error(retry.error),
+                raw_text: parsed.final_text,
+              })
               throw new schema_validation_error(
                 'schema validation failed after one repair attempt',
                 retry.error,
