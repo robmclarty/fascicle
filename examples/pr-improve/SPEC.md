@@ -146,7 +146,51 @@ type BuildVerdict =
 
 ## Trigger & runtime host
 
-### Recommended: **AWS Fargate task, kicked off by SQS**
+Two modes, same `flow.ts`, two engine paths. **Demo mode ships first; cloud mode only happens if/when the demo earns buy-in.** Build in that order.
+
+### Demo mode: local CLI via `claude_cli` (Phase B)
+
+The whole reason we picked fascicle is multi-provider portability. The cheapest way to validate the pipeline is to run it locally against a real PR using the `claude_cli` provider — no API key, no infra, no CI. If this works end-to-end the cloud path is a one-line engine swap, not a leap.
+
+Surface — invoked from any local git repo with a GitHub remote:
+
+```sh
+cd ~/projects/some-repo                  # has .git pointing at github
+pr-improve 10234                          # fetch PR #10234, run pipeline, preview
+pr-improve 10234 --push                   # also push branch + open improvement PR + comment
+```
+
+Manual invocation IS the opt-in — no PR label, no webhook, no GitHub Action.
+
+Internals:
+
+- Engine: `create_engine({ providers: { claude_cli: { auth_mode: 'oauth' } } })`. Model aliases resolve to `cli-sonnet` / `cli-opus`. Uses the developer's logged-in Claude Enterprise — no `ANTHROPIC_API_KEY` needed.
+- Builder under `claude_cli`: the CLI's built-in Read/Write/Edit tools handle file edits inside the worktree's `cwd`. The `make_builder_call` factory still returns `Step<string, GenerateResult<Handoff>>`; the engine translates tool surface per provider (per `examples/tool_loop.ts` notes). Same contract — Phase C swaps the inside without touching `flow.ts`.
+- GitHub + git I/O — all via `gh` and `git` CLIs, picking up the cwd's repo + the developer's `gh auth login`:
+  - `gh pr view <n> --json …` and `gh pr diff <n>` — pull the PR's metadata and diff
+  - `git worktree add .fascicle/<run-id> <pr-head-branch>` — isolate the work
+  - `gh pr checkout <n>` (or fetch + checkout) inside the worktree to bring the head branch local
+  - claude_cli edits files in the worktree's cwd
+  - `git push -u origin fascicle/improve-<n>` to publish the new branch
+  - `gh pr create --base <pr-head> --head fascicle/improve-<n>` to open the improvement PR
+  - `gh pr comment <n> --body-file PR_COMMENT.md` to comment on the original
+- `--push` defaults OFF. Devs preview `IMPROVEMENT_SPEC.md` / `HANDOFF.md` / the proposed comment, then re-run with `--push` once satisfied.
+
+### Distribution for the demo
+
+Demo-grade install for v0 — clone the repo and link the bin:
+
+```sh
+gh repo clone robmclarty/fascicle ~/src/fascicle
+cd ~/src/fascicle && pnpm install
+ln -s ~/src/fascicle/examples/pr-improve/bin/pr-improve ~/.local/bin/pr-improve
+```
+
+`gh repo clone` uses the developer's existing `gh auth login` — no PAT, no `.npmrc`, no extra credentials. The repo stays private. The `bin/pr-improve` script is a thin wrapper that runs `tsx src/main.ts` so there is no build step at all.
+
+If the demo earns buy-in, the natural next step is a `tsdown` bundle attached to a tagged GitHub Release, installed via `gh release download`. That's a follow-up — not in the demo scope, since "clone + symlink" is enough to demo on the team's machines.
+
+### Production mode (Phase D): **AWS Fargate task, kicked off by SQS**
 
 Plays to existing strengths: terraform + IaC + SRE team. Three terraform-managed pieces:
 
@@ -174,18 +218,10 @@ Container is a single Node image (Dockerfile in `examples/pr-improve/`) with `gh
 
 ## Opt-in mechanism
 
-**Recommended:** PR label `fascicle-improve`.
+- **Phase B (local CLI demo)**: invocation IS the opt-in. The dev runs `pr-improve <n>` against the PR they want improved. No label, no central config.
+- **Phase D (cloud webhook)**: PR label `fascicle-improve`. The label only exists because webhooks need a filter — `pull_request.labeled` is the trigger event. The local CLI keeps working alongside it for one-off / debug runs.
 
-- Simplest possible signal. Dev adds the label, webhook fires on `pull_request.labeled`.
-- Granular: per-PR opt-in, easy to add to `auto_label` rules later.
-- No central config to maintain.
-
-**Alternatives:**
-
-- Comment command (`/fascicle improve`) — slightly more dev friction; adds a parser.
-- Repo-level config (`.fascicle/pr-improve.yaml`) — best for "always-on for this repo," worse for selective use.
-
-Start with the label. Add comment-command if asked.
+Comment-command (`/fascicle improve`) and repo-level config (`.fascicle/pr-improve.yaml`) are alternatives if the label proves too coarse for the cloud trigger; defer until we hit that need.
 
 ---
 
@@ -294,11 +330,11 @@ Same events end up in `.trajectory.jsonl` (for fascicle-viewer replay locally an
 
 These are the points where I picked a default to keep the spec concrete; flag any you want changed:
 
-1. **Runtime host = AWS Fargate** (webhook → tiny Lambda → SQS FIFO → ECS RunTask). Owned jointly with SRE via terraform. Reasoning: timing math (p99 ~25 min) blows through Lambda's 15-min cap; trigger.dev solves the same problem but adds a new platform we'd need to onboard for one app.
-2. **Opt-in = PR label `fascicle-improve`** (vs comment command, vs repo config).
+1. **Demo-first build order**: Phase B is local CLI via `claude_cli` — manual `pr-improve <n>` invocation, no label, no webhook, no CI. Phase C swaps the builder to an explicit API `tool_loop` (still local). Phase D adds the AWS Fargate trigger. We do not invest in cloud infrastructure until Phase B has demonstrated the whole pipeline end-to-end on a real PR.
+2. **Opt-in mechanism**: Phase B = manual CLI invocation (`pr-improve <n>`) is the opt-in. Phase D = PR label `fascicle-improve` for the cloud trigger. The label only exists because webhooks need a filter; the local CLI does not.
 3. **Pragmatist cap N=3 accepted changes** (smaller is more aligned with the "fewer changes" anchor).
 4. **Build↔review loop max 3 rounds** before abort.
-5. **Models:** Reviewer=sonnet, Pragmatist=**opus**, Builder=sonnet (API + tool_loop), Build-Reviewer=**opus**. All four through the fascicle engine via `model_call`. Default provider=`anthropic`; swappable to `openrouter` (or any supported provider) by env var alone — that's the explicit proof point of this app.
+5. **Models:** Reviewer=sonnet, Pragmatist=**opus**, Builder=sonnet (API + tool_loop), Build-Reviewer=**opus**. All four through the fascicle engine via `model_call`. Three providers supported via the same flow: `anthropic`, `openrouter`, `claude_cli`. Local mode uses `claude_cli` (no API key); cloud mode uses `anthropic` or `openrouter` (one env-var swap). That's the portability proof point.
 6. **Single-repo scope first** (the fascicle repo). Multi-repo opens auth/permission scope work; defer.
 7. **Pure fascicle for stages 3–4** (no ridgeline). Revisit if builds grow multi-phase.
 
@@ -310,23 +346,39 @@ If any of these is wrong I want to know before writing code — they each shift 
 
 Recommend three phases, each independently demoable:
 
-### Phase A — Local end-to-end on stub data
+### Phase A — Local end-to-end on stub data ✓
 
 1. Scaffold `examples/pr-improve/` with `main.ts`, `flow.ts`, `types.ts`.
 2. Implement stages 1–4 against a fixture diff (one of our recent PRs, saved as a `.patch` file). Use a stub engine for fast iteration.
 3. Run with `pnpm exec tsx examples/pr-improve/src/main.ts --fixture <path>`. Verify trajectory in viewer.
 
-### Phase B — Real GitHub on the real repo
+### Phase B — Local CLI demo via `claude_cli` (the demo path) — NEXT
 
-1. Add `github/pr.ts` and `github/workspace.ts` (gh CLI wrappers + worktree).
-2. Swap the stub engine for the real Anthropic engine; test the builder tool_loop end-to-end against a real PR locally (still no webhook).
-3. Run end-to-end against an open PR with a `--dry-run` flag (does not push or comment).
+Goal: stand up the whole pipeline working end-to-end on a real PR, locally, before asking for any cloud investment. This is the deliverable that earns buy-in for Phase C and Phase D. Manual invocation only — no label, no webhook, no CI.
 
-### Phase C — Triggered from a webhook (with SRE)
+1. Extend `engine.ts` with a `claude_cli` provider branch (auth_mode `oauth`, no API key). Model defaults `cli-sonnet` / `cli-opus`.
+2. Add CLI flags to `main.ts`: `--pr <number>` (mutually exclusive with `--fixture`), `--provider <name>` (overrides `FASCICLE_PROVIDER` env), `--push` (default OFF — preview-only).
+3. Add `src/github/pr.ts` (gh CLI wrappers — view, diff, create, comment, push) and `src/github/workspace.ts` (`git worktree add` + `gh pr checkout` helpers). Use the safe-spawn pattern from `packages/engine/src/providers/claude_cli/spawn.ts` as a hygiene reference.
+4. Add `bin/pr-improve` — a thin shell wrapper around `tsx src/main.ts` so the user can `ln -s` it into `~/.local/bin/`. No build step.
+5. Verify the builder works under `claude_cli`. The engine uses the CLI's built-in file tools instead of our explicit `tool_loop` toolset. `make_builder_call`'s factory signature stays the same; `flow.ts` does not change.
+6. Demo: from inside a checkout of the fascicle repo (or any GitHub project), run `pr-improve <n>` against a real open PR → inspect `IMPROVEMENT_SPEC.md` / `HANDOFF.md` / the comment preview → re-run with `--push` → improvement PR appears on GitHub with a comment on the original.
 
-1. Write `Dockerfile` (Node + `gh` CLI + `git`) and `src/worker.ts` (poll-one-message-and-run shape).
+### Phase C — API engine + explicit `tool_loop` builder
+
+After Phase B has earned buy-in. This is the work that makes the cloud deployment safe.
+
+1. Replace `make_builder_call`'s schema-only path under `anthropic` / `openrouter` with a `tool_loop` agent equipped with explicit worktree-scoped file tools (`list_dir`, `read_file`, `write_file`, `edit_file`, `run_shell` with allowlist). Pattern: `examples/tool_loop.ts` + `examples/adversarial_build.ts`.
+2. Add path-traversal / shell-allowlist / oversized-write safety tests for the worktree-scoped tools.
+3. Verify `pr-improve <n> --provider anthropic` produces the same end-to-end result as `--provider claude_cli`. That's the portability proof.
+4. Same `flow.ts`, same `gh` / worktree modules from Phase B — only `make_builder_call` and the engine config change.
+
+### Phase D — Cloud trigger via Fargate (with SRE)
+
+After Phase C proves the API path matches the local demo on real PRs.
+
+1. Write `Dockerfile` (Node + `gh` CLI + `git`) and `src/worker.ts` (poll-one-message-and-run shape). Bundle the CLI via `tsdown` + attach to GitHub Releases for distribution.
 2. Pair with SRE on the terraform module: API Gateway + webhook Lambda + SQS FIFO + ECS task definition + IAM + Secrets Manager (`GH_TOKEN`, `ANTHROPIC_API_KEY`). Add CloudWatch log group + DLQ.
-3. Configure GitHub webhook to fire on `pull_request.labeled` (filter: `fascicle-improve`) and POST to API Gateway.
+3. Configure GitHub webhook to fire on `pull_request.labeled` (filter: `fascicle-improve`) and POST to API Gateway. The label is the opt-in for the cloud trigger; manual `pr-improve <n>` invocation still works for one-off / debug runs.
 4. Add concurrency invariant via SQS `MessageGroupId` and the cost guardrail in `worker.ts`.
 5. Roll out as opt-in for one repo (the fascicle repo). Tag a PR. Verify the loop end-to-end (improvement PR opens, comment lands on original).
 
