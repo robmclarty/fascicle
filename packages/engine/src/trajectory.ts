@@ -175,6 +175,33 @@ export function record_effort_ignored(
   trajectory.record({ kind: 'effort_ignored', model_id })
 }
 
+export type SchemaValidationFailedAttempt = 'initial' | 'repair'
+
+export type SchemaValidationFailedEvent = {
+  attempt: SchemaValidationFailedAttempt
+  zod_issues: string
+  raw_text: string
+}
+
+/**
+ * Emit a structured event when a schema-driven generate call returns text
+ * that fails parse + zod validation. Persists the raw model output and a
+ * formatted zod issues summary to the trajectory so the failure is debuggable
+ * without needing stdout. Spec §6.5.
+ */
+export function record_schema_validation_failed(
+  trajectory: TrajectoryLogger | undefined,
+  meta: SchemaValidationFailedEvent,
+): void {
+  if (trajectory === undefined) return
+  trajectory.record({
+    kind: 'schema_validation_failed',
+    attempt: meta.attempt,
+    zod_issues: meta.zod_issues,
+    raw_text: meta.raw_text,
+  })
+}
+
 export type ToolApprovalEventKind =
   | 'tool_approval_requested'
   | 'tool_approval_granted'

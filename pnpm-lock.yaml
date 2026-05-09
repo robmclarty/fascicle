@@ -127,6 +127,19 @@ importers:
         specifier: '*'
         version: 4.21.0
 
+  examples/pr-improve:
+    dependencies:
+      '@repo/fascicle':
+        specifier: workspace:*
+        version: link:../../packages/fascicle
+      zod:
+        specifier: '*'
+        version: 4.3.6
+    devDependencies:
+      tsx:
+        specifier: '*'
+        version: 4.21.0
+
   examples/red-green-refactor:
     dependencies:
       '@repo/fascicle':

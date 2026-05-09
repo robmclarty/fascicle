@@ -9,6 +9,7 @@ import {
   record_effort_ignored,
   record_request_sent,
   record_response_received,
+  record_schema_validation_failed,
   record_tool_approval,
   record_tool_call,
   start_generate_span,
@@ -219,6 +220,44 @@ describe('trajectory helpers', () => {
     const dedup = create_option_ignored_dedup(undefined)
     dedup.emit('max_steps', 'claude_cli')
     dedup.emit('on_tool_approval', 'claude_cli')
+    // No exception thrown.
+  })
+
+  it('records schema_validation_failed with attempt, zod_issues, raw_text', () => {
+    const { trajectory, events } = create_recorder()
+    record_schema_validation_failed(trajectory, {
+      attempt: 'initial',
+      zod_issues: 'expected number, got string',
+      raw_text: '{"age":"thirty"}',
+    })
+    record_schema_validation_failed(trajectory, {
+      attempt: 'repair',
+      zod_issues: 'still wrong',
+      raw_text: '```json\n{"age":"thirty"}\n```',
+    })
+    const records = events.filter((e) => e.kind === 'record').map((e) => e.payload)
+    expect(records).toEqual([
+      {
+        kind: 'schema_validation_failed',
+        attempt: 'initial',
+        zod_issues: 'expected number, got string',
+        raw_text: '{"age":"thirty"}',
+      },
+      {
+        kind: 'schema_validation_failed',
+        attempt: 'repair',
+        zod_issues: 'still wrong',
+        raw_text: '```json\n{"age":"thirty"}\n```',
+      },
+    ])
+  })
+
+  it('schema_validation_failed is a no-op when trajectory is undefined', () => {
+    record_schema_validation_failed(undefined, {
+      attempt: 'initial',
+      zod_issues: 'x',
+      raw_text: 'y',
+    })
     // No exception thrown.
   })
 

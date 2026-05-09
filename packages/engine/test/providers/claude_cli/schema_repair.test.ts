@@ -226,7 +226,7 @@ describe('claude_cli schema repair path', () => {
   
     await expect(promise).rejects.toBeInstanceOf(schema_validation_error)
     await expect(promise).rejects.toMatchObject({
-      message: expect.stringContaining('after one repair attempt'),
+      message: expect.stringContaining('after 1 repair attempt'),
     })
   
     // Repair was invoked exactly once — resume record exists and carries --resume.
@@ -234,5 +234,78 @@ describe('claude_cli schema repair path', () => {
       argv: string[]
     }
     expect(resume_snap.argv.includes('--resume')).toBe(true)
+  })
+
+  it('honors schema_repair_attempts: 2 — message reports two repairs before throwing', async () => {
+    const first = await track(
+      await write_mock_script(
+        result_ops({ text: 'bad first', session_id: 'sess-repair-5' }),
+      ),
+    )
+    const resume = await track(
+      await write_mock_script(
+        result_ops({ text: 'bad second', session_id: 'sess-repair-5' }),
+      ),
+    )
+
+    const engine = create_engine({
+      providers: { claude_cli: { binary: MOCK_CLAUDE_PATH, auth_mode: 'oauth' } },
+    })
+    cleanup_stack.push(() => engine.dispose())
+
+    const promise = engine.generate({
+      model: 'cli-sonnet',
+      prompt: 'q',
+      schema,
+      schema_repair_attempts: 2,
+      provider_options: {
+        claude_cli: {
+          env: build_mock_env({
+            MOCK_CLAUDE_SCRIPT: first.script_path,
+            MOCK_CLAUDE_RECORD: first.record_path,
+            MOCK_CLAUDE_RESUME_SCRIPT: resume.script_path,
+            MOCK_CLAUDE_RECORD_RESUME: resume.record_path,
+          }),
+        },
+      },
+    })
+
+    await expect(promise).rejects.toBeInstanceOf(schema_validation_error)
+    await expect(promise).rejects.toMatchObject({
+      message: expect.stringContaining('after 2 repair attempts'),
+    })
+  })
+
+  it('throws immediately when schema_repair_attempts: 0 disables repair', async () => {
+    const first = await track(
+      await write_mock_script(
+        result_ops({ text: 'still not json', session_id: 'sess-repair-6' }),
+      ),
+    )
+
+    const engine = create_engine({
+      providers: { claude_cli: { binary: MOCK_CLAUDE_PATH, auth_mode: 'oauth' } },
+    })
+    cleanup_stack.push(() => engine.dispose())
+
+    const promise = engine.generate({
+      model: 'cli-sonnet',
+      prompt: 'q',
+      schema,
+      schema_repair_attempts: 0,
+      provider_options: {
+        claude_cli: {
+          env: build_mock_env({
+            MOCK_CLAUDE_SCRIPT: first.script_path,
+            MOCK_CLAUDE_RECORD: first.record_path,
+          }),
+        },
+      },
+    })
+
+    await expect(promise).rejects.toBeInstanceOf(schema_validation_error)
+    await expect(promise).rejects.toMatchObject({
+      message: expect.stringContaining('repair is disabled'),
+    })
   })
 })
