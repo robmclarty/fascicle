@@ -4,9 +4,13 @@
   "description": "Automated PR improvement pipeline (review → pragmatic spec → build → review) on fascicle, API-engine only for provider portability.",
   "type": "module",
   "private": true,
+  "bin": {
+    "pr-improve": "bin/pr-improve"
+  },
   "scripts": {
     "improve": "tsx src/main.ts",
-    "improve:stub": "tsx src/main.ts --stub --fixture fixtures/pr-sample.patch"
+    "improve:stub": "tsx src/main.ts --stub --fixture fixtures/pr-sample.patch",
+    "improve:pr": "tsx src/main.ts --provider claude_cli --pr"
   },
   "dependencies": {
     "@repo/fascicle": "workspace:*",
