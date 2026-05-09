@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.4.1 — 2026-05-09
+
+### Added
+- `examples/pr-improve`: an automated PR-improvement pipeline composed as a four-stage fascicle flow — reviewer (sonnet) → pragmatist (opus, default-reject) → builder (sonnet) → build-reviewer (opus) — inside a bounded `loop` with `guard`-driven convergence. Routes every model call through the engine, so the same flow runs against `anthropic`, `openrouter`, or a local `claude_cli` subprocess by changing one env var. Includes `--pr` mode for posting review suggestions back to a GitHub PR via safe-spawn `gh`/`git` wrappers, and a `bin/pr-improve` entrypoint.
+
+### Fixed
+- `@repo/engine` schema validation: `schema.ts` now tolerates fenced JSON code blocks in model output and emits a new `schema_validation_failed` trajectory event when validation fails, instead of throwing without observability. `generate.ts` extracts multiple JSON candidates from a single response and picks the first that parses, recovering from leading prose or partial fences.
+- `@repo/engine` `claude_cli` provider: schema-repair attempt count is now configurable (was: hard-coded), giving callers control over the retry-vs-fail-fast tradeoff.
+
 ## v0.4.0 — 2026-05-07
 
 ### Fixed
