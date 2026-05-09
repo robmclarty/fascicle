@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+# pr-improve — single-command driver for examples/pr-improve.
+#
+# Resolves its own real path so `ln -s` from ~/.local/bin/ works on macOS
+# without coreutils. Captures the user's invocation cwd via PR_IMPROVE_USER_CWD
+# so main.ts can detect the host repo's GitHub remote even though pnpm exec
+# changes the working directory.
+#
+# Default --provider claude_cli unless caller already set it. A bare positional
+# `<n>` (e.g. `pr-improve 1234`) is rewritten to `--pr <n>`.
+
+set -eo pipefail
+
+SCRIPT_PATH="$(node -e 'console.log(require("fs").realpathSync(process.argv[1]))' "$0")"
+EXAMPLE_DIR="$(cd "$(dirname "$SCRIPT_PATH")/.." && pwd)"
+
+saw_provider=0
+saw_pr_or_fixture=0
+for arg in "$@"; do
+  case "$arg" in
+    --provider) saw_provider=1 ;;
+    --pr|--fixture) saw_pr_or_fixture=1 ;;
+  esac
+done
+
+forwarded=("$@")
+
+if [ "$saw_pr_or_fixture" -eq 0 ] && [ "$#" -ge 1 ]; then
+  if [[ "$1" =~ ^[0-9]+$ ]]; then
+    forwarded=(--pr "$@")
+  fi
+fi
+
+if [ "$saw_provider" -eq 0 ]; then
+  forwarded=(--provider claude_cli "${forwarded[@]}")
+fi
+
+exec env PR_IMPROVE_USER_CWD="$PWD" \
+  pnpm --silent --dir "$EXAMPLE_DIR" exec tsx src/main.ts "${forwarded[@]}"

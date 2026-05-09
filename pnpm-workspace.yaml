@@ -3,6 +3,7 @@ packages:
   - 'examples/red-green-refactor'
   - 'examples/amplify'
   - 'examples/mcp-server'
+  - 'examples/pr-improve'
 
 allowBuilds:
   '@ast-grep/cli': true
