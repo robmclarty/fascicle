@@ -36,6 +36,7 @@ export function make_pragmatist_call(
     model,
     system: PRAGMATIST_SYSTEM,
     schema: PragmatistOutputSchema,
+    schema_repair_attempts: 2,
     id: 'pragmatist_call',
   })
 }

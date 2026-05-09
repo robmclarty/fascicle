@@ -39,6 +39,7 @@ export function make_builder_call(
     model,
     system: BUILDER_SYSTEM,
     schema: HandoffSchema,
+    schema_repair_attempts: 2,
     id: 'builder_call',
     provider_options: {
       claude_cli: { allowed_tools: CLAUDE_CLI_BUILDER_TOOLS },

@@ -337,8 +337,6 @@ async function post_improvement_pr(
   const link_path = join(run_dir, 'PR_LINK_COMMENT.md')
   await writeFile(link_path, render_pr_comment_with_link(created.url, result.handoff.summary))
   await gh_pr_comment(ctx.cwd, ctx.pr_number, link_path, ctx.repo_with_owner)
-
-  await cleanup_worktree(ctx.cwd, ctx.worktree_path)
 }
 
 async function run_fixture_mode(
@@ -416,55 +414,67 @@ async function run_pr_mode(
   console.error(`→ worktree: ${wt.worktree_path}`)
   console.error(`→ branch:   ${wt.improvement_branch}`)
 
-  const env_provider = process.env['FASCICLE_PROVIDER']
-  const provider: Provider =
-    args.provider ?? (VALID_PROVIDERS.find((p) => p === env_provider)) ?? 'claude_cli'
-  const cfg = read_engine_env(process.env, provider)
-  const engine = create_app_engine(cfg, { cwd: wt.worktree_path })
-  let result: FinalResult
   try {
-    const flow = build_flow(engine, default_models(provider))
-    result = await run(flow, pr, { trajectory, install_signal_handlers: false })
-  } finally {
-    await engine.dispose()
-  }
-
-  await write_artifacts(run_dir, pr, result)
-  console.error(`→ flow result: ${result.kind}`)
-
-  const ctx: GithubPosting = {
-    cwd: user_cwd,
-    pr_number: pr.number,
-    repo_with_owner: view.repo_with_owner,
-    head_branch: pr.head_branch,
-    improvement_branch: wt.improvement_branch,
-    worktree_path: wt.worktree_path,
-  }
-
-  await post_review(ctx, run_dir, result.suggestions)
-
-  if (result.kind === 'no_changes_proposed') {
-    if (result.suggestions.length > 0) {
-      await post_followup(ctx, run_dir, 'NO_PRAGMATIC_FOLLOWUP.md', render_no_pragmatic_followup())
+    const env_provider = process.env['FASCICLE_PROVIDER']
+    const provider: Provider =
+      args.provider ?? (VALID_PROVIDERS.find((p) => p === env_provider)) ?? 'claude_cli'
+    const cfg = read_engine_env(process.env, provider)
+    const engine = create_app_engine(cfg, { cwd: wt.worktree_path })
+    let result: FinalResult
+    try {
+      const flow = build_flow(engine, default_models(provider))
+      result = await run(flow, pr, { trajectory, install_signal_handlers: false })
+    } finally {
+      await engine.dispose()
     }
-    console.error('→ no improvement PR created (pragmatist accepted nothing)')
-    return result
-  }
 
-  if (result.kind === 'did_not_converge') {
-    await post_followup(
-      ctx,
-      run_dir,
-      'DID_NOT_CONVERGE_FOLLOWUP.md',
-      render_did_not_converge_followup(result.rounds),
-    )
-    console.error(`→ no improvement PR created (build_reviewer did not converge in ${String(result.rounds)} rounds)`)
-    return result
-  }
+    await write_artifacts(run_dir, pr, result)
+    console.error(`→ flow result: ${result.kind}`)
 
-  await post_improvement_pr(ctx, run_dir, pr, result)
-  console.error(`→ run artifacts: ${run_dir}`)
-  return result
+    const ctx: GithubPosting = {
+      cwd: user_cwd,
+      pr_number: pr.number,
+      repo_with_owner: view.repo_with_owner,
+      head_branch: pr.head_branch,
+      improvement_branch: wt.improvement_branch,
+      worktree_path: wt.worktree_path,
+    }
+
+    await post_review(ctx, run_dir, result.suggestions)
+
+    if (result.kind === 'no_changes_proposed') {
+      if (result.suggestions.length > 0) {
+        await post_followup(ctx, run_dir, 'NO_PRAGMATIC_FOLLOWUP.md', render_no_pragmatic_followup())
+      }
+      console.error('→ no improvement PR created (pragmatist accepted nothing)')
+      return result
+    }
+
+    if (result.kind === 'did_not_converge') {
+      await post_followup(
+        ctx,
+        run_dir,
+        'DID_NOT_CONVERGE_FOLLOWUP.md',
+        render_did_not_converge_followup(result.rounds),
+      )
+      console.error(`→ no improvement PR created (build_reviewer did not converge in ${String(result.rounds)} rounds)`)
+      return result
+    }
+
+    await post_improvement_pr(ctx, run_dir, pr, result)
+    console.error(`→ run artifacts: ${run_dir}`)
+    return result
+  } finally {
+    // Always remove the worktree, even on schema validation, network, or
+    // gh CLI failures. Cleanup failures are reported but never mask the
+    // original error from try-block.
+    try {
+      await cleanup_worktree(user_cwd, wt.worktree_path)
+    } catch (cleanup_err: unknown) {
+      const message = cleanup_err instanceof Error ? cleanup_err.message : String(cleanup_err)
+      console.error(`→ warning: worktree cleanup failed (${message}); prune manually with 'git worktree remove --force ${wt.worktree_path}'`)
+    }
+  }
 }
 
 export async function main(argv: ReadonlyArray<string> = process.argv): Promise<FinalResult> {

@@ -31,6 +31,7 @@ export function make_build_reviewer_call(
     model,
     system: BUILD_REVIEWER_SYSTEM,
     schema: BuildVerdictSchema,
+    schema_repair_attempts: 2,
     id: 'build_reviewer_call',
   })
 }
