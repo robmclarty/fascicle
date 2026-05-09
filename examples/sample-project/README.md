@@ -6,7 +6,7 @@ It is **not** a real package — there are no tests run against it and it is exc
 
 ## Layout
 
-```
+```text
 src/
   types.ts        Habit / HabitEntry / HabitId
   storage.ts      in-memory CRUD over habits and entries
