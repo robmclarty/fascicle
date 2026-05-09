@@ -17,7 +17,7 @@ import { z } from 'zod'
 
 import { create_engine, type Engine, type GenerateOptions, type GenerateResult } from '@repo/fascicle'
 
-const ProviderSchema = z.enum(['anthropic', 'openrouter'])
+const ProviderSchema = z.enum(['anthropic', 'openrouter', 'claude_cli'])
 export type Provider = z.infer<typeof ProviderSchema>
 
 export type AppEngineConfig = {
@@ -29,8 +29,37 @@ export type AppEngineConfig = {
   readonly model_build_reviewer: string
 }
 
-export function read_engine_env(env: NodeJS.ProcessEnv = process.env): AppEngineConfig {
-  const provider = ProviderSchema.parse(env['FASCICLE_PROVIDER'] ?? 'anthropic')
+export type AppEngineOptions = {
+  readonly cwd?: string
+}
+
+const CLI_DEFAULT_MODELS = {
+  reviewer: 'cli-sonnet',
+  pragmatist: 'cli-opus',
+  builder: 'cli-sonnet',
+  build_reviewer: 'cli-opus',
+} as const
+
+const API_DEFAULT_MODELS = {
+  reviewer: 'sonnet',
+  pragmatist: 'opus',
+  builder: 'sonnet',
+  build_reviewer: 'opus',
+} as const
+
+export function read_engine_env(env: NodeJS.ProcessEnv = process.env, override_provider?: Provider): AppEngineConfig {
+  const provider = override_provider ?? ProviderSchema.parse(env['FASCICLE_PROVIDER'] ?? 'anthropic')
+  const defaults = provider === 'claude_cli' ? CLI_DEFAULT_MODELS : API_DEFAULT_MODELS
+  if (provider === 'claude_cli') {
+    return {
+      provider,
+      api_key: '',
+      model_reviewer: env['FASCICLE_MODEL_REVIEWER'] ?? defaults.reviewer,
+      model_pragmatist: env['FASCICLE_MODEL_PRAGMATIST'] ?? defaults.pragmatist,
+      model_builder: env['FASCICLE_MODEL_BUILDER'] ?? defaults.builder,
+      model_build_reviewer: env['FASCICLE_MODEL_BUILD_REVIEWER'] ?? defaults.build_reviewer,
+    }
+  }
   const api_key_var = provider === 'openrouter' ? 'OPENROUTER_API_KEY' : 'ANTHROPIC_API_KEY'
   const api_key = env[api_key_var] ?? ''
   if (api_key.length === 0) {
@@ -39,19 +68,28 @@ export function read_engine_env(env: NodeJS.ProcessEnv = process.env): AppEngine
   return {
     provider,
     api_key,
-    model_reviewer: env['FASCICLE_MODEL_REVIEWER'] ?? 'sonnet',
-    model_pragmatist: env['FASCICLE_MODEL_PRAGMATIST'] ?? 'opus',
-    model_builder: env['FASCICLE_MODEL_BUILDER'] ?? 'sonnet',
-    model_build_reviewer: env['FASCICLE_MODEL_BUILD_REVIEWER'] ?? 'opus',
+    model_reviewer: env['FASCICLE_MODEL_REVIEWER'] ?? defaults.reviewer,
+    model_pragmatist: env['FASCICLE_MODEL_PRAGMATIST'] ?? defaults.pragmatist,
+    model_builder: env['FASCICLE_MODEL_BUILDER'] ?? defaults.builder,
+    model_build_reviewer: env['FASCICLE_MODEL_BUILD_REVIEWER'] ?? defaults.build_reviewer,
   }
 }
 
-export function create_app_engine(cfg: AppEngineConfig): Engine {
-  const providers =
-    cfg.provider === 'anthropic'
-      ? { anthropic: { api_key: cfg.api_key } }
-      : { openrouter: { api_key: cfg.api_key } }
-  return create_engine({ providers })
+export function create_app_engine(cfg: AppEngineConfig, opts: AppEngineOptions = {}): Engine {
+  if (cfg.provider === 'anthropic') {
+    return create_engine({ providers: { anthropic: { api_key: cfg.api_key } } })
+  }
+  if (cfg.provider === 'openrouter') {
+    return create_engine({ providers: { openrouter: { api_key: cfg.api_key } } })
+  }
+  return create_engine({
+    providers: {
+      claude_cli: {
+        auth_mode: 'oauth',
+        ...(opts.cwd !== undefined ? { default_cwd: opts.cwd } : {}),
+      },
+    },
+  })
 }
 
 export type StubResponse = {
