@@ -48,14 +48,44 @@ describe('parse_with_schema', () => {
     expect(outcome.ok).toBe(true)
   })
 
+  it('extracts JSON from a fenced block embedded in surrounding prose', () => {
+    const messy =
+      'Looking at the diff, here is the JSON:\n\n```json\n{"name":"ada","age":36}\n```\n\nHope that helps.'
+    const outcome = parse_with_schema(user_schema, messy)
+    expect(outcome.ok).toBe(true)
+    if (outcome.ok) expect(outcome.value).toEqual({ name: 'ada', age: 36 })
+  })
+
+  it('extracts JSON from unfenced prose via outermost-braces fallback', () => {
+    const text = 'Here is the result: {"name":"ada","age":36} - end.'
+    const outcome = parse_with_schema(user_schema, text)
+    expect(outcome.ok).toBe(true)
+  })
+
+  it('handles top-level JSON arrays via the brackets fallback', () => {
+    const list_schema = z.array(z.number().int())
+    const messy = 'Three numbers: [1, 2, 3] - done.'
+    const outcome = parse_with_schema(list_schema, messy)
+    expect(outcome.ok).toBe(true)
+    if (outcome.ok) expect(outcome.value).toEqual([1, 2, 3])
+  })
+
+  it('prefers a schema-matching candidate even when an earlier one parses', () => {
+    const text =
+      'first I tried this: {"wrong": true}\n\n```json\n{"name":"ada","age":36}\n```'
+    const outcome = parse_with_schema(user_schema, text)
+    expect(outcome.ok).toBe(true)
+    if (outcome.ok) expect(outcome.value).toEqual({ name: 'ada', age: 36 })
+  })
+
   it('returns ok: false when fenced content is itself invalid JSON', () => {
     const fenced = '```json\n{not json}\n```'
     const outcome = parse_with_schema(user_schema, fenced)
     expect(outcome.ok).toBe(false)
   })
 
-  it('does not strip fences when only one side is present', () => {
-    const outcome = parse_with_schema(user_schema, '```json\n{"name":"ada","age":36}')
+  it('returns ok: false on prose with no JSON-parseable content', () => {
+    const outcome = parse_with_schema(user_schema, 'I cannot answer that.')
     expect(outcome.ok).toBe(false)
   })
 })

@@ -19,43 +19,60 @@ export type ParseOutcome<t> =
  * tagged union; the caller decides whether to escalate to repair, throw, or
  * surface the failure.
  *
- * Fence tolerance: if strict JSON.parse fails, retries once with leading and
- * trailing markdown code fences stripped (e.g. ```json … ```). Models with
- * --json-schema enforcement still occasionally emit fenced output; the strict
- * path runs first so well-formed input is unaffected.
+ * Even with --json-schema enforcement, models occasionally wrap structured
+ * output in markdown fences and surrounding prose. We try a sequence of
+ * candidates in increasing leniency: the trimmed text as-is, every fenced
+ * block in the text, and the outermost {…} / […] slice. The first candidate
+ * that both parses as JSON and matches the schema wins. The last error
+ * encountered is surfaced if every candidate fails.
  */
 export function parse_with_schema<t>(
   schema: z.ZodType<t>,
   text: string,
 ): ParseOutcome<t> {
-  const parsed = parse_json_lenient(text)
-  if (!parsed.ok) return parsed
-  const result = schema.safeParse(parsed.value)
-  if (result.success) return { ok: true, value: result.data }
-  return { ok: false, error: result.error }
-}
-
-function parse_json_lenient(text: string): ParseOutcome<unknown> {
-  try {
-    return { ok: true, value: JSON.parse(text) }
-  } catch (err: unknown) {
-    const stripped = strip_code_fences(text)
-    if (stripped === text) return { ok: false, error: err }
+  const candidates = json_candidates(text)
+  let last_error: unknown = new Error('No JSON-parseable content found in model output')
+  for (const candidate of candidates) {
+    let parsed: unknown
     try {
-      return { ok: true, value: JSON.parse(stripped) }
-    } catch (err_after_strip: unknown) {
-      return { ok: false, error: err_after_strip }
+      parsed = JSON.parse(candidate)
+    } catch (err: unknown) {
+      last_error = err
+      continue
     }
+    const result = schema.safeParse(parsed)
+    if (result.success) return { ok: true, value: result.data }
+    last_error = result.error
   }
+  return { ok: false, error: last_error }
 }
 
-const FENCE_OPEN = /^```[\w-]*\s*\n?/
-const FENCE_CLOSE = /\n?```\s*$/
+const FENCE_BLOCK = /```(?:[\w-]*)\s*\n?([\s\S]*?)\n?```/g
 
-function strip_code_fences(text: string): string {
-  const trimmed = text.trim()
-  if (!trimmed.startsWith('```') || !trimmed.endsWith('```')) return trimmed
-  return trimmed.replace(FENCE_OPEN, '').replace(FENCE_CLOSE, '')
+function json_candidates(text: string): string[] {
+  const candidates: string[] = []
+  const seen = new Set<string>()
+  const push = (s: string): void => {
+    const trimmed = s.trim()
+    if (trimmed.length === 0 || seen.has(trimmed)) return
+    seen.add(trimmed)
+    candidates.push(trimmed)
+  }
+  push(text)
+  for (const match of text.matchAll(FENCE_BLOCK)) {
+    const body = match[1]
+    if (body !== undefined) push(body)
+  }
+  push(slice_outermost(text, '{', '}'))
+  push(slice_outermost(text, '[', ']'))
+  return candidates
+}
+
+function slice_outermost(text: string, open: string, close: string): string {
+  const first = text.indexOf(open)
+  const last = text.lastIndexOf(close)
+  if (first === -1 || last <= first) return ''
+  return text.slice(first, last + 1)
 }
 
 /**
