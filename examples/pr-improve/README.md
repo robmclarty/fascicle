@@ -7,10 +7,11 @@ Automated PR improvement pipeline. Triggered (eventually) by a `fascicle-improve
 
 ## Status
 
-**Phase B** (current): single-command demo against a real GitHub PR via the `claude_cli` provider. Runs the full 4-stage pipeline locally and posts the resulting GitHub artifacts (a review on the target PR, an improvement PR, and a follow-up comment linking the two).
+**Phase C, PR B** (current): single-command demo against a real GitHub PR with full provider portability. The builder dispatches by provider — `claude_cli` uses the CLI's built-in Read/Write/Edit, while API providers (`anthropic`, `openrouter`) get explicit worktree-scoped tools. Same `flow.ts`, same `Step<string, GenerateResult<Handoff>>` contract, no code changes between runs.
 
 ```sh
-pr-improve <pr-number>
+pr-improve <pr-number>                       # default: --provider claude_cli
+pr-improve <pr-number> --provider anthropic  # API path; requires ANTHROPIC_API_KEY
 ```
 
 **Phase A** (still works): local end-to-end against a fixture diff with a stub engine. No GitHub, no real model calls.
@@ -19,9 +20,9 @@ pr-improve <pr-number>
 pnpm --filter @repo/example-pr-improve improve:stub
 ```
 
-Phase C and Phase D scopes are described in `SPEC.md`.
+Phase D (cloud trigger via Fargate) is described in `SPEC.md`.
 
-## Phase B demo: install + run
+## Demo: install + run
 
 Prerequisites: `gh auth login` and `claude` (the Claude CLI) logged into your account.
 
@@ -53,8 +54,8 @@ If you're running this against a third-party repo where you don't want the workt
 
 Every stage routes through the fascicle engine via `model_call`. Provider is selected by `--provider <name>` (CLI flag) or `FASCICLE_PROVIDER` env var. Three providers coexist:
 
-- `claude_cli` — Phase B default; uses the developer's logged-in Claude (no API key). The CLI's built-in Read/Write/Edit tools handle file edits in the worktree's cwd.
-- `anthropic` — requires `ANTHROPIC_API_KEY`. In Phase B the builder produces a Handoff but does not yet edit files (Phase C wires an explicit `tool_loop`).
-- `openrouter` — requires `OPENROUTER_API_KEY`. Same Phase B caveat as `anthropic`.
+- `claude_cli` — default; uses the developer's logged-in Claude (no API key). The CLI's built-in Read/Write/Edit tools handle file edits in the worktree's cwd.
+- `anthropic` — requires `ANTHROPIC_API_KEY`. The builder gets explicit worktree-scoped tools (`read_file`, `write_file`, `edit_file`, `list_dir`, `run_shell`) wired by `make_builder_tools(worktree_root)`.
+- `openrouter` — requires `OPENROUTER_API_KEY`. Same explicit-tool path as `anthropic`.
 
-Acceptance criterion (deferred to Phase C): the same PR run with `--provider claude_cli` and `--provider anthropic` produces the same end-to-end result with no code changes.
+Acceptance criterion (live as of Phase C, PR B): the same PR run with `--provider claude_cli` and `--provider anthropic` produces the same end-to-end result with no code changes.

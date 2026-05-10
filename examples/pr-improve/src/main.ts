@@ -293,7 +293,6 @@ async function post_improvement_pr(
       run_dir,
       'NO_EDITS_FOLLOWUP.md',
       'The builder produced a Handoff but did not edit any files in the worktree. ' +
-        'This commonly happens under API providers that lack file-editing tools — re-run with `--provider claude_cli`. ' +
         'No improvement PR created.\n',
     )
     return
@@ -350,7 +349,10 @@ async function run_fixture_mode(
     : create_app_engine(read_engine_env(process.env, args.provider))
   try {
     const pr = await load_pr_from_fixture(resolve(args.fixture))
-    const flow = build_flow(engine, default_models(args.provider))
+    const flow = build_flow(engine, default_models(args.provider), {
+      worktree_root: run_dir,
+      provider: args.provider ?? 'claude_cli',
+    })
     const result = await run(flow, pr, { trajectory, install_signal_handlers: false })
 
     if (result.suggestions.length > 0) {
@@ -422,7 +424,10 @@ async function run_pr_mode(
     const engine = create_app_engine(cfg, { cwd: wt.worktree_path })
     let result: FinalResult
     try {
-      const flow = build_flow(engine, default_models(provider))
+      const flow = build_flow(engine, default_models(provider), {
+        worktree_root: wt.worktree_path,
+        provider,
+      })
       result = await run(flow, pr, { trajectory, install_signal_handlers: false })
     } finally {
       await engine.dispose()

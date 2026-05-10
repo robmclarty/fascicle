@@ -6,9 +6,11 @@ export default defineConfig({
       'packages/*/src/**/*.{test,spec}.ts',
       'packages/*/test/**/*.{test,spec}.ts',
       'test/**/*.{test,spec}.ts',
-      // pr-improve worktree-scoped builder tools (Phase C, PR A).
+      // pr-improve worktree-scoped builder tools (Phase C, PR A) +
+      // builder dispatch test (Phase C, PR B).
       // Coverage thresholds intentionally still scoped to packages/*.
       'examples/pr-improve/src/tools/**/*.{test,spec}.ts',
+      'examples/pr-improve/src/stages/**/*.{test,spec}.ts',
     ],
     pool: 'forks',
     reporters: ['default'],

@@ -449,9 +449,9 @@ examples/pr-improve/src/tools/
 
 Tests use `mkdtemp` for an isolated worktree root with cleanup in `afterEach`. Each tool test covers happy path + every rejection class (path traversal, symlink, oversized, missing/wrong-kind, shell allowlist, edit ambiguity).
 
-#### PR B — builder dispatch by provider
+#### PR B — builder dispatch by provider ✓
 
-`make_builder_call` gains a `worktree_root` and `provider` parameter (or reads provider from the engine — TBD during PR A). When `provider === 'claude_cli'` it returns the current schema-only path that lets the CLI use its built-in Read/Write/Edit. Otherwise it returns a `model_call` configured with `tools: make_builder_tools(worktree_root)`. The Step type is unchanged so `flow.ts` ripples in only one place.
+`make_builder_call` takes `worktree_root` and `provider` as explicit params (the engine doesn't expose its provider proactively — only post-call via `GenerateResult.model_resolved`). When `provider === 'claude_cli'` it returns the schema-only path that lets the CLI use its built-in Read/Write/Edit. Otherwise it returns a `model_call` configured with `tools: make_builder_tools(worktree_root)`. The Step type is unchanged; `flow.ts` ripples in one place (`build_flow` now takes a `FlowEnv = { worktree_root, provider }` third arg).
 
 **Deviation from the original spec: no `finish` terminal tool.** The original spec mentioned a `finish({ schema: HandoffSchema })` tool the model would call to end the loop. We use `model_call({ schema: HandoffSchema, tools: [...]} )` instead — the engine validates the final assistant message, identical to Phase B's contract. This (a) keeps the `Step<string, GenerateResult<Handoff>>` signature stable across providers, (b) reduces the tool surface the model has to reason about, and (c) leans on the multi-candidate JSON extractor that already protects every other schema-driven stage.
 
