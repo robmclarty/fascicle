@@ -6,7 +6,7 @@
  * so the model can budget further calls.
  */
 
-import { readFile, stat } from 'node:fs/promises'
+import { lstat, readFile } from 'node:fs/promises'
 import { z } from 'zod'
 
 import type { Tool } from '@repo/fascicle'
@@ -38,7 +38,7 @@ export function make_read_file(root: string): Tool {
       const input = read_file_input.parse(raw)
       const resolved = resolve_within(root, input.path)
       await assert_not_symlink(resolved, input.path)
-      const target_stat = await stat(resolved)
+      const target_stat = await lstat(resolved)
       if (!target_stat.isFile()) {
         throw new Error(`not a regular file: ${input.path}`)
       }
