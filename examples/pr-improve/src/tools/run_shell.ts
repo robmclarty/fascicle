@@ -82,11 +82,17 @@ async function execute_run_shell(
 
     const controller = new AbortController()
     const caller_abort = ctx.abort
+    let caller_aborted = false
     const on_caller_abort = (): void => {
+      caller_aborted = true
       controller.abort(caller_abort.reason)
     }
-    if (caller_abort.aborted) controller.abort(caller_abort.reason)
-    else caller_abort.addEventListener('abort', on_caller_abort, { once: true })
+    if (caller_abort.aborted) {
+      caller_aborted = true
+      controller.abort(caller_abort.reason)
+    } else {
+      caller_abort.addEventListener('abort', on_caller_abort, { once: true })
+    }
 
     let timed_out = false
     const timer = setTimeout(() => {
@@ -95,12 +101,12 @@ async function execute_run_shell(
     }, SHELL_TIMEOUT_MS)
     timer.unref?.()
 
+    const stdout_chunks: Buffer[] = []
+    const stderr_chunks: Buffer[] = []
     let stdout_bytes = 0
     let stderr_bytes = 0
     let stdout_truncated = false
     let stderr_truncated = false
-    let stdout = ''
-    let stderr = ''
 
     const child = spawn(cmd, [...rest], {
       cwd: root,
@@ -110,39 +116,60 @@ async function execute_run_shell(
       signal: controller.signal,
     })
 
-    child.stdout?.setEncoding('utf8')
-    child.stderr?.setEncoding('utf8')
-    child.stdout?.on('data', (chunk: string) => {
+    child.stdout?.on('data', (chunk: Buffer) => {
       const remaining = MAX_SHELL_OUT_BYTES - stdout_bytes
       if (remaining <= 0) {
         stdout_truncated = true
         return
       }
-      const take = chunk.length <= remaining ? chunk : chunk.slice(0, remaining)
-      stdout += take
-      stdout_bytes += take.length
-      if (chunk.length > remaining) stdout_truncated = true
+      if (chunk.byteLength <= remaining) {
+        stdout_chunks.push(chunk)
+        stdout_bytes += chunk.byteLength
+      } else {
+        stdout_chunks.push(chunk.subarray(0, remaining))
+        stdout_bytes += remaining
+        stdout_truncated = true
+      }
     })
-    child.stderr?.on('data', (chunk: string) => {
+    child.stderr?.on('data', (chunk: Buffer) => {
       const remaining = MAX_SHELL_OUT_BYTES - stderr_bytes
       if (remaining <= 0) {
         stderr_truncated = true
         return
       }
-      const take = chunk.length <= remaining ? chunk : chunk.slice(0, remaining)
-      stderr += take
-      stderr_bytes += take.length
-      if (chunk.length > remaining) stderr_truncated = true
+      if (chunk.byteLength <= remaining) {
+        stderr_chunks.push(chunk)
+        stderr_bytes += chunk.byteLength
+      } else {
+        stderr_chunks.push(chunk.subarray(0, remaining))
+        stderr_bytes += remaining
+        stderr_truncated = true
+      }
     })
 
     child.on('error', (err) => {
-      clearTimeout(timer)
-      caller_abort.removeEventListener('abort', on_caller_abort)
-      reject(err)
+      // AbortError fires when controller.abort() kills the process; close
+      // will also fire in that case, so defer settlement to close.
+      // Only reject here for spawn failures where close will not fire.
+      const is_abort =
+        (err as { code?: unknown }).code === 'ABORT_ERR' ||
+        (err as { name?: unknown }).name === 'AbortError'
+      if (!is_abort) {
+        clearTimeout(timer)
+        caller_abort.removeEventListener('abort', on_caller_abort)
+        reject(err)
+      }
     })
     child.on('close', (code) => {
       clearTimeout(timer)
       caller_abort.removeEventListener('abort', on_caller_abort)
+      if (caller_aborted && !timed_out) {
+        const reason = caller_abort.reason
+        reject(reason instanceof Error ? reason : new Error(String(reason ?? 'aborted')))
+        return
+      }
+      const stdout = Buffer.concat(stdout_chunks).toString('utf8')
+      const stderr = Buffer.concat(stderr_chunks).toString('utf8')
       const final_stdout = stdout_truncated ? stdout + TRUNCATION_MARKER : stdout
       const final_stderr = stderr_truncated ? stderr + TRUNCATION_MARKER : stderr
       resolve({
