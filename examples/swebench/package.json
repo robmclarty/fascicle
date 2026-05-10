@@ -1,0 +1,19 @@
+{
+  "name": "@repo/example-swebench",
+  "version": "0.0.0",
+  "description": "Smoke harness: drive a Fascicle agent flow against a small SWE-bench Verified slice, write predictions.jsonl, and stub the eval seam.",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "swebench": "tsx src/main.ts",
+    "test": "vitest run --config vitest.config.ts"
+  },
+  "dependencies": {
+    "@repo/fascicle": "workspace:*",
+    "vitest": "*",
+    "zod": "*"
+  },
+  "devDependencies": {
+    "tsx": "*"
+  }
+}
