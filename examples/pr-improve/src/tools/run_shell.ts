@@ -152,8 +152,8 @@ async function execute_run_shell(
       // will also fire in that case, so defer settlement to close.
       // Only reject here for spawn failures where close will not fire.
       const is_abort =
-        (err as { code?: unknown }).code === 'ABORT_ERR' ||
-        (err as { name?: unknown }).name === 'AbortError'
+        err.name === 'AbortError' ||
+        ('code' in err && err.code === 'ABORT_ERR')
       if (!is_abort) {
         clearTimeout(timer)
         caller_abort.removeEventListener('abort', on_caller_abort)
