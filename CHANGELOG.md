@@ -1,5 +1,24 @@
 # Changelog
 
+## v0.4.2 — 2026-05-09
+
+### Added
+- `examples/pr-improve` Phase C, PR A: worktree-scoped builder tools and a safety harness. The builder runs in an isolated git worktree (clean cwd, branch named `fascicle/improve-<n>`) and gets bounded `read_file`, `write_file`, `edit_file`, `list_dir`, and `run_shell` tools that refuse paths outside the worktree, follow no symlinks past the root, and cap stdout/stderr per call.
+- `@repo/engine` `claude_cli` provider: typed parsing for `rate_limit_event` stream lines. Trajectories now record a structured `cli_rate_limit_event` (status, rate-limit type, reset times, overage flag) instead of falling through to opaque `cli_unknown_event` blobs. Every field is optional in the schema for forward-compat with future CLI variants.
+
+### Changed
+- `@repo/engine` `parse_with_schema` now surfaces the first parseable candidate's schema-validation error, not the last. With multi-candidate JSON extraction (text → fenced blocks → outermost-brace slice → outermost-bracket slice), the bracket-slice fallback could grab an inner array and produce an "expected object, received array" error that buried the real shape mismatch and actively misdirected the schema-repair prompt. The first JSON-parseable candidate represents the model's intent and is what repair feedback should describe.
+
+### Fixed
+- `examples/pr-improve` stage prompts: the pragmatist, builder, and build-reviewer system prompts now describe their JSON output contracts explicitly — exact field names, length caps, and an emphatic "JSON only" footer (especially important for the builder, which uses tools and was previously ending its turn with markdown narration). Without the schema spelled out, models invented field names (`id` for `suggestion_id`, `summary` for `one_liner`) or exceeded the 120-char `one_liner` cap, exhausting the schema-repair budget.
+- `examples/pr-improve` `run_shell` (auto-applied via PR #5): stream-byte caps now use `Buffer.byteLength` instead of UTF-16 string length, so non-ASCII output is truncated at the correct byte count. Promise settlement is deferred to the `close` event so `AbortController`-driven timeouts return `RunShellOutput { timed_out: true }` instead of always rejecting from the abort-triggered `error` event. Spawn environment strips `ANTHROPIC_*`, `GITHUB_*`, and `AWS_*` keys to prevent credential exfiltration via model-controlled commands.
+- `examples/pr-improve` `read_file` / `edit_file` (auto-applied via PR #5): replaced the post-assert `stat()` with `lstat()`, closing a race window where a symlink swapped in after the initial symlink guard could be silently followed.
+- `examples/pr-improve` `claude_cli` stall timeout bumped from the 5-minute default to 15 minutes. The default watchdog tripped on legitimate long thinking phases when the CLI's between-turn heartbeat events (session/rate-limit) fired infrequently.
+- `examples/pr-improve` `run_shell` error narrowing now uses `'code' in err` type guards instead of unsafe casts to `{ code?: unknown }`. The auto-applied improvement landed casts that the project's `no-unsafe-type-assertion` rule rejected, breaking `pnpm check` on main.
+
+### Internal
+- `examples/pr-improve` docs: marked Phase B done and detailed the Phase C tool surface.
+
 ## v0.4.1 — 2026-05-09
 
 ### Added
