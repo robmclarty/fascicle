@@ -65,9 +65,26 @@ during prompt/flow iteration.
 Enable with `SWEBENCH_RUN_EVAL=1`. Requires `sb-cli` on PATH and a
 configured account (`pip install sb-cli && sb-cli configure`).
 
+## Providers
+
+Pick one via `SWEBENCH_PROVIDER`:
+
+- **`claude_cli`** (default): OAuth via the locally logged-in `claude`
+  binary. No API key, billed against your Claude account. Each case spins
+  up a fresh per-instance engine with `default_cwd` pointed at the sandbox
+  workdir, so the CLI's built-in Read/Write/Edit/Bash tools operate inside
+  the sandbox. Our Sandbox-bound tools are skipped because `execute`
+  closures can't cross the subprocess boundary anyway. Override the model
+  with `SWEBENCH_MODEL=cli-opus` (default `cli-sonnet`) and the effort
+  with `SWEBENCH_EFFORT=high` (default `medium`).
+- **`anthropic`**: requires `ANTHROPIC_API_KEY`. One shared engine; the
+  flow injects our Sandbox-bound tools on every model call. Override the
+  model with `SWEBENCH_MODEL=opus-4-7` (default `sonnet`).
+
 ## Prereqs
 
-- `ANTHROPIC_API_KEY` in your environment.
+- For `claude_cli`: `claude` on PATH and authenticated (`claude login`).
+- For `anthropic`: `ANTHROPIC_API_KEY` in your environment.
 - For `SWEBENCH_SANDBOX=local`: `git` on PATH and network access for clone.
 - For real eval: `sb-cli` installed and configured (or the local
   `swebench.harness.run_evaluation` Python harness with Docker).
@@ -80,6 +97,14 @@ pnpm --filter @repo/example-swebench swebench
 
 # Real attempts against host filesystem (still no Docker).
 SWEBENCH_SANDBOX=local pnpm --filter @repo/example-swebench swebench
+
+# Target a single instance.
+SWEBENCH_SANDBOX=local SWEBENCH_INSTANCE=astropy__astropy-12907 \
+  pnpm --filter @repo/example-swebench swebench
+
+# Swap to the API provider.
+SWEBENCH_PROVIDER=anthropic SWEBENCH_SANDBOX=local \
+  pnpm --filter @repo/example-swebench swebench
 
 # Full smoke with sb-cli scoring.
 SWEBENCH_SANDBOX=local SWEBENCH_RUN_EVAL=1 \
