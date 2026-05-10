@@ -1,5 +1,7 @@
 # Spec: Automated PR Improvement Pipeline ("majestic-sky")
 
+> **Deprecated.** This document captures the original end-to-end design and is preserved as historical context for the shipped pipeline (Phases A, B, and Phase C / PRs A+B). The cloud-deployment portion (Phase D in this document) is **superseded** by [CLOUD_SPEC.md](./CLOUD_SPEC.md), which is the active spec for all remaining work. Where the two disagree, trust CLOUD_SPEC.md.
+
 ## Context
 
 When a developer opens a PR, an opt-in trigger should kick off an automated agent pipeline that:
