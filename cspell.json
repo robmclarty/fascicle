@@ -34,6 +34,7 @@
     "ENOENT",
     "fascicle",
     "esbuild",
+    "exfiltration",
     "fallow",
     "forkjoin",
     "greywall",
