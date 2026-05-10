@@ -1,11 +1,13 @@
 # Changelog
 
-## Unreleased
+## v0.4.3 — 2026-05-10
 
 ### Added
+- `examples/swebench` — 5-instance smoke harness against SWE-bench Verified. Ships a `Sandbox` seam (`noop` / `local` / `docker` factories), five per-case tools (`read_file`, `write_file`, `run_command` argv-only, `list_files`, `grep_files`), a `solve_instance` flow that captures `git diff` against `base_commit`, and `evaluate_with_sb_cli` for the real eval. Scaling to the 500-instance Verified set is a scale change, not a shape change.
 - `examples/pr-improve` Phase C, PR B: builder dispatches by provider. `make_builder_call` now takes `worktree_root` and `provider` explicit params; under `claude_cli` it keeps the schema-only path that delegates to the CLI's built-in Read/Write/Edit, and under API providers (`anthropic`, `openrouter`) it returns a `model_call` configured with the worktree-scoped tools from `make_builder_tools(worktree_root)`. The `Step<string, GenerateResult<Handoff>>` contract is unchanged; `flow.ts` ripples in one place via a new `FlowEnv = { worktree_root, provider }` arg to `build_flow`. The portability proof — same end-to-end result under `--provider claude_cli` and `--provider anthropic` — is now live.
 
 ### Internal
+- `examples/pr-improve`: split `CLOUD_SPEC.md` out as the active spec for the remaining AWS/Fargate/Terraform deployment work (Fargate worker, webhook Lambda, single Terraform module). `SPEC.md` keeps a deprecation banner and is preserved as historical context.
 - `examples/pr-improve` `post_improvement_pr`: dropped the "re-run with `--provider claude_cli`" hint from the no-edits follow-up message, now obsolete since API providers also edit files.
 - `vitest.config.ts`: include `examples/pr-improve/src/stages/**/*.{test,spec}.ts` so the new builder-dispatch test runs alongside the tool tests.
 
