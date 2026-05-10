@@ -23,28 +23,35 @@ export type ParseOutcome<t> =
  * output in markdown fences and surrounding prose. We try a sequence of
  * candidates in increasing leniency: the trimmed text as-is, every fenced
  * block in the text, and the outermost {…} / […] slice. The first candidate
- * that both parses as JSON and matches the schema wins. The last error
- * encountered is surfaced if every candidate fails.
+ * that both parses as JSON and matches the schema wins.
+ *
+ * When every candidate fails, we prefer the schema-validation error from the
+ * FIRST candidate that parsed as JSON — that error reflects the model's
+ * primary output and is what a repair prompt should feed back. Later
+ * candidates (e.g. the bracket-slice fallback) often produce noisy errors
+ * like "expected object, received array" that misdirect the model. Only when
+ * NO candidate parses as JSON do we surface the JSON parse error.
  */
 export function parse_with_schema<t>(
   schema: z.ZodType<t>,
   text: string,
 ): ParseOutcome<t> {
   const candidates = json_candidates(text)
-  let last_error: unknown = new Error('No JSON-parseable content found in model output')
+  let json_parse_error: unknown = new Error('No JSON-parseable content found in model output')
+  let first_schema_error: unknown
   for (const candidate of candidates) {
     let parsed: unknown
     try {
       parsed = JSON.parse(candidate)
     } catch (err: unknown) {
-      last_error = err
+      json_parse_error = err
       continue
     }
     const result = schema.safeParse(parsed)
     if (result.success) return { ok: true, value: result.data }
-    last_error = result.error
+    if (first_schema_error === undefined) first_schema_error = result.error
   }
-  return { ok: false, error: last_error }
+  return { ok: false, error: first_schema_error ?? json_parse_error }
 }
 
 const FENCE_BLOCK = /```(?:[\w-]*)\s*\n?([\s\S]*?)\n?```/g
