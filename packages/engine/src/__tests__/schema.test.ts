@@ -78,6 +78,22 @@ describe('parse_with_schema', () => {
     if (outcome.ok) expect(outcome.value).toEqual({ name: 'ada', age: 36 })
   })
 
+  it('surfaces the schema error from the first parseable candidate, not later fallbacks', () => {
+    const triage = z.object({
+      accepted: z.array(z.object({ id: z.string() })),
+      rejected: z.array(z.object({ id: z.string() })),
+    })
+    const text = '{"accepted":[{"wrong_field":"x"}]}'
+    const outcome = parse_with_schema(triage, text)
+    expect(outcome.ok).toBe(false)
+    if (!outcome.ok) {
+      const err = outcome.error as { issues?: ReadonlyArray<{ path: ReadonlyArray<string | number> }> }
+      const paths = (err.issues ?? []).map((i) => i.path.join('.'))
+      expect(paths).toContain('rejected')
+      expect(paths.some((p) => p.startsWith('accepted'))).toBe(true)
+    }
+  })
+
   it('returns ok: false when fenced content is itself invalid JSON', () => {
     const fenced = '```json\n{not json}\n```'
     const outcome = parse_with_schema(user_schema, fenced)
