@@ -34,7 +34,7 @@ Every node in that diagram is a fascicle primitive in `flow.ts`. None of them is
 Each module has one reason to exist; together they keep `flow.ts` at the fascicle level.
 
 - `flow.ts` — pure fascicle composition. The agent topology.
-- `stages/*.ts` — each stage is a system prompt plus a `make_*_call(engine, model)` factory that returns a `model_call` step. No formatting, no extraction. Phase B can replace `make_builder_call` with a `tool_loop` factory and `flow.ts` doesn't notice.
+- `stages/*.ts` — each stage is a system prompt plus a `make_*_call(engine, model, ...)` factory that returns a `model_call` step. No formatting, no extraction. `make_builder_call` additionally takes `worktree_root` and `provider` (Phase C, PR B) and dispatches: `claude_cli` uses the CLI's built-in tools, API providers get explicit worktree-scoped tools. The `Step<string, GenerateResult<Handoff>>` contract stays stable so `flow.ts` doesn't notice.
 - `messages.ts` — `format_*` user-message builders. Pure string assembly.
 - `render.ts` — `render_*` markdown builders for run artifacts (`IMPROVEMENT_SPEC.md`, `HANDOFF.md`, `PR_COMMENT.md`) and `assemble_final_result` for the discriminated-union output.
 - `state.ts` — state key constants (`K`), `LoopState`, `next_loop_state`, `loop_converged`, and `read_*` helpers. The only place unsafe `as` casts on scope state are allowed.

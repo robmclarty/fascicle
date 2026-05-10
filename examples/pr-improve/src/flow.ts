@@ -34,6 +34,7 @@ import {
   type Step,
 } from '@repo/fascicle'
 
+import type { Provider } from './engine.js'
 import {
   format_build_review_message,
   format_builder_message,
@@ -70,10 +71,19 @@ export type FlowModels = {
   readonly build_reviewer: string
 }
 
-export function build_flow(engine: Engine, models: FlowModels): Step<PRContext, FinalResult> {
+export type FlowEnv = {
+  readonly worktree_root: string
+  readonly provider: Provider
+}
+
+export function build_flow(
+  engine: Engine,
+  models: FlowModels,
+  env: FlowEnv,
+): Step<PRContext, FinalResult> {
   const reviewer_call = make_reviewer_call(engine, models.reviewer)
   const pragmatist_call = make_pragmatist_call(engine, models.pragmatist)
-  const builder_call = make_builder_call(engine, models.builder)
+  const builder_call = make_builder_call(engine, models.builder, env.worktree_root, env.provider)
   const build_reviewer_call = make_build_reviewer_call(engine, models.build_reviewer)
 
   const reviewer_subflow: Step<unknown, ReadonlyArray<Suggestion>> = sequence([

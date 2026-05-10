@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- `examples/pr-improve` Phase C, PR B: builder dispatches by provider. `make_builder_call` now takes `worktree_root` and `provider` explicit params; under `claude_cli` it keeps the schema-only path that delegates to the CLI's built-in Read/Write/Edit, and under API providers (`anthropic`, `openrouter`) it returns a `model_call` configured with the worktree-scoped tools from `make_builder_tools(worktree_root)`. The `Step<string, GenerateResult<Handoff>>` contract is unchanged; `flow.ts` ripples in one place via a new `FlowEnv = { worktree_root, provider }` arg to `build_flow`. The portability proof — same end-to-end result under `--provider claude_cli` and `--provider anthropic` — is now live.
+
+### Internal
+- `examples/pr-improve` `post_improvement_pr`: dropped the "re-run with `--provider claude_cli`" hint from the no-edits follow-up message, now obsolete since API providers also edit files.
+- `vitest.config.ts`: include `examples/pr-improve/src/stages/**/*.{test,spec}.ts` so the new builder-dispatch test runs alongside the tool tests.
+
 ## v0.4.2 — 2026-05-09
 
 ### Added
