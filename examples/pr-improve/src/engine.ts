@@ -86,6 +86,7 @@ export function create_app_engine(cfg: AppEngineConfig, opts: AppEngineOptions =
     providers: {
       claude_cli: {
         auth_mode: 'oauth',
+        stall_timeout_ms: 900_000,
         ...(opts.cwd !== undefined ? { default_cwd: opts.cwd } : {}),
       },
     },
