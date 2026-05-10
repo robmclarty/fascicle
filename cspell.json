@@ -73,6 +73,7 @@
     "stryker",
     "subfolders",
     "tmpfs",
+    "TOCTOU",
     "tsconfig",
     "tsdown",
     "tsgolint",
@@ -82,6 +83,7 @@
     "vitest",
     "wallclock",
     "worktree",
+    "Worktrees",
     "xhigh",
     "zerr"
   ]

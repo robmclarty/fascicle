@@ -352,25 +352,110 @@ Recommend three phases, each independently demoable:
 2. Implement stages 1–4 against a fixture diff (one of our recent PRs, saved as a `.patch` file). Use a stub engine for fast iteration.
 3. Run with `pnpm exec tsx examples/pr-improve/src/main.ts --fixture <path>`. Verify trajectory in viewer.
 
-### Phase B — Local CLI demo via `claude_cli` (the demo path) — NEXT
+### Phase B — Local CLI demo via `claude_cli` (the demo path) ✓
 
 Goal: stand up the whole pipeline working end-to-end on a real PR, locally, before asking for any cloud investment. This is the deliverable that earns buy-in for Phase C and Phase D. Manual invocation only — no label, no webhook, no CI.
 
 1. Extend `engine.ts` with a `claude_cli` provider branch (auth_mode `oauth`, no API key). Model defaults `cli-sonnet` / `cli-opus`.
-2. Add CLI flags to `main.ts`: `--pr <number>` (mutually exclusive with `--fixture`), `--provider <name>` (overrides `FASCICLE_PROVIDER` env), `--push` (default OFF — preview-only).
+2. Add CLI flags to `main.ts`: `--pr <number>` (mutually exclusive with `--fixture`), `--provider <name>` (overrides `FASCICLE_PROVIDER` env). The `--push` flag from the original spec was dropped: real-PR runs always post the review and (on success) open the improvement PR + linking comment. Preview-only behavior is available via `--fixture` for local iteration.
 3. Add `src/github/pr.ts` (gh CLI wrappers — view, diff, create, comment, push) and `src/github/workspace.ts` (`git worktree add` + `gh pr checkout` helpers). Use the safe-spawn pattern from `packages/engine/src/providers/claude_cli/spawn.ts` as a hygiene reference.
 4. Add `bin/pr-improve` — a thin shell wrapper around `tsx src/main.ts` so the user can `ln -s` it into `~/.local/bin/`. No build step.
 5. Verify the builder works under `claude_cli`. The engine uses the CLI's built-in file tools instead of our explicit `tool_loop` toolset. `make_builder_call`'s factory signature stays the same; `flow.ts` does not change.
-6. Demo: from inside a checkout of the fascicle repo (or any GitHub project), run `pr-improve <n>` against a real open PR → inspect `IMPROVEMENT_SPEC.md` / `HANDOFF.md` / the comment preview → re-run with `--push` → improvement PR appears on GitHub with a comment on the original.
+6. Demo: from inside a checkout of the fascicle repo (or any GitHub project), run `pr-improve <n>` against a real open PR → review comment lands → improvement PR (if pragmatist accepts) appears on GitHub with a linking comment on the original.
+
+#### Robustness fixes shipped after first end-to-end run
+
+The first real-PR run aborted at the reviewer stage; that exposed three classes of failure that did not show up against the stub engine. Addressed in `fix/schema-fence-tolerance`:
+
+- **Multi-candidate JSON extraction.** Sonnet wraps schema-driven output in markdown fences with surrounding prose. `parse_with_schema` now tries the trimmed text, then every fenced block, then the outermost `{...}` slice, then the outermost `[...]` slice, and picks the first that both parses and validates.
+- **Configurable claude_cli repair count.** The adapter previously hardcoded one repair; chained parse-then-zod failures exhausted the budget. The loop now honors `opts.schema_repair_attempts`. All four flow stages set it to 2.
+- **Reviewer prompt hardening.** Schema constraints (one_liner ≤ 120 chars, allowed category and severity values) are now restated in prose in `REVIEWER_SYSTEM`, alongside an explicit "JSON only — no fences, no prose" directive.
+- **Unconditional worktree cleanup.** `run_pr_mode` wraps the post-`setup_worktree` body in `try/finally`. Worktree leaks (and the `.fascicle/` clutter they cause) no longer require manual `git worktree remove --force`. `.fascicle/` is also now in `.gitignore` so any stray dir from a SIGKILL doesn't pollute git status.
 
 ### Phase C — API engine + explicit `tool_loop` builder
 
-After Phase B has earned buy-in. This is the work that makes the cloud deployment safe.
+After Phase B has earned buy-in. This is the work that makes the cloud deployment safe. Split into two PRs so the safety surface lands and reviews on its own before being wired into the flow.
 
-1. Replace `make_builder_call`'s schema-only path under `anthropic` / `openrouter` with a `tool_loop` agent equipped with explicit worktree-scoped file tools (`list_dir`, `read_file`, `write_file`, `edit_file`, `run_shell` with allowlist). Pattern: `examples/tool_loop.ts` + `examples/adversarial_build.ts`.
-2. Add path-traversal / shell-allowlist / oversized-write safety tests for the worktree-scoped tools.
-3. Verify `pr-improve <n> --provider anthropic` produces the same end-to-end result as `--provider claude_cli`. That's the portability proof.
-4. Same `flow.ts`, same `gh` / worktree modules from Phase B — only `make_builder_call` and the engine config change.
+#### PR A — worktree-scoped tools and safety harness (no behavior change)
+
+Pure additive. Adds tool modules + a path-safety helper + per-tool unit tests. Nothing in `flow.ts` or `make_builder_call` changes; nobody calls these tools yet. Goal: review the safety surface in isolation.
+
+Tool surfaces (snake_case names, schema-validated input):
+
+```ts
+make_list_dir(root)  : Tool<{ path: string },
+                            { entries: Entry[]; truncated: boolean }>
+make_read_file(root) : Tool<{ path: string },
+                            { content: string; bytes: number; lines: number }>
+make_write_file(root): Tool<{ path: string; content: string },
+                            { bytes_written: number }>
+make_edit_file(root) : Tool<{ path: string; find: string; replace: string;
+                              replace_all?: boolean },
+                            { replacements: number }>
+make_run_shell(root) : Tool<{ argv: string[] },
+                            { stdout: string; stderr: string; code: number;
+                              truncated: boolean }>
+```
+
+Hard limits (constants in `tools/limits.ts`):
+
+| Limit | Value | Applies to |
+|---|---|---|
+| `MAX_FILE_BYTES` | 256 KB | read, write, edit (input + post-edit content) |
+| `MAX_LIST_ENTRIES` | 1000 | list_dir (truncates with `truncated: true`) |
+| `MAX_SHELL_OUT_BYTES` | 64 KB / stream | run_shell stdout/stderr (truncates with marker) |
+| `SHELL_TIMEOUT_MS` | 60 s | run_shell hard timeout via AbortController |
+
+Path safety (`tools/path_safety.ts`):
+
+- `resolve_within(root, user_path)` — rejects empty input, runs `path.resolve(root, user_path)` (collapses `..`), asserts the result is `root` or starts with `root + path.sep`. Catches `../../etc/passwd` and absolute-path inputs both.
+- Every leaf operation `lstat`s the target and rejects symlinks. Worktrees from `git worktree add` do not normally contain symlinks; rejecting them removes a TOCTOU class of attack.
+- `read_file` additionally rejects binary content (NUL-byte detection); utf8 only.
+- `edit_file` requires exactly one occurrence of `find` (forces unique surrounding context, mirrors Claude Code's `Edit` semantics). Force multi-replace via `replace_all: true`.
+
+Shell allowlist (`tools/run_shell.ts`):
+
+```ts
+const ALLOWLIST = new Map<string, ReadonlyArray<string> | 'any'>([
+  ['pnpm', 'any'],
+  ['git',  ['status', 'diff', 'add', 'commit']],
+])
+```
+
+`argv: string[]` is the only input shape (never a free-form `command: string`). `shell: false` always. The `pnpm` entry is intentionally permissive in v0 to match the original spec; tightening (e.g. allow only `pnpm test`, `pnpm check`, `pnpm exec tsc`) is a follow-up if we ever see the model misuse it.
+
+Errors are thrown (idiomatic for `Tool.execute`); the engine's `tool_loop` with `tool_error_policy: 'feed_back'` (the default) sends the message back to the model. No success/failure envelope.
+
+Module layout:
+
+```text
+examples/pr-improve/src/tools/
+├── path_safety.ts        resolve_within + symlink leaf check
+├── limits.ts             MAX_FILE_BYTES, MAX_LIST_ENTRIES, ...
+├── list_dir.ts
+├── read_file.ts
+├── write_file.ts
+├── edit_file.ts
+├── run_shell.ts
+├── index.ts              make_builder_tools(root): Tool[]
+└── __tests__/
+    ├── path_safety.test.ts
+    ├── list_dir.test.ts
+    ├── read_file.test.ts
+    ├── write_file.test.ts
+    ├── edit_file.test.ts
+    └── run_shell.test.ts
+```
+
+Tests use `mkdtemp` for an isolated worktree root with cleanup in `afterEach`. Each tool test covers happy path + every rejection class (path traversal, symlink, oversized, missing/wrong-kind, shell allowlist, edit ambiguity).
+
+#### PR B — builder dispatch by provider
+
+`make_builder_call` gains a `worktree_root` and `provider` parameter (or reads provider from the engine — TBD during PR A). When `provider === 'claude_cli'` it returns the current schema-only path that lets the CLI use its built-in Read/Write/Edit. Otherwise it returns a `model_call` configured with `tools: make_builder_tools(worktree_root)`. The Step type is unchanged so `flow.ts` ripples in only one place.
+
+**Deviation from the original spec: no `finish` terminal tool.** The original spec mentioned a `finish({ schema: HandoffSchema })` tool the model would call to end the loop. We use `model_call({ schema: HandoffSchema, tools: [...]} )` instead — the engine validates the final assistant message, identical to Phase B's contract. This (a) keeps the `Step<string, GenerateResult<Handoff>>` signature stable across providers, (b) reduces the tool surface the model has to reason about, and (c) leans on the multi-candidate JSON extractor that already protects every other schema-driven stage.
+
+Verification: `pr-improve <n> --provider anthropic` produces the same end-to-end result as `--provider claude_cli`. That's the portability proof. Requires `ANTHROPIC_API_KEY` set; only the full pipeline run validates the equivalence (unit tests in PR A cover the tools but not the cross-provider behavioral match).
 
 ### Phase D — Cloud trigger via Fargate (with SRE)
 
