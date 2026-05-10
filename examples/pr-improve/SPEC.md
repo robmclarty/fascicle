@@ -367,7 +367,7 @@ Goal: stand up the whole pipeline working end-to-end on a real PR, locally, befo
 
 The first real-PR run aborted at the reviewer stage; that exposed three classes of failure that did not show up against the stub engine. Addressed in `fix/schema-fence-tolerance`:
 
-- **Multi-candidate JSON extraction.** Sonnet wraps schema-driven output in markdown fences with surrounding prose. `parse_with_schema` now tries trimmed-text → all `​```...​```` blocks → outermost `{...}` → outermost `[...]` and picks the first that both parses and validates.
+- **Multi-candidate JSON extraction.** Sonnet wraps schema-driven output in markdown fences with surrounding prose. `parse_with_schema` now tries the trimmed text, then every fenced block, then the outermost `{...}` slice, then the outermost `[...]` slice, and picks the first that both parses and validates.
 - **Configurable claude_cli repair count.** The adapter previously hardcoded one repair; chained parse-then-zod failures exhausted the budget. The loop now honors `opts.schema_repair_attempts`. All four flow stages set it to 2.
 - **Reviewer prompt hardening.** Schema constraints (one_liner ≤ 120 chars, allowed category and severity values) are now restated in prose in `REVIEWER_SYSTEM`, alongside an explicit "JSON only — no fences, no prose" directive.
 - **Unconditional worktree cleanup.** `run_pr_mode` wraps the post-`setup_worktree` body in `try/finally`. Worktree leaks (and the `.fascicle/` clutter they cause) no longer require manual `git worktree remove --force`. `.fascicle/` is also now in `.gitignore` so any stray dir from a SIGKILL doesn't pollute git status.
@@ -407,6 +407,7 @@ Hard limits (constants in `tools/limits.ts`):
 | `SHELL_TIMEOUT_MS` | 60 s | run_shell hard timeout via AbortController |
 
 Path safety (`tools/path_safety.ts`):
+
 - `resolve_within(root, user_path)` — rejects empty input, runs `path.resolve(root, user_path)` (collapses `..`), asserts the result is `root` or starts with `root + path.sep`. Catches `../../etc/passwd` and absolute-path inputs both.
 - Every leaf operation `lstat`s the target and rejects symlinks. Worktrees from `git worktree add` do not normally contain symlinks; rejecting them removes a TOCTOU class of attack.
 - `read_file` additionally rejects binary content (NUL-byte detection); utf8 only.
