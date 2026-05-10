@@ -272,6 +272,71 @@ describe('§7.4 — tolerance', () => {
     expect(parsed.received_result).toBe(true)
   })
 
+  it('rate_limit_event records cli_rate_limit_event, not cli_unknown_event', async () => {
+    const trajectory = create_captured_trajectory()
+    const { parsed, chunks } = await feed(
+      [
+        jline(init_event),
+        jline({
+          type: 'rate_limit_event',
+          rate_limit_info: {
+            status: 'allowed',
+            resetsAt: 1778387400,
+            rateLimitType: 'five_hour',
+            overageStatus: 'allowed',
+            overageResetsAt: 1778383200,
+            isUsingOverage: false,
+          },
+          uuid: 'b84ebf41-4d55-49a1-971b-95a85db121d2',
+          session_id: 'sess-1',
+        }),
+        jline({
+          type: 'assistant',
+          message: { content: [{ type: 'text', text: 'ok' }] },
+        }),
+        jline(result_event({ result: 'ok' })),
+      ],
+      trajectory,
+    )
+    expect(
+      trajectory.events.filter((e) => e.kind === 'cli_unknown_event').length,
+    ).toBe(0)
+    const rate_limits = trajectory.events.filter(
+      (e) => e.kind === 'cli_rate_limit_event',
+    )
+    expect(rate_limits.length).toBe(1)
+    const rl = rate_limits[0]
+    expect(rl?.['session_id']).toBe('sess-1')
+    expect(rl?.['status']).toBe('allowed')
+    expect(rl?.['rate_limit_type']).toBe('five_hour')
+    expect(rl?.['resets_at']).toBe(1778387400)
+    expect(rl?.['overage_status']).toBe('allowed')
+    expect(rl?.['overage_resets_at']).toBe(1778383200)
+    expect(rl?.['is_using_overage']).toBe(false)
+    expect(parsed.received_result).toBe(true)
+    expect(parsed.final_text).toBe('ok')
+    expect(chunks.filter((c) => c.kind === 'text').length).toBe(1)
+  })
+
+  it('rate_limit_event with missing rate_limit_info still records and does not crash', async () => {
+    const trajectory = create_captured_trajectory()
+    const { parsed } = await feed(
+      [
+        jline(init_event),
+        jline({ type: 'rate_limit_event' }),
+        jline(result_event()),
+      ],
+      trajectory,
+    )
+    expect(
+      trajectory.events.filter((e) => e.kind === 'cli_rate_limit_event').length,
+    ).toBe(1)
+    expect(
+      trajectory.events.filter((e) => e.kind === 'cli_unknown_event').length,
+    ).toBe(0)
+    expect(parsed.received_result).toBe(true)
+  })
+
   it('empty or whitespace lines are ignored silently', async () => {
     const trajectory = create_captured_trajectory()
     const { parsed } = await feed(

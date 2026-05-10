@@ -13,10 +13,15 @@
  * and skip (spec §7.1, §7.4). Neither ever throws.
  *
  * Event shapes are Zod-validated via `cli_event_schema` (a
- * `z.discriminatedUnion` over the four CLI event types). Per-entry content
- * arrays use `.transform` to silently drop invalid entries rather than
- * rejecting the whole event — this preserves forward compatibility with
- * new CLI content types.
+ * `z.discriminatedUnion` over the recognized CLI event types: system,
+ * assistant, user, result, rate_limit_event). Per-entry content arrays use
+ * `.transform` to silently drop invalid entries rather than rejecting the
+ * whole event — this preserves forward compatibility with new CLI content
+ * types.
+ *
+ * `rate_limit_event` is informational: the CLI emits it between turns to
+ * report current rate-limit budget. The parser records a structured
+ * `cli_rate_limit_event` to trajectory and does not affect turn state.
  */
 
 import { z } from 'zod'
@@ -103,11 +108,27 @@ const result_event_schema = z.object({
   result: z.string().optional(),
 })
 
+const rate_limit_info_schema = z.object({
+  status: z.string().optional(),
+  resetsAt: z.number().optional(),
+  rateLimitType: z.string().optional(),
+  overageStatus: z.string().optional(),
+  overageResetsAt: z.number().optional(),
+  isUsingOverage: z.boolean().optional(),
+})
+
+const rate_limit_event_schema = z.object({
+  type: z.literal('rate_limit_event'),
+  rate_limit_info: rate_limit_info_schema.optional(),
+  session_id: z.string().optional(),
+})
+
 const cli_event_schema = z.discriminatedUnion('type', [
   system_event_schema,
   assistant_event_schema,
   user_event_schema,
   result_event_schema,
+  rate_limit_event_schema,
 ])
 
 export type CliUsageRaw = z.infer<typeof cli_usage_schema>
@@ -212,6 +233,23 @@ function record_session_started(
   model: string | undefined,
 ): void {
   trajectory?.record({ kind: 'cli_session_started', session_id, model })
+}
+
+function record_rate_limit(
+  trajectory: TrajectoryLogger | undefined,
+  event: Extract<CliEvent, { type: 'rate_limit_event' }>,
+): void {
+  const info = event.rate_limit_info
+  trajectory?.record({
+    kind: 'cli_rate_limit_event',
+    session_id: event.session_id,
+    status: info?.status,
+    rate_limit_type: info?.rateLimitType,
+    resets_at: info?.resetsAt,
+    overage_status: info?.overageStatus,
+    overage_resets_at: info?.overageResetsAt,
+    is_using_overage: info?.isUsingOverage,
+  })
 }
 
 function flush_turn(state: ParserState): void {
@@ -368,6 +406,9 @@ async function handle_event(
       return
     case 'result':
       await handle_result(state, event, chunks, dispatch)
+      return
+    case 'rate_limit_event':
+      record_rate_limit(trajectory, event)
       return
   }
 }
