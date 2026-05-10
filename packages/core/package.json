@@ -1,6 +1,6 @@
 {
   "name": "@repo/core",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "description": "Composition layer for fascicle. Composer primitives, run(), describe(), shared types, typed errors.",
   "type": "module",
   "private": true,
