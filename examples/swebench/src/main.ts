@@ -1,23 +1,27 @@
 /**
  * SWE-bench smoke harness driver.
  *
- * Builds the engine, the per-case sandbox factory, and the solve flow, then
- * drives `bench` over the vendored 5-instance fixture. Emits:
+ * Builds the engine config, the per-case sandbox factory, and the solve
+ * flow, then drives `bench` over the vendored 5-instance fixture. Emits:
  *   - `.runs/swebench/<run_id>/predictions.jsonl` — the input to sb-cli
  *   - `.runs/swebench/<run_id>/trajectories/*.jsonl` — one per case
  *   - `.runs/swebench/<run_id>/report.json` — the bench report
  *
+ * Providers (set with `SWEBENCH_PROVIDER`):
+ *   - `claude_cli` (default): OAuth via the local `claude` binary, no API
+ *     key, uses the CLI's built-in Read/Write/Edit/Bash. Each case gets a
+ *     fresh engine pinned to the sandbox workdir.
+ *   - `anthropic`: requires `ANTHROPIC_API_KEY`; the flow injects our
+ *     Sandbox-bound tools on every model call.
+ *
  * If `SWEBENCH_RUN_EVAL=1` and `sb-cli` is on PATH, the driver shells out
  * after bench completes, parses the eval report, and prints resolution rate.
- *
- * Prereqs for an actually-runs-end-to-end smoke:
- *   - ANTHROPIC_API_KEY in env
- *   - For `SWEBENCH_SANDBOX=local`: git on PATH, network for `git clone`
- *   - For real eval: pip install sb-cli && sb-cli configure
  *
  * Usage:
  *   pnpm --filter @repo/example-swebench swebench
  *   SWEBENCH_SANDBOX=local pnpm --filter @repo/example-swebench swebench
+ *   SWEBENCH_PROVIDER=anthropic ANTHROPIC_API_KEY=... pnpm --filter @repo/example-swebench swebench
+ *   SWEBENCH_INSTANCE=astropy__astropy-12907 pnpm --filter @repo/example-swebench swebench
  *   SWEBENCH_RUN_EVAL=1 pnpm --filter @repo/example-swebench swebench
  */
 
@@ -26,10 +30,11 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { bench, create_engine } from '@repo/fascicle'
-import type { BenchReport } from '@repo/fascicle'
+import type { BenchReport, EffortLevel, Engine } from '@repo/fascicle'
 
 import { SMOKE_INSTANCES } from './instances.js'
 import { solve_instance } from './flow.js'
+import type { SolveConfig } from './flow.js'
 import {
   evaluate_with_sb_cli,
   judge_patch_nonempty,
@@ -43,8 +48,13 @@ const HERE = dirname(fileURLToPath(import.meta.url))
 const PACKAGE_ROOT = join(HERE, '..')
 const RUNS_DIR = join(PACKAGE_ROOT, '.runs')
 
-const DEFAULT_MODEL = 'sonnet'
-const DEFAULT_MODEL_NAME_OR_PATH = 'fascicle-smoke-sonnet'
+const VALID_EFFORTS: ReadonlySet<EffortLevel> = new Set([
+  'none', 'low', 'medium', 'high', 'xhigh', 'max',
+])
+
+function is_effort(value: string): value is EffortLevel {
+  return (VALID_EFFORTS as ReadonlySet<string>).has(value)
+}
 
 function pad2(n: number): string {
   return String(n).padStart(2, '0')
@@ -64,12 +74,39 @@ function predictions_from_report(report: BenchReport<SweBenchInstance, Predictio
   return predictions
 }
 
-export async function run_swebench_smoke(): Promise<void> {
-  const api_key = process.env['ANTHROPIC_API_KEY'] ?? ''
-  if (api_key.length === 0) {
-    console.error('ANTHROPIC_API_KEY is not set; the smoke harness cannot make model calls.')
-    process.exit(1)
+type ProviderChoice =
+  | { readonly kind: 'claude_cli'; readonly model: string; readonly effort: EffortLevel; readonly shared_engine?: undefined }
+  | { readonly kind: 'anthropic'; readonly model: string; readonly shared_engine: Engine }
+
+function resolve_provider(): ProviderChoice {
+  const raw = (process.env['SWEBENCH_PROVIDER'] ?? 'claude_cli').toLowerCase()
+  if (raw === 'claude_cli') {
+    const model = process.env['SWEBENCH_MODEL'] ?? 'cli-sonnet'
+    const effort_raw = process.env['SWEBENCH_EFFORT'] ?? 'medium'
+    if (!is_effort(effort_raw)) {
+      throw new Error(
+        `SWEBENCH_EFFORT="${effort_raw}" is not a valid effort level (none|low|medium|high|xhigh|max).`,
+      )
+    }
+    return { kind: 'claude_cli', model, effort: effort_raw }
   }
+  if (raw === 'anthropic') {
+    const api_key = process.env['ANTHROPIC_API_KEY'] ?? ''
+    if (api_key.length === 0) {
+      throw new Error('SWEBENCH_PROVIDER=anthropic requires ANTHROPIC_API_KEY.')
+    }
+    const model = process.env['SWEBENCH_MODEL'] ?? 'sonnet'
+    const shared_engine = create_engine({
+      providers: { anthropic: { api_key } },
+      defaults: { model },
+    })
+    return { kind: 'anthropic', model, shared_engine }
+  }
+  throw new Error(`SWEBENCH_PROVIDER="${raw}" not recognized. Use 'claude_cli' or 'anthropic'.`)
+}
+
+export async function run_swebench_smoke(): Promise<void> {
+  const provider = resolve_provider()
 
   const run_id = make_run_id()
   const run_dir = join(RUNS_DIR, run_id)
@@ -78,24 +115,46 @@ export async function run_swebench_smoke(): Promise<void> {
   const report_path = join(run_dir, 'report.json')
   await mkdir(trajectory_dir, { recursive: true })
 
-  const engine = create_engine({
-    providers: { anthropic: { api_key } },
-    defaults: { model: DEFAULT_MODEL },
-  })
-
   const sandbox_factory = resolve_sandbox_factory(process.env['SWEBENCH_SANDBOX'])
-  const flow = solve_instance({
-    engine,
-    sandbox_factory,
-    model_name_or_path: process.env['SWEBENCH_MODEL_NAME'] ?? DEFAULT_MODEL_NAME_OR_PATH,
-  })
+  const model_name_or_path =
+    process.env['SWEBENCH_MODEL_NAME'] ?? `fascicle-smoke-${provider.kind}-${provider.model}`
 
-  const cases = SMOKE_INSTANCES.map((instance) => ({
+  const solve_config: SolveConfig = provider.kind === 'claude_cli'
+    ? {
+        provider: 'claude_cli',
+        model: provider.model,
+        effort: provider.effort,
+        sandbox_factory,
+        model_name_or_path,
+      }
+    : {
+        provider: 'anthropic',
+        engine: provider.shared_engine,
+        model: provider.model,
+        sandbox_factory,
+        model_name_or_path,
+      }
+  const flow = solve_instance(solve_config)
+
+  const filter = process.env['SWEBENCH_INSTANCE']
+  const selected = filter === undefined || filter.length === 0
+    ? SMOKE_INSTANCES
+    : SMOKE_INSTANCES.filter((i) => i.instance_id === filter)
+  if (selected.length === 0) {
+    const known = SMOKE_INSTANCES.map((i) => i.instance_id).join(', ')
+    console.error(`SWEBENCH_INSTANCE="${filter ?? ''}" matched no vendored instance. Known: ${known}`)
+    process.exit(1)
+  }
+  const cases = selected.map((instance) => ({
     id: instance.instance_id,
     input: instance,
   }))
 
-  console.log(`swebench smoke run ${run_id}: ${String(cases.length)} cases, sandbox=${process.env['SWEBENCH_SANDBOX'] ?? 'noop'}`)
+  console.log(
+    `swebench smoke run ${run_id}: ${String(cases.length)} case(s), ` +
+      `provider=${provider.kind} model=${provider.model} ` +
+      `sandbox=${process.env['SWEBENCH_SANDBOX'] ?? 'noop'}`,
+  )
   console.log(`run dir: ${run_dir}`)
 
   let report: BenchReport<SweBenchInstance, Prediction>
@@ -111,7 +170,7 @@ export async function run_swebench_smoke(): Promise<void> {
       },
     )
   } finally {
-    await engine.dispose()
+    if (provider.kind === 'anthropic') await provider.shared_engine.dispose()
   }
 
   await writeFile(report_path, `${JSON.stringify(report, null, 2)}\n`)
