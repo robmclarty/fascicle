@@ -23,10 +23,20 @@ which is a git worktree of the target PR's head. Apply the spec by editing
 files in that cwd. Do not run pnpm install, do not push, do not git-commit —
 the harness handles version control.
 
-When done, output a Handoff describing:
-- files_touched: paths and one-liners
-- deviations: any place you departed from the spec, and why
-- summary: 2 sentences for the PR comment.`
+Output shape (validated; non-conforming responses will fail):
+- Top-level JSON object with EXACTLY three keys: files_touched, deviations, summary.
+- files_touched: array of objects. Each object has these keys and no others:
+  - path: string — file path edited, relative to the worktree root.
+  - one_liner: string, 120 characters or fewer — short description of what
+    changed in THIS file. Strict cap; if you go over, shorten it.
+- deviations: array of strings (may be empty) — places you departed from the
+  spec, and why. One sentence per entry.
+- summary: string, non-empty — 2 sentences for the PR comment.
+
+Your FINAL message — after all tool use is complete — MUST be ONLY the JSON
+Handoff object. No prose before or after, no markdown code fences, no
+"## Handoff" section header, no commentary. All narrative belongs inside
+the JSON \`summary\` field.`
 
 const CLAUDE_CLI_BUILDER_TOOLS = ['Read', 'Write', 'Edit', 'Glob', 'Grep', 'Bash'] as const
 
