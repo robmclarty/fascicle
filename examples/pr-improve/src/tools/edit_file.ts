@@ -10,7 +10,7 @@
  * `find` paired with a giant `replace` can't smuggle past the limit.
  */
 
-import { readFile, stat, writeFile } from 'node:fs/promises'
+import { lstat, readFile, writeFile } from 'node:fs/promises'
 import { z } from 'zod'
 
 import type { Tool } from '@repo/fascicle'
@@ -43,7 +43,7 @@ export function make_edit_file(root: string): Tool {
       const input = edit_file_input.parse(raw)
       const resolved = resolve_within(root, input.path)
       await assert_not_symlink(resolved, input.path)
-      const target_stat = await stat(resolved)
+      const target_stat = await lstat(resolved)
       if (!target_stat.isFile()) {
         throw new Error(`not a regular file: ${input.path}`)
       }
