@@ -417,7 +417,8 @@ const engine = create_engine({
 // The CLI has built-in tools — use it when you want them.
 const do_research = model_call({
   engine,
-  model: 'cli-sonnet',
+  model: 'sonnet',
+  provider: 'claude_cli',   // engine has two providers; name the transport explicitly
   id: 'research',
   provider_options: {
     claude_cli: { allowed_tools: ['Read', 'Grep', 'Bash'] },

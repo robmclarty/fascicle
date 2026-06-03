@@ -78,7 +78,7 @@ try {
 
 Plus `run`, `run.stream`, and `describe`.
 
-**AI engine.** `create_engine(config)` returns one `generate` surface across seven providers. Aliases (`sonnet`, `opus`, `gpt-4o`, `cli-sonnet`, …) resolve to `provider:model_id`. Reasoning effort (`'low' | 'medium' | 'high'`) is translated per provider. Cost estimation uses a pricing table with per-engine overrides.
+**AI engine.** `create_engine(config)` returns one `generate` surface across seven providers. Two axes: `model` names a family (`sonnet`, `opus`, `gpt` — latest of that family) or a specific id (`claude-opus-4-8`), and `provider` names the transport (`anthropic`, `claude_cli`, `openrouter`, …) — so the same `model: 'opus'` runs anywhere. Reasoning effort (`'low' | 'medium' | 'high'`) is translated per provider. Cost estimation uses a pricing table with per-engine overrides.
 
 **Adapters injected per run.** Trajectory loggers and checkpoint stores ship under the `fascicle/adapters` subpath:
 

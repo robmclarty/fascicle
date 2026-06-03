@@ -8,6 +8,7 @@ Configuring the engine layer: `create_engine(config)`, aliases, pricing, default
 type EngineConfig = {
   providers: ProviderConfigMap;
   aliases?: AliasTable;
+  families?: FamilyCatalog;
   pricing?: PricingTable;
   defaults?: EngineDefaults;
 
@@ -80,45 +81,53 @@ const engine = create_engine({
 
 Consumers of `fascicle` can replicate the pattern directly against `process.env`; they are not bound by the workspace's `no-process-env` rule. The rule exists to keep the published library free of ambient env reads, not to dictate how you wire your own harness.
 
-## Aliases
+## Model and provider: two axes
 
-An alias maps a short name to a concrete `{ provider, model_id }`. `DEFAULT_ALIASES` ship with the engine:
+A model call has two orthogonal inputs:
+
+- **`model`** — *which* model. Either a **family name** (`opus`, `sonnet`, `haiku`, `gpt`, `gemini`), meaning "the latest of that family", or a **specific vendor id** (`claude-opus-4-8`), meaning exactly that version.
+- **`provider`** — *how* to reach it (the transport): `anthropic`, `claude_cli`, `openrouter`, `openai`, `google`, `ollama`, `lmstudio`.
+
+Both are accepted per-call on `generate(opts)` / `model_call({ ... })` and as engine defaults (`defaults.model`, `defaults.provider`). The same `model: 'opus'` works on any transport — swap `provider` to move between the API, the local Claude CLI, and OpenRouter without touching the model name.
+
+### The family catalog
+
+`MODEL_FAMILIES` ships with the engine and maps each family to the latest id to send to each provider. Where a vendor offers a rolling alias (the Claude CLI resolves `opus`/`sonnet`/`haiku` itself; OpenAI's `gpt-4o` rolls forward), the catalog leans on it; otherwise it pins the current concrete id, which is the single place to bump on a new release:
 
 ```text
-claude-opus   -> anthropic:claude-opus-4-7
-opus          -> anthropic:claude-opus-4-7
-claude-sonnet -> anthropic:claude-sonnet-4-6
-sonnet        -> anthropic:claude-sonnet-4-6
-claude-haiku  -> anthropic:claude-haiku-4-5
-haiku         -> anthropic:claude-haiku-4-5
-
-cli-opus      -> claude_cli:claude-opus-4-7
-cli-sonnet    -> claude_cli:claude-sonnet-4-6
-cli-haiku     -> claude_cli:claude-haiku-4-5
-
-gpt-4o        -> openai:gpt-4o
-gpt-4o-mini   -> openai:gpt-4o-mini
-
-gemini-2.5-pro   -> google:gemini-2.5-pro
-gemini-2.5-flash -> google:gemini-2.5-flash
-gemini-pro       -> google:gemini-2.5-pro
-gemini-flash     -> google:gemini-2.5-flash
-
-or:sonnet        -> openrouter:anthropic/claude-sonnet-4.5
-or:opus          -> openrouter:anthropic/claude-opus-4.1
-or:gpt-4o        -> openrouter:openai/gpt-4o
-or:gemini-pro    -> openrouter:google/gemini-2.5-pro
-or:llama-3.3-70b -> openrouter:meta-llama/llama-3.3-70b-instruct
+opus    -> { anthropic: 'claude-opus-4-8',   claude_cli: 'opus',   openrouter: 'anthropic/claude-opus-4.8' }
+sonnet  -> { anthropic: 'claude-sonnet-4-6', claude_cli: 'sonnet', openrouter: 'anthropic/claude-sonnet-4.5' }
+haiku   -> { anthropic: 'claude-haiku-4-5',  claude_cli: 'haiku',  openrouter: 'anthropic/claude-haiku-4.5' }
+gpt          -> { openai: 'gpt-4o',           openrouter: 'openai/gpt-4o' }
+gpt-mini     -> { openai: 'gpt-4o-mini',      openrouter: 'openai/gpt-4o-mini' }
+gemini       -> { google: 'gemini-2.5-pro',   openrouter: 'google/gemini-2.5-pro' }
+gemini-flash -> { google: 'gemini-2.5-flash', openrouter: 'google/gemini-2.5-flash' }
 ```
 
-Override or extend at construction, or per-engine at runtime:
+The Claude CLI path is zero-maintenance: it receives the bare family token (`--model opus`) and resolves the latest itself.
+
+Extend or override the catalog per-engine; entries deep-merge per `(family, provider)`:
+
+```ts
+const engine = create_engine({
+  providers: { anthropic: { api_key }, openrouter: { api_key: or_key } },
+  families: {
+    opus: { anthropic: 'claude-opus-4-9' },          // pin a newer id for one provider
+    grok: { openrouter: 'x-ai/grok-2' },             // add a new family
+  },
+});
+```
+
+### Aliases (custom pins)
+
+Aliases are an optional layer for your own named shortcuts. An alias maps a name to a concrete `{ provider, model_id }`, pinning both axes. No aliases ship by default:
 
 ```ts
 const engine = create_engine({
   providers: { anthropic: { api_key } },
   aliases: {
-    'fast':     { provider: 'anthropic', model_id: 'claude-haiku-4-5' },
-    'thinker':  { provider: 'anthropic', model_id: 'claude-opus-4-7', defaults: { effort: 'high' } },
+    fast:    { provider: 'anthropic', model_id: 'claude-haiku-4-5' },
+    thinker: { provider: 'anthropic', model_id: 'claude-opus-4-8', defaults: { effort: 'high' } },
   },
 });
 
@@ -128,11 +137,12 @@ engine.unregister_alias('codegen');
 
 ### Resolution rules
 
-`resolve_model(table, model)` runs on every `generate`:
+`resolve_model(model, provider, { families, aliases })` runs on every `generate`. The provider is resolved first: per-call `provider`, else `defaults.provider`, else the sole configured provider, else `anthropic`. Then:
 
-1. If `model` contains a colon and the prefix matches a known provider name, split on the first colon: `openrouter:anthropic/claude-sonnet-4.5` resolves to `{ provider: 'openrouter', model_id: 'anthropic/claude-sonnet-4.5' }`. This preserves the upstream `provider/model` separator for OpenRouter.
-2. Otherwise look up `model` in the alias table.
-3. Otherwise throw `model_not_found_error` with the list of registered aliases.
+1. **Colon-form** — if `model` contains a colon and the prefix is a known provider, split on the first colon and use it directly: `openrouter:anthropic/claude-sonnet-4.5` → `{ provider: 'openrouter', model_id: 'anthropic/claude-sonnet-4.5' }`. This sets both axes at once and preserves OpenRouter's `provider/model` slug.
+2. **User alias** — a name registered in `aliases` returns its pinned `{ provider, model_id }`.
+3. **Family** — a family name resolves to that family's latest id for the chosen provider. If the family has no entry for that provider (e.g. `opus` on `openai`), it throws `model_family_unavailable_error`.
+4. **Specific id** — anything else is passed straight through to the chosen provider as the `model_id`. The vendor rejects a bogus id at call time.
 
 Known provider prefixes: `anthropic`, `openai`, `google`, `ollama`, `lmstudio`, `openrouter`, `claude_cli`.
 
@@ -150,13 +160,13 @@ type Pricing = {
 };
 ```
 
-Default pricing ships for the models referenced by `DEFAULT_ALIASES`. Override and extend:
+Default pricing ships for the concrete ids referenced by `MODEL_FAMILIES`. Override and extend:
 
 ```ts
 const engine = create_engine({
   providers: { ... },
   pricing: {
-    'anthropic:claude-opus-4-7': {
+    'anthropic:claude-opus-4-8': {
       input_per_million: 15,
       output_per_million: 75,
       cache_write_per_million: 18.75,
@@ -180,6 +190,7 @@ Unpriced models return usage without cost. The `is_estimate: true` flag is alway
 ```ts
 type EngineDefaults = {
   model?: string;
+  provider?: string;
   system?: string;
   effort?: EffortLevel;
   max_steps?: number;
@@ -196,7 +207,8 @@ Example:
 const engine = create_engine({
   providers: { claude_cli: { auth_mode: 'oauth' } },
   defaults: {
-    model: 'cli-sonnet',
+    provider: 'claude_cli',
+    model: 'sonnet',
     system: 'Reply in one short sentence. No preamble.',
     max_steps: 8,
     provider_options: {
@@ -213,7 +225,8 @@ const result = await engine.generate({ prompt: 'hello' });
 
 | Field                                                                              | Rule                                            |
 | ---------------------------------------------------------------------------------- | ----------------------------------------------- |
-| `model`                                                                            | per-call wins; else default; else throw         |
+| `model`                                                                            | per-call wins; else default; else `sonnet`      |
+| `provider`                                                                         | per-call wins; else default; else sole provider; else `anthropic` |
 | `system`, `effort`, `max_steps`, `tool_error_policy`, `schema_repair_attempts`     | per-call wins via nullish coalesce              |
 | `retry`                                                                            | per-call replaces wholesale                     |
 | `provider_options`                                                                 | two-level: per-provider key, shallow-merged     |
@@ -282,6 +295,7 @@ The full per-call surface:
 ```ts
 type GenerateOptions<t = string> = {
   model?: string;
+  provider?: string;
   prompt: string | Message[];
   system?: string;
   schema?: z.ZodType<t>;

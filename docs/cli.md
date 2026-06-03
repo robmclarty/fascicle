@@ -25,7 +25,8 @@ import { create_engine, model_call, run } from 'fascicle';
 const engine = create_engine({
   providers: { claude_cli: { auth_mode: 'oauth' } },
   defaults: {
-    model: 'cli-sonnet',
+    provider: 'claude_cli',
+    model: 'sonnet',          // the CLI resolves 'sonnet' to the latest itself
     system: 'Reply in one short sentence.',
   },
 });
