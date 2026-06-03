@@ -33,14 +33,9 @@ export type AppEngineOptions = {
   readonly cwd?: string
 }
 
-const CLI_DEFAULT_MODELS = {
-  reviewer: 'cli-sonnet',
-  pragmatist: 'cli-opus',
-  builder: 'cli-sonnet',
-  build_reviewer: 'cli-opus',
-} as const
-
-const API_DEFAULT_MODELS = {
+// Provider-agnostic family names. The transport is chosen by `provider`; the
+// engine resolves each family to the right id per provider ("latest of family").
+const DEFAULT_MODELS = {
   reviewer: 'sonnet',
   pragmatist: 'opus',
   builder: 'sonnet',
@@ -49,7 +44,7 @@ const API_DEFAULT_MODELS = {
 
 export function read_engine_env(env: NodeJS.ProcessEnv = process.env, override_provider?: Provider): AppEngineConfig {
   const provider = override_provider ?? ProviderSchema.parse(env['FASCICLE_PROVIDER'] ?? 'anthropic')
-  const defaults = provider === 'claude_cli' ? CLI_DEFAULT_MODELS : API_DEFAULT_MODELS
+  const defaults = DEFAULT_MODELS
   if (provider === 'claude_cli') {
     return {
       provider,

@@ -75,7 +75,7 @@ Pick one via `SWEBENCH_PROVIDER`:
   workdir, so the CLI's built-in Read/Write/Edit/Bash tools operate inside
   the sandbox. Our Sandbox-bound tools are skipped because `execute`
   closures can't cross the subprocess boundary anyway. Override the model
-  with `SWEBENCH_MODEL=cli-opus` (default `cli-sonnet`) and the effort
+  with `SWEBENCH_MODEL=opus` (default `sonnet`) and the effort
   with `SWEBENCH_EFFORT=high` (default `medium`).
 - **`anthropic`**: requires `ANTHROPIC_API_KEY`. One shared engine; the
   flow injects our Sandbox-bound tools on every model call. Override the

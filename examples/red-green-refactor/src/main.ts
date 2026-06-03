@@ -46,7 +46,7 @@ async function run_one(cycle: ReturnType<typeof build_cycle>, b: Behavior): Prom
 export async function run_rgr(behaviors: readonly Behavior[] = SEED_BEHAVIORS): Promise<void> {
   const engine = create_engine({
     providers: { claude_cli: { auth_mode: 'oauth' } },
-    defaults: { model: 'cli-sonnet' },
+    defaults: { provider: 'claude_cli', model: 'sonnet' },
   })
 
   const cycle = build_cycle(engine)

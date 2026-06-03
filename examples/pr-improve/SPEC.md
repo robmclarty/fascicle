@@ -166,7 +166,7 @@ Manual invocation IS the opt-in — no PR label, no webhook, no GitHub Action.
 
 Internals:
 
-- Engine: `create_engine({ providers: { claude_cli: { auth_mode: 'oauth' } } })`. Model aliases resolve to `cli-sonnet` / `cli-opus`. Uses the developer's logged-in Claude Enterprise — no `ANTHROPIC_API_KEY` needed.
+- Engine: `create_engine({ providers: { claude_cli: { auth_mode: 'oauth' } } })`. Model names are provider-agnostic families (`sonnet` / `opus`); the sole configured provider (`claude_cli`) is the transport. Uses the developer's logged-in Claude Enterprise — no `ANTHROPIC_API_KEY` needed.
 - Builder under `claude_cli`: the CLI's built-in Read/Write/Edit tools handle file edits inside the worktree's `cwd`. The `make_builder_call` factory still returns `Step<string, GenerateResult<Handoff>>`; the engine translates tool surface per provider (per `examples/tool_loop.ts` notes). Same contract — Phase C swaps the inside without touching `flow.ts`.
 - GitHub + git I/O — all via `gh` and `git` CLIs, picking up the cwd's repo + the developer's `gh auth login`:
   - `gh pr view <n> --json …` and `gh pr diff <n>` — pull the PR's metadata and diff
@@ -358,7 +358,7 @@ Recommend three phases, each independently demoable:
 
 Goal: stand up the whole pipeline working end-to-end on a real PR, locally, before asking for any cloud investment. This is the deliverable that earns buy-in for Phase C and Phase D. Manual invocation only — no label, no webhook, no CI.
 
-1. Extend `engine.ts` with a `claude_cli` provider branch (auth_mode `oauth`, no API key). Model defaults `cli-sonnet` / `cli-opus`.
+1. Extend `engine.ts` with a `claude_cli` provider branch (auth_mode `oauth`, no API key). Model defaults are the `sonnet` / `opus` families, resolved against the chosen provider.
 2. Add CLI flags to `main.ts`: `--pr <number>` (mutually exclusive with `--fixture`), `--provider <name>` (overrides `FASCICLE_PROVIDER` env). The `--push` flag from the original spec was dropped: real-PR runs always post the review and (on success) open the improvement PR + linking comment. Preview-only behavior is available via `--fixture` for local iteration.
 3. Add `src/github/pr.ts` (gh CLI wrappers — view, diff, create, comment, push) and `src/github/workspace.ts` (`git worktree add` + `gh pr checkout` helpers). Use the safe-spawn pattern from `packages/engine/src/providers/claude_cli/spawn.ts` as a hygiene reference.
 4. Add `bin/pr-improve` — a thin shell wrapper around `tsx src/main.ts` so the user can `ln -s` it into `~/.local/bin/`. No build step.

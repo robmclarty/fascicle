@@ -12,7 +12,8 @@
  *   (define engine
  *     (create-engine
  *       '((providers ((claude-cli ((auth-mode . oauth)))))
- *         (defaults  ((model . cli-sonnet)
+ *         (defaults  ((provider . claude-cli)
+ *                     (model . sonnet)
  *                     (system . "Reply in one short sentence. No preamble."))))))
  *
  *   (define (hello input)
@@ -53,7 +54,8 @@ import {
 const engine = create_engine({
   providers: { claude_cli: { auth_mode: 'oauth' } },
   defaults: {
-    model: 'cli-sonnet',
+    provider: 'claude_cli',
+    model: 'sonnet',
     system: 'Reply in one short sentence. No preamble.',
   },
 })

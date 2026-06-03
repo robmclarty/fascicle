@@ -29,7 +29,7 @@ The harness uses three fascicle primitives heavily:
 
 - `scope` / `stash` / `use` — the named-state pattern (typed projection of run-time state across phases)
 - `ensemble` — N parallel members, scored, winner picked by `select: 'max'`
-- `model_call` — `claude_cli` provider with `cli-opus` (Opus 4.7) at `effort: 'xhigh'` (highest adaptive-reasoning level supported)
+- `model_call` — `claude_cli` provider with `model: 'opus'` (latest Opus, resolved by the CLI) at `effort: 'xhigh'` (highest adaptive-reasoning level supported)
 
 The starter target is a deliberately slow log aggregator (`target/src/log_aggregator.ts`) with several plausible improvement axes: pre-compile the regex, single-pass, streaming, drop substring allocations.
 
