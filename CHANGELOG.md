@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.5.0 — 2026-06-03
+
+### Added
+- Two-axis model resolution. `model` now names either a **family** (`opus`, `sonnet`, `haiku`, `gpt`, `gemini` — "latest of that family") or a specific vendor id (`claude-opus-4-8`), and a new `provider` axis names the transport (`anthropic`, `claude_cli`, `openrouter`, …). `provider` is accepted per-call on `generate` / `model_call` and as an engine default; the same `model: 'opus'` now runs on any transport by swapping `provider`.
+- `MODEL_FAMILIES` catalog mapping each family to the latest id per provider, plus a `families` engine-config field that deep-merges per `(family, provider)` so you can pin newer ids or add new families. Exported `FamilyCatalog` type.
+- `examples/swebench`: `claude_cli` provider option, selectable via `SWEBENCH_PROVIDER`.
+
+### Changed
+- **Breaking.** `create_engine` no longer ships default aliases — the alias table starts empty and is reserved for your own named pins. The built-in `cli-*`, `or:*`, `gemini-pro`/`gemini-flash`, and `gpt-4o*` aliases are gone; use `{ model, provider }` pairs (e.g. `{ model: 'sonnet', provider: 'claude_cli' }`) or the colon form (`openrouter:meta-llama/llama-3.3-70b-instruct`).
+- **Breaking.** `resolve_model` signature is now `resolve_model(model, provider, { families, aliases })`. Resolution order: colon-form `provider:id` → user alias → family lookup → pass-through specific id. When `model`/`provider` are omitted, `model` defaults to `sonnet` and `provider` resolves to per-call → `defaults.provider` → the sole configured provider → `anthropic`.
+
+### Fixed
+- A family with no entry for the chosen provider (e.g. `opus` on `openai`) now throws the descriptive `model_family_unavailable_error` instead of the generic not-found path.
+
 ## v0.4.3 — 2026-05-10
 
 ### Added
