@@ -48,6 +48,12 @@ export type AliasTarget = {
 
 export type AliasTable = Readonly<Record<string, AliasTarget>>
 
+/**
+ * Family catalog: family name -> provider name -> the latest model id to send
+ * to that provider for the family. See `MODEL_FAMILIES` in aliases.ts.
+ */
+export type FamilyCatalog = Readonly<Record<string, Readonly<Record<string, string>>>>
+
 export type Pricing = {
   input_per_million: number
   output_per_million: number
@@ -159,6 +165,7 @@ export type StreamChunk =
 
 export type GenerateOptions<t = string> = {
   model?: string
+  provider?: string
   prompt: string | Message[]
   system?: string
   schema?: z.ZodType<t>
@@ -218,7 +225,8 @@ export type ProviderConfigMap = {
  *
  * | Field                                                                 | Rule                                      |
  * | --------------------------------------------------------------------- | ----------------------------------------- |
- * | `model`                                                               | per-call wins; else default; else throw    |
+ * | `model`                                                               | per-call wins; else default; else `sonnet` |
+ * | `provider`                                                            | per-call wins; else default; else sole configured provider; else `anthropic` |
  * | `system`, `effort`, `max_steps`, `tool_error_policy`, `schema_repair_attempts` | per-call wins (nullish coalesce) |
  * | `retry_policy`                                                        | per-call replaces wholesale                |
  * | `provider_options`                                                    | two-level: per-provider-key shallow merge  |
@@ -226,6 +234,7 @@ export type ProviderConfigMap = {
  */
 export type EngineDefaults = {
   readonly model?: string
+  readonly provider?: string
   readonly system?: string
   readonly effort?: EffortLevel
   readonly max_steps?: number
@@ -238,6 +247,7 @@ export type EngineDefaults = {
 export type EngineConfig = {
   providers: ProviderConfigMap
   aliases?: AliasTable
+  families?: FamilyCatalog
   pricing?: PricingTable
   default_retry?: RetryPolicy
   default_effort?: EffortLevel

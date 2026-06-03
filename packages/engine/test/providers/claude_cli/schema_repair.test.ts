@@ -83,7 +83,7 @@ describe('claude_cli schema repair path', () => {
     cleanup_stack.push(() => engine.dispose())
   
     const result = await engine.generate({
-      model: 'cli-sonnet',
+      model: 'claude_cli:sonnet',
       prompt: 'q',
       schema,
       provider_options: {
@@ -121,7 +121,7 @@ describe('claude_cli schema repair path', () => {
     cleanup_stack.push(() => engine.dispose())
   
     const promise = engine.generate({
-      model: 'cli-sonnet',
+      model: 'claude_cli:sonnet',
       prompt: 'q',
       schema,
       provider_options: {
@@ -161,7 +161,7 @@ describe('claude_cli schema repair path', () => {
     cleanup_stack.push(() => engine.dispose())
   
     const result = await engine.generate({
-      model: 'cli-sonnet',
+      model: 'claude_cli:sonnet',
       prompt: 'q',
       schema,
       provider_options: {
@@ -209,7 +209,7 @@ describe('claude_cli schema repair path', () => {
     cleanup_stack.push(() => engine.dispose())
   
     const promise = engine.generate({
-      model: 'cli-sonnet',
+      model: 'claude_cli:sonnet',
       prompt: 'q',
       schema,
       provider_options: {
@@ -254,7 +254,7 @@ describe('claude_cli schema repair path', () => {
     cleanup_stack.push(() => engine.dispose())
 
     const promise = engine.generate({
-      model: 'cli-sonnet',
+      model: 'claude_cli:sonnet',
       prompt: 'q',
       schema,
       schema_repair_attempts: 2,
@@ -289,7 +289,7 @@ describe('claude_cli schema repair path', () => {
     cleanup_stack.push(() => engine.dispose())
 
     const promise = engine.generate({
-      model: 'cli-sonnet',
+      model: 'claude_cli:sonnet',
       prompt: 'q',
       schema,
       schema_repair_attempts: 0,

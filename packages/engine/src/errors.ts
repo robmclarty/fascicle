@@ -111,6 +111,24 @@ export class model_not_found_error extends Error {
   }
 }
 
+export class model_family_unavailable_error extends Error {
+  readonly kind = 'model_family_unavailable_error' as const;
+  readonly family: string;
+  readonly provider: string;
+  readonly available_providers: ReadonlyArray<string>;
+  constructor(family: string, provider: string, available_providers: ReadonlyArray<string>) {
+    const list =
+      available_providers.length > 0 ? available_providers.join(', ') : '(none)'
+    super(
+      `model family '${family}' is not available on provider '${provider}'. Providers offering this family: ${list}`,
+    )
+    this.name = 'model_family_unavailable_error'
+    this.family = family
+    this.provider = provider
+    this.available_providers = available_providers
+  }
+}
+
 export class provider_not_configured_error extends Error {
   readonly kind = 'provider_not_configured_error' as const;
   readonly provider: string;

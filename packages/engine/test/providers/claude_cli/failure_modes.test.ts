@@ -87,7 +87,7 @@ describe('F23 — subprocess non-zero exit with retry per retry_policy', () => {
       cleanup_stack.push(() => engine.dispose())
   
       const promise = engine.generate({
-        model: 'cli-sonnet',
+        model: 'claude_cli:sonnet',
         prompt: 'hello',
         provider_options: {
           claude_cli: {

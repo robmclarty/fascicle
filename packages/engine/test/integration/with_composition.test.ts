@@ -72,7 +72,7 @@ describe('engine + composition integration', () => {
   
     const ai_step = step<string, string>('ai', async (input, ctx) => {
       const result = await engine.generate({
-        model: 'claude-opus',
+        model: 'opus',
         prompt: input,
         abort: ctx.abort,
         trajectory: ctx.trajectory,

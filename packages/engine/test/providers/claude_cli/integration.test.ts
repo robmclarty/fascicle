@@ -3,7 +3,7 @@
  *
  * Exercises the full stack: @repo/core.run → step → engine.generate →
  * claude_cli adapter → mock binary. Proves:
- *   (a) cli-sonnet alias resolves to the claude_cli subprocess adapter;
+ *   (a) `{ model: 'sonnet', provider: 'claude_cli' }` routes to the claude_cli subprocess adapter;
  *   (b) content from the mock arrives at the step's return value;
  *   (c) trajectory records engine-emitted cost with source 'provider_reported';
  *   (d) ctx.abort threaded into engine.generate cancels the in-flight call;
@@ -63,7 +63,7 @@ function build_capture_logger(): {
   return { logger, events }
 }
 
-describe('cli-sonnet step inside core.run (§12 #26)', () => {
+describe('claude_cli sonnetstep inside core.run (§12 #26)', () => {
   it('returns content and records provider_reported cost in the trajectory', async () => {
     const handle = await track(
       await write_mock_script(
@@ -84,7 +84,8 @@ describe('cli-sonnet step inside core.run (§12 #26)', () => {
   
     const flow = step<string, string>('cli_step', async (input, ctx) => {
       const result = await engine.generate({
-        model: 'cli-sonnet',
+        model: 'sonnet',
+        provider: 'claude_cli',
         prompt: input,
         abort: ctx.abort,
         trajectory: ctx.trajectory,
@@ -115,7 +116,7 @@ describe('cli-sonnet step inside core.run (§12 #26)', () => {
   })
 })
 
-describe('cli-sonnet Message[] prompt extraction', () => {
+describe('claude_cli sonnetMessage[] prompt extraction', () => {
   it('extracts text from system + user-with-content-parts prompts', async () => {
     const handle = await track(
       await write_mock_script(success_ops('msgs-ok', { session_id: 's-msg' })),
@@ -127,7 +128,8 @@ describe('cli-sonnet Message[] prompt extraction', () => {
     cleanup_stack.push(() => engine.dispose())
   
     const result = await engine.generate({
-      model: 'cli-sonnet',
+      model: 'sonnet',
+      provider: 'claude_cli',
       prompt: [
         { role: 'system', content: 'you are terse' },
         {
@@ -149,7 +151,7 @@ describe('cli-sonnet Message[] prompt extraction', () => {
   })
 })
 
-describe('cli-sonnet trajectory span tree under abort (criterion 7)', () => {
+describe('claude_cli sonnettrajectory span tree under abort (criterion 7)', () => {
   it(
     'on abort, trajectory contains engine.generate span ended with { error } and at least one engine.generate.step child span',
     async () => {
@@ -179,7 +181,8 @@ describe('cli-sonnet trajectory span tree under abort (criterion 7)', () => {
       const ctrl = new AbortController()
   
       const promise = engine.generate({
-        model: 'cli-sonnet',
+        model: 'sonnet',
+        provider: 'claude_cli',
         prompt: 'hello',
         abort: ctrl.signal,
         trajectory: traj.logger,

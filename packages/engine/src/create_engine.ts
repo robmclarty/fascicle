@@ -1,9 +1,10 @@
 /**
  * Engine factory (spec §5.8).
  *
- * create_engine validates each provider entry at construction, merges user
- * aliases / pricing over DEFAULT_ALIASES / DEFAULT_PRICING into per-instance
- * tables, and returns an Engine whose methods close over this instance state.
+ * create_engine validates each provider entry at construction, starts the
+ * alias table empty (user aliases only), merges user families / pricing over
+ * MODEL_FAMILIES / DEFAULT_PRICING into per-instance tables, and returns an
+ * Engine whose methods close over this instance state.
  *
  * Credentials / init values are validated synchronously by each provider
  * adapter factory; SDK loading is deferred to the first generate call. A
@@ -25,7 +26,7 @@ import type {
   PricingTable,
   ProviderInit,
 } from './types.js'
-import { DEFAULT_ALIASES } from './aliases.js'
+import { MODEL_FAMILIES } from './aliases.js'
 import { DEFAULT_PRICING, pricing_key } from './pricing.js'
 import { DEFAULT_RETRY } from './retry.js'
 import {
@@ -60,10 +61,20 @@ export function create_engine(config: EngineConfig): Engine {
 
   const adapters = build_provider_adapters(config.providers)
 
-  const aliases: Record<string, AliasTarget> = { ...DEFAULT_ALIASES }
+  const aliases: Record<string, AliasTarget> = {}
   if (config.aliases !== undefined) {
     for (const [name, target] of Object.entries(config.aliases)) {
       aliases[name] = target
+    }
+  }
+
+  const families: Record<string, Record<string, string>> = {}
+  for (const [name, entry] of Object.entries(MODEL_FAMILIES)) {
+    families[name] = { ...entry }
+  }
+  if (config.families !== undefined) {
+    for (const [name, entry] of Object.entries(config.families)) {
+      families[name] = { ...families[name], ...entry }
     }
   }
 
@@ -81,12 +92,14 @@ export function create_engine(config: EngineConfig): Engine {
 
   const get_internals = (): EngineInternals => ({
     aliases,
+    families,
     pricing,
     adapters,
     default_retry,
     default_effort,
     default_max_steps,
     ...(defaults?.model !== undefined ? { default_model: defaults.model } : {}),
+    ...(defaults?.provider !== undefined ? { default_provider: defaults.provider } : {}),
     ...(defaults?.system !== undefined ? { default_system: defaults.system } : {}),
     ...(defaults?.tool_error_policy !== undefined
       ? { default_tool_error_policy: defaults.tool_error_policy }

@@ -57,7 +57,7 @@ async function main(): Promise<void> {
   
     try {
       const result = await engine.generate({
-        model: 'cli-sonnet',
+        model: 'claude_cli:sonnet',
         prompt: 'hang please',
         abort: ctx.abort,
         provider_options: {

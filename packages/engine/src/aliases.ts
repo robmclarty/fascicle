@@ -1,12 +1,24 @@
 /**
- * Model alias table and resolution.
+ * Model resolution: two orthogonal axes.
  *
- * DEFAULT_ALIASES is frozen; user overrides flow through engine config or the
- * per-engine register_alias method, never via mutation of the defaults.
+ *   model    - WHICH model. Either a family name (`opus`, `sonnet`, `gpt`,
+ *              `gemini`) meaning "latest of that family", or a specific vendor
+ *              id (`claude-opus-4-8`) meaning exactly that version.
+ *   provider - HOW to reach it (the transport): `anthropic`, `claude_cli`,
+ *              `openrouter`, `openai`, `google`, ...
+ *
+ * MODEL_FAMILIES maps a family to the latest id to send to each provider. Each
+ * value is the most rolling token that provider offers: the Claude CLI resolves
+ * `opus`/`sonnet`/`haiku` to the latest itself, so its entries are the bare
+ * family token and never go stale; API-style providers need a concrete id, so
+ * those entries are the single place to bump on a new release.
+ *
+ * MODEL_FAMILIES is frozen; per-engine overrides flow through engine config
+ * (`families`) or the alias table, never via mutation of the defaults.
  */
 
-import type { AliasTable, AliasTarget } from './types.js'
-import { model_not_found_error } from './errors.js'
+import type { AliasTable, AliasTarget, FamilyCatalog } from './types.js'
+import { model_family_unavailable_error } from './errors.js'
 
 const KNOWN_PROVIDERS = new Set<string>([
   'anthropic',
@@ -18,44 +30,59 @@ const KNOWN_PROVIDERS = new Set<string>([
   'claude_cli',
 ])
 
-export const DEFAULT_ALIASES: AliasTable = Object.freeze({
-  'claude-opus': { provider: 'anthropic', model_id: 'claude-opus-4-7' },
-  opus: { provider: 'anthropic', model_id: 'claude-opus-4-7' },
-  'claude-sonnet': { provider: 'anthropic', model_id: 'claude-sonnet-4-6' },
-  sonnet: { provider: 'anthropic', model_id: 'claude-sonnet-4-6' },
-  'claude-haiku': { provider: 'anthropic', model_id: 'claude-haiku-4-5' },
-  haiku: { provider: 'anthropic', model_id: 'claude-haiku-4-5' },
+export const MODEL_FAMILIES: FamilyCatalog = Object.freeze({
+  opus: Object.freeze({
+    anthropic: 'claude-opus-4-8',
+    claude_cli: 'opus',
+    openrouter: 'anthropic/claude-opus-4.8',
+  }),
+  sonnet: Object.freeze({
+    anthropic: 'claude-sonnet-4-6',
+    claude_cli: 'sonnet',
+    openrouter: 'anthropic/claude-sonnet-4.5',
+  }),
+  haiku: Object.freeze({
+    anthropic: 'claude-haiku-4-5',
+    claude_cli: 'haiku',
+    openrouter: 'anthropic/claude-haiku-4.5',
+  }),
 
-  'cli-opus': { provider: 'claude_cli', model_id: 'claude-opus-4-7' },
-  'cli-sonnet': { provider: 'claude_cli', model_id: 'claude-sonnet-4-6' },
-  'cli-haiku': { provider: 'claude_cli', model_id: 'claude-haiku-4-5' },
+  gpt: Object.freeze({
+    openai: 'gpt-4o',
+    openrouter: 'openai/gpt-4o',
+  }),
+  'gpt-mini': Object.freeze({
+    openai: 'gpt-4o-mini',
+    openrouter: 'openai/gpt-4o-mini',
+  }),
 
-  'gpt-4o': { provider: 'openai', model_id: 'gpt-4o' },
-  'gpt-4o-mini': { provider: 'openai', model_id: 'gpt-4o-mini' },
-
-  'gemini-2.5-pro': { provider: 'google', model_id: 'gemini-2.5-pro' },
-  'gemini-2.5-flash': { provider: 'google', model_id: 'gemini-2.5-flash' },
-  'gemini-pro': { provider: 'google', model_id: 'gemini-2.5-pro' },
-  'gemini-flash': { provider: 'google', model_id: 'gemini-2.5-flash' },
-
-  'or:sonnet': { provider: 'openrouter', model_id: 'anthropic/claude-sonnet-4.5' },
-  'or:opus': { provider: 'openrouter', model_id: 'anthropic/claude-opus-4.1' },
-  'or:gpt-4o': { provider: 'openrouter', model_id: 'openai/gpt-4o' },
-  'or:gemini-pro': { provider: 'openrouter', model_id: 'google/gemini-2.5-pro' },
-  'or:llama-3.3-70b': { provider: 'openrouter', model_id: 'meta-llama/llama-3.3-70b-instruct' },
+  gemini: Object.freeze({
+    google: 'gemini-2.5-pro',
+    openrouter: 'google/gemini-2.5-pro',
+  }),
+  'gemini-flash': Object.freeze({
+    google: 'gemini-2.5-flash',
+    openrouter: 'google/gemini-2.5-flash',
+  }),
 })
 
 /**
- * Resolve a model identifier to a concrete `{ provider, model_id }`.
+ * Resolve a `(model, provider)` pair to a concrete `{ provider, model_id }`.
  *
- * 1. If `model` contains a colon and the prefix matches a known provider name,
- *    split on the FIRST colon only and return `{ provider, model_id }`. This
- *    lets OpenRouter ids like `openrouter:anthropic/claude-sonnet-4.5`
- *    round-trip without losing the upstream `provider/model` separator.
- * 2. Otherwise look up `model` in the alias table.
- * 3. Otherwise throw `model_not_found_error`.
+ * 1. Colon-form `provider:id` (known provider prefix) splits on the FIRST
+ *    colon and sets both axes at once. Preserves OpenRouter `provider/model`
+ *    slugs and overrides the `provider` argument.
+ * 2. A user-registered alias (`aliases`) returns its pinned target.
+ * 3. A family name resolves to that family's latest id for `provider`; if the
+ *    family has no entry for `provider`, throws `model_family_unavailable_error`.
+ * 4. Anything else is a specific vendor id: passed through verbatim to
+ *    `provider`. The vendor rejects a bogus id at call time.
  */
-export function resolve_model(table: AliasTable, model: string): AliasTarget {
+export function resolve_model(
+  model: string,
+  provider: string,
+  ctx: { families: FamilyCatalog; aliases: AliasTable },
+): AliasTarget {
   const colon = model.indexOf(':')
   if (colon > 0) {
     const prefix = model.slice(0, colon)
@@ -63,9 +90,20 @@ export function resolve_model(table: AliasTable, model: string): AliasTarget {
       return { provider: prefix, model_id: model.slice(colon + 1) }
     }
   }
-  const hit = table[model]
-  if (hit !== undefined) return hit
-  throw new model_not_found_error(model, Object.keys(table))
+
+  const alias = ctx.aliases[model]
+  if (alias !== undefined) return alias
+
+  const family = ctx.families[model]
+  if (family !== undefined) {
+    const model_id = family[provider]
+    if (model_id === undefined) {
+      throw new model_family_unavailable_error(model, provider, Object.keys(family))
+    }
+    return { provider, model_id }
+  }
+
+  return { provider, model_id: model }
 }
 
 export function is_known_provider(name: string): boolean {

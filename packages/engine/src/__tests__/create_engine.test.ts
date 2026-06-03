@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest'
 import { create_engine } from '../create_engine.js'
 import {
   engine_config_error,
+  model_family_unavailable_error,
   model_not_found_error,
   provider_not_configured_error,
 } from '../errors.js'
@@ -17,16 +18,15 @@ describe('create_engine', () => {
     ).toThrow(engine_config_error)
   })
 
-  it('returns an Engine with default aliases and pricing merged under user overrides', () => {
+  it('starts with an empty alias table and merges user aliases / pricing', () => {
     const engine = create_engine({
       providers: { anthropic: { api_key: 'k' } },
       aliases: { my_cheap: { provider: 'anthropic', model_id: 'claude-haiku-4-5' } },
       pricing: { 'custom:model-x': { input_per_million: 1, output_per_million: 2 } },
     })
-    expect(engine.resolve_alias('sonnet')).toEqual({
-      provider: 'anthropic',
-      model_id: 'claude-sonnet-4-6',
-    })
+    // Bare family names are NOT user aliases; they live in the family catalog
+    // and resolve only through generate(), not resolve_alias().
+    expect(() => engine.resolve_alias('sonnet')).toThrow(model_not_found_error)
     expect(engine.resolve_alias('my_cheap')).toEqual({
       provider: 'anthropic',
       model_id: 'claude-haiku-4-5',
@@ -35,7 +35,7 @@ describe('create_engine', () => {
       input_per_million: 1,
       output_per_million: 2,
     })
-    expect(engine.resolve_price('anthropic', 'claude-opus-4-7')).toBeDefined()
+    expect(engine.resolve_price('anthropic', 'claude-opus-4-8')).toBeDefined()
   })
 
   it('register_alias / unregister_alias mutate the per-engine table only', () => {
@@ -67,16 +67,25 @@ describe('create_engine', () => {
 
   it('throws provider_not_configured_error at generate time for an unconfigured provider', async () => {
     const engine = create_engine({ providers: { anthropic: { api_key: 'k' } } })
-    await expect(engine.generate({ model: 'gpt-4o', prompt: 'hi' })).rejects.toBeInstanceOf(
-      provider_not_configured_error,
-    )
+    await expect(
+      engine.generate({ model: 'gpt', provider: 'openai', prompt: 'hi' }),
+    ).rejects.toBeInstanceOf(provider_not_configured_error)
   })
 
-  it('throws model_not_found_error before any provider lookup', async () => {
+  it('throws model_family_unavailable_error before any provider lookup', async () => {
     const engine = create_engine({ providers: { anthropic: { api_key: 'k' } } })
-    await expect(engine.generate({ model: 'nonsense', prompt: 'hi' })).rejects.toBeInstanceOf(
-      model_not_found_error,
-    )
+    await expect(
+      engine.generate({ model: 'opus', provider: 'openai', prompt: 'hi' }),
+    ).rejects.toBeInstanceOf(model_family_unavailable_error)
+  })
+
+  it('passes a non-family model id straight through to the chosen provider', async () => {
+    const engine = create_engine({ providers: { anthropic: { api_key: 'k' } } })
+    // 'mystery-model-x' is not a family and not configured on openai -> the
+    // pass-through target hits the missing adapter, not a resolution error.
+    await expect(
+      engine.generate({ model: 'mystery-model-x', provider: 'openai', prompt: 'hi' }),
+    ).rejects.toBeInstanceOf(provider_not_configured_error)
   })
 
   it('two engines maintain independent alias tables', () => {
@@ -101,37 +110,62 @@ describe('create_engine', () => {
   })
 
   describe('defaults', () => {
-    it('throws engine_config_error when neither opts.model nor defaults.model is set', async () => {
-      const engine = create_engine({ providers: { anthropic: { api_key: 'k' } } })
-      await expect(engine.generate({ prompt: 'hi' })).rejects.toBeInstanceOf(
-        engine_config_error,
-      )
-    })
-  
-    it('uses defaults.model when opts.model is omitted', async () => {
+    it('falls back to the sonnet family on the default provider when nothing is set', async () => {
       const engine = create_engine({
         providers: { anthropic: { api_key: 'k' } },
-        defaults: { model: 'definitely-not-a-real-alias' },
+        defaults: { provider: 'openrouter' },
       })
-      // If the default was used, model resolution happens and throws model_not_found_error.
-      // If the default was ignored, engine_config_error would be thrown instead.
+      // No model -> 'sonnet'; provider -> defaults.provider 'openrouter' (which
+      // sonnet supports but is unconfigured) -> provider_not_configured_error.
       await expect(engine.generate({ prompt: 'hi' })).rejects.toBeInstanceOf(
-        model_not_found_error,
+        provider_not_configured_error,
       )
     })
-  
-    it('per-call opts.model wins over defaults.model', async () => {
+
+    it('defaults to the sole configured provider', async () => {
+      const engine = create_engine({ providers: { google: { api_key: 'k' } } })
+      // Sole provider -> google. The opus family has no google entry, so it
+      // throws here; had it defaulted to anthropic, opus would resolve fine.
+      await expect(engine.generate({ model: 'opus', prompt: 'hi' })).rejects.toBeInstanceOf(
+        model_family_unavailable_error,
+      )
+    })
+
+    it('uses defaults.model and defaults.provider when the call omits them', async () => {
       const engine = create_engine({
         providers: { anthropic: { api_key: 'k' } },
-        defaults: { model: 'nonexistent-default' },
+        defaults: { model: 'opus', provider: 'openrouter' },
       })
-      // opts.model is a recognized alias that resolves to anthropic; since no
-      // real network call happens here we just confirm resolution didn't fall
-      // back to the default (which would have thrown model_not_found_error
-      // for 'nonexistent-default'). We use an unknown provider prefix so it
-      // throws provider_not_configured_error instead.
+      await expect(engine.generate({ prompt: 'hi' })).rejects.toBeInstanceOf(
+        provider_not_configured_error,
+      )
+    })
+
+    it('config.families deep-merges per (family, provider) over MODEL_FAMILIES', async () => {
+      // Without the override, opus has no openai entry and resolution throws
+      // model_family_unavailable_error. The override adds one, so resolution
+      // succeeds to a target whose (unconfigured) provider throws instead.
+      const engine = create_engine({
+        providers: { anthropic: { api_key: 'k' } },
+        families: { opus: { openai: 'gpt-4o' } },
+      })
       await expect(
-        engine.generate({ model: 'gpt-4o', prompt: 'hi' }),
+        engine.generate({ model: 'opus', provider: 'openai', prompt: 'hi' }),
+      ).rejects.toBeInstanceOf(provider_not_configured_error)
+      // The built-in claude_cli entry survives the merge (not dropped).
+      await expect(
+        engine.generate({ model: 'opus', provider: 'openrouter', prompt: 'hi' }),
+      ).rejects.toBeInstanceOf(provider_not_configured_error)
+    })
+
+    it('per-call model/provider win over defaults', async () => {
+      const engine = create_engine({
+        providers: { anthropic: { api_key: 'k' } },
+        defaults: { model: 'sonnet', provider: 'anthropic' },
+      })
+      // Per-call gpt + openai win; openai is unconfigured -> provider_not_configured_error.
+      await expect(
+        engine.generate({ model: 'gpt', provider: 'openai', prompt: 'hi' }),
       ).rejects.toBeInstanceOf(provider_not_configured_error)
     })
   
