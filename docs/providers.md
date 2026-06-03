@@ -65,7 +65,7 @@ const engine = create_engine({
 });
 
 await engine.generate({
-  model: 'sonnet',                // or 'claude-sonnet-4-6', 'claude-opus-4-7', ...
+  model: 'sonnet',                // or 'opus', 'claude-sonnet-4-6', 'claude-opus-4-8', ...
   system: 'Be terse.',
   prompt: 'say hi',
   effort: 'medium',               // thinking budget 5000 tokens
@@ -145,7 +145,7 @@ await engine.generate({
 
 Model ids use the `provider/model` separator OpenRouter expects. The engine splits only on the first colon so the inner slash round-trips. Effort maps to the OpenRouter `reasoning.effort` field; whether the upstream honours it depends on the model.
 
-Aliases: `or:sonnet`, `or:opus`, `or:gpt-4o`, `or:gemini-pro`, `or:llama-3.3-70b`.
+Families on OpenRouter: `{ model: 'opus' | 'sonnet' | 'haiku' | 'gpt' | 'gemini', provider: 'openrouter' }` resolve to the corresponding `provider/model` slug. For anything else, pass the full slug via the colon form (`openrouter:meta-llama/llama-3.3-70b-instruct`).
 
 ## ollama
 
@@ -202,7 +202,7 @@ const engine = create_engine({
   providers: {
     claude_cli: { auth_mode: 'oauth' },   // default is 'auto'; explicit is clearer
   },
-  defaults: { model: 'cli-sonnet' },
+  defaults: { provider: 'claude_cli', model: 'sonnet' },
 });
 
 await engine.generate({ prompt: 'say hi' });
@@ -210,17 +210,18 @@ await engine.generate({ prompt: 'say hi' });
 
 Full guide: [cli.md](./cli.md).
 
-Aliases: `cli-opus`, `cli-sonnet`, `cli-haiku`.
+Families: `opus`, `sonnet`, `haiku` — the CLI receives the bare token and resolves the latest itself.
 
-## Model id resolution
+## Model and provider resolution
 
-Three shapes work:
+`model` names a model (a **family** like `sonnet`/`opus`/`gpt`, or a **specific id** like `claude-opus-4-8`); `provider` names the transport. Both default from `defaults` (and `provider` falls back to the sole configured provider, else `anthropic`). Per call, four shapes work:
 
-1. **Alias.** Any key in the alias table: `sonnet`, `or:gpt-4o`, `cli-haiku`, a custom one you registered.
-2. **Explicit `provider:model_id`.** `openai:gpt-4o-mini`, `ollama:llama3.2:3b`, `openrouter:anthropic/claude-sonnet-4.5`. Split on the first colon only.
-3. **Bare model_id** via engine defaults. `defaults.model: 'cli-sonnet'` lets `generate({ prompt })` omit the field entirely.
+1. **Family.** `sonnet`, `opus`, `gpt`, `gemini` → the latest id for the chosen provider. Throws `model_family_unavailable_error` if the family isn't offered by that provider.
+2. **Specific id.** `claude-opus-4-8`, `gpt-4o-mini` → passed straight through to the chosen provider.
+3. **Explicit `provider:model_id`.** `openai:gpt-4o-mini`, `ollama:llama3.2:3b`, `openrouter:anthropic/claude-sonnet-4.5` — sets both axes at once (split on the first colon only).
+4. **Custom alias.** Any key you registered via `aliases` / `register_alias`, pinning both axes.
 
-Unknown strings throw `model_not_found_error` with the registered-alias list. Unknown providers (no adapter registered on the engine) throw `provider_not_configured_error`.
+Unknown providers (no adapter registered on the engine) throw `provider_not_configured_error`.
 
 ## Optional peer loading
 
