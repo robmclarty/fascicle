@@ -94,7 +94,7 @@ const build = sequence([
   compose_build_prompt,
   model_call({
     engine,
-    model: 'cli-sonnet',
+    model: 'sonnet',
     id: 'build',
     system:
       'You are a staff engineer. Given a PRD, produce a concrete, ordered ' +
@@ -113,7 +113,7 @@ const extract_critique = step(
 const critique = sequence([
   model_call<Critique>({
     engine,
-    model: 'cli-haiku',
+    model: 'haiku',
     id: 'critic',
     schema: critique_schema,
     system:

@@ -81,7 +81,7 @@ type ProviderChoice =
 function resolve_provider(): ProviderChoice {
   const raw = (process.env['SWEBENCH_PROVIDER'] ?? 'claude_cli').toLowerCase()
   if (raw === 'claude_cli') {
-    const model = process.env['SWEBENCH_MODEL'] ?? 'cli-sonnet'
+    const model = process.env['SWEBENCH_MODEL'] ?? 'sonnet'
     const effort_raw = process.env['SWEBENCH_EFFORT'] ?? 'medium'
     if (!is_effort(effort_raw)) {
       throw new Error(

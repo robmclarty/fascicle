@@ -152,7 +152,7 @@ export async function run_amplify(argv: ReadonlyArray<string>): Promise<void> {
 
   const engine = create_engine({
     providers: { claude_cli: { auth_mode: 'oauth' } },
-    defaults: { model: 'cli-opus', effort: cli.effort },
+    defaults: { provider: 'claude_cli', model: 'opus', effort: cli.effort },
   })
 
   const file_sink = filesystem_logger({

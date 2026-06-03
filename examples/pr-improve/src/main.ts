@@ -119,15 +119,10 @@ function parse_argv(argv: ReadonlyArray<string>): CliArgs {
   return out
 }
 
-function default_models(provider: Provider | undefined): FlowModels {
-  if (provider === 'claude_cli') {
-    return {
-      reviewer: 'cli-sonnet',
-      pragmatist: 'cli-opus',
-      builder: 'cli-sonnet',
-      build_reviewer: 'cli-opus',
-    }
-  }
+function default_models(_provider: Provider | undefined): FlowModels {
+  // Model names are provider-agnostic family names ("latest of that family").
+  // The transport is the engine's configured provider; resolution maps each
+  // family to the right id per provider.
   return { reviewer: 'sonnet', pragmatist: 'opus', builder: 'sonnet', build_reviewer: 'opus' }
 }
 

@@ -62,7 +62,7 @@ const EXPECTED_API_TOOL_NAMES = [
 describe('make_builder_call dispatch', () => {
   it('claude_cli: schema-only path with provider_options.allowed_tools', async () => {
     const { engine, calls } = make_capture_engine()
-    const step = make_builder_call(engine, 'cli-sonnet', '/tmp/wt-cli', 'claude_cli')
+    const step = make_builder_call(engine, 'sonnet', '/tmp/wt-cli', 'claude_cli')
     await run(step, 'noop prompt', { install_signal_handlers: false })
 
     expect(calls).toHaveLength(1)

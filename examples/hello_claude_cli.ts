@@ -27,7 +27,8 @@ import {
 const engine = create_engine({
   providers: { claude_cli: { auth_mode: 'oauth' } },
   defaults: {
-    model: 'cli-sonnet',
+    provider: 'claude_cli',
+    model: 'sonnet',
     system: 'Reply in one short sentence. No preamble.',
   },
 })
