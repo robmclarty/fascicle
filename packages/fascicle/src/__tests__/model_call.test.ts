@@ -200,15 +200,17 @@ vdescribe('model_call', () => {
 
   it('describe surfaces model config and omits the raw engine object', () => {
     const { engine } = make_mock_engine()
-    const s = model_call({ engine, model: 'cli-sonnet', system: 'be careful' })
+    const s = model_call({ engine, model: 'sonnet', provider: 'claude_cli', system: 'be careful' })
     const text = describe(s)
     expect(text).toContain('model_call')
-    expect(text).toContain('"cli-sonnet"')
+    expect(text).toContain('"sonnet"')
+    expect(text).toContain('"claude_cli"')
     expect(text).toContain('"be careful"')
     expect(text).not.toContain('[object Object]')
     const json = describe.json(s)
     const cfg = json.config as Record<string, unknown>
-    expect(cfg['model']).toBe('cli-sonnet')
+    expect(cfg['model']).toBe('sonnet')
+    expect(cfg['provider']).toBe('claude_cli')
     expect(cfg['system']).toBe('be careful')
     expect(cfg['has_tools']).toBe(false)
     expect(cfg['has_schema']).toBe(false)

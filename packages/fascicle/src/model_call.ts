@@ -37,6 +37,12 @@ export type ModelCallConfig<T = unknown> = {
    * `defaults.model` is used. Errors at call time if neither is set.
    */
   readonly model?: string
+  /**
+   * Transport for the model: `anthropic` | `claude_cli` | `openrouter` | ...
+   * Optional: if omitted, the engine's `defaults.provider` (or sole configured
+   * provider, else `anthropic`) is used.
+   */
+  readonly provider?: string
   readonly id?: string
   readonly system?: string
   readonly tools?: ReadonlyArray<Tool>
@@ -52,12 +58,14 @@ export type ModelCallConfig<T = unknown> = {
 
 function stable_signature(input: {
   model?: string
+  provider?: string
   system?: string
   has_tools: boolean
   has_schema: boolean
 }): string {
   const payload = JSON.stringify({
     model: input.model ?? null,
+    provider: input.provider ?? null,
     system: input.system ?? null,
     has_tools: input.has_tools,
     has_schema: input.has_schema,
@@ -72,16 +80,19 @@ export function model_call<T = unknown>(
   const has_schema = cfg.schema !== undefined
   const signature_input: {
     model?: string
+    provider?: string
     system?: string
     has_tools: boolean
     has_schema: boolean
   } = { has_tools, has_schema }
   if (cfg.model !== undefined) signature_input.model = cfg.model
+  if (cfg.provider !== undefined) signature_input.provider = cfg.provider
   if (cfg.system !== undefined) signature_input.system = cfg.system
   const step_id = cfg.id ?? `model_call:${stable_signature(signature_input)}`
 
   const describe_config: {
     model?: string
+    provider?: string
     has_tools: boolean
     has_schema: boolean
     system?: string
@@ -91,6 +102,7 @@ export function model_call<T = unknown>(
     has_schema,
   }
   if (cfg.model !== undefined) describe_config.model = cfg.model
+  if (cfg.provider !== undefined) describe_config.provider = cfg.provider
   if (cfg.system !== undefined) describe_config.system = cfg.system
   if (cfg.effort !== undefined) describe_config.effort = cfg.effort
 
@@ -113,6 +125,7 @@ export function model_call<T = unknown>(
       trajectory: ctx.trajectory,
     }
     if (cfg.model !== undefined) opts.model = cfg.model
+    if (cfg.provider !== undefined) opts.provider = cfg.provider
     if (cfg.system !== undefined) opts.system = cfg.system
     if (cfg.tools !== undefined) opts.tools = [...cfg.tools]
     if (cfg.schema !== undefined) opts.schema = cfg.schema
