@@ -21,6 +21,7 @@ import type {
   AliasTable,
   CostBreakdown,
   EffortLevel,
+  FamilyCatalog,
   FinishReason,
   GenerateOptions,
   GenerateResult,
@@ -34,7 +35,6 @@ import type {
 } from './types.js'
 import {
   aborted_error,
-  engine_config_error,
   on_chunk_error,
   provider_capability_error,
   provider_error,
@@ -77,12 +77,14 @@ import type {
 
 export type EngineInternals = {
   readonly aliases: AliasTable
+  readonly families: FamilyCatalog
   readonly pricing: PricingTable
   readonly adapters: ReadonlyMap<string, ProviderAdapter>
   readonly default_retry: RetryPolicy
   readonly default_effort: EffortLevel
   readonly default_max_steps: number
   readonly default_model?: string
+  readonly default_provider?: string
   readonly default_system?: string
   readonly default_tool_error_policy?: 'feed_back' | 'throw'
   readonly default_schema_repair_attempts?: number
@@ -419,12 +421,11 @@ export async function generate<T = string>(
     throw new aborted_error('aborted', { reason: opts_in.abort.reason })
   }
 
-  const resolved_model = opts_in.model ?? engine.default_model
-  if (resolved_model === undefined) {
-    throw new engine_config_error(
-      'model is required: pass `model` on generate()/model_call() or set `defaults.model` on create_engine',
-    )
-  }
+  const resolved_model = opts_in.model ?? engine.default_model ?? 'sonnet'
+  const sole_provider =
+    engine.adapters.size === 1 ? [...engine.adapters.keys()][0] : undefined
+  const resolved_provider =
+    opts_in.provider ?? engine.default_provider ?? sole_provider ?? 'anthropic'
 
   const merged_provider_options = merge_provider_options(
     engine.default_provider_options,
@@ -434,6 +435,7 @@ export async function generate<T = string>(
   const opts: GenerateOptions<T> = {
     ...opts_in,
     model: resolved_model,
+    provider: resolved_provider,
   }
   if (opts_in.system === undefined && engine.default_system !== undefined) {
     opts.system = engine.default_system
@@ -442,7 +444,10 @@ export async function generate<T = string>(
     opts.provider_options = merged_provider_options
   }
 
-  const target = resolve_model(engine.aliases, resolved_model)
+  const target = resolve_model(resolved_model, resolved_provider, {
+    families: engine.families,
+    aliases: engine.aliases,
+  })
 
   const adapter = engine.adapters.get(target.provider)
   if (adapter === undefined) {

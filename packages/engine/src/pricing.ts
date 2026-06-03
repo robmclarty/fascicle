@@ -27,6 +27,12 @@ import type { CostBreakdown, Pricing, PricingTable, UsageTotals } from './types.
 export const FREE_PROVIDERS: ReadonlySet<string> = new Set(['ollama', 'lmstudio'])
 
 export const DEFAULT_PRICING: PricingTable = Object.freeze({
+  'anthropic:claude-opus-4-8': {
+    input_per_million: 5.0,
+    output_per_million: 25.0,
+    cached_input_per_million: 0.5,
+    cache_write_per_million: 6.25,
+  },
   'anthropic:claude-opus-4-7': {
     input_per_million: 5.0,
     output_per_million: 25.0,

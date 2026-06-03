@@ -26,7 +26,7 @@ vi.mock('../providers/registry.js', async () => build_mock_registry_module())
 import { create_engine } from '../create_engine.js'
 import {
   aborted_error,
-  model_not_found_error,
+  model_family_unavailable_error,
   provider_capability_error,
   provider_error,
   provider_not_configured_error,
@@ -497,10 +497,10 @@ describe('spec §10: success criteria (remaining)', () => {
 })
 
 describe('spec §9: failure modes (remaining)', () => {
-  it('F1 unknown alias throws model_not_found_error', async () => {
+  it('F1 a family requested on a provider that does not offer it throws model_family_unavailable_error', async () => {
     await expect(
-      basic_engine().generate({ model: 'does-not-exist', prompt: 'x' }),
-    ).rejects.toBeInstanceOf(model_not_found_error)
+      basic_engine().generate({ model: 'opus', provider: 'openai', prompt: 'x' }),
+    ).rejects.toBeInstanceOf(model_family_unavailable_error)
   })
 
   it('F2 unconfigured provider throws provider_not_configured_error at call time', async () => {

@@ -1,85 +1,103 @@
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_ALIASES, resolve_model } from '../aliases.js'
-import { model_not_found_error } from '../errors.js'
+import { MODEL_FAMILIES, resolve_model } from '../aliases.js'
+import { model_family_unavailable_error } from '../errors.js'
+import type { AliasTable } from '../types.js'
 
-describe('DEFAULT_ALIASES', () => {
+const NO_ALIASES: AliasTable = {}
+const ctx = { families: MODEL_FAMILIES, aliases: NO_ALIASES }
+
+describe('MODEL_FAMILIES', () => {
   it('is frozen', () => {
-    expect(Object.isFrozen(DEFAULT_ALIASES)).toBe(true)
+    expect(Object.isFrozen(MODEL_FAMILIES)).toBe(true)
   })
 
-  it('maps short aliases to anthropic claude ids', () => {
-    expect(DEFAULT_ALIASES['sonnet']).toEqual({
-      provider: 'anthropic',
-      model_id: 'claude-sonnet-4-6',
+  it('carries the bare family token for the claude_cli transport', () => {
+    expect(MODEL_FAMILIES['opus']?.['claude_cli']).toBe('opus')
+    expect(MODEL_FAMILIES['sonnet']?.['claude_cli']).toBe('sonnet')
+    expect(MODEL_FAMILIES['haiku']?.['claude_cli']).toBe('haiku')
+  })
+
+  it('carries concrete vendor ids for the anthropic api transport', () => {
+    expect(MODEL_FAMILIES['opus']?.['anthropic']).toBe('claude-opus-4-8')
+    expect(MODEL_FAMILIES['sonnet']?.['anthropic']).toBe('claude-sonnet-4-6')
+  })
+})
+
+describe('resolve_model — family + provider', () => {
+  it('resolves a family to the latest id for the chosen provider', () => {
+    expect(resolve_model('opus', 'claude_cli', ctx)).toEqual({
+      provider: 'claude_cli',
+      model_id: 'opus',
     })
-    expect(DEFAULT_ALIASES['opus']).toEqual({
+    expect(resolve_model('opus', 'anthropic', ctx)).toEqual({
       provider: 'anthropic',
-      model_id: 'claude-opus-4-7',
+      model_id: 'claude-opus-4-8',
     })
-    expect(DEFAULT_ALIASES['haiku']).toEqual({
-      provider: 'anthropic',
-      model_id: 'claude-haiku-4-5',
+    expect(resolve_model('opus', 'openrouter', ctx)).toEqual({
+      provider: 'openrouter',
+      model_id: 'anthropic/claude-opus-4.8',
     })
   })
 
-  it('ships the or:* openrouter multiplexer aliases', () => {
-    expect(DEFAULT_ALIASES['or:sonnet']).toEqual({
-      provider: 'openrouter',
-      model_id: 'anthropic/claude-sonnet-4.5',
+  it('throws model_family_unavailable_error when the family has no entry for the provider', () => {
+    try {
+      resolve_model('opus', 'openai', ctx)
+      expect.unreachable('expected throw')
+    } catch (err) {
+      expect(err).toBeInstanceOf(model_family_unavailable_error)
+      const msg = (err as Error).message
+      expect(msg).toContain('opus')
+      expect(msg).toContain('openai')
+      expect(msg).toContain('anthropic')
+    }
+  })
+})
+
+describe('resolve_model — specific vendor ids', () => {
+  it('passes a non-family id straight through to the chosen provider', () => {
+    expect(resolve_model('claude-opus-4-8', 'anthropic', ctx)).toEqual({
+      provider: 'anthropic',
+      model_id: 'claude-opus-4-8',
     })
-    expect(DEFAULT_ALIASES['or:llama-3.3-70b']).toEqual({
-      provider: 'openrouter',
-      model_id: 'meta-llama/llama-3.3-70b-instruct',
+    expect(resolve_model('claude-opus-4-8', 'claude_cli', ctx)).toEqual({
+      provider: 'claude_cli',
+      model_id: 'claude-opus-4-8',
     })
   })
 })
 
-describe('resolve_model', () => {
-  it('resolves a default alias', () => {
-    expect(resolve_model(DEFAULT_ALIASES, 'sonnet')).toEqual({
-      provider: 'anthropic',
-      model_id: 'claude-sonnet-4-6',
+describe('resolve_model — colon form', () => {
+  it('splits provider:model on the first colon and overrides the provider arg', () => {
+    expect(resolve_model('claude_cli:claude-opus-4-8', 'anthropic', ctx)).toEqual({
+      provider: 'claude_cli',
+      model_id: 'claude-opus-4-8',
     })
-  })
-
-  it('splits provider:model on the first colon only', () => {
-    const openrouter = resolve_model(DEFAULT_ALIASES, 'openrouter:anthropic/claude-sonnet-4.5')
-    expect(openrouter).toEqual({
+    expect(resolve_model('openrouter:anthropic/claude-sonnet-4.5', 'anthropic', ctx)).toEqual({
       provider: 'openrouter',
       model_id: 'anthropic/claude-sonnet-4.5',
     })
-  
-    const ollama = resolve_model(DEFAULT_ALIASES, 'ollama:gemma3:27b')
-    expect(ollama).toEqual({ provider: 'ollama', model_id: 'gemma3:27b' })
-  })
-
-  it('bypasses the alias table on colon-form even when the suffix collides with an alias', () => {
-    const custom: Record<string, { provider: string; model_id: string }> = {
-      ...DEFAULT_ALIASES,
-      sonnet: { provider: 'openai', model_id: 'gpt-4o' },
-    }
-    expect(resolve_model(custom, 'anthropic:claude-sonnet-4-6')).toEqual({
-      provider: 'anthropic',
-      model_id: 'claude-sonnet-4-6',
+    expect(resolve_model('ollama:gemma3:27b', 'anthropic', ctx)).toEqual({
+      provider: 'ollama',
+      model_id: 'gemma3:27b',
     })
   })
 
-  it('throws model_not_found_error listing registered aliases on miss', () => {
-    try {
-      resolve_model(DEFAULT_ALIASES, 'nonsense')
-      expect.unreachable('expected throw')
-    } catch (err) {
-      expect(err).toBeInstanceOf(model_not_found_error)
-      const msg = (err as Error).message
-      expect(msg).toContain('nonsense')
-      expect(msg).toContain('sonnet')
-      expect(msg).toContain('gpt-4o')
-    }
+  it('treats an unknown provider prefix as a literal id (permissive pass-through)', () => {
+    expect(resolve_model('unknown-provider:foo', 'anthropic', ctx)).toEqual({
+      provider: 'anthropic',
+      model_id: 'unknown-provider:foo',
+    })
   })
+})
 
-  it('treats an unknown provider prefix as a normal alias lookup', () => {
-    expect(() => resolve_model(DEFAULT_ALIASES, 'unknown-provider:foo')).toThrow(
-      model_not_found_error,
-    )
+describe('resolve_model — user aliases', () => {
+  it('a registered alias wins over the family catalog and pins both axes', () => {
+    const aliases: AliasTable = {
+      opus: { provider: 'openai', model_id: 'gpt-4o' },
+    }
+    expect(resolve_model('opus', 'claude_cli', { families: MODEL_FAMILIES, aliases })).toEqual({
+      provider: 'openai',
+      model_id: 'gpt-4o',
+    })
   })
 })

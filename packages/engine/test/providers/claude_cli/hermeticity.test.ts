@@ -111,7 +111,7 @@ describe('subprocess-leak hermeticity (criterion 11, §6)', () => {
         controllers.push(ctrl)
         const h = handles[i]!
         const p = engine.generate({
-          model: 'cli-sonnet',
+          model: 'claude_cli:sonnet',
           prompt: `hello-${i}`,
           abort: ctrl.signal,
           provider_options: {
@@ -189,7 +189,7 @@ describe('subprocess-leak hermeticity (criterion 11, §6)', () => {
         // Deliberately no await: the call site must throw before returning a
         // Promise.
         const p = engine.generate({
-          model: 'cli-sonnet',
+          model: 'claude_cli:sonnet',
           prompt: 'after-dispose',
           provider_options: {
             claude_cli: { env: build_mock_env({}) },

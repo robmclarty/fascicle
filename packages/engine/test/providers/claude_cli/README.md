@@ -14,7 +14,7 @@ Node-script mock (`fixtures/mock_claude.mjs`) configured per test.
 | `cost.test.ts` | `decompose_total_cost`, `allocate_cost_across_turns` | no |
 | `failure_modes.test.ts` | F23 retry_policy, F25 allowlist_only trajectory record, F26 forbid pre-spawn throw, F27 multi-turn without session_id, F30 sandbox binary missing | yes (mock) |
 | `hermeticity.test.ts` | N≥5 concurrent `engine.generate` → abort subset → `engine.dispose()` → every child reaped | yes (mock) |
-| `integration.test.ts` | `@repo/core.run` + `cli-sonnet` step + trajectory span tree + SIGINT propagation | yes (mock + child harness) |
+| `integration.test.ts` | `@repo/core.run` + `claude_cli` sonnet step + trajectory span tree + SIGINT propagation | yes (mock + child harness) |
 | `spawn.test.ts` | `create_spawn_runtime` lifecycle, live-set membership, exit reap, SIGTERM→SIGKILL escalator | yes (mock) |
 | `stream_parse.test.ts` | NDJSON line buffering, step/tool event mapping, unknown-event tolerance | no |
 

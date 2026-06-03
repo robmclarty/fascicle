@@ -59,14 +59,14 @@ afterEach(() => reset_mock_state())
 describe('generate: plain paths', () => {
   it('returns a plain completion (C1)', async () => {
     enqueue_generate_text(make_text_result('hello'))
-    const result = await basic_engine().generate({ model: 'claude-opus', prompt: 'hi' })
+    const result = await basic_engine().generate({ model: 'opus', prompt: 'hi' })
     expect(result.content).toBe('hello')
     expect(result.tool_calls).toEqual([])
     expect(result.steps).toHaveLength(1)
     expect(result.finish_reason).toBe('stop')
     expect(result.model_resolved).toEqual({
       provider: 'anthropic',
-      model_id: 'claude-opus-4-7',
+      model_id: 'claude-opus-4-8',
     })
   })
 
@@ -260,11 +260,11 @@ describe('generate: cost', () => {
       usage: { inputTokens: 1000, outputTokens: 500 },
     })
     const engine = basic_engine()
-    engine.register_price('anthropic', 'claude-opus-4-7', {
+    engine.register_price('anthropic', 'claude-opus-4-8', {
       input_per_million: 0,
       output_per_million: 0,
     })
-    const result = await engine.generate({ model: 'claude-opus', prompt: 'x' })
+    const result = await engine.generate({ model: 'opus', prompt: 'x' })
     expect(result.cost?.total_usd).toBe(0)
   })
 
