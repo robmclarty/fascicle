@@ -2,9 +2,10 @@
  * Stryker mutation testing config.
  *
  * Invoked by the `mutation` step of `scripts/check.mjs` (and directly via
- * `pnpm check:mutation`). Incremental mode keeps re-runs cheap — the shared
- * baseline at `stryker.incremental.json` is committed so every contributor
- * and CI start from the same state.
+ * `pnpm check:mutation`). Incremental mode keeps re-runs cheap. The baseline at
+ * `stryker.incremental.json` is gitignored; CI carries it forward across runs
+ * via actions/cache (see .github/workflows/ci.yml), and local runs regenerate
+ * it on first invocation.
  */
 export default {
   packageManager: 'pnpm',
