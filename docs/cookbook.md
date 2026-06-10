@@ -136,10 +136,16 @@ The build step's `ModelCallInput` receives `{ input, prior, critique }` on round
 
 ## Consensus of N runs
 
-Run the same (or different) steps concurrently; accept only when a quorum agrees:
+Run the same (or different) steps concurrently; accept once an `agree` predicate
+over the per-member results holds (here, a strict majority):
 
+<!-- snippet: check -->
 ```ts
-import { consensus, model_call, pipe } from 'fascicle';
+import { consensus, create_engine, model_call, pipe } from 'fascicle';
+
+const engine = create_engine({
+  providers: { anthropic: { api_key: process.env.ANTHROPIC_API_KEY! } },
+});
 
 const classify = (id: string, model: string) =>
   pipe(
@@ -151,35 +157,57 @@ const flow = consensus({
   members: {
     a: classify('a', 'sonnet'),
     b: classify('b', 'opus'),
-    c: classify('c', 'gpt-4o'),
+    c: classify('c', 'haiku'),
   },
-  agree: (outputs) => outputs[0],   // first that >= quorum agree on
+  // agree receives the per-member results keyed by member name and returns a
+  // boolean. Accept once a strict majority return the same verdict.
+  agree: (results) => {
+    const tally = new Map<string, number>();
+    for (const verdict of Object.values(results)) {
+      tally.set(verdict, (tally.get(verdict) ?? 0) + 1);
+    }
+    return Math.max(...tally.values()) > Object.keys(results).length / 2;
+  },
   max_rounds: 2,
 });
 ```
 
 ## Tournament of candidates
 
-Single-elimination bracket, comparing pairs until a winner remains:
+Single-elimination bracket, comparing pairs until a winner remains. `compare(a, b)`
+is a plain function over two member *results* that returns `'a'` or `'b'` — the
+result that advances:
 
+<!-- snippet: check -->
 ```ts
-import { tournament, step } from 'fascicle';
+import { create_engine, model_call, tournament } from 'fascicle';
 
-const compare = step('compare', async ([a, b]: [string, string]) => {
-  const r = await engine.generate({
-    model: 'sonnet',
-    prompt: `Which is better? A: ${a}\nB: ${b}\nReply only "A" or "B".`,
-  });
-  return r.content.trim().startsWith('A') ? a : b;
+const engine = create_engine({
+  providers: { anthropic: { api_key: process.env.ANTHROPIC_API_KEY! } },
 });
 
+const draft = (id: string, system: string) =>
+  model_call({ engine, id, model: 'sonnet', system });
+
 const bracket = tournament({
-  members: { a: candidate_a, b: candidate_b, c: candidate_c, d: candidate_d },
-  compare,
+  members: {
+    a: draft('a', 'Write a terse tagline.'),
+    b: draft('b', 'Write a playful tagline.'),
+    c: draft('c', 'Write a bold tagline.'),
+    d: draft('d', 'Write a classic tagline.'),
+  },
+  compare: async (a, b) => {
+    const r = await engine.generate({
+      model: 'sonnet',
+      prompt: `Which tagline is better?\nA: ${a.content}\nB: ${b.content}\nReply only "A" or "B".`,
+    });
+    return r.content.trim().toUpperCase().startsWith('A') ? 'a' : 'b';
+  },
 });
 ```
 
-`candidate_*` are each `Step<input, string>`; the tournament feeds them the shared input, then the pairwise compares.
+Each member is a `Step` producing a candidate; the tournament feeds them the
+shared input, then runs the pairwise `compare`s until one result remains.
 
 ## Checkpointing an expensive step
 

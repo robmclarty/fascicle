@@ -108,6 +108,13 @@ const CHECKS = [
     output_file: 'links.json',
   },
   {
+    name: 'doc_snippets',
+    description: 'Tagged doc code snippets typecheck against the package surface',
+    command: 'node',
+    args: ['scripts/check-doc-snippets.mjs'],
+    output_file: null,
+  },
+  {
     name: 'spell',
     description: 'Spell check',
     command: 'pnpm',

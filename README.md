@@ -12,10 +12,11 @@ No framework lifecycle. No ambient state. No decorators. Adapters are passed in 
 pnpm add fascicle zod
 ```
 
-Provider SDKs are optional peers — install only the ones you use. See [docs/providers.md](./docs/providers.md).
+fascicle is ESM-only and requires Node >= 24. Provider SDKs are optional peers — install only the ones you use. See [docs/providers.md](./docs/providers.md).
 
 ## A 60-second tour
 
+<!-- snippet: check -->
 ```typescript
 import { run, sequence, step } from 'fascicle';
 
@@ -29,8 +30,9 @@ await run(flow, 1); // 4
 
 Add a model call:
 
+<!-- snippet: check -->
 ```typescript
-import { create_engine, model_call, run, sequence, step } from 'fascicle';
+import { create_engine, model_call, pipe, run, sequence, step } from 'fascicle';
 
 const engine = create_engine({
   providers: { anthropic: { api_key: process.env.ANTHROPIC_API_KEY! } },
@@ -38,8 +40,10 @@ const engine = create_engine({
 
 const flow = sequence([
   step('brief', (topic: string) => `Write a 2-sentence brief on: ${topic}`),
-  model_call({ engine, model: 'sonnet', system: 'No preamble.' }),
-  step('extract', (r) => r.content),
+  pipe(
+    model_call({ engine, model: 'sonnet', system: 'No preamble.' }),
+    (r) => r.content,
+  ),
 ]);
 
 try {
@@ -71,14 +75,14 @@ try {
 | `adversarial` | build, critique, repeat until accept or `max_rounds` |
 | `ensemble` | run N members, pick the highest-scoring result |
 | `tournament` | single-elimination bracket |
-| `consensus` | run N concurrently, accept only if `>= quorum` agree |
+| `consensus` | run N concurrently, accept when an `agree` predicate holds |
 | `checkpoint` | memoize an inner step by key in a `CheckpointStore` |
 | `suspend` | pause for external input; resume later with `resume_data` |
 | `scope` / `stash` / `use` | named state across non-adjacent steps |
 
 Plus `run`, `run.stream`, and `describe`.
 
-**AI engine.** `create_engine(config)` returns one `generate` surface across seven providers. Two axes: `model` names a family (`sonnet`, `opus`, `gpt` — latest of that family) or a specific id (`claude-opus-4-8`), and `provider` names the transport (`anthropic`, `claude_cli`, `openrouter`, …) — so the same `model: 'opus'` runs anywhere. Reasoning effort (`'low' | 'medium' | 'high'`) is translated per provider. Cost estimation uses a pricing table with per-engine overrides.
+**AI engine.** `create_engine(config)` returns one `generate` surface across seven providers. Two axes: `model` names a family (`sonnet`, `opus`, `gpt` — latest of that family) or a specific id (`claude-opus-4-8`), and `provider` names the transport (`anthropic`, `claude_cli`, `openrouter`, …) — so the same `model: 'opus'` runs anywhere. Reasoning effort (`'none'` through `'max'`) is translated per provider. Cost estimation uses a pricing table with per-engine overrides.
 
 **Adapters injected per run.** Trajectory loggers and checkpoint stores ship under the `fascicle/adapters` subpath:
 
@@ -113,14 +117,18 @@ Full details: [docs/providers.md](./docs/providers.md). The `claude_cli` adapter
 
 ![fascicle-viewer running against an amplify trajectory: span tree on the left, event log on the right, $2.55 cost rolled up in the header](./screenshot.png)
 
-The `fascicle-viewer` bin ships with the umbrella package. Point it at a trajectory file and it opens a browser tree of spans, errors, and emits as the run executes:
+The `fascicle-viewer` bin ships with the umbrella package (there is no separate `fascicle-viewer` package). Point it at a trajectory file and it opens a browser tree of spans, errors, and emits as the run executes:
 
 ```bash
-pnpm dlx fascicle-viewer .trajectory.jsonl
+# installed locally:
+pnpm exec fascicle-viewer .trajectory.jsonl
+# or one-off via the umbrella package:
+pnpm dlx --package=fascicle fascicle-viewer .trajectory.jsonl
 ```
 
 Or embed it programmatically:
 
+<!-- snippet: check -->
 ```typescript
 import { start_viewer } from 'fascicle';
 

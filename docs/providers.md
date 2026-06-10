@@ -76,7 +76,7 @@ await engine.generate({
 
 Effort maps to extended-thinking `budgetTokens` (the `@ai-sdk/anthropic` option name, which the SDK forwards to the API's `budget_tokens`). `none →` no thinking block, `low → 1024`, `medium → 5000`, `high → 20000`, `xhigh → 32000`, `max → 64000`.
 
-Aliases: `opus`, `claude-opus`, `sonnet`, `claude-sonnet`, `haiku`, `claude-haiku`.
+Families: `opus`, `sonnet`, `haiku` (each resolves to the latest concrete id, e.g. `claude-opus-4-8`). `create_engine` ships no default aliases; register your own pins with `engine.register_alias`, or pass a concrete id directly.
 
 ## openai
 
@@ -98,7 +98,7 @@ const engine = create_engine({
 
 Effort maps to OpenAI's `reasoningEffort: 'low' | 'medium' | 'high'`. Non-reasoning models silently drop it.
 
-Aliases: `gpt-4o`, `gpt-4o-mini`.
+Families: `gpt` (= `gpt-4o`), `gpt-mini` (= `gpt-4o-mini`). Or pass a concrete id like `gpt-4o` straight through.
 
 ## google
 
@@ -119,7 +119,7 @@ const engine = create_engine({
 
 Effort maps to Gemini's `thinkingConfig.thinkingBudget`, a token count: `low → 1024`, `medium → 8192`, `high → 24576`, `xhigh`/`max → 32768`. Google does not report cache-write tokens; the adapter strips `cache_write_tokens` when absent.
 
-Aliases: `gemini-pro` (= `gemini-2.5-pro`), `gemini-flash` (= `gemini-2.5-flash`), and their fully-qualified forms.
+Families: `gemini` (= `gemini-2.5-pro`), `gemini-flash` (= `gemini-2.5-flash`). Or pass a fully-qualified id straight through.
 
 ## openrouter
 
