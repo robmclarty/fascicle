@@ -114,11 +114,5 @@
     "typescript": "6.0.3",
     "vitest": "4.1.4",
     "zod": "4.3.6"
-  },
-  "pnpm": {
-    "overrides": {
-      "tunnel": "npm:@noble/secp256k1@2.1.0",
-      "smol-toml": ">=1.6.1"
-    }
   }
 }

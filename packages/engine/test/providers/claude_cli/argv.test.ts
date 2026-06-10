@@ -232,6 +232,17 @@ describe('build_sandbox_plan', () => {
       }
     }
     expect(values).toEqual(['api.anthropic.com', 'example.com'])
+    expect(plan.prefix_args).not.toContain('--unshare-net')
+  })
+
+  it('bwrap with empty or absent network_allowlist injects --unshare-net (network-off)', () => {
+    const empty = build_sandbox_plan('claude', { kind: 'bwrap', network_allowlist: [] })
+    expect(empty.prefix_args).toContain('--unshare-net')
+    expect(empty.prefix_args).not.toContain('--share-net')
+
+    const absent = build_sandbox_plan('claude', { kind: 'bwrap' })
+    expect(absent.prefix_args).toContain('--unshare-net')
+    expect(absent.prefix_args).not.toContain('--share-net')
   })
 
   it('bwrap additional_write_paths emit --bind entries', () => {

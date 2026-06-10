@@ -74,6 +74,11 @@ function build_bwrap_args(
     for (const host of allowlist) {
       args.push('--setenv', 'CLAUDE_CLI_NET_ALLOW', host)
     }
+  } else {
+    // Empty or absent allowlist means network-off. Without an explicit
+    // --unshare-net, bwrap leaves the child in the host network namespace, so
+    // the documented "network-off" guarantee (docs/cli.md) would be a no-op.
+    args.push('--unshare-net')
   }
 
   const write_paths = sandbox.additional_write_paths ?? []
