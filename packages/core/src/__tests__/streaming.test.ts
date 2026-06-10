@@ -39,8 +39,30 @@ describe('run.stream', () => {
   
     await handle.result
     await collector
-  
+
     expect(tokens).toEqual(['a', 'b', 'c'])
+  })
+
+  it('streamed events carry the stamped ts and run_id', async () => {
+    const s = step('emitter', (x: number, ctx) => {
+      ctx.emit({ kind: 'token', text: 'a' })
+      return x
+    })
+
+    const handle = run.stream(s, 0)
+    const collected: Array<Record<string, unknown>> = []
+    const collector = (async () => {
+      for await (const ev of handle.events) collected.push(ev)
+    })()
+
+    await handle.result
+    await collector
+
+    expect(collected.length).toBeGreaterThan(0)
+    for (const ev of collected) {
+      expect(typeof ev['ts']).toBe('number')
+      expect(typeof ev['run_id']).toBe('string')
+    }
   })
 
   it('resolves an already-waiting consumer when a new event arrives', async () => {

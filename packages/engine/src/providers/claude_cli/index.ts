@@ -77,6 +77,7 @@ import {
   record_schema_validation_failed,
   start_generate_span,
   start_step_span,
+  with_timestamps,
 } from '../../trajectory.js'
 
 const SUPPORTED: ReadonlySet<ProviderCapability> = new Set<ProviderCapability>([
@@ -303,7 +304,10 @@ export function create_claude_cli_adapter(init: ProviderInit): SubprocessProvide
         throw new aborted_error('aborted', { reason: opts.abort.reason })
       }
   
-      const trajectory = opts.trajectory
+      // Stamp ts on this subprocess provider's events too, matching the
+      // ai_sdk path. The subprocess branch in generate.ts returns before the
+      // main path's with_timestamps wrap, so it has to happen here.
+      const trajectory = with_timestamps(opts.trajectory)
       const call_opts = extract_call_opts(opts)
       const option_ignored = create_option_ignored_dedup(trajectory)
   

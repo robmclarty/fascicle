@@ -229,16 +229,21 @@ function start_run<i, o>(
   const controller = new AbortController()
   const run_id = randomUUID()
 
-  let logger: TrajectoryLogger = decorate_logger(base_logger, run_id)
   let stream_events: AsyncIterable<TrajectoryEvent> = empty_async_iterable()
   let close_stream: (() => void) | null = null
+  let inner: TrajectoryLogger = base_logger
 
   if (streaming) {
-    const channel = create_streaming_channel(logger, high_water_mark)
-    logger = channel.logger
+    // Decorate must wrap the streaming channel, not the reverse: the channel
+    // enqueues a copy of each event for `run.stream` consumers, so it has to
+    // see the events after `decorate_logger` has stamped `ts` and `run_id`.
+    const channel = create_streaming_channel(base_logger, high_water_mark)
+    inner = channel.logger
     stream_events = channel.events
     close_stream = channel.close
   }
+
+  const logger: TrajectoryLogger = decorate_logger(inner, run_id)
 
   const cleanup = create_cleanup_registry(logger)
 

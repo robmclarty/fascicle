@@ -10,15 +10,14 @@ The check pipeline's `check:security` threshold is `high`, so the finding does n
 
 ## Decision
 
-Add a `pnpm.overrides` entry in the root `package.json` forcing `smol-toml` to the patched range (`>=1.6.1`). Remove the override once `markdownlint-cli2` bumps its own dependency to a patched version.
+Add an `overrides` entry in `pnpm-workspace.yaml` forcing `smol-toml` to the patched range (`>=1.6.1`). Remove the override once `markdownlint-cli2` bumps its own dependency to a patched version.
 
-```jsonc
-// package.json
-"pnpm": {
-  "overrides": {
-    "smol-toml": ">=1.6.1"
-  }
-}
+pnpm 10.13+ reads overrides from `pnpm-workspace.yaml` rather than the package.json `pnpm` field in a workspace; the repo pins pnpm via the root `packageManager` field so the override applies consistently in local and CI installs.
+
+```yaml
+# pnpm-workspace.yaml
+overrides:
+  smol-toml: '>=1.6.1'
 ```
 
 ## Consequences
