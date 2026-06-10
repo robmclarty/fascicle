@@ -1,11 +1,15 @@
 /**
  * fallback: primary-or-backup.
  *
- * `fallback(primary, backup)` runs `primary`. If it throws, runs `backup`
- * with the same input. If `backup` also throws, the `backup` error
- * propagates. See spec.md §5.8.
+ * `fallback(primary, backup)` runs `primary`. If it throws an application
+ * error, runs `backup` with the same input. If `backup` also throws, the
+ * `backup` error propagates. Control-flow signals (`suspended_error`,
+ * `aborted_error`) are not failures: they propagate instead of triggering the
+ * backup, so a human-approval gate is never silently bypassed and the backup
+ * never runs under an aborted context. See spec.md §5.8.
  */
 
+import { is_control_flow_error } from './errors.js'
 import { dispatch_step, register_kind, resolve_span_label } from './runner.js'
 import type { RunContext, Step } from './types.js'
 
@@ -30,7 +34,8 @@ export function fallback<i, o>(
   const run_fn = async (input: i, ctx: RunContext): Promise<o> => {
     try {
       return await dispatch_step(primary, input, ctx)
-    } catch {
+    } catch (err) {
+      if (is_control_flow_error(err)) throw err
       return dispatch_step(backup, input, ctx)
     }
   }

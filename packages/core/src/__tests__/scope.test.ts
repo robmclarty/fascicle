@@ -1,9 +1,15 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
+import { aborted_error } from '../errors.js'
 import { run } from '../runner.js'
 import { scope, stash, use } from '../scope.js'
 import { step } from '../step.js'
 
 describe('scope / stash / use', () => {
+  afterEach(() => {
+    for (const l of process.listeners('SIGINT')) process.off('SIGINT', l)
+    for (const l of process.listeners('SIGTERM')) process.off('SIGTERM', l)
+  })
+
   it('reads two stashed values via a terminal use (criterion 16)', async () => {
     const flow = scope([
       stash('a', step('source_a', () => 1)),
@@ -84,5 +90,22 @@ describe('scope / stash / use', () => {
     ])
     const result = await run(flow, null, { install_signal_handlers: false })
     expect(result).toBe('outer')
+  })
+
+  it('does not run the next child once the context is aborted', async () => {
+    let second_ran = false
+    const flow = scope([
+      step('first', (x: number) => {
+        process.emit('SIGINT')
+        return x
+      }),
+      step('second', (_: number) => {
+        second_ran = true
+        return 'second'
+      }),
+    ])
+
+    await expect(run(flow, 0)).rejects.toBeInstanceOf(aborted_error)
+    expect(second_ran).toBe(false)
   })
 })

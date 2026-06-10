@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
+import { aborted_error } from '../errors.js'
 import { run } from '../runner.js'
 import { sequence } from '../sequence.js'
 import { step } from '../step.js'
@@ -25,6 +26,11 @@ function recording_logger(): { logger: TrajectoryLogger; events: TrajectoryEvent
 }
 
 describe('sequence', () => {
+  afterEach(() => {
+    for (const l of process.listeners('SIGINT')) process.off('SIGINT', l)
+    for (const l of process.listeners('SIGTERM')) process.off('SIGTERM', l)
+  })
+
   it('chains three adders in declared order (spec §10 test 2)', async () => {
     const flow = sequence([
       step('add1', (x: number) => x + 1),
@@ -79,5 +85,22 @@ describe('sequence', () => {
     const ends = events.filter((e) => e.kind === 'span_end')
     const seq_end = ends.find((e) => typeof e['error'] === 'string' && e['error'] === 'boom')
     expect(seq_end).toBeDefined()
+  })
+
+  it('does not run the next child once the context is aborted', async () => {
+    let second_ran = false
+    const flow = sequence([
+      step('first', (x: number) => {
+        process.emit('SIGINT')
+        return x + 1
+      }),
+      step('second', (x: number) => {
+        second_ran = true
+        return x + 1
+      }),
+    ])
+
+    await expect(run(flow, 0)).rejects.toBeInstanceOf(aborted_error)
+    expect(second_ran).toBe(false)
   })
 })

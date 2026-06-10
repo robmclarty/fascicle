@@ -8,7 +8,12 @@
  * See spec.md §5.2 and §6.1.
  */
 
-import { dispatch_step, register_kind, resolve_span_label } from './runner.js'
+import {
+  dispatch_step,
+  register_kind,
+  resolve_span_label,
+  throw_if_aborted,
+} from './runner.js'
 import type { RunContext, Step } from './types.js'
 
 type AnyStep = Step<unknown, unknown>
@@ -43,6 +48,7 @@ export function sequence<const children extends readonly AnyStep[]>(
   const run_fn = async (input: unknown, ctx: RunContext): Promise<unknown> => {
     let acc: unknown = input
     for (const child of children_ref) {
+      throw_if_aborted(ctx)
       acc = await dispatch_step(child, acc, ctx)
     }
     return acc

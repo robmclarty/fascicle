@@ -18,8 +18,7 @@
  * thread cancellation per the runner contract.
  */
 
-import { aborted_error } from './errors.js'
-import { dispatch_step, register_kind, resolve_span_label } from './runner.js'
+import { dispatch_step, register_kind, resolve_span_label, throw_if_aborted } from './runner.js'
 import type { RunContext, Step } from './types.js'
 
 export type LoopGuardResult<state> = {
@@ -47,12 +46,6 @@ let loop_counter = 0
 function next_id(name: string | undefined): string {
   loop_counter += 1
   return `${name ?? 'loop'}_${loop_counter}`
-}
-
-function throw_if_aborted(ctx: RunContext): void {
-  if (!ctx.abort.aborted) return
-  const reason = ctx.abort.reason
-  throw reason instanceof Error ? reason : new aborted_error('aborted', { reason })
 }
 
 export function loop<i, state, o>(

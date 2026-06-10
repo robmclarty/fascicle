@@ -70,3 +70,18 @@ export class aborted_error extends Error {
     }
   }
 }
+
+/**
+ * Control-flow signals are not application failures. `suspended_error` is a
+ * human-approval gate pausing the run for later resume; `aborted_error` is
+ * cancellation. Resilience composers (`retry`, `fallback`) must rethrow these
+ * rather than retry past a suspend or run a backup under an aborted context.
+ *
+ * Kept internal to @repo/core: not re-exported by index.ts, so it does not
+ * widen the public surface.
+ */
+export function is_control_flow_error(
+  err: unknown,
+): err is suspended_error | aborted_error {
+  return err instanceof suspended_error || err instanceof aborted_error
+}

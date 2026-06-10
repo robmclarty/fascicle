@@ -2,9 +2,14 @@
  * retry: re-run on failure.
  *
  * `retry(inner, { max_attempts, backoff_ms?, on_error? })` runs `inner`. If it
- * throws, retries up to `max_attempts - 1` more times with exponential backoff
- * (`backoff_ms * 2^(attempt-1)`). `on_error` is called on every failure. The
- * last error is rethrown if all attempts fail.
+ * throws an application error, retries up to `max_attempts - 1` more times with
+ * exponential backoff (`backoff_ms * 2^(attempt-1)`). `on_error` is called on
+ * every such failure. The last error is rethrown if all attempts fail.
+ *
+ * Control-flow signals (`suspended_error`, `aborted_error`) are not failures:
+ * they propagate immediately without consuming an attempt, firing `on_error`,
+ * or scheduling a backoff. A suspend's `on()` side effect therefore runs once
+ * per run, not once per attempt.
  *
  * Cancellation / cleanup (constraints.md §5.2, spec.md §6.8): cleanup handlers
  * registered by the inner step accumulate across attempts. The parent
@@ -12,7 +17,7 @@
  * the backoff and propagates. See spec.md §5.7 and §9 F11.
  */
 
-import { aborted_error } from './errors.js'
+import { aborted_error, is_control_flow_error } from './errors.js'
 import { dispatch_step, register_kind, resolve_span_label } from './runner.js'
 import type { RunContext, Step } from './types.js'
 
@@ -69,6 +74,7 @@ export function retry<i, o>(inner: Step<i, o>, config: RetryConfig): Step<i, o> 
       try {
         return await dispatch_step(inner, input, ctx)
       } catch (err) {
+        if (is_control_flow_error(err)) throw err
         last_err = err
         if (on_error) on_error(err, attempt)
         if (attempt >= max_attempts) break

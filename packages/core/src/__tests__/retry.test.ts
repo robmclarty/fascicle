@@ -1,7 +1,10 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+import { z } from 'zod'
+import { suspended_error } from '../errors.js'
 import { retry } from '../retry.js'
 import { run } from '../runner.js'
 import { step } from '../step.js'
+import { suspend } from '../suspend.js'
 import type { TrajectoryEvent, TrajectoryLogger } from '../types.js'
 
 function recording_logger(): { logger: TrajectoryLogger; events: TrajectoryEvent[] } {
@@ -132,5 +135,40 @@ describe('retry', () => {
     const result = await run(flow, 0, { install_signal_handlers: false })
     expect(result).toBe('ok')
     expect(fired).toEqual([3, 2, 1])
+  })
+
+  it('does not retry past a suspend: fires on() once and never calls on_error', async () => {
+    const on_spy = vi.fn(async () => {})
+    const on_error = vi.fn()
+    const inner = suspend({
+      id: 'gate',
+      on: on_spy,
+      resume_schema: z.object({ ok: z.boolean() }),
+      combine: (_: number, r) => (r.ok ? 1 : 0),
+    })
+    const flow = retry(inner, { max_attempts: 3, backoff_ms: 1, on_error })
+
+    await expect(
+      run(flow, 0, { install_signal_handlers: false }),
+    ).rejects.toBeInstanceOf(suspended_error)
+    expect(on_spy).toHaveBeenCalledTimes(1)
+    expect(on_error).not.toHaveBeenCalled()
+  })
+
+  it('resumes a suspended inner through retry', async () => {
+    const inner = suspend({
+      id: 'gate',
+      on: async () => {},
+      resume_schema: z.object({ ok: z.boolean() }),
+      combine: (_: number, r) => (r.ok ? 'go' : 'stop'),
+    })
+    const flow = retry(inner, { max_attempts: 3, backoff_ms: 1 })
+
+    const result = await run(flow, 0, {
+      install_signal_handlers: false,
+      resume_data: { gate: { ok: true } },
+    })
+
+    expect(result).toBe('go')
   })
 })

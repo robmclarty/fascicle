@@ -1,8 +1,10 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { aborted_error } from '../errors.js'
+import { z } from 'zod'
+import { aborted_error, suspended_error } from '../errors.js'
 import { parallel } from '../parallel.js'
 import { run } from '../runner.js'
 import { step } from '../step.js'
+import { suspend } from '../suspend.js'
 import type { TrajectoryEvent, TrajectoryLogger } from '../types.js'
 
 function wait(ms: number): Promise<void> {
@@ -124,5 +126,41 @@ describe('parallel', () => {
     expect(b_aborted).toBe(true)
     expect(a_settled).toBe(true)
     expect(b_settled).toBe(true)
+  })
+
+  it('prefers a suspended_error over a sibling application error', async () => {
+    const flow = parallel({
+      bad: step('bad', (_: number) => {
+        throw new Error('sibling failed')
+      }),
+      gate: suspend({
+        id: 'g',
+        on: async () => {},
+        resume_schema: z.object({ ok: z.boolean() }),
+        combine: (_: number, r) => (r.ok ? 1 : 0),
+      }),
+    })
+
+    let caught: unknown
+    try {
+      await run(flow, 0, { install_signal_handlers: false })
+    } catch (err) {
+      caught = err
+    }
+
+    expect(caught).toBeInstanceOf(suspended_error)
+  })
+
+  it('propagates a single child error in declared order', async () => {
+    const flow = parallel({
+      ok: step('ok', (x: number) => x),
+      bad: step('bad', (_: number) => {
+        throw new Error('boom')
+      }),
+    })
+
+    await expect(
+      run(flow, 1, { install_signal_handlers: false }),
+    ).rejects.toThrow('boom')
   })
 })

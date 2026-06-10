@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest'
+import { z } from 'zod'
+import { suspended_error } from '../errors.js'
 import { fallback } from '../fallback.js'
 import { run } from '../runner.js'
 import { step } from '../step.js'
+import { suspend } from '../suspend.js'
 import type { TrajectoryEvent, TrajectoryLogger } from '../types.js'
 
 function recording_logger(): { logger: TrajectoryLogger; events: TrajectoryEvent[] } {
@@ -98,5 +101,47 @@ describe('fallback', () => {
       (e) => e.kind === 'span_end' && typeof e['error'] === 'string' && e['error'] === 'boom',
     )
     expect(fallback_end).toBeDefined()
+  })
+
+  it('propagates a suspend from primary without running the backup', async () => {
+    let backup_called = false
+    const primary = suspend({
+      id: 'gate',
+      on: async () => {},
+      resume_schema: z.object({ ok: z.boolean() }),
+      combine: (_: number, r) => (r.ok ? 1 : 0),
+    })
+    const backup = step('backup', (_: number) => {
+      backup_called = true
+      return -1
+    })
+
+    let caught: unknown
+    try {
+      await run(fallback(primary, backup), 0, { install_signal_handlers: false })
+    } catch (err) {
+      caught = err
+    }
+
+    expect(caught).toBeInstanceOf(suspended_error)
+    expect((caught as suspended_error).suspend_id).toBe('gate')
+    expect(backup_called).toBe(false)
+  })
+
+  it('resumes a suspended primary through fallback', async () => {
+    const primary = suspend({
+      id: 'gate',
+      on: async () => {},
+      resume_schema: z.object({ ok: z.boolean() }),
+      combine: (_: number, r) => (r.ok ? 'approved' : 'denied'),
+    })
+    const backup = step('backup', (_: number) => 'backup')
+
+    const result = await run(fallback(primary, backup), 0, {
+      install_signal_handlers: false,
+      resume_data: { gate: { ok: true } },
+    })
+
+    expect(result).toBe('approved')
   })
 })

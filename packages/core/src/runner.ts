@@ -160,6 +160,18 @@ export function prepend_path(err: unknown, id: string): void {
   Reflect.set(err, 'path', next)
 }
 
+/**
+ * Throw the abort reason if the context has been cancelled. Composers that
+ * iterate over children (`sequence`, `scope`, `loop`) call this between steps
+ * so a pending abort is honored before the next child starts, not only when a
+ * downstream dispatch happens to observe it.
+ */
+export function throw_if_aborted(ctx: RunContext): void {
+  if (!ctx.abort.aborted) return
+  const reason = ctx.abort.reason
+  throw reason instanceof Error ? reason : new aborted_error('aborted', { reason })
+}
+
 type StartResult<o> = {
   readonly events: AsyncIterable<TrajectoryEvent>
   readonly result: Promise<o>

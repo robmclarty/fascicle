@@ -14,7 +14,12 @@
  * See spec.md §5.16.
  */
 
-import { dispatch_step, register_kind, resolve_span_label } from './runner.js'
+import {
+  dispatch_step,
+  register_kind,
+  resolve_span_label,
+  throw_if_aborted,
+} from './runner.js'
 import type { RunContext, Step } from './types.js'
 
 type AnyStep = Step<unknown, unknown>
@@ -76,6 +81,7 @@ export function scope<const children extends readonly AnyStep[]>(
   
     let acc: unknown = input
     for (const child of children_ref) {
+      throw_if_aborted(scope_ctx)
       acc = await dispatch_step(child, acc, scope_ctx)
     }
     return acc

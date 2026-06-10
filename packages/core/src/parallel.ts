@@ -10,9 +10,14 @@
  * abort the composer awaits all in-flight children (success, failure, or
  * aborted) before rethrowing `ctx.abort.reason`. This matches the
  * "agent-pattern" composer contract in spec.md §6.8.
+ *
+ * When several children fail, a `suspended_error` is preferred over an
+ * application error so a human-approval gate inside a branch stays resumable
+ * rather than being masked by a sibling's failure. Otherwise the first error
+ * in declared order propagates.
  */
 
-import { aborted_error } from './errors.js'
+import { aborted_error, suspended_error } from './errors.js'
 import { dispatch_step, register_kind, resolve_span_label } from './runner.js'
 import type { RunContext, Step } from './types.js'
 
@@ -75,10 +80,24 @@ export function parallel<i, children extends Record<string, Step<i, unknown>>>(
         const reason = ctx.abort.reason
         throw reason instanceof Error ? reason : new aborted_error('aborted', { reason })
       }
-  
+
+      let first_err: unknown
+      let has_err = false
+      let suspended: unknown
+      let has_suspended = false
       for (const s of settled) {
-        if (s.status === 'err') throw s.err
+        if (s.status !== 'err') continue
+        if (!has_err) {
+          first_err = s.err
+          has_err = true
+        }
+        if (!has_suspended && s.err instanceof suspended_error) {
+          suspended = s.err
+          has_suspended = true
+        }
       }
+      if (has_suspended) throw suspended
+      if (has_err) throw first_err
   
       const out: Record<string, unknown> = {}
       for (const s of settled) {
