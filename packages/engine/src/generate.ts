@@ -60,6 +60,7 @@ import {
   record_effort_ignored,
   record_schema_validation_failed,
   start_generate_span,
+  with_timestamps,
 } from './trajectory.js'
 import { sum_usage } from './usage.js'
 import {
@@ -458,7 +459,10 @@ export async function generate<T = string>(
     return adapter.generate<T>(opts, target)
   }
 
-  const trajectory = opts.trajectory
+  // Stamp engine events with `ts` when generate is called directly with a
+  // caller-supplied logger. A runner-decorated logger already carries `ts`;
+  // with_timestamps preserves it.
+  const trajectory = with_timestamps(opts.trajectory)
   const on_chunk_provided = opts.on_chunk !== undefined
   const tools_list: ReadonlyArray<Tool> = opts.tools ?? []
 

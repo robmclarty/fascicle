@@ -13,6 +13,7 @@ import { describe, expect, it } from 'vitest'
 import type { AliasTarget } from '../../../src/types.js'
 import { build_generate_result } from '../../../src/providers/claude_cli/stream_result.js'
 import type { ParsedStream } from '../../../src/providers/claude_cli/stream_parse.js'
+import { claude_cli_error } from '../../../src/errors.js'
 
 const resolved: AliasTarget = { provider: 'claude_cli', model_id: 'claude-sonnet-4-6' }
 
@@ -26,6 +27,26 @@ function make_parsed(overrides: Partial<ParsedStream> = {}): ParsedStream {
   }
   return { ...base, ...overrides }
 }
+
+describe('is_error result', () => {
+  it('throws claude_cli_error with reason result_error instead of returning a clean stop', () => {
+    const parsed = make_parsed({ is_error: true, final_text: 'CLI failed: rate limited' })
+    let caught: unknown
+    try {
+      build_generate_result({ parsed, resolved })
+    } catch (err) {
+      caught = err
+    }
+    expect(caught).toBeInstanceOf(claude_cli_error)
+    expect((caught as claude_cli_error).reason).toBe('result_error')
+    expect((caught as claude_cli_error).message).toBe('CLI failed: rate limited')
+  })
+
+  it('falls back to a default message when final_text is empty', () => {
+    const parsed = make_parsed({ is_error: true })
+    expect(() => build_generate_result({ parsed, resolved })).toThrow(claude_cli_error)
+  })
+})
 
 describe('normalize_turns synthetic path', () => {
   it('synthesizes a single turn when parsed.turns is empty', () => {

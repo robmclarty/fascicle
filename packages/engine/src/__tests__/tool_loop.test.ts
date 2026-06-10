@@ -8,6 +8,7 @@
 
 import { describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
+import type { TrajectoryLogger } from '@repo/core'
 import {
   run_tool_loop,
   type InvokeOnce,
@@ -19,6 +20,28 @@ import { tool_error, tool_approval_denied_error, aborted_error } from '../errors
 import { create_pricing_missing_dedup } from '../trajectory.js'
 
 const zero_usage: UsageTotals = { input_tokens: 0, output_tokens: 0 }
+
+function recording_trajectory(): {
+  trajectory: TrajectoryLogger
+  events: Array<Record<string, unknown>>
+} {
+  const events: Array<Record<string, unknown>> = []
+  let id = 0
+  const trajectory: TrajectoryLogger = {
+    record: (e) => {
+      events.push(e)
+    },
+    start_span: (name, meta) => {
+      id += 1
+      events.push({ kind: 'span_start', name, ...meta })
+      return `s${id}`
+    },
+    end_span: (span_id, meta) => {
+      events.push({ kind: 'span_end', span_id, ...meta })
+    },
+  }
+  return { trajectory, events }
+}
 
 function make_invoke_once(results: ReadonlyArray<Partial<InvokeOnceResult>>): InvokeOnce {
   let call = 0
@@ -114,6 +137,80 @@ describe('run_tool_loop', () => {
     expect(result.tool_calls).toHaveLength(1)
     expect(result.tool_calls[0]?.output).toBe('echoed: hi')
     expect(result.text).toBe('done')
+  })
+
+  it('records a tool_result event carrying the output on success', async () => {
+    const tc: RawToolCall = { id: 'c1', name: 'echo', input: { value: 'hi' } }
+    const invoke = make_invoke_once([
+      { tool_calls: [tc], finish_reason: 'tool_calls' },
+      { text: 'done', finish_reason: 'stop' },
+    ])
+    const tool = make_tool({
+      name: 'echo',
+      execute: (input: unknown) => `echoed: ${(input as { value: string }).value}`,
+    })
+    const { trajectory, events } = recording_trajectory()
+
+    await run_tool_loop({
+      invoke_once: invoke,
+      messages: [{ role: 'user', content: 'use echo' }],
+      tools: [tool],
+      max_steps: 10,
+      step_index_start: 0,
+      tool_error_policy: 'feed_back',
+      abort: new AbortController().signal,
+      on_tool_approval: undefined,
+      trajectory,
+      stream: false,
+      dispatch_chunk: undefined,
+      provider: 'anthropic',
+      model_id: 'claude-opus-4-7',
+      resolve_pricing: () => undefined,
+      pricing_dedup: pricing_dedup_stub(),
+    })
+
+    const result_event = events.find((e) => e['kind'] === 'tool_result')
+    expect(result_event).toBeDefined()
+    expect(result_event?.['tool_call_id']).toBe('c1')
+    expect(result_event?.['output']).toBe('echoed: hi')
+    expect(result_event?.['error']).toBeUndefined()
+  })
+
+  it('records a tool_result event carrying the error on a failed tool (feed_back)', async () => {
+    const tc: RawToolCall = { id: 'c1', name: 'echo', input: { value: 'hi' } }
+    const invoke = make_invoke_once([
+      { tool_calls: [tc], finish_reason: 'tool_calls' },
+      { text: 'recovered', finish_reason: 'stop' },
+    ])
+    const tool = make_tool({
+      name: 'echo',
+      execute: () => {
+        throw new Error('kaboom')
+      },
+    })
+    const { trajectory, events } = recording_trajectory()
+
+    await run_tool_loop({
+      invoke_once: invoke,
+      messages: [{ role: 'user', content: 'use echo' }],
+      tools: [tool],
+      max_steps: 10,
+      step_index_start: 0,
+      tool_error_policy: 'feed_back',
+      abort: new AbortController().signal,
+      on_tool_approval: undefined,
+      trajectory,
+      stream: false,
+      dispatch_chunk: undefined,
+      provider: 'anthropic',
+      model_id: 'claude-opus-4-7',
+      resolve_pricing: () => undefined,
+      pricing_dedup: pricing_dedup_stub(),
+    })
+
+    const result_event = events.find((e) => e['kind'] === 'tool_result')
+    expect(result_event).toBeDefined()
+    expect(result_event?.['error']).toEqual({ message: 'kaboom' })
   })
 
   it('feeds invalid tool input back as an error result without calling execute', async () => {

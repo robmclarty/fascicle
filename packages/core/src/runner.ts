@@ -103,31 +103,37 @@ const noop_logger: TrajectoryLogger = {
 }
 
 /**
- * Wrap a logger so every emitted event automatically carries `run_id`.
+ * Wrap a logger so every emitted event automatically carries `run_id` and a
+ * `ts` (epoch milliseconds) stamped at emission.
  *
- * Studios and other downstream consumers can multiplex events across runs
- * by reading this field. Callers may still set their own `run_id` on a record;
- * we don't overwrite it.
+ * Studios and other downstream consumers multiplex events across runs by
+ * `run_id` and reconstruct real timing from `ts` instead of fabricating it at
+ * ingest. Either field already present on an event or its meta is preserved;
+ * we never overwrite a caller-supplied value.
  */
-function stamp_run_id(inner: TrajectoryLogger, run_id: string): TrajectoryLogger {
+function decorate_logger(inner: TrajectoryLogger, run_id: string): TrajectoryLogger {
+  const stamp_meta = (
+    meta: Record<string, unknown> | undefined,
+  ): Record<string, unknown> => {
+    const out: Record<string, unknown> = { ...meta }
+    if (!('run_id' in out)) out['run_id'] = run_id
+    if (!('ts' in out)) out['ts'] = Date.now()
+    return out
+  }
   return {
     record: (event) => {
-      if ('run_id' in event) {
+      if ('run_id' in event && 'ts' in event) {
         inner.record(event)
         return
       }
-      inner.record({ ...event, run_id })
+      const extra: Record<string, unknown> = {}
+      if (!('run_id' in event)) extra['run_id'] = run_id
+      if (!('ts' in event)) extra['ts'] = Date.now()
+      inner.record({ ...event, ...extra })
     },
-    start_span: (name, meta) => {
-      if (meta && 'run_id' in meta) return inner.start_span(name, meta)
-      return inner.start_span(name, { ...meta, run_id })
-    },
+    start_span: (name, meta) => inner.start_span(name, stamp_meta(meta)),
     end_span: (id, meta) => {
-      if (meta && 'run_id' in meta) {
-        inner.end_span(id, meta)
-        return
-      }
-      inner.end_span(id, { ...meta, run_id })
+      inner.end_span(id, stamp_meta(meta))
     },
   }
 }
@@ -190,7 +196,7 @@ function start_run<i, o>(
   const controller = new AbortController()
   const run_id = randomUUID()
 
-  let logger: TrajectoryLogger = stamp_run_id(base_logger, run_id)
+  let logger: TrajectoryLogger = decorate_logger(base_logger, run_id)
   let stream_events: AsyncIterable<TrajectoryEvent> = empty_async_iterable()
   let close_stream: (() => void) | null = null
 

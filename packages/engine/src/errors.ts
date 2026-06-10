@@ -188,6 +188,7 @@ export type ClaudeCliErrorReason =
   | 'startup_timeout'
   | 'stall_timeout'
   | 'no_result_event'
+  | 'result_error'
   | 'subprocess_exit'
   | 'sandbox_unavailable'
   | 'engine_disposed'

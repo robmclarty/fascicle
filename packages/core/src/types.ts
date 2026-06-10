@@ -14,6 +14,10 @@
 export type TrajectoryEvent = {
   readonly kind: string
   readonly span_id?: string | undefined
+  // Epoch milliseconds, stamped at emission by the runner's logger wrapper.
+  // Optional in the type so external loggers and literal constructors stay
+  // valid; guaranteed in practice for events flowing through `run`.
+  readonly ts?: number | undefined
   readonly [key: string]: unknown
 }
 

@@ -49,6 +49,7 @@ import {
   record_cost,
   record_tool_approval,
   record_tool_call,
+  record_tool_result,
   end_step_span,
   start_step_span,
   type PricingMissingDedup,
@@ -614,6 +615,19 @@ export async function run_tool_loop(config: ToolLoopConfig): Promise<ToolLoopRes
         duration_ms,
       })
       await dispatch_tool_result_chunk(config.dispatch_chunk, step_index, raw_call.id, output)
+    }
+
+    // Emit a tool_result for every resolved call in this step (success carries
+    // output, feed-back failures carry error). Throw-policy and aborted calls
+    // exit before here and surface loudly as a thrown error instead.
+    for (const r of step_tool_records) {
+      record_tool_result(config.trajectory, {
+        step_index,
+        name: r.name,
+        tool_call_id: r.id,
+        duration_ms: r.duration_ms,
+        ...(r.error !== undefined ? { error: r.error } : { output: r.output }),
+      })
     }
 
     for (const m of tool_results_to_feed) config.messages.push(m)

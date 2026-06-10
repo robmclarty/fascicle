@@ -26,6 +26,7 @@ import type {
 import type { ClaudeCliProviderReported } from './types.js'
 import type { ParsedStream, TurnCollected } from './stream_parse.js'
 import { allocate_cost_across_turns, type TurnUsage } from './cost.js'
+import { claude_cli_error } from '../../errors.js'
 
 function sum_usage(totals: ReadonlyArray<UsageTotals>): UsageTotals {
   let input = 0
@@ -129,6 +130,19 @@ export type BuildResultInput<T> = {
 
 export function build_generate_result<T>(input: BuildResultInput<T>): GenerateResult<T> {
   const { parsed, resolved } = input
+
+  // An is_error result is a failed turn, not a clean stop. Returning it with
+  // finish_reason 'stop' would make a CLI-side error look like success; throw
+  // instead so the caller sees the failure. FinishReason has no 'error' member.
+  if (parsed.is_error) {
+    throw new claude_cli_error(
+      'result_error',
+      parsed.final_text.length > 0
+        ? parsed.final_text
+        : 'claude_cli returned an error result',
+    )
+  }
+
   const turns = normalize_turns(parsed)
   const now = Date.now()
 

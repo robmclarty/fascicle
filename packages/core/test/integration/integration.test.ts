@@ -40,10 +40,17 @@ function normalize_events(
   events: Array<Record<string, unknown>>,
 ): Array<Record<string, unknown>> {
   return events.map((e) => {
-    const { span_id: _span_id, parent_span_id: _parent, run_id: _run_id, ...rest } = e
+    const {
+      span_id: _span_id,
+      parent_span_id: _parent,
+      run_id: _run_id,
+      ts: _ts,
+      ...rest
+    } = e
     void _span_id
     void _parent
     void _run_id
+    void _ts
     return rest
   })
 }

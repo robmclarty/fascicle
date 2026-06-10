@@ -120,6 +120,68 @@ export function record_tool_call(
   trajectory.record({ kind: 'tool_call', ...event })
 }
 
+export type ToolResultRecordEvent = {
+  step_index: number
+  name: string
+  tool_call_id: string
+  duration_ms: number
+  output?: unknown
+  error?: { message: string }
+}
+
+/**
+ * Record a resolved tool call's result. `record_tool_call` captures the request
+ * (input); without this event a successful tool's output never reaches the
+ * trajectory, leaving the run record blind to what tools actually returned.
+ */
+export function record_tool_result(
+  trajectory: TrajectoryLogger | undefined,
+  meta: ToolResultRecordEvent,
+): void {
+  if (trajectory === undefined) return
+  const event: Record<string, unknown> = {
+    kind: 'tool_result',
+    step_index: meta.step_index,
+    name: meta.name,
+    tool_call_id: meta.tool_call_id,
+    duration_ms: meta.duration_ms,
+  }
+  if (meta.error !== undefined) event['error'] = meta.error
+  else event['output'] = meta.output
+  trajectory.record({ kind: 'tool_result', ...event })
+}
+
+/**
+ * Wrap a logger so engine events carry a `ts` (epoch milliseconds) even when
+ * generate is called directly with a caller-supplied logger rather than through
+ * the core runner. When the logger is already runner-decorated, the existing
+ * `ts` is preserved. Private to the engine to avoid widening the public surface.
+ */
+function stamp_ts(meta: Record<string, unknown> | undefined): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...meta }
+  if (!('ts' in out)) out['ts'] = Date.now()
+  return out
+}
+
+export function with_timestamps(
+  inner: TrajectoryLogger | undefined,
+): TrajectoryLogger | undefined {
+  if (inner === undefined) return undefined
+  return {
+    record: (event) => {
+      if ('ts' in event) {
+        inner.record(event)
+        return
+      }
+      inner.record({ ...event, ts: Date.now() })
+    },
+    start_span: (name, meta) => inner.start_span(name, stamp_ts(meta)),
+    end_span: (id, meta) => {
+      inner.end_span(id, stamp_ts(meta))
+    },
+  }
+}
+
 export type CostEventSource = 'engine_derived' | 'provider_reported'
 
 export function record_cost(
