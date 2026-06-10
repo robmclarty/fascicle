@@ -1,0 +1,37 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  # Required for npm provenance via OIDC (trusted publishing). No long-lived
+  # NPM_TOKEN is used.
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # prepublishOnly runs `pnpm check && pnpm build && pnpm check:publish`, so
+      # the release is gated on the same checks as CI plus the publish preflight.
+      #
+      # Trusted publishing must be configured once on npmjs.com: add this repo
+      # and the `.github/workflows/release.yml` workflow as a trusted publisher
+      # for the `fascicle` package. Until then, fall back to a token by setting
+      # NODE_AUTH_TOKEN from an npm automation token secret.
+      - name: Publish to npm
+        run: pnpm publish --access public --provenance --no-git-checks

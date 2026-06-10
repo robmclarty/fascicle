@@ -25,6 +25,8 @@ jobs:
         run: pnpm check
       - name: Build
         run: pnpm build
+      - name: Doc snippets vs built types
+        run: node scripts/check-doc-snippets.mjs --dist
       - name: Validate publish surface
         run: pnpm check:publish
 
