@@ -9,14 +9,17 @@
  * repeatedly without stale state.
  *
  * Deterministic stub — no engine layer, no network, no LLM calls.
+ *
+ * Run directly:
+ *   pnpm exec tsx examples/checkpoint_resume.ts
  */
 
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { checkpoint, run, step } from '@repo/fascicle'
-import { filesystem_store } from '@repo/fascicle/adapters'
+import { checkpoint, run, step } from 'fascicle'
+import { filesystem_store } from 'fascicle/adapters'
 
 type build_spec = { readonly hash: string }
 
@@ -50,4 +53,15 @@ export async function run_checkpoint_resume(): Promise<{
   } finally {
     await rm(root_dir, { recursive: true, force: true })
   }
+}
+
+if (import.meta.url === `file://${process.argv[1] ?? ''}`) {
+  run_checkpoint_resume()
+    .then((result) => {
+      console.log(JSON.stringify(result, null, 2))
+    })
+    .catch((err: unknown) => {
+      console.error(err)
+      process.exit(1)
+    })
 }

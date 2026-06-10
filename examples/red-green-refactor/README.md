@@ -61,7 +61,7 @@ The whole cycle is wrapped in `timeout(cycle, 10 * 60 * 1000)` so a stuck behavi
 
 ## Running it
 
-This example needs `claude` on PATH and an authenticated session (`claude login`). The harness drives Claude Code as a subprocess via the `claude_cli` adapter.
+This example needs `claude` on PATH and an authenticated session (run `claude` and use `/login`, or `claude setup-token`). The harness drives Claude Code as a subprocess via the `claude_cli` adapter.
 
 From the repo root:
 

@@ -14,6 +14,9 @@
  *
  * Run directly:
  *   pnpm exec tsx examples/learn_reviewer.ts
+ *
+ * Note: the `@repo/agents` import is workspace-private (not published to npm),
+ * so this example runs inside this repo only.
  */
 
 import { mkdtemp, rm } from 'node:fs/promises'
@@ -30,8 +33,8 @@ import {
   type GenerateResult,
   type Improvement,
   type LearnInput,
-} from '@repo/fascicle'
-import { filesystem_logger } from '@repo/fascicle/adapters'
+} from 'fascicle'
+import { filesystem_logger } from 'fascicle/adapters'
 
 function make_stub_engine(canned: ReviewerOutput): Engine {
   return {

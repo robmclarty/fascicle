@@ -18,6 +18,9 @@
  *
  * Subsequent runs compare against bench/reviewer/baseline.json and exit 1 on
  * regression.
+ *
+ * Note: the `@repo/agents` import is workspace-private (not published to npm),
+ * so this example runs inside this repo only.
  */
 
 import { readFile } from 'node:fs/promises'
@@ -39,7 +42,7 @@ import {
   type Engine,
   type GenerateOptions,
   type GenerateResult,
-} from '@repo/fascicle'
+} from 'fascicle'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO_ROOT = join(HERE, '..')

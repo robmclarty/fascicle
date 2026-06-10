@@ -80,7 +80,7 @@ pnpm --filter @repo/example-amplify gen-fixture            # writes target/fixtu
 pnpm --filter @repo/example-amplify amplify
 ```
 
-Defaults: `speed` metric, 5 rounds, 3 candidates/round, 30 min wall-clock, patience = ⌈rounds/3⌉ rounds without progress, `effort: 'xhigh'`.
+Defaults: `speed` metric, 5 rounds, 3 candidates/round, 30 min wall-clock, patience = max(2, ⌈rounds/3⌉) rounds without progress, `effort: 'xhigh'`.
 
 ### Tuning
 
@@ -89,7 +89,7 @@ amplify --metric quality                 # switch builtin metric
 amplify --rounds 10 --candidates 5       # bigger search
 amplify --budget-min 60                  # 1 hour wall-clock cap
 amplify --metric ./my-metric.ts          # custom metric (any path)
-amplify --effort max                     # highest reasoning effort (or low/medium/high/xhigh)
+amplify --effort max                     # reasoning effort: none/low/medium/high/xhigh/max
 amplify --task "Refactor for clarity, keep behavior identical"
 ```
 

@@ -25,9 +25,15 @@ import {
   run,
   type GenerateResult,
   type Tool,
-} from '@repo/fascicle'
+} from 'fascicle'
 
 const api_key = process.env['ANTHROPIC_API_KEY'] ?? ''
+const is_main = import.meta.url === `file://${process.argv[1] ?? ''}`
+
+if (is_main && api_key.length === 0) {
+  console.error('ANTHROPIC_API_KEY is not set')
+  process.exit(1)
+}
 
 const engine = create_engine({
   providers: { anthropic: { api_key } },
@@ -78,11 +84,7 @@ export async function run_tool_loop(
   return { input, output }
 }
 
-if (import.meta.url === `file://${process.argv[1] ?? ''}`) {
-  if (api_key.length === 0) {
-    console.error('ANTHROPIC_API_KEY is not set')
-    process.exit(1)
-  }
+if (is_main) {
   const argv_input = process.argv.slice(2).join(' ')
   const chosen = argv_input.length > 0 ? argv_input : undefined
   run_tool_loop(chosen)

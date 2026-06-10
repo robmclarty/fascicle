@@ -22,7 +22,7 @@ import {
   sequence,
   step,
   type GenerateResult,
-} from '@repo/fascicle'
+} from 'fascicle'
 
 const engine = create_engine({
   providers: { claude_cli: { auth_mode: 'oauth' } },

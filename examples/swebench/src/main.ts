@@ -183,6 +183,19 @@ export async function run_swebench_smoke(): Promise<void> {
   console.log(`total cost:      $${report.summary.total_cost_usd.toFixed(4)}`)
   console.log(`predictions:     ${predictions_path}`)
 
+  const errored = report.cases.filter((c) => !c.ok)
+  if (errored.length > 0 && errored.length === report.cases.length) {
+    const messages = [...new Set(errored.map((c) => c.error ?? 'unknown error'))]
+    console.error(`\nall ${String(report.cases.length)} case(s) errored:`)
+    for (const message of messages) console.error(`  ${message}`)
+    process.exit(1)
+  }
+  if (errored.length > 0) {
+    console.error(
+      `\nwarning: ${String(errored.length)}/${String(report.cases.length)} case(s) errored; see ${report_path}`,
+    )
+  }
+
   if (process.env['SWEBENCH_RUN_EVAL'] !== '1') {
     console.log('\nskipping sb-cli eval (set SWEBENCH_RUN_EVAL=1 to enable).')
     return

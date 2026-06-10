@@ -5,10 +5,13 @@
  * decision via `resume_data` and the flow continues into `combine`.
  *
  * Deterministic stub `fn` bodies — no engine layer, no network, no LLM calls.
+ *
+ * Run directly:
+ *   pnpm exec tsx examples/suspend_resume.ts
  */
 
 import { z } from 'zod'
-import { run, suspend, suspended_error } from '@repo/fascicle'
+import { run, suspend, suspended_error } from 'fascicle'
 
 const flow = suspend({
   id: 'approve',
@@ -38,4 +41,15 @@ export async function run_suspend_resume(): Promise<{
   })
 
   return { suspended, resumed }
+}
+
+if (import.meta.url === `file://${process.argv[1] ?? ''}`) {
+  run_suspend_resume()
+    .then((result) => {
+      console.log(JSON.stringify(result, null, 2))
+    })
+    .catch((err: unknown) => {
+      console.error(err)
+      process.exit(1)
+    })
 }

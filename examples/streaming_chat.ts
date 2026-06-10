@@ -6,9 +6,12 @@
  * plain `run(...)` would return (spec.md §6.7 invariant).
  *
  * Deterministic stub `fn` bodies — no engine layer, no network, no LLM calls.
+ *
+ * Run directly:
+ *   pnpm exec tsx examples/streaming_chat.ts
  */
 
-import { run, step } from '@repo/fascicle'
+import { run, step } from 'fascicle'
 
 const flow = step('chat', async (prompt: string, ctx): Promise<string> => {
   const chunks = [prompt, ' ...', ' done']
@@ -34,4 +37,15 @@ export async function run_streaming_chat(): Promise<{
   const result = await handle.result
   await reader
   return { tokens, result }
+}
+
+if (import.meta.url === `file://${process.argv[1] ?? ''}`) {
+  run_streaming_chat()
+    .then((result) => {
+      console.log(JSON.stringify(result, null, 2))
+    })
+    .catch((err: unknown) => {
+      console.error(err)
+      process.exit(1)
+    })
 }

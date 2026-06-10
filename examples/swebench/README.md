@@ -33,8 +33,10 @@ shape change.
 
 The harness ships three sandbox factories. Pick with `SWEBENCH_SANDBOX`:
 
-- **`noop`** (default): tools return empty stubs. Lets you smoke-test the
-  flow wiring without git or Docker. Resolution rate will be 0.
+- **`noop`** (default): creates an empty tmpdir as the workdir; tools return
+  empty stubs. Lets you smoke-test the flow wiring without git or Docker. The
+  model is still invoked under the default provider, so the smoke spends
+  tokens. Resolution rate will be 0.
 - **`local`**: shallow-clones the repo at `base_commit` into a tmpdir on the
   host and runs tools against host filesystem. Cheap to iterate on but no
   isolation; assumes the repo's runtime is already installed.
@@ -79,7 +81,7 @@ Pick one via `SWEBENCH_PROVIDER`:
   with `SWEBENCH_EFFORT=high` (default `medium`).
 - **`anthropic`**: requires `ANTHROPIC_API_KEY`. One shared engine; the
   flow injects our Sandbox-bound tools on every model call. Override the
-  model with `SWEBENCH_MODEL=opus-4-7` (default `sonnet`).
+  model with `SWEBENCH_MODEL=opus` (default `sonnet`).
 
 ## Prereqs
 
@@ -92,7 +94,7 @@ Pick one via `SWEBENCH_PROVIDER`:
 ## Run
 
 ```bash
-# Cheapest smoke — flow wiring only, no actual repo clones.
+# Default smoke: flow wiring only, no repo clones (still invokes the model).
 pnpm --filter @repo/example-swebench swebench
 
 # Real attempts against host filesystem (still no Docker).

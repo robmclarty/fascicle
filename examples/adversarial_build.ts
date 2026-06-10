@@ -6,9 +6,12 @@
  * that each score the candidate and the best-scoring verdict wins.
  *
  * Deterministic stub `fn` bodies — no engine layer, no network, no LLM calls.
+ *
+ * Run directly:
+ *   pnpm exec tsx examples/adversarial_build.ts
  */
 
-import { adversarial, ensemble, pipe, run, step } from '@repo/fascicle'
+import { adversarial, ensemble, pipe, run, step } from 'fascicle'
 
 type build_in = { readonly input: string; readonly prior?: string; readonly critique?: string }
 type critique_out = { readonly verdict: 'pass' | 'fail'; readonly notes: string; readonly confidence: number }
@@ -40,4 +43,15 @@ export async function run_adversarial_build(): Promise<{
   readonly rounds: number
 }> {
   return run(flow, 'brief-text', { install_signal_handlers: false })
+}
+
+if (import.meta.url === `file://${process.argv[1] ?? ''}`) {
+  run_adversarial_build()
+    .then((result) => {
+      console.log(JSON.stringify(result, null, 2))
+    })
+    .catch((err: unknown) => {
+      console.error(err)
+      process.exit(1)
+    })
 }

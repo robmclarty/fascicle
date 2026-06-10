@@ -39,7 +39,7 @@ export async function run_vitest(signal?: AbortSignal): Promise<TestVerdict> {
         signal,
       },
     )
-  
+
     let out = ''
     proc.stdout.on('data', (b: Buffer) => {
       out += b.toString()

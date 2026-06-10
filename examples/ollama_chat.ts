@@ -18,7 +18,7 @@
 
 import { z } from 'zod'
 
-import { run, sequence, step } from '@repo/fascicle'
+import { run, sequence, step } from 'fascicle'
 
 const ollama_chat_response = z.object({
   message: z.object({ content: z.string() }),
@@ -43,11 +43,19 @@ const ollama_chat = async (
   config: ollama_config,
   messages: readonly chat_message[],
 ): Promise<string> => {
-  const res = await fetch(`${config.host}/api/chat`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ model: config.model, messages, stream: false }),
-  })
+  let res: Response
+  try {
+    res = await fetch(`${config.host}/api/chat`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ model: config.model, messages, stream: false }),
+    })
+  } catch (cause) {
+    throw new Error(
+      `ollama not reachable at ${config.host} (is ollama running? set OLLAMA_HOST to override)`,
+      { cause },
+    )
+  }
   if (!res.ok) {
     throw new Error(`ollama ${String(res.status)}: ${await res.text()}`)
   }

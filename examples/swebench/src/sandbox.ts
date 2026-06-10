@@ -13,9 +13,9 @@
  *     `base_commit` and runs tools against the host filesystem. No
  *     reproducibility guarantees; useful for verifying the agent loop without
  *     committing to a 200GB Docker pull.
- *   - `noop_sandbox` (for tests) — refuses to exec anything, returns canned
- *     responses so the flow type-checks under vitest without spinning real
- *     resources.
+ *   - `noop_sandbox` (for tests and the default smoke) — creates an empty
+ *     tmpdir so subprocess providers get a real cwd, but refuses to exec
+ *     anything and returns canned responses.
  *
  * The Docker impl is left as a TODO because Auto Mode should not be pulling
  * gigabyte container images on the user's behalf. The seam is shaped so
@@ -47,13 +47,16 @@ export type Sandbox = {
 export type SandboxFactory = (instance: SweBenchInstance, abort: AbortSignal) => Promise<Sandbox>
 
 export const noop_sandbox: SandboxFactory = async (instance) => {
+  const workdir = await mkdtemp(join(tmpdir(), `swebench-noop-${instance.instance_id}-`))
   return {
-    workdir: `/noop/${instance.instance_id}`,
+    workdir,
     exec: async () => ({ stdout: '', stderr: 'noop_sandbox: exec disabled', exit_code: 1 }),
     read_file: async () => '',
     write_file: async () => {},
     git_diff: async () => '',
-    dispose: async () => {},
+    dispose: async () => {
+      await rm(workdir, { recursive: true, force: true })
+    },
   }
 }
 

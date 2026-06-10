@@ -20,7 +20,12 @@
     "resolveJsonModule": true,
     "types": ["node"],
 
-    "noEmit": true
+    "noEmit": true,
+
+    "paths": {
+      "fascicle": ["./packages/fascicle/src/index.ts"],
+      "fascicle/adapters": ["./packages/fascicle/src/adapters.ts"]
+    }
   },
   "include": [
     "packages/*/src/**/*",

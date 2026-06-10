@@ -21,7 +21,7 @@ import {
   type Improvement,
   type LearnInput,
   type TrajectoryEvent,
-} from '@repo/fascicle'
+} from 'fascicle'
 
 const studied_flow = step('greet', (name: string): string => `hello, ${name}`)
 

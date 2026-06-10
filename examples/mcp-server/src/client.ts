@@ -23,35 +23,58 @@ const transport = new StdioClientTransport({
 const client = new Client({ name: 'smoke', version: '0.0.0' })
 await client.connect(transport)
 
+let failures = 0
+function check(label: string, actual: string, expected: string): void {
+  if (actual === expected) {
+    console.log(`ok   ${label} = ${actual}`)
+  } else {
+    failures += 1
+    console.error(`FAIL ${label}: expected ${expected}, got ${actual}`)
+  }
+}
+
 try {
   const { tools } = await client.listTools()
-  console.log('tools:', tools.map((t) => t.name).join(', '))
+  const tool_names = tools.map((t) => t.name)
+  const missing = ['add', 'reverse_text', 'word_count'].filter((n) => !tool_names.includes(n))
+  if (missing.length > 0) {
+    failures += 1
+    console.error(`FAIL tools: missing ${missing.join(', ')}`)
+  } else {
+    console.log(`ok   tools = ${tool_names.join(', ')}`)
+  }
 
   const sum = await client.callTool({
     name: 'add',
     arguments: { a: 2, b: 3 },
   })
-  console.log('add(2, 3) =', text_of(sum))
+  check('add(2, 3)', text_of(sum), '5')
 
   const reversed = await client.callTool({
     name: 'reverse_text',
     arguments: { text: 'fascicle' },
   })
-  console.log('reverse_text("fascicle") =', text_of(reversed))
+  check('reverse_text("fascicle")', text_of(reversed), 'elcicsaf')
 
   const counts = await client.callTool({
     name: 'word_count',
     arguments: { text: 'one two three four' },
   })
-  console.log('word_count("one two three four") =', text_of(counts))
+  check('word_count("one two three four")', text_of(counts), '{"words":4,"chars":18}')
 
   const greeting = await client.readResource({ uri: 'greeting://world' })
   const first = greeting.contents[0]
-  const greeting_text = first && 'text' in first ? first.text : ''
-  console.log('greeting://world =', greeting_text)
+  const greeting_text = first && 'text' in first && typeof first.text === 'string' ? first.text : ''
+  check('greeting://world', greeting_text, 'Hello, world!')
 } finally {
   await client.close()
 }
+
+if (failures > 0) {
+  console.error(`\n${String(failures)} check(s) failed`)
+  process.exit(1)
+}
+console.log('\nall checks passed')
 
 function is_record(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object'

@@ -5,9 +5,12 @@
  * highest confidence. Matches the canonical "N-of-M pick best" pattern.
  *
  * Deterministic stub `fn` bodies — no engine layer, no network, no LLM calls.
+ *
+ * Run directly:
+ *   pnpm exec tsx examples/ensemble_judge.ts
  */
 
-import { ensemble, run, step } from '@repo/fascicle'
+import { ensemble, run, step } from 'fascicle'
 
 type verdict = { readonly label: string; readonly confidence: number }
 
@@ -34,4 +37,15 @@ export async function run_ensemble_judge(): Promise<{
   readonly scores: Record<string, number>
 }> {
   return run(flow, 'is this safe to ship?', { install_signal_handlers: false })
+}
+
+if (import.meta.url === `file://${process.argv[1] ?? ''}`) {
+  run_ensemble_judge()
+    .then((result) => {
+      console.log(JSON.stringify(result, null, 2))
+    })
+    .catch((err: unknown) => {
+      console.error(err)
+      process.exit(1)
+    })
 }

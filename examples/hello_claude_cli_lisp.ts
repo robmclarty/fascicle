@@ -46,7 +46,7 @@ import {
   sequence,
   step,
   type GenerateResult,
-} from '@repo/fascicle'
+} from 'fascicle'
 
 // ── (define engine ...) ──────────────────────────────────────────────────────
 // Straight `const`. This is the one spot where Lisp and JS agree exactly: a

@@ -19,7 +19,7 @@ import {
   type ImproveResult,
   type ImproveRoundInput,
   type ScoredCandidate,
-} from '@repo/fascicle'
+} from 'fascicle'
 
 const TARGET = 7
 

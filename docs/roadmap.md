@@ -51,8 +51,9 @@ Two deployment shapes, both script-shaped, unattended, observability-first.
   and observable because the trajectory is the safety record. The library hands
   over the spine and the audit trail; the memory itself is built on top as an
   application. The suspend-gate fix from Phase 1 is a precondition for this one.
-- Rewrite examples to import `fascicle` (not `@repo/fascicle`) so they are
-  consumer-runnable; ship or cut `@repo/agents`.
+- Done: top-level examples import `fascicle` (not `@repo/fascicle`) so they are
+  consumer-runnable; `@repo/agents` kept workspace-private (the five agent
+  examples are repo-only).
 
 ## Phase 3: make it known
 

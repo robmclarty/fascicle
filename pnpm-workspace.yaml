@@ -12,7 +12,9 @@ allowBuilds:
 
 # pnpm reads overrides from this file (not the package.json `pnpm` field) in a
 # workspace. smol-toml >=1.6.1 forces markdownlint-cli2's pinned 1.6.0 up past
-# the advisory ADR-0001 tracks.
+# the advisory ADR-0001 tracks. fast-uri >=3.1.2 forces ajv's transitive pin
+# past the path-traversal and host-confusion advisories (dev-tree only).
 overrides:
   tunnel: 'npm:@noble/secp256k1@2.1.0'
   smol-toml: '>=1.6.1'
+  fast-uri: '>=3.1.2'

@@ -165,7 +165,7 @@ The error path carries a `.path` array with the step ids that led to the failure
 
 ## Where to put the harness
 
-In this repo, reference harnesses live at the root under [`examples/`](../examples/). Your own harness lives in your own project — fascicle is a library, not an app scaffold. Import from `fascicle` (or `@repo/fascicle` if you are contributing inside this workspace) and write the harness wherever your program belongs.
+In this repo, reference harnesses live at the root under [`examples/`](../examples/). Your own harness lives in your own project — fascicle is a library, not an app scaffold. Import from `fascicle` (the published package name, which the root `examples/` use too; only the internal workspace packages use `@repo/*`) and write the harness wherever your program belongs.
 
 The canonical starting point is [`examples/hello.ts`](../examples/hello.ts). Run it:
 

@@ -6,16 +6,19 @@
  * network — the example exists to demonstrate how an agent factory plugs
  * into the rest of fascicle and produces typed, structured findings.
  *
- * Swap `make_stub_engine` for `create_engine({...})` from `@repo/fascicle`
+ * Swap `make_stub_engine` for `create_engine({...})` from `fascicle`
  * to drive the same flow against a real provider.
  *
  * Run directly:
  *   pnpm exec tsx examples/reviewer.ts
+ *
+ * Note: the `@repo/agents` import is workspace-private (not published to npm),
+ * so this example runs inside this repo only.
  */
 
 import { reviewer, type ReviewerOutput } from '@repo/agents'
-import { run } from '@repo/fascicle'
-import type { Engine, GenerateOptions, GenerateResult } from '@repo/fascicle'
+import { run } from 'fascicle'
+import type { Engine, GenerateOptions, GenerateResult } from 'fascicle'
 
 function make_stub_engine(canned: ReviewerOutput): Engine {
   return {

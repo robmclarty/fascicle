@@ -1,6 +1,20 @@
+import { fileURLToPath } from 'node:url';
+
 import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
+  resolve: {
+    alias: [
+      {
+        find: /^fascicle\/adapters$/,
+        replacement: fileURLToPath(new URL('./packages/fascicle/src/adapters.ts', import.meta.url)),
+      },
+      {
+        find: /^fascicle$/,
+        replacement: fileURLToPath(new URL('./packages/fascicle/src/index.ts', import.meta.url)),
+      },
+    ],
+  },
   test: {
     include: [
       'packages/*/src/**/*.{test,spec}.ts',

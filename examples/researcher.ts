@@ -11,11 +11,14 @@
  *
  * Run directly:
  *   pnpm exec tsx examples/researcher.ts
+ *
+ * Note: the `@repo/agents` import is workspace-private (not published to npm),
+ * so this example runs inside this repo only.
  */
 
 import { researcher, type ResearcherOutput, type SummarizerOutput } from '@repo/agents'
-import { run } from '@repo/fascicle'
-import type { Engine, GenerateOptions, GenerateResult } from '@repo/fascicle'
+import { run } from 'fascicle'
+import type { Engine, GenerateOptions, GenerateResult } from 'fascicle'
 
 function make_stub_engine(canned: SummarizerOutput): Engine {
   return {

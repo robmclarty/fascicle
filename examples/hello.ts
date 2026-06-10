@@ -10,7 +10,7 @@
  *   pnpm exec tsx examples/hello.ts "your custom input here"
  */
 
-import { run, sequence, step } from '@repo/fascicle'
+import { run, sequence, step } from 'fascicle'
 
 const parse = step('parse', (raw: string): readonly string[] =>
   raw.trim().split(/\s+/).filter(Boolean),

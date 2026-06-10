@@ -8,14 +8,17 @@
  * is a plain object.
  *
  * Deterministic stub — no engine layer, no network, no LLM calls.
+ *
+ * Run directly:
+ *   pnpm exec tsx examples/trajectory_logger.ts
  */
 
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { run, sequence, step, type TrajectoryLogger } from '@repo/fascicle'
-import { filesystem_logger } from '@repo/fascicle/adapters'
+import { run, sequence, step, type TrajectoryLogger } from 'fascicle'
+import { filesystem_logger } from 'fascicle/adapters'
 
 const double = step('double', (n: number): number => n * 2)
 const increment = step('increment', (n: number): number => n + 1)
@@ -67,4 +70,15 @@ export async function run_trajectory_logger(): Promise<{
   } finally {
     await rm(root_dir, { recursive: true, force: true })
   }
+}
+
+if (import.meta.url === `file://${process.argv[1] ?? ''}`) {
+  run_trajectory_logger()
+    .then((result) => {
+      console.log(JSON.stringify(result, null, 2))
+    })
+    .catch((err: unknown) => {
+      console.error(err)
+      process.exit(1)
+    })
 }

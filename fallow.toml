@@ -3,6 +3,7 @@
 
 entry = [
   "packages/*/src/index.ts",
+  "packages/fascicle/src/adapters.ts",
   "packages/*/src/**/*.test.ts",
   "packages/*/test/**/*.test.ts",
   "packages/*/test/**/*.mjs",
