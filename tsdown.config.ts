@@ -11,7 +11,10 @@ import { defineConfig } from 'tsdown';
 //     `./dist/index.js`, which criterion 18 mandates. Default would be
 //     `.mjs` because platform=node implies fixedExtension=true.
 export default defineConfig({
-  entry: ['./packages/fascicle/src/index.ts'],
+  entry: [
+    './packages/fascicle/src/index.ts',
+    './packages/fascicle/src/adapters.ts',
+  ],
   outDir: './dist',
   format: ['esm'],
   dts: { eager: true },

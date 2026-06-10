@@ -21,9 +21,13 @@ export * from '@repo/composites'
 export { create_engine } from '@repo/engine'
 
 export {
+  claude_cli_error,
   engine_config_error,
+  engine_disposed_error,
+  model_family_unavailable_error,
   model_not_found_error,
   on_chunk_error,
+  provider_auth_error,
   provider_capability_error,
   provider_error,
   provider_not_configured_error,

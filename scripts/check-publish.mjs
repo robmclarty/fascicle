@@ -28,7 +28,14 @@ import {
 
 const ROOT_PKG = join(REPO_ROOT, 'package.json');
 
-const REQUIRED_FILES = ['dist/index.js', 'dist/index.d.ts', 'README.md', 'CHANGELOG.md'];
+const REQUIRED_FILES = [
+  'dist/index.js',
+  'dist/index.d.ts',
+  'dist/adapters.js',
+  'dist/adapters.d.ts',
+  'README.md',
+  'CHANGELOG.md',
+];
 const FORBIDDEN_PATH_PATTERNS = [
   /\.ts$/,                     // no TypeScript source in pack (dist .d.ts is allowed separately)
   /\.test\./,                  // no test files
@@ -216,8 +223,17 @@ async function check_types_wrong() {
   // ESM-only packages whenever a CJS consumer resolves the entry point; it
   // is informational, not a Node-ESM bug. The package is intentionally
   // ESM-only (constraints.md §1: module format ESM only, no CJS output).
-  const hard_errors = problems.filter((p) =>
-    ['NoResolution', 'UntypedResolution', 'FalseESM', 'InternalResolutionError'].includes(p.kind),
+  //
+  // `NoResolution` under the legacy `node10` resolver is allowlisted for the
+  // same reason: node10 predates the `exports` map, so it cannot see subpath
+  // exports like `./adapters`, and a node10 project uses `require()` which
+  // cannot load this ESM-only package at all. Modern resolution
+  // (node16-esm, bundler) resolves every subpath, which is what consumers use.
+  const hard_errors = problems.filter(
+    (p) =>
+      ['NoResolution', 'UntypedResolution', 'FalseESM', 'InternalResolutionError'].includes(
+        p.kind,
+      ) && !(p.kind === 'NoResolution' && p.resolutionKind === 'node10'),
   );
   if (hard_errors.length > 0) {
     fail(

@@ -27,6 +27,8 @@ const REPO_ROOT = resolve(__dirname, '..');
 const DIST_DIR = join(REPO_ROOT, 'dist');
 const DIST_JS = join(DIST_DIR, 'index.js');
 const DIST_DTS = join(DIST_DIR, 'index.d.ts');
+const DIST_ADAPTERS_JS = join(DIST_DIR, 'adapters.js');
+const DIST_ADAPTERS_DTS = join(DIST_DIR, 'adapters.d.ts');
 const DIST_STATIC_DIR = join(DIST_DIR, 'static');
 const DIST_STATIC_HTML = join(DIST_STATIC_DIR, 'viewer.html');
 const VIEWER_HTML_SRC = join(REPO_ROOT, 'packages', 'viewer', 'src', 'static', 'viewer.html');
@@ -217,8 +219,27 @@ async function main() {
     process.exit(1);
   }
 
+  process.stderr.write(`▸ build: smoke-importing ${DIST_ADAPTERS_JS}\n`);
+  if (!existsSync(DIST_ADAPTERS_JS) || !existsSync(DIST_ADAPTERS_DTS)) {
+    console.error(`\nbuild: dist/adapters.{js,d.ts} were not produced (the ./adapters subpath)`);
+    process.exit(1);
+  }
+  const adapters_mod = await import(pathToFileURL(DIST_ADAPTERS_JS).href);
+  const EXPECTED_ADAPTERS = [
+    'filesystem_logger',
+    'http_logger',
+    'noop_logger',
+    'tee_logger',
+    'filesystem_store',
+  ];
+  const missing_adapters = EXPECTED_ADAPTERS.filter((name) => typeof adapters_mod[name] === 'undefined');
+  if (missing_adapters.length > 0) {
+    console.error(`\nbuild: adapters smoke test missing exports: ${missing_adapters.join(', ')}`);
+    process.exit(1);
+  }
+
   process.stderr.write(
-    `\n✔ build ok (${js_stat.size} bytes js, ${dts_stat.size} bytes d.ts, ${EXPECTED_NAMED.length} named exports + describe.json verified)\n`,
+    `\n✔ build ok (${js_stat.size} bytes js, ${dts_stat.size} bytes d.ts, ${EXPECTED_NAMED.length} named exports + describe.json + ${EXPECTED_ADAPTERS.length} adapters verified)\n`,
   );
 }
 

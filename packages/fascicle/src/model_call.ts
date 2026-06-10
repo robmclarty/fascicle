@@ -30,7 +30,7 @@ import type { z } from 'zod'
 
 export type ModelCallInput = string | ReadonlyArray<Message>
 
-export type ModelCallConfig<T = unknown> = {
+export type ModelCallConfig<T = string> = {
   readonly engine: Engine
   /**
    * Model or alias string. Optional: if omitted, the engine's
@@ -107,7 +107,7 @@ function stable_signature(input: {
   return createHash('sha256').update(payload).digest('hex').slice(0, 8)
 }
 
-export function model_call<T = unknown>(
+export function model_call<T = string>(
   cfg: ModelCallConfig<T>,
 ): Step<ModelCallInput, GenerateResult<T>> {
   const has_tools = Boolean(cfg.tools && cfg.tools.length > 0)
