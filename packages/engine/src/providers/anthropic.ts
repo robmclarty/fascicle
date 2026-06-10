@@ -40,7 +40,10 @@ export function translate_anthropic_effort(effort: EffortLevel): EffortTranslati
   return {
     provider_options: {
       anthropic: {
-        thinking: { type: 'enabled', budget_tokens: budget },
+        // @ai-sdk/anthropic reads `budgetTokens` (camelCase) and maps it to the
+        // API's `budget_tokens`. Passing snake_case here is silently stripped by
+        // the provider's zod schema, so the budget never reaches the wire.
+        thinking: { type: 'enabled', budgetTokens: budget },
       },
     },
     effort_ignored: false,

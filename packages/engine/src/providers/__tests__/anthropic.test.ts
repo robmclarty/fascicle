@@ -14,34 +14,36 @@ describe('translate_anthropic_effort', () => {
     })
   })
 
-  it('maps low/medium/high to Anthropic thinking budget tokens per spec §6.3', () => {
+  // @ai-sdk/anthropic reads `budgetTokens` (camelCase); snake_case is stripped
+  // by the provider's zod schema and never reaches the wire.
+  it('maps low/medium/high to Anthropic thinking budgetTokens per spec §6.3', () => {
     const low = translate_anthropic_effort('low')
     expect(
-      (low.provider_options['anthropic'] as { thinking: { budget_tokens: number } }).thinking
-        .budget_tokens,
+      (low.provider_options['anthropic'] as { thinking: { budgetTokens: number } }).thinking
+        .budgetTokens,
     ).toBe(1024)
     const medium = translate_anthropic_effort('medium')
     expect(
-      (medium.provider_options['anthropic'] as { thinking: { budget_tokens: number } }).thinking
-        .budget_tokens,
+      (medium.provider_options['anthropic'] as { thinking: { budgetTokens: number } }).thinking
+        .budgetTokens,
     ).toBe(5000)
     const high = translate_anthropic_effort('high')
     expect(
-      (high.provider_options['anthropic'] as { thinking: { budget_tokens: number } }).thinking
-        .budget_tokens,
+      (high.provider_options['anthropic'] as { thinking: { budgetTokens: number } }).thinking
+        .budgetTokens,
     ).toBe(20000)
   })
 
-  it('maps xhigh and max to higher budget tokens per CLI ceilings', () => {
+  it('maps xhigh and max to higher budgetTokens per CLI ceilings', () => {
     const xhigh = translate_anthropic_effort('xhigh')
     expect(
-      (xhigh.provider_options['anthropic'] as { thinking: { budget_tokens: number } }).thinking
-        .budget_tokens,
+      (xhigh.provider_options['anthropic'] as { thinking: { budgetTokens: number } }).thinking
+        .budgetTokens,
     ).toBe(32000)
     const max = translate_anthropic_effort('max')
     expect(
-      (max.provider_options['anthropic'] as { thinking: { budget_tokens: number } }).thinking
-        .budget_tokens,
+      (max.provider_options['anthropic'] as { thinking: { budgetTokens: number } }).thinking
+        .budgetTokens,
     ).toBe(64000)
   })
 })

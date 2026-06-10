@@ -32,19 +32,21 @@ The six AI SDK adapters wrap Vercel's AI SDK. The seventh, `claude_cli`, spawns 
 
 ## Effort translation
 
-`effort: 'none' | 'low' | 'medium' | 'high'` is a provider-neutral knob for reasoning depth. The engine translates it per provider:
+`effort: 'none' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'` is a provider-neutral knob for reasoning depth. The table shows `low`/`medium`/`high`; `xhigh` and `max` extend the same axis (see the note below). The engine translates it per provider:
 
 | Provider     | `low`     | `medium`  | `high`    | When unsupported                     |
 | ------------ | --------- | --------- | --------- | ------------------------------------ |
-| anthropic    | `budget_tokens: 1024`  | `budget_tokens: 5000`  | `budget_tokens: 20000` | —                                    |
+| anthropic    | `budgetTokens: 1024`  | `budgetTokens: 5000`  | `budgetTokens: 20000` | —                                    |
 | openai       | `reasoningEffort: low` | `reasoningEffort: medium` | `reasoningEffort: high` | non-reasoning models silently drop it |
-| google       | `thinkingBudget: low`  | `thinkingBudget: medium`  | `thinkingBudget: high`  | —                                    |
+| google       | `thinkingBudget: 1024`  | `thinkingBudget: 8192`  | `thinkingBudget: 24576` | —                                  |
 | openrouter   | `reasoning.effort: low` | `reasoning.effort: medium` | `reasoning.effort: high` | upstream model drops it             |
 | ollama       | dropped   | dropped   | dropped   | records `effort_ignored` on trajectory |
 | lmstudio     | dropped   | dropped   | dropped   | records `effort_ignored` on trajectory |
 | claude_cli   | dropped   | dropped   | dropped   | not forwarded to the CLI             |
 
-`effort: 'none'` forwards nothing. Anthropic's `budget_tokens: 0` also short-circuits to no thinking block.
+`xhigh` and `max` raise the ceiling: anthropic uses `budgetTokens: 32000` and `64000`; google maps both to `thinkingBudget: 32768` (the Gemini 2.5 Pro ceiling); openai clamps both to `reasoningEffort: high`; openrouter forwards the level verbatim.
+
+`effort: 'none'` forwards nothing: anthropic emits no thinking block and google omits `thinkingConfig` entirely.
 
 ## anthropic
 
@@ -72,7 +74,7 @@ await engine.generate({
 });
 ```
 
-Effort maps to extended-thinking `budget_tokens`. `none → 0`, `low → 1024`, `medium → 5000`, `high → 20000`.
+Effort maps to extended-thinking `budgetTokens` (the `@ai-sdk/anthropic` option name, which the SDK forwards to the API's `budget_tokens`). `none →` no thinking block, `low → 1024`, `medium → 5000`, `high → 20000`, `xhigh → 32000`, `max → 64000`.
 
 Aliases: `opus`, `claude-opus`, `sonnet`, `claude-sonnet`, `haiku`, `claude-haiku`.
 
@@ -115,7 +117,7 @@ const engine = create_engine({
 });
 ```
 
-Effort maps to Gemini's `thinkingConfig.thinkingBudget: 'low' | 'medium' | 'high'`. Google does not report cache-write tokens; the adapter strips `cache_write_tokens` when absent.
+Effort maps to Gemini's `thinkingConfig.thinkingBudget`, a token count: `low → 1024`, `medium → 8192`, `high → 24576`, `xhigh`/`max → 32768`. Google does not report cache-write tokens; the adapter strips `cache_write_tokens` when absent.
 
 Aliases: `gemini-pro` (= `gemini-2.5-pro`), `gemini-flash` (= `gemini-2.5-flash`), and their fully-qualified forms.
 

@@ -497,3 +497,41 @@ describe('generate: HITL', () => {
     expect(result.tool_calls[0]?.error?.message).toBe('tool_approval_denied')
   })
 })
+
+describe('generate: provider_options merge', () => {
+  it('passes user provider_options through to the SDK (was silently dropped)', async () => {
+    enqueue_generate_text(make_text_result('ok'))
+    await basic_engine().generate({
+      model: 'sonnet',
+      prompt: 'hi',
+      provider_options: { anthropic: { customKey: 1 } },
+    })
+    const params = mock_state.last_generate_text_params as {
+      providerOptions?: Record<string, unknown>
+    }
+    expect(params.providerOptions).toEqual({ anthropic: { customKey: 1 } })
+  })
+
+  it('passes effort translation through when no user options are given', async () => {
+    enqueue_generate_text(make_text_result('ok'))
+    await basic_engine().generate({ model: 'sonnet', prompt: 'hi', effort: 'medium' })
+    const params = mock_state.last_generate_text_params as {
+      providerOptions?: Record<string, unknown>
+    }
+    expect(params.providerOptions).toEqual({ anthropic: { effort: 'medium' } })
+  })
+
+  it('merges user options over effort translation, user winning on inner-key conflict', async () => {
+    enqueue_generate_text(make_text_result('ok'))
+    await basic_engine().generate({
+      model: 'sonnet',
+      prompt: 'hi',
+      effort: 'medium',
+      provider_options: { anthropic: { custom: true, effort: 'override' } },
+    })
+    const params = mock_state.last_generate_text_params as {
+      providerOptions?: Record<string, Record<string, unknown>>
+    }
+    expect(params.providerOptions).toEqual({ anthropic: { effort: 'override', custom: true } })
+  })
+})

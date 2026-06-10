@@ -14,26 +14,29 @@ describe('translate_google_effort', () => {
     })
   })
 
-  it('maps low/medium/high to thinkingConfig.thinkingBudget per spec §6.3', () => {
+  // @ai-sdk/google's thinkingBudget is a token count (number); a string fails
+  // the provider's zod validation.
+  it('maps low/medium/high to numeric thinkingConfig.thinkingBudget per spec §6.3', () => {
+    const expected = { low: 1024, medium: 8192, high: 24576 } as const
     for (const effort of ['low', 'medium', 'high'] as const) {
       const translated = translate_google_effort(effort)
       expect(
         (translated.provider_options['google'] as {
-          thinkingConfig: { thinkingBudget: string }
+          thinkingConfig: { thinkingBudget: number }
         }).thinkingConfig.thinkingBudget,
-      ).toBe(effort)
+      ).toBe(expected[effort])
       expect(translated.effort_ignored).toBe(false)
     }
   })
 
-  it('clamps xhigh and max to high since Google exposes no level above high', () => {
+  it('maps xhigh and max to the Gemini 2.5 Pro thinking ceiling', () => {
     for (const effort of ['xhigh', 'max'] as const) {
       const translated = translate_google_effort(effort)
       expect(
         (translated.provider_options['google'] as {
-          thinkingConfig: { thinkingBudget: string }
+          thinkingConfig: { thinkingBudget: number }
         }).thinkingConfig.thinkingBudget,
-      ).toBe('high')
+      ).toBe(32768)
       expect(translated.effort_ignored).toBe(false)
     }
   })

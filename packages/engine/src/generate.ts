@@ -477,9 +477,18 @@ export async function generate<T = string>(
   if (effort !== 'none' && effort_translation.effort_ignored) {
     record_effort_ignored(trajectory, target.model_id)
   }
+  // Effort translation is the lowest-precedence layer; engine defaults and
+  // per-call provider_options (already merged into opts.provider_options, with
+  // per-call winning) override it. Without this merge the user's provider_options
+  // were computed then dropped, a silent no-op for every provider.
+  const combined_provider_options = merge_provider_options(
+    effort_translation.provider_options,
+    opts.provider_options,
+  )
   const provider_options =
-    Object.keys(effort_translation.provider_options).length > 0
-      ? effort_translation.provider_options
+    combined_provider_options !== undefined &&
+    Object.keys(combined_provider_options).length > 0
+      ? combined_provider_options
       : undefined
 
   const abort = opts.abort ?? new AbortController().signal

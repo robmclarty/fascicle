@@ -23,14 +23,16 @@ type GoogleSdk = {
   }) => (model_id: string) => unknown
 }
 
-// Google's thinkingBudget enum is `low | medium | high` (or numeric).
-// `xhigh` and `max` clamp to `high` until Google exposes more levels.
-const GOOGLE_THINKING_BUDGET: Record<Exclude<EffortLevel, 'none'>, string> = {
-  low: 'low',
-  medium: 'medium',
-  high: 'high',
-  xhigh: 'high',
-  max: 'high',
+// @ai-sdk/google's `thinkingConfig.thinkingBudget` is a token count (number),
+// not an enum: passing a string fails the provider's zod validation. Gemini 2.5
+// Pro accepts up to 32768 thinking tokens; lighter models clamp the high end.
+// `none` omits thinkingConfig entirely (see translate_google_effort).
+const GOOGLE_THINKING_BUDGET: Record<Exclude<EffortLevel, 'none'>, number> = {
+  low: 1024,
+  medium: 8192,
+  high: 24576,
+  xhigh: 32768,
+  max: 32768,
 }
 
 export function translate_google_effort(effort: EffortLevel): EffortTranslation {

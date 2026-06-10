@@ -22,7 +22,9 @@ import type {
 } from '../types.js'
 
 export type EffortTranslation = {
-  provider_options: Record<string, unknown>
+  // Outer keys are provider names, inner records hold per-provider settings,
+  // matching the two-level shape merge_provider_options expects.
+  provider_options: Record<string, Record<string, unknown>>
   effort_ignored: boolean
 }
 
