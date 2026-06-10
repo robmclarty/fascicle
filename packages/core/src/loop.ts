@@ -18,7 +18,7 @@
  * thread cancellation per the runner contract.
  */
 
-import { dispatch_step, register_kind, resolve_span_label, throw_if_aborted } from './runner.js'
+import { dispatch_step, register_traced_kind, throw_if_aborted } from './runner.js'
 import type { RunContext, Step } from './types.js'
 
 export type LoopGuardResult<state> = {
@@ -94,18 +94,4 @@ export function loop<i, state, o>(
   }
 }
 
-register_kind('loop', async (flow, input, ctx) => {
-  const label = resolve_span_label(flow, 'loop')
-  const span_id = ctx.trajectory.start_span(label, { id: flow.id })
-  try {
-    const out = await flow.run(input, ctx)
-    ctx.trajectory.end_span(span_id, { id: flow.id })
-    return out
-  } catch (err) {
-    ctx.trajectory.end_span(span_id, {
-      id: flow.id,
-      error: err instanceof Error ? err.message : String(err),
-    })
-    throw err
-  }
-})
+register_traced_kind('loop')

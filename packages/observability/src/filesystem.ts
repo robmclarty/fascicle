@@ -3,13 +3,13 @@
  *
  * Appends one JSON object per line to a configured output file. `start_span`
  * and `end_span` each emit a line; `record` emits a line with the event as
- * written. Hierarchical span ids are tracked via an in-memory stack: when
- * `start_span` fires, the innermost still-open span's id is attached as
- * `parent_span_id` on the new span's record. This is best-effort for
- * concurrent children (two siblings spawned from the same parent will see
- * whichever opened most recently as their parent until proper async-context
- * propagation is wired). Two concurrent `run(...)` calls that pass distinct
- * logger instances (constructed with distinct `output_path`s) share nothing.
+ * written. When the caller supplies `parent_span_id` in the span meta (the
+ * runner threads the true structural parent through `RunContext`), that value
+ * is used verbatim, so span trees are correct even for concurrent children
+ * under `parallel`/`map`. Only when no parent is supplied does the logger fall
+ * back to an in-memory stack of still-open spans, which is best-effort under
+ * concurrency. Two concurrent `run(...)` calls that pass distinct logger
+ * instances (constructed with distinct `output_path`s) share nothing.
  *
  * Paths are accepted at construction; the logger never reads `process.env`.
  */
@@ -35,9 +35,10 @@ export function filesystem_logger(options: FilesystemLoggerOptions): TrajectoryL
 
   const start_span: TrajectoryLogger['start_span'] = (name, meta) => {
     const span_id = `${name}:${randomUUID().slice(0, 8)}`
-    const parent_span_id = stack.length > 0 ? stack[stack.length - 1] : undefined
     const event: Record<string, unknown> = { kind: 'span_start', span_id, name, ...meta }
-    if (parent_span_id !== undefined) event['parent_span_id'] = parent_span_id
+    if (event['parent_span_id'] === undefined && stack.length > 0) {
+      event['parent_span_id'] = stack[stack.length - 1]
+    }
     write_line(event)
     stack.push(span_id)
     return span_id

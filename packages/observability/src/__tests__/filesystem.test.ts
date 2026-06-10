@@ -66,6 +66,24 @@ describe('filesystem_logger', () => {
     expect(inner_start?.['parent_span_id']).toBe(outer)
   })
 
+  it('prefers a caller-supplied parent_span_id over the open-span stack', () => {
+    const output_path = join(work_dir, 'trajectory.jsonl')
+    const logger = filesystem_logger({ output_path })
+
+    // Outer is open, so the stack would name it as parent; the explicit
+    // parent_span_id in meta must win (this is how the runner threads the true
+    // structural parent for concurrent children under parallel/map).
+    const outer = logger.start_span('parallel', { id: 'par_1' })
+    const child = logger.start_span('step', { id: 'a', parent_span_id: 'real-parent' })
+    logger.end_span(child, { id: 'a' })
+    logger.end_span(outer, { id: 'par_1' })
+
+    const lines = read_lines(output_path)
+    const child_start = lines.find((l) => l['span_id'] === child && l['kind'] === 'span_start')
+    expect(child_start?.['parent_span_id']).toBe('real-parent')
+    expect(child_start?.['parent_span_id']).not.toBe(outer)
+  })
+
   it('creates the output directory if missing', () => {
     const nested_path = join(work_dir, 'a', 'b', 'c', 'out.jsonl')
     const logger = filesystem_logger({ output_path: nested_path })

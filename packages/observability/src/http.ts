@@ -55,9 +55,12 @@ export function http_logger(options: HttpLoggerOptions): TrajectoryLogger {
 
   const start_span: TrajectoryLogger['start_span'] = (name, meta) => {
     const span_id = `${name}:${randomUUID().slice(0, 8)}`
-    const parent_span_id = stack.length > 0 ? stack[stack.length - 1] : undefined
     const event: Record<string, unknown> = { kind: 'span_start', span_id, name, ...meta }
-    if (parent_span_id !== undefined) event['parent_span_id'] = parent_span_id
+    // Prefer the caller-threaded structural parent; fall back to the open-span
+    // stack only when none was supplied (best-effort under concurrency).
+    if (event['parent_span_id'] === undefined && stack.length > 0) {
+      event['parent_span_id'] = stack[stack.length - 1]
+    }
     post(event)
     stack.push(span_id)
     return span_id

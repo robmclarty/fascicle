@@ -55,6 +55,39 @@ export function resolve_span_label(
   return typeof display === 'string' && display.length > 0 ? display : fallback
 }
 
+/**
+ * Register the standard span-wrapping dispatch handler for a composer kind.
+ *
+ * Every composer wraps `flow.run` in a span identically; this centralizes that
+ * boilerplate and threads span parentage: the span opens with the current
+ * `ctx.parent_span_id` as its parent, and `flow.run` receives a child context
+ * whose `parent_span_id` is this span. Children dispatched from within
+ * (including concurrent ones under `parallel`/`map`, which spread the context)
+ * therefore nest correctly instead of leaving `parent_span_id` unpopulated.
+ */
+export function register_traced_kind(kind: string): void {
+  register_kind(kind, async (flow, input, ctx) => {
+    const label = resolve_span_label(flow, kind)
+    const span_meta: Record<string, unknown> = { id: flow.id }
+    if (ctx.parent_span_id !== undefined) {
+      span_meta['parent_span_id'] = ctx.parent_span_id
+    }
+    const span_id = ctx.trajectory.start_span(label, span_meta)
+    const child_ctx: RunContext = { ...ctx, parent_span_id: span_id }
+    try {
+      const out = await flow.run(input, child_ctx)
+      ctx.trajectory.end_span(span_id, { id: flow.id })
+      return out
+    } catch (err) {
+      ctx.trajectory.end_span(span_id, {
+        id: flow.id,
+        error: err instanceof Error ? err.message : String(err),
+      })
+      throw err
+    }
+  })
+}
+
 export type RunOptions = {
   readonly install_signal_handlers?: boolean
   readonly trajectory?: TrajectoryLogger

@@ -15,7 +15,7 @@
 
 import { createHash } from 'node:crypto'
 import { aborted_error, step } from '@repo/core'
-import type { Step } from '@repo/core'
+import type { Step, TrajectoryLogger } from '@repo/core'
 import type {
   EffortLevel,
   Engine,
@@ -54,6 +54,40 @@ export type ModelCallConfig<T = unknown> = {
   readonly tool_error_policy?: 'feed_back' | 'throw'
   readonly schema_repair_attempts?: number
   readonly on_tool_approval?: ToolApprovalHandler
+}
+
+/**
+ * Wrap the run's trajectory so the engine's own spans (engine.generate and its
+ * step spans) nest under the model_call step rather than floating. The wrapper
+ * keeps a private span stack seeded with the model_call step's id, so nesting
+ * is correct and concurrency-safe even when several model_calls run together
+ * under `parallel`/`map` (each invocation builds its own wrapper). A
+ * caller-supplied `parent_span_id` is never overridden.
+ */
+function engine_trajectory(
+  inner: TrajectoryLogger,
+  root_parent: string | undefined,
+): TrajectoryLogger {
+  const stack: string[] = root_parent !== undefined ? [root_parent] : []
+  return {
+    record: (event) => {
+      inner.record(event)
+    },
+    start_span: (name, meta) => {
+      const has_parent = meta !== undefined && 'parent_span_id' in meta
+      const parent = stack.length > 0 ? stack[stack.length - 1] : undefined
+      const next_meta =
+        has_parent || parent === undefined ? meta : { ...meta, parent_span_id: parent }
+      const id = inner.start_span(name, next_meta)
+      stack.push(id)
+      return id
+    },
+    end_span: (id, meta) => {
+      inner.end_span(id, meta)
+      const idx = stack.lastIndexOf(id)
+      if (idx !== -1) stack.splice(idx, 1)
+    },
+  }
 }
 
 function stable_signature(input: {
@@ -122,7 +156,7 @@ export function model_call<T = unknown>(
     const opts: GenerateOptions<T> = {
       prompt,
       abort: ctx.abort,
-      trajectory: ctx.trajectory,
+      trajectory: engine_trajectory(ctx.trajectory, ctx.parent_span_id),
     }
     if (cfg.model !== undefined) opts.model = cfg.model
     if (cfg.provider !== undefined) opts.provider = cfg.provider

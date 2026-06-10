@@ -14,12 +14,7 @@
  * See spec.md §5.16.
  */
 
-import {
-  dispatch_step,
-  register_kind,
-  resolve_span_label,
-  throw_if_aborted,
-} from './runner.js'
+import { dispatch_step, register_traced_kind, throw_if_aborted } from './runner.js'
 import type { RunContext, Step } from './types.js'
 
 type AnyStep = Step<unknown, unknown>
@@ -164,50 +159,8 @@ export function use<const keys extends readonly string[], i, o>(
   }
 }
 
-register_kind('scope', async (flow, input, ctx) => {
-  const label = resolve_span_label(flow, 'scope')
-  const span_id = ctx.trajectory.start_span(label, { id: flow.id })
-  try {
-    const out = await flow.run(input, ctx)
-    ctx.trajectory.end_span(span_id, { id: flow.id })
-    return out
-  } catch (err) {
-    ctx.trajectory.end_span(span_id, {
-      id: flow.id,
-      error: err instanceof Error ? err.message : String(err),
-    })
-    throw err
-  }
-})
+register_traced_kind('scope')
 
-register_kind('stash', async (flow, input, ctx) => {
-  const label = resolve_span_label(flow, 'stash')
-  const span_id = ctx.trajectory.start_span(label, { id: flow.id })
-  try {
-    const out = await flow.run(input, ctx)
-    ctx.trajectory.end_span(span_id, { id: flow.id })
-    return out
-  } catch (err) {
-    ctx.trajectory.end_span(span_id, {
-      id: flow.id,
-      error: err instanceof Error ? err.message : String(err),
-    })
-    throw err
-  }
-})
+register_traced_kind('stash')
 
-register_kind('use', async (flow, input, ctx) => {
-  const label = resolve_span_label(flow, 'use')
-  const span_id = ctx.trajectory.start_span(label, { id: flow.id })
-  try {
-    const out = await flow.run(input, ctx)
-    ctx.trajectory.end_span(span_id, { id: flow.id })
-    return out
-  } catch (err) {
-    ctx.trajectory.end_span(span_id, {
-      id: flow.id,
-      error: err instanceof Error ? err.message : String(err),
-    })
-    throw err
-  }
-})
+register_traced_kind('use')

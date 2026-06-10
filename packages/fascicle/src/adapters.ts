@@ -11,10 +11,11 @@
  * - `filesystem_logger` uses synchronous `appendFileSync` on every event. It
  *   is intended for dev tools and short-lived runs; pair with a different
  *   sink for hot-path production logging.
- * - The span stacks inside `filesystem_logger` and `http_logger` are
- *   in-memory and not async-context-aware. Two siblings spawned concurrently
- *   from the same parent will record whichever opened most recently as their
- *   parent until proper async-context propagation lands.
+ * - `filesystem_logger` and `http_logger` use the `parent_span_id` the runner
+ *   threads through `RunContext`, so span trees are correct even for concurrent
+ *   children under `parallel`/`map`. The in-memory open-span stack is only a
+ *   fallback for spans emitted without a parent (e.g. an external caller using
+ *   a logger directly), and that fallback remains best-effort under concurrency.
  */
 
 export { filesystem_logger, http_logger, noop_logger, tee_logger } from '@repo/observability'

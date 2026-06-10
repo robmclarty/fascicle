@@ -63,6 +63,44 @@ vdescribe('model_call', () => {
     expect(calls[0]?.had_on_chunk).toBe(false)
   })
 
+  it('parents engine spans under the model_call step span', async () => {
+    const events: Array<Record<string, unknown>> = []
+    let id = 0
+    const logger = {
+      record: (e: Record<string, unknown>) => {
+        events.push(e)
+      },
+      start_span: (name: string, meta?: Record<string, unknown>) => {
+        id += 1
+        const span_id = `span_${id}`
+        events.push({ kind: 'span_start', span_id, name, ...meta })
+        return span_id
+      },
+      end_span: (span_id: string, meta?: Record<string, unknown>) => {
+        events.push({ kind: 'span_end', span_id, ...meta })
+      },
+    }
+    const { engine } = make_mock_engine({
+      on_generate: (opts) => {
+        const gen = opts.trajectory?.start_span('engine.generate', {})
+        const gen_step = opts.trajectory?.start_span('engine.generate.step', {})
+        if (gen_step !== undefined) opts.trajectory?.end_span(gen_step, {})
+        if (gen !== undefined) opts.trajectory?.end_span(gen, {})
+      },
+    })
+    const s = model_call({ engine, model: 'x' })
+    await run(s, 'hi', { trajectory: logger, install_signal_handlers: false })
+
+    const starts = events.filter((e) => e['kind'] === 'span_start')
+    const step_span = starts.find((e) => e['name'] === 'step')
+    const gen = starts.find((e) => e['name'] === 'engine.generate')
+    const gen_step = starts.find((e) => e['name'] === 'engine.generate.step')
+
+    expect(step_span?.['parent_span_id']).toBeUndefined()
+    expect(gen?.['parent_span_id']).toBe(step_span?.['span_id'])
+    expect(gen_step?.['parent_span_id']).toBe(gen?.['span_id'])
+  })
+
   it('default id is a stable hash over { model, system, has_tools, has_schema }', () => {
     const { engine } = make_mock_engine()
     const a1 = model_call({ engine, model: 'x' })

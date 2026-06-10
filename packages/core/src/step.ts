@@ -12,8 +12,8 @@
  * reject them synchronously at flow construction time (spec.md §9 F6 / §7 invariant 8).
  */
 
-import { register_kind } from './runner.js'
-import type { RunContext, Step, StepFn, StepMetadata } from './types.js'
+import { register_traced_kind } from './runner.js'
+import type { Step, StepFn, StepMetadata } from './types.js'
 
 let anon_counter = 0
 
@@ -55,17 +55,4 @@ export function step<i, o>(
   }
 }
 
-register_kind('step', async (flow, input, ctx: RunContext): Promise<unknown> => {
-  const span_id = ctx.trajectory.start_span('step', { id: flow.id })
-  try {
-    const output = await flow.run(input, ctx)
-    ctx.trajectory.end_span(span_id, { id: flow.id })
-    return output
-  } catch (err) {
-    ctx.trajectory.end_span(span_id, {
-      id: flow.id,
-      error: err instanceof Error ? err.message : String(err),
-    })
-    throw err
-  }
-})
+register_traced_kind('step')
