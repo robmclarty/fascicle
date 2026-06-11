@@ -1,5 +1,21 @@
 # Changelog
 
+## v0.6.0 — 2026-06-10
+
+### Added
+- Observability now produces correct span trees: `parent_span_id` is populated so nested spans nest, events carry timestamps, tool results are recorded, and `claude_cli` errors are surfaced instead of being dropped.
+
+### Fixed
+- **Security.** The sandbox now isolates the network entirely when the allowlist is empty, instead of leaving it open.
+- Packaging: the `./adapters` subpath is now published and the package front door (main export) resolves correctly.
+- Engine: `provider_options` are threaded through to the provider and reasoning-effort translation is corrected.
+- Core: composers no longer swallow control-flow signals.
+- Addressed adversarial-review and publish-audit findings across the library and the examples.
+
+### Internal
+- Docs reconciled with the shipped API, plus a snippet typecheck harness and CI step that validate doc snippets against the built types.
+- Added the release workflow, base CI workflow, opt-in live-provider smoke tests, roadmap, a Stryker baseline note, and the committed `pnpm-lock`.
+
 ## v0.5.0 — 2026-06-03
 
 ### Added
