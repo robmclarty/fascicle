@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.6.3 — 2026-06-11
+
+### Fixed
+- CI `pnpm install --frozen-lockfile` no longer fails with `ERR_PNPM_IGNORED_BUILDS`; the `esbuild` build script is now approved in the `allowBuilds` map, classifying a transitive dependency that a recent toolchain bump introduced.
+
 ## v0.6.2 — 2026-06-11
 
 ### Internal
