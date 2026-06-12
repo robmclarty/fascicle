@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.6.2 — 2026-06-11
+
+### Internal
+- Stopped tracking the local `.codegraph` tooling config (`config.json` and its `.gitignore`). These are per-machine artifacts and no longer belong in version control.
+
 ## v0.6.1 — 2026-06-11
 
 ### Fixed
