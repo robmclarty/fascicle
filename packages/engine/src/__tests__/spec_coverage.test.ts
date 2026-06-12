@@ -633,11 +633,13 @@ describe('spec §9: failure modes (remaining)', () => {
     })
     expect(result.content).toEqual({ v: 42 })
     const params = mock_state.last_generate_text_params as {
+      system?: string
       messages: Array<{ role: string; content: unknown }>
     }
-    const system_msg = params.messages.find((m) => m.role === 'system')
-    expect(system_msg).toBeDefined()
-    expect(String(system_msg?.content)).toMatch(/JSON/)
+    // The schema-fallback JSON instruction is delivered via the top-level
+    // `system` option, not a `role: 'system'` message.
+    expect(params.messages.some((m) => m.role === 'system')).toBe(false)
+    expect(String(params.system)).toMatch(/JSON/)
   })
 
   it('F19 abort during on_tool_approval await rejects with aborted_error', async () => {

@@ -217,6 +217,42 @@ function to_sdk_messages(messages: ReadonlyArray<Message>): ModelMessage[] {
   return out
 }
 
+/**
+ * Hoist a leading run of system messages out of the SDK message list into the
+ * AI SDK's top-level `system` option.
+ *
+ * Passing a `role: 'system'` entry inside `messages` makes the AI SDK treat it
+ * as potentially attacker-controlled: it warns on every call (and newer `ai`
+ * versions throw unless `allowSystemInMessages` is set). fascicle's system
+ * content is the developer's own prompt, and the SDK's own recommendation is to
+ * deliver it through the top-level `system` option, which removes the warning
+ * at its source rather than suppressing it.
+ *
+ * Only the *leading* run is hoisted (fascicle's only shape: one or more system
+ * messages, then the conversation). A system message that appears after a
+ * non-system message keeps its position rather than being silently reordered to
+ * the top, and the original list is returned untouched when hoisting would leave
+ * `messages` empty, since the SDK rejects an empty messages array.
+ */
+function split_leading_system(messages: ReadonlyArray<ModelMessage>): {
+  system?: string
+  messages: ModelMessage[]
+} {
+  let run_end = 0
+  const system_parts: string[] = []
+  while (run_end < messages.length) {
+    const m = messages[run_end]
+    if (m?.role !== 'system') break
+    system_parts.push(m.content)
+    run_end += 1
+  }
+  const rest = messages.slice(run_end)
+  if (system_parts.length === 0 || rest.length === 0) {
+    return { messages: [...messages] }
+  }
+  return { system: system_parts.join('\n\n'), messages: rest }
+}
+
 function to_sdk_tools(tools: ReadonlyArray<Tool>): ToolSet | undefined {
   if (tools.length === 0) return undefined
   const entries: ToolSet = {}
@@ -564,12 +600,16 @@ export async function generate<T = string>(
       } else {
         args.abort.addEventListener('abort', cancel_on_user_abort, { once: true })
       }
+      const { system: hoisted_system, messages: sdk_messages } = split_leading_system(
+        to_sdk_messages(args.messages),
+      )
       const base_params: Parameters<typeof streamText>[0] & Parameters<typeof generateText>[0] = {
         model,
-        messages: to_sdk_messages(args.messages),
+        messages: sdk_messages,
         abortSignal: internal_controller.signal,
         stopWhen: stepCountIs(1),
       }
+      if (hoisted_system !== undefined) base_params.system = hoisted_system
       if (sdk_tools !== undefined) base_params.tools = sdk_tools
       if (provider_options !== undefined) {
         // provider_options is Record<string, Record<string, unknown>>; the SDK

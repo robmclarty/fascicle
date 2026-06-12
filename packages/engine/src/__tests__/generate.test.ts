@@ -70,7 +70,7 @@ describe('generate: plain paths', () => {
     })
   })
 
-  it('accepts Message[] prompts and prepends the system option (C2)', async () => {
+  it('accepts Message[] prompts and hoists leading system messages to the system option (C2)', async () => {
     enqueue_generate_text(make_text_result('ok'))
     await basic_engine().generate({
       model: 'claude-opus',
@@ -81,13 +81,45 @@ describe('generate: plain paths', () => {
       ],
     })
     const params = mock_state.last_generate_text_params as {
+      system?: string
       messages: Array<{ role: string; content: unknown }>
     }
-    expect(params.messages[0]?.role).toBe('system')
-    expect(params.messages[0]?.content).toBe('be concise')
-    expect(params.messages[1]?.role).toBe('system')
-    expect(params.messages[1]?.content).toBe('you are a helper')
-    expect(params.messages[2]?.role).toBe('user')
+    // The leading run of system messages (engine `system` + a leading system in
+    // the prompt) is joined and delivered via the SDK's top-level `system`
+    // option; no `role: 'system'` entry remains in `messages`.
+    expect(params.system).toBe('be concise\n\nyou are a helper')
+    expect(params.messages.some((m) => m.role === 'system')).toBe(false)
+    expect(params.messages[0]?.role).toBe('user')
+    expect(params.messages[0]?.content).toBe('hi')
+  })
+
+  it('hoists system to the top-level option so the SDK system-in-messages warning never fires', async () => {
+    const warn_spy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      enqueue_generate_text(make_text_result('ok'))
+      await basic_engine().generate({
+        model: 'claude-opus',
+        system: 'you are a helper',
+        prompt: 'hi',
+      })
+      const params = mock_state.last_generate_text_params as {
+        system?: string
+        messages: Array<{ role: string; content: unknown }>
+      }
+      // System content rides the top-level `system` option, never a
+      // `role: 'system'` message — the latter is what trips the AI SDK's
+      // "System messages in the prompt or messages fields..." warning.
+      expect(params.system).toBe('you are a helper')
+      expect(params.messages.some((m) => m.role === 'system')).toBe(false)
+      const warned_system = warn_spy.mock.calls.some((call) =>
+        call.some(
+          (arg) => typeof arg === 'string' && arg.includes('System messages in the prompt'),
+        ),
+      )
+      expect(warned_system).toBe(false)
+    } finally {
+      warn_spy.mockRestore()
+    }
   })
 })
 

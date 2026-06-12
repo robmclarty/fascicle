@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.6.1 — 2026-06-11
+
+### Fixed
+- AI-SDK adapter: the caller's `system` prompt is now delivered through the AI SDK's top-level `system` option instead of as a `role: "system"` entry in the `messages` array. This removes the SDK's "System messages in the prompt or messages fields can be a security risk..." warning that fired on every `generateText`/`streamText` call (most visibly on non-Claude providers, flooding build logs), without changing what the model receives. A leading run of system messages is joined into the single `system` option; the `claude_cli` subprocess transport is unaffected.
+
 ## v0.6.0 — 2026-06-10
 
 ### Added
