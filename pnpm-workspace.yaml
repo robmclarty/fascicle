@@ -8,6 +8,7 @@ packages:
 
 allowBuilds:
   '@ast-grep/cli': true
+  esbuild: true
   fallow: true
 
 # pnpm reads overrides from this file (not the package.json `pnpm` field) in a
