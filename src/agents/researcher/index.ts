@@ -3,7 +3,7 @@
  *
  * Researcher cannot collapse to a single prompt — it iterates over injected
  * `search` and `fetch` callables, integrating results across rounds. The
- * shape is: `loop` from `@repo/core` driving (search → pick top-k → fetch →
+ * shape is: `loop` from `core` driving (search → pick top-k → fetch →
  * summarize → decide stop). The summarizer is itself a `define_agent`, so
  * the bespoke agent reuses the same loader the markdown-defined ones use.
  *

@@ -77,7 +77,7 @@ export class aborted_error extends Error {
  * cancellation. Resilience composers (`retry`, `fallback`) must rethrow these
  * rather than retry past a suspend or run a backup under an aborted context.
  *
- * Kept internal to @repo/core: not re-exported by index.ts, so it does not
+ * Kept internal to core: not re-exported by index.ts, so it does not
  * widen the public surface.
  */
 export function is_control_flow_error(

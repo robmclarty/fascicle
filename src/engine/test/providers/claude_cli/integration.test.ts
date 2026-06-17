@@ -1,7 +1,7 @@
 /**
  * Cross-layer integration (spec §12 #26, §10 criterion 9).
  *
- * Exercises the full stack: @repo/core.run → step → engine.generate →
+ * Exercises the full stack: core.run → step → engine.generate →
  * claude_cli adapter → mock binary. Proves:
  *   (a) `{ model: 'sonnet', provider: 'claude_cli' }` routes to the claude_cli subprocess adapter;
  *   (b) content from the mock arrives at the step's return value;

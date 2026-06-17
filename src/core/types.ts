@@ -2,8 +2,8 @@
  * Shared type surface for the composition layer.
  *
  * These types are the public value contract between composers, the runner,
- * and adapter packages (@repo/observability, @repo/stores,
- * @repo/engine). Adapter packages import types from here; nothing in
+ * and adapter packages (observability, stores,
+ * engine). Adapter packages import types from here; nothing in
  * this file imports from any adapter.
  *
  * Type aliases and interfaces use PascalCase per constraints.md §2.

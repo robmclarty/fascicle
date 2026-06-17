@@ -13,7 +13,7 @@
  * remain unmodified user-supplied `Step` values.
  *
  * This file is the canonical example of how a user-built composite is
- * structured — the entire implementation is a composition of @repo/core
+ * structured — the entire implementation is a composition of core
  * primitives. Read it as documentation.
  */
 

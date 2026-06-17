@@ -3,7 +3,7 @@
  * engine layers.
  *
  * This is the only file under packages/fascicle/src/ permitted to import
- * value symbols from both @repo/core and @repo/engine (enforced by the
+ * value symbols from both core and engine (enforced by the
  * model-call-is-sole-bridge ast-grep rule in rules/).
  *
  * The returned Step auto-threads ctx.abort, ctx.trajectory, and — only when

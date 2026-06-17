@@ -1,7 +1,7 @@
 /**
  * Cross-layer integration (spec §10 / criterion 9).
  *
- * Composes `@repo/core.step` + `run` with `@repo/engine.generate`
+ * Composes `core.step` + `run` with `engine.generate`
  * to prove:
  *   (a) chunks flow through ctx.emit into run.stream events;
  *   (b) aborting the run propagates into the engine; generate rejects with

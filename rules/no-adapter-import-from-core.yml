@@ -12,4 +12,4 @@ rule:
     - pattern: import $$$ from "$PATH"
 constraints:
   PATH:
-    regex: '^(@repo/(observability|stores|engine|fascicle)(/.*)?|#(observability|stores|engine))$'
+    regex: '^#(observability|stores|engine)$'

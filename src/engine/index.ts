@@ -1,5 +1,5 @@
 /**
- * Public entry point for @repo/engine.
+ * Public entry point for engine.
  *
  * Exposes `create_engine(config)` and re-exports every public type and typed
  * error from spec §5 / §9. Provider adapters and internal orchestration

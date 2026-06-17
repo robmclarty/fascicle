@@ -11,7 +11,7 @@
 
 A constraint is a non-negotiable: something that, if changed, requires revisiting the entire design. Constraints are the load-bearing walls. They are not opinions about API aesthetics (that belongs in `taste.md`), and they are not interface definitions or behavioral semantics (that belongs in each build's `spec.md`).
 
-This document covers project-wide rules that apply to every package in the workspace — the composition layer (`@robmclarty/core`), the AI engine layer (`@robmclarty/engine`), and adapter packages (`@robmclarty/observability`, `@robmclarty/stores`, `fascicle` umbrella). Where a rule is layer-specific, it is called out explicitly. Treat any item here as fixed unless a formal design revision is opened.
+This document covers project-wide rules that apply to every module in the single package — the composition layer (`core`), the AI engine layer (`engine`), and adapter modules (`observability`, `stores`) under the `fascicle` umbrella. Where a rule is layer-specific, it is called out explicitly. Treat any item here as fixed unless a formal design revision is opened.
 
 On conflicts with per-build `spec.md` or `constraints.md`: **this file wins**.
 
@@ -34,7 +34,7 @@ This is the literal CI gate, defined in `scripts/check.mjs`. It runs the full pi
 - **Module format:** ESM only. Source `.ts`, publishes `.js` (ESM) + `.d.ts`. No CommonJS output, no dual-format bundle.
 - **Target runtime:** Node.js ≥ 24. Node 20 LTS reached end-of-life April 2026; 22 LTS runs through April 2027, 24 LTS through April 2028. 24 is the development and deployment target; it provides the stable permission model, native WebSocket client, modern `AbortSignal` helpers, and the Node runtime assumptions behind Vercel AI SDK v6.
 - **tsconfig basics:** `module: "NodeNext"`, `moduleResolution: "NodeNext"`, `esModuleInterop: true`, `skipLibCheck: true`, `forceConsistentCasingInFileNames: true`, `isolatedModules: true`, `verbatimModuleSyntax: true`, `noUncheckedIndexedAccess: true`, `exactOptionalPropertyTypes: true`.
-- **Import specifiers:** relative imports within a package use the `.js` extension even from `.ts` source files (NodeNext resolution). Cross-package imports go through workspace names (`@robmclarty/core`, `@robmclarty/engine`, etc.), never relative paths.
+- **Import specifiers:** relative imports within a module use the `.js` extension even from `.ts` source files (NodeNext resolution). Cross-module imports go through the `#<module>` barrel alias (`#core`, `#engine`, etc.), never a relative path that escapes the module dir.
 - **No browser build in v1.** The runner installs Node-level `SIGINT`/`SIGTERM` handlers by default. Anthropic/OpenAI/Google provider SDKs via Vercel AI SDK do run in browsers; the engine does not. Exposing a browser build is deferred.
 
 ---
@@ -44,7 +44,7 @@ This is the literal CI gate, defined in `scripts/check.mjs`. It runs the full pi
 Enforced mechanically (AST grep / lint / CI check). Review alone is not sufficient.
 
 - **No `class`.** No `extends`. No `this`. No prototype manipulation. Factory functions return plain objects. Composers are functions that return `step<i, o>`. Provider adapters are factory functions that return plain-object dispatchers.
-  - **Permitted exception, narrowly scoped:** `class <name> extends Error` in **`packages/core/src/errors.ts`** and **`packages/engine/src/errors.ts`** for the typed errors enumerated in each layer's spec. Typed errors are conventionally declared this way in Node/TS; `Error` is a built-in, and `instanceof` branching is how composers like `retry` and `fallback` distinguish failure modes. No other file may use `class`. Enforced by `rules/no-class.yml` with scoped `ignores:` for exactly these two files.
+  - **Permitted exception, narrowly scoped:** `class <name> extends Error` in **`src/core/errors.ts`** and **`src/engine/errors.ts`** for the typed errors enumerated in each layer's spec. Typed errors are conventionally declared this way in Node/TS; `Error` is a built-in, and `instanceof` branching is how composers like `retry` and `fallback` distinguish failure modes. No other file may use `class`. Enforced by `rules/no-class.yml` with scoped `ignores:` for exactly these two files.
 - **Functional and procedural.** Side effects live at edges (subprocess spawn, file I/O, trajectory calls, provider HTTP, `tool.execute`). No inheritance chains.
 - **Named exports only.** No `export default`. Enforced by `rules/no-default-export.yml`.
 - **Naming:**
@@ -54,30 +54,32 @@ Enforced mechanically (AST grep / lint / CI check). Review alone is not sufficie
   - **no camelCase** anywhere in source, including parameter names on public types
 - **No ambient module-level mutable state.** No singleton registries, no Mastra-style central registry, no module-level `let` that accumulates across calls. All execution state lives in `run_context`, constructed fresh per top-level `run(...)` call. Engine state (alias tables, pricing tables) lives in the `engine` instance returned by `create_engine(config)`; two `create_engine` calls produce fully independent engines. Default alias and pricing tables are frozen constants (`Object.freeze`); user overrides flow through `engine_config` or the per-engine `register_*` methods, never via mutation of the defaults.
 - **No `require()`.** ESM only. Optional provider packages are loaded via dynamic `import()` with explicit error messages when missing.
-- **No `process.env` reads in any package source.** The library never reads environment variables; adapters accept paths and credentials at construction time. Application code reads env and passes values into `create_engine(config)`, adapter factories, or `run_options`. Enforced by `rules/no-process-env-in-core.yml` (scope to be extended to `packages/engine/src/**` and other adapter packages).
+- **No `process.env` reads in source.** The library never reads environment variables; adapters accept paths and credentials at construction time. Application code reads env and passes values into `create_engine(config)`, adapter factories, or `run_options`. Enforced by `rules/no-process-env-in-core.yml` across all of `src/**` (audited exceptions: the `claude_cli` auth module and `forward_standard_env`).
 - **Limit em dashes** in code comments, docstrings, and user-facing error messages. Prefer commas, colons, or separate sentences. Consistent with `CLAUDE.md`.
-- **File naming:** `snake_case.ts`. Dots as sub-namespace separators are permitted where they improve readability (`stash.use.ts`, `stream.buffer.ts`) but flat `snake_case.ts` is the default. Provider adapters live at `packages/engine/src/providers/<provider>.ts` with the bare provider name as the filename.
+- **File naming:** `snake_case.ts`. Dots as sub-namespace separators are permitted where they improve readability (`stash.use.ts`, `stream.buffer.ts`) but flat `snake_case.ts` is the default. Provider adapters live at `src/engine/providers/<provider>.ts` with the bare provider name as the filename.
 
 ---
 
 ## §3 — Architectural Boundaries
 
-Strict downward dependency direction, modeled as sibling workspace packages:
+The layers are deep modules under `src/<module>/` in one package, each reachable only through its barrel via a `#<module>` alias (not separately-published workspace packages). Where this document writes `@robmclarty/<layer>`, read "the `<layer>` module, surfaced through `fascicle`". Strict downward dependency direction:
 
 ```
 Application code (your harnesses, workflows, agents)
       ↓
-fascicle (umbrella; re-exports @robmclarty/core, and @robmclarty/engine when engine ships)
+fascicle (umbrella at the src/ root; re-exports #core, #engine, #composites, #viewer)
       ↓
-@robmclarty/core        (composition layer)
+#core        (composition layer)
       ↓
-@robmclarty/engine      (AI engine layer)
+#engine      (AI engine layer; imports #core type-only)
       ↓
 Vendor SDKs (Vercel AI SDK v6, zod, provider adapters)
 
-@robmclarty/observability, @robmclarty/stores
-  — adapter packages; injected into the composition layer via run_context, never imported by it.
+#observability, #stores
+  — adapter modules; injected into the composition layer via run_context, never imported by it.
 ```
+
+Enforced by the ast-grep rules in `rules/` and a directory-level default-deny DAG in `fallow.toml` (`[[boundaries.rules]]`).
 
 No layer may import from a layer above it.
 
@@ -86,8 +88,8 @@ No layer may import from a layer above it.
 **May import:**
 - `zod` (runtime dependency)
 - Node built-ins via `node:` prefix
-- sibling files within `packages/core/src/`
-- `packages/core/src/types.ts` (the shared type surface: `step`, `run_context`, `trajectory_logger`, `trajectory_event`, `checkpoint_store`) via `import type` only
+- sibling files within `src/core/`
+- `src/core/types.ts` (the shared type surface: `step`, `run_context`, `trajectory_logger`, `trajectory_event`, `checkpoint_store`) via `import type` only
 
 **May NOT import:**
 - `@robmclarty/engine` — the composition layer does not know AI exists
@@ -103,7 +105,7 @@ No layer may import from a layer above it.
 - `ai-sdk-ollama` (AI SDK v6-compatible Ollama provider), `@openrouter/ai-sdk-provider`, OpenAI-compatible adapters (dynamically, inside provider adapters only)
 - `zod` (v4)
 - Node built-ins via `node:` prefix
-- sibling files within `packages/engine/src/`
+- sibling files within `src/engine/`
 - `@robmclarty/core` via **`import type` only** — for `TrajectoryLogger`, `TrajectoryEvent`, and any other shared types. No value imports from core.
 
 **May NOT import:**
@@ -114,7 +116,7 @@ No layer may import from a layer above it.
 
 ### Composers do not import other composers
 
-Each composer file in `packages/core/src/` depends only on `./types.ts`, `./runner.ts`, and the narrow surface of `./streaming.ts` / `./cleanup.ts`. `sequence.ts` does not import `parallel.ts`. `adversarial.ts` does not import `retry.ts`. Sharing is via the `step<i, o>` value contract, not via cross-composer calls. Enforced by `rules/no-composer-cross-import.yml`.
+Each composer file in `src/core/` depends only on `./types.ts`, `./runner.ts`, and the narrow surface of `./streaming.ts` / `./cleanup.ts`. `sequence.ts` does not import `parallel.ts`. `adversarial.ts` does not import `retry.ts`. Sharing is via the `step<i, o>` value contract, not via cross-composer calls. Enforced by `rules/no-composer-cross-import.yml`.
 
 ### Runner does not special-case kinds
 
@@ -122,7 +124,7 @@ The runner dispatches on `step.kind` but does not contain composer-specific logi
 
 ### Shared types live inside the composition layer
 
-`step<i, o>`, `run_context`, `trajectory_logger`, `trajectory_event`, `cleanup_fn`, and `checkpoint_store` live in `packages/core/src/types.ts`. `@robmclarty/observability`, `@robmclarty/stores`, and `@robmclarty/engine` `import type` from `@robmclarty/core`. The composition layer owns these types; adapter packages conform to them. This keeps the dependency graph acyclic and gives the composition layer its "deep module" shape — narrow public surface, everything that downstream packages need flowing from a single origin.
+`step<i, o>`, `run_context`, `trajectory_logger`, `trajectory_event`, `cleanup_fn`, and `checkpoint_store` live in `src/core/types.ts`. `@robmclarty/observability`, `@robmclarty/stores`, and `@robmclarty/engine` `import type` from `@robmclarty/core`. The composition layer owns these types; adapter packages conform to them. This keeps the dependency graph acyclic and gives the composition layer its "deep module" shape — narrow public surface, everything that downstream packages need flowing from a single origin.
 
 If a shared type's shape changes (e.g. `trajectory_logger` gains a method), every dependent package must be updated. This coupling is accepted because trajectory plumbing and run-context plumbing are first-class runtime-contract requirements (§5.3).
 
@@ -130,7 +132,7 @@ If a shared type's shape changes (e.g. `trajectory_logger` gains a method), ever
 
 `@ai-sdk/anthropic`, `@ai-sdk/openai`, `@ai-sdk/google`, `ai-sdk-ollama`, `@openrouter/ai-sdk-provider`, and any OpenAI-compatible adapter for LM Studio are declared in `@robmclarty/engine`'s `peerDependencies` with `peerDependenciesMeta.<pkg>.optional: true`. The engine `import()`s them on demand inside provider adapters. An app that only uses Anthropic need not install OpenAI packages. Missing peer deps surface as clear errors at `create_engine` time (when the provider entry is configured), not at first `generate` call.
 
-Provider SDK packages may only be imported from files under `packages/engine/src/providers/`. Enforced by ast-grep rule (to be added: `rules/no-provider-sdk-outside-providers.yml`).
+Provider SDK packages may only be imported from files under `src/engine/providers/`. Enforced by ast-grep rule (to be added: `rules/no-provider-sdk-outside-providers.yml`).
 
 ### `ProviderAdapter` is a discriminated union
 
@@ -143,7 +145,7 @@ Engine-layer callers narrow on `kind` before using branch-specific methods (`gen
 
 ### Subprocess provider discipline
 
-Subprocess-backed provider adapters live under `packages/engine/src/providers/<provider>/` (e.g. `claude_cli/`). They observe these boundary rules:
+Subprocess-backed provider adapters live under `src/engine/providers/<provider>/` (e.g. `claude_cli/`). They observe these boundary rules:
 
 1. **`node:child_process` imports are confined to that provider's directory.** No other engine file, no composition-layer file, no shared type file spawns a subprocess. Enforced by a per-provider ast-grep rule (e.g. `rules/no-child-process-outside-claude-cli.yml`).
 2. **No Vercel AI SDK imports inside a subprocess provider directory.** The whole point of a subprocess transport is that it bypasses the HTTP-SDK path. `ai`, `@ai-sdk/*`, `ai-sdk-ollama`, `@openrouter/ai-sdk-provider` are all forbidden there. Enforced by a per-provider ast-grep rule. `zod` (including `z.toJSONSchema()`) is permitted.
@@ -376,7 +378,7 @@ When an adapter is a `SubprocessProviderAdapter`, every spawned child observes:
 - built-in retry for `rate_limit`, `provider_5xx`, `network` errors with configurable `retry_policy`
 - per-call cost estimation in USD with configurable pricing table and `cost_breakdown`; richer decomposition sourced from AI SDK v6's `usage.inputTokenDetails` / `usage.outputTokenDetails` where providers emit them
 - human-in-the-loop tool approval via `tool.needs_approval` (passthrough to AI SDK v6's `tool({ needsApproval })`) and an engine-wide `on_tool_approval` hook on `generate_options`; abort honored while awaiting approval
-- typed errors (class-based, in `packages/engine/src/errors.ts`)
+- typed errors (class-based, in `src/engine/errors.ts`)
 
 ### Explicitly out of scope (both layers)
 
@@ -407,7 +409,7 @@ When an adapter is a `SubprocessProviderAdapter`, every spawned child observes:
 
 ### Deferred with bar-for-promotion
 
-A feature graduates to in-scope when it appears in at least two unrelated application flows and expressing it without the feature is awkward enough to justify the surface-area cost. Same bar applies to both layers. Composition-layer deferrals are tracked in `packages/core/BACKLOG.md`.
+A feature graduates to in-scope when it appears in at least two unrelated application flows and expressing it without the feature is awkward enough to justify the surface-area cost. Same bar applies to both layers. Composition-layer deferrals are tracked in `src/core/BACKLOG.md`.
 
 ---
 
@@ -417,25 +419,25 @@ CI must verify each of these. A failing check fails the build.
 
 ### Cross-package
 
-1. **No `class` keyword in any `packages/*/src/` file** except the permitted exceptions `packages/core/src/errors.ts` and `packages/engine/src/errors.ts`. Also bans `extends` and `this` in source outside those two files. Enforced by `rules/no-class.yml` (ast-grep) with scoped `ignores:`.
+1. **No `class` keyword in any `src/` file** except the permitted exceptions `src/core/errors.ts` and `src/engine/errors.ts`. Also bans `extends` and `this` in source outside those two files. Enforced by `rules/no-class.yml` (ast-grep) with scoped `ignores:`.
 2. **Named exports only.** No `export default` in any package source. Enforced by `rules/no-default-export.yml`.
-3. **No `process.env` reads** in any `packages/*/src/` file. Adapter packages accept paths and credentials at construction time; engine config flows through `create_engine(config)`. Enforced by `rules/no-process-env-in-core.yml` (**scope to be extended to cover all `packages/*/src/**` paths**).
-4. **snake_case for all exported value symbols and public parameter names.** Type aliases and interfaces remain `PascalCase` (§2). Enforced by `rules/snake-case-exports.yml` (**scope to be extended to all `packages/*/src/**`**).
+3. **No `process.env` reads** in any `src/` file. Adapter packages accept paths and credentials at construction time; engine config flows through `create_engine(config)`. Enforced by `rules/no-process-env-in-core.yml` (**scope to be extended to cover all `src/**` paths**).
+4. **snake_case for all exported value symbols and public parameter names.** Type aliases and interfaces remain `PascalCase` (§2). Enforced by `rules/snake-case-exports.yml` (**scope to be extended to all `src/**`**).
 5. **Every async function performing I/O accepts or closes over an `AbortSignal`.** Manual review gate, with grep-assisted audit of `fetch`, `spawn`, file-stream, `generateText`, `streamText`, and `tool.execute` call sites. I/O that ignores the signal is treated as a bug.
 
 ### Composition layer (`@robmclarty/core`)
 
-6. **`zod` is the only production `dependency` in `@robmclarty/core`'s `package.json`.** Enforced by `scripts/check-deps.mjs`.
-7. **No file in `packages/core/src/` imports from any adapter package** — `@robmclarty/observability`, `@robmclarty/stores`, `@robmclarty/engine`, or any future adapter. Enforced by `rules/no-adapter-import-from-core.yml`.
+6. **`zod` is the only npm dependency the `core` module may import.** With a single root manifest this is enforced at the import level by `rules/no-core-npm-dep-except-zod.yml` (allowing only `zod`, `node:` builtins, relative paths, and `#`-aliases), not by per-package manifest audit.
+7. **No file in `src/core/` imports from any adapter module** — `#observability`, `#stores`, `#engine`, or any future adapter. Enforced by `rules/no-adapter-import-from-core.yml` and the `fallow.toml` boundary DAG.
 8. **No composer imports from another composer.** Each composer depends only on `./types`, `./runner`, `./streaming`, `./cleanup`, and its own siblings within `scope.ts`. Enforced by `rules/no-composer-cross-import.yml`.
 9. **Anonymous steps cannot be checkpointed.** Enforced at flow-construction time inside `checkpoint.ts`: `checkpoint(step(fn), ...)` without an id throws synchronously before `run` is ever called.
 
 ### AI engine layer (`@robmclarty/engine`)
 
-10. **`ai` and `zod` are the only production `dependencies` in `@robmclarty/engine`'s `package.json`.** All provider SDKs live in `peerDependencies` with `optional: true`. Enforced by an extension to `scripts/check-deps.mjs` (to be added).
-11. **No value imports from `@robmclarty/core` in `packages/engine/src/`.** Only `import type { ... } from '@robmclarty/core'` is permitted. The engine never calls composers, the runner, or composition-layer errors at runtime. Enforced by ast-grep rule (to be added: `rules/no-core-value-import-in-engine.yml`).
-12. **Provider SDK packages are imported only inside `packages/engine/src/providers/*.ts`.** No file elsewhere in the engine imports `@ai-sdk/*`, `ai-sdk-ollama`, `@openrouter/ai-sdk-provider`, or `@ai-sdk/openai-compatible`. Enforced by ast-grep rule (to be added: `rules/no-provider-sdk-outside-providers.yml`).
-13. **`generate` is the sole public entry point for model calls.** No exported function outside `packages/engine/src/generate.ts`, `tool_loop.ts`, or `index.ts` invokes Vercel AI SDK's `generateText`, `streamText`, `streamObject`, or a provider SDK function directly. Manual review gate.
+10. **`ai` and `zod` are the only npm dependencies the `engine` module may import** (outside `src/engine/providers/`). Enforced at the import level by `rules/no-engine-npm-dep-except-ai-zod.yml`. All provider SDKs live in the root manifest's `peerDependencies` with `optional: true`, checked by `scripts/check-deps.mjs`.
+11. **No value imports from `@robmclarty/core` in `src/engine/`.** Only `import type { ... } from '@robmclarty/core'` is permitted. The engine never calls composers, the runner, or composition-layer errors at runtime. Enforced by ast-grep rule (to be added: `rules/no-core-value-import-in-engine.yml`).
+12. **Provider SDK packages are imported only inside `src/engine/providers/*.ts`.** No file elsewhere in the engine imports `@ai-sdk/*`, `ai-sdk-ollama`, `@openrouter/ai-sdk-provider`, or `@ai-sdk/openai-compatible`. Enforced by ast-grep rule (to be added: `rules/no-provider-sdk-outside-providers.yml`).
+13. **`generate` is the sole public entry point for model calls.** No exported function outside `src/engine/generate.ts`, `tool_loop.ts`, or `index.ts` invokes Vercel AI SDK's `generateText`, `streamText`, `streamObject`, or a provider SDK function directly. Manual review gate.
 14. **No mutation of `generate_options`, `messages`, `tools`, or `schema`.** Manual review gate; consider an `Object.freeze` debug-mode wrapper for tests.
 15. **Defensive-copy invariant for `list_aliases` and `list_prices`.** Test that mutating the returned object does not affect engine state.
 
@@ -458,17 +460,19 @@ Applied once per subprocess provider (e.g. `claude_cli`, future `gemini_cli`):
 
 ## §8 — Distribution and Versioning
 
-### Packages
+### Package and modules
 
-A pnpm workspace publishing five npm packages under the `@robmclarty` scope. Each "layer" from §3 is its own deep module: narrow public surface, substantial internals.
+**One** npm package, `fascicle`, published from the single repo package. Each "layer" from §3 is a deep module under `src/<module>/` — narrow public surface (its barrel `index.ts`), substantial internals — reachable from sibling modules only through its `#<module>` alias. They are not separately published.
 
-| Package | Directory | Purpose |
-|---|---|---|
-| `@robmclarty/core` | `packages/core/` | composition layer — 16 primitives, `run`, `run.stream`, `describe`, shared types, typed errors, YAML `flow_schema` |
-| `@robmclarty/engine` | `packages/engine/` | AI engine layer — `create_engine`, `generate`, provider routing, alias and pricing tables |
-| `@robmclarty/observability` | `packages/observability/` | trajectory logger adapters (filesystem JSONL default; langfuse peer) |
-| `@robmclarty/stores` | `packages/stores/` | checkpoint store adapters (filesystem default) |
-| `fascicle` | `packages/fascicle/` | umbrella meta-package; re-exports the composition API from `@robmclarty/core`, and (when engine ships) the engine API from `@robmclarty/engine` for single-install users |
+| Module | Directory | Surfaced as | Purpose |
+|---|---|---|---|
+| core | `src/core/` | `fascicle` | composition layer — 16 primitives, `run`, `run.stream`, `describe`, shared types, typed errors, YAML `flow_schema` |
+| engine | `src/engine/` | `fascicle` | AI engine layer — `create_engine`, `generate`, provider routing, alias and pricing tables |
+| composites | `src/composites/` | `fascicle` | built-in composite patterns (ensemble, tournament, consensus, adversarial) |
+| observability | `src/observability/` | `fascicle/adapters` | trajectory logger adapters (filesystem JSONL default; langfuse peer) |
+| stores | `src/stores/` | `fascicle/adapters` | checkpoint store adapters (filesystem default) |
+| viewer | `src/viewer/` | `fascicle` | in-repo dev dashboard; `start_viewer` + the `fascicle-viewer` bin |
+| umbrella | `src/` root | `fascicle` / `fascicle/adapters` | re-export seam; `model_call` is the sole core↔engine value bridge |
 
 - **License:** Apache 2.0.
 - **Build:** ESM `.js` + `.d.ts` via `tsdown`, per publishable package. Source maps included. No minification of library output. `tsup` and `unbuild` are not used; `tsdown` is the library-shaped counterpart to `vite build` from the same VoidZero toolchain that backs Vitest.
@@ -491,9 +495,9 @@ A pnpm workspace publishing five npm packages under the `@robmclarty` scope. Eac
 
 ## §9 — Testing Requirements
 
-- **Runner:** `vitest`. Consistent across every package.
+- **Runner:** `vitest`. Consistent across every module.
 - **Coverage:** every composer has a unit test for its happy path and each documented failure mode. Every happy path and every typed error path in `generate` has a unit test. Failure modes in each build's `spec.md` map to at least one named test in that spec's success criteria.
-- **Test location:** unit tests colocate with source under a `__tests__/` subfolder (`foo.ts` ↔ `__tests__/foo.test.ts` in the same directory). Cross-cutting harnesses live under `packages/<name>/test/` (e.g. `packages/core/test/cleanup/` for SIGINT harness, `packages/core/test/integration/` for cross-composer tests, `packages/engine/test/integration/` for cross-layer tests).
+- **Test location:** unit tests colocate with source under a `__tests__/` subfolder (`foo.ts` ↔ `__tests__/foo.test.ts` in the same directory). Cross-cutting harnesses live under `src/<module>/test/` (e.g. `src/core/test/cleanup/` for SIGINT harness, `src/core/test/integration/` for cross-composer tests, `src/engine/test/integration/` for cross-layer tests), which is outside the source-semantics rules and spell-check.
 - **Mocking:**
   - composition layer: at the step function boundary. Composers under test receive `step(...)` values whose `fn` is a test double. The runner and composers are never mocked.
   - engine layer: at the AI SDK boundary OR at HTTP level via `msw`. The codebase may use either, but a single test file should be consistent.

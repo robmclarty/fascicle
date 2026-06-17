@@ -1,8 +1,8 @@
 /**
- * Public surface for @repo/stores.
+ * Public surface for stores.
  *
  * Re-exports adapter factories that conform to `CheckpointStore` from
- * `@repo/core`. Adapters are injected into the composition layer
+ * `core`. Adapters are injected into the composition layer
  * exclusively through `RunContext` — this package never imports runtime
  * values from core (only types).
  */

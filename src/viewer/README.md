@@ -1,4 +1,4 @@
-# @repo/viewer
+# viewer
 
 Minimal in-repo dev dashboard for visualizing a fascicle run as it executes
 (or after the fact). Single static HTML page, two transports
@@ -21,7 +21,7 @@ pnpm fascicle-viewer .trajectory.jsonl
 ```
 
 The viewer tails the file with `fs.watch`, parses each new line through
-`trajectory_event_schema` from `@repo/core`, and pushes parsed events to
+`trajectory_event_schema` from `core`, and pushes parsed events to
 the browser via SSE. Works on a finished run too — point it at any old
 `.jsonl` for a static replay.
 
@@ -77,7 +77,7 @@ past their cursor that is still in the ring buffer.
 ## Programmatic embed
 
 ```ts
-import { start_viewer } from '@repo/viewer'
+import { start_viewer } from 'fascicle'
 
 const handle = await start_viewer({ path: '.trajectory.jsonl', port: 4242 })
 // ...

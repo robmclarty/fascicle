@@ -1,8 +1,8 @@
 /**
  * Umbrella entry point for fascicle.
  *
- * Re-exports the full public surface of `@repo/core` (composition
- * layer) plus `@repo/engine` (AI engine layer) so downstream apps
+ * Re-exports the full public surface of `core` (composition
+ * layer) plus `engine` (AI engine layer) so downstream apps
  * can install a single package.
  *
  * `aborted_error` lives in core and is re-exported by engine, so both
@@ -12,7 +12,7 @@
  *
  * `model_call` is the sole sanctioned bridge between the two layers; it is
  * the only file under packages/fascicle/src/ that imports values from both
- * @repo/core and @repo/engine (enforced by model-call-is-sole-bridge).
+ * core and engine (enforced by model-call-is-sole-bridge).
  */
 
 export * from '#core'

@@ -1,7 +1,7 @@
 /**
  * Filesystem-backed checkpoint store.
  *
- * Satisfies `CheckpointStore` from `@repo/core`. Each key is stored as
+ * Satisfies `CheckpointStore` from `core`. Each key is stored as
  * a JSON file under the configured root directory. Writes are all-or-nothing:
  * values are written to a temporary sibling file and then atomically renamed
  * into place, so an interrupted write never leaves a partially-written file

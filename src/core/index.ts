@@ -1,10 +1,10 @@
 /**
- * Public surface for @repo/core.
+ * Public surface for core.
  *
  * Side-effect imports ensure every composer registers itself with the runner
- * at module load. Importing anything from `@repo/core` populates the
+ * at module load. Importing anything from `core` populates the
  * dispatch table with the core primitives. Built-in composites
- * (adversarial, ensemble, tournament, consensus) live in @repo/composites
+ * (adversarial, ensemble, tournament, consensus) live in composites
  * and surface through the umbrella package.
  */
 

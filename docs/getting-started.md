@@ -19,7 +19,7 @@ pnpm check
 
 `pnpm check` is the single source of truth for "is the repo healthy". Exit 0 means the workspace is in shape.
 
-> **One package, monorepo for enforcement.** Consumers install **one** thing: `fascicle`. Inside this repo the code is split into `@repo/core`, `@repo/engine`, `@repo/observability`, `@repo/stores`, and `@repo/fascicle` (umbrella) so the workspace graph, `fallow`, and the ast-grep rules in `rules/` can police architectural boundaries directly (e.g. core cannot import adapters, only `packages/config/` reads `process.env`). The `@repo/*` packages are never published.
+> **One package, deep modules for enforcement.** Consumers install **one** thing: `fascicle`. Inside this repo the code is organized as deep modules under `src/` (`src/core`, `src/engine`, `src/observability`, `src/stores`, plus the umbrella at the `src/` root), each reachable only through its barrel via a `#<module>` alias. The ast-grep rules in `rules/` and a directory-level boundary DAG in `fallow.toml` police architectural boundaries directly (e.g. core cannot import adapters; `process.env` is confined to audited exceptions).
 
 ## Your first flow
 

@@ -1,4 +1,4 @@
-# @repo/engine
+# engine
 
 AI engine layer for fascicle. Provider routing, alias resolution, and
 `generate()`. See the top-level [docs/](../../docs/) for concepts and

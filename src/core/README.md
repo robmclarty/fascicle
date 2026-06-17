@@ -1,4 +1,4 @@
-# @repo/core
+# core
 
 The composition layer of `fascicle`. A thin, owned set of primitives for
 composing agentic workflows out of plain values — no framework, no classes,
@@ -94,7 +94,7 @@ from English specifications:
 ## Running a flow
 
 ```typescript
-import { run, sequence, step } from '@repo/core';
+import { run, sequence, step } from 'fascicle';
 
 const flow = sequence([
   step('a', (n: number) => n + 1),
@@ -171,7 +171,7 @@ LLM-writable specs. It is **not parsed at runtime** in v1. The shape is
 validated by a JSON Schema, exported as `flow_schema`:
 
 ```typescript
-import { flow_schema } from '@repo/core';
+import { flow_schema } from 'fascicle';
 // validate a loaded YAML object against flow_schema using any
 // draft-2020-12-aware validator (ajv, hyperjump, etc.)
 ```
@@ -179,7 +179,7 @@ import { flow_schema } from '@repo/core';
 ## Examples
 
 Runnable references live at the repo root in [`examples/`](../../examples/).
-They import from `@repo/fascicle` (the umbrella) and exercise the primitives
+They import from `fascicle` (the umbrella) and exercise the primitives
 exported by this package:
 
 - [`adversarial_build.ts`](../../examples/adversarial_build.ts) — build-and-critique

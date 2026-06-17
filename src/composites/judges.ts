@@ -13,7 +13,7 @@
  *
  * `judge_llm` is engine-agnostic: callers pass their already-configured
  * model_call step (Step<string, string>), which keeps composites decoupled
- * from @repo/engine. The user-facing wiring lives in their own code.
+ * from engine. The user-facing wiring lives in their own code.
  */
 
 import { compose, sequence, step } from '#core'

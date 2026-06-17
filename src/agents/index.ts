@@ -1,10 +1,10 @@
 /**
- * Public surface for @repo/agents.
+ * Public surface for agents.
  *
  * Agents are factories returning `Step<input, output>`. Simple agents are
  * markdown + schema, loaded by `define_agent`. Agents that genuinely need
  * flow logic stay as bespoke TypeScript. The package layers entirely on
- * @repo/core, @repo/composites, and @repo/engine — no private imports.
+ * core, composites, and engine — no private imports.
  */
 
 export { define_agent } from './define_agent.js'

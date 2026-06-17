@@ -1,9 +1,9 @@
 /**
- * Public surface for @repo/viewer.
+ * Public surface for viewer.
  *
  * `start_viewer({ ... })` is the programmatic embed: spin up the server,
  * optionally start tailing a JSONL file, and return a handle that can stop
- * both. `start_viewer` only depends on @repo/core's wire-format schema; it
+ * both. `start_viewer` only depends on core's wire-format schema; it
  * never reaches into the engine, composites, or any provider.
  */
 

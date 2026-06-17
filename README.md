@@ -157,7 +157,7 @@ Fascicle is early and not accepting outside pull requests yet. Bug reports and f
 
 ## Development
 
-This repo is a pnpm workspace. Internally the code is split into `@repo/core`, `@repo/engine`, `@repo/observability`, `@repo/stores`, and `@repo/fascicle` (umbrella). Only the umbrella reaches npm as `fascicle`. The split exists to enforce architectural boundaries (e.g. `@repo/core` cannot import adapters; only `@repo/config` reads `process.env`); fallow and the ast-grep rules in `rules/` police them.
+This repo is a **single package**. The code is organized as deep modules under `src/` — `src/core`, `src/engine`, `src/composites`, `src/observability`, `src/stores`, `src/viewer`, `src/agents` — each reachable only through its barrel via the `#<module>` import alias. The umbrella surface at the `src/` root is what publishes to npm as `fascicle`. Architectural boundaries (e.g. core cannot import adapters; engine imports core type-only; no `process.env` outside the audited exceptions) are enforced by the ast-grep rules in `rules/` and a directory-level boundary DAG in `fallow.toml`. The 5 apps under `examples/*/` are separate workspace members that consume the library via `fascicle: workspace:*`.
 
 ```bash
 pnpm install

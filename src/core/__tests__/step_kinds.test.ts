@@ -18,7 +18,7 @@ import { timeout } from '../timeout.js'
 
 const dummy = step('dummy', (n: number) => n)
 
-// Kinds whose factories live outside @repo/core (in @repo/composites).
+// Kinds whose factories live outside core (in composites).
 // Their constructor coverage is asserted in packages/composites/src/coverage.test.ts;
 // here we only verify they are still listed in STEP_KINDS.
 const COMPOSITE_KINDS = new Set<string>(['adversarial', 'ensemble', 'tournament', 'consensus'])

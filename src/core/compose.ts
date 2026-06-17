@@ -6,7 +6,7 @@
  * the compose span — the implementation tree is preserved while the user's
  * intent ("this whole thing is an ensemble") is surfaced in observability.
  *
- * Used by the @repo/composites package to make built-in patterns appear under
+ * Used by the composites package to make built-in patterns appear under
  * their familiar names, and available to library consumers who want their own
  * named composites to show up in logs as first-class components.
  *

@@ -5,7 +5,7 @@
  * field names remain snake_case.
  *
  * Shared runtime types (TrajectoryLogger, TrajectoryEvent, RunContext) live in
- * @repo/core. The engine imports them via `import type` only; no value
+ * core. The engine imports them via `import type` only; no value
  * import from core is permitted anywhere in packages/engine/src/.
  */
 

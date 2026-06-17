@@ -16,4 +16,4 @@ rule:
     - pattern: import * as $NAME from "$PATH"
 constraints:
   PATH:
-    regex: '^(@repo/(core|engine)(/.*)?|#(core|engine))$'
+    regex: '^#(core|engine)$'
