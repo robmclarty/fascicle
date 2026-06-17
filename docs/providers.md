@@ -277,7 +277,7 @@ Error: optional peer '@ai-sdk/anthropic' is not installed. Install it with
 or exclude the anthropic provider from create_engine(config).providers.
 ```
 
-This means constructing an engine with six providers does not force you to install six SDKs — only the ones you actually call.
+This means constructing an engine with seven providers does not force you to install seven SDKs — only the ones you actually call.
 
 ## Usage normalization
 

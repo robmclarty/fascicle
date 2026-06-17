@@ -107,6 +107,7 @@ await run(flow, input, {
 | `openai`     | `@ai-sdk/openai`              | API key             |
 | `google`     | `@ai-sdk/google`              | API key             |
 | `openrouter` | `@openrouter/ai-sdk-provider` | API key             |
+| `bedrock`    | `@ai-sdk/amazon-bedrock`      | `region` + AWS credentials |
 | `ollama`     | `ai-sdk-ollama`               | local `base_url`    |
 | `lmstudio`   | `@ai-sdk/openai-compatible`   | local `base_url`    |
 | `claude_cli` | none (spawns `claude`)        | OAuth or API key    |
@@ -143,7 +144,7 @@ For zero-latency streaming from inside a long-running flow, pair it with `http_l
 
 - [docs/getting-started.md](./docs/getting-started.md) — install and run your first flow
 - [docs/concepts.md](./docs/concepts.md) — step-as-value, trajectories, cancellation
-- [docs/configuration.md](./docs/configuration.md) — engine config, aliases, pricing, retries
+- [docs/configuration.md](./docs/configuration.md) — engine config, defaults, pricing, retries
 - [docs/providers.md](./docs/providers.md) — per-provider adapter notes
 - [docs/cli.md](./docs/cli.md) — the `claude_cli` subprocess adapter
 - [docs/cookbook.md](./docs/cookbook.md) — retries, fan-out, judges, HITL, tool loops

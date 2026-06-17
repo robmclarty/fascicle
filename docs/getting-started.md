@@ -126,7 +126,7 @@ await engine.dispose();
 
 - [docs/writing-a-harness.md](./writing-a-harness.md) — build a runner around fascicle.
 - [docs/concepts.md](./concepts.md) — step-as-value, trajectories, cancellation.
-- [docs/configuration.md](./configuration.md) — engine config, aliases, provider setup.
+- [docs/configuration.md](./configuration.md) — engine config, defaults, provider setup.
 - [docs/providers.md](./providers.md) — per-provider adapter notes.
 - [docs/cli.md](./cli.md) — the `claude_cli` subprocess adapter.
 - [docs/cookbook.md](./cookbook.md) — retries, fan-out, judges, human-in-the-loop.

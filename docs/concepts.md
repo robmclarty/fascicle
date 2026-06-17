@@ -7,7 +7,7 @@ The mental model behind fascicle. Read this once — the rest of the docs assume
 fascicle ships two independently useful layers, re-exported from one package.
 
 - **Composition layer** (the `core` + `composites` modules, surfaced via `fascicle`). 18 primitives for composing work out of plain values. No network, no LLM calls, no ambient state.
-- **Engine layer** (the `engine` module, surfaced via `fascicle`). `create_engine(config)` returns a unified `generate` surface over seven provider adapters. No composition, no step plumbing.
+- **Engine layer** (the `engine` module, surfaced via `fascicle`). `create_engine(config)` returns a unified `generate` surface over eight provider adapters. No composition, no step plumbing.
 
 They are glued by exactly one value: `model_call` (at the umbrella `src/` root). That is the only file allowed to import values from both layers — an ast-grep rule in `rules/` enforces it. Everything else either composes or generates, never both.
 
@@ -284,7 +284,7 @@ Not a runtime concept, but a project one. `pnpm check:all` is the single source 
 
 - [getting-started.md](./getting-started.md) — install and run your first flow.
 - [writing-a-harness.md](./writing-a-harness.md) — build a runner around fascicle.
-- [configuration.md](./configuration.md) — engine config, aliases, defaults.
+- [configuration.md](./configuration.md) — engine config, provider setup, defaults.
 - [providers.md](./providers.md) — per-provider adapter notes.
 - [cli.md](./cli.md) — the `claude_cli` subprocess provider.
 - [cookbook.md](./cookbook.md) — worked patterns (retries, fan-out, judges, HITL).

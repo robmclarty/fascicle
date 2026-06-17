@@ -81,7 +81,7 @@ These were considered and deliberately deferred. Doing any of them now trades
 surface correctness for interior work users cannot see, or adds scope the goals
 do not need:
 
-- An eighth provider.
+- ~~An eighth provider.~~ Superseded: AWS Bedrock shipped as the eighth provider in v0.7.0.
 - Feature parity with Mastra or Strands (memory modules, an Agent class,
   multi-agent handoffs).
 - A `Step`-type variance redesign. Document the inference limits honestly
