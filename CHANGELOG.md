@@ -1,6 +1,19 @@
 # Changelog
 
-## Unreleased
+## v0.8.0 — 2026-06-17
+
+### Changed
+
+- Collapsed the internal pnpm workspace (the nine `@repo/*` packages) into a single package with `src/<module>/` deep modules. The published `fascicle` surface is unchanged — same exports, same bundle, same install; this restructures the repo's source layout and dev-time tooling only.
+
+### Internal
+
+- Cross-module access is sealed through barrel-only `#<module>` import aliases (declared in `package.json` `imports`, mirrored in `tsconfig.json` paths and the vitest alias); `rules/no-cross-module-relative-import.yml` closes the relative-path escape, so every module is reachable only through its `index.ts`.
+- Replaced the per-package manifest dependency graph with a directory-level default-deny boundary DAG in `fallow.toml`, plus `no-core-npm-dep-except-zod` and `no-engine-npm-dep-except-ai-zod` ast-grep rules that recover the old `check-deps.mjs` dependency-shape invariants at the import level.
+- Removed the unused `config` module; examples now import the published surface (`fascicle`, `fascicle/adapters`, `fascicle/agents`) and depend on the library via `fascicle: workspace:*`.
+- Realigned AGENTS.md, README, docs, and `.ridgeline/{taste,constraints}.md` to the single-package layout (taste Principles 15 and 16 rewritten).
+
+## v0.7.0 — 2026-06-16
 
 ### Added
 
