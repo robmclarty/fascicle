@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.8.1 — 2026-06-17
+
+### Internal
+
+- Documentation only (no change to the published surface or bundle): realigned the live docs to the single-package `src/` layout introduced in v0.8.0. Fixed stale `packages/<x>` references (README links, the provider types path, the live-test path and command), rewrote `configuration.md` to read credentials straight from `process.env` now that the `@repo/config` module is gone, updated the harness layout note to the `#<module>` aliases, and refreshed the roadmap (Phase 1 marked shipped, the MCP tools adapter flagged as the next pending task).
+
 ## v0.8.0 — 2026-06-17
 
 ### Changed
