@@ -1,8 +1,8 @@
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { aborted_error, describe as describe_flow, run, step } from '@repo/core'
-import type { TrajectoryEvent, TrajectoryLogger } from '@repo/core'
+import { aborted_error, describe as describe_flow, run, step } from '#core'
+import type { TrajectoryEvent, TrajectoryLogger } from '#core'
 import { afterEach, describe, expect, it } from 'vitest'
 import { learn, type LearnInput } from '../learn.js'
 

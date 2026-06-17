@@ -34,8 +34,8 @@ import {
   step,
   trajectory_event_schema,
   use,
-} from '@repo/core'
-import type { RunContext, Step, TrajectoryEvent } from '@repo/core'
+} from '#core'
+import type { RunContext, Step, TrajectoryEvent } from '#core'
 
 export type TrajectorySource =
   | { readonly kind: 'events'; readonly events: ReadonlyArray<TrajectoryEvent> }

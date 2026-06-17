@@ -1,4 +1,4 @@
-import type { TrajectoryEvent, TrajectoryLogger } from '@repo/core'
+import type { TrajectoryEvent, TrajectoryLogger } from '#core'
 import { describe, expect, it } from 'vitest'
 import { tee_logger } from '../tee.js'
 

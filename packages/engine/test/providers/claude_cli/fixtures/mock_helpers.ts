@@ -14,7 +14,7 @@ import { mkdtemp, writeFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import type { TrajectoryEvent, TrajectoryLogger } from '@repo/core'
+import type { TrajectoryEvent, TrajectoryLogger } from '#core'
 
 const here = dirname(fileURLToPath(import.meta.url))
 

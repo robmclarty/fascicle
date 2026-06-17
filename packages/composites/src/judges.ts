@@ -16,8 +16,8 @@
  * from @repo/engine. The user-facing wiring lives in their own code.
  */
 
-import { compose, sequence, step } from '@repo/core'
-import type { Step } from '@repo/core'
+import { compose, sequence, step } from '#core'
+import type { Step } from '#core'
 import { normalize_score } from './bench.js'
 import type { Judge, JudgeArgs, Score } from './bench.js'
 

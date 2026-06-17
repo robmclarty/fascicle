@@ -7,7 +7,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
-import type { TrajectoryEvent, TrajectoryLogger } from '@repo/core'
+import type { TrajectoryEvent, TrajectoryLogger } from '#core'
 import type { StreamChunk } from '../types.js'
 import {
   build_mock_ai_module,

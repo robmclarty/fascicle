@@ -1,0 +1,16 @@
+id: no-core-npm-dep-except-zod
+message: "The core module may only depend on zod among npm packages (recovers the check-deps.mjs core-deps==zod invariant now that there is one manifest). Allowed import specifiers: zod, node: builtins, relative paths, and #-aliases (the latter are separately policed by the boundary rules)."
+severity: error
+language: typescript
+files:
+  - packages/core/src/**/*.ts
+ignores:
+  - "**/*.test.ts"
+rule:
+  any:
+    - pattern: import $$$ from '$PATH'
+    - pattern: import $$$ from "$PATH"
+constraints:
+  PATH:
+    not:
+      regex: '^(zod($|/)|node:|#|\.)'

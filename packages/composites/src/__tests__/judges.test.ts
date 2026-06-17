@@ -1,5 +1,5 @@
-import { run, step } from '@repo/core'
-import type { Step } from '@repo/core'
+import { run, step } from '#core'
+import type { Step } from '#core'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { JudgeArgs, Score } from '../bench.js'
 import { judge_equals, judge_llm, judge_with } from '../judges.js'

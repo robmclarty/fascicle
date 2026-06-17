@@ -14,8 +14,8 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { run, step, timeout } from '@repo/core'
-import type { TrajectoryEvent, TrajectoryLogger } from '@repo/core'
+import { run, step, timeout } from '#core'
+import type { TrajectoryEvent, TrajectoryLogger } from '#core'
 import {
   build_mock_ai_module,
   build_mock_registry_module,

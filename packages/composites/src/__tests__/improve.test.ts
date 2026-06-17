@@ -1,5 +1,5 @@
-import { run, step } from '@repo/core'
-import type { TrajectoryEvent, TrajectoryLogger } from '@repo/core'
+import { run, step } from '#core'
+import type { TrajectoryEvent, TrajectoryLogger } from '#core'
 import { describe, expect, it } from 'vitest'
 import {
   improve,

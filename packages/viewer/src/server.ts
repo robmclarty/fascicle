@@ -17,7 +17,7 @@ import { createReadStream, statSync } from 'node:fs'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { trajectory_event_schema, type ParsedTrajectoryEvent } from '@repo/core'
+import { trajectory_event_schema, type ParsedTrajectoryEvent } from '#core'
 import type { Broadcaster } from './broadcast.js'
 
 const SSE_HEARTBEAT_MS = 15_000

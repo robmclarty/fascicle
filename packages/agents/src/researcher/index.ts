@@ -11,9 +11,9 @@
  * the boundary. `ctx.abort` is forwarded to both so cancellation propagates.
  */
 
-import { compose, loop, step } from '@repo/core'
-import type { RunContext, Step } from '@repo/core'
-import type { Engine } from '@repo/engine'
+import { compose, loop, step } from '#core'
+import type { RunContext, Step } from '#core'
+import type { Engine } from '#engine'
 import { define_agent } from '../define_agent.js'
 import {
   summarizer_output_schema,

@@ -22,8 +22,8 @@
  * State threading is the entire job.
  */
 
-import { compose, loop, scope, step, stash, use } from '@repo/core'
-import type { LoopResult, Step } from '@repo/core'
+import { compose, loop, scope, step, stash, use } from '#core'
+import type { LoopResult, Step } from '#core'
 import { ensemble_step } from './ensemble_step.js'
 
 export type Candidate<c> = {

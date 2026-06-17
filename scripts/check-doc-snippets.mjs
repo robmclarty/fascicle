@@ -84,6 +84,19 @@ function tsconfig_for(mode) {
   // Paths are resolved relative to this generated tsconfig's directory
   // (.check/doc-snippets/), so no baseUrl is needed (baseUrl is deprecated).
   const base = mode === 'dist' ? '../../dist' : '../../packages/fascicle/src';
+  // In non-dist mode tsc follows the umbrella source, which imports the internal
+  // modules via #-aliases. The generated tsconfig overrides `paths`, so these
+  // must be re-declared here (relative to .check/doc-snippets/). The dist bundle
+  // has them inlined, so dist mode needs no #-alias paths.
+  const module_aliases = {
+    '#core': ['../../packages/core/src/index.ts'],
+    '#engine': ['../../packages/engine/src/index.ts'],
+    '#composites': ['../../packages/composites/src/index.ts'],
+    '#observability': ['../../packages/observability/src/index.ts'],
+    '#stores': ['../../packages/stores/src/index.ts'],
+    '#viewer': ['../../packages/viewer/src/index.ts'],
+    '#agents': ['../../packages/agents/src/index.ts'],
+  };
   const target =
     mode === 'dist'
       ? {
@@ -95,6 +108,7 @@ function tsconfig_for(mode) {
           fascicle: [`${base}/index.ts`],
           'fascicle/adapters': [`${base}/adapters.ts`],
           '@repo/fascicle': [`${base}/index.ts`],
+          ...module_aliases,
         };
   return {
     extends: '../../tsconfig.json',

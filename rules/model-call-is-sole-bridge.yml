@@ -9,15 +9,12 @@ ignores:
   - packages/fascicle/src/**/*.test.ts
 rule:
   any:
-    - pattern: import { $$$ } from '@repo/core'
-    - pattern: import { $$$ } from "@repo/core"
-    - pattern: import { $$$ } from '@repo/engine'
-    - pattern: import { $$$ } from "@repo/engine"
-    - pattern: import $NAME from '@repo/core'
-    - pattern: import $NAME from "@repo/core"
-    - pattern: import $NAME from '@repo/engine'
-    - pattern: import $NAME from "@repo/engine"
-    - pattern: import * as $NAME from '@repo/core'
-    - pattern: import * as $NAME from "@repo/core"
-    - pattern: import * as $NAME from '@repo/engine'
-    - pattern: import * as $NAME from "@repo/engine"
+    - pattern: import { $$$ } from '$PATH'
+    - pattern: import { $$$ } from "$PATH"
+    - pattern: import $NAME from '$PATH'
+    - pattern: import $NAME from "$PATH"
+    - pattern: import * as $NAME from '$PATH'
+    - pattern: import * as $NAME from "$PATH"
+constraints:
+  PATH:
+    regex: '^(@repo/(core|engine)(/.*)?|#(core|engine))$'

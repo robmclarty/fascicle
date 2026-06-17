@@ -15,7 +15,7 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import type { CheckpointStore } from '@repo/core'
+import type { CheckpointStore } from '#core'
 
 export type FilesystemStoreOptions = {
   readonly root_dir: string

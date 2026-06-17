@@ -27,9 +27,9 @@
 
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { aborted_error, step } from '@repo/core'
-import type { RunContext, Step } from '@repo/core'
-import type { Engine, GenerateOptions } from '@repo/engine'
+import { aborted_error, step } from '#core'
+import type { RunContext, Step } from '#core'
+import type { Engine, GenerateOptions } from '#engine'
 import type { z } from 'zod'
 
 export type AgentBuiltPrompt =

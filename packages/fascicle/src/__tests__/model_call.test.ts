@@ -1,7 +1,7 @@
 import { describe as vdescribe, expect, it } from 'vitest'
-import { aborted_error, describe, run } from '@repo/core'
-import type { RunContext } from '@repo/core'
-import type { Engine, GenerateOptions, GenerateResult, StreamChunk } from '@repo/engine'
+import { aborted_error, describe, run } from '#core'
+import type { RunContext } from '#core'
+import type { Engine, GenerateOptions, GenerateResult, StreamChunk } from '#engine'
 import { model_call } from '../model_call.js'
 
 function make_result(content: string): GenerateResult {

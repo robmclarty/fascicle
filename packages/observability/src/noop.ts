@@ -7,7 +7,7 @@
  */
 
 import { randomUUID } from 'node:crypto'
-import type { TrajectoryLogger } from '@repo/core'
+import type { TrajectoryLogger } from '#core'
 
 export function noop_logger(): TrajectoryLogger {
   return {

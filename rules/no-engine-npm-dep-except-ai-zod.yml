@@ -1,0 +1,18 @@
+id: no-engine-npm-dep-except-ai-zod
+message: "The engine module may only depend on ai and zod among npm packages (recovers the check-deps.mjs engine-deps==core+ai+zod invariant). Allowed: ai, zod, node: builtins, relative paths, #-aliases. Provider SDKs (@ai-sdk/*, ai-sdk-ollama, @openrouter/*) are confined to providers/ by no-provider-sdk-outside-providers and are intentionally not allowed here."
+severity: error
+language: typescript
+files:
+  - packages/engine/src/**/*.ts
+ignores:
+  - packages/engine/src/providers/**/*.ts
+  - packages/engine/src/errors.ts
+  - "**/*.test.ts"
+rule:
+  any:
+    - pattern: import $$$ from '$PATH'
+    - pattern: import $$$ from "$PATH"
+constraints:
+  PATH:
+    not:
+      regex: '^(ai($|/)|zod($|/)|node:|#|\.)'

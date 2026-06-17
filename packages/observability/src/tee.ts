@@ -12,7 +12,7 @@
  * across-sink ids may differ.
  */
 
-import type { TrajectoryLogger } from '@repo/core'
+import type { TrajectoryLogger } from '#core'
 
 export function tee_logger(...loggers: ReadonlyArray<TrajectoryLogger>): TrajectoryLogger {
   if (loggers.length === 0) {

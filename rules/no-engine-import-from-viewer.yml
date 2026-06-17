@@ -10,4 +10,4 @@ rule:
     - pattern: import $$$ from "$PATH"
 constraints:
   PATH:
-    regex: '^(@repo/(engine|composites|agents|fascicle|stores|observability)(/.*)?|@ai-sdk/.*|@openrouter/.*|ai-sdk-ollama|ai|langfuse)$'
+    regex: '^(@repo/(engine|composites|agents|fascicle|stores|observability)(/.*)?|#(engine|composites|agents|stores|observability)|@ai-sdk/.*|@openrouter/.*|ai-sdk-ollama|ai|langfuse)$'

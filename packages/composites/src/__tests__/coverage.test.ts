@@ -1,4 +1,4 @@
-import { is_step_kind, step, STEP_KINDS } from '@repo/core'
+import { is_step_kind, step, STEP_KINDS } from '#core'
 import { describe, expect, it } from 'vitest'
 import { adversarial } from '../adversarial.js'
 import { consensus } from '../consensus.js'

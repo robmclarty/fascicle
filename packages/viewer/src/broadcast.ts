@@ -12,7 +12,7 @@
  * server can log it.
  */
 
-import type { ParsedTrajectoryEvent } from '@repo/core'
+import type { ParsedTrajectoryEvent } from '#core'
 
 export type BroadcastEvent = {
   readonly id: number

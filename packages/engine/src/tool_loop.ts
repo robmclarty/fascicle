@@ -26,7 +26,7 @@
  */
 
 import type { z } from 'zod'
-import type { TrajectoryLogger } from '@repo/core'
+import type { TrajectoryLogger } from '#core'
 import type {
   CostBreakdown,
   FinishReason,

@@ -6,6 +6,34 @@ export default defineConfig({
   resolve: {
     alias: [
       {
+        find: /^#core$/,
+        replacement: fileURLToPath(new URL('./packages/core/src/index.ts', import.meta.url)),
+      },
+      {
+        find: /^#engine$/,
+        replacement: fileURLToPath(new URL('./packages/engine/src/index.ts', import.meta.url)),
+      },
+      {
+        find: /^#composites$/,
+        replacement: fileURLToPath(new URL('./packages/composites/src/index.ts', import.meta.url)),
+      },
+      {
+        find: /^#observability$/,
+        replacement: fileURLToPath(new URL('./packages/observability/src/index.ts', import.meta.url)),
+      },
+      {
+        find: /^#stores$/,
+        replacement: fileURLToPath(new URL('./packages/stores/src/index.ts', import.meta.url)),
+      },
+      {
+        find: /^#viewer$/,
+        replacement: fileURLToPath(new URL('./packages/viewer/src/index.ts', import.meta.url)),
+      },
+      {
+        find: /^#agents$/,
+        replacement: fileURLToPath(new URL('./packages/agents/src/index.ts', import.meta.url)),
+      },
+      {
         find: /^fascicle\/adapters$/,
         replacement: fileURLToPath(new URL('./packages/fascicle/src/adapters.ts', import.meta.url)),
       },

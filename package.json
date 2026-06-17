@@ -27,6 +27,15 @@
       "import": "./dist/adapters.js"
     }
   },
+  "imports": {
+    "#core": "./packages/core/src/index.ts",
+    "#engine": "./packages/engine/src/index.ts",
+    "#composites": "./packages/composites/src/index.ts",
+    "#observability": "./packages/observability/src/index.ts",
+    "#stores": "./packages/stores/src/index.ts",
+    "#viewer": "./packages/viewer/src/index.ts",
+    "#agents": "./packages/agents/src/index.ts"
+  },
   "bin": {
     "fascicle-viewer": "./dist/bin/fascicle-viewer.js"
   },

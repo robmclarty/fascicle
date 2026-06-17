@@ -15,10 +15,10 @@
  * @repo/core and @repo/engine (enforced by model-call-is-sole-bridge).
  */
 
-export * from '@repo/core'
-export * from '@repo/composites'
+export * from '#core'
+export * from '#composites'
 
-export { create_engine } from '@repo/engine'
+export { create_engine } from '#engine'
 
 export {
   claude_cli_error,
@@ -35,7 +35,7 @@ export {
   tool_approval_denied_error,
   tool_error,
   version as engine_version,
-} from '@repo/engine'
+} from '#engine'
 
 export type {
   AssistantContentPart,
@@ -64,12 +64,12 @@ export type {
   ToolExecContext,
   UsageTotals,
   UserContentPart,
-} from '@repo/engine'
+} from '#engine'
 
 export { model_call } from './model_call.js'
 export type { ModelCallConfig, ModelCallInput } from './model_call.js'
 
 export { forward_standard_env } from './forward_standard_env.js'
 
-export { run_viewer_cli, start_viewer } from '@repo/viewer'
-export type { StartViewerOptions, ViewerHandle } from '@repo/viewer'
+export { run_viewer_cli, start_viewer } from '#viewer'
+export type { StartViewerOptions, ViewerHandle } from '#viewer'

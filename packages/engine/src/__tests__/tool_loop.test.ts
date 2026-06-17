@@ -8,7 +8,7 @@
 
 import { describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
-import type { TrajectoryLogger } from '@repo/core'
+import type { TrajectoryLogger } from '#core'
 import {
   run_tool_loop,
   type InvokeOnce,

@@ -12,8 +12,8 @@
  * the most recent results so each round receives the same input.
  */
 
-import { compose, loop, parallel, pipe, scope, stash, step, use } from '@repo/core'
-import type { Step } from '@repo/core'
+import { compose, loop, parallel, pipe, scope, stash, step, use } from '#core'
+import type { Step } from '#core'
 
 export type ConsensusConfig<i, o> = {
   readonly name?: string

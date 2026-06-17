@@ -11,8 +11,8 @@
  * from `parallel`'s own contract.
  */
 
-import { compose, parallel, sequence, step } from '@repo/core'
-import type { Step } from '@repo/core'
+import { compose, parallel, sequence, step } from '#core'
+import type { Step } from '#core'
 
 export type EnsembleConfig<i, o> = {
   readonly name?: string

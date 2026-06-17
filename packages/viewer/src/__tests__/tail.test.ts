@@ -2,7 +2,7 @@ import { appendFileSync, mkdtempSync, rmSync, truncateSync, writeFileSync } from
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import type { ParsedTrajectoryEvent } from '@repo/core'
+import type { ParsedTrajectoryEvent } from '#core'
 import { start_tail } from '../tail.js'
 
 let work_dir = ''

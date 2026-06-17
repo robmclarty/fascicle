@@ -7,7 +7,7 @@
  * these helpers capture the event shape and keep dispatch consistent.
  */
 
-import type { TrajectoryLogger } from '@repo/core'
+import type { TrajectoryLogger } from '#core'
 import type {
   CostBreakdown,
   FinishReason,

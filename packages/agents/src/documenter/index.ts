@@ -7,8 +7,8 @@
  * requested style into the user message.
  */
 
-import type { Step } from '@repo/core'
-import type { Engine } from '@repo/engine'
+import type { Step } from '#core'
+import type { Engine } from '#engine'
 import { define_agent } from '../define_agent.js'
 import {
   documenter_output_schema,

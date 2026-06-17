@@ -19,8 +19,8 @@
  * underlying `parallel` and `map` contracts.
  */
 
-import { compose, map, parallel, scope, stash, step, use } from '@repo/core'
-import type { Step } from '@repo/core'
+import { compose, map, parallel, scope, stash, step, use } from '#core'
+import type { Step } from '#core'
 
 export type EnsembleStepConfig<i, o, ranked> = {
   readonly name?: string

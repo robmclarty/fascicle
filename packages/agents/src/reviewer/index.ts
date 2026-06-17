@@ -7,8 +7,8 @@
  * user message.
  */
 
-import type { Step } from '@repo/core'
-import type { Engine } from '@repo/engine'
+import type { Step } from '#core'
+import type { Engine } from '#engine'
 import { define_agent } from '../define_agent.js'
 import {
   reviewer_output_schema,

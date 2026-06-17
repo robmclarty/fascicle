@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { TrajectoryEvent, TrajectoryLogger } from '@repo/core'
+import type { TrajectoryEvent, TrajectoryLogger } from '#core'
 import {
   create_option_ignored_dedup,
   create_pricing_missing_dedup,

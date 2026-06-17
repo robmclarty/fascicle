@@ -25,7 +25,7 @@
  */
 
 import { z } from 'zod'
-import type { TrajectoryLogger } from '@repo/core'
+import type { TrajectoryLogger } from '#core'
 import type { StreamChunk, UsageTotals } from '../../types.js'
 
 const cli_usage_schema = z.object({

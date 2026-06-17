@@ -14,8 +14,8 @@
  */
 
 import { createHash } from 'node:crypto'
-import { aborted_error, step } from '@repo/core'
-import type { Step, TrajectoryLogger } from '@repo/core'
+import { aborted_error, step } from '#core'
+import type { Step, TrajectoryLogger } from '#core'
 import type {
   EffortLevel,
   Engine,
@@ -25,7 +25,7 @@ import type {
   RetryPolicy,
   Tool,
   ToolApprovalHandler,
-} from '@repo/engine'
+} from '#engine'
 import type { z } from 'zod'
 
 export type ModelCallInput = string | ReadonlyArray<Message>

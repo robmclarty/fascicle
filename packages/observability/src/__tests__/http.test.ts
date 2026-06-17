@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { trajectory_event_schema } from '@repo/core'
+import { trajectory_event_schema } from '#core'
 import { http_logger, type HttpLoggerFetch } from '../http.js'
 
 type Captured = {

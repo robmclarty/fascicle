@@ -12,6 +12,11 @@
  * in engine source — see `rules/no-core-value-import-in-engine.yml` ignores.
  */
 
+// NOTE (migration): this single runtime value re-export stays on the workspace
+// name `@repo/core` during the transition. Node forbids `#`-import targets that
+// escape a package dir, so the SIGINT harness child (which loads this file via
+// node, not vitest) cannot resolve `#core` while sub-package manifests exist.
+// Flipped to `#core` in the atomic move step once everything is one package.
 export { aborted_error } from '@repo/core'
 
 export class rate_limit_error extends Error {

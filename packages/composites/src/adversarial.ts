@@ -17,8 +17,8 @@
  * primitives. Read it as documentation.
  */
 
-import { compose, loop, pipe, scope, stash, step, use } from '@repo/core'
-import type { Step } from '@repo/core'
+import { compose, loop, pipe, scope, stash, step, use } from '#core'
+import type { Step } from '#core'
 
 export type AdversarialBuildInput<input, candidate> = {
   readonly input: input

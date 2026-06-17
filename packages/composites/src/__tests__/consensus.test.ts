@@ -1,5 +1,5 @@
-import { aborted_error, run, step } from '@repo/core'
-import type { TrajectoryEvent, TrajectoryLogger } from '@repo/core'
+import { aborted_error, run, step } from '#core'
+import type { TrajectoryEvent, TrajectoryLogger } from '#core'
 import { afterEach, describe, expect, it } from 'vitest'
 import { consensus } from '../consensus.js'
 

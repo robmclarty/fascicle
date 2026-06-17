@@ -1,4 +1,4 @@
-import { adversarial, ensemble } from '@repo/composites'
+import { adversarial, ensemble } from '#composites'
 import {
   checkpoint,
   describe as describe_tree,
@@ -9,8 +9,8 @@ import {
   stash,
   step,
   use,
-} from '@repo/core'
-import type { CheckpointStore } from '@repo/core'
+} from '#core'
+import type { CheckpointStore } from '#core'
 import { describe, expect, it, vi } from 'vitest'
 
 function memory_store(): CheckpointStore & { data: Map<string, unknown> } {

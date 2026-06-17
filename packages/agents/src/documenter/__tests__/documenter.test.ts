@@ -1,5 +1,5 @@
-import { run } from '@repo/core'
-import type { Engine, GenerateOptions, GenerateResult } from '@repo/engine'
+import { run } from '#core'
+import type { Engine, GenerateOptions, GenerateResult } from '#engine'
 import { afterEach, describe, expect, it } from 'vitest'
 import { documenter } from '../index.js'
 import type { DocumenterOutput } from '../schema.js'

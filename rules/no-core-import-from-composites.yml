@@ -10,4 +10,4 @@ rule:
     - pattern: import $$$ from "$PATH"
 constraints:
   PATH:
-    regex: '^@repo/composites(/.*)?$'
+    regex: '^(@repo/composites(/.*)?|#composites)$'

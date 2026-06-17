@@ -18,7 +18,7 @@
 
 import { type FSWatcher, watch as fs_watch } from 'node:fs'
 import { open, stat } from 'node:fs/promises'
-import { trajectory_event_schema, type ParsedTrajectoryEvent } from '@repo/core'
+import { trajectory_event_schema, type ParsedTrajectoryEvent } from '#core'
 
 export type TailOptions = {
   readonly path: string
