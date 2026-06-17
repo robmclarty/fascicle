@@ -18,7 +18,7 @@ import {
   claude_cli_error,
   engine_disposed_error,
 } from '../../../src/errors.js'
-import type { AliasTarget, GenerateOptions } from '../../../src/types.js'
+import type { ResolvedModel, GenerateOptions } from '../../../src/types.js'
 import {
   MOCK_CLAUDE_PATH,
   build_mock_env,
@@ -42,7 +42,7 @@ async function track(handle: MockScriptHandle): Promise<MockScriptHandle> {
   return handle
 }
 
-const alias_target: AliasTarget = {
+const alias_target: ResolvedModel = {
   provider: 'claude_cli',
   model_id: 'claude-sonnet-4-6',
 }

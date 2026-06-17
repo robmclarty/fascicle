@@ -26,7 +26,6 @@ vi.mock('../providers/registry.js', async () => build_mock_registry_module())
 import { create_engine } from '../create_engine.js'
 import {
   aborted_error,
-  model_family_unavailable_error,
   provider_capability_error,
   provider_error,
   provider_not_configured_error,
@@ -196,7 +195,7 @@ describe('spec §10: success criteria (remaining)', () => {
       providers: { ollama: { base_url: 'http://localhost:11434' } },
     })
     await engine_ollama.generate({
-      model: 'ollama:gemma3:27b',
+      model: 'gemma3:27b',
       prompt: 'x',
       effort: 'high',
       trajectory: logger,
@@ -413,16 +412,14 @@ describe('spec §10: success criteria (remaining)', () => {
     expect(kinds).toContain('tool_call')
   })
 
-  it('C28 two engines maintain independent alias and pricing tables under concurrent calls', async () => {
+  it('C28 two engines resolve independent models under concurrent calls', async () => {
     const a = create_engine({ providers: { anthropic: { api_key: 'key_a' } } })
     const b = create_engine({ providers: { anthropic: { api_key: 'key_b' } } })
-    a.register_alias('shared', { provider: 'anthropic', model_id: 'claude-opus-4-7' })
-    b.register_alias('shared', { provider: 'anthropic', model_id: 'claude-haiku-4-5' })
     enqueue_generate_text(make_text_result('a'))
     enqueue_generate_text(make_text_result('b'))
     const [result_a, result_b] = await Promise.all([
-      a.generate({ model: 'shared', prompt: 'x' }),
-      b.generate({ model: 'shared', prompt: 'x' }),
+      a.generate({ model: 'claude-opus-4-7', prompt: 'x' }),
+      b.generate({ model: 'claude-haiku-4-5', prompt: 'x' }),
     ])
     const ids = new Set([result_a.model_resolved.model_id, result_b.model_resolved.model_id])
     expect(ids).toEqual(new Set(['claude-opus-4-7', 'claude-haiku-4-5']))
@@ -447,7 +444,7 @@ describe('spec §10: success criteria (remaining)', () => {
       output_per_million: 15,
     })
     const result = await engine.generate({
-      model: 'sonnet',
+      model: 'claude-sonnet-4-6',
       prompt: 'x',
       tools: [
         {
@@ -473,12 +470,8 @@ describe('spec §10: success criteria (remaining)', () => {
     })
     enqueue_generate_text(make_text_result('done'))
     const engine = basic_engine()
-    engine.register_alias('custom', {
-      provider: 'anthropic',
-      model_id: 'never-heard-of-it',
-    })
     const result = await engine.generate({
-      model: 'custom',
+      model: 'never-heard-of-it',
       prompt: 'x',
       trajectory: logger,
       tools: [
@@ -497,16 +490,10 @@ describe('spec §10: success criteria (remaining)', () => {
 })
 
 describe('spec §9: failure modes (remaining)', () => {
-  it('F1 a family requested on a provider that does not offer it throws model_family_unavailable_error', async () => {
-    await expect(
-      basic_engine().generate({ model: 'opus', provider: 'openai', prompt: 'x' }),
-    ).rejects.toBeInstanceOf(model_family_unavailable_error)
-  })
-
   it('F2 unconfigured provider throws provider_not_configured_error at call time', async () => {
     const engine = create_engine({ providers: { anthropic: { api_key: 'k' } } })
     await expect(
-      engine.generate({ model: 'openai:gpt-4o', prompt: 'x' }),
+      engine.generate({ model: 'gpt-4o', provider: 'openai', prompt: 'x' }),
     ).rejects.toBeInstanceOf(provider_not_configured_error)
   })
 
@@ -627,7 +614,7 @@ describe('spec §9: failure modes (remaining)', () => {
     })
     const schema = z.object({ v: z.number() })
     const result = await engine.generate({
-      model: 'ollama:gemma3:27b',
+      model: 'gemma3:27b',
       prompt: 'x',
       schema,
     })

@@ -264,7 +264,7 @@ Typed errors live in `fascicle`:
 | `schema_validation_error`        | `schema` parsing failed after repair attempts         |
 | `engine_config_error`            | invalid `create_engine(config)`                       |
 | `engine_disposed_error`          | calling `generate` after `engine.dispose()`           |
-| `model_not_found_error`          | alias or `provider:model` not registered              |
+| `model_required_error`           | no `model` given and no `defaults.model` set          |
 | `provider_not_configured_error`  | named provider missing from `providers`               |
 | `provider_capability_error`      | a provider refusing an option it cannot honour        |
 | `provider_auth_error`            | auth failure detected mid-run                         |

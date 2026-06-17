@@ -36,10 +36,6 @@ function make_stub_engine(canned: SummarizerOutput): Engine {
         model_resolved: { provider: 'stub', model_id: 'researcher-canned' },
       }
     },
-    register_alias: () => {},
-    unregister_alias: () => {},
-    resolve_alias: () => ({ provider: 'stub', model_id: 'researcher-canned' }),
-    list_aliases: () => ({}),
     register_price: () => {},
     resolve_price: () => undefined,
     list_prices: () => ({}),

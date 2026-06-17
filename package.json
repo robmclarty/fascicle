@@ -64,6 +64,7 @@
     "fascicle-viewer": "tsx packages/viewer/src/cli.ts"
   },
   "peerDependencies": {
+    "@ai-sdk/amazon-bedrock": "^3.0.0",
     "@ai-sdk/anthropic": "^3.0.0",
     "@ai-sdk/google": "^3.0.0",
     "@ai-sdk/openai": "^3.0.0",
@@ -74,6 +75,9 @@
     "zod": "^4.0.0"
   },
   "peerDependenciesMeta": {
+    "@ai-sdk/amazon-bedrock": {
+      "optional": true
+    },
     "@ai-sdk/anthropic": {
       "optional": true
     },

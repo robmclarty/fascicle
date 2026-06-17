@@ -39,10 +39,6 @@ function make_capture_engine(): { engine: Engine; calls: CapturedCall[] } {
         model_resolved: { provider: 'capture', model_id: 'capture-stub' },
       }
     },
-    register_alias: () => {},
-    unregister_alias: () => {},
-    resolve_alias: () => ({ provider: 'capture', model_id: 'capture-stub' }),
-    list_aliases: () => ({}),
     register_price: () => {},
     resolve_price: () => undefined,
     list_prices: () => ({}),

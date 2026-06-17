@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **AWS Bedrock provider.** A new `bedrock` adapter reaches Bedrock-hosted models (Claude, Llama, Nova, …) through the `@ai-sdk/amazon-bedrock` optional peer, wired like every other AI SDK provider: `create_engine({ providers: { bedrock: { region, ... } } })`, then `generate({ provider: 'bedrock', model: '<bedrock-model-id>' })`. Authenticates with a Bedrock API key (bearer), SigV4 keys, or the ambient AWS credential chain; `region` is required. Reasoning effort maps to Bedrock's `reasoningConfig.budgetTokens` for Claude models. Adds `BEDROCK_*` config env vars and `get_bedrock_*` getters in `@repo/config`.
+
+### Changed
+
+- **Breaking: model resolution is now a verbatim pass-through.** `model` is an opaque string sent to the provider unchanged; `provider` selects the transport. There is one canonical input shape — separate `provider` + `model` params — and no interpretation in between.
+  - Removed the `provider:model` colon shorthand. Pass `{ provider: 'openrouter', model: 'anthropic/claude-sonnet-4.5' }` instead of `model: 'openrouter:anthropic/claude-sonnet-4.5'`. Model ids that contain colons (Ollama tags like `qwen3-coder:30b`, Bedrock `...-v1:0`) now ride through untouched.
+  - Removed the built-in `MODEL_FAMILIES` catalog and the `families` engine-config field. Family tokens (`opus`, `sonnet`, `gpt`, `gemini`) no longer expand — pass the provider's concrete id. (The `claude_cli` transport still resolves `opus`/`sonnet`/`haiku` itself, via the CLI.)
+  - Removed the user alias table: `Engine.register_alias` / `unregister_alias` / `resolve_alias` / `list_aliases` and `EngineConfig.aliases`. Keep your own name→id map in your harness if you want shortcuts.
+  - `generate` with no `model` and no `defaults.model` now throws the new `model_required_error` (previously fell back silently to `sonnet`).
+
+### Removed
+
+- **Breaking:** types `AliasTable` and `FamilyCatalog`, and errors `model_not_found_error` and `model_family_unavailable_error`. The resolved-target type `AliasTarget` is renamed `ResolvedModel` (`{ provider, model_id }`).
+
 ## v0.6.3 — 2026-06-11
 
 ### Fixed

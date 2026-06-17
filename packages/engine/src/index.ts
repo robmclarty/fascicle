@@ -11,15 +11,12 @@ export { version } from './version.js'
 export { create_engine } from './create_engine.js'
 
 export type {
-  AliasTarget,
-  AliasTable,
   AssistantContentPart,
   CostBreakdown,
   EffortLevel,
   Engine,
   EngineConfig,
   EngineDefaults,
-  FamilyCatalog,
   FinishReason,
   GenerateOptions,
   GenerateResult,
@@ -28,6 +25,7 @@ export type {
   PricingTable,
   ProviderConfigMap,
   ProviderInit,
+  ResolvedModel,
   RetryFailureKind,
   RetryPolicy,
   StepRecord,
@@ -56,8 +54,7 @@ export {
   claude_cli_error,
   engine_config_error,
   engine_disposed_error,
-  model_family_unavailable_error,
-  model_not_found_error,
+  model_required_error,
   on_chunk_error,
   provider_auth_error,
   provider_capability_error,

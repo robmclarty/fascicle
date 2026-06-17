@@ -2,7 +2,7 @@
 
 Per-provider adapter notes: installation, capabilities, credentials, effort mapping, and gotchas.
 
-Seven adapters ship with the engine layer:
+Eight adapters ship with the engine layer:
 
 | Name          | Kind        | Peer dep                      | Credentials required     |
 | ------------- | ----------- | ----------------------------- | ------------------------ |
@@ -10,11 +10,12 @@ Seven adapters ship with the engine layer:
 | `openai`      | AI SDK      | `@ai-sdk/openai`              | `api_key`                |
 | `google`      | AI SDK      | `@ai-sdk/google`              | `api_key`                |
 | `openrouter`  | AI SDK      | `@openrouter/ai-sdk-provider` | `api_key`                |
+| `bedrock`     | AI SDK      | `@ai-sdk/amazon-bedrock`      | `region` + AWS creds     |
 | `ollama`      | AI SDK      | `ai-sdk-ollama`               | none, `base_url` only    |
 | `lmstudio`    | AI SDK      | `@ai-sdk/openai-compatible`   | none, `base_url` only    |
 | `claude_cli`  | subprocess  | none (spawns `claude`)        | `oauth` session or key   |
 
-The six AI SDK adapters wrap Vercel's AI SDK. The seventh, `claude_cli`, spawns the `claude` binary and parses its `--output-format stream-json` stream. See [cli.md](./cli.md) for the full `claude_cli` guide.
+The seven AI SDK adapters wrap Vercel's AI SDK. The eighth, `claude_cli`, spawns the `claude` binary and parses its `--output-format stream-json` stream. See [cli.md](./cli.md) for the full `claude_cli` guide.
 
 ## Capability matrix
 
@@ -24,6 +25,7 @@ The six AI SDK adapters wrap Vercel's AI SDK. The seventh, `claude_cli`, spawns 
 | openai       | ✅   | ✅    | ✅     | ✅        | ✅          | ✅        |
 | google       | ✅   | ✅    | ✅     | ✅        | ✅          | ✅        |
 | openrouter   | ✅   | ✅    | ✅     | ✅        | ✅          | ✅        |
+| bedrock      | ✅   | ✅    | ✅     | ✅        | ✅          | ✅        |
 | ollama       | ✅   | ✅    | ✅     | ✅        | —           | —         |
 | lmstudio     | ✅   | ✅    | ✅     | ✅        | —           | —         |
 | claude_cli   | ✅   | ✅    | ✅     | ✅        | —           | —         |
@@ -40,11 +42,12 @@ The six AI SDK adapters wrap Vercel's AI SDK. The seventh, `claude_cli`, spawns 
 | openai       | `reasoningEffort: low` | `reasoningEffort: medium` | `reasoningEffort: high` | non-reasoning models silently drop it |
 | google       | `thinkingBudget: 1024`  | `thinkingBudget: 8192`  | `thinkingBudget: 24576` | —                                  |
 | openrouter   | `reasoning.effort: low` | `reasoning.effort: medium` | `reasoning.effort: high` | upstream model drops it             |
+| bedrock      | `budgetTokens: 1024`  | `budgetTokens: 5000`  | `budgetTokens: 20000` | non-reasoning models drop it         |
 | ollama       | dropped   | dropped   | dropped   | records `effort_ignored` on trajectory |
 | lmstudio     | dropped   | dropped   | dropped   | records `effort_ignored` on trajectory |
 | claude_cli   | dropped   | dropped   | dropped   | not forwarded to the CLI             |
 
-`xhigh` and `max` raise the ceiling: anthropic uses `budgetTokens: 32000` and `64000`; google maps both to `thinkingBudget: 32768` (the Gemini 2.5 Pro ceiling); openai clamps both to `reasoningEffort: high`; openrouter forwards the level verbatim.
+`xhigh` and `max` raise the ceiling: anthropic and bedrock use `budgetTokens: 32000` and `64000`; google maps both to `thinkingBudget: 32768` (the Gemini 2.5 Pro ceiling); openai clamps both to `reasoningEffort: high`; openrouter forwards the level verbatim.
 
 `effort: 'none'` forwards nothing: anthropic emits no thinking block and google omits `thinkingConfig` entirely.
 
@@ -67,7 +70,7 @@ const engine = create_engine({
 });
 
 await engine.generate({
-  model: 'sonnet',                // or 'opus', 'claude-sonnet-4-6', 'claude-opus-4-8', ...
+  model: 'claude-sonnet-4-6',     // or 'claude-opus-4-8', 'claude-haiku-4-5', ...
   system: 'Be terse.',
   prompt: 'say hi',
   effort: 'medium',               // thinking budget 5000 tokens
@@ -76,7 +79,7 @@ await engine.generate({
 
 Effort maps to extended-thinking `budgetTokens` (the `@ai-sdk/anthropic` option name, which the SDK forwards to the API's `budget_tokens`). `none →` no thinking block, `low → 1024`, `medium → 5000`, `high → 20000`, `xhigh → 32000`, `max → 64000`.
 
-Families: `opus`, `sonnet`, `haiku` (each resolves to the latest concrete id, e.g. `claude-opus-4-8`). `create_engine` ships no default aliases; register your own pins with `engine.register_alias`, or pass a concrete id directly.
+Pass a concrete model id (`claude-opus-4-8`, `claude-sonnet-4-6`, `claude-haiku-4-5`, …). fascicle does not expand `opus`/`sonnet` shorthands on this transport — the `model` string is sent to the API verbatim.
 
 ## openai
 
@@ -98,7 +101,7 @@ const engine = create_engine({
 
 Effort maps to OpenAI's `reasoningEffort: 'low' | 'medium' | 'high'`. Non-reasoning models silently drop it.
 
-Families: `gpt` (= `gpt-4o`), `gpt-mini` (= `gpt-4o-mini`). Or pass a concrete id like `gpt-4o` straight through.
+Pass a concrete model id like `gpt-4o` or `gpt-4o-mini`. The `model` string is sent to the API verbatim.
 
 ## google
 
@@ -119,7 +122,7 @@ const engine = create_engine({
 
 Effort maps to Gemini's `thinkingConfig.thinkingBudget`, a token count: `low → 1024`, `medium → 8192`, `high → 24576`, `xhigh`/`max → 32768`. Google does not report cache-write tokens; the adapter strips `cache_write_tokens` when absent.
 
-Families: `gemini` (= `gemini-2.5-pro`), `gemini-flash` (= `gemini-2.5-flash`). Or pass a fully-qualified id straight through.
+Pass a concrete model id like `gemini-2.5-pro` or `gemini-2.5-flash`. The `model` string is sent to the API verbatim.
 
 ## openrouter
 
@@ -140,14 +143,51 @@ const engine = create_engine({
 });
 
 await engine.generate({
-  model: 'openrouter:anthropic/claude-sonnet-4.5',
+  provider: 'openrouter',
+  model: 'anthropic/claude-sonnet-4.5',
   prompt: 'hi',
 });
 ```
 
-Model ids use the `provider/model` separator OpenRouter expects. The engine splits only on the first colon so the inner slash round-trips. Effort maps to the OpenRouter `reasoning.effort` field; whether the upstream honours it depends on the model.
+Model ids use the `provider/model` slug OpenRouter expects (e.g. `anthropic/claude-sonnet-4.5`); pass it as `model` with `provider: 'openrouter'`. Effort maps to the OpenRouter `reasoning.effort` field; whether the upstream honours it depends on the model.
 
-Families on OpenRouter: `{ model: 'opus' | 'sonnet' | 'haiku' | 'gpt' | 'gemini', provider: 'openrouter' }` resolve to the corresponding `provider/model` slug. For anything else, pass the full slug via the colon form (`openrouter:meta-llama/llama-3.3-70b-instruct`).
+Pass the full OpenRouter slug as `model` with `provider: 'openrouter'` — e.g. `{ provider: 'openrouter', model: 'meta-llama/llama-3.3-70b-instruct' }`.
+
+## bedrock
+
+```bash
+pnpm add @ai-sdk/amazon-bedrock
+```
+
+Reaches Anthropic, Llama, Nova, and other models hosted on AWS Bedrock through the official AI SDK provider.
+
+```ts
+const engine = create_engine({
+  providers: {
+    bedrock: {
+      region: process.env.BEDROCK_REGION ?? process.env.AWS_REGION!,
+      // pick ONE auth path, or omit all of them for the ambient AWS credential chain:
+      api_key: process.env.AWS_BEARER_TOKEN_BEDROCK,        // Bedrock API key (bearer); wins over SigV4
+      access_key_id: process.env.AWS_ACCESS_KEY_ID,         // SigV4
+      secret_access_key: process.env.AWS_SECRET_ACCESS_KEY,
+      session_token: process.env.AWS_SESSION_TOKEN,         // optional, for temporary creds
+    },
+  },
+});
+
+await engine.generate({
+  provider: 'bedrock',
+  model: 'us.anthropic.claude-sonnet-4-20250514-v1:0',  // region-prefixed inference profile
+  prompt: 'say hi',
+  effort: 'low',
+});
+```
+
+`region` is required (set it explicitly or via `BEDROCK_REGION` / `AWS_REGION`); the adapter throws `engine_config_error` without one. Credentials are optional: supply an `api_key` (Bedrock bearer token, which takes precedence), SigV4 keys (`access_key_id` + `secret_access_key`, plus an optional `session_token`), or omit all of them to use the ambient AWS credential chain (env vars, shared config, instance/role providers).
+
+Model ids are AWS Bedrock ids passed verbatim — on-demand ids like `anthropic.claude-3-5-sonnet-20241022-v2:0` or cross-region inference profiles like `us.anthropic.claude-sonnet-4-20250514-v1:0`. The trailing `:0` version suffix rides through untouched. Effort maps to the Bedrock `reasoningConfig.budgetTokens` field for Claude models (the same budgets as the `anthropic` adapter); models without reasoning drop it.
+
+No default pricing ships for Bedrock (ids are region- and profile-specific). Add your own with `engine.register_price('bedrock', '<model-id>', { ... })`; until then cost is omitted, not an error.
 
 ## ollama
 
@@ -165,7 +205,8 @@ const engine = create_engine({
 });
 
 await engine.generate({
-  model: 'ollama:llama3.2:3b',   // use the explicit provider prefix
+  provider: 'ollama',
+  model: 'llama3.2:3b',          // the exact tag you pulled, colons and all
   prompt: 'write a haiku',
 });
 ```
@@ -188,7 +229,8 @@ const engine = create_engine({
 });
 
 await engine.generate({
-  model: 'lmstudio:qwen2.5-coder-7b-instruct',
+  provider: 'lmstudio',
+  model: 'qwen2.5-coder-7b-instruct',
   prompt: 'refactor this function',
 });
 ```
@@ -212,18 +254,18 @@ await engine.generate({ prompt: 'say hi' });
 
 Full guide: [cli.md](./cli.md).
 
-Families: `opus`, `sonnet`, `haiku` — the CLI receives the bare token and resolves the latest itself.
+The CLI resolves the bare tokens `opus`/`sonnet`/`haiku` to the latest itself, so passing one as `model` works for this transport — the single place a short name is honored. Concrete ids pass through too.
 
 ## Model and provider resolution
 
-`model` names a model (a **family** like `sonnet`/`opus`/`gpt`, or a **specific id** like `claude-opus-4-8`); `provider` names the transport. Both default from `defaults` (and `provider` falls back to the sole configured provider, else `anthropic`). Per call, four shapes work:
+`model` is an opaque string sent to the provider verbatim as its `model_id`; `provider` names the transport. Both can be set per call and as engine `defaults`. There is no resolution step — no colon shorthand, no family expansion, no alias table:
 
-1. **Family.** `sonnet`, `opus`, `gpt`, `gemini` → the latest id for the chosen provider. Throws `model_family_unavailable_error` if the family isn't offered by that provider.
-2. **Specific id.** `claude-opus-4-8`, `gpt-4o-mini` → passed straight through to the chosen provider.
-3. **Explicit `provider:model_id`.** `openai:gpt-4o-mini`, `ollama:llama3.2:3b`, `openrouter:anthropic/claude-sonnet-4.5` — sets both axes at once (split on the first colon only).
-4. **Custom alias.** Any key you registered via `aliases` / `register_alias`, pinning both axes.
+- `provider` resolves to: per-call `provider`, else `defaults.provider`, else the sole configured provider, else `anthropic`.
+- `model` resolves to: per-call `model`, else `defaults.model`, else a thrown `model_required_error`.
 
-Unknown providers (no adapter registered on the engine) throw `provider_not_configured_error`.
+The provider receives `model` as-is and rejects an unknown id itself (a 404 or validation error). A `provider` with no adapter registered on the engine throws `provider_not_configured_error`. (Exception: the `claude_cli` transport forwards `opus`/`sonnet`/`haiku` to the CLI, which resolves them to the latest.)
+
+Need short names? Keep a plain `Record<string, string>` in your own code and resolve it before calling `generate` — fascicle owns no model-name catalog.
 
 ## Optional peer loading
 

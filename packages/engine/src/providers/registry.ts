@@ -14,6 +14,7 @@ import { create_google_adapter } from './google.js'
 import { create_ollama_adapter } from './ollama.js'
 import { create_lmstudio_adapter } from './lmstudio.js'
 import { create_openrouter_adapter } from './openrouter.js'
+import { create_bedrock_adapter } from './bedrock.js'
 import { create_claude_cli_adapter } from './claude_cli/index.js'
 
 const BUILTIN_PROVIDERS: ReadonlyMap<string, ProviderFactory> = new Map<string, ProviderFactory>([
@@ -23,6 +24,7 @@ const BUILTIN_PROVIDERS: ReadonlyMap<string, ProviderFactory> = new Map<string, 
   ['ollama', create_ollama_adapter],
   ['lmstudio', create_lmstudio_adapter],
   ['openrouter', create_openrouter_adapter],
+  ['bedrock', create_bedrock_adapter],
   ['claude_cli', create_claude_cli_adapter],
 ])
 

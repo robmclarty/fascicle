@@ -2,7 +2,7 @@
 
 ![A substrate for agents — three mushrooms (model_call, step, tool) fruit from a shared mycelium network; every mushroom is a Step<i, o>, every thread is a composition](./mycelium.svg)
 
-Compose agents out of LLM calls, tool calls, and plain functions. Everything is a `Step<i, o>`. Wire steps together with 18 primitives (`sequence`, `parallel`, `branch`, `retry`, `loop`, `ensemble`, `checkpoint`, …) and run them as plain values. One `generate` surface fronts seven provider adapters: Anthropic, OpenAI, Google, OpenRouter, Ollama, LM Studio, and a `claude_cli` subprocess that drives the Claude Code CLI.
+Compose agents out of LLM calls, tool calls, and plain functions. Everything is a `Step<i, o>`. Wire steps together with 18 primitives (`sequence`, `parallel`, `branch`, `retry`, `loop`, `ensemble`, `checkpoint`, …) and run them as plain values. One `generate` surface fronts eight provider adapters: Anthropic, OpenAI, Google, OpenRouter, AWS Bedrock, Ollama, LM Studio, and a `claude_cli` subprocess that drives the Claude Code CLI.
 
 No framework lifecycle. No ambient state. No decorators. Adapters are passed in per run.
 
@@ -82,7 +82,7 @@ try {
 
 Plus `run`, `run.stream`, and `describe`.
 
-**AI engine.** `create_engine(config)` returns one `generate` surface across seven providers. Two axes: `model` names a family (`sonnet`, `opus`, `gpt` — latest of that family) or a specific id (`claude-opus-4-8`), and `provider` names the transport (`anthropic`, `claude_cli`, `openrouter`, …) — so the same `model: 'opus'` runs anywhere. Reasoning effort (`'none'` through `'max'`) is translated per provider. Cost estimation uses a pricing table with per-engine overrides.
+**AI engine.** `create_engine(config)` returns one `generate` surface across eight providers. Two axes: `model` is an opaque id sent to the provider verbatim (`claude-opus-4-8`, `gpt-4o`, `us.anthropic.claude-sonnet-4-20250514-v1:0`), and `provider` names the transport (`anthropic`, `bedrock`, `openrouter`, `claude_cli`, …) — swap `provider` to move a call between transports. Reasoning effort (`'none'` through `'max'`) is translated per provider. Cost estimation uses a pricing table with per-engine overrides.
 
 **Adapters injected per run.** Trajectory loggers and checkpoint stores ship under the `fascicle/adapters` subpath:
 

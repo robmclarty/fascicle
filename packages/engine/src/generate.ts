@@ -18,16 +18,15 @@ import {
   type ToolSet,
 } from 'ai'
 import type {
-  AliasTable,
   CostBreakdown,
   EffortLevel,
-  FamilyCatalog,
   FinishReason,
   GenerateOptions,
   GenerateResult,
   Message,
   Pricing,
   PricingTable,
+  ResolvedModel,
   RetryPolicy,
   StreamChunk,
   Tool,
@@ -35,12 +34,12 @@ import type {
 } from './types.js'
 import {
   aborted_error,
+  model_required_error,
   on_chunk_error,
   provider_capability_error,
   provider_error,
   provider_not_configured_error,
 } from './errors.js'
-import { resolve_model } from './aliases.js'
 import { merge_provider_options } from './merge_defaults.js'
 import { FREE_PROVIDERS, pricing_key } from './pricing.js'
 import { parse_retry_after, retry_with_policy } from './retry.js'
@@ -77,8 +76,6 @@ import type {
 } from './providers/types.js'
 
 export type EngineInternals = {
-  readonly aliases: AliasTable
-  readonly families: FamilyCatalog
   readonly pricing: PricingTable
   readonly adapters: ReadonlyMap<string, ProviderAdapter>
   readonly default_retry: RetryPolicy
@@ -458,7 +455,8 @@ export async function generate<T = string>(
     throw new aborted_error('aborted', { reason: opts_in.abort.reason })
   }
 
-  const resolved_model = opts_in.model ?? engine.default_model ?? 'sonnet'
+  const resolved_model = opts_in.model ?? engine.default_model
+  if (resolved_model === undefined) throw new model_required_error()
   const sole_provider =
     engine.adapters.size === 1 ? [...engine.adapters.keys()][0] : undefined
   const resolved_provider =
@@ -481,10 +479,7 @@ export async function generate<T = string>(
     opts.provider_options = merged_provider_options
   }
 
-  const target = resolve_model(resolved_model, resolved_provider, {
-    families: engine.families,
-    aliases: engine.aliases,
-  })
+  const target: ResolvedModel = { provider: resolved_provider, model_id: resolved_model }
 
   const adapter = engine.adapters.get(target.provider)
   if (adapter === undefined) {

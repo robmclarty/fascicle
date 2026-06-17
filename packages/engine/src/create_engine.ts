@@ -1,23 +1,21 @@
 /**
  * Engine factory (spec §5.8).
  *
- * create_engine validates each provider entry at construction, starts the
- * alias table empty (user aliases only), merges user families / pricing over
- * MODEL_FAMILIES / DEFAULT_PRICING into per-instance tables, and returns an
- * Engine whose methods close over this instance state.
+ * create_engine validates each provider entry at construction, merges user
+ * pricing over DEFAULT_PRICING into a per-instance table, and returns an Engine
+ * whose methods close over this instance state. Model resolution is a verbatim
+ * pass-through: `model` is sent to the provider unchanged.
  *
  * Credentials / init values are validated synchronously by each provider
  * adapter factory; SDK loading is deferred to the first generate call. A
  * generate call that references a provider absent from the construction
  * providers map throws provider_not_configured_error at call time.
  *
- * list_aliases and list_prices return defensive shallow copies; mutating the
- * returned objects does not affect engine state.
+ * list_prices returns a defensive shallow copy; mutating the returned object
+ * does not affect engine state.
  */
 
 import type {
-  AliasTable,
-  AliasTarget,
   Engine,
   EngineConfig,
   GenerateOptions,
@@ -26,13 +24,11 @@ import type {
   PricingTable,
   ProviderInit,
 } from './types.js'
-import { MODEL_FAMILIES } from './aliases.js'
 import { DEFAULT_PRICING, pricing_key } from './pricing.js'
 import { DEFAULT_RETRY } from './retry.js'
 import {
   engine_config_error,
   engine_disposed_error,
-  model_not_found_error,
 } from './errors.js'
 import { get_provider_factory } from './providers/registry.js'
 import type { ProviderAdapter } from './providers/types.js'
@@ -61,23 +57,6 @@ export function create_engine(config: EngineConfig): Engine {
 
   const adapters = build_provider_adapters(config.providers)
 
-  const aliases: Record<string, AliasTarget> = {}
-  if (config.aliases !== undefined) {
-    for (const [name, target] of Object.entries(config.aliases)) {
-      aliases[name] = target
-    }
-  }
-
-  const families: Record<string, Record<string, string>> = {}
-  for (const [name, entry] of Object.entries(MODEL_FAMILIES)) {
-    families[name] = { ...entry }
-  }
-  if (config.families !== undefined) {
-    for (const [name, entry] of Object.entries(config.families)) {
-      families[name] = { ...families[name], ...entry }
-    }
-  }
-
   const pricing: Record<string, Pricing> = { ...DEFAULT_PRICING }
   if (config.pricing !== undefined) {
     for (const [key, value] of Object.entries(config.pricing)) {
@@ -91,8 +70,6 @@ export function create_engine(config: EngineConfig): Engine {
   const default_max_steps = defaults?.max_steps ?? config.default_max_steps ?? 10
 
   const get_internals = (): EngineInternals => ({
-    aliases,
-    families,
     pricing,
     adapters,
     default_retry,
@@ -119,22 +96,6 @@ export function create_engine(config: EngineConfig): Engine {
     generate<t = string>(opts: GenerateOptions<t>): Promise<GenerateResult<t>> {
       if (disposed) throw new engine_disposed_error()
       return generate<t>(opts, get_internals())
-    },
-    register_alias(alias: string, target: AliasTarget): void {
-      aliases[alias] = target
-    },
-    unregister_alias(alias: string): void {
-      delete aliases[alias]
-    },
-    resolve_alias(alias: string): AliasTarget {
-      const hit = aliases[alias]
-      if (hit === undefined) {
-        throw new model_not_found_error(alias, Object.keys(aliases))
-      }
-      return hit
-    },
-    list_aliases(): AliasTable {
-      return { ...aliases }
     },
     register_price(provider: string, model_id: string, value: Pricing): void {
       pricing[pricing_key(provider, model_id)] = value

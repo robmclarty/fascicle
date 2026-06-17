@@ -24,8 +24,7 @@ export {
   claude_cli_error,
   engine_config_error,
   engine_disposed_error,
-  model_family_unavailable_error,
-  model_not_found_error,
+  model_required_error,
   on_chunk_error,
   provider_auth_error,
   provider_capability_error,
@@ -39,8 +38,6 @@ export {
 } from '@repo/engine'
 
 export type {
-  AliasTarget,
-  AliasTable,
   AssistantContentPart,
   CostBreakdown,
   EffortLevel,
@@ -55,6 +52,7 @@ export type {
   PricingTable,
   ProviderConfigMap,
   ProviderInit,
+  ResolvedModel,
   RetryFailureKind,
   RetryPolicy,
   StepRecord,

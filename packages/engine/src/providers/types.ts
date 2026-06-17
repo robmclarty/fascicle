@@ -13,7 +13,7 @@
  */
 
 import type {
-  AliasTarget,
+  ResolvedModel,
   EffortLevel,
   GenerateOptions,
   GenerateResult,
@@ -68,7 +68,7 @@ export type SubprocessProviderAdapter = {
   readonly name: string
   readonly generate: <t>(
     opts: GenerateOptions<t>,
-    resolved: AliasTarget,
+    resolved: ResolvedModel,
   ) => Promise<GenerateResult<t>>
   readonly dispose: () => Promise<void>
   readonly supports: (capability: ProviderCapability) => boolean

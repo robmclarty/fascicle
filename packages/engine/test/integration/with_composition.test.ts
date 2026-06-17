@@ -72,7 +72,7 @@ describe('engine + composition integration', () => {
   
     const ai_step = step<string, string>('ai', async (input, ctx) => {
       const result = await engine.generate({
-        model: 'opus',
+        model: 'claude-opus-4-8',
         prompt: input,
         abort: ctx.abort,
         trajectory: ctx.trajectory,
@@ -194,7 +194,7 @@ describe('engine + composition integration', () => {
     }
     const ai_step = step<string, string>('ai', async (input, ctx) => {
       const r = await engine.generate({
-        model: 'sonnet',
+        model: 'claude-sonnet-4-6',
         prompt: input,
         trajectory: ctx.trajectory,
       })

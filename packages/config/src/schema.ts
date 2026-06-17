@@ -26,6 +26,14 @@ export const CONFIG_SCHEMA = z.object({
   OPENROUTER_BASE_URL: optional_string,
   OPENROUTER_HTTP_REFERER: optional_string,
   OPENROUTER_X_TITLE: optional_string,
+
+  BEDROCK_REGION: optional_string,
+  AWS_REGION: optional_string,
+  BEDROCK_API_KEY: optional_string,
+  BEDROCK_ACCESS_KEY_ID: optional_string,
+  BEDROCK_SECRET_ACCESS_KEY: optional_string,
+  BEDROCK_SESSION_TOKEN: optional_string,
+  BEDROCK_BASE_URL: optional_string,
 })
 
 export type Config = z.infer<typeof CONFIG_SCHEMA>

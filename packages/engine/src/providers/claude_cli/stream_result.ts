@@ -15,7 +15,7 @@
 
 import type { z } from 'zod'
 import type {
-  AliasTarget,
+  ResolvedModel,
   CostBreakdown,
   FinishReason,
   GenerateResult,
@@ -123,7 +123,7 @@ function tool_call_record(
 
 export type BuildResultInput<T> = {
   readonly parsed: ParsedStream
-  readonly resolved: AliasTarget
+  readonly resolved: ResolvedModel
   readonly schema?: z.ZodType<T>
   readonly parsed_content?: T
 }

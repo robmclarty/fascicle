@@ -1,7 +1,7 @@
 {
   "name": "@repo/engine",
   "version": "0.6.3",
-  "description": "AI engine layer for fascicle. Provider routing, alias resolution, generate(). Wraps Vercel AI SDK v6.",
+  "description": "AI engine layer for fascicle. Provider routing, generate(). Wraps Vercel AI SDK v6.",
   "type": "module",
   "private": true,
   "exports": {
@@ -16,6 +16,7 @@
     "zod": "^4.0.0"
   },
   "peerDependencies": {
+    "@ai-sdk/amazon-bedrock": "^3.0.0",
     "@ai-sdk/anthropic": "^3.0.0",
     "@ai-sdk/google": "^3.0.0",
     "@ai-sdk/openai": "^3.0.0",
@@ -24,6 +25,9 @@
     "ai-sdk-ollama": "^3.0.0"
   },
   "peerDependenciesMeta": {
+    "@ai-sdk/amazon-bedrock": {
+      "optional": true
+    },
     "@ai-sdk/anthropic": {
       "optional": true
     },

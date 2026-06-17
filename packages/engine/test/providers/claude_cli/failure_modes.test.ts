@@ -24,7 +24,7 @@ import {
   provider_capability_error,
 } from '../../../src/errors.js'
 import type {
-  AliasTarget,
+  ResolvedModel,
   GenerateOptions,
   Message,
   Tool,
@@ -52,7 +52,7 @@ async function track(handle: MockScriptHandle): Promise<MockScriptHandle> {
   return handle
 }
 
-const alias_target: AliasTarget = {
+const alias_target: ResolvedModel = {
   provider: 'claude_cli',
   model_id: 'claude-sonnet-4-6',
 }

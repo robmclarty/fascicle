@@ -37,10 +37,6 @@ function make_mock_engine(options: MockEngineOptions = {}): {
       if (options.on_generate) await options.on_generate(opts as GenerateOptions)
       return result as unknown as GenerateResult<t>
     },
-    register_alias: () => {},
-    unregister_alias: () => {},
-    resolve_alias: () => ({ provider: 'mock', model_id: 'x' }),
-    list_aliases: () => ({}),
     register_price: () => {},
     resolve_price: () => undefined,
     list_prices: () => ({}),

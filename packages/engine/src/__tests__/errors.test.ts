@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   aborted_error,
   engine_config_error,
-  model_not_found_error,
+  model_required_error,
   on_chunk_error,
   provider_capability_error,
   provider_error,
@@ -84,12 +84,11 @@ describe('typed errors', () => {
     expect(err.tool_call_id).toBe('c9')
   })
 
-  it('model_not_found_error lists registered aliases in message', () => {
-    const err = new model_not_found_error('nope', ['sonnet', 'haiku'])
-    expect(err.kind).toBe('model_not_found_error')
-    expect(err.message).toContain('sonnet')
-    expect(err.message).toContain('haiku')
-    expect(err.model).toBe('nope')
+  it('model_required_error carries a helpful default message', () => {
+    const err = new model_required_error()
+    expect(err.kind).toBe('model_required_error')
+    expect(err.message).toContain('model')
+    expect(err).toBeInstanceOf(Error)
   })
 
   it('provider_not_configured_error names the provider', () => {
@@ -130,7 +129,7 @@ describe('typed errors', () => {
       new schema_validation_error('x', null, ''),
       new tool_error('x', { tool_name: 't', tool_call_id: 'c', cause: null }),
       new tool_approval_denied_error('x', { tool_name: 't', step_index: 0, tool_call_id: 'c' }),
-      new model_not_found_error('x', []),
+      new model_required_error(),
       new provider_not_configured_error('x'),
       new engine_config_error('x'),
       new on_chunk_error('x', null),

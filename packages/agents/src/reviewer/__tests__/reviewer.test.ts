@@ -48,10 +48,6 @@ function make_mock_engine(canned: unknown): {
         model_resolved: { provider: 'mock', model_id: 'rev' },
       }
     },
-    register_alias: () => {},
-    unregister_alias: () => {},
-    resolve_alias: () => ({ provider: 'mock', model_id: 'rev' }),
-    list_aliases: () => ({}),
     register_price: () => {},
     resolve_price: () => undefined,
     list_prices: () => ({}),

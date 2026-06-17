@@ -26,6 +26,7 @@ vi.mock('../providers/registry.js', async () => build_mock_registry_module())
 import { create_engine } from '../create_engine.js'
 import {
   aborted_error,
+  model_required_error,
   on_chunk_error,
   provider_error,
   rate_limit_error,
@@ -59,7 +60,7 @@ afterEach(() => reset_mock_state())
 describe('generate: plain paths', () => {
   it('returns a plain completion (C1)', async () => {
     enqueue_generate_text(make_text_result('hello'))
-    const result = await basic_engine().generate({ model: 'opus', prompt: 'hi' })
+    const result = await basic_engine().generate({ model: 'claude-opus-4-8', prompt: 'hi' })
     expect(result.content).toBe('hello')
     expect(result.tool_calls).toEqual([])
     expect(result.steps).toHaveLength(1)
@@ -123,20 +124,29 @@ describe('generate: plain paths', () => {
   })
 })
 
-describe('generate: alias and provider', () => {
-  it('resolves a default alias (C24)', async () => {
+describe('generate: model + provider pass-through', () => {
+  it('passes the model verbatim as model_id to the chosen provider (C24)', async () => {
     enqueue_generate_text(make_text_result('ok'))
-    const result = await basic_engine().generate({ model: 'sonnet', prompt: 'x' })
-    expect(result.model_resolved.model_id).toBe('claude-sonnet-4-6')
+    const result = await basic_engine().generate({ model: 'claude-sonnet-4-6', prompt: 'x' })
+    expect(result.model_resolved).toEqual({
+      provider: 'anthropic',
+      model_id: 'claude-sonnet-4-6',
+    })
   })
 
-  it('provider-prefix bypass bypasses the alias table (C25)', async () => {
+  it('does not parse a colon in the model id; it rides through verbatim (C25)', async () => {
     enqueue_generate_text(make_text_result('ok'))
     const engine = create_engine({
       providers: { ollama: { base_url: 'http://localhost:11434' } },
     })
-    const result = await engine.generate({ model: 'ollama:gemma3:27b', prompt: 'x' })
-    expect(result.model_resolved).toEqual({ provider: 'ollama', model_id: 'gemma3:27b' })
+    const result = await engine.generate({ model: 'qwen3-coder:30b', prompt: 'x' })
+    expect(result.model_resolved).toEqual({ provider: 'ollama', model_id: 'qwen3-coder:30b' })
+  })
+
+  it('throws model_required_error when no model and no default is set', async () => {
+    await expect(basic_engine().generate({ prompt: 'x' })).rejects.toBeInstanceOf(
+      model_required_error,
+    )
   })
 })
 
@@ -258,7 +268,7 @@ describe('generate: cost', () => {
       finishReason: 'stop',
       usage: { inputTokens: 1000, outputTokens: 500 },
     })
-    const result = await basic_engine().generate({ model: 'sonnet', prompt: 'x' })
+    const result = await basic_engine().generate({ model: 'claude-sonnet-4-6', prompt: 'x' })
     expect(result.cost?.input_usd).toBeCloseTo(0.003, 6)
     expect(result.cost?.output_usd).toBeCloseTo(0.0075, 6)
     expect(result.cost?.total_usd).toBeCloseTo(0.0105, 6)
@@ -296,7 +306,7 @@ describe('generate: cost', () => {
       input_per_million: 0,
       output_per_million: 0,
     })
-    const result = await engine.generate({ model: 'opus', prompt: 'x' })
+    const result = await engine.generate({ model: 'claude-opus-4-8', prompt: 'x' })
     expect(result.cost?.total_usd).toBe(0)
   })
 
@@ -311,7 +321,7 @@ describe('generate: cost', () => {
         cached_input_tokens: 1000,
       },
     })
-    const result = await basic_engine().generate({ model: 'sonnet', prompt: 'x' })
+    const result = await basic_engine().generate({ model: 'claude-sonnet-4-6', prompt: 'x' })
     expect(result.cost?.input_usd).toBeCloseTo(0.0015, 6)
     expect(result.cost?.cached_input_usd).toBeCloseTo(0.0003, 6)
     expect(result.cost?.output_usd).toBeCloseTo(0.003, 6)

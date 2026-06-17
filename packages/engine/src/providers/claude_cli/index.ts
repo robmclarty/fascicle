@@ -14,7 +14,7 @@
 
 import { z } from 'zod'
 import type {
-  AliasTarget,
+  ResolvedModel,
   EffortLevel,
   GenerateOptions,
   GenerateResult,
@@ -297,7 +297,7 @@ export function create_claude_cli_adapter(init: ProviderInit): SubprocessProvide
     supports: (capability) => SUPPORTED.has(capability),
     async generate<T>(
       opts: GenerateOptions<T>,
-      resolved: AliasTarget,
+      resolved: ResolvedModel,
     ): Promise<GenerateResult<T>> {
       if (disposed) throw new engine_disposed_error()
       if (opts.abort?.aborted === true) {
@@ -482,7 +482,7 @@ export function create_claude_cli_adapter(init: ProviderInit): SubprocessProvide
 
         const result_input: {
           parsed: typeof parsed
-          resolved: AliasTarget
+          resolved: ResolvedModel
           schema?: typeof opts.schema
           parsed_content?: T
         } = {

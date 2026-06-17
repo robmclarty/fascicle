@@ -98,34 +98,13 @@ export class tool_approval_denied_error extends Error {
   }
 }
 
-export class model_not_found_error extends Error {
-  readonly kind = 'model_not_found_error' as const;
-  readonly model: string;
-  readonly registered: ReadonlyArray<string>;
-  constructor(model: string, registered: ReadonlyArray<string>) {
-    const list = registered.length > 0 ? registered.join(', ') : '(none)'
-    super(`model '${model}' is not registered. Available aliases: ${list}`)
-    this.name = 'model_not_found_error'
-    this.model = model
-    this.registered = registered
-  }
-}
-
-export class model_family_unavailable_error extends Error {
-  readonly kind = 'model_family_unavailable_error' as const;
-  readonly family: string;
-  readonly provider: string;
-  readonly available_providers: ReadonlyArray<string>;
-  constructor(family: string, provider: string, available_providers: ReadonlyArray<string>) {
-    const list =
-      available_providers.length > 0 ? available_providers.join(', ') : '(none)'
-    super(
-      `model family '${family}' is not available on provider '${provider}'. Providers offering this family: ${list}`,
-    )
-    this.name = 'model_family_unavailable_error'
-    this.family = family
-    this.provider = provider
-    this.available_providers = available_providers
+export class model_required_error extends Error {
+  readonly kind = 'model_required_error' as const;
+  constructor(
+    message = 'no model specified: pass `model` to generate() or set `defaults.model` on the engine',
+  ) {
+    super(message)
+    this.name = 'model_required_error'
   }
 }
 

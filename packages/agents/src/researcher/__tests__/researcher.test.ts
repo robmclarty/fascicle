@@ -92,10 +92,6 @@ function make_scripted_harness(script: RoundScript): ScriptedHarness {
         model_resolved: { provider: 'mock', model_id: 'res' },
       }
     },
-    register_alias: () => {},
-    unregister_alias: () => {},
-    resolve_alias: () => ({ provider: 'mock', model_id: 'res' }),
-    list_aliases: () => ({}),
     register_price: () => {},
     resolve_price: () => undefined,
     list_prices: () => ({}),
@@ -374,10 +370,6 @@ describe('researcher', () => {
       generate: async () => {
         throw new Error('engine should not be reached')
       },
-      register_alias: () => {},
-      unregister_alias: () => {},
-      resolve_alias: () => ({ provider: 'mock', model_id: 'res' }),
-      list_aliases: () => ({}),
       register_price: () => {},
       resolve_price: () => undefined,
       list_prices: () => ({}),

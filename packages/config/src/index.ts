@@ -58,3 +58,28 @@ export function get_openrouter_http_referer(): string | undefined {
 export function get_openrouter_x_title(): string | undefined {
   return load_config().OPENROUTER_X_TITLE
 }
+
+export function get_bedrock_region(): string | undefined {
+  const cfg = load_config()
+  return cfg.BEDROCK_REGION ?? cfg.AWS_REGION
+}
+
+export function get_bedrock_api_key(): string | undefined {
+  return load_config().BEDROCK_API_KEY
+}
+
+export function get_bedrock_access_key_id(): string | undefined {
+  return load_config().BEDROCK_ACCESS_KEY_ID
+}
+
+export function get_bedrock_secret_access_key(): string | undefined {
+  return load_config().BEDROCK_SECRET_ACCESS_KEY
+}
+
+export function get_bedrock_session_token(): string | undefined {
+  return load_config().BEDROCK_SESSION_TOKEN
+}
+
+export function get_bedrock_base_url(): string | undefined {
+  return load_config().BEDROCK_BASE_URL
+}

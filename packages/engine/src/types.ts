@@ -36,23 +36,14 @@ export type RetryPolicy = {
   retry_on: ReadonlyArray<RetryFailureKind>
 }
 
-export type AliasTarget = {
+/**
+ * The resolved transport + model id a generate call dispatches to. `model_id`
+ * is passed verbatim to the provider; the engine does not interpret it.
+ */
+export type ResolvedModel = {
   provider: string
   model_id: string
-  defaults?: {
-    temperature?: number
-    max_tokens?: number
-    effort?: EffortLevel
-  }
 }
-
-export type AliasTable = Readonly<Record<string, AliasTarget>>
-
-/**
- * Family catalog: family name -> provider name -> the latest model id to send
- * to that provider for the family. See `MODEL_FAMILIES` in aliases.ts.
- */
-export type FamilyCatalog = Readonly<Record<string, Readonly<Record<string, string>>>>
 
 export type Pricing = {
   input_per_million: number
@@ -214,6 +205,14 @@ export type ProviderConfigMap = {
     http_referer?: string
     x_title?: string
   }
+  bedrock?: {
+    region: string
+    api_key?: string
+    access_key_id?: string
+    secret_access_key?: string
+    session_token?: string
+    base_url?: string
+  }
   claude_cli?: ClaudeCliProviderConfig
   [custom: string]: ProviderInit | undefined
 }
@@ -246,8 +245,6 @@ export type EngineDefaults = {
 
 export type EngineConfig = {
   providers: ProviderConfigMap
-  aliases?: AliasTable
-  families?: FamilyCatalog
   pricing?: PricingTable
   default_retry?: RetryPolicy
   default_effort?: EffortLevel
@@ -257,10 +254,6 @@ export type EngineConfig = {
 
 export type Engine = {
   generate: <t = string>(opts: GenerateOptions<t>) => Promise<GenerateResult<t>>
-  register_alias: (alias: string, target: AliasTarget) => void
-  unregister_alias: (alias: string) => void
-  resolve_alias: (alias: string) => AliasTarget
-  list_aliases: () => AliasTable
   register_price: (provider: string, model_id: string, pricing: Pricing) => void
   resolve_price: (provider: string, model_id: string) => Pricing | undefined
   list_prices: () => PricingTable

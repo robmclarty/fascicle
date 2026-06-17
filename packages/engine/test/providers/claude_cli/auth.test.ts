@@ -19,7 +19,7 @@ import {
 } from '../../../src/providers/claude_cli/constants.js'
 import { engine_config_error } from '../../../src/errors.js'
 import { create_claude_cli_adapter } from '../../../src/providers/claude_cli/index.js'
-import type { AliasTarget } from '../../../src/types.js'
+import type { ResolvedModel } from '../../../src/types.js'
 import {
   MOCK_CLAUDE_PATH,
   build_mock_env,
@@ -42,7 +42,7 @@ async function track(handle: MockScriptHandle): Promise<MockScriptHandle> {
   return handle
 }
 
-const alias_target: AliasTarget = {
+const alias_target: ResolvedModel = {
   provider: 'claude_cli',
   model_id: 'claude-sonnet-4-6',
 }

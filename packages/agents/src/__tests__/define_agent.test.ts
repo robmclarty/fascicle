@@ -58,10 +58,6 @@ function make_mock_engine(
         model_resolved: { provider, model_id },
       }
     },
-    register_alias: () => {},
-    unregister_alias: () => {},
-    resolve_alias: () => ({ provider, model_id }),
-    list_aliases: () => ({}),
     register_price: () => {},
     resolve_price: () => undefined,
     list_prices: () => ({}),
@@ -385,10 +381,6 @@ describe('define_agent', () => {
             })
             throw new Error('unreachable')
           },
-          register_alias: () => {},
-          unregister_alias: () => {},
-          resolve_alias: () => ({ provider: 'mock', model_id: 'x' }),
-          list_aliases: () => ({}),
           register_price: () => {},
           resolve_price: () => undefined,
           list_prices: () => ({}),

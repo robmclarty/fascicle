@@ -3,7 +3,7 @@ import { get_provider_factory, list_builtin_providers } from '../registry.js'
 import { provider_not_configured_error } from '../../errors.js'
 
 describe('builtin provider registry', () => {
-  it('exposes all seven built-in provider factories per spec §5.9', () => {
+  it('exposes all eight built-in provider factories per spec §5.9', () => {
     expect(list_builtin_providers()).toEqual([
       'anthropic',
       'openai',
@@ -11,6 +11,7 @@ describe('builtin provider registry', () => {
       'ollama',
       'lmstudio',
       'openrouter',
+      'bedrock',
       'claude_cli',
     ])
   })

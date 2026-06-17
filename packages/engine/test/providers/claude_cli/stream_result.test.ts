@@ -10,12 +10,12 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import type { AliasTarget } from '../../../src/types.js'
+import type { ResolvedModel } from '../../../src/types.js'
 import { build_generate_result } from '../../../src/providers/claude_cli/stream_result.js'
 import type { ParsedStream } from '../../../src/providers/claude_cli/stream_parse.js'
 import { claude_cli_error } from '../../../src/errors.js'
 
-const resolved: AliasTarget = { provider: 'claude_cli', model_id: 'claude-sonnet-4-6' }
+const resolved: ResolvedModel = { provider: 'claude_cli', model_id: 'claude-sonnet-4-6' }
 
 function make_parsed(overrides: Partial<ParsedStream> = {}): ParsedStream {
   const base: ParsedStream = {

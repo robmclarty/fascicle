@@ -114,10 +114,6 @@ export function make_stub_engine(responses: ReadonlyArray<StubResponse>): Engine
         model_resolved: { provider: 'stub', model_id: 'pr-improve-stub' },
       }
     },
-    register_alias: () => {},
-    unregister_alias: () => {},
-    resolve_alias: () => ({ provider: 'stub', model_id: 'pr-improve-stub' }),
-    list_aliases: () => ({}),
     register_price: () => {},
     resolve_price: () => undefined,
     list_prices: () => ({}),
