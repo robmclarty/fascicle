@@ -212,16 +212,16 @@ Motion personality (six rules; nothing else animates):
 2. **Port click-clack on connect.** 80ms scale-bounce + 40ms ink-splat on the receiving port.
 3. **Node breathing while running.** 0.5% scale oscillation at ~6s period. Idle nodes are still.
 4. **LLM-call exhaust.** A 200ms puff of soft particles rises off a `model_call` header when it fires. Once. Not a loop.
-5. **Error judder + scar.** 4px horizontal shake for 120ms, then the node turns rust-red, then keeps a thin red underline ("scar") until acknowledged.
+5. **Error judder + scar.** 4px horizontal shake for 120ms, then the node turns oxidized-copper, then keeps a thin red underline ("scar") until acknowledged.
 6. **Pan/zoom with weight.** Slight overshoot and damped settle. Never instant snap.
 
 Three "breaks the rules but earns it" moments:
 
-- Subtle paper grain + a faint coffee ring baked into the background, parallaxing 5% slower than nodes on pan. Read once at low opacity; never compete with the graph.
-- Hand-stamped run badges (`RUN 0413 — OK`) in wax-seal red thud onto the canvas margin and stay in a history strip.
-- Edges have catenary slack and wobble briefly when a node is dragged. Cheap, signals "this is physical."
+- Real paper grain + a faint coffee ring baked into the background, parallaxing on pan.
+- Hand-stamped run badges (`RUN 0413 — OK`) thud onto the canvas margin and stay in a history strip.
+- Edges have catenary slack and wobble briefly when a node is dragged.
 
-Anti-patterns explicitly banned: glassmorphism, neon-cyan-on-black, rounded-rectangle nodes with a lucide icon and a truncated title, marketing-site "AI sparkle" iconography, bezier-spaghetti edges with no flow direction, and — given the FFT direction — fantasy-game ornament (scrollwork, calligraphy, parchment-edge frames). The colour does the work; the chrome stays clean.
+Anti-patterns explicitly banned: glassmorphism, neon-cyan-on-black, rounded-rectangle nodes with a lucide icon and a truncated title, marketing-site "AI sparkle" iconography, bezier-spaghetti edges with no flow direction.
 
 ---
 
@@ -343,34 +343,29 @@ Skipped: a bespoke "design lint for flat-rounded-blob components" (subjective; t
 
 ## 11. Phase plan
 
-### Phase 0 — Library prep (1-2 weeks, **this repo, `ui` branch**)
+### Phase 0 — Library prep (1-2 weeks)
 
-Ship before any studio code is written. Each item lands as its own commit (or PR) with `pnpm check:all` green.
+Ship before any studio code.
 
-1. Deterministic-ids contract test (additive; locks current behavior or surfaces a bug to fix).
-2. `STEP_KINDS` const string union exported from `@repo/core` and re-exported from the umbrella.
-3. Structured `TrajectoryEvent` discriminated union in `packages/core/src/trajectory.ts` plus `trajectory_event_schema` (Zod). Adapters (`@repo/observability`, `@repo/engine`) updated to emit through it. Backwards compatible via the `custom` variant.
-4. Optional `display_name` / `description` / `port_labels` metadata on `step()`, echoed by `describe.json`.
-5. `run_id` threaded through every trajectory write; round-trip test asserts every event carries it.
-6. Umbrella re-exports the new types and schema.
+1. Create `@repo/studio-protocol` with the discriminated `TrajectoryEvent` union and Zod validators. Round-trip contract test.
+2. Apply core surfaces 1-5 from §4. Land each in its own PR with a regression test.
+3. Add a single "deterministic ids" contract test to lock the current behavior.
 
-Exit criteria: `pnpm check:all` passes; `fascicle` consumer surface is fully backwards compatible; the studio repo can `pnpm add fascicle` and `import { trajectory_event_schema, STEP_KINDS } from 'fascicle'` and start building.
+Exit criteria: `pnpm check:all` passes; `fascicle` library is unchanged from a consumer's perspective; `@repo/studio-protocol` is published-ready (private workspace package, used by future `fascicle-studio`).
 
-**No `apps/*` or studio code in this repo.** Phase 1 is a separate repo.
-
-### Phase 1 — Monitor mode v1 (3-4 weeks, **sibling repo**)
+### Phase 1 — Monitor mode v1 (3-4 weeks)
 
 1. `apps/studio-server` — HTTP+SSE on a local port, ring buffer, serves static UI. <300 LOC.
-2. `apps/studio` — Vite + React + React Flow + Tailwind. Worn-Foundry parchment canvas. Six custom node renderers (one per primitive family: leaf, branching, looping, model-bearing, scope, suspend). Catenary edges with token particles. Inspector right rail with tabs.
+2. `apps/studio` — Vite + React + React Flow + Tailwind. Cream paper canvas. Six custom node renderers (one per primitive family: leaf, branching, looping, model-bearing, scope, suspend). Catenary edges with token particles. Inspector right rail with tabs.
 3. Live tail of a single run; tail timeline (last 1000 events).
 4. Sample `.trajectory.jsonl` fixtures for development.
 5. `npx fascicle-studio tail <path>` — zero-install path.
 6. `import { studio } from 'fascicle-studio'` — one-line attach helper.
 7. Storybook with one story per node renderer, basic `play()` interaction tests.
 8. Playwright smoke test in CI (opt-in).
-9. README + getting-started docs.
+9. README + getting-started docs in `docs/studio.md`.
 
-Exit criteria: a user can `npx fascicle-studio tail` an existing JSONL and see a graph that updates. The studio repo's `pnpm check:all` passes. The `fascicle` library bundle is unchanged.
+Exit criteria: a user can `npx fascicle-studio tail` an existing JSONL and see a graph that updates. `pnpm check:all` passes. All Phase 0 invariants still hold. Bundle size of `fascicle` is unchanged.
 
 ### Phase 2 — Build mode + codegen (4-6 weeks after Phase 1)
 
@@ -438,10 +433,9 @@ Where this PDR disagrees with one of those documents, the disagreement is intent
 | Topic | Style says | Maintainability says | This PDR says |
 |---|---|---|---|
 | Canvas tech | Pixi.js + WebGL | React Flow + React | React Flow as substrate; custom renderers carry the personality. Defer Pixi until profiled need. |
-| Install surface | (n/a) | Separate `apps/*` in same monorepo, separate npm package | **Separate repo entirely.** `fascicle-studio` is its own monorepo. This repo never grows an `apps/*` tree. Library bundle stays unchanged. |
+| Install surface | (n/a) | Separate `apps/*`, separate npm package | `fascicle-studio` is a separate package and CLI; library bundle stays unchanged. |
 | Timeline scrubber | (n/a) | Cut from v1 | v1 ships a "tail of recent" timeline (1000 events). Full multi-run replay is v3. |
 | Codegen in v1 | (n/a) | Cut from v1 | v1 is monitor only. Codegen lands in v2 with `// @fascicle:id` markers. |
-| Visual style | Blueprint Foundry: cream paper + navy ink + safety-orange + brass | (n/a) | **Worn Foundry**: parchment + sepia ink + ochre + aged bronze + rust + wax-seal red. FFT-warm, not blueprint-cool. Same bones, warmer palette. |
 
 ---
 
