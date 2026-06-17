@@ -165,7 +165,7 @@ The error path carries a `.path` array with the step ids that led to the failure
 
 ## Where to put the harness
 
-In this repo, reference harnesses live at the root under [`examples/`](../examples/). Your own harness lives in your own project — fascicle is a library, not an app scaffold. Import from `fascicle` (the published package name, which the root `examples/` use too; only the internal workspace packages use `@repo/*`) and write the harness wherever your program belongs.
+In this repo, reference harnesses live at the root under [`examples/`](../examples/). Your own harness lives in your own project — fascicle is a library, not an app scaffold. Import from `fascicle` (the published package name, which the root `examples/` use too; inside the library, cross-module imports use the internal `#<module>` aliases) and write the harness wherever your program belongs.
 
 The canonical starting point is [`examples/hello.ts`](../examples/hello.ts). Run it:
 
@@ -174,7 +174,7 @@ pnpm exec tsx examples/hello.ts
 pnpm exec tsx examples/hello.ts "your custom input here"
 ```
 
-> **Monorepo note.** This repo is a single installable package (`fascicle`) split into `@repo/*` workspace packages to enforce architectural boundaries (e.g. core cannot import from adapters, engine cannot reach into providers). Internally you will see `@repo/core`, `@repo/engine`, `@repo/observability`, `@repo/stores`, and `@repo/fascicle`. They are never published separately — the umbrella bundle is the only public surface.
+> **Layout note.** This repo is a single installable package (`fascicle`). All source lives under `src/` as deep modules (`src/core`, `src/engine`, `src/composites`, `src/agents`, `src/observability`, `src/stores`, `src/viewer`), each with a barrel `index.ts` reached only through its `#<module>` import alias. The aliases enforce architectural boundaries (e.g. core cannot import from adapters, engine cannot reach into providers). The umbrella surface at the `src/` root is what bundles to npm — the published surface is the only public face.
 
 ## Checklist
 

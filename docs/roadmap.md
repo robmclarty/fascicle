@@ -7,14 +7,20 @@ systems, real adoption (internal automations and a local-first memory system), a
 credibility as the author.
 
 The guiding principle: stop building to product standards while distributing to
-personal-tool standards. Phase 1 makes the shipped surface match the pitch.
+personal-tool standards. Phase 1 made the shipped surface match the pitch.
 Phase 2 points it at the two real deployments. Phase 3 makes the work known.
 
-## Phase 1: make it true
+**Status (v0.8.0).** Phase 1 is fully shipped (v0.6.0–v0.6.3). Two changes
+landed after this plan was written and are not sequenced below: verbatim model
+resolution (v0.7.0, breaking) and the collapse of the internal `@repo/*`
+workspace into a single `src/` tree (v0.8.0). The live edge is now mid-Phase 2.
 
-The published surface contradicts the trust-positioned pitch at nearly every
-consumer touchpoint, and the safety-critical control-flow bugs live exactly on
-the paths the goals depend on. Close that gap first.
+## Phase 1: make it true (✅ shipped, v0.6.0–v0.6.3)
+
+The published surface contradicted the trust-positioned pitch at nearly every
+consumer touchpoint, and the safety-critical control-flow bugs lived exactly on
+the paths the goals depend on. That gap is now closed; the items below shipped
+across v0.6.0–v0.6.3 and are kept as a record.
 
 1. Stop `fallback` and `retry` from swallowing control-flow signals
    (`suspended_error`, `aborted_error`); add abort checks between children in
@@ -41,19 +47,22 @@ the paths the goals depend on. Close that gap first.
 
 Two deployment shapes, both script-shaped, unattended, observability-first.
 
-- MCP tools adapter: an `mcp_tools()` helper mapping an MCP server's tools into
-  fascicle `Tool` values. Tools are already injected plain values, so this is a
-  contained adapter, not framework creep. It is the first real capability gap
-  for work agents that touch Slack, databases, and internal APIs.
+- MCP tools adapter (**next, still pending**): an `mcp_tools()` helper mapping
+  an MCP server's tools into fascicle `Tool` values. Tools are already injected
+  plain values, so this is a contained adapter, not framework creep. It is the
+  first real capability gap for work agents that touch Slack, databases, and
+  internal APIs. Today it exists only as `examples/mcp-server/`; the work is to
+  promote it into the published surface.
 - First internal automation in production, pinned to a published version.
 - Start the local-first memory system as the flagship personal deployment:
   local models so data never leaves the house, cron-shaped rather than chat,
   and observable because the trajectory is the safety record. The library hands
   over the spine and the audit trail; the memory itself is built on top as an
   application. The suspend-gate fix from Phase 1 is a precondition for this one.
-- Done: top-level examples import `fascicle` (not `@repo/fascicle`) so they are
-  consumer-runnable; `@repo/agents` kept workspace-private (the five agent
-  examples are repo-only).
+- Done (v0.8.0): top-level examples import the published `fascicle` surface so
+  they are consumer-runnable; the built-in agents stay workspace-private
+  (`fascicle/agents` is a dev-only alias, not a published export), so the five
+  agent examples are repo-only.
 
 ## Phase 3: make it known
 

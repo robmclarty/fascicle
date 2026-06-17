@@ -56,19 +56,14 @@ Full per-provider notes live in [providers.md](./providers.md). The `claude_cli`
 
 ## Reading credentials from env
 
-The engine does not read `process.env`. That is the job of `@repo/config`, the one workspace package allowed to touch the environment. The idiomatic pattern is to build the config from config-layer getters at the boundary of your harness:
+The engine does not read `process.env`. Reading credentials from the environment is the harness's job, done once at its boundary and passed in as an explicit config object. The idiomatic pattern is a plain read of `process.env`:
 
 ```ts
-import {
-  get_anthropic_api_key,
-  get_openai_api_key,
-  get_ollama_base_url,
-} from '@repo/config';
 import { create_engine } from 'fascicle';
 
-const anthropic_key = get_anthropic_api_key();
-const openai_key    = get_openai_api_key();
-const ollama_url    = get_ollama_base_url() ?? 'http://localhost:11434';
+const anthropic_key = process.env.ANTHROPIC_API_KEY;
+const openai_key    = process.env.OPENAI_API_KEY;
+const ollama_url    = process.env.OLLAMA_BASE_URL ?? 'http://localhost:11434';
 
 const engine = create_engine({
   providers: {
@@ -79,7 +74,7 @@ const engine = create_engine({
 });
 ```
 
-Consumers of `fascicle` can replicate the pattern directly against `process.env`; they are not bound by the workspace's `no-process-env` rule. The rule exists to keep the published library free of ambient env reads, not to dictate how you wire your own harness.
+The published library stays free of ambient env reads (the `no-process-env-in-core` rule enforces that inside `src/`), but your own harness is under no such constraint. The rule exists to keep `fascicle` itself env-free, not to dictate how you wire your program.
 
 ## Model and provider: two axes
 

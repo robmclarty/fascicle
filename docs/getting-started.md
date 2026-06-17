@@ -64,7 +64,7 @@ The composition layer is small on purpose:
 | `suspend`             | Pause the flow; resume later with `resume_data`.            |
 | `scope`/`stash`/`use` | Pass values through a subtree without rewiring signatures.  |
 
-Full surface and signatures: [`packages/core/README.md`](../packages/core/README.md). Runnable references: [`examples/`](../examples/).
+Full surface and signatures: [`src/core/README.md`](../src/core/README.md). Runnable references: [`examples/`](../examples/).
 
 ## Running
 

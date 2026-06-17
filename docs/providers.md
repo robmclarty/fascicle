@@ -303,7 +303,7 @@ Fields that a provider cannot report are absent from the result (not zero). `Gen
 
 The adapter contract is small. To add a custom AI SDK provider:
 
-1. Implement the `AiSdkProviderAdapter` shape (see `packages/engine/src/providers/types.ts`).
+1. Implement the `AiSdkProviderAdapter` shape (see `src/engine/providers/types.ts`).
 2. Register a factory in the local registry of your fork, or add one to `BUILTIN_PROVIDERS` if contributing upstream.
 3. Add capability flags (`SUPPORTED`) and an `effort` translation.
 4. Export an `engine_config_error` on missing credentials.

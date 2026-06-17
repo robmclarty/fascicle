@@ -59,7 +59,7 @@ suspend     pause for external input; resume with resume_data
 scope       stash named values and use them later without rewiring
 ```
 
-Each primitive is described in full with signatures at [`packages/core/README.md`](../packages/core/README.md).
+Each primitive is described in full with signatures at [`src/core/README.md`](../src/core/README.md).
 
 ## Running a flow
 
@@ -288,4 +288,4 @@ Not a runtime concept, but a project one. `pnpm check:all` is the single source 
 - [providers.md](./providers.md) — per-provider adapter notes.
 - [cli.md](./cli.md) — the `claude_cli` subprocess provider.
 - [cookbook.md](./cookbook.md) — worked patterns (retries, fan-out, judges, HITL).
-- [`packages/core/README.md`](../packages/core/README.md) — full composition surface.
+- [`src/core/README.md`](../src/core/README.md) — full composition surface.

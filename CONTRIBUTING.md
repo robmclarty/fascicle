@@ -11,13 +11,13 @@ change as the project matures.
 ## Running tests
 
 `pnpm check` runs the full suite against mocked providers, so it never touches
-the network. A separate opt-in smoke suite under `packages/engine/test/live/`
+the network. A separate opt-in smoke suite under `src/engine/test/live/`
 exercises the real provider SDKs to catch wire-format regressions the mocks
 cannot see. It is skipped unless `LIVE_TESTS=1` and the matching API key are
 set:
 
 ```bash
-LIVE_TESTS=1 ANTHROPIC_API_KEY=... pnpm exec vitest run packages/engine/test/live
+LIVE_TESTS=1 ANTHROPIC_API_KEY=... pnpm exec vitest run src/engine/test/live
 ```
 
 Per-provider keys, each block skipped independently when its key is absent:
