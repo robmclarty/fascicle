@@ -15,7 +15,7 @@
 
 import { z } from 'zod'
 
-import { create_engine, type Engine, type GenerateOptions, type GenerateResult } from '@repo/fascicle'
+import { create_engine, type Engine, type GenerateOptions, type GenerateResult } from 'fascicle'
 
 const ProviderSchema = z.enum(['anthropic', 'openrouter', 'claude_cli'])
 export type Provider = z.infer<typeof ProviderSchema>

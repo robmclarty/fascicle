@@ -3,22 +3,22 @@ message: Composer files must not import other composers. Share through the step<
 severity: error
 language: typescript
 files:
-  - packages/core/src/sequence.ts
-  - packages/core/src/parallel.ts
-  - packages/core/src/branch.ts
-  - packages/core/src/map.ts
-  - packages/core/src/pipe.ts
-  - packages/core/src/retry.ts
-  - packages/core/src/fallback.ts
-  - packages/core/src/timeout.ts
-  - packages/core/src/adversarial.ts
-  - packages/core/src/ensemble.ts
-  - packages/core/src/tournament.ts
-  - packages/core/src/consensus.ts
-  - packages/core/src/checkpoint.ts
-  - packages/core/src/suspend.ts
-  - packages/core/src/scope.ts
-  - packages/core/src/step.ts
+  - src/core/sequence.ts
+  - src/core/parallel.ts
+  - src/core/branch.ts
+  - src/core/map.ts
+  - src/core/pipe.ts
+  - src/core/retry.ts
+  - src/core/fallback.ts
+  - src/core/timeout.ts
+  - src/core/adversarial.ts
+  - src/core/ensemble.ts
+  - src/core/tournament.ts
+  - src/core/consensus.ts
+  - src/core/checkpoint.ts
+  - src/core/suspend.ts
+  - src/core/scope.ts
+  - src/core/step.ts
 rule:
   any:
     - pattern: import $$$ from '$PATH'

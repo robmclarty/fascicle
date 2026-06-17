@@ -8,7 +8,7 @@
  * one source of truth for the events that goes to two destinations.
  */
 
-import type { TrajectoryLogger } from '@repo/fascicle'
+import type { TrajectoryLogger } from 'fascicle'
 
 let span_seq = 0
 

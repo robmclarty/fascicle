@@ -26,7 +26,7 @@ import {
   type Engine,
   type RunContext,
   type Step,
-} from '@repo/fascicle'
+} from 'fascicle'
 
 import { archive_candidate, commit_parent } from './apply.js'
 import { make_budget, type BudgetConfig } from './budget.js'

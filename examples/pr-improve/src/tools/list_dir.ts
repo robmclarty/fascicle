@@ -10,7 +10,7 @@
 import { readdir, stat } from 'node:fs/promises'
 import { z } from 'zod'
 
-import type { Tool } from '@repo/fascicle'
+import type { Tool } from 'fascicle'
 
 import { MAX_LIST_ENTRIES } from './limits.js'
 import { assert_not_symlink, resolve_within } from './path_safety.js'

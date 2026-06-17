@@ -15,7 +15,7 @@
  * Run directly:
  *   pnpm exec tsx examples/learn_reviewer.ts
  *
- * Note: the `@repo/agents` import is workspace-private (not published to npm),
+ * Note: the `fascicle/agents` import is workspace-private (not published to npm),
  * so this example runs inside this repo only.
  */
 
@@ -23,7 +23,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { reviewer, type ReviewerInput, type ReviewerOutput } from '@repo/agents'
+import { reviewer, type ReviewerInput, type ReviewerOutput } from 'fascicle/agents'
 import {
   learn,
   run,

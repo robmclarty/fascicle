@@ -1,4 +1,4 @@
-import type { ToolExecContext } from '@repo/fascicle'
+import type { ToolExecContext } from 'fascicle'
 
 export type ToolExecContextStub = ToolExecContext
 

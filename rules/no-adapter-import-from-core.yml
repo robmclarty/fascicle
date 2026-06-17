@@ -3,7 +3,9 @@ message: "The core module must not import adapter modules (observability, stores
 severity: error
 language: typescript
 files:
-  - packages/core/src/**/*.ts
+  - src/core/**/*.ts
+ignores:
+  - src/**/test/**
 rule:
   any:
     - pattern: import $$$ from '$PATH'

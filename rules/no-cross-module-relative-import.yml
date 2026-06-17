@@ -1,0 +1,17 @@
+id: no-cross-module-relative-import
+message: "Cross-module imports must go through a #-alias barrel (#core, #engine, ...), never a relative path that escapes the module directory. This is the complement to the barrel-only #-aliases: together they seal each src/<module>/ as a deep module reachable only through its index. (Cross-cutting test harnesses under test/ are exempt — they are spawned as child node processes that cannot resolve #-aliases, so they reach sibling modules relatively.)"
+severity: error
+language: typescript
+files:
+  - src/**/*.ts
+ignores:
+  - src/**/test/**
+  - src/**/__tests__/**
+  - "**/*.test.ts"
+rule:
+  any:
+    - pattern: import $$$ from '$PATH'
+    - pattern: import $$$ from "$PATH"
+constraints:
+  PATH:
+    regex: '^(\.\./)+(core|engine|composites|agents|observability|stores|viewer)(/|$)'

@@ -6,9 +6,8 @@
  *   - scripts/bump-version.mjs  (/version skill backend)
  *
  * The set is:
- *   - root package.json
- *   - every packages/*\/package.json (discovered via readdir)
- *   - every packages/*\/src/version.ts literal-string constant that matches
+ *   - root package.json (the only manifest; the workspace is a single package)
+ *   - every src/<module>/version.ts literal-string constant that matches
  *     the VERSION_LITERAL_RE pattern (currently: core, engine)
  *
  * Rewrites are idempotent and keyed on the exact `export const version = '...';`
@@ -16,45 +15,31 @@
  * silently-not-editing is impossible.
  */
 
-import { readdir, readFile, writeFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, relative } from 'node:path';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = join(__dirname, '..', '..');
-const PACKAGES_DIR = join(REPO_ROOT, 'packages');
 
 export const VERSION_LITERAL_RE = /export\s+const\s+version\s*=\s*['"]([^'"]+)['"]\s*;?/;
 
 export const VERSION_TS_CANDIDATES = [
-  join(PACKAGES_DIR, 'core', 'src', 'version.ts'),
-  join(PACKAGES_DIR, 'engine', 'src', 'version.ts'),
+  join(REPO_ROOT, 'src', 'core', 'version.ts'),
+  join(REPO_ROOT, 'src', 'engine', 'version.ts'),
 ];
 
 /**
  * Enumerate every file in the lockstep set.
  *
  * Returns an array of { path, kind, rel } entries where `kind` is one of
- * 'root_pkg' | 'package_pkg' | 'version_ts'. Stable sort: root first,
- * package package.jsons in readdir order, version.ts files last.
+ * 'root_pkg' | 'version_ts'. Stable sort: root first, version.ts files last.
  */
 export async function enumerate_lockstep() {
   const files = [];
   const root_pkg = join(REPO_ROOT, 'package.json');
   files.push({ path: root_pkg, kind: 'root_pkg', rel: relative(REPO_ROOT, root_pkg) });
-
-  const entries = await readdir(PACKAGES_DIR, { withFileTypes: true });
-  const pkg_dirs = entries
-    .filter((e) => e.isDirectory())
-    .map((e) => e.name)
-    .sort();
-  for (const name of pkg_dirs) {
-    const path = join(PACKAGES_DIR, name, 'package.json');
-    if (existsSync(path)) {
-      files.push({ path, kind: 'package_pkg', rel: relative(REPO_ROOT, path) });
-    }
-  }
 
   for (const path of VERSION_TS_CANDIDATES) {
     if (existsSync(path)) {

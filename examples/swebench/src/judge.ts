@@ -20,8 +20,8 @@
 import { spawn } from 'node:child_process'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
-import { step } from '@repo/fascicle'
-import type { Judge } from '@repo/fascicle'
+import { step } from 'fascicle'
+import type { Judge } from 'fascicle'
 import { count_files_touched, is_nonempty_patch, looks_like_unified_diff } from './diff.js'
 import type { EvalRecord, EvalReport, Prediction, SweBenchInstance } from './types.js'
 

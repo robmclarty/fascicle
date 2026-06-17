@@ -1,5 +1,6 @@
 packages:
-  - 'packages/*'
+  # The library itself is the workspace root (single package). Only the example
+  # apps are separate workspace members; they depend on the root via `fascicle`.
   - 'examples/red-green-refactor'
   - 'examples/amplify'
   - 'examples/mcp-server'

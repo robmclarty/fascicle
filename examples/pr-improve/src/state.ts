@@ -6,7 +6,7 @@
  * lookups in one place so flow.ts never sees `as` casts.
  */
 
-import type { LoopResult } from '@repo/fascicle'
+import type { LoopResult } from 'fascicle'
 
 import type { BuildVerdict, Handoff, PRContext, PragmatistOutput, Suggestion } from './types.js'
 

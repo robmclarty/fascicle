@@ -3,7 +3,7 @@ message: "@repo/viewer is a dev tool that reads the wire format. It must not imp
 severity: error
 language: typescript
 files:
-  - packages/viewer/src/**/*.ts
+  - src/viewer/**/*.ts
 rule:
   any:
     - pattern: import $$$ from '$PATH'

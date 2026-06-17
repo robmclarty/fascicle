@@ -1,5 +1,5 @@
-import { run } from '@repo/fascicle'
-import type { Engine, GenerateOptions, GenerateResult } from '@repo/fascicle'
+import { run } from 'fascicle'
+import type { Engine, GenerateOptions, GenerateResult } from 'fascicle'
 import { describe, expect, it } from 'vitest'
 
 import type { Provider } from '../../engine.js'

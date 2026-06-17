@@ -16,8 +16,8 @@ import { mkdir } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { create_engine, run } from '@repo/fascicle'
-import { filesystem_logger } from '@repo/fascicle/adapters'
+import { create_engine, run } from 'fascicle'
+import { filesystem_logger } from 'fascicle/adapters'
 
 import { SEED_BEHAVIORS, type Behavior } from './behaviors.js'
 import { build_cycle } from './harness.js'

@@ -8,7 +8,7 @@
  * "no_improvement" lesson for that proposer.
  */
 
-import { model_call, type Engine, type Step } from '@repo/fascicle'
+import { model_call, type Engine, type Step } from 'fascicle'
 import { z } from 'zod'
 
 import { propose_prompt, SYSTEM_PROMPT, type ProposePromptArgs } from './prompts.js'

@@ -3,7 +3,7 @@ message: Drop the trailing semicolon. ASI is fine.
 severity: error
 language: typescript
 files:
-  - "packages/**/*.ts"
+  - "src/**/*.ts"
   - "test/**/*.ts"
   - "examples/**/*.ts"
 ignores:

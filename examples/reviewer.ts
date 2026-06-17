@@ -12,11 +12,11 @@
  * Run directly:
  *   pnpm exec tsx examples/reviewer.ts
  *
- * Note: the `@repo/agents` import is workspace-private (not published to npm),
+ * Note: the `fascicle/agents` import is workspace-private (not published to npm),
  * so this example runs inside this repo only.
  */
 
-import { reviewer, type ReviewerOutput } from '@repo/agents'
+import { reviewer, type ReviewerOutput } from 'fascicle/agents'
 import { run } from 'fascicle'
 import type { Engine, GenerateOptions, GenerateResult } from 'fascicle'
 

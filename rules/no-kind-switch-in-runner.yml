@@ -3,7 +3,7 @@ message: "runner.ts must not branch on step.kind. Composers own their own execut
 severity: error
 language: typescript
 files:
-  - packages/core/src/runner.ts
+  - src/core/runner.ts
 rule:
   any:
     - pattern: switch ($$$.kind) { $$$ }

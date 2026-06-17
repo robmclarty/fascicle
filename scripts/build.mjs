@@ -31,7 +31,7 @@ const DIST_ADAPTERS_JS = join(DIST_DIR, 'adapters.js');
 const DIST_ADAPTERS_DTS = join(DIST_DIR, 'adapters.d.ts');
 const DIST_STATIC_DIR = join(DIST_DIR, 'static');
 const DIST_STATIC_HTML = join(DIST_STATIC_DIR, 'viewer.html');
-const VIEWER_HTML_SRC = join(REPO_ROOT, 'packages', 'viewer', 'src', 'static', 'viewer.html');
+const VIEWER_HTML_SRC = join(REPO_ROOT, 'src', 'viewer', 'static', 'viewer.html');
 const DIST_BIN_DIR = join(DIST_DIR, 'bin');
 const DIST_BIN_VIEWER = join(DIST_BIN_DIR, 'fascicle-viewer.js');
 
@@ -157,11 +157,18 @@ async function main() {
   process.stderr.write(`▸ build: verifying bundle externals\n`);
   const dist_text = await readFile(DIST_JS, 'utf8');
 
-  // Workspace deps MUST be inlined.
+  // Internal modules MUST be inlined: neither the old workspace names (@repo/*)
+  // nor the #-import aliases may survive in the published bundle.
   const repo_static = /from\s+["']@repo\//.test(dist_text);
   const repo_dynamic = /import\(\s*["']@repo\//.test(dist_text);
   if (repo_static || repo_dynamic) {
-    console.error(`\nbuild: @repo/* appears in dist — workspace deps were not inlined`);
+    console.error(`\nbuild: @repo/* appears in dist — internal modules were not inlined`);
+    process.exit(1);
+  }
+  const hash_static = /from\s+["']#/.test(dist_text);
+  const hash_dynamic = /import\(\s*["']#/.test(dist_text);
+  if (hash_static || hash_dynamic) {
+    console.error(`\nbuild: #-import alias appears in dist — internal modules were not inlined`);
     process.exit(1);
   }
 

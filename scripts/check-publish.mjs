@@ -7,8 +7,7 @@
  *   2. `@arethetypeswrong/cli` against ./dist/ — Node-ESM type resolution
  *      must be clean.
  *   3. Re-assert the version-lockstep invariant across the root
- *      package.json, every packages/*\/package.json, and both
- *      packages/{core,engine}/src/version.ts constants.
+ *      package.json and the src/{core,engine}/version.ts constants.
  *
  * Exit codes:
  *   0  ready to publish
@@ -46,7 +45,7 @@ const FORBIDDEN_PATH_PATTERNS = [
   /(^|\/)\.check(\/|$)/,
   /(^|\/)rules(\/|$)/,
   /(^|\/)scripts(\/|$)/,
-  /(^|\/)packages\/[^/]+\/src(\/|$)/,
+  /(^|\/)src(\/|$)/,
 ];
 const REQUIRED_FILE_EXEMPT = new Set(REQUIRED_FILES);
 

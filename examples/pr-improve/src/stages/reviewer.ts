@@ -6,7 +6,7 @@
  * happen in flow.ts; this file is just system prompt + model_call.
  */
 
-import { model_call, type Engine, type GenerateResult, type Step } from '@repo/fascicle'
+import { model_call, type Engine, type GenerateResult, type Step } from 'fascicle'
 
 import { ReviewerOutputSchema, type ReviewerOutput } from '../types.js'
 

@@ -2,13 +2,13 @@
 # Docs: https://docs.fallow.tools
 
 entry = [
-  "packages/*/src/index.ts",
-  "packages/fascicle/src/adapters.ts",
-  "packages/*/src/**/*.test.ts",
-  "packages/*/test/**/*.test.ts",
-  "packages/*/test/**/*.mjs",
-  "packages/*/test/**/*-harness.ts",
-  "packages/viewer/src/cli.ts",
+  "src/index.ts",
+  "src/adapters.ts",
+  "src/*/index.ts",
+  "src/**/*.test.ts",
+  "src/**/test/**/*.mjs",
+  "src/**/*-harness.ts",
+  "src/viewer/cli.ts",
   "test/**/*.test.ts",
   "stryker.config.mjs",
 ]
@@ -33,7 +33,35 @@ minTokens = 50
 maxCyclomatic = 15
 maxCognitive = 15
 
-# Architecture boundaries. Uncomment and adapt when module boundaries emerge.
-# [[boundaries.rules]]
-# from = "packages/*/src/**"
-# cannotImport = ["../*/src/**"]  # no cross-package relative imports; use workspace names
+# Architecture boundaries: directory-level default-deny DAG that replaces the
+# old per-package manifest graph. Each module lists every sibling it MAY NOT
+# import (fallow is default-allow). The umbrella (src/*.ts) is intentionally
+# unconstrained — it composes every layer. Mirrors the ast-grep boundary rules.
+
+[[boundaries.rules]] # core: bottom of the DAG, imports no sibling module
+from = "src/core/**"
+cannotImport = ["src/engine/**", "src/composites/**", "src/agents/**", "src/observability/**", "src/stores/**", "src/viewer/**"]
+
+[[boundaries.rules]] # engine: may reference core (type-only, see ast-grep), nothing else
+from = "src/engine/**"
+cannotImport = ["src/composites/**", "src/agents/**", "src/observability/**", "src/stores/**", "src/viewer/**"]
+
+[[boundaries.rules]] # composites: core + observability only
+from = "src/composites/**"
+cannotImport = ["src/engine/**", "src/agents/**", "src/stores/**", "src/viewer/**"]
+
+[[boundaries.rules]] # observability: core only
+from = "src/observability/**"
+cannotImport = ["src/engine/**", "src/composites/**", "src/agents/**", "src/stores/**", "src/viewer/**"]
+
+[[boundaries.rules]] # stores: core only
+from = "src/stores/**"
+cannotImport = ["src/engine/**", "src/composites/**", "src/agents/**", "src/observability/**", "src/viewer/**"]
+
+[[boundaries.rules]] # viewer: core only (dev tool that reads the wire format)
+from = "src/viewer/**"
+cannotImport = ["src/engine/**", "src/composites/**", "src/agents/**", "src/observability/**", "src/stores/**"]
+
+[[boundaries.rules]] # agents: core + composites + engine only
+from = "src/agents/**"
+cannotImport = ["src/observability/**", "src/stores/**", "src/viewer/**"]

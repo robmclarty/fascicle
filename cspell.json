@@ -1,7 +1,7 @@
 {
   "version": "0.2",
   "language": "en",
-  "files": ["packages/*/src/**/*.ts", "**/*.md"],
+  "files": ["src/**/*.ts", "**/*.md"],
   "ignorePaths": [
     "**/node_modules/**",
     "dist/**",
@@ -11,6 +11,7 @@
     ".ridgeline/**",
     "**/research/**",
     "spec/**",
+    "src/**/test/**",
     "pnpm-lock.yaml",
     "package.json"
   ],

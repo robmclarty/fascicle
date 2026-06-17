@@ -3,8 +3,9 @@ message: "The core module may only depend on zod among npm packages (recovers th
 severity: error
 language: typescript
 files:
-  - packages/core/src/**/*.ts
+  - src/core/**/*.ts
 ignores:
+  - src/**/test/**
   - "**/*.test.ts"
 rule:
   any:

@@ -7,7 +7,7 @@
  * any behavioral change to the existing claude_cli demo.
  */
 
-import type { Tool } from '@repo/fascicle'
+import type { Tool } from 'fascicle'
 
 import { make_edit_file } from './edit_file.js'
 import { make_list_dir } from './list_dir.js'

@@ -6,7 +6,7 @@
  * threads `feedback` into the next iteration's builder prompt.
  */
 
-import { model_call, type Engine, type GenerateResult, type Step } from '@repo/fascicle'
+import { model_call, type Engine, type GenerateResult, type Step } from 'fascicle'
 
 import { BuildVerdictSchema, type BuildVerdict } from '../types.js'
 

@@ -9,7 +9,7 @@
  *   tools from `make_builder_tools(worktree_root)`.
  */
 
-import { model_call, type Engine, type GenerateResult, type Step } from '@repo/fascicle'
+import { model_call, type Engine, type GenerateResult, type Step } from 'fascicle'
 
 import type { Provider } from '../engine.js'
 import { make_builder_tools } from '../tools/index.js'

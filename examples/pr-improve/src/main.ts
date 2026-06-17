@@ -23,8 +23,8 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { run } from '@repo/fascicle'
-import { filesystem_logger, tee_logger } from '@repo/fascicle/adapters'
+import { run } from 'fascicle'
+import { filesystem_logger, tee_logger } from 'fascicle/adapters'
 
 import {
   create_app_engine,

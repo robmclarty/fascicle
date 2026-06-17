@@ -1,20 +1,20 @@
 #!/usr/bin/env node
 /**
- * Dependency and publishability invariants per constraints.md §7.2
- * and publish spec §6.1 / §10:
+ * Dependency and publishability invariants for the single-package layout.
  *
  *   Dependency shape
- *   - @repo/core production deps are exactly: zod
- *   - @repo/engine production deps are exactly: @repo/core, ai, zod
- *   - @repo/engine declares six provider SDKs as OPTIONAL peers
+ *   - "core may only depend on zod" and "engine may only depend on ai+zod"
+ *     are now enforced at the import level by the ast-grep rules
+ *     rules/no-core-npm-dep-except-zod.yml and
+ *     rules/no-engine-npm-dep-except-ai-zod.yml (the single root manifest can
+ *     no longer express per-module dependency shape).
+ *   - The provider SDKs MUST be declared as OPTIONAL peers on the root manifest
+ *     (checked here).
  *
  *   Publishability
- *   - Root package.json must NOT carry "private": true (only the root
- *     manifest ships to npm)
- *   - Every packages/*\/package.json MUST carry "private": true
- *   - Every packages/*\/package.json version MUST equal the root version
- *   - Both packages/core/src/version.ts and packages/engine/src/version.ts
- *     literal constants MUST equal the root version
+ *   - Root package.json must NOT carry "private": true.
+ *   - Every src/<module>/version.ts literal constant MUST equal the root version
+ *     (enumerated via scripts/lib/lockstep.mjs).
  */
 
 import { readFile } from 'node:fs/promises';
@@ -25,14 +25,8 @@ import {
   read_current_version,
 } from './lib/lockstep.mjs';
 
-const PACKAGES_DIR = join(REPO_ROOT, 'packages');
-const CORE_PKG = join(PACKAGES_DIR, 'core', 'package.json');
-const ENGINE_PKG = join(PACKAGES_DIR, 'engine', 'package.json');
-const FASCICLE_PKG = join(PACKAGES_DIR, 'fascicle', 'package.json');
-
-const CORE_ALLOWED = new Set(['zod']);
-const ENGINE_ALLOWED = new Set(['@repo/core', 'ai', 'zod']);
-const ENGINE_REQUIRED_OPTIONAL_PEERS = [
+const ROOT_PKG = join(REPO_ROOT, 'package.json');
+const REQUIRED_OPTIONAL_PEERS = [
   '@ai-sdk/anthropic',
   '@ai-sdk/google',
   '@ai-sdk/openai',
@@ -50,89 +44,37 @@ async function read_pkg(path) {
   return JSON.parse(await readFile(path, 'utf8'));
 }
 
-async function check_core() {
-  const pkg = await read_pkg(CORE_PKG);
-  const deps = Object.keys(pkg.dependencies ?? {});
-  const disallowed = deps.filter((d) => !CORE_ALLOWED.has(d));
-  if (disallowed.length > 0) {
-    fail(
-      `@repo/core has disallowed production dependencies: ${disallowed.join(', ')}. ` +
-        `only allowed: ${[...CORE_ALLOWED].join(', ')}`,
-    );
-  }
-  for (const required of CORE_ALLOWED) {
-    if (!deps.includes(required)) {
-      fail(`@repo/core is missing required dependency: ${required}`);
-    }
-  }
-  console.log(`check-deps: core ok (${deps.length} prod dep(s): ${deps.join(', ')})`);
-}
-
-async function check_engine() {
-  const pkg = await read_pkg(ENGINE_PKG);
-  const deps = Object.keys(pkg.dependencies ?? {});
-  const disallowed = deps.filter((d) => !ENGINE_ALLOWED.has(d));
-  if (disallowed.length > 0) {
-    fail(
-      `@repo/engine has disallowed production dependencies: ${disallowed.join(', ')}. ` +
-        `only allowed: ${[...ENGINE_ALLOWED].join(', ')}`,
-    );
-  }
-  for (const required of ENGINE_ALLOWED) {
-    if (!deps.includes(required)) {
-      fail(`@repo/engine is missing required dependency: ${required}`);
-    }
-  }
-
+async function check_optional_peers() {
+  const pkg = await read_pkg(ROOT_PKG);
   const peers = Object.keys(pkg.peerDependencies ?? {});
   const meta = pkg.peerDependenciesMeta ?? {};
-  for (const peer of ENGINE_REQUIRED_OPTIONAL_PEERS) {
+  for (const peer of REQUIRED_OPTIONAL_PEERS) {
     if (!peers.includes(peer)) {
-      fail(`@repo/engine is missing required peer dependency: ${peer}`);
+      fail(`root manifest is missing required peer dependency: ${peer}`);
     }
     if (!meta[peer] || meta[peer].optional !== true) {
-      fail(
-        `@repo/engine peer dependency ${peer} must be declared optional via peerDependenciesMeta`,
-      );
+      fail(`peer dependency ${peer} must be declared optional via peerDependenciesMeta`);
     }
   }
   console.log(
-    `check-deps: engine ok (${deps.length} prod dep(s): ${deps.join(', ')}; ${peers.length} peer(s), all optional where required)`,
+    `check-deps: optional provider peers ok (${REQUIRED_OPTIONAL_PEERS.length} required, all optional)`,
   );
 }
 
 async function check_publishability() {
-  // The lockstep enumeration here is shared with scripts/check-publish.mjs
-  // and scripts/bump-version.mjs via scripts/lib/lockstep.mjs. One source of
-  // truth; don't re-derive package discovery locally.
   const files = await enumerate_lockstep();
   const root_file = files.find((f) => f.kind === 'root_pkg');
   if (!root_file) fail('root package.json not found in lockstep enumeration');
 
   const root_pkg = await read_pkg(root_file.path);
   if (root_pkg.private === true) {
-    fail(
-      `root package.json must NOT carry "private": true (only the root manifest publishes); ` +
-        `found in ${root_file.path}`,
-    );
+    fail(`root package.json must NOT carry "private": true; found in ${root_file.path}`);
   }
   const root_version = await read_current_version(root_file).catch((err) => fail(err.message));
 
-  let package_count = 0;
   let version_ts_count = 0;
   for (const file of files) {
     if (file === root_file) continue;
-    if (file.kind === 'package_pkg') {
-      const pkg = await read_pkg(file.path);
-      if (pkg.private !== true) {
-        fail(`${file.path} must carry "private": true (only the root manifest publishes)`);
-      }
-      if (pkg.version !== root_version) {
-        fail(`version skew: ${file.path} is "${pkg.version}" but root is "${root_version}"`);
-      }
-      package_count++;
-      continue;
-    }
     if (file.kind === 'version_ts') {
       const v = await read_current_version(file).catch((err) => fail(err.message));
       if (v !== root_version) {
@@ -143,31 +85,12 @@ async function check_publishability() {
   }
 
   console.log(
-    `check-deps: publish invariants ok (root ${root_version}, ${package_count} package(s) + ${version_ts_count} version.ts literal(s) in lockstep)`,
+    `check-deps: publish invariants ok (root ${root_version}, ${version_ts_count} version.ts literal(s) in lockstep)`,
   );
 }
 
-async function check_viewer_inclusion() {
-  // The viewer ships as part of the @repo/fascicle umbrella so users get
-  // `start_viewer` and the `fascicle-viewer` bin from a single install. The
-  // viewer has no HTTP-server deps (node:* + zod + @repo/core only), so
-  // including it does not bloat fascicle's runtime install graph. See
-  // spec/eval.md wedge 1.
-  const pkg = await read_pkg(FASCICLE_PKG);
-  const deps = pkg.dependencies ?? {};
-  if (!Object.prototype.hasOwnProperty.call(deps, '@repo/viewer')) {
-    fail(
-      `@repo/viewer must appear in @repo/fascicle's dependencies. ` +
-        `The umbrella owns the bin and the programmatic start_viewer surface; ${FASCICLE_PKG} must depend on it.`,
-    );
-  }
-  console.log(`check-deps: viewer inclusion ok (@repo/viewer present in @repo/fascicle deps)`);
-}
-
 async function main() {
-  await check_core();
-  await check_engine();
-  await check_viewer_inclusion();
+  await check_optional_peers();
   await check_publishability();
 }
 

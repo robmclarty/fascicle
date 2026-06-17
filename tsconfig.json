@@ -23,20 +23,20 @@
     "noEmit": true,
 
     "paths": {
-      "fascicle": ["./packages/fascicle/src/index.ts"],
-      "fascicle/adapters": ["./packages/fascicle/src/adapters.ts"],
-      "#core": ["./packages/core/src/index.ts"],
-      "#engine": ["./packages/engine/src/index.ts"],
-      "#composites": ["./packages/composites/src/index.ts"],
-      "#observability": ["./packages/observability/src/index.ts"],
-      "#stores": ["./packages/stores/src/index.ts"],
-      "#viewer": ["./packages/viewer/src/index.ts"],
-      "#agents": ["./packages/agents/src/index.ts"]
+      "fascicle": ["./src/index.ts"],
+      "fascicle/adapters": ["./src/adapters.ts"],
+      "fascicle/agents": ["./src/agents/index.ts"],
+      "#core": ["./src/core/index.ts"],
+      "#engine": ["./src/engine/index.ts"],
+      "#composites": ["./src/composites/index.ts"],
+      "#observability": ["./src/observability/index.ts"],
+      "#stores": ["./src/stores/index.ts"],
+      "#viewer": ["./src/viewer/index.ts"],
+      "#agents": ["./src/agents/index.ts"]
     }
   },
   "include": [
-    "packages/*/src/**/*",
-    "packages/*/test/**/*.ts",
+    "src/**/*",
     "examples/**/*.ts",
     "test/**/*.ts"
   ],

@@ -3,10 +3,10 @@ message: "The engine module may only depend on ai and zod among npm packages (re
 severity: error
 language: typescript
 files:
-  - packages/engine/src/**/*.ts
+  - src/engine/**/*.ts
 ignores:
-  - packages/engine/src/providers/**/*.ts
-  - packages/engine/src/errors.ts
+  - src/**/test/**
+  - src/engine/providers/**/*.ts
   - "**/*.test.ts"
 rule:
   any:

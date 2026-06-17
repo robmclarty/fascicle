@@ -137,7 +137,7 @@ const handle = await start_viewer({ port: 4242 });
 await handle.close();
 ```
 
-For zero-latency streaming from inside a long-running flow, pair it with `http_logger` from `fascicle/adapters`. See [packages/viewer/README.md](./packages/viewer/README.md) for the full transport story.
+For zero-latency streaming from inside a long-running flow, pair it with `http_logger` from `fascicle/adapters`. See [src/viewer/README.md](./src/viewer/README.md) for the full transport story.
 
 ## Where to go next
 
@@ -149,7 +149,7 @@ For zero-latency streaming from inside a long-running flow, pair it with `http_l
 - [docs/cookbook.md](./docs/cookbook.md) — retries, fan-out, judges, HITL, tool loops
 - [docs/writing-a-harness.md](./docs/writing-a-harness.md) — building a runner around fascicle
 - [examples/](./examples/) — runnable reference flows
-- [packages/viewer/README.md](./packages/viewer/README.md) — viewer details and transport options
+- [src/viewer/README.md](./src/viewer/README.md) — viewer details and transport options
 
 ## Contributing
 

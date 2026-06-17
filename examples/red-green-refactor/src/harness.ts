@@ -30,7 +30,7 @@ import {
   type Engine,
   type GenerateResult,
   type Step,
-} from '@repo/fascicle'
+} from 'fascicle'
 
 import {
   assert_one_test_added,

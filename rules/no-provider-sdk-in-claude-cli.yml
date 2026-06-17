@@ -3,7 +3,9 @@ message: "claude_cli adapter must not import Vercel AI SDK packages (ai, @ai-sdk
 severity: error
 language: typescript
 files:
-  - packages/engine/src/providers/claude_cli/**/*.ts
+  - src/engine/providers/claude_cli/**/*.ts
+ignores:
+  - src/**/test/**
 rule:
   any:
     - pattern: import $$$ from '$PATH'

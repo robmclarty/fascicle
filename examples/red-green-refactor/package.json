@@ -9,7 +9,7 @@
     "test:toy": "vitest run --config vitest.config.ts"
   },
   "dependencies": {
-    "@repo/fascicle": "workspace:*",
+    "fascicle": "workspace:*",
     "vitest": "*"
   },
   "devDependencies": {

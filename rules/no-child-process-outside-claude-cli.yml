@@ -3,9 +3,10 @@ message: "node:child_process may only be imported from the claude_cli provider a
 severity: error
 language: typescript
 files:
-  - packages/engine/src/**/*.ts
+  - src/engine/**/*.ts
 ignores:
-  - packages/engine/src/providers/claude_cli/**/*.ts
+  - src/**/test/**
+  - src/engine/providers/claude_cli/**/*.ts
 rule:
   any:
     - pattern: import $$$ from 'node:child_process'

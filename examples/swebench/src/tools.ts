@@ -19,7 +19,7 @@
  */
 
 import { z } from 'zod'
-import type { Tool } from '@repo/fascicle'
+import type { Tool } from 'fascicle'
 import type { Sandbox } from './sandbox.js'
 
 const read_file_input = z.object({ path: z.string() })

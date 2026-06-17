@@ -24,8 +24,8 @@
  * actually resolves the issue.
  */
 
-import { create_engine, step } from '@repo/fascicle'
-import type { EffortLevel, Engine, Step } from '@repo/fascicle'
+import { create_engine, step } from 'fascicle'
+import type { EffortLevel, Engine, Step } from 'fascicle'
 import { build_tools } from './tools.js'
 import { build_initial_prompt, SOLVE_SYSTEM_PROMPT } from './prompt.js'
 import type { SandboxFactory } from './sandbox.js'

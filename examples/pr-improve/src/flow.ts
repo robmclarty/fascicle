@@ -32,7 +32,7 @@ import {
   type Engine,
   type GenerateResult,
   type Step,
-} from '@repo/fascicle'
+} from 'fascicle'
 
 import type { Provider } from './engine.js'
 import {

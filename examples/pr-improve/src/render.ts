@@ -6,7 +6,7 @@
  * structured `FinalResult` and the harness decides what to write).
  */
 
-import type { LoopResult } from '@repo/fascicle'
+import type { LoopResult } from 'fascicle'
 
 import type { LoopState } from './state.js'
 import type { FinalResult, Handoff, PRContext, PragmatistOutput, Suggestion } from './types.js'

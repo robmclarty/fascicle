@@ -6,7 +6,7 @@
  * the whole pipeline. Cap = 3 accepted changes.
  */
 
-import { model_call, type Engine, type GenerateResult, type Step } from '@repo/fascicle'
+import { model_call, type Engine, type GenerateResult, type Step } from 'fascicle'
 
 import { PragmatistOutputSchema, type PragmatistOutput } from '../types.js'
 

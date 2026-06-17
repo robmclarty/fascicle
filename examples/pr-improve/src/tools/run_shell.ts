@@ -17,7 +17,7 @@
 import { spawn } from 'node:child_process'
 import { z } from 'zod'
 
-import type { Tool, ToolExecContext } from '@repo/fascicle'
+import type { Tool, ToolExecContext } from 'fascicle'
 
 import { MAX_SHELL_OUT_BYTES, SHELL_TIMEOUT_MS } from './limits.js'
 

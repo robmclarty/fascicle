@@ -19,7 +19,7 @@
  * Subsequent runs compare against bench/reviewer/baseline.json and exit 1 on
  * regression.
  *
- * Note: the `@repo/agents` import is workspace-private (not published to npm),
+ * Note: the `fascicle/agents` import is workspace-private (not published to npm),
  * so this example runs inside this repo only.
  */
 
@@ -32,7 +32,7 @@ import {
   type ReviewFinding,
   type ReviewerInput,
   type ReviewerOutput,
-} from '@repo/agents'
+} from 'fascicle/agents'
 import {
   bench,
   judge_with,

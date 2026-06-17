@@ -28,13 +28,13 @@
     }
   },
   "imports": {
-    "#core": "./packages/core/src/index.ts",
-    "#engine": "./packages/engine/src/index.ts",
-    "#composites": "./packages/composites/src/index.ts",
-    "#observability": "./packages/observability/src/index.ts",
-    "#stores": "./packages/stores/src/index.ts",
-    "#viewer": "./packages/viewer/src/index.ts",
-    "#agents": "./packages/agents/src/index.ts"
+    "#core": "./src/core/index.ts",
+    "#engine": "./src/engine/index.ts",
+    "#composites": "./src/composites/index.ts",
+    "#observability": "./src/observability/index.ts",
+    "#stores": "./src/stores/index.ts",
+    "#viewer": "./src/viewer/index.ts",
+    "#agents": "./src/agents/index.ts"
   },
   "bin": {
     "fascicle-viewer": "./dist/bin/fascicle-viewer.js"
@@ -70,7 +70,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "types": "tsc --noEmit",
-    "fascicle-viewer": "tsx packages/viewer/src/cli.ts"
+    "fascicle-viewer": "tsx src/viewer/cli.ts"
   },
   "peerDependencies": {
     "@ai-sdk/amazon-bedrock": "^3.0.0",
@@ -109,11 +109,6 @@
   "devDependencies": {
     "@arethetypeswrong/cli": "0.18.2",
     "@ast-grep/cli": "0.42.1",
-    "@repo/agents": "workspace:*",
-    "@repo/fascicle": "workspace:*",
-    "@repo/observability": "workspace:*",
-    "@repo/stores": "workspace:*",
-    "@repo/viewer": "workspace:*",
     "@stryker-mutator/core": "9.6.1",
     "@stryker-mutator/vitest-runner": "9.6.1",
     "@types/node": "24.12.2",

@@ -1,11 +1,12 @@
 id: no-provider-sdk-outside-providers
-message: "Provider SDK packages (@ai-sdk/*, ai-sdk-ollama, @openrouter/ai-sdk-provider) may only be imported from packages/engine/src/providers/. All other engine files talk to models through ProviderAdapter."
+message: "Provider SDK packages (@ai-sdk/*, ai-sdk-ollama, @openrouter/ai-sdk-provider) may only be imported from src/engine/providers/. All other engine files talk to models through ProviderAdapter."
 severity: error
 language: typescript
 files:
-  - packages/engine/src/**/*.ts
+  - src/engine/**/*.ts
 ignores:
-  - packages/engine/src/providers/**/*.ts
+  - src/**/test/**
+  - src/engine/providers/**/*.ts
 rule:
   any:
     - pattern: import $$$ from '$PATH'

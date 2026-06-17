@@ -13,7 +13,7 @@
     "test:target": "vitest run --config target/vitest.config.ts"
   },
   "dependencies": {
-    "@repo/fascicle": "workspace:*",
+    "fascicle": "workspace:*",
     "vitest": "*",
     "zod": "*"
   },

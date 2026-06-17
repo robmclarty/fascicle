@@ -29,8 +29,8 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { bench, create_engine } from '@repo/fascicle'
-import type { BenchReport, EffortLevel, Engine } from '@repo/fascicle'
+import { bench, create_engine } from 'fascicle'
+import type { BenchReport, EffortLevel, Engine } from 'fascicle'
 
 import { SMOKE_INSTANCES } from './instances.js'
 import { solve_instance } from './flow.js'

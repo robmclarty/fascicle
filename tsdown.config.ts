@@ -12,8 +12,8 @@ import { defineConfig } from 'tsdown';
 //     `.mjs` because platform=node implies fixedExtension=true.
 export default defineConfig({
   entry: [
-    './packages/fascicle/src/index.ts',
-    './packages/fascicle/src/adapters.ts',
+    './src/index.ts',
+    './src/adapters.ts',
   ],
   outDir: './dist',
   format: ['esm'],
@@ -23,6 +23,5 @@ export default defineConfig({
   target: 'node24',
   platform: 'node',
   fixedExtension: false,
-  noExternal: [/^@repo\//],
   external: ['ai', 'zod', /^@ai-sdk\//, 'ai-sdk-ollama', '@openrouter/ai-sdk-provider'],
 });

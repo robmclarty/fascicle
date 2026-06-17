@@ -22,7 +22,7 @@
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 
-import { model_call, type Engine, type RunContext } from '@repo/fascicle'
+import { model_call, type Engine, type RunContext } from 'fascicle'
 
 import { research_prompt, RESEARCH_SYSTEM_PROMPT } from './prompts.js'
 import type { Brief } from './types.js'

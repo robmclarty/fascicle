@@ -1,12 +1,11 @@
 id: model-call-is-sole-bridge
-message: "model_call.ts is the only file in packages/fascicle/src/ allowed to import value symbols from @repo/core and/or @repo/engine. Re-exports (export ... from) are fine; direct value imports must be confined to model_call.ts so the bridge between the composition and engine layers stays in exactly one file."
+message: "model_call.ts is the only umbrella file allowed to import value symbols from #core and/or #engine. Re-exports (export ... from) are fine; direct value imports must be confined to model_call.ts so the bridge between the composition and engine layers stays in exactly one file. (files is an explicit list of the top-level umbrella files because ast-grep globs treat `*` as crossing `/`; model_call.ts is omitted as the sanctioned bridge.)"
 severity: error
 language: typescript
 files:
-  - packages/fascicle/src/**/*.ts
-ignores:
-  - packages/fascicle/src/model_call.ts
-  - packages/fascicle/src/**/*.test.ts
+  - src/index.ts
+  - src/adapters.ts
+  - src/forward_standard_env.ts
 rule:
   any:
     - pattern: import { $$$ } from '$PATH'

@@ -3,11 +3,12 @@ message: Exported functions and values must be snake_case or SCREAMING_SNAKE_CAS
 severity: error
 language: typescript
 files:
-  - packages/core/src/**/*.ts
-  - packages/engine/src/**/*.ts
+  - src/core/**/*.ts
+  - src/engine/**/*.ts
 ignores:
-  - packages/core/src/**/*.test.ts
-  - packages/engine/src/**/*.test.ts
+  - src/**/test/**
+  - src/core/**/*.test.ts
+  - src/engine/**/*.test.ts
 rule:
   any:
     - pattern: export function $NAME($$$) { $$$ }
