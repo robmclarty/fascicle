@@ -18,7 +18,7 @@ import {
   make_text_result,
   mock_state,
   reset_mock_state,
-} from '../test/fixtures/mock_ai.js'
+} from './fixtures/mock_ai.js'
 
 vi.mock('ai', async () => build_mock_ai_module())
 vi.mock('../providers/registry.js', async () => build_mock_registry_module())

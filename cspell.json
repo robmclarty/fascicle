@@ -11,7 +11,7 @@
     ".ridgeline/**",
     "**/research/**",
     "spec/**",
-    "src/**/test/**",
+    "src/**/__tests__/**",
     "pnpm-lock.yaml",
     "package.json"
   ],

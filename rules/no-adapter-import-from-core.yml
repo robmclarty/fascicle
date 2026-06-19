@@ -5,7 +5,7 @@ language: typescript
 files:
   - src/core/**/*.ts
 ignores:
-  - src/**/test/**
+  - src/**/__tests__/**
 rule:
   any:
     - pattern: import $$$ from '$PATH'

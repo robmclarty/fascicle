@@ -5,7 +5,7 @@ language: typescript
 files:
   - src/engine/providers/claude_cli/**/*.ts
 ignores:
-  - src/**/test/**
+  - src/**/__tests__/**
 rule:
   any:
     - pattern: import $$$ from '$PATH'

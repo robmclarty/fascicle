@@ -10,13 +10,10 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { checkpoint, run, sequence, step } from '#core'
+import type { TrajectoryEvent } from '#core'
 import { filesystem_logger } from '#observability'
 import { filesystem_store } from '#stores'
-import { checkpoint } from '../../checkpoint.js'
-import { run } from '../../runner.js'
-import { sequence } from '../../sequence.js'
-import { step } from '../../step.js'
-import type { TrajectoryEvent } from '../../types.js'
 
 let work_dir: string
 

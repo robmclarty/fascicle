@@ -8,7 +8,7 @@
  * silently no-ops (anthropic) or throws (google) against the pinned SDKs. A
  * single live generate at a non-none effort is enough to catch both. Run with:
  *
- *   LIVE_TESTS=1 ANTHROPIC_API_KEY=... pnpm exec vitest run packages/engine/test/live
+ *   LIVE_TESTS=1 ANTHROPIC_API_KEY=... pnpm exec vitest run src/engine/__tests__/live
  *
  * See CONTRIBUTING.md for the full set of env vars.
  */

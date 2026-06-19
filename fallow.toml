@@ -6,10 +6,11 @@ entry = [
   "src/adapters.ts",
   "src/*/index.ts",
   "src/**/*.test.ts",
-  "src/**/test/**/*.mjs",
+  "src/**/__tests__/**/*.mjs",
   "src/**/*-harness.ts",
   "src/viewer/cli.ts",
   "test/**/*.test.ts",
+  "test/**/*.mjs",
   "stryker.config.mjs",
 ]
 

@@ -34,7 +34,7 @@ Node-script mock (`fixtures/mock_claude.mjs`) configured per test.
 
 Each numbered item below comes from spec §12 "Automated tests". Tags of the
 form `§12 #N` appear verbatim in test names or comments so
-`grep -R '§12 #' packages/engine/test/providers/claude_cli` returns every
+`grep -R '§12 #' src/engine/__tests__/providers/claude_cli` returns every
 item.
 
 | # | test |
@@ -92,5 +92,5 @@ item.
 ## Running a real `claude` binary
 
 Real-binary end-to-end tests are gated behind `RUN_E2E=1` and intentionally
-live outside this directory. Everything under `test/providers/claude_cli`
+live outside this directory. Everything under `__tests__/providers/claude_cli`
 runs against the mock fixtures and is safe for CI.

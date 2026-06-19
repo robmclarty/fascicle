@@ -6,7 +6,7 @@ files:
   - src/core/**/*.ts
   - src/engine/**/*.ts
 ignores:
-  - src/**/test/**
+  - src/**/__tests__/**
   - src/core/**/*.test.ts
   - src/engine/**/*.test.ts
 rule:

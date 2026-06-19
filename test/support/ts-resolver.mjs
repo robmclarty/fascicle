@@ -6,8 +6,10 @@
  * specifiers (the TS ESM convention), so a `.ts` child script importing from
  * the substrate would fail module resolution without this hook.
  *
- * This file is used only by SIGINT harness children under
- * `packages/core/test/cleanup/`. It is never imported from production source.
+ * Shared base loader for the core and engine SIGINT harness children under
+ * each module's `__tests__/cleanup/`. The engine harness layers `ai` / `@ai-sdk`
+ * stubs on top of this `resolve` (see its local ts-resolver). Never imported
+ * from production source.
  */
 
 import { existsSync } from 'node:fs';

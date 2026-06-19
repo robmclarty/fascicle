@@ -7,7 +7,8 @@ import { describe, expect, it } from 'vitest'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const child_script = join(here, 'child-harness.ts')
-const register_script = join(here, 'register-ts-resolver.mjs')
+// Shared loader bootstrap lives at the repo-root test/support (dedup with engine).
+const register_script = join(here, '..', '..', '..', '..', 'test', 'support', 'register-ts-resolver.mjs')
 
 async function wait_for_marker(path: string, timeout_ms: number): Promise<void> {
   const deadline = Date.now() + timeout_ms

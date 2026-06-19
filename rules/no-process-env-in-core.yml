@@ -5,7 +5,7 @@ language: typescript
 files:
   - src/**/*.ts
 ignores:
-  - src/**/test/**
+  - src/**/__tests__/**
   - src/engine/providers/claude_cli/auth.ts
   - src/forward_standard_env.ts
   - src/__tests__/forward_standard_env.test.ts

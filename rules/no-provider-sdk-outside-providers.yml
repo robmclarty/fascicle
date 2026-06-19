@@ -5,7 +5,7 @@ language: typescript
 files:
   - src/engine/**/*.ts
 ignores:
-  - src/**/test/**
+  - src/**/__tests__/**
   - src/engine/providers/**/*.ts
 rule:
   any:
