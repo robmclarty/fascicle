@@ -62,6 +62,12 @@ describe('mcp_client', () => {
     expect(handle.tools.find((t) => t.name === 'alpha')?.description).toBe('first')
   })
 
+  it('falls back to "MCP tool <name>" when nothing else describes a tool', async () => {
+    const client = await connect(server_with_two_tools())
+    const handle = await mcp_client({ transport: 'client', client })
+    expect(handle.tools.find((t) => t.name === 'beta')?.description).toBe('MCP tool beta')
+  })
+
   it('rejects a tool call when the run is already aborted', async () => {
     const client = await connect(server_with_two_tools())
     const handle = await mcp_client({ transport: 'client', client })

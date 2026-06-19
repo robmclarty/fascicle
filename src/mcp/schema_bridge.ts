@@ -91,13 +91,10 @@ function build_object(schema: Record<string, unknown>): z.ZodType {
 }
 
 function build_array(schema: Record<string, unknown>): z.ZodType {
-  const items = schema['items']
-  if (Array.isArray(items)) {
-    // Tuple positional schemas are rare in MCP tools and the server validates
-    // them anyway, so accept a permissive array rather than a narrowing cast.
-    return z.array(z.unknown())
-  }
-  return z.array(items !== undefined ? convert(items) : z.unknown())
+  // A positional-tuple `items` array and a missing `items` both convert to
+  // `z.unknown()`, so one permissive element type covers every case. Tuple
+  // schemas are rare in MCP tools and the server re-validates them anyway.
+  return z.array(convert(schema['items']))
 }
 
 function enum_of(values: unknown[]): z.ZodType {

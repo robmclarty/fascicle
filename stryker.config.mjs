@@ -20,6 +20,10 @@ export default {
     '!src/**/*.spec.ts',
     '!src/**/test/**',
     '!src/**/__tests__/**',
+    // CLI entry points: process/argv/IO glue, exercised by running the binary,
+    // not by unit tests. Mutating them only yields no-coverage noise.
+    '!src/viewer/cli.ts',
+    '!src/viewer/start_viewer.ts',
   ],
   coverageAnalysis: 'perTest',
   incremental: true,

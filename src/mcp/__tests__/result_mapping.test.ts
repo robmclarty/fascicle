@@ -45,6 +45,29 @@ describe('call_result_to_output', () => {
   it('tolerates a non-record result', () => {
     expect(call_result_to_output(null)).toBeNull()
   })
+
+  it('uses a default message when an error result has no text content', () => {
+    try {
+      call_result_to_output({ isError: true }, 'do_thing')
+      expect.unreachable('should have thrown')
+    } catch (err) {
+      expect(err).toBeInstanceOf(mcp_error)
+      expect((err as mcp_error).message).toBe('MCP tool returned an error')
+    }
+  })
+
+  it('ignores content parts that are not text parts when joining', () => {
+    // A text-typed part with a non-string body, a string-bodied part with the
+    // wrong type, and a non-record part are all skipped, so join_text finds
+    // nothing and the raw content array is returned unchanged.
+    expect(call_result_to_output({ content: [{ type: 'text', text: 123 }] })).toEqual([
+      { type: 'text', text: 123 },
+    ])
+    expect(call_result_to_output({ content: [{ type: 'image', text: 'hi' }] })).toEqual([
+      { type: 'image', text: 'hi' },
+    ])
+    expect(call_result_to_output({ content: [{ foo: 1 }] })).toEqual([{ foo: 1 }])
+  })
 })
 
 describe('output_to_call_result', () => {
@@ -77,5 +100,20 @@ describe('output_to_call_result', () => {
     )
     expect(result.content).toEqual([{ type: 'text', text: 'score=9' }])
     expect(result.structuredContent).toEqual({ score: 9 })
+  })
+
+  it('omits the structuredContent key entirely when there is no structured output', () => {
+    expect('structuredContent' in output_to_call_result('hi')).toBe(false)
+    expect('structuredContent' in output_to_call_result([1, 2])).toBe(false)
+  })
+
+  it('stringifies undefined via the String fallback', () => {
+    expect(output_to_call_result(undefined).content[0]?.text).toBe('undefined')
+  })
+
+  it('falls back to String() when JSON serialization throws', () => {
+    // A bigint cannot be JSON.stringify-ed, so the catch path must produce the
+    // String() form rather than leaving the text undefined.
+    expect(output_to_call_result({ n: 10n }).content[0]?.text).toBe('[object Object]')
   })
 })

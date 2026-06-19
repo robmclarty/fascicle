@@ -113,6 +113,92 @@ describe('json_schema_to_zod', () => {
     expect(json_schema_to_zod(null).safeParse({ x: 1 }).success).toBe(true)
   })
 
+  it('returns a permissive schema when conversion throws partway through', () => {
+    // A schema whose property access throws must be caught, not propagated:
+    // tool discovery cannot crash on a hostile remote schema.
+    const hostile = new Proxy(
+      {},
+      {
+        get() {
+          throw new Error('boom')
+        },
+        has() {
+          return false
+        },
+      },
+    )
+    expect(json_schema_to_zod(hostile).safeParse({ anything: 1 }).success).toBe(true)
+  })
+
+  it('does not apply a non-string description', () => {
+    // Only a string `description` is forwarded; a non-string one is dropped so
+    // it cannot leak into the emitted JSON Schema.
+    const js = z.toJSONSchema(json_schema_to_zod({ type: 'string', description: 123 }))
+    expect('description' in js).toBe(false)
+  })
+
+  it('degrades an unrecognized type keyword to a permissive schema', () => {
+    const schema = json_schema_to_zod({ type: 'bogus-type' })
+    expect(schema.safeParse('x').success).toBe(true)
+    expect(schema.safeParse({ any: 1 }).success).toBe(true)
+  })
+
+  it('treats oneOf as a union', () => {
+    const schema = json_schema_to_zod({ oneOf: [{ type: 'string' }, { type: 'number' }] })
+    expect(schema.safeParse('x').success).toBe(true)
+    expect(schema.safeParse(1).success).toBe(true)
+    expect(schema.safeParse(true).success).toBe(false)
+  })
+
+  it('treats a typeless schema with properties as an object', () => {
+    const schema = json_schema_to_zod({
+      properties: { a: { type: 'string' } },
+      required: ['a'],
+    })
+    expect(schema.safeParse({ a: 'x' }).success).toBe(true)
+    expect(schema.safeParse({ a: 1 }).success).toBe(false)
+    expect(schema.safeParse({}).success).toBe(false)
+  })
+
+  it('keeps an object permissive but still typed when no properties are required', () => {
+    // Without `required`, every property is optional, but the result must still
+    // emit `{type:"object"}` rather than degrading to the empty schema.
+    const js = z.toJSONSchema(json_schema_to_zod({ type: 'object', properties: { a: { type: 'string' } } }))
+    expect(js).toMatchObject({ type: 'object' })
+  })
+
+  it('accepts anything for an empty enum', () => {
+    expect(json_schema_to_zod({ enum: [] }).safeParse('x').success).toBe(true)
+  })
+
+  it('emits a string enum as an enum, not a union of literals', () => {
+    const js = z.toJSONSchema(json_schema_to_zod({ enum: ['a', 'b'] })) as Record<string, unknown>
+    expect(js['type']).toBe('string')
+    expect(js['enum']).toEqual(['a', 'b'])
+  })
+
+  it('accepts anything for an empty anyOf', () => {
+    expect(json_schema_to_zod({ anyOf: [] }).safeParse('x').success).toBe(true)
+  })
+
+  it('matches only null for a null const and rejects other values', () => {
+    const schema = json_schema_to_zod({ const: null })
+    expect(schema.safeParse(null).success).toBe(true)
+    expect(schema.safeParse('x').success).toBe(false)
+  })
+
+  it('stays permissive for a const whose value is not a primitive', () => {
+    // Object/array consts are not expressible as z.literal, so they degrade to
+    // an accept-anything schema rather than a null- or literal-shaped one.
+    expect(json_schema_to_zod({ const: { a: 1 } }).safeParse('x').success).toBe(true)
+  })
+
+  it('accepts a permissive array for tuple-style items', () => {
+    const schema = json_schema_to_zod({ type: 'array', items: [{ type: 'string' }, { type: 'number' }] })
+    expect(schema.safeParse(['a', 1]).success).toBe(true)
+    expect(schema.safeParse([1, 'a', true]).success).toBe(true)
+  })
+
   it('preserves provider fidelity: a freeform object emits {type:object}, not {}', () => {
     // The whole point: z.unknown() would emit {} and starve the provider of the
     // parameter shape, so a typeless object must round-trip as an object.

@@ -18,10 +18,10 @@ export class mcp_sdk_missing_error extends Error {
 
 export class mcp_error extends Error {
   readonly kind = 'mcp_error' as const;
-  readonly tool_name?: string;
+  readonly tool_name: string | undefined;
   constructor(message: string, metadata: { tool_name?: string } = {}) {
     super(message)
     this.name = 'mcp_error'
-    if (metadata.tool_name !== undefined) this.tool_name = metadata.tool_name
+    this.tool_name = metadata.tool_name
   }
 }

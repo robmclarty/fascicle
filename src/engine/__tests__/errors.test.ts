@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import {
   aborted_error,
+  claude_cli_error,
   engine_config_error,
+  engine_disposed_error,
   model_required_error,
   on_chunk_error,
+  provider_auth_error,
   provider_capability_error,
   provider_error,
   provider_not_configured_error,
@@ -119,6 +122,70 @@ describe('typed errors', () => {
     expect(err.capability).toBe('image_input')
     expect(err.message).toContain('ollama')
     expect(err.message).toContain('image_input')
+  })
+
+  it('provider_capability_error appends detail only when given', () => {
+    expect(new provider_capability_error('ollama', 'image_input', 'binary too old').message).toBe(
+      "provider 'ollama' does not support 'image_input': binary too old",
+    )
+    expect(new provider_capability_error('ollama', 'image_input').message).toBe(
+      "provider 'ollama' does not support 'image_input'",
+    )
+  })
+
+  it('provider_not_configured_error message names the provider', () => {
+    expect(new provider_not_configured_error('mysterious').message).toBe(
+      "provider 'mysterious' is not configured on this engine",
+    )
+  })
+
+  it('engine_disposed_error carries a default message', () => {
+    const err = new engine_disposed_error()
+    expect(err.kind).toBe('engine_disposed_error')
+    expect(err.message).toContain('disposed')
+  })
+
+  it('claude_cli_error carries reason and optional status / stderr_snippet', () => {
+    const err = new claude_cli_error('auth_expired', 'login expired', {
+      status: 401,
+      stderr_snippet: 'token expired',
+    })
+    expect(err.kind).toBe('claude_cli_error')
+    expect(err.reason).toBe('auth_expired')
+    expect(err.status).toBe(401)
+    expect(err.stderr_snippet).toBe('token expired')
+    const bare = new claude_cli_error('binary_not_found', 'no binary')
+    expect(bare.reason).toBe('binary_not_found')
+    expect(bare.status).toBeUndefined()
+    expect(bare.stderr_snippet).toBeUndefined()
+  })
+
+  it('provider_auth_error carries provider and optional refresh_command', () => {
+    const err = new provider_auth_error('anthropic', 'auth failed', { refresh_command: 'claude login' })
+    expect(err.kind).toBe('provider_auth_error')
+    expect(err.provider).toBe('anthropic')
+    expect(err.refresh_command).toBe('claude login')
+    const bare = new provider_auth_error('openai', 'no key')
+    expect(bare.provider).toBe('openai')
+    expect(bare.refresh_command).toBeUndefined()
+  })
+
+  it('sets .name to match each error kind', () => {
+    expect(new rate_limit_error('x').name).toBe('rate_limit_error')
+    expect(new provider_error('x').name).toBe('provider_error')
+    expect(new schema_validation_error('x', null, '').name).toBe('schema_validation_error')
+    expect(new tool_error('x', { tool_name: 't', tool_call_id: 'c', cause: null }).name).toBe('tool_error')
+    expect(
+      new tool_approval_denied_error('x', { tool_name: 't', step_index: 0, tool_call_id: 'c' }).name,
+    ).toBe('tool_approval_denied_error')
+    expect(new model_required_error().name).toBe('model_required_error')
+    expect(new provider_not_configured_error('x').name).toBe('provider_not_configured_error')
+    expect(new engine_config_error('x').name).toBe('engine_config_error')
+    expect(new on_chunk_error('x', null).name).toBe('on_chunk_error')
+    expect(new provider_capability_error('x', 'y').name).toBe('provider_capability_error')
+    expect(new engine_disposed_error().name).toBe('engine_disposed_error')
+    expect(new claude_cli_error('binary_not_found', 'x').name).toBe('claude_cli_error')
+    expect(new provider_auth_error('p', 'x').name).toBe('provider_auth_error')
   })
 
   it('every typed error is an instance of Error', () => {

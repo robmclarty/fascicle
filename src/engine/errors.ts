@@ -16,26 +16,26 @@ export { aborted_error } from '#core'
 
 export class rate_limit_error extends Error {
   readonly kind = 'rate_limit_error' as const;
-  readonly retry_after_ms?: number;
+  readonly retry_after_ms: number | undefined;
   readonly attempts: number;
-  readonly status?: number;
+  readonly status: number | undefined;
   constructor(
     message: string,
     metadata: { retry_after_ms?: number; attempts?: number; status?: number } = {},
   ) {
     super(message)
     this.name = 'rate_limit_error'
-    if (metadata.retry_after_ms !== undefined) this.retry_after_ms = metadata.retry_after_ms
+    this.retry_after_ms = metadata.retry_after_ms
     this.attempts = metadata.attempts ?? 0
-    if (metadata.status !== undefined) this.status = metadata.status
+    this.status = metadata.status
   }
 }
 
 export class provider_error extends Error {
   readonly kind = 'provider_error' as const;
-  readonly status?: number;
-  readonly body?: string;
-  readonly cause_kind?: 'provider_5xx' | 'network' | 'unknown';
+  readonly status: number | undefined;
+  readonly body: string | undefined;
+  readonly cause_kind: 'provider_5xx' | 'network' | 'unknown' | undefined;
   constructor(
     message: string,
     metadata: {
@@ -46,9 +46,9 @@ export class provider_error extends Error {
   ) {
     super(message)
     this.name = 'provider_error'
-    if (metadata.status !== undefined) this.status = metadata.status
-    if (metadata.body !== undefined) this.body = metadata.body
-    if (metadata.cause_kind !== undefined) this.cause_kind = metadata.cause_kind
+    this.status = metadata.status
+    this.body = metadata.body
+    this.cause_kind = metadata.cause_kind
   }
 }
 
@@ -120,11 +120,11 @@ export class provider_not_configured_error extends Error {
 
 export class engine_config_error extends Error {
   readonly kind = 'engine_config_error' as const;
-  readonly provider?: string;
+  readonly provider: string | undefined;
   constructor(message: string, provider?: string) {
     super(message)
     this.name = 'engine_config_error'
-    if (provider !== undefined) this.provider = provider
+    this.provider = provider
   }
 }
 
@@ -176,8 +176,8 @@ export type ClaudeCliErrorReason =
 export class claude_cli_error extends Error {
   readonly kind = 'claude_cli_error' as const;
   readonly reason: ClaudeCliErrorReason;
-  readonly status?: number;
-  readonly stderr_snippet?: string;
+  readonly status: number | undefined;
+  readonly stderr_snippet: string | undefined;
   constructor(
     reason: ClaudeCliErrorReason,
     message: string,
@@ -186,15 +186,15 @@ export class claude_cli_error extends Error {
     super(message)
     this.name = 'claude_cli_error'
     this.reason = reason
-    if (metadata.status !== undefined) this.status = metadata.status
-    if (metadata.stderr_snippet !== undefined) this.stderr_snippet = metadata.stderr_snippet
+    this.status = metadata.status
+    this.stderr_snippet = metadata.stderr_snippet
   }
 }
 
 export class provider_auth_error extends Error {
   readonly kind = 'provider_auth_error' as const;
   readonly provider: string;
-  readonly refresh_command?: string;
+  readonly refresh_command: string | undefined;
   constructor(
     provider: string,
     message: string,
@@ -203,6 +203,6 @@ export class provider_auth_error extends Error {
     super(message)
     this.name = 'provider_auth_error'
     this.provider = provider
-    if (metadata.refresh_command !== undefined) this.refresh_command = metadata.refresh_command
+    this.refresh_command = metadata.refresh_command
   }
 }
