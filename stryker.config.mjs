@@ -29,12 +29,14 @@ export default {
   incremental: true,
   incrementalFile: 'stryker.incremental.json',
   thresholds: {
-    high: 80,
-    low: 70,
-    // Ratchet: the real score sits at ~77% (see CHANGELOG / mutation work),
-    // so the gate floor is raised to 70 to catch regressions. Bump it further
-    // as coverage climbs; never lower it to make a failing run pass.
-    break: 70,
+    high: 85,
+    low: 78,
+    // Ratchet: the real score sits at ~81.4% (clean full-repo gate after the
+    // judges/spawn/server/researcher/sandbox/combinator/generate mutation work),
+    // so the gate floor is raised to 78. A few points of headroom absorb the
+    // timing-sensitive spawn/timeout/map suites. Bump it further as coverage
+    // climbs; never lower it to make a failing run pass.
+    break: 78,
   },
   tempDirName: '.stryker-tmp',
   cleanTempDir: true,
