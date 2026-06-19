@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.8.5 — 2026-06-18
+
+### Internal
+
+- Restructured every `index.ts` barrel to be import/export only, moving inline logic into named sibling files (`agent.ts`, `start_viewer.ts`, `adapter.ts`, `make_builder_tools.ts`); public exports are unchanged.
+- Added `rules/no-logic-in-barrel.yml` (ast-grep) to keep barrels declaration-free, with a documenting note in `AGENTS.md`.
+
 ## v0.8.4 — 2026-06-18
 
 ### Internal
