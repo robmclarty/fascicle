@@ -27,6 +27,7 @@
     "checkpointing",
     "codegraph",
     "Codegraph",
+    "combinators",
     "Corsa",
     "cspell",
     "dedup",
