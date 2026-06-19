@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.8.2 — 2026-06-18
+
+### Added
+
+- Published a project site to GitHub Pages: a landing page (`index.html`), a docs page (`docs.html`), and a support script, deployed by a new `Deploy Pages` workflow that uploads the `site/` directory as a Pages artifact on every push to `main`.
+
+### Internal
+
+- No change to the published `fascicle` surface or bundle. Renamed the existing `ci` and `release` workflow files from `.yml` to `.yaml` so every workflow shares one extension.
+- Realigned the docs to the v0.7.0 Bedrock provider and dropped stale model-alias mentions.
+
 ## v0.8.1 — 2026-06-17
 
 ### Internal
