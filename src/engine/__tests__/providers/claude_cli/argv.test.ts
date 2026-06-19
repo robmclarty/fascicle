@@ -218,6 +218,29 @@ describe('build_sandbox_plan', () => {
     expect(plan.prefix_args[idx - 1]).toBe('--')
   })
 
+  it('bwrap default plan emits the exact hardening flag sequence', () => {
+    const plan = build_sandbox_plan('claude', { kind: 'bwrap' })
+    expect(plan.prefix_args).toEqual([
+      '--ro-bind', '/usr', '/usr',
+      '--ro-bind', '/bin', '/bin',
+      '--ro-bind', '/lib', '/lib',
+      '--ro-bind-try', '/lib64', '/lib64',
+      '--ro-bind-try', '/etc/resolv.conf', '/etc/resolv.conf',
+      '--proc', '/proc',
+      '--dev', '/dev',
+      '--tmpfs', '/tmp',
+      '--unshare-user',
+      '--unshare-pid',
+      '--unshare-ipc',
+      '--unshare-uts',
+      '--unshare-cgroup-try',
+      '--die-with-parent',
+      '--unshare-net',
+      '--',
+      'claude',
+    ])
+  })
+
   it('bwrap network_allowlist injects --share-net plus per-host setenv entries', () => {
     const plan = build_sandbox_plan('claude', {
       kind: 'bwrap',
@@ -276,6 +299,18 @@ describe('build_sandbox_plan', () => {
     }
     expect(payload.network.allowHosts).toEqual(['h.example', 'api.anthropic.com'])
     expect(payload.filesystem.allowWrite).toEqual(['/w', '/tmp/out'])
+  })
+
+  it('greywall plan with no allowlist or write paths writes empty policy arrays', () => {
+    const plan = build_sandbox_plan('claude', { kind: 'greywall' })
+    const settings_path = plan.prefix_args[1]
+    if (typeof settings_path !== 'string') throw new Error('unreachable')
+    const payload = JSON.parse(readFileSync(settings_path, 'utf8')) as {
+      network: { allowHosts: string[] }
+      filesystem: { allowWrite: string[] }
+    }
+    expect(payload.network.allowHosts).toEqual([])
+    expect(payload.filesystem.allowWrite).toEqual([])
   })
 
   it('greywall plan with caller-supplied settings_path skips temp-file generation', () => {
