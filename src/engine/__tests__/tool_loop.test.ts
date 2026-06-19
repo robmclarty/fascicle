@@ -14,8 +14,9 @@ import {
   type InvokeOnce,
   type InvokeOnceResult,
   type RawToolCall,
+  type ToolLoopConfig,
 } from '../tool_loop.js'
-import type { Message, Tool, UsageTotals } from '../types.js'
+import type { Message, StreamChunk, Tool, UsageTotals } from '../types.js'
 import { tool_error, tool_approval_denied_error, aborted_error } from '../errors.js'
 import { create_pricing_missing_dedup } from '../trajectory.js'
 
@@ -72,6 +73,35 @@ function make_tool(overrides: Partial<Tool> = {}): Tool {
 function pricing_dedup_stub(): ReturnType<typeof create_pricing_missing_dedup> {
   return create_pricing_missing_dedup(undefined)
 }
+
+type BaseOverrides = Partial<Omit<ToolLoopConfig, 'invoke_once'>> & {
+  invoke: ReadonlyArray<Partial<InvokeOnceResult>>
+}
+function base_config(overrides: BaseOverrides): ToolLoopConfig {
+  const { invoke, ...rest } = overrides
+  return {
+    invoke_once: make_invoke_once(invoke),
+    messages: [{ role: 'user', content: 'go' }],
+    tools: [],
+    max_steps: 10,
+    step_index_start: 0,
+    tool_error_policy: 'feed_back',
+    abort: new AbortController().signal,
+    on_tool_approval: undefined,
+    trajectory: undefined,
+    stream: false,
+    dispatch_chunk: undefined,
+    provider: 'anthropic',
+    model_id: 'claude-opus-4-7',
+    resolve_pricing: () => undefined,
+    pricing_dedup: pricing_dedup_stub(),
+    ...rest,
+  }
+}
+const call = (id: string, name: string, input: unknown): RawToolCall => ({ id, name, input })
+function named_thrown(): void {} // module-scoped so its String() form is stable and lint-clean
+const tool_message = (messages: Message[]): Message | undefined =>
+  messages.find((m) => m.role === 'tool')
 
 describe('run_tool_loop', () => {
   it('resolves a plain completion in one step', async () => {
@@ -539,5 +569,537 @@ describe('run_tool_loop', () => {
     })
     expect(order).toEqual(['a-1', 'b-2'])
     expect(result.tool_calls.map((c) => c.id)).toEqual(['c1', 'c2'])
+  })
+})
+
+describe('run_tool_loop detail', () => {
+  it('records output, feed message, dispatch chunk, and trajectory events on success', async () => {
+    const chunks: StreamChunk[] = []
+    const { trajectory, events } = recording_trajectory()
+    const messages: Message[] = [{ role: 'user', content: 'go' }]
+    const tool = make_tool({ name: 'echo', execute: () => ({ result: 42 }) })
+    const out = await run_tool_loop(
+      base_config({
+        invoke: [{ tool_calls: [call('c1', 'echo', { value: 'x' })], finish_reason: 'tool_calls' }, { text: 'done' }],
+        tools: [tool],
+        messages,
+        trajectory,
+        dispatch_chunk: async (c) => {
+          chunks.push(c)
+        },
+      }),
+    )
+    expect(out.tool_calls[0]).toMatchObject({
+      id: 'c1',
+      name: 'echo',
+      input: { value: 'x' },
+      output: { result: 42 },
+    })
+    expect(out.tool_calls[0]?.error).toBeUndefined()
+    // The tool-result message serializes the object output as JSON.
+    expect(tool_message(messages)).toMatchObject({
+      role: 'tool',
+      tool_call_id: 'c1',
+      name: 'echo',
+      content: JSON.stringify({ result: 42 }),
+    })
+    // The dispatched chunk carries the structured output and step index.
+    expect(chunks.find((c) => c.kind === 'tool_result')).toMatchObject({
+      kind: 'tool_result',
+      id: 'c1',
+      step_index: 0,
+      output: { result: 42 },
+    })
+    const call_event = events.find((e) => e['kind'] === 'tool_call')
+    expect(call_event).toMatchObject({ tool_call_id: 'c1', name: 'echo', input: { value: 'x' } })
+  })
+
+  it('builds an assistant message with text + tool_call parts, and plain text when no calls', async () => {
+    const with_calls: Message[] = [{ role: 'user', content: 'go' }]
+    await run_tool_loop(
+      base_config({
+        invoke: [{ text: 'thinking', tool_calls: [call('c1', 'echo', { value: 'x' })], finish_reason: 'tool_calls' }, { text: 'done' }],
+        tools: [make_tool({ name: 'echo' })],
+        messages: with_calls,
+      }),
+    )
+    const assistant = with_calls.find((m) => m.role === 'assistant')
+    expect(Array.isArray(assistant?.content)).toBe(true)
+    expect(assistant?.content).toEqual([
+      { type: 'text', text: 'thinking' },
+      { type: 'tool_call', id: 'c1', name: 'echo', input: { value: 'x' } },
+    ])
+
+    const plain: Message[] = [{ role: 'user', content: 'go' }]
+    await run_tool_loop(base_config({ invoke: [{ text: 'just text' }], messages: plain }))
+    expect(plain.find((m) => m.role === 'assistant')).toEqual({ role: 'assistant', content: 'just text' })
+  })
+
+  it('feeds back an unknown tool with the exact message and skips when none match', async () => {
+    const messages: Message[] = [{ role: 'user', content: 'go' }]
+    const out = await run_tool_loop(
+      base_config({
+        invoke: [{ tool_calls: [call('c1', 'missing', {})], finish_reason: 'tool_calls' }, { text: 'done' }],
+        tools: [make_tool({ name: 'echo' })],
+        messages,
+      }),
+    )
+    expect(out.tool_calls[0]?.error?.message).toBe("unknown tool 'missing'")
+    expect(tool_message(messages)?.content).toBe(JSON.stringify({ error: "unknown tool 'missing'" }))
+  })
+
+  it('feeds back invalid input without calling execute', async () => {
+    let executed = false
+    const tool = make_tool({
+      name: 'echo',
+      input_schema: z.object({ value: z.string() }),
+      execute: () => {
+        executed = true
+        return 'ok'
+      },
+    })
+    const out = await run_tool_loop(
+      base_config({
+        invoke: [{ tool_calls: [call('c1', 'echo', { value: 123 })], finish_reason: 'tool_calls' }, { text: 'done' }],
+        tools: [tool],
+      }),
+    )
+    expect(executed).toBe(false)
+    expect(out.tool_calls[0]?.error?.message).toMatch(/^invalid tool input: /)
+  })
+
+  it('serializes a thrown Error, string, and non-serializable value as the error message', async () => {
+    const make = (execute: Tool['execute']): BaseOverrides => ({
+      invoke: [{ tool_calls: [call('c1', 'boom', {})], finish_reason: 'tool_calls' }, { text: 'done' }],
+      tools: [make_tool({ name: 'boom', input_schema: z.object({}), execute })],
+    })
+    const err_msg = async (execute: Tool['execute']): Promise<string | undefined> =>
+      (await run_tool_loop(base_config(make(execute)))).tool_calls[0]?.error?.message
+
+    expect(await err_msg(() => {
+      throw new Error('kaboom')
+    })).toBe('kaboom')
+    expect(await err_msg(() => {
+      throw 'string failure'
+    })).toBe('string failure')
+    const circular: Record<string, unknown> = {}
+    circular['self'] = circular
+    expect(await err_msg(() => {
+      throw circular
+    })).toBe('[object Object]') // JSON.stringify throws -> String() fallback
+  })
+
+  it('wraps a thrown tool error under throw policy with tool metadata', async () => {
+    let caught: unknown
+    try {
+      await run_tool_loop(
+        base_config({
+          invoke: [{ tool_calls: [call('c1', 'boom', {})], finish_reason: 'tool_calls' }],
+          tools: [
+            make_tool({
+              name: 'boom',
+              input_schema: z.object({}),
+              execute: () => {
+                throw new Error('inner')
+              },
+            }),
+          ],
+          tool_error_policy: 'throw',
+        }),
+      )
+    } catch (e) {
+      caught = e
+    }
+    expect(caught).toBeInstanceOf(tool_error)
+    expect((caught as tool_error).message).toBe("tool 'boom' failed: inner")
+    expect((caught as tool_error).tool_name).toBe('boom')
+    expect((caught as tool_error).tool_call_id).toBe('c1')
+  })
+
+  it('consults a needs_approval predicate with the parsed input and runs once granted', async () => {
+    let seen_input: unknown
+    const tool = make_tool({
+      name: 'echo',
+      needs_approval: (input: unknown) => {
+        seen_input = input
+        return true
+      },
+      execute: () => 'ran',
+    })
+    const out = await run_tool_loop(
+      base_config({
+        invoke: [{ tool_calls: [call('c1', 'echo', { value: 'x' })], finish_reason: 'tool_calls' }, { text: 'done' }],
+        tools: [tool],
+        on_tool_approval: () => true,
+      }),
+    )
+    expect(seen_input).toEqual({ value: 'x' })
+    expect(out.tool_calls[0]?.output).toBe('ran')
+  })
+
+  it('feeds back denial with the canonical message under feed_back', async () => {
+    const out = await run_tool_loop(
+      base_config({
+        invoke: [{ tool_calls: [call('c1', 'echo', { value: 'x' })], finish_reason: 'tool_calls' }, { text: 'done' }],
+        tools: [make_tool({ name: 'echo', needs_approval: true })],
+        on_tool_approval: () => false,
+      }),
+    )
+    expect(out.tool_calls[0]?.error?.message).toBe('tool_approval_denied')
+  })
+
+  it('marks unexecuted tool calls when the next step would exceed max_steps', async () => {
+    const out = await run_tool_loop(
+      base_config({
+        invoke: [{ tool_calls: [call('c1', 'echo', { value: 'x' })], finish_reason: 'tool_calls' }],
+        tools: [make_tool({ name: 'echo' })],
+        max_steps: 1,
+      }),
+    )
+    expect(out.max_steps_reached).toBe(true)
+    expect(out.finish_reason).toBe('max_steps')
+    expect(out.tool_calls[0]?.error?.message).toBe('max_steps_exceeded_before_execution')
+  })
+
+  it('throws aborted_error carrying the step index when aborted before a turn', async () => {
+    const controller = new AbortController()
+    controller.abort('stop')
+    let err: unknown
+    try {
+      await run_tool_loop(base_config({ invoke: [{ text: 'x' }], abort: controller.signal, step_index_start: 2 }))
+    } catch (e) {
+      err = e
+    }
+    expect(err).toBeInstanceOf(aborted_error)
+    expect((err as aborted_error).step_index).toBe(2)
+  })
+
+  it('throws aborted_error carrying the in-flight tool call when aborted mid-turn', async () => {
+    const controller = new AbortController()
+    const invoke: InvokeOnce = async () => {
+      controller.abort('stop') // aborts after the loop-top check, before the per-call check
+      return { text: '', tool_calls: [call('c1', 'echo', { value: 'x' })], finish_reason: 'tool_calls', usage: zero_usage }
+    }
+    let err: unknown
+    try {
+      await run_tool_loop({
+        ...base_config({ invoke: [{}] }),
+        invoke_once: invoke,
+        tools: [make_tool({ name: 'echo' })],
+        abort: controller.signal,
+      })
+    } catch (e) {
+      err = e
+    }
+    expect(err).toBeInstanceOf(aborted_error)
+    expect((err as aborted_error).tool_call_in_flight).toEqual({ id: 'c1', name: 'echo' })
+  })
+
+  it('serializes a thrown value with no JSON form via String()', async () => {
+    // A function JSON.stringify-es to undefined, exercising the `?? String(err)`
+    // fallback (not the catch, which is for values that throw on stringify).
+    const out = await run_tool_loop(
+      base_config({
+        invoke: [{ tool_calls: [call('c1', 'boom', {})], finish_reason: 'tool_calls' }, { text: 'done' }],
+        tools: [
+          make_tool({
+            name: 'boom',
+            input_schema: z.object({}),
+            execute: () => {
+              throw named_thrown
+            },
+          }),
+        ],
+      }),
+    )
+    expect(out.tool_calls[0]?.error?.message).toContain('named_thrown')
+  })
+
+  it('records approval requested then granted', async () => {
+    const { trajectory, events } = recording_trajectory()
+    const out = await run_tool_loop(
+      base_config({
+        invoke: [{ tool_calls: [call('c1', 'echo', { value: 'x' })], finish_reason: 'tool_calls' }, { text: 'done' }],
+        tools: [make_tool({ name: 'echo', needs_approval: true, execute: () => 'ran' })],
+        on_tool_approval: () => true,
+        trajectory,
+      }),
+    )
+    expect(out.tool_calls[0]?.output).toBe('ran')
+    expect(events.find((e) => e['kind'] === 'tool_approval_requested')).toMatchObject({
+      tool_name: 'echo',
+      step_index: 0,
+      tool_call_id: 'c1',
+    })
+    expect(events.find((e) => e['kind'] === 'tool_approval_granted')).toMatchObject({
+      tool_name: 'echo',
+      tool_call_id: 'c1',
+    })
+  })
+
+  it('records a denial event when approval is refused', async () => {
+    const { trajectory, events } = recording_trajectory()
+    await run_tool_loop(
+      base_config({
+        invoke: [{ tool_calls: [call('c1', 'echo', { value: 'x' })], finish_reason: 'tool_calls' }, { text: 'done' }],
+        tools: [make_tool({ name: 'echo', needs_approval: true })],
+        on_tool_approval: () => false,
+        trajectory,
+      }),
+    )
+    expect(events.find((e) => e['kind'] === 'tool_approval_denied')).toMatchObject({
+      tool_name: 'echo',
+      tool_call_id: 'c1',
+    })
+  })
+
+  it('fails closed with a descriptive error and denial record when no handler is set', async () => {
+    const { trajectory, events } = recording_trajectory()
+    let err: unknown
+    try {
+      await run_tool_loop(
+        base_config({
+          invoke: [{ tool_calls: [call('c1', 'echo', { value: 'x' })], finish_reason: 'tool_calls' }],
+          tools: [make_tool({ name: 'echo', needs_approval: true })],
+          on_tool_approval: undefined,
+          trajectory,
+        }),
+      )
+    } catch (e) {
+      err = e
+    }
+    expect(err).toBeInstanceOf(tool_approval_denied_error)
+    expect((err as tool_approval_denied_error).message).toBe(
+      "tool approval required for 'echo' but no on_tool_approval handler was provided",
+    )
+    expect((err as tool_approval_denied_error).tool_name).toBe('echo')
+    expect(events.find((e) => e['kind'] === 'tool_approval_denied')).toBeDefined()
+  })
+
+  it('propagates a non-Error thrown by the approval handler as an Error', async () => {
+    let err: unknown
+    try {
+      await run_tool_loop(
+        base_config({
+          invoke: [{ tool_calls: [call('c1', 'echo', { value: 'x' })], finish_reason: 'tool_calls' }],
+          tools: [make_tool({ name: 'echo', needs_approval: true })],
+          // Async rejection routes through the promise's reject handler, which
+          // wraps a non-Error into an Error.
+          on_tool_approval: () => Promise.reject('approval-boom'),
+        }),
+      )
+    } catch (e) {
+      err = e
+    }
+    expect(err).toBeInstanceOf(Error)
+    expect((err as Error).message).toBe('approval-boom')
+  })
+
+  it('records tool_call/tool_result events and a chunk for an unknown tool (feed_back)', async () => {
+    const { trajectory, events } = recording_trajectory()
+    const chunks: StreamChunk[] = []
+    await run_tool_loop(
+      base_config({
+        invoke: [{ tool_calls: [call('c1', 'missing', { a: 1 })], finish_reason: 'tool_calls' }, { text: 'done' }],
+        tools: [make_tool({ name: 'echo' })],
+        trajectory,
+        dispatch_chunk: async (c) => {
+          chunks.push(c)
+        },
+      }),
+    )
+    const msg = { message: "unknown tool 'missing'" }
+    expect(events.find((e) => e['kind'] === 'tool_call')).toMatchObject({
+      step_index: 0,
+      name: 'missing',
+      tool_call_id: 'c1',
+      input: { a: 1 },
+      error: msg,
+    })
+    expect(events.find((e) => e['kind'] === 'tool_result')).toMatchObject({ tool_call_id: 'c1', error: msg })
+    expect(chunks.find((c) => c.kind === 'tool_result')).toMatchObject({ id: 'c1', step_index: 0, error: msg })
+  })
+
+  it('records the failure detail and chunk for a tool that throws (feed_back)', async () => {
+    const { trajectory, events } = recording_trajectory()
+    const chunks: StreamChunk[] = []
+    const out = await run_tool_loop(
+      base_config({
+        invoke: [{ tool_calls: [call('c1', 'boom', {})], finish_reason: 'tool_calls' }, { text: 'done' }],
+        tools: [
+          make_tool({
+            name: 'boom',
+            input_schema: z.object({}),
+            execute: () => {
+              throw new Error('exploded')
+            },
+          }),
+        ],
+        trajectory,
+        dispatch_chunk: async (c) => {
+          chunks.push(c)
+        },
+      }),
+    )
+    expect(out.tool_calls[0]?.error?.message).toBe('exploded')
+    expect(events.find((e) => e['kind'] === 'tool_call')).toMatchObject({
+      name: 'boom',
+      tool_call_id: 'c1',
+      error: { message: 'exploded' },
+    })
+    expect(events.find((e) => e['kind'] === 'tool_result')).toMatchObject({
+      tool_call_id: 'c1',
+      error: { message: 'exploded' },
+    })
+    expect(chunks.find((c) => c.kind === 'tool_result')).toMatchObject({ id: 'c1', error: { message: 'exploded' } })
+  })
+
+  it('throws tool_approval_denied_error with the canonical message under throw policy', async () => {
+    let err: unknown
+    try {
+      await run_tool_loop(
+        base_config({
+          invoke: [{ tool_calls: [call('c1', 'echo', { value: 'x' })], finish_reason: 'tool_calls' }],
+          tools: [make_tool({ name: 'echo', needs_approval: true })],
+          on_tool_approval: () => false,
+          tool_error_policy: 'throw',
+        }),
+      )
+    } catch (e) {
+      err = e
+    }
+    expect(err).toBeInstanceOf(tool_approval_denied_error)
+    expect((err as tool_approval_denied_error).message).toBe("tool 'echo' approval denied")
+    expect((err as tool_approval_denied_error).tool_call_id).toBe('c1')
+  })
+
+  it('throws tool_error with metadata for an unknown tool under throw policy', async () => {
+    let err: unknown
+    try {
+      await run_tool_loop(
+        base_config({
+          invoke: [{ tool_calls: [call('c1', 'missing', {})], finish_reason: 'tool_calls' }],
+          tools: [make_tool({ name: 'echo' })],
+          tool_error_policy: 'throw',
+        }),
+      )
+    } catch (e) {
+      err = e
+    }
+    expect(err).toBeInstanceOf(tool_error)
+    expect((err as tool_error).message).toBe("unknown tool 'missing'")
+    expect((err as tool_error).tool_name).toBe('missing')
+    expect((err as tool_error).tool_call_id).toBe('c1')
+  })
+
+  it('records tool_call/tool_result events and a chunk for invalid input (feed_back)', async () => {
+    const { trajectory, events } = recording_trajectory()
+    const chunks: StreamChunk[] = []
+    await run_tool_loop(
+      base_config({
+        invoke: [{ tool_calls: [call('c1', 'echo', { value: 123 })], finish_reason: 'tool_calls' }, { text: 'done' }],
+        tools: [make_tool({ name: 'echo', input_schema: z.object({ value: z.string() }) })],
+        trajectory,
+        dispatch_chunk: async (c) => {
+          chunks.push(c)
+        },
+      }),
+    )
+    const tc = events.find((e) => e['kind'] === 'tool_call')
+    expect(tc).toMatchObject({ name: 'echo', tool_call_id: 'c1', input: { value: 123 } })
+    expect(String((tc as { error?: { message?: string } })?.error?.message)).toMatch(/^invalid tool input: /)
+    expect(events.find((e) => e['kind'] === 'tool_result')?.['tool_call_id']).toBe('c1')
+    expect(chunks.find((c) => c.kind === 'tool_result')?.id).toBe('c1')
+  })
+
+  it('records tool_call/tool_result events and a chunk for a denied tool (feed_back)', async () => {
+    const { trajectory, events } = recording_trajectory()
+    const chunks: StreamChunk[] = []
+    await run_tool_loop(
+      base_config({
+        invoke: [{ tool_calls: [call('c1', 'echo', { value: 'x' })], finish_reason: 'tool_calls' }, { text: 'done' }],
+        tools: [make_tool({ name: 'echo', needs_approval: true })],
+        on_tool_approval: () => false,
+        trajectory,
+        dispatch_chunk: async (c) => {
+          chunks.push(c)
+        },
+      }),
+    )
+    const denied = { message: 'tool_approval_denied' }
+    expect(events.find((e) => e['kind'] === 'tool_call')).toMatchObject({
+      name: 'echo',
+      tool_call_id: 'c1',
+      input: { value: 'x' },
+      error: denied,
+    })
+    expect(events.find((e) => e['kind'] === 'tool_result')).toMatchObject({ tool_call_id: 'c1', error: denied })
+    expect(chunks.find((c) => c.kind === 'tool_result')).toMatchObject({ id: 'c1', error: denied })
+  })
+
+  it('records and dispatches an unexecuted tool call when max_steps would be exceeded', async () => {
+    const { trajectory, events } = recording_trajectory()
+    const chunks: StreamChunk[] = []
+    let executed = false
+    await run_tool_loop(
+      base_config({
+        invoke: [{ tool_calls: [call('c1', 'echo', { value: 'x' })], finish_reason: 'tool_calls' }],
+        tools: [
+          make_tool({
+            name: 'echo',
+            execute: () => {
+              executed = true
+              return 'ok'
+            },
+          }),
+        ],
+        max_steps: 1,
+        trajectory,
+        dispatch_chunk: async (c) => {
+          chunks.push(c)
+        },
+      }),
+    )
+    const msg = { message: 'max_steps_exceeded_before_execution' }
+    expect(executed).toBe(false)
+    expect(events.find((e) => e['kind'] === 'tool_result')).toMatchObject({ tool_call_id: 'c1', error: msg })
+    expect(chunks.find((c) => c.kind === 'tool_result')).toMatchObject({ id: 'c1', error: msg })
+  })
+
+  it('stops immediately with max_steps when starting at the step ceiling', async () => {
+    let invoked = false
+    const invoke: InvokeOnce = async () => {
+      invoked = true
+      return { text: 'x', tool_calls: [], finish_reason: 'stop', usage: zero_usage }
+    }
+    const out = await run_tool_loop({
+      ...base_config({ invoke: [{}] }),
+      invoke_once: invoke,
+      max_steps: 3,
+      step_index_start: 3,
+    })
+    expect(invoked).toBe(false)
+    expect(out.max_steps_reached).toBe(true)
+    expect(out.finish_reason).toBe('max_steps')
+    expect(out.steps).toHaveLength(0)
+  })
+
+  it('emits a pricing_missing event when pricing is unavailable for a paid provider', async () => {
+    const emitted: Array<{ provider: string; model_id: string }> = []
+    const dedup = {
+      emit: (provider: string, model_id: string) => {
+        emitted.push({ provider, model_id })
+      },
+    }
+    await run_tool_loop(
+      base_config({
+        invoke: [{ text: 'done' }],
+        provider: 'anthropic',
+        model_id: 'claude-opus-4-7',
+        resolve_pricing: () => undefined,
+        pricing_dedup: dedup,
+      }),
+    )
+    expect(emitted).toEqual([{ provider: 'anthropic', model_id: 'claude-opus-4-7' }])
   })
 })
