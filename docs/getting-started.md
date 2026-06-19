@@ -130,4 +130,5 @@ await engine.dispose();
 - [docs/providers.md](./providers.md) — per-provider adapter notes.
 - [docs/cli.md](./cli.md) — the `claude_cli` subprocess adapter.
 - [docs/cookbook.md](./cookbook.md) — retries, fan-out, judges, human-in-the-loop.
+- [docs/troubleshooting.md](./troubleshooting.md) — when the first run fails.
 - [examples/](../examples/) — runnable reference flows.

@@ -1,0 +1,7 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Contribution policy (no pull requests yet)
+    url: https://github.com/robmclarty/fascicle/blob/main/CONTRIBUTING.md
+    about: >-
+      Fascicle is early and exploratory and is not accepting outside pull
+      requests. Bug reports and feature ideas via the templates above are welcome.

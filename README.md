@@ -144,11 +144,14 @@ For zero-latency streaming from inside a long-running flow, pair it with `http_l
 
 - [docs/getting-started.md](./docs/getting-started.md) — install and run your first flow
 - [docs/concepts.md](./docs/concepts.md) — step-as-value, trajectories, cancellation
+- [docs/api-reference.md](./docs/api-reference.md) — the public surface at a glance
 - [docs/configuration.md](./docs/configuration.md) — engine config, defaults, pricing, retries
 - [docs/providers.md](./docs/providers.md) — per-provider adapter notes
 - [docs/cli.md](./docs/cli.md) — the `claude_cli` subprocess adapter
 - [docs/cookbook.md](./docs/cookbook.md) — retries, fan-out, judges, HITL, tool loops
 - [docs/writing-a-harness.md](./docs/writing-a-harness.md) — building a runner around fascicle
+- [docs/troubleshooting.md](./docs/troubleshooting.md) — first-run errors and what they mean
+- [docs/comparison.md](./docs/comparison.md) — how fascicle compares to LangChain, Mastra, and others
 - [examples/](./examples/) — runnable reference flows
 - [src/viewer/README.md](./src/viewer/README.md) — viewer details and transport options
 
