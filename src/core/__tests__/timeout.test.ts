@@ -87,6 +87,7 @@ describe('timeout', () => {
     expect(observed).toBeInstanceOf(timeout_error)
     expect((observed as timeout_error).kind).toBe('timeout_error')
     expect((observed as timeout_error).timeout_ms).toBe(30)
+    expect((observed as timeout_error).message).toContain('timeout after 30ms')
   })
 
   it('inner step sees aborted_error as ctx.abort.reason when parent aborts', async () => {
@@ -175,5 +176,49 @@ describe('timeout', () => {
         e['error'].includes('timeout after 30ms'),
     )
     expect(timeout_end).toBeDefined()
+  })
+
+  it('wraps a non-Error parent abort reason in aborted_error', async () => {
+    const ctrl = new AbortController()
+    let observed: unknown = undefined
+    const slow = step('slow', async (_: number, ctx: RunContext) => {
+      await new Promise<void>((resolve) => {
+        ctx.abort.addEventListener(
+          'abort',
+          () => {
+            observed = ctx.abort.reason
+            resolve()
+          },
+          { once: true },
+        )
+      })
+      return 'done'
+    })
+    const flow = timeout(slow, 10_000)
+    const pending = run(flow, 0, { abort: ctrl.signal, install_signal_handlers: false })
+    await new Promise((resolve) => setTimeout(resolve, 15))
+    ctrl.abort('stop-now')
+    const err = await pending.catch((e: unknown) => e)
+    expect(err).toBeInstanceOf(aborted_error)
+    if (err instanceof aborted_error) {
+      expect(err.message).toBe('aborted')
+      expect(err.reason).toBe('stop-now')
+    }
+    expect(observed).toBe('stop-now')
+  })
+
+  it('exposes a timeout step shape with id, children, and config', () => {
+    const inner = step('ok', (x: number) => x)
+    const flow = timeout(inner, 123, { name: 'budget' })
+    expect(flow.id).toMatch(/^timeout_\d+$/)
+    expect(flow.kind).toBe('timeout')
+    expect(flow.children).toEqual([inner])
+    expect(flow.config?.['ms']).toBe(123)
+    expect(flow.config?.['display_name']).toBe('budget')
+  })
+
+  it('omits display_name when no name is given', () => {
+    const flow = timeout(step('ok', (x: number) => x), 50)
+    expect(flow.config !== undefined && 'display_name' in flow.config).toBe(false)
   })
 })

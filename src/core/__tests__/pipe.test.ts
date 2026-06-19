@@ -24,6 +24,8 @@ function recording_logger(): { logger: TrajectoryLogger; events: TrajectoryEvent
   return { logger, events }
 }
 
+const double_fn = (n: number): number => n * 2
+
 describe('pipe', () => {
   it('adapts output shape (spec §10 test 17)', async () => {
     const inner = step('count', (x: string) => x.length)
@@ -58,5 +60,23 @@ describe('pipe', () => {
     // @ts-expect-error pipe fn must accept the inner's output type (number), not string.
     const bad = pipe(inner, (s: string) => s.toUpperCase())
     expect(bad.kind).toBe('pipe')
+  })
+
+  it('exposes a pipe step shape with id, children, and config', () => {
+    const inner = step('s', (x: number) => x)
+    const flow = pipe(inner, double_fn, { name: 'adapt' })
+    expect(flow.id).toMatch(/^pipe_\d+$/)
+    expect(flow.kind).toBe('pipe')
+    expect(flow.children).toEqual([inner])
+    expect(flow.config?.['fn']).toBe(double_fn)
+    expect(flow.config?.['display_name']).toBe('adapt')
+  })
+
+  it('omits display_name when no name is given', () => {
+    const flow = pipe(
+      step('s', (x: number) => x),
+      (n: number) => n,
+    )
+    expect(flow.config !== undefined && 'display_name' in flow.config).toBe(false)
   })
 })

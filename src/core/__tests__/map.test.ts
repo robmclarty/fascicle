@@ -9,6 +9,8 @@ function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
+const identity_items = (x: number[]): number[] => x
+
 function recording_logger(): { logger: TrajectoryLogger; events: TrajectoryEvent[] } {
   const events: TrajectoryEvent[] = []
   let id = 0
@@ -131,5 +133,56 @@ describe('map', () => {
       do: step('item', (v: number) => v),
     })
     await expect(run(flow, 0)).resolves.toEqual([])
+  })
+
+  it('rejects when an item step throws', async () => {
+    const flow = map({
+      items: (x: number[]) => x,
+      do: step('item', (v: number) => {
+        if (v === 2) throw new Error('boom')
+        return v
+      }),
+    })
+    await expect(run(flow, [1, 2, 3], { install_signal_handlers: false })).rejects.toThrow('boom')
+  })
+
+  it('wraps a non-Error abort reason in aborted_error', async () => {
+    const ctrl = new AbortController()
+    const flow = map({
+      items: (x: number[]) => x,
+      concurrency: 2,
+      do: step('item', async (v: number, ctx) => {
+        await new Promise<void>((_resolve, reject) => {
+          ctx.abort.addEventListener('abort', () => reject(ctx.abort.reason), { once: true })
+        })
+        return v
+      }),
+    })
+    const pending = run(flow, [1, 2], { abort: ctrl.signal, install_signal_handlers: false })
+    await wait(20)
+    ctrl.abort('stop-now')
+    const err = await pending.catch((e: unknown) => e)
+    expect(err).toBeInstanceOf(aborted_error)
+    if (err instanceof aborted_error) {
+      expect(err.message).toBe('aborted')
+      expect(err.reason).toBe('stop-now')
+    }
+  })
+
+  it('exposes a map step shape with id, children, and config', () => {
+    const per = step('item', (v: number) => v)
+    const flow = map({ name: 'each', items: identity_items, do: per, concurrency: 2 })
+    expect(flow.id).toMatch(/^map_\d+$/)
+    expect(flow.kind).toBe('map')
+    expect(flow.children).toEqual([per])
+    expect(flow.config?.['items']).toBe(identity_items)
+    expect(flow.config?.['concurrency']).toBe(2)
+    expect(flow.config?.['display_name']).toBe('each')
+  })
+
+  it('omits concurrency and display_name when not provided', () => {
+    const flow = map({ items: (x: number[]) => x, do: step('item', (v: number) => v) })
+    expect(flow.config !== undefined && 'concurrency' in flow.config).toBe(false)
+    expect(flow.config !== undefined && 'display_name' in flow.config).toBe(false)
   })
 })

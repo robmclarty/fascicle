@@ -24,6 +24,8 @@ function recording_logger(): { logger: TrajectoryLogger; events: TrajectoryEvent
   return { logger, events }
 }
 
+const route_when = (x: number): boolean => x > 0
+
 describe('branch', () => {
   it('routes positive inputs to then (spec §10 test 4)', async () => {
     const flow = branch({
@@ -59,5 +61,27 @@ describe('branch', () => {
   
     const start = events.find((e) => e.kind === 'span_start' && e['name'] === 'branch')
     expect(start).toBeDefined()
+  })
+
+  it('exposes a branch step shape with id, children, and config', () => {
+    const then_step = step('t', (x: number) => x)
+    const otherwise_step = step('o', (x: number) => x)
+    const flow = branch({ name: 'route', when: route_when, then: then_step, otherwise: otherwise_step })
+    expect(flow.id).toMatch(/^branch_\d+$/)
+    expect(flow.kind).toBe('branch')
+    expect(flow.children).toEqual([then_step, otherwise_step])
+    expect(flow.config?.['when']).toBe(route_when)
+    expect(flow.config?.['then']).toBe(then_step)
+    expect(flow.config?.['otherwise']).toBe(otherwise_step)
+    expect(flow.config?.['display_name']).toBe('route')
+  })
+
+  it('omits display_name when no name is given', () => {
+    const flow = branch({
+      when: () => true,
+      then: step('t', (x: number) => x),
+      otherwise: step('o', (x: number) => x),
+    })
+    expect(flow.config !== undefined && 'display_name' in flow.config).toBe(false)
   })
 })
