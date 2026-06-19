@@ -91,9 +91,9 @@ function engine_trajectory(
 }
 
 function stable_signature(input: {
-  model?: string
-  provider?: string
-  system?: string
+  model: string | undefined
+  provider: string | undefined
+  system: string | undefined
   has_tools: boolean
   has_schema: boolean
 }): string {
@@ -112,17 +112,15 @@ export function model_call<T = string>(
 ): Step<ModelCallInput, GenerateResult<T>> {
   const has_tools = Boolean(cfg.tools && cfg.tools.length > 0)
   const has_schema = cfg.schema !== undefined
-  const signature_input: {
-    model?: string
-    provider?: string
-    system?: string
-    has_tools: boolean
-    has_schema: boolean
-  } = { has_tools, has_schema }
-  if (cfg.model !== undefined) signature_input.model = cfg.model
-  if (cfg.provider !== undefined) signature_input.provider = cfg.provider
-  if (cfg.system !== undefined) signature_input.system = cfg.system
-  const step_id = cfg.id ?? `model_call:${stable_signature(signature_input)}`
+  const step_id =
+    cfg.id ??
+    `model_call:${stable_signature({
+      model: cfg.model,
+      provider: cfg.provider,
+      system: cfg.system,
+      has_tools,
+      has_schema,
+    })}`
 
   const describe_config: {
     model?: string
