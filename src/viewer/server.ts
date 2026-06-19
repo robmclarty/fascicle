@@ -40,8 +40,7 @@ export function start_server(options: ServerOptions): Promise<ViewerServer> {
   const { broadcaster, host, port, on_parse_error } = options
 
   const handler = (req: IncomingMessage, res: ServerResponse): void => {
-    const url = new URL(req.url ?? '/', `http://${req.headers.host ?? `${host}:${port}`}`)
-    const route = `${req.method ?? 'GET'} ${url.pathname}`
+    const route = resolve_route(req, host, port)
 
     if (route === 'GET /' || route === 'GET /index.html') {
       serve_static_html(res)
@@ -84,6 +83,19 @@ export function start_server(options: ServerOptions): Promise<ViewerServer> {
       })
     })
   })
+}
+
+export function resolve_route(
+  req: {
+    url?: string | undefined
+    method?: string | undefined
+    headers: { host?: string | undefined }
+  },
+  host: string,
+  port: number,
+): string {
+  const url = new URL(req.url ?? '/', `http://${req.headers.host ?? `${host}:${port}`}`)
+  return `${req.method ?? 'GET'} ${url.pathname}`
 }
 
 function close_server(server: Server): Promise<void> {
