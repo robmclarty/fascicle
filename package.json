@@ -1,7 +1,32 @@
 {
   "name": "fascicle",
   "version": "0.8.2",
-  "description": "Composable TypeScript toolkit for agentic workflows. Plain values, no framework, no ambient state.",
+  "description": "Compose agents like plain values. A TypeScript toolkit that wires LLM calls, tools, and functions into typed steps over eight providers. No framework, no ambient state.",
+  "keywords": [
+    "agents",
+    "agentic",
+    "multi-agent",
+    "ai",
+    "llm",
+    "workflow",
+    "pipeline",
+    "orchestration",
+    "tool-calling",
+    "harness",
+    "streaming",
+    "observability",
+    "typescript",
+    "composable",
+    "ai-sdk",
+    "vercel-ai-sdk",
+    "anthropic",
+    "openai",
+    "gemini",
+    "bedrock",
+    "openrouter",
+    "ollama",
+    "lmstudio"
+  ],
   "license": "Apache-2.0",
   "author": {
     "name": "Rob McLarty",
@@ -49,7 +74,7 @@
     "type": "git",
     "url": "git+https://github.com/robmclarty/fascicle.git"
   },
-  "homepage": "https://github.com/robmclarty/fascicle#readme",
+  "homepage": "https://robmclarty.github.io/fascicle/",
   "bugs": {
     "url": "https://github.com/robmclarty/fascicle/issues"
   },
