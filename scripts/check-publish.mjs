@@ -6,8 +6,6 @@
  *      expected files and excludes source, tests, and internal artifacts.
  *   2. `@arethetypeswrong/cli` against ./dist/ — Node-ESM type resolution
  *      must be clean.
- *   3. Re-assert the version-lockstep invariant across the root
- *      package.json and the src/{core,engine}/version.ts constants.
  *
  * Exit codes:
  *   0  ready to publish
@@ -18,13 +16,10 @@
 import { spawn } from 'node:child_process';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
-import { join } from 'node:path';
-import {
-  REPO_ROOT,
-  enumerate_lockstep,
-  read_current_version,
-} from './lib/lockstep.mjs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
 
+const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const ROOT_PKG = join(REPO_ROOT, 'package.json');
 
 const REQUIRED_FILES = [
@@ -246,38 +241,7 @@ async function check_types_wrong() {
   );
 }
 
-async function check_version_lockstep() {
-  // The lockstep enumeration here is shared with scripts/check-deps.mjs and
-  // scripts/bump-version.mjs via scripts/lib/lockstep.mjs. One source of
-  // truth; don't re-derive the file list locally.
-  const files = await enumerate_lockstep();
-  const root_file = files.find((f) => f.kind === 'root_pkg');
-  if (!root_file) fail('root package.json not found in lockstep enumeration');
-
-  const root_version = await read_current_version(root_file).catch((err) => fail(err.message));
-  if (typeof root_version !== 'string' || root_version.length === 0) {
-    fail(`root package.json is missing a \`version\` field`);
-  }
-
-  let pkg_count = 0;
-  let ts_count = 0;
-  for (const file of files) {
-    if (file === root_file) continue;
-    const v = await read_current_version(file).catch((err) => fail(err.message));
-    if (v !== root_version) {
-      fail(`version skew: ${file.path} is "${v}" but root is "${root_version}"`);
-    }
-    if (file.kind === 'package_pkg') pkg_count++;
-    if (file.kind === 'version_ts') ts_count++;
-  }
-
-  console.log(
-    `check-publish: lockstep ok (root ${root_version} = ${pkg_count} package(s) + ${ts_count} version.ts constant(s))`,
-  );
-}
-
 async function main() {
-  await check_version_lockstep();
   await check_pack_contents();
   await check_types_wrong();
   console.log(`\ncheck-publish: ready to publish`);

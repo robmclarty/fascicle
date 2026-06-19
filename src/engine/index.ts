@@ -6,8 +6,6 @@
  * helpers are not re-exported.
  */
 
-export { version } from './version.js'
-
 export { create_engine } from './create_engine.js'
 
 export type {

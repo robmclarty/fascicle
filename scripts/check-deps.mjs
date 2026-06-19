@@ -13,18 +13,13 @@
  *
  *   Publishability
  *   - Root package.json must NOT carry "private": true.
- *   - Every src/<module>/version.ts literal constant MUST equal the root version
- *     (enumerated via scripts/lib/lockstep.mjs).
  */
 
 import { readFile } from 'node:fs/promises';
-import { join } from 'node:path';
-import {
-  REPO_ROOT,
-  enumerate_lockstep,
-  read_current_version,
-} from './lib/lockstep.mjs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
 
+const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const ROOT_PKG = join(REPO_ROOT, 'package.json');
 const REQUIRED_OPTIONAL_PEERS = [
   '@ai-sdk/anthropic',
@@ -62,31 +57,15 @@ async function check_optional_peers() {
 }
 
 async function check_publishability() {
-  const files = await enumerate_lockstep();
-  const root_file = files.find((f) => f.kind === 'root_pkg');
-  if (!root_file) fail('root package.json not found in lockstep enumeration');
-
-  const root_pkg = await read_pkg(root_file.path);
+  const root_pkg = await read_pkg(ROOT_PKG);
   if (root_pkg.private === true) {
-    fail(`root package.json must NOT carry "private": true; found in ${root_file.path}`);
+    fail(`root package.json must NOT carry "private": true; found in ${ROOT_PKG}`);
   }
-  const root_version = await read_current_version(root_file).catch((err) => fail(err.message));
-
-  let version_ts_count = 0;
-  for (const file of files) {
-    if (file === root_file) continue;
-    if (file.kind === 'version_ts') {
-      const v = await read_current_version(file).catch((err) => fail(err.message));
-      if (v !== root_version) {
-        fail(`version skew: ${file.path} is "${v}" but root is "${root_version}"`);
-      }
-      version_ts_count++;
-    }
+  if (typeof root_pkg.version !== 'string' || root_pkg.version.length === 0) {
+    fail('root package.json is missing a `version` field');
   }
 
-  console.log(
-    `check-deps: publish invariants ok (root ${root_version}, ${version_ts_count} version.ts literal(s) in lockstep)`,
-  );
+  console.log(`check-deps: publish invariants ok (root ${root_pkg.version}, not private)`);
 }
 
 async function main() {

@@ -65,5 +65,3 @@ export type {
 } from './trajectory.js'
 
 export const flow_schema = flow_schema_data
-
-export { version as core_version } from './version.js'

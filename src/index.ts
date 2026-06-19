@@ -6,9 +6,7 @@
  * can install a single package.
  *
  * `aborted_error` lives in core and is re-exported by engine, so both
- * layers surface the same class (NOTES.md D5). Core and engine each expose
- * their own `version` constant; the umbrella renames them to `core_version`
- * and `engine_version` — there is no unqualified `version` winner (D6).
+ * layers surface the same class (NOTES.md D5).
  *
  * `model_call` is the sole sanctioned bridge between the two layers; it is
  * the only file under packages/fascicle/src/ that imports values from both
@@ -34,7 +32,6 @@ export {
   schema_validation_error,
   tool_approval_denied_error,
   tool_error,
-  version as engine_version,
 } from '#engine'
 
 export type {
