@@ -30,6 +30,7 @@ export type MockOp =
   | { op: 'delay'; ms: number }
   | { op: 'exit'; code?: number }
   | { op: 'hang' }
+  | { op: 'echo_stdin' }
 
 export type MockScriptHandle = {
   readonly script_path: string

@@ -18,6 +18,7 @@
  *   { "op": "delay",  "ms": 100 }          setTimeout
  *   { "op": "exit",   "code": 0 }          exit with code (default 0)
  *   { "op": "hang" }                       wait forever (used for abort tests)
+ *   { "op": "echo_stdin" }                 await stdin EOF, then echo it to stdout
  */
 
 import { writeFileSync, readFileSync } from 'node:fs';
@@ -40,7 +41,10 @@ if (ignore_sigterm) {
   process.on('SIGTERM', () => {});
 }
 
-process.stdin.on('data', () => {});
+let stdin_data = '';
+process.stdin.on('data', (chunk) => {
+  stdin_data += chunk;
+});
 process.stdin.on('error', () => {});
 
 if (record_path !== undefined && record_path.length > 0) {
@@ -107,6 +111,15 @@ async function run_ops() {
       await new Promise(() => {
         setInterval(() => {}, 60_000);
       });
+    } else if (op.op === 'echo_stdin') {
+      await new Promise((resolve) => {
+        if (process.stdin.readableEnded) {
+          resolve();
+          return;
+        }
+        process.stdin.on('end', resolve);
+      });
+      process.stdout.write(stdin_data);
     }
   }
   process.exit(0);

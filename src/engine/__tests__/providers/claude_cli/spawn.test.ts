@@ -11,7 +11,7 @@
  * real 'claude' binary.
  */
 
-import { readFile } from 'node:fs/promises'
+import { readFile, realpath } from 'node:fs/promises'
 import type { ChildProcess } from 'node:child_process'
 import { afterEach, describe, expect, it } from 'vitest'
 import { create_spawn_runtime } from '../../../providers/claude_cli/spawn.js'
@@ -123,7 +123,7 @@ describe('create_spawn_runtime — spawn options (spec §6.1, §12 #1)', () => {
     await runtime.dispose_all()
   })
 
-  it('wait_close throws claude_cli_error when binary cannot be spawned', async () => {
+  it('wait_close throws binary_not_found when the binary cannot be spawned', async () => {
     const runtime = create_spawn_runtime()
     // Node spawn emits ENOENT asynchronously via the child's 'error' event;
     // the adapter surfaces it at wait_close() as claude_cli_error.
@@ -136,17 +136,42 @@ describe('create_spawn_runtime — spawn options (spec §6.1, §12 #1)', () => {
       stall_timeout_ms: 0,
     })
     for await (const _ of session.stdout_lines) void _
-    await expect(session.wait_close()).rejects.toThrow(claude_cli_error)
+    const err = await session.wait_close().catch((e: unknown) => e)
+    expect(err).toBeInstanceOf(claude_cli_error)
+    if (err instanceof claude_cli_error) expect(err.reason).toBe('binary_not_found')
+    await runtime.dispose_all()
+  })
+
+  it('throws binary_not_found synchronously when spawn() rejects the command', async () => {
+    const runtime = create_spawn_runtime()
+    // A null byte in the command makes node:child_process.spawn throw
+    // synchronously inside the try, exercising the catch path.
+    const err = await runtime
+      .spawn_cli({
+        cmd: 'bad\u0000cmd',
+        argv: [],
+        env: {},
+        stdin: '',
+        startup_timeout_ms: 0,
+        stall_timeout_ms: 0,
+      })
+      .catch((e: unknown) => e)
+    expect(err).toBeInstanceOf(claude_cli_error)
+    if (err instanceof claude_cli_error) {
+      expect(err.reason).toBe('binary_not_found')
+      expect(err.message).toContain("failed to spawn 'bad")
+    }
     await runtime.dispose_all()
   })
 
   it('rejects synchronously when abort signal is already aborted', async () => {
     const runtime = create_spawn_runtime()
     const ctrl = new AbortController()
-    ctrl.abort(new Error('pre-aborted'))
-  
-    await expect(
-      runtime.spawn_cli({
+    const reason = new Error('pre-aborted')
+    ctrl.abort(reason)
+
+    const err = await runtime
+      .spawn_cli({
         cmd: MOCK_CLAUDE_PATH,
         argv: [],
         env: {},
@@ -154,8 +179,13 @@ describe('create_spawn_runtime — spawn options (spec §6.1, §12 #1)', () => {
         startup_timeout_ms: 0,
         stall_timeout_ms: 0,
         abort: ctrl.signal,
-      }),
-    ).rejects.toThrow(aborted_error)
+      })
+      .catch((e: unknown) => e)
+    expect(err).toBeInstanceOf(aborted_error)
+    if (err instanceof aborted_error) {
+      expect(err.message).toBe('aborted')
+      expect(err.reason).toBe(reason)
+    }
     await runtime.dispose_all()
   })
 })
@@ -390,5 +420,387 @@ describe('dispose_all (spec §6)', () => {
     expect(is_alive(s2.child)).toBe(false)
     await s1.wait_close().catch(() => undefined)
     await s2.wait_close().catch(() => undefined)
+  })
+
+  it('is a clean no-op once every child has already closed', async () => {
+    const handle = await track(await write_mock_script(success_ops('ok')))
+    const runtime = create_spawn_runtime()
+
+    const session = await runtime.spawn_cli({
+      cmd: MOCK_CLAUDE_PATH,
+      argv: [],
+      env: build_mock_env({ MOCK_CLAUDE_SCRIPT: handle.script_path }),
+      stdin: '',
+      startup_timeout_ms: 0,
+      stall_timeout_ms: 0,
+    })
+    for await (const _ of session.stdout_lines) void _
+    await session.wait_close()
+    await wait_for_exit(session.child, 2000)
+    // 'close' already removed the child from live_children, so dispose_all
+    // iterates an empty registry and resolves at once.
+    expect(runtime.live_children.size).toBe(0)
+    await runtime.dispose_all()
+    expect(is_alive(session.child)).toBe(false)
+  })
+
+  it('terminates a SIGTERM-honoring child via SIGTERM, well under the SIGKILL window', async () => {
+    const handle = await track(await write_mock_script([{ op: 'hang' }]))
+    const runtime = create_spawn_runtime()
+
+    const session = await runtime.spawn_cli({
+      cmd: MOCK_CLAUDE_PATH,
+      argv: [],
+      env: build_mock_env({ MOCK_CLAUDE_SCRIPT: handle.script_path }),
+      stdin: '',
+      startup_timeout_ms: 0,
+      stall_timeout_ms: 0,
+    })
+
+    const start = Date.now()
+    await runtime.dispose_all()
+    expect(is_alive(session.child)).toBe(false)
+    expect(session.child.signalCode).toBe('SIGTERM')
+    expect(Date.now() - start).toBeLessThan(SIGKILL_ESCALATION_MS)
+    await session.wait_close().catch(() => undefined)
+  })
+
+  it('SIGKILLs a child that ignores SIGTERM after the escalation window', async () => {
+    const handle = await track(await write_mock_script([{ op: 'hang' }]))
+    const runtime = create_spawn_runtime()
+
+    const session = await runtime.spawn_cli({
+      cmd: MOCK_CLAUDE_PATH,
+      argv: [],
+      env: build_mock_env({
+        MOCK_CLAUDE_SCRIPT: handle.script_path,
+        MOCK_CLAUDE_IGNORE_SIGTERM: '1',
+      }),
+      stdin: '',
+      startup_timeout_ms: 0,
+      stall_timeout_ms: 0,
+    })
+
+    // Let the child install its SIGTERM handler before dispose signals it.
+    await new Promise((r) => setTimeout(r, 150))
+    await runtime.dispose_all()
+
+    expect(is_alive(session.child)).toBe(false)
+    expect(session.child.signalCode).toBe('SIGKILL')
+    await session.wait_close().catch(() => undefined)
+  }, 10_000)
+})
+
+describe('cwd forwarding (spec §6.1)', () => {
+  it('runs the child in the supplied cwd', async () => {
+    const handle = await track(await write_mock_script(success_ops('ok')))
+    const cwd = await realpath(handle.dir)
+    const runtime = create_spawn_runtime()
+
+    const session = await runtime.spawn_cli({
+      cmd: MOCK_CLAUDE_PATH,
+      argv: [],
+      env: build_mock_env({
+        MOCK_CLAUDE_SCRIPT: handle.script_path,
+        MOCK_CLAUDE_RECORD: handle.record_path,
+      }),
+      stdin: '',
+      startup_timeout_ms: 0,
+      stall_timeout_ms: 0,
+      cwd,
+    })
+    for await (const _ of session.stdout_lines) void _
+    await session.wait_close()
+
+    const snapshot = JSON.parse(await readFile(handle.record_path, 'utf8')) as {
+      cwd: string
+    }
+    expect(await realpath(snapshot.cwd)).toBe(cwd)
+    await runtime.dispose_all()
+  })
+})
+
+describe('startup and stall timers (spec §6.2)', () => {
+  it('rejects with startup_timeout when no stdout arrives in the window', async () => {
+    const handle = await track(await write_mock_script([{ op: 'hang' }]))
+    const runtime = create_spawn_runtime()
+
+    const session = await runtime.spawn_cli({
+      cmd: MOCK_CLAUDE_PATH,
+      argv: [],
+      env: build_mock_env({ MOCK_CLAUDE_SCRIPT: handle.script_path }),
+      stdin: '',
+      startup_timeout_ms: 200,
+      stall_timeout_ms: 0,
+    })
+    const drain = (async (): Promise<void> => {
+      for await (const _ of session.stdout_lines) void _
+    })()
+    const err = await session.wait_close().catch((e: unknown) => e)
+    expect(err).toBeInstanceOf(claude_cli_error)
+    if (err instanceof claude_cli_error) {
+      expect(err.reason).toBe('startup_timeout')
+      expect(err.message).toContain('no stdout within 200ms')
+    }
+    await drain.catch(() => undefined)
+    await runtime.dispose_all()
+  }, 10_000)
+
+  it('clears the startup timer on first byte so a slow-finishing child still succeeds', async () => {
+    const handle = await track(
+      await write_mock_script([
+        { op: 'line', data: { type: 'system', subtype: 'init', session_id: 's', model: 'm' } },
+        { op: 'delay', ms: 400 },
+        { op: 'exit', code: 0 },
+      ]),
+    )
+    const runtime = create_spawn_runtime()
+
+    const session = await runtime.spawn_cli({
+      cmd: MOCK_CLAUDE_PATH,
+      argv: [],
+      env: build_mock_env({ MOCK_CLAUDE_SCRIPT: handle.script_path }),
+      stdin: '',
+      startup_timeout_ms: 150,
+      stall_timeout_ms: 0,
+    })
+    const lines: string[] = []
+    for await (const l of session.stdout_lines) lines.push(l)
+    // If the startup timer were not cleared on first byte it would fire at
+    // 150ms and abort this 400ms child; wait_close would reject instead.
+    const outcome = await session.wait_close()
+    expect(outcome.code).toBe(0)
+    expect(lines).toHaveLength(1)
+    await runtime.dispose_all()
+  }, 10_000)
+
+  it('rejects with stall_timeout when stdout goes quiet past the stall window', async () => {
+    const handle = await track(
+      await write_mock_script([
+        { op: 'line', data: { type: 'system', subtype: 'init', session_id: 's', model: 'm' } },
+        { op: 'hang' },
+      ]),
+    )
+    const runtime = create_spawn_runtime()
+
+    const session = await runtime.spawn_cli({
+      cmd: MOCK_CLAUDE_PATH,
+      argv: [],
+      env: build_mock_env({ MOCK_CLAUDE_SCRIPT: handle.script_path }),
+      stdin: '',
+      startup_timeout_ms: 0,
+      stall_timeout_ms: 200,
+    })
+    const drain = (async (): Promise<void> => {
+      for await (const _ of session.stdout_lines) void _
+    })()
+    const err = await session.wait_close().catch((e: unknown) => e)
+    expect(err).toBeInstanceOf(claude_cli_error)
+    if (err instanceof claude_cli_error) {
+      expect(err.reason).toBe('stall_timeout')
+      expect(err.message).toContain('no stdout for 200ms')
+    }
+    await drain.catch(() => undefined)
+    await runtime.dispose_all()
+  }, 10_000)
+})
+
+describe('stdin delivery (spec §6)', () => {
+  it('writes the prompt to the child stdin and closes it', async () => {
+    const handle = await track(
+      await write_mock_script([{ op: 'echo_stdin' }, { op: 'exit', code: 0 }]),
+    )
+    const runtime = create_spawn_runtime()
+
+    const session = await runtime.spawn_cli({
+      cmd: MOCK_CLAUDE_PATH,
+      argv: [],
+      env: build_mock_env({ MOCK_CLAUDE_SCRIPT: handle.script_path }),
+      stdin: 'PROMPT-PAYLOAD',
+      startup_timeout_ms: 0,
+      stall_timeout_ms: 0,
+    })
+    const lines: string[] = []
+    for await (const l of session.stdout_lines) lines.push(l)
+    await session.wait_close()
+    // The mock blocks on stdin EOF and echoes what it received; if the adapter
+    // did not write+end stdin the mock would hang and this would time out.
+    expect(lines).toEqual(['PROMPT-PAYLOAD'])
+    await runtime.dispose_all()
+  }, 10_000)
+})
+
+describe('stderr capture (spec §6)', () => {
+  it('captures child stderr into the close outcome', async () => {
+    const handle = await track(
+      await write_mock_script([{ op: 'stderr', text: 'warning: heads up' }, ...success_ops('ok')]),
+    )
+    const runtime = create_spawn_runtime()
+
+    const session = await runtime.spawn_cli({
+      cmd: MOCK_CLAUDE_PATH,
+      argv: [],
+      env: build_mock_env({ MOCK_CLAUDE_SCRIPT: handle.script_path }),
+      stdin: '',
+      startup_timeout_ms: 0,
+      stall_timeout_ms: 0,
+    })
+    for await (const _ of session.stdout_lines) void _
+    const outcome = await session.wait_close()
+    expect(outcome.stderr).toBe('warning: heads up')
+    await runtime.dispose_all()
+  })
+})
+
+describe('abort during a run (spec §6.3)', () => {
+  it('escalates via SIGTERM and rejects with aborted_error when the signal fires mid-run', async () => {
+    const handle = await track(await write_mock_script([{ op: 'hang' }]))
+    const runtime = create_spawn_runtime()
+    const ctrl = new AbortController()
+
+    const session = await runtime.spawn_cli({
+      cmd: MOCK_CLAUDE_PATH,
+      argv: [],
+      env: build_mock_env({ MOCK_CLAUDE_SCRIPT: handle.script_path }),
+      stdin: '',
+      startup_timeout_ms: 0,
+      stall_timeout_ms: 0,
+      abort: ctrl.signal,
+    })
+    const drain = (async (): Promise<void> => {
+      for await (const _ of session.stdout_lines) void _
+    })()
+    await new Promise((r) => setTimeout(r, 100))
+    ctrl.abort('user-cancelled')
+
+    const err = await session.wait_close().catch((e: unknown) => e)
+    expect(err).toBeInstanceOf(aborted_error)
+    if (err instanceof aborted_error) {
+      expect(err.message).toBe('aborted')
+      expect(err.reason).toBe('user-cancelled')
+    }
+    // SIGTERM (not SIGKILL) must be the signal that ended the honoring child.
+    expect(session.child.signalCode).toBe('SIGTERM')
+    await drain.catch(() => undefined)
+    await runtime.dispose_all()
+  }, 10_000)
+})
+
+describe('termination reasons (spec §6.3)', () => {
+  it('rejects with an engine-disposed error when terminated as disposed', async () => {
+    const handle = await track(await write_mock_script([{ op: 'hang' }]))
+    const runtime = create_spawn_runtime()
+
+    const session = await runtime.spawn_cli({
+      cmd: MOCK_CLAUDE_PATH,
+      argv: [],
+      env: build_mock_env({ MOCK_CLAUDE_SCRIPT: handle.script_path }),
+      stdin: '',
+      startup_timeout_ms: 0,
+      stall_timeout_ms: 0,
+    })
+    const drain = (async (): Promise<void> => {
+      for await (const _ of session.stdout_lines) void _
+    })()
+    session.request_terminate('disposed')
+
+    const err = await session.wait_close().catch((e: unknown) => e)
+    expect(err).toBeInstanceOf(aborted_error)
+    if (err instanceof aborted_error) {
+      expect(err.message).toBe('engine disposed')
+      expect(err.reason).toBe('engine_disposed')
+    }
+    await drain.catch(() => undefined)
+    await runtime.dispose_all()
+  }, 10_000)
+
+  it('keeps the first termination reason when terminate is requested twice', async () => {
+    const handle = await track(await write_mock_script([{ op: 'hang' }]))
+    const runtime = create_spawn_runtime()
+
+    const session = await runtime.spawn_cli({
+      cmd: MOCK_CLAUDE_PATH,
+      argv: [],
+      env: build_mock_env({ MOCK_CLAUDE_SCRIPT: handle.script_path }),
+      stdin: '',
+      startup_timeout_ms: 0,
+      stall_timeout_ms: 0,
+    })
+    const drain = (async (): Promise<void> => {
+      for await (const _ of session.stdout_lines) void _
+    })()
+    session.request_terminate('disposed')
+    session.request_terminate('abort') // must be ignored: first reason wins
+
+    const err = await session.wait_close().catch((e: unknown) => e)
+    expect(err).toBeInstanceOf(aborted_error)
+    if (err instanceof aborted_error) expect(err.message).toBe('engine disposed')
+    await drain.catch(() => undefined)
+    await runtime.dispose_all()
+  }, 10_000)
+})
+
+describe('stdout line framing (spec §6)', () => {
+  it('splits multiple newline-delimited lines from one chunk', async () => {
+    const handle = await track(
+      await write_mock_script([{ op: 'raw', text: 'one\ntwo\nthree\n' }, { op: 'exit', code: 0 }]),
+    )
+    const runtime = create_spawn_runtime()
+
+    const session = await runtime.spawn_cli({
+      cmd: MOCK_CLAUDE_PATH,
+      argv: [],
+      env: build_mock_env({ MOCK_CLAUDE_SCRIPT: handle.script_path }),
+      stdin: '',
+      startup_timeout_ms: 0,
+      stall_timeout_ms: 0,
+    })
+    const lines: string[] = []
+    for await (const l of session.stdout_lines) lines.push(l)
+    await session.wait_close()
+    expect(lines).toEqual(['one', 'two', 'three'])
+    await runtime.dispose_all()
+  })
+
+  it('emits a final unterminated line when output has no trailing newline', async () => {
+    const handle = await track(
+      await write_mock_script([{ op: 'raw', text: 'alpha\nbeta' }, { op: 'exit', code: 0 }]),
+    )
+    const runtime = create_spawn_runtime()
+
+    const session = await runtime.spawn_cli({
+      cmd: MOCK_CLAUDE_PATH,
+      argv: [],
+      env: build_mock_env({ MOCK_CLAUDE_SCRIPT: handle.script_path }),
+      stdin: '',
+      startup_timeout_ms: 0,
+      stall_timeout_ms: 0,
+    })
+    const lines: string[] = []
+    for await (const l of session.stdout_lines) lines.push(l)
+    await session.wait_close()
+    expect(lines).toEqual(['alpha', 'beta'])
+    await runtime.dispose_all()
+  })
+
+  it('does not emit a trailing empty line when output ends with a newline', async () => {
+    const handle = await track(
+      await write_mock_script([{ op: 'raw', text: 'solo\n' }, { op: 'exit', code: 0 }]),
+    )
+    const runtime = create_spawn_runtime()
+
+    const session = await runtime.spawn_cli({
+      cmd: MOCK_CLAUDE_PATH,
+      argv: [],
+      env: build_mock_env({ MOCK_CLAUDE_SCRIPT: handle.script_path }),
+      stdin: '',
+      startup_timeout_ms: 0,
+      stall_timeout_ms: 0,
+    })
+    const lines: string[] = []
+    for await (const l of session.stdout_lines) lines.push(l)
+    await session.wait_close()
+    expect(lines).toEqual(['solo'])
+    await runtime.dispose_all()
   })
 })

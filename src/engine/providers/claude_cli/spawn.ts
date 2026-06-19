@@ -123,9 +123,10 @@ export function create_spawn_runtime(): SpawnRuntime {
     })
   
     const clear_all_timers = (): void => {
-      if (startup_timer !== undefined) clearTimeout(startup_timer)
-      if (stall_timer !== undefined) clearTimeout(stall_timer)
-      if (sigkill_timer !== undefined) clearTimeout(sigkill_timer)
+      // clearTimeout is a no-op on undefined, so the timers need no guards.
+      clearTimeout(startup_timer)
+      clearTimeout(stall_timer)
+      clearTimeout(sigkill_timer)
       startup_timer = undefined
       stall_timer = undefined
       sigkill_timer = undefined
@@ -162,7 +163,9 @@ export function create_spawn_runtime(): SpawnRuntime {
   
     const arm_stall_timer = (): void => {
       if (args.stall_timeout_ms <= 0) return
-      if (stall_timer !== undefined) clearTimeout(stall_timer)
+      // clearTimeout no-ops on undefined; the previous stall timer (if any)
+      // is replaced on every byte to reset the quiet-period window.
+      clearTimeout(stall_timer)
       stall_timer = setTimeout(() => {
         stall_error = new claude_cli_error(
           'stall_timeout',
