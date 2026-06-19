@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.8.6 — 2026-06-18
+
+### Internal
+
+- Consolidated the `observability/` and `stores/` modules plus the `adapters.ts` umbrella into a single flat `src/adapters/` module with one barrel, renaming files to match their factories (`filesystem_logger.ts`, `filesystem_store.ts`, …) and retiring the `#observability`/`#stores` import aliases in favour of `#adapters`. The published `fascicle/adapters` subpath and its exports are unchanged.
+
 ## v0.8.5 — 2026-06-18
 
 ### Internal
