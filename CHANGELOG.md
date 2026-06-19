@@ -1,5 +1,23 @@
 # Changelog
 
+## v0.8.3 — 2026-06-18
+
+### Added
+
+- npm `keywords` covering core concepts, the AI SDK ecosystem, and every supported provider, so the package surfaces in npm search.
+
+### Changed
+
+- Package metadata now points at the new documentation and marketing site: `homepage` links to https://robmclarty.github.io/fascicle/, and the npm description leads with the "compose agents like plain values" pitch.
+
+### Fixed
+
+- The documentation site listed only 16 composition primitives; it now lists all 18, with the missing `loop` and `compose` entries added to both the homepage chip list and the API reference.
+
+### Internal
+
+- GitHub Pages serves the static site without a generator step, oxlint ignores `site/**`, and the runtime task lock is excluded from version control.
+
 ## v0.8.2 — 2026-06-18
 
 ### Added
