@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.8.7 — 2026-06-18
+
+### Internal
+
+- Added security policy, troubleshooting guide, API reference, and a comparison page under `docs/`.
+- Reorganized project docs: reconciled `spec/`, `plans/`, and `adr/` into `docs/` and `research/`, and relocated the core and viewer READMEs into `docs/`.
+- Added shared research diagrams (architecture layers, the 20 `STEP_KINDS` taxonomy, and the trajectory event pipeline) as Mermaid sources under `research/diagrams/`.
+
 ## v0.8.6 — 2026-06-18
 
 ### Internal
