@@ -89,7 +89,7 @@ export type EngineInternals = {
   readonly default_provider_options?: Readonly<Record<string, Readonly<Record<string, unknown>>>>
 }
 
-function build_initial_messages<T>(opts: GenerateOptions<T>): Message[] {
+export function build_initial_messages<T>(opts: GenerateOptions<T>): Message[] {
   const messages: Message[] = []
   if (typeof opts.system === 'string' && opts.system.length > 0) {
     messages.push({ role: 'system', content: opts.system })
@@ -102,7 +102,7 @@ function build_initial_messages<T>(opts: GenerateOptions<T>): Message[] {
   return messages
 }
 
-function map_finish_reason(raw: string | undefined): FinishReason {
+export function map_finish_reason(raw: string | undefined): FinishReason {
   switch (raw) {
     case 'stop':
       return 'stop'
@@ -119,7 +119,7 @@ function map_finish_reason(raw: string | undefined): FinishReason {
   }
 }
 
-function to_raw_provider_usage(usage: unknown): RawProviderUsage {
+export function to_raw_provider_usage(usage: unknown): RawProviderUsage {
   if (usage === null || typeof usage !== 'object') return {}
   const raw: RawProviderUsage = {}
   const input_tokens = Reflect.get(usage, 'inputTokens')
@@ -154,7 +154,7 @@ function to_raw_provider_usage(usage: unknown): RawProviderUsage {
   return raw
 }
 
-function to_sdk_messages(messages: ReadonlyArray<Message>): ModelMessage[] {
+export function to_sdk_messages(messages: ReadonlyArray<Message>): ModelMessage[] {
   const out: ModelMessage[] = []
   for (const m of messages) {
     if (m.role === 'system') {
@@ -231,7 +231,7 @@ function to_sdk_messages(messages: ReadonlyArray<Message>): ModelMessage[] {
  * the top, and the original list is returned untouched when hoisting would leave
  * `messages` empty, since the SDK rejects an empty messages array.
  */
-function split_leading_system(messages: ReadonlyArray<ModelMessage>): {
+export function split_leading_system(messages: ReadonlyArray<ModelMessage>): {
   system?: string
   messages: ModelMessage[]
 } {
@@ -250,7 +250,7 @@ function split_leading_system(messages: ReadonlyArray<ModelMessage>): {
   return { system: system_parts.join('\n\n'), messages: rest }
 }
 
-function to_sdk_tools(tools: ReadonlyArray<Tool>): ToolSet | undefined {
+export function to_sdk_tools(tools: ReadonlyArray<Tool>): ToolSet | undefined {
   if (tools.length === 0) return undefined
   const entries: ToolSet = {}
   for (const t of tools) {
@@ -262,7 +262,7 @@ function to_sdk_tools(tools: ReadonlyArray<Tool>): ToolSet | undefined {
   return entries
 }
 
-function map_stream_part_to_chunk(
+export function map_stream_part_to_chunk(
   part: TextStreamPart<ToolSet>,
   step_index: number,
 ): StreamChunk | undefined {
@@ -304,7 +304,7 @@ function map_stream_part_to_chunk(
   }
 }
 
-function default_usage_from_sdk(usage: unknown): UsageTotals {
+export function default_usage_from_sdk(usage: unknown): UsageTotals {
   const raw = to_raw_provider_usage(usage)
   return {
     input_tokens: raw.input_tokens ?? 0,
@@ -392,7 +392,7 @@ async function collect_non_stream(
   }
 }
 
-function classify_ai_sdk_error(err: unknown): unknown {
+export function classify_ai_sdk_error(err: unknown): unknown {
   if (err === null || typeof err !== 'object') return err
   // Already-classified shape: pass through.
   const existing_kind = Reflect.get(err, 'kind')
@@ -773,11 +773,11 @@ export async function generate<T = string>(
   }
 }
 
-function round6(v: number): number {
+export function round6(v: number): number {
   return Math.round(v * 1e6) / 1e6
 }
 
-function aggregate_cost(
+export function aggregate_cost(
   steps: ReadonlyArray<GenerateResult['steps'][number]>,
   provider: string,
 ): CostBreakdown | undefined {
