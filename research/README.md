@@ -19,8 +19,7 @@ research/
 ├── README.md              # this file
 ├── papers/                # formal long-form pieces, numbered
 ├── explorations/          # drafts, spikes, working notes
-└── assets/
-    └── diagrams/          # shared diagram sources and exports
+└── diagrams/              # shared diagram sources and exports
 ```
 
 ### `papers/`
@@ -46,9 +45,9 @@ Less formal. Spikes, working notes, research roundups, half-formed thinking that
 
 Content here is expected to be rougher. Don't let the bar for "paper-worthy" prevent useful thinking from being captured.
 
-### `assets/diagrams/`
+### `diagrams/`
 
-Shared diagram assets referenced by more than one document. Diagrams owned by a single paper can live next to that paper instead; only promote to the shared folder when there's a real reason to.
+Shared diagram sources referenced by more than one document, kept as Mermaid `.mmd` files and embedded in [`diagrams/README.md`](diagrams/README.md) so they render on GitHub. Diagrams owned by a single paper can live next to that paper instead; only promote to the shared folder when there's a real reason to.
 
 ## Frontmatter
 
