@@ -1,7 +1,9 @@
 # @repo/core — Backlog
 
-Deferred composers and open questions tracked here. Nothing on this list is
-scoped into v1.
+Deferred composition primitives tracked here. Nothing on this list is scoped
+into v1. This file is the library-design parking lot for composers only; the
+product and distribution roadmap (and the live open design questions that
+touch composition) lives in [`docs/roadmap.md`](../../docs/roadmap.md).
 
 ## Bar for promotion
 
@@ -28,7 +30,8 @@ Run N children concurrently, return the first to resolve. Cancel the rest.
 - **User-land form today:** `ensemble` with a score of
   `(_, _, t) => -t` gives first-to-finish semantics post-hoc but does not
   short-circuit cancellation of slower siblings. `race` would differ in
-  actually cancelling losers at the moment of the first resolve.
+  actually cancelling losers at the moment of the first resolve. (This is the
+  same decision as the cancellation-granularity question in the roadmap.)
 
 ### `debounce` / `throttle`
 
@@ -72,44 +75,17 @@ Call a step repeatedly until a predicate holds or a deadline elapses.
 - **User-land form today:** `retry` with an `on_error` that inspects the
   state, or a loop inside a single `step` `fn`.
 
+## Rejected
+
+Considered and deliberately not promoted. Kept here so they are not
+re-proposed without new evidence.
+
 ### `forkjoin`
 
 Run `a` and `b` from the same input, pass both outputs to a `join(a_out,
-b_out)` reducer. Strictly a two-child special case of `parallel` + `pipe`.
-
-- **Why someday:** cleaner surface when flows repeatedly do this at two-way
-  fan-outs.
-- **User-land form today:** `pipe(parallel({ a, b }), ({ a, b }) => join(a,
-  b))`. Three lines; not compelling enough to ship.
-
-## Open questions
-
-These are tracked in spec.md §13 but summarized here for BACKLOG readers.
-
-1. **Runtime YAML parsing.** `flow_schema` is documentation-only in v1. A
-   `.flow.yaml` → TypeScript transpiler may follow if downstream demand
-   materializes.
-2. **Cancellation granularity in agent-pattern composers.** `ensemble`,
-   `tournament`, and `consensus` cancel all in-flight children on abort.
-   Letting the first resolver win and preemptively cancelling siblings is
-   deferred — not rejected, but not decided without a real use case (see
-   spec.md §13.3 and the `race` backlog entry above).
-3. **Suspended-run state TTL.** The composition layer does not GC persisted
-   suspend state. Whether a future first-party helper covers this, or it
-   stays application-level forever, is an open call.
-
-## Learning outcomes to revisit
-
-Taken from spec.md §10, surfaced here so the first post-v1 retrospective
-has a checklist:
-
-- Which of the 18 primitives get used daily, weekly, never?
-- Does `scope` + `stash` + `use` earn its complexity, or does
-  output-chaining cover the real cases?
-- Is `tournament` redundant with `ensemble`?
-- Which deferred composers from this file does real usage actually demand?
-- Is 10,000 a reasonable streaming buffer high-water mark, or does real
-  usage need tuning?
+b_out)` reducer — a two-child special case of `parallel` + `pipe`. The
+user-land form, `pipe(parallel({ a, b }), ({ a, b }) => join(a, b))`, is three
+lines and not awkward enough to justify a dedicated composer.
 
 ## Promoted
 

@@ -1,5 +1,10 @@
 # Composition Layer — Specification
 
+> **Frozen build record.** Ridgeline build spec for the `comp` build, kept as
+> history. Not maintained and may be stale (e.g. the `packages/*` workspace paths
+> predate the v0.8.0 collapse into `src/`). The living plan is
+> [`docs/roadmap.md`](../../../docs/roadmap.md).
+
 **Status:** implementation-ready
 **Package:** `@robmclarty/agent-kit` (working name; final name TBD)
 **Sibling documents:** `constraints.md` (hard non-negotiables), `taste.md` (design philosophy)

@@ -47,12 +47,19 @@ across v0.6.0–v0.6.3 and are kept as a record.
 
 Two deployment shapes, both script-shaped, unattended, observability-first.
 
-- MCP tools adapter (**next, still pending**): an `mcp_tools()` helper mapping
-  an MCP server's tools into fascicle `Tool` values. Tools are already injected
-  plain values, so this is a contained adapter, not framework creep. It is the
-  first real capability gap for work agents that touch Slack, databases, and
-  internal APIs. Today it exists only as `examples/mcp-server/`; the work is to
-  promote it into the published surface.
+- MCP adapter (**next, still pending**): a published MCP bridge (surfaced through
+  the `fascicle` umbrella) that works both ways. `mcp_client()` connects to an MCP
+  server over stdio or streamable HTTP and returns its tools as plain fascicle
+  `Tool[]`; `serve_flow()` exposes composed flows as MCP tools to external hosts
+  (Claude Desktop, Cursor, upstream agents). Pure adapter glue: no new tool kind,
+  no new step kind, no change to core or engine. `mcp_client` output satisfies the
+  engine's existing `Tool<i, o>` contract, and `serve_flow` drives the existing
+  `run`. `@modelcontextprotocol/sdk` rides as an optional peer dependency, so
+  consumers that never touch MCP do not install it. This is the first real
+  capability gap for work agents that touch Slack, databases, and internal APIs.
+  Today it exists only as `examples/mcp-server/`; the work is to promote it into
+  the published surface. Deferred to the build itself: auth on the HTTP transport,
+  MCP `sampling`, per-tool approval gating, and `resources` subscriptions.
 - First internal automation in production, pinned to a published version.
 - Start the local-first memory system as the flagship personal deployment:
   local models so data never leaves the house, cron-shaped rather than chat,
@@ -87,9 +94,6 @@ commitments behind several of these live in
   north star is [`research/papers/0001-studio-pdr.md`](../research/papers/0001-studio-pdr.md).
   Phase 1 overlays trajectory events on the canvas (active spans, cost rollup, error scars);
   Studio v2 adds drag-to-build plus one-way codegen. Hold publishing until the live overlay lands.
-- **MCP server as a library helper.** Promote `examples/mcp-server/` into the published surface
-  so any `Step<i, o>` with a Zod schema becomes an MCP tool with one call (`serve_mcp`). This is
-  the *outbound* direction; the *inbound* `mcp_tools()` adapter is already in Phase 2.
 - **Deployment shells.** Thin runtime wrappers around `run` / `run.stream` — HTTP/SSE,
   queue-worker, Cloudflare Worker. Composition stays portable; only the runtime ships. (A broader
   deployment story is otherwise deferred — see below.)
@@ -102,6 +106,18 @@ commitments behind several of these live in
 - **Observability adapters (community territory).** Langfuse, LangSmith, Phoenix, Helicone,
   Braintrust, OpenLLMetry — each a `TrajectoryLogger`. Document the contract, point at
   `http_logger` / `filesystem_logger` as references, and let contributors own them.
+- **Deferred composition primitives.** Candidate composers (`race`, `debounce`/`throttle`,
+  `cache`, `circuit_breaker`, `batch`/`unbatch`, `poll_until`) are parked with their user-land
+  workarounds and a promotion bar in [`src/core/BACKLOG.md`](../src/core/BACKLOG.md). Promote one
+  only when its pattern recurs across two unrelated flows and is awkward to express today.
+- **Open design questions (composition layer).** Two calls are deferred pending a real use case,
+  not rejected: (1) *cancellation granularity* — `ensemble` / `tournament` / `consensus` cancel
+  all in-flight children on abort; letting the first resolver win and preemptively cancelling
+  siblings is the `race` semantics, still undecided. (2) *Suspend and checkpoint state lifecycle*
+  — persisted suspend and checkpoint state has no GC or TTL, and filesystem checkpoint stores are
+  last-write-wins across processes; whether a first-party helper owns this or it stays
+  application-level is open. Runtime `.flow.yaml` parsing stays documentation-only until
+  downstream demand appears.
 
 ## Explicitly not before release
 

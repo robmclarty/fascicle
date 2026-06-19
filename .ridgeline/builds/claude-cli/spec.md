@@ -1,5 +1,10 @@
 # AI Engine Layer — `claude_cli` Provider — Specification
 
+> **Frozen build record.** Ridgeline build spec for the `claude-cli` build, kept
+> as history. Not maintained and may be stale (e.g. the `packages/*` workspace
+> paths predate the v0.8.0 collapse into `src/`). The living plan is
+> [`docs/roadmap.md`](../../../docs/roadmap.md).
+
 **Document:** `spec.md`
 **Project-wide documents (authoritative):** `../../constraints.md` (hard non-negotiables — subprocess-provider rules live in §3, §4, §5.10, §5.11, §7, §9), `../../taste.md` (design philosophy — principles 9–14 cover the discriminated-union adapter, subprocess lifecycle, universal dispose, tool-model asymmetry, cost source, and unknown-event tolerance).
 **Status:** implementation-ready

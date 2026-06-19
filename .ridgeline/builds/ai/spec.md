@@ -1,5 +1,10 @@
 # AI Engine Layer — Specification
 
+> **Frozen build record.** Ridgeline build spec for the `ai` build, kept as
+> history. Not maintained and may be stale (e.g. the `packages/*` workspace paths
+> predate the v0.8.0 collapse into `src/`). The living plan is
+> [`docs/roadmap.md`](../../../docs/roadmap.md).
+
 **Status:** Draft, implementation pending
 **Package:** `@robmclarty/engine` (workspace package in the `@robmclarty/agent-kit` pnpm workspace; re-exported by the `@robmclarty/agent-kit` umbrella)
 **Sibling documents:** `.ridgeline/constraints.md` (project-wide non-negotiables), `.ridgeline/taste.md` (project-wide design philosophy)
