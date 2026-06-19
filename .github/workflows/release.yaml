@@ -23,11 +23,18 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
       - name: Resolve tag and extract changelog notes
         id: notes
+        # Tag values reach the shell via env, never interpolated into the script,
+        # so a crafted tag name can't inject commands.
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+          REF_NAME: ${{ github.ref_name }}
         run: |
-          TAG="${{ inputs.tag || github.ref_name }}"
+          TAG="${INPUT_TAG:-$REF_NAME}"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           NOTES_FILE="$(mktemp)"
           # Print the lines between `## <tag>` and the next `## ` heading.
@@ -45,11 +52,13 @@ jobs:
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.notes.outputs.tag }}
+          HAS_NOTES: ${{ steps.notes.outputs.has_notes }}
+          NOTES_FILE: ${{ steps.notes.outputs.notes_file }}
         run: |
-          TAG="${{ steps.notes.outputs.tag }}"
-          if [ "${{ steps.notes.outputs.has_notes }}" = "true" ]; then
+          if [ "$HAS_NOTES" = "true" ]; then
             gh release create "$TAG" --title "$TAG" \
-              --notes-file "${{ steps.notes.outputs.notes_file }}" --verify-tag
+              --notes-file "$NOTES_FILE" --verify-tag
           else
             # Fall back to auto-generated notes if the tag isn't in CHANGELOG.md.
             gh release create "$TAG" --title "$TAG" \
