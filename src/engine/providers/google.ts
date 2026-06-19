@@ -48,13 +48,9 @@ export function translate_google_effort(effort: EffortLevel): EffortTranslation 
 }
 
 export function normalize_google_usage(raw: RawProviderUsage | undefined): UsageTotals {
-  if (raw === undefined) return { input_tokens: 0, output_tokens: 0 }
-  const base = default_normalize_usage(raw)
-  // Google does not report cache-write tokens; strip if zero-like and absent.
-  if (base.cache_write_tokens === undefined) {
-    delete base.cache_write_tokens
-  }
-  return base
+  // Google never reports cache-write tokens, and `default_normalize_usage` only
+  // sets that field when the raw payload carries it, so the default is exact.
+  return default_normalize_usage(raw)
 }
 
 const SUPPORTED: ReadonlySet<ProviderCapability> = new Set([
