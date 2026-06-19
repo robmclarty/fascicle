@@ -66,7 +66,7 @@ type ResearcherState = {
   readonly stop: boolean
 }
 
-function format_summarizer_user(input: SummarizerInput): string {
+export function format_summarizer_user(input: SummarizerInput): string {
   const pages_block = input.pages
     .map((p, i) => {
       const header = p.title !== undefined ? `${p.title} <${p.url}>` : `<${p.url}>`

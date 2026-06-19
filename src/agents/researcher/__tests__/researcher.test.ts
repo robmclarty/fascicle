@@ -3,6 +3,7 @@ import type { TrajectoryEvent, TrajectoryLogger } from '#core'
 import type { Engine, GenerateOptions, GenerateResult } from '#engine'
 import { afterEach, describe, expect, it } from 'vitest'
 import { researcher, type FetchFn, type SearchFn } from '../index.js'
+import { format_summarizer_user } from '../agent.js'
 import type { SearchHit, SummarizerOutput } from '../schema.js'
 
 function recording_logger(): { logger: TrajectoryLogger; events: TrajectoryEvent[] } {
@@ -47,6 +48,8 @@ type RoundScript = ReadonlyArray<{
   readonly summary: SummarizerOutput
 }>
 
+type CapturedCall = { readonly prompt: string; readonly system: string | undefined }
+
 type ScriptedHarness = {
   readonly engine: Engine
   readonly search: SearchFn
@@ -54,12 +57,14 @@ type ScriptedHarness = {
   readonly engine_calls: { count: number }
   readonly search_queries: string[]
   readonly fetched_urls: string[]
+  readonly engine_opts: CapturedCall[]
 }
 
 function make_scripted_harness(script: RoundScript): ScriptedHarness {
   const engine_calls = { count: 0 }
   const search_queries: string[] = []
   const fetched_urls: string[] = []
+  const engine_opts: CapturedCall[] = []
 
   const search: SearchFn = async (query) => {
     search_queries.push(query)
@@ -79,6 +84,10 @@ function make_scripted_harness(script: RoundScript): ScriptedHarness {
     generate: async <t = string>(opts: GenerateOptions<t>): Promise<GenerateResult<t>> => {
       const idx = engine_calls.count
       engine_calls.count += 1
+      engine_opts.push({
+        prompt: typeof opts.prompt === 'string' ? opts.prompt : JSON.stringify(opts.prompt),
+        system: opts.system,
+      })
       const round = script[idx]
       if (!round) throw new Error(`scripted engine ran out of rounds (call ${String(idx + 1)})`)
       const parsed = opts.schema ? opts.schema.parse(round.summary) : round.summary
@@ -98,7 +107,7 @@ function make_scripted_harness(script: RoundScript): ScriptedHarness {
     dispose: async () => {},
   }
 
-  return { engine, search, fetch, engine_calls, search_queries, fetched_urls }
+  return { engine, search, fetch, engine_calls, search_queries, fetched_urls, engine_opts }
 }
 
 describe('researcher', () => {
@@ -262,6 +271,8 @@ describe('researcher', () => {
     )
   
     expect(harness.engine_calls.count).toBe(1)
+    // Round 2 finds no fresh hits and stops; the loop must not run a 3rd search.
+    expect(harness.search_queries).toHaveLength(2)
     expect(result.brief).toBe('b1')
   })
 
@@ -381,5 +392,162 @@ describe('researcher', () => {
     await wait(20)
     process.emit('SIGINT')
     await expect(pending).rejects.toBeInstanceOf(aborted_error)
+  })
+
+  it('deep depth fetches up to top-k=4 pages', async () => {
+    const harness = make_scripted_harness([
+      {
+        hits: [
+          { url: 'https://1/' },
+          { url: 'https://2/' },
+          { url: 'https://3/' },
+          { url: 'https://4/' },
+          { url: 'https://5/' },
+        ],
+        contents: { 'https://1/': 'a', 'https://2/': 'b', 'https://3/': 'c', 'https://4/': 'd' },
+        summary: {
+          notes: '',
+          brief: 'deep brief',
+          refined_query: '',
+          has_enough: true,
+          new_sources: [],
+        },
+      },
+    ])
+    const agent = researcher({
+      engine: harness.engine,
+      search: harness.search,
+      fetch: harness.fetch,
+    })
+    await run(agent, { query: 'q', depth: 'deep' }, { install_signal_handlers: false })
+    expect(harness.fetched_urls).toEqual(['https://1/', 'https://2/', 'https://3/', 'https://4/'])
+  })
+
+  it('returns empty output when the first round finds no hits', async () => {
+    const harness = make_scripted_harness([
+      {
+        hits: [],
+        contents: {},
+        summary: {
+          notes: 'unused',
+          brief: 'unused',
+          refined_query: '',
+          has_enough: false,
+          new_sources: [],
+        },
+      },
+    ])
+    const agent = researcher({
+      engine: harness.engine,
+      search: harness.search,
+      fetch: harness.fetch,
+    })
+    const result = await run(agent, { query: 'q', depth: 'shallow' }, {
+      install_signal_handlers: false,
+    })
+    expect(harness.engine_calls.count).toBe(0)
+    expect(result.brief).toBe('')
+    expect(result.notes).toBe('')
+    expect(result.sources).toEqual([])
+  })
+
+  it('sends the summarizer system prompt and a formatted user prompt to the engine', async () => {
+    const harness = make_scripted_harness([
+      {
+        hits: [{ url: 'https://a/', title: 'Titled A' }, { url: 'https://b/' }],
+        contents: { 'https://a/': 'page body alpha', 'https://b/': 'page body beta' },
+        summary: {
+          notes: 'n',
+          brief: 'b',
+          refined_query: '',
+          has_enough: true,
+          new_sources: [],
+        },
+      },
+    ])
+    const agent = researcher({
+      engine: harness.engine,
+      search: harness.search,
+      fetch: harness.fetch,
+    })
+    await run(agent, { query: 'find alpha', depth: 'shallow' }, { install_signal_handlers: false })
+
+    const call = harness.engine_opts[0]
+    expect(call).toBeDefined()
+    // System prompt comes from summarizer.md, not some other file.
+    expect(call?.system).toContain('exacting research summarizer')
+    // User prompt carries the query and a numbered page block. A page with a
+    // title renders "Title <url>"; one without renders just "<url>".
+    expect(call?.prompt).toContain('find alpha')
+    expect(call?.prompt).toContain('[1] Titled A <https://a/>\npage body alpha')
+    expect(call?.prompt).toContain('[2] <https://b/>\npage body beta')
+  })
+
+  it('traces the dispatcher, round, and guard steps by id', async () => {
+    const harness = make_scripted_harness([
+      {
+        hits: [{ url: 'https://a/' }],
+        contents: { 'https://a/': 'a' },
+        summary: {
+          notes: 'n',
+          brief: 'b',
+          refined_query: '',
+          has_enough: true,
+          new_sources: [],
+        },
+      },
+    ])
+    const agent = researcher({
+      engine: harness.engine,
+      search: harness.search,
+      fetch: harness.fetch,
+    })
+    const { logger, events } = recording_logger()
+    await run(agent, { query: 'q', depth: 'shallow' }, {
+      trajectory: logger,
+      install_signal_handlers: false,
+    })
+    // Spans label by kind; the step id rides in the span meta.
+    const ids = events.filter((e) => e.kind === 'span_start').map((e) => e['id'] as string)
+    expect(ids).toContain('researcher_dispatcher')
+    expect(ids).toContain('researcher_round')
+    expect(ids).toContain('researcher_guard')
+  })
+})
+
+describe('format_summarizer_user', () => {
+  it('formats the original query, refined query, notes, and a numbered page block', () => {
+    const out = format_summarizer_user({
+      original_query: 'oq',
+      query: 'rq',
+      notes_so_far: 'prior notes',
+      pages: [
+        { url: 'https://a/', title: 'Title A', contents: 'body a' },
+        { url: 'https://b/', contents: 'body b' },
+      ],
+    })
+    expect(out).toBe(
+      [
+        'Original query: oq',
+        'Refined query for this round: rq',
+        '',
+        'Notes so far:\nprior notes',
+        '',
+        'New pages:\n',
+        '[1] Title A <https://a/>\nbody a',
+        '',
+        '[2] <https://b/>\nbody b',
+      ].join('\n'),
+    )
+  })
+
+  it('renders "(none yet)" when there are no prior notes', () => {
+    const out = format_summarizer_user({
+      original_query: 'oq',
+      query: 'rq',
+      notes_so_far: '',
+      pages: [{ url: 'https://a/', contents: 'c' }],
+    })
+    expect(out).toContain('Notes so far:\n(none yet)')
   })
 })
