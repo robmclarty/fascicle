@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.8.8 — 2026-06-19
+
+### Added
+
+- `fascicle/mcp` bridge: serve any flow over the Model Context Protocol with `serve_flow`, and call MCP tools from inside flows with `mcp_client`.
+
+### Changed
+
+- Release pipeline now emits a GitHub Release from the pushed tag instead of publishing to npm; CI workflows hardened (third-party actions pinned to commit SHAs, persisted credentials dropped, tag jobs env-guarded).
+
+### Internal
+
+- Large mutation-testing campaign raised the real Stryker score from ~61% to ~81% and ratcheted the break gate 50 → 70 → 78. Added genuine tests across the MCP bridge, engine errors, the provider adapters (openai, google, openrouter, bedrock, lmstudio, ollama), model_call, both retry paths, schema, regression, tool_loop, generate (pure helpers and orchestration), composites/judges, claude_cli spawn and sandbox, the viewer HTTP server, the researcher agent, and the core branch/map/timeout/pipe combinators.
+- Froze the ridgeline build specs and centralized planning in the roadmap.
+
 ## v0.8.7 — 2026-06-18
 
 ### Internal
