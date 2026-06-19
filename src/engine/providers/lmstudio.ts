@@ -31,7 +31,8 @@ export function translate_lmstudio_effort(effort: EffortLevel): EffortTranslatio
 }
 
 export function normalize_lmstudio_usage(raw: RawProviderUsage | undefined): UsageTotals {
-  if (raw === undefined) return { input_tokens: 0, output_tokens: 0 }
+  // default_normalize_usage already maps undefined to a zero total; LM Studio
+  // additionally never reports cache or reasoning tokens, so strip them.
   const base = default_normalize_usage(raw)
   delete base.cached_input_tokens
   delete base.cache_write_tokens

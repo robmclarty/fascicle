@@ -29,7 +29,8 @@ export function translate_ollama_effort(effort: EffortLevel): EffortTranslation 
 }
 
 export function normalize_ollama_usage(raw: RawProviderUsage | undefined): UsageTotals {
-  if (raw === undefined) return { input_tokens: 0, output_tokens: 0 }
+  // default_normalize_usage already maps undefined to a zero total; Ollama
+  // additionally never reports cache or reasoning tokens, so strip them.
   const base = default_normalize_usage(raw)
   delete base.cached_input_tokens
   delete base.cache_write_tokens
