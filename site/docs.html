@@ -136,7 +136,7 @@ try {
             <div style="background:#EFE3CE; border:3px solid #211C17; box-shadow:1px 1px 0 #211C17, 2px 2px 0 #211C17, 3px 3px 0 #211C17, 4px 4px 0 #211C17, 5px 5px 0 #211C17; padding:22px;">
               <div style="font-family:'JetBrains Mono',monospace; font-size:14px; font-weight:700; color:#C0521F;">core</div>
               <div style="font-family:'DM Serif Display',serif; font-size:24px; margin:6px 0 8px;">Composition</div>
-              <div style="font-size:14px; line-height:1.55; color:#3a342e;">16 primitives for composing work out of plain values. No network, no LLM calls, no ambient state.</div>
+              <div style="font-size:14px; line-height:1.55; color:#3a342e;">18 primitives for composing work out of plain values. No network, no LLM calls, no ambient state.</div>
             </div>
             <div style="background:#EFE3CE; border:3px solid #211C17; box-shadow:1px 1px 0 #211C17, 2px 2px 0 #211C17, 3px 3px 0 #211C17, 4px 4px 0 #211C17, 5px 5px 0 #211C17; padding:22px;">
               <div style="font-family:'JetBrains Mono',monospace; font-size:14px; font-weight:700; color:#15706A;">engine</div>
@@ -181,11 +181,11 @@ const output = await handle.result" style="background:transparent; color:#8a8278
       <sc-if value="{{ isPrimitives }}">
         <div>
           <div style="font-family:'JetBrains Mono',monospace; font-size:12px; letter-spacing:3px; color:#C0521F; margin-bottom:14px;">CORE · API REFERENCE</div>
-          <h1 style="font-family:'DM Serif Display',serif; font-weight:400; font-size:60px; line-height:1; margin:0 0 20px;">The 16 primitives</h1>
+          <h1 style="font-family:'DM Serif Display',serif; font-weight:400; font-size:60px; line-height:1; margin:0 0 20px;">The 18 primitives</h1>
           <p style="font-size:18px; line-height:1.6; color:#3a342e; max-width:660px;">Every composer takes a <span style="font-family:'JetBrains Mono',monospace; font-size:15px;">Step&lt;i, o&gt;</span> and returns one. Click any primitive to expand its signature and an example.</p>
 
           <div style="margin-top:32px; display:flex; flex-direction:column; gap:12px;">
-            <sc-for list="{{ primitives }}" as="p" hint-placeholder-count="16">
+            <sc-for list="{{ primitives }}" as="p" hint-placeholder-count="18">
               <div style="border:3px solid #211C17; box-shadow:1px 1px 0 #211C17, 2px 2px 0 #211C17, 3px 3px 0 #211C17, 4px 4px 0 #211C17; background:#F4EBDB;">
                 <div onClick="{{ p.toggle }}" style="cursor:pointer; display:flex; align-items:center; gap:16px; padding:16px 20px;">
                   <div style="font-family:'JetBrains Mono',monospace; font-size:18px; font-weight:700; color:{{ p.color }}; min-width:130px;">{{ p.name }}</div>
@@ -406,6 +406,7 @@ class Component extends DCLogic {
       ['branch', 'COMPOSE', 'Pick then / otherwise by a predicate on the input.', "branch(\n  (x) => x.score > 0.5,\n  ship_step,\n  revise_step,\n)"],
       ['map', 'COMPOSE', 'Run a step per item, with an optional concurrency cap.', "map(summarize, { concurrency: 4 })"],
       ['pipe', 'COMPOSE', "Post-process an inner step's output with a plain function.", "pipe(model_call({ engine }), (r) => r.content)"],
+      ['compose', 'COMPOSE', 'Label a composite so it shows up by intent in trajectories.', "compose('draft-stage', sequence([\n  outline,\n  expand,\n]))"],
       ['retry', 'RESILIENCE', 'Re-run on failure with exponential backoff and jitter.', "retry(flaky_step, {\n  max_attempts: 5,\n  initial_delay_ms: 250,\n})"],
       ['fallback', 'RESILIENCE', 'Run a backup step if the primary throws.', "fallback(primary, backup)"],
       ['timeout', 'RESILIENCE', 'Cancel an inner step after N milliseconds.', "timeout(slow_step, 10_000)"],
@@ -413,6 +414,7 @@ class Component extends DCLogic {
       ['ensemble', 'MULTI', 'Run N members, pick the highest by score.', "ensemble([a, b, c], {\n  score: (out) => rate(out),\n})"],
       ['tournament', 'MULTI', 'Single-elimination bracket between members.', "tournament([a, b, c, d], {\n  compare: pick_winner,\n})"],
       ['consensus', 'MULTI', 'Run N members, accept only if a quorum agree.', "consensus([a, b, c], { quorum: 2 })"],
+      ['loop', 'STATE', 'Bounded iteration with carry-state and an optional convergence guard.', "loop({\n  init:   (topic) => topic,\n  body:   refine,\n  guard:  step('done', (s) => ({ stop: ok(s), state: s })),\n  finish: (s) => s,\n  max_rounds: 5,\n})"],
       ['checkpoint', 'STATE', 'Memoize a named inner step by key, via a store.', "checkpoint(expensive, {\n  key: (spec) => `build:${spec.hash}`,\n})"],
       ['suspend', 'STATE', 'Pause for external input; resume with resume_data.', "suspend({\n  id: 'approve',\n  resume_schema: z.object({ approved: z.boolean() }),\n  combine: (input, r) => r.approved ? 'ship' : 'hold',\n})"],
       ['scope', 'STATE', 'Stash named values and use them later without rewiring.', "scope([\n  stash('user_id', lookup),\n  use(['user_id'], publish),\n])"],

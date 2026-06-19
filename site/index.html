@@ -52,7 +52,7 @@
       <div style="flex:1; min-width:0; padding-top:6px;">
         <div style="font-family:'JetBrains Mono',monospace; font-size:13px; letter-spacing:3px; text-transform:uppercase; color:#C0521F; margin-bottom:26px;">Composable agentic toolkit</div>
         <h1 style="font-family:'DM Serif Display',serif; font-weight:400; font-size:84px; line-height:0.98; margin:0; letter-spacing:-0.5px;">Compose agents like <span style="font-style:italic; color:#15706A;">plain values.</span></h1>
-        <p style="font-size:20px; line-height:1.55; color:#3a342e; margin:30px 0 0; max-width:480px;">Compose LLM calls, tools, and plain functions into a <span style="font-family:'JetBrains Mono',monospace; font-size:16px; background:#211C17; color:#F4EBDB; padding:2px 8px;">Step&lt;i, o&gt;</span>. Wire sixteen primitives together over one generate surface. No magic. Just logic.</p>
+        <p style="font-size:20px; line-height:1.55; color:#3a342e; margin:30px 0 0; max-width:480px;">Compose LLM calls, tools, and plain functions into a <span style="font-family:'JetBrains Mono',monospace; font-size:16px; background:#211C17; color:#F4EBDB; padding:2px 8px;">Step&lt;i, o&gt;</span>. Wire eighteen primitives together over one generate surface. No magic. Just logic.</p>
 
         <div style="display:flex; gap:16px; margin-top:38px;">
           <a href="docs.html" style="background:#C0521F; color:#F4EBDB; font-weight:700; font-size:15px; padding:15px 28px; border:3px solid #211C17;" class="fc-btn"><span class="fc-btn-label">Get started →</span></a>
@@ -90,10 +90,10 @@
         </div>
         <div id="primitives" style="margin-top:22px;">
           <div style="margin-bottom:12px;">
-            <div style="font-family:'JetBrains Mono',monospace; font-size:12px; letter-spacing:2px; color:#7A5230;">16 PRIMITIVES · EVERY COMP TAKES A STEP, RETURNS A STEP</div>
+            <div style="font-family:'JetBrains Mono',monospace; font-size:12px; letter-spacing:2px; color:#7A5230;">18 PRIMITIVES · EVERY COMP TAKES A STEP, RETURNS A STEP</div>
           </div>
           <div style="display:flex; flex-wrap:wrap; gap:8px; font-family:'JetBrains Mono',monospace; font-size:13px;">
-            <sc-for list="{{ primCells }}" as="p" hint-placeholder-count="16">
+            <sc-for list="{{ primCells }}" as="p" hint-placeholder-count="18">
               <div onClick="{{ p.select }}" style="cursor:pointer; padding:7px 12px; border:2px solid #211C17; background:{{ p.bg }}; color:{{ p.fg }}; transition:transform .06s;" style-active="transform:translateY(2px);">{{ p.name }}</div>
             </sc-for>
           </div>
@@ -442,6 +442,8 @@ class Component extends DCLogic {
       case 'retry': flowLines = ["const flow = retry(" + inner + ", { max_attempts: 3 })"]; break;
       case 'fallback': flowLines = ["const flow = fallback(", "  " + inner + ",", "  step('cached', () => CACHED),", ")"]; break;
       case 'timeout': flowLines = ["const flow = timeout(" + inner + ", 10_000)"]; break;
+      case 'loop': flowLines = ["const flow = loop({", "  init:   (topic) => topic,", "  body:   " + inner + ",", "  guard:  step('check', (s) => ({ stop: true, state: s })),", "  finish: (s) => s,", "  max_rounds: 5,", "})"]; break;
+      case 'compose': flowLines = ["const flow = compose('draft-stage', " + inner + ")"]; break;
       case 'adversarial': flowLines = ["const flow = adversarial({", "  build:    " + inner + ",", "  critique: judge,", "  max_rounds: 3,", "})"]; break;
       case 'ensemble': flowLines = ["const flow = ensemble(", "  [" + inner + ", " + inner + ", " + inner + "],", "  { score: (out) => rate(out) },", ")"]; break;
       case 'tournament': flowLines = ["const flow = tournament(", "  [" + inner + ", " + inner + "],", "  { compare: pick_winner },", ")"]; break;
@@ -454,7 +456,7 @@ class Component extends DCLogic {
 
     const flowText = flowLines.join('\n');
     const usesModel = /model_call/.test(flowText);
-    const known = ['sequence', 'step', 'parallel', 'branch', 'map', 'pipe', 'retry', 'fallback', 'timeout', 'adversarial', 'ensemble', 'tournament', 'consensus', 'checkpoint', 'suspend', 'scope', 'stash', 'use'];
+    const known = ['sequence', 'step', 'parallel', 'branch', 'map', 'pipe', 'retry', 'fallback', 'timeout', 'loop', 'compose', 'adversarial', 'ensemble', 'tournament', 'consensus', 'checkpoint', 'suspend', 'scope', 'stash', 'use'];
     const used = known.filter(n => new RegExp('\\b' + n + '\\b').test(flowText));
     used.push('run');
     if (usesModel) { used.push('model_call', 'create_engine'); }
@@ -504,6 +506,7 @@ class Component extends DCLogic {
         { name: 'branch', desc: 'Pick then / otherwise by a predicate on the input.' },
         { name: 'map', desc: 'Run a step per item, with an optional concurrency cap.' },
         { name: 'pipe', desc: "Post-process an inner step's output with a plain function." },
+        { name: 'compose', desc: 'Label a composite so it shows up by intent in trajectories.' },
       ]},
       { label: 'RESILIENCE', color: '#15706A', items: [
         { name: 'retry', desc: 'Re-run on failure with exponential backoff and jitter.' },
@@ -517,6 +520,7 @@ class Component extends DCLogic {
         { name: 'consensus', desc: 'Run N, accept only if a quorum agree.' },
       ]},
       { label: 'STATE & CONTROL', color: '#7A5230', items: [
+        { name: 'loop', desc: 'Bounded iteration with carry-state and an optional convergence guard.' },
         { name: 'checkpoint', desc: 'Memoize a named inner step by key, via a store.' },
         { name: 'suspend', desc: 'Pause for external input; resume with resume_data.' },
         { name: 'scope', desc: 'Stash named values and use them later without rewiring.' },
@@ -549,7 +553,7 @@ class Component extends DCLogic {
       const on = name === prov;
       return { name, select: () => this.selectProv(name), bg: on ? '#C0521F' : '#F4EBDB', fg: on ? '#F4EBDB' : '#211C17' };
     });
-    const primOrder = ['step', 'sequence', 'parallel', 'branch', 'map', 'pipe', 'retry', 'fallback', 'timeout', 'adversarial', 'ensemble', 'tournament', 'consensus', 'checkpoint', 'suspend', 'scope'];
+    const primOrder = ['step', 'sequence', 'parallel', 'branch', 'map', 'pipe', 'retry', 'fallback', 'timeout', 'loop', 'compose', 'adversarial', 'ensemble', 'tournament', 'consensus', 'checkpoint', 'suspend', 'scope'];
     const primCells = primOrder.map(name => {
       const on = name === prim;
       return { name, select: () => this.selectPrim(name), bg: on ? '#C0521F' : '#F4EBDB', fg: on ? '#F4EBDB' : '#211C17' };
