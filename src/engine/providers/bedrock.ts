@@ -45,8 +45,10 @@ const BEDROCK_THINKING_BUDGETS: Record<EffortLevel, number> = {
 }
 
 export function translate_bedrock_effort(effort: EffortLevel): EffortTranslation {
+  // `none` is the only level with a 0 budget, so the budget alone decides
+  // whether reasoning is requested.
   const budget = BEDROCK_THINKING_BUDGETS[effort]
-  if (effort === 'none' || budget === 0) {
+  if (budget === 0) {
     return { provider_options: {}, effort_ignored: false }
   }
   return {

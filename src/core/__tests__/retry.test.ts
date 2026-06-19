@@ -1,11 +1,13 @@
 import { describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
-import { suspended_error } from '../errors.js'
+import { aborted_error, suspended_error } from '../errors.js'
 import { retry } from '../retry.js'
 import { run } from '../runner.js'
 import { step } from '../step.js'
 import { suspend } from '../suspend.js'
 import type { TrajectoryEvent, TrajectoryLogger } from '../types.js'
+
+const noop_on_error = (): void => {}
 
 function recording_logger(): { logger: TrajectoryLogger; events: TrajectoryEvent[] } {
   const events: TrajectoryEvent[] = []
@@ -170,5 +172,159 @@ describe('retry', () => {
     })
 
     expect(result).toBe('go')
+  })
+
+  it('assigns each retry step a distinct retry_<n> id', () => {
+    const a = retry(step('a', (n: number) => n), { max_attempts: 1 })
+    const b = retry(step('b', (n: number) => n), { max_attempts: 1 })
+    expect(a.id).toMatch(/^retry_\d+$/)
+    expect(b.id).toMatch(/^retry_\d+$/)
+    expect(a.id).not.toBe(b.id)
+  })
+
+  it('exposes resolved config as step metadata', () => {
+    const inner = step('x', (n: number) => n)
+    const full = retry(inner, {
+      max_attempts: 4,
+      backoff_ms: 20,
+      on_error: noop_on_error,
+      name: 'my_retry',
+    }).config
+    expect(full?.['max_attempts']).toBe(4)
+    expect(full?.['backoff_ms']).toBe(20)
+    expect(full?.['on_error']).toBe(noop_on_error)
+    expect(full?.['display_name']).toBe('my_retry')
+
+    const minimal = retry(inner, { max_attempts: 2 }).config
+    expect(minimal?.['max_attempts']).toBe(2)
+    expect(minimal?.['backoff_ms']).toBe(1000) // DEFAULT_BACKOFF_MS
+    expect('on_error' in (minimal ?? {})).toBe(false)
+    expect('display_name' in (minimal ?? {})).toBe(false)
+  })
+
+  it('schedules each backoff as backoff_ms * 2^(attempt-1)', async () => {
+    const spy = vi.spyOn(globalThis, 'setTimeout')
+    try {
+      const inner = step('always_fail', (_: number) => {
+        throw new Error('fail')
+      })
+      await expect(
+        run(retry(inner, { max_attempts: 3, backoff_ms: 10 }), 0, { install_signal_handlers: false }),
+      ).rejects.toThrow('fail')
+      const delays = spy.mock.calls
+        .map((c) => c[1])
+        .filter((ms): ms is number => typeof ms === 'number')
+      expect(delays).toEqual([10, 20])
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
+  it('checks the abort at the top of each attempt and skips the dispatch', async () => {
+    let calls = 0
+    const controller = new AbortController()
+    const inner = step('x', (_: number) => {
+      calls += 1
+      controller.abort('cancelled') // abort after the first attempt
+      throw new Error('fail')
+    })
+    // backoff_ms 0 means the wait returns without observing the abort, so the
+    // loop-top guard is what stops attempt 2.
+    const flow = retry(inner, { max_attempts: 3, backoff_ms: 0 })
+    let err: unknown
+    try {
+      await run(flow, 0, { install_signal_handlers: false, abort: controller.signal })
+    } catch (e) {
+      err = e
+    }
+    expect(err).toBeInstanceOf(aborted_error)
+    expect((err as aborted_error).message).toBe('aborted')
+    expect((err as aborted_error).reason).toBe('cancelled')
+    expect(calls).toBe(1)
+  })
+
+  it('rejects at backoff entry when the abort is already set', async () => {
+    let calls = 0
+    const controller = new AbortController()
+    const inner = step('x', (_: number) => {
+      calls += 1
+      controller.abort('cancelled')
+      throw new Error('fail')
+    })
+    const flow = retry(inner, { max_attempts: 3, backoff_ms: 1000 })
+    const started = performance.now()
+    let err: unknown
+    try {
+      await run(flow, 0, { install_signal_handlers: false, abort: controller.signal })
+    } catch (e) {
+      err = e
+    }
+    expect(err).toBeInstanceOf(aborted_error)
+    expect((err as aborted_error).message).toBe('aborted')
+    expect((err as aborted_error).reason).toBe('cancelled')
+    // The entry guard must short-circuit; otherwise the 1000ms timer runs to
+    // completion before the next loop-top check notices the abort.
+    expect(performance.now() - started).toBeLessThan(500)
+    expect(calls).toBe(1)
+  })
+
+  it('aborts a pending backoff instead of waiting it out', async () => {
+    let calls = 0
+    const controller = new AbortController()
+    const inner = step('x', (_: number) => {
+      calls += 1
+      // Abort a few ms in, i.e. after the backoff timer + abort listener are
+      // installed, so the listener (not the entry guard) is what fires.
+      setTimeout(() => {
+        controller.abort('cancelled')
+      }, 5)
+      throw new Error('fail')
+    })
+    const flow = retry(inner, { max_attempts: 3, backoff_ms: 1000 })
+    const started = performance.now()
+    let err: unknown
+    try {
+      await run(flow, 0, { install_signal_handlers: false, abort: controller.signal })
+    } catch (e) {
+      err = e
+    }
+    expect(err).toBeInstanceOf(aborted_error)
+    expect((err as aborted_error).message).toBe('aborted')
+    expect((err as aborted_error).reason).toBe('cancelled')
+    expect(performance.now() - started).toBeLessThan(500) // not the full 1000ms backoff
+    expect(calls).toBe(1)
+  })
+
+  it('skips the timer entirely for a non-positive backoff', async () => {
+    const spy = vi.spyOn(globalThis, 'setTimeout')
+    try {
+      const inner = step('x', (_: number) => {
+        throw new Error('fail')
+      })
+      await expect(
+        run(retry(inner, { max_attempts: 2, backoff_ms: 0 }), 0, { install_signal_handlers: false }),
+      ).rejects.toThrow('fail')
+      expect(spy).not.toHaveBeenCalled()
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
+  it('does not schedule a backoff after the final attempt', async () => {
+    let calls = 0
+    const controller = new AbortController()
+    const inner = step('x', (_: number) => {
+      calls += 1
+      if (calls === 2) controller.abort('cancelled') // abort on the last attempt
+      throw new Error('boom')
+    })
+    const flow = retry(inner, { max_attempts: 2, backoff_ms: 1 })
+    // The final attempt must break out and rethrow its own error; if it instead
+    // fell through to another backoff, the already-set abort would surface an
+    // aborted_error instead of "boom".
+    await expect(
+      run(flow, 0, { install_signal_handlers: false, abort: controller.signal }),
+    ).rejects.toThrow('boom')
+    expect(calls).toBe(2)
   })
 })

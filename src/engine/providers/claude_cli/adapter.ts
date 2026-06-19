@@ -110,7 +110,7 @@ export function effort_env_for_claude_cli(
   return { CLAUDE_CODE_EFFORT_LEVEL: CLAUDE_CLI_EFFORT_VALUES[effort] }
 }
 
-function extract_call_opts(opts: GenerateOptions<unknown>): ClaudeCliCallOptions {
+export function extract_call_opts(opts: GenerateOptions<unknown>): ClaudeCliCallOptions {
   const raw = opts.provider_options?.['claude_cli']
   if (raw === undefined || raw === null || typeof raw !== 'object') {
     return {}
@@ -118,7 +118,7 @@ function extract_call_opts(opts: GenerateOptions<unknown>): ClaudeCliCallOptions
   return raw as ClaudeCliCallOptions
 }
 
-function count_user_messages(prompt: string | Message[]): number {
+export function count_user_messages(prompt: string | Message[]): number {
   if (typeof prompt === 'string') return 1
   let count = 0
   for (const m of prompt) {
@@ -127,7 +127,7 @@ function count_user_messages(prompt: string | Message[]): number {
   return count
 }
 
-function extract_prompt_text(prompt: string | Message[]): string {
+export function extract_prompt_text(prompt: string | Message[]): string {
   if (typeof prompt === 'string') return prompt
   for (const m of prompt) {
     if (m.role !== 'user') continue
@@ -141,7 +141,7 @@ function extract_prompt_text(prompt: string | Message[]): string {
   return ''
 }
 
-function extract_system_text(prompt: string | Message[]): string | undefined {
+export function extract_system_text(prompt: string | Message[]): string | undefined {
   if (typeof prompt === 'string') return undefined
   for (const m of prompt) {
     if (m.role === 'system') return m.content
@@ -149,12 +149,12 @@ function extract_system_text(prompt: string | Message[]): string | undefined {
   return undefined
 }
 
-function compile_schema<T>(schema: z.ZodType<T>): string {
+export function compile_schema<T>(schema: z.ZodType<T>): string {
   const json = z.toJSONSchema(schema)
   return JSON.stringify(json)
 }
 
-function classify_close_error(
+export function classify_close_error(
   code: number | null,
   signal: NodeJS.Signals | null,
   stderr: string,
