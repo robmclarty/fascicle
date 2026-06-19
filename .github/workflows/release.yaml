@@ -1,36 +1,57 @@
 name: Release
 
+# Publishing to npm is done MANUALLY (locally, gated by MFA) so no long-lived
+# npm credential ever lives in CI. This workflow only turns a pushed `v*` tag
+# into a GitHub Release, with notes pulled from the matching CHANGELOG section.
+
 on:
   push:
     tags:
       - 'v*'
   workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag to create a release for (e.g. v0.8.7)
+        required: true
+        type: string
 
 permissions:
-  contents: read
-  # Required so npm can attach a provenance attestation (--provenance) via OIDC.
-  id-token: write
+  # Only the scope needed to create a GitHub Release; no id-token, no npm token.
+  contents: write
 
 jobs:
-  publish:
+  release:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      # Version comes from the root package.json `packageManager` field.
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          registry-url: https://registry.npmjs.org
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      # prepublishOnly runs `pnpm check && pnpm build && pnpm check:publish`, so
-      # the release is gated on the same checks as CI plus the publish preflight.
-      #
-      # Auth uses an npm automation token (NPM_TOKEN secret). Provenance is still
-      # attached via OIDC (id-token: write). Tokenless OIDC trusted publishing
-      # can replace the token once the pinned pnpm/npm toolchain supports it.
-      - name: Publish to npm
-        run: pnpm publish --access public --provenance --no-git-checks
+      - name: Resolve tag and extract changelog notes
+        id: notes
+        run: |
+          TAG="${{ inputs.tag || github.ref_name }}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          NOTES_FILE="$(mktemp)"
+          # Print the lines between `## <tag>` and the next `## ` heading.
+          awk -v tag="$TAG" '
+            $0 ~ "^## " tag "([ ]|$)" {found=1; next}
+            found && /^## / {exit}
+            found {print}
+          ' CHANGELOG.md > "$NOTES_FILE"
+          if [ -s "$NOTES_FILE" ]; then
+            echo "notes_file=$NOTES_FILE" >> "$GITHUB_OUTPUT"
+            echo "has_notes=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_notes=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Create GitHub Release
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.notes.outputs.tag }}"
+          if [ "${{ steps.notes.outputs.has_notes }}" = "true" ]; then
+            gh release create "$TAG" --title "$TAG" \
+              --notes-file "${{ steps.notes.outputs.notes_file }}" --verify-tag
+          else
+            # Fall back to auto-generated notes if the tag isn't in CHANGELOG.md.
+            gh release create "$TAG" --title "$TAG" \
+              --generate-notes --verify-tag
+          fi
