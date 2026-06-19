@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="https://cdn.usefathom.com/script.js" data-site="TFDVEGLQ" defer></script>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;background:#F4EBDB;}
+  ::selection{background:#C0521F;color:#F4EBDB;}
+  a{color:inherit;text-decoration:none;}
+  .fc-btn{transform:translate(-6px,-6px); box-shadow:1px 1px 0 #211C17,2px 2px 0 #211C17,3px 3px 0 #211C17,4px 4px 0 #211C17,5px 5px 0 #211C17,6px 6px 0 #211C17; transition:transform .09s ease, box-shadow .09s ease;}
+  .fc-btn:hover{transform:translate(0,0); box-shadow:none;}
+  .fc-btn:active{transform:translate(0,0); box-shadow:inset 1px 1px 0 #211C17,inset 2px 2px 0 #211C17,inset 3px 3px 0 #211C17,inset 4px 4px 0 #211C17,inset 5px 5px 0 #211C17,inset 6px 6px 0 #211C17;}
+  .fc-btn-label{display:inline-block; transition:transform .09s ease;}
+  .fc-btn:active .fc-btn-label{transform:translate(8px,8px);}
+</style>
+</helmet>
+
+<div style="position:relative; min-height:100vh; background:#F4EBDB; color:#211C17; font-family:'Space Grotesk',sans-serif;">
+
+  <!-- grain overlay -->
+  <div style="position:fixed; inset:0; z-index:9999; pointer-events:none; opacity:0.06; mix-blend-mode:multiply; background-image:url(&quot;data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E&quot;);"></div>
+
+  <!-- ===================== NAV ===================== -->
+  <div style="position:sticky; top:0; z-index:100; display:flex; align-items:center; justify-content:space-between; padding:16px 32px; background:#F4EBDB; border-bottom:3px solid #211C17;">
+    <div style="display:flex; align-items:center; gap:16px;">
+      <a href="index.html" style="display:flex; align-items:center; gap:12px;">
+        <div style="width:20px; height:20px; background:#C0521F; border:2px solid #211C17;"></div>
+        <div style="font-family:'JetBrains Mono',monospace; font-weight:700; font-size:18px; letter-spacing:2px;">FASCICLE</div>
+      </a>
+      <div style="font-family:'JetBrains Mono',monospace; font-size:12px; letter-spacing:1px; color:#7A5230; border:2px solid #7A5230; padding:2px 8px;">DOCS</div>
+    </div>
+    <div style="display:flex; gap:26px; align-items:center; font-size:14px; font-weight:500;">
+      <a href="index.html">Home</a>
+      <a href="https://github.com/robmclarty/fascicle" style="background:#211C17; color:#F4EBDB; padding:8px 16px; font-family:'JetBrains Mono',monospace; font-size:12px; letter-spacing:1px; white-space:nowrap;">GITHUB ★</a>
+    </div>
+  </div>
+
+  <!-- ===================== BODY ===================== -->
+  <div style="display:flex; align-items:flex-start; max-width:1280px; margin:0 auto;">
+
+    <!-- SIDEBAR -->
+    <div style="flex:none; width:268px; position:sticky; top:64px; align-self:flex-start; height:calc(100vh - 64px); overflow-y:auto; border-right:3px solid #211C17; padding:34px 26px 60px;">
+      <sc-for list="{{ nav }}" as="grp" hint-placeholder-count="3">
+        <div style="margin-bottom:30px;">
+          <div style="font-family:'JetBrains Mono',monospace; font-size:11px; letter-spacing:2px; color:#7A5230; margin-bottom:14px;">{{ grp.title }}</div>
+          <div style="display:flex; flex-direction:column; gap:3px;">
+            <sc-for list="{{ grp.items }}" as="it" hint-placeholder-count="3">
+              <div onClick="{{ it.onClick }}" style="cursor:pointer; font-size:15px; font-weight:{{ it.weight }}; color:{{ it.color }}; background:{{ it.bg }}; border-left:3px solid {{ it.bar }}; padding:7px 14px;">{{ it.label }}</div>
+            </sc-for>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+
+    <!-- CONTENT -->
+    <div style="flex:1; min-width:0; padding:48px 56px 120px; max-width:880px;">
+
+      <!-- ============ GETTING STARTED ============ -->
+      <sc-if value="{{ isGettingStarted }}" hint-placeholder-val="{{ true }}">
+        <div>
+          <div style="font-family:'JetBrains Mono',monospace; font-size:12px; letter-spacing:3px; color:#C0521F; margin-bottom:14px;">GET STARTED</div>
+          <h1 style="font-family:'DM Serif Display',serif; font-weight:400; font-size:60px; line-height:1; margin:0 0 20px;">Getting started</h1>
+          <p style="font-size:18px; line-height:1.6; color:#3a342e; max-width:640px;">Install fascicle, wire a sequence of plain functions, and run it as a value. Then add a model call when you need one.</p>
+
+          <h2 style="font-family:'DM Serif Display',serif; font-weight:400; font-size:32px; margin:48px 0 16px;">Install</h2>
+          <div style="border:3px solid #211C17; box-shadow:1px 1px 0 #211C17, 2px 2px 0 #211C17, 3px 3px 0 #211C17, 4px 4px 0 #211C17, 5px 5px 0 #211C17;">
+            <div style="display:flex; align-items:center; justify-content:space-between; padding:11px 16px; background:#26211b; border-bottom:1px solid #4a443c;"><span style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#8a8278;">shell</span><button onClick="{{ copy }}" data-orig="COPY" data-copy="pnpm add fascicle zod" style="background:transparent; color:#8a8278; font-family:'JetBrains Mono',monospace; font-size:11px; letter-spacing:1px; border:1px solid #4a443c; padding:4px 11px; cursor:pointer;">COPY</button></div>
+            <div style="white-space:pre; overflow-x:auto; background:#211C17; color:#E8DFCD; padding:18px 20px; font-family:'JetBrains Mono',monospace; font-size:14.5px;"><span style="color:#C0521F;">$</span> pnpm add fascicle zod</div>
+          </div>
+          <p style="font-size:15px; line-height:1.6; color:#5a5249; margin-top:14px;">Provider SDKs are <em>optional peers</em> — each is loaded lazily on first <span style="font-family:'JetBrains Mono',monospace; font-size:13px;">generate</span> against that provider. Install only the ones you call.</p>
+
+          <h2 style="font-family:'DM Serif Display',serif; font-weight:400; font-size:32px; margin:48px 0 16px;">Your first flow</h2>
+          <p style="font-size:16px; line-height:1.6; color:#3a342e; margin-bottom:18px;">A flow is a tree of plain <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">Step</span> values. <span style="font-family:'JetBrains Mono',monospace; font-size:14px; color:#C0521F;">sequence</span> threads each output into the next input.</p>
+          <div style="border:3px solid #211C17; box-shadow:1px 1px 0 #211C17, 2px 2px 0 #211C17, 3px 3px 0 #211C17, 4px 4px 0 #211C17, 5px 5px 0 #211C17;">
+            <div style="display:flex; align-items:center; justify-content:space-between; padding:11px 16px; background:#26211b; border-bottom:1px solid #4a443c;"><span style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#8a8278;">first-flow.ts</span><button onClick="{{ copy }}" data-orig="COPY" data-copy="import { run, sequence, step } from 'fascicle'
+
+const flow = sequence([
+  step('add', (n: number) => n + 1),
+  step('double', (n: number) => n * 2),
+])
+
+await run(flow, 1) // 4" style="background:transparent; color:#8a8278; font-family:'JetBrains Mono',monospace; font-size:11px; letter-spacing:1px; border:1px solid #4a443c; padding:4px 11px; cursor:pointer;">COPY</button></div>
+            <div style="white-space:pre; overflow-x:auto; background:#211C17; color:#E8DFCD; padding:20px; font-family:'JetBrains Mono',monospace; font-size:14.5px; line-height:1.85;"><span style="color:#A8336A;">import</span> { run, sequence, step } <span style="color:#A8336A;">from</span> <span style="color:#D6982A;">'fascicle'</span><br><br><span style="color:#C0521F;">const</span> flow = <span style="color:#15a39a;">sequence</span>([<br>  <span style="color:#15a39a;">step</span>(<span style="color:#D6982A;">'add'</span>, (n: <span style="color:#15a39a;">number</span>) =&gt; n + <span style="color:#D6982A;">1</span>),<br>  <span style="color:#15a39a;">step</span>(<span style="color:#D6982A;">'double'</span>, (n: <span style="color:#15a39a;">number</span>) =&gt; n * <span style="color:#D6982A;">2</span>),<br>])<br><br><span style="color:#A8336A;">await</span> <span style="color:#15a39a;">run</span>(flow, <span style="color:#D6982A;">1</span>) <span style="color:#6f675c;">// 4</span></div>
+          </div>
+
+          <h2 style="font-family:'DM Serif Display',serif; font-weight:400; font-size:32px; margin:48px 0 16px;">Add a model call</h2>
+          <p style="font-size:16px; line-height:1.6; color:#3a342e; margin-bottom:18px;"><span style="font-family:'JetBrains Mono',monospace; font-size:14px; color:#C0521F;">model_call</span> is the only sanctioned bridge between composition and the engine. It threads abort, trajectory, and streaming for you.</p>
+          <div style="border:3px solid #211C17; box-shadow:1px 1px 0 #211C17, 2px 2px 0 #211C17, 3px 3px 0 #211C17, 4px 4px 0 #211C17, 5px 5px 0 #211C17;">
+            <div style="display:flex; align-items:center; justify-content:space-between; padding:11px 16px; background:#26211b; border-bottom:1px solid #4a443c;"><span style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#8a8278;">brief-flow.ts</span><button onClick="{{ copy }}" data-orig="COPY" data-copy="import { create_engine, model_call, run, sequence, step } from 'fascicle'
+
+const engine = create_engine({
+  providers: { anthropic: { api_key: process.env.ANTHROPIC_API_KEY! } },
+})
+
+const flow = sequence([
+  step('brief', (topic: string) => `Write a 2-sentence brief on: ${topic}`),
+  model_call({ engine, model: 'claude-sonnet-4-6', system: 'No preamble.' }),
+  step('extract', (r) => r.content),
+])
+
+try {
+  console.log(await run(flow, 'Rust ownership'))
+} finally {
+  await engine.dispose()
+}" style="background:transparent; color:#8a8278; font-family:'JetBrains Mono',monospace; font-size:11px; letter-spacing:1px; border:1px solid #4a443c; padding:4px 11px; cursor:pointer;">COPY</button></div>
+            <div style="white-space:pre; overflow-x:auto; background:#211C17; color:#E8DFCD; padding:20px; font-family:'JetBrains Mono',monospace; font-size:14px; line-height:1.85;"><span style="color:#A8336A;">import</span> { create_engine, model_call, run, sequence, step } <span style="color:#A8336A;">from</span> <span style="color:#D6982A;">'fascicle'</span><br><br><span style="color:#C0521F;">const</span> engine = <span style="color:#15a39a;">create_engine</span>({<br>  providers: { anthropic: { api_key: process.<span style="color:#15a39a;">env</span>.ANTHROPIC_API_KEY! } },<br>})<br><br><span style="color:#C0521F;">const</span> flow = <span style="color:#15a39a;">sequence</span>([<br>  <span style="color:#15a39a;">step</span>(<span style="color:#D6982A;">'brief'</span>, (topic) =&gt; <span style="color:#D6982A;">`Write a 2-sentence brief on: ${topic}`</span>),<br>  <span style="color:#15a39a;">model_call</span>({ engine, model: <span style="color:#D6982A;">'claude-sonnet-4-6'</span>, system: <span style="color:#D6982A;">'No preamble.'</span> }),<br>  <span style="color:#15a39a;">step</span>(<span style="color:#D6982A;">'extract'</span>, (r) =&gt; r.content),<br>])<br><br><span style="color:#A8336A;">await</span> <span style="color:#15a39a;">run</span>(flow, <span style="color:#D6982A;">'Rust ownership'</span>)</div>
+          </div>
+
+          <div style="display:flex; gap:16px; margin-top:48px; flex-wrap:wrap;">
+            <div onClick="{{ goConcepts }}" style="cursor:pointer; background:#C0521F; color:#F4EBDB; font-weight:700; font-size:15px; padding:14px 26px; border:3px solid #211C17;" class="fc-btn"><span class="fc-btn-label">Next: Concepts →</span></div>
+            <div onClick="{{ goProviders }}" style="cursor:pointer; background:#F4EBDB; color:#211C17; font-weight:700; font-size:15px; padding:14px 26px; border:3px solid #211C17;" class="fc-btn"><span class="fc-btn-label">Configure a provider →</span></div>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- ============ CONCEPTS ============ -->
+      <sc-if value="{{ isConcepts }}">
+        <div>
+          <div style="font-family:'JetBrains Mono',monospace; font-size:12px; letter-spacing:3px; color:#C0521F; margin-bottom:14px;">CORE</div>
+          <h1 style="font-family:'DM Serif Display',serif; font-weight:400; font-size:60px; line-height:1; margin:0 0 20px;">Concepts</h1>
+          <p style="font-size:18px; line-height:1.6; color:#3a342e; max-width:640px;">The mental model behind fascicle. Read this once — the rest of the docs assume it.</p>
+
+          <h2 style="font-family:'DM Serif Display',serif; font-weight:400; font-size:32px; margin:48px 0 16px;">Two layers</h2>
+          <p style="font-size:16px; line-height:1.6; color:#3a342e;">fascicle ships two independently useful layers from a single src/ tree, glued by exactly one value — <span style="font-family:'JetBrains Mono',monospace; font-size:14px; color:#C0521F;">model_call</span>.</p>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:18px; margin-top:20px;">
+            <div style="background:#EFE3CE; border:3px solid #211C17; box-shadow:1px 1px 0 #211C17, 2px 2px 0 #211C17, 3px 3px 0 #211C17, 4px 4px 0 #211C17, 5px 5px 0 #211C17; padding:22px;">
+              <div style="font-family:'JetBrains Mono',monospace; font-size:14px; font-weight:700; color:#C0521F;">core</div>
+              <div style="font-family:'DM Serif Display',serif; font-size:24px; margin:6px 0 8px;">Composition</div>
+              <div style="font-size:14px; line-height:1.55; color:#3a342e;">16 primitives for composing work out of plain values. No network, no LLM calls, no ambient state.</div>
+            </div>
+            <div style="background:#EFE3CE; border:3px solid #211C17; box-shadow:1px 1px 0 #211C17, 2px 2px 0 #211C17, 3px 3px 0 #211C17, 4px 4px 0 #211C17, 5px 5px 0 #211C17; padding:22px;">
+              <div style="font-family:'JetBrains Mono',monospace; font-size:14px; font-weight:700; color:#15706A;">engine</div>
+              <div style="font-family:'DM Serif Display',serif; font-size:24px; margin:6px 0 8px;">Engine</div>
+              <div style="font-size:14px; line-height:1.55; color:#3a342e;"><span style="font-family:'JetBrains Mono',monospace; font-size:13px;">create_engine(config)</span> returns one generate surface over eight providers. No step plumbing.</div>
+            </div>
+          </div>
+
+          <h2 style="font-family:'DM Serif Display',serif; font-weight:400; font-size:32px; margin:48px 0 16px;">Step-as-value</h2>
+          <p style="font-size:16px; line-height:1.6; color:#3a342e; margin-bottom:18px;">Every composable unit is a <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">Step&lt;i, o&gt;</span>. Every composer takes one and returns one — the type never widens.</p>
+          <div style="border:3px solid #211C17; box-shadow:1px 1px 0 #211C17, 2px 2px 0 #211C17, 3px 3px 0 #211C17, 4px 4px 0 #211C17, 5px 5px 0 #211C17;">
+            <div style="display:flex; align-items:center; justify-content:space-between; padding:11px 16px; background:#26211b; border-bottom:1px solid #4a443c;"><span style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#8a8278;">types.ts</span></div>
+            <div style="white-space:pre; overflow-x:auto; background:#211C17; color:#E8DFCD; padding:20px; font-family:'JetBrains Mono',monospace; font-size:14px; line-height:1.85;"><span style="color:#A8336A;">type</span> <span style="color:#15a39a;">Step</span>&lt;i, o&gt; = {<br>  <span style="color:#A8336A;">readonly</span> id: <span style="color:#15a39a;">string</span><br>  <span style="color:#A8336A;">readonly</span> kind: <span style="color:#15a39a;">string</span><br>  <span style="color:#15a39a;">run</span>(input: i, ctx: <span style="color:#15a39a;">RunContext</span>): <span style="color:#15a39a;">Promise</span>&lt;o&gt; | o<br>  <span style="color:#A8336A;">readonly</span> config?: <span style="color:#15a39a;">Readonly</span>&lt;<span style="color:#15a39a;">Record</span>&lt;<span style="color:#15a39a;">string</span>, <span style="color:#15a39a;">unknown</span>&gt;&gt;<br>  <span style="color:#A8336A;">readonly</span> children?: <span style="color:#15a39a;">ReadonlyArray</span>&lt;<span style="color:#15a39a;">Step</span>&lt;<span style="color:#15a39a;">unknown</span>, <span style="color:#15a39a;">unknown</span>&gt;&gt;<br>}</div>
+          </div>
+          <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-top:20px;">
+            <div style="border-left:3px solid #C0521F; padding:4px 0 4px 14px;"><div style="font-weight:700; font-size:15px;">Substitutability</div><div style="font-size:13.5px; line-height:1.5; color:#5a5249; margin-top:4px;">Replace any step with any composition sharing its I/O.</div></div>
+            <div style="border-left:3px solid #15706A; padding:4px 0 4px 14px;"><div style="font-weight:700; font-size:15px;">Introspectability</div><div style="font-size:13.5px; line-height:1.5; color:#5a5249; margin-top:4px;">A flow is a tree of plain objects. Walk it with <span style="font-family:'JetBrains Mono',monospace; font-size:12px;">describe()</span>.</div></div>
+            <div style="border-left:3px solid #A8336A; padding:4px 0 4px 14px;"><div style="font-weight:700; font-size:15px;">No hidden state</div><div style="font-size:13.5px; line-height:1.5; color:#5a5249; margin-top:4px;">Steps are values, not instances. Flows share nothing.</div></div>
+          </div>
+
+          <h2 style="font-family:'DM Serif Display',serif; font-weight:400; font-size:32px; margin:48px 0 16px;">Running a flow</h2>
+          <p style="font-size:16px; line-height:1.6; color:#3a342e; margin-bottom:18px;"><span style="font-family:'JetBrains Mono',monospace; font-size:14px;">run(flow, input)</span> executes to completion. <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">run.stream(...)</span> returns <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">{ events, result }</span> — purely observational over the same graph.</p>
+          <div style="border:3px solid #211C17; box-shadow:1px 1px 0 #211C17, 2px 2px 0 #211C17, 3px 3px 0 #211C17, 4px 4px 0 #211C17, 5px 5px 0 #211C17;">
+            <div style="display:flex; align-items:center; justify-content:space-between; padding:11px 16px; background:#26211b; border-bottom:1px solid #4a443c;"><span style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#8a8278;">stream.ts</span><button onClick="{{ copy }}" data-orig="COPY" data-copy="const handle = run.stream(flow, input)
+for await (const event of handle.events) {
+  if (event.kind === 'emit') console.log(event)
+}
+const output = await handle.result" style="background:transparent; color:#8a8278; font-family:'JetBrains Mono',monospace; font-size:11px; letter-spacing:1px; border:1px solid #4a443c; padding:4px 11px; cursor:pointer;">COPY</button></div>
+            <div style="white-space:pre; overflow-x:auto; background:#211C17; color:#E8DFCD; padding:20px; font-family:'JetBrains Mono',monospace; font-size:14px; line-height:1.85;"><span style="color:#C0521F;">const</span> handle = run.<span style="color:#15a39a;">stream</span>(flow, input)<br><span style="color:#A8336A;">for await</span> (<span style="color:#C0521F;">const</span> event <span style="color:#A8336A;">of</span> handle.events) {<br>  <span style="color:#A8336A;">if</span> (event.kind === <span style="color:#D6982A;">'emit'</span>) console.<span style="color:#15a39a;">log</span>(event)<br>}<br><span style="color:#C0521F;">const</span> output = <span style="color:#A8336A;">await</span> handle.result</div>
+          </div>
+
+          <h2 style="font-family:'DM Serif Display',serif; font-weight:400; font-size:32px; margin:48px 0 16px;">Scope, stash &amp; use</h2>
+          <p style="font-size:16px; line-height:1.6; color:#3a342e; margin-bottom:18px;">When two non-adjacent steps must agree on a value, bind it by name instead of rewiring the whole chain.</p>
+          <div style="border:3px solid #211C17; box-shadow:1px 1px 0 #211C17, 2px 2px 0 #211C17, 3px 3px 0 #211C17, 4px 4px 0 #211C17, 5px 5px 0 #211C17;">
+            <div style="display:flex; align-items:center; justify-content:space-between; padding:11px 16px; background:#26211b; border-bottom:1px solid #4a443c;"><span style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#8a8278;">scope.ts</span></div>
+            <div style="white-space:pre; overflow-x:auto; background:#211C17; color:#E8DFCD; padding:20px; font-family:'JetBrains Mono',monospace; font-size:14px; line-height:1.85;"><span style="color:#C0521F;">const</span> flow = <span style="color:#15a39a;">scope</span>([<br>  <span style="color:#15a39a;">stash</span>(<span style="color:#D6982A;">'user_id'</span>, <span style="color:#15a39a;">step</span>(<span style="color:#D6982A;">'lookup'</span>, (email) =&gt; <span style="color:#15a39a;">find_user</span>(email))),<br>  <span style="color:#15a39a;">use</span>([<span style="color:#D6982A;">'user_id'</span>], ({ user_id }) =&gt; <span style="color:#15a39a;">publish_event</span>(user_id)),<br>])</div>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- ============ PRIMITIVES ============ -->
+      <sc-if value="{{ isPrimitives }}">
+        <div>
+          <div style="font-family:'JetBrains Mono',monospace; font-size:12px; letter-spacing:3px; color:#C0521F; margin-bottom:14px;">CORE · API REFERENCE</div>
+          <h1 style="font-family:'DM Serif Display',serif; font-weight:400; font-size:60px; line-height:1; margin:0 0 20px;">The 16 primitives</h1>
+          <p style="font-size:18px; line-height:1.6; color:#3a342e; max-width:660px;">Every composer takes a <span style="font-family:'JetBrains Mono',monospace; font-size:15px;">Step&lt;i, o&gt;</span> and returns one. Click any primitive to expand its signature and an example.</p>
+
+          <div style="margin-top:32px; display:flex; flex-direction:column; gap:12px;">
+            <sc-for list="{{ primitives }}" as="p" hint-placeholder-count="16">
+              <div style="border:3px solid #211C17; box-shadow:1px 1px 0 #211C17, 2px 2px 0 #211C17, 3px 3px 0 #211C17, 4px 4px 0 #211C17; background:#F4EBDB;">
+                <div onClick="{{ p.toggle }}" style="cursor:pointer; display:flex; align-items:center; gap:16px; padding:16px 20px;">
+                  <div style="font-family:'JetBrains Mono',monospace; font-size:18px; font-weight:700; color:{{ p.color }}; min-width:130px;">{{ p.name }}</div>
+                  <div style="flex:1; font-size:15px; color:#3a342e;">{{ p.desc }}</div>
+                  <div style="font-family:'JetBrains Mono',monospace; font-size:11px; letter-spacing:1px; color:#F4EBDB; background:{{ p.color }}; padding:3px 9px;">{{ p.tag }}</div>
+                  <div style="font-family:'JetBrains Mono',monospace; font-size:18px; color:#7A5230;">{{ p.icon }}</div>
+                </div>
+                <sc-if value="{{ p.isOpen }}">
+                  <div style="border-top:3px solid #211C17;">
+                    <div style="white-space:pre; overflow-x:auto; background:#211C17; color:#E8DFCD; padding:18px 20px; font-family:'JetBrains Mono',monospace; font-size:13.5px; line-height:1.85;">{{ p.example }}</div>
+                  </div>
+                </sc-if>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- ============ CONFIGURATION ============ -->
+      <sc-if value="{{ isConfiguration }}">
+        <div>
+          <div style="font-family:'JetBrains Mono',monospace; font-size:12px; letter-spacing:3px; color:#C0521F; margin-bottom:14px;">ENGINE</div>
+          <h1 style="font-family:'DM Serif Display',serif; font-weight:400; font-size:60px; line-height:1; margin:0 0 20px;">Configuration</h1>
+          <p style="font-size:18px; line-height:1.6; color:#3a342e; max-width:660px;">Configure the engine with <span style="font-family:'JetBrains Mono',monospace; font-size:15px;">create_engine(config)</span>. Only <span style="font-family:'JetBrains Mono',monospace; font-size:15px;">providers</span> is required; everything else has a default.</p>
+
+          <h2 style="font-family:'DM Serif Display',serif; font-weight:400; font-size:32px; margin:48px 0 16px;">The config shape</h2>
+          <div style="border:3px solid #211C17; box-shadow:1px 1px 0 #211C17, 2px 2px 0 #211C17, 3px 3px 0 #211C17, 4px 4px 0 #211C17, 5px 5px 0 #211C17;">
+            <div style="display:flex; align-items:center; justify-content:space-between; padding:11px 16px; background:#26211b; border-bottom:1px solid #4a443c;"><span style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#8a8278;">EngineConfig</span></div>
+            <div style="white-space:pre; overflow-x:auto; background:#211C17; color:#E8DFCD; padding:20px; font-family:'JetBrains Mono',monospace; font-size:14px; line-height:1.85;"><span style="color:#A8336A;">type</span> <span style="color:#15a39a;">EngineConfig</span> = {<br>  providers: <span style="color:#15a39a;">ProviderConfigMap</span>     <span style="color:#6f675c;">// required</span><br>  pricing?: <span style="color:#15a39a;">PricingTable</span><br>  defaults?: <span style="color:#15a39a;">EngineDefaults</span><br>}</div>
+          </div>
+
+          <h2 style="font-family:'DM Serif Display',serif; font-weight:400; font-size:32px; margin:48px 0 16px;">Engine defaults</h2>
+          <p style="font-size:16px; line-height:1.6; color:#3a342e; margin-bottom:18px;"><span style="font-family:'JetBrains Mono',monospace; font-size:14px;">defaults</span> pre-fills per-call options so your <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">generate</span> sites stay terse. Per-call options win via nullish coalesce; <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">provider_options</span> shallow-merges per provider key.</p>
+          <div style="border:3px solid #211C17; box-shadow:1px 1px 0 #211C17, 2px 2px 0 #211C17, 3px 3px 0 #211C17, 4px 4px 0 #211C17, 5px 5px 0 #211C17;">
+            <div style="display:flex; align-items:center; justify-content:space-between; padding:11px 16px; background:#26211b; border-bottom:1px solid #4a443c;"><span style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#8a8278;">defaults.ts</span><button onClick="{{ copy }}" data-orig="COPY" data-copy="const engine = create_engine({
+  providers: { claude_cli: { auth_mode: 'oauth' } },
+  defaults: {
+    provider: 'claude_cli',
+    model: 'sonnet',
+    system: 'Reply in one short sentence. No preamble.',
+    max_steps: 8,
+  },
+})
+
+const result = await engine.generate({ prompt: 'hello' })" style="background:transparent; color:#8a8278; font-family:'JetBrains Mono',monospace; font-size:11px; letter-spacing:1px; border:1px solid #4a443c; padding:4px 11px; cursor:pointer;">COPY</button></div>
+            <div style="white-space:pre; overflow-x:auto; background:#211C17; color:#E8DFCD; padding:20px; font-family:'JetBrains Mono',monospace; font-size:14px; line-height:1.85;"><span style="color:#C0521F;">const</span> engine = <span style="color:#15a39a;">create_engine</span>({<br>  providers: { claude_cli: { auth_mode: <span style="color:#D6982A;">'oauth'</span> } },<br>  defaults: {<br>    provider: <span style="color:#D6982A;">'claude_cli'</span>,<br>    model: <span style="color:#D6982A;">'sonnet'</span>,<br>    system: <span style="color:#D6982A;">'Reply in one short sentence.'</span>,<br>    max_steps: <span style="color:#D6982A;">8</span>,<br>  },<br>})<br><br><span style="color:#C0521F;">const</span> result = <span style="color:#A8336A;">await</span> engine.<span style="color:#15a39a;">generate</span>({ prompt: <span style="color:#D6982A;">'hello'</span> })</div>
+          </div>
+
+          <h2 style="font-family:'DM Serif Display',serif; font-weight:400; font-size:32px; margin:48px 0 16px;">Retry policy</h2>
+          <p style="font-size:16px; line-height:1.6; color:#3a342e; margin-bottom:18px;">Retries apply only to provider-side failures — 429s, 5xx, and network errors. Backoff is exponential with jitter; <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">Retry-After</span> always wins.</p>
+          <div style="border:3px solid #211C17; box-shadow:1px 1px 0 #211C17, 2px 2px 0 #211C17, 3px 3px 0 #211C17, 4px 4px 0 #211C17, 5px 5px 0 #211C17;">
+            <div style="display:flex; align-items:center; justify-content:space-between; padding:11px 16px; background:#26211b; border-bottom:1px solid #4a443c;"><span style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#8a8278;">DEFAULT_RETRY</span></div>
+            <div style="white-space:pre; overflow-x:auto; background:#211C17; color:#E8DFCD; padding:20px; font-family:'JetBrains Mono',monospace; font-size:14px; line-height:1.85;"><span style="color:#C0521F;">const</span> DEFAULT_RETRY: <span style="color:#15a39a;">RetryPolicy</span> = {<br>  max_attempts: <span style="color:#D6982A;">3</span>,<br>  initial_delay_ms: <span style="color:#D6982A;">500</span>,<br>  max_delay_ms: <span style="color:#D6982A;">30_000</span>,<br>  retry_on: [<span style="color:#D6982A;">'rate_limit'</span>, <span style="color:#D6982A;">'provider_5xx'</span>, <span style="color:#D6982A;">'network'</span>],<br>}</div>
+          </div>
+
+          <h2 style="font-family:'DM Serif Display',serif; font-weight:400; font-size:32px; margin:48px 0 16px;">Lifecycle</h2>
+          <p style="font-size:16px; line-height:1.6; color:#3a342e;">Construct once per process. <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">dispose()</span> is idempotent; after it, every <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">generate</span> throws <span style="font-family:'JetBrains Mono',monospace; font-size:14px; color:#A8336A;">engine_disposed_error</span>. Subprocess providers abort in-flight children on dispose.</p>
+        </div>
+      </sc-if>
+
+      <!-- ============ PROVIDERS ============ -->
+      <sc-if value="{{ isProviders }}">
+        <div>
+          <div style="font-family:'JetBrains Mono',monospace; font-size:12px; letter-spacing:3px; color:#C0521F; margin-bottom:14px;">ENGINE</div>
+          <h1 style="font-family:'DM Serif Display',serif; font-weight:400; font-size:60px; line-height:1; margin:0 0 20px;">Providers</h1>
+          <p style="font-size:18px; line-height:1.6; color:#3a342e; max-width:680px;">Eight adapters ship with the engine layer. Seven wrap Vercel's AI SDK; the eighth, <span style="font-family:'JetBrains Mono',monospace; font-size:15px;">claude_cli</span>, spawns the <span style="font-family:'JetBrains Mono',monospace; font-size:15px;">claude</span> binary. Each SDK is an optional peer.</p>
+
+          <h2 style="font-family:'DM Serif Display',serif; font-weight:400; font-size:32px; margin:44px 0 16px;">Capability matrix</h2>
+          <div style="border:3px solid #211C17; box-shadow:1px 1px 0 #211C17, 2px 2px 0 #211C17, 3px 3px 0 #211C17, 4px 4px 0 #211C17, 5px 5px 0 #211C17, 6px 6px 0 #211C17; overflow:hidden;">
+            <table style="width:100%; border-collapse:collapse; font-family:'JetBrains Mono',monospace; font-size:13.5px;">
+              <thead>
+                <tr style="background:#211C17; color:#F4EBDB;">
+                  <th style="text-align:left; padding:12px 16px; letter-spacing:1px;">PROVIDER</th>
+                  <th style="padding:12px 6px; font-weight:500;">text</th>
+                  <th style="padding:12px 6px; font-weight:500;">tools</th>
+                  <th style="padding:12px 6px; font-weight:500;">schema</th>
+                  <th style="padding:12px 6px; font-weight:500;">stream</th>
+                  <th style="padding:12px 6px; font-weight:500;">image</th>
+                  <th style="padding:12px 6px; font-weight:500;">reason</th>
+                </tr>
+              </thead>
+              <tbody>
+                <sc-for list="{{ matrix }}" as="row" hint-placeholder-count="8">
+                  <tr style="border-top:2px solid #211C17; background:{{ row.bg }};">
+                    <td style="text-align:left; padding:11px 16px; font-weight:700; color:{{ row.accent }};">{{ row.name }}</td>
+                    <td style="text-align:center; padding:11px 6px;">{{ row.text }}</td>
+                    <td style="text-align:center; padding:11px 6px;">{{ row.tools }}</td>
+                    <td style="text-align:center; padding:11px 6px;">{{ row.schema }}</td>
+                    <td style="text-align:center; padding:11px 6px;">{{ row.streaming }}</td>
+                    <td style="text-align:center; padding:11px 6px;">{{ row.image }}</td>
+                    <td style="text-align:center; padding:11px 6px;">{{ row.reasoning }}</td>
+                  </tr>
+                </sc-for>
+              </tbody>
+            </table>
+          </div>
+
+          <h2 style="font-family:'DM Serif Display',serif; font-weight:400; font-size:32px; margin:48px 0 16px;">Configure a provider</h2>
+          <!-- tabs -->
+          <div style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:18px;">
+            <sc-for list="{{ providerTabs }}" as="t" hint-placeholder-count="8">
+              <div onClick="{{ t.select }}" style="cursor:pointer; font-family:'JetBrains Mono',monospace; font-size:13px; padding:8px 14px; border:2px solid #211C17; background:{{ t.bg }}; color:{{ t.fg }}; box-shadow:{{ t.shadow }};">{{ t.name }}</div>
+            </sc-for>
+          </div>
+
+          <div style="border:3px solid #211C17; box-shadow:1px 1px 0 #211C17, 2px 2px 0 #211C17, 3px 3px 0 #211C17, 4px 4px 0 #211C17, 5px 5px 0 #211C17, 6px 6px 0 #211C17;">
+            <div style="display:flex; align-items:center; justify-content:space-between; padding:11px 16px; background:#26211b; border-bottom:1px solid #4a443c;"><span style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#D6982A;">{{ active.peer }}</span><button onClick="{{ copy }}" data-orig="COPY" data-copy="{{ active.raw }}" style="background:transparent; color:#8a8278; font-family:'JetBrains Mono',monospace; font-size:11px; letter-spacing:1px; border:1px solid #4a443c; padding:4px 11px; cursor:pointer;">COPY</button></div>
+            <div style="white-space:pre; overflow-x:auto; background:#211C17; color:#E8DFCD; padding:20px; font-family:'JetBrains Mono',monospace; font-size:14px; line-height:1.85;">{{ active.code }}</div>
+          </div>
+          <p style="font-size:14px; line-height:1.6; color:#5a5249; margin-top:16px;">{{ active.note }}</p>
+
+          <h2 style="font-family:'DM Serif Display',serif; font-weight:400; font-size:32px; margin:48px 0 16px;">Effort translation</h2>
+          <p style="font-size:16px; line-height:1.6; color:#3a342e; margin-bottom:18px;"><span style="font-family:'JetBrains Mono',monospace; font-size:14px;">effort: 'none' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'</span> is a provider-neutral knob, translated per provider.</p>
+          <div style="border:3px solid #211C17; box-shadow:1px 1px 0 #211C17, 2px 2px 0 #211C17, 3px 3px 0 #211C17, 4px 4px 0 #211C17, 5px 5px 0 #211C17, 6px 6px 0 #211C17; overflow:hidden;">
+            <table style="width:100%; border-collapse:collapse; font-family:'JetBrains Mono',monospace; font-size:13px;">
+              <thead>
+                <tr style="background:#211C17; color:#F4EBDB;">
+                  <th style="text-align:left; padding:12px 16px;">PROVIDER</th>
+                  <th style="text-align:left; padding:12px 10px; font-weight:500;">low</th>
+                  <th style="text-align:left; padding:12px 10px; font-weight:500;">medium</th>
+                  <th style="text-align:left; padding:12px 10px; font-weight:500;">high</th>
+                </tr>
+              </thead>
+              <tbody>
+                <sc-for list="{{ effort }}" as="row" hint-placeholder-count="5">
+                  <tr style="border-top:2px solid #211C17; background:{{ row.bg }};">
+                    <td style="padding:10px 16px; font-weight:700; color:{{ row.accent }};">{{ row.name }}</td>
+                    <td style="padding:10px 10px; color:#3a342e;">{{ row.low }}</td>
+                    <td style="padding:10px 10px; color:#3a342e;">{{ row.medium }}</td>
+                    <td style="padding:10px 10px; color:#3a342e;">{{ row.high }}</td>
+                  </tr>
+                </sc-for>
+              </tbody>
+            </table>
+          </div>
+          <p style="font-size:13.5px; line-height:1.6; color:#7A5230; margin-top:14px; font-family:'JetBrains Mono',monospace;">ollama · lmstudio · claude_cli drop effort and record <span style="color:#A8336A;">effort_ignored</span> on the trajectory.</p>
+        </div>
+      </sc-if>
+
+      <!-- ============ ERRORS ============ -->
+      <sc-if value="{{ isErrors }}">
+        <div>
+          <div style="font-family:'JetBrains Mono',monospace; font-size:12px; letter-spacing:3px; color:#C0521F; margin-bottom:14px;">ENGINE</div>
+          <h1 style="font-family:'DM Serif Display',serif; font-weight:400; font-size:60px; line-height:1; margin:0 0 20px;">Errors</h1>
+          <p style="font-size:18px; line-height:1.6; color:#3a342e; max-width:680px;">Typed errors live in <span style="font-family:'JetBrains Mono',monospace; font-size:15px;">fascicle</span> and bubble out of <span style="font-family:'JetBrains Mono',monospace; font-size:15px;">run(...)</span> as normal promise rejections. Composition errors carry a <span style="font-family:'JetBrains Mono',monospace; font-size:15px;">.path</span> of step ids.</p>
+
+          <div style="margin-top:32px; border:3px solid #211C17; box-shadow:1px 1px 0 #211C17, 2px 2px 0 #211C17, 3px 3px 0 #211C17, 4px 4px 0 #211C17, 5px 5px 0 #211C17, 6px 6px 0 #211C17; overflow:hidden;">
+            <table style="width:100%; border-collapse:collapse; font-size:14px;">
+              <thead>
+                <tr style="background:#211C17; color:#F4EBDB; font-family:'JetBrains Mono',monospace;">
+                  <th style="text-align:left; padding:13px 18px; letter-spacing:1px; font-size:13px;">CLASS</th>
+                  <th style="text-align:left; padding:13px 18px; font-weight:500; font-size:13px;">THROWN BY</th>
+                </tr>
+              </thead>
+              <tbody>
+                <sc-for list="{{ errors }}" as="e" hint-placeholder-count="10">
+                  <tr style="border-top:2px solid #211C17; background:{{ e.bg }};">
+                    <td style="padding:11px 18px; font-family:'JetBrains Mono',monospace; font-size:13.5px; color:#A8336A; font-weight:500;">{{ e.name }}</td>
+                    <td style="padding:11px 18px; color:#3a342e;">{{ e.by }}</td>
+                  </tr>
+                </sc-for>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </sc-if>
+
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = { section: 'getting-started', provider: 'anthropic', open: 'sequence' };
+
+  go(s) { this.setState({ section: s }); try { window.scrollTo(0, 0); } catch (_) {} }
+  toggle(name) { this.setState(s => ({ open: s.open === name ? null : name })); }
+  setProvider(p) { this.setState({ provider: p }); }
+
+  copy(e) {
+    const t = e.currentTarget;
+    const text = t.getAttribute('data-copy') || '';
+    try { if (navigator.clipboard) navigator.clipboard.writeText(text); } catch (_) {}
+    const orig = t.getAttribute('data-orig') || t.textContent;
+    t.setAttribute('data-orig', orig);
+    t.textContent = 'COPIED \u2713';
+    clearTimeout(t._t);
+    t._t = setTimeout(() => { t.textContent = orig; }, 1300);
+  }
+
+  renderVals() {
+    const sec = this.state.section;
+    const navDef = [
+      { title: 'GET STARTED', items: [['getting-started', 'Getting started']] },
+      { title: 'CORE', items: [['concepts', 'Concepts'], ['primitives', 'Primitives']] },
+      { title: 'ENGINE', items: [['configuration', 'Configuration'], ['providers', 'Providers'], ['errors', 'Errors']] },
+    ];
+    const nav = navDef.map(g => ({
+      title: g.title,
+      items: g.items.map(([key, label]) => {
+        const on = key === sec;
+        return {
+          label, weight: on ? '700' : '500',
+          color: on ? '#211C17' : '#5a5249',
+          bg: on ? '#EFE3CE' : 'transparent',
+          bar: on ? '#C0521F' : 'transparent',
+          onClick: () => this.go(key),
+        };
+      }),
+    }));
+
+    // ---- primitives ----
+    const palette = ['#C0521F', '#15706A', '#A8336A', '#7A5230'];
+    const primDef = [
+      ['step', 'COMPOSE', 'Lift a plain function into a Step<i, o>.', "step('double', (n) => n * 2)"],
+      ['sequence', 'COMPOSE', 'Run A then B then C, threading each output into the next.', "sequence([\n  step('add', (n) => n + 1),\n  step('double', (n) => n * 2),\n])"],
+      ['parallel', 'COMPOSE', 'Run a named map of steps concurrently.', "parallel({\n  title: write_title,\n  body:  write_body,\n})"],
+      ['branch', 'COMPOSE', 'Pick then / otherwise by a predicate on the input.', "branch(\n  (x) => x.score > 0.5,\n  ship_step,\n  revise_step,\n)"],
+      ['map', 'COMPOSE', 'Run a step per item, with an optional concurrency cap.', "map(summarize, { concurrency: 4 })"],
+      ['pipe', 'COMPOSE', "Post-process an inner step's output with a plain function.", "pipe(model_call({ engine }), (r) => r.content)"],
+      ['retry', 'RESILIENCE', 'Re-run on failure with exponential backoff and jitter.', "retry(flaky_step, {\n  max_attempts: 5,\n  initial_delay_ms: 250,\n})"],
+      ['fallback', 'RESILIENCE', 'Run a backup step if the primary throws.', "fallback(primary, backup)"],
+      ['timeout', 'RESILIENCE', 'Cancel an inner step after N milliseconds.', "timeout(slow_step, 10_000)"],
+      ['adversarial', 'MULTI', 'Build, critique, loop until accept or max_rounds.', "adversarial({\n  build:    draft,\n  critique: judge,\n  max_rounds: 3,\n})"],
+      ['ensemble', 'MULTI', 'Run N members, pick the highest by score.', "ensemble([a, b, c], {\n  score: (out) => rate(out),\n})"],
+      ['tournament', 'MULTI', 'Single-elimination bracket between members.', "tournament([a, b, c, d], {\n  compare: pick_winner,\n})"],
+      ['consensus', 'MULTI', 'Run N members, accept only if a quorum agree.', "consensus([a, b, c], { quorum: 2 })"],
+      ['checkpoint', 'STATE', 'Memoize a named inner step by key, via a store.', "checkpoint(expensive, {\n  key: (spec) => `build:${spec.hash}`,\n})"],
+      ['suspend', 'STATE', 'Pause for external input; resume with resume_data.', "suspend({\n  id: 'approve',\n  resume_schema: z.object({ approved: z.boolean() }),\n  combine: (input, r) => r.approved ? 'ship' : 'hold',\n})"],
+      ['scope', 'STATE', 'Stash named values and use them later without rewiring.', "scope([\n  stash('user_id', lookup),\n  use(['user_id'], publish),\n])"],
+    ];
+    const tagColor = { COMPOSE: 0, RESILIENCE: 1, MULTI: 2, STATE: 3 };
+    const primitives = primDef.map(([name, tag, desc, example]) => {
+      const c = palette[tagColor[tag]];
+      const open = this.state.open === name;
+      return { name, tag, desc, example, color: c, isOpen: open, icon: open ? '\u2212' : '+', toggle: () => this.toggle(name) };
+    });
+
+    // ---- capability matrix ----
+    const Y = '\u2705', N = '\u2014';
+    const accents = ['#C0521F', '#15706A', '#A8336A', '#7A5230'];
+    const mrow = (name, i, img, reason) => ({ name, accent: accents[i % 4], bg: i % 2 ? '#EFE3CE' : '#F4EBDB', text: Y, tools: Y, schema: Y, streaming: Y, image: img, reasoning: reason });
+    const matrix = [
+      mrow('anthropic', 0, Y, Y), mrow('openai', 1, Y, Y), mrow('google', 2, Y, Y), mrow('openrouter', 3, Y, Y),
+      mrow('bedrock', 0, Y, Y), mrow('ollama', 1, N, N), mrow('lmstudio', 2, N, N), mrow('claude_cli', 3, N, N),
+    ];
+
+    // ---- effort table ----
+    const erow = (name, i, low, medium, high) => ({ name, accent: accents[i % 4], bg: i % 2 ? '#EFE3CE' : '#F4EBDB', low, medium, high });
+    const effort = [
+      erow('anthropic', 0, 'budgetTokens 1024', '5000', '20000'),
+      erow('bedrock', 0, 'budgetTokens 1024', '5000', '20000'),
+      erow('openai', 1, 'reasoningEffort low', 'medium', 'high'),
+      erow('google', 2, 'thinkingBudget 1024', '8192', '24576'),
+      erow('openrouter', 3, 'reasoning.effort low', 'medium', 'high'),
+    ];
+
+    // ---- provider tabs + active panel ----
+    const provDef = {
+      anthropic: { peer: 'pnpm add @ai-sdk/anthropic', note: "Effort maps to extended-thinking budgetTokens. Pass a concrete model id — no opus/sonnet shorthand on this transport.", code: ['import { create_engine } from \'fascicle\'', '', 'const engine = create_engine({', '  providers: {', '    anthropic: { api_key: process.env.ANTHROPIC_API_KEY! },', '  },', '})', '', 'await engine.generate({', '  model: \'claude-sonnet-4-6\',', '  prompt: \'say hi\',', '  effort: \'medium\',', '})'] },
+      openai: { peer: 'pnpm add @ai-sdk/openai', note: "Effort maps to reasoningEffort. Non-reasoning models silently drop it.", code: ['const engine = create_engine({', '  providers: {', '    openai: {', '      api_key: process.env.OPENAI_API_KEY!,', '      organization: process.env.OPENAI_ORGANIZATION,', '    },', '  },', '})', '', 'await engine.generate({', '  provider: \'openai\',', '  model: \'gpt-4o\',', '  prompt: \'say hi\',', '})'] },
+      google: { peer: 'pnpm add @ai-sdk/google', note: "Effort maps to Gemini's thinkingConfig.thinkingBudget token count.", code: ['const engine = create_engine({', '  providers: {', '    google: { api_key: process.env.GOOGLE_API_KEY! },', '  },', '})', '', 'await engine.generate({', '  provider: \'google\',', '  model: \'gemini-2.5-pro\',', '  prompt: \'say hi\',', '})'] },
+      openrouter: { peer: 'pnpm add @openrouter/ai-sdk-provider', note: "Model ids use the provider/model slug OpenRouter expects.", code: ['const engine = create_engine({', '  providers: {', '    openrouter: {', '      api_key: process.env.OPENROUTER_API_KEY!,', '      x_title: \'your-app\',', '    },', '  },', '})', '', 'await engine.generate({', '  provider: \'openrouter\',', '  model: \'anthropic/claude-sonnet-4.5\',', '  prompt: \'hi\',', '})'] },
+      bedrock: { peer: 'pnpm add @ai-sdk/amazon-bedrock', note: "region is required. Supply a Bedrock API key, SigV4 keys, or omit all to use the ambient AWS credential chain. Model ids pass through verbatim, including the trailing :0 version suffix.", code: ['const engine = create_engine({', '  providers: {', '    bedrock: {', '      region: process.env.AWS_REGION!,', '      // or omit creds for the ambient AWS chain', '      access_key_id: process.env.AWS_ACCESS_KEY_ID,', '      secret_access_key: process.env.AWS_SECRET_ACCESS_KEY,', '    },', '  },', '})', '', 'await engine.generate({', '  provider: \'bedrock\',', '  model: \'us.anthropic.claude-sonnet-4-20250514-v1:0\',', '  prompt: \'say hi\',', '  effort: \'low\',', '})'] },
+      ollama: { peer: 'pnpm add ai-sdk-ollama', note: "Local only. No API key; base_url required. No reasoning or image input.", code: ['const engine = create_engine({', '  providers: {', '    ollama: { base_url: \'http://localhost:11434\' },', '  },', '})', '', 'await engine.generate({', '  provider: \'ollama\',', '  model: \'llama3.2:3b\',', '  prompt: \'write a haiku\',', '})'] },
+      lmstudio: { peer: 'pnpm add @ai-sdk/openai-compatible', note: "OpenAI-compatible local server. Same constraints as Ollama.", code: ['const engine = create_engine({', '  providers: {', '    lmstudio: { base_url: \'http://localhost:1234\' },', '  },', '})', '', 'await engine.generate({', '  provider: \'lmstudio\',', '  model: \'qwen2.5-coder-7b-instruct\',', '  prompt: \'refactor this\',', '})'] },
+      claude_cli: { peer: '# no peer — spawns the `claude` binary', note: "Piggybacks on your local authenticated session. The one transport that resolves bare opus/sonnet/haiku tokens itself.", code: ['const engine = create_engine({', '  providers: {', '    claude_cli: { auth_mode: \'oauth\' },', '  },', '  defaults: { provider: \'claude_cli\', model: \'sonnet\' },', '})', '', 'await engine.generate({ prompt: \'say hi\' })'] },
+    };
+    const order = ['anthropic', 'openai', 'google', 'openrouter', 'bedrock', 'ollama', 'lmstudio', 'claude_cli'];
+    const cur = this.state.provider;
+    const providerTabs = order.map(name => {
+      const on = name === cur;
+      return { name, select: () => this.setProvider(name), bg: on ? '#C0521F' : '#F4EBDB', fg: on ? '#F4EBDB' : '#211C17', shadow: 'none' };
+    });
+    const a = provDef[cur];
+    const active = { peer: a.peer, note: a.note, code: a.code.join('\n'), raw: a.peer + '\n\n' + a.code.join('\n') };
+
+    // ---- errors ----
+    const edef = [
+      ['aborted_error', 'SIGINT / SIGTERM / parent abort'],
+      ['timeout_error', 'timeout(inner, ms) tripping'],
+      ['suspended_error', 'first pass through suspend(...)'],
+      ['resume_validation_error', 'resume_data does not match resume_schema'],
+      ['describe_cycle_error', 'describe hitting a cyclic composition'],
+      ['provider_error', 'HTTP failures from AI SDK providers'],
+      ['rate_limit_error', '429 responses after retry exhaustion'],
+      ['tool_error', "a tool's execute throws"],
+      ['schema_validation_error', 'schema parsing failed after repair attempts'],
+      ['engine_config_error', 'invalid create_engine(config)'],
+      ['engine_disposed_error', 'calling generate after engine.dispose()'],
+      ['model_required_error', 'no model and no defaults.model set'],
+      ['provider_not_configured_error', 'named provider missing from providers'],
+      ['provider_capability_error', 'a provider refusing an option it cannot honour'],
+      ['provider_auth_error', 'auth failure detected mid-run'],
+      ['tool_approval_denied_error', 'on_tool_approval returned false'],
+      ['claude_cli_error', 'subprocess failure in the claude_cli provider'],
+    ];
+    const errors = edef.map(([name, by], i) => ({ name, by, bg: i % 2 ? '#EFE3CE' : '#F4EBDB' }));
+
+    return {
+      nav, primitives, matrix, effort, providerTabs, active, errors,
+      isGettingStarted: sec === 'getting-started',
+      isConcepts: sec === 'concepts',
+      isPrimitives: sec === 'primitives',
+      isConfiguration: sec === 'configuration',
+      isProviders: sec === 'providers',
+      isErrors: sec === 'errors',
+      goConcepts: () => this.go('concepts'),
+      goProviders: () => this.go('providers'),
+      copy: (e) => this.copy(e),
+    };
+  }
+}
+</script>
+</body>
+</html>
