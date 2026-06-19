@@ -15,7 +15,8 @@
  *
  * Baselines are plain JSON, written via `write_baseline` and read via
  * `read_baseline`. They live wherever the caller decides — typically
- * `bench/<flow>/baseline.json`, checked into git per spec/eval.md §3.
+ * `bench/<flow>/baseline.json`, checked into git per
+ * `research/explorations/2026-04-eval-surface.md` §3.
  */
 
 import { mkdir, readFile, writeFile } from 'node:fs/promises'

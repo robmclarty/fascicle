@@ -1,6 +1,18 @@
+---
+title: Self-improvement loops + agents
+status: historical
+date: 2026-04-29
+author: rob
+tags: [learn, agents, composites]
+---
+
+> **Historical.** This plan shipped — `learn` lives in `src/composites/learn.ts` and the
+> `reviewer` / `documenter` / `researcher` agents in `src/agents/`. Preserved for the
+> `define_agent` loader and `learn` design rationale.
+
 # Self-improvement loops + agents
 
-Implementation plan for two ideas from [ideas.md](./ideas.md):
+Implementation plan for two ideas (now folded into the backlog in [docs/roadmap.md](../../docs/roadmap.md)):
 
 1. **Self-improvement** as a first-class composer (`learn`, optionally `distill`).
 2. **Agents** (`reviewer`, `researcher`, `documenter`) as a proof-of-abstraction package.
@@ -353,7 +365,7 @@ Numbered for clarity; each numbered step ends with green `pnpm check`.
 8. **`documenter`** — same shape as reviewer, add `examples/documenter.ts`.
 9. **`researcher`** — bespoke TS (uses `loop` + a `define_agent`-built summarizer), test with mock engine + injected search/fetch, add `examples/researcher.ts`.
 10. **End-to-end demo** — one example that combines `reviewer` with `learn`: run the reviewer on N diffs, then run `learn` over the trajectory to propose prompt improvements. This is the proof point.
-11. **`pnpm check:all`** including mutation, then update `docs/plans/ideas.md` to strike or annotate the two implemented bullets.
+11. **`pnpm check:all`** including mutation, then update `docs/roadmap.md` to strike or annotate the two implemented bullets.
 
 Each step is independently mergeable. Steps 1–4 deliver `learn` standalone; steps 5–9 deliver agents standalone; step 10 ties them.
 

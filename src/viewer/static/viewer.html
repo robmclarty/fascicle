@@ -167,7 +167,7 @@
         }
 
         function format_cost(usd) {
-          // < 1¢ shown to 4 decimals, otherwise to 2 decimals (per spec/eval.md §5)
+          // < 1¢ shown to 4 decimals, otherwise to 2 decimals (per research/explorations/2026-04-eval-surface.md §5)
           if (usd < 0.01) return '$' + usd.toFixed(4)
           return '$' + usd.toFixed(2)
         }

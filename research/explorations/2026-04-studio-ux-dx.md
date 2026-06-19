@@ -1,6 +1,14 @@
+---
+title: "Research: Studio UX / DX"
+status: draft
+date: 2026-04-26
+author: rob
+tags: [studio, ux, dx, research]
+---
+
 # Research: UX / DX
 
-Raw output from the UX/DX research agent. Preserved verbatim. Consulted by `spec/studio.md` §5, §7. Where the PDR diverges (e.g. install surface, v1 codegen scope, timeline depth), the divergence is intentional and called out in `spec/studio.md` §14.
+Raw output from the UX/DX research agent. Preserved verbatim. Consulted by `../papers/0001-studio-pdr.md` §5, §7. Where the PDR diverges (e.g. install surface, v1 codegen scope, timeline depth), the divergence is intentional and called out in `../papers/0001-studio-pdr.md` §14.
 
 ---
 

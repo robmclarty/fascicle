@@ -1,3 +1,11 @@
+---
+title: "ADR 0001 — pnpm override for smol-toml"
+status: accepted
+date: 2026-04-21
+author: rob
+tags: [decision, security, dependencies, adr]
+---
+
 # ADR 0001 — pnpm override for `smol-toml`
 
 Status: accepted — 2026-04-21

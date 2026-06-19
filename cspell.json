@@ -10,7 +10,6 @@
     "docs/**",
     ".ridgeline/**",
     "**/research/**",
-    "spec/**",
     "src/**/__tests__/**",
     "pnpm-lock.yaml",
     "package.json"

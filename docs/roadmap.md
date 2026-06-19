@@ -75,6 +75,34 @@ Two deployment shapes, both script-shaped, unattended, observability-first.
   than a falsification test. The `claude_cli` rebase onto the Agent SDK slots in
   wherever provider metering forces it.
 
+## Backlog / candidates (not yet sequenced)
+
+Considered or partially scoped, folded in from the old `docs/plans/` menu. Not phase
+commitments — leverage bets to draw from once Phase 2 lands. The standing "won't build"
+commitments behind several of these live in
+[`research/explorations/2026-04-competition.md`](../research/explorations/2026-04-competition.md).
+
+- **Visualization (the headline).** A live picture of a flow firing is the demo that sells
+  step-as-value. The structural canvas lives in the separate `weft` repo; the long-term
+  north star is [`research/papers/0001-studio-pdr.md`](../research/papers/0001-studio-pdr.md).
+  Phase 1 overlays trajectory events on the canvas (active spans, cost rollup, error scars);
+  Studio v2 adds drag-to-build plus one-way codegen. Hold publishing until the live overlay lands.
+- **MCP server as a library helper.** Promote `examples/mcp-server/` into the published surface
+  so any `Step<i, o>` with a Zod schema becomes an MCP tool with one call (`serve_mcp`). This is
+  the *outbound* direction; the *inbound* `mcp_tools()` adapter is already in Phase 2.
+- **Deployment shells.** Thin runtime wrappers around `run` / `run.stream` — HTTP/SSE,
+  queue-worker, Cloudflare Worker. Composition stays portable; only the runtime ships. (A broader
+  deployment story is otherwise deferred — see below.)
+- **`distill`.** Flow extraction from an (input, output) corpus. Out of scope until `learn` has a
+  real user; rationale in
+  [`research/explorations/2026-04-self-improvement-and-agents.md`](../research/explorations/2026-04-self-improvement-and-agents.md).
+- **Papercuts.** Low-stakes viewer/bench cleanups captured in
+  [`research/explorations/2026-04-eval-surface.md`](../research/explorations/2026-04-eval-surface.md) §11
+  (run-id truncation, log pagination, deterministic bench baselines, `judge_llm` wiring).
+- **Observability adapters (community territory).** Langfuse, LangSmith, Phoenix, Helicone,
+  Braintrust, OpenLLMetry — each a `TrajectoryLogger`. Document the contract, point at
+  `http_logger` / `filesystem_logger` as references, and let contributors own them.
+
 ## Explicitly not before release
 
 These were considered and deliberately deferred. Doing any of them now trades

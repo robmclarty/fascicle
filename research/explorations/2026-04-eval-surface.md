@@ -1,6 +1,18 @@
+---
+title: Fascicle Evaluation Surface — Plan
+status: historical
+date: 2026-04-30
+author: rob
+tags: [eval, bench, viewer]
+---
+
+> **Historical.** This plan shipped — `bench`, `judges`, and `regression` live in
+> `src/composites/`, and the viewer ships in the umbrella. Preserved for the cost
+> attribution, bench-run lifecycle, and regression-comparison rationale.
+
 # Fascicle Evaluation Surface — Plan
 
-The plan to complete the viewer and land `bench` as the next-up direction from `docs/plans/ideas.md`. Four wedges, smallest first, each ending with `pnpm check:all` green.
+The plan to complete the viewer and land `bench` as the next-up direction from `../../docs/roadmap.md`. Four wedges, smallest first, each ending with `pnpm check:all` green.
 
 > Status: plan accepted, ready to implement. Owner: next session in a fresh context window. Read this whole file before starting.
 
@@ -8,7 +20,7 @@ The plan to complete the viewer and land `bench` as the next-up direction from `
 
 ## 1. What and why
 
-`docs/plans/ideas.md` recommends "eval harness + trajectory viewer, together" as the highest-leverage direction. The viewer is mostly built per `spec/viewer.md` (`packages/viewer/` — 5 source files, 19 tests green, both transports verified end-to-end on `examples/viewer_demo.ts`). What remains is positioning, cost rendering, the `bench` primitive, and full dogfooding against `examples/amplify`.
+`../../docs/roadmap.md` recommends "eval harness + trajectory viewer, together" as the highest-leverage direction. The viewer is mostly built per `2026-04-viewer.md` (`packages/viewer/` — 5 source files, 19 tests green, both transports verified end-to-end on `examples/viewer_demo.ts`). What remains is positioning, cost rendering, the `bench` primitive, and full dogfooding against `examples/amplify`.
 
 This spec executes those four pieces.
 
@@ -37,7 +49,7 @@ These are inputs, not open questions:
 4. **Cost in bench:** each `CaseResult` carries `cost_usd` (sum of `cost.total_usd` from that case's trajectory). `BenchReport.summary` carries `total_cost_usd` and `mean_cost_usd`. `regression_compare` flags cost regressions.
 5. **Streaming during bench:** opt-in. `live_url` option attaches `http_logger` to a running viewer; `trajectory_dir` option writes per-case `filesystem_logger` JSONL.
 6. **Amplify dogfood:** reachable. `examples/amplify/src/main.ts` uses `claude_cli` with OAuth — no API key needed.
-7. **Positioning:** viewer and bench are first-class fascicle surface. Drop the "ships separately as `fascicle-viewer`" framing in `spec/viewer.md`. Re-export from the `fascicle` umbrella; expose the `fascicle-viewer` bin from the umbrella.
+7. **Positioning:** viewer and bench are first-class fascicle surface. Drop the "ships separately as `fascicle-viewer`" framing in `2026-04-viewer.md`. Re-export from the `fascicle` umbrella; expose the `fascicle-viewer` bin from the umbrella.
 
 ---
 
@@ -45,7 +57,7 @@ These are inputs, not open questions:
 
 ### Files
 
-- `spec/viewer.md` §3 ("Package layout") and §10 ("NOT in scope" item 7) — strike "ships separately as `fascicle-viewer`" framing. Replace with: "ships as part of the `fascicle` umbrella; runtime install graph is `node:*` plus `zod` plus `@repo/core` — no HTTP-server deps to leak." Update §1 framing the same way.
+- `2026-04-viewer.md` §3 ("Package layout") and §10 ("NOT in scope" item 7) — strike "ships separately as `fascicle-viewer`" framing. Replace with: "ships as part of the `fascicle` umbrella; runtime install graph is `node:*` plus `zod` plus `@repo/core` — no HTTP-server deps to leak." Update §1 framing the same way.
 - `packages/fascicle/package.json` — add `"@repo/viewer": "workspace:*"` to `dependencies`. Add `"bin": { "fascicle-viewer": "./bin/fascicle-viewer.js" }` (or similar — see "Bin wiring" below).
 - `packages/fascicle/src/index.ts` — re-export `start_viewer` and any public types from `@repo/viewer`.
 - `packages/fascicle/bin/fascicle-viewer.js` — new file, three lines: `#!/usr/bin/env node` shebang, then `await import('@repo/viewer/cli')` (or whatever resolves the existing CLI). The viewer's existing bin entry stays; this just surfaces it from the umbrella.
@@ -296,7 +308,7 @@ The actual `cases` array should pull from a small fixture file (e.g. `bench/revi
 ### Done
 
 - Both transports verified live against amplify.
-- `spec/viewer.md` §12 done-def items 2 and 3 checked off (or trimmed, since this spec is now the source of truth for those).
+- `2026-04-viewer.md` §12 done-def items 2 and 3 checked off (or trimmed, since this spec is now the source of truth for those).
 
 ---
 
@@ -309,7 +321,7 @@ Deliberately deferred:
 - Replay scrubber in viewer.
 - Bench-time caching across runs.
 - Cost projection / budget enforcement during bench.
-- `spec/studio.md` (separate north-star; unrelated to this spec).
+- `../papers/0001-studio-pdr.md` (separate north-star; unrelated to this spec).
 - Engine cost emission changes (data is already there).
 
 ---
@@ -334,8 +346,8 @@ pnpm exec vitest run --no-coverage packages/composites
 
 ## 10. Pointers (read first)
 
-- `docs/plans/ideas.md` — the menu and recommendation
-- `spec/viewer.md` — viewer plan (mostly executed; needs §1/§3/§10 framing edits per wedge 1)
+- `../../docs/roadmap.md` — the menu and recommendation
+- `2026-04-viewer.md` — viewer plan (mostly executed; needs §1/§3/§10 framing edits per wedge 1)
 - `packages/viewer/src/` — current viewer implementation
 - `packages/observability/src/http.ts` — `http_logger` reference shape
 - `packages/composites/src/learn.ts` — closest existing primitive to bench

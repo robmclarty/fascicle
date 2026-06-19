@@ -1,6 +1,14 @@
+---
+title: "Research: Studio fun / design / style"
+status: draft
+date: 2026-04-26
+author: rob
+tags: [studio, design, style, research]
+---
+
 # Research: Fun / Design / Style
 
-Raw output from the design-direction research agent. Preserved verbatim. Consulted by `spec/studio.md` §6, §10. Where the PDR diverges (e.g. canvas technology), the divergence is intentional and called out in `spec/studio.md` §14.
+Raw output from the design-direction research agent. Preserved verbatim. Consulted by `../papers/0001-studio-pdr.md` §6, §10. Where the PDR diverges (e.g. canvas technology), the divergence is intentional and called out in `../papers/0001-studio-pdr.md` §14.
 
 ---
 

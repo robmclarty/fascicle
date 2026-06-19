@@ -1,3 +1,11 @@
+---
+title: Fascicle Studio — PDR
+status: accepted
+date: 2026-04-26
+author: rob
+tags: [studio, weft, visualization, pdr]
+---
+
 # Fascicle Studio — PDR
 
 A drag-and-drop visual editor and live monitor for fascicle pipelines, in the style of Factorio / Mindustry / Shapez, with a worn-and-warm Final Fantasy Tactics colour story. Ships in a sibling repo so the `fascicle` library bundle stays untouched. Designed to be human-readable, LLM-editable, and visibly fun.
@@ -334,7 +342,7 @@ The studio is a frontend; Claude's failure modes there differ from the library. 
 1. **Playwright MCP server** (already available in this environment via `mcp__plugin_playwright_playwright__*`). Used during dev so Claude can verify "I changed the node panel; does the page still render?" without round-tripping through the human.
 2. **Storybook + interaction tests.** One story per node renderer. `play()` interaction tests function as cheap component snapshots and are included in the opt-in `--include storybook` check.
 3. **Protocol contract test in `@repo/studio-protocol`.** Round-trip every `TrajectoryEvent` variant through `Zod.parse → JSON.stringify → Zod.parse`. If Claude breaks the wire format on either side, this fails before Playwright does — much faster signal.
-4. **`spec/studio-design.md` taste file.** Five rules max (e.g. "nodes are stamped rectangles with rivets, not pill shapes"; "edges sag, not bezier"; "no glassmorphism"; "max one accent color per scene"; "monospace only for serial numbers and code"). Cited by Claude before edits, modeled on `.ridgeline/taste.md`.
+4. **`studio-design.md` taste file (in the studio repo).** Five rules max (e.g. "nodes are stamped rectangles with rivets, not pill shapes"; "edges sag, not bezier"; "no glassmorphism"; "max one accent color per scene"; "monospace only for serial numbers and code"). Cited by Claude before edits, modeled on `.ridgeline/taste.md`.
 5. **fallow audit on changed files.** Already wired via `.mcp.json`; explicitly run it during studio iteration. Catches dead components fast.
 
 Skipped: a bespoke "design lint for flat-rounded-blob components" (subjective; the taste file does this job cheaper); any LLM-as-judge layer (premature).
@@ -422,11 +430,11 @@ These need answers before Phase 1 starts. Each is a one-line discussion item, no
 
 ## 14. Reference research
 
-The synthesis above draws on three parallel research passes. The raw outputs are preserved verbatim in `spec/research/` and should be consulted when a specific design choice in this PDR is contested:
+The synthesis above draws on three parallel research passes. The raw outputs are preserved verbatim in `../explorations/` (the `2026-04-studio-*` files) and should be consulted when a specific design choice in this PDR is contested:
 
-- `spec/research/style.md` — fun / design / style angle (Blueprint Foundry vs alternatives, motion personality, palette, tooling).
-- `spec/research/ux-dx.md` — UX / DX angle (mode toggle, interactions, alive-not-noisy patterns, install path, onboarding).
-- `spec/research/maintainability.md` — maintainability / simplicity angle (repo layout, server contract, stack choice, code-style rules, core surfaces, CI, sensors, cuts).
+- `../explorations/2026-04-studio-style.md` — fun / design / style angle (Blueprint Foundry vs alternatives, motion personality, palette, tooling).
+- `../explorations/2026-04-studio-ux-dx.md` — UX / DX angle (mode toggle, interactions, alive-not-noisy patterns, install path, onboarding).
+- `../explorations/2026-04-studio-maintainability.md` — maintainability / simplicity angle (repo layout, server contract, stack choice, code-style rules, core surfaces, CI, sensors, cuts).
 
 Where this PDR disagrees with one of those documents, the disagreement is intentional. The most consequential reconciliations:
 

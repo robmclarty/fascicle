@@ -1,6 +1,14 @@
+---
+title: "Research: Studio maintainability / simplicity"
+status: draft
+date: 2026-04-26
+author: rob
+tags: [studio, maintainability, research]
+---
+
 # Research: Maintainability / Simplicity
 
-Raw output from the maintainability research agent. Preserved verbatim. Consulted by `spec/studio.md` §3, §4, §6, §8, §9, §10. The PDR adopts most of this report's recommendations; the few divergences are noted in `spec/studio.md` §14.
+Raw output from the maintainability research agent. Preserved verbatim. Consulted by `../papers/0001-studio-pdr.md` §3, §4, §6, §8, §9, §10. The PDR adopts most of this report's recommendations; the few divergences are noted in `../papers/0001-studio-pdr.md` §14.
 
 ---
 

@@ -10,7 +10,7 @@ This folder holds longer-form thinking that sits alongside the project: white pa
 
 If you're trying to *use* the project, start in `docs/`. If you're trying to understand *why it is the way it is*, or the thinking behind where it might go, start here.
 
-For short, decision-focused records ("we chose X over Y because Z"), see `docs/adr/` instead. ADRs live with the docs because contributors need them while working in the code. Longer exploratory pieces live here.
+Short, decision-focused records ("we chose X over Y because Z") live here too, as an `explorations/` entry with `status: accepted` — see [`2026-04-smol-toml-override.md`](explorations/2026-04-smol-toml-override.md). There is no separate `docs/adr/` folder: decisions, explorations, and papers share this one home so there isn't a fourth place to look for the thinking behind the code.
 
 ## Layout
 
@@ -115,12 +115,14 @@ A running index of accepted papers, grouped by theme, lives at the bottom of thi
 
 ### Accepted
 
-*(none yet)*
+- [0001 — Fascicle Studio (PDR)](papers/0001-studio-pdr.md) — visual editor + live monitor north star.
+- [smol-toml override (decision record)](explorations/2026-04-smol-toml-override.md) — pnpm override for a dev-only transitive advisory.
 
 ### Superseded
 
-*(none yet)*
+- [Fascicle Viewer plan](explorations/2026-04-viewer.md) — shipped; `src/viewer/README.md` is the living contract.
 
 ### Historical
 
-*(none yet)*
+- [Evaluation Surface plan](explorations/2026-04-eval-surface.md) — `bench` / `judges` / `regression` shipped.
+- [Self-improvement loops + agents](explorations/2026-04-self-improvement-and-agents.md) — `learn` + the `reviewer` / `documenter` / `researcher` agents shipped.
