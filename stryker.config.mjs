@@ -30,8 +30,11 @@ export default {
   incrementalFile: 'stryker.incremental.json',
   thresholds: {
     high: 80,
-    low: 60,
-    break: 50,
+    low: 70,
+    // Ratchet: the real score sits at ~77% (see CHANGELOG / mutation work),
+    // so the gate floor is raised to 70 to catch regressions. Bump it further
+    // as coverage climbs; never lower it to make a failing run pass.
+    break: 70,
   },
   tempDirName: '.stryker-tmp',
   cleanTempDir: true,
