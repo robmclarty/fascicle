@@ -13,4 +13,4 @@ rule:
     - pattern: import $$$ from "$PATH"
 constraints:
   PATH:
-    regex: '^(\.\./)+(core|engine|composites|agents|observability|stores|viewer)(/|$)'
+    regex: '^(\.\./)+(core|engine|composites|agents|adapters|viewer)(/|$)'

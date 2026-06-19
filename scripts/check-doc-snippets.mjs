@@ -92,8 +92,7 @@ function tsconfig_for(mode) {
     '#core': ['../../src/core/index.ts'],
     '#engine': ['../../src/engine/index.ts'],
     '#composites': ['../../src/composites/index.ts'],
-    '#observability': ['../../src/observability/index.ts'],
-    '#stores': ['../../src/stores/index.ts'],
+    '#adapters': ['../../src/adapters/index.ts'],
     '#viewer': ['../../src/viewer/index.ts'],
     '#agents': ['../../src/agents/index.ts'],
   };
@@ -106,7 +105,7 @@ function tsconfig_for(mode) {
         }
       : {
           fascicle: [`${base}/index.ts`],
-          'fascicle/adapters': [`${base}/adapters.ts`],
+          'fascicle/adapters': [`${base}/adapters/index.ts`],
           '@repo/fascicle': [`${base}/index.ts`],
           ...module_aliases,
         };

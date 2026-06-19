@@ -11,7 +11,7 @@
 
 A constraint is a non-negotiable: something that, if changed, requires revisiting the entire design. Constraints are the load-bearing walls. They are not opinions about API aesthetics (that belongs in `taste.md`), and they are not interface definitions or behavioral semantics (that belongs in each build's `spec.md`).
 
-This document covers project-wide rules that apply to every module in the single package — the composition layer (`core`), the AI engine layer (`engine`), and adapter modules (`observability`, `stores`) under the `fascicle` umbrella. Where a rule is layer-specific, it is called out explicitly. Treat any item here as fixed unless a formal design revision is opened.
+This document covers project-wide rules that apply to every module in the single package — the composition layer (`core`), the AI engine layer (`engine`), and the adapters module (`adapters`) under the `fascicle` umbrella. Where a rule is layer-specific, it is called out explicitly. Treat any item here as fixed unless a formal design revision is opened.
 
 On conflicts with per-build `spec.md` or `constraints.md`: **this file wins**.
 
@@ -75,8 +75,8 @@ fascicle (umbrella at the src/ root; re-exports #core, #engine, #composites, #vi
       ↓
 Vendor SDKs (Vercel AI SDK v6, zod, provider adapters)
 
-#observability, #stores
-  — adapter modules; injected into the composition layer via run_context, never imported by it.
+#adapters
+  — adapters module; injected into the composition layer via run_context, never imported by it.
 ```
 
 Enforced by the ast-grep rules in `rules/` and a directory-level default-deny DAG in `fallow.toml` (`[[boundaries.rules]]`).
@@ -428,7 +428,7 @@ CI must verify each of these. A failing check fails the build.
 ### Composition layer (`@robmclarty/core`)
 
 6. **`zod` is the only npm dependency the `core` module may import.** With a single root manifest this is enforced at the import level by `rules/no-core-npm-dep-except-zod.yml` (allowing only `zod`, `node:` builtins, relative paths, and `#`-aliases), not by per-package manifest audit.
-7. **No file in `src/core/` imports from any adapter module** — `#observability`, `#stores`, `#engine`, or any future adapter. Enforced by `rules/no-adapter-import-from-core.yml` and the `fallow.toml` boundary DAG.
+7. **No file in `src/core/` imports from any adapter module** — `#adapters`, `#engine`, or any future adapter. Enforced by `rules/no-adapter-import-from-core.yml` and the `fallow.toml` boundary DAG.
 8. **No composer imports from another composer.** Each composer depends only on `./types`, `./runner`, `./streaming`, `./cleanup`, and its own siblings within `scope.ts`. Enforced by `rules/no-composer-cross-import.yml`.
 9. **Anonymous steps cannot be checkpointed.** Enforced at flow-construction time inside `checkpoint.ts`: `checkpoint(step(fn), ...)` without an id throws synchronously before `run` is ever called.
 
@@ -469,8 +469,7 @@ Applied once per subprocess provider (e.g. `claude_cli`, future `gemini_cli`):
 | core | `src/core/` | `fascicle` | composition layer — 16 primitives, `run`, `run.stream`, `describe`, shared types, typed errors, YAML `flow_schema` |
 | engine | `src/engine/` | `fascicle` | AI engine layer — `create_engine`, `generate`, provider routing, alias and pricing tables |
 | composites | `src/composites/` | `fascicle` | built-in composite patterns (ensemble, tournament, consensus, adversarial) |
-| observability | `src/observability/` | `fascicle/adapters` | trajectory logger adapters (filesystem JSONL default; langfuse peer) |
-| stores | `src/stores/` | `fascicle/adapters` | checkpoint store adapters (filesystem default) |
+| adapters | `src/adapters/` | `fascicle/adapters` | trajectory logger + checkpoint store adapters (filesystem defaults; langfuse peer) |
 | viewer | `src/viewer/` | `fascicle` | in-repo dev dashboard; `start_viewer` + the `fascicle-viewer` bin |
 | umbrella | `src/` root | `fascicle` / `fascicle/adapters` | re-export seam; `model_call` is the sole core↔engine value bridge |
 

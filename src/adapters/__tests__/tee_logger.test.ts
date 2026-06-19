@@ -1,6 +1,6 @@
 import type { TrajectoryEvent, TrajectoryLogger } from '#core'
 import { describe, expect, it } from 'vitest'
-import { tee_logger } from '../tee.js'
+import { tee_logger } from '../tee_logger.js'
 
 function recording_logger(prefix: string): {
   logger: TrajectoryLogger

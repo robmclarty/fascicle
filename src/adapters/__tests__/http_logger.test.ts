@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { trajectory_event_schema } from '#core'
-import { http_logger, type HttpLoggerFetch } from '../http.js'
+import { http_logger, type HttpLoggerFetch } from '../http_logger.js'
 
 type Captured = {
   url: string

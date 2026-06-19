@@ -8,12 +8,11 @@ export default defineConfig({
       { find: /^#core$/, replacement: fileURLToPath(new URL('./src/core/index.ts', import.meta.url)) },
       { find: /^#engine$/, replacement: fileURLToPath(new URL('./src/engine/index.ts', import.meta.url)) },
       { find: /^#composites$/, replacement: fileURLToPath(new URL('./src/composites/index.ts', import.meta.url)) },
-      { find: /^#observability$/, replacement: fileURLToPath(new URL('./src/observability/index.ts', import.meta.url)) },
-      { find: /^#stores$/, replacement: fileURLToPath(new URL('./src/stores/index.ts', import.meta.url)) },
+      { find: /^#adapters$/, replacement: fileURLToPath(new URL('./src/adapters/index.ts', import.meta.url)) },
       { find: /^#viewer$/, replacement: fileURLToPath(new URL('./src/viewer/index.ts', import.meta.url)) },
       { find: /^#agents$/, replacement: fileURLToPath(new URL('./src/agents/index.ts', import.meta.url)) },
       // Published surface (examples + doc snippets import these names).
-      { find: /^fascicle\/adapters$/, replacement: fileURLToPath(new URL('./src/adapters.ts', import.meta.url)) },
+      { find: /^fascicle\/adapters$/, replacement: fileURLToPath(new URL('./src/adapters/index.ts', import.meta.url)) },
       // Repo-only dev alias: built-in agents are not part of the published exports.
       { find: /^fascicle\/agents$/, replacement: fileURLToPath(new URL('./src/agents/index.ts', import.meta.url)) },
       { find: /^fascicle$/, replacement: fileURLToPath(new URL('./src/index.ts', import.meta.url)) },

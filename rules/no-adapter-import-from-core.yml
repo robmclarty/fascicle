@@ -1,5 +1,5 @@
 id: no-adapter-import-from-core
-message: "The core module must not import adapter modules (observability, stores, engine). Adapters are injected via run_context."
+message: "The core module must not import adapter modules (adapters, engine). Adapters are injected via run_context."
 severity: error
 language: typescript
 files:
@@ -12,4 +12,4 @@ rule:
     - pattern: import $$$ from "$PATH"
 constraints:
   PATH:
-    regex: '^#(observability|stores|engine)$'
+    regex: '^#(adapters|engine)$'

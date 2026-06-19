@@ -4,7 +4,7 @@ severity: error
 language: typescript
 files:
   - src/index.ts
-  - src/adapters.ts
+  - src/adapters/index.ts
   - src/forward_standard_env.ts
 rule:
   any:

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { noop_logger } from '../noop.js'
+import { noop_logger } from '../noop_logger.js'
 
 describe('noop_logger', () => {
   it('returns an object satisfying the TrajectoryLogger contract', () => {

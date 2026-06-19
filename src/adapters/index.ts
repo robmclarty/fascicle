@@ -18,8 +18,12 @@
  *   a logger directly), and that fallback remains best-effort under concurrency.
  */
 
-export { filesystem_logger, http_logger, noop_logger, tee_logger } from '#observability'
-export type { FilesystemLoggerOptions, HttpLoggerFetch, HttpLoggerOptions } from '#observability'
+export { filesystem_logger } from './filesystem_logger.js'
+export type { FilesystemLoggerOptions } from './filesystem_logger.js'
+export { http_logger } from './http_logger.js'
+export type { HttpLoggerFetch, HttpLoggerOptions } from './http_logger.js'
+export { noop_logger } from './noop_logger.js'
+export { tee_logger } from './tee_logger.js'
 
-export { filesystem_store } from '#stores'
-export type { FilesystemStoreOptions } from '#stores'
+export { filesystem_store } from './filesystem_store.js'
+export type { FilesystemStoreOptions } from './filesystem_store.js'

@@ -56,8 +56,7 @@
     "#core": "./src/core/index.ts",
     "#engine": "./src/engine/index.ts",
     "#composites": "./src/composites/index.ts",
-    "#observability": "./src/observability/index.ts",
-    "#stores": "./src/stores/index.ts",
+    "#adapters": "./src/adapters/index.ts",
     "#viewer": "./src/viewer/index.ts",
     "#agents": "./src/agents/index.ts"
   },

@@ -1,5 +1,5 @@
 /**
- * End-to-end wiring tests across core + observability + stores.
+ * End-to-end wiring tests across core + adapters.
  *
  * These exercise the public value contracts that cross package boundaries
  * (spec.md §6): the filesystem trajectory logger, the filesystem checkpoint
@@ -12,8 +12,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { checkpoint, run, sequence, step } from '#core'
 import type { TrajectoryEvent } from '#core'
-import { filesystem_logger } from '#observability'
-import { filesystem_store } from '#stores'
+import { filesystem_logger, filesystem_store } from '#adapters'
 
 let work_dir: string
 

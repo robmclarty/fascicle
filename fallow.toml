@@ -3,7 +3,6 @@
 
 entry = [
   "src/index.ts",
-  "src/adapters.ts",
   "src/*/index.ts",
   "src/**/*.test.ts",
   "src/**/__tests__/**/*.mjs",
@@ -41,28 +40,24 @@ maxCognitive = 15
 
 [[boundaries.rules]] # core: bottom of the DAG, imports no sibling module
 from = "src/core/**"
-cannotImport = ["src/engine/**", "src/composites/**", "src/agents/**", "src/observability/**", "src/stores/**", "src/viewer/**"]
+cannotImport = ["src/engine/**", "src/composites/**", "src/agents/**", "src/adapters/**", "src/viewer/**"]
 
 [[boundaries.rules]] # engine: may reference core (type-only, see ast-grep), nothing else
 from = "src/engine/**"
-cannotImport = ["src/composites/**", "src/agents/**", "src/observability/**", "src/stores/**", "src/viewer/**"]
+cannotImport = ["src/composites/**", "src/agents/**", "src/adapters/**", "src/viewer/**"]
 
-[[boundaries.rules]] # composites: core + observability only
+[[boundaries.rules]] # composites: core + adapters only
 from = "src/composites/**"
-cannotImport = ["src/engine/**", "src/agents/**", "src/stores/**", "src/viewer/**"]
+cannotImport = ["src/engine/**", "src/agents/**", "src/viewer/**"]
 
-[[boundaries.rules]] # observability: core only
-from = "src/observability/**"
-cannotImport = ["src/engine/**", "src/composites/**", "src/agents/**", "src/stores/**", "src/viewer/**"]
-
-[[boundaries.rules]] # stores: core only
-from = "src/stores/**"
-cannotImport = ["src/engine/**", "src/composites/**", "src/agents/**", "src/observability/**", "src/viewer/**"]
+[[boundaries.rules]] # adapters: core only (injected via run_context)
+from = "src/adapters/**"
+cannotImport = ["src/engine/**", "src/composites/**", "src/agents/**", "src/viewer/**"]
 
 [[boundaries.rules]] # viewer: core only (dev tool that reads the wire format)
 from = "src/viewer/**"
-cannotImport = ["src/engine/**", "src/composites/**", "src/agents/**", "src/observability/**", "src/stores/**"]
+cannotImport = ["src/engine/**", "src/composites/**", "src/agents/**", "src/adapters/**"]
 
 [[boundaries.rules]] # agents: core + composites + engine only
 from = "src/agents/**"
-cannotImport = ["src/observability/**", "src/stores/**", "src/viewer/**"]
+cannotImport = ["src/adapters/**", "src/viewer/**"]

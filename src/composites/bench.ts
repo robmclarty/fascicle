@@ -25,7 +25,7 @@ import { mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { run } from '#core'
 import type { Step, TrajectoryEvent, TrajectoryLogger } from '#core'
-import { filesystem_logger, http_logger, tee_logger } from '#observability'
+import { filesystem_logger, http_logger, tee_logger } from '#adapters'
 
 export type Score = { readonly score: number; readonly reason?: string }
 
