@@ -79,10 +79,25 @@ describe('to_raw_provider_usage', () => {
   })
 
   it('adds no detail or flat keys when only the camelCase totals are present', () => {
-    expect(to_raw_provider_usage({ inputTokens: 5, outputTokens: 3 })).toEqual({
+    expect(to_raw_provider_usage({ inputTokens: 5, outputTokens: 3 })).toStrictEqual({
       input_tokens: 5,
       output_tokens: 3,
     })
+  })
+
+  it('skips detail blocks when the detail field is null', () => {
+    expect(
+      to_raw_provider_usage({
+        inputTokens: 1,
+        outputTokens: 1,
+        inputTokenDetails: null,
+        outputTokenDetails: null,
+      }),
+    ).toStrictEqual({ input_tokens: 1, output_tokens: 1 })
+  })
+
+  it('ignores non-numeric flat token fields', () => {
+    expect(to_raw_provider_usage({ input_tokens: 'x', output_tokens: 'y' })).toStrictEqual({})
   })
 
   it('keeps detail objects but omits non-numeric nested fields', () => {
@@ -271,10 +286,17 @@ describe('classify_ai_sdk_error', () => {
   it('passes through non-objects and every already-classified kind', () => {
     expect(classify_ai_sdk_error('boom')).toBe('boom')
     expect(classify_ai_sdk_error(null)).toBe(null)
+    // A conflicting statusCode would re-classify if the kind passthrough failed,
+    // so toBe(same ref) proves the already-classified short-circuit wins.
     for (const kind of ['rate_limit', 'provider_5xx', 'network', 'timeout']) {
-      const classified = { kind, status: 1 }
+      const classified = { kind, statusCode: 429, code: 'ECONNRESET' }
       expect(classify_ai_sdk_error(classified)).toBe(classified)
     }
+  })
+
+  it('does not treat an unknown kind string as already-classified', () => {
+    const out = classify_ai_sdk_error({ kind: 'mystery', statusCode: 429 }) as { kind?: string }
+    expect(out.kind).toBe('rate_limit')
   })
 
   it('classifies a 429 with no headers and omits absent message/retry_after', () => {
@@ -307,11 +329,27 @@ describe('classify_ai_sdk_error', () => {
     expect(out).toMatchObject({ kind: 'provider_5xx', status: 503, message: 'unavailable' })
   })
 
+  it('omits message for a 5xx error that has none', () => {
+    expect(classify_ai_sdk_error({ status: 500 })).toStrictEqual({ kind: 'provider_5xx', status: 500 })
+  })
+
+  it('ignores a non-string Retry-After header', () => {
+    const out = classify_ai_sdk_error({
+      statusCode: 429,
+      responseHeaders: { 'retry-after': 2 },
+    }) as Record<string, unknown>
+    expect('retry_after_ms' in out).toBe(false)
+  })
+
   it('classifies known network error codes', () => {
     for (const code of ['ECONNRESET', 'ETIMEDOUT', 'ENOTFOUND', 'ECONNREFUSED']) {
       const out = classify_ai_sdk_error({ code, message: 'net' }) as Record<string, unknown>
       expect(out).toMatchObject({ kind: 'network', message: 'net' })
     }
+  })
+
+  it('omits message for a network error that has none', () => {
+    expect(classify_ai_sdk_error({ code: 'ECONNRESET' })).toStrictEqual({ kind: 'network' })
   })
 
   it('passes through an unclassifiable error object', () => {

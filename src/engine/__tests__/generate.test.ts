@@ -148,6 +148,34 @@ describe('generate: model + provider pass-through', () => {
       model_required_error,
     )
   })
+
+  it('forwards temperature, max_tokens, and top_p to the SDK params', async () => {
+    enqueue_generate_text(make_text_result('ok'))
+    await basic_engine().generate({
+      model: 'claude-opus',
+      prompt: 'x',
+      temperature: 0.4,
+      max_tokens: 256,
+      top_p: 0.9,
+    })
+    const params = mock_state.last_generate_text_params as {
+      temperature?: number
+      maxOutputTokens?: number
+      topP?: number
+    }
+    expect(params.temperature).toBe(0.4)
+    expect(params.maxOutputTokens).toBe(256)
+    expect(params.topP).toBe(0.9)
+  })
+
+  it('omits sampling params from the SDK call when not provided', async () => {
+    enqueue_generate_text(make_text_result('ok'))
+    await basic_engine().generate({ model: 'claude-opus', prompt: 'x' })
+    const params = mock_state.last_generate_text_params as Record<string, unknown>
+    expect('temperature' in params).toBe(false)
+    expect('maxOutputTokens' in params).toBe(false)
+    expect('topP' in params).toBe(false)
+  })
 })
 
 describe('generate: structured output', () => {
