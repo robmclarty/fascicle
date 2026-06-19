@@ -178,19 +178,19 @@ import { flow_schema } from 'fascicle';
 
 ## Examples
 
-Runnable references live at the repo root in [`examples/`](../../examples/).
+Runnable references live at the repo root in [`examples/`](../examples/).
 They import from `fascicle` (the umbrella) and exercise the primitives
 exported by this package:
 
-- [`adversarial_build.ts`](../../examples/adversarial_build.ts) — build-and-critique
+- [`adversarial_build.ts`](../examples/adversarial_build.ts) — build-and-critique
   with an ensemble of judges
-- [`ensemble_judge.ts`](../../examples/ensemble_judge.ts) — N-of-M pick best
-- [`streaming_chat.ts`](../../examples/streaming_chat.ts) — observe emitted tokens
-- [`suspend_resume.ts`](../../examples/suspend_resume.ts) — pause and resume on
+- [`ensemble_judge.ts`](../examples/ensemble_judge.ts) — N-of-M pick best
+- [`streaming_chat.ts`](../examples/streaming_chat.ts) — observe emitted tokens
+- [`suspend_resume.ts`](../examples/suspend_resume.ts) — pause and resume on
   external input
-- [`ollama_chat.ts`](../../examples/ollama_chat.ts) — drive a local Ollama model
+- [`ollama_chat.ts`](../examples/ollama_chat.ts) — drive a local Ollama model
   through a composed sequence
-- [`hello.ts`](../../examples/hello.ts) — the smallest viable harness
+- [`hello.ts`](../examples/hello.ts) — the smallest viable harness
 
 Each file exports an async entry function. A vitest smoke test imports
 each entry and asserts its output shape.
@@ -204,3 +204,9 @@ pnpm check
 ```
 
 This is the single source of truth. If it exits 0, your work is complete.
+
+## Further reading
+
+- [concepts.md](./concepts.md) — the mental model behind these primitives.
+- [getting-started.md](./getting-started.md) — install and run your first flow.
+</content>

@@ -138,12 +138,13 @@ const handle = await start_viewer({ port: 4242 });
 await handle.close();
 ```
 
-For zero-latency streaming from inside a long-running flow, pair it with `http_logger` from `fascicle/adapters`. See [src/viewer/README.md](./src/viewer/README.md) for the full transport story.
+For zero-latency streaming from inside a long-running flow, pair it with `http_logger` from `fascicle/adapters`. See [docs/viewer.md](./docs/viewer.md) for the full transport story.
 
 ## Where to go next
 
 - [docs/getting-started.md](./docs/getting-started.md) — install and run your first flow
 - [docs/concepts.md](./docs/concepts.md) — step-as-value, trajectories, cancellation
+- [docs/composition.md](./docs/composition.md) — full composition surface: the 18 primitives, run/stream, checkpointing
 - [docs/api-reference.md](./docs/api-reference.md) — the public surface at a glance
 - [docs/configuration.md](./docs/configuration.md) — engine config, defaults, pricing, retries
 - [docs/providers.md](./docs/providers.md) — per-provider adapter notes
@@ -153,7 +154,7 @@ For zero-latency streaming from inside a long-running flow, pair it with `http_l
 - [docs/troubleshooting.md](./docs/troubleshooting.md) — first-run errors and what they mean
 - [docs/comparison.md](./docs/comparison.md) — how fascicle compares to LangChain, Mastra, and others
 - [examples/](./examples/) — runnable reference flows
-- [src/viewer/README.md](./src/viewer/README.md) — viewer details and transport options
+- [docs/viewer.md](./docs/viewer.md) — viewer details and transport options
 
 ## Contributing
 

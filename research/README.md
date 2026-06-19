@@ -120,7 +120,7 @@ A running index of accepted papers, grouped by theme, lives at the bottom of thi
 
 ### Superseded
 
-- [Fascicle Viewer plan](explorations/2026-04-viewer.md) — shipped; `src/viewer/README.md` is the living contract.
+- [Fascicle Viewer plan](explorations/2026-04-viewer.md) — shipped; `docs/viewer.md` is the living contract.
 
 ### Historical
 

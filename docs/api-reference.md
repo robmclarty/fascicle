@@ -162,7 +162,7 @@ roll your own to target any sink.
 | `run_viewer_cli(argv)` | the `fascicle-viewer` bin entry point |
 
 The `fascicle-viewer` bin ships with the package. See
-[src/viewer/README.md](../src/viewer/README.md).
+[docs/viewer.md](./viewer.md).
 
 ## Errors
 
