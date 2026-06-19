@@ -30,5 +30,5 @@
       }
     }
   ],
-  "ignorePatterns": ["dist/**", ".check/**", "node_modules/**", "scripts/**"]
+  "ignorePatterns": ["dist/**", ".check/**", "node_modules/**", "scripts/**", "site/**"]
 }
