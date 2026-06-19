@@ -1,0 +1,17 @@
+id: no-logic-in-barrel
+message: Barrels (index.ts) must contain only imports and exports. Move runtime logic (functions, classes, value declarations, statements) into a named sibling file and re-export it from the barrel.
+severity: error
+language: typescript
+files:
+  - src/**/index.ts
+ignores:
+  - src/**/__tests__/**
+rule:
+  any:
+    - kind: function_declaration
+    - kind: generator_function_declaration
+    - kind: class_declaration
+    - kind: abstract_class_declaration
+    - kind: lexical_declaration
+    - kind: variable_declaration
+    - kind: expression_statement

@@ -64,4 +64,4 @@ export type {
   SpanStartEvent,
 } from './trajectory.js'
 
-export const flow_schema = flow_schema_data
+export { flow_schema_data as flow_schema }

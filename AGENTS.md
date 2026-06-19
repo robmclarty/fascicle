@@ -46,6 +46,8 @@ pnpm exec tsc --noEmit         # just types
 
 This is a **single package**. All source lives under `src/`, organized as deep modules: `src/<module>/` (core, engine, composites, agents, observability, stores, viewer), each with a barrel `index.ts` that is its only public face. The umbrella surface sits at the `src/` root (`index.ts`, `adapters.ts`, `model_call.ts`, `forward_standard_env.ts`); that is what bundles to npm as `fascicle`. The 5 apps under `examples/*/` are the only other workspace members; they depend on the library via `fascicle: workspace:*`.
 
+**Barrels are import/export only.** An `index.ts` contains only `import`, `export … from`, `export { … }`, and `export type` statements (bare side-effect imports are fine). No runtime logic: module logic lives in a named sibling file (e.g. `create_engine` in `create_engine.ts`, `start_viewer` in `start_viewer.ts`) that the barrel re-exports. Enforced by `rules/no-logic-in-barrel.yml`.
+
 **Cross-module access is sealed two ways.** Every module is reachable only through its barrel:
 
 - **Use the `#<module>` import alias for cross-module imports**, never a relative path that escapes the module dir. Use `import { x } from '#core'`, never `import { x } from '../core/x.js'`. The `#`-aliases are declared in the root `package.json` `imports` (mapping each to `src/<module>/index.ts`), mirrored in `tsconfig.json` `paths` and `vitest.config.ts` `resolve.alias`. Because only barrels are mapped, deep imports through the alias are impossible; `rules/no-cross-module-relative-import.yml` closes the relative-path channel. (Cross-cutting harnesses under `src/<module>/test/` are exempt — they are spawned as child node processes that cannot resolve `#`-aliases, so they reach siblings relatively.)
