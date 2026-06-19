@@ -6,8 +6,9 @@
  * file registers its handler at module load via `register_kind(...)`.
  *
  * `run(flow, input, options?)` constructs a fresh `RunContext` per top-level
- * call, installs process signal handlers (opt-out via options), and guarantees
- * cleanup handlers execute in LIFO order on success, failure, or abort.
+ * call, installs process signal handlers (opt-out via options), forwards an
+ * optional caller-supplied `AbortSignal` into the run, and guarantees cleanup
+ * handlers execute in LIFO order on success, failure, or abort.
  *
  * `run.stream(flow, input, options?)` is a secondary entry point returning
  * `{ events, result }`. Streaming is purely observational; the step graph is
@@ -93,6 +94,11 @@ export type RunOptions = {
   readonly trajectory?: TrajectoryLogger
   readonly checkpoint_store?: CheckpointStore
   readonly resume_data?: Readonly<Record<string, unknown>>
+  // A caller-owned cancellation source (HTTP request, queue shutdown, MCP
+  // request, AbortSignal.timeout). When it fires the run aborts with its
+  // reason, composing with the internal controller and the process signal
+  // handlers rather than replacing them.
+  readonly abort?: AbortSignal
 }
 
 export type StreamingRunHandle<o> = {
@@ -211,6 +217,32 @@ export function throw_if_aborted(ctx: RunContext): void {
   throw reason instanceof Error ? reason : new aborted_error('aborted', { reason })
 }
 
+/**
+ * Forward a caller-owned AbortSignal into the run's internal controller and
+ * return an unlink function. The reason is preserved so the original
+ * cancellation cause propagates out of `run`. The listener is `once` and the
+ * returned unlink is called when the run settles, so a long-lived host (an MCP
+ * server, an HTTP worker) firing many short runs against one external signal
+ * does not accumulate listeners.
+ */
+function link_external_abort(
+  controller: AbortController,
+  external: AbortSignal | undefined,
+): () => void {
+  if (external === undefined) return () => {}
+  if (external.aborted) {
+    controller.abort(external.reason)
+    return () => {}
+  }
+  const on_abort = (): void => {
+    controller.abort(external.reason)
+  }
+  external.addEventListener('abort', on_abort, { once: true })
+  return () => {
+    external.removeEventListener('abort', on_abort)
+  }
+}
+
 type StartResult<o> = {
   readonly events: AsyncIterable<TrajectoryEvent>
   readonly result: Promise<o>
@@ -227,6 +259,7 @@ function start_run<i, o>(
   const streaming = high_water_mark !== null
 
   const controller = new AbortController()
+  const unlink_abort = link_external_abort(controller, options.abort)
   const run_id = randomUUID()
 
   let stream_events: AsyncIterable<TrajectoryEvent> = empty_async_iterable()
@@ -270,6 +303,10 @@ function start_run<i, o>(
 
   const result = (async (): Promise<o> => {
     try {
+      // Honor an external signal that was already aborted at call time, so the
+      // run rejects without dispatching even when the flow is a single leaf
+      // step that never reaches a cooperative abort check.
+      throw_if_aborted(ctx)
       return await dispatch_step(flow, input, ctx)
     } catch (err) {
       if (controller.signal.aborted && !(err instanceof aborted_error)) {
@@ -281,6 +318,7 @@ function start_run<i, o>(
       try {
         await cleanup.run_all()
       } finally {
+        unlink_abort()
         active_runs.delete(controller)
         release_signal_handlers()
         if (close_stream) close_stream()

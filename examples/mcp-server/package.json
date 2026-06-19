@@ -6,10 +6,12 @@
   "private": true,
   "scripts": {
     "start": "tsx src/server.ts",
-    "smoke": "tsx src/client.ts"
+    "smoke": "tsx src/client.ts",
+    "serve": "tsx src/serve.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",
+    "fascicle": "workspace:*",
     "zod": "*"
   },
   "devDependencies": {

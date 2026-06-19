@@ -13,6 +13,7 @@ export default defineConfig({
       { find: /^#agents$/, replacement: fileURLToPath(new URL('./src/agents/index.ts', import.meta.url)) },
       // Published surface (examples + doc snippets import these names).
       { find: /^fascicle\/adapters$/, replacement: fileURLToPath(new URL('./src/adapters/index.ts', import.meta.url)) },
+      { find: /^fascicle\/mcp$/, replacement: fileURLToPath(new URL('./src/mcp/index.ts', import.meta.url)) },
       // Repo-only dev alias: built-in agents are not part of the published exports.
       { find: /^fascicle\/agents$/, replacement: fileURLToPath(new URL('./src/agents/index.ts', import.meta.url)) },
       { find: /^fascicle$/, replacement: fileURLToPath(new URL('./src/index.ts', import.meta.url)) },

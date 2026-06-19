@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { aborted_error } from '../errors.js'
 import { run } from '../runner.js'
 import { step } from '../step.js'
@@ -83,5 +83,78 @@ describe('run()', () => {
     await expect(pending).rejects.toBeInstanceOf(aborted_error)
     expect(cleanup_ran).toBe(true)
     expect(observed_reason).toBeInstanceOf(aborted_error)
+  })
+})
+
+describe('run() caller-supplied abort', () => {
+  it('rejects without dispatching when the external signal is already aborted', async () => {
+    const controller = new AbortController()
+    const cause = new Error('cancelled before start')
+    controller.abort(cause)
+
+    let dispatched = false
+    const s = step('noop', (x: number) => {
+      dispatched = true
+      return x
+    })
+
+    await expect(
+      run(s, 1, { install_signal_handlers: false, abort: controller.signal }),
+    ).rejects.toBe(cause)
+    expect(dispatched).toBe(false)
+  })
+
+  it('aborts an in-flight step when the external signal fires and runs cleanup', async () => {
+    const controller = new AbortController()
+    const cause = new Error('external cancel')
+    let cleanup_ran = false
+    let observed_reason: unknown = null
+
+    const long_running = step('long', async (_: number, ctx) => {
+      ctx.on_cleanup(() => {
+        cleanup_ran = true
+      })
+      await new Promise<void>((_resolve, reject) => {
+        const t = setTimeout(() => {
+          reject(new Error('did not abort in time'))
+        }, 2_000)
+        ctx.abort.addEventListener(
+          'abort',
+          () => {
+            clearTimeout(t)
+            observed_reason = ctx.abort.reason
+            reject(ctx.abort.reason instanceof Error ? ctx.abort.reason : new Error('aborted'))
+          },
+          { once: true },
+        )
+      })
+      return 0
+    })
+
+    const pending = run(long_running, 0, {
+      install_signal_handlers: false,
+      abort: controller.signal,
+    })
+    await wait(20)
+    controller.abort(cause)
+
+    await expect(pending).rejects.toBe(cause)
+    expect(cleanup_ran).toBe(true)
+    expect(observed_reason).toBe(cause)
+  })
+
+  it('removes its abort listener once the run settles, so a reused signal does not leak', async () => {
+    const controller = new AbortController()
+    const remove_spy = vi.spyOn(controller.signal, 'removeEventListener')
+
+    await run(step('noop', (x: number) => x), 1, {
+      install_signal_handlers: false,
+      abort: controller.signal,
+    })
+
+    expect(remove_spy).toHaveBeenCalledTimes(1)
+    // Firing the signal after the run settled is inert: the run already
+    // resolved and the listener is gone.
+    controller.abort(new Error('late'))
   })
 })

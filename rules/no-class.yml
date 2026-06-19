@@ -1,5 +1,5 @@
 id: no-class
-message: Prefer functional/procedural style over classes. Use modules and closures instead. (Exception - typed errors in src/core/errors.ts and src/engine/errors.ts.)
+message: Prefer functional/procedural style over classes. Use modules and closures instead. (Exception - typed errors in src/core/errors.ts, src/engine/errors.ts, and src/mcp/errors.ts.)
 severity: error
 language: typescript
 files:
@@ -8,6 +8,7 @@ ignores:
   - src/**/__tests__/**
   - src/core/errors.ts
   - src/engine/errors.ts
+  - src/mcp/errors.ts
 rule:
   any:
     - kind: class_declaration

@@ -14,6 +14,7 @@ export default defineConfig({
   entry: {
     index: './src/index.ts',
     adapters: './src/adapters/index.ts',
+    mcp: './src/mcp/index.ts',
   },
   outDir: './dist',
   format: ['esm'],
@@ -23,5 +24,12 @@ export default defineConfig({
   target: 'node24',
   platform: 'node',
   fixedExtension: false,
-  external: ['ai', 'zod', /^@ai-sdk\//, 'ai-sdk-ollama', '@openrouter/ai-sdk-provider'],
+  external: [
+    'ai',
+    'zod',
+    /^@ai-sdk\//,
+    'ai-sdk-ollama',
+    '@openrouter/ai-sdk-provider',
+    /^@modelcontextprotocol\//,
+  ],
 });

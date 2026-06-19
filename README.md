@@ -99,6 +99,31 @@ await run(flow, input, {
 
 `run.stream(flow, input)` returns `{ events, result }` for incremental observation.
 
+**MCP bridge.** The `fascicle/mcp` subpath connects flows to the Model Context Protocol both ways. `mcp_client` turns an external MCP server's tools into plain `Tool[]`; `serve_flow` exposes a composed flow as an MCP tool to hosts like Claude Desktop or Cursor. It is pure adapter glue over the existing `Tool` and `run` contracts, and `@modelcontextprotocol/sdk` is an optional peer you only install when you use it.
+
+<!-- snippet: check -->
+```typescript
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { z } from 'zod';
+import { step } from 'fascicle';
+import { mcp_client, serve_flow } from 'fascicle/mcp';
+
+// Consume an external MCP server's tools inside a flow.
+const remote = await mcp_client({ transport: 'stdio', command: 'my-mcp-server' });
+console.log(remote.tools.map((t) => t.name));
+await remote.close();
+
+// Expose a composed flow as an MCP tool on your own server.
+const server = new McpServer({ name: 'my-app', version: '1.0.0' });
+serve_flow({
+  server,
+  flow: step('greet', (input: { name: string }) => `Hello, ${input.name}!`),
+  name: 'greet',
+  description: 'Greet a person by name.',
+  input_schema: z.object({ name: z.string() }),
+});
+```
+
 ## Provider matrix
 
 | Provider     | Peer dep                      | Auth                |

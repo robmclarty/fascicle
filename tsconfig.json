@@ -25,6 +25,7 @@
     "paths": {
       "fascicle": ["./src/index.ts"],
       "fascicle/adapters": ["./src/adapters/index.ts"],
+      "fascicle/mcp": ["./src/mcp/index.ts"],
       "fascicle/agents": ["./src/agents/index.ts"],
       "#core": ["./src/core/index.ts"],
       "#engine": ["./src/engine/index.ts"],

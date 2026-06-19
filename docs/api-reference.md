@@ -5,11 +5,12 @@ reference; for full option shapes and behavior, follow the links into
 [configuration.md](./configuration.md), [providers.md](./providers.md), and
 [cookbook.md](./cookbook.md).
 
-Everything is exported from two entry points:
+Everything is exported from three entry points:
 
 ```ts
 import { /* composition + engine */ } from 'fascicle';
 import { /* loggers + stores */ } from 'fascicle/adapters';
+import { /* MCP bridge */ } from 'fascicle/mcp';
 ```
 
 fascicle is ESM-only and requires Node >= 24. There are no default exports and no
@@ -153,6 +154,19 @@ roll your own to target any sink.
 | `noop_logger()` | logger | discard all events |
 | `tee_logger(...loggers)` | logger | fan one event stream out to several loggers |
 | `filesystem_store(options)` | store | filesystem-backed `CheckpointStore` |
+
+## MCP bridge (`fascicle/mcp`)
+
+Connects flows to the Model Context Protocol both ways. Pure adapter glue over
+the existing `Tool` and `run` contracts; `@modelcontextprotocol/sdk` is an
+optional peer dependency, installed only when this subpath is used.
+
+| Export | Kind | Notes |
+| --- | --- | --- |
+| `mcp_client(config, options?)` | fn | connect to an MCP server (stdio / HTTP / existing client), returns `{ tools, close }` |
+| `serve_flow(options)` | fn | register a composed flow as an MCP tool on a caller-provided `McpServer` |
+| `json_schema_to_zod(schema)` | fn | the JSON Schema to Zod bridge used for inbound tools |
+| `mcp_error`, `mcp_sdk_missing_error` | error | tool-level failure / missing optional peer |
 
 ## Observability viewer
 

@@ -29,6 +29,8 @@ const DIST_JS = join(DIST_DIR, 'index.js');
 const DIST_DTS = join(DIST_DIR, 'index.d.ts');
 const DIST_ADAPTERS_JS = join(DIST_DIR, 'adapters.js');
 const DIST_ADAPTERS_DTS = join(DIST_DIR, 'adapters.d.ts');
+const DIST_MCP_JS = join(DIST_DIR, 'mcp.js');
+const DIST_MCP_DTS = join(DIST_DIR, 'mcp.d.ts');
 const DIST_STATIC_DIR = join(DIST_DIR, 'static');
 const DIST_STATIC_HTML = join(DIST_STATIC_DIR, 'viewer.html');
 const VIEWER_HTML_SRC = join(REPO_ROOT, 'src', 'viewer', 'static', 'viewer.html');
@@ -245,8 +247,21 @@ async function main() {
     process.exit(1);
   }
 
+  process.stderr.write(`▸ build: smoke-importing ${DIST_MCP_JS}\n`);
+  if (!existsSync(DIST_MCP_JS) || !existsSync(DIST_MCP_DTS)) {
+    console.error(`\nbuild: dist/mcp.{js,d.ts} were not produced (the ./mcp subpath)`);
+    process.exit(1);
+  }
+  const mcp_mod = await import(pathToFileURL(DIST_MCP_JS).href);
+  const EXPECTED_MCP = ['mcp_client', 'serve_flow', 'json_schema_to_zod'];
+  const missing_mcp = EXPECTED_MCP.filter((name) => typeof mcp_mod[name] === 'undefined');
+  if (missing_mcp.length > 0) {
+    console.error(`\nbuild: mcp smoke test missing exports: ${missing_mcp.join(', ')}`);
+    process.exit(1);
+  }
+
   process.stderr.write(
-    `\n✔ build ok (${js_stat.size} bytes js, ${dts_stat.size} bytes d.ts, ${EXPECTED_NAMED.length} named exports + describe.json + ${EXPECTED_ADAPTERS.length} adapters verified)\n`,
+    `\n✔ build ok (${js_stat.size} bytes js, ${dts_stat.size} bytes d.ts, ${EXPECTED_NAMED.length} named exports + describe.json + ${EXPECTED_ADAPTERS.length} adapters + ${EXPECTED_MCP.length} mcp verified)\n`,
   );
 }
 

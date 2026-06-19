@@ -44,6 +44,9 @@ importers:
       '@ast-grep/cli':
         specifier: 0.42.1
         version: 0.42.1
+      '@modelcontextprotocol/sdk':
+        specifier: 1.29.0
+        version: 1.29.0(zod@4.3.6)
       '@stryker-mutator/core':
         specifier: 9.6.1
         version: 9.6.1(@types/node@24.12.2)
@@ -108,6 +111,9 @@ importers:
       '@modelcontextprotocol/sdk':
         specifier: ^1.0.0
         version: 1.29.0(zod@4.3.6)
+      fascicle:
+        specifier: workspace:*
+        version: link:../..
       zod:
         specifier: '*'
         version: 4.3.6

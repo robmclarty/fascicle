@@ -50,6 +50,10 @@
     "./adapters": {
       "types": "./dist/adapters.d.ts",
       "import": "./dist/adapters.js"
+    },
+    "./mcp": {
+      "types": "./dist/mcp.d.ts",
+      "import": "./dist/mcp.js"
     }
   },
   "imports": {
@@ -102,6 +106,7 @@
     "@ai-sdk/google": "^3.0.0",
     "@ai-sdk/openai": "^3.0.0",
     "@ai-sdk/openai-compatible": "^2.0.0",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "@openrouter/ai-sdk-provider": "^2.0.0",
     "ai": "^6.0.0",
     "ai-sdk-ollama": "^3.0.0",
@@ -123,6 +128,9 @@
     "@ai-sdk/openai-compatible": {
       "optional": true
     },
+    "@modelcontextprotocol/sdk": {
+      "optional": true
+    },
     "@openrouter/ai-sdk-provider": {
       "optional": true
     },
@@ -133,6 +141,7 @@
   "devDependencies": {
     "@arethetypeswrong/cli": "0.18.2",
     "@ast-grep/cli": "0.42.1",
+    "@modelcontextprotocol/sdk": "1.29.0",
     "@stryker-mutator/core": "9.6.1",
     "@stryker-mutator/vitest-runner": "9.6.1",
     "@types/node": "24.12.2",
