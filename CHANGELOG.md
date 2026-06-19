@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.8.4 — 2026-06-18
+
+### Internal
+
+- Relocated each module's `test/` tree to `__tests__/`, lifted the shared SIGINT loader bootstrap and core wiring integration test to a repo-root `test/` tree, and updated cspell, fallow, and ast-grep rule globs to match.
+- Dropped lockstep versioning in favor of a single root manifest, so a bump now rewrites exactly one version field.
+
 ## v0.8.3 — 2026-06-18
 
 ### Added
