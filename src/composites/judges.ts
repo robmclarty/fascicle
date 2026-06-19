@@ -21,17 +21,17 @@ import type { Step } from '#core'
 import { normalize_score } from './bench.js'
 import type { Judge, JudgeArgs, Score } from './bench.js'
 
-function is_record(v: unknown): v is Record<string, unknown> {
+export function is_record(v: unknown): v is Record<string, unknown> {
   return v !== null && typeof v === 'object' && !Array.isArray(v)
 }
 
-function deep_equal(a: unknown, b: unknown): boolean {
+export function deep_equal(a: unknown, b: unknown): boolean {
   if (a === b) return true
-  if (a === null || b === null) return false
-  if (typeof a !== typeof b) return false
-  if (typeof a !== 'object') return false
-  if (Array.isArray(a) !== Array.isArray(b)) return false
-  if (Array.isArray(a) && Array.isArray(b)) {
+  // null, primitives, and array/record mismatches all fall through to the
+  // Array.isArray and is_record guards below, so no separate null/typeof
+  // pre-checks are needed.
+  if (Array.isArray(a) || Array.isArray(b)) {
+    if (!Array.isArray(a) || !Array.isArray(b)) return false
     if (a.length !== b.length) return false
     for (let i = 0; i < a.length; i += 1) {
       if (!deep_equal(a[i], b[i])) return false
@@ -90,7 +90,7 @@ export function judge_llm<I, O>(config: JudgeLlmConfig): Judge<I, O> {
   return compose('judge_llm', inner)
 }
 
-function render_prompt<I, O>(
+export function render_prompt<I, O>(
   rubric: string,
   scale: { min: number; max: number },
   args: JudgeArgs<I, O>,
@@ -112,7 +112,7 @@ function render_prompt<I, O>(
   ].join('\n')
 }
 
-function parse_score(
+export function parse_score(
   reply: string,
   scale: { min: number; max: number },
 ): Score | undefined {
@@ -134,7 +134,7 @@ function parse_score(
   return reason === undefined ? { score: clamped } : { score: clamped, reason }
 }
 
-function extract_json_object(text: string): string | undefined {
+export function extract_json_object(text: string): string | undefined {
   if (text.startsWith('{')) return text
   const start = text.indexOf('{')
   const end = text.lastIndexOf('}')
