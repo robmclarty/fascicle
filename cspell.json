@@ -43,6 +43,7 @@
     "exfiltration",
     "fallow",
     "forkjoin",
+    "frontmatter",
     "greywall",
     "greyproxy",
     "hermeticity",
