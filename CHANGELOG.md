@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.8.9 — 2026-06-19
+
+### Internal
+
+- Deepened mutation-testing coverage: bench (judge skipping on failed/undefined output, throwing-judge abstentions, non-finite cost filtering, nested `trajectory_dir` creation, live_url HTTP logging, run_id/flow_name resolution, concurrency limits, and the newly exported `normalize_score` helper), plus describe rendering and `define_agent` frontmatter.
+- Added two Phase 3 essays latent in the codebase and updated the roadmap to reflect the Phase 2 MCP ship and the start of the memory system.
+- Added `frontmatter` to the cspell dictionary.
+
 ## v0.8.8 — 2026-06-19
 
 ### Added
