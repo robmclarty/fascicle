@@ -352,6 +352,260 @@ describe('define_agent', () => {
     })
   })
 
+  it('unquotes double-quoted frontmatter values', async () => {
+    await with_tmp_md(
+      ['---', 'name: "Bot"', 'model: "m-1"', '---', '', 'body'].join('\n'),
+      async (path) => {
+        const { engine, calls } = make_mock_engine({ ok: true })
+        const agent = define_agent({
+          md_path: path,
+          schema: z.object({ ok: z.boolean() }),
+          engine,
+        })
+        expect(agent.id).toBe('Bot')
+        await run(agent, {}, { install_signal_handlers: false })
+        expect(calls[0]?.opts.model).toBe('m-1')
+      },
+    )
+  })
+
+  it('unquotes single-quoted frontmatter values', async () => {
+    await with_tmp_md(
+      ['---', "model: 'm-2'", '---', '', 'body'].join('\n'),
+      async (path) => {
+        const { engine, calls } = make_mock_engine({ ok: true })
+        const agent = define_agent({
+          md_path: path,
+          schema: z.object({ ok: z.boolean() }),
+          engine,
+        })
+        await run(agent, {}, { install_signal_handlers: false })
+        expect(calls[0]?.opts.model).toBe('m-2')
+      },
+    )
+  })
+
+  it('treats an empty quote pair as an empty value, not the literal quotes', async () => {
+    await with_tmp_md(
+      ['---', 'model: ""', '---', '', 'body'].join('\n'),
+      async (path) => {
+        const { engine, calls } = make_mock_engine({ ok: true })
+        const agent = define_agent({
+          md_path: path,
+          schema: z.object({ ok: z.boolean() }),
+          engine,
+        })
+        await run(agent, {}, { install_signal_handlers: false })
+        expect(calls[0]?.opts.model).toBe('')
+      },
+    )
+  })
+
+  it('leaves a value with a single unmatched quote untouched', async () => {
+    await with_tmp_md(
+      ['---', 'model: "oops', '---', '', 'body'].join('\n'),
+      async (path) => {
+        const { engine, calls } = make_mock_engine({ ok: true })
+        const agent = define_agent({
+          md_path: path,
+          schema: z.object({ ok: z.boolean() }),
+          engine,
+        })
+        await run(agent, {}, { install_signal_handlers: false })
+        expect(calls[0]?.opts.model).toBe('"oops')
+      },
+    )
+  })
+
+  it('skips comment and whitespace-only lines inside frontmatter', async () => {
+    await with_tmp_md(
+      ['---', '# a comment', '   ', 'name: commented', '---', '', 'body'].join('\n'),
+      async (path) => {
+        const { engine } = make_mock_engine({ ok: true })
+        const agent = define_agent({
+          md_path: path,
+          schema: z.object({ ok: z.boolean() }),
+          engine,
+        })
+        expect(agent.id).toBe('commented')
+      },
+    )
+  })
+
+  it('trims surrounding whitespace from frontmatter lines', async () => {
+    await with_tmp_md(
+      ['---', '  name: padded  ', '---', '', 'body'].join('\n'),
+      async (path) => {
+        const { engine } = make_mock_engine({ ok: true })
+        const agent = define_agent({
+          md_path: path,
+          schema: z.object({ ok: z.boolean() }),
+          engine,
+        })
+        expect(agent.id).toBe('padded')
+      },
+    )
+  })
+
+  it('throws when a frontmatter line has no colon', async () => {
+    await with_tmp_md(
+      ['---', 'name: ok', 'garbage-no-colon', '---', '', 'body'].join('\n'),
+      async (path) => {
+        const { engine } = make_mock_engine({ ok: true })
+        expect(() =>
+          define_agent({
+            md_path: path,
+            schema: z.object({ ok: z.boolean() }),
+            engine,
+          }),
+        ).toThrow(/malformed frontmatter line/)
+      },
+    )
+  })
+
+  it('does not parse --- that is not at the very start of the file', async () => {
+    const content = ['preamble line', '---', 'name: should_not_parse', '---', 'tail'].join('\n')
+    await with_tmp_md(content, async (path) => {
+      const { engine, calls } = make_mock_engine({ ok: true })
+      const agent = define_agent({
+        md_path: path,
+        schema: z.object({ ok: z.boolean() }),
+        engine,
+      })
+      expect(agent.id).toBe('agent')
+      await run(agent, {}, { install_signal_handlers: false })
+      expect(calls[0]?.opts.prompt).toBe(content)
+    })
+  })
+
+  it('matches an opening --- followed by trailing spaces before the newline', async () => {
+    await with_tmp_md(
+      ['---   ', 'name: spaced_open', '---', '', 'body'].join('\n'),
+      async (path) => {
+        const { engine } = make_mock_engine({ ok: true })
+        const agent = define_agent({
+          md_path: path,
+          schema: z.object({ ok: z.boolean() }),
+          engine,
+        })
+        expect(agent.id).toBe('spaced_open')
+      },
+    )
+  })
+
+  it('requires the closing --- to occupy its whole line (a --- prefix with a colon is frontmatter)', async () => {
+    await with_tmp_md(
+      ['---', '---: ignored', 'name: after_dashes', '---', '', 'real body'].join('\n'),
+      async (path) => {
+        const { engine, calls } = make_mock_engine({ ok: true })
+        const agent = define_agent({
+          md_path: path,
+          schema: z.object({ ok: z.boolean() }),
+          engine,
+        })
+        expect(agent.id).toBe('after_dashes')
+        await run(agent, {}, { install_signal_handlers: false })
+        expect(calls[0]?.opts.prompt).toBe('real body')
+      },
+    )
+  })
+
+  it('does not treat a --- at the end of a value line as the closing marker', async () => {
+    await with_tmp_md(
+      ['---', 'model: a---', '---', '', 'real body'].join('\n'),
+      async (path) => {
+        const { engine, calls } = make_mock_engine({ ok: true })
+        const agent = define_agent({
+          md_path: path,
+          schema: z.object({ ok: z.boolean() }),
+          engine,
+        })
+        await run(agent, {}, { install_signal_handlers: false })
+        expect(calls[0]?.opts.prompt).toBe('real body')
+        expect(calls[0]?.opts.model).toBe('a---')
+      },
+    )
+  })
+
+  it('parses a closing --- immediately followed by the body (no blank line)', async () => {
+    await with_tmp_md(
+      ['---', 'name: tight', '---', 'tight body'].join('\n'),
+      async (path) => {
+        const { engine, calls } = make_mock_engine({ ok: true })
+        const agent = define_agent({
+          md_path: path,
+          schema: z.object({ ok: z.boolean() }),
+          engine,
+        })
+        expect(agent.id).toBe('tight')
+        await run(agent, {}, { install_signal_handlers: false })
+        expect(calls[0]?.opts.prompt).toBe('tight body')
+      },
+    )
+  })
+
+  it('accepts md_path as a file:// string, not only a URL object', async () => {
+    await with_tmp_md(
+      ['---', 'name: str_url', '---', '', 'from string url'].join('\n'),
+      async (path) => {
+        const { engine, calls } = make_mock_engine({ ok: true })
+        const agent = define_agent({
+          md_path: `file://${path}`,
+          schema: z.object({ ok: z.boolean() }),
+          engine,
+        })
+        expect(agent.id).toBe('str_url')
+        await run(agent, {}, { install_signal_handlers: false })
+        expect(calls[0]?.opts.prompt).toBe('from string url')
+      },
+    )
+  })
+
+  it('returns the body unchanged when substituting against a null input', async () => {
+    await with_tmp_md(
+      ['---', 'name: nul', '---', '', 'hello {{x}}'].join('\n'),
+      async (path) => {
+        const { engine, calls } = make_mock_engine({ ok: true })
+        const agent = define_agent({
+          md_path: path,
+          schema: z.object({ ok: z.boolean() }),
+          engine,
+        })
+        await run(agent, null, { install_signal_handlers: false })
+        expect(calls[0]?.opts.prompt).toBe('hello {{x}}')
+      },
+    )
+  })
+
+  it('omits opts.system when the resolved system prompt is an empty string', async () => {
+    await with_tmp_md(['---', 'name: empty_sys', '---', ''].join('\n'), async (path) => {
+      const { engine, calls } = make_mock_engine({ ok: true })
+      const agent = define_agent<{ x: number }, { ok: boolean }>({
+        md_path: path,
+        schema: z.object({ ok: z.boolean() }),
+        engine,
+        build_prompt: () => ({ user: 'U' }),
+      })
+      await run(agent, { x: 1 }, { install_signal_handlers: false })
+      expect(calls[0]?.opts.prompt).toBe('U')
+      expect('system' in (calls[0]?.opts ?? {})).toBe(false)
+    })
+  })
+
+  it('does not set opts.model or opts.temperature when frontmatter omits them', async () => {
+    await with_tmp_md(['---', 'name: minimal', '---', '', 'body'].join('\n'), async (path) => {
+      const { engine, calls } = make_mock_engine({ ok: true })
+      const agent = define_agent({
+        md_path: path,
+        schema: z.object({ ok: z.boolean() }),
+        engine,
+      })
+      await run(agent, {}, { install_signal_handlers: false })
+      expect('model' in (calls[0]?.opts ?? {})).toBe(false)
+      expect('temperature' in (calls[0]?.opts ?? {})).toBe(false)
+    })
+  })
+
   it('threads ctx.abort into engine.generate so SIGINT cancels in-flight calls', async () => {
     await with_tmp_md(
       [
