@@ -10,10 +10,12 @@ The guiding principle: stop building to product standards while distributing to
 personal-tool standards. Phase 1 made the shipped surface match the pitch.
 Phase 2 points it at the two real deployments. Phase 3 makes the work known.
 
-**Status (v0.8.0).** Phase 1 is fully shipped (v0.6.0–v0.6.3). Two changes
+**Status (v0.8.8).** Phase 1 is fully shipped (v0.6.0–v0.6.3). Several changes
 landed after this plan was written and are not sequenced below: verbatim model
-resolution (v0.7.0, breaking) and the collapse of the internal `@repo/*`
-workspace into a single `src/` tree (v0.8.0). The live edge is now mid-Phase 2.
+resolution (v0.7.0, breaking), the collapse of the internal `@repo/*` workspace
+into a single `src/` tree (v0.8.0), and the MCP bridge (v0.8.8). The live edge is
+mid-Phase 2: the MCP adapter has shipped, and the first deployment that realizes
+the two remaining Phase 2 items at once has begun (see Phase 2 below).
 
 ## Phase 1: make it true (✅ shipped, v0.6.0–v0.6.3)
 
@@ -47,25 +49,29 @@ across v0.6.0–v0.6.3 and are kept as a record.
 
 Two deployment shapes, both script-shaped, unattended, observability-first.
 
-- MCP adapter (**next, still pending**): a published MCP bridge (surfaced through
-  the `fascicle` umbrella) that works both ways. `mcp_client()` connects to an MCP
-  server over stdio or streamable HTTP and returns its tools as plain fascicle
-  `Tool[]`; `serve_flow()` exposes composed flows as MCP tools to external hosts
-  (Claude Desktop, Cursor, upstream agents). Pure adapter glue: no new tool kind,
-  no new step kind, no change to core or engine. `mcp_client` output satisfies the
-  engine's existing `Tool<i, o>` contract, and `serve_flow` drives the existing
-  `run`. `@modelcontextprotocol/sdk` rides as an optional peer dependency, so
-  consumers that never touch MCP do not install it. This is the first real
-  capability gap for work agents that touch Slack, databases, and internal APIs.
-  Today it exists only as `examples/mcp-server/`; the work is to promote it into
-  the published surface. Deferred to the build itself: auth on the HTTP transport,
-  MCP `sampling`, per-tool approval gating, and `resources` subscriptions.
-- First internal automation in production, pinned to a published version.
-- Start the local-first memory system as the flagship personal deployment:
-  local models so data never leaves the house, cron-shaped rather than chat,
-  and observable because the trajectory is the safety record. The library hands
-  over the spine and the audit trail; the memory itself is built on top as an
-  application. The suspend-gate fix from Phase 1 is a precondition for this one.
+- MCP adapter (**shipped, v0.8.8**): a published MCP bridge (`fascicle/mcp`) that
+  works both ways. `mcp_client()` connects to an MCP server over stdio or
+  streamable HTTP and returns its tools as plain fascicle `Tool[]`; `serve_flow()`
+  exposes composed flows as MCP tools to external hosts (Claude Desktop, Cursor,
+  upstream agents). Pure adapter glue: no new tool kind, no new step kind, no
+  change to core or engine. `mcp_client` output satisfies the engine's existing
+  `Tool<i, o>` contract, and `serve_flow` drives the existing `run`.
+  `@modelcontextprotocol/sdk` rides as an optional peer dependency, so consumers
+  that never touch MCP do not install it. It was promoted out of
+  `examples/mcp-server/` into the published surface. Still deferred to a later
+  pass: auth on the HTTP transport, MCP `sampling`, per-tool approval gating, and
+  `resources` subscriptions.
+- First internal automation in production **and** the local-first memory system
+  (**started**): these two items collapse into one deployment rather than two. The
+  conflict-aware ingestion/adjudication pipeline of the memory system *is* the
+  first internal automation: unattended and cron-shaped rather than chat, pinned to
+  a published fascicle version, routing every model call through the engine API,
+  and observable because the trajectory is the audit trail. Local models so data
+  never leaves the house; the library hands over the spine and the audit trail, and
+  the memory is built on top as a separate application repo (not vendored here). The
+  suspend-gate fix from Phase 1 is a precondition. Live edge: the write-side
+  adjudicator (the version/conflict reconciliation that off-the-shelf RAG lacks) is
+  the first slice, scaffolded and proven end-to-end against the published surface.
 - Done (v0.8.0): top-level examples import the published `fascicle` surface so
   they are consumer-runnable; the built-in agents stay workspace-private
   (`fascicle/agents` is a dev-only alias, not a published export), so the five
