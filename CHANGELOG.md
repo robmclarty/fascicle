@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.8.10 — 2026-06-20
+
+### Added
+
+- Native constrained decoding for schema-constrained `model_call` on local providers (Ollama and LM Studio), exposed as a new `structured_output` provider capability: the schema now constrains the provider's decode (e.g. Ollama's `format`) instead of prompting for JSON and scraping it, so local-model structured output no longer fails validation on the first call. The prompt-based path remains the fallback, and hosted providers are unchanged.
+- Live GitHub star count on the marketing site's nav button.
+
+### Internal
+
+- Section taglines on marketing site sections 01, 02, and 05.
+
 ## v0.8.9 — 2026-06-19
 
 ### Internal
