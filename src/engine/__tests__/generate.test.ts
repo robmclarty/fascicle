@@ -15,6 +15,7 @@ import {
   enqueue_generate_text,
   enqueue_generate_text_fn,
   enqueue_stream,
+  make_no_object_generated_error,
   make_text_result,
   mock_state,
   reset_mock_state,
@@ -202,6 +203,109 @@ describe('generate: structured output', () => {
     await expect(
       basic_engine().generate({ model: 'claude-opus', prompt: 'x', schema }),
     ).rejects.toBeInstanceOf(schema_validation_error)
+  })
+})
+
+describe('generate: native structured output', () => {
+  function ollama_engine() {
+    return create_engine({
+      providers: { ollama: { base_url: 'http://localhost:11434' } },
+    })
+  }
+
+  it('routes the schema through experimental_output for structured_output providers', async () => {
+    enqueue_generate_text(make_text_result('{"n": 42}'))
+    const schema = z.object({ n: z.number() })
+    const result = await ollama_engine().generate({
+      model: 'qwen2.5-coder:7b',
+      prompt: 'x',
+      schema,
+    })
+    expect(result.content).toEqual({ n: 42 })
+    const params = mock_state.last_generate_text_params as {
+      experimental_output?: { name?: string; schema?: unknown }
+    }
+    expect(params.experimental_output?.name).toBe('object')
+    expect(params.experimental_output?.schema).toBe(schema)
+  })
+
+  it('omits experimental_output when no schema is requested', async () => {
+    enqueue_generate_text(make_text_result('plain text'))
+    const result = await ollama_engine().generate({
+      model: 'qwen2.5-coder:7b',
+      prompt: 'x',
+    })
+    expect(result.content).toBe('plain text')
+    const params = mock_state.last_generate_text_params as Record<string, unknown>
+    expect('experimental_output' in params).toBe(false)
+  })
+
+  it('omits experimental_output when tools are present (gated on no tools)', async () => {
+    enqueue_generate_text(make_text_result('{"n": 1}'))
+    const schema = z.object({ n: z.number() })
+    const result = await ollama_engine().generate({
+      model: 'qwen2.5-coder:7b',
+      prompt: 'x',
+      schema,
+      tools: [
+        {
+          name: 'noop',
+          description: 'never called',
+          input_schema: z.object({}).passthrough(),
+          execute: () => 'unused',
+        },
+      ],
+    })
+    expect(result.content).toEqual({ n: 1 })
+    const params = mock_state.last_generate_text_params as Record<string, unknown>
+    expect('experimental_output' in params).toBe(false)
+  })
+
+  it('recovers the raw text from NoObjectGeneratedError and parses it in one step', async () => {
+    enqueue_generate_text(
+      make_no_object_generated_error({
+        text: '{"n": 9}',
+        finishReason: 'stop',
+        usage: { inputTokens: 4, outputTokens: 2 },
+      }),
+    )
+    const schema = z.object({ n: z.number() })
+    const result = await ollama_engine().generate({
+      model: 'qwen2.5-coder:7b',
+      prompt: 'x',
+      schema,
+    })
+    expect(result.content).toEqual({ n: 9 })
+    expect(result.steps).toHaveLength(1)
+    expect(mock_state.generate_text_call_count).toBe(1)
+  })
+
+  it('recovers from NoObjectGeneratedError into the repair loop', async () => {
+    enqueue_generate_text(
+      make_no_object_generated_error({
+        text: 'garbage that the SDK could not parse',
+        finishReason: 'stop',
+        usage: { inputTokens: 4, outputTokens: 2 },
+      }),
+    )
+    enqueue_generate_text(make_text_result('{"n": 5}'))
+    const schema = z.object({ n: z.number() })
+    const result = await ollama_engine().generate({
+      model: 'qwen2.5-coder:7b',
+      prompt: 'x',
+      schema,
+    })
+    expect(result.content).toEqual({ n: 5 })
+    expect(result.steps).toHaveLength(2)
+    expect(mock_state.generate_text_call_count).toBe(2)
+  })
+
+  it('surfaces non-NoObjectGeneratedError failures unchanged', async () => {
+    enqueue_generate_text(new Error('boom'))
+    const schema = z.object({ n: z.number() })
+    await expect(
+      ollama_engine().generate({ model: 'qwen2.5-coder:7b', prompt: 'x', schema }),
+    ).rejects.toThrow('boom')
   })
 })
 

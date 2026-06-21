@@ -48,12 +48,13 @@ describe('create_lmstudio_adapter', () => {
     expect(() => create_lmstudio_adapter({})).toThrow(engine_config_error)
   })
 
-  it('supports text/tools/schema/streaming but not image_input or reasoning', () => {
+  it('supports text/tools/schema/streaming/structured_output but not image_input or reasoning', () => {
     const adapter = create_lmstudio_adapter({ base_url: 'http://localhost:1234/v1' })
     expect(adapter.supports('text')).toBe(true)
     expect(adapter.supports('tools')).toBe(true)
     expect(adapter.supports('schema')).toBe(true)
     expect(adapter.supports('streaming')).toBe(true)
+    expect(adapter.supports('structured_output')).toBe(true)
     expect(adapter.supports('image_input')).toBe(false)
     expect(adapter.supports('reasoning')).toBe(false)
   })

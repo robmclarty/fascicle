@@ -9,6 +9,8 @@
 
 import {
   generateText,
+  NoObjectGeneratedError,
+  Output,
   stepCountIs,
   streamText,
   tool as ai_tool,
@@ -374,7 +376,14 @@ async function collect_non_stream(
   params: Parameters<typeof generateText>[0],
   adapter: AiSdkProviderAdapter,
 ): Promise<InvokeOnceResult> {
-  const result = await generateText(params)
+  let result: Awaited<ReturnType<typeof generateText>>
+  try {
+    result = await generateText(params)
+  } catch (err: unknown) {
+    const recovered = recover_no_object_generated(err, adapter)
+    if (recovered !== undefined) return recovered
+    throw err
+  }
   const tool_calls: RawToolCall[] = []
   for (const tc of result.toolCalls) {
     tool_calls.push({
@@ -388,6 +397,33 @@ async function collect_non_stream(
     text: result.text,
     tool_calls,
     finish_reason: map_finish_reason(result.finishReason),
+    usage: adapter.normalize_usage(raw_usage),
+  }
+}
+
+/**
+ * When `experimental_output` is in play, `generateText` eagerly parses the
+ * model's text against the schema and throws `NoObjectGeneratedError` if it
+ * does not conform. That parse is the SDK's, not fascicle's: turning it into a
+ * thrown error would skip the engine's own schema-parse + repair loop (and the
+ * error is not a retryable transient, so it would surface raw). Instead we
+ * recover the model's raw text from the error and hand it back as a normal
+ * turn result, so `parse_with_schema` re-validates it and the repair loop
+ * engages exactly as it does for the prompt-based path. Returns undefined for
+ * any other error so the caller rethrows.
+ */
+function recover_no_object_generated(
+  err: unknown,
+  adapter: AiSdkProviderAdapter,
+): InvokeOnceResult | undefined {
+  if (!NoObjectGeneratedError.isInstance(err)) return undefined
+  const text_field = Reflect.get(err, 'text')
+  const finish_field = Reflect.get(err, 'finishReason')
+  const raw_usage = to_raw_provider_usage(Reflect.get(err, 'usage'))
+  return {
+    text: typeof text_field === 'string' ? text_field : '',
+    tool_calls: [],
+    finish_reason: map_finish_reason(typeof finish_field === 'string' ? finish_field : undefined),
     usage: adapter.normalize_usage(raw_usage),
   }
 }
@@ -582,6 +618,21 @@ export async function generate<T = string>(
 
   const sdk_tools = to_sdk_tools(tools_list)
 
+  // Native structured output: when a schema is requested and the provider
+  // constrains decoding to it (the 'structured_output' capability), route
+  // through the AI SDK's Output.object seam so the schema becomes the
+  // provider's responseFormat (e.g. Ollama's `format`) instead of a
+  // prompt-for-JSON-then-scrape. Gated on no tools: forcing a JSON
+  // responseFormat alongside tool calls breaks tool dispatch on most
+  // providers, so tool runs keep the prompt-based schema path. The schema
+  // parse + repair loop below still owns validation either way.
+  const output_spec =
+    opts.schema !== undefined &&
+    tools_list.length === 0 &&
+    adapter.supports('structured_output')
+      ? Output.object({ schema: opts.schema })
+      : undefined
+
   const invoke_once: InvokeOnce = async (args: InvokeOnceArgs): Promise<InvokeOnceResult> => {
     let chunks_started = false
     const call_once = async (): Promise<InvokeOnceResult> => {
@@ -606,6 +657,14 @@ export async function generate<T = string>(
       }
       if (hoisted_system !== undefined) base_params.system = hoisted_system
       if (sdk_tools !== undefined) base_params.tools = sdk_tools
+      if (output_spec !== undefined) {
+        // Output.object<T> is not structurally assignable to the SDK's default
+        // Output<string, string> param slot, but the runtime shape is exactly
+        // what generateText/streamText consume to set responseFormat. Keeps the
+        // generateText-only seam intact (§7 invariant 13).
+        // eslint-disable-next-line typescript-eslint/no-unsafe-type-assertion
+        base_params.experimental_output = output_spec as NonNullable<typeof base_params.experimental_output>
+      }
       if (provider_options !== undefined) {
         // provider_options is Record<string, Record<string, unknown>>; the SDK
         // expects SharedV3ProviderOptions (Record<string, JSONObject>) which is

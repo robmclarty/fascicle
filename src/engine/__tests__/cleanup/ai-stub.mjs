@@ -16,6 +16,23 @@ export function tool(def) {
   return { type: 'tool', description: def.description, inputSchema: def.inputSchema };
 }
 
+// The engine statically imports these from `ai`; ESM linking requires the
+// stub to provide them even though this harness never exercises a schema.
+// isInstance is called on every generateText rejection (including the abort
+// path here), so it must return false for non-schema errors rather than be
+// absent.
+export const Output = {
+  object(cfg) {
+    return { name: 'object', schema: cfg.schema };
+  },
+};
+
+export const NoObjectGeneratedError = {
+  isInstance() {
+    return false;
+  },
+};
+
 function hang_until_abort(abort_signal) {
   return new Promise((_, reject) => {
     const keepalive = setInterval(() => {}, 1_000);

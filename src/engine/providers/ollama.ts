@@ -43,6 +43,10 @@ const SUPPORTED: ReadonlySet<ProviderCapability> = new Set([
   'tools',
   'schema',
   'streaming',
+  // Ollama supports native constrained decoding via its `format` field, which
+  // ai-sdk-ollama maps from the AI SDK responseFormat. The text-extraction
+  // path is unreliable for local models, so prefer the constrained decode.
+  'structured_output',
 ])
 
 export const create_ollama_adapter = (init: ProviderInit): AiSdkProviderAdapter => {

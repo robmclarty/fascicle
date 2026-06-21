@@ -45,6 +45,10 @@ const SUPPORTED: ReadonlySet<ProviderCapability> = new Set([
   'tools',
   'schema',
   'streaming',
+  // LM Studio's OpenAI-compatible server supports native constrained decoding
+  // via a json_schema response format, surfaced through the AI SDK
+  // responseFormat. Prefer it over the unreliable text-extraction path.
+  'structured_output',
 ])
 
 export const create_lmstudio_adapter = (init: ProviderInit): AiSdkProviderAdapter => {

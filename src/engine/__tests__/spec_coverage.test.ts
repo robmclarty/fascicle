@@ -607,24 +607,28 @@ describe('spec §9: failure modes (remaining)', () => {
     expect(result.content).toBe('filtered response')
   })
 
-  it('F14 schema fallback succeeds for providers without native JSON mode (ollama)', async () => {
+  it('F14 schema fallback succeeds for providers without native JSON mode (anthropic)', async () => {
     enqueue_generate_text(make_text_result('{"v":42}'))
     const engine = create_engine({
-      providers: { ollama: { base_url: 'http://localhost:11434' } },
+      providers: { anthropic: { api_key: 'k' } },
     })
     const schema = z.object({ v: z.number() })
     const result = await engine.generate({
-      model: 'gemma3:27b',
+      model: 'claude-opus',
       prompt: 'x',
       schema,
     })
     expect(result.content).toEqual({ v: 42 })
     const params = mock_state.last_generate_text_params as {
       system?: string
+      experimental_output?: unknown
       messages: Array<{ role: string; content: unknown }>
     }
-    // The schema-fallback JSON instruction is delivered via the top-level
-    // `system` option, not a `role: 'system'` message.
+    // Providers without the structured_output capability take the prompt-based
+    // path: no experimental_output is set, and the JSON instruction is
+    // delivered via the top-level `system` option, not a `role: 'system'`
+    // message.
+    expect(params.experimental_output).toBeUndefined()
     expect(params.messages.some((m) => m.role === 'system')).toBe(false)
     expect(String(params.system)).toMatch(/JSON/)
   })

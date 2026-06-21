@@ -35,6 +35,11 @@ export type ProviderCapability =
   | 'streaming'
   | 'image_input'
   | 'reasoning'
+  // Provider performs native constrained decoding (the AI SDK responseFormat /
+  // Output.object path), as opposed to the prompt-for-JSON-then-extract path.
+  // Distinct from 'schema': every provider can satisfy a schema via repair, but
+  // only some constrain the decode to it.
+  | 'structured_output'
 
 export type RawProviderUsage = {
   input_tokens?: number
