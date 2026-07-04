@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.8.12 — 2026-07-04
+
+### Fixed
+
+- `pipe` and `sequence` now validate their arguments at construction time instead of failing deep inside a running flow. Passing a Step where `pipe` expects a plain function (a common mistake when assuming `pipe` is variadic) now throws immediately with a message suggesting `sequence([...])`; `sequence` similarly rejects non-array or non-Step children up front.
+
 ## v0.8.11 — 2026-07-03
 
 ### Added
