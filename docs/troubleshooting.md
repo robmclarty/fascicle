@@ -105,6 +105,13 @@ You called `generate` after `engine.dispose()`. `dispose()` is terminal and
 idempotent; construct a fresh engine if you need to keep going. Subprocess
 providers (`claude_cli`) abort in-flight children on dispose.
 
+## `TypeError: pipe is not variadic`
+
+`pipe(inner, fn)` takes exactly one Step and one plain mapping function. Passing
+a Step where `fn` belongs (e.g. `pipe(a, b, c)`) throws this `TypeError` at flow
+construction. To chain Steps, use `sequence([a, b, c])`. `sequence` likewise
+rejects non-Step children at construction — wrap plain functions with `step(fn)`.
+
 ## Still stuck
 
 Attach a `trajectory` logger and re-run — the event stream usually shows exactly

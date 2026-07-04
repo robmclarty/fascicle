@@ -7,6 +7,7 @@
  * See spec.md §5.6.
  */
 
+import { is_step } from './is_step.js'
 import { dispatch_step, register_traced_kind } from './runner.js'
 import type { RunContext, Step } from './types.js'
 
@@ -26,6 +27,24 @@ export function pipe<i, a, b>(
   fn: (value: a) => b | Promise<b>,
   options?: PipeOptions,
 ): Step<i, b> {
+  if (!is_step(inner)) {
+    const hint = typeof inner === 'function' ? ' — wrap plain functions with step(fn)' : ''
+    throw new TypeError(`pipe(inner, fn): inner must be a Step, got ${typeof inner}${hint}`)
+  }
+  if (typeof fn !== 'function') {
+    if (is_step(fn)) {
+      throw new TypeError(
+        'pipe(inner, fn): fn must be a function, got a Step — pipe is not variadic; to chain Steps use sequence([...])',
+      )
+    }
+    throw new TypeError(`pipe(inner, fn): fn must be a function, got ${typeof fn}`)
+  }
+  if (is_step(options)) {
+    throw new TypeError(
+      'pipe(inner, fn, options): got a Step as the third argument — pipe is not variadic; to chain Steps use sequence([...])',
+    )
+  }
+
   const id = next_id()
 
   const run_fn = async (input: i, ctx: RunContext): Promise<b> => {

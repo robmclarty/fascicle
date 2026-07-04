@@ -25,6 +25,8 @@ function recording_logger(): { logger: TrajectoryLogger; events: TrajectoryEvent
   return { logger, events }
 }
 
+const double_fn = (x: number): number => x * 2
+
 describe('sequence', () => {
   afterEach(() => {
     for (const l of process.listeners('SIGINT')) process.off('SIGINT', l)
@@ -102,5 +104,30 @@ describe('sequence', () => {
 
     await expect(run(flow, 0)).rejects.toBeInstanceOf(aborted_error)
     expect(second_ran).toBe(false)
+  })
+
+  it('throws at construction when children is not an array (variadic misuse)', () => {
+    const a = step('a', (x: number) => x + 1)
+    expect(() => sequence(a as never)).toThrow(
+      new TypeError(
+        'sequence(children): children must be an array of Steps, got object — sequence takes a single array, e.g. sequence([a, b, c])',
+      ),
+    )
+  })
+
+  it('throws at construction with the index of a non-Step child', () => {
+    const a = step('a', (x: number) => x + 1)
+    expect(() => sequence([a, 'nope' as never])).toThrow(
+      new TypeError('sequence(children): children[1] is not a Step, got string'),
+    )
+  })
+
+  it('hints at step(fn) when a plain function is passed as a child', () => {
+    const a = step('a', (x: number) => x + 1)
+    expect(() => sequence([a, double_fn as never])).toThrow(
+      new TypeError(
+        'sequence(children): children[1] is not a Step, got function — wrap plain functions with step(fn), or use pipe(inner, fn) to transform output',
+      ),
+    )
   })
 })

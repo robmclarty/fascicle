@@ -79,4 +79,43 @@ describe('pipe', () => {
     )
     expect(flow.config !== undefined && 'display_name' in flow.config).toBe(false)
   })
+
+  it('throws at construction when inner is not a Step', () => {
+    expect(() => pipe('nope' as never, (n: number) => n)).toThrow(
+      new TypeError('pipe(inner, fn): inner must be a Step, got string'),
+    )
+  })
+
+  it('hints at step(fn) when inner is a plain function', () => {
+    expect(() => pipe(double_fn as never, (n: number) => n)).toThrow(
+      new TypeError('pipe(inner, fn): inner must be a Step, got function — wrap plain functions with step(fn)'),
+    )
+  })
+
+  it('throws at construction when fn is not a function', () => {
+    const inner = step('s', (x: number) => x)
+    expect(() => pipe(inner, 'nope' as never)).toThrow(
+      new TypeError('pipe(inner, fn): fn must be a function, got string'),
+    )
+  })
+
+  it('hints at sequence when a Step is passed as fn (variadic misuse)', () => {
+    const a = step('a', (x: number) => x + 1)
+    const b = step('b', (x: number) => x * 2)
+    expect(() => pipe(a, b as never)).toThrow(
+      new TypeError(
+        'pipe(inner, fn): fn must be a function, got a Step — pipe is not variadic; to chain Steps use sequence([...])',
+      ),
+    )
+  })
+
+  it('hints at sequence when a Step is passed as the third argument', () => {
+    const a = step('a', (x: number) => x + 1)
+    const c = step('c', (x: number) => x - 1)
+    expect(() => pipe(a, (n: number) => n, c as never)).toThrow(
+      new TypeError(
+        'pipe(inner, fn, options): got a Step as the third argument — pipe is not variadic; to chain Steps use sequence([...])',
+      ),
+    )
+  })
 })

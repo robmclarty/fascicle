@@ -16,6 +16,7 @@
  */
 
 import { describe_cycle_error } from './errors.js'
+import { is_step } from './is_step.js'
 import type { Step, StepMetadata } from './types.js'
 
 const INDENT = '  '
@@ -194,13 +195,6 @@ function render_value_json(value: unknown, path: Path, strict: boolean): FlowVal
   if (typeof value === 'bigint') return `${value.toString()}n`
   if (typeof value === 'symbol') return value.toString()
   return JSON.stringify(value)
-}
-
-function is_step(value: unknown): value is Step<unknown, unknown> {
-  if (typeof value !== 'object' || value === null) return false
-  if (!('id' in value) || !('kind' in value) || !('run' in value)) return false
-  const { id, kind, run } = value
-  return typeof id === 'string' && typeof kind === 'string' && typeof run === 'function'
 }
 
 function is_zod_schema(value: unknown): boolean {

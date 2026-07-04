@@ -71,7 +71,9 @@ from English specifications:
 - `parallel({ a, b, c })` — run concurrently, return `{ a, b, c }`.
 - `branch({ when, then, otherwise })` — route on `when(input)`.
 - `map({ items, do, concurrency? })` — run `do` per item; cap in-flight.
-- `pipe(inner, fn)` — post-process `inner`'s output.
+- `pipe(inner, fn)` — post-process `inner`'s output. Strictly binary: one
+  Step, one plain mapping function. To chain Steps use `sequence([...])`;
+  passing a Step as `fn` throws at construction.
 - `retry(inner, { max_attempts, backoff_ms?, on_error? })` — re-run on
   failure with exponential backoff.
 - `fallback(primary, backup)` — run `backup` if `primary` throws.
