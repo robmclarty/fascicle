@@ -8,6 +8,7 @@ import { run_learn } from '../examples/learn.js'
 import { run_learn_reviewer } from '../examples/learn_reviewer.js'
 import { run_researcher } from '../examples/researcher.js'
 import { run_reviewer } from '../examples/reviewer.js'
+import { run_stdio_agent } from '../examples/stdio_agent.js'
 import { run_streaming_chat } from '../examples/streaming_chat.js'
 import { run_suspend_resume } from '../examples/suspend_resume.js'
 import { run_trajectory_logger } from '../examples/trajectory_logger.js'
@@ -32,6 +33,12 @@ describe('examples smoke', () => {
     expect(result.scores['opus']).toBe(0.92)
     expect(result.scores['sonnet']).toBe(0.81)
     expect(result.scores['gemini']).toBe(0.74)
+  })
+
+  it('stdio_agent synthesizes a headline from two candidate drafts', async () => {
+    const result = await run_stdio_agent('flaky tests')
+    expect(result.headline).toBe('flaky tests: what actually changed')
+    expect(result.candidates).toHaveLength(2)
   })
 
   it('streaming_chat surfaces emitted tokens and the final result', async () => {

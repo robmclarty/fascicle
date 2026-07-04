@@ -176,6 +176,7 @@ For zero-latency streaming from inside a long-running flow, pair it with `http_l
 - [docs/cli.md](./docs/cli.md) — the `claude_cli` subprocess adapter
 - [docs/cookbook.md](./docs/cookbook.md) — retries, fan-out, judges, HITL, tool loops
 - [docs/writing-a-harness.md](./docs/writing-a-harness.md) — building a runner around fascicle
+- [docs/embedding-under-a-harness.md](./docs/embedding-under-a-harness.md) — running a fascicle agent as somebody's child process
 - [docs/troubleshooting.md](./docs/troubleshooting.md) — first-run errors and what they mean
 - [docs/comparison.md](./docs/comparison.md) — how fascicle compares to LangChain, Mastra, and others
 - [examples/](./examples/) — runnable reference flows

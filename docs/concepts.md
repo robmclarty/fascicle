@@ -284,6 +284,7 @@ Not a runtime concept, but a project one. `pnpm check:all` is the single source 
 
 - [getting-started.md](./getting-started.md) — install and run your first flow.
 - [writing-a-harness.md](./writing-a-harness.md) — build a runner around fascicle.
+- [embedding-under-a-harness.md](./embedding-under-a-harness.md) — run a fascicle agent as somebody's child process.
 - [configuration.md](./configuration.md) — engine config, provider setup, defaults.
 - [providers.md](./providers.md) — per-provider adapter notes.
 - [cli.md](./cli.md) — the `claude_cli` subprocess provider.

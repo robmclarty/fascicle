@@ -65,3 +65,7 @@ cannotImport = ["src/adapters/**", "src/viewer/**"]
 [[boundaries.rules]] # mcp: core + engine only (bridges flows/tools to the MCP wire)
 from = "src/mcp/**"
 cannotImport = ["src/composites/**", "src/agents/**", "src/adapters/**", "src/viewer/**"]
+
+[[boundaries.rules]] # stdio: core + adapters only (single-shot child-process entry helper)
+from = "src/stdio/**"
+cannotImport = ["src/engine/**", "src/composites/**", "src/agents/**", "src/viewer/**", "src/mcp/**"]

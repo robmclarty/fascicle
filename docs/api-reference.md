@@ -152,6 +152,7 @@ roll your own to target any sink.
 | `filesystem_logger(options)` | logger | synchronous JSONL; dev tools and short runs |
 | `http_logger(options)` | logger | POST events to an endpoint (pairs with the viewer) |
 | `noop_logger()` | logger | discard all events |
+| `stderr_logger(options?)` | logger | JSONL to stderr; keeps stdout clean when your process is somebody's child |
 | `tee_logger(...loggers)` | logger | fan one event stream out to several loggers |
 | `filesystem_store(options)` | store | filesystem-backed `CheckpointStore` |
 
@@ -167,6 +168,22 @@ optional peer dependency, installed only when this subpath is used.
 | `serve_flow(options)` | fn | register a composed flow as an MCP tool on a caller-provided `McpServer` |
 | `json_schema_to_zod(schema)` | fn | the JSON Schema to Zod bridge used for inbound tools |
 | `mcp_error`, `mcp_sdk_missing_error` | error | tool-level failure / missing optional peer |
+
+`serve_flow` over a stdio transport is a stateful session for MCP hosts. For a
+single-shot child under a plain JSON-over-stdio parent, use `run_stdio` below.
+
+## Stdio agent contract (`fascicle/stdio`)
+
+Run a flow as a single-shot child process: JSON on stdin, one JSON result on
+stdout, trajectory on stderr, exit code as the verdict (0 = result on stdout is
+authoritative, 1 = flow failure, 2 = contract violation). See
+[embedding-under-a-harness.md](./embedding-under-a-harness.md).
+
+| Export | Kind | Notes |
+| --- | --- | --- |
+| `run_stdio(flow, options?)` | fn | the whole child contract in one call, from your own entry point |
+| `execute_stdio(flow, options, io)` | fn | the same contract over injected io; returns a `StdioOutcome` instead of exiting |
+| `RunStdioOptions`, `StdioFailure`, `StdioOutcome`, `StdioIo` | type | options and the machine-readable failure envelope |
 
 ## Observability viewer
 

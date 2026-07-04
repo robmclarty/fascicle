@@ -31,6 +31,8 @@ const DIST_ADAPTERS_JS = join(DIST_DIR, 'adapters.js');
 const DIST_ADAPTERS_DTS = join(DIST_DIR, 'adapters.d.ts');
 const DIST_MCP_JS = join(DIST_DIR, 'mcp.js');
 const DIST_MCP_DTS = join(DIST_DIR, 'mcp.d.ts');
+const DIST_STDIO_JS = join(DIST_DIR, 'stdio.js');
+const DIST_STDIO_DTS = join(DIST_DIR, 'stdio.d.ts');
 const DIST_STATIC_DIR = join(DIST_DIR, 'static');
 const DIST_STATIC_HTML = join(DIST_STATIC_DIR, 'viewer.html');
 const VIEWER_HTML_SRC = join(REPO_ROOT, 'src', 'viewer', 'static', 'viewer.html');
@@ -238,6 +240,7 @@ async function main() {
     'filesystem_logger',
     'http_logger',
     'noop_logger',
+    'stderr_logger',
     'tee_logger',
     'filesystem_store',
   ];
@@ -260,8 +263,21 @@ async function main() {
     process.exit(1);
   }
 
+  process.stderr.write(`▸ build: smoke-importing ${DIST_STDIO_JS}\n`);
+  if (!existsSync(DIST_STDIO_JS) || !existsSync(DIST_STDIO_DTS)) {
+    console.error(`\nbuild: dist/stdio.{js,d.ts} were not produced (the ./stdio subpath)`);
+    process.exit(1);
+  }
+  const stdio_mod = await import(pathToFileURL(DIST_STDIO_JS).href);
+  const EXPECTED_STDIO = ['run_stdio', 'execute_stdio'];
+  const missing_stdio = EXPECTED_STDIO.filter((name) => typeof stdio_mod[name] === 'undefined');
+  if (missing_stdio.length > 0) {
+    console.error(`\nbuild: stdio smoke test missing exports: ${missing_stdio.join(', ')}`);
+    process.exit(1);
+  }
+
   process.stderr.write(
-    `\n✔ build ok (${js_stat.size} bytes js, ${dts_stat.size} bytes d.ts, ${EXPECTED_NAMED.length} named exports + describe.json + ${EXPECTED_ADAPTERS.length} adapters + ${EXPECTED_MCP.length} mcp verified)\n`,
+    `\n✔ build ok (${js_stat.size} bytes js, ${dts_stat.size} bytes d.ts, ${EXPECTED_NAMED.length} named exports + describe.json + ${EXPECTED_ADAPTERS.length} adapters + ${EXPECTED_MCP.length} mcp + ${EXPECTED_STDIO.length} stdio verified)\n`,
   );
 }
 

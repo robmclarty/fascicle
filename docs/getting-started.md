@@ -125,6 +125,7 @@ await engine.dispose();
 ## Where to go next
 
 - [docs/writing-a-harness.md](./writing-a-harness.md) — build a runner around fascicle.
+- [docs/embedding-under-a-harness.md](./embedding-under-a-harness.md) — run a fascicle agent as somebody's child process.
 - [docs/concepts.md](./concepts.md) — step-as-value, trajectories, cancellation.
 - [docs/configuration.md](./configuration.md) — engine config, defaults, provider setup.
 - [docs/providers.md](./providers.md) — per-provider adapter notes.

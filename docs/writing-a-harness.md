@@ -187,3 +187,4 @@ Before calling a harness done:
 - [ ] `engine.dispose()` runs on both success and failure paths.
 - [ ] Secrets come from env or a secret manager, never from source.
 - [ ] The harness exits with a non-zero code on failure so CI/queues can retry.
+- [ ] If your harness might be spawned by another program, speak the child contract with `run_stdio` — see [embedding-under-a-harness.md](./embedding-under-a-harness.md).

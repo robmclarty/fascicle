@@ -54,6 +54,10 @@
     "./mcp": {
       "types": "./dist/mcp.d.ts",
       "import": "./dist/mcp.js"
+    },
+    "./stdio": {
+      "types": "./dist/stdio.d.ts",
+      "import": "./dist/stdio.js"
     }
   },
   "imports": {
@@ -62,7 +66,8 @@
     "#composites": "./src/composites/index.ts",
     "#adapters": "./src/adapters/index.ts",
     "#viewer": "./src/viewer/index.ts",
-    "#agents": "./src/agents/index.ts"
+    "#agents": "./src/agents/index.ts",
+    "#stdio": "./src/stdio/index.ts"
   },
   "bin": {
     "fascicle-viewer": "./dist/bin/fascicle-viewer.js"

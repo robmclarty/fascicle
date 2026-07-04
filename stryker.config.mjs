@@ -24,6 +24,9 @@ export default {
     // not by unit tests. Mutating them only yields no-coverage noise.
     '!src/viewer/cli.ts',
     '!src/viewer/start_viewer.ts',
+    // Same reasoning: process glue (stdin/stdout/exit) exercised by the
+    // spawn-based contract tests in src/stdio/__tests__/e2e/, not unit tests.
+    '!src/stdio/run_stdio.ts',
   ],
   coverageAnalysis: 'perTest',
   incremental: true,

@@ -15,7 +15,7 @@
 
 import { spawn } from 'node:child_process';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
+import { closeSync, existsSync, openSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
@@ -29,6 +29,8 @@ const REQUIRED_FILES = [
   'dist/adapters.d.ts',
   'dist/mcp.js',
   'dist/mcp.d.ts',
+  'dist/stdio.js',
+  'dist/stdio.d.ts',
   'README.md',
   'CHANGELOG.md',
 ];
@@ -55,16 +57,16 @@ async function read_pkg(path) {
   return JSON.parse(await readFile(path, 'utf8'));
 }
 
-function run_subprocess(cmd, args, env_overrides = {}) {
+function run_subprocess(cmd, args, env_overrides = {}, stdout_fd = null) {
   return new Promise((resolve_exit) => {
     const proc = spawn(cmd, args, {
-      stdio: ['ignore', 'pipe', 'pipe'],
+      stdio: ['ignore', stdout_fd ?? 'pipe', 'pipe'],
       cwd: REPO_ROOT,
       env: { ...process.env, FORCE_COLOR: '0', NO_COLOR: '1', ...env_overrides },
     });
     let stdout = '';
     let stderr = '';
-    proc.stdout.on('data', (chunk) => { stdout += chunk.toString(); });
+    proc.stdout?.on('data', (chunk) => { stdout += chunk.toString(); });
     proc.stderr.on('data', (chunk) => { stderr += chunk.toString(); });
     proc.on('error', (err) => resolve_exit({ code: -1, stdout, stderr, error: err.message }));
     proc.on('close', (code) => resolve_exit({ code: code ?? -1, stdout, stderr }));
@@ -172,23 +174,32 @@ async function check_types_wrong() {
   }
 
   process.stderr.write(`▸ check-publish: @arethetypeswrong/cli (${tgz_name})\n`);
-  const res = await run_subprocess('pnpm', [
-    'exec',
-    'attw',
-    tgz_path,
-    '--profile',
-    'node16',
-    '--format',
-    'json',
-  ]);
+  // attw's JSON report goes to a file, not a pipe: attw exits without
+  // draining piped stdout, so a report past the 64 KiB pipe buffer arrives
+  // truncated (first bitten when the ./stdio subpath pushed it over).
+  // File writes flush before exit.
+  const attw_out_path = join(pack_dest, 'attw-raw.json');
+  const attw_out_fd = openSync(attw_out_path, 'w');
+  let res;
+  try {
+    res = await run_subprocess(
+      'pnpm',
+      ['exec', 'attw', tgz_path, '--profile', 'node16', '--format', 'json'],
+      {},
+      attw_out_fd,
+    );
+  } finally {
+    closeSync(attw_out_fd);
+  }
   // Whatever happens below, always clean up the tarball.
   const cleanup = async () => {
     try { await rm(tgz_path, { force: true }); } catch { /* best-effort */ }
+    try { await rm(attw_out_path, { force: true }); } catch { /* best-effort */ }
   };
   // attw exits 0 when clean, 1 when any problem is found. stdout is JSON.
   // We read the JSON rather than rely on exit code alone to get a useful
   // error surface.
-  const text = res.stdout.trim();
+  const text = (await readFile(attw_out_path, 'utf8')).trim();
   if (!text) {
     await cleanup();
     if (res.code !== 0) {
