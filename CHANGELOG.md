@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.8.11 — 2026-07-03
+
+### Added
+
+- `fascicle/stdio`: run any flow as a single-shot child process with `run_stdio(flow, options)`. Reads JSON from stdin, optionally validates it against a zod `input_schema`, runs the flow, optionally validates the result against an `output_schema`, and writes exactly one JSON document to stdout. Exit code is the verdict (0 = result is authoritative, 1 = flow failure, 2 = contract violation), and a machine-readable failure object is always the last stderr line on non-zero exit.
+- `stderr_logger` in `fascicle/adapters`: a JSONL trajectory logger to stderr, the default under `run_stdio` so stdout stays clean for the result envelope.
+
+### Fixed
+
+- `check-publish`'s `@arethetypeswrong/cli` step no longer silently truncates its report when the output exceeds the OS pipe buffer (first hit once the `./stdio` subpath pushed the report past 64 KiB).
+
+### Internal
+
+- Recorded the design rationale for the stdio agent contract as a research note.
+
 ## v0.8.10 — 2026-06-20
 
 ### Added
