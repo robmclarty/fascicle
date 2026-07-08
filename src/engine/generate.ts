@@ -669,6 +669,10 @@ export async function generate<T = string>(
         messages: sdk_messages,
         abortSignal: internal_controller.signal,
         stopWhen: stepCountIs(1),
+        // The engine owns retry via retry_with_policy below; disable the AI
+        // SDK's own retry (default 2) so it does not nest inside each of our
+        // attempts and inflate provider round-trips / distort backoff.
+        maxRetries: 0,
       }
       if (hoisted_system !== undefined) base_params.system = hoisted_system
       if (sdk_tools !== undefined) base_params.tools = sdk_tools

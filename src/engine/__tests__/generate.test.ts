@@ -177,6 +177,23 @@ describe('generate: model + provider pass-through', () => {
     expect('maxOutputTokens' in params).toBe(false)
     expect('topP' in params).toBe(false)
   })
+
+  it('disables the AI SDK internal retry on the generate call (maxRetries: 0)', async () => {
+    enqueue_generate_text(make_text_result('ok'))
+    await basic_engine().generate({ model: 'claude-opus', prompt: 'x' })
+    const params = mock_state.last_generate_text_params as { maxRetries?: number }
+    expect(params.maxRetries).toBe(0)
+  })
+
+  it('disables the AI SDK internal retry on the stream call (maxRetries: 0)', async () => {
+    enqueue_stream([
+      { type: 'text-delta', text: 'ok' },
+      { type: 'finish-step', finishReason: 'stop', usage: { inputTokens: 1, outputTokens: 1 } },
+    ])
+    await basic_engine().generate({ model: 'claude-opus', prompt: 'x', on_chunk: () => {} })
+    const params = mock_state.last_stream_text_params as { maxRetries?: number }
+    expect(params.maxRetries).toBe(0)
+  })
 })
 
 describe('generate: structured output', () => {
