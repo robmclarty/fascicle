@@ -36,6 +36,7 @@ import type {
 } from './types.js'
 import {
   aborted_error,
+  engine_config_error,
   model_required_error,
   on_chunk_error,
   provider_capability_error,
@@ -88,6 +89,8 @@ export type EngineInternals = {
   readonly default_system?: string
   readonly default_tool_error_policy?: 'feed_back' | 'throw'
   readonly default_schema_repair_attempts?: number
+  readonly default_tool_call_repair_attempts?: number
+  readonly default_max_tool_calls_per_step?: number
   readonly default_provider_options?: Readonly<Record<string, Readonly<Record<string, unknown>>>>
 }
 
@@ -568,6 +571,18 @@ export async function generate<T = string>(
     opts.tool_error_policy ?? engine.default_tool_error_policy ?? 'feed_back'
   const schema_repair_attempts =
     opts.schema_repair_attempts ?? engine.default_schema_repair_attempts ?? 1
+  const tool_call_repair_attempts =
+    opts.tool_call_repair_attempts ?? engine.default_tool_call_repair_attempts ?? 0
+  if (tool_call_repair_attempts < 0) {
+    throw new engine_config_error('tool_call_repair_attempts must be >= 0')
+  }
+  const max_tool_calls_per_step =
+    opts.max_tool_calls_per_step ?? engine.default_max_tool_calls_per_step
+  if (max_tool_calls_per_step !== undefined && max_tool_calls_per_step < 1) {
+    // A cap of 0 would drop every call and strand the loop in its stop
+    // branch with orphaned records; reject rather than guess.
+    throw new engine_config_error('max_tool_calls_per_step must be >= 1')
+  }
   const retry_policy = opts.retry ?? engine.default_retry
 
   const schema_prefix =
@@ -738,6 +753,10 @@ export async function generate<T = string>(
   let repair_remaining = schema_repair_attempts
   let content_parsed: T | undefined
   let schema_satisfied = opts.schema === undefined
+  // One holder per generate call so schema-repair re-invocations of the loop
+  // cannot refill the salvage budget.
+  const salvage_budget =
+    tool_call_repair_attempts > 0 ? { remaining: tool_call_repair_attempts } : undefined
 
   try {
     while (true) {
@@ -757,6 +776,8 @@ export async function generate<T = string>(
         model_id: target.model_id,
         resolve_pricing,
         pricing_dedup,
+        ...(salvage_budget !== undefined ? { salvage_budget } : {}),
+        ...(max_tool_calls_per_step !== undefined ? { max_tool_calls_per_step } : {}),
       })
 
       for (const s of loop_result.steps) steps_accum.push(s)

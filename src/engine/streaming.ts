@@ -12,7 +12,12 @@
  *   - text and reasoning interleave within a step.
  *   - tool_call_start precedes its input_deltas and end.
  *   - tool_result follows the matching tool_call_end.
- *   - step_finish is the last chunk of a step.
+ *   - step_finish is the last STREAMED chunk of a step, but tool execution and
+ *     tool_result chunks are dispatched by the tool loop after it, so a step's
+ *     tool_result chunks (and, for a salvaged step, the synthetic
+ *     tool_call_start/tool_call_end that precede them) follow its step_finish.
+ *     A salvaged step's StepRecord also reports finish_reason 'tool_calls'
+ *     while its already-dispatched step_finish carries the provider's 'stop'.
  *   - finish is the last chunk of the call.
  */
 

@@ -98,6 +98,33 @@ describe('create_engine', () => {
       ).rejects.toBeInstanceOf(provider_not_configured_error)
     })
 
+    it('rejects a defaults.max_tool_calls_per_step below 1 at construction', () => {
+      expect(() =>
+        create_engine({
+          providers: { anthropic: { api_key: 'k' } },
+          defaults: { max_tool_calls_per_step: 0 },
+        }),
+      ).toThrow(engine_config_error)
+    })
+
+    it('rejects a negative defaults.tool_call_repair_attempts at construction', () => {
+      expect(() =>
+        create_engine({
+          providers: { anthropic: { api_key: 'k' } },
+          defaults: { tool_call_repair_attempts: -1 },
+        }),
+      ).toThrow(engine_config_error)
+    })
+
+    it('accepts valid salvage and clamp defaults', () => {
+      expect(() =>
+        create_engine({
+          providers: { anthropic: { api_key: 'k' } },
+          defaults: { tool_call_repair_attempts: 2, max_tool_calls_per_step: 1 },
+        }),
+      ).not.toThrow()
+    })
+
     it('defaults.retry_policy layers as the fallback over legacy default_retry', () => {
       const custom_retry = {
         max_attempts: 7,

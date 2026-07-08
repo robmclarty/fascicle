@@ -1103,3 +1103,329 @@ describe('run_tool_loop detail', () => {
     expect(emitted).toEqual([{ provider: 'anthropic', model_id: 'claude-opus-4-7' }])
   })
 })
+
+const hermes = (value: string): string =>
+  `<tool_call>{"name":"echo","arguments":{"value":"${value}"}}</tool_call>`
+
+function capturing_echo(seen: unknown[]): Tool {
+  return make_tool({
+    name: 'echo',
+    execute: (input: unknown) => {
+      seen.push(input)
+      return 'ran'
+    },
+  })
+}
+
+describe('run_tool_loop tool-call salvage', () => {
+  it('does not salvage when no budget is configured (fall-through parity)', async () => {
+    const seen: unknown[] = []
+    const messages: Message[] = [{ role: 'user', content: 'go' }]
+    const out = await run_tool_loop(
+      base_config({
+        invoke: [{ text: hermes('hi'), finish_reason: 'stop' }],
+        tools: [capturing_echo(seen)],
+        messages,
+      }),
+    )
+    expect(seen).toEqual([])
+    expect(out.finish_reason).toBe('stop')
+    expect(out.text).toBe(hermes('hi'))
+    expect(out.steps[0]?.tool_calls).toEqual([])
+    expect(messages[1]).toEqual({ role: 'assistant', content: hermes('hi') })
+  })
+
+  it('salvages a hermes call: executes it, rewrites history, marks the record', async () => {
+    const seen: unknown[] = []
+    const budget = { remaining: 1 }
+    const messages: Message[] = [{ role: 'user', content: 'go' }]
+    const { trajectory, events } = recording_trajectory()
+    const raw = `Let me help.\n${hermes('hi')}`
+    const out = await run_tool_loop(
+      base_config({
+        invoke: [{ text: raw, finish_reason: 'stop' }, { text: 'done' }],
+        tools: [capturing_echo(seen)],
+        messages,
+        trajectory,
+        salvage_budget: budget,
+      }),
+    )
+    expect(seen).toEqual([{ value: 'hi' }])
+    expect(messages[1]).toEqual({
+      role: 'assistant',
+      content: [
+        { type: 'text', text: 'Let me help.' },
+        { type: 'tool_call', id: 'salvaged_0_0', name: 'echo', input: { value: 'hi' } },
+      ],
+    })
+    expect(tool_message(messages)).toMatchObject({ role: 'tool', tool_call_id: 'salvaged_0_0' })
+    expect(out.steps[0]?.text).toBe(raw)
+    expect(out.steps[0]?.finish_reason).toBe('tool_calls')
+    expect(out.tool_calls[0]).toMatchObject({ salvaged: true, salvaged_format: 'hermes' })
+    expect(events.find((e) => e['kind'] === 'tool_call_salvaged')).toMatchObject({
+      step_index: 0,
+      calls: [{ tool_call_id: 'salvaged_0_0', name: 'echo', format: 'hermes' }],
+      raw_text: raw,
+    })
+    expect(budget.remaining).toBe(0)
+  })
+
+  it('stops without salvaging once the shared budget is exhausted', async () => {
+    const seen: unknown[] = []
+    const budget = { remaining: 1 }
+    const out = await run_tool_loop(
+      base_config({
+        invoke: [
+          { text: hermes('one'), finish_reason: 'stop' },
+          { text: hermes('two'), finish_reason: 'stop' },
+        ],
+        tools: [capturing_echo(seen)],
+        salvage_budget: budget,
+      }),
+    )
+    expect(seen).toEqual([{ value: 'one' }])
+    expect(out.finish_reason).toBe('stop')
+    expect(out.text).toBe(hermes('two'))
+    expect(budget.remaining).toBe(0)
+  })
+
+  it('does not spend budget when the scan finds no valid call', async () => {
+    const budget = { remaining: 2 }
+    const raw = '<tool_call>{"name":"missing","arguments":{"value":"hi"}}</tool_call>'
+    const out = await run_tool_loop(
+      base_config({
+        invoke: [{ text: raw, finish_reason: 'stop' }],
+        tools: [make_tool()],
+        salvage_budget: budget,
+      }),
+    )
+    expect(out.finish_reason).toBe('stop')
+    expect(out.text).toBe(raw)
+    expect(budget.remaining).toBe(2)
+  })
+
+  it('salvages a length-truncated turn', async () => {
+    const seen: unknown[] = []
+    const out = await run_tool_loop(
+      base_config({
+        invoke: [{ text: hermes('hi'), finish_reason: 'length' }, { text: 'done' }],
+        tools: [capturing_echo(seen)],
+        salvage_budget: { remaining: 1 },
+      }),
+    )
+    expect(seen).toEqual([{ value: 'hi' }])
+    expect(out.steps[0]?.finish_reason).toBe('tool_calls')
+  })
+
+  it('does not salvage when no tools are registered', async () => {
+    const out = await run_tool_loop(
+      base_config({
+        invoke: [{ text: hermes('hi'), finish_reason: 'stop' }],
+        tools: [],
+        salvage_budget: { remaining: 1 },
+      }),
+    )
+    expect(out.finish_reason).toBe('stop')
+    expect(out.text).toBe(hermes('hi'))
+  })
+
+  it('leaves native structured calls and the budget untouched', async () => {
+    const seen: unknown[] = []
+    const budget = { remaining: 1 }
+    const out = await run_tool_loop(
+      base_config({
+        invoke: [
+          { tool_calls: [call('c1', 'echo', { value: 'x' })], finish_reason: 'tool_calls' },
+          { text: 'done' },
+        ],
+        tools: [capturing_echo(seen)],
+        salvage_budget: budget,
+      }),
+    )
+    expect(seen).toEqual([{ value: 'x' }])
+    expect(out.tool_calls[0]?.salvaged).toBeUndefined()
+    expect(budget.remaining).toBe(1)
+  })
+
+  it('routes a salvaged call through approval with the salvaged id', async () => {
+    const budget = { remaining: 1 }
+    const { trajectory, events } = recording_trajectory()
+    let captured: unknown
+    await run_tool_loop(
+      base_config({
+        invoke: [{ text: hermes('hi'), finish_reason: 'stop' }, { text: 'done' }],
+        tools: [make_tool({ name: 'echo', needs_approval: true, execute: () => 'ran' })],
+        on_tool_approval: (req) => {
+          captured = req.input
+          return true
+        },
+        trajectory,
+        salvage_budget: budget,
+      }),
+    )
+    expect(captured).toEqual({ value: 'hi' })
+    expect(events.find((e) => e['kind'] === 'tool_approval_requested')).toMatchObject({
+      tool_call_id: 'salvaged_0_0',
+    })
+  })
+
+  it('marks a salvaged call unexecuted when it lands on the final step', async () => {
+    const budget = { remaining: 1 }
+    const out = await run_tool_loop(
+      base_config({
+        invoke: [{ text: hermes('hi'), finish_reason: 'stop' }],
+        tools: [make_tool()],
+        max_steps: 1,
+        salvage_budget: budget,
+      }),
+    )
+    expect(out.finish_reason).toBe('max_steps')
+    expect(out.tool_calls[0]).toMatchObject({
+      error: { message: 'max_steps_exceeded_before_execution' },
+      salvaged: true,
+      salvaged_format: 'hermes',
+    })
+    expect(budget.remaining).toBe(0)
+  })
+
+  it('dispatches synthetic start/end chunks before the tool_result for a salvaged call', async () => {
+    const chunks: StreamChunk[] = []
+    await run_tool_loop(
+      base_config({
+        invoke: [{ text: hermes('hi'), finish_reason: 'stop' }, { text: 'done' }],
+        tools: [make_tool()],
+        salvage_budget: { remaining: 1 },
+        dispatch_chunk: async (c) => {
+          chunks.push(c)
+        },
+      }),
+    )
+    const relevant = chunks
+      .filter((c) => 'id' in c && c.id === 'salvaged_0_0')
+      .map((c) => c.kind)
+    expect(relevant).toEqual(['tool_call_start', 'tool_call_end', 'tool_result'])
+  })
+})
+
+describe('run_tool_loop max_tool_calls_per_step clamp', () => {
+  it('executes the first N native calls and drops the rest', async () => {
+    const order: string[] = []
+    const mk = (name: string): Tool =>
+      make_tool({
+        name,
+        execute: () => {
+          order.push(name)
+          return name.toUpperCase()
+        },
+      })
+    const messages: Message[] = [{ role: 'user', content: 'go' }]
+    const { trajectory, events } = recording_trajectory()
+    const out = await run_tool_loop(
+      base_config({
+        invoke: [
+          {
+            tool_calls: [
+              call('c1', 'a', { value: '1' }),
+              call('c2', 'b', { value: '2' }),
+              call('c3', 'c', { value: '3' }),
+            ],
+            finish_reason: 'tool_calls',
+          },
+          { text: 'done' },
+        ],
+        tools: [mk('a'), mk('b'), mk('c')],
+        messages,
+        trajectory,
+        max_tool_calls_per_step: 2,
+      }),
+    )
+    expect(order).toEqual(['a', 'b'])
+    const assistant = messages[1]
+    const parts = Array.isArray(assistant?.content) ? assistant.content : []
+    expect(parts.filter((p) => p.type === 'tool_call')).toHaveLength(2)
+    expect(messages.filter((m) => m.role === 'tool')).toHaveLength(2)
+    const dropped = out.tool_calls.find((tc) => tc.id === 'c3')
+    expect(dropped).toMatchObject({
+      error: { message: 'dropped_max_tool_calls_per_step' },
+      duration_ms: 0,
+    })
+    expect(events.find((e) => e['kind'] === 'tool_calls_dropped')).toMatchObject({
+      step_index: 0,
+      max_tool_calls_per_step: 2,
+      kept: 2,
+      dropped: [{ tool_call_id: 'c3', name: 'c' }],
+    })
+    expect(
+      events
+        .filter((e) => e['kind'] === 'tool_call')
+        .map((e) => e['tool_call_id']),
+    ).toEqual(['c1', 'c2'])
+    const dropped_result = events.find(
+      (e) => e['kind'] === 'tool_result' && e['tool_call_id'] === 'c3',
+    )
+    expect(dropped_result).toMatchObject({ error: { message: 'dropped_max_tool_calls_per_step' } })
+    expect(out.finish_reason).toBe('stop')
+  })
+
+  it('clamps salvaged calls and flags the dropped one', async () => {
+    const seen: unknown[] = []
+    const budget = { remaining: 1 }
+    const out = await run_tool_loop(
+      base_config({
+        invoke: [
+          { text: `${hermes('a')}${hermes('b')}`, finish_reason: 'stop' },
+          { text: 'done' },
+        ],
+        tools: [capturing_echo(seen)],
+        salvage_budget: budget,
+        max_tool_calls_per_step: 1,
+      }),
+    )
+    expect(seen).toEqual([{ value: 'a' }])
+    expect(out.tool_calls.find((tc) => tc.id === 'salvaged_0_1')).toMatchObject({
+      error: { message: 'dropped_max_tool_calls_per_step' },
+      salvaged: true,
+      salvaged_format: 'hermes',
+    })
+    expect(budget.remaining).toBe(0)
+  })
+
+  it('does not drop or emit an event when the count equals the cap', async () => {
+    const { trajectory, events } = recording_trajectory()
+    const out = await run_tool_loop(
+      base_config({
+        invoke: [
+          {
+            tool_calls: [call('c1', 'echo', { value: '1' }), call('c2', 'echo', { value: '2' })],
+            finish_reason: 'tool_calls',
+          },
+          { text: 'done' },
+        ],
+        tools: [make_tool()],
+        trajectory,
+        max_tool_calls_per_step: 2,
+      }),
+    )
+    expect(out.tool_calls).toHaveLength(2)
+    expect(events.find((e) => e['kind'] === 'tool_calls_dropped')).toBeUndefined()
+  })
+
+  it('leaves all calls when no cap is set', async () => {
+    const { trajectory, events } = recording_trajectory()
+    const out = await run_tool_loop(
+      base_config({
+        invoke: [
+          {
+            tool_calls: [call('c1', 'echo', { value: '1' }), call('c2', 'echo', { value: '2' })],
+            finish_reason: 'tool_calls',
+          },
+          { text: 'done' },
+        ],
+        tools: [make_tool()],
+        trajectory,
+      }),
+    )
+    expect(out.tool_calls).toHaveLength(2)
+    expect(events.find((e) => e['kind'] === 'tool_calls_dropped')).toBeUndefined()
+  })
+})

@@ -320,6 +320,12 @@ export function create_claude_cli_adapter(init: ProviderInit): SubprocessProvide
       if (opts.on_tool_approval !== undefined) {
         option_ignored.emit('on_tool_approval', PROVIDER_NAME)
       }
+      if (opts.tool_call_repair_attempts !== undefined) {
+        option_ignored.emit('tool_call_repair_attempts', PROVIDER_NAME)
+      }
+      if (opts.max_tool_calls_per_step !== undefined) {
+        option_ignored.emit('max_tool_calls_per_step', PROVIDER_NAME)
+      }
 
       const user_count = count_user_messages(opts.prompt)
       if (user_count >= 2) {

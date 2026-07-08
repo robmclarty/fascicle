@@ -264,6 +264,60 @@ export function record_schema_validation_failed(
   })
 }
 
+export type SalvagedCallEventEntry = {
+  tool_call_id: string
+  name: string
+  format: 'hermes' | 'json' | 'qwen_xml'
+}
+
+/**
+ * Emitted once per step whose tool calls were recovered from assistant text
+ * rather than returned structurally (tool_call_repair_attempts). The per-call
+ * tool_call/tool_result events still fire for each salvaged call; this event
+ * answers why the step has calls the provider never emitted, and persists the
+ * raw text for debugging (precedent: schema_validation_failed).
+ */
+export function record_tool_call_salvaged(
+  trajectory: TrajectoryLogger | undefined,
+  meta: {
+    step_index: number
+    calls: ReadonlyArray<SalvagedCallEventEntry>
+    raw_text: string
+  },
+): void {
+  if (trajectory === undefined) return
+  trajectory.record({
+    kind: 'tool_call_salvaged',
+    step_index: meta.step_index,
+    calls: meta.calls,
+    raw_text: meta.raw_text,
+  })
+}
+
+/**
+ * Emitted when max_tool_calls_per_step drops calls beyond the cap. Dropped
+ * calls also get ToolCallRecords with an error, but only this event carries
+ * the configured cap alongside what was kept.
+ */
+export function record_tool_calls_dropped(
+  trajectory: TrajectoryLogger | undefined,
+  meta: {
+    step_index: number
+    max_tool_calls_per_step: number
+    kept: number
+    dropped: ReadonlyArray<{ tool_call_id: string; name: string }>
+  },
+): void {
+  if (trajectory === undefined) return
+  trajectory.record({
+    kind: 'tool_calls_dropped',
+    step_index: meta.step_index,
+    max_tool_calls_per_step: meta.max_tool_calls_per_step,
+    kept: meta.kept,
+    dropped: meta.dropped,
+  })
+}
+
 export type ToolApprovalEventKind =
   | 'tool_approval_requested'
   | 'tool_approval_granted'

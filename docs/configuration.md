@@ -144,6 +144,8 @@ type EngineDefaults = {
   retry_policy?: RetryPolicy;
   tool_error_policy?: 'feed_back' | 'throw';
   schema_repair_attempts?: number;
+  tool_call_repair_attempts?: number;
+  max_tool_calls_per_step?: number;
   provider_options?: Record<string, Record<string, unknown>>;
 };
 ```
@@ -174,7 +176,7 @@ const result = await engine.generate({ prompt: 'hello' });
 | ---------------------------------------------------------------------------------- | ----------------------------------------------- |
 | `model`                                                                            | per-call wins; else default; else throws `model_required_error` |
 | `provider`                                                                         | per-call wins; else default; else sole provider; else `anthropic` |
-| `system`, `effort`, `max_steps`, `tool_error_policy`, `schema_repair_attempts`     | per-call wins via nullish coalesce              |
+| `system`, `effort`, `max_steps`, `tool_error_policy`, `schema_repair_attempts`, `tool_call_repair_attempts`, `max_tool_calls_per_step` | per-call wins via nullish coalesce |
 | `retry`                                                                            | per-call replaces wholesale                     |
 | `provider_options`                                                                 | two-level: per-provider key, shallow-merged     |
 | `prompt`, `tools`, `schema`, `abort`, `trajectory`, `on_chunk`                     | not defaultable; always call-supplied           |
@@ -258,6 +260,8 @@ type GenerateOptions<t = string> = {
   retry?: RetryPolicy;
   tool_error_policy?: 'feed_back' | 'throw';
   schema_repair_attempts?: number;
+  tool_call_repair_attempts?: number;
+  max_tool_calls_per_step?: number;
   on_tool_approval?: ToolApprovalHandler;
   provider_options?: Record<string, unknown>;
 };
@@ -269,6 +273,26 @@ A few highlights:
 - `schema` is a zod schema. On failure, the engine attempts `schema_repair_attempts` repair passes (default 1) before throwing `schema_validation_error`.
 - `tools` is the agentic tool-use surface; tools have zod `input_schema` and an `execute` closure. See the cookbook for tool loops.
 - `provider_options` is a two-level record keyed by provider name, merged over `defaults.provider_options`.
+
+### Local-runtime tool reliability
+
+Local runtimes (Ollama's native API, LM Studio's `/v1`) frequently mis-serialize tool definitions, so the model writes its tool call into the assistant text instead of the structured `tool_calls` array. Two opt-in options make agentic tool loops survivable there. Both are provider-agnostic and default to off, so they never change behavior unless you set them.
+
+- `tool_call_repair_attempts` (default `0`) budgets salvage passes. When a step returns text but no structured calls, the engine scans the text for a call in Hermes (`<tool_call>{...}</tool_call>`), bare/`json`-fenced (`{"name":..., "arguments":{...}}`), or Qwen3-Coder XML form. A candidate runs only if its name resolves in that call's tools **and** its arguments validate against the tool's `input_schema`, so an ordinary answer that merely contains JSON never triggers it. A salvaged call runs the normal execute path and is marked `salvaged` on its `ToolCallRecord` (with `salvaged_format`) and via a `tool_call_salvaged` trajectory event. The budget is shared across the whole `generate` call, including schema-repair passes.
+- `max_tool_calls_per_step` (default unlimited, must be `>= 1`) executes only the first N calls of a step and drops the rest for that turn; the model can re-issue them next turn. Dropped calls surface as `ToolCallRecord`s with `error.message: 'dropped_max_tool_calls_per_step'` and a `tool_calls_dropped` event. Set it to `1` for runtimes that mishandle parallel tool calls.
+
+Recommended local preset:
+
+```ts
+await engine.generate({
+  prompt: '...',
+  tools,
+  tool_call_repair_attempts: 2,
+  max_tool_calls_per_step: 1,
+});
+```
+
+The subprocess `claude_cli` provider does not run the shared tool loop, so it ignores both options and records `option_ignored` for each.
 
 ## Lifecycle
 

@@ -335,6 +335,97 @@ describe('generate: tool loop', () => {
     expect(result.steps).toHaveLength(2)
   })
 
+  it('salvages a tool call the provider emitted as text when repair is enabled', async () => {
+    const seen: unknown[] = []
+    enqueue_generate_text(
+      make_text_result('<tool_call>{"name":"echo","arguments":{"v":"hi"}}</tool_call>'),
+    )
+    enqueue_generate_text(make_text_result('done'))
+    const result = await basic_engine().generate({
+      model: 'claude-opus',
+      prompt: 'x',
+      tool_call_repair_attempts: 1,
+      tools: [
+        {
+          name: 'echo',
+          description: 'echoes input',
+          input_schema: z.object({ v: z.string() }),
+          execute: (input) => {
+            seen.push(input)
+            return `echoed:${(input as { v: string }).v}`
+          },
+        },
+      ],
+    })
+    expect(seen).toEqual([{ v: 'hi' }])
+    expect(result.tool_calls).toHaveLength(1)
+    expect(result.tool_calls[0]).toMatchObject({ salvaged: true, salvaged_format: 'hermes' })
+    expect(result.tool_calls[0]?.output).toBe('echoed:hi')
+  })
+
+  it('leaves a text-emitted call inert when repair is disabled (default)', async () => {
+    enqueue_generate_text(
+      make_text_result('<tool_call>{"name":"echo","arguments":{"v":"hi"}}</tool_call>'),
+    )
+    const result = await basic_engine().generate({
+      model: 'claude-opus',
+      prompt: 'x',
+      tools: [
+        {
+          name: 'echo',
+          description: 'echoes input',
+          input_schema: z.object({ v: z.string() }),
+          execute: () => 'echoed',
+        },
+      ],
+    })
+    expect(result.tool_calls).toEqual([])
+    expect(result.finish_reason).toBe('stop')
+  })
+
+  it('rejects a per-call max_tool_calls_per_step below 1', async () => {
+    await expect(
+      basic_engine().generate({ model: 'claude-opus', prompt: 'x', max_tool_calls_per_step: 0 }),
+    ).rejects.toThrow(/max_tool_calls_per_step/)
+  })
+
+  it('shares the salvage budget across schema-repair iterations', async () => {
+    // First loop salvages (budget 1 -> 0) then returns schema-invalid text;
+    // the repair iteration returns markup again, which must NOT salvage a
+    // second time because the budget is shared, not refilled per iteration.
+    const seen: unknown[] = []
+    enqueue_generate_text(
+      make_text_result('<tool_call>{"name":"note","arguments":{"v":"one"}}</tool_call>'),
+    )
+    enqueue_generate_text(make_text_result('not json'))
+    enqueue_generate_text(
+      make_text_result('<tool_call>{"name":"note","arguments":{"v":"two"}}</tool_call>'),
+    )
+    enqueue_generate_text(make_text_result('still not json'))
+    const schema = z.object({ n: z.number() })
+    await expect(
+      basic_engine().generate({
+        model: 'claude-opus',
+        prompt: 'x',
+        schema,
+        schema_repair_attempts: 1,
+        tool_call_repair_attempts: 1,
+        tools: [
+          {
+            name: 'note',
+            description: 'notes input',
+            input_schema: z.object({ v: z.string() }),
+            execute: (input) => {
+              seen.push(input)
+              return 'noted'
+            },
+          },
+        ],
+      }),
+    ).rejects.toBeInstanceOf(schema_validation_error)
+    expect(seen).toEqual([{ v: 'one' }])
+  })
+
   it('hits max_steps with the attempted-but-unexecuted marker (C11)', async () => {
     const infinite = () => ({
       text: '',

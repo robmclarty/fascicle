@@ -316,6 +316,8 @@ vdescribe('model_call', () => {
       retry_policy: sample_retry,
       tool_error_policy: 'throw',
       schema_repair_attempts: 3,
+      tool_call_repair_attempts: 2,
+      max_tool_calls_per_step: 1,
       on_tool_approval: approve,
     })
     await run(s, 'hi', { install_signal_handlers: false })
@@ -331,6 +333,8 @@ vdescribe('model_call', () => {
     expect(opts?.retry).toBe(sample_retry)
     expect(opts?.tool_error_policy).toBe('throw')
     expect(opts?.schema_repair_attempts).toBe(3)
+    expect(opts?.tool_call_repair_attempts).toBe(2)
+    expect(opts?.max_tool_calls_per_step).toBe(1)
     expect(opts?.on_tool_approval).toBe(approve)
   })
 
@@ -352,6 +356,8 @@ vdescribe('model_call', () => {
       'retry',
       'tool_error_policy',
       'schema_repair_attempts',
+      'tool_call_repair_attempts',
+      'max_tool_calls_per_step',
       'on_tool_approval',
     ]) {
       expect(key in opts).toBe(false)

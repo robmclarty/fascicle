@@ -68,6 +68,12 @@ export function create_engine(config: EngineConfig): Engine {
   const default_retry = defaults?.retry_policy ?? config.default_retry ?? DEFAULT_RETRY
   const default_effort = defaults?.effort ?? config.default_effort ?? 'none'
   const default_max_steps = defaults?.max_steps ?? config.default_max_steps ?? 10
+  if (defaults?.tool_call_repair_attempts !== undefined && defaults.tool_call_repair_attempts < 0) {
+    throw new engine_config_error('defaults.tool_call_repair_attempts must be >= 0')
+  }
+  if (defaults?.max_tool_calls_per_step !== undefined && defaults.max_tool_calls_per_step < 1) {
+    throw new engine_config_error('defaults.max_tool_calls_per_step must be >= 1')
+  }
 
   const get_internals = (): EngineInternals => ({
     pricing,
@@ -83,6 +89,12 @@ export function create_engine(config: EngineConfig): Engine {
       : {}),
     ...(defaults?.schema_repair_attempts !== undefined
       ? { default_schema_repair_attempts: defaults.schema_repair_attempts }
+      : {}),
+    ...(defaults?.tool_call_repair_attempts !== undefined
+      ? { default_tool_call_repair_attempts: defaults.tool_call_repair_attempts }
+      : {}),
+    ...(defaults?.max_tool_calls_per_step !== undefined
+      ? { default_max_tool_calls_per_step: defaults.max_tool_calls_per_step }
       : {}),
     ...(defaults?.provider_options !== undefined
       ? { default_provider_options: defaults.provider_options }

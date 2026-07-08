@@ -74,6 +74,8 @@ export type CostBreakdown = {
   is_estimate: true
 }
 
+export type SalvageFormat = 'hermes' | 'json' | 'qwen_xml'
+
 export type ToolCallRecord = {
   id: string
   name: string
@@ -82,6 +84,12 @@ export type ToolCallRecord = {
   error?: { message: string; stack?: string }
   duration_ms: number
   started_at: number
+  /**
+   * Present only when the call was recovered from assistant text rather than
+   * returned structurally by the provider (tool_call_repair_attempts > 0).
+   */
+  salvaged?: true
+  salvaged_format?: SalvageFormat
 }
 
 export type StepRecord = {
@@ -172,6 +180,20 @@ export type GenerateOptions<t = string> = {
   retry?: RetryPolicy
   tool_error_policy?: 'feed_back' | 'throw'
   schema_repair_attempts?: number
+  /**
+   * Budget for salvaging tool calls the model emitted as assistant text
+   * instead of structured tool_calls (a common local-runtime failure).
+   * 0 (the default) disables salvage entirely. The budget is shared across
+   * the whole generate call, including schema-repair re-invocations.
+   */
+  tool_call_repair_attempts?: number
+  /**
+   * Cap on tool calls executed per step. Calls beyond the cap are dropped
+   * for that step (the model can re-issue them next turn) and surfaced via
+   * ToolCallRecord errors and a tool_calls_dropped trajectory event.
+   * undefined (the default) leaves the count unlimited.
+   */
+  max_tool_calls_per_step?: number
   on_tool_approval?: ToolApprovalHandler
   provider_options?: Record<string, unknown>
 }
@@ -226,7 +248,7 @@ export type ProviderConfigMap = {
  * | --------------------------------------------------------------------- | ----------------------------------------- |
  * | `model`                                                               | per-call wins; else default; else `sonnet` |
  * | `provider`                                                            | per-call wins; else default; else sole configured provider; else `anthropic` |
- * | `system`, `effort`, `max_steps`, `tool_error_policy`, `schema_repair_attempts` | per-call wins (nullish coalesce) |
+ * | `system`, `effort`, `max_steps`, `tool_error_policy`, `schema_repair_attempts`, `tool_call_repair_attempts`, `max_tool_calls_per_step` | per-call wins (nullish coalesce) |
  * | `retry_policy`                                                        | per-call replaces wholesale                |
  * | `provider_options`                                                    | two-level: per-provider-key shallow merge  |
  * | `prompt`, `tools`, `schema`, `abort`, `trajectory`, `on_chunk`        | not defaultable; always call-supplied      |
@@ -240,6 +262,8 @@ export type EngineDefaults = {
   readonly retry_policy?: RetryPolicy
   readonly tool_error_policy?: 'feed_back' | 'throw'
   readonly schema_repair_attempts?: number
+  readonly tool_call_repair_attempts?: number
+  readonly max_tool_calls_per_step?: number
   readonly provider_options?: Readonly<Record<string, Readonly<Record<string, unknown>>>>
 }
 

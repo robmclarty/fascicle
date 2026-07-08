@@ -53,6 +53,8 @@ export type ModelCallConfig<T = string> = {
   readonly retry_policy?: RetryPolicy
   readonly tool_error_policy?: 'feed_back' | 'throw'
   readonly schema_repair_attempts?: number
+  readonly tool_call_repair_attempts?: number
+  readonly max_tool_calls_per_step?: number
   readonly on_tool_approval?: ToolApprovalHandler
 }
 
@@ -168,6 +170,12 @@ export function model_call<T = string>(
     if (cfg.tool_error_policy !== undefined) opts.tool_error_policy = cfg.tool_error_policy
     if (cfg.schema_repair_attempts !== undefined) {
       opts.schema_repair_attempts = cfg.schema_repair_attempts
+    }
+    if (cfg.tool_call_repair_attempts !== undefined) {
+      opts.tool_call_repair_attempts = cfg.tool_call_repair_attempts
+    }
+    if (cfg.max_tool_calls_per_step !== undefined) {
+      opts.max_tool_calls_per_step = cfg.max_tool_calls_per_step
     }
     if (cfg.on_tool_approval !== undefined) opts.on_tool_approval = cfg.on_tool_approval
   

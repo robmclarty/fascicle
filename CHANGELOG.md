@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Two opt-in, provider-agnostic reliability options for `generate` that make local-model tool loops survivable. Both default to off, so existing behavior is unchanged.
+  - `tool_call_repair_attempts` (default `0`): when a step returns text with no structured tool calls, salvage a call the model emitted as assistant text in Hermes (`<tool_call>{...}</tool_call>`), bare/`json`-fenced, or Qwen3-Coder XML form. A candidate runs only if its name resolves and its arguments validate against the tool's `input_schema`, so plain JSON-in-prose never false-positives. Salvaged calls run the normal execute path and are marked `salvaged` (with `salvaged_format`) on their `ToolCallRecord`, plus a `tool_call_salvaged` trajectory event. The budget is shared across the whole call, including schema-repair passes.
+  - `max_tool_calls_per_step` (default unlimited, must be `>= 1`): execute only the first N tool calls of a step and drop the rest for that turn (the model can re-issue them next turn). Dropped calls surface as `ToolCallRecord`s with `error.message: 'dropped_max_tool_calls_per_step'` and a `tool_calls_dropped` event. Set to `1` for runtimes that mishandle parallel tool calls.
+- Both options are threaded through `EngineDefaults` (same per-call-wins merge rule) and `model_call`. The subprocess `claude_cli` provider records `option_ignored` for each, since it does not run the shared tool loop.
+
 ## v0.8.12 — 2026-07-04
 
 ### Fixed

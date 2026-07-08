@@ -19,6 +19,17 @@
  *   - max_steps cap RESOLVES with finish_reason: 'max_steps' (does not throw).
  *     Attempted-but-unexecuted tool calls from the final turn land in
  *     tool_calls with error: { message: 'max_steps_exceeded_before_execution' }.
+ *   - salvage_budget (from tool_call_repair_attempts): a turn with NO
+ *     structured calls, finish_reason 'stop'|'length', and tools present is
+ *     scanned for calls the model emitted as text (a local-runtime failure).
+ *     Validated matches run the normal execute path and produce the same
+ *     records/events/chunks as native calls, marked salvaged. The budget is
+ *     a shared mutable holder so it spans schema-repair re-invocations.
+ *   - max_tool_calls_per_step: calls beyond the cap are dropped for the step
+ *     (the model can re-issue next turn), recorded with
+ *     error: { message: 'dropped_max_tool_calls_per_step' }, and excluded
+ *     from the assistant history message so providers that require a result
+ *     per emitted call do not reject the next request.
  *
  * The loop does not itself call the AI SDK. It invokes a supplied `invoke_once`
  * seam that returns a neutral InvokeOnceResult. generate.ts builds the real
@@ -32,6 +43,7 @@ import type {
   FinishReason,
   Message,
   Pricing,
+  SalvageFormat,
   StepRecord,
   StreamChunk,
   Tool,
@@ -40,6 +52,7 @@ import type {
   ToolExecContext,
   UsageTotals,
 } from './types.js'
+import { salvage_tool_calls, type SalvageOutcome } from './tool_call_salvage.js'
 import {
   aborted_error,
   tool_approval_denied_error,
@@ -49,6 +62,8 @@ import {
   record_cost,
   record_tool_approval,
   record_tool_call,
+  record_tool_call_salvaged,
+  record_tool_calls_dropped,
   record_tool_result,
   end_step_span,
   start_step_span,
@@ -96,6 +111,13 @@ export type ToolLoopConfig = {
   readonly resolve_pricing: () => Pricing | undefined
   readonly pricing_dedup: PricingMissingDedup
   readonly on_finish_step?: (record: StepRecord) => void
+  /**
+   * Mutable so the budget survives schema-repair re-invocations of the loop
+   * within one generate call (precedent: pricing_dedup). undefined = salvage
+   * disabled.
+   */
+  readonly salvage_budget?: { remaining: number }
+  readonly max_tool_calls_per_step?: number
 }
 
 export type ToolLoopResult = {
@@ -326,11 +348,83 @@ export async function run_tool_loop(config: ToolLoopConfig): Promise<ToolLoopRes
       throw err
     }
 
+    // A turn that "stopped" with plain text may hold a call the runtime
+    // failed to parse into tool_calls; salvage before deciding the step ends
+    // the loop. History gets the stripped text + structured parts (raw markup
+    // in history would teach the model the text format works, and a tool
+    // result without a matching call part is rejected by OpenAI-compatible
+    // APIs); StepRecord.text keeps the raw text for debugging.
+    let effective_calls: ReadonlyArray<RawToolCall> = turn.tool_calls
+    let history_text = turn.text
+    let salvage: SalvageOutcome | undefined
+    const salvaged_formats = new Map<string, SalvageFormat>()
+    if (
+      turn.tool_calls.length === 0 &&
+      (turn.finish_reason === 'stop' || turn.finish_reason === 'length') &&
+      config.tools.length > 0 &&
+      config.salvage_budget !== undefined &&
+      config.salvage_budget.remaining > 0
+    ) {
+      salvage = salvage_tool_calls(turn.text, tool_map)
+      if (salvage !== undefined) {
+        config.salvage_budget.remaining -= 1
+        history_text = salvage.stripped_text
+        effective_calls = salvage.calls.map((c, n) => {
+          const id = `salvaged_${step_index}_${n}`
+          salvaged_formats.set(id, c.format)
+          return { id, name: c.name, input: c.input }
+        })
+        record_tool_call_salvaged(config.trajectory, {
+          step_index,
+          calls: effective_calls.map((c) => ({
+            tool_call_id: c.id,
+            name: c.name,
+            format: salvaged_formats.get(c.id) ?? 'json',
+          })),
+          raw_text: turn.text,
+        })
+        if (config.dispatch_chunk !== undefined) {
+          // Mirror the native stream, which emits start/end for every call
+          // the model attempted, including ones the clamp below drops.
+          for (const c of effective_calls) {
+            await config.dispatch_chunk({
+              kind: 'tool_call_start',
+              id: c.id,
+              name: c.name,
+              step_index,
+            })
+            await config.dispatch_chunk({
+              kind: 'tool_call_end',
+              id: c.id,
+              input: c.input,
+              step_index,
+            })
+          }
+        }
+      }
+    }
+
+    // Clamp applies to native and salvaged calls alike. Dropped calls never
+    // reach history; the model re-issues them on a later turn if it still
+    // wants them.
+    let dropped_calls: ReadonlyArray<RawToolCall> = []
+    const per_step_cap = config.max_tool_calls_per_step
+    if (per_step_cap !== undefined && effective_calls.length > per_step_cap) {
+      dropped_calls = effective_calls.slice(per_step_cap)
+      effective_calls = effective_calls.slice(0, per_step_cap)
+      record_tool_calls_dropped(config.trajectory, {
+        step_index,
+        max_tool_calls_per_step: per_step_cap,
+        kept: effective_calls.length,
+        dropped: dropped_calls.map((d) => ({ tool_call_id: d.id, name: d.name })),
+      })
+    }
+
     const step_tool_records: ToolCallRecord[] = []
-    const assistant_message = build_assistant_message(turn.text, turn.tool_calls)
+    const assistant_message = build_assistant_message(history_text, effective_calls)
     config.messages.push(assistant_message)
 
-    if (turn.tool_calls.length === 0) {
+    if (effective_calls.length === 0) {
       text = turn.text
       finish_reason = turn.finish_reason
       const record_step: StepRecord = {
@@ -355,7 +449,7 @@ export async function run_tool_loop(config: ToolLoopConfig): Promise<ToolLoopRes
     const would_exceed_after = step_index + 1 >= config.max_steps
     const tool_results_to_feed: Message[] = []
 
-    for (const raw_call of turn.tool_calls) {
+    for (const raw_call of effective_calls) {
       throw_if_aborted_in_flight(config.abort, step_index, { id: raw_call.id, name: raw_call.name })
 
       if (would_exceed_after) {
@@ -617,6 +711,37 @@ export async function run_tool_loop(config: ToolLoopConfig): Promise<ToolLoopRes
       await dispatch_tool_result_chunk(config.dispatch_chunk, step_index, raw_call.id, output)
     }
 
+    // Dropped calls mirror the max_steps precedent: a record with an error
+    // and a tool_result event/chunk, but no tool_call event, no execution,
+    // and no fed-back tool message (their call parts are not in history).
+    for (const d of dropped_calls) {
+      const record: ToolCallRecord = {
+        id: d.id,
+        name: d.name,
+        input: d.input,
+        error: { message: 'dropped_max_tool_calls_per_step' },
+        duration_ms: 0,
+        started_at: Date.now(),
+      }
+      step_tool_records.push(record)
+      tool_calls_all.push(record)
+      await dispatch_tool_result_chunk(
+        config.dispatch_chunk,
+        step_index,
+        d.id,
+        undefined,
+        { message: 'dropped_max_tool_calls_per_step' },
+      )
+    }
+
+    for (const r of step_tool_records) {
+      const format = salvaged_formats.get(r.id)
+      if (format !== undefined) {
+        r.salvaged = true
+        r.salvaged_format = format
+      }
+    }
+
     // Emit a tool_result for every resolved call in this step (success carries
     // output, feed-back failures carry error). Throw-policy and aborted calls
     // exit before here and surface loudly as a thrown error instead.
@@ -632,7 +757,13 @@ export async function run_tool_loop(config: ToolLoopConfig): Promise<ToolLoopRes
 
     for (const m of tool_results_to_feed) config.messages.push(m)
 
-    const turn_finish_reason: FinishReason = would_exceed_after ? 'max_steps' : turn.finish_reason
+    // A salvaged step reports 'tool_calls': downstream consumers see the same
+    // shape a native tool turn produces; the salvaged flags carry provenance.
+    const turn_finish_reason: FinishReason = would_exceed_after
+      ? 'max_steps'
+      : salvage !== undefined
+        ? 'tool_calls'
+        : turn.finish_reason
     const step_record: StepRecord = {
       index: step_index,
       text: turn.text,
