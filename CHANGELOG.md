@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.8.16 — 2026-07-07
+
+### Added
+
+- `fascicle/ui` subpath for streaming a run into an AI SDK `useChat` UI: `to_ui_message_response`, `pipe_ui_message_stream_to_response`, and `to_ui_message_chunks` translate trajectory `model_chunk` events onto the AI SDK UI message wire. Ships with `docs/human-in-the-loop.md` and `examples/hitl_http.ts` covering suspend/confirm/resume over HTTP.
+
+### Changed
+
+- `model_call` now records `model_chunk` on the trajectory (via `trajectory.record`) instead of routing it through `ctx.emit`, so consumers see a clean top-level `model_chunk` event carrying the `StreamChunk` rather than one wrapped in a generic `emit`.
+
+### Fixed
+
+- Disabled the AI SDK's built-in retry (`maxRetries: 0`) on the generate and stream calls. The engine already owns retry via its retry policy; the SDK's default of 2 nested a second retry loop inside every attempt, inflating provider round-trips and distorting backoff.
+
 ## v0.8.15 — 2026-07-07
 
 ### Added
