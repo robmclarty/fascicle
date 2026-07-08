@@ -335,6 +335,62 @@ describe('generate: tool loop', () => {
     expect(result.steps).toHaveLength(2)
   })
 
+  it('ends the loop after one turn when a terminal tool (ends_turn) succeeds', async () => {
+    // Only one provider turn is queued: a second call would throw
+    // 'no response queued', so a passing call_count of 1 proves the loop stopped.
+    enqueue_generate_text({
+      text: '',
+      toolCalls: [{ toolCallId: 'c1', toolName: 'finish', input: { v: 'x' } }],
+      finishReason: 'tool-calls',
+      usage: { inputTokens: 10, outputTokens: 2 },
+    })
+    const result = await basic_engine().generate({
+      model: 'claude-opus',
+      prompt: 'x',
+      tools: [
+        {
+          name: 'finish',
+          description: 'ends the run',
+          input_schema: z.object({ v: z.string() }),
+          execute: () => 'summary',
+          ends_turn: true,
+        },
+      ],
+    })
+    expect(mock_state.generate_text_call_count).toBe(1)
+    expect(result.finish_reason).toBe('stop')
+    expect(result.steps).toHaveLength(1)
+    expect(result.tool_calls[0]).toMatchObject({ name: 'finish', output: 'summary' })
+  })
+
+  it('surfaces a terminal-tool finish as a stop finish chunk when streaming', async () => {
+    enqueue_stream([
+      { type: 'tool-call', toolCallId: 'c1', toolName: 'finish', input: { v: 'x' } },
+      { type: 'finish-step', finishReason: 'tool-calls', usage: { inputTokens: 3, outputTokens: 1 } },
+    ])
+    const chunks: StreamChunk[] = []
+    const result = await basic_engine().generate({
+      model: 'claude-opus',
+      prompt: 'x',
+      tools: [
+        {
+          name: 'finish',
+          description: 'ends the run',
+          input_schema: z.object({ v: z.string() }),
+          execute: () => 'summary',
+          ends_turn: true,
+        },
+      ],
+      on_chunk: (c) => {
+        chunks.push(c)
+      },
+    })
+    expect(mock_state.stream_text_call_count).toBe(1)
+    expect(result.finish_reason).toBe('stop')
+    expect(chunks.at(-1)).toMatchObject({ kind: 'finish', finish_reason: 'stop' })
+    expect(chunks.some((c) => c.kind === 'tool_result' && c.id === 'c1')).toBe(true)
+  })
+
   it('salvages a tool call the provider emitted as text when repair is enabled', async () => {
     const seen: unknown[] = []
     enqueue_generate_text(

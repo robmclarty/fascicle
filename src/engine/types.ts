@@ -128,6 +128,14 @@ export type Tool<i = unknown, o = unknown> = {
   input_schema: z.ZodType<i>
   execute: (input: i, ctx: ToolExecContext) => Promise<o> | o
   needs_approval?: boolean | ((input: i) => boolean | Promise<boolean>)
+  /**
+   * When true, a SUCCESSFUL execution of this tool ends the tool loop
+   * deterministically: the loop executes the call (recording its output and
+   * trajectory events like any tool), then stops instead of running another
+   * model turn. A denied, invalid, dropped, or throwing terminal call does NOT
+   * end the loop. undefined (the default) preserves the prior loop exactly.
+   */
+  ends_turn?: boolean
 }
 
 export type ToolApprovalRequest = {

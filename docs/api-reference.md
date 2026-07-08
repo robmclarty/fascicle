@@ -104,7 +104,7 @@ verbatim, `provider` names the transport. Full shape in
 | `prompt` | `string \| Message[]` |
 | `system` | system prompt |
 | `schema` | a zod schema; structured output with repair passes |
-| `tools` | agentic tool surface (`Tool[]`) |
+| `tools` | agentic tool surface (`Tool[]`); a tool may set `ends_turn: true` to end the loop on a successful call |
 | `effort` | `'none' \| 'low' \| 'medium' \| 'high' \| 'xhigh' \| 'max'`, translated per provider |
 | `abort`, `trajectory`, `on_chunk` | cancellation, observation, streaming |
 | `retry` | per-call `RetryPolicy` |

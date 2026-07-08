@@ -313,6 +313,20 @@ on_tool_approval: async (req) => {
 
 A denied approval throws `tool_approval_denied_error`.
 
+Tools can also end the loop. By default the loop runs until the model emits a turn with no tool call or `max_steps` is hit; a weak local model often does better with an explicit `finish` tool it can call to signal it is done. Flag that tool `ends_turn: true` and a successful call ends the loop immediately, with no extra model turn:
+
+```ts
+const finish = {
+  name: 'finish',
+  description: 'Call when the task is complete. Provide a short summary.',
+  input_schema: z.object({ summary: z.string() }),
+  execute: ({ summary }: { summary: string }) => summary,
+  ends_turn: true,
+};
+```
+
+The call runs its `execute` first (so the summary lands in the `ToolCallRecord` output and the trajectory), then the loop stops with `finish_reason: 'stop'`. Only a successful call ends the loop: a denied, invalid, dropped, or throwing terminal call is fed back like any other tool error and the loop keeps going. A terminal call also wins over a coincident `max_steps` cap, so a `finish` on the last allowed step is a clean stop, not a cutoff. `ends_turn` composes with `tool_call_repair_attempts` (a salvaged `finish` ends the loop too) and `max_tool_calls_per_step`.
+
 ## Structured output with zod
 
 Pass a schema; the engine validates, repairs (up to `schema_repair_attempts`, default 1), or throws.

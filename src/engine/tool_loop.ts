@@ -30,6 +30,15 @@
  *     error: { message: 'dropped_max_tool_calls_per_step' }, and excluded
  *     from the assistant history message so providers that require a result
  *     per emitted call do not reject the next request.
+ *   - ends_turn (Tool.ends_turn): a tool flagged terminal ends the loop when a
+ *     call to it executes SUCCESSFULLY. The call runs the normal execute path
+ *     (record, fed tool_result message, trajectory events + chunk), then the
+ *     loop breaks with finish_reason 'stop' instead of running another model
+ *     turn. Salvaged terminal calls behave identically. A denied, invalid,
+ *     dropped, or throwing terminal call does NOT end the loop. A successful
+ *     terminal call is exempt from the max_steps would_exceed_after skip (it
+ *     needs no follow-up turn), so a terminal finish wins over a coincident
+ *     max_steps cap (finish_reason 'stop', max_steps_reached false).
  *
  * The loop does not itself call the AI SDK. It invokes a supplied `invoke_once`
  * seam that returns a neutral InvokeOnceResult. generate.ts builds the real
@@ -448,11 +457,17 @@ export async function run_tool_loop(config: ToolLoopConfig): Promise<ToolLoopRes
     // This turn has tool calls. Execute them sequentially.
     const would_exceed_after = step_index + 1 >= config.max_steps
     const tool_results_to_feed: Message[] = []
+    // Set true when a call to a Tool flagged ends_turn executes successfully;
+    // ends the loop after this step (see the terminal-finish break below).
+    let terminal_fired = false
 
     for (const raw_call of effective_calls) {
       throw_if_aborted_in_flight(config.abort, step_index, { id: raw_call.id, name: raw_call.name })
 
-      if (would_exceed_after) {
+      // A successful terminal call needs no follow-up turn, so it is exempt
+      // from this skip: it executes below and ends the loop cleanly, winning
+      // over the coincident max_steps cap.
+      if (would_exceed_after && tool_map.get(raw_call.name)?.ends_turn !== true) {
         const record: ToolCallRecord = {
           id: raw_call.id,
           name: raw_call.name,
@@ -698,6 +713,7 @@ export async function run_tool_loop(config: ToolLoopConfig): Promise<ToolLoopRes
       }
       step_tool_records.push(record)
       tool_calls_all.push(record)
+      if (tool.ends_turn === true) terminal_fired = true
       tool_results_to_feed.push(
         build_tool_result_message(raw_call.id, tool.name, output ?? ''),
       )
@@ -759,11 +775,15 @@ export async function run_tool_loop(config: ToolLoopConfig): Promise<ToolLoopRes
 
     // A salvaged step reports 'tool_calls': downstream consumers see the same
     // shape a native tool turn produces; the salvaged flags carry provenance.
-    const turn_finish_reason: FinishReason = would_exceed_after
-      ? 'max_steps'
-      : salvage !== undefined
-        ? 'tool_calls'
-        : turn.finish_reason
+    // A terminal step reports 'tool_calls' (it genuinely made calls); the loop
+    // finish_reason 'stop' below is the separate signal that generation ended.
+    const turn_finish_reason: FinishReason = terminal_fired
+      ? 'tool_calls'
+      : would_exceed_after
+        ? 'max_steps'
+        : salvage !== undefined
+          ? 'tool_calls'
+          : turn.finish_reason
     const step_record: StepRecord = {
       index: step_index,
       text: turn.text,
@@ -779,6 +799,15 @@ export async function run_tool_loop(config: ToolLoopConfig): Promise<ToolLoopRes
       usage: turn.usage,
       finish_reason: turn_finish_reason,
     })
+
+    // A successful terminal call ends the loop cleanly. Placed before the
+    // max_steps break so a terminal finish wins over a coincident cap: the
+    // full step is already recorded, so the result stays complete.
+    if (terminal_fired) {
+      finish_reason = 'stop'
+      text = turn.text
+      break
+    }
 
     if (would_exceed_after) {
       max_steps_reached = true

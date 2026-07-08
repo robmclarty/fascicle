@@ -67,6 +67,7 @@ function make_tool(overrides: Partial<Tool> = {}): Tool {
     input_schema: overrides.input_schema ?? z.object({ value: z.string() }),
     execute,
     ...(overrides.needs_approval !== undefined ? { needs_approval: overrides.needs_approval } : {}),
+    ...(overrides.ends_turn !== undefined ? { ends_turn: overrides.ends_turn } : {}),
   }
 }
 
@@ -1427,5 +1428,244 @@ describe('run_tool_loop max_tool_calls_per_step clamp', () => {
     )
     expect(out.tool_calls).toHaveLength(2)
     expect(events.find((e) => e['kind'] === 'tool_calls_dropped')).toBeUndefined()
+  })
+})
+
+describe('run_tool_loop ends_turn (terminal tool)', () => {
+  const finish_tool = (overrides: Partial<Tool> = {}): Tool =>
+    make_tool({ name: 'finish', ends_turn: true, execute: () => 'summary', ...overrides })
+
+  it('ends the loop when a terminal tool executes successfully', async () => {
+    // Exactly one invoke result: if the loop ran another turn, make_invoke_once
+    // throws, so this also proves the loop stopped.
+    const out = await run_tool_loop(
+      base_config({
+        invoke: [
+          { text: 'wrapping up', tool_calls: [call('c1', 'finish', { value: 'x' })], finish_reason: 'tool_calls' },
+        ],
+        tools: [finish_tool()],
+      }),
+    )
+    expect(out.finish_reason).toBe('stop')
+    expect(out.max_steps_reached).toBe(false)
+    expect(out.text).toBe('wrapping up')
+    expect(out.steps).toHaveLength(1)
+    expect(out.steps[0]?.finish_reason).toBe('tool_calls')
+    expect(out.tool_calls).toHaveLength(1)
+    expect(out.tool_calls[0]).toMatchObject({ name: 'finish', output: 'summary' })
+    expect(out.tool_calls[0]?.error).toBeUndefined()
+  })
+
+  it('executes the terminal call normally: output, fed result, trajectory events, and chunk', async () => {
+    const chunks: StreamChunk[] = []
+    const { trajectory, events } = recording_trajectory()
+    const messages: Message[] = [{ role: 'user', content: 'go' }]
+    await run_tool_loop(
+      base_config({
+        invoke: [{ tool_calls: [call('c1', 'finish', { value: 'x' })], finish_reason: 'tool_calls' }],
+        tools: [finish_tool()],
+        messages,
+        trajectory,
+        dispatch_chunk: async (c) => {
+          chunks.push(c)
+        },
+      }),
+    )
+    expect(messages[1]).toMatchObject({ role: 'assistant' })
+    expect(tool_message(messages)).toMatchObject({ role: 'tool', name: 'finish', content: 'summary' })
+    expect(events.find((e) => e['kind'] === 'tool_call')).toMatchObject({ tool_call_id: 'c1', name: 'finish' })
+    expect(events.find((e) => e['kind'] === 'tool_result')).toMatchObject({ tool_call_id: 'c1', output: 'summary' })
+    expect(chunks.find((c) => c.kind === 'tool_result')).toMatchObject({ id: 'c1', step_index: 0, output: 'summary' })
+  })
+
+  it('executes every kept call in the step before breaking, even when the terminal call is first', async () => {
+    const order: string[] = []
+    const out = await run_tool_loop(
+      base_config({
+        invoke: [
+          {
+            tool_calls: [call('c1', 'finish', { value: 'x' }), call('c2', 'echo', { value: 'y' })],
+            finish_reason: 'tool_calls',
+          },
+        ],
+        tools: [
+          finish_tool({
+            execute: () => {
+              order.push('finish')
+              return 'summary'
+            },
+          }),
+          make_tool({
+            name: 'echo',
+            execute: () => {
+              order.push('echo')
+              return 'echoed'
+            },
+          }),
+        ],
+      }),
+    )
+    expect(order).toEqual(['finish', 'echo'])
+    expect(out.finish_reason).toBe('stop')
+    expect(out.tool_calls).toHaveLength(2)
+  })
+
+  it('wins over max_steps when the terminal call lands on the final allowed step', async () => {
+    const out = await run_tool_loop(
+      base_config({
+        invoke: [{ tool_calls: [call('c1', 'finish', { value: 'x' })], finish_reason: 'tool_calls' }],
+        tools: [finish_tool()],
+        max_steps: 1,
+      }),
+    )
+    expect(out.finish_reason).toBe('stop')
+    expect(out.max_steps_reached).toBe(false)
+    expect(out.steps[0]?.finish_reason).toBe('tool_calls')
+    expect(out.tool_calls[0]).toMatchObject({ name: 'finish', output: 'summary' })
+    expect(out.tool_calls[0]?.error).toBeUndefined()
+  })
+
+  it('ends the loop for a salvaged terminal call', async () => {
+    const out = await run_tool_loop(
+      base_config({
+        invoke: [{ text: hermes('hi'), finish_reason: 'stop' }],
+        tools: [make_tool({ name: 'echo', ends_turn: true, execute: () => 'ran' })],
+        salvage_budget: { remaining: 1 },
+      }),
+    )
+    expect(out.finish_reason).toBe('stop')
+    expect(out.tool_calls[0]).toMatchObject({ output: 'ran', salvaged: true, salvaged_format: 'hermes' })
+  })
+
+  it('wins over max_steps for a salvaged terminal call on the final step', async () => {
+    const budget = { remaining: 1 }
+    const out = await run_tool_loop(
+      base_config({
+        invoke: [{ text: hermes('hi'), finish_reason: 'stop' }],
+        tools: [make_tool({ name: 'echo', ends_turn: true, execute: () => 'ran' })],
+        max_steps: 1,
+        salvage_budget: budget,
+      }),
+    )
+    expect(out.finish_reason).toBe('stop')
+    expect(out.max_steps_reached).toBe(false)
+    expect(out.steps[0]?.finish_reason).toBe('tool_calls')
+    expect(out.tool_calls[0]).toMatchObject({ output: 'ran', salvaged: true })
+    expect(out.tool_calls[0]?.error).toBeUndefined()
+    expect(budget.remaining).toBe(0)
+  })
+
+  it('does not end the loop when a terminal call throws (feed_back)', async () => {
+    const out = await run_tool_loop(
+      base_config({
+        invoke: [
+          { tool_calls: [call('c1', 'finish', { value: 'x' })], finish_reason: 'tool_calls' },
+          { text: 'recovered', finish_reason: 'stop' },
+        ],
+        tools: [finish_tool({ execute: () => { throw new Error('kaboom') } })],
+      }),
+    )
+    expect(out.steps).toHaveLength(2)
+    expect(out.text).toBe('recovered')
+    expect(out.tool_calls[0]?.error).toEqual({ message: 'kaboom' })
+  })
+
+  it('propagates the throw (does not terminate) when a terminal call throws under throw policy', async () => {
+    await expect(
+      run_tool_loop(
+        base_config({
+          invoke: [{ tool_calls: [call('c1', 'finish', { value: 'x' })], finish_reason: 'tool_calls' }],
+          tools: [finish_tool({ execute: () => { throw new Error('kaboom') } })],
+          tool_error_policy: 'throw',
+        }),
+      ),
+    ).rejects.toBeInstanceOf(tool_error)
+  })
+
+  it('does not end the loop when a terminal call is denied (feed_back)', async () => {
+    const out = await run_tool_loop(
+      base_config({
+        invoke: [
+          { tool_calls: [call('c1', 'finish', { value: 'x' })], finish_reason: 'tool_calls' },
+          { text: 'moved on', finish_reason: 'stop' },
+        ],
+        tools: [finish_tool({ needs_approval: true })],
+        on_tool_approval: () => false,
+      }),
+    )
+    expect(out.steps).toHaveLength(2)
+    expect(out.text).toBe('moved on')
+    expect(out.tool_calls[0]?.error).toEqual({ message: 'tool_approval_denied' })
+  })
+
+  it('propagates the denial (does not terminate) when a terminal call is denied under throw policy', async () => {
+    await expect(
+      run_tool_loop(
+        base_config({
+          invoke: [{ tool_calls: [call('c1', 'finish', { value: 'x' })], finish_reason: 'tool_calls' }],
+          tools: [finish_tool({ needs_approval: true })],
+          on_tool_approval: () => false,
+          tool_error_policy: 'throw',
+        }),
+      ),
+    ).rejects.toBeInstanceOf(tool_approval_denied_error)
+  })
+
+  it('does not end the loop when a terminal call has invalid input (execute never runs)', async () => {
+    let executed = false
+    const out = await run_tool_loop(
+      base_config({
+        invoke: [
+          { tool_calls: [call('c1', 'finish', { wrong: 1 })], finish_reason: 'tool_calls' },
+          { text: 'retry', finish_reason: 'stop' },
+        ],
+        tools: [
+          finish_tool({
+            execute: () => {
+              executed = true
+              return 'summary'
+            },
+          }),
+        ],
+      }),
+    )
+    expect(executed).toBe(false)
+    expect(out.steps).toHaveLength(2)
+    expect(out.tool_calls[0]?.error?.message).toContain('invalid tool input')
+  })
+
+  it('does not end the loop when a terminal call is dropped by max_tool_calls_per_step', async () => {
+    const out = await run_tool_loop(
+      base_config({
+        invoke: [
+          {
+            tool_calls: [call('c1', 'echo', { value: 'y' }), call('c2', 'finish', { value: 'x' })],
+            finish_reason: 'tool_calls',
+          },
+          { text: 'kept going', finish_reason: 'stop' },
+        ],
+        tools: [make_tool({ name: 'echo', execute: () => 'echoed' }), finish_tool()],
+        max_tool_calls_per_step: 1,
+      }),
+    )
+    expect(out.steps).toHaveLength(2)
+    expect(out.text).toBe('kept going')
+    const dropped = out.tool_calls.find((r) => r.id === 'c2')
+    expect(dropped?.error).toEqual({ message: 'dropped_max_tool_calls_per_step' })
+  })
+
+  it('treats ends_turn: false like undefined (does not terminate)', async () => {
+    const out = await run_tool_loop(
+      base_config({
+        invoke: [
+          { tool_calls: [call('c1', 'echo', { value: 'y' })], finish_reason: 'tool_calls' },
+          { text: 'done', finish_reason: 'stop' },
+        ],
+        tools: [make_tool({ name: 'echo', ends_turn: false, execute: () => 'echoed' })],
+      }),
+    )
+    expect(out.steps).toHaveLength(2)
+    expect(out.text).toBe('done')
+    expect(out.tool_calls[0]).toMatchObject({ output: 'echoed' })
   })
 })

@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.8.14 — 2026-07-07
+
+### Added
+
+- `Tool.ends_turn` (default off): mark a tool terminal so a successful call ends the tool loop deterministically instead of feeding the result back for another model turn. The call executes normally (its output is recorded on the `ToolCallRecord`, fed to history as a tool result, and emitted as `tool_call`/`tool_result` trajectory events and a `tool_result` chunk), then the loop stops with `finish_reason: 'stop'`. Only a successful execution ends the loop: a denied, invalid, dropped, or throwing terminal call is fed back like any other tool error and the loop continues. A terminal finish wins over a coincident `max_steps` cap (a clean `stop`, with `max_steps_reached` still false), and a salvaged terminal call (`tool_call_repair_attempts`) ends the loop identically. Existing loops are unaffected: `ends_turn` undefined preserves prior behavior exactly.
+
 ## v0.8.13 — 2026-07-07
 
 ### Added
