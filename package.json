@@ -58,6 +58,10 @@
     "./stdio": {
       "types": "./dist/stdio.d.ts",
       "import": "./dist/stdio.js"
+    },
+    "./ui": {
+      "types": "./dist/ui.d.ts",
+      "import": "./dist/ui.js"
     }
   },
   "imports": {
@@ -67,7 +71,8 @@
     "#adapters": "./src/adapters/index.ts",
     "#viewer": "./src/viewer/index.ts",
     "#agents": "./src/agents/index.ts",
-    "#stdio": "./src/stdio/index.ts"
+    "#stdio": "./src/stdio/index.ts",
+    "#ui": "./src/ui/index.ts"
   },
   "bin": {
     "fascicle-viewer": "./dist/bin/fascicle-viewer.js"

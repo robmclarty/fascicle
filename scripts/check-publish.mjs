@@ -31,6 +31,8 @@ const REQUIRED_FILES = [
   'dist/mcp.d.ts',
   'dist/stdio.js',
   'dist/stdio.d.ts',
+  'dist/ui.js',
+  'dist/ui.d.ts',
   'README.md',
   'CHANGELOG.md',
 ];

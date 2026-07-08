@@ -69,3 +69,7 @@ cannotImport = ["src/composites/**", "src/agents/**", "src/adapters/**", "src/vi
 [[boundaries.rules]] # stdio: core + adapters only (single-shot child-process entry helper)
 from = "src/stdio/**"
 cannotImport = ["src/engine/**", "src/composites/**", "src/agents/**", "src/viewer/**", "src/mcp/**"]
+
+[[boundaries.rules]] # ui: core + engine only (bridges the run stream to the AI SDK UI wire)
+from = "src/ui/**"
+cannotImport = ["src/composites/**", "src/agents/**", "src/adapters/**", "src/viewer/**"]

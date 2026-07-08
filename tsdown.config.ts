@@ -16,6 +16,7 @@ export default defineConfig({
     adapters: './src/adapters/index.ts',
     mcp: './src/mcp/index.ts',
     stdio: './src/stdio/index.ts',
+    ui: './src/ui/index.ts',
   },
   outDir: './dist',
   format: ['esm'],

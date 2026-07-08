@@ -102,12 +102,14 @@ function tsconfig_for(mode) {
           fascicle: [`${base}/index.d.ts`],
           'fascicle/adapters': [`${base}/adapters.d.ts`],
           'fascicle/mcp': [`${base}/mcp.d.ts`],
+          'fascicle/ui': [`${base}/ui.d.ts`],
           '@repo/fascicle': [`${base}/index.d.ts`],
         }
       : {
           fascicle: [`${base}/index.ts`],
           'fascicle/adapters': [`${base}/adapters/index.ts`],
           'fascicle/mcp': [`${base}/mcp/index.ts`],
+          'fascicle/ui': [`${base}/ui/index.ts`],
           '@repo/fascicle': [`${base}/index.ts`],
           ...module_aliases,
         };

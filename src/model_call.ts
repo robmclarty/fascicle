@@ -181,7 +181,11 @@ export function model_call<T = string>(
   
     if (ctx.streaming) {
       opts.on_chunk = (chunk) => {
-        ctx.emit({ kind: 'model_chunk', step_id, chunk })
+        // Record with kind preserved. ctx.emit would clobber kind to 'emit'
+        // and bury the chunk, so stream consumers would have to un-nest a
+        // generic event; recording keeps a clean top-level `model_chunk` event
+        // (what docs/concepts.md already documents) carrying the StreamChunk.
+        ctx.trajectory.record({ kind: 'model_chunk', step_id, chunk })
       }
     }
   

@@ -175,6 +175,7 @@ For zero-latency streaming from inside a long-running flow, pair it with `http_l
 - [docs/providers.md](./docs/providers.md) — per-provider adapter notes
 - [docs/cli.md](./docs/cli.md) — the `claude_cli` subprocess adapter
 - [docs/cookbook.md](./docs/cookbook.md) — retries, fan-out, judges, HITL, tool loops
+- [docs/human-in-the-loop.md](./docs/human-in-the-loop.md) — suspend/resume approval over HTTP and streaming to a `useChat` UI via `fascicle/ui`
 - [docs/writing-a-harness.md](./docs/writing-a-harness.md) — building a runner around fascicle
 - [docs/embedding-under-a-harness.md](./docs/embedding-under-a-harness.md) — running a fascicle agent as somebody's child process
 - [docs/troubleshooting.md](./docs/troubleshooting.md) — first-run errors and what they mean

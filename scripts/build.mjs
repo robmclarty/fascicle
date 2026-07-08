@@ -33,6 +33,8 @@ const DIST_MCP_JS = join(DIST_DIR, 'mcp.js');
 const DIST_MCP_DTS = join(DIST_DIR, 'mcp.d.ts');
 const DIST_STDIO_JS = join(DIST_DIR, 'stdio.js');
 const DIST_STDIO_DTS = join(DIST_DIR, 'stdio.d.ts');
+const DIST_UI_JS = join(DIST_DIR, 'ui.js');
+const DIST_UI_DTS = join(DIST_DIR, 'ui.d.ts');
 const DIST_STATIC_DIR = join(DIST_DIR, 'static');
 const DIST_STATIC_HTML = join(DIST_STATIC_DIR, 'viewer.html');
 const VIEWER_HTML_SRC = join(REPO_ROOT, 'src', 'viewer', 'static', 'viewer.html');
@@ -276,8 +278,21 @@ async function main() {
     process.exit(1);
   }
 
+  process.stderr.write(`▸ build: smoke-importing ${DIST_UI_JS}\n`);
+  if (!existsSync(DIST_UI_JS) || !existsSync(DIST_UI_DTS)) {
+    console.error(`\nbuild: dist/ui.{js,d.ts} were not produced (the ./ui subpath)`);
+    process.exit(1);
+  }
+  const ui_mod = await import(pathToFileURL(DIST_UI_JS).href);
+  const EXPECTED_UI = ['to_ui_message_response', 'pipe_ui_message_stream_to_response', 'to_ui_message_chunks'];
+  const missing_ui = EXPECTED_UI.filter((name) => typeof ui_mod[name] === 'undefined');
+  if (missing_ui.length > 0) {
+    console.error(`\nbuild: ui smoke test missing exports: ${missing_ui.join(', ')}`);
+    process.exit(1);
+  }
+
   process.stderr.write(
-    `\n✔ build ok (${js_stat.size} bytes js, ${dts_stat.size} bytes d.ts, ${EXPECTED_NAMED.length} named exports + describe.json + ${EXPECTED_ADAPTERS.length} adapters + ${EXPECTED_MCP.length} mcp + ${EXPECTED_STDIO.length} stdio verified)\n`,
+    `\n✔ build ok (${js_stat.size} bytes js, ${dts_stat.size} bytes d.ts, ${EXPECTED_NAMED.length} named exports + describe.json + ${EXPECTED_ADAPTERS.length} adapters + ${EXPECTED_MCP.length} mcp + ${EXPECTED_STDIO.length} stdio + ${EXPECTED_UI.length} ui verified)\n`,
   );
 }
 

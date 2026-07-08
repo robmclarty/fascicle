@@ -262,7 +262,11 @@ const final = await run(approve, { plan: 'deploy v2' }, {
 });
 ```
 
-See [`examples/suspend_resume.ts`](../examples/suspend_resume.ts).
+See [`examples/suspend_resume.ts`](../examples/suspend_resume.ts) for the
+mechanical version, [`examples/hitl_http.ts`](../examples/hitl_http.ts) for an
+end-to-end suspend/confirm/resume server, and
+[docs/human-in-the-loop.md](./human-in-the-loop.md) for the full narrative
+(including streaming the outcome to a `useChat` UI with `fascicle/ui`).
 
 ## Tool loops
 

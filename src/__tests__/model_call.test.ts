@@ -267,8 +267,8 @@ vdescribe('model_call', () => {
     expect(plain.calls[0]?.had_on_chunk).toBe(false)
     expect(streamed.calls[0]?.had_on_chunk).toBe(true)
     const emitted = events.filter(
-      (e): e is { kind: 'emit'; step_id?: string } =>
-        typeof e === 'object' && (e as { kind?: string } | null)?.kind === 'emit',
+      (e): e is { kind: 'model_chunk'; step_id?: string } =>
+        typeof e === 'object' && (e as { kind?: string } | null)?.kind === 'model_chunk',
     )
     expect(emitted.length).toBeGreaterThan(0)
   })
@@ -431,7 +431,7 @@ vdescribe('model_call', () => {
     expect(calls).toHaveLength(0)
   })
 
-  it('emits a model_chunk event carrying the chunk and step id while streaming', async () => {
+  it('records a model_chunk event carrying the chunk and step id while streaming', async () => {
     const chunk: StreamChunk = { kind: 'text', text: 'hi', step_index: 0 }
     const { engine } = make_mock_engine({
       on_generate: async (opts) => {
@@ -439,9 +439,19 @@ vdescribe('model_call', () => {
       },
     })
     const s = model_call({ engine, model: 'x' })
-    const emitted: unknown[] = []
-    await s.run('hi', bare_ctx({ streaming: true, emit: (e) => emitted.push(e) }))
-    expect(emitted).toEqual([{ kind: 'model_chunk', step_id: s.id, chunk }])
+    const recorded: unknown[] = []
+    await s.run(
+      'hi',
+      bare_ctx({
+        streaming: true,
+        trajectory: {
+          record: (e) => recorded.push(e),
+          start_span: () => 'span',
+          end_span: () => {},
+        },
+      }),
+    )
+    expect(recorded).toEqual([{ kind: 'model_chunk', step_id: s.id, chunk }])
   })
 
   it('nests engine spans, pops them on end, preserves explicit parents, and forwards records', async () => {
