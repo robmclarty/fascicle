@@ -8,6 +8,26 @@ tags: [strategy, positioning, competition]
 
 # Competition
 
+> **Update (2026-07-08).** Several specifics below have moved since April 2026:
+>
+> 1. fascicle is now on **eight** providers (Bedrock landed in v0.7.0), so the
+>    "six of seven" count below reads seven-of-eight today, and its own MCP bridge
+>    has shipped (`fascicle/mcp`, v0.8.8), so "MCP deferred" below is now done.
+> 2. The Vercel **AI SDK reached v7** (GA 2026-06-25) and now ships its own agent
+>    layer: `ToolLoopAgent`, `WorkflowAgent`, and `HarnessAgent`. `HarnessAgent`
+>    wraps CLI harnesses (Claude Code, Codex, OpenCode), which softens the claim
+>    below that "nothing in the LangChain / Mastra / AI-SDK layer treats subprocess
+>    transport as a peer": it is now possible there. fascicle's remaining
+>    distinction is that it keeps the loop (salvage, approval, deterministic
+>    turn-ending) on its side of a single-turn seam. See
+>    [the v7 triage note](./2026-07-ai-sdk-v7-upgrade-and-capability-triage.md).
+> 3. **Strands' TypeScript SDK reached GA** (v1.0, 2026-04-30); the Python-first
+>    framing below understates it. See [the Strands note](./2026-06-strands.md).
+> 4. **LlamaIndex.TS was archived** (2026-04-30); the Python line continues.
+> 5. **Mastra suffered an npm supply-chain compromise** (June 2026, 140+ packages
+>    across its scopes), a live data point for the "minimal dependency surface, no
+>    integrations arms race" commitments recorded below.
+
 ## The question
 
 Am I reinventing LangChain? Or LangGraph? Or Mastra? Or BAML? Or the Vercel AI SDK? Or AgentKit? Or one of the dozen other libraries that let you glue LLM calls into something that walks and talks like an agent?

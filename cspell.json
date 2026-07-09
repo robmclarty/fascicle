@@ -107,6 +107,17 @@
     "worktree",
     "Worktrees",
     "xhigh",
-    "zerr"
+    "zerr",
+    "MFA",
+    "postinstall",
+    "preinstall",
+    "typosquatted",
+    "Minecraft",
+    "voxel",
+    "voxels",
+    "composable",
+    "vendored",
+    "forkable",
+    "evals"
   ]
 }

@@ -180,6 +180,7 @@ For zero-latency streaming from inside a long-running flow, pair it with `http_l
 - [docs/embedding-under-a-harness.md](./docs/embedding-under-a-harness.md) — running a fascicle agent as somebody's child process
 - [docs/troubleshooting.md](./docs/troubleshooting.md) — first-run errors and what they mean
 - [docs/comparison.md](./docs/comparison.md) — how fascicle compares to LangChain, Mastra, and others
+- [docs/adoption-decision.md](./docs/adoption-decision.md) weighs whether to adopt fascicle: the honest case, the risks, and when to reach for something else
 - [examples/](./examples/) — runnable reference flows
 - [docs/viewer.md](./docs/viewer.md) — viewer details and transport options
 

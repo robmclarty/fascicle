@@ -16,6 +16,13 @@ one thing I have not done: I have not built a harness on Strands. This is a read
 the docs and the launch posts, which is the bar I'd want before committing years to
 fascicle over it, not a lived-experience verdict.
 
+> **Update (2026-07-08).** Strands' TypeScript SDK reached GA (v1.0) on 2026-04-30
+> and is at v1.8.0 as of this update; the "TypeScript still in preview" framing
+> below is superseded. The model-driven versus author-composed divergence that is
+> the point of this note is unchanged. What has closed is the *maturity* gap the
+> note leans on, so treat Strands as a shipping TypeScript competitor, not a
+> preview.
+
 ## What it is
 
 Strands is built around a *model-driven* loop. You construct an `Agent` from three

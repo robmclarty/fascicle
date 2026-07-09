@@ -28,7 +28,8 @@ ergonomics fit your taste is to try it — start with
 
 **Fascicle's answers:** (1) `Step<i, o>` values, (2) pure values — no registry,
 (3) a library you call, (4) narrow — composition plus a model engine, (5) yes —
-HTTPS SDKs and a subprocess CLI are both first-class; MCP is on the roadmap.
+HTTPS SDKs and a subprocess CLI are both first-class, and the `fascicle/mcp`
+subpath bridges MCP both ways.
 
 ## At a glance
 
@@ -39,7 +40,7 @@ HTTPS SDKs and a subprocess CLI are both first-class; MCP is on the roadmap.
 | Mastra | `Agent` / `Workflow` | central object | framework-ish | broad | yes |
 | Inngest AgentKit | `Agent` | network | library + runtime | narrow | yes |
 | OpenAI Agents SDK | `Agent` | none | library | narrow | port of Python |
-| Strands Agents | model-driven `Agent` | none | library | broad | preview (Python-first) |
+| Strands Agents | model-driven `Agent` | none | library | broad | GA (Python-first; TS GA Apr 2026) |
 | Vercel AI SDK | (provider calls) | n/a | library | provider layer | yes |
 
 ## The honest overlap
@@ -103,7 +104,7 @@ AWS's open-source agent SDK (Apache-2.0). Its core bet is *model-driven*: you gi
 an `Agent` a model, a system prompt, and tools, and the model drives its own loop —
 planning, choosing tools, and adapting at run time — instead of you wiring the
 control flow. Python is the mature line; TypeScript shipped in preview in December
-2025. It is broad and production-oriented: multi-agent orchestration (swarms,
+2025 and reached GA (v1.0) in April 2026. It is broad and production-oriented: multi-agent orchestration (swarms,
 graphs, agents-as-tools), the agent-to-agent (A2A) protocol, MCP tools,
 sessions/persistence, structured output, and OpenTelemetry observability are built
 in. Model-agnostic across Bedrock, Anthropic, Ollama, LiteLLM, and more.
@@ -112,8 +113,8 @@ It diverges from fascicle on exactly that core bet. Strands trusts the *model* t
 orchestrate; fascicle has *you* compose the control flow explicitly out of `Step`
 values, with a model call as one component among plain functions. It is also
 agent-centric (the unit is an `Agent`, not a substitutable `Step`), broader in
-scope, and Python-first with TypeScript still in preview — where fascicle is
-TS-native and narrow. The two are reconcilable: a model-driven Strands agent is the
+scope, and Python-first (its TypeScript reached GA only in April 2026), where
+fascicle is TS-native from the start and narrow. The two are reconcilable: a model-driven Strands agent is the
 kind of thing fascicle would treat as a single step inside an author-composed flow.
 
 **Choose it when** you want the model to drive the agent loop with minimal
@@ -123,8 +124,14 @@ A2A) batteries-included, or you are in the AWS / Bedrock ecosystem.
 ## Different layer, not competition
 
 - **Vercel AI SDK** is the provider abstraction fascicle's engine sits *on* (seven
-  of eight providers). It gives you `generateText`/`streamObject`/tool loops, not
-  `sequence`/`parallel`/`checkpoint`. Ancestry, not overlap.
+  of eight providers): `generateText`/`streamText` are the single-turn driver below
+  fascicle's loop, not `sequence`/`parallel`/`checkpoint`. At *that* layer it is
+  ancestry, not overlap. Note, though, that since v6/v7 the SDK also ships an agent
+  layer of its own (`ToolLoopAgent`, `WorkflowAgent`, and `HarnessAgent`, the last
+  of which wraps CLI harnesses like Claude Code), and *that* layer is a genuine
+  competing implementation of what fascicle owns rather than a substrate for it.
+  fascicle's stance is to depend on the turn driver and decline the agent layer;
+  see [the v7 capability triage](../research/explorations/2026-07-ai-sdk-v7-upgrade-and-capability-triage.md).
 - **Claude Agent SDK** is a *lower* layer — Anthropic's SDK for building directly
   on Claude Code's tool loop. fascicle's `claude_cli` provider sits on the same
   territory but presents it as one more provider behind `generate`. A fascicle step
@@ -133,7 +140,8 @@ A2A) batteries-included, or you are in the AWS / Bedrock ecosystem.
   wrap trivially as fascicle steps (`step('extract', boundary.Extract)`).
 - **LlamaIndex / DSPy / CrewAI / AutoGen / Pydantic AI / Genkit** solve adjacent or
   different problems (RAG-first, prompt optimization, role-based agent societies,
-  Python-first, ecosystem-coupled). Adjacent, not the same bet.
+  Python-first, ecosystem-coupled). Adjacent, not the same bet. (LlamaIndex.TS was
+  archived in April 2026; the Python line continues.)
 - **Langfuse, LangSmith, Phoenix, Helicone, Braintrust** are tracing/eval products
   — consumers of the event stream a composition library emits. fascicle's
   `TrajectoryLogger` is designed so any of them can be implemented as an adapter.
@@ -172,3 +180,7 @@ None of these is unprecedented alone; the concentration is the point.
 
 Fascicle is the right call when the surface has to be readable, testable, and
 replaceable one piece at a time without pulling the rest of a framework along.
+
+For a structured go/no-go framing (the honest case, the risks of adopting a young
+single-maintainer library, and a per-project decision rule), see
+[adoption-decision.md](./adoption-decision.md).
