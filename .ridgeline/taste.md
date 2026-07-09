@@ -1,5 +1,10 @@
 # Composition Layer — Taste
 
+> **Legacy build record.** This file is taste from the original ridgeline build,
+> kept as history. It is not the canonical statement of fascicle's values; that is
+> [VALUES.md](../VALUES.md). Principles here describe how that build was shaped and
+> may be stale relative to the current repo.
+
 **Companion documents:** `constraints.md` (hard non-negotiables), `spec.md` (interface and behavior)
 **Source spec:** `docs/agent-kit-composition-layer-spec.md`
 
