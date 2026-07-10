@@ -25,7 +25,7 @@ The bump script runs *first*, before the skill reasons about anything. By the ti
 - the root `package.json` version has been rewritten to the new version (`mode: "bump"`),
 - nothing was changed and the script emitted an error JSON (`mode: "error"`).
 
-On a successful bump, the JSON carries everything the skill needs: `new` is the authoritative version (never recompute it), and `since` is the SHA of the previous `vX.Y.Z` release commit — the left boundary for the CHANGELOG commit range. If `since` is `null`, there is no prior release and this is an initial release.
+On a successful bump, the JSON carries everything the skill needs: `new` is the authoritative version (never recompute it), and `since` is the SHA of the previous release — the commit the most recent `vX.Y.Z` git tag reachable from HEAD points at — the left boundary for the CHANGELOG commit range. If `since` is `null`, there is no prior release and this is an initial release.
 
 ## Steps
 
@@ -86,7 +86,7 @@ On a successful bump, the JSON carries everything the skill needs: `new` is the 
    git commit -m "vX.Y.Z"
    ```
 
-   No prefix, no body, no footer. That matches the tag convention the repo uses to find "the last release" on the next bump.
+   No prefix, no body, no footer, so the release commit reads as `vX.Y.Z` in the log. The authoritative release marker is the annotated tag created in step 8; the next bump finds "the last release" from that tag (the plain commit message is only a fallback).
 
 7. **Verify with `pnpm check --only docs,links,spell --bail`.** Only these three checks can fail on a `(version string + CHANGELOG)` diff — a single semver-string replacement plus prose can't break types, lint, struct, deps, dead-code, or tests, so running the full pipeline is wasted CPU. The heavy checks gate `prepublishOnly` (`check:all`) instead, which is where release-readiness actually matters. If the narrow check exits 0, continue to step 8.
 
@@ -102,13 +102,13 @@ On a successful bump, the JSON carries everything the skill needs: `new` is the 
    git push origin vX.Y.Z
    ```
 
-   Annotated (not lightweight) so the tag carries author, date, and message. The explicit tag-only push is intentional — branch merges and branch pushes are managed separately by the user; the skill only publishes the release marker. Pushing `refs/tags/vX.Y.Z` also sends the commit it points to, so the release commit reaches the remote even if the branch ref hasn't moved yet.
+   Annotated (not lightweight) so the tag carries author, date, and message. **Pushing the tag triggers the release pipeline**: `publish.yaml` starts an OIDC trusted-publishing run that pauses at the `npm-publish` environment for a required-reviewer approval, and `release.yaml` creates the GitHub Release from the CHANGELOG section. Pushing `refs/tags/vX.Y.Z` also sends the commit it points to, so the tagged commit reaches the remote even if the branch ref hasn't moved yet. The push is tag-only by design — branch pushes stay the user's call — but that means the branch ref lags until they push it (see step 9).
 
    Error handling:
    - `git tag` fails because the tag already exists → stop and tell the user. Don't force-overwrite. A prior release at this version already exists and the user needs to resolve it by hand.
    - `git push` fails (network, auth, permissions) → the local tag is already created. Tell the user the commit + tag exist locally, show the push error, and suggest re-running `git push origin vX.Y.Z` once the issue is resolved. Do not delete the tag.
 
-9. **Report back.** Tell the user: the old version, the new version (both from the JSON), the commit SHA, the tag name, the number of commits summarized, and whether the tag push succeeded. The user still pushes the release branch themselves when they're ready (matching their manual `npm publish` step).
+9. **Report back.** Tell the user: the old version, the new version (both from the JSON), the commit SHA, the tag name, the number of commits summarized, and whether the tag push succeeded. Then point them at the two things that finish the release: **(a)** approve the paused `publish.yaml` run in GitHub Actions (the `npm-publish` gate) to let the provenance publish proceed, and **(b)** push the release branch (`git push origin main`) so the branch ref includes the release commit — the skill pushes only the tag.
 
 ## Steps — error
 
@@ -132,7 +132,7 @@ In every error case: no edits, no git operations, no retry. The user decides wha
 
 ## Edge cases
 
-- **No prior release.** When `since` in the JSON is `null`, treat the entire history as the range and title the section `vX.Y.Z — initial release`. The script identifies prior releases by commit message (`vX.Y.Z`), not by git tag — see `.ridgeline/taste.md` Principle 16.
+- **No prior release.** When `since` in the JSON is `null`, treat the entire history as the range and title the section `vX.Y.Z — initial release`. The script identifies the previous release from the most recent `vX.Y.Z` git tag reachable from HEAD (resolved to its commit), falling back to a commit messaged exactly `vX.Y.Z` only when no release tag exists — so a release cut by direct-tagging (rather than through this skill) is still detected correctly.
 - **`CHANGELOG.md` exists but has no `# Changelog` heading.** Prepend the new heading plus the new section; leave the old content below untouched.
 - **Commit list contains merge commits.** Drop them from the summary unless they introduced something not present in the squashed commits. `--no-merges` on the log is fine if the output is noisy.
 - **A commit is marked with `BREAKING:` or `!:` but the user asked for `patch` or `minor`.** Warn the user and ask if they meant `major`. Don't override silently. Note: by this point the bump has *already happened on disk* (the script ran in preflight); if the user wants `major` instead, they need to `git restore package.json` and re-invoke `/version major`.

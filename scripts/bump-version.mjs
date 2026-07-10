@@ -18,9 +18,10 @@
  *   { mode: 'bump',  old, new, since }
  *   { mode: 'error', error_type, message }
  *
- * `since` on a successful bump is the SHA of the previous `vX.Y.Z` release
- * commit (the repo's release-marker convention — see `taste.md` Principle
- * 16). The skill uses it as the left boundary for the CHANGELOG commit range.
+ * `since` on a successful bump is the SHA of the previous release — the commit
+ * the most recent `vX.Y.Z` git tag reachable from HEAD points at. The tag is
+ * the authoritative release marker: it is what triggers the publish workflow.
+ * The skill uses `since` as the left boundary for the CHANGELOG commit range.
  * If no prior release exists, `since` is null and the skill treats this as
  * the initial release.
  *
@@ -84,11 +85,35 @@ function check_clean_tree() {
   return { ok: false, dirty_files: trimmed.split('\n') };
 }
 
-// Find the SHA of the previous release commit — one whose message matches
-// exactly `vX.Y.Z` (this repo's release-marker convention; see `taste.md`
-// Principle 16 and CHANGELOG.md history). Returns null if no prior release
-// exists, which the skill interprets as "first release, summarize all history".
+// Find the SHA of the previous release. Releases are marked by an annotated
+// `vX.Y.Z` git tag — the tag is the authoritative marker (it is what triggers
+// the publish workflow), so the most recent release tag reachable from HEAD is
+// the correct left boundary even when the tagged commit was not itself messaged
+// `vX.Y.Z` (e.g. a tag placed on a merge or checkpoint commit). Falls back to
+// the older commit-message convention only when no release tag is reachable,
+// and returns null when there is no prior release at all (the skill interprets
+// that as "first release, summarize all history").
 function find_previous_release_sha() {
+  // Primary: the most recent semver-shaped tag reachable from HEAD, resolved to
+  // the commit it points at.
+  try {
+    const tag = execFileSync(
+      'git',
+      ['describe', '--tags', '--abbrev=0', '--match', 'v[0-9]*.[0-9]*.[0-9]*', 'HEAD'],
+      { cwd: REPO_ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] },
+    ).trim();
+    if (tag !== '') {
+      const sha = execFileSync('git', ['rev-list', '-n', '1', tag], {
+        cwd: REPO_ROOT,
+        encoding: 'utf8',
+      }).trim();
+      if (sha !== '') return sha;
+    }
+  } catch {
+    // No release tag reachable — fall through to the commit-message fallback.
+  }
+  // Fallback: a commit whose message is exactly `vX.Y.Z` (the convention from
+  // before releases were tag-triggered).
   try {
     const out = execFileSync(
       'git',
