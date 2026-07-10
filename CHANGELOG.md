@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.9.1 — 2026-07-10
+
+### Internal
+
+- Re-pinned every GitHub Actions dependency to its Node 24 runtime major (`actions/checkout` v7, `actions/setup-node` v6, `pnpm/action-setup` v6, `actions/cache` v6, `actions/deploy-pages` v5), clearing GitHub's Node 20 runtime deprecation warning that surfaced on the v0.9.0 publish run. Workflow-only change; the published package is byte-identical to v0.9.0.
+
 ## v0.9.0 — 2026-07-10
 
 ### Changed
