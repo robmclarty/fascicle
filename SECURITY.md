@@ -98,11 +98,15 @@ yours small.
 - **`pnpm audit` gate and pinned overrides.** `pnpm check:security`
   (`--audit-level=high`) tracks known advisories; transitive advisories are pinned
   with `overrides` (for example, `smol-toml` and `fast-uri`).
-- **Manual, MFA-gated publishing with no long-lived npm credential in CI.**
-  Releases are published from a maintainer machine behind multi-factor
-  authentication; CI only turns a pushed tag into a GitHub Release and holds no npm
-  token. This removes the steal-the-CI-token vector that has featured in several
-  ecosystem compromises.
+- **Provenance-attested CI publishing with no long-lived npm credential
+  anywhere.** Releases are published by CI via npm Trusted Publishing (OIDC): the
+  registry trusts the release workflow's identity, minted per run, so no npm token
+  exists to steal or rotate. This removes the steal-the-CI-token vector that has
+  featured in several ecosystem compromises. The publish job pauses on a protected
+  GitHub Environment (`npm-publish`) until a maintainer approves it, preserving
+  the human gate that manual MFA-prompted publishing used to provide, and each
+  release ships with a signed provenance attestation tying the tarball to this
+  repository, commit, and workflow run.
 - **Commitments that resist surface growth.** No plugin registry, no integrations
   arms race, no hosted service: fewer moving parts, and fewer packages that can be
   independently compromised.
@@ -116,12 +120,14 @@ naming plainly:
   compromise of that account is the sharpest supply-chain risk to consumers, the
   same class of attack that has hit other agent frameworks. MFA reduces this risk;
   it does not remove it.
-- **No build provenance yet.** Because publishing is manual rather than CI-driven,
-  releases currently ship without a signed provenance attestation tying the
-  published artifact to this repository and its build, so you cannot yet
-  cryptographically verify that a given version was built from the source here.
-  Provenance-attested CI publishing is a tracked hardening item; until it lands,
-  pin an exact version you have reviewed.
+- **Provenance proves where a release was built, not that it is safe.** Every
+  release from v0.9.0 on carries an attestation you can verify with
+  `npm audit signatures` (or the provenance badge on npmjs.com), proving the
+  tarball was built by this repository's publish workflow from a specific commit.
+  It does not prove the source at that commit is benign; keep pinning exact
+  versions you have reviewed. Releases published through the documented
+  break-glass path (manual, when CI is unavailable) lack an attestation and are
+  noted as such in the release.
 - **fascicle does not vouch for your other dependencies.** Vulnerabilities in `ai`,
   a provider SDK, or their transitive dependencies remain your audit surface.
   fascicle avoids adding its own tree, but it cannot vet the peers you install

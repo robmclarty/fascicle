@@ -1,0 +1,74 @@
+name: Publish
+
+# Publishes to npm with provenance when a vX.Y.Z tag is pushed. Auth is npm
+# Trusted Publishing (OIDC): no token exists anywhere - the registry trusts
+# this exact workflow's identity, minted per run, so there is no secret to
+# leak or rotate and no 2FA bypass. Provenance links the published tarball to
+# this commit and workflow run, verifiable on npmjs.com and via
+# `npm audit signatures`. See research/provenance-publish-spec.md.
+#
+# One-time setup outside the repo:
+#   - npmjs.com: package fascicle -> Settings -> Trusted Publisher ->
+#     GitHub Actions, repository robmclarty/fascicle, workflow filename
+#     publish.yaml, environment npm-publish.
+#   - GitHub: repo Settings -> Environments -> npm-publish, with a required
+#     reviewer. The run pauses there until a maintainer approves - the CI
+#     equivalent of the old local MFA prompt.
+#
+# release.yaml (GitHub Release from the same tag) stays separate so its
+# contents: write never shares a job with id-token: write.
+
+on:
+  push:
+    tags: ['v[0-9]*']
+  # Manual re-run hatch: a tag is immutable, so a publish that failed for a
+  # reason outside the tree (auth, registry) can be retried from main - the
+  # tarball contents are identical, and npm refuses an already-published
+  # version.
+  workflow_dispatch:
+
+permissions:
+  contents: read # checkout only
+  id-token: write # OIDC identity for npm trusted publishing + provenance
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: npm-publish # required-reviewer gate: the human approval step
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+
+      # No registry-url here: setup-node would write an .npmrc keyed to a
+      # NODE_AUTH_TOKEN env var, which shadows the tokenless OIDC flow.
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+          cache: pnpm
+
+      # Trusted Publishing needs npm >= 11.5.1; pin the major to be sure.
+      - name: Update npm
+        run: npm install -g npm@11
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # The full gate, enforced in CI rather than only via prepublishOnly
+      # (which reruns it as a safety net inside npm publish).
+      - name: Check
+        run: pnpm check
+
+      - name: Build
+        run: pnpm build
+
+      - name: Check publish surface
+        run: pnpm check:publish
+
+      # npm (not pnpm) publish: the OIDC token exchange is an npm CLI flow.
+      # --provenance is redundant under trusted publishing but documents
+      # intent and fails closed if the OIDC identity is ever absent.
+      - name: Publish with provenance
+        run: npm publish --provenance --access public

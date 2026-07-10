@@ -1,6 +1,6 @@
 ---
 title: Provenance publishing — OIDC trusted publishing and build attestation for releases
-status: draft
+status: implemented
 date: 2026-07-08
 author: rob
 tags: [ci, release, security, supply-chain, provenance, oidc, spec]
@@ -8,7 +8,12 @@ tags: [ci, release, security, supply-chain, provenance, oidc, spec]
 
 # Provenance Publishing — Specification
 
-**Status:** Draft, implementation pending
+**Status:** Implemented 2026-07-10 as `.github/workflows/publish.yaml`, with one
+correction to §4 learned from a working trusted-publishing setup (checkride's
+`release.yml`, provenance verified on the registry): `setup-node` must NOT set
+`registry-url`, because that writes an `.npmrc` keyed to `NODE_AUTH_TOKEN`,
+which shadows the tokenless OIDC flow. The one-time registry and environment
+configuration (§3, §5) remains a manual maintainer step.
 **Scope:** the release/publish CI (`.github/workflows/`), the one-time npm
 registry configuration, and the docs that describe the publish posture
 (`SECURITY.md`, `docs/roadmap.md`). No `src/` changes; no change to the published
@@ -129,10 +134,11 @@ jobs:
         with:
           persist-credentials: false
       - uses: pnpm/action-setup@<sha>
+      # No registry-url: setup-node would write an .npmrc keyed to
+      # NODE_AUTH_TOKEN, which shadows the tokenless OIDC flow.
       - uses: actions/setup-node@<sha>
         with:
           node-version: 24
-          registry-url: 'https://registry.npmjs.org'
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       # Trusted publishing + provenance needs a recent npm CLI (>= 11.5.1).

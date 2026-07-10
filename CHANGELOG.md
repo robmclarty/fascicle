@@ -14,6 +14,7 @@
 
 ### Internal
 
+- Releases are now published from CI with npm Trusted Publishing (OIDC) and a signed provenance attestation, gated by a required-reviewer GitHub Environment (`.github/workflows/publish.yaml`). No long-lived npm token exists anywhere; verify a release with `npm audit signatures`. This makes v0.9.0 the first provenance-attested fascicle publish (see `research/provenance-publish-spec.md`).
 - Agent-layer boundary ADR: fascicle stays on the single-turn seam (`generateText`/`streamText`) and declines the v7 agent layer (`ToolLoopAgent`, `WorkflowAgent`, `HarnessAgent`, `toolApproval`, `@ai-sdk/otel`), recorded in `research/explorations/2026-07-ai-sdk-agent-layer-boundary.md` and linked from `docs/providers.md`.
 - `examples/live_smoke.ts`: a manual release smoke gate that runs one tool-loop flow streamed and non-streamed against OpenRouter and an OpenAI-compatible backend, checking the tool round trip, stream/record text parity, and usage/cost accounting. Live network, so it stays out of the test suite by design.
 - Dev toolchain sweep: vitest 4.1.10, oxlint 1.73, oxlint-tsgolint 0.24, tsdown 0.22.3, zod 4.4.3, `@types/node` 26, fallow 3, and friends.

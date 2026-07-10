@@ -44,6 +44,9 @@ across v0.6.0–v0.6.3 and are kept as a record.
    overrides apply, pass network isolation when the allowlist is empty.
 7. Stand up CI: GitHub Actions running the check suite, a doc-snippet
    compilation check against the built types, and npm provenance on release.
+   (Provenance landed later than the rest of this item: OIDC trusted
+   publishing with a required-reviewer gate arrived with v0.9.0, per
+   [the provenance spec](../research/provenance-publish-spec.md).)
 
 ## Phase 2: make it useful to the goals
 
