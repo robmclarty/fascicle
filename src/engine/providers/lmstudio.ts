@@ -22,6 +22,7 @@ type OpenaiCompatibleSdk = {
     name: string
     baseURL: string
     apiKey?: string
+    includeUsage?: boolean
   }) => (model_id: string) => unknown
 }
 
@@ -65,7 +66,14 @@ export const create_lmstudio_adapter = (init: ProviderInit): AiSdkProviderAdapte
     name: 'lmstudio',
     async build_model(model_id: string): Promise<unknown> {
       const sdk = await load_optional_peer<OpenaiCompatibleSdk>('@ai-sdk/openai-compatible')
-      const provider = sdk.createOpenAICompatible({ name: 'lmstudio', baseURL: base_url })
+      // Without includeUsage the OpenAI streaming protocol omits usage from
+      // SSE responses entirely (stream_options.include_usage), so streamed
+      // calls would report zero tokens on spec-strict servers.
+      const provider = sdk.createOpenAICompatible({
+        name: 'lmstudio',
+        baseURL: base_url,
+        includeUsage: true,
+      })
       return provider(model_id)
     },
     translate_effort: translate_lmstudio_effort,

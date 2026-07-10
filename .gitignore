@@ -11,6 +11,7 @@ coverage/
 .claude/scheduled_tasks.lock
 .pnpm-store/
 tsconfig.tsbuildinfo
+.env
 
 # ridgeline build runtime artifacts (specs, taste, constraints, handoff, phases markdown stay tracked)
 .ridgeline/builds/*/state.json

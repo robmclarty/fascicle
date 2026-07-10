@@ -41,11 +41,15 @@ describe('create_lmstudio_adapter config assembly', () => {
     }
   })
 
-  it('forwards the lmstudio name and base URL to the SDK', async () => {
+  it('forwards the lmstudio name, base URL, and streaming-usage opt-in to the SDK', async () => {
     const adapter = create_lmstudio_adapter({ base_url: 'http://localhost:1234/v1' })
     const model = await adapter.build_model('local-model')
     expect(model).toBeDefined()
-    expect(captured.config).toEqual({ name: 'lmstudio', baseURL: 'http://localhost:1234/v1' })
+    expect(captured.config).toEqual({
+      name: 'lmstudio',
+      baseURL: 'http://localhost:1234/v1',
+      includeUsage: true,
+    })
     expect(captured.model_id).toBe('local-model')
   })
 })

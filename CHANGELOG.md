@@ -1,5 +1,23 @@
 # Changelog
 
+## v0.9.0 — 2026-07-10
+
+### Changed
+
+- **Breaking (peer dependencies): AI SDK v7.** The `ai` peer floor is now `^7.0.0` with no v6 compatibility window, and every AI SDK provider peer moves to its v7-line major: `@ai-sdk/anthropic` `^4`, `@ai-sdk/openai` `^4`, `@ai-sdk/google` `^4`, `@ai-sdk/amazon-bedrock` `^5`, `@ai-sdk/openai-compatible` `^3`, `@openrouter/ai-sdk-provider` `^3`, `ai-sdk-ollama` `^4`. Upgrade the whole set together. Fascicle's own API is unchanged: the v7 renames (`system` to `instructions`, `fullStream` to `stream`, `experimental_output` to `output`, `stepCountIs` to `isStepCount`) land at the SDK boundary only, so `generate({ system })` and friends keep their names.
+- Usage and cost accounting is verified against v7's nested token-detail shape (`inputTokenDetails`/`outputTokenDetails`, cache-inclusive `inputTokens`, reasoning-inclusive `outputTokens`) with concrete-value tests per provider. On `@ai-sdk/anthropic` v4, cache read and write tokens now fold into `inputTokens` upstream, which makes fascicle's cost subtraction formula exact instead of skewed for cache-heavy Anthropic calls.
+
+### Fixed
+
+- Streamed `step_finish` chunks now carry the same cached-input/cache-write/reasoning usage granularity as the non-streamed step record (`default_usage_from_sdk` delegates to the provider usage normalizer).
+- The `lmstudio` (OpenAI-compatible) provider opts into streaming usage (`stream_options.include_usage`), so streamed calls report real token counts instead of zeros on spec-strict OpenAI-compatible servers such as Ollama's `/v1` endpoint.
+
+### Internal
+
+- Agent-layer boundary ADR: fascicle stays on the single-turn seam (`generateText`/`streamText`) and declines the v7 agent layer (`ToolLoopAgent`, `WorkflowAgent`, `HarnessAgent`, `toolApproval`, `@ai-sdk/otel`), recorded in `research/explorations/2026-07-ai-sdk-agent-layer-boundary.md` and linked from `docs/providers.md`.
+- `examples/live_smoke.ts`: a manual release smoke gate that runs one tool-loop flow streamed and non-streamed against OpenRouter and an OpenAI-compatible backend, checking the tool round trip, stream/record text parity, and usage/cost accounting. Live network, so it stays out of the test suite by design.
+- Dev toolchain sweep: vitest 4.1.10, oxlint 1.73, oxlint-tsgolint 0.24, tsdown 0.22.3, zod 4.4.3, `@types/node` 26, fallow 3, and friends.
+
 ## v0.8.16 — 2026-07-07
 
 ### Added

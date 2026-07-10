@@ -165,7 +165,7 @@ End state (after Step 14, the inversion):
    and the suite is green on v7
    - seam: `package.json`, `pnpm-lock.yaml`, `src/engine/generate.ts`
    - model: sonnet — codemod-driven renames against verified anchors; types + suite gate it
-5. [ ] v7 usage + stream-shape review (V-P3.4..P3.7: per-provider
+5. [x] v7 usage + stream-shape review (V-P3.4..P3.7: per-provider
    `normalize_usage` against the nested `inputTokenDetails`/`outputTokenDetails`
    shape with cache-read/reasoning granularity into cost math; `map_chunk` vs v7
    `UIMessageChunk` incl. the new `reasoning-file` part; `tool_loop.ts`
@@ -174,7 +174,7 @@ End state (after Step 14, the inversion):
    - seam: `src/engine/providers/`, `src/engine/generate.ts`, `src/ui/to_ui_message_stream.ts`, `src/engine/tool_loop.ts`
    - model: fable — silent cost-skew risk; a wrong field read passes types and only concrete-value assertions catch it
 6. [ ] v7 live smoke + release (V-P3.8..P3.9) — **done when:** a tool-loop flow
-   runs correctly streamed and non-streamed on Anthropic and one
+   runs correctly streamed and non-streamed on OpenRouter and one
    OpenAI-compatible backend with usage/cost recorded, and changelog + version
    are bumped
    - seam: `examples/`, `CHANGELOG.md`, `package.json`
@@ -264,3 +264,9 @@ End state (after Step 14, the inversion):
 ## Verdicts
 
 <!-- Filled in as spikes and forks resolve — the audit trail of "these were my calls." -->
+
+- 2026-07-10 (step 6): the smoke's hosted backend is OpenRouter, not direct
+  Anthropic — no Anthropic API key is available in this environment, and the
+  OpenRouter leg still exercises a peer this build bumped a major
+  (`@openrouter/ai-sdk-provider` ^3). Direct-Anthropic smoke coverage arrives
+  with the native adapter's fixtures and the step 14 re-run.
