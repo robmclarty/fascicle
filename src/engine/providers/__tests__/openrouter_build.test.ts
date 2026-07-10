@@ -6,9 +6,13 @@ import { engine_config_error } from '../../errors.js'
 // Capture what build_model hands to the OpenRouter SDK so the config assembly
 // (api key, base URL, referer/title headers) is observable. The real-peer
 // integration stays covered by openrouter.test.ts.
-const { captured } = vi.hoisted(() => ({
-  captured: { config: undefined as Record<string, unknown> | undefined, model_id: undefined as unknown },
-}))
+const { captured } = vi.hoisted(() => {
+  const value: { config: Record<string, unknown> | undefined, model_id: unknown } = {
+    config: undefined,
+    model_id: undefined,
+  }
+  return { captured: value }
+})
 vi.mock('@openrouter/ai-sdk-provider', () => ({
   createOpenRouter: (config: Record<string, unknown>) => {
     captured.config = config

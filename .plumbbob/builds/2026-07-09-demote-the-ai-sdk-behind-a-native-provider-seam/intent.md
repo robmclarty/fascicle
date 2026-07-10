@@ -2,7 +2,7 @@
 
 **Phase:** plan
 **Size:** medium (top end; the natural split line, if it must become two builds,
-is after Step 5, where the v7 track ends and the sovereignty track begins)
+is after Step 6, where the v7 track ends and the sovereignty track begins)
 
 *Source: `research/provider-sovereignty-intent.md` (absorbed in full below), which
 reconciles `research/ai-sdk-v7-upgrade-spec.md` (tactical, task IDs `V-P<n>.<m>`)
@@ -12,7 +12,7 @@ sequencing, acceptance, and scope.*
 
 Excluded from this build, accounted for on purpose:
 `research/provenance-publish-spec.md` (release-CI supply chain, its own tiny
-intent; only touchpoint is that landing it before Step 5 makes the v7 release the
+intent; only touchpoint is that landing it before Step 6 makes the v7 release the
 first provenance-attested publish) and
 `research/explorations/2026-07-stdio-agent-contract.md` (already shipped as
 `fascicle/stdio` + `stderr_logger` + `docs/embedding-under-a-harness.md`;
@@ -45,14 +45,14 @@ the parent).
   - `Tool.output_schema` (V-Phase 4) and the capability spikes (V-Phase 5:
     reasoning control, structured-output repair, timeout budgets): own intents.
   - Adopting any v7 agent layer (`ToolLoopAgent`, `WorkflowAgent`,
-    `HarnessAgent`, `toolApproval`, `@ai-sdk/otel`): declined by the ADR (Step 2).
+    `HarnessAgent`, `toolApproval`, `@ai-sdk/otel`): declined by the ADR (Step 3).
   - Flipping the default `transport` to `native` (must earn it with mileage).
   - Runtime (post-construction) provider registration.
   - `prepareStep`/`pruneMessages`-style loop hooks (future spec).
 
 ## Architecture sketch
 
-End state (after Step 13, the inversion):
+End state (after Step 14, the inversion):
 
 ```text
 ┌────────────────────────────────────────────────────────────────┐
@@ -114,16 +114,16 @@ End state (after Step 13, the inversion):
 ## Constraints
 
 - C1: `pnpm check:all` (incl. mutation) exits 0 at every phase boundary (Steps
-  1, 4, 9, 12, 13); `pnpm check` for inner iteration.
+  1, 5, 10, 13, 14); `pnpm check` for inner iteration.
 - C2: Zero new runtime dependencies; engine npm deps remain `ai` + `zod` only
   (`rules/no-engine-npm-dep-except-ai-zod.yml`).
-- C3: Invariant 13 holds unchanged through Step 12; Step 13 inverts it and must
+- C3: Invariant 13 holds unchanged through Step 13; Step 14 inverts it and must
   update the rule, `.ridgeline/constraints.md`, and the `generate.ts` header in
   the same change.
 - C4: Streamed result must equal non-streamed result for the same input on every
   provider path; explicit acceptance for all native streaming work.
 - C5: No live network in the test suite; recorded fixtures only. The live smoke
-  (V-P3.8) is a manual gate, run at Step 5 and re-run at Step 13.
+  (V-P3.8) is a manual gate, run at Step 6 and re-run at Step 14.
 - C6: Provider names stay stable across transports so `DEFAULT_PRICING` keys and
   `normalize_usage` fields (`cached_input_tokens`, `cache_write_tokens`,
   `reasoning_tokens`) keep working.
@@ -135,18 +135,29 @@ End state (after Step 13, the inversion):
 
 ## Steps
 
-1. [ ] Dev-dependency sweep (V-P1.1..P1.4: vitest, oxlint, tsdown, zod, cspell,
+1. [x] Dev-dependency sweep (V-P1.1..P1.4: vitest, oxlint, tsdown, zod, cspell,
    markdownlint-cli2, ast-grep, arethetypeswrong, tsx, `@types/node` 26,
    fallow 3) — **done when:** `pnpm check:all` exits 0 on the swept set with no
    source change
    - seam: `package.json`, `pnpm-lock.yaml`, `fallow.toml`
    - model: sonnet — mechanical dependency churn; the check gate catches everything
-2. [ ] Agent-layer boundary ADR (V-P2.1..P2.2) — **done when:** the decision
+2. [ ] Lint-tool catch-up + sweep fallout (oxlint 1.60→1.73, oxlint-tsgolint
+   0.21→0.24 — the pair held back from Step 1) — **done when:** `pnpm check:all`
+   exits 0 with the oxlint pair bumped, every newly-surfaced finding resolved by
+   no-behavior-change edits (redundant type-assertion removal, function hoisting,
+   one unused import, one namespace access), and `.plumbbob/**` added to the
+   markdownlint ignore list so the appended build-log line stops tripping MD032;
+   no test assertion values changed
+   - seam: `package.json`, `pnpm-lock.yaml`, `.markdownlint-cli2.jsonc`, `src/`,
+     `examples/` — lint-only edits (a one-time, no-behavior exception to C8 for the
+     ~47 findings, ~21 in C8's otherwise-untouched core/composites/agents)
+   - model: sonnet — mechanical, no-behavior lint fixes gated by types + lint + test
+3. [ ] Agent-layer boundary ADR (V-P2.1..P2.2) — **done when:** the decision
    record exists (`status: accepted`) with the D2 litmus test and the full
    declined-v7 table, linked from `docs/providers.md`
    - seam: `research/explorations/2026-07-ai-sdk-agent-layer-boundary.md`, `docs/providers.md`
    - model: opus — prose distillation of already-settled decisions (the triage table exists)
-3. [ ] v7 core bump + codemod + rename reconciliation (V-P3.1..P3.3: `ai@^7` and
+4. [ ] v7 core bump + codemod + rename reconciliation (V-P3.1..P3.3: `ai@^7` and
    all `@ai-sdk/*` peer targets from V-§3, `npx @ai-sdk/codemod v7` with the
    mechanical diff committed separately, then hand-verify `stepCountIs` to
    `isStepCount`, `experimental_output` to `output`, `fullStream` to `stream`,
@@ -154,7 +165,7 @@ End state (after Step 13, the inversion):
    and the suite is green on v7
    - seam: `package.json`, `pnpm-lock.yaml`, `src/engine/generate.ts`
    - model: sonnet — codemod-driven renames against verified anchors; types + suite gate it
-4. [ ] v7 usage + stream-shape review (V-P3.4..P3.7: per-provider
+5. [ ] v7 usage + stream-shape review (V-P3.4..P3.7: per-provider
    `normalize_usage` against the nested `inputTokenDetails`/`outputTokenDetails`
    shape with cache-read/reasoning granularity into cost math; `map_chunk` vs v7
    `UIMessageChunk` incl. the new `reasoning-file` part; `tool_loop.ts`
@@ -162,26 +173,26 @@ End state (after Step 13, the inversion):
    tests asserting concrete token values from the nested shape
    - seam: `src/engine/providers/*.ts`, `src/engine/generate.ts`, `src/ui/to_ui_message_stream.ts`, `src/engine/tool_loop.ts`
    - model: fable — silent cost-skew risk; a wrong field read passes types and only concrete-value assertions catch it
-5. [ ] v7 live smoke + release (V-P3.8..P3.9) — **done when:** a tool-loop flow
+6. [ ] v7 live smoke + release (V-P3.8..P3.9) — **done when:** a tool-loop flow
    runs correctly streamed and non-streamed on Anthropic and one
    OpenAI-compatible backend with usage/cost recorded, and changelog + version
    are bumped
    - seam: `examples/`, `CHANGELOG.md`, `package.json`
    - model: opus — manual smoke gate plus release chores; judgment is in reading the smoke output
-6. [ ] Open the registry (S-P1.1..P1.4: `custom_providers` on `EngineConfig`,
+7. [ ] Open the registry (S-P1.1..P1.4: `custom_providers` on `EngineConfig`,
    custom-first resolution, shadow-throws, factory/adapter types exported from
    the engine barrel) — **done when:** a custom factory of any kind routes
    through `generate`, shadowing a built-in throws `engine_config_error`,
    unknown names still throw `provider_not_configured_error`, docs updated
    - seam: `src/engine/types.ts`, `src/engine/create_engine.ts`, `src/engine/providers/registry.ts`, `src/engine/index.ts`, `docs/configuration.md`
    - model: opus — small and fully specified by the S-P1 acceptance criteria
-7. [ ] Neutral turn types + shared error classifier (S-P2.1..P2.3:
+8. [ ] Neutral turn types + shared error classifier (S-P2.1..P2.3:
    `TurnRequest`/`TurnResult` in `types.ts`, `InvokeOnceResult` aliased,
    `classify_ai_sdk_error` generalized to `classify_provider_error`) —
    **done when:** pure rename/move with zero behavior change; full suite green
    - seam: `src/engine/types.ts`, `src/engine/tool_loop.ts`, `src/engine/generate.ts`, `src/engine/providers/types.ts`
    - model: opus — pure rename/move; the suite catches any behavior drift
-8. [ ] Three-way dispatch (S-P2.4..P2.6: extract `build_ai_sdk_invoke`, add
+9. [ ] Three-way dispatch (S-P2.4..P2.6: extract `build_ai_sdk_invoke`, add
    `build_native_invoke` wrapping `retry_with_policy` + classify + abort, hoist
    capability gating over `ai_sdk` + `native`, gate `Output.object` to `ai_sdk`
    only, generalize `dispose` to any adapter that defines it) — **done when:**
@@ -189,17 +200,17 @@ End state (after Step 13, the inversion):
    adapter drives `run_tool_loop`
    - seam: `src/engine/generate.ts`, `src/engine/providers/types.ts`, `src/engine/create_engine.ts`
    - model: fable — behavior-preservation refactor with subtle ordering (gating hoist, retry/abort wrapping); plausible-but-drifted code is the failure mode
-9. [ ] Loop-inheritance proof (S-P2.7) — **done when:** an in-memory fake native
-   adapter provably inherits salvage, fail-closed approval, `Tool.ends_turn`,
-   per-step clamping, cost, trajectory events, and retry-on-classified-error,
-   and `pnpm check:all` (incl. mutation) exits 0
-   - seam: `src/engine/__tests__/`
-   - model: opus — assertion-strong test authoring against mutation; well-bounded by the S-P2.7 list
-10. [ ] Rename `subprocess` to `external` (S-P4.1) — **done when:** no
+10. [ ] Loop-inheritance proof (S-P2.7) — **done when:** an in-memory fake native
+    adapter provably inherits salvage, fail-closed approval, `Tool.ends_turn`,
+    per-step clamping, cost, trajectory events, and retry-on-classified-error,
+    and `pnpm check:all` (incl. mutation) exits 0
+    - seam: `src/engine/__tests__/`
+    - model: opus — assertion-strong test authoring against mutation; well-bounded by the S-P2.7 list
+11. [ ] Rename `subprocess` to `external` (S-P4.1) — **done when:** no
     `'subprocess'` kind remains anywhere in the tree; full suite green
     - seam: `src/engine/**`
     - model: sonnet — mechanical rename sweep; types + suite gate it
-11. [ ] Native Anthropic: mapping, non-stream, auth (S-P3.1..P3.3, S-P3.5:
+12. [ ] Native Anthropic: mapping, non-stream, auth (S-P3.1..P3.3, S-P3.5:
     `transport` selector on provider init, `Message[]`/`Tool[]` to Messages-API
     mapping, non-stream `invoke_turn` with `stop_reason`/usage mapping,
     `x-api-key` + `anthropic-version` headers, 401/429(+`retry-after`)/5xx/network
@@ -207,7 +218,7 @@ End state (after Step 13, the inversion):
     tool-call, and mixed responses and error-path tests assert classification
     - seam: `src/engine/providers/anthropic.ts`, `src/engine/providers/anthropic_native.ts`, `src/engine/providers/types.ts`
     - model: fable — logic-dense greenfield mapping (message shapes, stop_reason, usage) with no prior art in-tree
-12. [ ] Native Anthropic: streaming, capabilities, e2e (S-P3.4, S-P3.6..P3.7:
+13. [ ] Native Anthropic: streaming, capabilities, e2e (S-P3.4, S-P3.6..P3.7:
     SSE parse emitting `StreamChunk`s via `dispatch_chunk`, capabilities `text,
     tools, schema, streaming, reasoning` without `structured_output`, e2e tool
     loop on recorded fixtures, new ast-grep rule forbidding `ai`/`@ai-sdk/*`
@@ -217,13 +228,13 @@ End state (after Step 13, the inversion):
     exits 0
     - seam: `src/engine/providers/anthropic_native.ts`, `src/engine/providers/anthropic.ts`, `rules/`
     - model: fable — hand-rolled SSE parsing; streamed ≡ non-streamed parity is the named subtle part (C4)
-13. [ ] Invert the seam (S-P4.4, committed per D8) — **done when:** the AI SDK
+14. [ ] Invert the seam (S-P4.4, committed per D8) — **done when:** the AI SDK
     call lives in `src/engine/providers/ai_sdk/`, `generate.ts` imports nothing
     from `ai`, invariant 13 and its rule are rewritten, `pnpm check:all` exits 0,
-    and the Step 5 smoke re-runs green
+    and the Step 6 smoke re-runs green
     - seam: `src/engine/generate.ts`, `src/engine/providers/ai_sdk/`, `rules/`, `.ridgeline/constraints.md`
-    - model: opus — moves code behind a seam already proven by Steps 9 and 12, gated by suite + smoke re-run; worth a fable review pass on the diff before checkpointing
-14. [ ] Docs sweep (S-§6.5) — **done when:** `docs/providers.md` documents the
+    - model: opus — moves code behind a seam already proven by Steps 10 and 13, gated by suite + smoke re-run; worth a fable review pass on the diff before checkpointing
+15. [ ] Docs sweep (S-§6.5) — **done when:** `docs/providers.md` documents the
     three integration depths, `transport`, and writing a custom provider of each
     kind; `docs/configuration.md` covers `custom_providers`; the roadmap links
     both specs and this intent

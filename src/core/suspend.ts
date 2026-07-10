@@ -33,7 +33,7 @@ export type SuspendConfig<i, o, resume> = {
 function is_step(value: unknown): value is Step<unknown, unknown> {
   if (typeof value !== 'object' || value === null) return false
   if (!('id' in value) || !('kind' in value) || !('run' in value)) return false
-  const { id, kind, run } = value as { id: unknown; kind: unknown; run: unknown }
+  const { id, kind, run } = value
   return typeof id === 'string' && typeof kind === 'string' && typeof run === 'function'
 }
 

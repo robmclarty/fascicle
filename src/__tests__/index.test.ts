@@ -38,9 +38,10 @@ describe('fascicle umbrella re-export', () => {
       'tournament',
       'consensus',
     ] as const
+    const exports_map = umbrella as Record<string, unknown>
     for (const name of expected) {
       expect(
-        typeof umbrella[name as keyof typeof umbrella],
+        typeof exports_map[name],
         `expected umbrella to export ${name}`,
       ).toBe('function')
     }

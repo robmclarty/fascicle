@@ -268,7 +268,7 @@ vdescribe('model_call', () => {
     expect(streamed.calls[0]?.had_on_chunk).toBe(true)
     const emitted = events.filter(
       (e): e is { kind: 'model_chunk'; step_id?: string } =>
-        typeof e === 'object' && (e as { kind?: string } | null)?.kind === 'model_chunk',
+        typeof e === 'object' && e !== null && 'kind' in e && e.kind === 'model_chunk',
     )
     expect(emitted.length).toBeGreaterThan(0)
   })

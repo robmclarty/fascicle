@@ -12,6 +12,7 @@
     "dist/**",
     ".check/**",
     ".stryker-tmp/**",
+    ".plumbbob/**",
     "docs/**",
     ".ridgeline/**",
     "research/**",

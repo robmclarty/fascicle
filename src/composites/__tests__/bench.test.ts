@@ -239,7 +239,7 @@ describe('bench', () => {
       ctx.trajectory.record({
         kind: 'cost',
         step_index: 1,
-        total_usd: 'lots' as unknown as number,
+        total_usd: 'lots',
         source: 'engine_derived',
       })
       ctx.trajectory.record({ kind: 'cost', step_index: 2, total_usd: 0.05, source: 'engine_derived' })
@@ -369,19 +369,20 @@ describe('bench result shape and summary math', () => {
   })
 })
 
+function tracking_slow(delay = 5): { flow: Step<number, number>; peak: () => number } {
+  let active = 0
+  let max_active = 0
+  const flow = step('slow', async (n: number) => {
+    active += 1
+    max_active = Math.max(max_active, active)
+    await new Promise((resolve) => setTimeout(resolve, delay))
+    active -= 1
+    return n
+  })
+  return { flow, peak: () => max_active }
+}
+
 describe('bench concurrency', () => {
-  function tracking_slow(delay = 5): { flow: Step<number, number>; peak: () => number } {
-    let active = 0
-    let max_active = 0
-    const flow = step('slow', async (n: number) => {
-      active += 1
-      max_active = Math.max(max_active, active)
-      await new Promise((resolve) => setTimeout(resolve, delay))
-      active -= 1
-      return n
-    })
-    return { flow, peak: () => max_active }
-  }
 
   it('runs all cases in parallel when concurrency is unset', async () => {
     const { flow, peak } = tracking_slow()

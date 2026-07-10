@@ -114,7 +114,7 @@ describe('decompose_total_cost — component sum', () => {
 
   it('negative token counts are clamped to zero', () => {
     const c = decompose_total_cost(0.01, {
-      input_tokens: -10 as unknown as number,
+      input_tokens: -10,
       output_tokens: 100,
     })
     expect(c.input_usd).toBe(0)

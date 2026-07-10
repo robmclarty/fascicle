@@ -21,7 +21,7 @@
 
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
-import type { BenchReport, CaseResult, Score } from './bench.js'
+import type { BenchReport, CaseResult } from './bench.js'
 
 export type RegressionDelta = {
   readonly metric: string

@@ -298,7 +298,7 @@ describe('process.on("exit") reap (spec §6, §12 #15 constraints §5.10 #5)', (
     const listeners = process.listeners('exit')
     for (const fn of listeners) {
       try {
-        (fn as (code: number) => void)(0)
+        (fn)(0)
       } catch {
         // swallow — we're only invoking handlers to validate claude_cli's one.
       }

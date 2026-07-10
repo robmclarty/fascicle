@@ -99,11 +99,11 @@ function aggregate_agent_usage(events: LearnInput['events']): Map<string, AgentU
     const usage = event['usage']
     const input_tokens =
       usage && typeof usage === 'object' && 'input_tokens' in usage
-        ? Number((usage as { input_tokens: unknown }).input_tokens) || 0
+        ? Number((usage).input_tokens) || 0
         : 0
     const output_tokens =
       usage && typeof usage === 'object' && 'output_tokens' in usage
-        ? Number((usage as { output_tokens: unknown }).output_tokens) || 0
+        ? Number((usage).output_tokens) || 0
         : 0
     const acc = out.get(name) ?? { calls: 0, input_tokens: 0, output_tokens: 0 }
     acc.calls += 1

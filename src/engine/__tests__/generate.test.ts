@@ -223,12 +223,13 @@ describe('generate: structured output', () => {
   })
 })
 
+function ollama_engine() {
+  return create_engine({
+    providers: { ollama: { base_url: 'http://localhost:11434' } },
+  })
+}
+
 describe('generate: native structured output', () => {
-  function ollama_engine() {
-    return create_engine({
-      providers: { ollama: { base_url: 'http://localhost:11434' } },
-    })
-  }
 
   it('routes the schema through experimental_output for structured_output providers', async () => {
     enqueue_generate_text(make_text_result('{"n": 42}'))
@@ -324,6 +325,15 @@ describe('generate: native structured output', () => {
       ollama_engine().generate({ model: 'qwen2.5-coder:7b', prompt: 'x', schema }),
     ).rejects.toThrow('boom')
   })
+})
+
+const infinite = () => ({
+  text: '',
+  toolCalls: [
+    { toolCallId: `c${mock_state.generate_text_call_count}`, toolName: 'loop', input: {} },
+  ],
+  finishReason: 'tool-calls',
+  usage: { inputTokens: 1, outputTokens: 1 },
 })
 
 describe('generate: tool loop', () => {
@@ -500,14 +510,6 @@ describe('generate: tool loop', () => {
   })
 
   it('hits max_steps with the attempted-but-unexecuted marker (C11)', async () => {
-    const infinite = () => ({
-      text: '',
-      toolCalls: [
-        { toolCallId: `c${mock_state.generate_text_call_count}`, toolName: 'loop', input: {} },
-      ],
-      finishReason: 'tool-calls',
-      usage: { inputTokens: 1, outputTokens: 1 },
-    })
     enqueue_generate_text_fn(infinite)
     enqueue_generate_text_fn(infinite)
     enqueue_generate_text_fn(infinite)

@@ -188,7 +188,7 @@ describe('flow_schema', () => {
   })
 
   it('validates the spec §5.17 example successfully', () => {
-    const errors = validate(example_from_spec, flow_schema as unknown as schema, flow_schema as unknown as schema)
+    const errors = validate(example_from_spec, flow_schema, flow_schema)
     expect(errors).toEqual([])
   })
 })

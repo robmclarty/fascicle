@@ -88,10 +88,11 @@ describe('judge_with', () => {
   })
 })
 
+function constant_model(reply: string): Step<string, string> {
+  return step('mock_model', () => reply)
+}
+
 describe('judge_llm', () => {
-  function constant_model(reply: string): Step<string, string> {
-    return step('mock_model', () => reply)
-  }
 
   it('parses a single JSON line into a Score', async () => {
     const j = judge_llm<string, string>({

@@ -51,7 +51,7 @@ const success_lines = (text: string, opts: Parameters<typeof success_ops>[1] = {
   success_ops(text, opts).map((o) => JSON.stringify((o as { data: unknown }).data))
 
 function gen<T = string>(partial: Partial<GenerateOptions<T>>): GenerateOptions<T> {
-  return { prompt: 'hi', ...partial } as GenerateOptions<T>
+  return { prompt: 'hi', ...partial }
 }
 
 const exec_tool = (name: string): Tool => ({

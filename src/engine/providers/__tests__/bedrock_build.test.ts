@@ -6,9 +6,13 @@ import { engine_config_error } from '../../errors.js'
 // Capture what build_model hands to the Bedrock SDK so credential/config
 // assembly is observable. The real-peer integration stays covered by
 // bedrock.test.ts.
-const { captured } = vi.hoisted(() => ({
-  captured: { config: undefined as Record<string, unknown> | undefined, model_id: undefined as unknown },
-}))
+const { captured } = vi.hoisted(() => {
+  const value: { config: Record<string, unknown> | undefined, model_id: unknown } = {
+    config: undefined,
+    model_id: undefined,
+  }
+  return { captured: value }
+})
 vi.mock('@ai-sdk/amazon-bedrock', () => ({
   createAmazonBedrock: (config: Record<string, unknown>) => {
     captured.config = config
@@ -32,7 +36,7 @@ describe('create_bedrock_adapter config assembly', () => {
     for (const init of [{}, { region: '' }, { region: 123 }]) {
       let err: unknown
       try {
-        create_bedrock_adapter(init as unknown as ProviderInit)
+        create_bedrock_adapter(init)
       } catch (e) {
         err = e
       }

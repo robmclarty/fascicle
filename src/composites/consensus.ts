@@ -51,7 +51,7 @@ export function consensus<i, o>(
       const prior = vars['state'] as S
       return { ...prior, results }
     }),
-  ]) as Step<S, S>
+  ])
 
   const guard: Step<S, { stop: boolean; state: S }> = step('agree', (s: S) => ({
     stop: agree(s.results),

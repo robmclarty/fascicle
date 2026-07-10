@@ -159,7 +159,7 @@ function render_json(
     if (node.meta) {
       result.meta = node.meta
     }
-    return result as FlowNode
+    return result
   } finally {
     path.delete(node)
   }

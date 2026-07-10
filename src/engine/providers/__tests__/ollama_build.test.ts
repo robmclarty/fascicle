@@ -3,9 +3,13 @@ import type { ProviderInit } from '../../types.js'
 import { create_ollama_adapter } from '../ollama.js'
 import { engine_config_error } from '../../errors.js'
 
-const { captured } = vi.hoisted(() => ({
-  captured: { config: undefined as Record<string, unknown> | undefined, model_id: undefined as unknown },
-}))
+const { captured } = vi.hoisted(() => {
+  const value: { config: Record<string, unknown> | undefined, model_id: unknown } = {
+    config: undefined,
+    model_id: undefined,
+  }
+  return { captured: value }
+})
 vi.mock('ai-sdk-ollama', () => ({
   createOllama: (config: Record<string, unknown>) => {
     captured.config = config

@@ -124,9 +124,9 @@ describe('default_usage_from_sdk', () => {
   })
 })
 
-describe('build_initial_messages', () => {
-  const opts = (o: Partial<GenerateOptions>): GenerateOptions => o as GenerateOptions
+const opts = (o: Partial<GenerateOptions>): GenerateOptions => o as GenerateOptions
 
+describe('build_initial_messages', () => {
   it('prepends a non-empty system message before a string prompt', () => {
     expect(build_initial_messages(opts({ system: 'be brief', prompt: 'hi' }))).toEqual([
       { role: 'system', content: 'be brief' },
@@ -245,10 +245,10 @@ describe('to_sdk_tools', () => {
   })
 })
 
-describe('map_stream_part_to_chunk', () => {
-  const m = (part: Record<string, unknown>) =>
-    map_stream_part_to_chunk(part as never, 2)
+const m = (part: Record<string, unknown>) =>
+  map_stream_part_to_chunk(part as never, 2)
 
+describe('map_stream_part_to_chunk', () => {
   it('maps each known stream part type', () => {
     expect(m({ type: 'text-delta', text: 'hi' })).toEqual({ kind: 'text', text: 'hi', step_index: 2 })
     expect(m({ type: 'reasoning-delta', text: 'why' })).toEqual({ kind: 'reasoning', text: 'why', step_index: 2 })
@@ -358,13 +358,13 @@ describe('classify_ai_sdk_error', () => {
   })
 })
 
+const step = (cost: GenerateResult['steps'][number]['cost']): GenerateResult['steps'][number] =>
+  ({ index: 0, text: '', tool_calls: [], usage: { input_tokens: 0, output_tokens: 0 }, finish_reason: 'stop', ...(cost !== undefined ? { cost } : {}) })
+
 describe('round6 and aggregate_cost', () => {
   it('rounds to six decimal places', () => {
     expect(round6(0.123456789)).toBe(0.123457)
   })
-
-  const step = (cost: GenerateResult['steps'][number]['cost']): GenerateResult['steps'][number] =>
-    ({ index: 0, text: '', tool_calls: [], usage: { input_tokens: 0, output_tokens: 0 }, finish_reason: 'stop', ...(cost !== undefined ? { cost } : {}) }) as GenerateResult['steps'][number]
 
   it('sums step costs including optional cached/cache_write/reasoning fields', () => {
     const out = aggregate_cost(

@@ -5,9 +5,13 @@ import { engine_config_error } from '../../errors.js'
 
 // Capture what build_model hands to the OpenAI SDK. Real-peer integration stays
 // covered by openai.test.ts.
-const { captured } = vi.hoisted(() => ({
-  captured: { config: undefined as Record<string, unknown> | undefined, model_id: undefined as unknown },
-}))
+const { captured } = vi.hoisted(() => {
+  const value: { config: Record<string, unknown> | undefined, model_id: unknown } = {
+    config: undefined,
+    model_id: undefined,
+  }
+  return { captured: value }
+})
 vi.mock('@ai-sdk/openai', () => ({
   createOpenAI: (config: Record<string, unknown>) => {
     captured.config = config

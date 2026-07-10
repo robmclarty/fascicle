@@ -73,7 +73,7 @@ export function adversarial<input, candidate>(
       const prior = vars['state'] as S
       return { ...prior, candidate }
     }),
-  ]) as Step<S, S>
+  ])
 
   const guard: Step<S, { stop: boolean; state: S }> = scope([
     stash('state', step('snapshot', (s: S) => s)),
@@ -96,7 +96,7 @@ export function adversarial<input, candidate>(
         },
       }
     }),
-  ]) as Step<S, { stop: boolean; state: S }>
+  ])
 
   const inner = pipe(
     loop<input, S, candidate>({

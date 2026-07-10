@@ -22,7 +22,6 @@ import type {
   GenerateResult,
   Pricing,
   PricingTable,
-  ProviderInit,
 } from './types.js'
 import { DEFAULT_PRICING, pricing_key } from './pricing.js'
 import { DEFAULT_RETRY } from './retry.js'
@@ -41,7 +40,7 @@ function build_provider_adapters(
   for (const [name, init] of Object.entries(providers)) {
     if (init === undefined) continue
     const factory = get_provider_factory(name)
-    const adapter = factory(init as ProviderInit)
+    const adapter = factory(init)
     adapters.set(name, adapter)
   }
   return adapters

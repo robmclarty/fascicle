@@ -160,7 +160,7 @@ vdescribe('describe.json', () => {
         predicate: (r: unknown) => Boolean(r),
       },
     }
-    const tree = describe.json(synthetic as unknown as Parameters<typeof describe.json>[0])
+    const tree = describe.json(synthetic)
     expect(tree.config?.['predicate']).toEqual({ kind: '<fn>', name: 'predicate' })
   })
 
@@ -173,7 +173,7 @@ vdescribe('describe.json', () => {
         check: validate_response,
       },
     }
-    const tree = describe.json(synthetic as unknown as Parameters<typeof describe.json>[0])
+    const tree = describe.json(synthetic)
     expect(tree.config?.['check']).toEqual({ kind: '<fn>', name: 'validate_response' })
   })
 
@@ -188,7 +188,7 @@ vdescribe('describe.json', () => {
         check: anon,
       },
     }
-    const tree = describe.json(synthetic as unknown as Parameters<typeof describe.json>[0])
+    const tree = describe.json(synthetic)
     expect(tree.config?.['check']).toEqual({ kind: '<fn>' })
   })
 
@@ -202,7 +202,7 @@ vdescribe('describe.json', () => {
         shape: schema,
       },
     }
-    const tree = describe.json(synthetic as unknown as Parameters<typeof describe.json>[0])
+    const tree = describe.json(synthetic)
     expect(tree.config?.['shape']).toEqual({ kind: '<schema>' })
   })
 
@@ -263,7 +263,7 @@ vdescribe('describe.json', () => {
         child: nested,
       },
     }
-    const tree = describe.json(synthetic as unknown as Parameters<typeof describe.json>[0])
+    const tree = describe.json(synthetic)
     expect(tree.config?.['child']).toEqual({ kind: 'step', id: 'nested' })
   })
 })

@@ -115,7 +115,7 @@ export function extract_call_opts(opts: GenerateOptions<unknown>): ClaudeCliCall
   if (raw === undefined || raw === null || typeof raw !== 'object') {
     return {}
   }
-  return raw as ClaudeCliCallOptions
+  return raw
 }
 
 export function count_user_messages(prompt: string | Message[]): number {

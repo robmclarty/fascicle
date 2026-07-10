@@ -36,7 +36,7 @@ function make_mock_engine(canned: unknown): {
   const calls: CapturedCall[] = []
   const engine: Engine = {
     generate: async <t = string>(opts: GenerateOptions<t>): Promise<GenerateResult<t>> => {
-      calls.push({ opts: opts as GenerateOptions<unknown> })
+      calls.push({ opts: opts })
       const parsed = opts.schema ? opts.schema.parse(canned) : canned
       return {
         // oxlint-disable-next-line typescript/no-unsafe-type-assertion

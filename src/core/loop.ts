@@ -82,8 +82,8 @@ export function loop<i, state, o>(
   const config_meta: Record<string, unknown> = { max_rounds: rounds_limit }
   if (name !== undefined) config_meta['display_name'] = name
   const children: ReadonlyArray<Step<unknown, unknown>> = guard
-    ? [body as Step<unknown, unknown>, guard as Step<unknown, unknown>]
-    : [body as Step<unknown, unknown>]
+    ? [body, guard]
+    : [body]
 
   return {
     id,

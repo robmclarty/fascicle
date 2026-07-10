@@ -27,10 +27,10 @@ describe('effort_env_for_claude_cli', () => {
   })
 })
 
-describe('extract_call_opts', () => {
-  const opts = (provider_options?: Record<string, unknown>): GenerateOptions<unknown> =>
-    ({ prompt: 'x', ...(provider_options !== undefined ? { provider_options } : {}) }) as GenerateOptions<unknown>
+const opts = (provider_options?: Record<string, unknown>): GenerateOptions<unknown> =>
+  ({ prompt: 'x', ...(provider_options !== undefined ? { provider_options } : {}) })
 
+describe('extract_call_opts', () => {
   it('returns {} when provider_options is absent', () => {
     expect(extract_call_opts(opts())).toEqual({})
   })
