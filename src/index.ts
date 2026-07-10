@@ -35,9 +35,11 @@ export {
 } from '#engine'
 
 export type {
+  AiSdkProviderAdapter,
   AssistantContentPart,
   CostBreakdown,
   EffortLevel,
+  EffortTranslation,
   Engine,
   EngineConfig,
   EngineDefaults,
@@ -47,13 +49,18 @@ export type {
   Message,
   Pricing,
   PricingTable,
+  ProviderAdapter,
+  ProviderCapability,
   ProviderConfigMap,
+  ProviderFactory,
   ProviderInit,
+  RawProviderUsage,
   ResolvedModel,
   RetryFailureKind,
   RetryPolicy,
   StepRecord,
   StreamChunk,
+  SubprocessProviderAdapter,
   Tool,
   ToolApprovalHandler,
   ToolApprovalRequest,
@@ -62,6 +69,8 @@ export type {
   UsageTotals,
   UserContentPart,
 } from '#engine'
+
+export { default_normalize_usage } from '#engine'
 
 export { model_call } from './model_call.js'
 export type { ModelCallConfig, ModelCallInput } from './model_call.js'

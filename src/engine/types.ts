@@ -12,6 +12,7 @@
 import type { z } from 'zod'
 import type { TrajectoryLogger } from '#core'
 import type { ClaudeCliProviderConfig } from './providers/claude_cli/types.js'
+import type { ProviderFactory } from './providers/types.js'
 
 export type EffortLevel = 'none' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
 
@@ -277,6 +278,15 @@ export type EngineDefaults = {
 
 export type EngineConfig = {
   providers: ProviderConfigMap
+  /**
+   * Construction-time provider registry extension. Keys are provider names,
+   * resolved custom-first against the built-ins; a key that shadows a built-in
+   * name throws engine_config_error. A factory may return an adapter of any
+   * kind, and receives the same-named entry from `providers` as its init.
+   * Registration is construction-time only; there is no runtime
+   * (post-construction) registration.
+   */
+  custom_providers?: Record<string, ProviderFactory>
   pricing?: PricingTable
   default_retry?: RetryPolicy
   default_effort?: EffortLevel

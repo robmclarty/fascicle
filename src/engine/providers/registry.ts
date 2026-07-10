@@ -1,9 +1,10 @@
 /**
- * Provider name → adapter factory lookup.
+ * Provider name → adapter factory lookup for the built-in set.
  *
- * Unknown provider names throw provider_not_configured_error. The registry is
- * a frozen Map; runtime provider registration beyond the built-in set is
- * deferred (spec §5.9).
+ * Unknown provider names throw provider_not_configured_error. Custom
+ * providers enter via `EngineConfig.custom_providers` at construction,
+ * resolved custom-first in create_engine; runtime (post-construction)
+ * registration stays deferred.
  */
 
 import { provider_not_configured_error } from '../errors.js'

@@ -2,8 +2,10 @@
  * Public entry point for engine.
  *
  * Exposes `create_engine(config)` and re-exports every public type and typed
- * error from spec §5 / §9. Provider adapters and internal orchestration
- * helpers are not re-exported.
+ * error from spec §5 / §9, plus the provider-authoring surface
+ * (`ProviderFactory`, the adapter union, and `default_normalize_usage`) for
+ * `custom_providers`. Built-in adapters and internal orchestration helpers
+ * are not re-exported.
  */
 
 export { create_engine } from './create_engine.js'
@@ -36,6 +38,18 @@ export type {
   UsageTotals,
   UserContentPart,
 } from './types.js'
+
+export type {
+  AiSdkProviderAdapter,
+  EffortTranslation,
+  ProviderAdapter,
+  ProviderCapability,
+  ProviderFactory,
+  RawProviderUsage,
+  SubprocessProviderAdapter,
+} from './providers/types.js'
+
+export { default_normalize_usage } from './providers/types.js'
 
 export type {
   AgentDef,

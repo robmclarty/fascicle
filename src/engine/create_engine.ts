@@ -29,17 +29,33 @@ import {
   engine_config_error,
   engine_disposed_error,
 } from './errors.js'
-import { get_provider_factory } from './providers/registry.js'
+import { get_provider_factory, list_builtin_providers } from './providers/registry.js'
 import type { ProviderAdapter } from './providers/types.js'
 import { generate, type EngineInternals } from './generate.js'
 
 function build_provider_adapters(
   providers: EngineConfig['providers'],
+  custom_providers: EngineConfig['custom_providers'],
 ): Map<string, ProviderAdapter> {
+  if (custom_providers !== undefined) {
+    const builtins = new Set(list_builtin_providers())
+    for (const name of Object.keys(custom_providers)) {
+      if (builtins.has(name)) {
+        throw new engine_config_error(
+          `custom_providers must not shadow built-in provider '${name}'`,
+          name,
+        )
+      }
+    }
+  }
   const adapters = new Map<string, ProviderAdapter>()
   for (const [name, init] of Object.entries(providers)) {
     if (init === undefined) continue
-    const factory = get_provider_factory(name)
+    const custom =
+      custom_providers !== undefined && Object.hasOwn(custom_providers, name)
+        ? custom_providers[name]
+        : undefined
+    const factory = custom ?? get_provider_factory(name)
     const adapter = factory(init)
     adapters.set(name, adapter)
   }
@@ -54,7 +70,7 @@ export function create_engine(config: EngineConfig): Engine {
     throw new engine_config_error('EngineConfig.providers is required')
   }
 
-  const adapters = build_provider_adapters(config.providers)
+  const adapters = build_provider_adapters(config.providers, config.custom_providers)
 
   const pricing: Record<string, Pricing> = { ...DEFAULT_PRICING }
   if (config.pricing !== undefined) {

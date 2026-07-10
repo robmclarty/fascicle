@@ -7,6 +7,7 @@ Configuring the engine layer: `create_engine(config)`, pricing, defaults, retry 
 ```ts
 type EngineConfig = {
   providers: ProviderConfigMap;
+  custom_providers?: Record<string, ProviderFactory>;
   pricing?: PricingTable;
   defaults?: EngineDefaults;
 
@@ -53,6 +54,50 @@ pnpm add @ai-sdk/amazon-bedrock     # bedrock
 ```
 
 Full per-provider notes live in [providers.md](./providers.md). The `claude_cli` adapter has its own guide: [cli.md](./cli.md).
+
+## Custom providers
+
+`custom_providers` registers provider factories beyond the built-in set at construction time. Keys are provider names; each factory receives the same-named entry from `providers` as its init and may return an adapter of any kind.
+
+```ts
+import {
+  create_engine,
+  default_normalize_usage,
+  type ProviderFactory,
+} from 'fascicle';
+
+const create_acme_adapter: ProviderFactory = (init) => {
+  if (typeof init.api_key !== 'string' || init.api_key.length === 0) {
+    throw new Error('acme requires api_key');
+  }
+  return {
+    kind: 'ai_sdk',
+    name: 'acme',
+    build_model: async (model_id) => {
+      const { createAcme } = await import('@acme/ai-sdk-provider');
+      return createAcme({ apiKey: init.api_key })(model_id);
+    },
+    translate_effort: () => ({ provider_options: {}, effort_ignored: true }),
+    normalize_usage: default_normalize_usage,
+    supports: (capability) =>
+      capability === 'text' || capability === 'tools' || capability === 'streaming',
+  };
+};
+
+const engine = create_engine({
+  providers: { acme: { api_key: process.env.ACME_API_KEY ?? '' } },
+  custom_providers: { acme: create_acme_adapter },
+});
+```
+
+Rules:
+
+- **Custom-first resolution.** A `providers` key is resolved against `custom_providers` first, then the built-ins.
+- **Shadowing a built-in throws.** A `custom_providers` key that matches a built-in name (`anthropic`, `openai`, ...) throws `engine_config_error` at construction; there is no silent override.
+- **Construction-time only.** There is no runtime registration; the config object is the whole registry extension.
+- **Validated like built-ins.** Factories run synchronously at `create_engine`; throw from the factory on bad init. Defer SDK or resource loading to the first call (`build_model` for `ai_sdk`-kind, `generate` for `subprocess`-kind).
+
+The factory and adapter types (`ProviderFactory`, `ProviderAdapter`, `AiSdkProviderAdapter`, `SubprocessProviderAdapter`, `ProviderCapability`) are exported from `fascicle`, alongside the `default_normalize_usage` helper. Because registration is plain config, a proprietary or workplace-private provider lives entirely in the consuming repo and never needs to enter the fascicle tree.
 
 ## Reading credentials from env
 
