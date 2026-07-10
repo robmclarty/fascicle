@@ -173,7 +173,7 @@ End state (after Step 14, the inversion):
    tests asserting concrete token values from the nested shape
    - seam: `src/engine/providers/`, `src/engine/generate.ts`, `src/ui/to_ui_message_stream.ts`, `src/engine/tool_loop.ts`
    - model: fable — silent cost-skew risk; a wrong field read passes types and only concrete-value assertions catch it
-6. [ ] v7 live smoke + release (V-P3.8..P3.9) — **done when:** a tool-loop flow
+6. [x] v7 live smoke + release (V-P3.8..P3.9) — **done when:** a tool-loop flow
    runs correctly streamed and non-streamed on OpenRouter and one
    OpenAI-compatible backend with usage/cost recorded, and changelog + version
    are bumped
