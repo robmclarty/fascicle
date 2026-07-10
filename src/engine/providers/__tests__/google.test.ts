@@ -62,6 +62,23 @@ describe('normalize_google_usage', () => {
     expect('cache_write_tokens' in usage).toBe(false)
   })
 
+  it('reads cached and reasoning (thoughts) tokens from the v7 nested details', () => {
+    // v7 Google usage: inputTokens = promptTokenCount (cache-inclusive),
+    // outputTokens = candidates + thoughts, reasoning = thoughtsTokenCount.
+    const usage = normalize_google_usage({
+      input_tokens: 900,
+      output_tokens: 340,
+      input_token_details: { cached_tokens: 700 },
+      output_token_details: { reasoning_tokens: 90 },
+    })
+    expect(usage).toStrictEqual({
+      input_tokens: 900,
+      output_tokens: 340,
+      reasoning_tokens: 90,
+      cached_input_tokens: 700,
+    })
+  })
+
   it('returns zero-only usage when raw is undefined', () => {
     expect(normalize_google_usage(undefined)).toEqual({
       input_tokens: 0,

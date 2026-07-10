@@ -122,6 +122,31 @@ describe('default_usage_from_sdk', () => {
     expect(default_usage_from_sdk(undefined)).toMatchObject({ input_tokens: 0, output_tokens: 0 })
     expect(default_usage_from_sdk({ inputTokens: 3 })).toMatchObject({ input_tokens: 3, output_tokens: 0 })
   })
+
+  it('carries cache and reasoning granularity through from the v7 nested shape', () => {
+    expect(
+      default_usage_from_sdk({
+        inputTokens: 1300,
+        inputTokenDetails: { noCacheTokens: 100, cacheReadTokens: 1000, cacheWriteTokens: 200 },
+        outputTokens: 550,
+        outputTokenDetails: { textTokens: 400, reasoningTokens: 150 },
+        totalTokens: 1850,
+      }),
+    ).toStrictEqual({
+      input_tokens: 1300,
+      output_tokens: 550,
+      reasoning_tokens: 150,
+      cached_input_tokens: 1000,
+      cache_write_tokens: 200,
+    })
+  })
+
+  it('omits granular fields when the nested details are absent', () => {
+    expect(default_usage_from_sdk({ inputTokens: 5, outputTokens: 3 })).toStrictEqual({
+      input_tokens: 5,
+      output_tokens: 3,
+    })
+  })
 })
 
 const opts = (o: Partial<GenerateOptions>): GenerateOptions => o as GenerateOptions
@@ -277,8 +302,40 @@ describe('map_stream_part_to_chunk', () => {
     })
   })
 
+  it('maps finish-step usage from the v7 nested shape with concrete granular values', () => {
+    expect(
+      m({
+        type: 'finish-step',
+        finishReason: 'tool-calls',
+        usage: {
+          inputTokens: 800,
+          inputTokenDetails: { noCacheTokens: 200, cacheReadTokens: 600, cacheWriteTokens: undefined },
+          outputTokens: 400,
+          outputTokenDetails: { textTokens: 250, reasoningTokens: 150 },
+          totalTokens: 1200,
+        },
+      }),
+    ).toStrictEqual({
+      kind: 'step_finish',
+      step_index: 2,
+      finish_reason: 'tool_calls',
+      usage: {
+        input_tokens: 800,
+        output_tokens: 400,
+        reasoning_tokens: 150,
+        cached_input_tokens: 600,
+      },
+    })
+  })
+
   it('returns undefined for an unknown part type', () => {
     expect(m({ type: 'something-else' })).toBeUndefined()
+  })
+
+  it('drops the v7 part kinds the engine chunk vocabulary does not model', () => {
+    expect(m({ type: 'reasoning-file', file: { mediaType: 'image/png' } })).toBeUndefined()
+    expect(m({ type: 'file', file: { mediaType: 'image/png' } })).toBeUndefined()
+    expect(m({ type: 'source', sourceType: 'url', id: 's1', url: 'https://x' })).toBeUndefined()
   })
 })
 

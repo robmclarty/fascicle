@@ -5,6 +5,9 @@ import {
   FREE_PROVIDERS,
   pricing_key,
 } from '../pricing.js'
+import { to_raw_provider_usage } from '../generate.js'
+import { normalize_anthropic_usage } from '../providers/anthropic.js'
+import { normalize_openai_usage } from '../providers/openai.js'
 import type { Pricing } from '../types.js'
 
 describe('DEFAULT_PRICING', () => {
@@ -202,5 +205,73 @@ describe('compute_cost', () => {
     expect(cost?.cache_write_usd).toBe(0.0015)
     expect(cost?.output_usd).toBe(0.0015)
     expect(cost?.total_usd).toBe(0.0045)
+  })
+})
+
+// The v7 SDK reports usage as cache-inclusive inputTokens / reasoning-inclusive
+// outputTokens with nested inputTokenDetails / outputTokenDetails. compute_cost
+// subtracts the granular fields back out of the totals, so these pipeline tests
+// pin the whole chain (SDK shape → raw → normalize → cost) to concrete dollars:
+// a wrong field read anywhere skews a value here rather than passing on shape.
+describe('cost from the v7 nested usage shape, end to end', () => {
+  it('prices an anthropic cache-heavy turn (1300 in = 100 fresh + 1000 read + 200 write)', () => {
+    // @ai-sdk/anthropic reports inputTokens.total = no-cache + cache-read +
+    // cache-write; anthropic never reports reasoning tokens separately.
+    const sdk_usage = {
+      inputTokens: 1300,
+      inputTokenDetails: { noCacheTokens: 100, cacheReadTokens: 1000, cacheWriteTokens: 200 },
+      outputTokens: 550,
+      outputTokenDetails: { textTokens: undefined, reasoningTokens: undefined },
+      totalTokens: 1850,
+    }
+    const usage = normalize_anthropic_usage(to_raw_provider_usage(sdk_usage))
+    expect(usage).toStrictEqual({
+      input_tokens: 1300,
+      output_tokens: 550,
+      cached_input_tokens: 1000,
+      cache_write_tokens: 200,
+    })
+    const cost = compute_cost(usage, DEFAULT_PRICING['anthropic:claude-sonnet-4-6'], 'anthropic')
+    // fresh 100 * 3 / 1e6 = 0.0003; read 1000 * 0.3 / 1e6 = 0.0003;
+    // write 200 * 3.75 / 1e6 = 0.00075; output 550 * 15 / 1e6 = 0.00825
+    expect(cost).toStrictEqual({
+      total_usd: 0.0096,
+      input_usd: 0.0003,
+      output_usd: 0.00825,
+      cached_input_usd: 0.0003,
+      cache_write_usd: 0.00075,
+      currency: 'USD',
+      is_estimate: true,
+    })
+  })
+
+  it('prices an openai cached + reasoning turn (800 in = 200 fresh + 600 read; 400 out = 250 text + 150 reasoning)', () => {
+    // @ai-sdk/openai reports prompt_tokens (cache-inclusive) as the total and
+    // never a cacheWrite; reasoning rides completion_tokens.
+    const sdk_usage = {
+      inputTokens: 800,
+      inputTokenDetails: { noCacheTokens: 200, cacheReadTokens: 600, cacheWriteTokens: undefined },
+      outputTokens: 400,
+      outputTokenDetails: { textTokens: 250, reasoningTokens: 150 },
+      totalTokens: 1200,
+    }
+    const usage = normalize_openai_usage(to_raw_provider_usage(sdk_usage))
+    expect(usage).toStrictEqual({
+      input_tokens: 800,
+      output_tokens: 400,
+      reasoning_tokens: 150,
+      cached_input_tokens: 600,
+    })
+    const cost = compute_cost(usage, DEFAULT_PRICING['openai:gpt-4o'], 'openai')
+    // fresh 200 * 2.5 / 1e6 = 0.0005; read 600 * 1.25 / 1e6 = 0.00075; no
+    // reasoning rate configured, so 400 output tokens all bill at 10 / 1e6.
+    expect(cost).toStrictEqual({
+      total_usd: 0.00525,
+      input_usd: 0.0005,
+      output_usd: 0.004,
+      cached_input_usd: 0.00075,
+      currency: 'USD',
+      is_estimate: true,
+    })
   })
 })

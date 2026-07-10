@@ -157,7 +157,7 @@ End state (after Step 14, the inversion):
    declined-v7 table, linked from `docs/providers.md`
    - seam: `research/explorations/2026-07-ai-sdk-agent-layer-boundary.md`, `docs/providers.md`
    - model: opus — prose distillation of already-settled decisions (the triage table exists)
-4. [ ] v7 core bump + codemod + rename reconciliation (V-P3.1..P3.3: `ai@^7` and
+4. [x] v7 core bump + codemod + rename reconciliation (V-P3.1..P3.3: `ai@^7` and
    all `@ai-sdk/*` peer targets from V-§3, `npx @ai-sdk/codemod v7` with the
    mechanical diff committed separately, then hand-verify `stepCountIs` to
    `isStepCount`, `experimental_output` to `output`, `fullStream` to `stream`,
@@ -171,7 +171,7 @@ End state (after Step 14, the inversion):
    `UIMessageChunk` incl. the new `reasoning-file` part; `tool_loop.ts`
    content-part check) — **done when:** `pnpm check:all` exits 0 with usage/cost
    tests asserting concrete token values from the nested shape
-   - seam: `src/engine/providers/*.ts`, `src/engine/generate.ts`, `src/ui/to_ui_message_stream.ts`, `src/engine/tool_loop.ts`
+   - seam: `src/engine/providers/`, `src/engine/generate.ts`, `src/ui/to_ui_message_stream.ts`, `src/engine/tool_loop.ts`
    - model: fable — silent cost-skew risk; a wrong field read passes types and only concrete-value assertions catch it
 6. [ ] v7 live smoke + release (V-P3.8..P3.9) — **done when:** a tool-loop flow
    runs correctly streamed and non-streamed on Anthropic and one

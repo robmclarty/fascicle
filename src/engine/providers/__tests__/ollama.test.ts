@@ -41,6 +41,16 @@ describe('normalize_ollama_usage', () => {
       output_tokens: 0,
     })
   })
+
+  it('strips granular fields arriving via the v7 nested details too', () => {
+    const usage = normalize_ollama_usage({
+      input_tokens: 100,
+      output_tokens: 20,
+      input_token_details: { cached_tokens: 50, cache_creation_input_tokens: 10 },
+      output_token_details: { reasoning_tokens: 5 },
+    })
+    expect(usage).toStrictEqual({ input_tokens: 100, output_tokens: 20 })
+  })
 })
 
 describe('create_ollama_adapter', () => {

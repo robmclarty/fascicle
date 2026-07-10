@@ -41,6 +41,16 @@ describe('normalize_lmstudio_usage', () => {
       output_tokens: 0,
     })
   })
+
+  it('strips granular fields arriving via the v7 nested details too', () => {
+    const usage = normalize_lmstudio_usage({
+      input_tokens: 120,
+      output_tokens: 25,
+      input_token_details: { cached_tokens: 80, cache_creation_input_tokens: 5 },
+      output_token_details: { reasoning_tokens: 3 },
+    })
+    expect(usage).toStrictEqual({ input_tokens: 120, output_tokens: 25 })
+  })
 })
 
 describe('create_lmstudio_adapter', () => {

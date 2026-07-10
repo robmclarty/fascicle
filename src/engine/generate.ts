@@ -72,10 +72,11 @@ import {
   type InvokeOnceResult,
   type RawToolCall,
 } from './tool_loop.js'
-import type {
-  AiSdkProviderAdapter,
-  ProviderAdapter,
-  RawProviderUsage,
+import {
+  default_normalize_usage,
+  type AiSdkProviderAdapter,
+  type ProviderAdapter,
+  type RawProviderUsage,
 } from './providers/types.js'
 
 export type EngineInternals = {
@@ -306,16 +307,19 @@ export function map_stream_part_to_chunk(
         usage: default_usage_from_sdk(part.usage),
       }
     default:
+      // v7 parts with no engine StreamChunk kind (file, reasoning-file,
+      // source, block framing) drop here on purpose: the engine models
+      // text, reasoning, and tool traffic, not generated files.
       return undefined
   }
 }
 
 export function default_usage_from_sdk(usage: unknown): UsageTotals {
-  const raw = to_raw_provider_usage(usage)
-  return {
-    input_tokens: raw.input_tokens ?? 0,
-    output_tokens: raw.output_tokens ?? 0,
-  }
+  // Streamed step_finish chunks must carry the same cache/reasoning
+  // granularity the step record gets via adapter.normalize_usage; every
+  // built-in adapter routes through default_normalize_usage, so this keeps
+  // the chunk surface consistent with the non-streamed result.
+  return default_normalize_usage(to_raw_provider_usage(usage))
 }
 
 async function collect_stream(

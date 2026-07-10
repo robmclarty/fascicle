@@ -54,6 +54,24 @@ describe('normalize_openrouter_usage', () => {
       reasoning_tokens: 20,
     })
   })
+
+  it('reads cache and reasoning tokens from the v7 nested details', () => {
+    // v7 OpenRouter usage: prompt_tokens is the cache-inclusive total and
+    // completion_tokens the reasoning-inclusive total.
+    const usage = normalize_openrouter_usage({
+      input_tokens: 1000,
+      output_tokens: 260,
+      input_token_details: { cached_tokens: 750, cache_creation_input_tokens: 100 },
+      output_token_details: { reasoning_tokens: 60 },
+    })
+    expect(usage).toStrictEqual({
+      input_tokens: 1000,
+      output_tokens: 260,
+      reasoning_tokens: 60,
+      cached_input_tokens: 750,
+      cache_write_tokens: 100,
+    })
+  })
 })
 
 describe('create_openrouter_adapter', () => {

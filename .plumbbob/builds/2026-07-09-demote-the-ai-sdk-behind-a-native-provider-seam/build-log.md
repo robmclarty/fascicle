@@ -57,3 +57,4 @@ folder, so it rides the branch into the PR.)*
 - 2026-07-10 — step 1 checkpointed · 8ab8848b4 — Dev-dependency sweep (V-P1.1..P1.4: vitest, oxlint, tsdown, zod, cspell,
 - 2026-07-10 — step 2 checkpointed · 74302d994 — Lint-tool catch-up + sweep fallout (oxlint 1.60→1.73, oxlint-tsgolint
 - 2026-07-10 — step 3 checkpointed · 9c7a86f35 — Agent-layer boundary ADR (V-P2.1..P2.2)
+- 2026-07-10 — step 4 checkpointed · 36ad674c8 — v7 core bump + codemod + rename reconciliation (V-P3.1..P3.3: `ai@^7` and

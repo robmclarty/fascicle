@@ -62,6 +62,22 @@ describe('normalize_bedrock_usage', () => {
       reasoning_tokens: 20,
     })
   })
+
+  it('reads cache read/write tokens from the v7 nested details', () => {
+    // v7 Bedrock usage: inputTokens = input + cacheRead + cacheWrite
+    // (cache-inclusive total), granularity only in the nested details.
+    const usage = normalize_bedrock_usage({
+      input_tokens: 650,
+      output_tokens: 120,
+      input_token_details: { cached_tokens: 400, cache_creation_input_tokens: 150 },
+    })
+    expect(usage).toStrictEqual({
+      input_tokens: 650,
+      output_tokens: 120,
+      cached_input_tokens: 400,
+      cache_write_tokens: 150,
+    })
+  })
 })
 
 describe('create_bedrock_adapter', () => {
