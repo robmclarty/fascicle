@@ -60,3 +60,4 @@ folder, so it rides the branch into the PR.)*
 - 2026-07-10 — step 4 checkpointed · 36ad674c8 — v7 core bump + codemod + rename reconciliation (V-P3.1..P3.3: `ai@^7` and
 - 2026-07-10 — step 5 checkpointed · 3208ac72c — v7 usage + stream-shape review (V-P3.4..P3.7: per-provider
 - 2026-07-10 — step 6 checkpointed · 9ec197bb0 — v7 live smoke + release (V-P3.8..P3.9)
+- 2026-07-10 — step 7 checkpointed · f9a2dc817 — Open the registry (S-P1.1..P1.4: `custom_providers` on `EngineConfig`,

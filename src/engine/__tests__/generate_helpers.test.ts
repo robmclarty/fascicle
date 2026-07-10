@@ -4,7 +4,7 @@ import type { GenerateOptions, GenerateResult, Message, Tool } from '../types.js
 import {
   aggregate_cost,
   build_initial_messages,
-  classify_ai_sdk_error,
+  classify_provider_error,
   default_usage_from_sdk,
   map_finish_reason,
   map_stream_part_to_chunk,
@@ -339,41 +339,41 @@ describe('map_stream_part_to_chunk', () => {
   })
 })
 
-describe('classify_ai_sdk_error', () => {
+describe('classify_provider_error', () => {
   it('passes through non-objects and every already-classified kind', () => {
-    expect(classify_ai_sdk_error('boom')).toBe('boom')
-    expect(classify_ai_sdk_error(null)).toBe(null)
+    expect(classify_provider_error('boom')).toBe('boom')
+    expect(classify_provider_error(null)).toBe(null)
     // A conflicting statusCode would re-classify if the kind passthrough failed,
     // so toBe(same ref) proves the already-classified short-circuit wins.
     for (const kind of ['rate_limit', 'provider_5xx', 'network', 'timeout']) {
       const classified = { kind, statusCode: 429, code: 'ECONNRESET' }
-      expect(classify_ai_sdk_error(classified)).toBe(classified)
+      expect(classify_provider_error(classified)).toBe(classified)
     }
   })
 
   it('does not treat an unknown kind string as already-classified', () => {
-    const out = classify_ai_sdk_error({ kind: 'mystery', statusCode: 429 }) as { kind?: string }
+    const out = classify_provider_error({ kind: 'mystery', statusCode: 429 }) as { kind?: string }
     expect(out.kind).toBe('rate_limit')
   })
 
   it('classifies a 429 with no headers and omits absent message/retry_after', () => {
-    const out = classify_ai_sdk_error({ statusCode: 429 }) as Record<string, unknown>
+    const out = classify_provider_error({ statusCode: 429 }) as Record<string, unknown>
     expect(out).toEqual({ kind: 'rate_limit', status: 429 })
     expect('message' in out).toBe(false)
     expect('retry_after_ms' in out).toBe(false)
   })
 
   it('treats 500 and 599 as 5xx but not 600 or 499', () => {
-    expect((classify_ai_sdk_error({ status: 500 }) as { kind?: string }).kind).toBe('provider_5xx')
-    expect((classify_ai_sdk_error({ status: 599 }) as { kind?: string }).kind).toBe('provider_5xx')
+    expect((classify_provider_error({ status: 500 }) as { kind?: string }).kind).toBe('provider_5xx')
+    expect((classify_provider_error({ status: 599 }) as { kind?: string }).kind).toBe('provider_5xx')
     const at600 = { status: 600 }
-    expect(classify_ai_sdk_error(at600)).toBe(at600) // not 5xx -> passthrough
+    expect(classify_provider_error(at600)).toBe(at600) // not 5xx -> passthrough
     const at499 = { status: 499 }
-    expect(classify_ai_sdk_error(at499)).toBe(at499)
+    expect(classify_provider_error(at499)).toBe(at499)
   })
 
   it('classifies a 429 with Retry-After header into rate_limit', () => {
-    const out = classify_ai_sdk_error({
+    const out = classify_provider_error({
       statusCode: 429,
       message: 'slow down',
       responseHeaders: { 'retry-after': '2' },
@@ -382,16 +382,16 @@ describe('classify_ai_sdk_error', () => {
   })
 
   it('reads the alternate status field and classifies 5xx', () => {
-    const out = classify_ai_sdk_error({ status: 503, message: 'unavailable' }) as Record<string, unknown>
+    const out = classify_provider_error({ status: 503, message: 'unavailable' }) as Record<string, unknown>
     expect(out).toMatchObject({ kind: 'provider_5xx', status: 503, message: 'unavailable' })
   })
 
   it('omits message for a 5xx error that has none', () => {
-    expect(classify_ai_sdk_error({ status: 500 })).toStrictEqual({ kind: 'provider_5xx', status: 500 })
+    expect(classify_provider_error({ status: 500 })).toStrictEqual({ kind: 'provider_5xx', status: 500 })
   })
 
   it('ignores a non-string Retry-After header', () => {
-    const out = classify_ai_sdk_error({
+    const out = classify_provider_error({
       statusCode: 429,
       responseHeaders: { 'retry-after': 2 },
     }) as Record<string, unknown>
@@ -400,18 +400,18 @@ describe('classify_ai_sdk_error', () => {
 
   it('classifies known network error codes', () => {
     for (const code of ['ECONNRESET', 'ETIMEDOUT', 'ENOTFOUND', 'ECONNREFUSED']) {
-      const out = classify_ai_sdk_error({ code, message: 'net' }) as Record<string, unknown>
+      const out = classify_provider_error({ code, message: 'net' }) as Record<string, unknown>
       expect(out).toMatchObject({ kind: 'network', message: 'net' })
     }
   })
 
   it('omits message for a network error that has none', () => {
-    expect(classify_ai_sdk_error({ code: 'ECONNRESET' })).toStrictEqual({ kind: 'network' })
+    expect(classify_provider_error({ code: 'ECONNRESET' })).toStrictEqual({ kind: 'network' })
   })
 
   it('passes through an unclassifiable error object', () => {
     const err = { statusCode: 400, message: 'bad request' }
-    expect(classify_ai_sdk_error(err)).toBe(err)
+    expect(classify_provider_error(err)).toBe(err)
   })
 })
 

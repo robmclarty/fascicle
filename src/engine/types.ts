@@ -171,6 +171,48 @@ export type StreamChunk =
     }
   | { kind: 'finish'; finish_reason: FinishReason; usage: UsageTotals }
 
+/**
+ * Neutral single-turn result shared by every depth-1 transport (`ai_sdk`,
+ * `native`). The tool-call loop consumes it through InvokeOnce; a native
+ * adapter's invoke_turn produces it directly. Staying provider-agnostic here is
+ * what lets salvage, approval, cost, and retry sit in one loop above any
+ * transport rather than being reimplemented per provider.
+ */
+export type TurnResult = {
+  readonly text: string
+  readonly tool_calls: ReadonlyArray<{
+    readonly id: string
+    readonly name: string
+    readonly input: unknown
+  }>
+  readonly finish_reason: FinishReason
+  readonly usage: UsageTotals
+}
+
+/**
+ * One turn's resolved request handed to a native adapter's invoke_turn.
+ * generate.ts assembles it from GenerateOptions plus engine defaults (resolved
+ * system, effort, merged provider_options, sampling params). When `stream` is
+ * true `dispatch_chunk` is defined and the adapter MUST emit StreamChunks
+ * through it while still returning the fully aggregated TurnResult.
+ */
+export type TurnRequest = {
+  readonly step_index: number
+  readonly messages: ReadonlyArray<Message>
+  readonly tools: ReadonlyArray<Tool>
+  readonly abort: AbortSignal
+  readonly stream: boolean
+  readonly model_id: string
+  readonly system?: string
+  readonly schema?: z.ZodType
+  readonly effort: EffortLevel
+  readonly provider_options?: Readonly<Record<string, Readonly<Record<string, unknown>>>>
+  readonly temperature?: number
+  readonly max_tokens?: number
+  readonly top_p?: number
+  readonly dispatch_chunk?: (chunk: StreamChunk) => Promise<void>
+}
+
 export type GenerateOptions<t = string> = {
   model?: string
   provider?: string

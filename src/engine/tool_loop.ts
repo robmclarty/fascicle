@@ -41,7 +41,7 @@
  *     max_steps cap (finish_reason 'stop', max_steps_reached false).
  *
  * The loop does not itself call the AI SDK. It invokes a supplied `invoke_once`
- * seam that returns a neutral InvokeOnceResult. generate.ts builds the real
+ * seam that returns a neutral TurnResult. generate.ts builds the real
  * seam using generateText/streamText; tests inject a mock seam directly.
  */
 
@@ -59,6 +59,7 @@ import type {
   ToolApprovalHandler,
   ToolCallRecord,
   ToolExecContext,
+  TurnResult,
   UsageTotals,
 } from './types.js'
 import { salvage_tool_calls, type SalvageOutcome } from './tool_call_salvage.js'
@@ -94,14 +95,13 @@ export type RawToolCall = {
   readonly input: unknown
 }
 
-export type InvokeOnceResult = {
-  readonly text: string
-  readonly tool_calls: ReadonlyArray<RawToolCall>
-  readonly finish_reason: FinishReason
-  readonly usage: UsageTotals
-}
+/**
+ * Retained alias of the neutral TurnResult (types.ts). Callers built against
+ * the loop-local name keep working while TurnResult is the shared spelling.
+ */
+export type InvokeOnceResult = TurnResult
 
-export type InvokeOnce = (args: InvokeOnceArgs) => Promise<InvokeOnceResult>
+export type InvokeOnce = (args: InvokeOnceArgs) => Promise<TurnResult>
 
 export type ToolLoopConfig = {
   readonly invoke_once: InvokeOnce
@@ -335,7 +335,7 @@ export async function run_tool_loop(config: ToolLoopConfig): Promise<ToolLoopRes
 
     const step_span = start_step_span(config.trajectory, step_index)
 
-    let turn: InvokeOnceResult
+    let turn: TurnResult
     try {
       config.trajectory?.record({ kind: 'request_sent', step_index })
       turn = await config.invoke_once({

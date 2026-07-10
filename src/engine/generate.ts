@@ -436,7 +436,7 @@ function recover_no_object_generated(
   }
 }
 
-export function classify_ai_sdk_error(err: unknown): unknown {
+export function classify_provider_error(err: unknown): unknown {
   if (err === null || typeof err !== 'object') return err
   // Already-classified shape: pass through.
   const existing_kind = Reflect.get(err, 'kind')
@@ -532,6 +532,16 @@ export async function generate<T = string>(
 
   if (adapter.kind === 'subprocess') {
     return adapter.generate<T>(opts, target)
+  }
+
+  // The next step adds the three-way dispatch that drives a native adapter's
+  // invoke_turn through the loop; until then the ai_sdk seam below is the only
+  // depth-1 path, so a native adapter (only reachable via custom_providers)
+  // has nowhere to run yet. Built-ins are ai_sdk/subprocess and never hit this.
+  if (adapter.kind === 'native') {
+    throw new engine_config_error(
+      `provider '${target.provider}' uses transport '${adapter.kind}', which is not yet supported`,
+    )
   }
 
   // Stamp engine events with `ts` when generate is called directly with a
@@ -738,7 +748,7 @@ export async function generate<T = string>(
               cause_kind: 'unknown',
             })
           }
-          throw classify_ai_sdk_error(err)
+          throw classify_provider_error(err)
         }
       },
       retry_policy,

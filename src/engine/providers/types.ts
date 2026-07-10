@@ -18,6 +18,8 @@ import type {
   GenerateOptions,
   GenerateResult,
   ProviderInit,
+  TurnRequest,
+  TurnResult,
   UsageTotals,
 } from '../types.js'
 
@@ -68,6 +70,23 @@ export type AiSdkProviderAdapter = {
   readonly supports: (capability: ProviderCapability) => boolean
 }
 
+/**
+ * Depth-1 raw-HTTP transport: implements a single turn against a provider's own
+ * API with zero `ai` / `@ai-sdk/*` in its module graph. generate.ts wraps
+ * invoke_turn in retry + classification + abort, so a native adapter owns only
+ * request/response mapping (and streaming via TurnRequest.dispatch_chunk); it
+ * MUST NOT implement its own retry. classify_error optionally overrides the
+ * shared classifier; dispose is optional (keep-alive agents, connection pools).
+ */
+export type NativeProviderAdapter = {
+  readonly kind: 'native'
+  readonly name: string
+  readonly invoke_turn: (req: TurnRequest) => Promise<TurnResult>
+  readonly supports: (capability: ProviderCapability) => boolean
+  readonly dispose?: () => Promise<void>
+  readonly classify_error?: (err: unknown) => unknown
+}
+
 export type SubprocessProviderAdapter = {
   readonly kind: 'subprocess'
   readonly name: string
@@ -79,7 +98,10 @@ export type SubprocessProviderAdapter = {
   readonly supports: (capability: ProviderCapability) => boolean
 }
 
-export type ProviderAdapter = AiSdkProviderAdapter | SubprocessProviderAdapter
+export type ProviderAdapter =
+  | AiSdkProviderAdapter
+  | NativeProviderAdapter
+  | SubprocessProviderAdapter
 
 export type ProviderFactory = (init: ProviderInit) => ProviderAdapter
 

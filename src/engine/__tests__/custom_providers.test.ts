@@ -92,6 +92,23 @@ function make_subprocess_factory(name: string, log: FactoryLog): ProviderFactory
   }
 }
 
+function make_native_factory(name: string, log: FactoryLog): ProviderFactory {
+  return (init) => {
+    log.inits.push(init)
+    return {
+      kind: 'native',
+      name,
+      invoke_turn: async () => ({
+        text: '',
+        tool_calls: [],
+        finish_reason: 'stop',
+        usage: { input_tokens: 0, output_tokens: 0 },
+      }),
+      supports: () => true,
+    }
+  }
+}
+
 beforeEach(() => reset_mock_state())
 afterEach(() => reset_mock_state())
 
@@ -170,6 +187,17 @@ describe('custom_providers', () => {
     }
     expect(thrown).toBeInstanceOf(engine_config_error)
     expect((thrown as engine_config_error).provider).toBe('openrouter')
+  })
+
+  it('throws engine_config_error for a native-kind adapter until three-way dispatch lands', async () => {
+    const log = make_log()
+    const engine = create_engine({
+      providers: { acme_native: { base_url: 'http://localhost:9999' } },
+      custom_providers: { acme_native: make_native_factory('acme_native', log) },
+    })
+    await expect(
+      engine.generate({ model: 'nat-1', prompt: 'hi' }),
+    ).rejects.toThrow(engine_config_error)
   })
 
   it('still throws provider_not_configured_error for unknown names', () => {

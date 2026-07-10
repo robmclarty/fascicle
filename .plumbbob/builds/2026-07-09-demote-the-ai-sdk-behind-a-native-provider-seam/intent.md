@@ -179,7 +179,7 @@ End state (after Step 14, the inversion):
    are bumped
    - seam: `examples/`, `CHANGELOG.md`, `package.json`
    - model: opus — manual smoke gate plus release chores; judgment is in reading the smoke output
-7. [ ] Open the registry (S-P1.1..P1.4: `custom_providers` on `EngineConfig`,
+7. [x] Open the registry (S-P1.1..P1.4: `custom_providers` on `EngineConfig`,
    custom-first resolution, shadow-throws, factory/adapter types exported from
    the engine barrel) — **done when:** a custom factory of any kind routes
    through `generate`, shadowing a built-in throws `engine_config_error`,
