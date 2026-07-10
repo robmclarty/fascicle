@@ -11,7 +11,7 @@ import {
   generateText,
   NoObjectGeneratedError,
   Output,
-  stepCountIs,
+  isStepCount,
   streamText,
   tool as ai_tool,
   type LanguageModel,
@@ -227,8 +227,9 @@ export function to_sdk_messages(messages: ReadonlyArray<Message>): ModelMessage[
  * as potentially attacker-controlled: it warns on every call (and newer `ai`
  * versions throw unless `allowSystemInMessages` is set). fascicle's system
  * content is the developer's own prompt, and the SDK's own recommendation is to
- * deliver it through the top-level `system` option, which removes the warning
- * at its source rather than suppressing it.
+ * deliver it through the top-level `instructions` option (v7's rename of the
+ * former `system` option), which removes the warning at its source rather than
+ * suppressing it.
  *
  * Only the *leading* run is hoisted (fascicle's only shape: one or more system
  * messages, then the conversation). A system message that appears after a
@@ -332,7 +333,7 @@ async function collect_stream(
   let raw_usage: RawProviderUsage = {}
   let first = true
 
-  for await (const part of stream_result.fullStream) {
+  for await (const part of stream_result.stream) {
     if (first) {
       first = false
       on_first_chunk()
@@ -405,7 +406,7 @@ async function collect_non_stream(
 }
 
 /**
- * When `experimental_output` is in play, `generateText` eagerly parses the
+ * When `output` (structured output) is in play, `generateText` eagerly parses the
  * model's text against the schema and throws `NoObjectGeneratedError` if it
  * does not conform. That parse is the SDK's, not fascicle's: turning it into a
  * thrown error would skip the engine's own schema-parse + repair loop (and the
@@ -668,13 +669,13 @@ export async function generate<T = string>(
         model,
         messages: sdk_messages,
         abortSignal: internal_controller.signal,
-        stopWhen: stepCountIs(1),
+        stopWhen: isStepCount(1),
         // The engine owns retry via retry_with_policy below; disable the AI
         // SDK's own retry (default 2) so it does not nest inside each of our
         // attempts and inflate provider round-trips / distort backoff.
         maxRetries: 0,
       }
-      if (hoisted_system !== undefined) base_params.system = hoisted_system
+      if (hoisted_system !== undefined) base_params.instructions = hoisted_system
       if (sdk_tools !== undefined) base_params.tools = sdk_tools
       if (output_spec !== undefined) {
         // Output.object<T> is not structurally assignable to the SDK's default
@@ -682,7 +683,7 @@ export async function generate<T = string>(
         // what generateText/streamText consume to set responseFormat. Keeps the
         // generateText-only seam intact (§7 invariant 13).
         // eslint-disable-next-line typescript-eslint/no-unsafe-type-assertion
-        base_params.experimental_output = output_spec as NonNullable<typeof base_params.experimental_output>
+        base_params.output = output_spec as NonNullable<typeof base_params.output>
       }
       if (provider_options !== undefined) {
         // provider_options is Record<string, Record<string, unknown>>; the SDK

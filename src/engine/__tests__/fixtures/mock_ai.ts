@@ -130,7 +130,7 @@ export function make_no_object_generated_error(opts: {
 
 export async function build_mock_ai_module(): Promise<Record<string, unknown>> {
   return {
-    stepCountIs: (n: number) => ({ stepCountIs: n }),
+    isStepCount: (n: number) => ({ isStepCount: n }),
     tool: (def: { description: string; inputSchema: unknown }) => ({
       type: 'tool' as const,
       description: def.description,
@@ -193,7 +193,7 @@ export async function build_mock_ai_module(): Promise<Record<string, unknown>> {
         }
       }
   
-      return { fullStream: gen() }
+      return { stream: gen() }
     },
   }
 }

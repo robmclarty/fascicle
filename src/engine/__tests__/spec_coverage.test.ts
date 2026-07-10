@@ -620,17 +620,17 @@ describe('spec §9: failure modes (remaining)', () => {
     })
     expect(result.content).toEqual({ v: 42 })
     const params = mock_state.last_generate_text_params as {
-      system?: string
-      experimental_output?: unknown
+      instructions?: string
+      output?: unknown
       messages: Array<{ role: string; content: unknown }>
     }
     // Providers without the structured_output capability take the prompt-based
-    // path: no experimental_output is set, and the JSON instruction is
-    // delivered via the top-level `system` option, not a `role: 'system'`
+    // path: no output is set, and the JSON instruction is
+    // delivered via the top-level `instructions` option, not a `role: 'system'`
     // message.
-    expect(params.experimental_output).toBeUndefined()
+    expect(params.output).toBeUndefined()
     expect(params.messages.some((m) => m.role === 'system')).toBe(false)
-    expect(String(params.system)).toMatch(/JSON/)
+    expect(String(params.instructions)).toMatch(/JSON/)
   })
 
   it('F19 abort during on_tool_approval await rejects with aborted_error', async () => {

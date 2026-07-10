@@ -4,12 +4,12 @@
  * Replaces `generateText` and `streamText` with abort-aware long waits so the
  * child process deterministically has an in-flight provider call at the
  * moment SIGINT arrives, without any network I/O. Only the shapes the engine
- * touches at runtime are stubbed — `tool`, `stepCountIs`, and the two call
+ * touches at runtime are stubbed — `tool`, `isStepCount`, and the two call
  * entry points.
  */
 
-export function stepCountIs(n) {
-  return { stepCountIs: n };
+export function isStepCount(n) {
+  return { isStepCount: n };
 }
 
 export function tool(def) {
@@ -60,5 +60,5 @@ export function streamText(params) {
     await hang_until_abort(params.abortSignal);
     yield { type: 'text-delta', text: '' };
   }
-  return { fullStream: gen() };
+  return { stream: gen() };
 }

@@ -152,7 +152,7 @@ End state (after Step 14, the inversion):
      `examples/` — lint-only edits (a one-time, no-behavior exception to C8 for the
      ~47 findings, ~21 in C8's otherwise-untouched core/composites/agents)
    - model: sonnet — mechanical, no-behavior lint fixes gated by types + lint + test
-3. [ ] Agent-layer boundary ADR (V-P2.1..P2.2) — **done when:** the decision
+3. [x] Agent-layer boundary ADR (V-P2.1..P2.2) — **done when:** the decision
    record exists (`status: accepted`) with the D2 litmus test and the full
    declined-v7 table, linked from `docs/providers.md`
    - seam: `research/explorations/2026-07-ai-sdk-agent-layer-boundary.md`, `docs/providers.md`

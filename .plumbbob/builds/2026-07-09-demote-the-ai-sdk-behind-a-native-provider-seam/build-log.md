@@ -56,3 +56,4 @@ you point at to say "I did that — the LLM helped, but those were my calls."
 folder, so it rides the branch into the PR.)*
 - 2026-07-10 — step 1 checkpointed · 8ab8848b4 — Dev-dependency sweep (V-P1.1..P1.4: vitest, oxlint, tsdown, zod, cspell,
 - 2026-07-10 — step 2 checkpointed · 74302d994 — Lint-tool catch-up + sweep fallout (oxlint 1.60→1.73, oxlint-tsgolint
+- 2026-07-10 — step 3 checkpointed · 9c7a86f35 — Agent-layer boundary ADR (V-P2.1..P2.2)

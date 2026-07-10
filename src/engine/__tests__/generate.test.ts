@@ -83,13 +83,13 @@ describe('generate: plain paths', () => {
       ],
     })
     const params = mock_state.last_generate_text_params as {
-      system?: string
+      instructions?: string
       messages: Array<{ role: string; content: unknown }>
     }
     // The leading run of system messages (engine `system` + a leading system in
-    // the prompt) is joined and delivered via the SDK's top-level `system`
+    // the prompt) is joined and delivered via the SDK's top-level `instructions`
     // option; no `role: 'system'` entry remains in `messages`.
-    expect(params.system).toBe('be concise\n\nyou are a helper')
+    expect(params.instructions).toBe('be concise\n\nyou are a helper')
     expect(params.messages.some((m) => m.role === 'system')).toBe(false)
     expect(params.messages[0]?.role).toBe('user')
     expect(params.messages[0]?.content).toBe('hi')
@@ -105,13 +105,13 @@ describe('generate: plain paths', () => {
         prompt: 'hi',
       })
       const params = mock_state.last_generate_text_params as {
-        system?: string
+        instructions?: string
         messages: Array<{ role: string; content: unknown }>
       }
-      // System content rides the top-level `system` option, never a
+      // System content rides the top-level `instructions` option, never a
       // `role: 'system'` message — the latter is what trips the AI SDK's
       // "System messages in the prompt or messages fields..." warning.
-      expect(params.system).toBe('you are a helper')
+      expect(params.instructions).toBe('you are a helper')
       expect(params.messages.some((m) => m.role === 'system')).toBe(false)
       const warned_system = warn_spy.mock.calls.some((call) =>
         call.some(
@@ -231,7 +231,7 @@ function ollama_engine() {
 
 describe('generate: native structured output', () => {
 
-  it('routes the schema through experimental_output for structured_output providers', async () => {
+  it('routes the schema through output for structured_output providers', async () => {
     enqueue_generate_text(make_text_result('{"n": 42}'))
     const schema = z.object({ n: z.number() })
     const result = await ollama_engine().generate({
@@ -241,13 +241,13 @@ describe('generate: native structured output', () => {
     })
     expect(result.content).toEqual({ n: 42 })
     const params = mock_state.last_generate_text_params as {
-      experimental_output?: { name?: string; schema?: unknown }
+      output?: { name?: string; schema?: unknown }
     }
-    expect(params.experimental_output?.name).toBe('object')
-    expect(params.experimental_output?.schema).toBe(schema)
+    expect(params.output?.name).toBe('object')
+    expect(params.output?.schema).toBe(schema)
   })
 
-  it('omits experimental_output when no schema is requested', async () => {
+  it('omits output when no schema is requested', async () => {
     enqueue_generate_text(make_text_result('plain text'))
     const result = await ollama_engine().generate({
       model: 'qwen2.5-coder:7b',
@@ -255,10 +255,10 @@ describe('generate: native structured output', () => {
     })
     expect(result.content).toBe('plain text')
     const params = mock_state.last_generate_text_params as Record<string, unknown>
-    expect('experimental_output' in params).toBe(false)
+    expect('output' in params).toBe(false)
   })
 
-  it('omits experimental_output when tools are present (gated on no tools)', async () => {
+  it('omits output when tools are present (gated on no tools)', async () => {
     enqueue_generate_text(make_text_result('{"n": 1}'))
     const schema = z.object({ n: z.number() })
     const result = await ollama_engine().generate({
@@ -276,7 +276,7 @@ describe('generate: native structured output', () => {
     })
     expect(result.content).toEqual({ n: 1 })
     const params = mock_state.last_generate_text_params as Record<string, unknown>
-    expect('experimental_output' in params).toBe(false)
+    expect('output' in params).toBe(false)
   })
 
   it('recovers the raw text from NoObjectGeneratedError and parses it in one step', async () => {
