@@ -149,22 +149,22 @@
     }
   },
   "devDependencies": {
-    "@arethetypeswrong/cli": "0.18.2",
-    "@ast-grep/cli": "0.42.1",
+    "@arethetypeswrong/cli": "0.18.4",
+    "@ast-grep/cli": "0.44.1",
     "@modelcontextprotocol/sdk": "1.29.0",
     "@stryker-mutator/core": "9.6.1",
     "@stryker-mutator/vitest-runner": "9.6.1",
-    "@types/node": "24.12.2",
-    "@vitest/coverage-v8": "4.1.4",
-    "cspell": "10.0.0",
-    "fallow": "2.40.3",
-    "markdownlint-cli2": "0.22.0",
+    "@types/node": "26.1.0",
+    "@vitest/coverage-v8": "4.1.10",
+    "cspell": "10.0.1",
+    "fallow": "3.2.0",
+    "markdownlint-cli2": "0.23.0",
     "oxlint": "1.60.0",
     "oxlint-tsgolint": "0.21.1",
-    "tsdown": "0.21.9",
-    "tsx": "4.21.0",
+    "tsdown": "0.22.3",
+    "tsx": "4.23.0",
     "typescript": "6.0.3",
-    "vitest": "4.1.4",
-    "zod": "4.3.6"
+    "vitest": "4.1.10",
+    "zod": "4.4.3"
   }
 }

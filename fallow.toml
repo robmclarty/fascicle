@@ -33,43 +33,81 @@ minTokens = 50
 maxCyclomatic = 15
 maxCognitive = 15
 
-# Architecture boundaries: directory-level default-deny DAG that replaces the
-# old per-package manifest graph. Each module lists every sibling it MAY NOT
-# import (fallow is default-allow). The umbrella (src/*.ts) is intentionally
-# unconstrained — it composes every layer. Mirrors the ast-grep boundary rules.
+# Architecture boundaries: directory-level DAG that replaces the old
+# per-package manifest graph. fallow 3's schema is default-deny — each zone
+# lists every sibling it MAY import (allow), the inverse of the old
+# default-allow/cannotImport form, translated 1:1 to preserve behavior. The
+# umbrella (src/*.ts) is intentionally unconstrained — it composes every
+# layer. Mirrors the ast-grep boundary rules.
+
+[[boundaries.zones]]
+name = "core"
+patterns = ["src/core/**"]
+
+[[boundaries.zones]]
+name = "engine"
+patterns = ["src/engine/**"]
+
+[[boundaries.zones]]
+name = "composites"
+patterns = ["src/composites/**"]
+
+[[boundaries.zones]]
+name = "adapters"
+patterns = ["src/adapters/**"]
+
+[[boundaries.zones]]
+name = "viewer"
+patterns = ["src/viewer/**"]
+
+[[boundaries.zones]]
+name = "agents"
+patterns = ["src/agents/**"]
+
+[[boundaries.zones]]
+name = "mcp"
+patterns = ["src/mcp/**"]
+
+[[boundaries.zones]]
+name = "stdio"
+patterns = ["src/stdio/**"]
+
+[[boundaries.zones]]
+name = "ui"
+patterns = ["src/ui/**"]
 
 [[boundaries.rules]] # core: bottom of the DAG, imports no sibling module
-from = "src/core/**"
-cannotImport = ["src/engine/**", "src/composites/**", "src/agents/**", "src/adapters/**", "src/viewer/**"]
+from = "core"
+allow = ["mcp", "stdio", "ui"]
 
 [[boundaries.rules]] # engine: may reference core (type-only, see ast-grep), nothing else
-from = "src/engine/**"
-cannotImport = ["src/composites/**", "src/agents/**", "src/adapters/**", "src/viewer/**"]
+from = "engine"
+allow = ["core", "mcp", "stdio", "ui"]
 
 [[boundaries.rules]] # composites: core + adapters only
-from = "src/composites/**"
-cannotImport = ["src/engine/**", "src/agents/**", "src/viewer/**"]
+from = "composites"
+allow = ["core", "adapters", "mcp", "stdio", "ui"]
 
 [[boundaries.rules]] # adapters: core only (injected via run_context)
-from = "src/adapters/**"
-cannotImport = ["src/engine/**", "src/composites/**", "src/agents/**", "src/viewer/**"]
+from = "adapters"
+allow = ["core", "mcp", "stdio", "ui"]
 
 [[boundaries.rules]] # viewer: core only (dev tool that reads the wire format)
-from = "src/viewer/**"
-cannotImport = ["src/engine/**", "src/composites/**", "src/agents/**", "src/adapters/**"]
+from = "viewer"
+allow = ["core", "mcp", "stdio", "ui"]
 
 [[boundaries.rules]] # agents: core + composites + engine only
-from = "src/agents/**"
-cannotImport = ["src/adapters/**", "src/viewer/**"]
+from = "agents"
+allow = ["core", "engine", "composites", "mcp", "stdio", "ui"]
 
 [[boundaries.rules]] # mcp: core + engine only (bridges flows/tools to the MCP wire)
-from = "src/mcp/**"
-cannotImport = ["src/composites/**", "src/agents/**", "src/adapters/**", "src/viewer/**"]
+from = "mcp"
+allow = ["core", "engine", "stdio", "ui"]
 
 [[boundaries.rules]] # stdio: core + adapters only (single-shot child-process entry helper)
-from = "src/stdio/**"
-cannotImport = ["src/engine/**", "src/composites/**", "src/agents/**", "src/viewer/**", "src/mcp/**"]
+from = "stdio"
+allow = ["core", "adapters", "ui"]
 
 [[boundaries.rules]] # ui: core + engine only (bridges the run stream to the AI SDK UI wire)
-from = "src/ui/**"
-cannotImport = ["src/composites/**", "src/agents/**", "src/adapters/**", "src/viewer/**"]
+from = "ui"
+allow = ["core", "engine", "mcp", "stdio"]
