@@ -141,7 +141,7 @@ End state (after Step 14, the inversion):
    source change
    - seam: `package.json`, `pnpm-lock.yaml`, `fallow.toml`
    - model: sonnet — mechanical dependency churn; the check gate catches everything
-2. [ ] Lint-tool catch-up + sweep fallout (oxlint 1.60→1.73, oxlint-tsgolint
+2. [x] Lint-tool catch-up + sweep fallout (oxlint 1.60→1.73, oxlint-tsgolint
    0.21→0.24 — the pair held back from Step 1) — **done when:** `pnpm check:all`
    exits 0 with the oxlint pair bumped, every newly-surfaced finding resolved by
    no-behavior-change edits (redundant type-assertion removal, function hoisting,

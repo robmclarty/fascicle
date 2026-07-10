@@ -17,6 +17,10 @@ Eight adapters ship with the engine layer:
 
 The seven AI SDK adapters wrap Vercel's AI SDK. The eighth, `claude_cli`, spawns the `claude` binary and parses its `--output-format stream-json` stream. See [cli.md](./cli.md) for the full `claude_cli` guide.
 
+## The agent-layer boundary
+
+fascicle uses the AI SDK strictly as a single-turn provider layer: every call is `generateText` / `streamText` pinned to one step, and the loop above it (multi-step execution, tool approval, salvage, `ends_turn`, cost, retry, trajectory) is fascicle's own. The SDK's agent layer (`ToolLoopAgent`, `WorkflowAgent`, `HarnessAgent`, `toolApproval`, scoped tool context, `@ai-sdk/otel`) is declined by a written decision record; the litmus test is that a framework must let you call one turn below its own loop. Before reaching for any of those APIs, read the [agent-layer boundary ADR](../research/explorations/2026-07-ai-sdk-agent-layer-boundary.md).
+
 ## Capability matrix
 
 | Provider     | text | tools | schema | streaming | image_input | reasoning |
