@@ -121,7 +121,7 @@ test-authoring iterations; `pnpm check:all` once at the end (C1).
    (~276-286, 519-633) are each asserted at both boundaries
    - seam: `src/engine/providers/__tests__/openai_compatible_native.test.ts`, `src/engine/providers/__tests__/openai_compatible_native_e2e.test.ts`, `src/engine/providers/openai_compatible_native.ts`
    - model: opus — strong-assertion authoring plus equivalent-mutant judgment on the dialect/finish/usage branches
-2. [ ] Harden `ollama_native.ts` — **done when:** zero no-coverage and residual
+2. [x] Harden `ollama_native.ts` — **done when:** zero no-coverage and residual
    survivors annotated (target ≥90%), with the NDJSON stream-drain and
    error-classification region (~394-478) and the `done_reason` /
    `prompt_eval_count`/`eval_count` maps (zeroed-when-absent per D10) asserted at

@@ -5,7 +5,8 @@ import {
   SimpleSpanProcessor,
   type ReadableSpan,
 } from '@opentelemetry/sdk-trace-base'
-import { SpanStatusCode, type Tracer } from '@opentelemetry/api'
+import { SpanStatusCode, trace, type Tracer } from '@opentelemetry/api'
+import type { TrajectoryEvent } from '#core'
 import { create_otel_trajectory_logger } from '../trajectory_logger.js'
 
 function harness(tracer_name = 'test'): {
@@ -18,6 +19,10 @@ function harness(tracer_name = 'test'): {
   })
   return { tracer: provider.getTracer(tracer_name), exporter }
 }
+
+// A function value has no JSON representation, forcing `safe_json`'s
+// String()-fallback branch when used as an event field.
+const unserializable_fn = (): number => 1
 
 function by_name(spans: ReadonlyArray<ReadableSpan>, name: string): ReadableSpan {
   const found = spans.filter((s) => s.name === name)
@@ -91,6 +96,9 @@ describe('create_otel_trajectory_logger', () => {
     // Non-primitive event fields are JSON-stringified, not dropped.
     expect(events[0]?.attributes?.['fascicle.input']).toBe('{"q":"hi"}')
     expect(events[1]?.attributes?.['fascicle.output']).toBe('{"hits":2}')
+    // `kind` is bridge plumbing (the event name), never leaked as an attribute.
+    expect(events[0]?.attributes?.['fascicle.kind']).toBeUndefined()
+    expect(events[1]?.attributes?.['fascicle.kind']).toBeUndefined()
   })
 
   it('sets ERROR status when a span ends with an error', () => {
@@ -152,7 +160,9 @@ describe('create_otel_trajectory_logger', () => {
     logger.end_span(g, {})
 
     const [span] = exporter.getFinishedSpans()
-    expect(typeof span?.events[0]?.attributes?.['fascicle.blob']).toBe('string')
+    // JSON.stringify throws on the cycle, so `safe_json` falls back to
+    // `String(value)`, which yields the object's default string tag.
+    expect(span?.events[0]?.attributes?.['fascicle.blob']).toBe('[object Object]')
   })
 
   it('applies a custom attribute prefix', () => {
@@ -187,6 +197,9 @@ describe('create_otel_trajectory_logger', () => {
       sizes: [1, 2, 3],
       flags: [true, false],
       mixed: [1, 'two'],
+      // A boolean mixed with a non-boolean: uniform only under `some`, not the
+      // required `every`, so it must stringify rather than pass through.
+      bool_mixed: [true, 1],
       absent: null,
     })
     logger.end_span(g, {})
@@ -197,6 +210,7 @@ describe('create_otel_trajectory_logger', () => {
     expect(span?.attributes['fascicle.flags']).toEqual([true, false])
     // A non-uniform array is not a valid OTel attribute value, so it is JSON'd.
     expect(span?.attributes['fascicle.mixed']).toBe('[1,"two"]')
+    expect(span?.attributes['fascicle.bool_mixed']).toBe('[true,1]')
     // null-valued keys are dropped entirely rather than emitted.
     expect(span?.attributes['fascicle.absent']).toBeUndefined()
   })
@@ -217,6 +231,118 @@ describe('create_otel_trajectory_logger', () => {
     const step = by_name(spans, 'engine.generate.step')
     expect(gen.events.map((e) => e.name)).toEqual(['cost'])
     expect(gen.events[0]?.attributes?.['fascicle.total_usd']).toBe(0.1)
+    // span_id is routing plumbing, not a span-event attribute.
+    expect(gen.events[0]?.attributes?.['fascicle.span_id']).toBeUndefined()
     expect(step.events).toHaveLength(0)
+  })
+
+  it('opens spans on the default fascicle tracer when constructed without options', () => {
+    const exporter = new InMemorySpanExporter()
+    const provider = new BasicTracerProvider({
+      spanProcessors: [new SimpleSpanProcessor(exporter)],
+    })
+    trace.setGlobalTracerProvider(provider)
+    try {
+      const logger = create_otel_trajectory_logger()
+      const g = logger.start_span('engine.generate', { model: 'm' })
+      logger.end_span(g, {})
+
+      const [span] = exporter.getFinishedSpans()
+      // The default tracer is `trace.getTracer('fascicle')`, so the span's
+      // instrumentation scope carries that exact name.
+      expect(span?.instrumentationScope.name).toBe('fascicle')
+      expect(span?.attributes['fascicle.model']).toBe('m')
+    } finally {
+      trace.disable()
+    }
+  })
+
+  it('stringifies a function-valued field via String() when JSON.stringify yields nothing', () => {
+    const { tracer, exporter } = harness()
+    const logger = create_otel_trajectory_logger({ tracer })
+
+    const g = logger.start_span('engine.generate', {})
+    logger.record({ kind: 'tool_result', step_index: 0, fn: unserializable_fn })
+    logger.end_span(g, {})
+
+    const [span] = exporter.getFinishedSpans()
+    // JSON.stringify(fn) is `undefined`, so `safe_json` falls back to String(fn).
+    expect(span?.events[0]?.attributes?.['fascicle.fn']).toBe(String(unserializable_fn))
+  })
+
+  it('drops an explicitly-undefined field rather than stringifying it', () => {
+    const { tracer, exporter } = harness()
+    const logger = create_otel_trajectory_logger({ tracer })
+
+    const g = logger.start_span('engine.generate', { u: undefined, model: 'm' })
+    logger.end_span(g, {})
+
+    const [span] = exporter.getFinishedSpans()
+    expect(span?.attributes['fascicle.u']).toBeUndefined()
+    // A sibling key still lands, proving the undefined value alone was skipped.
+    expect(span?.attributes['fascicle.model']).toBe('m')
+  })
+
+  it('accepts spans opened and closed with no metadata', () => {
+    const { tracer, exporter } = harness()
+    const logger = create_otel_trajectory_logger({ tracer })
+
+    expect(() => {
+      const g = logger.start_span('engine.generate')
+      logger.end_span(g)
+    }).not.toThrow()
+
+    const [span] = exporter.getFinishedSpans()
+    expect(span?.name).toBe('engine.generate')
+    expect(span?.status.code).toBe(SpanStatusCode.UNSET)
+  })
+
+  it('falls back to stack order when an explicit parent_span_id is unknown', () => {
+    const { tracer, exporter } = harness()
+    const logger = create_otel_trajectory_logger({ tracer })
+
+    const root = logger.start_span('sequence', {})
+    // A string parent_span_id that was never opened cannot be resolved, so the
+    // span nests under the current stack top (root) instead.
+    const child = logger.start_span('engine.generate', { parent_span_id: 'never-opened' })
+    logger.end_span(child, {})
+    logger.end_span(root, {})
+
+    const spans = exporter.getFinishedSpans()
+    const root_span = by_name(spans, 'sequence')
+    const child_span = by_name(spans, 'engine.generate')
+    expect(child_span.parentSpanContext?.spanId).toBe(root_span.spanContext().spanId)
+  })
+
+  it('routes to the stack top when an event span_id is unknown', () => {
+    const { tracer, exporter } = harness()
+    const logger = create_otel_trajectory_logger({ tracer })
+
+    const g = logger.start_span('engine.generate', {})
+    const s0 = logger.start_span('engine.generate.step', { index: 0 })
+    // An unopened span_id cannot be targeted, so the event lands on the stack top.
+    logger.record({ kind: 'cost', span_id: 'never-opened', total_usd: 0.2 })
+    logger.end_span(s0, {})
+    logger.end_span(g, {})
+
+    const spans = exporter.getFinishedSpans()
+    const gen = by_name(spans, 'engine.generate')
+    const step = by_name(spans, 'engine.generate.step')
+    expect(step.events.map((e) => e.name)).toEqual(['cost'])
+    expect(gen.events).toHaveLength(0)
+  })
+
+  it('names an event span "event" when the record carries no string kind', () => {
+    const { tracer, exporter } = harness()
+    const logger = create_otel_trajectory_logger({ tracer })
+
+    const g = logger.start_span('engine.generate', {})
+    // TrajectoryEvent is the loose internal contract; an external logger may hand
+    // us a record with no `kind`, which falls back to the generic event name.
+    logger.record({ step_index: 0 } as unknown as TrajectoryEvent)
+    logger.end_span(g, {})
+
+    const [span] = exporter.getFinishedSpans()
+    expect(span?.events.map((e) => e.name)).toEqual(['event'])
   })
 })
