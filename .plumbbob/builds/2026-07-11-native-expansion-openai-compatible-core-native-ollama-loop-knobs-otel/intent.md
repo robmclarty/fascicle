@@ -322,7 +322,7 @@ End state (additions to the predecessor's sketch marked with `+`):
     setup, and the roadmap links this intent
     - seam: `src/engine/index.ts`, `src/index.ts`, `package.json` (exports), `docs/`, `README.md`
     - model: sonnet — mechanical export + docs prose from settled content
-12. [ ] Final gate: local live smoke + full check — **done when:** the manual
+12. [x] Final gate: local live smoke + full check — **done when:** the manual
     smoke matrix runs green where backends are available (OpenRouter native
     re-run; Ollama native `/api/chat` and lmstudio native against local
     daemons if present, each streamed and non-streamed with a tool loop),

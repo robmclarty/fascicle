@@ -70,3 +70,4 @@ folder, so it rides the branch into the PR.)*
     - ollama native `/api/chat` (qwen3-datum:latest, local daemon) — **PASS** both modes; usage 394/33, free-provider zero-cost estimate (D10), NDJSON stream chunks intact.
     - lmstudio native — **NOT RUN**; daemon at http://localhost:1234/v1 unreachable (no LM Studio server on this host).
     - Verdict: all available backends green; the one unavailable backend recorded not-run per C5.
+- 2026-07-11 — step 12 checkpointed · b1762bcef — Final gate: local live smoke + full check (42m)
