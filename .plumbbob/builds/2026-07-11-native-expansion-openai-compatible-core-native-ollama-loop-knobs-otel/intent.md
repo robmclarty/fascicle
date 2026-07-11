@@ -235,7 +235,7 @@ End state (additions to the predecessor's sketch marked with `+`):
    - seam: `src/engine/providers/openai.ts`, `src/engine/types.ts`, `src/engine/providers/__tests__/`
    - model: opus — small wiring diff against a proven core; precedence tests
      gate it
-4. [ ] Wire `openrouter` + `lmstudio` native (+ compat recipe) — **done
+4. [x] Wire `openrouter` + `lmstudio` native (+ compat recipe) — **done
    when:** both factories grow `transport: 'native'` branches with their
    dialects (openrouter: Bearer auth + `HTTP-Referer`/`X-Title` headers;
    lmstudio: no auth, tolerant usage per D10), `provider_options.openrouter`

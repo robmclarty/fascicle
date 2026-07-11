@@ -43,6 +43,7 @@ describe('create_ollama_adapter config assembly', () => {
 
   it('forwards the base URL to the SDK', async () => {
     const adapter = create_ollama_adapter({ base_url: 'http://localhost:11434' })
+    if (adapter.kind !== 'ai_sdk') throw new Error('expected the ai_sdk adapter')
     const model = await adapter.build_model('llama3')
     expect(model).toBeDefined()
     expect(captured.config).toEqual({ baseURL: 'http://localhost:11434' })
