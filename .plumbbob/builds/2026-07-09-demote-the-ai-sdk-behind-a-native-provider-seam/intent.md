@@ -247,7 +247,7 @@ End state (after Step 14, the inversion):
     of the contextual-typing caveat, and `pnpm check` exits 0
     - seam: `src/engine/index.ts`, `src/index.ts`, `docs/configuration.md`, `docs/providers.md`
     - model: sonnet — mechanical export sweep; types + docs gates cover it
-17. [ ] Native transport `provider_options` passthrough — **done when:** the
+17. [x] Native transport `provider_options` passthrough — **done when:** the
     native convention is settled and implemented: `provider_options.anthropic` on
     the native transport is raw wire-format fields (snake_case Messages-API keys,
     e.g. `thinking`, `max_tokens`, `top_k`), shallow-merged last over the
