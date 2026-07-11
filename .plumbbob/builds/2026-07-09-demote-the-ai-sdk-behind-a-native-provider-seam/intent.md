@@ -240,7 +240,7 @@ End state (after Step 14, the inversion):
     both specs and this intent
     - seam: `docs/providers.md`, `docs/configuration.md`, `docs/roadmap.md`, `README.md`
     - model: sonnet — docs prose from settled content; the link/lint gates cover form
-16. [ ] Export the native provider contract from the barrel — **done when:**
+16. [x] Export the native provider contract from the barrel — **done when:**
     `NativeProviderAdapter`, `ProviderTransport`, `TurnRequest`, and `TurnResult`
     are exported (type-only) from the engine barrel and the `fascicle` top level,
     `docs/configuration.md` / `docs/providers.md` name the exported types instead

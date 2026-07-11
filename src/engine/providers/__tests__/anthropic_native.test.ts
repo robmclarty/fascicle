@@ -235,6 +235,27 @@ describe('build_messages_body', () => {
     expect(body['max_tokens']).toBe(1000)
   })
 
+  it('shallow-merges provider_options.anthropic last, beating every derived field', () => {
+    const body = build_messages_body(
+      make_req({
+        effort: 'medium',
+        provider_options: {
+          anthropic: { max_tokens: 512, thinking: { type: 'disabled' }, top_k: 40 },
+        },
+      }),
+    )
+    expect(body['max_tokens']).toBe(512)
+    expect(body['thinking']).toEqual({ type: 'disabled' })
+    expect(body['top_k']).toBe(40)
+  })
+
+  it('ignores provider_options keyed to other providers', () => {
+    const body = build_messages_body(
+      make_req({ provider_options: { openai: { top_k: 40 } } }),
+    )
+    expect(body).not.toHaveProperty('top_k')
+  })
+
   it('maps tools to Messages-API shape via z.toJSONSchema', () => {
     const body = build_messages_body(make_req({ tools: [weather_tool] }))
     const tools = body['tools'] as Array<Record<string, unknown>>
@@ -379,6 +400,18 @@ describe('create_anthropic_native_adapter', () => {
       system: 'be terse',
     })
     expect(result.text).toBe('Hello there')
+  })
+
+  it('puts provider_options.anthropic keys on the non-stream wire body', async () => {
+    const mock = stub_fetch(json_response(TEXT_FIXTURE))
+    const adapter = create_anthropic_native_adapter({ api_key: 'sk-test' })
+    await adapter.invoke_turn(
+      make_req({ provider_options: { anthropic: { max_tokens: 512, top_k: 40 } } }),
+    )
+    const call = mock.mock.calls[0] as [string, RequestInit]
+    const body = JSON.parse(call[1].body as string) as Record<string, unknown>
+    expect(body['max_tokens']).toBe(512)
+    expect(body['top_k']).toBe(40)
   })
 
   it('respects a base_url override, trimming trailing slashes', async () => {
@@ -683,6 +716,24 @@ describe('streaming invoke_turn', () => {
     await adapter.invoke_turn(make_req({ stream: true, dispatch_chunk }))
     const call = mock.mock.calls[0] as [string, RequestInit]
     expect(JSON.parse(call[1].body as string)['stream']).toBe(true)
+  })
+
+  it('puts provider_options.anthropic keys on the streaming wire body', async () => {
+    const mock = stub_fetch(stream_response(TEXT_STREAM_EVENTS))
+    const adapter = create_anthropic_native_adapter({ api_key: 'sk-test' })
+    const { dispatch_chunk } = chunk_collector()
+    await adapter.invoke_turn(
+      make_req({
+        stream: true,
+        dispatch_chunk,
+        provider_options: { anthropic: { max_tokens: 512, top_k: 40 } },
+      }),
+    )
+    const call = mock.mock.calls[0] as [string, RequestInit]
+    const body = JSON.parse(call[1].body as string) as Record<string, unknown>
+    expect(body['max_tokens']).toBe(512)
+    expect(body['top_k']).toBe(40)
+    expect(body['stream']).toBe(true)
   })
 
   it.each([

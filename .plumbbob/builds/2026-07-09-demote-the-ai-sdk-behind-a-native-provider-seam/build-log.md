@@ -78,3 +78,4 @@ folder, so it rides the branch into the PR.)*
 - 2026-07-11 — step 13 checkpointed · c045b2cb3 — Native Anthropic: streaming, capabilities, e2e (S-P3.4, S-P3.6..P3.7:
 - 2026-07-11 — step 14 checkpointed · 10468f26e — Invert the seam (S-P4.4, committed per D8)
 - 2026-07-11 — step 15 checkpointed · ab68fe6d8 — Docs sweep (S-§6.5)
+- 2026-07-11 — step 16 checkpointed · 8b3f37a8e — Export the native provider contract from the barrel

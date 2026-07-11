@@ -216,7 +216,15 @@ export function build_messages_body(req: TurnRequest): Record<string, unknown> {
     if (req.temperature !== undefined) body['temperature'] = req.temperature
     if (req.top_p !== undefined) body['top_p'] = req.top_p
   }
-  return body
+  // provider_options.anthropic is raw wire-format passthrough (snake_case
+  // Messages-API keys, not the ai_sdk transport's camelCase spellings),
+  // shallow-merged last so an explicit user key beats every derived field:
+  // the effort-derived thinking block, the max_tokens default, sampling
+  // params. The adapter does not reconcile interactions the API rejects
+  // (e.g. a passthrough temperature alongside thinking); wire keys are the
+  // user asserting they know the wire.
+  const passthrough = req.provider_options?.['anthropic']
+  return passthrough === undefined ? body : { ...body, ...passthrough }
 }
 
 export function map_anthropic_stop_reason(raw: unknown): FinishReason {
