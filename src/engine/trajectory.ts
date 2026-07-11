@@ -340,7 +340,7 @@ export function record_tool_approval(
 /**
  * Deduplication helper for `option_ignored`. Spec constraints §5.3 / taste
  * principle 12 require emission at most once per generate call per option
- * key. Subprocess adapters whose transports do not honor a caller-supplied
+ * key. External adapters whose transports do not honor a caller-supplied
  * option (max_steps, tool_error_policy, on_tool_approval) route the emit
  * through this dedup.
  */

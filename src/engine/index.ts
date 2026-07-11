@@ -42,11 +42,11 @@ export type {
 export type {
   AiSdkProviderAdapter,
   EffortTranslation,
+  ExternalAgentAdapter,
   ProviderAdapter,
   ProviderCapability,
   ProviderFactory,
   RawProviderUsage,
-  SubprocessProviderAdapter,
 } from './providers/types.js'
 
 export { default_normalize_usage } from './providers/types.js'

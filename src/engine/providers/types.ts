@@ -87,8 +87,8 @@ export type NativeProviderAdapter = {
   readonly classify_error?: (err: unknown) => unknown
 }
 
-export type SubprocessProviderAdapter = {
-  readonly kind: 'subprocess'
+export type ExternalAgentAdapter = {
+  readonly kind: 'external'
   readonly name: string
   readonly generate: <t>(
     opts: GenerateOptions<t>,
@@ -101,7 +101,7 @@ export type SubprocessProviderAdapter = {
 export type ProviderAdapter =
   | AiSdkProviderAdapter
   | NativeProviderAdapter
-  | SubprocessProviderAdapter
+  | ExternalAgentAdapter
 
 export type ProviderFactory = (init: ProviderInit) => ProviderAdapter
 

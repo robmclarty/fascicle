@@ -45,13 +45,13 @@ const AI_SDK_CAPS: ReadonlySet<ProviderCapability> = new Set([
 
 type FactoryLog = {
   inits: ProviderInit[]
-  subprocess_calls: Array<{ prompt: unknown; resolved: ResolvedModel }>
+  external_calls: Array<{ prompt: unknown; resolved: ResolvedModel }>
   native_requests: TurnRequest[]
   disposals: string[]
 }
 
 function make_log(): FactoryLog {
-  return { inits: [], subprocess_calls: [], native_requests: [], disposals: [] }
+  return { inits: [], external_calls: [], native_requests: [], disposals: [] }
 }
 
 function make_ai_sdk_factory(name: string, log: FactoryLog): ProviderFactory {
@@ -68,17 +68,17 @@ function make_ai_sdk_factory(name: string, log: FactoryLog): ProviderFactory {
   }
 }
 
-function make_subprocess_factory(name: string, log: FactoryLog): ProviderFactory {
+function make_external_factory(name: string, log: FactoryLog): ProviderFactory {
   return (init) => {
     log.inits.push(init)
     return {
-      kind: 'subprocess',
+      kind: 'external',
       name,
       generate: async <t>(
         opts: GenerateOptions<t>,
         resolved: ResolvedModel,
       ): Promise<GenerateResult<t>> => {
-        log.subprocess_calls.push({ prompt: opts.prompt, resolved })
+        log.external_calls.push({ prompt: opts.prompt, resolved })
         return {
           content: 'external says hi' as t,
           tool_calls: [],
@@ -144,17 +144,17 @@ describe('custom_providers', () => {
     expect(result.finish_reason).toBe('stop')
   })
 
-  it('routes a custom subprocess-kind factory through generate and dispose', async () => {
+  it('routes a custom external-kind factory through generate and dispose', async () => {
     const log = make_log()
     const engine = create_engine({
       providers: { acme_ext: { base_url: 'http://localhost:9999' } },
-      custom_providers: { acme_ext: make_subprocess_factory('acme_ext', log) },
+      custom_providers: { acme_ext: make_external_factory('acme_ext', log) },
     })
     const result = await engine.generate({ model: 'ext-1', prompt: 'go' })
     expect(result.content).toBe('external says hi')
     expect(result.usage).toEqual({ input_tokens: 11, output_tokens: 7 })
     expect(result.model_resolved).toEqual({ provider: 'acme_ext', model_id: 'ext-1' })
-    expect(log.subprocess_calls).toEqual([
+    expect(log.external_calls).toEqual([
       { prompt: 'go', resolved: { provider: 'acme_ext', model_id: 'ext-1' } },
     ])
     await engine.dispose()

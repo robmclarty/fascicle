@@ -80,7 +80,7 @@ The corollary: adapters go in sibling packages, not the root of `@robmclarty/cor
 
 ### 9. `ProviderAdapter` is a discriminated union, not a bag of optional methods
 
-**Rule:** `ProviderAdapter = AiSdkProviderAdapter | SubprocessProviderAdapter`. The `ai_sdk` branch exposes `{ kind, name, build_model, translate_effort, normalize_usage, supports }`. The `subprocess` branch exposes `{ kind, name, generate, dispose, supports }`. Engine-layer callers narrow on `kind` before using branch-specific methods.
+**Rule:** `ProviderAdapter = AiSdkProviderAdapter | ExternalAgentAdapter`. The `ai_sdk` branch exposes `{ kind, name, build_model, translate_effort, normalize_usage, supports }`. The `external` branch exposes `{ kind, name, generate, dispose, supports }`. Engine-layer callers narrow on `kind` before using branch-specific methods.
 
 **Why:** "every adapter has every method, unused ones return no-ops" is how small-surface objects become big-surface objects over time. The union makes each branch honest about what it can do. The type system prevents `generate.ts` from accidentally calling `normalize_usage` on a subprocess adapter (it would not compile). Discriminants beat optional members — especially when the two transports diverge on fundamentals like who owns the tool-call loop and where cost comes from.
 

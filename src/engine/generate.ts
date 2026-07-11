@@ -777,7 +777,7 @@ export async function generate<T = string>(
     throw new provider_not_configured_error(target.provider)
   }
 
-  if (adapter.kind === 'subprocess') {
+  if (adapter.kind === 'external') {
     return adapter.generate<T>(opts, target)
   }
 

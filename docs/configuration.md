@@ -95,9 +95,9 @@ Rules:
 - **Custom-first resolution.** A `providers` key is resolved against `custom_providers` first, then the built-ins.
 - **Shadowing a built-in throws.** A `custom_providers` key that matches a built-in name (`anthropic`, `openai`, ...) throws `engine_config_error` at construction; there is no silent override.
 - **Construction-time only.** There is no runtime registration; the config object is the whole registry extension.
-- **Validated like built-ins.** Factories run synchronously at `create_engine`; throw from the factory on bad init. Defer SDK or resource loading to the first call (`build_model` for `ai_sdk`-kind, `generate` for `subprocess`-kind).
+- **Validated like built-ins.** Factories run synchronously at `create_engine`; throw from the factory on bad init. Defer SDK or resource loading to the first call (`build_model` for `ai_sdk`-kind, `generate` for `external`-kind).
 
-The factory and adapter types (`ProviderFactory`, `ProviderAdapter`, `AiSdkProviderAdapter`, `SubprocessProviderAdapter`, `ProviderCapability`) are exported from `fascicle`, alongside the `default_normalize_usage` helper. Because registration is plain config, a proprietary or workplace-private provider lives entirely in the consuming repo and never needs to enter the fascicle tree.
+The factory and adapter types (`ProviderFactory`, `ProviderAdapter`, `AiSdkProviderAdapter`, `ExternalAgentAdapter`, `ProviderCapability`) are exported from `fascicle`, alongside the `default_normalize_usage` helper. Because registration is plain config, a proprietary or workplace-private provider lives entirely in the consuming repo and never needs to enter the fascicle tree.
 
 ## Reading credentials from env
 

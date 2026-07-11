@@ -136,12 +136,12 @@ Provider SDK packages may only be imported from files under `src/engine/provider
 
 ### `ProviderAdapter` is a discriminated union
 
-`ProviderAdapter = AiSdkProviderAdapter | SubprocessProviderAdapter`. Each branch surfaces only the methods it can implement:
+`ProviderAdapter = AiSdkProviderAdapter | ExternalAgentAdapter`. Each branch surfaces only the methods it can implement:
 
 - `AiSdkProviderAdapter`: `{ kind: 'ai_sdk', name, build_model, translate_effort, normalize_usage, supports }`
-- `SubprocessProviderAdapter`: `{ kind: 'subprocess', name, generate, dispose, supports }`
+- `ExternalAgentAdapter`: `{ kind: 'external', name, generate, dispose, supports }`
 
-Engine-layer callers narrow on `kind` before using branch-specific methods (`generate.ts` dispatches on it). `AiSdkProviderAdapter` has no `dispose`; the engine-level dispose aggregator skips those adapters. `SubprocessProviderAdapter` must implement `dispose` (see §5.10). The union makes each branch honest about what it can do — "every adapter has every method, unused ones return no-ops" is banned.
+Engine-layer callers narrow on `kind` before using branch-specific methods (`generate.ts` dispatches on it). `AiSdkProviderAdapter` has no `dispose`; the engine-level dispose aggregator skips those adapters. `ExternalAgentAdapter` must implement `dispose` (see §5.10). The union makes each branch honest about what it can do — "every adapter has every method, unused ones return no-ops" is banned.
 
 ### Subprocess provider discipline
 
@@ -298,7 +298,7 @@ Per-token `text` deltas are **not** recorded to trajectory. Streaming consumers 
 - Structured output (`schema`) repair: one attempt by default (`schema_repair_attempts: 1`); after exhaustion, throws `schema_validation_error`. The repair turn counts against `max_steps`.
 - `effort` parameter maps to provider-specific reasoning config. Non-reasoning providers silently ignore the field and record `{ kind: 'effort_ignored', model_id }` to trajectory. This makes switching models safe.
 
-**Provider-owned tool loops.** Some subprocess-backed providers (notably Claude CLI) run their own tool-call loop inside the external tool. When `adapter.kind === 'subprocess'` and the adapter's `generate` owns the loop, the engine's in-process loop does **not** execute. Consequences:
+**Provider-owned tool loops.** Some subprocess-backed providers (notably Claude CLI) run their own tool-call loop inside the external tool. When `adapter.kind === 'external'` and the adapter's `generate` owns the loop, the engine's in-process loop does **not** execute. Consequences:
 
 - `max_steps`, `tool_error_policy`, `on_tool_approval` may be partially or fully ignored by the provider. Every option the resolved provider cannot honor is recorded once per call as `{ kind: 'option_ignored', option, provider }` via trajectory. Silent drop is not acceptable.
 - `schema_repair_attempts` is honored by re-issuing a call if the provider supports conversation resumption (otherwise ignored and recorded).
@@ -325,7 +325,7 @@ Checks on `abort.aborted` do not await — they read a boolean. This allows tigh
 
 ### §5.10 Subprocess provider lifecycle
 
-When an adapter is a `SubprocessProviderAdapter`, every spawned child observes:
+When an adapter is an `ExternalAgentAdapter`, every spawned child observes:
 
 1. **Detached process group.** `spawn(..., { detached: true })` places the child (and any grandchildren it spawns — sandbox helpers, CLI-invoked tool processes) in a new process group. Signals sent to `-pid` reach the whole group.
 2. **Live registry membership.** Every live child is inserted into the adapter's `Set<ChildProcess>` at spawn and removed on the `close` event. The set is closure-captured inside the adapter factory, never module-global.
@@ -452,7 +452,7 @@ Applied once per subprocess provider (e.g. `claude_cli`, future `gemini_cli`):
 20. **Every `spawn` is paired with a live-registry insert and a `close`-handler remove.** Manual review plus grep audit.
 21. **No `shell: true` on any `spawn`, no `child_process.exec`, no `execSync` in adapter sources.** Grep rules.
 22. **Argv values are array elements, never string-interpolated.** Manual review; aided by rules 18 and 21.
-23. **Subprocess adapter factory returns exactly `{ kind: 'subprocess', name, generate, dispose, supports }`.** No `build_model`, `translate_effort`, or `normalize_usage` members (those live on the `AiSdkProviderAdapter` branch). Type-level.
+23. **Subprocess adapter factory returns exactly `{ kind: 'external', name, generate, dispose, supports }`.** No `build_model`, `translate_effort`, or `normalize_usage` members (those live on the `AiSdkProviderAdapter` branch). Type-level.
 24. **`Engine.dispose` exists unconditionally** on the return of `create_engine`. Type-level; runtime test configures only HTTPS providers and calls `dispose()` → assert resolved no-op.
 25. **Frozen auth-error / error-pattern arrays** in subprocess provider modules (e.g. `CLI_AUTH_ERROR_PATTERNS`) are `Object.freeze`-d at module load. Test: attempt to mutate → asserts throw in strict mode.
 

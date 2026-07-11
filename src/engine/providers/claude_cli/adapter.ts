@@ -2,12 +2,12 @@
  * claude_cli adapter factory (spec §5.5, §6, §8, §13).
  *
  * Exports a `create_claude_cli_adapter(init)` factory that returns a
- * `SubprocessProviderAdapter`. The factory closure-captures a per-instance
+ * `ExternalAgentAdapter`. The factory closure-captures a per-instance
  * `spawn_runtime` (which owns its own `Set<ChildProcess>` live registry), so
  * two factory invocations produce two independent registries (constraints §7
  * invariant 5: no module-level mutable state).
  *
- * The returned adapter exposes exactly `{ kind: 'subprocess', name, generate,
+ * The returned adapter exposes exactly `{ kind: 'external', name, generate,
  * dispose, supports }` — no `build_model`, `translate_effort`, or
  * `normalize_usage` members.
  */
@@ -25,7 +25,7 @@ import type {
 } from '../../types.js'
 import type {
   ProviderCapability,
-  SubprocessProviderAdapter,
+  ExternalAgentAdapter,
 } from '../types.js'
 import type {
   ClaudeCliCallOptions,
@@ -276,7 +276,7 @@ async function run_cli(
   return { parsed, chunks }
 }
 
-export function create_claude_cli_adapter(init: ProviderInit): SubprocessProviderAdapter {
+export function create_claude_cli_adapter(init: ProviderInit): ExternalAgentAdapter {
   const config = init as ClaudeCliProviderConfig
   validate_auth_config(config)
 
@@ -291,8 +291,8 @@ export function create_claude_cli_adapter(init: ProviderInit): SubprocessProvide
   const resolved_startup_timeout = config.startup_timeout_ms ?? DEFAULT_STARTUP_TIMEOUT_MS
   const resolved_stall_timeout = config.stall_timeout_ms ?? DEFAULT_STALL_TIMEOUT_MS
 
-  const adapter: SubprocessProviderAdapter = {
-    kind: 'subprocess',
+  const adapter: ExternalAgentAdapter = {
+    kind: 'external',
     name: PROVIDER_NAME,
     supports: (capability) => SUPPORTED.has(capability),
     async generate<T>(
@@ -305,7 +305,7 @@ export function create_claude_cli_adapter(init: ProviderInit): SubprocessProvide
       }
 
       // Stamp ts on this subprocess provider's events too, matching the
-      // ai_sdk path. The subprocess branch in generate.ts returns before the
+      // ai_sdk path. The external branch in generate.ts returns before the
       // main path's with_timestamps wrap, so it has to happen here.
       const trajectory = with_timestamps(opts.trajectory)
       const call_opts = extract_call_opts(opts)

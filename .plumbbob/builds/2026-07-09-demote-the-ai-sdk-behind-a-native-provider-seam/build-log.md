@@ -63,3 +63,4 @@ folder, so it rides the branch into the PR.)*
 - 2026-07-10 — step 7 checkpointed · f9a2dc817 — Open the registry (S-P1.1..P1.4: `custom_providers` on `EngineConfig`,
 - 2026-07-10 — step 8 checkpointed · 20db92fc9 — Neutral turn types + shared error classifier (S-P2.1..P2.3:
 - 2026-07-11 — step 9 checkpointed · aee2ed45e — Three-way dispatch (S-P2.4..P2.6: extract `build_ai_sdk_invoke`, add
+- 2026-07-11 — step 10 checkpointed · 8d6f17fad — Loop-inheritance proof (S-P2.7)
