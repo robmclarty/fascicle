@@ -14,9 +14,12 @@
  * classify_provider_error already understands (`status` + `responseHeaders`
  * for HTTP transients, `kind: 'network'` for transport failures), never
  * retried here. Schema requests ride the engine's prompt + parse + repair
- * loop, so `TurnRequest.schema` is intentionally unread. Streaming (SSE)
- * lands in the next step; until then the adapter does not claim the
- * 'streaming' capability.
+ * loop, so `TurnRequest.schema` is intentionally unread. Streaming hand-rolls
+ * the SSE parse (`data:` lines, the literal `[DONE]` terminator, index-keyed
+ * tool_call delta accumulation); the aggregator rebuilds the non-stream
+ * payload shape and feeds it through the same parse_chat_completion, so
+ * streamed and non-streamed results are equal by construction (C4) rather
+ * than by parallel code paths.
  */
 
 import { z } from 'zod'
@@ -25,6 +28,7 @@ import type {
   EffortLevel,
   FinishReason,
   Message,
+  StreamChunk,
   Tool,
   TurnRequest,
   TurnResult,
@@ -37,6 +41,7 @@ import {
   provider_capability_error,
   provider_error,
 } from '../errors.js'
+import { create_sse_decoder } from './sse_native.js'
 import type { NativeProviderAdapter, ProviderCapability } from './types.js'
 
 /**
@@ -332,6 +337,183 @@ export function parse_chat_completion(
   }
 }
 
+/**
+ * Consume Chat Completions stream frames (the JSON payload of each SSE
+ * `data:` line, plus the literal `[DONE]` terminator), dispatching
+ * StreamChunks as they arrive and rebuilding the non-stream payload as it
+ * goes: `delta.content` accumulates into the message text, and
+ * `delta.tool_calls[]` entries accumulate `function.arguments` string deltas
+ * keyed by their `index` field (A5). A tool call closes — parsed input
+ * dispatched — when the choice's finish_reason frame arrives, or at `[DONE]`
+ * for servers that never send one. Usage rides the final pre-DONE frame
+ * (stream_options.include_usage); a stream that ends without `[DONE]` is
+ * truncated output, so complete() fails loud instead of returning a partial
+ * turn. complete() feeds the synthetic payload through parse_chat_completion,
+ * which is what makes the streamed TurnResult equal the non-streamed one by
+ * construction (C4).
+ */
+export function create_chat_stream_aggregator(
+  dialect: OpenAICompatibleDialect,
+  step_index: number,
+  dispatch: (chunk: StreamChunk) => Promise<void>,
+): {
+  handle_data: (data: string) => Promise<void>
+  complete: () => TurnResult
+} {
+  type OpenToolCall = {
+    index: number
+    id: string
+    name: string
+    arguments: string
+    closed: boolean
+  }
+  let text = ''
+  const tool_calls: OpenToolCall[] = []
+  const by_index = new Map<number, OpenToolCall>()
+  let finish_reason: string | undefined
+  let usage: unknown
+  let done = false
+
+  const in_index_order = (): OpenToolCall[] =>
+    tool_calls.toSorted((a, b) => a.index - b.index)
+
+  const close_tool_calls = async (): Promise<void> => {
+    for (const call of in_index_order()) {
+      if (call.closed) continue
+      call.closed = true
+      // parse_tool_call applies the same argument rules as the non-stream
+      // path ('' means '{}', bad JSON is a provider_error naming the tool).
+      const { input } = parse_tool_call(
+        { id: call.id, function: { name: call.name, arguments: call.arguments } },
+        dialect.name,
+      )
+      // oxlint-disable-next-line no-await-in-loop
+      await dispatch({ kind: 'tool_call_end', id: call.id, input, step_index })
+    }
+  }
+
+  const on_tool_call_delta = async (entry: unknown): Promise<void> => {
+    if (entry === null || typeof entry !== 'object') {
+      throw new provider_error(
+        `${dialect.name} native: malformed tool_calls delta in stream`,
+      )
+    }
+    const index: unknown = Reflect.get(entry, 'index')
+    if (typeof index !== 'number') {
+      throw new provider_error(
+        `${dialect.name} native: stream tool_calls delta is missing its index`,
+      )
+    }
+    const fn: unknown = Reflect.get(entry, 'function')
+    let call = by_index.get(index)
+    if (call === undefined) {
+      const id: unknown = Reflect.get(entry, 'id')
+      const name: unknown =
+        fn !== null && typeof fn === 'object' ? Reflect.get(fn, 'name') : undefined
+      if (typeof id !== 'string' || typeof name !== 'string') {
+        throw new provider_error(
+          `${dialect.name} native: stream tool_calls delta opened without id and name`,
+        )
+      }
+      call = { index, id, name, arguments: '', closed: false }
+      by_index.set(index, call)
+      tool_calls.push(call)
+      await dispatch({ kind: 'tool_call_start', id, name, step_index })
+    }
+    if (fn === null || typeof fn !== 'object') return
+    const args: unknown = Reflect.get(fn, 'arguments')
+    if (typeof args === 'string' && args.length > 0) {
+      call.arguments += args
+      await dispatch({
+        kind: 'tool_call_input_delta',
+        id: call.id,
+        delta: args,
+        step_index,
+      })
+    }
+  }
+
+  const on_choice = async (choice: object): Promise<void> => {
+    const delta: unknown = Reflect.get(choice, 'delta')
+    if (delta !== null && typeof delta === 'object') {
+      const content: unknown = Reflect.get(delta, 'content')
+      if (typeof content === 'string' && content.length > 0) {
+        text += content
+        await dispatch({ kind: 'text', text: content, step_index })
+      }
+      const raw_calls: unknown = Reflect.get(delta, 'tool_calls')
+      if (Array.isArray(raw_calls)) {
+        for (const entry of raw_calls) {
+          // oxlint-disable-next-line no-await-in-loop
+          await on_tool_call_delta(entry)
+        }
+      }
+    }
+    const raw_finish: unknown = Reflect.get(choice, 'finish_reason')
+    if (typeof raw_finish === 'string') {
+      finish_reason = raw_finish
+      // The finish frame is the wire's word that every argument delta has
+      // arrived, so open tool calls close here, before the usage frame.
+      await close_tool_calls()
+    }
+  }
+
+  return {
+    async handle_data(data: string): Promise<void> {
+      if (data === '[DONE]') {
+        if (done) return
+        done = true
+        // Covers servers that omit the finish_reason frame; a no-op after one.
+        await close_tool_calls()
+        await dispatch({
+          kind: 'step_finish',
+          step_index,
+          finish_reason: map_chat_finish_reason(finish_reason),
+          usage: map_chat_usage(usage, dialect),
+        })
+        return
+      }
+      let frame: unknown
+      try {
+        frame = JSON.parse(data)
+      } catch {
+        throw new provider_error(`${dialect.name} native: stream frame is not valid JSON`)
+      }
+      if (frame === null || typeof frame !== 'object') return
+      const raw_usage: unknown = Reflect.get(frame, 'usage')
+      if (raw_usage !== null && typeof raw_usage === 'object') usage = raw_usage
+      const choices: unknown = Reflect.get(frame, 'choices')
+      const choice: unknown = Array.isArray(choices) ? choices[0] : undefined
+      if (choice !== null && choice !== undefined && typeof choice === 'object') {
+        await on_choice(choice)
+      }
+    },
+    complete(): TurnResult {
+      if (!done) {
+        throw new provider_error(
+          `${dialect.name} native: stream ended before [DONE]; the result would be truncated`,
+        )
+      }
+      const ordered = in_index_order()
+      const message: Record<string, unknown> = {
+        role: 'assistant',
+        content: text.length > 0 || ordered.length === 0 ? text : null,
+      }
+      if (ordered.length > 0) {
+        message['tool_calls'] = ordered.map((call) => ({
+          id: call.id,
+          type: 'function',
+          function: { name: call.name, arguments: call.arguments },
+        }))
+      }
+      return parse_chat_completion(
+        { choices: [{ index: 0, message, finish_reason: finish_reason ?? null }], usage },
+        dialect,
+      )
+    },
+  }
+}
+
 /** OpenAI-style error bodies are `{ error: { message } }`; fall back to the raw body. */
 function extract_error_message(body: string): string {
   if (body.length === 0) return '(empty body)'
@@ -397,13 +579,71 @@ function rethrow_network_failure(err: unknown, abort: AbortSignal, provider: str
   })
 }
 
-// 'streaming' joins this set when the SSE path lands in the next step;
+/**
+ * Drain a streaming chat/completions response: decode bytes, reassemble SSE
+ * events, and feed each data payload to the aggregator, which dispatches
+ * chunks through req.dispatch_chunk as they arrive. Transport failures
+ * mid-read wrap as network errors; aggregator throws (malformed frames, a
+ * rejecting on_chunk) pass through untouched, with the reader cancelled so
+ * the connection is released.
+ */
+async function consume_sse_response(
+  response: Response,
+  req: TurnRequest,
+  dialect: OpenAICompatibleDialect,
+): Promise<TurnResult> {
+  const body = response.body
+  if (body === null) {
+    throw new provider_error(`${dialect.name} native: streaming response has no body`)
+  }
+  const dispatch = req.dispatch_chunk ?? (async (): Promise<void> => {})
+  const aggregator = create_chat_stream_aggregator(dialect, req.step_index, dispatch)
+  const reader = body.getReader()
+  const text_decoder = new TextDecoder()
+  const sse = create_sse_decoder()
+
+  const next_bytes = async (): Promise<Uint8Array | undefined> => {
+    let step: Awaited<ReturnType<typeof reader.read>>
+    try {
+      step = await reader.read()
+    } catch (err: unknown) {
+      rethrow_network_failure(err, req.abort, dialect.name)
+    }
+    return step.done ? undefined : step.value
+  }
+
+  // Sequential awaits are the contract here: chunk order is an engine
+  // invariant and each frame mutates aggregator state, so no parallelism.
+  try {
+    while (true) {
+      // oxlint-disable-next-line no-await-in-loop
+      const bytes = await next_bytes()
+      if (bytes === undefined) break
+      for (const data of sse.push(text_decoder.decode(bytes, { stream: true }))) {
+        // oxlint-disable-next-line no-await-in-loop
+        await aggregator.handle_data(data)
+      }
+    }
+  } finally {
+    // Frees the connection when an error exits the loop early; a no-op on a
+    // fully drained stream.
+    void reader.cancel().catch(() => {})
+  }
+  const tail = [...sse.push(text_decoder.decode()), ...sse.flush()]
+  for (const data of tail) {
+    // oxlint-disable-next-line no-await-in-loop
+    await aggregator.handle_data(data)
+  }
+  return aggregator.complete()
+}
+
 // 'structured_output' is intentionally absent (schema rides the prompt +
 // parse + repair loop); image parts are unmapped on this transport.
 const SUPPORTED: ReadonlySet<ProviderCapability> = new Set([
   'text',
   'tools',
   'schema',
+  'streaming',
   'reasoning',
 ])
 
@@ -429,13 +669,6 @@ export const create_openai_compatible_adapter = (
     kind: 'native',
     name: dialect.name,
     async invoke_turn(req: TurnRequest): Promise<TurnResult> {
-      if (req.stream) {
-        throw new provider_capability_error(
-          dialect.name,
-          'streaming',
-          'the native SSE path is not implemented yet; the capability gate in generate.ts keeps engine calls off it',
-        )
-      }
       let response: Response
       try {
         response = await fetch(`${base_url}/chat/completions`, {
@@ -448,6 +681,7 @@ export const create_openai_compatible_adapter = (
         rethrow_network_failure(err, req.abort, dialect.name)
       }
       if (!response.ok) throw await response_error(response, dialect.name)
+      if (req.stream) return consume_sse_response(response, req, dialect)
       const payload: unknown = await response.json()
       return parse_chat_completion(payload, dialect)
     },

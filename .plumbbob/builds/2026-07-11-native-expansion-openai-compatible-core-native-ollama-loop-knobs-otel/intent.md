@@ -202,7 +202,7 @@ End state (additions to the predecessor's sketch marked with `+`):
 
 ## Steps
 
-1. [ ] OpenAI-compatible core: mapping, non-stream, auth — **done when:**
+1. [x] OpenAI-compatible core: mapping, non-stream, auth — **done when:**
    `openai_compatible_native.ts` maps `Message[]`/`Tool[]` to a
    `chat/completions` body (system message, tool_calls/tool role round-trip,
    `finish_reason` map per Appendix A2, usage map per Appendix A3 including

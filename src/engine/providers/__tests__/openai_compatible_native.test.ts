@@ -1,16 +1,17 @@
 /**
- * OpenAI-compatible native core, step 1 scope: request mapping, the
- * non-stream invoke_turn against golden chat/completions fixtures, dialect
- * auth strategies, and error classification asserted exactly as the
- * Anthropic adapter's. Streaming lands in the next step. No live network;
- * fetch is stubbed per test.
+ * OpenAI-compatible native core: request mapping, the non-stream invoke_turn
+ * against golden chat/completions fixtures, dialect auth strategies, error
+ * classification asserted exactly as the Anthropic adapter's, and the SSE
+ * streaming path — streamed results must equal non-streamed results on
+ * shared fixtures (C4). No live network; fetch is stubbed per test.
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
-import type { Message, Tool, TurnRequest } from '../../types.js'
+import type { Message, StreamChunk, Tool, TurnRequest } from '../../types.js'
 import {
   build_chat_completions_body,
+  create_chat_stream_aggregator,
   create_openai_compatible_adapter,
   map_chat_finish_reason,
   map_chat_usage,
@@ -583,12 +584,12 @@ describe('create_openai_compatible_adapter', () => {
     expect(adapter.name).toBe('lmstudio')
   })
 
-  it('claims text, tools, schema, and reasoning; not streaming yet, nor structured_output or image_input', () => {
+  it('claims text, tools, schema, streaming, and reasoning; not structured_output or image_input', () => {
     const adapter = create_openai_compatible_adapter(make_dialect())
-    for (const cap of ['text', 'tools', 'schema', 'reasoning'] as const) {
+    for (const cap of ['text', 'tools', 'schema', 'streaming', 'reasoning'] as const) {
       expect(adapter.supports(cap)).toBe(true)
     }
-    for (const cap of ['streaming', 'structured_output', 'image_input'] as const) {
+    for (const cap of ['structured_output', 'image_input'] as const) {
       expect(adapter.supports(cap)).toBe(false)
     }
   })
@@ -667,14 +668,6 @@ describe('create_openai_compatible_adapter', () => {
       finish_reason: 'tool_calls',
       usage: { input_tokens: 30, output_tokens: 18 },
     })
-  })
-
-  it('throws provider_capability_error on a streamed request until the SSE step lands', async () => {
-    stub_fetch(json_response(TEXT_FIXTURE))
-    const adapter = create_openai_compatible_adapter(make_dialect())
-    await expect(
-      adapter.invoke_turn(make_req({ stream: true, dispatch_chunk: async () => {} })),
-    ).rejects.toThrow(provider_capability_error)
   })
 
   it('throws provider_auth_error on 401 with the API error message', async () => {
@@ -763,5 +756,412 @@ describe('create_openai_compatible_adapter', () => {
     await expect(
       adapter.invoke_turn(make_req({ abort: controller.signal })),
     ).rejects.toBe(abort_err)
+  })
+})
+
+type StreamFrame = Record<string, unknown> | '[DONE]'
+
+/**
+ * Encode frames as SSE `data:` lines and chunk the bytes at awkward
+ * boundaries so the incremental decode path (mid-line, mid-frame splits) is
+ * exercised, not just whole-event delivery.
+ */
+function sse_response(frames: ReadonlyArray<StreamFrame>): Response {
+  const payload = frames
+    .map((frame) => `data: ${frame === '[DONE]' ? '[DONE]' : JSON.stringify(frame)}\n\n`)
+    .join('')
+  const bytes = new TextEncoder().encode(payload)
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      for (let i = 0; i < bytes.length; i += 9) {
+        controller.enqueue(bytes.slice(i, i + 9))
+      }
+      controller.close()
+    },
+  })
+  return new Response(stream, {
+    status: 200,
+    headers: { 'content-type': 'text/event-stream' },
+  })
+}
+
+async function invoke_streamed(
+  frames: ReadonlyArray<StreamFrame>,
+  dialect: OpenAICompatibleDialect = make_dialect(),
+): Promise<{ result: Awaited<ReturnType<ReturnType<typeof create_openai_compatible_adapter>['invoke_turn']>>; chunks: StreamChunk[]; mock: ReturnType<typeof vi.fn> }> {
+  const mock = stub_fetch(sse_response(frames))
+  const chunks: StreamChunk[] = []
+  const adapter = create_openai_compatible_adapter(dialect)
+  const result = await adapter.invoke_turn(
+    make_req({
+      stream: true,
+      tools: [weather_tool],
+      dispatch_chunk: async (chunk) => {
+        chunks.push(chunk)
+      },
+    }),
+  )
+  return { result, chunks, mock }
+}
+
+const TEXT_STREAM: StreamFrame[] = [
+  { choices: [{ index: 0, delta: { role: 'assistant', content: '' } }] },
+  { choices: [{ index: 0, delta: { content: 'Hello ' } }] },
+  { choices: [{ index: 0, delta: { content: 'there' } }] },
+  { choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] },
+  { choices: [], usage: { prompt_tokens: 12, completion_tokens: 6, total_tokens: 18 } },
+  '[DONE]',
+]
+
+const TOOL_CALL_STREAM: StreamFrame[] = [
+  {
+    choices: [
+      {
+        index: 0,
+        delta: {
+          role: 'assistant',
+          content: null,
+          tool_calls: [
+            { index: 0, id: 'call_01', type: 'function', function: { name: 'get_weather', arguments: '' } },
+          ],
+        },
+      },
+    ],
+  },
+  { choices: [{ index: 0, delta: { tool_calls: [{ index: 0, function: { arguments: '{"city":' } }] } }] },
+  { choices: [{ index: 0, delta: { tool_calls: [{ index: 0, function: { arguments: '"Ottawa"}' } }] } }] },
+  { choices: [{ index: 0, delta: {}, finish_reason: 'tool_calls' }] },
+  { choices: [], usage: { prompt_tokens: 30, completion_tokens: 18, total_tokens: 48 } },
+  '[DONE]',
+]
+
+const MIXED_STREAM: StreamFrame[] = [
+  { choices: [{ index: 0, delta: { role: 'assistant', content: '' } }] },
+  { choices: [{ index: 0, delta: { content: 'Checking the weather.' } }] },
+  {
+    choices: [
+      {
+        index: 0,
+        delta: {
+          tool_calls: [
+            { index: 0, id: 'call_02', type: 'function', function: { name: 'get_weather', arguments: '' } },
+          ],
+        },
+      },
+    ],
+  },
+  { choices: [{ index: 0, delta: { tool_calls: [{ index: 0, function: { arguments: '{"city":"Kingston"}' } }] } }] },
+  { choices: [{ index: 0, delta: {}, finish_reason: 'tool_calls' }] },
+  {
+    choices: [],
+    usage: {
+      prompt_tokens: 140,
+      completion_tokens: 32,
+      total_tokens: 172,
+      prompt_tokens_details: { cached_tokens: 100 },
+      completion_tokens_details: { reasoning_tokens: 7 },
+    },
+  },
+  '[DONE]',
+]
+
+describe('streaming invoke_turn', () => {
+  it.each([
+    ['text', TEXT_FIXTURE, TEXT_STREAM],
+    ['tool-call', TOOL_CALL_FIXTURE, TOOL_CALL_STREAM],
+    ['mixed', MIXED_FIXTURE, MIXED_STREAM],
+  ] as const)('streamed %s result equals the non-streamed result on the shared fixture (C4)', async (_name, fixture, stream) => {
+    stub_fetch(json_response(fixture))
+    const adapter = create_openai_compatible_adapter(make_dialect())
+    const non_streamed = await adapter.invoke_turn(make_req({ tools: [weather_tool] }))
+    vi.unstubAllGlobals()
+    const { result: streamed } = await invoke_streamed(stream)
+    expect(streamed).toEqual(non_streamed)
+  })
+
+  it('sends stream and stream_options.include_usage on the wire', async () => {
+    const { mock } = await invoke_streamed(TEXT_STREAM)
+    const call = mock.mock.calls[0] as [string, RequestInit]
+    const body = JSON.parse(call[1].body as string) as Record<string, unknown>
+    expect(body['stream']).toBe(true)
+    expect(body['stream_options']).toEqual({ include_usage: true })
+  })
+
+  it('dispatches loop-ordered chunks with concrete values for the mixed stream', async () => {
+    const { chunks } = await invoke_streamed(MIXED_STREAM)
+    expect(chunks.map((c) => c.kind)).toEqual([
+      'text',
+      'tool_call_start',
+      'tool_call_input_delta',
+      'tool_call_end',
+      'step_finish',
+    ])
+    expect(chunks[0]).toEqual({ kind: 'text', text: 'Checking the weather.', step_index: 0 })
+    expect(chunks[1]).toEqual({
+      kind: 'tool_call_start',
+      id: 'call_02',
+      name: 'get_weather',
+      step_index: 0,
+    })
+    expect(chunks[2]).toEqual({
+      kind: 'tool_call_input_delta',
+      id: 'call_02',
+      delta: '{"city":"Kingston"}',
+      step_index: 0,
+    })
+    expect(chunks[3]).toEqual({
+      kind: 'tool_call_end',
+      id: 'call_02',
+      input: { city: 'Kingston' },
+      step_index: 0,
+    })
+    expect(chunks[4]).toEqual({
+      kind: 'step_finish',
+      step_index: 0,
+      finish_reason: 'tool_calls',
+      usage: {
+        input_tokens: 140,
+        output_tokens: 32,
+        cached_input_tokens: 100,
+        reasoning_tokens: 7,
+      },
+    })
+  })
+
+  it('accumulates interleaved tool_call deltas by index and orders the result by index', async () => {
+    const frames: StreamFrame[] = [
+      {
+        choices: [
+          {
+            index: 0,
+            delta: {
+              tool_calls: [
+                { index: 0, id: 'call_a', type: 'function', function: { name: 'get_weather', arguments: '' } },
+                { index: 1, id: 'call_b', type: 'function', function: { name: 'get_weather', arguments: '' } },
+              ],
+            },
+          },
+        ],
+      },
+      { choices: [{ index: 0, delta: { tool_calls: [{ index: 1, function: { arguments: '{"city":"Kingston"}' } }] } }] },
+      { choices: [{ index: 0, delta: { tool_calls: [{ index: 0, function: { arguments: '{"city":"Ottawa"}' } }] } }] },
+      { choices: [{ index: 0, delta: {}, finish_reason: 'tool_calls' }] },
+      { choices: [], usage: { prompt_tokens: 10, completion_tokens: 8 } },
+      '[DONE]',
+    ]
+    const { result, chunks } = await invoke_streamed(frames)
+    expect(result.tool_calls).toEqual([
+      { id: 'call_a', name: 'get_weather', input: { city: 'Ottawa' } },
+      { id: 'call_b', name: 'get_weather', input: { city: 'Kingston' } },
+    ])
+    expect(chunks.map((c) => c.kind)).toEqual([
+      'tool_call_start',
+      'tool_call_start',
+      'tool_call_input_delta',
+      'tool_call_input_delta',
+      'tool_call_end',
+      'tool_call_end',
+      'step_finish',
+    ])
+    // Ends dispatch in index order at the finish frame, whatever the delta
+    // arrival order was.
+    expect(chunks[4]).toMatchObject({ kind: 'tool_call_end', id: 'call_a' })
+    expect(chunks[5]).toMatchObject({ kind: 'tool_call_end', id: 'call_b' })
+  })
+
+  it('never dispatches empty text chunks for role-only or empty-content deltas', async () => {
+    const { chunks } = await invoke_streamed(TEXT_STREAM)
+    expect(chunks.filter((c) => c.kind === 'text').map((c) => c.text)).toEqual([
+      'Hello ',
+      'there',
+    ])
+  })
+
+  it('zeroes usage without throwing when a tolerant-dialect stream carries none (D10)', async () => {
+    const frames: StreamFrame[] = [
+      { choices: [{ index: 0, delta: { content: 'hi from local' } }] },
+      { choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] },
+      '[DONE]',
+    ]
+    const { result, chunks } = await invoke_streamed(
+      frames,
+      make_dialect({ name: 'lmstudio', auth: { kind: 'none' }, tolerant_usage: true }),
+    )
+    expect(result.usage).toEqual({ input_tokens: 0, output_tokens: 0 })
+    expect(chunks.at(-1)).toEqual({
+      kind: 'step_finish',
+      step_index: 0,
+      finish_reason: 'stop',
+      usage: { input_tokens: 0, output_tokens: 0 },
+    })
+  })
+
+  it('throws provider_error when a strict-dialect stream ends without usage', async () => {
+    const frames: StreamFrame[] = [
+      { choices: [{ index: 0, delta: { content: 'hi' } }] },
+      { choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] },
+      '[DONE]',
+    ]
+    await expect(invoke_streamed(frames)).rejects.toThrow(/missing its usage/)
+  })
+
+  it('throws provider_error when the stream ends before [DONE]', async () => {
+    const frames: StreamFrame[] = [
+      { choices: [{ index: 0, delta: { content: 'partial' } }] },
+    ]
+    await expect(invoke_streamed(frames)).rejects.toThrow(/stream ended before \[DONE\]/)
+  })
+
+  it('throws provider_error on a frame that is not valid JSON', async () => {
+    stub_fetch(
+      new Response('data: {"choices": \n\n', {
+        status: 200,
+        headers: { 'content-type': 'text/event-stream' },
+      }),
+    )
+    const adapter = create_openai_compatible_adapter(make_dialect())
+    await expect(
+      adapter.invoke_turn(make_req({ stream: true, dispatch_chunk: async () => {} })),
+    ).rejects.toThrow(/stream frame is not valid JSON/)
+  })
+
+  it('throws provider_error when a tool_call delta opens without id and name', async () => {
+    const frames: StreamFrame[] = [
+      { choices: [{ index: 0, delta: { tool_calls: [{ index: 0, function: { arguments: '{}' } }] } }] },
+      '[DONE]',
+    ]
+    await expect(invoke_streamed(frames)).rejects.toThrow(/opened without id and name/)
+  })
+
+  it('throws provider_error when a tool_call delta carries no index', async () => {
+    const frames: StreamFrame[] = [
+      { choices: [{ index: 0, delta: { tool_calls: [{ id: 'call_01', function: { name: 'get_weather' } }] } }] },
+      '[DONE]',
+    ]
+    await expect(invoke_streamed(frames)).rejects.toThrow(/missing its index/)
+  })
+
+  it('throws provider_error naming the tool when accumulated arguments are not valid JSON', async () => {
+    const frames: StreamFrame[] = [
+      {
+        choices: [
+          {
+            index: 0,
+            delta: {
+              tool_calls: [
+                { index: 0, id: 'call_01', type: 'function', function: { name: 'get_weather', arguments: '{"city": ' } },
+              ],
+            },
+          },
+        ],
+      },
+      { choices: [{ index: 0, delta: {}, finish_reason: 'tool_calls' }] },
+      '[DONE]',
+    ]
+    await expect(invoke_streamed(frames)).rejects.toThrow(/get_weather/)
+  })
+
+  it('wraps a mid-read transport failure as kind network', async () => {
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('data: {"choices":[]}\n\n'))
+        controller.error(new TypeError('connection reset'))
+      },
+    })
+    stub_fetch(
+      new Response(stream, { status: 200, headers: { 'content-type': 'text/event-stream' } }),
+    )
+    const adapter = create_openai_compatible_adapter(make_dialect())
+    const err: unknown = await adapter
+      .invoke_turn(make_req({ stream: true, dispatch_chunk: async () => {} }))
+      .catch((e: unknown) => e)
+    expect(Reflect.get(err as object, 'kind')).toBe('network')
+    expect((err as Error).message).toContain('connection reset')
+  })
+
+  it('throws provider_error when the streaming response has no body', async () => {
+    stub_fetch(new Response(null, { status: 200 }))
+    const adapter = create_openai_compatible_adapter(make_dialect())
+    await expect(
+      adapter.invoke_turn(make_req({ stream: true, dispatch_chunk: async () => {} })),
+    ).rejects.toThrow(/streaming response has no body/)
+  })
+})
+
+describe('create_chat_stream_aggregator', () => {
+  it('dispatches step_finish once even when [DONE] repeats, and closes tools once', async () => {
+    const chunks: StreamChunk[] = []
+    const aggregator = create_chat_stream_aggregator(make_dialect(), 2, async (chunk) => {
+      chunks.push(chunk)
+    })
+    await aggregator.handle_data(
+      JSON.stringify({
+        choices: [
+          {
+            index: 0,
+            delta: {
+              tool_calls: [
+                { index: 0, id: 'call_01', type: 'function', function: { name: 'get_weather', arguments: '{}' } },
+              ],
+            },
+          },
+        ],
+      }),
+    )
+    await aggregator.handle_data(
+      JSON.stringify({ choices: [{ index: 0, delta: {}, finish_reason: 'tool_calls' }] }),
+    )
+    await aggregator.handle_data(
+      JSON.stringify({ choices: [], usage: { prompt_tokens: 5, completion_tokens: 3 } }),
+    )
+    await aggregator.handle_data('[DONE]')
+    await aggregator.handle_data('[DONE]')
+    expect(chunks.map((c) => c.kind)).toEqual([
+      'tool_call_start',
+      'tool_call_input_delta',
+      'tool_call_end',
+      'step_finish',
+    ])
+    expect(chunks.every((c) => 'step_index' in c && c.step_index === 2)).toBe(true)
+    expect(aggregator.complete()).toEqual({
+      text: '',
+      tool_calls: [{ id: 'call_01', name: 'get_weather', input: {} }],
+      finish_reason: 'tool_calls',
+      usage: { input_tokens: 5, output_tokens: 3 },
+    })
+  })
+
+  it('closes tool calls still open at [DONE] when no finish frame ever arrived', async () => {
+    const chunks: StreamChunk[] = []
+    const aggregator = create_chat_stream_aggregator(
+      make_dialect({ tolerant_usage: true }),
+      0,
+      async (chunk) => {
+        chunks.push(chunk)
+      },
+    )
+    await aggregator.handle_data(
+      JSON.stringify({
+        choices: [
+          {
+            index: 0,
+            delta: {
+              tool_calls: [
+                { index: 0, id: 'call_01', type: 'function', function: { name: 'get_weather', arguments: '{"city":"Ottawa"}' } },
+              ],
+            },
+          },
+        ],
+      }),
+    )
+    await aggregator.handle_data('[DONE]')
+    expect(chunks.map((c) => c.kind)).toEqual([
+      'tool_call_start',
+      'tool_call_input_delta',
+      'tool_call_end',
+      'step_finish',
+    ])
+    // No finish frame: the parser's default mapping applies.
+    expect(aggregator.complete().finish_reason).toBe('stop')
   })
 })
