@@ -214,7 +214,7 @@ End state (additions to the predecessor's sketch marked with `+`):
    - seam: `src/engine/providers/openai_compatible_native.ts`, `src/engine/providers/__tests__/`
    - model: fable — logic-dense greenfield wire mapping; the dialect
      parameterization is the named subtle part
-2. [ ] OpenAI-compatible core: streaming + e2e — **done when:** the SSE parse
+2. [x] OpenAI-compatible core: streaming + e2e — **done when:** the SSE parse
    (`data:` lines, `[DONE]` terminator, index-keyed tool_call delta
    accumulation, `stream_options.include_usage`) dispatches `StreamChunk`s
    and aggregates through the same response parser as non-stream (C4:

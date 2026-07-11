@@ -49,6 +49,7 @@ describe('create_openai_adapter config assembly', () => {
       base_url: 'https://oai.example/v1',
       organization: 'org-123',
     })
+    if (adapter.kind !== 'ai_sdk') throw new Error('expected the ai_sdk adapter')
     const model = await adapter.build_model('gpt-5-codex')
     expect(model).toBeDefined()
     expect(captured.config).toEqual({
@@ -62,6 +63,7 @@ describe('create_openai_adapter config assembly', () => {
   it('sends only apiKey when no optional config is given', async () => {
     captured.config = undefined
     const adapter = create_openai_adapter({ api_key: 'secret' })
+    if (adapter.kind !== 'ai_sdk') throw new Error('expected the ai_sdk adapter')
     await adapter.build_model('m')
     expect(captured.config).toEqual({ apiKey: 'secret' })
     expect('baseURL' in (captured.config ?? {})).toBe(false)
@@ -75,6 +77,7 @@ describe('create_openai_adapter config assembly', () => {
       base_url: 123,
       organization: true,
     } as unknown as ProviderInit)
+    if (adapter.kind !== 'ai_sdk') throw new Error('expected the ai_sdk adapter')
     await adapter.build_model('m')
     expect(captured.config).toEqual({ apiKey: 'secret' })
   })

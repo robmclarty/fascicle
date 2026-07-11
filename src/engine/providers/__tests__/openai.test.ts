@@ -77,6 +77,7 @@ describe('create_openai_adapter', () => {
 
   it('build_model returns a value when the @ai-sdk/openai peer resolves', async () => {
     const adapter = create_openai_adapter({ api_key: 'secret' })
+    if (adapter.kind !== 'ai_sdk') throw new Error('expected the ai_sdk adapter')
     const model = await adapter.build_model('gpt-5-codex')
     expect(model).toBeDefined()
   })

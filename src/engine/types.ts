@@ -268,7 +268,7 @@ export type ProviderInit = {
 
 export type ProviderConfigMap = {
   anthropic?: { api_key: string; base_url?: string; transport?: ProviderTransport }
-  openai?: { api_key: string; base_url?: string; organization?: string }
+  openai?: { api_key: string; base_url?: string; organization?: string; transport?: ProviderTransport }
   google?: { api_key: string; base_url?: string }
   ollama?: { base_url: string }
   lmstudio?: { base_url: string }
