@@ -12,7 +12,7 @@
 import type { z } from 'zod'
 import type { TrajectoryLogger } from '#core'
 import type { ClaudeCliProviderConfig } from './providers/claude_cli/types.js'
-import type { ProviderFactory } from './providers/types.js'
+import type { ProviderFactory, ProviderTransport } from './providers/types.js'
 
 export type EffortLevel = 'none' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
 
@@ -267,7 +267,7 @@ export type ProviderInit = {
 }
 
 export type ProviderConfigMap = {
-  anthropic?: { api_key: string; base_url?: string }
+  anthropic?: { api_key: string; base_url?: string; transport?: ProviderTransport }
   openai?: { api_key: string; base_url?: string; organization?: string }
   google?: { api_key: string; base_url?: string }
   ollama?: { base_url: string }

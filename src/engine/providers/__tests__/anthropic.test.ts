@@ -89,7 +89,32 @@ describe('create_anthropic_adapter', () => {
 
   it('build_model returns a value when the @ai-sdk/anthropic peer resolves', async () => {
     const adapter = create_anthropic_adapter({ api_key: 'secret' })
+    if (adapter.kind !== 'ai_sdk') throw new Error('expected the ai_sdk adapter')
     const model = await adapter.build_model('claude-opus-4-7')
     expect(model).toBeDefined()
+  })
+})
+
+describe('transport dispatch', () => {
+  it('defaults to the ai_sdk adapter', () => {
+    expect(create_anthropic_adapter({ api_key: 'secret' }).kind).toBe('ai_sdk')
+  })
+
+  it("returns the ai_sdk adapter for transport: 'ai_sdk'", () => {
+    expect(create_anthropic_adapter({ api_key: 'secret', transport: 'ai_sdk' }).kind).toBe(
+      'ai_sdk',
+    )
+  })
+
+  it("returns the native adapter for transport: 'native', keeping the provider name", () => {
+    const adapter = create_anthropic_adapter({ api_key: 'secret', transport: 'native' })
+    expect(adapter.kind).toBe('native')
+    expect(adapter.name).toBe('anthropic')
+  })
+
+  it('throws engine_config_error on an unknown transport', () => {
+    expect(() => create_anthropic_adapter({ api_key: 'secret', transport: 'grpc' })).toThrow(
+      engine_config_error,
+    )
   })
 })

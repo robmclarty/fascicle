@@ -1,19 +1,27 @@
 /**
  * Anthropic provider adapter.
  *
- * Wraps @ai-sdk/anthropic as an optional peer. Effort levels map to
- * extended-thinking budget tokens per spec §6.3.
+ * Dispatches on `transport` (D3): the default 'ai_sdk' backend wraps
+ * @ai-sdk/anthropic as an optional peer; 'native' returns the raw-HTTP
+ * adapter from anthropic_native.ts. Effort levels map to extended-thinking
+ * budget tokens per spec §6.3.
  */
 
 import type { EffortLevel, ProviderInit, UsageTotals } from '../types.js'
 import {
   default_normalize_usage,
   load_optional_peer,
+  resolve_transport,
   type AiSdkProviderAdapter,
   type EffortTranslation,
+  type ProviderAdapter,
   type ProviderCapability,
   type RawProviderUsage,
 } from './types.js'
+import {
+  ANTHROPIC_THINKING_BUDGETS,
+  create_anthropic_native_adapter,
+} from './anthropic_native.js'
 import { engine_config_error } from '../errors.js'
 
 type AnthropicSdk = {
@@ -21,15 +29,6 @@ type AnthropicSdk = {
     apiKey?: string
     baseURL?: string
   }) => (model_id: string) => unknown
-}
-
-const ANTHROPIC_THINKING_BUDGETS: Record<EffortLevel, number> = {
-  none: 0,
-  low: 1024,
-  medium: 5000,
-  high: 20000,
-  xhigh: 32000,
-  max: 64000,
 }
 
 export function translate_anthropic_effort(effort: EffortLevel): EffortTranslation {
@@ -63,7 +62,14 @@ const SUPPORTED: ReadonlySet<ProviderCapability> = new Set([
   'reasoning',
 ])
 
-export const create_anthropic_adapter = (init: ProviderInit): AiSdkProviderAdapter => {
+export const create_anthropic_adapter = (init: ProviderInit): ProviderAdapter => {
+  if (resolve_transport(init, 'anthropic') === 'native') {
+    return create_anthropic_native_adapter(init)
+  }
+  return create_anthropic_ai_sdk_adapter(init)
+}
+
+const create_anthropic_ai_sdk_adapter = (init: ProviderInit): AiSdkProviderAdapter => {
   const api_key = typeof init.api_key === 'string' ? init.api_key : ''
   if (api_key.length === 0) {
     throw new engine_config_error(

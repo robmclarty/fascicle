@@ -22,6 +22,32 @@ import type {
   TurnResult,
   UsageTotals,
 } from '../types.js'
+import { engine_config_error } from '../errors.js'
+
+/**
+ * Which depth-1 backend a provider factory returns (D3). The provider name
+ * stays the same across transports so pricing keys and usage fields carry
+ * over; only the wire implementation changes.
+ */
+export type ProviderTransport = 'ai_sdk' | 'native'
+
+/**
+ * Read the `transport` selector off a provider init. Defaults to 'ai_sdk';
+ * anything but the two known backends throws at construction so a typo
+ * fails loud instead of silently running the default.
+ */
+export function resolve_transport(
+  init: ProviderInit,
+  provider: string,
+): ProviderTransport {
+  const raw = init['transport']
+  if (raw === undefined || raw === 'ai_sdk') return 'ai_sdk'
+  if (raw === 'native') return 'native'
+  throw new engine_config_error(
+    `${provider} provider: transport must be 'ai_sdk' or 'native', got ${JSON.stringify(raw)}`,
+    provider,
+  )
+}
 
 export type EffortTranslation = {
   // Outer keys are provider names, inner records hold per-provider settings,

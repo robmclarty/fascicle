@@ -206,7 +206,7 @@ End state (after Step 14, the inversion):
     and `pnpm check:all` (incl. mutation) exits 0
     - seam: `src/engine/__tests__/`
     - model: opus — assertion-strong test authoring against mutation; well-bounded by the S-P2.7 list
-11. [ ] Rename `subprocess` to `external` (S-P4.1) — **done when:** no
+11. [x] Rename `subprocess` to `external` (S-P4.1) — **done when:** no
     `'subprocess'` kind remains anywhere in the tree; full suite green
     - seam: `src/engine/`
     - model: sonnet — mechanical rename sweep; types + suite gate it

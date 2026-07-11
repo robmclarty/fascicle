@@ -27,6 +27,7 @@ is done only after a checkpoint — check green + checkpoint taken, via `/pb-ver
 > Mid-step, every new problem / idea / "ooh what if" lands HERE, untouched, and you
 > go straight back to the step. Acting the instant an idea arrives is the disease.
 > Capture is one line (`/pb-park` composes it). Harvest happens only at the boundary.
+- [ ] Native transport provider_options passthrough: TurnRequest.provider_options reaches invoke_turn but anthropic_native does not read it yet. Precedence vs engine-computed body fields and camelCase (ai_sdk-style) vs snake_case (wire) keys are undefined in S-P3; decide once before P4.2 native OpenAI faces the same question.
 
 ## Harvest  *(run `/pb-harvest` at each step boundary, after green)*
 
@@ -64,3 +65,4 @@ folder, so it rides the branch into the PR.)*
 - 2026-07-10 — step 8 checkpointed · 20db92fc9 — Neutral turn types + shared error classifier (S-P2.1..P2.3:
 - 2026-07-11 — step 9 checkpointed · aee2ed45e — Three-way dispatch (S-P2.4..P2.6: extract `build_ai_sdk_invoke`, add
 - 2026-07-11 — step 10 checkpointed · 8d6f17fad — Loop-inheritance proof (S-P2.7)
+- 2026-07-11 — step 11 checkpointed · 02d8cb730 — Rename `subprocess` to `external` (S-P4.1)
