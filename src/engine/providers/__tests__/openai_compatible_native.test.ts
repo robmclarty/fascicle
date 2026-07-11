@@ -1165,3 +1165,545 @@ describe('create_chat_stream_aggregator', () => {
     expect(aggregator.complete().finish_reason).toBe('stop')
   })
 })
+
+// ---------------------------------------------------------------------------
+// Mutation hardening. Concrete-value and boundary assertions that pin the
+// dialect branches, finish/usage maps, tool-call parsing, error mapping, and
+// SSE edges the full-repo Stryker report flagged as survived / no-coverage on
+// this file (C7). Behavior is unchanged; these only tighten the assertions.
+// ---------------------------------------------------------------------------
+
+function tool_call_payload(entry: unknown): unknown {
+  return {
+    ...TOOL_CALL_FIXTURE,
+    choices: [
+      {
+        index: 0,
+        message: { role: 'assistant', content: null, tool_calls: [entry] },
+        finish_reason: 'tool_calls',
+      },
+    ],
+  }
+}
+
+function error_response(
+  body: string | null,
+  status: number,
+  headers: Record<string, string> = {},
+): Response {
+  return new Response(body, { status, headers })
+}
+
+/** Raw SSE text delivered in 9-byte chunks (mid-line/mid-frame splits). */
+function sse_raw(payload: string): Response {
+  const bytes = new TextEncoder().encode(payload)
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      for (let i = 0; i < bytes.length; i += 9) controller.enqueue(bytes.slice(i, i + 9))
+      controller.close()
+    },
+  })
+  return new Response(stream, {
+    status: 200,
+    headers: { 'content-type': 'text/event-stream' },
+  })
+}
+
+/** One byte per chunk, so every multibyte UTF-8 sequence straddles a boundary. */
+function sse_byte_at_a_time(frames: ReadonlyArray<StreamFrame>): Response {
+  const payload = frames
+    .map((frame) => `data: ${frame === '[DONE]' ? '[DONE]' : JSON.stringify(frame)}\n\n`)
+    .join('')
+  const bytes = new TextEncoder().encode(payload)
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      for (const b of bytes) controller.enqueue(new Uint8Array([b]))
+      controller.close()
+    },
+  })
+  return new Response(stream, {
+    status: 200,
+    headers: { 'content-type': 'text/event-stream' },
+  })
+}
+
+describe('to_chat_messages (mutation hardening)', () => {
+  it('names the image_input capability and the ai_sdk transport in the thrown error', () => {
+    let caught: unknown
+    try {
+      to_chat_messages(
+        [{ role: 'user', content: [{ type: 'image', image: 'aGk=', media_type: 'image/png' }] }],
+        'lmstudio',
+      )
+    } catch (err) {
+      caught = err
+    }
+    expect(caught).toBeInstanceOf(provider_capability_error)
+    expect((caught as provider_capability_error).capability).toBe('image_input')
+    expect((caught as Error).message).toContain("transport: 'ai_sdk'")
+  })
+
+  it('maps a non-empty plain assistant string verbatim, adding no tool_calls key', () => {
+    expect(to_chat_messages([{ role: 'assistant', content: 'all done' }], 'openai')).toEqual([
+      { role: 'assistant', content: 'all done' },
+    ])
+  })
+
+  it('maps a text-only assistant content array to string content with no tool_calls key', () => {
+    expect(
+      to_chat_messages([{ role: 'assistant', content: [{ type: 'text', text: 'hi' }] }], 'openai'),
+    ).toEqual([{ role: 'assistant', content: 'hi' }])
+  })
+
+  it('maps an assistant array that yields empty text to empty-string content, not null', () => {
+    expect(
+      to_chat_messages([{ role: 'assistant', content: [{ type: 'text', text: '' }] }], 'openai'),
+    ).toEqual([{ role: 'assistant', content: '' }])
+  })
+})
+
+describe('build_chat_completions_body (mutation hardening)', () => {
+  it('omits the temperature and top_p keys entirely when they are unset', () => {
+    const body = build_chat_completions_body(make_req(), make_dialect())
+    expect(body).not.toHaveProperty('temperature')
+    expect(body).not.toHaveProperty('top_p')
+  })
+
+  it('emits only the user message when no system is set', () => {
+    const body = build_chat_completions_body(make_req(), make_dialect())
+    expect(body['messages']).toEqual([{ role: 'user', content: 'hi' }])
+  })
+
+  it('omits the system message when system is the empty string', () => {
+    const body = build_chat_completions_body(make_req({ system: '' }), make_dialect())
+    expect(body['messages']).toEqual([{ role: 'user', content: 'hi' }])
+  })
+})
+
+describe('map_chat_usage (mutation hardening)', () => {
+  it('does not throw and omits detail keys when the detail containers are null', () => {
+    const usage = map_chat_usage(
+      {
+        prompt_tokens: 5,
+        completion_tokens: 3,
+        prompt_tokens_details: null,
+        completion_tokens_details: null,
+      },
+      make_dialect(),
+    )
+    expect(usage).toEqual({ input_tokens: 5, output_tokens: 3 })
+    expect(usage).not.toHaveProperty('cached_input_tokens')
+    expect(usage).not.toHaveProperty('reasoning_tokens')
+  })
+
+  it('omits detail keys when the detail containers carry no counts', () => {
+    const usage = map_chat_usage(
+      { prompt_tokens: 5, completion_tokens: 3, prompt_tokens_details: {}, completion_tokens_details: {} },
+      make_dialect(),
+    )
+    expect(usage).not.toHaveProperty('cached_input_tokens')
+    expect(usage).not.toHaveProperty('reasoning_tokens')
+  })
+})
+
+describe('parse_chat_completion (mutation hardening)', () => {
+  it.each([
+    ['null', null],
+    ['undefined', undefined],
+  ] as const)('throws a provider_error for a malformed %s tool_calls entry', (_label, entry) => {
+    expect(() => parse_chat_completion(tool_call_payload(entry), make_dialect())).toThrow(provider_error)
+    expect(() => parse_chat_completion(tool_call_payload(entry), make_dialect())).toThrow(
+      /malformed tool_calls entry/,
+    )
+  })
+
+  it.each([
+    ['a null function', { id: 'call_x', type: 'function', function: null }],
+    ['an undefined function', { id: 'call_x', type: 'function' }],
+  ] as const)('throws a provider_error for a tool_calls entry with %s', (_label, entry) => {
+    expect(() => parse_chat_completion(tool_call_payload(entry), make_dialect())).toThrow(provider_error)
+    expect(() => parse_chat_completion(tool_call_payload(entry), make_dialect())).toThrow(
+      /malformed tool_calls entry/,
+    )
+  })
+
+  it('throws a provider_error when a tool_calls entry has a non-string function name', () => {
+    const entry = { id: 'call_x', type: 'function', function: { name: 42, arguments: '{}' } }
+    expect(() => parse_chat_completion(tool_call_payload(entry), make_dialect())).toThrow(
+      /malformed tool_calls entry/,
+    )
+  })
+
+  it('treats a tool call with no arguments field as an empty input object', () => {
+    const entry = { id: 'call_x', type: 'function', function: { name: 'noop' } }
+    expect(parse_chat_completion(tool_call_payload(entry), make_dialect()).tool_calls).toEqual([
+      { id: 'call_x', name: 'noop', input: {} },
+    ])
+  })
+
+  it.each([
+    ['null', null],
+    ['a string', 'nope'],
+  ] as const)('throws the not-a-JSON-object error for a %s payload', (_label, payload) => {
+    expect(() => parse_chat_completion(payload, make_dialect())).toThrow(provider_error)
+    expect(() => parse_chat_completion(payload, make_dialect())).toThrow(/payload is not a JSON object/)
+  })
+
+  it('throws the no-choices error for a null choice entry', () => {
+    expect(() => parse_chat_completion({ ...TEXT_FIXTURE, choices: [null] }, make_dialect())).toThrow(
+      /no choices/,
+    )
+  })
+
+  it('throws the no-choices error for a non-object choice entry', () => {
+    expect(() => parse_chat_completion({ ...TEXT_FIXTURE, choices: [5] }, make_dialect())).toThrow(
+      /no choices/,
+    )
+  })
+
+  it('throws the no-message error for a null message', () => {
+    expect(() =>
+      parse_chat_completion(
+        { ...TEXT_FIXTURE, choices: [{ index: 0, message: null, finish_reason: 'stop' }] },
+        make_dialect(),
+      ),
+    ).toThrow(/no message/)
+  })
+})
+
+describe('create_openai_compatible_adapter error mapping (mutation hardening)', () => {
+  it('names the non-empty api_key requirement in the config error', () => {
+    expect(() =>
+      create_openai_compatible_adapter(make_dialect({ auth: { kind: 'bearer', api_key: '' } })),
+    ).toThrow(/non-empty api_key/)
+  })
+
+  it('trims every trailing slash from base_url, not just the last one', async () => {
+    const mock = stub_fetch(json_response(TEXT_FIXTURE))
+    const adapter = create_openai_compatible_adapter(
+      make_dialect({ base_url: 'https://proxy.local/v1///' }),
+    )
+    await adapter.invoke_turn(make_req())
+    const call = mock.mock.calls[0] as [string, RequestInit]
+    expect(call[0]).toBe('https://proxy.local/v1/chat/completions')
+  })
+
+  it.each([500, 503] as const)(
+    'maps a %d error to the retryable plain-Error shape, never a provider_error',
+    async (status) => {
+      stub_fetch(
+        error_response(JSON.stringify({ error: { message: 'overloaded' } }), status, {
+          'content-type': 'application/json',
+        }),
+      )
+      const adapter = create_openai_compatible_adapter(make_dialect())
+      const err: unknown = await adapter.invoke_turn(make_req()).catch((e: unknown) => e)
+      expect(err).not.toBeInstanceOf(provider_error)
+      const classified = classify_provider_error(err) as Record<string, unknown>
+      expect(classified['kind']).toBe('provider_5xx')
+      expect(classified['status']).toBe(status)
+    },
+  )
+
+  it('omits responseHeaders when a retryable status carries no retry-after header', async () => {
+    stub_fetch(
+      error_response(JSON.stringify({ error: { message: 'overloaded' } }), 500, {
+        'content-type': 'application/json',
+      }),
+    )
+    const adapter = create_openai_compatible_adapter(make_dialect())
+    const err: unknown = await adapter.invoke_turn(make_req()).catch((e: unknown) => e)
+    expect(Reflect.get(err as object, 'responseHeaders')).toBeUndefined()
+  })
+
+  it('reports "(empty body)" as the detail when an error response has an empty body', async () => {
+    stub_fetch(error_response('', 500))
+    const adapter = create_openai_compatible_adapter(make_dialect())
+    const err: unknown = await adapter.invoke_turn(make_req()).catch((e: unknown) => e)
+    expect((err as Error).message).toBe('openai API error 500: (empty body)')
+  })
+
+  it('truncates a long non-JSON error body to 300 chars plus an ellipsis', async () => {
+    stub_fetch(error_response('x'.repeat(400), 500))
+    const adapter = create_openai_compatible_adapter(make_dialect())
+    const err: unknown = await adapter.invoke_turn(make_req()).catch((e: unknown) => e)
+    expect((err as Error).message).toBe(`openai API error 500: ${'x'.repeat(300)}...`)
+  })
+
+  it('returns an exactly-300-char body unchanged, without an ellipsis (boundary)', async () => {
+    const exact = 'y'.repeat(300)
+    stub_fetch(error_response(exact, 500))
+    const adapter = create_openai_compatible_adapter(make_dialect())
+    const err: unknown = await adapter.invoke_turn(make_req()).catch((e: unknown) => e)
+    expect((err as Error).message).toBe(`openai API error 500: ${exact}`)
+  })
+
+  it('falls back to "(empty body)" when reading the error body itself fails', async () => {
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.error(new TypeError('body read failed'))
+      },
+    })
+    stub_fetch(new Response(stream, { status: 500, headers: { 'content-type': 'application/json' } }))
+    const adapter = create_openai_compatible_adapter(make_dialect())
+    const err: unknown = await adapter.invoke_turn(make_req()).catch((e: unknown) => e)
+    expect((err as Error).message).toBe('openai API error 500: (empty body)')
+  })
+
+  it('returns the raw body, not an empty string, when error.message is empty', async () => {
+    const body = JSON.stringify({ error: { message: '' } })
+    stub_fetch(error_response(body, 400, { 'content-type': 'application/json' }))
+    const adapter = create_openai_compatible_adapter(make_dialect())
+    const err: unknown = await adapter.invoke_turn(make_req()).catch((e: unknown) => e)
+    expect((err as Error).message).toBe(`openai API error 400: ${body}`)
+  })
+
+  it('falls back to the raw body when error.message is not a string', async () => {
+    const body = JSON.stringify({ error: { message: ['boom'] } })
+    stub_fetch(error_response(body, 400, { 'content-type': 'application/json' }))
+    const adapter = create_openai_compatible_adapter(make_dialect())
+    const err: unknown = await adapter.invoke_turn(make_req()).catch((e: unknown) => e)
+    expect((err as Error).message).toBe(`openai API error 400: ${body}`)
+  })
+})
+
+describe('streaming invoke_turn (mutation hardening)', () => {
+  it('orders tool calls by index regardless of open/arrival order', async () => {
+    const frames: StreamFrame[] = [
+      {
+        choices: [
+          {
+            index: 0,
+            delta: {
+              tool_calls: [
+                { index: 2, id: 'call_c', type: 'function', function: { name: 'get_weather', arguments: '{"city":"C"}' } },
+                { index: 0, id: 'call_a', type: 'function', function: { name: 'get_weather', arguments: '{"city":"A"}' } },
+                { index: 1, id: 'call_b', type: 'function', function: { name: 'get_weather', arguments: '{"city":"B"}' } },
+              ],
+            },
+          },
+        ],
+      },
+      { choices: [{ index: 0, delta: {}, finish_reason: 'tool_calls' }] },
+      { choices: [], usage: { prompt_tokens: 1, completion_tokens: 1 } },
+      '[DONE]',
+    ]
+    const { result, chunks } = await invoke_streamed(frames)
+    expect(result.tool_calls.map((c) => c.id)).toEqual(['call_a', 'call_b', 'call_c'])
+    const ends = chunks
+      .filter((c) => c.kind === 'tool_call_end')
+      .map((c) => (c as { id: string }).id)
+    expect(ends).toEqual(['call_a', 'call_b', 'call_c'])
+  })
+
+  it('preserves an early usage frame across later frames that carry none', async () => {
+    const frames: StreamFrame[] = [
+      { choices: [{ index: 0, delta: { content: 'hi' } }], usage: { prompt_tokens: 7, completion_tokens: 2 } },
+      { choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] },
+      '[DONE]',
+    ]
+    const { result } = await invoke_streamed(frames)
+    expect(result.usage).toEqual({ input_tokens: 7, output_tokens: 2 })
+  })
+
+  it.each([
+    ['null', null],
+    ['a non-object', 5],
+  ] as const)(
+    'keeps the earlier usage when a later frame carries %s usage',
+    async (_label, bad) => {
+      const frames: StreamFrame[] = [
+        { choices: [{ index: 0, delta: { content: 'hi' } }], usage: { prompt_tokens: 7, completion_tokens: 2 } },
+        { choices: [{ index: 0, delta: {}, finish_reason: 'stop' }], usage: bad },
+        '[DONE]',
+      ]
+      const { result } = await invoke_streamed(frames)
+      expect(result.usage).toEqual({ input_tokens: 7, output_tokens: 2 })
+    },
+  )
+
+  it('ignores a null choice in a stream frame without aborting the stream', async () => {
+    const frames: StreamFrame[] = [
+      { choices: [null] },
+      { choices: [{ index: 0, delta: { content: 'hello' } }] },
+      { choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] },
+      { choices: [], usage: { prompt_tokens: 1, completion_tokens: 1 } },
+      '[DONE]',
+    ]
+    const { result } = await invoke_streamed(frames)
+    expect(result.text).toBe('hello')
+  })
+
+  it('ignores a bare null-JSON stream frame without aborting the stream', async () => {
+    const head =
+      'data: null\n\n' +
+      `data: ${JSON.stringify({ choices: [{ index: 0, delta: { content: 'hello' } }] })}\n\n` +
+      `data: ${JSON.stringify({ choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] })}\n\n` +
+      `data: ${JSON.stringify({ choices: [], usage: { prompt_tokens: 1, completion_tokens: 1 } })}\n\n` +
+      'data: [DONE]\n\n'
+    stub_fetch(sse_raw(head))
+    const adapter = create_openai_compatible_adapter(make_dialect())
+    const result = await adapter.invoke_turn(make_req({ stream: true, dispatch_chunk: async () => {} }))
+    expect(result.text).toBe('hello')
+  })
+
+  it('ignores a null delta in a stream frame', async () => {
+    const frames: StreamFrame[] = [
+      { choices: [{ index: 0, delta: null, finish_reason: 'stop' }] },
+      { choices: [], usage: { prompt_tokens: 1, completion_tokens: 1 } },
+      '[DONE]',
+    ]
+    const { result } = await invoke_streamed(frames)
+    expect(result.text).toBe('')
+    expect(result.finish_reason).toBe('stop')
+  })
+
+  it('ignores a choice that carries no delta field', async () => {
+    const frames: StreamFrame[] = [
+      { choices: [{ index: 0, finish_reason: 'stop' }] },
+      { choices: [], usage: { prompt_tokens: 1, completion_tokens: 1 } },
+      '[DONE]',
+    ]
+    const { result } = await invoke_streamed(frames)
+    expect(result.finish_reason).toBe('stop')
+  })
+
+  it.each([
+    ['a null entry', null],
+    ['a non-object entry', 5],
+  ] as const)('throws a malformed-delta provider_error for %s in tool_calls', async (_label, entry) => {
+    const frames: StreamFrame[] = [
+      { choices: [{ index: 0, delta: { tool_calls: [entry] } }] },
+      '[DONE]',
+    ]
+    await expect(invoke_streamed(frames)).rejects.toThrow(/malformed tool_calls delta/)
+  })
+
+  it.each([
+    ['a null id', { index: 0, id: null, type: 'function', function: { name: 'get_weather', arguments: '' } }],
+    ['a null function', { index: 0, id: 'call_x', function: null }],
+    ['no function', { index: 0, id: 'call_x' }],
+    ['a non-string id', { index: 0, id: 42, type: 'function', function: { name: 'get_weather', arguments: '' } }],
+    ['a non-string name', { index: 0, id: 'call_x', type: 'function', function: { name: 42, arguments: '' } }],
+  ] as const)('rejects opening a tool_call delta with %s at the opening guard', async (_label, entry) => {
+    const frames: StreamFrame[] = [
+      { choices: [{ index: 0, delta: { tool_calls: [entry] } }] },
+      '[DONE]',
+    ]
+    await expect(invoke_streamed(frames)).rejects.toThrow(/opened without id and name/)
+  })
+
+  it('ignores a null function on a continuation tool_call delta', async () => {
+    const frames: StreamFrame[] = [
+      {
+        choices: [
+          {
+            index: 0,
+            delta: {
+              tool_calls: [
+                { index: 0, id: 'call_x', type: 'function', function: { name: 'get_weather', arguments: '{"city":"A"}' } },
+              ],
+            },
+          },
+        ],
+      },
+      { choices: [{ index: 0, delta: { tool_calls: [{ index: 0, function: null }] } }] },
+      { choices: [{ index: 0, delta: {}, finish_reason: 'tool_calls' }] },
+      { choices: [], usage: { prompt_tokens: 1, completion_tokens: 1 } },
+      '[DONE]',
+    ]
+    const { result } = await invoke_streamed(frames)
+    expect(result.tool_calls).toEqual([{ id: 'call_x', name: 'get_weather', input: { city: 'A' } }])
+  })
+
+  it('ignores a continuation tool_call delta that carries no function', async () => {
+    const frames: StreamFrame[] = [
+      {
+        choices: [
+          {
+            index: 0,
+            delta: {
+              tool_calls: [
+                { index: 0, id: 'call_x', type: 'function', function: { name: 'get_weather', arguments: '{"city":"A"}' } },
+              ],
+            },
+          },
+        ],
+      },
+      { choices: [{ index: 0, delta: { tool_calls: [{ index: 0 }] } }] },
+      { choices: [{ index: 0, delta: {}, finish_reason: 'tool_calls' }] },
+      { choices: [], usage: { prompt_tokens: 1, completion_tokens: 1 } },
+      '[DONE]',
+    ]
+    const { result } = await invoke_streamed(frames)
+    expect(result.tool_calls).toEqual([{ id: 'call_x', name: 'get_weather', input: { city: 'A' } }])
+  })
+
+  it('ignores a continuation tool_call delta whose function omits arguments', async () => {
+    const frames: StreamFrame[] = [
+      {
+        choices: [
+          {
+            index: 0,
+            delta: {
+              tool_calls: [
+                { index: 0, id: 'call_x', type: 'function', function: { name: 'get_weather', arguments: '{"city":"A"}' } },
+              ],
+            },
+          },
+        ],
+      },
+      { choices: [{ index: 0, delta: { tool_calls: [{ index: 0, function: {} }] } }] },
+      { choices: [{ index: 0, delta: {}, finish_reason: 'tool_calls' }] },
+      { choices: [], usage: { prompt_tokens: 1, completion_tokens: 1 } },
+      '[DONE]',
+    ]
+    const { result } = await invoke_streamed(frames)
+    expect(result.tool_calls).toEqual([{ id: 'call_x', name: 'get_weather', input: { city: 'A' } }])
+  })
+
+  it('decodes a multibyte character split across read boundaries (streaming decode)', async () => {
+    const content = 'café €'
+    const frames: StreamFrame[] = [
+      { choices: [{ index: 0, delta: { content } }] },
+      { choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] },
+      { choices: [], usage: { prompt_tokens: 1, completion_tokens: 1 } },
+      '[DONE]',
+    ]
+    stub_fetch(sse_byte_at_a_time(frames))
+    const adapter = create_openai_compatible_adapter(make_dialect())
+    const result = await adapter.invoke_turn(make_req({ stream: true, dispatch_chunk: async () => {} }))
+    expect(result.text).toBe(content)
+  })
+
+  it('drains a final frame delivered without a trailing blank line', async () => {
+    const head =
+      `data: ${JSON.stringify({ choices: [{ index: 0, delta: { content: 'hi' } }] })}\n\n` +
+      `data: ${JSON.stringify({ choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] })}\n\n` +
+      `data: ${JSON.stringify({ choices: [], usage: { prompt_tokens: 1, completion_tokens: 1 } })}\n\n` +
+      'data: [DONE]'
+    stub_fetch(sse_raw(head))
+    const adapter = create_openai_compatible_adapter(make_dialect())
+    const result = await adapter.invoke_turn(make_req({ stream: true, dispatch_chunk: async () => {} }))
+    expect(result.text).toBe('hi')
+    expect(result.usage).toEqual({ input_tokens: 1, output_tokens: 1 })
+  })
+
+  it('cancels the reader when a mid-stream error exits the drain loop early', async () => {
+    let cancelled = false
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('data: {bad\n\n'))
+      },
+      cancel() {
+        cancelled = true
+      },
+    })
+    stub_fetch(new Response(stream, { status: 200, headers: { 'content-type': 'text/event-stream' } }))
+    const adapter = create_openai_compatible_adapter(make_dialect())
+    await expect(
+      adapter.invoke_turn(make_req({ stream: true, dispatch_chunk: async () => {} })),
+    ).rejects.toThrow(/stream frame is not valid JSON/)
+    expect(cancelled).toBe(true)
+  })
+})

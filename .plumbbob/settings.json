@@ -1,4 +1,4 @@
 {
-  "auto": false,
-  "check": "pnpm check"
+  "check": "pnpm check",
+  "auto": false
 }
