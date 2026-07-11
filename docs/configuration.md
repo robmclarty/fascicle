@@ -101,6 +101,29 @@ Rules:
 
 The factory and adapter types (`ProviderFactory`, `ProviderAdapter`, `AiSdkProviderAdapter`, `NativeProviderAdapter`, `ExternalAgentAdapter`, `ProviderCapability`, `ProviderTransport`) are exported from `fascicle`, alongside the neutral turn types (`TurnRequest`, `TurnResult`) and the `default_normalize_usage` helper, so a `kind: 'native'` adapter can be typed explicitly as `NativeProviderAdapter` rather than checked contextually through `ProviderFactory`. Because registration is plain config, a proprietary or workplace-private provider lives entirely in the consuming repo and never needs to enter the fascicle tree.
 
+## Registering a provider after construction: `with_providers`
+
+There is no mutable runtime registry. When a provider only becomes known *after* the engine is built — a plugin that loads late, a tenant-supplied backend, a credential resolved by an async bootstrap — derive a new engine instead of mutating the old one:
+
+```ts
+const base = create_engine({
+  providers: { anthropic: { api_key: process.env.ANTHROPIC_API_KEY ?? '' } },
+});
+
+// ...later, once the plugin's config is known:
+const extended = base.with_providers(
+  { acme: { api_key: pluginConfig.acmeKey } },
+  { acme: create_acme_adapter },
+);
+```
+
+`with_providers(providers, custom_providers?)` returns a **new** engine whose config is the base engine's config with `providers` and `custom_providers` shallow-merged by name over the originals (a same-named entry overrides). This keeps engines value-like: a mutable registry would make an engine's behavior depend on *when* you call it and blur which engine owns which adapters, so derivation is the answer instead.
+
+- **The original engine is untouched.** `base` keeps exactly the providers, adapters, and pricing it had; only `extended` sees the additions.
+- **Everything else carries forward.** Construction-time pricing, `defaults`, and retry policy are inherited unchanged. (Runtime `register_price` mutations are *not* — derivation is a pure function of the construction config, so re-register on the derived engine if you need them.)
+- **Same rules re-run.** The merged config is re-validated with the same custom-first resolution and the same built-in shadow-throw; adding `{ openai: … }` to `custom_providers` still throws `engine_config_error`.
+- **Fresh adapters, independent disposal.** Every adapter in the derived engine is constructed fresh from the merged config, including the ones the base already had. `extended.dispose()` tears down only the derived engine's adapters; `base` stays live, and vice versa. Dispose each engine you build.
+
 ## Reading credentials from env
 
 The engine does not read `process.env`. Reading credentials from the environment is the harness's job, done once at its boundary and passed in as an explicit config object. The idiomatic pattern is a plain read of `process.env`:

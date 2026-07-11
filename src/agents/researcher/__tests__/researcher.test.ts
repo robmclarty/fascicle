@@ -104,6 +104,7 @@ function make_scripted_harness(script: RoundScript): ScriptedHarness {
     register_price: () => {},
     resolve_price: () => undefined,
     list_prices: () => ({}),
+    with_providers: () => { throw new Error("stub engine does not support with_providers") },
     dispose: async () => {},
   }
 
@@ -384,6 +385,7 @@ describe('researcher', () => {
       register_price: () => {},
       resolve_price: () => undefined,
       list_prices: () => ({}),
+      with_providers: () => { throw new Error("stub engine does not support with_providers") },
       dispose: async () => {},
     }
   

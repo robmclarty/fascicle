@@ -81,6 +81,7 @@ function make_mock_engine(options: MockEngineOptions = {}): {
     register_price: () => {},
     resolve_price: () => undefined,
     list_prices: () => ({}),
+    with_providers: () => { throw new Error("stub engine does not support with_providers") },
     dispose: async () => {},
   }
   return { engine, calls }

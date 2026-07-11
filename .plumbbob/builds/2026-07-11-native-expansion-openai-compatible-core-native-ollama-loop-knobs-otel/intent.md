@@ -286,7 +286,7 @@ End state (additions to the predecessor's sketch marked with `+`):
    - seam: `src/engine/tool_loop.ts`, `src/engine/generate.ts`, `src/engine/types.ts`, `src/engine/__tests__/`
    - model: fable — mutating the loop's message flow is invariant-sensitive;
      plausible-but-drifted interaction with salvage/repair is the failure mode
-9. [ ] Otel: trajectory bridge + ai_sdk telemetry + ADR amendment — **done
+9. [x] Otel: trajectory bridge + ai_sdk telemetry + ADR amendment — **done
    when:** `fascicle/otel` exports a `TrajectoryLogger` bridge emitting spans
    (generate root span, per-step child spans, per-tool-call events) via
    `@opentelemetry/api` (new optional peer, subpath-only per C2), the ai_sdk

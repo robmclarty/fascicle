@@ -13,6 +13,13 @@
  *
  * list_prices returns a defensive shallow copy; mutating the returned object
  * does not affect engine state.
+ *
+ * with_providers derives a NEW engine from the retained construction config
+ * (D8): incoming providers / custom_providers shallow-merge by name over the
+ * originals, the merged config is re-validated by a recursive create_engine
+ * (same shadow-throws rule, fresh adapters, independent disposal), and this
+ * engine is left untouched. It is the value-semantic answer to runtime
+ * registration, not a mutable registry.
  */
 
 import type {
@@ -22,6 +29,7 @@ import type {
   GenerateResult,
   Pricing,
   PricingTable,
+  ProviderConfigMap,
 } from './types.js'
 import { DEFAULT_PRICING, pricing_key } from './pricing.js'
 import { DEFAULT_RETRY } from './retry.js'
@@ -30,7 +38,7 @@ import {
   engine_disposed_error,
 } from './errors.js'
 import { get_provider_factory, list_builtin_providers } from './providers/registry.js'
-import type { ProviderAdapter } from './providers/types.js'
+import type { ProviderAdapter, ProviderFactory } from './providers/types.js'
 import { generate, type EngineInternals } from './generate.js'
 
 function build_provider_adapters(
@@ -141,6 +149,20 @@ export function create_engine(config: EngineConfig): Engine {
     },
     list_prices(): PricingTable {
       return { ...pricing }
+    },
+    with_providers(
+      providers: ProviderConfigMap,
+      custom_providers?: Record<string, ProviderFactory>,
+    ): Engine {
+      const merged_custom =
+        config.custom_providers !== undefined || custom_providers !== undefined
+          ? { ...config.custom_providers, ...custom_providers }
+          : undefined
+      return create_engine({
+        ...config,
+        providers: { ...config.providers, ...providers },
+        ...(merged_custom !== undefined ? { custom_providers: merged_custom } : {}),
+      })
     },
     dispose(): Promise<void> {
       if (dispose_promise !== undefined) return dispose_promise

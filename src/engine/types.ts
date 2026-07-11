@@ -413,5 +413,22 @@ export type Engine = {
   register_price: (provider: string, model_id: string, pricing: Pricing) => void
   resolve_price: (provider: string, model_id: string) => Pricing | undefined
   list_prices: () => PricingTable
+  /**
+   * Derive a NEW engine with additional or overriding providers (D8) — the
+   * value-semantic answer to "register a provider after construction", not
+   * mutable runtime registration. `providers` shallow-merge by name over this
+   * engine's configured providers (a same-named entry overrides), and
+   * `custom_providers` likewise over the configured custom registry; every
+   * other setting (construction-time pricing, defaults, retry) carries forward
+   * unchanged. The merged config is re-validated under the same custom-first
+   * resolution and built-in shadow-throws rule, all adapters are constructed
+   * fresh, and the derived engine disposes independently. This engine is left
+   * untouched: it keeps its own adapters, dispose lifecycle, and any runtime
+   * `register_price` mutations.
+   */
+  with_providers: (
+    providers: ProviderConfigMap,
+    custom_providers?: Record<string, ProviderFactory>,
+  ) => Engine
   dispose: () => Promise<void>
 }

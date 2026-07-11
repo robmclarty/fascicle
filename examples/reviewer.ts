@@ -39,6 +39,7 @@ function make_stub_engine(canned: ReviewerOutput): Engine {
     register_price: () => {},
     resolve_price: () => undefined,
     list_prices: () => ({}),
+    with_providers: () => { throw new Error("stub engine does not support with_providers") },
     dispose: async () => {},
   }
 }
