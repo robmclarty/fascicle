@@ -61,3 +61,4 @@ folder, so it rides the branch into the PR.)*
 - 2026-07-10 — step 5 checkpointed · 3208ac72c — v7 usage + stream-shape review (V-P3.4..P3.7: per-provider
 - 2026-07-10 — step 6 checkpointed · 9ec197bb0 — v7 live smoke + release (V-P3.8..P3.9)
 - 2026-07-10 — step 7 checkpointed · f9a2dc817 — Open the registry (S-P1.1..P1.4: `custom_providers` on `EngineConfig`,
+- 2026-07-10 — step 8 checkpointed · 20db92fc9 — Neutral turn types + shared error classifier (S-P2.1..P2.3:

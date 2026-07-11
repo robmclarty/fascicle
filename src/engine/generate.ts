@@ -32,6 +32,8 @@ import type {
   RetryPolicy,
   StreamChunk,
   Tool,
+  TurnRequest,
+  TurnResult,
   UsageTotals,
 } from './types.js'
 import {
@@ -75,6 +77,7 @@ import {
 import {
   default_normalize_usage,
   type AiSdkProviderAdapter,
+  type NativeProviderAdapter,
   type ProviderAdapter,
   type RawProviderUsage,
 } from './providers/types.js'
@@ -241,6 +244,33 @@ export function to_sdk_messages(messages: ReadonlyArray<Message>): ModelMessage[
 export function split_leading_system(messages: ReadonlyArray<ModelMessage>): {
   system?: string
   messages: ModelMessage[]
+} {
+  let run_end = 0
+  const system_parts: string[] = []
+  while (run_end < messages.length) {
+    const m = messages[run_end]
+    if (m?.role !== 'system') break
+    system_parts.push(m.content)
+    run_end += 1
+  }
+  const rest = messages.slice(run_end)
+  if (system_parts.length === 0 || rest.length === 0) {
+    return { messages: [...messages] }
+  }
+  return { system: system_parts.join('\n\n'), messages: rest }
+}
+
+/**
+ * The engine-Message analog of split_leading_system above, for the native
+ * transport: build_native_invoke hoists the leading system run into
+ * TurnRequest.system so a native adapter maps conversation messages only.
+ * Same guards as the SDK variant: only the leading run is hoisted, and the
+ * original list is returned untouched when hoisting would leave `messages`
+ * empty (provider APIs reject an empty messages array).
+ */
+export function split_leading_system_messages(messages: ReadonlyArray<Message>): {
+  system?: string
+  messages: Message[]
 } {
   let run_end = 0
   const system_parts: string[] = []
@@ -491,6 +521,223 @@ export function classify_provider_error(err: unknown): unknown {
   return err
 }
 
+type AiSdkCallParams = Parameters<typeof streamText>[0] & Parameters<typeof generateText>[0]
+
+type AiSdkInvokeConfig = {
+  readonly adapter: AiSdkProviderAdapter
+  readonly model_id: string
+  readonly retry_policy: RetryPolicy
+  readonly dispatcher: ChunkDispatcher
+  readonly sdk_tools: ToolSet | undefined
+  readonly output_spec: NonNullable<AiSdkCallParams['output']> | undefined
+  readonly provider_options: AiSdkCallParams['providerOptions']
+  readonly temperature: number | undefined
+  readonly max_tokens: number | undefined
+  readonly top_p: number | undefined
+}
+
+type NativeInvokeConfig = {
+  readonly adapter: NativeProviderAdapter
+  readonly model_id: string
+  readonly retry_policy: RetryPolicy
+  readonly dispatcher: ChunkDispatcher
+  readonly effort: EffortLevel
+  readonly schema: TurnRequest['schema']
+  readonly provider_options: TurnRequest['provider_options']
+  readonly temperature: number | undefined
+  readonly max_tokens: number | undefined
+  readonly top_p: number | undefined
+}
+
+/**
+ * Engine-owned wrapper shared verbatim by both depth-1 transports: one turn
+ * attempt inside retry_with_policy, with the catch ladder ordered so
+ * on_chunk_error and aborted_error pass through unclassified, a user abort
+ * wins over classification, and any error after chunks have flowed becomes a
+ * non-retryable stream interruption (a retry would re-emit output the
+ * consumer already saw). Adapters may swap `classify`, never the ladder (D5:
+ * the engine owns retry; hidden adapter retries are illegible).
+ */
+function retry_turn(
+  call_once: () => Promise<TurnResult>,
+  args: InvokeOnceArgs,
+  has_streamed: () => boolean,
+  retry_policy: RetryPolicy,
+  classify: (err: unknown) => unknown,
+): Promise<TurnResult> {
+  return retry_with_policy(
+    async () => {
+      try {
+        return await call_once()
+      } catch (err: unknown) {
+        if (err instanceof on_chunk_error) throw err
+        if (err instanceof aborted_error) throw err
+        if (args.abort.aborted) {
+          throw new aborted_error('aborted', {
+            reason: args.abort.reason,
+            step_index: args.step_index,
+          })
+        }
+        if (has_streamed()) {
+          const message = err instanceof Error ? err.message : String(err)
+          throw new provider_error(`stream interrupted: ${message}`, {
+            cause_kind: 'unknown',
+          })
+        }
+        throw classify(err)
+      }
+    },
+    retry_policy,
+    args.abort,
+  )
+}
+
+/**
+ * Build the ai_sdk-transport InvokeOnce: the generateText/streamText call
+ * body behind the same neutral seam a native adapter implements. The built
+ * model is memoized across steps of one generate call.
+ */
+function build_ai_sdk_invoke(cfg: AiSdkInvokeConfig): InvokeOnce {
+  let model_instance: LanguageModel | undefined
+  const get_model = async (): Promise<LanguageModel> => {
+    if (model_instance === undefined) {
+      const built = await cfg.adapter.build_model(cfg.model_id)
+      // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion
+      model_instance = built as LanguageModel
+    }
+    return model_instance
+  }
+
+  return async (args: InvokeOnceArgs): Promise<InvokeOnceResult> => {
+    let chunks_started = false
+    const call_once = async (): Promise<InvokeOnceResult> => {
+      const model = await get_model()
+      const internal_controller = new AbortController()
+      const cancel_on_user_abort = (): void => {
+        internal_controller.abort(args.abort.reason)
+      }
+      if (args.abort.aborted) {
+        internal_controller.abort(args.abort.reason)
+      } else {
+        args.abort.addEventListener('abort', cancel_on_user_abort, { once: true })
+      }
+      const { system: hoisted_system, messages: sdk_messages } = split_leading_system(
+        to_sdk_messages(args.messages),
+      )
+      const base_params: AiSdkCallParams = {
+        model,
+        messages: sdk_messages,
+        abortSignal: internal_controller.signal,
+        stopWhen: isStepCount(1),
+        // The engine owns retry via retry_turn; disable the AI SDK's own
+        // retry (default 2) so it does not nest inside each of our attempts
+        // and inflate provider round-trips / distort backoff.
+        maxRetries: 0,
+      }
+      if (hoisted_system !== undefined) base_params.instructions = hoisted_system
+      if (cfg.sdk_tools !== undefined) base_params.tools = cfg.sdk_tools
+      if (cfg.output_spec !== undefined) base_params.output = cfg.output_spec
+      if (cfg.provider_options !== undefined) base_params.providerOptions = cfg.provider_options
+      if (cfg.temperature !== undefined) base_params.temperature = cfg.temperature
+      if (cfg.max_tokens !== undefined) base_params.maxOutputTokens = cfg.max_tokens
+      if (cfg.top_p !== undefined) base_params.topP = cfg.top_p
+
+      try {
+        if (args.stream) {
+          return await collect_stream(
+            base_params,
+            args.step_index,
+            cfg.dispatcher,
+            () => {
+              chunks_started = true
+            },
+            internal_controller,
+            cfg.adapter,
+          )
+        }
+        return await collect_non_stream(base_params, cfg.adapter)
+      } finally {
+        args.abort.removeEventListener('abort', cancel_on_user_abort)
+      }
+    }
+
+    return await retry_turn(
+      call_once,
+      args,
+      () => chunks_started,
+      cfg.retry_policy,
+      classify_provider_error,
+    )
+  }
+}
+
+/**
+ * Build the native-transport InvokeOnce: maps the loop's InvokeOnceArgs to a
+ * TurnRequest and calls adapter.invoke_turn inside the same retry_turn
+ * wrapper as the ai_sdk path. The adapter sees a child abort signal so a
+ * throwing on_chunk consumer cancels the in-flight request, and its chunk
+ * emissions flow through the shared dispatcher, which is what lets
+ * run_tool_loop treat both transports identically.
+ */
+function build_native_invoke(cfg: NativeInvokeConfig): InvokeOnce {
+  const classify = cfg.adapter.classify_error ?? classify_provider_error
+  return async (args: InvokeOnceArgs): Promise<TurnResult> => {
+    let chunks_started = false
+    const call_once = async (): Promise<TurnResult> => {
+      const internal_controller = new AbortController()
+      const cancel_on_user_abort = (): void => {
+        internal_controller.abort(args.abort.reason)
+      }
+      if (args.abort.aborted) {
+        internal_controller.abort(args.abort.reason)
+      } else {
+        args.abort.addEventListener('abort', cancel_on_user_abort, { once: true })
+      }
+      const dispatch_chunk = async (chunk: StreamChunk): Promise<void> => {
+        chunks_started = true
+        try {
+          await cfg.dispatcher.dispatch(chunk)
+        } catch (err: unknown) {
+          internal_controller.abort()
+          throw err
+        }
+      }
+      const { system, messages } = split_leading_system_messages(args.messages)
+      const req: TurnRequest = {
+        step_index: args.step_index,
+        messages,
+        tools: args.tools,
+        abort: internal_controller.signal,
+        stream: args.stream,
+        model_id: cfg.model_id,
+        effort: cfg.effort,
+        ...(system !== undefined ? { system } : {}),
+        ...(cfg.schema !== undefined ? { schema: cfg.schema } : {}),
+        ...(cfg.provider_options !== undefined
+          ? { provider_options: cfg.provider_options }
+          : {}),
+        ...(cfg.temperature !== undefined ? { temperature: cfg.temperature } : {}),
+        ...(cfg.max_tokens !== undefined ? { max_tokens: cfg.max_tokens } : {}),
+        ...(cfg.top_p !== undefined ? { top_p: cfg.top_p } : {}),
+        ...(args.stream ? { dispatch_chunk } : {}),
+      }
+      try {
+        return await cfg.adapter.invoke_turn(req)
+      } finally {
+        args.abort.removeEventListener('abort', cancel_on_user_abort)
+      }
+    }
+
+    return await retry_turn(
+      call_once,
+      args,
+      () => chunks_started,
+      cfg.retry_policy,
+      classify,
+    )
+  }
+}
+
 export async function generate<T = string>(
   opts_in: GenerateOptions<T>,
   engine: EngineInternals,
@@ -534,16 +781,6 @@ export async function generate<T = string>(
     return adapter.generate<T>(opts, target)
   }
 
-  // The next step adds the three-way dispatch that drives a native adapter's
-  // invoke_turn through the loop; until then the ai_sdk seam below is the only
-  // depth-1 path, so a native adapter (only reachable via custom_providers)
-  // has nowhere to run yet. Built-ins are ai_sdk/subprocess and never hit this.
-  if (adapter.kind === 'native') {
-    throw new engine_config_error(
-      `provider '${target.provider}' uses transport '${adapter.kind}', which is not yet supported`,
-    )
-  }
-
   // Stamp engine events with `ts` when generate is called directly with a
   // caller-supplied logger. A runner-decorated logger already carries `ts`;
   // with_timestamps preserves it.
@@ -562,23 +799,91 @@ export async function generate<T = string>(
   }
 
   const effort: EffortLevel = opts.effort ?? engine.default_effort
-  const effort_translation = adapter.translate_effort(effort)
-  if (effort !== 'none' && effort_translation.effort_ignored) {
-    record_effort_ignored(trajectory, target.model_id)
+  const retry_policy = opts.retry ?? engine.default_retry
+  const dispatcher = create_chunk_dispatcher(opts.on_chunk)
+
+  let invoke_once: InvokeOnce
+  if (adapter.kind === 'ai_sdk') {
+    const effort_translation = adapter.translate_effort(effort)
+    if (effort !== 'none' && effort_translation.effort_ignored) {
+      record_effort_ignored(trajectory, target.model_id)
+    }
+    // Effort translation is the lowest-precedence layer; engine defaults and
+    // per-call provider_options (already merged into opts.provider_options, with
+    // per-call winning) override it. Without this merge the user's provider_options
+    // were computed then dropped, a silent no-op for every provider.
+    const combined_provider_options = merge_provider_options(
+      effort_translation.provider_options,
+      opts.provider_options,
+    )
+    const provider_options =
+      combined_provider_options !== undefined &&
+      Object.keys(combined_provider_options).length > 0
+        ? combined_provider_options
+        : undefined
+
+    // Native structured output: when a schema is requested and the provider
+    // constrains decoding to it (the 'structured_output' capability), route
+    // through the AI SDK's Output.object seam so the schema becomes the
+    // provider's responseFormat (e.g. Ollama's `format`) instead of a
+    // prompt-for-JSON-then-scrape. Gated on no tools: forcing a JSON
+    // responseFormat alongside tool calls breaks tool dispatch on most
+    // providers, so tool runs keep the prompt-based schema path. The schema
+    // parse + repair loop below still owns validation either way. This seam
+    // is ai_sdk-only: a native adapter that constrains decoding honors
+    // TurnRequest.schema inside its own invoke_turn.
+    let output_spec: NonNullable<AiSdkCallParams['output']> | undefined
+    if (
+      opts.schema !== undefined &&
+      tools_list.length === 0 &&
+      adapter.supports('structured_output')
+    ) {
+      // Output.object<T> is not structurally assignable to the SDK's default
+      // Output<string, string> param slot, but the runtime shape is exactly
+      // what generateText/streamText consume to set responseFormat. Keeps the
+      // generateText-only seam intact (§7 invariant 13).
+      // eslint-disable-next-line typescript-eslint/no-unsafe-type-assertion
+      output_spec = Output.object({ schema: opts.schema }) as NonNullable<
+        AiSdkCallParams['output']
+      >
+    }
+
+    invoke_once = build_ai_sdk_invoke({
+      adapter,
+      model_id: target.model_id,
+      retry_policy,
+      dispatcher,
+      sdk_tools: to_sdk_tools(tools_list),
+      output_spec,
+      // provider_options is Record<string, Record<string, unknown>>; the SDK
+      // expects SharedV3ProviderOptions (Record<string, JSONObject>) which is
+      // structurally compatible for our usage.
+      // eslint-disable-next-line typescript-eslint/no-unsafe-type-assertion
+      provider_options: provider_options as AiSdkCallParams['providerOptions'],
+      temperature: opts.temperature,
+      max_tokens: opts.max_tokens,
+      top_p: opts.top_p,
+    })
+  } else {
+    // No effort translation here: a native adapter receives the resolved
+    // effort level on TurnRequest and owns its own mapping, so
+    // provider_options stays the plain defaults + per-call merge.
+    invoke_once = build_native_invoke({
+      adapter,
+      model_id: target.model_id,
+      retry_policy,
+      dispatcher,
+      effort,
+      schema: opts.schema,
+      // The merge produces the two-level per-provider shape TurnRequest
+      // declares; GenerateOptions types it loosely as Record<string, unknown>.
+      // eslint-disable-next-line typescript-eslint/no-unsafe-type-assertion
+      provider_options: opts.provider_options as TurnRequest['provider_options'],
+      temperature: opts.temperature,
+      max_tokens: opts.max_tokens,
+      top_p: opts.top_p,
+    })
   }
-  // Effort translation is the lowest-precedence layer; engine defaults and
-  // per-call provider_options (already merged into opts.provider_options, with
-  // per-call winning) override it. Without this merge the user's provider_options
-  // were computed then dropped, a silent no-op for every provider.
-  const combined_provider_options = merge_provider_options(
-    effort_translation.provider_options,
-    opts.provider_options,
-  )
-  const provider_options =
-    combined_provider_options !== undefined &&
-    Object.keys(combined_provider_options).length > 0
-      ? combined_provider_options
-      : undefined
 
   const abort = opts.abort ?? new AbortController().signal
   const max_steps = opts.max_steps ?? engine.default_max_steps
@@ -598,7 +903,6 @@ export async function generate<T = string>(
     // branch with orphaned records; reject rather than guess.
     throw new engine_config_error('max_tool_calls_per_step must be >= 1')
   }
-  const retry_policy = opts.retry ?? engine.default_retry
 
   const schema_prefix =
     opts.schema !== undefined
@@ -630,130 +934,9 @@ export async function generate<T = string>(
   })
 
   const pricing_dedup = create_pricing_missing_dedup(trajectory)
-  const dispatcher = create_chunk_dispatcher(opts.on_chunk)
 
   const resolve_pricing = (): Pricing | undefined => {
     return engine.pricing[pricing_key(target.provider, target.model_id)]
-  }
-
-  let model_instance: LanguageModel | undefined
-  const get_model = async (): Promise<LanguageModel> => {
-    if (model_instance === undefined) {
-      const built = await adapter.build_model(target.model_id)
-      // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion
-      model_instance = built as LanguageModel
-    }
-    return model_instance
-  }
-
-  const sdk_tools = to_sdk_tools(tools_list)
-
-  // Native structured output: when a schema is requested and the provider
-  // constrains decoding to it (the 'structured_output' capability), route
-  // through the AI SDK's Output.object seam so the schema becomes the
-  // provider's responseFormat (e.g. Ollama's `format`) instead of a
-  // prompt-for-JSON-then-scrape. Gated on no tools: forcing a JSON
-  // responseFormat alongside tool calls breaks tool dispatch on most
-  // providers, so tool runs keep the prompt-based schema path. The schema
-  // parse + repair loop below still owns validation either way.
-  const output_spec =
-    opts.schema !== undefined &&
-    tools_list.length === 0 &&
-    adapter.supports('structured_output')
-      ? Output.object({ schema: opts.schema })
-      : undefined
-
-  const invoke_once: InvokeOnce = async (args: InvokeOnceArgs): Promise<InvokeOnceResult> => {
-    let chunks_started = false
-    const call_once = async (): Promise<InvokeOnceResult> => {
-      const model = await get_model()
-      const internal_controller = new AbortController()
-      const cancel_on_user_abort = (): void => {
-        internal_controller.abort(args.abort.reason)
-      }
-      if (args.abort.aborted) {
-        internal_controller.abort(args.abort.reason)
-      } else {
-        args.abort.addEventListener('abort', cancel_on_user_abort, { once: true })
-      }
-      const { system: hoisted_system, messages: sdk_messages } = split_leading_system(
-        to_sdk_messages(args.messages),
-      )
-      const base_params: Parameters<typeof streamText>[0] & Parameters<typeof generateText>[0] = {
-        model,
-        messages: sdk_messages,
-        abortSignal: internal_controller.signal,
-        stopWhen: isStepCount(1),
-        // The engine owns retry via retry_with_policy below; disable the AI
-        // SDK's own retry (default 2) so it does not nest inside each of our
-        // attempts and inflate provider round-trips / distort backoff.
-        maxRetries: 0,
-      }
-      if (hoisted_system !== undefined) base_params.instructions = hoisted_system
-      if (sdk_tools !== undefined) base_params.tools = sdk_tools
-      if (output_spec !== undefined) {
-        // Output.object<T> is not structurally assignable to the SDK's default
-        // Output<string, string> param slot, but the runtime shape is exactly
-        // what generateText/streamText consume to set responseFormat. Keeps the
-        // generateText-only seam intact (§7 invariant 13).
-        // eslint-disable-next-line typescript-eslint/no-unsafe-type-assertion
-        base_params.output = output_spec as NonNullable<typeof base_params.output>
-      }
-      if (provider_options !== undefined) {
-        // provider_options is Record<string, Record<string, unknown>>; the SDK
-        // expects SharedV3ProviderOptions (Record<string, JSONObject>) which is
-        // structurally compatible for our usage.
-        // eslint-disable-next-line typescript-eslint/no-unsafe-type-assertion
-        base_params.providerOptions = provider_options as NonNullable<typeof base_params.providerOptions>
-      }
-      if (opts.temperature !== undefined) base_params.temperature = opts.temperature
-      if (opts.max_tokens !== undefined) base_params.maxOutputTokens = opts.max_tokens
-      if (opts.top_p !== undefined) base_params.topP = opts.top_p
-      
-      try {
-        if (args.stream) {
-          return await collect_stream(
-            base_params,
-            args.step_index,
-            dispatcher,
-            () => {
-              chunks_started = true
-            },
-            internal_controller,
-            adapter,
-          )
-        }
-        return await collect_non_stream(base_params, adapter)
-      } finally {
-        args.abort.removeEventListener('abort', cancel_on_user_abort)
-      }
-    }
-  
-    return await retry_with_policy(
-      async () => {
-        try {
-          return await call_once()
-        } catch (err: unknown) {
-          if (err instanceof on_chunk_error) throw err
-          if (err instanceof aborted_error) throw err
-          if (args.abort.aborted) {
-            throw new aborted_error('aborted', {
-              reason: args.abort.reason,
-              step_index: args.step_index,
-            })
-          }
-          if (chunks_started) {
-            const message = err instanceof Error ? err.message : String(err)
-            throw new provider_error(`stream interrupted: ${message}`, {
-              cause_kind: 'unknown',
-            })
-          }
-          throw classify_provider_error(err)
-        }
-      },
-      retry_policy,
-      args.abort,
-    )
   }
 
   const dispatch_chunk =

@@ -221,6 +221,7 @@ export async function build_mock_registry_module(): Promise<Record<string, unkno
         caps.add('structured_output')
       }
       return {
+        kind: 'ai_sdk' as const,
         name,
         build_model: async (model_id: string) => ({ _mock: true, provider: name, model_id }),
         translate_effort: (effort: string) => {

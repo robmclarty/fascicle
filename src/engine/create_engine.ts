@@ -138,7 +138,11 @@ export function create_engine(config: EngineConfig): Engine {
       disposed = true
       const tasks: Promise<void>[] = []
       for (const adapter of adapters.values()) {
-        if (adapter.kind === 'subprocess') tasks.push(adapter.dispose())
+        // Any adapter kind may hold resources: subprocess always defines
+        // dispose, native optionally (keep-alive agents, connection pools).
+        if ('dispose' in adapter && adapter.dispose !== undefined) {
+          tasks.push(adapter.dispose())
+        }
       }
       dispose_promise = Promise.all(tasks).then(() => undefined)
       return dispose_promise

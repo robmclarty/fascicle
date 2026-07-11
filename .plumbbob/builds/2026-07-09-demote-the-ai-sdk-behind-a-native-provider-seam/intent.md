@@ -186,7 +186,7 @@ End state (after Step 14, the inversion):
    unknown names still throw `provider_not_configured_error`, docs updated
    - seam: `src/engine/types.ts`, `src/engine/create_engine.ts`, `src/engine/providers/registry.ts`, `src/engine/index.ts`, `docs/configuration.md`
    - model: opus — small and fully specified by the S-P1 acceptance criteria
-8. [ ] Neutral turn types + shared error classifier (S-P2.1..P2.3:
+8. [x] Neutral turn types + shared error classifier (S-P2.1..P2.3:
    `TurnRequest`/`TurnResult` in `types.ts`, `InvokeOnceResult` aliased,
    `classify_ai_sdk_error` generalized to `classify_provider_error`) —
    **done when:** pure rename/move with zero behavior change; full suite green

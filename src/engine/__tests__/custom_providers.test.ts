@@ -7,6 +7,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { z } from 'zod'
 import {
   build_mock_ai_module,
   enqueue_generate_text,
@@ -31,6 +32,8 @@ import type {
   GenerateResult,
   ProviderInit,
   ResolvedModel,
+  TurnRequest,
+  TurnResult,
 } from '../types.js'
 
 const AI_SDK_CAPS: ReadonlySet<ProviderCapability> = new Set([
@@ -43,11 +46,12 @@ const AI_SDK_CAPS: ReadonlySet<ProviderCapability> = new Set([
 type FactoryLog = {
   inits: ProviderInit[]
   subprocess_calls: Array<{ prompt: unknown; resolved: ResolvedModel }>
+  native_requests: TurnRequest[]
   disposals: string[]
 }
 
 function make_log(): FactoryLog {
-  return { inits: [], subprocess_calls: [], disposals: [] }
+  return { inits: [], subprocess_calls: [], native_requests: [], disposals: [] }
 }
 
 function make_ai_sdk_factory(name: string, log: FactoryLog): ProviderFactory {
@@ -92,19 +96,26 @@ function make_subprocess_factory(name: string, log: FactoryLog): ProviderFactory
   }
 }
 
-function make_native_factory(name: string, log: FactoryLog): ProviderFactory {
+function make_native_factory(
+  name: string,
+  log: FactoryLog,
+  turns: ReadonlyArray<(req: TurnRequest) => TurnResult>,
+): ProviderFactory {
   return (init) => {
     log.inits.push(init)
     return {
       kind: 'native',
       name,
-      invoke_turn: async () => ({
-        text: '',
-        tool_calls: [],
-        finish_reason: 'stop',
-        usage: { input_tokens: 0, output_tokens: 0 },
-      }),
+      invoke_turn: async (req) => {
+        log.native_requests.push(req)
+        const turn = turns[log.native_requests.length - 1]
+        if (turn === undefined) throw new Error(`no scripted turn for step ${req.step_index}`)
+        return turn(req)
+      },
       supports: () => true,
+      dispose: async () => {
+        log.disposals.push(name)
+      },
     }
   }
 }
@@ -189,15 +200,104 @@ describe('custom_providers', () => {
     expect((thrown as engine_config_error).provider).toBe('openrouter')
   })
 
-  it('throws engine_config_error for a native-kind adapter until three-way dispatch lands', async () => {
+  it('routes a custom native-kind factory through generate with a hoisted system', async () => {
     const log = make_log()
     const engine = create_engine({
       providers: { acme_native: { base_url: 'http://localhost:9999' } },
-      custom_providers: { acme_native: make_native_factory('acme_native', log) },
+      custom_providers: {
+        acme_native: make_native_factory('acme_native', log, [
+          () => ({
+            text: 'native hello',
+            tool_calls: [],
+            finish_reason: 'stop',
+            usage: { input_tokens: 3, output_tokens: 5 },
+          }),
+        ]),
+      },
     })
-    await expect(
-      engine.generate({ model: 'nat-1', prompt: 'hi' }),
-    ).rejects.toThrow(engine_config_error)
+    const result = await engine.generate({
+      model: 'nat-1',
+      prompt: 'hi',
+      system: 'be brief',
+    })
+    expect(result.content).toBe('native hello')
+    expect(result.model_resolved).toEqual({ provider: 'acme_native', model_id: 'nat-1' })
+    expect(result.usage).toEqual({ input_tokens: 3, output_tokens: 5 })
+    expect(result.steps).toHaveLength(1)
+    const req = log.native_requests[0]
+    expect(req?.model_id).toBe('nat-1')
+    expect(req?.effort).toBe('none')
+    expect(req?.stream).toBe(false)
+    expect(req?.system).toBe('be brief')
+    expect(req?.messages).toEqual([{ role: 'user', content: 'hi' }])
+  })
+
+  it('drives the tool loop through a native adapter', async () => {
+    const log = make_log()
+    const echo = {
+      name: 'echo',
+      description: 'echo the value back',
+      input_schema: z.object({ value: z.string() }),
+      execute: (input: unknown) => `echo:${(input as { value: string }).value}`,
+    }
+    const engine = create_engine({
+      providers: { acme_native: {} },
+      custom_providers: {
+        acme_native: make_native_factory('acme_native', log, [
+          () => ({
+            text: '',
+            tool_calls: [{ id: 'c1', name: 'echo', input: { value: 'ping' } }],
+            finish_reason: 'tool_calls',
+            usage: { input_tokens: 2, output_tokens: 2 },
+          }),
+          () => ({
+            text: 'done',
+            tool_calls: [],
+            finish_reason: 'stop',
+            usage: { input_tokens: 4, output_tokens: 1 },
+          }),
+        ]),
+      },
+    })
+    const result = await engine.generate({
+      model: 'nat-1',
+      prompt: 'use the tool',
+      tools: [echo],
+    })
+    expect(result.content).toBe('done')
+    expect(result.steps).toHaveLength(2)
+    expect(result.tool_calls).toHaveLength(1)
+    expect(result.tool_calls[0]).toMatchObject({
+      id: 'c1',
+      name: 'echo',
+      input: { value: 'ping' },
+      output: 'echo:ping',
+    })
+    expect(result.usage).toEqual({ input_tokens: 6, output_tokens: 3 })
+    // The loop, not the adapter, feeds the executed result back into the
+    // second turn's request.
+    const second = log.native_requests[1]
+    expect(second?.messages).toEqual([
+      { role: 'user', content: 'use the tool' },
+      {
+        role: 'assistant',
+        content: [{ type: 'tool_call', id: 'c1', name: 'echo', input: { value: 'ping' } }],
+      },
+      { role: 'tool', tool_call_id: 'c1', name: 'echo', content: 'echo:ping' },
+    ])
+  })
+
+  it('disposes a native adapter that defines dispose', async () => {
+    const log = make_log()
+    const engine = create_engine({
+      providers: { acme: { api_key: 'a-key' }, acme_native: {} },
+      custom_providers: {
+        acme: make_ai_sdk_factory('acme', log),
+        acme_native: make_native_factory('acme_native', log, []),
+      },
+    })
+    await engine.dispose()
+    expect(log.disposals).toEqual(['acme_native'])
   })
 
   it('still throws provider_not_configured_error for unknown names', () => {
