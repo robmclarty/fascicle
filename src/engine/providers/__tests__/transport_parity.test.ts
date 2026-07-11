@@ -158,6 +158,7 @@ async function run_ai_sdk_turn(
     temperature: undefined,
     max_tokens: undefined,
     top_p: undefined,
+    telemetry: undefined,
   })
   return turn({
     step_index: 0,

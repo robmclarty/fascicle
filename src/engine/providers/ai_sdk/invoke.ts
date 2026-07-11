@@ -26,6 +26,7 @@ import {
 } from 'ai'
 import type { z } from 'zod'
 import type {
+  AiSdkTelemetrySettings,
   FinishReason,
   Message,
   StreamChunk,
@@ -41,6 +42,7 @@ import {
   type AiSdkProviderAdapter,
   type RawProviderUsage,
 } from '../types.js'
+import { build_ai_sdk_telemetry, type AiSdkTelemetryPassthrough } from './telemetry.js'
 
 export function map_finish_reason(raw: string | undefined): FinishReason {
   switch (raw) {
@@ -382,6 +384,7 @@ export type AiSdkTurnConfig = {
   readonly temperature: number | undefined
   readonly max_tokens: number | undefined
   readonly top_p: number | undefined
+  readonly telemetry: AiSdkTelemetrySettings | undefined
 }
 
 export type AiSdkTurnArgs = {
@@ -410,6 +413,20 @@ export function create_ai_sdk_turn(cfg: AiSdkTurnConfig): AiSdkTurn {
       model_instance = built as LanguageModel
     }
     return model_instance
+  }
+
+  // Telemetry is resolved once per generate call and memoized across its steps,
+  // mirroring get_model. build_ai_sdk_telemetry returns undefined immediately
+  // (no peer load) unless telemetry is explicitly enabled, so the disabled
+  // default costs nothing.
+  let telemetry_options: AiSdkTelemetryPassthrough | undefined
+  let telemetry_resolved = false
+  const get_telemetry = async (): Promise<AiSdkTelemetryPassthrough | undefined> => {
+    if (!telemetry_resolved) {
+      telemetry_options = await build_ai_sdk_telemetry(cfg.telemetry)
+      telemetry_resolved = true
+    }
+    return telemetry_options
   }
 
   const sdk_tools = to_sdk_tools(cfg.tools)
@@ -447,6 +464,7 @@ export function create_ai_sdk_turn(cfg: AiSdkTurnConfig): AiSdkTurn {
 
   return async (args: AiSdkTurnArgs): Promise<TurnResult> => {
     const model = await get_model()
+    const telemetry = await get_telemetry()
     const internal_controller = new AbortController()
     const cancel_on_user_abort = (): void => {
       internal_controller.abort(args.abort.reason)
@@ -476,6 +494,14 @@ export function create_ai_sdk_turn(cfg: AiSdkTurnConfig): AiSdkTurn {
     if (cfg.temperature !== undefined) base_params.temperature = cfg.temperature
     if (cfg.max_tokens !== undefined) base_params.maxOutputTokens = cfg.max_tokens
     if (cfg.top_p !== undefined) base_params.topP = cfg.top_p
+    if (telemetry !== undefined) {
+      // AiSdkTelemetryPassthrough uses the SDK's own telemetry keys; the slot's
+      // generic (RUNTIME_CONTEXT/TOOLS) is erased for our usage.
+      // eslint-disable-next-line typescript-eslint/no-unsafe-type-assertion
+      base_params.experimental_telemetry = telemetry as NonNullable<
+        AiSdkCallParams['experimental_telemetry']
+      >
+    }
 
     try {
       if (args.stream) {

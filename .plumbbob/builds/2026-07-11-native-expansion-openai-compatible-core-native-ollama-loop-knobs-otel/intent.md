@@ -277,7 +277,7 @@ End state (additions to the predecessor's sketch marked with `+`):
    - seam: `src/engine/generate.ts`, `src/engine/types.ts`, `src/engine/__tests__/`, `research/explorations/2026-07-ai-sdk-v7-upgrade-and-capability-triage.md`
    - model: opus — small, well-bounded signal composition; the retry
      interaction is covered by existing patterns
-8. [ ] `prepare_step` loop hook — **done when:** the hook (D6 shape) is
+8. [x] `prepare_step` loop hook — **done when:** the hook (D6 shape) is
    called before each turn on both depth-1 transports, returned messages
    replace the request messages for that turn only (the canonical transcript
    is untouched), a `step_prepared` trajectory event records modified steps,

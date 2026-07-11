@@ -76,6 +76,10 @@ patterns = ["src/stdio/**"]
 name = "ui"
 patterns = ["src/ui/**"]
 
+[[boundaries.zones]]
+name = "otel"
+patterns = ["src/otel/**"]
+
 [[boundaries.rules]] # core: bottom of the DAG, imports no sibling module
 from = "core"
 allow = ["mcp", "stdio", "ui"]
@@ -111,3 +115,7 @@ allow = ["core", "adapters", "ui"]
 [[boundaries.rules]] # ui: core + engine only (bridges the run stream to the AI SDK UI wire)
 from = "ui"
 allow = ["core", "engine", "mcp", "stdio"]
+
+[[boundaries.rules]] # otel: core only (transport-neutral trajectory-to-OTel bridge; own subpath, C2)
+from = "otel"
+allow = ["core"]

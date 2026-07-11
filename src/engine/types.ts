@@ -338,6 +338,24 @@ export type ProviderConfigMap = {
 }
 
 /**
+ * Opt-in OpenTelemetry for the `ai_sdk` transport (D7, Layer 2). When `enabled`,
+ * the transport constructs an `@ai-sdk/otel` integration strictly below the turn
+ * seam and hands it to the SDK's telemetry, so generateText / streamText emit
+ * turn-internal spans on the ai_sdk transport only. Native transports ignore it;
+ * loop-level, transport-neutral tracing is the `fascicle/otel` bridge's job
+ * (Layer 1). `tracer` is an `@opentelemetry/api` Tracer, typed `unknown` here so
+ * the engine's public type surface stays free of the optional OTel peer.
+ */
+export type AiSdkTelemetrySettings = {
+  readonly enabled: boolean
+  readonly function_id?: string
+  readonly record_inputs?: boolean
+  readonly record_outputs?: boolean
+  readonly metadata?: Readonly<Record<string, string | number | boolean>>
+  readonly tracer?: unknown
+}
+
+/**
  * Call-level defaults applied by the engine before dispatching to a provider.
  *
  * Per-call options from `generate(opts)` win over defaults using these rules:
@@ -364,6 +382,12 @@ export type EngineDefaults = {
   readonly tool_call_repair_attempts?: number
   readonly max_tool_calls_per_step?: number
   readonly provider_options?: Readonly<Record<string, Readonly<Record<string, unknown>>>>
+  /**
+   * Opt-in OpenTelemetry for the `ai_sdk` transport (D7, Layer 2). Enabling it
+   * makes every ai_sdk-transport generate call emit turn-internal spans via
+   * `@ai-sdk/otel`; native transports ignore it. See AiSdkTelemetrySettings.
+   */
+  readonly ai_sdk_telemetry?: AiSdkTelemetrySettings
 }
 
 export type EngineConfig = {

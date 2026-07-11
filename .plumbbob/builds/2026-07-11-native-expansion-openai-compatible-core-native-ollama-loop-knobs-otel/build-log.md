@@ -61,3 +61,4 @@ folder, so it rides the branch into the PR.)*
 - 2026-07-11 — step 5 checkpointed · 1179e1296 — Native Ollama on `/api/chat` (1 drift, 18m)
 - 2026-07-11 — step 6 checkpointed · 0a1c100d9 — Transport parity golden tests + OpenRouter live smoke (24m)
 - 2026-07-11 — step 7 checkpointed · 24c68d301 — Turn timeout budgets + V-Phase 5 verdicts (1 drift, 26m)
+- 2026-07-11 — step 8 checkpointed · ef6d11e5c — `prepare_step` loop hook (13m)

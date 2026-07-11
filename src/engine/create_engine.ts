@@ -117,6 +117,9 @@ export function create_engine(config: EngineConfig): Engine {
     ...(defaults?.turn_timeout_ms !== undefined
       ? { default_turn_timeout_ms: defaults.turn_timeout_ms }
       : {}),
+    ...(defaults?.ai_sdk_telemetry !== undefined
+      ? { default_ai_sdk_telemetry: defaults.ai_sdk_telemetry }
+      : {}),
     ...(defaults?.provider_options !== undefined
       ? { default_provider_options: defaults.provider_options }
       : {}),

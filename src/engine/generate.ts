@@ -11,6 +11,7 @@
  */
 
 import type {
+  AiSdkTelemetrySettings,
   CostBreakdown,
   EffortLevel,
   FinishReason,
@@ -81,6 +82,7 @@ export type EngineInternals = {
   readonly default_effort: EffortLevel
   readonly default_max_steps: number
   readonly default_turn_timeout_ms?: number
+  readonly default_ai_sdk_telemetry?: AiSdkTelemetrySettings
   readonly default_model?: string
   readonly default_provider?: string
   readonly default_system?: string
@@ -524,6 +526,7 @@ export async function generate<T = string>(
         temperature: opts.temperature,
         max_tokens: opts.max_tokens,
         top_p: opts.top_p,
+        telemetry: engine.default_ai_sdk_telemetry,
       }),
       retry_policy,
       turn_timeout_ms,

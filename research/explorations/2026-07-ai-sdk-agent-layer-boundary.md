@@ -66,7 +66,7 @@ Each declined API, what fascicle owns in its place, and the one-line reason:
 | `HarnessAgent` | the depth-2 external-runtime provider (`claude_cli` today) | Structurally our depth-2 seam, inverted; external runtimes plug into fascicle, not the other way around. |
 | `toolApproval` + hardened approval replay | `Tool.needs_approval` + fail-closed approval in the loop | Approval is a loop policy, and the SDK never executes fascicle tools (`execute` is never handed over), so its approval hook could never fire. |
 | Scoped tool context (`toolsContext` / `contextSchema`) + agent runtime context | `ToolExecContext` | Execution context belongs to the layer that executes, and that layer is ours. |
-| `@ai-sdk/otel` / `registerTelemetry` | trajectory events | Keep observability sovereign; optionally *bridge* trajectory out to OTel later, never couple the engine to it. |
+| `@ai-sdk/otel` / `registerTelemetry` | trajectory events + `fascicle/otel` bridge | **Amended 2026-07-11 (see below): split by layer.** The loop-level story stays sovereign (a `fascicle/otel` bridge over trajectory events); `@ai-sdk/otel` is adopted only below the turn seam, inside `providers/ai_sdk/`, for turn-internal detail. |
 | `DirectChatTransport`, realtime WebSocket, video generation, MCP Apps | not applicable | Different interaction models or experimental surface; not engine concerns. |
 
 None of this is conservatism. Every row is either a re-implementation of something
@@ -82,7 +82,8 @@ For completeness, the other two triage columns (full table in the
   single-turn depth-1 backend; the `tool()` helper for schema declaration only; the
   nested v7 usage detail (`inputTokenDetails` / `outputTokenDetails`); the
   function-form UI-stream helpers; `generateSpeech` / `transcribe` on first audio
-  need.
+  need; `@ai-sdk/otel` as opt-in telemetry wired strictly inside
+  `providers/ai_sdk/` for turn-internal spans only (amended 2026-07-11, below).
 - **Deferred to spikes** (evaluate, never auto-adopt): provider-agnostic `reasoning`
   control, structured-output repair, first-class `timeout` budgets. Each is kept only
   if it deletes fascicle-owned code without adding coupling; each spike ends in a
@@ -96,12 +97,42 @@ For completeness, the other two triage columns (full table in the
 - Invariant 13 (`.ridgeline/constraints.md`) keeps `generateText` / `streamText`
   confined to their whitelisted call sites; the provider-sovereignty build later
   narrows that further so only the `ai_sdk` provider module may call them.
-- `no-engine-npm-dep-except-ai-zod` holds: `@ai-sdk/workflow` and `@ai-sdk/otel` are
-  never added as dependencies.
+- `no-engine-npm-dep-except-ai-zod` holds: `@ai-sdk/workflow` is never added as a
+  dependency. Per the 2026-07-11 amendment `@ai-sdk/otel` enters as an OPTIONAL peer
+  loaded only inside `providers/ai_sdk/` (the rule ignores `providers/`), and the
+  `fascicle/otel` bridge's `@opentelemetry/api` peer lives outside `src/engine/`
+  entirely, so the engine's `ai + zod` npm-dep invariant is untouched.
 - Revisit trigger: this record stands while the litmus test keeps deciding the same
   way. If a future SDK major removes the per-turn primitives below its loop, the SDK
   fails the test entirely and the relationship question reopens (by then the native
   provider seam makes that survivable).
+
+## Amendment: OTel adopted below the seam (2026-07-11)
+
+The original decision declined `@ai-sdk/otel` wholesale and deferred any OTel
+bridge. The native-provider expansion build revisits it and splits the question
+by layer (build decision D7), because "bridge trajectory out to OTel" and "let
+the SDK instrument one turn" are different depths that the litmus test scores
+differently:
+
+- **Layer 1, loop-level, stays sovereign.** A transport-neutral
+  trajectory-to-OTel bridge ships in a new `fascicle/otel` subpath, taking
+  `@opentelemetry/api` as an optional peer. It turns the events the engine
+  already emits into spans (a generate root span, per-step child spans,
+  per-tool-call events), so native and external transports (which the SDK never
+  sees) still get traces. The engine stays uncoupled: the bridge lives outside
+  `src/engine/`, and an app that never imports `fascicle/otel` pulls in no OTel.
+- **Layer 2, turn-internal, is adopted below the seam.** `@ai-sdk/otel` is wired
+  strictly inside `providers/ai_sdk/`, opt-in via engine config
+  (`defaults.ai_sdk_telemetry`), for turn-internal detail on the ai_sdk
+  transport only. This passes the D2 litmus: telemetry instruments a single turn
+  inside the ai_sdk module, one turn below the loop, so it never climbs into
+  orchestration. The peer is loaded lazily and only when telemetry is enabled.
+
+The litmus test still decides; what changed is recognizing that OTel telemetry
+is two questions, not one. The loop-level answer is fascicle's own bridge (or
+non-SDK transports go dark), and only the turn-internal answer rides
+`@ai-sdk/otel`, below the seam where the SDK is already a legitimate backend.
 
 ## Sources
 
