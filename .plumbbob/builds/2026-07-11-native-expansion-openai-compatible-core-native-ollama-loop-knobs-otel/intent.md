@@ -245,7 +245,7 @@ End state (additions to the predecessor's sketch marked with `+`):
    - seam: `src/engine/providers/openrouter.ts`, `src/engine/providers/lmstudio.ts`, `src/engine/types.ts`, `src/engine/providers/__tests__/`, `docs/providers.md`
    - model: opus — dialect wiring against the proven core; per-dialect
      concrete-value tests gate it
-5. [ ] Native Ollama on `/api/chat` — **done when:** `ollama_native.ts` maps
+5. [x] Native Ollama on `/api/chat` — **done when:** `ollama_native.ts` maps
    messages/tools to the native chat shape, streams NDJSON (line-delimited
    JSON, `done: true` terminator) through an aggregator feeding one shared
    parser (C4), maps `done_reason` and `prompt_eval_count`/`eval_count` to

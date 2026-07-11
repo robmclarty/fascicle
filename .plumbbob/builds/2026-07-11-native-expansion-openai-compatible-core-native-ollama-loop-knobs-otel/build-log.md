@@ -58,3 +58,4 @@ folder, so it rides the branch into the PR.)*
 - 2026-07-11 — step 2 checkpointed · f36982faf — OpenAI-compatible core: streaming + e2e (1 drift, 23m)
 - 2026-07-11 — step 3 checkpointed · c2be71483 — Wire `openai` native (8m)
 - 2026-07-11 — step 4 checkpointed · fb335302e — Wire `openrouter` + `lmstudio` native (+ compat recipe) (11m)
+- 2026-07-11 — step 5 checkpointed · 1179e1296 — Native Ollama on `/api/chat` (1 drift, 18m)

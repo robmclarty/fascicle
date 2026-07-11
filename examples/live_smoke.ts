@@ -8,9 +8,16 @@
  * accounting. Live network keeps this out of the test suite (constraint C5);
  * re-run it manually after any provider-seam change.
  *
- * The OpenAI-compatible leg uses the `lmstudio` provider (the
- * @ai-sdk/openai-compatible adapter) pointed at any OpenAI-compatible
- * server. The default base_url targets Ollama's compatibility endpoint;
+ * OpenRouter runs on the NATIVE transport by default (the step-6 gate:
+ * raw-HTTP chat/completions, zero AI SDK), so this is the manual counterpart
+ * to the offline transport-parity golden tests. Flip SMOKE_OPENROUTER_TRANSPORT
+ * to 'ai_sdk' to re-run the identical matrix through the Vercel SDK for a live
+ * parity read (same tool output, finish_reason, and usage/cost).
+ *
+ * The OpenAI-compatible leg uses the `lmstudio` provider pointed at any
+ * OpenAI-compatible server; it stays on the @ai-sdk/openai-compatible adapter
+ * by default (SMOKE_COMPAT_TRANSPORT flips it to native for the step-12 local
+ * matrix). The default base_url targets Ollama's compatibility endpoint;
  * LM Studio's own server is http://localhost:1234/v1.
  *
  * Prereqs:
@@ -22,10 +29,12 @@
  *   pnpm exec tsx --env-file=.env examples/live_smoke.ts
  *
  * Overrides:
- *   SMOKE_ONLY              (openrouter | compat; default: both backends)
- *   SMOKE_OPENROUTER_MODEL  (default: openai/gpt-4o-mini)
- *   SMOKE_COMPAT_BASE_URL   (default: http://localhost:11434/v1)
- *   SMOKE_COMPAT_MODEL      (default: qwen3:4b-instruct-2507-q4_K_M)
+ *   SMOKE_ONLY                   (openrouter | compat; default: both backends)
+ *   SMOKE_OPENROUTER_MODEL       (default: openai/gpt-4o-mini)
+ *   SMOKE_OPENROUTER_TRANSPORT   (native | ai_sdk; default: native)
+ *   SMOKE_COMPAT_BASE_URL        (default: http://localhost:11434/v1)
+ *   SMOKE_COMPAT_MODEL           (default: qwen3:4b-instruct-2507-q4_K_M)
+ *   SMOKE_COMPAT_TRANSPORT       (ai_sdk | native; default: ai_sdk)
  */
 
 import { z } from 'zod'
@@ -39,12 +48,20 @@ import {
   type Tool,
 } from 'fascicle'
 
+type SmokeTransport = 'ai_sdk' | 'native'
+
+function parse_transport(raw: string | undefined, fallback: SmokeTransport): SmokeTransport {
+  return raw === 'ai_sdk' || raw === 'native' ? raw : fallback
+}
+
 const api_key = process.env['OPENROUTER_API_KEY'] ?? ''
 const openrouter_model = process.env['SMOKE_OPENROUTER_MODEL'] ?? 'openai/gpt-4o-mini'
+const openrouter_transport = parse_transport(process.env['SMOKE_OPENROUTER_TRANSPORT'], 'native')
 const compat_base_url =
   process.env['SMOKE_COMPAT_BASE_URL'] ?? 'http://localhost:11434/v1'
 const compat_model =
   process.env['SMOKE_COMPAT_MODEL'] ?? 'qwen3:4b-instruct-2507-q4_K_M'
+const compat_transport = parse_transport(process.env['SMOKE_COMPAT_TRANSPORT'], 'ai_sdk')
 
 const only = process.env['SMOKE_ONLY']
 
@@ -79,8 +96,10 @@ const get_weather: Tool = {
 // and CostBreakdown is marked is_estimate regardless.
 const engine = create_engine({
   providers: {
-    ...(only === 'compat' ? {} : { openrouter: { api_key } }),
-    ...(only === 'openrouter' ? {} : { lmstudio: { base_url: compat_base_url } }),
+    ...(only === 'compat' ? {} : { openrouter: { api_key, transport: openrouter_transport } }),
+    ...(only === 'openrouter'
+      ? {}
+      : { lmstudio: { base_url: compat_base_url, transport: compat_transport } }),
   },
   pricing: {
     [`openrouter:${openrouter_model}`]: {
@@ -102,8 +121,8 @@ type Backend = {
 }
 
 const ALL_BACKENDS: readonly Backend[] = [
-  { label: 'openrouter', provider: 'openrouter', model: openrouter_model },
-  { label: 'openai-compatible', provider: 'lmstudio', model: compat_model },
+  { label: `openrouter (${openrouter_transport})`, provider: 'openrouter', model: openrouter_model },
+  { label: `openai-compatible (${compat_transport})`, provider: 'lmstudio', model: compat_model },
 ]
 
 const BACKENDS: readonly Backend[] = ALL_BACKENDS.filter(
