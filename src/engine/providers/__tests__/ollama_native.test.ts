@@ -758,3 +758,471 @@ describe('streaming invoke_turn', () => {
     expect((err as Error).message).toBe('ollama native: stream frame is not valid JSON')
   })
 })
+
+// ---------------------------------------------------------------------------
+// Mutation hardening. Concrete-value and boundary assertions that pin the
+// request mapping, the NDJSON stream-drain / error-classification region
+// (~394-478), the done_reason / eval-count maps, and the tool-call parse paths
+// the full-repo Stryker report flagged as survived / no-coverage on this file
+// (C7). Behavior is unchanged; these only tighten the assertions.
+// ---------------------------------------------------------------------------
+
+function raw_stream_response(text: string, status = 200): Response {
+  const bytes = new TextEncoder().encode(text)
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(bytes)
+      controller.close()
+    },
+  })
+  return new Response(stream, { status, headers: { 'content-type': 'application/x-ndjson' } })
+}
+
+function per_byte_stream_response(text: string): Response {
+  const bytes = new TextEncoder().encode(text)
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      for (const byte of bytes) controller.enqueue(new Uint8Array([byte]))
+      controller.close()
+    },
+  })
+  return new Response(stream, { status: 200 })
+}
+
+describe('to_ollama_messages (mutation hardening)', () => {
+  it('names the provider, capability, and detail in the image_input error', () => {
+    let caught: unknown
+    try {
+      to_ollama_messages([
+        { role: 'user', content: [{ type: 'image', image: 'aGk=', media_type: 'image/png' }] },
+      ])
+    } catch (e) {
+      caught = e
+    }
+    expect(caught).toBeInstanceOf(provider_capability_error)
+    expect((caught as provider_capability_error).provider).toBe('ollama')
+    expect((caught as provider_capability_error).capability).toBe('image_input')
+    expect((caught as Error).message).toBe(
+      "provider 'ollama' does not support 'image_input': image parts are not mapped on the native transport; use transport: 'ai_sdk'",
+    )
+  })
+
+  it('maps a plain assistant string verbatim, adding no tool_calls key', () => {
+    expect(to_ollama_messages([{ role: 'assistant', content: 'plain reply' }])).toEqual([
+      { role: 'assistant', content: 'plain reply' },
+    ])
+  })
+
+  it('concatenates assistant text parts with no separator and adds no tool_calls key', () => {
+    expect(
+      to_ollama_messages([
+        {
+          role: 'assistant',
+          content: [
+            { type: 'text', text: 'foo' },
+            { type: 'text', text: 'bar' },
+          ],
+        },
+      ]),
+    ).toEqual([{ role: 'assistant', content: 'foobar' }])
+  })
+})
+
+describe('build_ollama_chat_body (mutation hardening)', () => {
+  it('emits only the user message when no system is set', () => {
+    expect(build_ollama_chat_body(make_req())['messages']).toEqual([{ role: 'user', content: 'hi' }])
+  })
+
+  it('omits the system message when system is the empty string', () => {
+    expect(build_ollama_chat_body(make_req({ system: '' }))['messages']).toEqual([
+      { role: 'user', content: 'hi' },
+    ])
+  })
+})
+
+describe('map_ollama_usage (mutation hardening)', () => {
+  it('zeroes a null payload instead of throwing (the === null guard branch)', () => {
+    expect(map_ollama_usage(null)).toEqual({ input_tokens: 0, output_tokens: 0 })
+  })
+})
+
+function tool_call_error(entry: unknown): unknown {
+  try {
+    parse_ollama_chat(
+      { message: { role: 'assistant', content: '', tool_calls: [entry] }, done: true },
+      0,
+    )
+    return undefined
+  } catch (e) {
+    return e
+  }
+}
+
+describe('parse_ollama_chat (mutation hardening)', () => {
+  it('throws the malformed-entry provider_error naming the message for a primitive entry', () => {
+    const err = tool_call_error('not an object')
+    expect(err).toBeInstanceOf(provider_error)
+    expect((err as Error).message).toBe('ollama native: malformed tool_calls entry in response')
+  })
+
+  it('throws the malformed-entry provider_error for a null function', () => {
+    const err = tool_call_error({ function: null })
+    expect(err).toBeInstanceOf(provider_error)
+    expect((err as Error).message).toBe('ollama native: malformed tool_calls entry in response')
+  })
+
+  it('throws the malformed-entry provider_error for a non-string function name', () => {
+    const err = tool_call_error({ function: { arguments: {} } })
+    expect(err).toBeInstanceOf(provider_error)
+    expect((err as Error).message).toBe('ollama native: malformed tool_calls entry in response')
+  })
+
+  it('synthesizes an id when the wire id is the empty string (the length > 0 boundary)', () => {
+    const result = parse_ollama_chat(
+      {
+        message: {
+          role: 'assistant',
+          content: '',
+          tool_calls: [{ id: '', function: { name: 'get_weather', arguments: { city: 'Ottawa' } } }],
+        },
+        done: true,
+      },
+      0,
+    )
+    expect(result.tool_calls[0]?.id).toBe('ollama_call_0_0')
+  })
+
+  it('keeps object-shaped arguments verbatim rather than JSON-parsing them (the string guard)', () => {
+    const result = parse_ollama_chat(
+      {
+        message: {
+          role: 'assistant',
+          content: '',
+          tool_calls: [{ function: { name: 'get_weather', arguments: ['a'] } }],
+        },
+        done: true,
+      },
+      0,
+    )
+    expect(result.tool_calls[0]?.input).toEqual(['a'])
+  })
+
+  it('defaults null arguments to an empty object (the !== null guard)', () => {
+    const result = parse_ollama_chat(
+      {
+        message: {
+          role: 'assistant',
+          content: '',
+          tool_calls: [{ function: { name: 'get_weather', arguments: null } }],
+        },
+        done: true,
+      },
+      0,
+    )
+    expect(result.tool_calls[0]?.input).toEqual({})
+  })
+
+  it('throws the payload provider_error naming the message for a null payload', () => {
+    let err: unknown
+    try {
+      parse_ollama_chat(null, 0)
+    } catch (e) {
+      err = e
+    }
+    expect(err).toBeInstanceOf(provider_error)
+    expect((err as Error).message).toBe('ollama native: response payload is not a JSON object')
+  })
+
+  it('throws the no-message provider_error for a null message', () => {
+    let err: unknown
+    try {
+      parse_ollama_chat({ message: null, done: true }, 0)
+    } catch (e) {
+      err = e
+    }
+    expect(err).toBeInstanceOf(provider_error)
+    expect((err as Error).message).toBe('ollama native: response has no message')
+  })
+
+  it('throws the no-message provider_error for a non-object message', () => {
+    expect(() => parse_ollama_chat({ message: 'nope', done: true }, 0)).toThrow(provider_error)
+  })
+
+  it('returns empty text when content is absent (the string ternary else branch)', () => {
+    expect(
+      parse_ollama_chat(
+        {
+          message: {
+            role: 'assistant',
+            tool_calls: [{ function: { name: 'get_weather', arguments: { city: 'X' } } }],
+          },
+          done: true,
+        },
+        0,
+      ).text,
+    ).toBe('')
+  })
+
+  it('reads done_reason (not another key) to map length', () => {
+    expect(
+      parse_ollama_chat({ message: { content: 'x' }, done: true, done_reason: 'length' }, 0)
+        .finish_reason,
+    ).toBe('length')
+  })
+})
+
+describe('create_ndjson_decoder (mutation hardening)', () => {
+  it('drops a whitespace-only line (trim, not raw length)', () => {
+    expect(create_ndjson_decoder().push('   \n')).toEqual([])
+  })
+})
+
+describe('streaming invoke_turn (mutation hardening)', () => {
+  it('processes a content-less tool-call frame without dereferencing absent content', async () => {
+    const { result } = await invoke_streamed([
+      {
+        message: {
+          role: 'assistant',
+          tool_calls: [{ function: { name: 'get_weather', arguments: { city: 'Ottawa' } } }],
+        },
+        done: false,
+      },
+      {
+        message: { role: 'assistant', content: '' },
+        done: true,
+        done_reason: 'stop',
+        prompt_eval_count: 1,
+        eval_count: 1,
+      },
+    ])
+    expect(result.text).toBe('')
+    expect(result.tool_calls).toEqual([
+      { id: 'ollama_call_0_0', name: 'get_weather', input: { city: 'Ottawa' } },
+    ])
+  })
+
+  it('ignores a bare null-JSON frame without aborting the stream', async () => {
+    const { result } = await invoke_streamed(
+      [],
+      raw_stream_response(
+        '{"message":{"content":"Hi"},"done":false}\nnull\n{"message":{"content":""},"done":true,"done_reason":"stop"}\n',
+      ),
+    )
+    expect(result.text).toBe('Hi')
+  })
+
+  it('ignores a non-object (number) frame without aborting the stream', async () => {
+    const { result } = await invoke_streamed(
+      [],
+      raw_stream_response(
+        '{"message":{"content":"Hi"},"done":false}\n42\n{"message":{"content":""},"done":true,"done_reason":"stop"}\n',
+      ),
+    )
+    expect(result.text).toBe('Hi')
+  })
+
+  it('skips a null message on a frame without dereferencing it', async () => {
+    const { result } = await invoke_streamed(
+      [],
+      raw_stream_response(
+        '{"message":null,"done":false}\n{"message":{"content":"Hi"},"done":true,"done_reason":"stop"}\n',
+      ),
+    )
+    expect(result.text).toBe('Hi')
+  })
+
+  it('skips a non-object message on a frame without dereferencing it', async () => {
+    const { result } = await invoke_streamed(
+      [],
+      raw_stream_response(
+        '{"message":"hi","done":false}\n{"message":{"content":"Hi"},"done":true,"done_reason":"stop"}\n',
+      ),
+    )
+    expect(result.text).toBe('Hi')
+  })
+
+  it('reads done_reason on the done frame to map length end to end', async () => {
+    const { result, chunks } = await invoke_streamed([
+      { message: { role: 'assistant', content: 'Hi' }, done: false },
+      {
+        message: { role: 'assistant', content: '' },
+        done: true,
+        done_reason: 'length',
+        prompt_eval_count: 2,
+        eval_count: 3,
+      },
+    ])
+    expect(result.finish_reason).toBe('length')
+    const finish = chunks.find((c) => c.kind === 'step_finish')
+    expect(finish).toMatchObject({ finish_reason: 'length' })
+  })
+
+  it('dispatches a step_finish of stop (not tool_calls) for a text-only stream', async () => {
+    const { chunks } = await invoke_streamed(TEXT_STREAM)
+    const finish = chunks.find((c) => c.kind === 'step_finish')
+    expect(finish).toMatchObject({ finish_reason: 'stop' })
+  })
+
+  it('throws a provider_error when a streaming response has no body', async () => {
+    const err: unknown = await invoke_streamed([], new Response(null, { status: 200 })).catch(
+      (e: unknown) => e,
+    )
+    expect(err).toBeInstanceOf(provider_error)
+    expect((err as Error).message).toBe('ollama native: streaming response has no body')
+  })
+
+  it('wraps a mid-stream reader failure as a network error the classifier retries', async () => {
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.error(new Error('reader boom'))
+      },
+    })
+    const err: unknown = await invoke_streamed([], new Response(stream, { status: 200 })).catch(
+      (e: unknown) => e,
+    )
+    expect(Reflect.get(err as object, 'kind')).toBe('network')
+    expect((err as Error).message).toBe('ollama native: network failure: reader boom')
+    expect(classify_provider_error(err)).toBe(err)
+  })
+
+  it('decodes a multibyte character split across read boundaries (streaming decode)', async () => {
+    const content = 'café ☕ complete'
+    const { result } = await invoke_streamed(
+      [],
+      per_byte_stream_response(
+        `${JSON.stringify({ message: { content }, done: true, done_reason: 'stop' })}\n`,
+      ),
+    )
+    expect(result.text).toBe(content)
+  })
+
+  it('cancels the reader in the finally, even on a fully drained stream', async () => {
+    const base = ndjson_response(TEXT_STREAM)
+    const body = base.body as ReadableStream<Uint8Array>
+    const real_get_reader = body.getReader.bind(body)
+    let cancelled = false
+    Object.defineProperty(body, 'getReader', {
+      value: () => {
+        const reader = real_get_reader()
+        const real_cancel = reader.cancel.bind(reader)
+        reader.cancel = async (reason?: unknown): Promise<void> => {
+          cancelled = true
+          return real_cancel(reason)
+        }
+        return reader
+      },
+    })
+    const { result } = await invoke_streamed(TEXT_STREAM, base)
+    expect(result.text).toBe('Hello there')
+    expect(cancelled).toBe(true)
+  })
+})
+
+describe('response error mapping (mutation hardening)', () => {
+  async function invoke_error(response: Response): Promise<unknown> {
+    stub_fetch(response)
+    const adapter = create_ollama_native_adapter({ base_url: BASE_URL })
+    return adapter.invoke_turn(make_req()).catch((e: unknown) => e)
+  }
+
+  it('reports "(empty body)" when the error response body is empty', async () => {
+    const err = await invoke_error(new Response('', { status: 400 }))
+    expect((err as Error).message).toBe('ollama API error 400: (empty body)')
+  })
+
+  it('reads the nested OpenAI-shaped error.message', async () => {
+    const err = await invoke_error(json_response({ error: { message: 'nested detail' } }, 400))
+    expect((err as Error).message).toBe('ollama API error 400: nested detail')
+  })
+
+  it('falls back to the raw body when the nested error.message is empty', async () => {
+    const err = await invoke_error(json_response({ error: { message: '' } }, 400))
+    expect((err as Error).message).toBe('ollama API error 400: {"error":{"message":""}}')
+  })
+
+  it('falls back to the raw body when the top-level error string is empty', async () => {
+    const err = await invoke_error(json_response({ error: '' }, 400))
+    expect((err as Error).message).toBe('ollama API error 400: {"error":""}')
+  })
+
+  it('does not treat a non-string error value as the detail (typeof string guard)', async () => {
+    const err = await invoke_error(json_response({ error: ['boom'] }, 400))
+    expect((err as Error).message).toBe('ollama API error 400: {"error":["boom"]}')
+  })
+
+  it('does not treat a non-string nested message as the detail (typeof string guard)', async () => {
+    const err = await invoke_error(json_response({ error: { message: ['y'] } }, 400))
+    expect((err as Error).message).toBe('ollama API error 400: {"error":{"message":["y"]}}')
+  })
+
+  it('truncates a long non-JSON body to 300 chars plus an ellipsis', async () => {
+    const err = await invoke_error(new Response('x'.repeat(400), { status: 400 }))
+    expect((err as Error).message).toBe(`ollama API error 400: ${'x'.repeat(300)}...`)
+  })
+
+  it('returns an exactly-300-char body unchanged, without an ellipsis (boundary)', async () => {
+    const exact = 'y'.repeat(300)
+    const err = await invoke_error(new Response(exact, { status: 400 }))
+    expect((err as Error).message).toBe(`ollama API error 400: ${exact}`)
+  })
+
+  it('falls back to "(empty body)" when reading the error body itself fails', async () => {
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.error(new Error('body boom'))
+      },
+    })
+    const err = await invoke_error(new Response(stream, { status: 400 }))
+    expect((err as Error).message).toBe('ollama API error 400: (empty body)')
+  })
+
+  it('maps a 5xx to a retryable plain Error, not a permanent provider_error', async () => {
+    const err = await invoke_error(json_response({ error: 'overloaded' }, 500))
+    expect(err).not.toBeInstanceOf(provider_error)
+    const classified = classify_provider_error(err) as Record<string, unknown>
+    expect(classified['kind']).toBe('provider_5xx')
+  })
+
+  it('omits responseHeaders when a 5xx carries no retry-after header', async () => {
+    const err = await invoke_error(json_response({ error: 'overloaded' }, 500))
+    expect(Reflect.get(err as object, 'responseHeaders')).toBeUndefined()
+  })
+})
+
+describe('create_ollama_native_adapter setup (mutation hardening)', () => {
+  it('throws a named engine_config_error when base_url is not a string', () => {
+    let err: unknown
+    try {
+      create_ollama_native_adapter({ base_url: 42 as unknown as string })
+    } catch (e) {
+      err = e
+    }
+    expect(err).toBeInstanceOf(engine_config_error)
+    expect((err as Error).message).toBe('ollama provider requires a non-empty base_url')
+    expect((err as engine_config_error).provider).toBe('ollama')
+  })
+
+  it('trims every trailing slash from base_url, not just the last one', async () => {
+    const mock = stub_fetch(json_response(TEXT_FIXTURE))
+    const adapter = create_ollama_native_adapter({ base_url: `${BASE_URL}///` })
+    await adapter.invoke_turn(make_req())
+    const call = mock.mock.calls[0] as [string, RequestInit]
+    expect(call[0]).toBe('http://localhost:11434/api/chat')
+  })
+
+  it('ignores dispatch_chunk on a non-stream request (never enters the NDJSON path)', async () => {
+    stub_fetch(json_response(TEXT_FIXTURE))
+    const chunks: StreamChunk[] = []
+    const adapter = create_ollama_native_adapter({ base_url: BASE_URL })
+    const result = await adapter.invoke_turn(
+      make_req({
+        stream: false,
+        dispatch_chunk: async (chunk) => {
+          chunks.push(chunk)
+        },
+      }),
+    )
+    expect(chunks).toEqual([])
+    expect(result.text).toBe('Hello there')
+  })
+})

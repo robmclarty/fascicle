@@ -113,7 +113,7 @@ test-authoring iterations; `pnpm check:all` once at the end (C1).
 
 ## Steps
 
-1. [ ] Harden `openai_compatible_native.ts` — **done when:** the file has zero
+1. [x] Harden `openai_compatible_native.ts` — **done when:** the file has zero
    no-coverage mutants and every residual survivor carries an inline equivalence
    rationale (target ≥90% killed): the dialect branches (auth strategy, extra
    headers, stream-usage behavior, usage tolerance per D10), the `finish_reason`
