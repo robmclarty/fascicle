@@ -266,7 +266,7 @@ End state (additions to the predecessor's sketch marked with `+`):
    - seam: `src/engine/providers/__tests__/`, `examples/`
    - model: opus — assertion-strong test authoring; judgment is in reading
      the smoke output
-7. [ ] Turn timeout budgets + V-Phase 5 verdicts — **done when:**
+7. [x] Turn timeout budgets + V-Phase 5 verdicts — **done when:**
    `turn_timeout_ms` (per-call option + engine default) wraps every depth-1
    `invoke_turn` in a timeout signal composed with the user abort, expiry
    throws a typed timeout error the shared classifier retries, tests assert

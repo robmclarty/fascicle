@@ -52,6 +52,7 @@ import type {
   CostBreakdown,
   FinishReason,
   Message,
+  PrepareStepHook,
   Pricing,
   SalvageFormat,
   StepRecord,
@@ -121,6 +122,13 @@ export type ToolLoopConfig = {
   readonly resolve_pricing: () => Pricing | undefined
   readonly pricing_dedup: PricingMissingDedup
   readonly on_finish_step?: (record: StepRecord) => void
+  /**
+   * Per-turn message hook (D6). Called before each turn with the would-be
+   * request messages; a returned `{ messages }` replaces the request for THAT
+   * turn only (config.messages, the canonical transcript, is untouched).
+   * undefined disables the hook.
+   */
+  readonly prepare_step?: PrepareStepHook
   /**
    * Mutable so the budget survives schema-repair re-invocations of the loop
    * within one generate call (precedent: pricing_dedup). undefined = salvage
@@ -314,6 +322,35 @@ function validate_tool_input(
   return { ok: false, message: `invalid tool input: ${error_message}` }
 }
 
+/**
+ * Apply the prepare_step hook (D6) for one turn. Returns the messages to send
+ * to the transport: the hook's replacement when it returns `{ messages }`, else
+ * config.messages unchanged. The replacement is ephemeral — it is fed ONLY to
+ * invoke_once for this turn, never pushed onto config.messages, so the loop's
+ * salvage/approval/ends_turn/schema-repair machinery keeps reading the real
+ * transcript. A step_prepared event (recorded inline, as request_sent is) makes
+ * the mid-loop mutation legible with the before/after message counts.
+ */
+async function apply_prepare_step(
+  config: ToolLoopConfig,
+  step_index: number,
+): Promise<ReadonlyArray<Message>> {
+  if (config.prepare_step === undefined) return config.messages
+  const prepared = await config.prepare_step({
+    step_index,
+    messages: config.messages,
+  })
+  const replacement = prepared?.messages
+  if (replacement === undefined) return config.messages
+  config.trajectory?.record({
+    kind: 'step_prepared',
+    step_index,
+    message_count_before: config.messages.length,
+    message_count_after: replacement.length,
+  })
+  return replacement
+}
+
 export async function run_tool_loop(config: ToolLoopConfig): Promise<ToolLoopResult> {
   const steps: StepRecord[] = []
   const tool_calls_all: ToolCallRecord[] = []
@@ -338,10 +375,11 @@ export async function run_tool_loop(config: ToolLoopConfig): Promise<ToolLoopRes
 
     let turn: TurnResult
     try {
+      const request_messages = await apply_prepare_step(config, step_index)
       config.trajectory?.record({ kind: 'request_sent', step_index })
       turn = await config.invoke_once({
         step_index,
-        messages: config.messages,
+        messages: request_messages,
         tools: config.tools,
         abort: config.abort,
         stream: config.stream,

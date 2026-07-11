@@ -213,6 +213,35 @@ export type TurnRequest = {
   readonly dispatch_chunk?: (chunk: StreamChunk) => Promise<void>
 }
 
+/**
+ * Context handed to a prepare_step hook (D6): the turn's index and the
+ * would-be request messages (the full accumulated transcript at that point in
+ * the loop). Kept minimal by design; per-step model/effort switching is out of
+ * scope (Open question N-Q1).
+ */
+export type PrepareStepContext = {
+  readonly step_index: number
+  readonly messages: ReadonlyArray<Message>
+}
+
+/**
+ * A prepare_step return: `{ messages }` replaces the request for that turn,
+ * `undefined` (or an object without `messages`) is a no-op.
+ */
+export type PrepareStepResult = { messages?: ReadonlyArray<Message> } | undefined
+
+/**
+ * Per-turn message hook (D6). run_tool_loop calls it before each turn on every
+ * depth-1 transport. Returning replacement messages reshapes ONLY what is sent
+ * to the model for that turn (pruning, summarizing, windowing); the canonical
+ * transcript the loop appends to is untouched, so salvage, approval,
+ * Tool.ends_turn, and schema-repair keep operating on the real history. May be
+ * sync or async.
+ */
+export type PrepareStepHook = (
+  ctx: PrepareStepContext,
+) => PrepareStepResult | Promise<PrepareStepResult>
+
 export type GenerateOptions<t = string> = {
   model?: string
   provider?: string
@@ -254,6 +283,15 @@ export type GenerateOptions<t = string> = {
    */
   max_tool_calls_per_step?: number
   on_tool_approval?: ToolApprovalHandler
+  /**
+   * Per-turn hook to reshape the messages sent to the model without mutating
+   * the canonical transcript (D6). Called before every turn with the step
+   * index and the would-be request messages; return `{ messages }` to
+   * prune/replace that turn's request or undefined for a no-op. A
+   * `step_prepared` trajectory event records every turn it replaced. See
+   * PrepareStepHook.
+   */
+  prepare_step?: PrepareStepHook
   provider_options?: Record<string, unknown>
 }
 

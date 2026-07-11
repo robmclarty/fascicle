@@ -645,6 +645,7 @@ export async function generate<T = string>(
         pricing_dedup,
         ...(salvage_budget !== undefined ? { salvage_budget } : {}),
         ...(max_tool_calls_per_step !== undefined ? { max_tool_calls_per_step } : {}),
+        ...(opts.prepare_step !== undefined ? { prepare_step: opts.prepare_step } : {}),
       })
 
       for (const s of loop_result.steps) steps_accum.push(s)

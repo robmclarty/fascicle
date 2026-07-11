@@ -875,3 +875,25 @@ describe('generate: provider_options merge', () => {
     expect(params.providerOptions).toEqual({ anthropic: { effort: 'override', custom: true } })
   })
 })
+
+describe('generate: prepare_step (ai_sdk transport)', () => {
+  it('reshapes the messages the SDK receives without touching the transcript (D6)', async () => {
+    enqueue_generate_text(make_text_result('ok'))
+    const result = await basic_engine().generate({
+      model: 'claude-opus-4-8',
+      prompt: [
+        { role: 'user', content: 'first' },
+        { role: 'assistant', content: 'reply' },
+        { role: 'user', content: 'second' },
+      ],
+      // Window down to the last message only for the turn actually sent.
+      prepare_step: ({ messages }) => ({ messages: messages.slice(-1) }),
+    })
+    expect(result.content).toBe('ok')
+    const params = mock_state.last_generate_text_params as {
+      messages: Array<{ role: string; content: unknown }>
+    }
+    expect(params.messages).toHaveLength(1)
+    expect(params.messages[0]).toMatchObject({ role: 'user', content: 'second' })
+  })
+})
