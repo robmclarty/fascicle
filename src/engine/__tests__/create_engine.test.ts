@@ -4,6 +4,7 @@
 
 import { describe, expect, it } from 'vitest'
 import { create_engine } from '../create_engine.js'
+import { pricing_key } from '../pricing.js'
 import {
   engine_config_error,
   model_required_error,
@@ -37,6 +38,27 @@ describe('create_engine', () => {
     >
     prices_before['custom:z'] = { input_per_million: 99, output_per_million: 99 }
     expect(engine.resolve_price('custom', 'z')).toBeUndefined()
+  })
+
+  it('list_prices returns the populated pricing table, not an empty object', () => {
+    const engine = create_engine({ providers: { anthropic: { api_key: 'k' } } })
+    // A defensive copy still has to carry the defaults: the copied table
+    // contains a known built-in key with its concrete pricing.
+    expect(engine.list_prices()[pricing_key('anthropic', 'claude-opus-4-8')]).toBeDefined()
+  })
+
+  it('throws engine_config_error with a message when providers is null', () => {
+    expect(() => create_engine({ providers: null as never })).toThrow(engine_config_error)
+    expect(() => create_engine({ providers: null as never })).toThrow(
+      'EngineConfig.providers is required',
+    )
+  })
+
+  it('throws when providers is a non-object', () => {
+    // typeof-guard branch: a string is neither null nor an object.
+    expect(() => create_engine({ providers: 'nope' as never })).toThrow(
+      'EngineConfig.providers is required',
+    )
   })
 
   it('throws provider_not_configured_error at generate time for an unconfigured provider', async () => {
@@ -123,6 +145,36 @@ describe('create_engine', () => {
           defaults: { tool_call_repair_attempts: 2, max_tool_calls_per_step: 1 },
         }),
       ).not.toThrow()
+    })
+
+    it('accepts a defaults.tool_call_repair_attempts of 0 (the boundary is < 0, not <= 0)', () => {
+      expect(() =>
+        create_engine({
+          providers: { anthropic: { api_key: 'k' } },
+          defaults: { tool_call_repair_attempts: 0 },
+        }),
+      ).not.toThrow()
+    })
+
+    it('surfaces the exact message for each rejected defaults knob', () => {
+      expect(() =>
+        create_engine({
+          providers: { anthropic: { api_key: 'k' } },
+          defaults: { tool_call_repair_attempts: -1 },
+        }),
+      ).toThrow('defaults.tool_call_repair_attempts must be >= 0')
+      expect(() =>
+        create_engine({
+          providers: { anthropic: { api_key: 'k' } },
+          defaults: { max_tool_calls_per_step: 0 },
+        }),
+      ).toThrow('defaults.max_tool_calls_per_step must be >= 1')
+      expect(() =>
+        create_engine({
+          providers: { anthropic: { api_key: 'k' } },
+          defaults: { turn_timeout_ms: 0 },
+        }),
+      ).toThrow('defaults.turn_timeout_ms must be > 0')
     })
 
     it('defaults.retry_policy layers as the fallback over legacy default_retry', () => {

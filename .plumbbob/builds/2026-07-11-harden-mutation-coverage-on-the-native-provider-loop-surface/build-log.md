@@ -56,3 +56,4 @@ you point at to say "I did that — the LLM helped, but those were my calls."
 folder, so it rides the branch into the PR.)*
 - 2026-07-11 — step 1 checkpointed · 68c5f7368 — Harden `openai_compatible_native.ts` (1 red, 61m)
 - 2026-07-11 — step 2 checkpointed · a96b798a0 — Harden `ollama_native.ts` (1 red, 36m)
+- 2026-07-11 — step 3 checkpointed · bef16e31a — Harden the otel surface (38m)

@@ -128,7 +128,7 @@ test-authoring iterations; `pnpm check:all` once at the end (C1).
    both boundaries
    - seam: `src/engine/providers/__tests__/ollama_native.test.ts`, `src/engine/providers/ollama_native.ts`
    - model: opus — a second wire dialect (NDJSON) with the error-drain paths as the named subtle part
-3. [ ] Harden the otel surface — **done when:** `otel/trajectory_logger.ts` and
+3. [x] Harden the otel surface — **done when:** `otel/trajectory_logger.ts` and
    `providers/ai_sdk/telemetry.ts` each reach zero no-coverage with residual
    survivors annotated (target ≥90%): the span-structure conditionals, optional
    chaining, and the opt-in telemetry `enabled` gate are asserted against the

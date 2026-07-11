@@ -154,6 +154,19 @@ export function create_engine(config: EngineConfig): Engine {
       providers: ProviderConfigMap,
       custom_providers?: Record<string, ProviderFactory>,
     ): Engine {
+      // Since `...config` below already carries `config.custom_providers`
+      // forward unconditionally, this merge only changes the result when the
+      // `custom_providers` ARGUMENT contributes entries. That leaves a cluster of
+      // genuine equivalents as documented survivors here, all rooted in the left
+      // disjunct being redundant: mutating `config.custom_providers !== undefined`
+      // (to `false`, or `!==` to `===`) only swaps `merged_custom` between
+      // `undefined`, `{}`, and a shallow copy of `config.custom_providers`, and
+      // given `...config` those build identical adapters; forcing the whole
+      // condition true likewise yields `{}` for `undefined` when both are absent;
+      // and forcing the spread-in below on always passes the `undefined` "no
+      // customs" sentinel. A Stryker-disable can't fence these off: on the same
+      // lines the whole-condition `false` and the right-disjunct mutants DO change
+      // behavior — they drop a supplied argument — and the suite kills those.
       const merged_custom =
         config.custom_providers !== undefined || custom_providers !== undefined
           ? { ...config.custom_providers, ...custom_providers }
@@ -167,6 +180,10 @@ export function create_engine(config: EngineConfig): Engine {
     dispose(): Promise<void> {
       if (dispose_promise !== undefined) return dispose_promise
       disposed = true
+      // Stryker disable next-line ArrayDeclaration: seeding this accumulator
+      // non-empty is observationally identical — every element is awaited by the
+      // Promise.all below and then discarded by `.then(() => undefined)`, so a
+      // stray value cannot change what dispose() resolves to or when.
       const tasks: Promise<void>[] = []
       for (const adapter of adapters.values()) {
         // Any adapter kind may hold resources: external always defines

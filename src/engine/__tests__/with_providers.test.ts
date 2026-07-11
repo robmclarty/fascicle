@@ -138,12 +138,15 @@ describe('with_providers', () => {
     expect(result.model_resolved).toEqual({ provider: 'acme_native', model_id: 'nat-1' })
   })
 
-  it('throws engine_config_error when a derived custom provider shadows a built-in', () => {
+  it('throws engine_config_error naming the shadowed built-in', () => {
     const log = make_log()
     const parent = create_engine({ providers: { anthropic: { api_key: 'k' } } })
     expect(() =>
       parent.with_providers({}, { openai: make_ai_sdk_factory('openai', log) }),
     ).toThrow(engine_config_error)
+    expect(() =>
+      parent.with_providers({}, { openai: make_ai_sdk_factory('openai', log) }),
+    ).toThrow("custom_providers must not shadow built-in provider 'openai'")
   })
 
   it('constructs adapters fresh and disposes independently of the parent', async () => {
