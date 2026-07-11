@@ -234,12 +234,32 @@ End state (after Step 14, the inversion):
     and the Step 6 smoke re-runs green
     - seam: `src/engine/generate.ts`, `src/engine/providers/ai_sdk/`, `rules/`, `.ridgeline/constraints.md`
     - model: opus — moves code behind a seam already proven by Steps 10 and 13, gated by suite + smoke re-run; worth a fable review pass on the diff before checkpointing
-15. [ ] Docs sweep (S-§6.5) — **done when:** `docs/providers.md` documents the
+15. [x] Docs sweep (S-§6.5) — **done when:** `docs/providers.md` documents the
     three integration depths, `transport`, and writing a custom provider of each
     kind; `docs/configuration.md` covers `custom_providers`; the roadmap links
     both specs and this intent
     - seam: `docs/providers.md`, `docs/configuration.md`, `docs/roadmap.md`, `README.md`
     - model: sonnet — docs prose from settled content; the link/lint gates cover form
+16. [ ] Export the native provider contract from the barrel — **done when:**
+    `NativeProviderAdapter`, `ProviderTransport`, `TurnRequest`, and `TurnResult`
+    are exported (type-only) from the engine barrel and the `fascicle` top level,
+    `docs/configuration.md` / `docs/providers.md` name the exported types instead
+    of the contextual-typing caveat, and `pnpm check` exits 0
+    - seam: `src/engine/index.ts`, `src/index.ts`, `docs/configuration.md`, `docs/providers.md`
+    - model: sonnet — mechanical export sweep; types + docs gates cover it
+17. [ ] Native transport `provider_options` passthrough — **done when:** the
+    native convention is settled and implemented: `provider_options.anthropic` on
+    the native transport is raw wire-format fields (snake_case Messages-API keys,
+    e.g. `thinking`, `max_tokens`, `top_k`), shallow-merged last over the
+    engine-computed request body so an explicit user key beats every derived
+    field (including effort-derived `thinking` and the `max_tokens` default);
+    `anthropic_native` reads it; concrete-value tests assert an overridden
+    `max_tokens` and a passthrough-only key (e.g. `top_k`) reach the wire body on
+    both stream and non-stream paths; and `docs/providers.md` documents the
+    convention, including that native keys are wire-format and do not port
+    verbatim from the camelCase `ai_sdk` spellings
+    - seam: `src/engine/providers/anthropic_native.ts`, `src/engine/providers/__tests__/`, `docs/providers.md`
+    - model: opus — small shallow-merge diff, but precedence is the named subtle part; concrete-value tests gate it
 
 ## Open questions
 

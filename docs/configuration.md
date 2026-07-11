@@ -99,7 +99,7 @@ Rules:
 - **Construction-time only.** There is no runtime registration; the config object is the whole registry extension.
 - **Validated like built-ins.** Factories run synchronously at `create_engine`; throw from the factory on bad init. Defer SDK or resource loading to the first call (`build_model` for `ai_sdk`-kind, `invoke_turn` for `native`-kind, `generate` for `external`-kind).
 
-The factory and adapter types (`ProviderFactory`, `ProviderAdapter`, `AiSdkProviderAdapter`, `ExternalAgentAdapter`, `ProviderCapability`) are exported from `fascicle`, alongside the `default_normalize_usage` helper. The `native` adapter shape is part of the `ProviderAdapter` union, so a factory returning `kind: 'native'` type-checks contextually through `ProviderFactory`. Because registration is plain config, a proprietary or workplace-private provider lives entirely in the consuming repo and never needs to enter the fascicle tree.
+The factory and adapter types (`ProviderFactory`, `ProviderAdapter`, `AiSdkProviderAdapter`, `NativeProviderAdapter`, `ExternalAgentAdapter`, `ProviderCapability`, `ProviderTransport`) are exported from `fascicle`, alongside the neutral turn types (`TurnRequest`, `TurnResult`) and the `default_normalize_usage` helper, so a `kind: 'native'` adapter can be typed explicitly as `NativeProviderAdapter` rather than checked contextually through `ProviderFactory`. Because registration is plain config, a proprietary or workplace-private provider lives entirely in the consuming repo and never needs to enter the fascicle tree.
 
 ## Reading credentials from env
 

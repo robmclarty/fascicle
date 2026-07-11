@@ -411,7 +411,7 @@ Rules of the road for native adapters:
 - **Never retry internally.** Throw failures in classifiable shapes (`status` and `responseHeaders` for HTTP errors) and let the engine's retry policy own attempts; hidden retries are exactly the illegibility the engine refuses. An optional `classify_error(err)` overrides the shared classifier when your provider's error shapes need it.
 - **Streaming means both.** When `req.stream` is true, push chunks through `req.dispatch_chunk` and still return the aggregated `TurnResult`; streamed and non-streamed results for the same input must be equal.
 - **Skip `structured_output` unless you truly constrain decoding.** Claiming `schema` is enough; the engine's repair loop does the rest.
-- The `TurnRequest` / `TurnResult` shapes are defined in `src/engine/providers/types.ts` and `src/engine/types.ts`; the factory's return type checks your adapter against them contextually.
+- `NativeProviderAdapter`, `TurnRequest`, and `TurnResult` are exported from `fascicle`, so you can type the adapter and its mapping helpers explicitly instead of relying on `ProviderFactory`'s contextual check.
 
 ### `kind: 'external'`: delegate to something that is already an agent
 
