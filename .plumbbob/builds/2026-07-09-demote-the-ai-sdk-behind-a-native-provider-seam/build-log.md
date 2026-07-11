@@ -67,3 +67,4 @@ folder, so it rides the branch into the PR.)*
 - 2026-07-11 — step 10 checkpointed · 8d6f17fad — Loop-inheritance proof (S-P2.7)
 - 2026-07-11 — step 11 checkpointed · 02d8cb730 — Rename `subprocess` to `external` (S-P4.1)
 - 2026-07-11 — step 12 checkpointed · da4e99ab1 — Native Anthropic: mapping, non-stream, auth (S-P3.1..P3.3, S-P3.5:
+- 2026-07-11 — step 13 checkpointed · c045b2cb3 — Native Anthropic: streaming, capabilities, e2e (S-P3.4, S-P3.6..P3.7:

@@ -7,9 +7,10 @@
  * is actually needed. Missing peer dependencies surface as engine_config_error
  * on first build_model call with a clear message naming the missing peer.
  *
- * Invariant 13: only generate.ts, tool_loop.ts, and index.ts may invoke
- * generateText/streamText from `ai` directly. Adapters build the provider
- * model and translate parameters; they do not orchestrate the call.
+ * Invariant 13 (inverted): only the ai_sdk transport module
+ * (providers/ai_sdk/invoke.ts) may import from `ai` or invoke
+ * generateText/streamText. ai_sdk adapters build the provider model and
+ * translate parameters; they do not orchestrate the call.
  */
 
 import type {

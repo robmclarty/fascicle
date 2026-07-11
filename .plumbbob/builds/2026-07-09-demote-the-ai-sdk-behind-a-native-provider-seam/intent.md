@@ -218,7 +218,7 @@ End state (after Step 14, the inversion):
     tool-call, and mixed responses and error-path tests assert classification
     - seam: `src/engine/providers/anthropic.ts`, `src/engine/providers/anthropic_native.ts`, `src/engine/providers/types.ts`
     - model: fable — logic-dense greenfield mapping (message shapes, stop_reason, usage) with no prior art in-tree
-13. [ ] Native Anthropic: streaming, capabilities, e2e (S-P3.4, S-P3.6..P3.7:
+13. [x] Native Anthropic: streaming, capabilities, e2e (S-P3.4, S-P3.6..P3.7:
     SSE parse emitting `StreamChunk`s via `dispatch_chunk`, capabilities `text,
     tools, schema, streaming, reasoning` without `structured_output`, e2e tool
     loop on recorded fixtures, new ast-grep rule forbidding `ai`/`@ai-sdk/*`

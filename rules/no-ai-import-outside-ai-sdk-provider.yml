@@ -1,0 +1,18 @@
+id: no-ai-import-outside-ai-sdk-provider
+message: "Invariant 13 (inverted): only the ai_sdk transport module (src/engine/providers/ai_sdk/) may import from 'ai'. Every other engine file, generate.ts included, drives model turns through the neutral invoke_turn seam and stays SDK-agnostic."
+severity: error
+language: typescript
+files:
+  - src/engine/**/*.ts
+ignores:
+  - src/**/__tests__/**
+  - src/engine/providers/ai_sdk/**
+rule:
+  any:
+    - pattern: import $$$ from '$PATH'
+    - pattern: import $$$ from "$PATH"
+    - pattern: import type $$$ from '$PATH'
+    - pattern: import type $$$ from "$PATH"
+constraints:
+  PATH:
+    regex: '^ai($|/)'

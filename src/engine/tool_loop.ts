@@ -41,8 +41,9 @@
  *     max_steps cap (finish_reason 'stop', max_steps_reached false).
  *
  * The loop does not itself call the AI SDK. It invokes a supplied `invoke_once`
- * seam that returns a neutral TurnResult. generate.ts builds the real
- * seam using generateText/streamText; tests inject a mock seam directly.
+ * seam that returns a neutral TurnResult. generate.ts builds the real seam
+ * (the ai_sdk transport in providers/ai_sdk/, or a native adapter's
+ * invoke_turn); tests inject a mock seam directly.
  */
 
 import type { z } from 'zod'
