@@ -26,7 +26,7 @@ Only `providers` is required.
 
 ```ts
 type ProviderConfigMap = {
-  anthropic?:   { api_key: string; base_url?: string };
+  anthropic?:   { api_key: string; base_url?: string; transport?: 'ai_sdk' | 'native' };
   openai?:      { api_key: string; base_url?: string; organization?: string };
   google?:      { api_key: string; base_url?: string };
   ollama?:      { base_url: string };
@@ -38,6 +38,8 @@ type ProviderConfigMap = {
 ```
 
 A provider absent from `providers` throws `provider_not_configured_error` at call time — constructing an engine without a provider does not fail; the failure is deferred to the first `generate` against it.
+
+`anthropic` takes an optional `transport` selector: `'ai_sdk'` (the default) wraps `@ai-sdk/anthropic`, `'native'` talks to the Messages API directly over `fetch` with no peer to install. The provider name, pricing keys, and effort mapping are identical across transports. See [providers.md](./providers.md#transport-picking-a-depth-1-backend).
 
 Every provider's SDK is an optional peer dependency, loaded on first `generate`. Install only the ones you use.
 
@@ -57,7 +59,7 @@ Full per-provider notes live in [providers.md](./providers.md). The `claude_cli`
 
 ## Custom providers
 
-`custom_providers` registers provider factories beyond the built-in set at construction time. Keys are provider names; each factory receives the same-named entry from `providers` as its init and may return an adapter of any kind.
+`custom_providers` registers provider factories beyond the built-in set at construction time. Keys are provider names; each factory receives the same-named entry from `providers` as its init and may return an adapter of any kind: `ai_sdk` (wrap an AI SDK provider), `native` (raw HTTP implementing one model turn), or `external` (a backend that runs its own loop). The kinds and their contracts are documented in [providers.md](./providers.md#three-integration-depths); the example below returns an `ai_sdk` adapter, with `native` and `external` sketches under [Writing your own](./providers.md#writing-your-own).
 
 ```ts
 import {
@@ -95,9 +97,9 @@ Rules:
 - **Custom-first resolution.** A `providers` key is resolved against `custom_providers` first, then the built-ins.
 - **Shadowing a built-in throws.** A `custom_providers` key that matches a built-in name (`anthropic`, `openai`, ...) throws `engine_config_error` at construction; there is no silent override.
 - **Construction-time only.** There is no runtime registration; the config object is the whole registry extension.
-- **Validated like built-ins.** Factories run synchronously at `create_engine`; throw from the factory on bad init. Defer SDK or resource loading to the first call (`build_model` for `ai_sdk`-kind, `generate` for `external`-kind).
+- **Validated like built-ins.** Factories run synchronously at `create_engine`; throw from the factory on bad init. Defer SDK or resource loading to the first call (`build_model` for `ai_sdk`-kind, `invoke_turn` for `native`-kind, `generate` for `external`-kind).
 
-The factory and adapter types (`ProviderFactory`, `ProviderAdapter`, `AiSdkProviderAdapter`, `ExternalAgentAdapter`, `ProviderCapability`) are exported from `fascicle`, alongside the `default_normalize_usage` helper. Because registration is plain config, a proprietary or workplace-private provider lives entirely in the consuming repo and never needs to enter the fascicle tree.
+The factory and adapter types (`ProviderFactory`, `ProviderAdapter`, `AiSdkProviderAdapter`, `ExternalAgentAdapter`, `ProviderCapability`) are exported from `fascicle`, alongside the `default_normalize_usage` helper. The `native` adapter shape is part of the `ProviderAdapter` union, so a factory returning `kind: 'native'` type-checks contextually through `ProviderFactory`. Because registration is plain config, a proprietary or workplace-private provider lives entirely in the consuming repo and never needs to enter the fascicle tree.
 
 ## Reading credentials from env
 
@@ -314,7 +316,7 @@ type GenerateOptions<t = string> = {
 
 A few highlights:
 
-- `effort: 'none' | 'low' | 'medium' | 'high'` is translated per-provider. See [providers.md](./providers.md) for the per-provider mapping. Providers that do not support reasoning effort (e.g. Ollama) silently drop it and record `effort_ignored` on the trajectory.
+- `effort: 'none' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'` is translated per-provider. See [providers.md](./providers.md) for the per-provider mapping. Providers that do not support reasoning effort (e.g. Ollama) silently drop it and record `effort_ignored` on the trajectory.
 - `schema` is a zod schema. On failure, the engine attempts `schema_repair_attempts` repair passes (default 1) before throwing `schema_validation_error`.
 - `tools` is the agentic tool-use surface; tools have zod `input_schema` and an `execute` closure. See the cookbook for tool loops.
 - `provider_options` is a two-level record keyed by provider name, merged over `defaults.provider_options`.
@@ -339,7 +341,7 @@ await engine.generate({
 });
 ```
 
-The subprocess `claude_cli` provider does not run the shared tool loop, so it ignores both options and records `option_ignored` for each.
+External-kind providers (`claude_cli`) do not run the shared tool loop, so they ignore both options and record `option_ignored` for each.
 
 ## Lifecycle
 
@@ -355,7 +357,7 @@ try {
 - Construct once per process (or per HTTP request for server harnesses with per-request providers).
 - `dispose()` is idempotent; calling it twice returns the same promise.
 - After `dispose()`, every `generate` throws `engine_disposed_error`.
-- Subprocess providers (`claude_cli`) abort every in-flight subprocess on dispose. SDK providers have no extra teardown.
+- `dispose()` is awaited on every adapter that defines one: `claude_cli` aborts its in-flight subprocesses; a custom native adapter can tear down connection pools the same way. Adapters without a `dispose` need no extra teardown.
 
 ## Examples
 

@@ -228,7 +228,7 @@ End state (after Step 14, the inversion):
     exits 0
     - seam: `src/engine/providers/anthropic_native.ts`, `src/engine/providers/anthropic.ts`, `rules/`
     - model: fable — hand-rolled SSE parsing; streamed ≡ non-streamed parity is the named subtle part (C4)
-14. [ ] Invert the seam (S-P4.4, committed per D8) — **done when:** the AI SDK
+14. [x] Invert the seam (S-P4.4, committed per D8) — **done when:** the AI SDK
     call lives in `src/engine/providers/ai_sdk/`, `generate.ts` imports nothing
     from `ai`, invariant 13 and its rule are rewritten, `pnpm check:all` exits 0,
     and the Step 6 smoke re-runs green

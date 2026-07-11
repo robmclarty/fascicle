@@ -28,6 +28,7 @@ is done only after a checkpoint — check green + checkpoint taken, via `/pb-ver
 > go straight back to the step. Acting the instant an idea arrives is the disease.
 > Capture is one line (`/pb-park` composes it). Harvest happens only at the boundary.
 - [ ] Native transport provider_options passthrough: TurnRequest.provider_options reaches invoke_turn but anthropic_native does not read it yet. Precedence vs engine-computed body fields and camelCase (ai_sdk-style) vs snake_case (wire) keys are undefined in S-P3; decide once before P4.2 native OpenAI faces the same question.
+- [ ] Barrel exports for native custom providers: NativeProviderAdapter, TurnRequest, TurnResult (and ProviderTransport) are not exported from the engine barrel / fascicle top level, so a consumer writing a kind:'native' custom provider relies on contextual typing through ProviderFactory. Docs (step 15) document the contextual-typing path; decide whether to export the named types.
 
 ## Harvest  *(run `/pb-harvest` at each step boundary, after green)*
 
@@ -68,3 +69,4 @@ folder, so it rides the branch into the PR.)*
 - 2026-07-11 — step 11 checkpointed · 02d8cb730 — Rename `subprocess` to `external` (S-P4.1)
 - 2026-07-11 — step 12 checkpointed · da4e99ab1 — Native Anthropic: mapping, non-stream, auth (S-P3.1..P3.3, S-P3.5:
 - 2026-07-11 — step 13 checkpointed · c045b2cb3 — Native Anthropic: streaming, capabilities, e2e (S-P3.4, S-P3.6..P3.7:
+- 2026-07-11 — step 14 checkpointed · 10468f26e — Invert the seam (S-P4.4, committed per D8)

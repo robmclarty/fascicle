@@ -10,12 +10,21 @@ The guiding principle: stop building to product standards while distributing to
 personal-tool standards. Phase 1 made the shipped surface match the pitch.
 Phase 2 points it at the two real deployments. Phase 3 makes the work known.
 
-**Status (v0.8.8).** Phase 1 is fully shipped (v0.6.0–v0.6.3). Several changes
+**Status (v0.9.1).** Phase 1 is fully shipped (v0.6.0–v0.6.3). Several changes
 landed after this plan was written and are not sequenced below: verbatim model
 resolution (v0.7.0, breaking), the collapse of the internal `@repo/*` workspace
-into a single `src/` tree (v0.8.0), and the MCP bridge (v0.8.8). The live edge is
-mid-Phase 2: the MCP adapter has shipped, and the first deployment that realizes
-the two remaining Phase 2 items at once has begun (see Phase 2 below).
+into a single `src/` tree (v0.8.0), the MCP bridge (v0.8.8), and the provider
+sovereignty build. That last one arrived in two tracks: the AI SDK v7 catch-up
+shipped as v0.9.0 (per [the v7 upgrade spec](../research/ai-sdk-v7-upgrade-spec.md)),
+and the structural track that demotes the SDK behind a native provider seam is
+landed on main awaiting release: an open `custom_providers` registry, a
+`transport: 'native'` raw-HTTP Anthropic adapter, and a SDK-agnostic `generate`
+where the AI SDK call is one provider kind among peers (per
+[the provider sovereignty spec](../research/provider-sovereignty-spec.md),
+sequenced by [its intent](../research/provider-sovereignty-intent.md)). The
+native OpenAI and Ollama adapters are the next entries in that series. The live
+edge is mid-Phase 2: the MCP adapter has shipped, and the first deployment that
+realizes the two remaining Phase 2 items at once has begun (see Phase 2 below).
 
 ## Phase 1: make it true (✅ shipped, v0.6.0–v0.6.3)
 
