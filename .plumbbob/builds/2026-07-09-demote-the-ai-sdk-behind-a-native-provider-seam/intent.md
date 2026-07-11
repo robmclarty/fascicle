@@ -192,7 +192,7 @@ End state (after Step 14, the inversion):
    **done when:** pure rename/move with zero behavior change; full suite green
    - seam: `src/engine/types.ts`, `src/engine/tool_loop.ts`, `src/engine/generate.ts`, `src/engine/providers/types.ts`
    - model: opus — pure rename/move; the suite catches any behavior drift
-9. [ ] Three-way dispatch (S-P2.4..P2.6: extract `build_ai_sdk_invoke`, add
+9. [x] Three-way dispatch (S-P2.4..P2.6: extract `build_ai_sdk_invoke`, add
    `build_native_invoke` wrapping `retry_with_policy` + classify + abort, hoist
    capability gating over `ai_sdk` + `native`, gate `Output.object` to `ai_sdk`
    only, generalize `dispose` to any adapter that defines it) — **done when:**
