@@ -1,15 +1,18 @@
 /**
- * Native Anthropic adapter (S-P3.1..P3.3, S-P3.5): request mapping, the
- * non-stream invoke_turn against golden Messages-API fixtures, and error
- * classification. No live network; fetch is stubbed per test.
+ * Native Anthropic adapter (S-P3.1..P3.5): request mapping, the non-stream
+ * and SSE-streamed invoke_turn against golden Messages-API fixtures, and
+ * error classification. Streamed results are asserted equal to the
+ * non-streamed parse of the same fixture (C4). No live network; fetch is
+ * stubbed per test.
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
-import type { Message, Tool, TurnRequest } from '../../types.js'
+import type { Message, StreamChunk, Tool, TurnRequest } from '../../types.js'
 import {
   build_messages_body,
   create_anthropic_native_adapter,
+  create_sse_decoder,
   map_anthropic_stop_reason,
   map_anthropic_usage,
   parse_messages_response,
@@ -344,14 +347,14 @@ describe('create_anthropic_native_adapter', () => {
     expect(() => create_anthropic_native_adapter({ api_key: '' })).toThrow(engine_config_error)
   })
 
-  it('claims text, tools, schema, and reasoning; not streaming, structured_output, or image_input', () => {
+  it('claims text, tools, schema, streaming, and reasoning; not structured_output or image_input', () => {
     const adapter = create_anthropic_native_adapter({ api_key: 'sk-test' })
     expect(adapter.kind).toBe('native')
     expect(adapter.name).toBe('anthropic')
-    for (const cap of ['text', 'tools', 'schema', 'reasoning'] as const) {
+    for (const cap of ['text', 'tools', 'schema', 'streaming', 'reasoning'] as const) {
       expect(adapter.supports(cap)).toBe(true)
     }
-    for (const cap of ['streaming', 'structured_output', 'image_input'] as const) {
+    for (const cap of ['structured_output', 'image_input'] as const) {
       expect(adapter.supports(cap)).toBe(false)
     }
   })
@@ -399,14 +402,6 @@ describe('create_anthropic_native_adapter', () => {
       finish_reason: 'tool_calls',
       usage: { input_tokens: 30, output_tokens: 18 },
     })
-  })
-
-  it('rejects streaming requests until the SSE path lands', async () => {
-    stub_fetch(json_response(TEXT_FIXTURE))
-    const adapter = create_anthropic_native_adapter({ api_key: 'sk-test' })
-    await expect(
-      adapter.invoke_turn(make_req({ stream: true, dispatch_chunk: async () => {} })),
-    ).rejects.toThrow(provider_capability_error)
   })
 
   it('throws provider_auth_error on 401 with the API error message', async () => {
@@ -488,5 +483,388 @@ describe('create_anthropic_native_adapter', () => {
     await expect(
       adapter.invoke_turn(make_req({ abort: controller.signal })),
     ).rejects.toBe(abort_err)
+  })
+})
+
+describe('create_sse_decoder', () => {
+  it('emits a data payload when the blank line closes the event', () => {
+    const sse = create_sse_decoder()
+    expect(sse.push('event: message_stop\ndata: {"a":1}\n\n')).toEqual(['{"a":1}'])
+  })
+
+  it('joins multi-line data fields with newline per the SSE spec', () => {
+    const sse = create_sse_decoder()
+    expect(sse.push('data: line1\ndata: line2\n\n')).toEqual(['line1\nline2'])
+  })
+
+  it('strips carriage returns from CRLF line endings', () => {
+    const sse = create_sse_decoder()
+    expect(sse.push('data: x\r\n\r\n')).toEqual(['x'])
+  })
+
+  it('keeps a data value that has no space after the colon', () => {
+    const sse = create_sse_decoder()
+    expect(sse.push('data:x\n\n')).toEqual(['x'])
+  })
+
+  it('ignores comments and non-data fields', () => {
+    const sse = create_sse_decoder()
+    expect(sse.push(': keep-alive\nevent: ping\nid: 7\nretry: 100\ndata: y\n\n')).toEqual(['y'])
+  })
+
+  it('reassembles events split across pushes at arbitrary boundaries', () => {
+    const sse = create_sse_decoder()
+    expect(sse.push('da')).toEqual([])
+    expect(sse.push('ta: hel')).toEqual([])
+    expect(sse.push('lo\n')).toEqual([])
+    expect(sse.push('\ndata: next\n\n')).toEqual(['hello', 'next'])
+  })
+
+  it('flushes an event left open when the stream ends without a blank line', () => {
+    const sse = create_sse_decoder()
+    expect(sse.push('data: tail')).toEqual([])
+    expect(sse.flush()).toEqual(['tail'])
+    expect(sse.flush()).toEqual([])
+  })
+})
+
+function sse_payload(events: ReadonlyArray<Record<string, unknown>>): string {
+  return events
+    .map((e) => `event: ${String(e['type'])}\ndata: ${JSON.stringify(e)}\n\n`)
+    .join('')
+}
+
+/**
+ * Recorded-stream Response: the SSE payload is enqueued in small byte chunks
+ * so every test also exercises reassembly across arbitrary boundaries,
+ * including splits inside multi-byte UTF-8 sequences.
+ */
+function stream_response(
+  events: ReadonlyArray<Record<string, unknown>>,
+  chunk_size = 9,
+): Response {
+  const bytes = new TextEncoder().encode(sse_payload(events))
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      for (let i = 0; i < bytes.length; i += chunk_size) {
+        controller.enqueue(bytes.slice(i, i + chunk_size))
+      }
+      controller.close()
+    },
+  })
+  return new Response(stream, {
+    status: 200,
+    headers: { 'content-type': 'text/event-stream' },
+  })
+}
+
+function chunk_collector(): {
+  chunks: StreamChunk[]
+  dispatch_chunk: (chunk: StreamChunk) => Promise<void>
+} {
+  const chunks: StreamChunk[] = []
+  return {
+    chunks,
+    dispatch_chunk: async (chunk: StreamChunk): Promise<void> => {
+      chunks.push(chunk)
+    },
+  }
+}
+
+const TEXT_STREAM_EVENTS = [
+  {
+    type: 'message_start',
+    message: {
+      id: 'msg_01',
+      type: 'message',
+      role: 'assistant',
+      model: 'claude-sonnet-5',
+      content: [],
+      stop_reason: null,
+      usage: { input_tokens: 12, output_tokens: 1 },
+    },
+  },
+  { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } },
+  { type: 'ping' },
+  { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'Hello ' } },
+  { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'there' } },
+  { type: 'content_block_stop', index: 0 },
+  {
+    type: 'message_delta',
+    delta: { stop_reason: 'end_turn', stop_sequence: null },
+    usage: { output_tokens: 6 },
+  },
+  { type: 'message_stop' },
+]
+
+const TOOL_CALL_STREAM_EVENTS = [
+  {
+    type: 'message_start',
+    message: {
+      id: 'msg_02',
+      type: 'message',
+      role: 'assistant',
+      model: 'claude-sonnet-5',
+      content: [],
+      stop_reason: null,
+      usage: { input_tokens: 30, output_tokens: 2 },
+    },
+  },
+  {
+    type: 'content_block_start',
+    index: 0,
+    content_block: { type: 'tool_use', id: 'toolu_01', name: 'get_weather', input: {} },
+  },
+  { type: 'content_block_delta', index: 0, delta: { type: 'input_json_delta', partial_json: '{"city"' } },
+  { type: 'content_block_delta', index: 0, delta: { type: 'input_json_delta', partial_json: ': "Ottawa"}' } },
+  { type: 'content_block_stop', index: 0 },
+  {
+    type: 'message_delta',
+    delta: { stop_reason: 'tool_use', stop_sequence: null },
+    usage: { output_tokens: 18 },
+  },
+  { type: 'message_stop' },
+]
+
+const MIXED_STREAM_EVENTS = [
+  {
+    type: 'message_start',
+    message: {
+      id: 'msg_03',
+      type: 'message',
+      role: 'assistant',
+      model: 'claude-sonnet-5',
+      content: [],
+      stop_reason: null,
+      usage: {
+        input_tokens: 40,
+        output_tokens: 2,
+        cache_read_input_tokens: 100,
+        cache_creation_input_tokens: 10,
+      },
+    },
+  },
+  { type: 'content_block_start', index: 0, content_block: { type: 'thinking', thinking: '' } },
+  {
+    type: 'content_block_delta',
+    index: 0,
+    delta: { type: 'thinking_delta', thinking: 'need the forecast first' },
+  },
+  { type: 'content_block_delta', index: 0, delta: { type: 'signature_delta', signature: 'sig_abc' } },
+  { type: 'content_block_stop', index: 0 },
+  { type: 'content_block_start', index: 1, content_block: { type: 'text', text: '' } },
+  { type: 'content_block_delta', index: 1, delta: { type: 'text_delta', text: 'Checking the ' } },
+  { type: 'content_block_delta', index: 1, delta: { type: 'text_delta', text: 'weather. ' } },
+  { type: 'content_block_stop', index: 1 },
+  {
+    type: 'content_block_start',
+    index: 2,
+    content_block: { type: 'tool_use', id: 'toolu_02', name: 'get_weather', input: {} },
+  },
+  { type: 'content_block_delta', index: 2, delta: { type: 'input_json_delta', partial_json: '{"city": "King' } },
+  { type: 'content_block_delta', index: 2, delta: { type: 'input_json_delta', partial_json: 'ston"}' } },
+  { type: 'content_block_stop', index: 2 },
+  { type: 'content_block_start', index: 3, content_block: { type: 'text', text: '' } },
+  { type: 'content_block_delta', index: 3, delta: { type: 'text_delta', text: 'One moment.' } },
+  { type: 'content_block_stop', index: 3 },
+  {
+    type: 'message_delta',
+    delta: { stop_reason: 'tool_use', stop_sequence: null },
+    usage: { output_tokens: 25 },
+  },
+  { type: 'message_stop' },
+]
+
+describe('streaming invoke_turn', () => {
+  it('sets stream: true on the request body', async () => {
+    const mock = stub_fetch(stream_response(TEXT_STREAM_EVENTS))
+    const adapter = create_anthropic_native_adapter({ api_key: 'sk-test' })
+    const { dispatch_chunk } = chunk_collector()
+    await adapter.invoke_turn(make_req({ stream: true, dispatch_chunk }))
+    const call = mock.mock.calls[0] as [string, RequestInit]
+    expect(JSON.parse(call[1].body as string)['stream']).toBe(true)
+  })
+
+  it.each([
+    ['text', TEXT_STREAM_EVENTS, TEXT_FIXTURE],
+    ['tool-call', TOOL_CALL_STREAM_EVENTS, TOOL_CALL_FIXTURE],
+    ['mixed', MIXED_STREAM_EVENTS, MIXED_FIXTURE],
+  ])(
+    'streamed %s result equals the non-streamed parse of the same fixture (C4)',
+    async (_label, stream_events, response_fixture) => {
+      stub_fetch(stream_response(stream_events))
+      const adapter = create_anthropic_native_adapter({ api_key: 'sk-test' })
+      const { dispatch_chunk } = chunk_collector()
+      const streamed = await adapter.invoke_turn(
+        make_req({ stream: true, dispatch_chunk }),
+      )
+      expect(streamed).toEqual(parse_messages_response(response_fixture))
+    },
+  )
+
+  it('dispatches the exact chunk sequence for the mixed fixture', async () => {
+    stub_fetch(stream_response(MIXED_STREAM_EVENTS))
+    const adapter = create_anthropic_native_adapter({ api_key: 'sk-test' })
+    const { chunks, dispatch_chunk } = chunk_collector()
+    await adapter.invoke_turn(make_req({ stream: true, dispatch_chunk, step_index: 3 }))
+    expect(chunks).toEqual([
+      { kind: 'reasoning', text: 'need the forecast first', step_index: 3 },
+      { kind: 'text', text: 'Checking the ', step_index: 3 },
+      { kind: 'text', text: 'weather. ', step_index: 3 },
+      { kind: 'tool_call_start', id: 'toolu_02', name: 'get_weather', step_index: 3 },
+      { kind: 'tool_call_input_delta', id: 'toolu_02', delta: '{"city": "King', step_index: 3 },
+      { kind: 'tool_call_input_delta', id: 'toolu_02', delta: 'ston"}', step_index: 3 },
+      { kind: 'tool_call_end', id: 'toolu_02', input: { city: 'Kingston' }, step_index: 3 },
+      { kind: 'text', text: 'One moment.', step_index: 3 },
+      {
+        kind: 'step_finish',
+        step_index: 3,
+        finish_reason: 'tool_calls',
+        usage: {
+          input_tokens: 150,
+          output_tokens: 25,
+          cached_input_tokens: 100,
+          cache_write_tokens: 10,
+        },
+      },
+    ])
+  })
+
+  it('survives byte splits inside multi-byte UTF-8 sequences', async () => {
+    const events = [
+      TEXT_STREAM_EVENTS[0] as Record<string, unknown>,
+      { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } },
+      { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'héllo ☂ café' } },
+      { type: 'content_block_stop', index: 0 },
+      { type: 'message_delta', delta: { stop_reason: 'end_turn' }, usage: { output_tokens: 4 } },
+      { type: 'message_stop' },
+    ]
+    stub_fetch(stream_response(events, 3))
+    const adapter = create_anthropic_native_adapter({ api_key: 'sk-test' })
+    const { dispatch_chunk } = chunk_collector()
+    const result = await adapter.invoke_turn(make_req({ stream: true, dispatch_chunk }))
+    expect(result.text).toBe('héllo ☂ café')
+  })
+
+  it('streams without a dispatch_chunk consumer and still aggregates the result', async () => {
+    stub_fetch(stream_response(TEXT_STREAM_EVENTS))
+    const adapter = create_anthropic_native_adapter({ api_key: 'sk-test' })
+    const result = await adapter.invoke_turn(make_req({ stream: true }))
+    expect(result).toEqual(parse_messages_response(TEXT_FIXTURE))
+  })
+
+  it('maps an undelta-ed tool_use block to its start-event input', async () => {
+    const events = [
+      TOOL_CALL_STREAM_EVENTS[0] as Record<string, unknown>,
+      {
+        type: 'content_block_start',
+        index: 0,
+        content_block: { type: 'tool_use', id: 'toolu_09', name: 'get_weather', input: {} },
+      },
+      { type: 'content_block_stop', index: 0 },
+      { type: 'message_delta', delta: { stop_reason: 'tool_use' }, usage: { output_tokens: 3 } },
+      { type: 'message_stop' },
+    ]
+    stub_fetch(stream_response(events))
+    const adapter = create_anthropic_native_adapter({ api_key: 'sk-test' })
+    const { chunks, dispatch_chunk } = chunk_collector()
+    const result = await adapter.invoke_turn(make_req({ stream: true, dispatch_chunk }))
+    expect(result.tool_calls).toEqual([{ id: 'toolu_09', name: 'get_weather', input: {} }])
+    expect(chunks[1]).toEqual({
+      kind: 'tool_call_end',
+      id: 'toolu_09',
+      input: {},
+      step_index: 0,
+    })
+  })
+
+  it('throws provider_error when accumulated tool input is not valid JSON', async () => {
+    const events = [
+      TOOL_CALL_STREAM_EVENTS[0] as Record<string, unknown>,
+      {
+        type: 'content_block_start',
+        index: 0,
+        content_block: { type: 'tool_use', id: 'toolu_01', name: 'get_weather', input: {} },
+      },
+      { type: 'content_block_delta', index: 0, delta: { type: 'input_json_delta', partial_json: '{"city": ' } },
+      { type: 'content_block_stop', index: 0 },
+    ]
+    stub_fetch(stream_response(events))
+    const adapter = create_anthropic_native_adapter({ api_key: 'sk-test' })
+    const { dispatch_chunk } = chunk_collector()
+    const err: unknown = await adapter
+      .invoke_turn(make_req({ stream: true, dispatch_chunk }))
+      .catch((e: unknown) => e)
+    expect(err).toBeInstanceOf(provider_error)
+    expect((err as Error).message).toContain('get_weather')
+  })
+
+  it('throws provider_error when a block event is missing its index', async () => {
+    const events = [
+      TEXT_STREAM_EVENTS[0] as Record<string, unknown>,
+      { type: 'content_block_start', content_block: { type: 'text', text: '' } },
+    ]
+    stub_fetch(stream_response(events))
+    const adapter = create_anthropic_native_adapter({ api_key: 'sk-test' })
+    await expect(
+      adapter.invoke_turn(make_req({ stream: true, dispatch_chunk: async () => {} })),
+    ).rejects.toThrow(/missing its block index/)
+  })
+
+  it('maps a mid-stream overloaded_error to a 529 shape the classifier retries', async () => {
+    const events = [
+      TEXT_STREAM_EVENTS[0] as Record<string, unknown>,
+      { type: 'error', error: { type: 'overloaded_error', message: 'Overloaded' } },
+    ]
+    stub_fetch(stream_response(events))
+    const adapter = create_anthropic_native_adapter({ api_key: 'sk-test' })
+    const err: unknown = await adapter
+      .invoke_turn(make_req({ stream: true, dispatch_chunk: async () => {} }))
+      .catch((e: unknown) => e)
+    expect((err as Error).message).toBe('anthropic stream error (overloaded_error): Overloaded')
+    const classified = classify_provider_error(err) as Record<string, unknown>
+    expect(classified['kind']).toBe('provider_5xx')
+    expect(classified['status']).toBe(529)
+  })
+
+  it('surfaces an unrecognized mid-stream error type as a permanent provider_error', async () => {
+    const events = [
+      { type: 'error', error: { type: 'invalid_request_error', message: 'bad turn' } },
+    ]
+    stub_fetch(stream_response(events))
+    const adapter = create_anthropic_native_adapter({ api_key: 'sk-test' })
+    const err: unknown = await adapter
+      .invoke_turn(make_req({ stream: true, dispatch_chunk: async () => {} }))
+      .catch((e: unknown) => e)
+    expect(err).toBeInstanceOf(provider_error)
+    expect((err as Error).message).toBe(
+      'anthropic stream error (invalid_request_error): bad turn',
+    )
+    expect(classify_provider_error(err)).toBe(err)
+  })
+
+  it('throws provider_error when the stream ends before message_stop', async () => {
+    const truncated = TEXT_STREAM_EVENTS.slice(0, -1)
+    stub_fetch(stream_response(truncated))
+    const adapter = create_anthropic_native_adapter({ api_key: 'sk-test' })
+    await expect(
+      adapter.invoke_turn(make_req({ stream: true, dispatch_chunk: async () => {} })),
+    ).rejects.toThrow(/message_stop/)
+  })
+
+  it('propagates a rejecting dispatch_chunk without wrapping it', async () => {
+    const consumer_error = new Error('consumer exploded')
+    stub_fetch(stream_response(TEXT_STREAM_EVENTS))
+    const adapter = create_anthropic_native_adapter({ api_key: 'sk-test' })
+    await expect(
+      adapter.invoke_turn(
+        make_req({
+          stream: true,
+          dispatch_chunk: async () => {
+            throw consumer_error
+          },
+        }),
+      ),
+    ).rejects.toBe(consumer_error)
   })
 })

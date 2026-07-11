@@ -1,0 +1,13 @@
+id: no-ai-sdk-in-native-providers
+message: "Native provider adapters owe Vercel nothing (D4): zero ai / @ai-sdk/* / AI SDK wrapper imports in *native* provider files. Talk to the provider's own API over global fetch with hand-rolled SSE; the ai_sdk transport is the place for SDK-backed code."
+severity: error
+language: typescript
+files:
+  - src/engine/providers/**/*native*.ts
+rule:
+  any:
+    - pattern: import $$$ from '$PATH'
+    - pattern: import $$$ from "$PATH"
+constraints:
+  PATH:
+    regex: '^(ai($|/)|@ai-sdk/|ai-sdk-|@openrouter/)'

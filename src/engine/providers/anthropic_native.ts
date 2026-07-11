@@ -13,7 +13,10 @@
  * adapter name stays 'anthropic' so DEFAULT_PRICING keys and UsageTotals
  * fields keep working across transports (C6). Schema requests ride the
  * engine's prompt + parse + repair loop (D6), so `TurnRequest.schema` is
- * intentionally unread. Streaming lands with the SSE parser (S-P3.4).
+ * intentionally unread. Streaming hand-rolls the SSE parse; the aggregator
+ * rebuilds the non-stream payload shape and feeds it through the same
+ * parse_messages_response, so streamed and non-streamed results are equal by
+ * construction (C4) rather than by parallel code paths.
  */
 
 import { z } from 'zod'
@@ -23,6 +26,7 @@ import type {
   FinishReason,
   Message,
   ProviderInit,
+  StreamChunk,
   Tool,
   TurnRequest,
   TurnResult,
@@ -202,6 +206,7 @@ export function build_messages_body(req: TurnRequest): Record<string, unknown> {
   }
   if (system_parts.length > 0) body['system'] = system_parts.join('\n\n')
   if (req.tools.length > 0) body['tools'] = to_anthropic_tools(req.tools)
+  if (req.stream) body['stream'] = true
   if (thinking_enabled) {
     body['thinking'] = { type: 'enabled', budget_tokens: budget }
   } else if (req.temperature !== undefined || req.top_p !== undefined) {
@@ -290,6 +295,288 @@ export function parse_messages_response(payload: unknown): TurnResult {
   }
 }
 
+/**
+ * Incremental SSE decoder for the Messages stream. push() takes decoded text
+ * as it arrives off the wire (any chunk boundary, including mid-line) and
+ * returns the data payloads of every event completed by that chunk; flush()
+ * drains an event left open when the stream ends without a trailing blank
+ * line. Only `data:` fields matter — the Messages API repeats the event type
+ * inside the JSON payload, so `event:`/`id:`/`retry:` fields and `:` comments
+ * are dropped. Multi-line data joins with '\n' per the SSE spec.
+ */
+export function create_sse_decoder(): {
+  push: (text: string) => string[]
+  flush: () => string[]
+} {
+  let buffer = ''
+  let data_lines: string[] = []
+
+  const take_line = (raw: string, out: string[]): void => {
+    const line = raw.endsWith('\r') ? raw.slice(0, -1) : raw
+    if (line.length === 0) {
+      if (data_lines.length > 0) {
+        out.push(data_lines.join('\n'))
+        data_lines = []
+      }
+      return
+    }
+    if (line.startsWith(':')) return
+    if (line.startsWith('data:')) {
+      const value = line.slice(5)
+      data_lines.push(value.startsWith(' ') ? value.slice(1) : value)
+    }
+  }
+
+  return {
+    push(text: string): string[] {
+      buffer += text
+      const out: string[] = []
+      let newline = buffer.indexOf('\n')
+      while (newline >= 0) {
+        take_line(buffer.slice(0, newline), out)
+        buffer = buffer.slice(newline + 1)
+        newline = buffer.indexOf('\n')
+      }
+      return out
+    },
+    flush(): string[] {
+      const out: string[] = []
+      if (buffer.length > 0) take_line(buffer, out)
+      buffer = ''
+      if (data_lines.length > 0) {
+        out.push(data_lines.join('\n'))
+        data_lines = []
+      }
+      return out
+    },
+  }
+}
+
+/**
+ * Mid-stream `error` events reuse the HTTP status classification:
+ * overloaded_error is the SSE analog of a 529, api_error of a 500, and
+ * rate_limit_error of a 429, so classify_provider_error sees the transients
+ * it already retries. Anything else is a permanent provider_error. Whether a
+ * retry actually happens stays retry_turn's call — once chunks have streamed
+ * it refuses, exactly as on the ai_sdk path.
+ */
+function stream_event_error(event: object): Error {
+  const error: unknown = Reflect.get(event, 'error')
+  let error_type = 'unknown'
+  let message = '(no message)'
+  if (error !== null && typeof error === 'object') {
+    const raw_type: unknown = Reflect.get(error, 'type')
+    if (typeof raw_type === 'string' && raw_type.length > 0) error_type = raw_type
+    const raw_message: unknown = Reflect.get(error, 'message')
+    if (typeof raw_message === 'string' && raw_message.length > 0) message = raw_message
+  }
+  const detail = `anthropic stream error (${error_type}): ${message}`
+  let status: number | undefined
+  if (error_type === 'overloaded_error') status = 529
+  else if (error_type === 'api_error') status = 500
+  else if (error_type === 'rate_limit_error') status = 429
+  if (status !== undefined) return Object.assign(new Error(detail), { status })
+  return new provider_error(detail)
+}
+
+function read_block_index(event: object): number {
+  const index: unknown = Reflect.get(event, 'index')
+  if (typeof index !== 'number') {
+    throw new provider_error('anthropic native: stream event is missing its block index')
+  }
+  return index
+}
+
+/**
+ * Consume parsed Messages-stream events, dispatching StreamChunks as they
+ * arrive and rebuilding the non-stream response payload as it goes: text
+ * deltas accumulate into synthetic text blocks, tool_use input arrives as raw
+ * JSON text (input_json_delta) held per open block and parsed at
+ * content_block_stop. complete() feeds the synthetic payload through
+ * parse_messages_response, which is what makes the streamed TurnResult equal
+ * the non-streamed one by construction (C4). A stream that ends without
+ * message_stop is truncated output, so complete() fails loud instead of
+ * returning a partial turn.
+ */
+export function create_stream_aggregator(
+  step_index: number,
+  dispatch: (chunk: StreamChunk) => Promise<void>,
+): {
+  handle_event: (data: string) => Promise<void>
+  complete: () => TurnResult
+} {
+  type SyntheticToolUse = { type: 'tool_use'; id: string; name: string; input: unknown }
+  const content: Array<{ type: 'text'; text: string } | SyntheticToolUse> = []
+  const open_text = new Map<number, { type: 'text'; text: string }>()
+  const open_tools = new Map<number, { block: SyntheticToolUse; json: string }>()
+  const usage: Record<string, number> = {}
+  let stop_reason: string | undefined
+  let stopped = false
+
+  // message_delta usage (cumulative output_tokens) overlays message_start
+  // usage (input + cache fields); nested non-numeric containers are skipped.
+  const merge_usage = (raw: unknown): void => {
+    if (raw === null || typeof raw !== 'object') return
+    for (const [key, value] of Object.entries(raw)) {
+      if (typeof value === 'number') usage[key] = value
+    }
+  }
+
+  const on_block_start = async (event: object): Promise<void> => {
+    const index = read_block_index(event)
+    const block: unknown = Reflect.get(event, 'content_block')
+    if (block === null || typeof block !== 'object') return
+    const type: unknown = Reflect.get(block, 'type')
+    if (type === 'text') {
+      const initial: unknown = Reflect.get(block, 'text')
+      const synthetic = {
+        type: 'text' as const,
+        text: typeof initial === 'string' ? initial : '',
+      }
+      content.push(synthetic)
+      open_text.set(index, synthetic)
+      return
+    }
+    if (type === 'tool_use') {
+      const id: unknown = Reflect.get(block, 'id')
+      const name: unknown = Reflect.get(block, 'name')
+      if (typeof id !== 'string' || typeof name !== 'string') {
+        throw new provider_error('anthropic native: malformed tool_use block in stream')
+      }
+      const synthetic: SyntheticToolUse = {
+        type: 'tool_use',
+        id,
+        name,
+        input: Reflect.get(block, 'input') ?? {},
+      }
+      content.push(synthetic)
+      open_tools.set(index, { block: synthetic, json: '' })
+      await dispatch({ kind: 'tool_call_start', id, name, step_index })
+    }
+    // thinking / redacted_thinking blocks carry no TurnResult state; their
+    // deltas dispatch reasoning chunks directly.
+  }
+
+  const on_block_delta = async (event: object): Promise<void> => {
+    const index = read_block_index(event)
+    const delta: unknown = Reflect.get(event, 'delta')
+    if (delta === null || typeof delta !== 'object') return
+    const type: unknown = Reflect.get(delta, 'type')
+    if (type === 'text_delta') {
+      const text: unknown = Reflect.get(delta, 'text')
+      const open = open_text.get(index)
+      if (typeof text !== 'string' || open === undefined) return
+      open.text += text
+      await dispatch({ kind: 'text', text, step_index })
+      return
+    }
+    if (type === 'thinking_delta') {
+      const thinking: unknown = Reflect.get(delta, 'thinking')
+      if (typeof thinking === 'string') {
+        await dispatch({ kind: 'reasoning', text: thinking, step_index })
+      }
+      return
+    }
+    if (type === 'input_json_delta') {
+      const partial: unknown = Reflect.get(delta, 'partial_json')
+      const open = open_tools.get(index)
+      if (typeof partial !== 'string' || open === undefined) return
+      open.json += partial
+      await dispatch({
+        kind: 'tool_call_input_delta',
+        id: open.block.id,
+        delta: partial,
+        step_index,
+      })
+    }
+    // signature_delta and future delta kinds have no engine chunk; dropped.
+  }
+
+  const on_block_stop = async (event: object): Promise<void> => {
+    const index = read_block_index(event)
+    const open = open_tools.get(index)
+    open_text.delete(index)
+    if (open === undefined) return
+    open_tools.delete(index)
+    if (open.json.length > 0) {
+      try {
+        open.block.input = JSON.parse(open.json)
+      } catch {
+        throw new provider_error(
+          `anthropic native: tool_use input for ${open.block.name} is not valid JSON`,
+        )
+      }
+    }
+    await dispatch({
+      kind: 'tool_call_end',
+      id: open.block.id,
+      input: open.block.input,
+      step_index,
+    })
+  }
+
+  return {
+    async handle_event(data: string): Promise<void> {
+      let event: unknown
+      try {
+        event = JSON.parse(data)
+      } catch {
+        throw new provider_error('anthropic native: stream event is not valid JSON')
+      }
+      if (event === null || typeof event !== 'object') return
+      switch (Reflect.get(event, 'type')) {
+        case 'message_start': {
+          const message: unknown = Reflect.get(event, 'message')
+          if (message !== null && typeof message === 'object') {
+            merge_usage(Reflect.get(message, 'usage'))
+          }
+          break
+        }
+        case 'content_block_start':
+          await on_block_start(event)
+          break
+        case 'content_block_delta':
+          await on_block_delta(event)
+          break
+        case 'content_block_stop':
+          await on_block_stop(event)
+          break
+        case 'message_delta': {
+          const delta: unknown = Reflect.get(event, 'delta')
+          if (delta !== null && typeof delta === 'object') {
+            const raw: unknown = Reflect.get(delta, 'stop_reason')
+            if (typeof raw === 'string') stop_reason = raw
+          }
+          merge_usage(Reflect.get(event, 'usage'))
+          break
+        }
+        case 'message_stop':
+          stopped = true
+          await dispatch({
+            kind: 'step_finish',
+            step_index,
+            finish_reason: map_anthropic_stop_reason(stop_reason),
+            usage: map_anthropic_usage(usage),
+          })
+          break
+        case 'error':
+          throw stream_event_error(event)
+        // ping and unrecognized future event types are dropped on purpose.
+        default:
+          break
+      }
+    },
+    complete(): TurnResult {
+      if (!stopped) {
+        throw new provider_error(
+          'anthropic native: stream ended before message_stop; the result would be truncated',
+        )
+      }
+      return parse_messages_response({ content, stop_reason, usage })
+    },
+  }
+}
+
 /** Anthropic error bodies are `{ type: 'error', error: { message } }`; fall back to the raw body. */
 function extract_error_message(body: string): string {
   if (body.length === 0) return '(empty body)'
@@ -341,13 +628,81 @@ async function response_error(response: Response): Promise<Error> {
   return new provider_error(`anthropic API error ${status}: ${detail}`, { status, body })
 }
 
-// 'streaming' arrives with the SSE parser (S-P3.4); 'structured_output' is
-// intentionally absent, schema rides the prompt + parse + repair loop (D6);
-// image parts are unmapped on this transport.
+/**
+ * A user abort surfaces as the fetch/reader AbortError; retry_turn converts
+ * it via its own signal check, so it is rethrown untouched. Everything else
+ * is a transport failure wrapped in the `kind: 'network'` shape the shared
+ * classify_provider_error marks retryable.
+ */
+function rethrow_network_failure(err: unknown, abort: AbortSignal): never {
+  if (abort.aborted) throw err
+  const detail = err instanceof Error ? err.message : String(err)
+  throw Object.assign(new Error(`anthropic native: network failure: ${detail}`), {
+    kind: 'network',
+  })
+}
+
+/**
+ * Drain a streaming Messages response: decode bytes, reassemble SSE events,
+ * and feed them to the aggregator, which dispatches chunks through
+ * req.dispatch_chunk as they arrive. Transport failures mid-read wrap as
+ * network errors; aggregator throws (malformed events, mid-stream error
+ * events, a rejecting on_chunk) pass through untouched, with the reader
+ * cancelled so the connection is released.
+ */
+async function consume_sse_response(response: Response, req: TurnRequest): Promise<TurnResult> {
+  const body = response.body
+  if (body === null) {
+    throw new provider_error('anthropic native: streaming response has no body')
+  }
+  const dispatch = req.dispatch_chunk ?? (async (): Promise<void> => {})
+  const aggregator = create_stream_aggregator(req.step_index, dispatch)
+  const reader = body.getReader()
+  const text_decoder = new TextDecoder()
+  const sse = create_sse_decoder()
+
+  const next_bytes = async (): Promise<Uint8Array | undefined> => {
+    let step: Awaited<ReturnType<typeof reader.read>>
+    try {
+      step = await reader.read()
+    } catch (err: unknown) {
+      rethrow_network_failure(err, req.abort)
+    }
+    return step.done ? undefined : step.value
+  }
+
+  // Sequential awaits are the contract here: chunk order is an engine
+  // invariant and each event mutates aggregator state, so no parallelism.
+  try {
+    while (true) {
+      // oxlint-disable-next-line no-await-in-loop
+      const bytes = await next_bytes()
+      if (bytes === undefined) break
+      for (const data of sse.push(text_decoder.decode(bytes, { stream: true }))) {
+        // oxlint-disable-next-line no-await-in-loop
+        await aggregator.handle_event(data)
+      }
+    }
+  } finally {
+    // Frees the connection when an error exits the loop early; a no-op on a
+    // fully drained stream.
+    void reader.cancel().catch(() => {})
+  }
+  const tail = [...sse.push(text_decoder.decode()), ...sse.flush()]
+  for (const data of tail) {
+    // oxlint-disable-next-line no-await-in-loop
+    await aggregator.handle_event(data)
+  }
+  return aggregator.complete()
+}
+
+// 'structured_output' is intentionally absent, schema rides the prompt +
+// parse + repair loop (D6); image parts are unmapped on this transport.
 const SUPPORTED: ReadonlySet<ProviderCapability> = new Set([
   'text',
   'tools',
   'schema',
+  'streaming',
   'reasoning',
 ])
 
@@ -371,13 +726,6 @@ export const create_anthropic_native_adapter = (
     kind: 'native',
     name: 'anthropic',
     async invoke_turn(req: TurnRequest): Promise<TurnResult> {
-      if (req.stream) {
-        throw new provider_capability_error(
-          'anthropic',
-          'streaming',
-          "not implemented on the native transport yet; use transport: 'ai_sdk' to stream",
-        )
-      }
       let response: Response
       try {
         response = await fetch(`${base_url}/messages`, {
@@ -391,15 +739,10 @@ export const create_anthropic_native_adapter = (
           signal: req.abort,
         })
       } catch (err: unknown) {
-        // A user abort surfaces as the fetch AbortError; retry_turn converts
-        // it via its own signal check, so rethrow untouched.
-        if (req.abort.aborted) throw err
-        const detail = err instanceof Error ? err.message : String(err)
-        throw Object.assign(new Error(`anthropic native: network failure: ${detail}`), {
-          kind: 'network',
-        })
+        rethrow_network_failure(err, req.abort)
       }
       if (!response.ok) throw await response_error(response)
+      if (req.stream) return consume_sse_response(response, req)
       const payload: unknown = await response.json()
       return parse_messages_response(payload)
     },

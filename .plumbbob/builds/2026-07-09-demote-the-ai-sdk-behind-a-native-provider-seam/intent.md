@@ -210,7 +210,7 @@ End state (after Step 14, the inversion):
     `'subprocess'` kind remains anywhere in the tree; full suite green
     - seam: `src/engine/`
     - model: sonnet — mechanical rename sweep; types + suite gate it
-12. [ ] Native Anthropic: mapping, non-stream, auth (S-P3.1..P3.3, S-P3.5:
+12. [x] Native Anthropic: mapping, non-stream, auth (S-P3.1..P3.3, S-P3.5:
     `transport` selector on provider init, `Message[]`/`Tool[]` to Messages-API
     mapping, non-stream `invoke_turn` with `stop_reason`/usage mapping,
     `x-api-key` + `anthropic-version` headers, 401/429(+`retry-after`)/5xx/network
