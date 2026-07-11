@@ -27,11 +27,11 @@ Only `providers` is required.
 ```ts
 type ProviderConfigMap = {
   anthropic?:   { api_key: string; base_url?: string; transport?: 'ai_sdk' | 'native' };
-  openai?:      { api_key: string; base_url?: string; organization?: string };
+  openai?:      { api_key: string; base_url?: string; organization?: string; transport?: 'ai_sdk' | 'native' };
   google?:      { api_key: string; base_url?: string };
-  ollama?:      { base_url: string };
-  lmstudio?:    { base_url: string };
-  openrouter?:  { api_key: string; base_url?: string; http_referer?: string; x_title?: string };
+  ollama?:      { base_url: string; transport?: 'ai_sdk' | 'native' };
+  lmstudio?:    { base_url: string; transport?: 'ai_sdk' | 'native' };
+  openrouter?:  { api_key: string; base_url?: string; http_referer?: string; x_title?: string; transport?: 'ai_sdk' | 'native' };
   bedrock?:     { region: string; api_key?: string; access_key_id?: string; secret_access_key?: string; session_token?: string; base_url?: string };
   claude_cli?:  ClaudeCliProviderConfig;
 };
@@ -39,7 +39,7 @@ type ProviderConfigMap = {
 
 A provider absent from `providers` throws `provider_not_configured_error` at call time — constructing an engine without a provider does not fail; the failure is deferred to the first `generate` against it.
 
-`anthropic` takes an optional `transport` selector: `'ai_sdk'` (the default) wraps `@ai-sdk/anthropic`, `'native'` talks to the Messages API directly over `fetch` with no peer to install. The provider name, pricing keys, and effort mapping are identical across transports. See [providers.md](./providers.md#transport-picking-a-depth-1-backend).
+Five providers take an optional `transport` selector: `'ai_sdk'` (the default) wraps that provider's AI SDK peer, `'native'` talks to the provider's own API directly over `fetch` with no peer to install. `anthropic` native targets the Messages API; `openai`, `openrouter`, and `lmstudio` native ride a shared OpenAI Chat Completions core; `ollama` native targets its own `/api/chat` endpoint. The provider name, pricing keys, and effort mapping are identical across transports. See [providers.md](./providers.md#transport-picking-a-depth-1-backend).
 
 Every provider's SDK is an optional peer dependency, loaded on first `generate`. Install only the ones you use.
 
@@ -211,12 +211,14 @@ type EngineDefaults = {
   system?: string;
   effort?: EffortLevel;
   max_steps?: number;
+  turn_timeout_ms?: number;
   retry_policy?: RetryPolicy;
   tool_error_policy?: 'feed_back' | 'throw';
   schema_repair_attempts?: number;
   tool_call_repair_attempts?: number;
   max_tool_calls_per_step?: number;
   provider_options?: Record<string, Record<string, unknown>>;
+  ai_sdk_telemetry?: AiSdkTelemetrySettings;   // opt-in OTel for the ai_sdk transport; see "OpenTelemetry" below
 };
 ```
 
@@ -246,10 +248,10 @@ const result = await engine.generate({ prompt: 'hello' });
 | ---------------------------------------------------------------------------------- | ----------------------------------------------- |
 | `model`                                                                            | per-call wins; else default; else throws `model_required_error` |
 | `provider`                                                                         | per-call wins; else default; else sole provider; else `anthropic` |
-| `system`, `effort`, `max_steps`, `tool_error_policy`, `schema_repair_attempts`, `tool_call_repair_attempts`, `max_tool_calls_per_step` | per-call wins via nullish coalesce |
+| `system`, `effort`, `max_steps`, `turn_timeout_ms`, `tool_error_policy`, `schema_repair_attempts`, `tool_call_repair_attempts`, `max_tool_calls_per_step` | per-call wins via nullish coalesce |
 | `retry`                                                                            | per-call replaces wholesale                     |
 | `provider_options`                                                                 | two-level: per-provider key, shallow-merged     |
-| `prompt`, `tools`, `schema`, `abort`, `trajectory`, `on_chunk`                     | not defaultable; always call-supplied           |
+| `prepare_step`, `prompt`, `tools`, `schema`, `abort`, `trajectory`, `on_chunk`     | not defaultable; always call-supplied           |
 
 Two-level merge for `provider_options` means the outer key is the provider name and each inner record is shallow-merged. Deeper structures replace wholesale.
 
@@ -307,6 +309,50 @@ Rules:
 - Streaming calls do **not** retry past the first delivered chunk. The orchestrator enforces that boundary.
 - Exhaustion throws `rate_limit_error` (for 429s) or `provider_error` (for 5xx / network). Both include `.attempts`.
 
+## Turn timeout budgets
+
+`turn_timeout_ms` puts a per-turn wall-clock budget on every depth-1 model turn. The engine composes a timeout signal with your `abort` around each `invoke_turn`, so it protects both the `ai_sdk` and `native` transports (and local runtimes that hang), without any adapter owning the deadline:
+
+```ts
+const engine = create_engine({
+  providers: { anthropic: { api_key: process.env.ANTHROPIC_API_KEY! } },
+  defaults: { turn_timeout_ms: 60_000 },   // engine-wide default
+});
+
+await engine.generate({
+  prompt: '...',
+  turn_timeout_ms: 15_000,                 // per-call override (wins over the default)
+});
+```
+
+- **Scope is one turn, not the whole call.** A multi-step tool loop resets the budget for each turn; the option bounds any single model round-trip, not the aggregate run. Wrap the whole call in your own `AbortSignal` (or the `timeout` composer) if you need a call-level ceiling.
+- **Expiry is a typed, retryable timeout.** Before any chunk streams, expiry throws a timeout the shared classifier treats as retryable, so the retry policy re-attempts it exactly like a 5xx.
+- **Mid-stream expiry does not retry.** Once chunks have flowed, a timeout becomes a non-retryable stream interruption, matching the same first-chunk boundary the retry policy enforces.
+- **Must be `> 0`.** `undefined` (the default) leaves turns unbounded; `defaults.turn_timeout_ms` sets the baseline and the per-call value wins via nullish coalesce.
+
+## Reshaping each turn: `prepare_step`
+
+`prepare_step` is a per-turn hook the tool loop calls before each model turn, on both depth-1 transports. It receives the step index and the would-be request messages (the full accumulated transcript at that point) and may return replacement messages to prune, summarize, or window what is sent to the model for that turn only:
+
+```ts
+await engine.generate({
+  prompt: '...',
+  tools,
+  max_steps: 20,
+  prepare_step: ({ step_index, messages }) => {
+    // Keep the system/first message plus a sliding window of the last 10.
+    if (messages.length <= 12) return undefined;   // no-op
+    return { messages: [messages[0], ...messages.slice(-10)] };
+  },
+});
+```
+
+- **The canonical transcript is untouched.** Returned messages reshape only what that one turn sends to the model; the history the loop appends to (and the trajectory) keeps the real transcript, so salvage, approval, `Tool.ends_turn`, and schema-repair keep operating on the true history.
+- **Return `undefined` for a no-op.** Returning `undefined`, or an object without `messages`, leaves the turn's request unchanged.
+- **Every replaced turn is legible.** A `step_prepared` trajectory event records each turn the hook modified, so mid-loop pruning stays visible in the trajectory.
+- **Sync or async.** The hook may return a promise; the loop awaits it before dispatching the turn.
+- **Not defaultable.** `prepare_step` is call-supplied only (it is not on `EngineDefaults`). Per-step model/effort switching is deliberately out of scope for now.
+
 ## `generate` options
 
 The full per-call surface:
@@ -324,6 +370,7 @@ type GenerateOptions<t = string> = {
   max_tokens?: number;
   top_p?: number;
   max_steps?: number;
+  turn_timeout_ms?: number;
   abort?: AbortSignal;
   trajectory?: TrajectoryLogger;
   on_chunk?: (chunk: StreamChunk) => void | Promise<void>;
@@ -333,6 +380,7 @@ type GenerateOptions<t = string> = {
   tool_call_repair_attempts?: number;
   max_tool_calls_per_step?: number;
   on_tool_approval?: ToolApprovalHandler;
+  prepare_step?: PrepareStepHook;
   provider_options?: Record<string, unknown>;
 };
 ```
@@ -342,6 +390,8 @@ A few highlights:
 - `effort: 'none' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'` is translated per-provider. See [providers.md](./providers.md) for the per-provider mapping. Providers that do not support reasoning effort (e.g. Ollama) silently drop it and record `effort_ignored` on the trajectory.
 - `schema` is a zod schema. On failure, the engine attempts `schema_repair_attempts` repair passes (default 1) before throwing `schema_validation_error`.
 - `tools` is the agentic tool-use surface; tools have zod `input_schema` and an `execute` closure. See the cookbook for tool loops.
+- `turn_timeout_ms` bounds each model turn's wall-clock; expiry throws a retryable timeout. See [Turn timeout budgets](#turn-timeout-budgets).
+- `prepare_step` reshapes the messages sent to the model before each turn without mutating the transcript. See [Reshaping each turn: `prepare_step`](#reshaping-each-turn-prepare_step).
 - `provider_options` is a two-level record keyed by provider name, merged over `defaults.provider_options`.
 
 ### Local-runtime tool reliability
@@ -365,6 +415,56 @@ await engine.generate({
 ```
 
 External-kind providers (`claude_cli`) do not run the shared tool loop, so they ignore both options and record `option_ignored` for each.
+
+## OpenTelemetry
+
+fascicle exposes OpenTelemetry in two independent layers with a clean seam between them. Both are opt-in and neither pulls an OTel package into a program that does not use it.
+
+### Layer 1: the `fascicle/otel` trajectory bridge (transport-neutral)
+
+`fascicle/otel` turns the engine's own trajectory (spans + events) into OpenTelemetry spans. Because it rides the events the engine already emits, it produces traces for **every** transport — `ai_sdk`, `native`, and `external` alike — with no AI SDK involvement. It takes `@opentelemetry/api` as an optional peer, and it lives on its own subpath so importing `fascicle` pulls in zero OTel packages; only `import 'fascicle/otel'` does.
+
+```bash
+pnpm add @opentelemetry/api
+```
+
+```ts
+import { create_otel_trajectory_logger } from 'fascicle/otel';
+
+// A plain TrajectoryLogger — pass it wherever a trajectory is accepted.
+const trajectory = create_otel_trajectory_logger();
+// resolves against whatever global TracerProvider your host has registered;
+// pass { tracer } to target a specific one, or { attribute_prefix } to change
+// the default `fascicle.` attribute namespace.
+
+await engine.generate({ prompt: '...', trajectory });
+```
+
+The bridge maps the `engine.generate` span to an OTel root span, each step to a child span, and every recorded event (tool_call, tool_result, cost, ...) to a span event on the open span. `dispose()` is not required; spans end as the trajectory closes them.
+
+### Layer 2: `ai_sdk` transport telemetry (turn-internal)
+
+For turn-internal detail on the `ai_sdk` transport only, opt into `@ai-sdk/otel` via `defaults.ai_sdk_telemetry`. This instruments the single `generateText` / `streamText` call below the turn seam; native transports ignore it (their loop-level story is Layer 1).
+
+```bash
+pnpm add @ai-sdk/otel
+```
+
+```ts
+const engine = create_engine({
+  providers: { openai: { api_key: process.env.OPENAI_API_KEY! } },
+  defaults: {
+    ai_sdk_telemetry: {
+      enabled: true,
+      function_id: 'my-agent',      // optional label
+      record_inputs: false,         // default true; turn off to keep prompts out of spans
+      record_outputs: false,
+    },
+  },
+});
+```
+
+The two layers compose: run Layer 1 for a transport-neutral trace of the whole loop, and enable Layer 2 for extra spans inside `ai_sdk` turns. `AiSdkTelemetrySettings` is exported from `fascicle` for typing the settings object; `create_otel_trajectory_logger` and `OtelTrajectoryLoggerOptions` are exported from `fascicle/otel`. The full rationale for why `@ai-sdk/otel` is adopted only below the seam is in the [agent-layer boundary ADR](../research/explorations/2026-07-ai-sdk-agent-layer-boundary.md).
 
 ## Lifecycle
 

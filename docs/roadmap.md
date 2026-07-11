@@ -21,8 +21,13 @@ landed on main awaiting release: an open `custom_providers` registry, a
 `transport: 'native'` raw-HTTP Anthropic adapter, and a SDK-agnostic `generate`
 where the AI SDK call is one provider kind among peers (per
 [the provider sovereignty spec](../research/provider-sovereignty-spec.md),
-sequenced by [its intent](../research/provider-sovereignty-intent.md)). The
-native OpenAI and Ollama adapters are the next entries in that series. The live
+sequenced by [its intent](../research/provider-sovereignty-intent.md)). That
+series continues in the native-expansion build (per
+[its intent](../research/native-expansion-intent.md)): a shared
+OpenAI-compatible native core behind `openai`, `openrouter`, and `lmstudio`,
+native Ollama on `/api/chat`, engine-owned turn-timeout budgets, a `prepare_step`
+loop hook, a transport-neutral `fascicle/otel` bridge, and
+`engine.with_providers()` for post-construction provider derivation. The live
 edge is mid-Phase 2: the MCP adapter has shipped, and the first deployment that
 realizes the two remaining Phase 2 items at once has begun (see Phase 2 below).
 
@@ -153,6 +158,10 @@ do not need:
 - A rename or camelCase conversion.
 - New composers (including a `quorum` convenience; the `agree` predicate is
   strictly more expressive).
-- An OpenTelemetry bridge. The synchronous, flush-less logger contract blocks a
-  correct exporter; revisit post-launch.
+- ~~An OpenTelemetry bridge.~~ Superseded by the native-expansion build: a
+  transport-neutral `fascicle/otel` bridge maps the trajectory's own spans and
+  events to OTel (the synchronous logger contract turned out to compose cleanly
+  with span start/end), with opt-in `@ai-sdk/otel` telemetry below the turn seam
+  for the `ai_sdk` transport. Both peers are optional. See
+  [configuration.md](./configuration.md#opentelemetry).
 - A deployment story or a Python port.

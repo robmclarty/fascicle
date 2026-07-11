@@ -15,6 +15,7 @@ export default defineConfig({
     index: './src/index.ts',
     adapters: './src/adapters/index.ts',
     mcp: './src/mcp/index.ts',
+    otel: './src/otel/index.ts',
     stdio: './src/stdio/index.ts',
     ui: './src/ui/index.ts',
   },

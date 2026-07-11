@@ -31,6 +31,8 @@ const DIST_ADAPTERS_JS = join(DIST_DIR, 'adapters.js');
 const DIST_ADAPTERS_DTS = join(DIST_DIR, 'adapters.d.ts');
 const DIST_MCP_JS = join(DIST_DIR, 'mcp.js');
 const DIST_MCP_DTS = join(DIST_DIR, 'mcp.d.ts');
+const DIST_OTEL_JS = join(DIST_DIR, 'otel.js');
+const DIST_OTEL_DTS = join(DIST_DIR, 'otel.d.ts');
 const DIST_STDIO_JS = join(DIST_DIR, 'stdio.js');
 const DIST_STDIO_DTS = join(DIST_DIR, 'stdio.d.ts');
 const DIST_UI_JS = join(DIST_DIR, 'ui.js');
@@ -265,6 +267,19 @@ async function main() {
     process.exit(1);
   }
 
+  process.stderr.write(`▸ build: smoke-importing ${DIST_OTEL_JS}\n`);
+  if (!existsSync(DIST_OTEL_JS) || !existsSync(DIST_OTEL_DTS)) {
+    console.error(`\nbuild: dist/otel.{js,d.ts} were not produced (the ./otel subpath)`);
+    process.exit(1);
+  }
+  const otel_mod = await import(pathToFileURL(DIST_OTEL_JS).href);
+  const EXPECTED_OTEL = ['create_otel_trajectory_logger'];
+  const missing_otel = EXPECTED_OTEL.filter((name) => typeof otel_mod[name] === 'undefined');
+  if (missing_otel.length > 0) {
+    console.error(`\nbuild: otel smoke test missing exports: ${missing_otel.join(', ')}`);
+    process.exit(1);
+  }
+
   process.stderr.write(`▸ build: smoke-importing ${DIST_STDIO_JS}\n`);
   if (!existsSync(DIST_STDIO_JS) || !existsSync(DIST_STDIO_DTS)) {
     console.error(`\nbuild: dist/stdio.{js,d.ts} were not produced (the ./stdio subpath)`);
@@ -292,7 +307,7 @@ async function main() {
   }
 
   process.stderr.write(
-    `\n✔ build ok (${js_stat.size} bytes js, ${dts_stat.size} bytes d.ts, ${EXPECTED_NAMED.length} named exports + describe.json + ${EXPECTED_ADAPTERS.length} adapters + ${EXPECTED_MCP.length} mcp + ${EXPECTED_STDIO.length} stdio + ${EXPECTED_UI.length} ui verified)\n`,
+    `\n✔ build ok (${js_stat.size} bytes js, ${dts_stat.size} bytes d.ts, ${EXPECTED_NAMED.length} named exports + describe.json + ${EXPECTED_ADAPTERS.length} adapters + ${EXPECTED_MCP.length} mcp + ${EXPECTED_OTEL.length} otel + ${EXPECTED_STDIO.length} stdio + ${EXPECTED_UI.length} ui verified)\n`,
   );
 }
 

@@ -12,6 +12,7 @@
 export { create_engine } from './create_engine.js'
 
 export type {
+  AiSdkTelemetrySettings,
   AssistantContentPart,
   CostBreakdown,
   EffortLevel,
@@ -22,6 +23,9 @@ export type {
   GenerateOptions,
   GenerateResult,
   Message,
+  PrepareStepContext,
+  PrepareStepHook,
+  PrepareStepResult,
   Pricing,
   PricingTable,
   ProviderConfigMap,

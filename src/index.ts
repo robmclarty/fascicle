@@ -36,6 +36,7 @@ export {
 
 export type {
   AiSdkProviderAdapter,
+  AiSdkTelemetrySettings,
   AssistantContentPart,
   CostBreakdown,
   EffortLevel,
@@ -49,6 +50,9 @@ export type {
   GenerateResult,
   Message,
   NativeProviderAdapter,
+  PrepareStepContext,
+  PrepareStepHook,
+  PrepareStepResult,
   Pricing,
   PricingTable,
   ProviderAdapter,

@@ -55,6 +55,10 @@
       "types": "./dist/mcp.d.ts",
       "import": "./dist/mcp.js"
     },
+    "./otel": {
+      "types": "./dist/otel.d.ts",
+      "import": "./dist/otel.js"
+    },
     "./stdio": {
       "types": "./dist/stdio.d.ts",
       "import": "./dist/stdio.js"

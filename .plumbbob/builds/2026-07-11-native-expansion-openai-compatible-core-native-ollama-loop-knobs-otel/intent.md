@@ -198,7 +198,12 @@ End state (additions to the predecessor's sketch marked with `+`):
 - C8: Scope is `src/engine/**`, a new `src/otel/**` subpath, `rules/`,
   `fallow.toml`, `package.json` (peers/exports only), docs, and the ADR
   amendment. `core`, `composites`, `agents`, `adapters`, `mcp`, `viewer`,
-  `ui`, and `stdio` are untouched.
+  `ui`, and `stdio` are untouched behaviorally. One mechanical exception: a
+  public `Engine` surface change (Step 10's required `with_providers`) cascades
+  a conformance-only stub to every hand-rolled `Engine` test double and example
+  stub (`examples/**`, `src/agents/**/__tests__/`, `src/__tests__/`). Those
+  one-line, no-behavior edits satisfy the widened interface and are in-scope,
+  not drift.
 
 ## Steps
 
@@ -298,7 +303,7 @@ End state (additions to the predecessor's sketch marked with `+`):
    - seam: `src/otel/`, `src/engine/providers/ai_sdk/`, `package.json`, `research/explorations/2026-07-ai-sdk-agent-layer-boundary.md`
    - model: opus — new but well-bounded surface; the boundary bookkeeping is
      settled by D7
-10. [ ] `with_providers` derivation — **done when:** `engine.with_providers(
+10. [x] `with_providers` derivation — **done when:** `engine.with_providers(
     providers, custom_providers?)` returns a new engine with merged config
     (same defaults, custom-first resolution, shadow-throws vs built-ins,
     adapters constructed fresh, disposal independent of the parent), the

@@ -84,7 +84,7 @@ Plus `run`, `run.stream`, and `describe`.
 
 **AI engine.** `create_engine(config)` returns one `generate` surface across eight providers. Two axes: `model` is an opaque id sent to the provider verbatim (`claude-opus-4-8`, `gpt-4o`, `us.anthropic.claude-sonnet-4-20250514-v1:0`), and `provider` names the transport (`anthropic`, `bedrock`, `openrouter`, `claude_cli`, …) — swap `provider` to move a call between transports. Reasoning effort (`'none'` through `'max'`) is translated per provider. Cost estimation uses a pricing table with per-engine overrides.
 
-The engine core is SDK-agnostic: providers plug in behind a neutral single-turn seam, as one of three kinds. Most built-ins wrap Vercel's AI SDK (`ai_sdk`), `anthropic` can instead run `transport: 'native'` (raw HTTP against the Messages API, no AI SDK in the path), and `claude_cli` delegates to an external agent. All three inherit the same tool loop, retry, cost, and trajectory, and `custom_providers` registers your own adapter of any kind without touching fascicle. See [docs/providers.md](./docs/providers.md).
+The engine core is SDK-agnostic: providers plug in behind a neutral single-turn seam, as one of three kinds. Most built-ins wrap Vercel's AI SDK (`ai_sdk`); five providers can instead run `transport: 'native'` (raw HTTP, no AI SDK in the path, no peer to install) — `anthropic` on the Messages API, `openai`/`openrouter`/`lmstudio` on a shared OpenAI Chat Completions core, and `ollama` on its own `/api/chat` endpoint; and `claude_cli` delegates to an external agent. All inherit the same tool loop, retry, cost, and trajectory, and `custom_providers` registers your own adapter of any kind without touching fascicle. See [docs/providers.md](./docs/providers.md).
 
 **Adapters injected per run.** Trajectory loggers and checkpoint stores ship under the `fascicle/adapters` subpath:
 
@@ -131,12 +131,12 @@ serve_flow({
 | Provider     | Peer dep                      | Auth                |
 | ------------ | ----------------------------- | ------------------- |
 | `anthropic`  | `@ai-sdk/anthropic`, or none with `transport: 'native'` | API key |
-| `openai`     | `@ai-sdk/openai`              | API key             |
+| `openai`     | `@ai-sdk/openai`, or none with `transport: 'native'` | API key      |
 | `google`     | `@ai-sdk/google`              | API key             |
-| `openrouter` | `@openrouter/ai-sdk-provider` | API key             |
+| `openrouter` | `@openrouter/ai-sdk-provider`, or none with `transport: 'native'` | API key |
 | `bedrock`    | `@ai-sdk/amazon-bedrock`      | `region` + AWS credentials |
-| `ollama`     | `ai-sdk-ollama`               | local `base_url`    |
-| `lmstudio`   | `@ai-sdk/openai-compatible`   | local `base_url`    |
+| `ollama`     | `ai-sdk-ollama`, or none with `transport: 'native'` | local `base_url` |
+| `lmstudio`   | `@ai-sdk/openai-compatible`, or none with `transport: 'native'` | local `base_url` |
 | `claude_cli` | none (spawns `claude`)        | OAuth or API key    |
 
 Full details: [docs/providers.md](./docs/providers.md). The `claude_cli` adapter has its own guide: [docs/cli.md](./docs/cli.md).
