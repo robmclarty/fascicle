@@ -52,6 +52,28 @@ export class provider_error extends Error {
   }
 }
 
+/**
+ * Turn-timeout expiry (D5). Thrown by the engine-owned retry_turn wrapper when
+ * a depth-1 invoke_turn exceeds `turn_timeout_ms` before any chunk streamed.
+ * Its `kind` is the RetryFailureKind wire value `'timeout'` (not the class
+ * name) on purpose: that is the discriminant classify_retryable /
+ * classify_provider_error already key on, so the shared classifier treats an
+ * expiry as retryable without any timeout-specific branch. A mid-stream expiry
+ * never reaches here — retry_turn converts it to a non-retryable stream
+ * interruption first (C4 parity).
+ */
+export class turn_timeout_error extends Error {
+  readonly kind = 'timeout' as const;
+  readonly timeout_ms: number;
+  readonly step_index: number | undefined;
+  constructor(timeout_ms: number, step_index?: number) {
+    super(`turn exceeded turn_timeout_ms budget of ${timeout_ms}ms`)
+    this.name = 'turn_timeout_error'
+    this.timeout_ms = timeout_ms
+    this.step_index = step_index
+  }
+}
+
 export class schema_validation_error extends Error {
   readonly kind = 'schema_validation_error' as const;
   readonly zod_error: unknown;

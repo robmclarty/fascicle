@@ -34,6 +34,7 @@ import {
   provider_capability_error,
   provider_error,
   provider_not_configured_error,
+  turn_timeout_error,
 } from './errors.js'
 import { merge_provider_options } from './merge_defaults.js'
 import { FREE_PROVIDERS, pricing_key } from './pricing.js'
@@ -79,6 +80,7 @@ export type EngineInternals = {
   readonly default_retry: RetryPolicy
   readonly default_effort: EffortLevel
   readonly default_max_steps: number
+  readonly default_turn_timeout_ms?: number
   readonly default_model?: string
   readonly default_provider?: string
   readonly default_system?: string
@@ -187,12 +189,14 @@ export function classify_provider_error(err: unknown): unknown {
 type AiSdkInvokeConfig = {
   readonly invoke_turn: AiSdkTurn
   readonly retry_policy: RetryPolicy
+  readonly turn_timeout_ms: number | undefined
 }
 
 type NativeInvokeConfig = {
   readonly adapter: NativeProviderAdapter
   readonly model_id: string
   readonly retry_policy: RetryPolicy
+  readonly turn_timeout_ms: number | undefined
   readonly dispatcher: ChunkDispatcher
   readonly effort: EffortLevel
   readonly schema: TurnRequest['schema']
@@ -202,42 +206,107 @@ type NativeInvokeConfig = {
   readonly top_p: number | undefined
 }
 
+type TurnDeadline = {
+  readonly signal: AbortSignal
+  readonly timed_out: () => boolean
+  readonly dispose: () => void
+}
+
+/**
+ * Compose the per-attempt turn signal (D5): the user's abort OR'd with a fresh
+ * `turn_timeout_ms` deadline via AbortSignal.any (the src/core/timeout.ts
+ * precedent). `timed_out()` distinguishes an expiry (retryable) from a user
+ * abort (terminal) in the retry_turn ladder; `dispose()` clears the timer so a
+ * settled attempt never leaves one armed. With no budget the user's abort
+ * passes through untouched, so the un-timed path stays byte-for-byte as before.
+ * Armed fresh inside retry_with_policy's callback so each retry gets its own
+ * full budget rather than sharing one deadline across attempts.
+ */
+function arm_turn_timeout(
+  user_abort: AbortSignal,
+  turn_timeout_ms: number | undefined,
+): TurnDeadline {
+  if (turn_timeout_ms === undefined) {
+    return { signal: user_abort, timed_out: () => false, dispose: () => {} }
+  }
+  const local = new AbortController()
+  const composed = AbortSignal.any([user_abort, local.signal])
+  let timed_out = false
+  const timer = setTimeout(() => {
+    timed_out = true
+    local.abort()
+  }, turn_timeout_ms)
+  return {
+    signal: composed,
+    timed_out: () => timed_out,
+    dispose: () => {
+      clearTimeout(timer)
+    },
+  }
+}
+
 /**
  * Engine-owned wrapper shared verbatim by both depth-1 transports: one turn
- * attempt inside retry_with_policy, with the catch ladder ordered so
- * on_chunk_error and aborted_error pass through unclassified, a user abort
- * wins over classification, and any error after chunks have flowed becomes a
- * non-retryable stream interruption (a retry would re-emit output the
- * consumer already saw). Adapters may swap `classify`, never the ladder (D5:
- * the engine owns retry; hidden adapter retries are illegible).
+ * attempt inside retry_with_policy. The catch ladder classifies by CAUSE, not
+ * by the shape the transport happened to throw: on_chunk_error passes through,
+ * then a genuine user abort wins, then any error once a chunk has flowed is a
+ * non-retryable stream interruption, then a pre-chunk `turn_timeout_ms` expiry
+ * is a retryable typed timeout, and only a below-loop aborted_error unrelated
+ * to either passes through. Cause-first ordering is what keeps the two
+ * transports in parity: the ai_sdk transport reports a mid-stream abort as an
+ * aborted_error and the native one as a raw AbortError, so both must be read as
+ * the same interruption rather than the ai_sdk timeout masquerading as a user
+ * cancel. call_once receives the composed abort+timeout signal so the deadline
+ * actually cancels the in-flight request. Adapters may swap `classify`, never
+ * the ladder (D5: the engine owns retry; hidden adapter retries are illegible).
  */
 function retry_turn(
-  call_once: () => Promise<TurnResult>,
+  call_once: (turn_abort: AbortSignal) => Promise<TurnResult>,
   args: InvokeOnceArgs,
   has_streamed: () => boolean,
   retry_policy: RetryPolicy,
   classify: (err: unknown) => unknown,
+  turn_timeout_ms: number | undefined,
 ): Promise<TurnResult> {
   return retry_with_policy(
     async () => {
+      const deadline = arm_turn_timeout(args.abort, turn_timeout_ms)
       try {
-        return await call_once()
+        return await call_once(deadline.signal)
       } catch (err: unknown) {
         if (err instanceof on_chunk_error) throw err
-        if (err instanceof aborted_error) throw err
+        // A genuine user abort wins over everything below it — including a
+        // deadline that fired in the same tick — so an intentional cancel
+        // always surfaces as aborted_error.
         if (args.abort.aborted) {
           throw new aborted_error('aborted', {
             reason: args.abort.reason,
             step_index: args.step_index,
           })
         }
+        // Any failure once a chunk has flowed is a non-retryable stream
+        // interruption, a deadline expiry included (a retry would re-emit
+        // output the consumer already saw). Checked before the aborted_error
+        // pass-through so a mid-stream ai_sdk abort classifies here, in parity
+        // with the native transport's raw AbortError.
         if (has_streamed()) {
           const message = err instanceof Error ? err.message : String(err)
           throw new provider_error(`stream interrupted: ${message}`, {
             cause_kind: 'unknown',
           })
         }
+        // A pre-chunk deadline expiry is a retryable typed timeout, whatever
+        // shape the transport threw when its signal aborted. turn_timeout_ms is
+        // defined whenever timed_out() can be true.
+        if (deadline.timed_out()) {
+          throw new turn_timeout_error(turn_timeout_ms ?? 0, args.step_index)
+        }
+        // A below-loop aborted_error not attributable to the user or the
+        // deadline passes through unclassified.
+        if (err instanceof aborted_error) throw err
         throw classify(err)
+      } finally {
+        deadline.dispose()
       }
     },
     retry_policy,
@@ -255,11 +324,11 @@ function retry_turn(
 function build_ai_sdk_invoke(cfg: AiSdkInvokeConfig): InvokeOnce {
   return async (args: InvokeOnceArgs): Promise<InvokeOnceResult> => {
     let chunks_started = false
-    const call_once = (): Promise<TurnResult> =>
+    const call_once = (turn_abort: AbortSignal): Promise<TurnResult> =>
       cfg.invoke_turn({
         step_index: args.step_index,
         messages: args.messages,
-        abort: args.abort,
+        abort: turn_abort,
         stream: args.stream,
         on_first_chunk: () => {
           chunks_started = true
@@ -272,6 +341,7 @@ function build_ai_sdk_invoke(cfg: AiSdkInvokeConfig): InvokeOnce {
       () => chunks_started,
       cfg.retry_policy,
       classify_provider_error,
+      cfg.turn_timeout_ms,
     )
   }
 }
@@ -288,15 +358,18 @@ function build_native_invoke(cfg: NativeInvokeConfig): InvokeOnce {
   const classify = cfg.adapter.classify_error ?? classify_provider_error
   return async (args: InvokeOnceArgs): Promise<TurnResult> => {
     let chunks_started = false
-    const call_once = async (): Promise<TurnResult> => {
+    const call_once = async (turn_abort: AbortSignal): Promise<TurnResult> => {
+      // turn_abort is the composed user-abort + turn_timeout deadline; the
+      // internal controller adds one more reason to cancel (a throwing chunk
+      // consumer) without losing either of those.
       const internal_controller = new AbortController()
-      const cancel_on_user_abort = (): void => {
-        internal_controller.abort(args.abort.reason)
+      const cancel_on_turn_abort = (): void => {
+        internal_controller.abort(turn_abort.reason)
       }
-      if (args.abort.aborted) {
-        internal_controller.abort(args.abort.reason)
+      if (turn_abort.aborted) {
+        internal_controller.abort(turn_abort.reason)
       } else {
-        args.abort.addEventListener('abort', cancel_on_user_abort, { once: true })
+        turn_abort.addEventListener('abort', cancel_on_turn_abort, { once: true })
       }
       const dispatch_chunk = async (chunk: StreamChunk): Promise<void> => {
         chunks_started = true
@@ -329,7 +402,7 @@ function build_native_invoke(cfg: NativeInvokeConfig): InvokeOnce {
       try {
         return await cfg.adapter.invoke_turn(req)
       } finally {
-        args.abort.removeEventListener('abort', cancel_on_user_abort)
+        turn_abort.removeEventListener('abort', cancel_on_turn_abort)
       }
     }
 
@@ -339,6 +412,7 @@ function build_native_invoke(cfg: NativeInvokeConfig): InvokeOnce {
       () => chunks_started,
       cfg.retry_policy,
       classify,
+      cfg.turn_timeout_ms,
     )
   }
 }
@@ -405,6 +479,12 @@ export async function generate<T = string>(
 
   const effort: EffortLevel = opts.effort ?? engine.default_effort
   const retry_policy = opts.retry ?? engine.default_retry
+  const turn_timeout_ms = opts.turn_timeout_ms ?? engine.default_turn_timeout_ms
+  if (turn_timeout_ms !== undefined && turn_timeout_ms <= 0) {
+    // A zero/negative budget would fire the deadline before the request even
+    // starts; reject rather than silently disable or hang.
+    throw new engine_config_error('turn_timeout_ms must be > 0')
+  }
   const dispatcher = create_chunk_dispatcher(opts.on_chunk)
 
   let invoke_once: InvokeOnce
@@ -446,6 +526,7 @@ export async function generate<T = string>(
         top_p: opts.top_p,
       }),
       retry_policy,
+      turn_timeout_ms,
     })
   } else {
     // No effort translation here: a native adapter receives the resolved
@@ -455,6 +536,7 @@ export async function generate<T = string>(
       adapter,
       model_id: target.model_id,
       retry_policy,
+      turn_timeout_ms,
       dispatcher,
       effort,
       schema: opts.schema,

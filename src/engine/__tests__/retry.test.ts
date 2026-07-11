@@ -19,7 +19,7 @@ describe('DEFAULT_RETRY', () => {
     expect(DEFAULT_RETRY.max_attempts).toBe(3)
     expect(DEFAULT_RETRY.initial_delay_ms).toBe(500)
     expect(DEFAULT_RETRY.max_delay_ms).toBe(30_000)
-    expect(DEFAULT_RETRY.retry_on).toEqual(['rate_limit', 'provider_5xx', 'network'])
+    expect(DEFAULT_RETRY.retry_on).toEqual(['rate_limit', 'provider_5xx', 'network', 'timeout'])
   })
 })
 

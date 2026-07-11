@@ -256,7 +256,7 @@ End state (additions to the predecessor's sketch marked with `+`):
    - seam: `src/engine/providers/ollama_native.ts`, `src/engine/providers/ollama.ts`, `src/engine/providers/__tests__/`
    - model: fable — a second wire dialect (NDJSON, not SSE) with no in-tree
      prior art for the framing
-6. [ ] Transport parity golden tests + OpenRouter live smoke — **done when:**
+6. [x] Transport parity golden tests + OpenRouter live smoke — **done when:**
    a parity suite drives the same recorded request through `ai_sdk` and
    `native` transports for `openai` and `anthropic` and asserts equal
    `TurnResult` + `UsageTotals` (catching SDK normalization drift, the

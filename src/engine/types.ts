@@ -225,6 +225,14 @@ export type GenerateOptions<t = string> = {
   max_tokens?: number
   top_p?: number
   max_steps?: number
+  /**
+   * Per-turn wall-clock budget in milliseconds. When set, the engine composes
+   * a timeout signal with `abort` around every depth-1 turn (D5); expiry before
+   * any chunk streams throws a retryable timeout, while an expiry after chunks
+   * have flowed becomes a non-retryable stream interruption. undefined (the
+   * default) leaves turns unbounded. Must be > 0.
+   */
+  turn_timeout_ms?: number
   abort?: AbortSignal
   trajectory?: TrajectoryLogger
   on_chunk?: (chunk: StreamChunk) => void | Promise<void>
@@ -300,7 +308,7 @@ export type ProviderConfigMap = {
  * | --------------------------------------------------------------------- | ----------------------------------------- |
  * | `model`                                                               | per-call wins; else default; else `sonnet` |
  * | `provider`                                                            | per-call wins; else default; else sole configured provider; else `anthropic` |
- * | `system`, `effort`, `max_steps`, `tool_error_policy`, `schema_repair_attempts`, `tool_call_repair_attempts`, `max_tool_calls_per_step` | per-call wins (nullish coalesce) |
+ * | `system`, `effort`, `max_steps`, `turn_timeout_ms`, `tool_error_policy`, `schema_repair_attempts`, `tool_call_repair_attempts`, `max_tool_calls_per_step` | per-call wins (nullish coalesce) |
  * | `retry_policy`                                                        | per-call replaces wholesale                |
  * | `provider_options`                                                    | two-level: per-provider-key shallow merge  |
  * | `prompt`, `tools`, `schema`, `abort`, `trajectory`, `on_chunk`        | not defaultable; always call-supplied      |
@@ -311,6 +319,7 @@ export type EngineDefaults = {
   readonly system?: string
   readonly effort?: EffortLevel
   readonly max_steps?: number
+  readonly turn_timeout_ms?: number
   readonly retry_policy?: RetryPolicy
   readonly tool_error_policy?: 'feed_back' | 'throw'
   readonly schema_repair_attempts?: number

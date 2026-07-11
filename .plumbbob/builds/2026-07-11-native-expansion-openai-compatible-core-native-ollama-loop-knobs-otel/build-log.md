@@ -59,3 +59,4 @@ folder, so it rides the branch into the PR.)*
 - 2026-07-11 — step 3 checkpointed · c2be71483 — Wire `openai` native (8m)
 - 2026-07-11 — step 4 checkpointed · fb335302e — Wire `openrouter` + `lmstudio` native (+ compat recipe) (11m)
 - 2026-07-11 — step 5 checkpointed · 1179e1296 — Native Ollama on `/api/chat` (1 drift, 18m)
+- 2026-07-11 — step 6 checkpointed · 0a1c100d9 — Transport parity golden tests + OpenRouter live smoke (24m)

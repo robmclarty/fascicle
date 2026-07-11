@@ -1,9 +1,11 @@
 /**
  * Retry policy for provider-side failures.
  *
- * Narrow scope: retry only 429 rate limits, provider 5xx, and network errors.
- * Composition-layer retry wraps the whole generate call; this helper
- * transparently retries a single provider call between tool-loop turns.
+ * Narrow scope: retry 429 rate limits, provider 5xx, network errors, and
+ * engine turn-timeout expiry (D5: `turn_timeout_ms` throws a typed timeout the
+ * shared classifier treats as retryable). Composition-layer retry wraps the
+ * whole generate call; this helper transparently retries a single provider
+ * call between tool-loop turns.
  *
  * Invariants:
  *   - abort.aborted interrupts backoff waits and throws aborted_error.
@@ -21,7 +23,7 @@ export const DEFAULT_RETRY: RetryPolicy = {
   max_attempts: 3,
   initial_delay_ms: 500,
   max_delay_ms: 30_000,
-  retry_on: ['rate_limit', 'provider_5xx', 'network'],
+  retry_on: ['rate_limit', 'provider_5xx', 'network', 'timeout'],
 }
 
 export type RetryableError =

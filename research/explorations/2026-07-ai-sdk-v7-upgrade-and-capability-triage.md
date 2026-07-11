@@ -115,9 +115,9 @@ what sits at or above it (orchestration).
 | v7 capability | Verdict | Reason |
 |---|---|---|
 | Nested usage detail (`inputTokenDetails` / `outputTokenDetails`) | **Ride** | Required field move + richer cost data (cache-read, reasoning). Pure provider-level fact we already consume; probes already in place. |
-| Provider-agnostic `reasoning` control | **Evaluate** | Genuinely below our line (maps to provider-native settings). Adopt only if it deletes per-provider effort branching without hiding capability. |
-| Structured-output repair (malformed-JSON extraction) | **Evaluate** | Tension with our own schema-repair loop. Could thin it — but the plain-prose *salvage* case (zero structured calls) is ours regardless; measure before deleting. |
-| First-class `timeout` budgets | **Evaluate → lean own** | An SDK-owned control. We already own abort; prefer per-tool/per-step budgets in `tool_loop.ts` over adopting the SDK's. |
+| Provider-agnostic `reasoning` control | **Evaluate → Decline** (P5.1, closed 2026-07-11) | Genuinely below our line (maps to provider-native settings). Adopt only if it deletes per-provider effort branching without hiding capability. Verdict below. |
+| Structured-output repair (malformed-JSON extraction) | **Evaluate → Decline** (P5.2, closed 2026-07-11) | Tension with our own schema-repair loop. Could thin it — but the plain-prose *salvage* case (zero structured calls) is ours regardless; measure before deleting. Verdict below. |
+| First-class `timeout` budgets | **Evaluate → Adopt, sovereign** (P5.3, closed 2026-07-11) | An SDK-owned control. We already own abort; prefer per-tool/per-step budgets in `tool_loop.ts` over adopting the SDK's. Verdict below. |
 | `generateSpeech` / `transcribe` (stable) | **Ride if needed** | Clean below-the-line primitives; add only when a flow needs audio. |
 | `ToolLoopAgent` | **Decline** | Our loop. Adopting inverts the architecture. |
 | `WorkflowAgent` (`@ai-sdk/workflow`) | **Decline (study)** | Our `sequence`/`parallel`/`checkpoint`. Borrow durability *ideas*, not the dependency. |
@@ -144,6 +144,40 @@ Two specs, one dependency, complementary:
 Do the v7 upgrade first: it keeps the seven `ai_sdk`-backed providers current and gives the
 native-provider work a clean v7 baseline to build against. The native work then reduces how
 much rides on that baseline at all. Neither blocks the other.
+
+## Phase 5 verdicts (closed 2026-07-11)
+
+The three "Evaluate" rows above were closed by verdict rather than by spike
+branches (native-expansion intent D4). The gate the spikes were held to: *keep a
+capability only if adopting it deletes fascicle-owned code without adding
+coupling above the turn seam.* After inverting each spike against that gate, only
+one passes — and in the own-implementation form the spec already predicted.
+
+- **P5.1 — provider-agnostic reasoning control → DECLINE.** The native adapters
+  already map `EffortLevel` to their own wire fields (`reasoning_effort` on the
+  OpenAI-compatible core, `thinking.budget_tokens` on Anthropic). An SDK
+  reasoning abstraction would serve only the `ai_sdk` transport, so it deletes
+  no shared code and adds a coupling that sits *above* the seam for the native
+  transports. It fails the gate.
+
+- **P5.2 — structured-output repair → DECLINE.** The engine's own schema
+  parse + repair loop already covers every transport, including the native ones
+  the SDK's repair cannot see. Adopting SDK repair would thin nothing (the loop
+  stays for the native and salvage cases) while splitting schema recovery across
+  two mechanisms. It fails the gate.
+
+- **P5.3 — first-class timeout budgets → ADOPT, sovereign.** Implemented as an
+  engine-owned `turn_timeout_ms` (Step 7): a per-call option (engine-defaultable)
+  that composes a timeout signal with the caller's abort around every depth-1
+  `invoke_turn`, expiry throwing a typed `turn_timeout_error` the shared
+  classifier retries. This is the only row that passes the gate — one
+  implementation covers every transport (including local runtimes that hang),
+  the deadline lives with the retry ladder the engine already owns (D5), and it
+  adds no dependency. The "lean own" note is now settled as "own": we did not
+  adopt the SDK's `timeout` control, we built the fascicle equivalent below the
+  loop. A mid-stream expiry (after chunks have flowed) is deliberately a
+  non-retryable stream interruption, not a retryable timeout, preserving C4
+  streamed-equals-non-streamed parity.
 
 ## Open questions
 

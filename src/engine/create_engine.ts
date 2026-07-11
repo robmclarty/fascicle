@@ -89,6 +89,9 @@ export function create_engine(config: EngineConfig): Engine {
   if (defaults?.max_tool_calls_per_step !== undefined && defaults.max_tool_calls_per_step < 1) {
     throw new engine_config_error('defaults.max_tool_calls_per_step must be >= 1')
   }
+  if (defaults?.turn_timeout_ms !== undefined && defaults.turn_timeout_ms <= 0) {
+    throw new engine_config_error('defaults.turn_timeout_ms must be > 0')
+  }
 
   const get_internals = (): EngineInternals => ({
     pricing,
@@ -110,6 +113,9 @@ export function create_engine(config: EngineConfig): Engine {
       : {}),
     ...(defaults?.max_tool_calls_per_step !== undefined
       ? { default_max_tool_calls_per_step: defaults.max_tool_calls_per_step }
+      : {}),
+    ...(defaults?.turn_timeout_ms !== undefined
+      ? { default_turn_timeout_ms: defaults.turn_timeout_ms }
       : {}),
     ...(defaults?.provider_options !== undefined
       ? { default_provider_options: defaults.provider_options }
