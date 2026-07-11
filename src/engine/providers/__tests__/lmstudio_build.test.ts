@@ -43,6 +43,7 @@ describe('create_lmstudio_adapter config assembly', () => {
 
   it('forwards the lmstudio name, base URL, and streaming-usage opt-in to the SDK', async () => {
     const adapter = create_lmstudio_adapter({ base_url: 'http://localhost:1234/v1' })
+    if (adapter.kind !== 'ai_sdk') throw new Error('expected the ai_sdk adapter')
     const model = await adapter.build_model('local-model')
     expect(model).toBeDefined()
     expect(captured.config).toEqual({

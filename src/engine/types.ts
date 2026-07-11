@@ -271,12 +271,13 @@ export type ProviderConfigMap = {
   openai?: { api_key: string; base_url?: string; organization?: string; transport?: ProviderTransport }
   google?: { api_key: string; base_url?: string }
   ollama?: { base_url: string }
-  lmstudio?: { base_url: string }
+  lmstudio?: { base_url: string; transport?: ProviderTransport }
   openrouter?: {
     api_key: string
     base_url?: string
     http_referer?: string
     x_title?: string
+    transport?: ProviderTransport
   }
   bedrock?: {
     region: string

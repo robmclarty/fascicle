@@ -71,6 +71,7 @@ describe('create_lmstudio_adapter', () => {
 
   it('build_model returns a value when the @ai-sdk/openai-compatible peer resolves', async () => {
     const adapter = create_lmstudio_adapter({ base_url: 'http://localhost:1234/v1' })
+    if (adapter.kind !== 'ai_sdk') throw new Error('expected the ai_sdk adapter')
     const model = await adapter.build_model('local-model')
     expect(model).toBeDefined()
   })

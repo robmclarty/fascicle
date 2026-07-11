@@ -224,7 +224,7 @@ End state (additions to the predecessor's sketch marked with `+`):
    - seam: `src/engine/providers/openai_compatible_native.ts`, `rules/`
    - model: fable — hand-rolled SSE with tool-call index bookkeeping;
      streamed-equals-non-streamed parity is the named subtle part
-3. [ ] Wire `openai` native — **done when:** `transport: 'native'` on the
+3. [x] Wire `openai` native — **done when:** `transport: 'native'` on the
    openai init routes through the core with the openai dialect
    (`Authorization: Bearer`, `organization` header, `reasoning_effort` from
    `EffortLevel` per Appendix A4, `max_completion_tokens`),

@@ -1,20 +1,31 @@
 /**
  * LM Studio provider adapter.
  *
- * Wraps @ai-sdk/openai-compatible as an optional peer (LM Studio exposes an
- * OpenAI-compatible local server). No API key; base_url is required.
- * No reasoning support.
+ * Dispatches on `transport` (D3): the default 'ai_sdk' backend wraps
+ * @ai-sdk/openai-compatible as an optional peer; 'native' builds the lmstudio
+ * dialect of the shared OpenAI-compatible core (D1) — no auth, `max_tokens` as
+ * the token-limit field, and tolerant usage (D10), since a local server that
+ * omits or approximates token counts is a fact of local-first running, not a
+ * broken response. LM Studio exposes an OpenAI-compatible local server; base_url
+ * is required on both transports. No reasoning support.
  */
 
 import type { EffortLevel, ProviderInit, UsageTotals } from '../types.js'
 import {
   default_normalize_usage,
   load_optional_peer,
+  resolve_transport,
   type AiSdkProviderAdapter,
   type EffortTranslation,
+  type NativeProviderAdapter,
+  type ProviderAdapter,
   type ProviderCapability,
   type RawProviderUsage,
 } from './types.js'
+import {
+  create_openai_compatible_adapter,
+  type OpenAICompatibleDialect,
+} from './openai_compatible_native.js'
 import { engine_config_error } from '../errors.js'
 
 type OpenaiCompatibleSdk = {
@@ -52,7 +63,39 @@ const SUPPORTED: ReadonlySet<ProviderCapability> = new Set([
   'structured_output',
 ])
 
-export const create_lmstudio_adapter = (init: ProviderInit): AiSdkProviderAdapter => {
+export const create_lmstudio_adapter = (init: ProviderInit): ProviderAdapter => {
+  if (resolve_transport(init, 'lmstudio') === 'native') {
+    return create_lmstudio_native_adapter(init)
+  }
+  return create_lmstudio_ai_sdk_adapter(init)
+}
+
+/**
+ * Build the lmstudio dialect (Appendix A1) and hand it to the shared
+ * OpenAI-compatible core: no auth, the `max_tokens` token-limit field, and
+ * tolerant usage (D10). The base_url guard mirrors the ai_sdk branch; the core
+ * has no api_key to check under `auth: { kind: 'none' }`.
+ */
+const create_lmstudio_native_adapter = (init: ProviderInit): NativeProviderAdapter => {
+  const base_url = typeof init.base_url === 'string' ? init.base_url : ''
+  if (base_url.length === 0) {
+    throw new engine_config_error(
+      'lmstudio provider requires a non-empty base_url',
+      'lmstudio',
+    )
+  }
+  const dialect: OpenAICompatibleDialect = {
+    name: 'lmstudio',
+    base_url,
+    auth: { kind: 'none' },
+    token_limit_field: 'max_tokens',
+    stream_include_usage: true,
+    tolerant_usage: true,
+  }
+  return create_openai_compatible_adapter(dialect)
+}
+
+const create_lmstudio_ai_sdk_adapter = (init: ProviderInit): AiSdkProviderAdapter => {
   const base_url = typeof init.base_url === 'string' ? init.base_url : ''
   if (base_url.length === 0) {
     throw new engine_config_error(

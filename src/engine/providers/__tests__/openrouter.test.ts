@@ -88,6 +88,7 @@ describe('create_openrouter_adapter', () => {
 
   it('build_model returns a value when the @openrouter/ai-sdk-provider peer resolves', async () => {
     const adapter = create_openrouter_adapter({ api_key: 'secret' })
+    if (adapter.kind !== 'ai_sdk') throw new Error('expected the ai_sdk adapter')
     const model = await adapter.build_model('anthropic/claude-sonnet-4.5')
     expect(model).toBeDefined()
   })

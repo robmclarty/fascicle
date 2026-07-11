@@ -50,6 +50,30 @@ const engine = create_engine({
 
 The provider name stays `anthropic` across transports, so pricing keys (`anthropic:<model-id>`), usage fields, and effort mapping carry over unchanged; only the wire implementation swaps. The default is `'ai_sdk'` and any other value throws `engine_config_error` at construction. Differences that do exist on the native transport are listed under [anthropic](#anthropic) below.
 
+## OpenAI-compatible servers (the compat recipe)
+
+Any server that speaks the OpenAI Chat Completions wire is reachable by pointing the `openai` provider's `base_url` at it and running `transport: 'native'` — no new adapter, no peer to install. This is the supported path for Ollama's built-in `/v1` compatibility endpoint:
+
+```ts
+const engine = create_engine({
+  providers: {
+    openai: {
+      api_key: 'ollama',                          // any non-empty string; Ollama ignores it
+      base_url: 'http://localhost:11434/v1',      // Ollama's OpenAI-compatible endpoint
+      transport: 'native',
+    },
+  },
+});
+
+await engine.generate({
+  provider: 'openai',
+  model: 'llama3.2:3b',                           // the exact tag you pulled
+  prompt: 'write a haiku',
+});
+```
+
+The same recipe reaches vLLM, LiteLLM, or any other OpenAI-compatible gateway — swap the `base_url`. It rides the shared OpenAI-compatible core: the openai dialect's Bearer auth (hence the placeholder key), the streaming aggregator, and the usage math, all identical to the hosted `openai` transport. Ollama's compat endpoint reports token usage, so cost accounting works out of the box. For local backends that report approximate or no usage, the `lmstudio` provider (tolerant usage, no auth) is the better fit.
+
 ## The agent-layer boundary
 
 fascicle uses the AI SDK strictly as a single-turn provider layer: every AI SDK call is `generateText` / `streamText` pinned to one step, issued from the one `ai_sdk` transport module, and the loop above it (multi-step execution, tool approval, salvage, `ends_turn`, cost, retry, trajectory) is fascicle's own. The SDK's agent layer (`ToolLoopAgent`, `WorkflowAgent`, `HarnessAgent`, `toolApproval`, scoped tool context, `@ai-sdk/otel`) is declined by a written decision record; the litmus test is that a framework must let you call one turn below its own loop. Before reaching for any of those APIs, read the [agent-layer boundary ADR](../research/explorations/2026-07-ai-sdk-agent-layer-boundary.md).

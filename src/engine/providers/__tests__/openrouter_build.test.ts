@@ -53,6 +53,7 @@ describe('create_openrouter_adapter config assembly', () => {
       http_referer: 'https://app.example',
       x_title: 'My App',
     })
+    if (adapter.kind !== 'ai_sdk') throw new Error('expected the ai_sdk adapter')
     const model = await adapter.build_model('anthropic/claude-sonnet-4.5')
     expect(model).toBeDefined()
     expect(captured.config).toEqual({
@@ -66,6 +67,7 @@ describe('create_openrouter_adapter config assembly', () => {
   it('omits baseURL and headers when no optional config is given', async () => {
     captured.config = undefined
     const adapter = create_openrouter_adapter({ api_key: 'secret' })
+    if (adapter.kind !== 'ai_sdk') throw new Error('expected the ai_sdk adapter')
     await adapter.build_model('m')
     expect(captured.config).toEqual({ apiKey: 'secret' })
     // Key absence, not just value: an unconditional `config.baseURL = base_url`
@@ -77,6 +79,7 @@ describe('create_openrouter_adapter config assembly', () => {
   it('sets only the referer header when x_title is absent', async () => {
     captured.config = undefined
     const adapter = create_openrouter_adapter({ api_key: 'secret', http_referer: 'https://app.example' })
+    if (adapter.kind !== 'ai_sdk') throw new Error('expected the ai_sdk adapter')
     await adapter.build_model('m')
     expect(captured.config?.['headers']).toEqual({ 'HTTP-Referer': 'https://app.example' })
   })
@@ -89,6 +92,7 @@ describe('create_openrouter_adapter config assembly', () => {
       http_referer: true,
       x_title: {},
     } as unknown as ProviderInit)
+    if (adapter.kind !== 'ai_sdk') throw new Error('expected the ai_sdk adapter')
     await adapter.build_model('m')
     expect(captured.config).toEqual({ apiKey: 'secret' })
   })
