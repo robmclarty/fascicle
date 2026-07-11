@@ -312,7 +312,7 @@ End state (additions to the predecessor's sketch marked with `+`):
     - seam: `src/engine/create_engine.ts`, `src/engine/types.ts`, `src/engine/__tests__/`, `docs/configuration.md`
     - model: opus — value-semantics refactor of existing construction code;
       the suite gates it
-11. [ ] Barrel exports + docs sweep — **done when:** new public types (dialect
+11. [x] Barrel exports + docs sweep — **done when:** new public types (dialect
     config if exported, timeout/hook options, otel bridge API) are exported
     type-safely from the engine barrel / `fascicle` top level / `fascicle/otel`,
     `docs/providers.md` documents the four new native transports and the

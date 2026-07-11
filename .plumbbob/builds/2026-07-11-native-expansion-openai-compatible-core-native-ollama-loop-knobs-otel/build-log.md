@@ -64,3 +64,9 @@ folder, so it rides the branch into the PR.)*
 - 2026-07-11 — step 8 checkpointed · ef6d11e5c — `prepare_step` loop hook (13m)
 - 2026-07-11 — step 9 checkpointed · 526e8db73 — Otel: trajectory bridge + ai_sdk telemetry + ADR amendment (1 drift, 39m)
 - 2026-07-11 — step 10 checkpointed · a53872cf0 — `with_providers` derivation (1 drift, 11m)
+- 2026-07-11 — step 11 checkpointed · 74a342a5a — Barrel exports + docs sweep (1 drift, 18m)
+- 2026-07-11 — step 12 live smoke matrix (`examples/live_smoke.ts`, tool loop, streamed + non-streamed):
+    - openrouter native (openai/gpt-4o-mini) — **PASS** both modes; usage 179/26, cost $0.000042 (pricing key hit), SSE delta accumulation observed (`tool_call_input_delta` chunks).
+    - ollama native `/api/chat` (qwen3-datum:latest, local daemon) — **PASS** both modes; usage 394/33, free-provider zero-cost estimate (D10), NDJSON stream chunks intact.
+    - lmstudio native — **NOT RUN**; daemon at http://localhost:1234/v1 unreachable (no LM Studio server on this host).
+    - Verdict: all available backends green; the one unavailable backend recorded not-run per C5.
