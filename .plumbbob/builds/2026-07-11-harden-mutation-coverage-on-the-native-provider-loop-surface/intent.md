@@ -135,7 +135,7 @@ test-authoring iterations; `pnpm check:all` once at the end (C1).
    in-memory exporter / a telemetry spy
    - seam: `src/otel/__tests__/trajectory_logger.test.ts`, `src/engine/providers/ai_sdk/__tests__/`
    - model: sonnet — small survivor sets, mechanical against an existing exporter harness
-4. [ ] Harden `with_providers` in `create_engine.ts` — **done when:** the
+4. [x] Harden `with_providers` in `create_engine.ts` — **done when:** the
    survivors and no-coverage attributable to the `with_providers` derivation are
    killed or annotated, with its value-semantics invariants (merged config,
    custom-first resolution, shadow-throws vs built-ins, fresh adapters, disposal
