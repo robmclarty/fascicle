@@ -173,7 +173,7 @@ files, so ignore `__tests__` rows in scoped runs.
    asserted concretely
    - seam: `src/engine/providers/__tests__/anthropic_native_e2e.test.ts`, `src/engine/providers/__tests__/anthropic_native.test.ts`, `src/engine/providers/anthropic_native.ts`
    - model: opus — network/error classification and the drain lifecycle (cancel, tail flush, abort vs network) are the subtle part
-5. [ ] Final gate + ratchet — **done when:** `pnpm check:all` (incl. mutation) exits 0,
+5. [x] Final gate + ratchet — **done when:** `pnpm check:all` (incl. mutation) exits 0,
    a before/after per-region mutation-score table and the equivalents list are recorded
    in the build log, and `thresholds.break` is ratcheted up to the new aggregate minus
    headroom if the delta supports it (never down, D5)

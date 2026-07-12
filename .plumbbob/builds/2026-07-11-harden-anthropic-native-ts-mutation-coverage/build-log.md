@@ -103,3 +103,4 @@ folder, so it rides the branch into the PR.)*
 - 2026-07-12 — step 2 checkpointed · 84ef0d486 — Harden the response + usage/stop maps (231-314) (16m)
 - 2026-07-12 — step 3 checkpointed · da27020a1 — Harden the streaming aggregator (315-530) (75m)
 - 2026-07-12 — step 4 checkpointed · 8d0131a41 — Harden error-classification + SSE-drain + adapter (532-703) (22m)
+- 2026-07-12 — step 5 checkpointed · 741b1ccbf — Final gate + ratchet (12m)
