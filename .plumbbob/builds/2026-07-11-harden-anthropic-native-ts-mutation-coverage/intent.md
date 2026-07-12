@@ -152,7 +152,7 @@ files, so ignore `__tests__` rows in scoped runs.
    throw
    - seam: `src/engine/providers/__tests__/anthropic_native.test.ts`, `src/engine/providers/anthropic_native.ts`
    - model: sonnet — exact-value switch tables and usage math; mechanical apart from the D6 present-when-defined assertions
-3. [ ] Harden the streaming aggregator (315-530) — **done when:** zero no-coverage and
+3. [x] Harden the streaming aggregator (315-530) — **done when:** zero no-coverage and
    residual survivors annotated (target ≥90%): `stream_event_error` error-type→status
    map (overloaded_error→529, api_error→500, rate_limit_error→429, else provider_error),
    `read_block_index` throw, and `create_stream_aggregator`'s event state machine

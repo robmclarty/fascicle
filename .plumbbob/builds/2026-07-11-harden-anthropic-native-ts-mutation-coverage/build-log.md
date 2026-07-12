@@ -56,3 +56,4 @@ you point at to say "I did that — the LLM helped, but those were my calls."
 folder, so it rides the branch into the PR.)*
 - 2026-07-12 — step 1 checkpointed · 63e168059 — Harden the request + message-mapping region (51-229) (26m)
 - 2026-07-12 — step 2 checkpointed · 84ef0d486 — Harden the response + usage/stop maps (231-314) (16m)
+- 2026-07-12 — step 3 checkpointed · da27020a1 — Harden the streaming aggregator (315-530) (75m)

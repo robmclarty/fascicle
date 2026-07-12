@@ -1476,3 +1476,296 @@ describe('streaming aggregator boundaries', () => {
     })
   })
 })
+
+/** A plain-text (non-JSON) error Response the adapter turns into a snippet. */
+function text_response(body: string, status: number, headers: Record<string, string> = {}): Response {
+  return new Response(body, { status, headers: { 'content-type': 'text/plain', ...headers } })
+}
+
+/** A non-2xx Response whose body read rejects, so `body` stays its '' seed. */
+function failing_text_response(status: number): Response {
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.error(new Error('body stream already read'))
+    },
+  })
+  return new Response(stream, { status, headers: { 'content-type': 'text/plain' } })
+}
+
+describe('error body extraction (extract_error_message via response_error)', () => {
+  async function error_message(): Promise<string> {
+    const adapter = create_anthropic_native_adapter({ api_key: 'sk-test' })
+    const err: unknown = await adapter.invoke_turn(make_req()).catch((e: unknown) => e)
+    return (err as Error).message
+  }
+
+  it('reports (empty body) for a zero-length error body', async () => {
+    stub_fetch(text_response('', 400))
+    expect(await error_message()).toBe('anthropic API error 400: (empty body)')
+  })
+
+  it('keeps the (empty body) sentinel when the body read itself throws', async () => {
+    stub_fetch(failing_text_response(500))
+    const adapter = create_anthropic_native_adapter({ api_key: 'sk-test' })
+    const err: unknown = await adapter.invoke_turn(make_req()).catch((e: unknown) => e)
+    expect((err as Error).message).toBe('anthropic API error 500: (empty body)')
+    expect(Reflect.get(err as object, 'status')).toBe(500)
+  })
+
+  it('returns the exact error.message from a well-formed error envelope', async () => {
+    stub_fetch(
+      text_response(JSON.stringify({ type: 'error', error: { message: 'model is overloaded' } }), 400),
+    )
+    const adapter = create_anthropic_native_adapter({ api_key: 'sk-test' })
+    const err: unknown = await adapter.invoke_turn(make_req()).catch((e: unknown) => e)
+    expect((err as Error).message).toBe('anthropic API error 400: model is overloaded')
+  })
+
+  it('falls back to the raw snippet when error.message is an empty string', async () => {
+    const body = JSON.stringify({ type: 'error', error: { message: '' } })
+    stub_fetch(text_response(body, 400))
+    expect(await error_message()).toBe(`anthropic API error 400: ${body}`)
+  })
+
+  it('falls back to the raw snippet when error.message is not a string', async () => {
+    const body = JSON.stringify({ error: { message: [1, 2] } })
+    stub_fetch(text_response(body, 400))
+    expect(await error_message()).toBe(`anthropic API error 400: ${body}`)
+  })
+
+  it('returns a short non-JSON body verbatim, without the truncation ellipsis', async () => {
+    stub_fetch(text_response('<html>502 Bad Gateway</html>', 400))
+    expect(await error_message()).toBe('anthropic API error 400: <html>502 Bad Gateway</html>')
+  })
+
+  it('returns a body of exactly 300 chars in full (boundary: not truncated)', async () => {
+    const body = 'y'.repeat(300)
+    stub_fetch(text_response(body, 400))
+    expect(await error_message()).toBe(`anthropic API error 400: ${body}`)
+  })
+
+  it('truncates an oversized non-JSON body to 300 chars plus an ellipsis', async () => {
+    const body = 'x'.repeat(350)
+    stub_fetch(text_response(body, 400))
+    expect(await error_message()).toBe(
+      `anthropic API error 400: ${'x'.repeat(300)}...`,
+    )
+  })
+})
+
+describe('response_error status classification (raw shapes)', () => {
+  async function invoke_error(response: Response): Promise<unknown> {
+    stub_fetch(response)
+    const adapter = create_anthropic_native_adapter({ api_key: 'sk-test' })
+    return adapter.invoke_turn(make_req()).catch((e: unknown) => e)
+  }
+
+  it('gives a 429 a retry-after passthrough, not a permanent provider_error', async () => {
+    const err = await invoke_error(
+      json_response({ type: 'error', error: { message: 'slow down' } }, 429, { 'retry-after': '2' }),
+    )
+    expect(err).not.toBeInstanceOf(provider_error)
+    expect(Reflect.get(err as object, 'status')).toBe(429)
+    expect(Reflect.get(err as object, 'responseHeaders')).toStrictEqual({ 'retry-after': '2' })
+  })
+
+  it('treats an exactly-500 status as a retryable shape carrying its retry-after', async () => {
+    const err = await invoke_error(
+      json_response({ type: 'error', error: { message: 'boom' } }, 500, { 'retry-after': '3' }),
+    )
+    expect(err).not.toBeInstanceOf(provider_error)
+    expect(Reflect.get(err as object, 'status')).toBe(500)
+    expect(Reflect.get(err as object, 'responseHeaders')).toStrictEqual({ 'retry-after': '3' })
+  })
+
+  it('omits responseHeaders entirely on a 5xx that carries no retry-after', async () => {
+    const err = await invoke_error(json_response({ type: 'error', error: { message: 'boom' } }, 500))
+    expect(Reflect.get(err as object, 'status')).toBe(500)
+    expect(Reflect.get(err as object, 'responseHeaders')).toBeUndefined()
+    expect(classify_provider_error(err)).toStrictEqual({
+      kind: 'provider_5xx',
+      status: 500,
+      message: 'anthropic API error 500: boom',
+    })
+  })
+})
+
+/** A 200 streaming Response with a literally-null body. */
+function null_body_stream_response(): Response {
+  return new Response(null, { status: 200, headers: { 'content-type': 'text/event-stream' } })
+}
+
+/** A streaming Response whose first read rejects, modelling a transport drop. */
+function erroring_stream_response(err: Error): Response {
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.error(err)
+    },
+  })
+  return new Response(stream, { status: 200, headers: { 'content-type': 'text/event-stream' } })
+}
+
+/**
+ * A streaming Response that records a reader.cancel(). Enqueues every frame then
+ * closes, so an early aggregator throw leaves later chunks queued and the
+ * finally's cancel() propagates to this source handler.
+ */
+function cancel_tracking_stream_response(
+  events: ReadonlyArray<Record<string, unknown>>,
+  on_cancel: () => void,
+): Response {
+  const bytes = new TextEncoder().encode(sse_payload(events))
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      for (let i = 0; i < bytes.length; i += 9) controller.enqueue(bytes.slice(i, i + 9))
+      controller.close()
+    },
+    cancel() {
+      on_cancel()
+    },
+  })
+  return new Response(stream, { status: 200, headers: { 'content-type': 'text/event-stream' } })
+}
+
+/**
+ * A streaming Response whose final event's data line is left unterminated (no
+ * trailing blank line), so only the drain tail (`sse.flush()`) emits it.
+ */
+function tail_event_stream_response(events: ReadonlyArray<Record<string, unknown>>): Response {
+  const head = events.slice(0, -1)
+  const last = events[events.length - 1]
+  const payload =
+    head.map((e) => `event: ${String(e['type'])}\ndata: ${JSON.stringify(e)}\n\n`).join('') +
+    `event: ${String(last?.['type'])}\ndata: ${JSON.stringify(last)}\n`
+  const bytes = new TextEncoder().encode(payload)
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      for (let i = 0; i < bytes.length; i += 9) controller.enqueue(bytes.slice(i, i + 9))
+      controller.close()
+    },
+  })
+  return new Response(stream, { status: 200, headers: { 'content-type': 'text/event-stream' } })
+}
+
+describe('consume_sse_response drain lifecycle', () => {
+  const STREAM_HEAD = {
+    type: 'message_start',
+    message: {
+      id: 'msg_d',
+      type: 'message',
+      role: 'assistant',
+      model: 'claude-sonnet-5',
+      content: [],
+      stop_reason: null,
+      usage: { input_tokens: 7, output_tokens: 1 },
+    },
+  }
+
+  it('throws provider_error with its exact message when the stream has no body', async () => {
+    stub_fetch(null_body_stream_response())
+    const adapter = create_anthropic_native_adapter({ api_key: 'sk-test' })
+    const err: unknown = await adapter
+      .invoke_turn(make_req({ stream: true }))
+      .catch((e: unknown) => e)
+    expect(err).toBeInstanceOf(provider_error)
+    expect((err as Error).message).toBe('anthropic native: streaming response has no body')
+  })
+
+  it('wraps a mid-read transport failure as a kind:network error', async () => {
+    stub_fetch(erroring_stream_response(new TypeError('connection reset')))
+    const adapter = create_anthropic_native_adapter({ api_key: 'sk-test' })
+    const err: unknown = await adapter
+      .invoke_turn(make_req({ stream: true }))
+      .catch((e: unknown) => e)
+    expect(Reflect.get(err as object, 'kind')).toBe('network')
+    expect((err as Error).message).toBe('anthropic native: network failure: connection reset')
+  })
+
+  it('cancels the reader when an aggregator throw exits the drain loop early', async () => {
+    let cancelled = false
+    const events = [
+      { type: 'error', error: { type: 'api_error', message: 'mid-stream boom' } },
+      { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } },
+      { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'x'.repeat(200) } },
+    ]
+    stub_fetch(cancel_tracking_stream_response(events, () => {
+      cancelled = true
+    }))
+    const adapter = create_anthropic_native_adapter({ api_key: 'sk-test' })
+    const err: unknown = await adapter
+      .invoke_turn(make_req({ stream: true, dispatch_chunk: async () => {} }))
+      .catch((e: unknown) => e)
+    await Promise.resolve()
+    expect(Reflect.get(err as object, 'status')).toBe(500)
+    expect(cancelled).toBe(true)
+  })
+
+  it('drains a final event delivered only by the flush tail', async () => {
+    const events = [
+      STREAM_HEAD,
+      { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } },
+      { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'tail-flushed' } },
+      { type: 'content_block_stop', index: 0 },
+      { type: 'message_delta', delta: { stop_reason: 'end_turn' }, usage: { output_tokens: 4 } },
+      { type: 'message_stop' },
+    ]
+    stub_fetch(tail_event_stream_response(events))
+    const adapter = create_anthropic_native_adapter({ api_key: 'sk-test' })
+    const result = await adapter.invoke_turn(make_req({ stream: true, dispatch_chunk: async () => {} }))
+    expect(result).toEqual({
+      text: 'tail-flushed',
+      tool_calls: [],
+      finish_reason: 'stop',
+      usage: { input_tokens: 7, output_tokens: 4 },
+    })
+  })
+
+  it('reassembles multi-byte UTF-8 text split at every single-byte boundary', async () => {
+    const events = [
+      STREAM_HEAD,
+      { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } },
+      { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'héllo ☂ café 日本語' } },
+      { type: 'content_block_stop', index: 0 },
+      { type: 'message_delta', delta: { stop_reason: 'end_turn' }, usage: { output_tokens: 4 } },
+      { type: 'message_stop' },
+    ]
+    stub_fetch(stream_response(events, 1))
+    const adapter = create_anthropic_native_adapter({ api_key: 'sk-test' })
+    const result = await adapter.invoke_turn(make_req({ stream: true, dispatch_chunk: async () => {} }))
+    expect(result.text).toBe('héllo ☂ café 日本語')
+  })
+})
+
+describe('create_anthropic_native_adapter config', () => {
+  it('throws engine_config_error with exact message and provider on an empty api_key', () => {
+    const err = capture(() => create_anthropic_native_adapter({ api_key: '' }))
+    expect(err).toBeInstanceOf(engine_config_error)
+    expect((err as Error).message).toBe('anthropic provider requires a non-empty api_key')
+    expect((err as engine_config_error).provider).toBe('anthropic')
+  })
+
+  it('throws engine_config_error when api_key is absent (non-string coerces to empty)', () => {
+    const err = capture(() => create_anthropic_native_adapter({}))
+    expect(err).toBeInstanceOf(engine_config_error)
+    expect((err as Error).message).toBe('anthropic provider requires a non-empty api_key')
+  })
+
+  it('falls back to the default base_url when the override is an empty string', async () => {
+    const mock = stub_fetch(json_response(TEXT_FIXTURE))
+    const adapter = create_anthropic_native_adapter({ api_key: 'sk-test', base_url: '' })
+    await adapter.invoke_turn(make_req())
+    expect((mock.mock.calls[0] as [string, RequestInit])[0]).toBe(
+      'https://api.anthropic.com/v1/messages',
+    )
+  })
+
+  it('strips every trailing slash from a base_url, not just the last one', async () => {
+    const mock = stub_fetch(json_response(TEXT_FIXTURE))
+    const adapter = create_anthropic_native_adapter({
+      api_key: 'sk-test',
+      base_url: 'https://proxy.local/v1///',
+    })
+    await adapter.invoke_turn(make_req())
+    expect((mock.mock.calls[0] as [string, RequestInit])[0]).toBe('https://proxy.local/v1/messages')
+  })
+})

@@ -541,8 +541,15 @@ function extract_error_message(body: string): string {
   if (body.length === 0) return '(empty body)'
   try {
     const parsed: unknown = JSON.parse(body)
+    // Stryker disable next-line ConditionalExpression,LogicalOperator: the
+    // enclosing try/catch already funnels every non-object parse to the raw
+    // snippet, so this guard only narrows unknown -> object for Reflect.get;
+    // forcing it true/false throws-and-catches to the same fallback (equivalent).
     if (parsed !== null && typeof parsed === 'object') {
       const error: unknown = Reflect.get(parsed, 'error')
+      // Stryker disable next-line ConditionalExpression,LogicalOperator: same as
+      // above -- a non-object error still reaches the raw-snippet fallback via the
+      // catch or the message-not-a-string check, so both boundaries are equivalent.
       if (error !== null && typeof error === 'object') {
         const message: unknown = Reflect.get(error, 'message')
         if (typeof message === 'string' && message.length > 0) return message
