@@ -1876,3 +1876,365 @@ describe('run_tool_loop helpers (step 4)', () => {
     expect(cost_event?.['source']).toBe('engine_derived')
   })
 })
+
+const span_error = (events: Array<Record<string, unknown>>): unknown =>
+  events.find((e) => e['kind'] === 'span_end' && typeof e['error'] === 'string')?.['error']
+
+describe('run_tool_loop body (step 5)', () => {
+  it('ends the step span with the error when invoke_once throws', async () => {
+    const { trajectory, events } = recording_trajectory()
+    await expect(
+      run_tool_loop({
+        ...base_config({ invoke: [] }),
+        invoke_once: () => Promise.reject(new Error('transport down')),
+        trajectory,
+      }),
+    ).rejects.toThrow('transport down')
+    expect(span_error(events)).toBe('transport down')
+  })
+
+  it('closes the step span with the usage and finish_reason on a plain step', async () => {
+    const { trajectory, events } = recording_trajectory()
+    await run_tool_loop(
+      base_config({
+        invoke: [{ text: 'hi', finish_reason: 'stop', usage: { input_tokens: 7, output_tokens: 2 } }],
+        trajectory,
+      }),
+    )
+    const end = events.find((e) => e['kind'] === 'span_end' && e['finish_reason'] !== undefined)
+    expect(end).toMatchObject({ finish_reason: 'stop', usage: { input_tokens: 7, output_tokens: 2 } })
+  })
+
+  it('throws a named tool_error and closes the span for an unknown tool under throw policy', async () => {
+    const { trajectory, events } = recording_trajectory()
+    let err: unknown
+    try {
+      await run_tool_loop(
+        base_config({
+          invoke: [{ tool_calls: [call('c1', 'missing', {})], finish_reason: 'tool_calls' }],
+          tools: [],
+          tool_error_policy: 'throw',
+          trajectory,
+        }),
+      )
+    } catch (e) {
+      err = e
+    }
+    expect(err).toBeInstanceOf(tool_error)
+    expect((err as tool_error).message).toBe("unknown tool 'missing'")
+    expect(span_error(events)).toBe("unknown tool 'missing'")
+  })
+
+  it('feeds an invalid-input error back with the exact message and chunk', async () => {
+    const chunks: StreamChunk[] = []
+    const messages: Message[] = [{ role: 'user', content: 'go' }]
+    const out = await run_tool_loop(
+      base_config({
+        invoke: [
+          { tool_calls: [call('c1', 'echo', { value: 123 })], finish_reason: 'tool_calls' },
+          { text: 'done', finish_reason: 'stop' },
+        ],
+        tools: [make_tool({ name: 'echo' })],
+        messages,
+        stream: true,
+        dispatch_chunk: async (c) => {
+          chunks.push(c)
+        },
+      }),
+    )
+    expect(out.tool_calls[0]?.error?.message).toContain('invalid tool input')
+    const tool_msg = messages.find((m) => m.role === 'tool')
+    expect(tool_msg?.content).toContain('invalid tool input')
+    const chunk = chunks.find((c) => c.kind === 'tool_result')
+    expect((chunk as { error?: { message: string } }).error?.message).toContain('invalid tool input')
+  })
+
+  it('closes the span when the approval handler throws a non-abort error', async () => {
+    const { trajectory, events } = recording_trajectory()
+    await expect(
+      run_tool_loop(
+        base_config({
+          invoke: [{ tool_calls: [call('c1', 'danger', { value: 'x' })], finish_reason: 'tool_calls' }],
+          tools: [make_tool({ name: 'danger', needs_approval: true })],
+          on_tool_approval: () => {
+            throw new Error('handler exploded')
+          },
+          trajectory,
+        }),
+      ),
+    ).rejects.toThrow('handler exploded')
+    expect(span_error(events)).toBe('handler exploded')
+  })
+
+  it('throws tool_approval_denied and closes the span under throw policy', async () => {
+    const { trajectory, events } = recording_trajectory()
+    let err: unknown
+    try {
+      await run_tool_loop(
+        base_config({
+          invoke: [{ tool_calls: [call('c1', 'danger', { value: 'x' })], finish_reason: 'tool_calls' }],
+          tools: [make_tool({ name: 'danger', needs_approval: true })],
+          on_tool_approval: () => false,
+          tool_error_policy: 'throw',
+          trajectory,
+        }),
+      )
+    } catch (e) {
+      err = e
+    }
+    expect(err).toBeInstanceOf(tool_approval_denied_error)
+    expect(span_error(events)).toBe('tool_approval_denied')
+  })
+
+  it('surfaces an abort that fires inside tool execution with the in-flight identity', async () => {
+    const controller = new AbortController()
+    const { trajectory, events } = recording_trajectory()
+    let err: unknown
+    try {
+      await run_tool_loop(
+        base_config({
+          invoke: [{ tool_calls: [call('c1', 'echo', { value: 'x' })], finish_reason: 'tool_calls' }],
+          tools: [
+            make_tool({
+              name: 'echo',
+              execute: () => {
+                controller.abort(new Error('mid-exec'))
+                throw new Error('interrupted')
+              },
+            }),
+          ],
+          abort: controller.signal,
+          trajectory,
+        }),
+      )
+    } catch (e) {
+      err = e
+    }
+    expect(err).toBeInstanceOf(aborted_error)
+    expect((err as aborted_error).message).toBe('aborted')
+    expect((err as aborted_error).tool_call_in_flight).toEqual({ id: 'c1', name: 'echo' })
+    expect(span_error(events)).toBe('aborted')
+  })
+
+  it('wraps a tool throw with the tool name and closes the span under throw policy', async () => {
+    const { trajectory, events } = recording_trajectory()
+    let err: unknown
+    try {
+      await run_tool_loop(
+        base_config({
+          invoke: [{ tool_calls: [call('c1', 'boom', { value: 'x' })], finish_reason: 'tool_calls' }],
+          tools: [
+            make_tool({
+              name: 'boom',
+              execute: () => {
+                throw new Error('kaboom')
+              },
+            }),
+          ],
+          tool_error_policy: 'throw',
+          trajectory,
+        }),
+      )
+    } catch (e) {
+      err = e
+    }
+    expect(err).toBeInstanceOf(tool_error)
+    expect((err as tool_error).message).toBe("tool 'boom' failed: kaboom")
+    expect(span_error(events)).toBe('kaboom')
+  })
+
+  it('records a positive, bounded duration_ms for an executed tool', async () => {
+    const out = await run_tool_loop(
+      base_config({
+        invoke: [
+          { tool_calls: [call('c1', 'echo', { value: 'x' })], finish_reason: 'tool_calls' },
+          { text: 'done', finish_reason: 'stop' },
+        ],
+        tools: [make_tool({ name: 'echo', execute: () => 'ok' })],
+      }),
+    )
+    const duration = out.tool_calls[0]?.duration_ms
+    expect(typeof duration).toBe('number')
+    // Date.now() - started_at is a small non-negative delta; the '+' mutant would
+    // produce a value on the order of the current epoch millis.
+    expect(duration).toBeGreaterThanOrEqual(0)
+    expect(duration).toBeLessThan(60_000)
+  })
+
+  it('passes the trajectory into the tool execution context', async () => {
+    const { trajectory } = recording_trajectory()
+    let seen_trajectory: unknown = 'unset'
+    await run_tool_loop(
+      base_config({
+        invoke: [
+          { tool_calls: [call('c1', 'echo', { value: 'x' })], finish_reason: 'tool_calls' },
+          { text: 'done', finish_reason: 'stop' },
+        ],
+        tools: [
+          make_tool({
+            name: 'echo',
+            execute: (_input, ctx) => {
+              seen_trajectory = ctx?.trajectory
+              return 'ok'
+            },
+          }),
+        ],
+        trajectory,
+      }),
+    )
+    expect(seen_trajectory).toBe(trajectory)
+  })
+
+  it('omits the trajectory from tool context when none is configured', async () => {
+    let ctx_had_trajectory = true
+    await run_tool_loop(
+      base_config({
+        invoke: [
+          { tool_calls: [call('c1', 'echo', { value: 'x' })], finish_reason: 'tool_calls' },
+          { text: 'done', finish_reason: 'stop' },
+        ],
+        tools: [
+          make_tool({
+            name: 'echo',
+            execute: (_input, ctx) => {
+              ctx_had_trajectory = ctx !== undefined && 'trajectory' in ctx
+              return 'ok'
+            },
+          }),
+        ],
+        trajectory: undefined,
+      }),
+    )
+    expect(ctx_had_trajectory).toBe(false)
+  })
+
+  it('records and streams dropped calls beyond max_tool_calls_per_step', async () => {
+    const chunks: StreamChunk[] = []
+    const out = await run_tool_loop(
+      base_config({
+        invoke: [
+          {
+            tool_calls: [call('c1', 'echo', { value: 'a' }), call('c2', 'echo', { value: 'b' })],
+            finish_reason: 'tool_calls',
+          },
+          { text: 'done', finish_reason: 'stop' },
+        ],
+        tools: [make_tool({ name: 'echo', execute: () => 'ok' })],
+        max_tool_calls_per_step: 1,
+        stream: true,
+        dispatch_chunk: async (c) => {
+          chunks.push(c)
+        },
+      }),
+    )
+    const dropped = out.tool_calls.find((r) => r.id === 'c2')
+    expect(dropped?.error?.message).toBe('dropped_max_tool_calls_per_step')
+    const dropped_chunk = chunks.find((c) => c.kind === 'tool_result' && c.id === 'c2')
+    expect((dropped_chunk as { error?: { message: string } }).error?.message).toBe(
+      'dropped_max_tool_calls_per_step',
+    )
+  })
+
+  it('reports the raw finish_reason on a plain final step (no salvage/terminal)', async () => {
+    const out = await run_tool_loop(
+      base_config({ invoke: [{ text: 'stopped', finish_reason: 'length' }] }),
+    )
+    // turn_finish_reason falls through terminal/max/salvage to turn.finish_reason.
+    expect(out.finish_reason).toBe('length')
+  })
+
+  it('names the in-flight tool when the signal aborts after approval resolves', async () => {
+    const controller = new AbortController()
+    let err: unknown
+    try {
+      await run_tool_loop(
+        base_config({
+          invoke: [{ tool_calls: [call('c1', 'echo', { value: 'x' })], finish_reason: 'tool_calls' }],
+          tools: [
+            make_tool({
+              name: 'echo',
+              // Returns false (no approval needed) but aborts, so the post-approval
+              // in-flight guard is what fires, naming this tool.
+              needs_approval: () => {
+                controller.abort(new Error('post-approval'))
+                return false
+              },
+            }),
+          ],
+          abort: controller.signal,
+        }),
+      )
+    } catch (e) {
+      err = e
+    }
+    expect(err).toBeInstanceOf(aborted_error)
+    expect((err as aborted_error).tool_call_in_flight).toEqual({ id: 'c1', name: 'echo' })
+  })
+
+  it('feeds the exact tool error text back into the transcript', async () => {
+    const messages: Message[] = [{ role: 'user', content: 'go' }]
+    await run_tool_loop(
+      base_config({
+        invoke: [
+          { tool_calls: [call('c1', 'boom', { value: 'x' })], finish_reason: 'tool_calls' },
+          { text: 'done', finish_reason: 'stop' },
+        ],
+        tools: [
+          make_tool({
+            name: 'boom',
+            execute: () => {
+              throw new Error('kaboom')
+            },
+          }),
+        ],
+        messages,
+      }),
+    )
+    const tool_msg = messages.find((m) => m.role === 'tool')
+    // The fed message carries err_message, not the '?? unknown' fallback.
+    expect(tool_msg?.content).toContain('kaboom')
+  })
+
+  it('serializes an undefined tool output as an empty string in the transcript', async () => {
+    const messages: Message[] = [{ role: 'user', content: 'go' }]
+    const out = await run_tool_loop(
+      base_config({
+        invoke: [
+          { tool_calls: [call('c1', 'silent', { value: 'x' })], finish_reason: 'tool_calls' },
+          { text: 'done', finish_reason: 'stop' },
+        ],
+        tools: [make_tool({ name: 'silent', execute: () => undefined })],
+        messages,
+      }),
+    )
+    expect(out.tool_calls[0]).toMatchObject({ id: 'c1' })
+    const tool_msg = messages.find((m) => m.role === 'tool')
+    // output ?? '' -> '' serialized as the message content.
+    expect(tool_msg?.content).toBe('')
+  })
+
+  it('closes a tool-call step span with usage and the tool_calls finish_reason', async () => {
+    const { trajectory, events } = recording_trajectory()
+    await run_tool_loop(
+      base_config({
+        invoke: [
+          {
+            tool_calls: [call('c1', 'echo', { value: 'x' })],
+            finish_reason: 'tool_calls',
+            usage: { input_tokens: 9, output_tokens: 4 },
+          },
+          { text: 'done', finish_reason: 'stop' },
+        ],
+        tools: [make_tool({ name: 'echo', execute: () => 'ok' })],
+        trajectory,
+      }),
+    )
+    const tool_step_end = events.find(
+      (e) => e['kind'] === 'span_end' && e['finish_reason'] === 'tool_calls',
+    )
+    expect(tool_step_end).toMatchObject({
+      finish_reason: 'tool_calls',
+      usage: { input_tokens: 9, output_tokens: 4 },
+    })
+  })
+})

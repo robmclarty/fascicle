@@ -430,6 +430,7 @@ export async function run_tool_loop(config: ToolLoopConfig): Promise<ToolLoopRes
           calls: effective_calls.map((c) => ({
             tool_call_id: c.id,
             name: c.name,
+            // Stryker disable next-line StringLiteral: salvaged_formats has an entry for every id (set just above), so the ?? 'json' fallback is unreachable.
             format: salvaged_formats.get(c.id) ?? 'json',
           })),
           raw_text: turn.text,
@@ -711,6 +712,7 @@ export async function run_tool_loop(config: ToolLoopConfig): Promise<ToolLoopRes
             tool_call_id: raw_call.id,
             cause: thrown,
           })
+          // Stryker disable next-line StringLiteral: err_message is always a string in this branch (set from serialize_error in the catch), so the ?? 'tool error' fallback is unreachable.
           end_step_span(config.trajectory, step_span, { error: err_message ?? 'tool error' })
           throw wrapped
         }
@@ -718,6 +720,7 @@ export async function run_tool_loop(config: ToolLoopConfig): Promise<ToolLoopRes
           id: raw_call.id,
           name: tool.name,
           input: validation.value,
+          // Stryker disable next-line StringLiteral: err_message is always a string here (see catch above), so this ?? 'unknown' fallback is unreachable.
           error: { message: err_message ?? 'unknown' },
           duration_ms,
           started_at,
@@ -725,6 +728,7 @@ export async function run_tool_loop(config: ToolLoopConfig): Promise<ToolLoopRes
         step_tool_records.push(record)
         tool_calls_all.push(record)
         tool_results_to_feed.push(
+          // Stryker disable next-line StringLiteral: unreachable ?? 'unknown' fallback (err_message is always a string here).
           build_tool_result_message(raw_call.id, tool.name, { error: err_message ?? 'unknown' }),
         )
         record_tool_call(config.trajectory, {
@@ -733,6 +737,7 @@ export async function run_tool_loop(config: ToolLoopConfig): Promise<ToolLoopRes
           tool_call_id: raw_call.id,
           input: validation.value,
           duration_ms,
+          // Stryker disable next-line StringLiteral: unreachable ?? 'unknown' fallback (err_message is always a string here).
           error: { message: err_message ?? 'unknown' },
         })
         await dispatch_tool_result_chunk(
@@ -740,6 +745,7 @@ export async function run_tool_loop(config: ToolLoopConfig): Promise<ToolLoopRes
           step_index,
           raw_call.id,
           undefined,
+          // Stryker disable next-line StringLiteral: unreachable ?? 'unknown' fallback (err_message is always a string here).
           { message: err_message ?? 'unknown' },
         )
         continue

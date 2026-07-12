@@ -184,7 +184,7 @@ mutants (see the anthropic_native step-3 entry).
    finish/usage mapping asserted with exact values (D6)
    - seam: `src/engine/__tests__/`, `src/engine/generate.ts`
    - model: opus — the schema-repair retry loop and HITL flow are the subtlest orchestration
-4. [ ] Harden tool_loop.ts helpers + apply_prepare_step (149-352) — **done when:** zero
+4. [x] Harden tool_loop.ts helpers + apply_prepare_step (149-352) — **done when:** zero
    no-coverage and residual survivors killed or annotated (target ≥90%):
    `throw_if_aborted` / `throw_if_aborted_in_flight`, `serialize_error`,
    `request_approval`, `build_tool_result_message` / `build_assistant_message`,

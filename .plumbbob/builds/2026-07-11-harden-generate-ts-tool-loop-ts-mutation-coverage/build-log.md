@@ -24,7 +24,7 @@ is done only after a checkpoint — check green + checkpoint taken, via `/pb-ver
 - ☑ 2. Harden generate() body A: invoke dispatch + streaming (422-549)
 - ☑ 3. Harden generate() body B: HITL + schema-repair + cost + finish (550-726)
 - ☑ 4. Harden tool_loop.ts helpers + apply_prepare_step (149-352)
-- ☐ 5. Harden tool_loop.ts run_tool_loop body (354-851)
+- ☑ 5. Harden tool_loop.ts run_tool_loop body (354-851)
 - ☐ 6. Final gate + ratchet
 
 ## Step 1 results — generate.ts helpers + timeout/retry machinery
@@ -199,6 +199,45 @@ cost breakdown recorded when pricing resolves.
   always defined here (verified: forcing it true passes all 164 exercising tests).
   Killed `=> false` twin on the line prevents a per-line disable.
 
+## Step 5 results — run_tool_loop body
+
+Scoped mutation on `src/engine/tool_loop.ts`: **87.41% -> 94.59%** (360 -> 384
+killed, 44 -> 21 survived, 8 -> 1 no-coverage, 4 -> 10 ignored). Added 18 body tests
+to tool_loop.test.ts covering the step-span open/error/close payloads, the unknown-tool
+/ invalid-input / approval-throw / approval-denied / tool-throw error paths (each
+asserting the exact message, fed transcript text, chunk, and span error), the abort
+paths (invoke throw, in-flight during execute, in-flight after approval), duration_ms
+bounds, tool-context trajectory presence/absence, dropped-call records/chunks, the
+undefined-output '' fallback, and the raw finish_reason fall-through.
+
+### Annotated equivalents (6 lines, 6 new Ignored)
+
+The `err_message ?? 'unknown'` / `?? 'tool error'` defaults (L714/L721/L728/L736/L743)
+and the salvage-format `?? 'json'` default (L433) are type-required (the operand is
+typed `string | undefined`) but runtime-unreachable: err_message is always a string in
+the `thrown !== undefined` branch, and salvaged_formats has an entry for every id.
+Each disables only its `StringLiteral` (the `??`/object mutators on those lines are
+killed by the new message-content tests).
+
+### Documented survivors (15)
+
+Classified empirically (apply mutation, run the exercising suites).
+
+- **Phantoms (11 mutants, verified killed)** — L413/L414/L415 salvage guard (forcing
+  the whole condition true fails 5 tests; false fails 13), L464 clamp guard (13
+  failures), L831 salvage finish-reason string (3 failures). All reported Survived by
+  Stryker 9.6.1 / vitest 4.1.10.
+- **Equivalents (9 mutants, full suite passes under mutation)** — L360/L361 the
+  text/finish_reason inits (overwritten before read), L490/L843 the `if (breakdown !==
+  undefined)` cost sets (toEqual ignores the resulting `cost: undefined`), L492/L845
+  the `on_finish_step` guards (unset in the suite), L513 the `?.ends_turn` optional
+  chain (the unknown-tool-at-cap path is unexercised), L832 the salvage finish-reason
+  guard, L860 the `would_exceed_after` break (redundant with the L371 boundary break).
+- **NoCoverage (1)** — L710:88 the `?? 'unknown'` in the throw-policy tool_error
+  message. Unreachable like the annotated fallbacks, but its line also carries a
+  *killed* template-literal StringLiteral, so a per-line disable would suppress real
+  signal; left documented rather than gaming the twin.
+
 ## Park list
 
 > Mid-step, every new problem / idea / "ooh what if" lands HERE, untouched, and you
@@ -234,3 +273,4 @@ folder, so it rides the branch into the PR.)*
 - 2026-07-12 — step 1 checkpointed · 4092f1f15 — Harden generate.ts helpers + timeout/retry machinery (96-420) (36m)
 - 2026-07-12 — step 2 checkpointed · 15ca58822 — Harden generate() body A: invoke dispatch + streaming (422-549) (17m)
 - 2026-07-12 — step 3 checkpointed · 715ba333c — Harden generate() body B: HITL + schema-repair + cost + finish (550-726) (18m)
+- 2026-07-12 — step 4 checkpointed · ca5699e48 — Harden tool_loop.ts helpers + apply_prepare_step (149-352) (12m)
