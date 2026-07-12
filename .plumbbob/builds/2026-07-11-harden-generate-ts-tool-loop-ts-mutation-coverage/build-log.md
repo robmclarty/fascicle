@@ -303,3 +303,4 @@ folder, so it rides the branch into the PR.)*
 - 2026-07-12 — step 3 checkpointed · 715ba333c — Harden generate() body B: HITL + schema-repair + cost + finish (550-726) (18m)
 - 2026-07-12 — step 4 checkpointed · ca5699e48 — Harden tool_loop.ts helpers + apply_prepare_step (149-352) (12m)
 - 2026-07-12 — step 5 checkpointed · 94aad950b — Harden tool_loop.ts run_tool_loop body (354-851) (17m)
+- 2026-07-12 — step 6 checkpointed · 2b86f0cf9 — Final gate + ratchet (7m)

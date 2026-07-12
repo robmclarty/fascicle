@@ -200,7 +200,7 @@ mutants (see the anthropic_native step-3 entry).
    harness with the emitted trajectory/chunks proven equal
    - seam: `src/engine/__tests__/`, `src/engine/tool_loop.ts`
    - model: opus — the tool-dispatch/approval/abort loop is the subtle part
-6. [ ] Final gate + ratchet — **done when:** `pnpm check:all` (incl. mutation) exits 0,
+6. [x] Final gate + ratchet — **done when:** `pnpm check:all` (incl. mutation) exits 0,
    a before/after per-region mutation-score table and the equivalents list are recorded
    in the build log, and `thresholds.break` is ratcheted up to the new aggregate minus
    the ~3pt cushion if the delta supports it (never down, D5)
