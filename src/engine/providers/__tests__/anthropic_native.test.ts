@@ -45,6 +45,15 @@ function make_req(overrides: Partial<TurnRequest> = {}): TurnRequest {
   }
 }
 
+function capture(fn: () => unknown): unknown {
+  try {
+    fn()
+    return undefined
+  } catch (e: unknown) {
+    return e
+  }
+}
+
 function stub_fetch(result: Response | Error): ReturnType<typeof vi.fn> {
   const mock = vi.fn(async (_input: string | URL | Request, _init?: RequestInit) => {
     if (result instanceof Response) return result
@@ -123,12 +132,53 @@ describe('to_anthropic_messages', () => {
     })
   })
 
-  it('throws provider_capability_error on a mid-conversation system message', () => {
+  it('drops a whitespace-only user string, hoisting no system and pushing no message', () => {
+    expect(to_anthropic_messages([{ role: 'user', content: '   ' }])).toEqual({
+      system: undefined,
+      messages: [],
+    })
+  })
+
+  it('maps user content parts to text blocks, dropping the whitespace-only ones', () => {
+    expect(
+      to_anthropic_messages([
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: 'first' },
+            { type: 'text', text: '   ' },
+            { type: 'text', text: 'second' },
+          ],
+        },
+      ]),
+    ).toEqual({
+      system: undefined,
+      messages: [
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: 'first' },
+            { type: 'text', text: 'second' },
+          ],
+        },
+      ],
+    })
+  })
+
+  it('throws provider_capability_error with exact provider/capability/detail on a mid-conversation system message', () => {
     const messages: Message[] = [
       { role: 'user', content: 'hi' },
       { role: 'system', content: 'now be verbose' },
     ]
-    expect(() => to_anthropic_messages(messages)).toThrow(provider_capability_error)
+    const err = capture(() => to_anthropic_messages(messages))
+    expect(err).toBeInstanceOf(provider_capability_error)
+    expect((err as provider_capability_error).provider).toBe('anthropic')
+    expect((err as provider_capability_error).capability).toBe(
+      'mid_conversation_system_messages',
+    )
+    expect((err as Error).message).toBe(
+      "provider 'anthropic' does not support 'mid_conversation_system_messages': the Messages API accepts system text only before the first user/assistant turn",
+    )
   })
 
   it('maps assistant tool_call parts to tool_use blocks and drops empty text', () => {
@@ -196,14 +246,58 @@ describe('to_anthropic_messages', () => {
     })
   })
 
-  it('throws provider_capability_error on image parts', () => {
+  it('maps an assistant string to a text block and drops a whitespace-only assistant string', () => {
+    expect(
+      to_anthropic_messages([
+        { role: 'user', content: 'hi' },
+        { role: 'assistant', content: 'sure thing' },
+      ]).messages[1],
+    ).toEqual({ role: 'assistant', content: [{ type: 'text', text: 'sure thing' }] })
+
+    expect(
+      to_anthropic_messages([
+        { role: 'user', content: 'hi' },
+        { role: 'assistant', content: '   ' },
+      ]).messages,
+    ).toEqual([{ role: 'user', content: [{ type: 'text', text: 'hi' }] }])
+  })
+
+  it('maps assistant text parts, dropping whitespace-only ones, and maps tool_call parts', () => {
+    expect(
+      to_anthropic_messages([
+        { role: 'user', content: 'weather?' },
+        {
+          role: 'assistant',
+          content: [
+            { type: 'text', text: 'Let me check' },
+            { type: 'text', text: '   ' },
+            { type: 'tool_call', id: 'toolu_01', name: 'get_weather', input: { city: 'Ottawa' } },
+          ],
+        },
+      ]).messages[1],
+    ).toEqual({
+      role: 'assistant',
+      content: [
+        { type: 'text', text: 'Let me check' },
+        { type: 'tool_use', id: 'toolu_01', name: 'get_weather', input: { city: 'Ottawa' } },
+      ],
+    })
+  })
+
+  it('throws provider_capability_error with exact provider/capability/detail on image parts', () => {
     const messages: Message[] = [
       {
         role: 'user',
         content: [{ type: 'image', image: 'aGk=', media_type: 'image/png' }],
       },
     ]
-    expect(() => to_anthropic_messages(messages)).toThrow(provider_capability_error)
+    const err = capture(() => to_anthropic_messages(messages))
+    expect(err).toBeInstanceOf(provider_capability_error)
+    expect((err as provider_capability_error).provider).toBe('anthropic')
+    expect((err as provider_capability_error).capability).toBe('image_input')
+    expect((err as Error).message).toBe(
+      "provider 'anthropic' does not support 'image_input': image parts are not mapped on the native transport; use transport: 'ai_sdk'",
+    )
   })
 })
 
@@ -266,6 +360,39 @@ describe('build_messages_body', () => {
       properties: { city: { type: 'string' } },
       required: ['city'],
     })
+  })
+
+  it('omits the system key when neither req.system nor a hoisted system is present', () => {
+    expect(build_messages_body(make_req())).not.toHaveProperty('system')
+  })
+
+  it('filters out an empty-string req.system, leaving no system key', () => {
+    expect(build_messages_body(make_req({ system: '' }))).not.toHaveProperty('system')
+  })
+
+  it('joins req.system ahead of a hoisted system message with a blank line', () => {
+    const body = build_messages_body(
+      make_req({
+        system: 'from request',
+        messages: [
+          { role: 'system', content: 'from message' },
+          { role: 'user', content: 'hi' },
+        ],
+      }),
+    )
+    expect(body['system']).toBe('from request\n\nfrom message')
+  })
+
+  it('applies only temperature when top_p is unset and thinking is off', () => {
+    const body = build_messages_body(make_req({ temperature: 0.5 }))
+    expect(body['temperature']).toBe(0.5)
+    expect(body).not.toHaveProperty('top_p')
+  })
+
+  it('applies only top_p when temperature is unset and thinking is off', () => {
+    const body = build_messages_body(make_req({ top_p: 0.8 }))
+    expect(body['top_p']).toBe(0.8)
+    expect(body).not.toHaveProperty('temperature')
   })
 })
 

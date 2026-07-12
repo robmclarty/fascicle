@@ -210,10 +210,12 @@ export function build_messages_body(req: TurnRequest): Record<string, unknown> {
   if (req.stream) body['stream'] = true
   if (thinking_enabled) {
     body['thinking'] = { type: 'enabled', budget_tokens: budget }
-  } else if (req.temperature !== undefined || req.top_p !== undefined) {
+  } else {
     // The API rejects temperature/top_p alongside extended thinking, so
     // sampling params apply only when thinking is off (parity with the
-    // @ai-sdk/anthropic backend, which strips them the same way).
+    // @ai-sdk/anthropic backend, which strips them the same way). The inner
+    // guards already gate each key, so the branch is a plain else rather than
+    // a redundant `else if` on the same two conditions.
     if (req.temperature !== undefined) body['temperature'] = req.temperature
     if (req.top_p !== undefined) body['top_p'] = req.top_p
   }
@@ -225,6 +227,9 @@ export function build_messages_body(req: TurnRequest): Record<string, unknown> {
   // (e.g. a passthrough temperature alongside thinking); wire keys are the
   // user asserting they know the wire.
   const passthrough = req.provider_options?.['anthropic']
+  // Stryker disable next-line ConditionalExpression: spreading an undefined
+  // passthrough is a no-op, so forcing the merge branch ({ ...body, ...undefined })
+  // deep-equals this fast-path return; only the merge branch is observable.
   return passthrough === undefined ? body : { ...body, ...passthrough }
 }
 
