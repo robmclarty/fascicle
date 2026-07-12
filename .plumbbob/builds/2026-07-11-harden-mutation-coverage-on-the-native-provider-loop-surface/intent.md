@@ -142,7 +142,7 @@ test-authoring iterations; `pnpm check:all` once at the end (C1).
    independent of the parent) each asserted concretely
    - seam: `src/engine/__tests__/`, `src/engine/create_engine.ts`
    - model: opus — the invariants are the assertions; the parent-untouched proof is the subtle part
-5. [ ] Final gate + ratchet — **done when:** `pnpm check:all` (incl. mutation)
+5. [x] Final gate + ratchet — **done when:** `pnpm check:all` (incl. mutation)
    exits 0, a before/after per-file mutation-score table and the equivalents list
    are recorded in the build log, and `thresholds.break` is ratcheted up to the
    new aggregate minus headroom (never down, D5)

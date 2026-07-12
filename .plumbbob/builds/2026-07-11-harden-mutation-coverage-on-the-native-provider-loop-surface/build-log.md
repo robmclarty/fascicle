@@ -95,3 +95,4 @@ folder, so it rides the branch into the PR.)*
 - 2026-07-11 — step 2 checkpointed · a96b798a0 — Harden `ollama_native.ts` (1 red, 36m)
 - 2026-07-11 — step 3 checkpointed · bef16e31a — Harden the otel surface (38m)
 - 2026-07-11 — step 4 checkpointed · 8695c8a5b — Harden `with_providers` in `create_engine.ts` (35m)
+- 2026-07-12 — step 5 checkpointed · 8b5f0cf76 — Final gate + ratchet (36m)
