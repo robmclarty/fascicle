@@ -1,5 +1,25 @@
 # Changelog
 
+## v0.9.2 — 2026-07-11
+
+### Added
+
+- **Native provider transport.** Model calls now flow through a neutral native provider contract instead of routing exclusively through the AI SDK. This release lands native Anthropic (mapping, streaming, capabilities, auth), a native OpenAI-compatible core that backs `openai`, `openrouter`, and `lmstudio`, and native Ollama on its `/api/chat` endpoint. The AI SDK becomes one transport behind the seam rather than the only path, and `provider_options` pass straight through to the native transport.
+- **Open provider registry.** `custom_providers` on `EngineConfig` lets callers register their own providers, and the native provider contract is exported from the package barrel so those providers can be built against a stable type.
+- **Loop knobs.** Per-turn timeout budgets and a `prepare_step` hook give callers control over each step of the tool loop.
+- **OpenTelemetry surface.** A trajectory-to-otel bridge plus AI SDK telemetry passthrough emit spans for runs and model calls, with the agent-layer boundary ADR amended to record the seam.
+
+### Changed
+
+- **Breaking: the `subprocess` provider is renamed to `external`.** Update any `provider: "subprocess"` configuration to `provider: "external"`.
+- The native provider seam is now the default dispatch path; the AI SDK transport is selected behind it rather than assumed.
+
+### Internal
+
+- Mutation coverage hardened across the native providers (`openai_compatible_native`, `ollama_native`), the otel surface, and `with_providers` in `create_engine`, with the Stryker break gate ratcheted up at the final gate.
+- Transport parity golden tests plus an OpenRouter live smoke lock the native and AI SDK transports to identical observable behavior.
+- The release skill now detects the previous release from the most recent git tag rather than the last `vX.Y.Z` commit message.
+
 ## v0.9.1 — 2026-07-10
 
 ### Internal
