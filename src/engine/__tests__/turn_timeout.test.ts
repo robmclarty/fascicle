@@ -15,11 +15,12 @@
  * the exact attempt count, and the timeout_ms carried on the error.
  */
 
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { create_engine } from '../create_engine.js'
 import {
   aborted_error,
   engine_config_error,
+  on_chunk_error,
   provider_error,
   turn_timeout_error,
 } from '../errors.js'
@@ -53,8 +54,10 @@ const RETRY_TRANSIENTS: RetryPolicy = {
 type Behavior =
   | { mode: 'fast'; text: string }
   | { mode: 'hang' }
+  | { mode: 'throw'; error: Error }
   | { mode: 'stream_then_hang'; chunk_text: string }
   | { mode: 'stream_then_abort_error'; chunk_text: string }
+  | { mode: 'stream_then_ok'; chunk_text: string; text: string }
 
 type NativeLog = { requests: TurnRequest[] }
 
@@ -98,6 +101,22 @@ function make_factory(log: NativeLog, behavior: Behavior): ProviderFactory {
     invoke_turn: async (req: TurnRequest): Promise<TurnResult> => {
       log.requests.push(req)
       if (behavior.mode === 'fast') {
+        return {
+          text: behavior.text,
+          tool_calls: [],
+          finish_reason: 'stop',
+          usage: { input_tokens: 1, output_tokens: 1 },
+        }
+      }
+      if (behavior.mode === 'throw') {
+        throw behavior.error
+      }
+      if (behavior.mode === 'stream_then_ok') {
+        await req.dispatch_chunk?.({
+          kind: 'text',
+          text: behavior.chunk_text,
+          step_index: req.step_index,
+        })
         return {
           text: behavior.text,
           tool_calls: [],
@@ -215,6 +234,9 @@ describe('turn_timeout_ms: mid-stream expiry refuses retry (C4 parity)', () => {
     }
     expect(err).toBeInstanceOf(provider_error)
     expect((err as provider_error).message).toContain('stream interrupted')
+    // cause_kind is the literal 'unknown' the interruption branch stamps; an
+    // empty metadata object or empty string would leave it undefined/''.
+    expect((err as provider_error).cause_kind).toBe('unknown')
     expect(err).not.toBeInstanceOf(turn_timeout_error)
     expect(log.requests).toHaveLength(1)
   })
@@ -275,6 +297,12 @@ describe('turn_timeout_ms: mid-stream expiry refuses retry (C4 parity)', () => {
     }
     expect(err).toBeInstanceOf(aborted_error)
     expect(err).not.toBeInstanceOf(provider_error)
+    // The re-thrown aborted_error carries the exact 'aborted' message and the
+    // user's abort reason; an emptied message string or dropped metadata object
+    // would blank these out.
+    expect((err as aborted_error).message).toBe('aborted')
+    expect((err as aborted_error).reason).toBeInstanceOf(Error)
+    expect(((err as aborted_error).reason as Error).message).toBe('user cancel')
     expect(log.requests).toHaveLength(1)
   })
 })
@@ -317,6 +345,112 @@ describe('turn_timeout_ms: resolution (per-call + engine default)', () => {
     expect(err).toBeInstanceOf(turn_timeout_error)
     // The 20ms per-call budget fired, not the 10s engine default.
     expect((err as turn_timeout_error).timeout_ms).toBe(20)
+  })
+})
+
+describe('turn_timeout_ms: no budget leaves the abort ladder untimed', () => {
+  it('passes the user signal through untouched (no deadline armed)', async () => {
+    const log: NativeLog = { requests: [] }
+    const engine = make_engine(log, { mode: 'hang' })
+    const controller = new AbortController()
+    // The user aborts well after any 0ms deadline would fire. With no budget,
+    // arm_turn_timeout returns the user signal untouched (timed_out() always
+    // false), so the hang ends only on this abort -> aborted_error. The mutant
+    // that always arms would fire a coerced-0ms deadline first and surface a
+    // turn_timeout_error instead.
+    const timer = setTimeout(() => controller.abort(new Error('user cancel')), 25)
+    let err: unknown
+    try {
+      await engine.generate({
+        provider: PROVIDER,
+        model: MODEL,
+        prompt: 'hi',
+        abort: controller.signal,
+        retry: NO_RETRY,
+      })
+    } catch (e) {
+      err = e
+    } finally {
+      clearTimeout(timer)
+    }
+    expect(err).toBeInstanceOf(aborted_error)
+    expect(err).not.toBeInstanceOf(turn_timeout_error)
+  })
+})
+
+describe('turn_timeout_ms: a generous budget never diverts a real failure', () => {
+  it('surfaces a pre-chunk failure unclassified rather than as a timeout', async () => {
+    const log: NativeLog = { requests: [] }
+    const engine = make_engine(log, { mode: 'throw', error: new Error('boom') })
+    let err: unknown
+    try {
+      await engine.generate({
+        provider: PROVIDER,
+        model: MODEL,
+        prompt: 'hi',
+        turn_timeout_ms: 10_000,
+        retry: NO_RETRY,
+      })
+    } catch (e) {
+      err = e
+    }
+    // The 10s budget never fires, so the raw error passes through. The mutant
+    // that initializes timed_out=true would divert it into the turn_timeout
+    // branch even though the deadline never expired.
+    expect(err).not.toBeInstanceOf(turn_timeout_error)
+    expect((err as Error).message).toBe('boom')
+    expect(log.requests).toHaveLength(1)
+  })
+
+  it('clears the armed deadline after a fast success (no leaked timer)', async () => {
+    vi.useFakeTimers()
+    try {
+      const log: NativeLog = { requests: [] }
+      const engine = make_engine(log, { mode: 'fast', text: 'done' })
+      const result = await engine.generate({
+        provider: PROVIDER,
+        model: MODEL,
+        prompt: 'hi',
+        turn_timeout_ms: 10_000,
+        retry: NO_RETRY,
+      })
+      expect(result.content).toBe('done')
+      // dispose() (via retry_turn's finally) cleared the setTimeout. The empty
+      // dispose body and the finally-skips-dispose mutants both leave it armed.
+      expect(vi.getTimerCount()).toBe(0)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})
+
+describe('native transport: a throwing stream consumer cancels in-flight', () => {
+  it('surfaces on_chunk_error when on_chunk throws mid-stream', async () => {
+    const log: NativeLog = { requests: [] }
+    const engine = make_engine(log, {
+      mode: 'stream_then_ok',
+      chunk_text: 'partial',
+      text: 'unreached',
+    })
+    let err: unknown
+    try {
+      await engine.generate({
+        provider: PROVIDER,
+        model: MODEL,
+        prompt: 'hi',
+        on_chunk: () => {
+          throw new Error('consumer boom')
+        },
+        retry: NO_RETRY,
+      })
+    } catch (e) {
+      err = e
+    }
+    // dispatch_chunk's catch aborts the internal controller and rethrows the
+    // on_chunk_error; if that catch block were emptied the error would be
+    // swallowed and the turn would resolve with 'unreached'.
+    expect(err).toBeInstanceOf(on_chunk_error)
+    expect(log.requests).toHaveLength(1)
   })
 })
 

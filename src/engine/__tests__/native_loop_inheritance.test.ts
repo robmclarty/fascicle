@@ -657,3 +657,62 @@ describe('native adapter inherits retry-on-classified-error', () => {
     expect(log.requests).toHaveLength(1)
   })
 })
+
+describe('native adapter inherits generate-option forwarding', () => {
+  it('threads every present sampling/schema/provider option onto the TurnRequest', async () => {
+    const log: NativeLog = { requests: [] }
+    const schema = z.object({ answer: z.string() })
+    // Return schema-valid JSON so the parse succeeds and the loop settles in one
+    // turn; the request we assert on is still the first (and only) invocation.
+    const engine = make_engine(log, [text_turn('{"answer":"yes"}')])
+
+    await engine.generate({
+      model: MODEL,
+      prompt: 'hi',
+      temperature: 0.7,
+      max_tokens: 128,
+      top_p: 0.9,
+      schema,
+      provider_options: { [PROVIDER]: { foo: 'bar' } },
+    })
+
+    const req = log.requests[0]
+    // Each optional key is forwarded with its exact value; an inverted guard or
+    // dropped object-literal would omit it (undefined) from the request.
+    expect(req?.temperature).toBe(0.7)
+    expect(req?.max_tokens).toBe(128)
+    expect(req?.top_p).toBe(0.9)
+    expect(req?.schema).toBe(schema)
+    expect(req?.provider_options).toEqual({ [PROVIDER]: { foo: 'bar' } })
+  })
+
+  it('omits every absent option key from the TurnRequest', async () => {
+    const log: NativeLog = { requests: [] }
+    const engine = make_engine(log, [text_turn('ok')])
+
+    await engine.generate({ model: MODEL, prompt: 'hi' })
+
+    const req = log.requests[0]
+    // The spread-only-when-defined guards must not add undefined-valued keys;
+    // a forced-true guard would surface each as `key: undefined`.
+    expect(req).toBeDefined()
+    expect('temperature' in (req as object)).toBe(false)
+    expect('max_tokens' in (req as object)).toBe(false)
+    expect('top_p' in (req as object)).toBe(false)
+    expect('schema' in (req as object)).toBe(false)
+    expect('provider_options' in (req as object)).toBe(false)
+    expect('system' in (req as object)).toBe(false)
+  })
+
+  it('hoists a leading system message onto TurnRequest.system', async () => {
+    const log: NativeLog = { requests: [] }
+    const engine = make_engine(log, [text_turn('ok')])
+
+    await engine.generate({ model: MODEL, system: 'be brief', prompt: 'hi' })
+
+    const req = log.requests[0]
+    expect(req?.system).toBe('be brief')
+    // The hoisted system run is stripped from the conversation messages.
+    expect(req?.messages).toEqual([{ role: 'user', content: 'hi' }])
+  })
+})

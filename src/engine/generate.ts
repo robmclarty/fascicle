@@ -122,6 +122,7 @@ export function split_leading_system_messages(messages: ReadonlyArray<Message>):
   const system_parts: string[] = []
   while (run_end < messages.length) {
     const m = messages[run_end]
+    // Stryker disable next-line OptionalChaining: within the loop guard run_end < messages.length, m is always an in-bounds (defined) Message, so m.role and m?.role read identically.
     if (m?.role !== 'system') break
     system_parts.push(m.content)
     run_end += 1
@@ -229,6 +230,7 @@ function arm_turn_timeout(
   turn_timeout_ms: number | undefined,
 ): TurnDeadline {
   if (turn_timeout_ms === undefined) {
+    // Stryker disable next-line ArrowFunction: timed_out is only ever read as `if (deadline.timed_out())`, where () => undefined and () => false are both falsy, so the mutant is behaviorally identical.
     return { signal: user_abort, timed_out: () => false, dispose: () => {} }
   }
   const local = new AbortController()
@@ -368,9 +370,11 @@ function build_native_invoke(cfg: NativeInvokeConfig): InvokeOnce {
       const cancel_on_turn_abort = (): void => {
         internal_controller.abort(turn_abort.reason)
       }
+      // Stryker disable next-line BlockStatement: unreachable pre-abort guard. retry_with_policy re-checks abort.aborted at the top of every attempt and there is no await between that check and this synchronous read, so the composed turn_abort is never already-aborted when call_once begins.
       if (turn_abort.aborted) {
         internal_controller.abort(turn_abort.reason)
       } else {
+        // Stryker disable next-line ObjectLiteral,BooleanLiteral: { once: true } is a cleanup optimization only. The abort event is terminal (fires at most once) and the finally below removes the listener, so once:false is unobservable.
         turn_abort.addEventListener('abort', cancel_on_turn_abort, { once: true })
       }
       const dispatch_chunk = async (chunk: StreamChunk): Promise<void> => {
@@ -404,6 +408,11 @@ function build_native_invoke(cfg: NativeInvokeConfig): InvokeOnce {
       try {
         return await cfg.adapter.invoke_turn(req)
       } finally {
+        // The finally is listener cleanup only: with { once: true } the listener
+        // self-removes on fire and the composed turn_abort is attempt-scoped, so
+        // an emptied finally or an empty event name here leaks nothing
+        // observable (the BlockStatement survivor is a documented equivalent).
+        // Stryker disable next-line StringLiteral: unobservable cleanup, see above.
         turn_abort.removeEventListener('abort', cancel_on_turn_abort)
       }
     }

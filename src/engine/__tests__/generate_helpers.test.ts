@@ -5,6 +5,7 @@ import {
   build_initial_messages,
   classify_provider_error,
   round6,
+  split_leading_system_messages,
 } from '../generate.js'
 
 const opts = (o: Partial<GenerateOptions>): GenerateOptions => o as GenerateOptions
@@ -102,6 +103,59 @@ describe('classify_provider_error', () => {
   it('passes through an unclassifiable error object', () => {
     const err = { statusCode: 400, message: 'bad request' }
     expect(classify_provider_error(err)).toBe(err)
+  })
+})
+
+describe('split_leading_system_messages', () => {
+  it('returns the list untouched (no system key) when there is no leading system run', () => {
+    const messages: Message[] = [
+      { role: 'user', content: 'hi' },
+      { role: 'system', content: 'mid-conversation system' },
+    ]
+    const out = split_leading_system_messages(messages)
+    // system_parts is empty, so the early guard returns the original list; a
+    // dropped guard would emit system:'' and hoist nothing.
+    expect('system' in out).toBe(false)
+    expect(out.messages).toEqual(messages)
+  })
+
+  it('returns the list untouched when every message is system (hoisting would empty messages)', () => {
+    const messages: Message[] = [
+      { role: 'system', content: 'a' },
+      { role: 'system', content: 'b' },
+    ]
+    const out = split_leading_system_messages(messages)
+    // rest is empty, so the guard (|| not &&) fires and nothing is hoisted;
+    // both parts of the OR and the guard block are exercised here.
+    expect('system' in out).toBe(false)
+    expect(out.messages).toEqual(messages)
+  })
+
+  it('hoists a leading system run and returns the remaining messages', () => {
+    const messages: Message[] = [
+      { role: 'system', content: 'a' },
+      { role: 'system', content: 'b' },
+      { role: 'user', content: 'hi' },
+    ]
+    const out = split_leading_system_messages(messages)
+    // Exact join separator ('\n\n') and the full two-message run: a -= 1 loop
+    // step or a '' separator would change this value.
+    expect(out.system).toBe('a\n\nb')
+    expect(out.messages).toEqual([{ role: 'user', content: 'hi' }])
+  })
+
+  it('stops the leading run at the first non-system message', () => {
+    const messages: Message[] = [
+      { role: 'system', content: 'sys' },
+      { role: 'user', content: 'hi' },
+      { role: 'system', content: 'later' },
+    ]
+    const out = split_leading_system_messages(messages)
+    expect(out.system).toBe('sys')
+    expect(out.messages).toEqual([
+      { role: 'user', content: 'hi' },
+      { role: 'system', content: 'later' },
+    ])
   })
 })
 
