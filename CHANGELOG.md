@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.9.3 — 2026-07-11
+
+### Internal
+
+- Hardened mutation coverage of the native Anthropic provider (`anthropic_native.ts`) from 73.9% to 98.2%, adding ~900 lines of targeted tests across request/message mapping, the streaming aggregator, the usage/stop maps, and error-classification and SSE-drain paths.
+- Simplified the sampling-param branch in `build_messages_body` (redundant `else if` collapsed to a plain `else`, since the inner guards already gate each key) and annotated the remaining equivalent mutants with scoped Stryker disables.
+- Ratcheted the mutation-testing break gate from 82 to 83 (full-repo score now ~86.8%).
+
 ## v0.9.2 — 2026-07-11
 
 ### Added
