@@ -413,8 +413,11 @@ describe('map_anthropic_stop_reason', () => {
 })
 
 describe('map_anthropic_usage', () => {
-  it('copies plain input/output tokens', () => {
-    expect(map_anthropic_usage({ input_tokens: 100, output_tokens: 20 })).toEqual({
+  it('copies plain input/output tokens with no cache keys', () => {
+    // toStrictEqual, not toEqual: toEqual ignores `key: undefined`, so it would
+    // not catch a mutant that always writes cached_input_tokens/cache_write_tokens
+    // even when the source cache field is absent (D6).
+    expect(map_anthropic_usage({ input_tokens: 100, output_tokens: 20 })).toStrictEqual({
       input_tokens: 100,
       output_tokens: 20,
     })
@@ -430,7 +433,7 @@ describe('map_anthropic_usage', () => {
         cache_read_input_tokens: 90,
         cache_creation_input_tokens: 25,
       }),
-    ).toEqual({
+    ).toStrictEqual({
       input_tokens: 125,
       output_tokens: 5,
       cached_input_tokens: 90,
@@ -438,14 +441,33 @@ describe('map_anthropic_usage', () => {
     })
   })
 
+  it('returns zero totals for a null usage object', () => {
+    // null hits the `raw === null` operand specifically; the undefined case below
+    // only exercises the `typeof raw !== 'object'` half of the guard.
+    expect(map_anthropic_usage(null)).toStrictEqual({ input_tokens: 0, output_tokens: 0 })
+  })
+
   it('returns zero totals for a missing usage object', () => {
-    expect(map_anthropic_usage(undefined)).toEqual({ input_tokens: 0, output_tokens: 0 })
+    expect(map_anthropic_usage(undefined)).toStrictEqual({ input_tokens: 0, output_tokens: 0 })
+  })
+
+  it('ignores non-numeric usage fields', () => {
+    // A non-number read resolves to undefined, not the raw value: the string is
+    // dropped from the input sum and no cache key is emitted for it.
+    expect(
+      map_anthropic_usage({
+        input_tokens: 10,
+        output_tokens: 5,
+        cache_read_input_tokens: 'lots',
+        cache_creation_input_tokens: null,
+      }),
+    ).toStrictEqual({ input_tokens: 10, output_tokens: 5 })
   })
 })
 
 describe('parse_messages_response', () => {
   it('parses a text response', () => {
-    expect(parse_messages_response(TEXT_FIXTURE)).toEqual({
+    expect(parse_messages_response(TEXT_FIXTURE)).toStrictEqual({
       text: 'Hello there',
       tool_calls: [],
       finish_reason: 'stop',
@@ -454,7 +476,7 @@ describe('parse_messages_response', () => {
   })
 
   it('parses a tool-call response', () => {
-    expect(parse_messages_response(TOOL_CALL_FIXTURE)).toEqual({
+    expect(parse_messages_response(TOOL_CALL_FIXTURE)).toStrictEqual({
       text: '',
       tool_calls: [{ id: 'toolu_01', name: 'get_weather', input: { city: 'Ottawa' } }],
       finish_reason: 'tool_calls',
@@ -463,7 +485,7 @@ describe('parse_messages_response', () => {
   })
 
   it('parses a mixed response, joining text and skipping thinking blocks', () => {
-    expect(parse_messages_response(MIXED_FIXTURE)).toEqual({
+    expect(parse_messages_response(MIXED_FIXTURE)).toStrictEqual({
       text: 'Checking the weather. One moment.',
       tool_calls: [{ id: 'toolu_02', name: 'get_weather', input: { city: 'Kingston' } }],
       finish_reason: 'tool_calls',
@@ -476,12 +498,84 @@ describe('parse_messages_response', () => {
     })
   })
 
-  it('throws provider_error on a malformed tool_use block', () => {
+  it('treats non-array content as an empty result', () => {
+    // Array.isArray guards the loop; a non-array content (here a number) yields an
+    // empty text/tool_calls result rather than iterating a non-iterable.
+    expect(
+      parse_messages_response({
+        content: 42,
+        stop_reason: 'end_turn',
+        usage: { input_tokens: 1, output_tokens: 2 },
+      }),
+    ).toStrictEqual({
+      text: '',
+      tool_calls: [],
+      finish_reason: 'stop',
+      usage: { input_tokens: 1, output_tokens: 2 },
+    })
+  })
+
+  it('skips null and non-object content blocks, keeping the valid one', () => {
+    // The block guard skips both a null entry (the `block === null` operand) and a
+    // primitive entry (the `typeof block !== 'object'` operand); the valid text
+    // block after them is still collected.
+    expect(
+      parse_messages_response({
+        content: [null, 'stray', { type: 'text', text: 'kept' }],
+        stop_reason: 'end_turn',
+        usage: { input_tokens: 1, output_tokens: 2 },
+      }),
+    ).toStrictEqual({
+      text: 'kept',
+      tool_calls: [],
+      finish_reason: 'stop',
+      usage: { input_tokens: 1, output_tokens: 2 },
+    })
+  })
+
+  it('ignores a text block whose text field is not a string', () => {
+    expect(
+      parse_messages_response({
+        content: [{ type: 'text', text: 42 }],
+        stop_reason: 'end_turn',
+        usage: { input_tokens: 1, output_tokens: 2 },
+      }),
+    ).toStrictEqual({
+      text: '',
+      tool_calls: [],
+      finish_reason: 'stop',
+      usage: { input_tokens: 1, output_tokens: 2 },
+    })
+  })
+
+  it('throws provider_error with its exact message on a malformed tool_use id', () => {
     const payload = {
       ...TOOL_CALL_FIXTURE,
       content: [{ type: 'tool_use', id: 42, name: 'get_weather', input: {} }],
     }
     expect(() => parse_messages_response(payload)).toThrow(provider_error)
+    expect(() => parse_messages_response(payload)).toThrow(
+      'anthropic native: malformed tool_use block in response content',
+    )
+  })
+
+  it('throws provider_error when a tool_use name is not a string', () => {
+    // The `|| typeof name !== 'string'` half of the guard: a valid string id
+    // alongside a non-string name must still throw.
+    const payload = {
+      content: [{ type: 'tool_use', id: 'toolu_x', name: 99, input: {} }],
+      stop_reason: 'tool_use',
+      usage: { input_tokens: 1, output_tokens: 1 },
+    }
+    expect(() => parse_messages_response(payload)).toThrow(provider_error)
+  })
+
+  it('throws provider_error with its exact message on a null payload', () => {
+    // null exercises the `payload === null` operand specifically.
+    expect(() => parse_messages_response(null)).toThrow(provider_error)
+    expect(() => parse_messages_response(null)).toThrow(
+      'anthropic native: response payload is not a JSON object',
+    )
   })
 
   it('throws provider_error on a non-object payload', () => {

@@ -133,7 +133,7 @@ files, so ignore `__tests__` rows in scoped runs.
 
 ## Steps
 
-1. [ ] Harden the request + message-mapping region (51-229) — **done when:** the
+1. [x] Harden the request + message-mapping region (51-229) — **done when:** the
    region has zero no-coverage and every residual survivor is killed or annotated
    (target ≥90%): `ANTHROPIC_THINKING_BUDGETS` exact values, `to_user_blocks` /
    `to_assistant_blocks` empty-trim and image-capability-error branches, the
