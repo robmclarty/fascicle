@@ -25,7 +25,7 @@ is done only after a checkpoint — check green + checkpoint taken, via `/pb-ver
 - ☑ 3. Harden generate() body B: HITL + schema-repair + cost + finish (550-726)
 - ☑ 4. Harden tool_loop.ts helpers + apply_prepare_step (149-352)
 - ☑ 5. Harden tool_loop.ts run_tool_loop body (354-851)
-- ☐ 6. Final gate + ratchet
+- ☑ 6. Final gate + ratchet
 
 ## Step 1 results — generate.ts helpers + timeout/retry machinery
 
@@ -238,6 +238,34 @@ Classified empirically (apply mutation, run the exercising suites).
   *killed* template-literal StringLiteral, so a per-line disable would suppress real
   signal; left documented rather than gaming the twin.
 
+## Step 6 results — final gate + ratchet
+
+`pnpm check:all` (incl. the incremental full-repo Stryker run) exits 0. New clean
+full-repo aggregate: **88.33%** (killed 9020 + timeout 91 of 10315 scored; 39 ignored),
+up from the 86.84% the anthropic_native build left.
+
+### Per-file before/after (scoped, whole-file)
+
+| File           | before | after  | killed | ignored | survived | no-cov |
+|----------------|--------|--------|--------|---------|----------|--------|
+| generate.ts    | 77.6%  | 95.79% | 544    | 15      | 24       | 0      |
+| tool_loop.ts   | 83.7%  | 94.59% | 384    | 10      | 21       | 1      |
+
+Every generate.ts / tool_loop.ts survivor is a verified genuine equivalent or a
+verified Stryker 9.6.1 / vitest 4.1.10 phantom (classified empirically per step); the
+single remaining no-coverage (tool_loop L710:88) is a type-required-unreachable `??`
+default whose line carries a killed template twin. ~70 concrete-value tests were added
+across generate_helpers / turn_timeout / native_loop_inheritance / generate / tool_loop
+suites; ~25 inline `// Stryker disable next-line` equivalence annotations added, none
+suppressing a killed sub-expression twin (audited per line).
+
+### Ratchet (D5)
+
+`thresholds.break` raised **83 -> 84** (and `low` 83 -> 84). 88.33 - 84 = 4.33pt of
+headroom, which maintains the established ~3.8pt cushion (the prior build accepted 3.84pt
+and rejected any tighter). 85 would erode it to 3.33pt, below the cushion that absorbs the
+91 flippable Timeout mutants, so 84 is the disciplined upward step. Never lowered.
+
 ## Park list
 
 > Mid-step, every new problem / idea / "ooh what if" lands HERE, untouched, and you
@@ -274,3 +302,4 @@ folder, so it rides the branch into the PR.)*
 - 2026-07-12 — step 2 checkpointed · 15ca58822 — Harden generate() body A: invoke dispatch + streaming (422-549) (17m)
 - 2026-07-12 — step 3 checkpointed · 715ba333c — Harden generate() body B: HITL + schema-repair + cost + finish (550-726) (18m)
 - 2026-07-12 — step 4 checkpointed · ca5699e48 — Harden tool_loop.ts helpers + apply_prepare_step (149-352) (12m)
+- 2026-07-12 — step 5 checkpointed · 94aad950b — Harden tool_loop.ts run_tool_loop body (354-851) (17m)

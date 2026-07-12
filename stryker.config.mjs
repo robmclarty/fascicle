@@ -33,16 +33,15 @@ export default {
   incrementalFile: 'stryker.incremental.json',
   thresholds: {
     high: 85,
-    low: 83,
-    // Ratchet: the real score sits at ~86.8% (clean full-repo gate after the
-    // anthropic_native.ts hardening lifted that file 73.9% -> 98.2%, on top of the
-    // earlier native-provider + otel work: openai_compatible_native/ollama_native
-    // ~96.5%, trajectory_logger 93%, telemetry 100%, with_providers 97.6%), so the
-    // gate floor is raised from 82 to 83. ~3.8 points of headroom absorb the
-    // timing-sensitive spawn/timeout/map suites (91 Timeout mutants count as killed
-    // and can flip on a slow run). Bump it further as coverage climbs; never lower
-    // it to make a failing run pass.
-    break: 83,
+    low: 84,
+    // Ratchet: the real score sits at 88.33% (clean full-repo gate after hardening
+    // the shared orchestration core: generate.ts 77.6% -> 95.79% and tool_loop.ts
+    // 83.7% -> 94.59%, on top of the anthropic_native.ts hardening (73.9% -> 98.2%)
+    // and the earlier native-provider + otel work), so the gate floor is raised from
+    // 83 to 84. ~4.3 points of headroom absorb the timing-sensitive spawn/timeout/map
+    // suites (91 Timeout mutants count as killed and can flip on a slow run). Bump it
+    // further as coverage climbs; never lower it to make a failing run pass.
+    break: 84,
   },
   tempDirName: '.stryker-tmp',
   cleanTempDir: true,

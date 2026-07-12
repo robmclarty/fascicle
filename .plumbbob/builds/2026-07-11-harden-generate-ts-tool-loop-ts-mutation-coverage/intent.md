@@ -193,7 +193,7 @@ mutants (see the anthropic_native step-3 entry).
    prepared-messages override) each asserted concretely
    - seam: `src/engine/__tests__/`, `src/engine/tool_loop.ts`
    - model: sonnet — mostly small pure helpers + one hook; exact-value assertions, mechanical apart from the prepare_step override
-5. [ ] Harden tool_loop.ts run_tool_loop body (354-851) — **done when:** zero
+5. [x] Harden tool_loop.ts run_tool_loop body (354-851) — **done when:** zero
    no-coverage (the L700-749 cluster) and residual survivors killed or annotated (target
    ≥90%): the per-turn dispatch loop, the approval grant/deny flow, cost recording, the
    tool-result assembly, and abort-in-flight handling asserted against the base_config
