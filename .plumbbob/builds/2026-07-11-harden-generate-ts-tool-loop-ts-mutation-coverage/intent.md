@@ -161,7 +161,7 @@ mutants (see the anthropic_native step-3 entry).
 
 ## Steps
 
-1. [ ] Harden generate.ts helpers + timeout/retry machinery (96-420) — **done when:**
+1. [x] Harden generate.ts helpers + timeout/retry machinery (96-420) — **done when:**
    zero no-coverage and every residual survivor in the region killed or annotated
    (target ≥90%): `split_leading_system_messages` and `classify_provider_error`
    branches, `arm_turn_timeout` (the `turn_timeout_ms` knob: `undefined` no-arm vs

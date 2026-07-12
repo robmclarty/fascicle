@@ -24,12 +24,16 @@ import {
 vi.mock('ai', async () => build_mock_ai_module())
 vi.mock('../providers/registry.js', async () => build_mock_registry_module())
 
+import type { TrajectoryEvent, TrajectoryLogger } from '#core'
 import { create_engine } from '../create_engine.js'
 import {
   aborted_error,
+  engine_config_error,
   model_required_error,
   on_chunk_error,
+  provider_capability_error,
   provider_error,
+  provider_not_configured_error,
   rate_limit_error,
   schema_validation_error,
   tool_approval_denied_error,
@@ -193,6 +197,234 @@ describe('generate: model + provider pass-through', () => {
     await basic_engine().generate({ model: 'claude-opus', prompt: 'x', on_chunk: () => {} })
     const params = mock_state.last_stream_text_params as { maxRetries?: number }
     expect(params.maxRetries).toBe(0)
+  })
+})
+
+function make_recorder(): { logger: TrajectoryLogger; events: TrajectoryEvent[] } {
+  const events: TrajectoryEvent[] = []
+  const logger: TrajectoryLogger = {
+    record: (e) => events.push(e),
+    start_span: () => 'span',
+    end_span: () => {},
+  }
+  return { logger, events }
+}
+
+describe('generate: dispatch gating (step 2)', () => {
+  it('rejects an already-aborted signal before starting a generate span', async () => {
+    const controller = new AbortController()
+    controller.abort(new Error('pre-aborted'))
+    const spans: string[] = []
+    const logger: TrajectoryLogger = {
+      record: () => {},
+      start_span: (name) => {
+        spans.push(name)
+        return 's'
+      },
+      end_span: () => {},
+    }
+    let err: unknown
+    try {
+      await basic_engine().generate({
+        model: 'claude-opus',
+        prompt: 'hi',
+        abort: controller.signal,
+        trajectory: logger,
+      })
+    } catch (e) {
+      err = e
+    }
+    expect(err).toBeInstanceOf(aborted_error)
+    expect((err as aborted_error).message).toBe('aborted')
+    expect(((err as aborted_error).reason as Error).message).toBe('pre-aborted')
+    // The upfront guard throws before options resolve or a span opens. A false
+    // guard or emptied block falls through to run_tool_loop's own abort check,
+    // but only after a generate span has been started (and error-ended).
+    expect(spans).toHaveLength(0)
+    expect(mock_state.generate_text_call_count).toBe(0)
+  })
+
+  it('throws provider_capability_error naming schema when the adapter lacks schema support', async () => {
+    mock_state.capability_overrides['anthropic'] = { schema: false }
+    let err: unknown
+    try {
+      await basic_engine().generate({
+        model: 'claude-opus',
+        prompt: 'hi',
+        schema: z.object({ a: z.string() }),
+      })
+    } catch (e) {
+      err = e
+    }
+    expect(err).toBeInstanceOf(provider_capability_error)
+    expect((err as provider_capability_error).capability).toBe('schema')
+    expect(mock_state.generate_text_call_count).toBe(0)
+  })
+
+  it('throws provider_capability_error naming tools when the adapter lacks tool support', async () => {
+    mock_state.capability_overrides['anthropic'] = { tools: false }
+    let err: unknown
+    try {
+      await basic_engine().generate({
+        model: 'claude-opus',
+        prompt: 'hi',
+        tools: [
+          {
+            name: 't',
+            description: 'd',
+            input_schema: z.object({}),
+            execute: () => 'x',
+          },
+        ],
+      })
+    } catch (e) {
+      err = e
+    }
+    expect(err).toBeInstanceOf(provider_capability_error)
+    expect((err as provider_capability_error).capability).toBe('tools')
+    expect(mock_state.generate_text_call_count).toBe(0)
+  })
+
+  it('throws provider_capability_error naming streaming when the adapter lacks streaming support', async () => {
+    mock_state.capability_overrides['anthropic'] = { streaming: false }
+    let err: unknown
+    try {
+      await basic_engine().generate({
+        model: 'claude-opus',
+        prompt: 'hi',
+        on_chunk: () => {},
+      })
+    } catch (e) {
+      err = e
+    }
+    expect(err).toBeInstanceOf(provider_capability_error)
+    expect((err as provider_capability_error).capability).toBe('streaming')
+  })
+
+  it('does not gate a schema-free call on an adapter that lacks schema support', async () => {
+    mock_state.capability_overrides['anthropic'] = { schema: false }
+    enqueue_generate_text(make_text_result('ok'))
+    // No schema in the call: the `opts.schema !== undefined` guard must stay
+    // false rather than throwing 'schema' for a plain completion.
+    const result = await basic_engine().generate({ model: 'claude-opus', prompt: 'hi' })
+    expect(result.content).toBe('ok')
+  })
+
+  it('does not gate a tool-free call on an adapter that lacks tool support', async () => {
+    mock_state.capability_overrides['anthropic'] = { tools: false }
+    enqueue_generate_text(make_text_result('ok'))
+    // No tools in the call: the `tools_list.length > 0` guard must be a strict
+    // gt, not a ge that would misfire on the empty list and throw 'tools'.
+    const result = await basic_engine().generate({ model: 'claude-opus', prompt: 'hi' })
+    expect(result.content).toBe('ok')
+  })
+
+  it('rejects a non-positive turn_timeout_ms with the exact message', async () => {
+    let err: unknown
+    try {
+      await basic_engine().generate({
+        model: 'claude-opus',
+        prompt: 'hi',
+        turn_timeout_ms: 0,
+      })
+    } catch (e) {
+      err = e
+    }
+    expect(err).toBeInstanceOf(engine_config_error)
+    expect((err as engine_config_error).message).toBe('turn_timeout_ms must be > 0')
+  })
+
+  it('accepts a positive turn_timeout_ms and completes normally', async () => {
+    enqueue_generate_text(make_text_result('ok'))
+    // A valid budget must pass the `turn_timeout_ms <= 0` gate untouched; a
+    // forced-true gate would reject every call as a config error.
+    const result = await basic_engine().generate({
+      model: 'claude-opus',
+      prompt: 'hi',
+      turn_timeout_ms: 5_000,
+    })
+    expect(result.content).toBe('ok')
+  })
+
+  it('applies the engine default_system when the call provides none', async () => {
+    enqueue_generate_text(make_text_result('ok'))
+    const engine = create_engine({
+      providers: { anthropic: { api_key: 'k' } },
+      defaults: { system: 'house style' },
+    })
+    await engine.generate({ model: 'claude-opus', prompt: 'hi' })
+    const params = mock_state.last_generate_text_params as { instructions?: string }
+    expect(params.instructions).toBe('house style')
+  })
+
+  it('lets a call-level system override the engine default_system', async () => {
+    enqueue_generate_text(make_text_result('ok'))
+    const engine = create_engine({
+      providers: { anthropic: { api_key: 'k' } },
+      defaults: { system: 'house style' },
+    })
+    await engine.generate({ model: 'claude-opus', system: 'call style', prompt: 'hi' })
+    const params = mock_state.last_generate_text_params as { instructions?: string }
+    expect(params.instructions).toBe('call style')
+  })
+
+  it('falls back to the anthropic provider name when none is resolvable', async () => {
+    const engine = create_engine({
+      providers: { openai: { api_key: 'k' }, ollama: { base_url: 'http://x' } },
+    })
+    let err: unknown
+    try {
+      await engine.generate({ model: 'm', prompt: 'hi' })
+    } catch (e) {
+      err = e
+    }
+    // Two adapters -> no sole provider; the '?? anthropic' fallback resolves,
+    // then fails as not-configured. A true sole-provider guard would pick a
+    // real adapter and an empty fallback string would name '' not 'anthropic'.
+    expect(err).toBeInstanceOf(provider_not_configured_error)
+    expect((err as provider_not_configured_error).provider).toBe('anthropic')
+  })
+
+  it('records effort_ignored when the provider drops the effort hint', async () => {
+    enqueue_generate_text(make_text_result('ok'))
+    const engine = create_engine({
+      providers: { ollama: { base_url: 'http://localhost:11434' } },
+    })
+    const { logger, events } = make_recorder()
+    await engine.generate({
+      model: 'gemma3:27b',
+      prompt: 'hi',
+      effort: 'high',
+      trajectory: logger,
+    })
+    const ev = events.find((e) => e.kind === 'effort_ignored')
+    expect(ev).toBeDefined()
+    expect(ev?.['model_id']).toBe('gemma3:27b')
+  })
+
+  it('does not record effort_ignored when effort is none', async () => {
+    enqueue_generate_text(make_text_result('ok'))
+    const engine = create_engine({
+      providers: { ollama: { base_url: 'http://localhost:11434' } },
+    })
+    const { logger, events } = make_recorder()
+    await engine.generate({
+      model: 'gemma3:27b',
+      prompt: 'hi',
+      effort: 'none',
+      trajectory: logger,
+    })
+    expect(events.find((e) => e.kind === 'effort_ignored')).toBeUndefined()
+  })
+
+  it('omits providerOptions from the SDK call when the merge is empty', async () => {
+    enqueue_generate_text(make_text_result('ok'))
+    // effort 'none' yields an empty translation and no user options, so the
+    // combined merge is empty and provider_options resolves to undefined; a
+    // forced-true guard would forward an empty {} object instead.
+    await basic_engine().generate({ model: 'claude-opus', prompt: 'hi', effort: 'none' })
+    const params = mock_state.last_generate_text_params as Record<string, unknown>
+    expect('providerOptions' in params).toBe(false)
   })
 })
 

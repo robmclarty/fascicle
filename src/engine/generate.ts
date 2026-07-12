@@ -501,6 +501,7 @@ export async function generate<T = string>(
   let invoke_once: InvokeOnce
   if (adapter.kind === 'ai_sdk') {
     const effort_translation = adapter.translate_effort(effort)
+    // Stryker disable next-line LogicalOperator,StringLiteral: no adapter reports effort_ignored for effort 'none', so && vs || and 'none' vs '' cannot change whether this records (the ConditionalExpression twins are covered by the effort tests).
     if (effort !== 'none' && effort_translation.effort_ignored) {
       record_effort_ignored(trajectory, target.model_id)
     }

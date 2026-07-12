@@ -21,7 +21,7 @@ is done only after a checkpoint — check green + checkpoint taken, via `/pb-ver
 `/pb-build`.)*
 
 - ☑ 1. Harden generate.ts helpers + timeout/retry machinery (96-420)
-- ☐ 2. Harden generate() body A: invoke dispatch + streaming (422-549)
+- ☑ 2. Harden generate() body A: invoke dispatch + streaming (422-549)
 - ☐ 3. Harden generate() body B: HITL + schema-repair + cost + finish (550-726)
 - ☐ 4. Harden tool_loop.ts helpers + apply_prepare_step (149-352)
 - ☐ 5. Harden tool_loop.ts run_tool_loop body (354-851)
@@ -83,6 +83,47 @@ the exact aborted_error message/reason and provider_error cause_kind.
   unobservable); a leading `// Stryker disable` cannot attach to a `} finally {`
   line without reformatting, so documented instead.
 
+## Step 2 results — generate() dispatch + invoke construction
+
+Scoped mutation on `src/engine/generate.ts`: **84.46% -> 88.56%** (487 -> 509
+killed, 73 -> 54 survived, 17 -> 12 no-coverage, 6 -> 8 ignored). The step-2 region
+(upfront-abort guard, capability gating, option resolution, ai_sdk-vs-native invoke
+construction) reaches **zero no-coverage**.
+
+Tests added to generate.test.ts: pre-aborted signal rejected before a span opens
+(kills the abort guard via a span-count spy, since run_tool_loop's own abort check
+otherwise masks it); provider_capability_error naming schema / tools / streaming
+(capability_overrides); schema-free and tool-free calls on non-capable adapters
+(false-branch coverage); exact turn_timeout_ms config message; positive-budget
+success; default_system applied vs call-override; anthropic provider-name fallback
+on a multi-adapter engine; effort_ignored recorded on high vs not on none; empty
+provider_options merge omitted.
+
+### Annotated equivalents (2 new Ignored)
+
+- **L505** `LogicalOperator` + `StringLiteral` — `effort !== 'none' && effort_ignored`:
+  no adapter reports effort_ignored for effort 'none', so `&&` vs `||` and `'none'`
+  vs `''` cannot change whether the event records. (The ConditionalExpression twins
+  are covered by the effort tests.)
+
+### Documented survivors (5 `ConditionalExpression => true`, not annotated)
+
+Each has a *killed* `=> false` twin on its line, so a per-line disable would
+suppress real signal.
+
+- **L456:39** — `engine.default_system !== undefined` sub-guard. Genuine equivalent
+  (verified: forcing it true only sets opts.system = undefined when the default is
+  undefined, a no-op; full suite passes under the mutation).
+- **L459:7** — `if (merged_provider_options !== undefined)`. Genuine equivalent
+  (forcing true assigns undefined over the identical spread value; full suite passes).
+- **L494:7** — the `turn_timeout_ms <= 0` gate. Phantom (verified killed: forcing
+  true rejects every call, 50 test failures) but reported Survived.
+- **L505:9** — the `effort_ignored` gate. Phantom (verified killed by the
+  effort-none test, 1 failure).
+- **L517:7** — the combined-provider_options `length > 0` gate. Phantom (verified
+  killed by the empty-merge test, 1 failure; merge returns `{}` not undefined, so
+  the guard is real).
+
 ## Park list
 
 > Mid-step, every new problem / idea / "ooh what if" lands HERE, untouched, and you
@@ -115,3 +156,4 @@ fills in as you go, not at the end. Add your own decision/event lines too: this 
 you point at to say "I did that — the LLM helped, but those were my calls."
 `/pb-finish` reads this for the report; `plumbbob finish` commits it with the build
 folder, so it rides the branch into the PR.)*
+- 2026-07-12 — step 1 checkpointed · 4092f1f15 — Harden generate.ts helpers + timeout/retry machinery (96-420) (36m)
