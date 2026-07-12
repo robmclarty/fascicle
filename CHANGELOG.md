@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.9.4 — 2026-07-12
+
+### Internal
+
+- Hardened mutation-test coverage for the shared engine orchestration core: `generate.ts` (77.6% -> 95.79%) and `tool_loop.ts` (83.7% -> 94.59%), via new test suites for streaming dispatch, HITL approval, schema repair, cost/finish accounting, and the timeout/retry machinery.
+- Ratcheted the Stryker break/low thresholds from 83 to 84 (full-repo score now 88.33%); documented the remaining equivalent/unreachable mutants inline with `Stryker disable` annotations rather than adding runtime guards.
+
 ## v0.9.3 — 2026-07-11
 
 ### Internal

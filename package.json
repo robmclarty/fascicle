@@ -1,6 +1,6 @@
 {
   "name": "fascicle",
-  "version": "0.9.3",
+  "version": "0.9.4",
   "description": "Compose agents like plain values. A TypeScript toolkit that wires LLM calls, tools, and functions into typed steps over eight providers. No framework, no ambient state.",
   "keywords": [
     "agents",
