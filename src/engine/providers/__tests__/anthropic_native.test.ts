@@ -782,6 +782,29 @@ function chunk_collector(): {
   }
 }
 
+/**
+ * Raw-frame variant of stream_response: each frame is emitted verbatim as the
+ * `data:` payload of one SSE event, so a test can feed handle_event a literal
+ * `null`, a non-JSON body, or any shape the object helper cannot serialize.
+ */
+function stream_from_frames(frames: readonly string[], chunk_size = 9): Response {
+  const bytes = new TextEncoder().encode(frames.map((f) => `data: ${f}\n\n`).join(''))
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      for (let i = 0; i < bytes.length; i += chunk_size) {
+        controller.enqueue(bytes.slice(i, i + chunk_size))
+      }
+      controller.close()
+    },
+  })
+  return new Response(stream, {
+    status: 200,
+    headers: { 'content-type': 'text/event-stream' },
+  })
+}
+
+const frame = (event: Record<string, unknown>): string => JSON.stringify(event)
+
 const TEXT_STREAM_EVENTS = [
   {
     type: 'message_start',
@@ -1095,5 +1118,361 @@ describe('streaming invoke_turn', () => {
         }),
       ),
     ).rejects.toBe(consumer_error)
+  })
+})
+
+/**
+ * Boundary coverage for the streaming aggregator (create_stream_aggregator,
+ * stream_event_error, read_block_index). The C4 equality tests above prove the
+ * happy paths; these pin the exact error/status strings and drive every
+ * malformed-event guard branch. The recurring trick: a guard of the form
+ * `x === null || typeof x !== 'object'` is exercised by feeding `undefined` (a
+ * missing key), not null, because the guarded body then throws via
+ * Reflect.get(undefined)/Object.entries(undefined), which distinguishes the
+ * `typeof` operand mutant that a null value leaves equivalent.
+ */
+describe('streaming aggregator boundaries', () => {
+  const MSG_START = {
+    type: 'message_start',
+    message: {
+      id: 'msg_b',
+      type: 'message',
+      role: 'assistant',
+      model: 'claude-sonnet-5',
+      content: [],
+      stop_reason: null,
+      usage: { input_tokens: 5, output_tokens: 1 },
+    },
+  }
+  const MSG_END = {
+    type: 'message_delta',
+    delta: { stop_reason: 'end_turn', stop_sequence: null },
+    usage: { output_tokens: 3 },
+  }
+  const MSG_STOP = { type: 'message_stop' }
+  // A stream that carries only the injected stray event drains to this empty
+  // turn: input from message_start, output overlaid by message_delta.
+  const EMPTY_TURN = {
+    text: '',
+    tool_calls: [],
+    finish_reason: 'stop' as const,
+    usage: { input_tokens: 5, output_tokens: 3 },
+  }
+
+  async function run_stream(
+    events: ReadonlyArray<Record<string, unknown>>,
+  ): Promise<{ result: Awaited<ReturnType<ReturnType<typeof create_anthropic_native_adapter>['invoke_turn']>>; chunks: StreamChunk[] }> {
+    stub_fetch(stream_response(events))
+    const adapter = create_anthropic_native_adapter({ api_key: 'sk-test' })
+    const { chunks, dispatch_chunk } = chunk_collector()
+    const result = await adapter.invoke_turn(make_req({ stream: true, dispatch_chunk }))
+    return { result, chunks }
+  }
+
+  async function stream_error(events: ReadonlyArray<Record<string, unknown>>): Promise<unknown> {
+    stub_fetch(stream_response(events))
+    const adapter = create_anthropic_native_adapter({ api_key: 'sk-test' })
+    return adapter
+      .invoke_turn(make_req({ stream: true, dispatch_chunk: async () => {} }))
+      .catch((e: unknown) => e)
+  }
+
+  describe('stream_event_error', () => {
+    it('falls back to (unknown)/(no message) when the error object is absent', async () => {
+      // No `error` key: the `error !== null && typeof error === 'object'` guard
+      // stays false, so both defaults are used verbatim.
+      const err = await stream_error([MSG_START, { type: 'error' }])
+      expect(err).toBeInstanceOf(provider_error)
+      expect((err as Error).message).toBe('anthropic stream error (unknown): (no message)')
+    })
+
+    it('keeps the defaults when type and message are empty strings', async () => {
+      // An empty string is a string but has length 0, so the `.length > 0`
+      // half of each guard rejects it and the default survives.
+      const err = await stream_error([
+        MSG_START,
+        { type: 'error', error: { type: '', message: '' } },
+      ])
+      expect((err as Error).message).toBe('anthropic stream error (unknown): (no message)')
+      expect(err).toBeInstanceOf(provider_error)
+    })
+
+    it('maps api_error to a 500 the classifier retries as provider_5xx', async () => {
+      const err = await stream_error([
+        MSG_START,
+        { type: 'error', error: { type: 'api_error', message: 'kaboom' } },
+      ])
+      expect((err as Error).message).toBe('anthropic stream error (api_error): kaboom')
+      expect(Reflect.get(err as object, 'status')).toBe(500)
+      const classified = classify_provider_error(err) as Record<string, unknown>
+      expect(classified['kind']).toBe('provider_5xx')
+      expect(classified['status']).toBe(500)
+    })
+
+    it('maps rate_limit_error to a 429 the classifier retries as rate_limit', async () => {
+      const err = await stream_error([
+        MSG_START,
+        { type: 'error', error: { type: 'rate_limit_error', message: 'slow down' } },
+      ])
+      expect((err as Error).message).toBe('anthropic stream error (rate_limit_error): slow down')
+      expect(Reflect.get(err as object, 'status')).toBe(429)
+      const classified = classify_provider_error(err) as Record<string, unknown>
+      expect(classified['kind']).toBe('rate_limit')
+      expect(classified['status']).toBe(429)
+    })
+  })
+
+  describe('malformed-event guards', () => {
+    it('rejects invalid JSON in a data frame with the exact message', async () => {
+      stub_fetch(stream_from_frames(['{ not json']))
+      const adapter = create_anthropic_native_adapter({ api_key: 'sk-test' })
+      const err: unknown = await adapter
+        .invoke_turn(make_req({ stream: true, dispatch_chunk: async () => {} }))
+        .catch((e: unknown) => e)
+      expect(err).toBeInstanceOf(provider_error)
+      expect((err as Error).message).toBe('anthropic native: stream event is not valid JSON')
+    })
+
+    it('skips a null event and still drains the rest of the stream', async () => {
+      // JSON.parse('null') is null: the `event === null` guard drops it before
+      // the switch touches Reflect.get(null, 'type').
+      stub_fetch(
+        stream_from_frames([
+          frame(MSG_START),
+          frame({ type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } }),
+          frame({ type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'Hi' } }),
+          'null',
+          frame({ type: 'content_block_stop', index: 0 }),
+          frame(MSG_END),
+          frame(MSG_STOP),
+        ]),
+      )
+      const adapter = create_anthropic_native_adapter({ api_key: 'sk-test' })
+      const { dispatch_chunk } = chunk_collector()
+      const result = await adapter.invoke_turn(make_req({ stream: true, dispatch_chunk }))
+      expect(result.text).toBe('Hi')
+    })
+
+    it('skips a content_block_start whose content_block key is missing', async () => {
+      const { result } = await run_stream([
+        MSG_START,
+        { type: 'content_block_start', index: 0 },
+        MSG_END,
+        MSG_STOP,
+      ])
+      expect(result).toStrictEqual(EMPTY_TURN)
+    })
+
+    it('skips a content_block_delta whose delta key is missing', async () => {
+      const { result } = await run_stream([
+        MSG_START,
+        { type: 'content_block_delta', index: 0 },
+        MSG_END,
+        MSG_STOP,
+      ])
+      expect(result).toStrictEqual(EMPTY_TURN)
+    })
+
+    it('drops a text_delta that targets an unopened block index', async () => {
+      const { result, chunks } = await run_stream([
+        MSG_START,
+        { type: 'content_block_delta', index: 9, delta: { type: 'text_delta', text: 'ghost' } },
+        MSG_END,
+        MSG_STOP,
+      ])
+      expect(result).toStrictEqual(EMPTY_TURN)
+      expect(chunks.some((c) => c.kind === 'text')).toBe(false)
+    })
+
+    it('drops an input_json_delta that targets an unopened block index', async () => {
+      const { result, chunks } = await run_stream([
+        MSG_START,
+        {
+          type: 'content_block_delta',
+          index: 9,
+          delta: { type: 'input_json_delta', partial_json: '{"x":1}' },
+        },
+        MSG_END,
+        MSG_STOP,
+      ])
+      expect(result).toStrictEqual(EMPTY_TURN)
+      expect(chunks.some((c) => c.kind === 'tool_call_input_delta')).toBe(false)
+    })
+
+    it('skips a message_start whose message key is missing', async () => {
+      // message_start with no message: merge_usage is never called, so the
+      // turn keeps only the message_delta output tokens.
+      const { result } = await run_stream([
+        { type: 'message_start' },
+        MSG_END,
+        MSG_STOP,
+      ])
+      expect(result).toStrictEqual({
+        text: '',
+        tool_calls: [],
+        finish_reason: 'stop',
+        usage: { input_tokens: 0, output_tokens: 3 },
+      })
+    })
+
+    it('skips a message_delta with neither delta nor usage', async () => {
+      // The bare delta exercises both the `delta` object guard and
+      // merge_usage's `raw` guard against undefined in one event.
+      const { result } = await run_stream([
+        MSG_START,
+        { type: 'message_delta' },
+        MSG_STOP,
+      ])
+      expect(result).toStrictEqual({
+        text: '',
+        tool_calls: [],
+        finish_reason: 'stop',
+        usage: { input_tokens: 5, output_tokens: 1 },
+      })
+    })
+  })
+
+  describe('aggregator state machine', () => {
+    it('keeps an earlier stop_reason when a later message_delta carries a non-string one', async () => {
+      // The second delta's stop_reason is null, so `typeof raw === 'string'`
+      // rejects it and the tool_use reason set by the first delta stands.
+      const { result } = await run_stream([
+        MSG_START,
+        { type: 'message_delta', delta: { stop_reason: 'tool_use' }, usage: { output_tokens: 2 } },
+        { type: 'message_delta', delta: { stop_reason: null }, usage: { output_tokens: 4 } },
+        MSG_STOP,
+      ])
+      expect(result.finish_reason).toBe('tool_calls')
+    })
+
+    it('drops a non-numeric output_tokens overlay, keeping the message_start count', async () => {
+      // merge_usage copies numbers only; a nested container on output_tokens is
+      // skipped, so the mapped usage keeps the message_start value.
+      const { result } = await run_stream([
+        MSG_START,
+        { type: 'message_delta', delta: { stop_reason: 'end_turn' }, usage: { output_tokens: { nested: 1 } } },
+        MSG_STOP,
+      ])
+      expect(result.usage).toStrictEqual({ input_tokens: 5, output_tokens: 1 })
+    })
+
+    it('seeds a text block from a non-empty start-event text', async () => {
+      const { result } = await run_stream([
+        MSG_START,
+        { type: 'content_block_start', index: 0, content_block: { type: 'text', text: 'Seed' } },
+        { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'ed' } },
+        { type: 'content_block_stop', index: 0 },
+        MSG_END,
+        MSG_STOP,
+      ])
+      expect(result.text).toBe('Seeded')
+    })
+
+    it('falls back to an empty string when start-event text is not a string', async () => {
+      const { result } = await run_stream([
+        MSG_START,
+        { type: 'content_block_start', index: 0, content_block: { type: 'text', text: 42 } },
+        { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'X' } },
+        { type: 'content_block_stop', index: 0 },
+        MSG_END,
+        MSG_STOP,
+      ])
+      expect(result.text).toBe('X')
+    })
+
+    it('throws the exact message on a stream tool_use block with a non-string id', async () => {
+      const err = await stream_error([
+        MSG_START,
+        {
+          type: 'content_block_start',
+          index: 0,
+          content_block: { type: 'tool_use', id: 42, name: 'get_weather', input: {} },
+        },
+      ])
+      expect(err).toBeInstanceOf(provider_error)
+      expect((err as Error).message).toBe('anthropic native: malformed tool_use block in stream')
+    })
+
+    it('throws on a stream tool_use block whose name is not a string', async () => {
+      // The `|| typeof name !== 'string'` half of the guard: a valid id beside a
+      // non-string name must still throw.
+      const err = await stream_error([
+        MSG_START,
+        {
+          type: 'content_block_start',
+          index: 0,
+          content_block: { type: 'tool_use', id: 'toolu_x', name: 99, input: {} },
+        },
+      ])
+      expect(err).toBeInstanceOf(provider_error)
+      expect((err as Error).message).toBe('anthropic native: malformed tool_use block in stream')
+    })
+
+    it('defaults a start-event tool_use input to {} when the input key is missing', async () => {
+      const { result } = await run_stream([
+        MSG_START,
+        {
+          type: 'content_block_start',
+          index: 0,
+          content_block: { type: 'tool_use', id: 'toolu_x', name: 'get_weather' },
+        },
+        { type: 'content_block_stop', index: 0 },
+        { type: 'message_delta', delta: { stop_reason: 'tool_use' }, usage: { output_tokens: 3 } },
+        MSG_STOP,
+      ])
+      expect(result.tool_calls).toStrictEqual([
+        { id: 'toolu_x', name: 'get_weather', input: {} },
+      ])
+    })
+
+    it('carries a start-event tool_use input through when no delta arrives', async () => {
+      const { result } = await run_stream([
+        MSG_START,
+        {
+          type: 'content_block_start',
+          index: 0,
+          content_block: { type: 'tool_use', id: 'toolu_x', name: 'get_weather', input: { seeded: true } },
+        },
+        { type: 'content_block_stop', index: 0 },
+        { type: 'message_delta', delta: { stop_reason: 'tool_use' }, usage: { output_tokens: 3 } },
+        MSG_STOP,
+      ])
+      expect(result.tool_calls).toStrictEqual([
+        { id: 'toolu_x', name: 'get_weather', input: { seeded: true } },
+      ])
+    })
+
+    it('dispatches no reasoning chunk for a non-string thinking delta', async () => {
+      const { chunks } = await run_stream([
+        MSG_START,
+        { type: 'content_block_start', index: 0, content_block: { type: 'thinking', thinking: '' } },
+        { type: 'content_block_delta', index: 0, delta: { type: 'thinking_delta', thinking: 42 } },
+        { type: 'content_block_stop', index: 0 },
+        MSG_END,
+        MSG_STOP,
+      ])
+      expect(chunks.some((c) => c.kind === 'reasoning')).toBe(false)
+    })
+
+    it('ignores a non-input_json delta arriving on an open tool block', async () => {
+      // A delta whose type is neither text_delta, thinking_delta, nor
+      // input_json_delta is dropped: the tool input stays its start value even
+      // though the stray delta carries a partial_json string.
+      const { result } = await run_stream([
+        MSG_START,
+        {
+          type: 'content_block_start',
+          index: 0,
+          content_block: { type: 'tool_use', id: 'toolu_x', name: 'get_weather', input: {} },
+        },
+        { type: 'content_block_delta', index: 0, delta: { type: 'signature_delta', partial_json: '{"seeded":1}' } },
+        { type: 'content_block_stop', index: 0 },
+        { type: 'message_delta', delta: { stop_reason: 'tool_use' }, usage: { output_tokens: 3 } },
+        MSG_STOP,
+      ])
+      expect(result.tool_calls).toStrictEqual([
+        { id: 'toolu_x', name: 'get_weather', input: {} },
+      ])
+    })
   })
 })

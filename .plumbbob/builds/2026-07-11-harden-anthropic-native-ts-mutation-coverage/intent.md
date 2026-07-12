@@ -143,7 +143,7 @@ files, so ignore `__tests__` rows in scoped runs.
    boundaries with exact wire values
    - seam: `src/engine/providers/__tests__/anthropic_native.test.ts`, `src/engine/providers/anthropic_native.ts`
    - model: opus — the thinking/sampling/passthrough precedence matrix and the exact wire body are the judgment
-2. [ ] Harden the response + usage/stop maps (231-314) — **done when:** zero
+2. [x] Harden the response + usage/stop maps (231-314) — **done when:** zero
    no-coverage and residual survivors annotated (target ≥90%): `map_anthropic_stop_reason`
    asserts every case arm (tool_use→tool_calls, max_tokens/model_context_window_exceeded→length,
    refusal→content_filter, default→stop), `map_anthropic_usage` pins the cache-inclusive

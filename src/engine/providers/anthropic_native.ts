@@ -363,6 +363,8 @@ export function create_stream_aggregator(
   complete: () => TurnResult
 } {
   type SyntheticToolUse = { type: 'tool_use'; id: string; name: string; input: unknown }
+  // Stryker disable next-line ArrayDeclaration: a seeded initial element is dropped by
+  // parse_messages_response's block guard, so a non-empty content array is unobservable.
   const content: Array<{ type: 'text'; text: string } | SyntheticToolUse> = []
   const open_text = new Map<number, { type: 'text'; text: string }>()
   const open_tools = new Map<number, { block: SyntheticToolUse; json: string }>()
