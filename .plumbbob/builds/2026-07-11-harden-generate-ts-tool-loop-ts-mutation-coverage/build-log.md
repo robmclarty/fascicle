@@ -23,7 +23,7 @@ is done only after a checkpoint — check green + checkpoint taken, via `/pb-ver
 - ☑ 1. Harden generate.ts helpers + timeout/retry machinery (96-420)
 - ☑ 2. Harden generate() body A: invoke dispatch + streaming (422-549)
 - ☑ 3. Harden generate() body B: HITL + schema-repair + cost + finish (550-726)
-- ☐ 4. Harden tool_loop.ts helpers + apply_prepare_step (149-352)
+- ☑ 4. Harden tool_loop.ts helpers + apply_prepare_step (149-352)
 - ☐ 5. Harden tool_loop.ts run_tool_loop body (354-851)
 - ☐ 6. Final gate + ratchet
 
@@ -168,6 +168,37 @@ equivalents (no test fails); 1 is a phantom.
   dispatch) — equivalents; the branches coincide on every reachable state. Killed
   twins on each line.
 
+## Step 4 results — tool_loop.ts helpers + apply_prepare_step
+
+Scoped mutation on `src/engine/tool_loop.ts`: **83.69% -> 87.41%** (348 -> 360
+killed, 56 -> 44 survived, 12 -> 8 no-coverage, 0 -> 4 ignored). The step-4 helper
+region (149-352) reaches **zero no-coverage**; the 8 remaining no-coverage are all
+in the run_tool_loop body (step 5).
+
+Tests added to tool_loop.test.ts (base_config harness): boundary abort message /
+no-in-flight vs in-flight abort naming the second tool; tool_approval_denied event
+payload; approval aborted synchronously (needs_approval aborts) with message +
+reason; approval aborted mid-wait with reason; streamed tool_result chunk carries
+output on success and error on throw; circular tool output falls back to String();
+cost breakdown recorded when pricing resolves.
+
+### Annotated equivalents (3 lines, 4 Ignored)
+
+- **L223** `ObjectLiteral` + `BooleanLiteral` — the approval-race `{ once: true }`:
+  cleanup optimization; the abort event is terminal and both then-handlers remove
+  the listener. (The 'abort' StringLiteral on the line is killed.)
+- **L226 / L230** `StringLiteral` — the resolve/reject-path removeEventListener event
+  name: cleanup-only removal on a settled promise; a leaked listener never fires
+  observably.
+
+### Documented survivor (1)
+
+- **L309:7** `ConditionalExpression => true` — `if (breakdown !== undefined)` in
+  compute_and_record_cost. Genuine equivalent: the early return above means
+  compute_cost is only reached with pricing (or a free provider), so breakdown is
+  always defined here (verified: forcing it true passes all 164 exercising tests).
+  Killed `=> false` twin on the line prevents a per-line disable.
+
 ## Park list
 
 > Mid-step, every new problem / idea / "ooh what if" lands HERE, untouched, and you
@@ -202,3 +233,4 @@ you point at to say "I did that — the LLM helped, but those were my calls."
 folder, so it rides the branch into the PR.)*
 - 2026-07-12 — step 1 checkpointed · 4092f1f15 — Harden generate.ts helpers + timeout/retry machinery (96-420) (36m)
 - 2026-07-12 — step 2 checkpointed · 15ca58822 — Harden generate() body A: invoke dispatch + streaming (422-549) (17m)
+- 2026-07-12 — step 3 checkpointed · 715ba333c — Harden generate() body B: HITL + schema-repair + cost + finish (550-726) (18m)

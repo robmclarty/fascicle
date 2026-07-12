@@ -220,13 +220,16 @@ async function request_approval(
     const on_abort = (): void => {
       reject(new aborted_error('aborted', { reason: abort.reason, step_index }))
     }
+    // Stryker disable next-line ObjectLiteral,BooleanLiteral: { once: true } is a cleanup optimization; the abort event is terminal and both then-handlers removeEventListener, so once:false is unobservable.
     abort.addEventListener('abort', on_abort, { once: true })
     approval_promise.then(
       (value) => {
+        // Stryker disable next-line StringLiteral: removing the listener on the settled promise is cleanup only; an empty event name leaks a listener that can never fire observably.
         abort.removeEventListener('abort', on_abort)
         resolve(value)
       },
       (err: unknown) => {
+        // Stryker disable next-line StringLiteral: same cleanup-only removal on the reject path.
         abort.removeEventListener('abort', on_abort)
         reject(err instanceof Error ? err : new Error(String(err)))
       },

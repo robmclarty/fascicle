@@ -177,7 +177,7 @@ mutants (see the anthropic_native step-3 entry).
    emitted StreamChunk/step shapes asserted concretely against a dispatch spy
    - seam: `src/engine/__tests__/`, `src/engine/generate.ts`
    - model: opus — streaming-internal reconstruction is the subtle part
-3. [ ] Harden generate() body B: HITL + schema-repair + cost + finish (550-726) —
+3. [x] Harden generate() body B: HITL + schema-repair + cost + finish (550-726) —
    **done when:** zero no-coverage (the L550-599 cluster) and residual survivors killed
    or annotated (target ≥90%): the approval/HITL loop, the schema-repair retry
    (attempt-count boundaries, repair-vs-give-up), `aggregate_cost`/`round6`, and the

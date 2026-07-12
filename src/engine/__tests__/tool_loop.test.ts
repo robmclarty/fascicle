@@ -1669,3 +1669,210 @@ describe('run_tool_loop ends_turn (terminal tool)', () => {
     expect(out.tool_calls[0]).toMatchObject({ output: 'echoed' })
   })
 })
+
+describe('run_tool_loop helpers (step 4)', () => {
+  it('aborts at a turn boundary with the exact message and no in-flight tool', async () => {
+    const controller = new AbortController()
+    controller.abort(new Error('boundary cancel'))
+    let err: unknown
+    try {
+      await run_tool_loop(base_config({ invoke: [{ text: 'x' }], abort: controller.signal }))
+    } catch (e) {
+      err = e
+    }
+    expect(err).toBeInstanceOf(aborted_error)
+    expect((err as aborted_error).message).toBe('aborted')
+    expect((err as aborted_error).reason).toBeInstanceOf(Error)
+    // The boundary guard carries no tool_call_in_flight (no tool was dispatching).
+    expect((err as aborted_error).tool_call_in_flight).toBeUndefined()
+  })
+
+  it('aborts in-flight with the tool identity when a prior tool cancels', async () => {
+    const controller = new AbortController()
+    const tool = make_tool({
+      name: 'echo',
+      execute: (input: unknown) => {
+        if ((input as { value: string }).value === 'a') controller.abort(new Error('mid'))
+        return 'ok'
+      },
+    })
+    let err: unknown
+    try {
+      await run_tool_loop(
+        base_config({
+          invoke: [
+            {
+              tool_calls: [call('a', 'echo', { value: 'a' }), call('b', 'echo', { value: 'b' })],
+              finish_reason: 'tool_calls',
+            },
+          ],
+          tools: [tool],
+          abort: controller.signal,
+        }),
+      )
+    } catch (e) {
+      err = e
+    }
+    expect(err).toBeInstanceOf(aborted_error)
+    expect((err as aborted_error).message).toBe('aborted')
+    // The second tool's pre-dispatch guard names it as in-flight.
+    expect((err as aborted_error).tool_call_in_flight).toEqual({ id: 'b', name: 'echo' })
+  })
+
+  it('records the tool_approval_denied event payload when failing closed', async () => {
+    const { trajectory, events } = recording_trajectory()
+    await expect(
+      run_tool_loop(
+        base_config({
+          invoke: [{ tool_calls: [call('c1', 'danger', { value: 'x' })], finish_reason: 'tool_calls' }],
+          tools: [make_tool({ name: 'danger', needs_approval: true })],
+          on_tool_approval: undefined,
+          trajectory,
+        }),
+      ),
+    ).rejects.toBeInstanceOf(tool_approval_denied_error)
+    const denied = events.find((e) => e['kind'] === 'tool_approval_denied')
+    expect(denied).toMatchObject({ tool_name: 'danger', step_index: 0, tool_call_id: 'c1' })
+  })
+
+  it('aborts approval synchronously when the signal is already aborted on entry', async () => {
+    const controller = new AbortController()
+    const tool = make_tool({
+      name: 'danger',
+      // needs_approval fires before the approval race; aborting here means the
+      // signal is already aborted when the wait promise is constructed.
+      needs_approval: () => {
+        controller.abort(new Error('cancel-in-needs'))
+        return true
+      },
+    })
+    let err: unknown
+    try {
+      await run_tool_loop(
+        base_config({
+          invoke: [{ tool_calls: [call('c1', 'danger', { value: 'x' })], finish_reason: 'tool_calls' }],
+          tools: [tool],
+          on_tool_approval: () => new Promise<boolean>(() => {}),
+          abort: controller.signal,
+        }),
+      )
+    } catch (e) {
+      err = e
+    }
+    expect(err).toBeInstanceOf(aborted_error)
+    expect((err as aborted_error).message).toBe('aborted')
+    expect(((err as aborted_error).reason as Error).message).toBe('cancel-in-needs')
+  })
+
+  it('aborts during an approval wait with the exact message and reason', async () => {
+    const controller = new AbortController()
+    const promise = run_tool_loop(
+      base_config({
+        invoke: [{ tool_calls: [call('c1', 'danger', { value: 'x' })], finish_reason: 'tool_calls' }],
+        tools: [make_tool({ name: 'danger', needs_approval: true })],
+        on_tool_approval: () => new Promise<boolean>(() => {}),
+        abort: controller.signal,
+      }),
+    )
+    setTimeout(() => controller.abort(new Error('wait cancel')), 15)
+    let err: unknown
+    try {
+      await promise
+    } catch (e) {
+      err = e
+    }
+    expect(err).toBeInstanceOf(aborted_error)
+    expect((err as aborted_error).message).toBe('aborted')
+    expect(((err as aborted_error).reason as Error).message).toBe('wait cancel')
+  })
+
+  it('carries the tool output on the streamed tool_result chunk', async () => {
+    const chunks: StreamChunk[] = []
+    await run_tool_loop(
+      base_config({
+        invoke: [
+          { tool_calls: [call('c1', 'echo', { value: 'hi' })], finish_reason: 'tool_calls' },
+          { text: 'done', finish_reason: 'stop' },
+        ],
+        tools: [make_tool({ name: 'echo', execute: () => 'the-output' })],
+        stream: true,
+        dispatch_chunk: async (c) => {
+          chunks.push(c)
+        },
+      }),
+    )
+    const tool_result = chunks.find((c) => c.kind === 'tool_result')
+    expect(tool_result).toMatchObject({ id: 'c1', output: 'the-output' })
+    expect('error' in (tool_result as object)).toBe(false)
+  })
+
+  it('carries the error on the streamed tool_result chunk when execute throws', async () => {
+    const chunks: StreamChunk[] = []
+    await run_tool_loop(
+      base_config({
+        invoke: [
+          { tool_calls: [call('c1', 'boom', { value: 'x' })], finish_reason: 'tool_calls' },
+          { text: 'done', finish_reason: 'stop' },
+        ],
+        tools: [
+          make_tool({
+            name: 'boom',
+            execute: () => {
+              throw new Error('kaboom')
+            },
+          }),
+        ],
+        tool_error_policy: 'feed_back',
+        stream: true,
+        dispatch_chunk: async (c) => {
+          chunks.push(c)
+        },
+      }),
+    )
+    const tool_result = chunks.find((c) => c.kind === 'tool_result')
+    expect((tool_result as { error?: { message: string } }).error?.message).toContain('kaboom')
+    expect('output' in (tool_result as object)).toBe(false)
+  })
+
+  it('falls back to String() when a tool result cannot be JSON-serialized', async () => {
+    const circular: Record<string, unknown> = {}
+    circular['self'] = circular
+    let turn2_messages: ReadonlyArray<Message> = []
+    let call_n = 0
+    const invoke_once: InvokeOnce = async (args) => {
+      call_n += 1
+      if (call_n === 1) {
+        return {
+          text: '',
+          tool_calls: [call('c1', 'echo', { value: 'x' })],
+          finish_reason: 'tool_calls',
+          usage: zero_usage,
+        }
+      }
+      turn2_messages = args.messages
+      return { text: 'done', tool_calls: [], finish_reason: 'stop', usage: zero_usage }
+    }
+    await run_tool_loop({
+      ...base_config({ invoke: [] }),
+      invoke_once,
+      tools: [make_tool({ name: 'echo', execute: () => circular })],
+    })
+    const tool_msg = turn2_messages.find((m) => m.role === 'tool')
+    // JSON.stringify throws on the circular ref, so the catch returns String(value).
+    expect(tool_msg?.content).toBe('[object Object]')
+  })
+
+  it('records a cost breakdown when pricing resolves for the step', async () => {
+    const { trajectory, events } = recording_trajectory()
+    await run_tool_loop(
+      base_config({
+        invoke: [{ text: 'hi', finish_reason: 'stop', usage: { input_tokens: 1000, output_tokens: 500 } }],
+        trajectory,
+        resolve_pricing: () => ({ input_per_million: 3, output_per_million: 15 }),
+      }),
+    )
+    const cost_event = events.find((e) => e['kind'] === 'cost')
+    expect(cost_event).toBeDefined()
+    expect(cost_event?.['source']).toBe('engine_derived')
+  })
+})
