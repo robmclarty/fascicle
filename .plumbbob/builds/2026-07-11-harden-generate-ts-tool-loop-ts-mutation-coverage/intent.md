@@ -171,7 +171,7 @@ mutants (see the anthropic_native step-3 entry).
    both boundaries with exact values
    - seam: `src/engine/__tests__/`, `src/engine/generate.ts`
    - model: opus — the AbortSignal.any timeout race and the pre-chunk-vs-mid-chunk retry classification are the judgment
-2. [ ] Harden generate() body A: invoke dispatch + streaming (422-549) — **done when:**
+2. [x] Harden generate() body A: invoke dispatch + streaming (422-549) — **done when:**
    zero no-coverage and residual survivors killed or annotated (target ≥90%): the
    ai_sdk-vs-native invoke branch, per-chunk stream aggregation and dispatch, and the
    emitted StreamChunk/step shapes asserted concretely against a dispatch spy

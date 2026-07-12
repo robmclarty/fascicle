@@ -790,6 +790,205 @@ describe('generate: tool loop', () => {
   })
 })
 
+function make_span_recorder(): {
+  logger: TrajectoryLogger
+  events: TrajectoryEvent[]
+  starts: Array<{ id: string; name: string; attrs?: Record<string, unknown> | undefined }>
+  ends: Array<{ id: string; attrs?: Record<string, unknown> | undefined }>
+} {
+  const events: TrajectoryEvent[] = []
+  const starts: Array<{ id: string; name: string; attrs?: Record<string, unknown> | undefined }> =
+    []
+  const ends: Array<{ id: string; attrs?: Record<string, unknown> | undefined }> = []
+  let n = 0
+  const logger: TrajectoryLogger = {
+    record: (e) => events.push(e),
+    start_span: (name, attrs) => {
+      n += 1
+      const id = `span-${n}`
+      starts.push({ id, name, attrs })
+      return id
+    },
+    end_span: (id, attrs) => ends.push({ id, attrs }),
+  }
+  return { logger, events, starts, ends }
+}
+
+describe('generate: body B hardening (step 3)', () => {
+  it('opens the generate span with the exact tools/schema/streaming flags', async () => {
+    enqueue_stream([
+      { type: 'text-delta', text: 'ok' },
+      { type: 'finish-step', finishReason: 'stop', usage: { inputTokens: 2, outputTokens: 1 } },
+    ])
+    const { logger, starts, ends } = make_span_recorder()
+    await basic_engine().generate({
+      model: 'claude-opus',
+      prompt: 'hi',
+      tools: [{ name: 't', description: 'd', input_schema: z.object({}), execute: () => 'x' }],
+      on_chunk: () => {},
+      trajectory: logger,
+    })
+    const gen = starts.find((s) => s.name === 'engine.generate')
+    expect(gen?.attrs).toMatchObject({
+      model: 'claude-opus',
+      provider: 'anthropic',
+      model_id: 'claude-opus',
+      has_tools: true,
+      has_schema: false,
+      streaming: true,
+    })
+    const end = ends.find((e) => e.id === gen?.id)
+    expect(end?.attrs).toMatchObject({
+      finish_reason: 'stop',
+      model_resolved: { provider: 'anthropic', model_id: 'claude-opus' },
+    })
+    expect(end?.attrs?.['usage']).toBeDefined()
+  })
+
+  it('opens the generate span with has_schema true when a schema is set', async () => {
+    enqueue_generate_text(make_text_result('{"n": 1}'))
+    const { logger, starts } = make_span_recorder()
+    await basic_engine().generate({
+      model: 'claude-opus',
+      prompt: 'x',
+      schema: z.object({ n: z.number() }),
+      trajectory: logger,
+    })
+    const gen = starts.find((s) => s.name === 'engine.generate')
+    expect(gen?.attrs).toMatchObject({ has_schema: true })
+  })
+
+  it('opens the generate span with false flags for a plain completion', async () => {
+    enqueue_generate_text(make_text_result('ok'))
+    const { logger, starts } = make_span_recorder()
+    await basic_engine().generate({ model: 'claude-opus', prompt: 'hi', trajectory: logger })
+    const gen = starts.find((s) => s.name === 'engine.generate')
+    expect(gen?.attrs).toMatchObject({ has_tools: false, has_schema: false, streaming: false })
+  })
+
+  it('ends the generate span with the error message when the call throws', async () => {
+    enqueue_generate_text(make_text_result('not json'))
+    enqueue_generate_text(make_text_result('still not json'))
+    const { logger, ends } = make_span_recorder()
+    await expect(
+      basic_engine().generate({
+        model: 'claude-opus',
+        prompt: 'x',
+        schema: z.object({ n: z.number() }),
+        trajectory: logger,
+      }),
+    ).rejects.toBeInstanceOf(schema_validation_error)
+    // The catch closes the span with { error: message }; an emptied object
+    // literal there would drop the error attribute.
+    const errored = ends.find((e) => typeof e.attrs?.['error'] === 'string')
+    expect(errored).toBeDefined()
+  })
+
+  it('appends the schema prefix to an existing leading system message', async () => {
+    enqueue_generate_text(make_text_result('{"n": 1}'))
+    await basic_engine().generate({
+      model: 'claude-opus',
+      system: 'be brief',
+      prompt: 'hi',
+      schema: z.object({ n: z.number() }),
+    })
+    const params = mock_state.last_generate_text_params as { instructions?: string }
+    // The prefix is appended to the existing system run, not prepended as a new
+    // system message; find-index + the append block must both fire.
+    expect(params.instructions).toBe(
+      'be brief\n\nYou must respond with a single JSON value that conforms to the expected schema. Return ONLY the JSON value, with no markdown or commentary.',
+    )
+  })
+
+  it('prepends a system message with the schema prefix when the call has none', async () => {
+    enqueue_generate_text(make_text_result('{"n": 1}'))
+    await basic_engine().generate({
+      model: 'claude-opus',
+      prompt: 'hi',
+      schema: z.object({ n: z.number() }),
+    })
+    const params = mock_state.last_generate_text_params as { instructions?: string }
+    expect(params.instructions).toBe(
+      'You must respond with a single JSON value that conforms to the expected schema. Return ONLY the JSON value, with no markdown or commentary.',
+    )
+  })
+
+  it('rejects a negative tool_call_repair_attempts with the exact message', async () => {
+    let err: unknown
+    try {
+      await basic_engine().generate({
+        model: 'claude-opus',
+        prompt: 'hi',
+        tool_call_repair_attempts: -1,
+      })
+    } catch (e) {
+      err = e
+    }
+    expect(err).toBeInstanceOf(engine_config_error)
+    expect((err as engine_config_error).message).toBe('tool_call_repair_attempts must be >= 0')
+  })
+
+  it('rejects a max_tool_calls_per_step below 1 with the exact message', async () => {
+    let err: unknown
+    try {
+      await basic_engine().generate({
+        model: 'claude-opus',
+        prompt: 'hi',
+        max_tool_calls_per_step: 0,
+      })
+    } catch (e) {
+      err = e
+    }
+    expect(err).toBeInstanceOf(engine_config_error)
+    expect((err as engine_config_error).message).toBe('max_tool_calls_per_step must be >= 1')
+  })
+
+  it('records schema-repair failures with initial then repair attempt labels', async () => {
+    enqueue_generate_text(make_text_result('not json'))
+    enqueue_generate_text(make_text_result('still not'))
+    enqueue_generate_text(make_text_result('{"n": 3}'))
+    const { logger, events } = make_span_recorder()
+    const result = await basic_engine().generate({
+      model: 'claude-opus',
+      prompt: 'x',
+      schema: z.object({ n: z.number() }),
+      schema_repair_attempts: 2,
+      trajectory: logger,
+    })
+    expect(result.content).toEqual({ n: 3 })
+    const failures = events.filter((e) => e.kind === 'schema_validation_failed')
+    expect(failures.map((e) => e['attempt'])).toEqual(['initial', 'repair'])
+    expect(failures[0]?.['raw_text']).toBe('not json')
+    expect(failures[1]?.['raw_text']).toBe('still not')
+  })
+
+  it('stops schema repair at max_steps even with repair budget remaining', async () => {
+    for (let i = 0; i < 6; i += 1) enqueue_generate_text(make_text_result('nope'))
+    await expect(
+      basic_engine().generate({
+        model: 'claude-opus',
+        prompt: 'x',
+        schema: z.object({ n: z.number() }),
+        schema_repair_attempts: 5,
+        max_steps: 1,
+      }),
+    ).rejects.toBeInstanceOf(schema_validation_error)
+    // The first step reaches max_steps, so the `total_steps >= max_steps` arm of
+    // the exhaustion guard throws immediately; a `>` boundary or a dropped OR arm
+    // would keep repairing past the cap.
+    expect(mock_state.generate_text_call_count).toBe(1)
+  })
+
+  it('omits cost when a paid provider has no pricing entry', async () => {
+    enqueue_generate_text(make_text_result('ok'))
+    // openrouter with an unknown model has no pricing row, so aggregate_cost
+    // returns undefined and the cost key must be absent (not present-undefined).
+    const engine = create_engine({ providers: { openrouter: { api_key: 'k' } } })
+    const result = await engine.generate({ model: 'mystery-model', prompt: 'hi' })
+    expect('cost' in result).toBe(false)
+  })
+})
+
 describe('generate: cost', () => {
   it('computes cost from default pricing (C29)', async () => {
     enqueue_generate_text({

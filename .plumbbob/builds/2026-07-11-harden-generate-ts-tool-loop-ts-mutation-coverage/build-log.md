@@ -22,7 +22,7 @@ is done only after a checkpoint — check green + checkpoint taken, via `/pb-ver
 
 - ☑ 1. Harden generate.ts helpers + timeout/retry machinery (96-420)
 - ☑ 2. Harden generate() body A: invoke dispatch + streaming (422-549)
-- ☐ 3. Harden generate() body B: HITL + schema-repair + cost + finish (550-726)
+- ☑ 3. Harden generate() body B: HITL + schema-repair + cost + finish (550-726)
 - ☐ 4. Harden tool_loop.ts helpers + apply_prepare_step (149-352)
 - ☐ 5. Harden tool_loop.ts run_tool_loop body (354-851)
 - ☐ 6. Final gate + ratchet
@@ -124,6 +124,50 @@ suppress real signal.
   killed by the empty-merge test, 1 failure; merge returns `{}` not undefined, so
   the guard is real).
 
+## Step 3 results — generate() HITL + schema-repair + cost + finish
+
+Scoped mutation on `src/engine/generate.ts`: **88.56% -> 95.79%** (509 -> 544
+killed, 54 -> 24 survived, **12 -> 0 no-coverage**, 8 -> 15 ignored). The whole file
+now carries **zero no-coverage**. The L550-599 cluster (config validation +
+schema-prefix injection) is fully covered.
+
+Tests added to generate.test.ts: generate-span open/close payload with exact
+tools/schema/streaming flags + error-close; schema prefix appended to an existing
+system message vs prepended when none; negative tool_call_repair_attempts and
+sub-1 max_tool_calls_per_step config messages; schema-repair failure events with
+initial-then-repair labels and raw_text; max_steps caps repair with budget
+remaining; cost omitted for a paid provider without pricing.
+
+### Annotated equivalents (5 lines, 7 new Ignored)
+
+- **L569** `StringLiteral` — the `'feed_back'` default: run_tool_loop treats any
+  non-'throw' policy as feed_back, so `''` is identical.
+- **L594** `OptionalChaining` — `sys?.role`: sys is a found-index message, always
+  defined.
+- **L631 / L632** `StringLiteral` — the `text=''` / `finish_reason='stop'` inits,
+  both overwritten by the first loop result before use.
+- **L635** `ConditionalExpression` + `EqualityOperator` — `schema_satisfied =
+  opts.schema === undefined`: overwritten in the loop for schema calls, never read
+  for no-schema calls.
+
+### Documented survivors (11, not annotated: killed twins or phantom)
+
+Classified empirically (apply mutation, run the exercising suites). 10 are genuine
+equivalents (no test fails); 1 is a phantom.
+
+- **L580:7** `ConditionalExpression => true` (max_tool_calls gate) — phantom
+  (forcing it true fails 83 tests) but reported Survived.
+- **L596:11** Cond-true (`if (sys?.role === 'system')`) — equivalent; sys is always
+  a system message here. Killed Cond `=> false` twin on the line.
+- **L644** Cond + EqualityOperator (salvage_budget ternary) — equivalent; a
+  `{ remaining: 0 }` budget behaves as undefined. Killed twins on the line.
+- **L664 / L665 / L666** Cond-true (the salvage_budget / max_tool_calls / prepare_step
+  conditional spreads into run_tool_loop) — equivalent; a spread `key: undefined`
+  reads as absent. Killed `=> false` twins.
+- **L700 / L703 / L721** Cond/LogicalOperator (final_content branch selection, finish
+  dispatch) — equivalents; the branches coincide on every reachable state. Killed
+  twins on each line.
+
 ## Park list
 
 > Mid-step, every new problem / idea / "ooh what if" lands HERE, untouched, and you
@@ -157,3 +201,4 @@ you point at to say "I did that — the LLM helped, but those were my calls."
 `/pb-finish` reads this for the report; `plumbbob finish` commits it with the build
 folder, so it rides the branch into the PR.)*
 - 2026-07-12 — step 1 checkpointed · 4092f1f15 — Harden generate.ts helpers + timeout/retry machinery (96-420) (36m)
+- 2026-07-12 — step 2 checkpointed · 15ca58822 — Harden generate() body A: invoke dispatch + streaming (422-549) (17m)

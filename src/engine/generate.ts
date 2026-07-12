@@ -566,6 +566,7 @@ export async function generate<T = string>(
   const abort = opts.abort ?? new AbortController().signal
   const max_steps = opts.max_steps ?? engine.default_max_steps
   const tool_error_policy =
+    // Stryker disable next-line StringLiteral: run_tool_loop treats any non-'throw' policy as feed_back, so '' and 'feed_back' resolve to identical behavior.
     opts.tool_error_policy ?? engine.default_tool_error_policy ?? 'feed_back'
   const schema_repair_attempts =
     opts.schema_repair_attempts ?? engine.default_schema_repair_attempts ?? 1
@@ -591,6 +592,7 @@ export async function generate<T = string>(
     const idx = initial_messages.findIndex((m) => m.role === 'system')
     if (idx >= 0) {
       const sys = initial_messages[idx]
+      // Stryker disable next-line OptionalChaining: sys is initial_messages[idx] at a found index, so it is always a defined system Message; sys.role and sys?.role read identically.
       if (sys?.role === 'system') {
         initial_messages[idx] = {
           role: 'system',
@@ -628,10 +630,13 @@ export async function generate<T = string>(
   let total_steps = 0
   const steps_accum: GenerateResult<T>['steps'] = []
   const tool_calls_accum: GenerateResult<T>['tool_calls'] = []
+  // Stryker disable next-line StringLiteral: text is overwritten by loop_result.text on the first (guaranteed) loop iteration before it is ever read.
   let text = ''
+  // Stryker disable next-line StringLiteral: finish_reason is overwritten by loop_result.finish_reason before it is read.
   let finish_reason: FinishReason = 'stop'
   let repair_remaining = schema_repair_attempts
   let content_parsed: T | undefined
+  // Stryker disable next-line ConditionalExpression,EqualityOperator: for a schema call this is overwritten in the loop before use; for a no-schema call schema_satisfied is never read (the opts.schema === undefined final-content branch wins).
   let schema_satisfied = opts.schema === undefined
   // One holder per generate call so schema-repair re-invocations of the loop
   // cannot refill the salvage budget.
