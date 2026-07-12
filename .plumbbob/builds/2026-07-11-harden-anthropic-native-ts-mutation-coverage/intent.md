@@ -162,7 +162,7 @@ files, so ignore `__tests__` rows in scoped runs.
    TurnResult proven equal to the non-streamed one
    - seam: `src/engine/providers/__tests__/anthropic_native.test.ts`, `src/engine/providers/anthropic_native.ts`
    - model: opus — the SSE event state machine and synthetic-payload reconstruction are the subtle part
-4. [ ] Harden error-classification + SSE-drain + adapter (532-703) — **done when:**
+4. [x] Harden error-classification + SSE-drain + adapter (532-703) — **done when:**
    zero no-coverage and residual survivors annotated (target ≥90%):
    `extract_error_message` (empty/oversized/non-JSON branches), `response_error`
    (401→auth, 429/5xx→status+retry-after, else permanent), `rethrow_network_failure`
@@ -193,3 +193,10 @@ files, so ignore `__tests__` rows in scoped runs.
 ## Verdicts
 
 *(Filled in as spikes and forks resolve — the audit trail of "these were my calls.")*
+
+- V-Q2 (step 5): The lift clears the ratchet. Full-repo delta ~85.2%→**86.84%**
+  (anthropic_native.ts 73.9%→98.22%). Ratcheted `break` 82→**83**, leaving **3.84pt**
+  headroom — at/above the established ~3pt cushion that absorbs the 91 timing-sensitive
+  Timeout mutants. Held to 83 (not 84, which would leave only 2.84pt); D5's anticipated
+  step, upward, never down. Config-only change; gate re-run green in 44s (incremental
+  cache fully reused). Q2 resolved.
