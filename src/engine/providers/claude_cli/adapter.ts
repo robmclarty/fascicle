@@ -150,7 +150,9 @@ export function extract_system_text(prompt: string | Message[]): string | undefi
 }
 
 export function compile_schema<T>(schema: z.ZodType<T>): string {
-  const json = z.toJSONSchema(schema)
+  // `claude --json-schema` rejects a top-level $schema/$id (the draft-2020-12 URI
+  // z.toJSONSchema stamps); strip them — the field constraints drive constrained decode.
+  const { $schema: _schema, $id: _id, ...json } = z.toJSONSchema(schema)
   return JSON.stringify(json)
 }
 

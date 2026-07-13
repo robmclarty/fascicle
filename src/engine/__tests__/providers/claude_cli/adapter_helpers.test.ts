@@ -126,6 +126,15 @@ describe('compile_schema', () => {
     expect(json['type']).toBe('object')
     expect((json['properties'] as Record<string, unknown>)['x']).toMatchObject({ type: 'number' })
   })
+
+  it('strips the top-level $schema and $id keys the CLI rejects', () => {
+    const json = JSON.parse(compile_schema(z.object({ a: z.string() }))) as Record<string, unknown>
+    expect(json).not.toHaveProperty('$schema')
+    expect(json).not.toHaveProperty('$id')
+    // field constraints survive the strip
+    expect((json['properties'] as Record<string, unknown>)['a']).toMatchObject({ type: 'string' })
+    expect(json['required']).toEqual(['a'])
+  })
 })
 
 describe('classify_close_error', () => {
