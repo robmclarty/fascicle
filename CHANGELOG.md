@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.9.5 — 2026-07-12
+
+### Fixed
+
+- **`claude_cli` provider structured output.** `compile_schema` now strips the top-level `$schema` (draft-2020-12 URI) and `$id` keys that `z.toJSONSchema` (zod v4) stamps, which `claude --json-schema` rejects. Any `model_call` on the `claude_cli` provider that passed a zod `schema` previously errored out of the box; structured output now works end-to-end.
+
 ## v0.9.4 — 2026-07-12
 
 ### Internal
