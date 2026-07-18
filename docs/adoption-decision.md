@@ -180,5 +180,7 @@ bet that containment is cheaper than absorption over time.
 - [comparison.md](./comparison.md) - the five axes, and where each neighbor
   (LangChain, Mastra, Strands, OpenAI Agents SDK, Inngest AgentKit) sits on them.
 - [concepts.md](./concepts.md) - step-as-value, run context, trajectories.
+- [blueprint.md](./blueprint.md) - the standard app architecture, once you decide
+  to adopt.
 - [SECURITY.md](../SECURITY.md) - the supply-chain posture and its honest residual
   risks.

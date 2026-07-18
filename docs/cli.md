@@ -50,7 +50,7 @@ type ClaudeCliProviderConfig = {
   binary?: string;                  // default 'claude' (resolved on PATH)
   auth_mode?: 'auto' | 'oauth' | 'api_key';  // default 'auto'
   api_key?: string;                 // required when auth_mode === 'api_key'
-  inherit_env?: boolean;            // default true under 'oauth', false otherwise
+  inherit_env?: boolean;            // default true; oauth seeds full process.env, other modes seed the 7 standard keys
   default_cwd?: string;             // subprocess cwd
   startup_timeout_ms?: number;      // default 120_000
   stall_timeout_ms?: number;        // default 300_000
@@ -71,7 +71,7 @@ type ClaudeCliProviderConfig = {
 
 ### Env inheritance
 
-Under `oauth`, the subprocess env seeds from `process.env` so the `claude` binary can reach `HOME`, `PATH`, and other things it needs to find its session files. Opt out with `inherit_env: false` if you want a minimal env. Under `api_key` and `auto`, the env starts empty and only caller-supplied keys pass through.
+Under `oauth`, the subprocess env seeds from the full `process.env` so the `claude` binary can reach `HOME`, `PATH`, and other things it needs to find its session files. Under `api_key` and `auto`, it seeds only the 7 standard keys (`PATH`, `HOME`, `SHELL`, `USER`, `LOGNAME`, `LANG`, `TMPDIR`) from `process.env`, plus caller-supplied keys. Set `inherit_env: false` under any mode to start from an empty env.
 
 If you need a minimal-but-functional env under `api_key`, use the helper:
 
@@ -154,6 +154,7 @@ Plus, conditionally:
 - `--json-schema <json>` — when either `opts.schema` is a zod schema (compiled to JSON Schema) or `provider_options.claude_cli.output_json_schema` is a string; the zod schema wins.
 - `--append-system-prompt <text>` — the merged system prompt (`opts.system` + `append_system_prompt`, joined by `\n\n`).
 - Any `extra_args` appended verbatim to the tail.
+- `CLAUDE_CODE_EFFORT_LEVEL=<level>` — set in the subprocess env when `opts.effort` is anything but `'none'`; the level (`low` … `max`) is forwarded verbatim.
 
 The prompt is written to stdin — either the first user message's text, or the whole string if `opts.prompt` is a string.
 
@@ -222,7 +223,7 @@ A missing sandbox binary triggers `claude_cli_error` with `reason: 'sandbox_unav
 | ------------------------ | --------------------------------------------------------------------------- |
 | `engine_config_error`    | `api_key` missing under `auth_mode: 'api_key'`.                             |
 | `provider_auth_error`    | Stderr matched an auth-failure pattern; surface `refresh_command` to the user. |
-| `claude_cli_error`       | Subprocess failure. Check `.reason`: `binary_not_found`, `startup_timeout`, `stall_timeout`, `no_result_event`, `subprocess_exit`, `sandbox_unavailable`, `parse_error`, `auth_missing`, `auth_expired`, `api_key_missing`, `engine_disposed`. |
+| `claude_cli_error`       | Subprocess failure. Check `.reason`: `binary_not_found`, `startup_timeout`, `stall_timeout`, `no_result_event`, `result_error`, `subprocess_exit`, `sandbox_unavailable`, `parse_error`, `auth_missing`, `auth_expired`, `api_key_missing`, `engine_disposed`. |
 | `provider_capability_error` | Multi-turn `prompt: Message[]` with two or more user messages, or `tool_bridge: 'forbid'` with a tool that has an `execute` closure. |
 | `schema_validation_error` | Zod parse failed after one repair attempt.                                 |
 

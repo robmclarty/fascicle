@@ -6,7 +6,7 @@ The mental model behind fascicle. Read this once — the rest of the docs assume
 
 fascicle ships two independently useful layers, re-exported from one package.
 
-- **Composition layer** (the `core` + `composites` modules, surfaced via `fascicle`). 18 primitives for composing work out of plain values. No network, no LLM calls, no ambient state.
+- **Composition layer** (the `core` + `composites` modules, surfaced via `fascicle`). 21 primitives for composing work out of plain values. No network, no LLM calls, no ambient state.
 - **Engine layer** (the `engine` module, surfaced via `fascicle`). `create_engine(config)` returns a unified `generate` surface over eight provider adapters. No composition, no step plumbing.
 
 They are glued by exactly one value: `model_call` (at the umbrella `src/` root). That is the only file allowed to import values from both layers — an ast-grep rule in `rules/` enforces it. Everything else either composes or generates, never both.
@@ -23,6 +23,7 @@ type Step<i, o> = {
   readonly config?: Readonly<Record<string, unknown>>;
   readonly children?: ReadonlyArray<Step<unknown, unknown>>;
   readonly anonymous?: boolean;
+  readonly meta?: StepMetadata;
 };
 ```
 
@@ -52,11 +53,14 @@ loop        bounded iteration with carry-state and optional convergence guard
 compose     label a composite step for trajectory output
 adversarial build, critique, loop until accept or max_rounds
 ensemble    run N members, pick highest by score
+ensemble_step  pick-best where the scorer is itself a Step
 tournament  single-elimination bracket
-consensus   run N, accept only if >= quorum agree
+consensus   run all members each round; accept once agree(results) holds
 checkpoint  memoize a named inner step by key
 suspend     pause for external input; resume with resume_data
 scope       stash named values and use them later without rewiring
+improve     bounded online propose → score → accept/reject loop
+learn       offline reflection over recorded trajectories
 ```
 
 Each primitive is described in full with signatures at [`docs/composition.md`](./composition.md).
@@ -89,6 +93,7 @@ type RunOptions = {
   trajectory?: TrajectoryLogger;       // default noop
   checkpoint_store?: CheckpointStore;  // required by checkpoint / suspend
   resume_data?: Record<string, unknown>;
+  abort?: AbortSignal;                 // caller-owned cancellation
 };
 ```
 
@@ -101,6 +106,7 @@ type RunContext = {
   run_id: string;              // unique per top-level run
   trajectory: TrajectoryLogger;
   state: ReadonlyMap<string, unknown>;  // for scope / stash / use
+  parent_span_id?: string;     // span parentage, threaded by the runner
   abort: AbortSignal;
   emit: (event: Record<string, unknown>) => void;
   on_cleanup: (fn: CleanupFn) => void;
@@ -138,11 +144,12 @@ type TrajectoryLogger = {
 };
 ```
 
-The `fascicle/adapters` subpath ships four trajectory loggers:
+The `fascicle/adapters` subpath ships five trajectory loggers:
 
 - `noop_logger` — drops everything. The default when no `trajectory` is passed.
 - `filesystem_logger({ output_path })` — appends JSON lines to a file.
 - `http_logger({ url })` — POSTs each event as NDJSON; pairs with the viewer's `/api/ingest`.
+- `stderr_logger()` — JSONL to stderr; keeps stdout clean when your process is somebody's child.
 - `tee_logger(a, b, ...)` — fans one logger contract out to many sinks.
 
 Writing your own is the expected path once you outgrow the defaults (push to Honeycomb, DynamoDB, a TUI, whatever).
@@ -284,6 +291,7 @@ Not a runtime concept, but a project one. `pnpm check:all` is the single source 
 
 - [getting-started.md](./getting-started.md) — install and run your first flow.
 - [writing-a-harness.md](./writing-a-harness.md) — build a runner around fascicle.
+- [blueprint.md](./blueprint.md) — the standard app architecture for building on fascicle.
 - [embedding-under-a-harness.md](./embedding-under-a-harness.md) — run a fascicle agent as somebody's child process.
 - [configuration.md](./configuration.md) — engine config, provider setup, defaults.
 - [providers.md](./providers.md) — per-provider adapter notes.

@@ -5,6 +5,7 @@ Automated PR improvement pipeline. Triggered (eventually) by a `fascicle-improve
 - [CLOUD_SPEC.md](./CLOUD_SPEC.md) — **active spec** for the remaining cloud-deployment work (Fargate worker, webhook Lambda, Terraform module under `infra/`).
 - [SPEC.md](./SPEC.md) — original end-to-end design, preserved as historical context for the shipped phases. Superseded by `CLOUD_SPEC.md` for everything still to build.
 - [docs/architecture.md](./docs/architecture.md) — why `flow.ts` is pure fascicle composition, and the module split that keeps it that way.
+- [../../docs/blueprint.md](../../docs/blueprint.md) — the generalized app architecture distilled from this example (and others); this app's [`rules/`](./rules/) are its canonical machine-checked copy.
 
 ## Status
 

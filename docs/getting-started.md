@@ -39,7 +39,7 @@ console.log(result); // 4
 
 That's all of it. Every composable unit is a `Step<i, o>`. Every composer returns a `Step<i, o>`. You can nest arbitrarily.
 
-## The 18 primitives
+## The 21 primitives
 
 The composition layer is small on purpose:
 
@@ -58,11 +58,14 @@ The composition layer is small on purpose:
 | `compose`             | Label a composite step for trajectory output.               |
 | `adversarial`         | Build, critique, repeat until accept or `max_rounds`.       |
 | `ensemble`            | Run N members, pick the highest-scoring result.             |
+| `ensemble_step`       | Pick-best where the scorer is itself a `Step`.              |
 | `tournament`          | Pairwise compare members, pick the bracket winner.          |
-| `consensus`           | Run N, accept only if `>= quorum` agree.                    |
+| `consensus`           | Run N, accept once your `agree(results)` predicate holds.   |
 | `checkpoint`          | Memoize a step's output in a `CheckpointStore`.             |
 | `suspend`             | Pause the flow; resume later with `resume_data`.            |
 | `scope`/`stash`/`use` | Pass values through a subtree without rewiring signatures.  |
+| `improve`             | Bounded online propose → score → accept/reject loop.        |
+| `learn`               | Offline reflection over recorded trajectories.              |
 
 Full surface and signatures: [`docs/composition.md`](./composition.md). Runnable references: [`examples/`](../examples/).
 
@@ -125,6 +128,7 @@ await engine.dispose();
 ## Where to go next
 
 - [docs/writing-a-harness.md](./writing-a-harness.md) — build a runner around fascicle.
+- [docs/blueprint.md](./blueprint.md) — the standard app architecture for a real fascicle app.
 - [docs/embedding-under-a-harness.md](./embedding-under-a-harness.md) — run a fascicle agent as somebody's child process.
 - [docs/concepts.md](./concepts.md) — step-as-value, trajectories, cancellation.
 - [docs/configuration.md](./configuration.md) — engine config, defaults, provider setup.

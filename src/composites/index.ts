@@ -1,9 +1,10 @@
 /**
  * Public surface for composites.
  *
- * The four built-in composite patterns (ensemble, tournament, consensus,
- * adversarial) are implemented entirely as compositions of core
- * primitives plus `compose` and `loop`. They live here, not in core,
+ * The built-in composite patterns (ensemble, ensemble_step, tournament,
+ * consensus, adversarial, improve, learn) are implemented entirely as
+ * compositions of core primitives plus `compose` and `loop`. They live
+ * here, not in core,
  * because they are conveniences — not architectural primitives. Their
  * source code is intended to read as canonical examples of how user-built
  * composites work.

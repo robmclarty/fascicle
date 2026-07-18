@@ -2,7 +2,7 @@
 
 This app is structured so that a developer can read `src/flow.ts` and see the agent topology directly — no imperative goo, no buried control flow. Everything that isn't fascicle composition lives in adjacent modules and is plugged in via `use(...)` projections.
 
-This doc captures **why** the codebase is shaped this way, so the next person tempted to inline a `for` loop or an `if` inside a `step('...')` body will have a reason to pause.
+This doc captures **why** the codebase is shaped this way, so the next person tempted to inline a `for` loop or an `if` inside a `step('...')` body will have a reason to pause. The generalized, app-agnostic version of this architecture is [docs/blueprint.md](../../../docs/blueprint.md) at the repo root — this app is its canonical worked example.
 
 ## The principle: think at the fascicle level
 
@@ -97,4 +97,4 @@ The exception: a step body might do small bookkeeping arithmetic (`round + 1`, p
 
 The composition-first style has a cost: a small amount of indirection (`use([K.PR, K.SPEC], ...)`) where a less-disciplined codebase would just close over a variable. That cost is worth it as long as the pipeline benefits from being introspectable, swappable, and observable.
 
-If a future stage genuinely needs imperative control flow that doesn't map to any primitive — three nested loops with shared mutable state, say — that's the signal to either (a) propose a new fascicle primitive in `@repo/core`, or (b) document why this stage is the exception. Hiding it inside a `step()` body without comment is not the answer.
+If a future stage genuinely needs imperative control flow that doesn't map to any primitive — three nested loops with shared mutable state, say — that's the signal to either (a) propose a new fascicle primitive in `src/core`, or (b) document why this stage is the exception. Hiding it inside a `step()` body without comment is not the answer.

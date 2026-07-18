@@ -162,7 +162,7 @@ None of these is unprecedented alone; the concentration is the point.
 4. **Subprocess providers are first-class.** The `claude_cli` adapter drives the
    Claude CLI as a provider with full process-group lifecycle, alongside the HTTPS
    SDK providers.
-5. **A small, hand-picked surface.** 18 composition primitives and one `generate`
+5. **A small, hand-picked surface.** 21 composition primitives and one `generate`
    function, shipped as a single npm package — no "pick four packages and align
    their versions" tax.
 

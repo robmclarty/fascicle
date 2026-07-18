@@ -2,6 +2,10 @@
 
 Instructions for any coding agent (Claude Code, Codex, Cursor, Windsurf, Amp) operating in this repository.
 
+## Building an app *on* fascicle?
+
+If your task is to construct a new agent that *consumes* the published `fascicle` package (rather than to modify this repo), stop here and follow **[docs/blueprint.md](./docs/blueprint.md)** — the recommended architecture for fascicle apps: one composition layer, three adoption tiers, markdown prompts, normalized module contracts, stub-engine testing, and ast-grep rules that enforce the boundaries. The canonical worked example is [examples/pr-improve/](./examples/pr-improve/) (rationale in its `docs/architecture.md`); copy its `rules/` directory to enforce the blueprint in your own app. The rest of this file is about developing fascicle itself.
+
 ## The contract
 
 **`pnpm check:all` is the single source of truth for "done".** If it exits 0, your work is complete. If it exits non-zero, it is not. No other signal counts.

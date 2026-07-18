@@ -5,12 +5,15 @@ reference; for full option shapes and behavior, follow the links into
 [configuration.md](./configuration.md), [providers.md](./providers.md), and
 [cookbook.md](./cookbook.md).
 
-Everything is exported from three entry points:
+Everything is exported from the umbrella entry point and its subpaths:
 
 ```ts
-import { /* composition + engine */ } from 'fascicle';
+import { /* composition + engine + define_agent */ } from 'fascicle';
 import { /* loggers + stores */ } from 'fascicle/adapters';
 import { /* MCP bridge */ } from 'fascicle/mcp';
+import { /* stdio child contract */ } from 'fascicle/stdio';
+import { /* OpenTelemetry bridge */ } from 'fascicle/otel';
+import { /* useChat stream adapters */ } from 'fascicle/ui';
 ```
 
 fascicle is ESM-only and requires Node >= 24. There are no default exports and no
@@ -22,7 +25,7 @@ classes other than `Error` subclasses.
 | --- | --- | --- |
 | `run(flow, input, options?)` | `Promise<output>` | Execute a step. `options`: `{ trajectory?, checkpoint_store?, abort?, resume_data? }`. |
 | `run.stream(flow, input, options?)` | `{ events, result }` | Same graph as `run`; `events` is an async iterable of `TrajectoryEvent`, `result` resolves to the output. |
-| `describe(step, options?)` | `FlowNode` | Static structural description of a step tree. No execution, no model calls. |
+| `describe(step, options?)` | `string` | Static text-tree description of a step tree. No execution, no model calls. `describe.json(step)` returns the structured `FlowNode` tree instead. |
 
 ```ts
 import { run, sequence, step } from 'fascicle';
@@ -49,10 +52,10 @@ fits a step fits any composition of steps.
 
 | Primitive | Shape |
 | --- | --- |
-| `branch(predicate, { then, else })` | route on a predicate of the input |
-| `map(step, { concurrency? })` | run a step per array element |
+| `branch({ when, then, otherwise })` | route on `when(input)` |
+| `map({ items, do, concurrency? })` | run `do` per item of `items(input)`, optional in-flight cap |
 | `parallel({ a, b })` | run a named map of steps concurrently |
-| `loop(step, { max, guard? })` | bounded iteration with carry-state and optional convergence guard |
+| `loop({ init, body, guard?, finish, max_rounds })` | bounded iteration with carry-state and optional convergence guard |
 | `retry(step, policy)` | re-run on failure with exponential backoff |
 | `fallback(primary, backup)` | run a backup if the primary throws |
 | `timeout(step, ms)` | cancel an inner step after N ms (throws `timeout_error`) |
@@ -61,18 +64,26 @@ fits a step fits any composition of steps.
 
 | Primitive | Shape |
 | --- | --- |
-| `adversarial({ build, critique, ... })` | build, critique, repeat until accept or `max_rounds` |
-| `ensemble([...], score)` | run N members, pick the highest-scoring result |
-| `tournament([...])` | single-elimination bracket |
-| `consensus([...], { agree })` | run N concurrently, accept when an `agree` predicate holds |
+| `adversarial({ build, critique, accept, max_rounds })` | build, critique, repeat until accept or `max_rounds` |
+| `ensemble({ members, score, select? })` | run named members, pick the highest-scoring result |
+| `ensemble_step({ members, score, rank_by, select? })` | pick-best where the scorer is itself a `Step`; returns the winner plus its structured score |
+| `tournament({ members, compare })` | single-elimination bracket |
+| `consensus({ members, agree, max_rounds })` | run all members each round, accept when the `agree` predicate holds |
+
+**Self-improvement**
+
+| Primitive | Shape |
+| --- | --- |
+| `improve({ seed, propose, score, budget })` | bounded online propose → score → accept/reject loop with plateau detection |
+| `learn({ flow, source, analyzer })` | offline reflection over recorded trajectories; returns the analyzer's proposals |
 
 **State and durability**
 
 | Primitive | Shape |
 | --- | --- |
 | `scope` / `stash` / `use` | named state across non-adjacent steps |
-| `checkpoint(key, inner)` | memoize an inner step by key in a `CheckpointStore` |
-| `suspend(...)` | pause for external input; resume later with `resume_data` (throws `suspended_error` to signal the pause) |
+| `checkpoint(inner, { key })` | memoize an inner step by key in a `CheckpointStore` |
+| `suspend({ id, on, resume_schema, combine })` | pause for external input; resume later with `resume_data` (throws `suspended_error` to signal the pause) |
 
 ## The engine
 
@@ -83,13 +94,17 @@ const engine = create_engine(config); // EngineConfig -> Engine
 ```
 
 `create_engine(config)` returns an `Engine`. Only `config.providers` is required;
-`config.pricing` and `config.defaults` are optional. See
+`custom_providers`, `pricing`, `default_retry`, `default_effort`,
+`default_max_steps`, and `defaults` are optional. See
 [configuration.md](./configuration.md#the-config-shape).
 
 | Method | Purpose |
 | --- | --- |
 | `engine.generate(opts)` | one model call across any configured provider; returns `GenerateResult` |
 | `engine.register_price(provider, model_id, pricing)` | add or override a pricing row |
+| `engine.resolve_price(provider, model_id)` | look up the effective pricing row, if any |
+| `engine.list_prices()` | the effective `PricingTable` |
+| `engine.with_providers(providers, custom_providers?)` | derive a new engine with added/overridden providers; this engine is untouched, the derived one disposes independently |
 | `engine.dispose()` | terminal and idempotent; aborts in-flight `claude_cli` subprocesses |
 
 ### `generate` options (highlights)
@@ -120,6 +135,19 @@ const ask = model_call({ engine, model: 'sonnet', system: 'Be terse.' });
 `model_call(config)` returns a `Step`, the only sanctioned bridge between the
 composition and engine layers. It threads `ctx.abort`, `ctx.trajectory`, and
 streaming chunks. Types: `ModelCallConfig`, `ModelCallInput`.
+
+### `define_agent` — markdown-driven agents
+
+```ts
+import { define_agent } from 'fascicle';
+
+const reviewer = define_agent({ md_path, schema, engine, build_prompt });
+```
+
+`define_agent(config)` folds a markdown file (frontmatter `name` / `description`
+/ `model` / `temperature`, body as the prompt) and an output schema into a
+`Step<i, o>`. Types: `DefineAgentConfig`, `AgentBuiltPrompt`. See
+[blueprint.md](./blueprint.md#prompts-markdown-not-string-literals).
 
 ## Providers
 

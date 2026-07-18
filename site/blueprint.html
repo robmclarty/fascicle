@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="https://cdn.usefathom.com/script.js" data-site="TFDVEGLQ" defer></script>
+<script src="./support.js"></script>
+<script src="./stars.js" defer></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box;}
+  html{scroll-behavior:smooth;}
+  html,body{margin:0;padding:0;background:#F4EBDB;}
+  ::selection{background:#C0521F;color:#F4EBDB;}
+  a{color:inherit;text-decoration:none;}
+  .fc-btn{transform:translate(-6px,-6px); box-shadow:1px 1px 0 #211C17,2px 2px 0 #211C17,3px 3px 0 #211C17,4px 4px 0 #211C17,5px 5px 0 #211C17,6px 6px 0 #211C17; transition:transform .09s ease, box-shadow .09s ease;}
+  .fc-btn:hover{transform:translate(0,0); box-shadow:none;}
+  .fc-btn:active{transform:translate(0,0); box-shadow:inset 1px 1px 0 #211C17,inset 2px 2px 0 #211C17,inset 3px 3px 0 #211C17,inset 4px 4px 0 #211C17,inset 5px 5px 0 #211C17,inset 6px 6px 0 #211C17;}
+  .fc-btn-label{display:inline-block; transition:transform .09s ease;}
+  .fc-btn:active .fc-btn-label{transform:translate(8px,8px);}
+</style>
+</helmet>
+
+<div style="position:relative; min-height:100vh; background:#F4EBDB; color:#211C17; font-family:'Space Grotesk',sans-serif; overflow-x:hidden;">
+
+  <!-- grain overlay -->
+  <div style="position:fixed; inset:0; z-index:9999; pointer-events:none; opacity:0.06; mix-blend-mode:multiply; background-image:url(&quot;data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E&quot;);"></div>
+
+  <!-- ===================== NAV ===================== -->
+  <div style="position:sticky; top:0; z-index:100; display:flex; align-items:center; justify-content:space-between; padding:16px 32px; background:#F4EBDB; border-bottom:3px solid #211C17;">
+    <div style="display:flex; align-items:center; gap:16px;">
+      <a href="index.html" style="display:flex; align-items:center; gap:12px;">
+        <div style="width:20px; height:20px; background:#C0521F; border:2px solid #211C17;"></div>
+        <div style="font-family:'JetBrains Mono',monospace; font-weight:700; font-size:18px; letter-spacing:2px;">FASCICLE</div>
+      </a>
+      <div style="font-family:'JetBrains Mono',monospace; font-size:12px; letter-spacing:1px; color:#7A5230; border:2px solid #7A5230; padding:2px 8px;">BLUEPRINT</div>
+    </div>
+    <div style="display:flex; gap:26px; align-items:center; font-size:14px; font-weight:500;">
+      <a href="#rule">The rule</a>
+      <a href="#tiers">Tiers</a>
+      <a href="#layout">Layout</a>
+      <a href="#antipatterns">Anti-patterns</a>
+      <a href="index.html">Home</a>
+      <a href="docs.html">Docs</a>
+      <a id="gh-stars" href="https://github.com/robmclarty/fascicle" style="background:#211C17; color:#F4EBDB; padding:8px 16px; font-family:'JetBrains Mono',monospace; font-size:12px; letter-spacing:1px; white-space:nowrap;">GITHUB</a>
+    </div>
+  </div>
+
+  <!-- ===================== HERO ===================== -->
+  <div style="position:relative; padding:84px 40px 88px; max-width:1320px; margin:0 auto;">
+    <div style="display:flex; gap:64px; align-items:flex-start;">
+      <div style="flex:1; min-width:0; padding-top:6px;">
+        <div style="font-family:'JetBrains Mono',monospace; font-size:13px; letter-spacing:3px; text-transform:uppercase; color:#C0521F; margin-bottom:26px;">The agent blueprint</div>
+        <h1 style="font-family:'DM Serif Display',serif; font-weight:400; font-size:76px; line-height:0.98; margin:0; letter-spacing:-0.5px;">A standard architecture for <span style="font-style:italic; color:#15706A;">fascicle apps.</span></h1>
+        <p style="font-size:19px; line-height:1.6; color:#3a342e; margin:28px 0 0; max-width:560px;">Fascicle never dictates your app's shape — but the apps that stay easy to change all converge on the same one. The blueprint is that shape, distilled from the reference apps and from production consumers: one composition layer, markdown prompts, normalized module contracts, and boundaries enforced by lint rules instead of memory.</p>
+        <p style="font-size:16px; line-height:1.6; color:#5a5249; margin:16px 0 0; max-width:560px;">Building an agent on fascicle — or pointing a coding agent at the task? Start here. This page is the summary; the full spec lives in <a href="https://github.com/robmclarty/fascicle/blob/main/docs/blueprint.md" style="color:#C0521F; font-weight:700; border-bottom:2px solid #C0521F;">docs/blueprint.md</a>.</p>
+        <div style="display:flex; gap:16px; margin-top:38px; flex-wrap:wrap;">
+          <a href="https://github.com/robmclarty/fascicle/blob/main/docs/blueprint.md" style="background:#C0521F; color:#F4EBDB; font-weight:700; font-size:15px; padding:15px 28px; border:3px solid #211C17;" class="fc-btn"><span class="fc-btn-label">Read the full blueprint →</span></a>
+          <a href="https://github.com/robmclarty/fascicle/tree/main/examples/pr-improve" style="background:#F4EBDB; color:#211C17; font-weight:700; font-size:15px; padding:15px 28px; border:3px solid #211C17;" class="fc-btn"><span class="fc-btn-label">See the reference app</span></a>
+        </div>
+      </div>
+
+      <!-- layout card -->
+      <div style="flex:none; width:460px; max-width:42vw;">
+        <div style="background:#211C17; border:3px solid #211C17; box-shadow:1px 1px 0 #15706A, 2px 2px 0 #15706A, 3px 3px 0 #15706A, 4px 4px 0 #15706A, 5px 5px 0 #15706A, 6px 6px 0 #15706A, 7px 7px 0 #15706A, 8px 8px 0 #15706A, 9px 9px 0 #15706A, 10px 10px 0 #15706A;">
+          <div style="display:flex; align-items:center; gap:8px; padding:13px 16px; border-bottom:1px solid #3a342e;">
+            <div style="width:12px; height:12px; border-radius:50%; background:#C0521F;"></div>
+            <div style="width:12px; height:12px; border-radius:50%; background:#D6982A;"></div>
+            <div style="width:12px; height:12px; border-radius:50%; background:#15706A;"></div>
+            <div style="margin-left:10px; font-family:'JetBrains Mono',monospace; font-size:12px; color:#8a8278;">src/</div>
+          </div>
+          <div style="padding:22px 24px; font-family:'JetBrains Mono',monospace; font-size:13.5px; line-height:2.0; color:#E8DFCD; white-space:pre; overflow-x:auto;"><span style="color:#D6982A;">main.ts</span>      <span style="color:#6f675c;">the shell: input in, run(), exit codes</span>
+<span style="color:#C0521F; font-weight:700;">flow.ts</span>      <span style="color:#6f675c;">THE composition layer</span>
+<span style="color:#D6982A;">engine.ts</span>    <span style="color:#6f675c;">the only create_engine call site</span>
+<span style="color:#D6982A;">types.ts</span>     <span style="color:#6f675c;">zod schemas = stage contracts</span>
+<span style="color:#D6982A;">state.ts</span>     <span style="color:#6f675c;">scope keys + readers (casts live here)</span>
+<span style="color:#D6982A;">messages.ts</span>  <span style="color:#6f675c;">format_* user-message builders</span>
+<span style="color:#D6982A;">render.ts</span>    <span style="color:#6f675c;">render_* output artifacts</span>
+<span style="color:#15a39a;">prompts/</span>     <span style="color:#6f675c;">*.md system prompts, one per role</span>
+<span style="color:#15a39a;">stages/</span>      <span style="color:#6f675c;">make_*_call factories, one per role</span>
+<span style="color:#15a39a;">tools/</span>       <span style="color:#6f675c;">make_* Tool factories, limits.ts</span>
+<span style="color:#15a39a;">services/</span>    <span style="color:#6f675c;">plain IO (git, db, http)</span></div>
+        </div>
+        <div style="margin-top:32px; font-family:'JetBrains Mono',monospace; font-size:12px; color:#7A5230; letter-spacing:1px;">EVERY MODULE HAS ONE REASON TO EXIST AND A STRICT IMPORT CONTRACT.</div>
+      </div>
+    </div>
+  </div>
+
+  <div style="height:3px; background:#211C17;"></div>
+
+  <!-- ===================== THE ONE RULE ===================== -->
+  <div id="rule" style="position:relative; background:#211C17; color:#F4EBDB; padding:96px 40px;">
+    <div style="max-width:1320px; margin:0 auto;">
+      <div style="font-family:'JetBrains Mono',monospace; font-size:13px; letter-spacing:3px; color:#D6982A; margin-bottom:18px;">01 · THE ONE RULE</div>
+      <h2 style="font-family:'DM Serif Display',serif; font-weight:400; font-size:54px; line-height:1.02; margin:0; max-width:900px;">Give the agent exactly <span style="font-style:italic; color:#D6982A;">one composition layer.</span></h2>
+      <p style="font-size:18px; line-height:1.6; color:#C9C0AE; max-width:720px; margin:22px 0 0;">One file — call it <span style="font-family:'JetBrains Mono',monospace; font-size:15px; color:#F4EBDB;">flow.ts</span> — that the reader opens to see the entire topology, written in fascicle vocabulary only: <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">sequence</span>, <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">parallel</span>, <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">branch</span>, <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">loop</span>, <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">scope</span>, <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">step</span>, <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">model_call</span>. Everything that is not shape — string formatting, IO, state transitions, extraction — lives in sibling modules and is plugged in as plain functions.</p>
+      <p style="font-size:18px; line-height:1.6; color:#C9C0AE; max-width:720px; margin:16px 0 0;">Steps are plain values: anything with the same <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">Step&lt;i, o&gt;</span> type swaps for anything else. That plug-and-play property is only worth something if your app has a place where the blocks are <em>visible</em>. Scattered through business logic, the topology exists only in the reader's head. Gathered into one layer, the topology <em>is</em> the file — and swapping a block is editing one line of it.</p>
+
+      <div style="margin-top:48px; border:3px solid #F4EBDB;">
+        <div style="display:flex; align-items:center; justify-content:space-between; padding:12px 16px; border-bottom:1px solid #4a443c; background:#26211b;">
+          <div style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#8a8278;">flow.ts — the recurring stage idiom</div>
+          <button onClick="{{ copy }}" data-orig="COPY" data-copy="const reviewer_subflow: Step<unknown, ReadonlyArray<Suggestion>> = sequence([
+  use([K.PR], (s) => format_reviewer_message(read_pr(s))),
+  reviewer_call,
+  step('extract_suggestions', (r: GenerateResult<ReviewerOutput>) => r.content.suggestions),
+])" style="background:transparent; color:#8a8278; font-family:'JetBrains Mono',monospace; font-size:11px; letter-spacing:1px; border:1px solid #4a443c; padding:5px 11px; cursor:pointer;">COPY</button>
+        </div>
+        <div style="padding:24px 26px; font-family:'JetBrains Mono',monospace; font-size:14.5px; line-height:1.9; color:#E8DFCD; white-space:pre; overflow-x:auto;"><span style="color:#C0521F;">const</span> reviewer_subflow: <span style="color:#15a39a;">Step</span>&lt;<span style="color:#15a39a;">unknown</span>, <span style="color:#15a39a;">ReadonlyArray</span>&lt;<span style="color:#15a39a;">Suggestion</span>&gt;&gt; = <span style="color:#15a39a;">sequence</span>([<br>  <span style="color:#15a39a;">use</span>([K.PR], (s) =&gt; <span style="color:#15a39a;">format_reviewer_message</span>(<span style="color:#15a39a;">read_pr</span>(s))),<br>  reviewer_call,<br>  <span style="color:#15a39a;">step</span>(<span style="color:#D6982A;">'extract_suggestions'</span>, (r) =&gt; r.content.suggestions),<br>])</div>
+      </div>
+      <div style="margin-top:16px; font-family:'JetBrains Mono',monospace; font-size:12.5px; color:#8a8278;">Format from named state → call the model → extract the typed payload. Nothing else. Readers learn to see the three-step sequence as one unit.</div>
+    </div>
+  </div>
+
+  <!-- ===================== TIERS ===================== -->
+  <div id="tiers" style="position:relative; padding:96px 40px; max-width:1320px; margin:0 auto;">
+    <div style="font-family:'JetBrains Mono',monospace; font-size:13px; letter-spacing:3px; color:#C0521F; margin-bottom:18px;">02 · PICK THE RIGHT TIER FIRST</div>
+    <h2 style="font-family:'DM Serif Display',serif; font-weight:400; font-size:54px; line-height:1; margin:0;">Not every app should be a <span style="font-style:italic;">full composition.</span></h2>
+    <p style="font-size:18px; line-height:1.6; color:#3a342e; max-width:700px; margin:18px 0 52px;">Fascicle has three useful adoption tiers. Pick the smallest one that keeps your topology legible — and pick it <em>per subsystem</em>, not per project. A deterministic CLI can be tier 1 while its eval harness is tier 2.</p>
+
+    <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:24px;">
+      <div style="background:#EFE3CE; border:3px solid #211C17; box-shadow:1px 1px 0 #211C17, 2px 2px 0 #211C17, 3px 3px 0 #211C17, 4px 4px 0 #211C17, 5px 5px 0 #211C17, 6px 6px 0 #211C17; padding:28px;">
+        <div style="font-family:'JetBrains Mono',monospace; font-size:12px; letter-spacing:2px; color:#C0521F; margin-bottom:10px;">TIER 1</div>
+        <div style="font-family:'DM Serif Display',serif; font-size:30px; color:#C0521F; line-height:1.05;">Engine only</div>
+        <p style="font-size:14.5px; line-height:1.55; color:#3a342e; margin:14px 0 0;">A plain async pipeline; model calls are leaf functions behind a small app-owned port. Fascicle owns provider portability, schema enforcement, retries, and cost — you never adopt the composition algebra.</p>
+        <div style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#7A5230; margin-top:16px; line-height:1.6;">REACH FOR IT WHEN → the pipeline is deterministic code and the model is a subroutine.</div>
+      </div>
+      <div style="background:#EFE3CE; border:3px solid #211C17; box-shadow:1px 1px 0 #211C17, 2px 2px 0 #211C17, 3px 3px 0 #211C17, 4px 4px 0 #211C17, 5px 5px 0 #211C17, 6px 6px 0 #211C17; padding:28px;">
+        <div style="font-family:'JetBrains Mono',monospace; font-size:12px; letter-spacing:2px; color:#15706A; margin-bottom:10px;">TIER 2</div>
+        <div style="font-family:'DM Serif Display',serif; font-size:30px; color:#15706A; line-height:1.05;">Orchestrated loop</div>
+        <p style="font-size:14.5px; line-height:1.55; color:#3a342e; margin:14px 0 0;">Fascicle's <span style="font-family:'JetBrains Mono',monospace; font-size:13px;">loop</span> / <span style="font-family:'JetBrains Mono',monospace; font-size:13px;">sequence</span> at the top and nothing else; each step delegates to a phase module. Trajectory, resume, abort, and cost caps fall out for free.</p>
+        <div style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#7A5230; margin-top:16px; line-height:1.6;">REACH FOR IT WHEN → an iterative build / check / critique loop wants resume and observability.</div>
+      </div>
+      <div style="background:#EFE3CE; border:3px solid #211C17; box-shadow:1px 1px 0 #211C17, 2px 2px 0 #211C17, 3px 3px 0 #211C17, 4px 4px 0 #211C17, 5px 5px 0 #211C17, 6px 6px 0 #211C17; padding:28px;">
+        <div style="font-family:'JetBrains Mono',monospace; font-size:12px; letter-spacing:2px; color:#A8336A; margin-bottom:10px;">TIER 3</div>
+        <div style="font-family:'DM Serif Display',serif; font-size:30px; color:#A8336A; line-height:1.05;">Composition-first</div>
+        <p style="font-size:14.5px; line-height:1.55; color:#3a342e; margin:14px 0 0;">Fascicle owns the whole topology; you write leaf functions only. The full blueprint — the standard layout, stage factories, state readers — assumes this tier.</p>
+        <div style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#7A5230; margin-top:16px; line-height:1.6;">REACH FOR IT WHEN → a multi-stage model pipeline has branches, fan-out, or convergence, and stages should be swappable.</div>
+      </div>
+    </div>
+
+    <div style="margin-top:40px; border-left:6px solid #C0521F; padding:6px 0 6px 24px;">
+      <div style="font-family:'DM Serif Display',serif; font-size:26px; line-height:1.25; color:#211C17; max-width:900px;">Over-composing is as real a failure as under-composing. A single-step "flow" that exists only to produce a span name is <span style="font-style:italic; color:#C0521F;">composition theater</span> — a plain function is honest. An <span style="font-family:'JetBrains Mono',monospace; font-size:19px;">if</span> buried in a step body that another pipeline wants to compose around should be a <span style="font-family:'JetBrains Mono',monospace; font-size:19px;">branch</span>.</div>
+    </div>
+  </div>
+
+  <!-- ===================== MODULE CONTRACTS ===================== -->
+  <div id="layout" style="position:relative; background:#EFE3CE; border-top:3px solid #211C17; border-bottom:3px solid #211C17; padding:96px 40px;">
+    <div style="max-width:1320px; margin:0 auto;">
+      <div style="font-family:'JetBrains Mono',monospace; font-size:13px; letter-spacing:3px; color:#C0521F; margin-bottom:18px;">03 · MODULE CONTRACTS</div>
+      <h2 style="font-family:'DM Serif Display',serif; font-weight:400; font-size:54px; line-height:1; margin:0;">Each module has <span style="font-style:italic; color:#15706A;">one reason to exist.</span></h2>
+      <p style="font-size:18px; line-height:1.6; color:#3a342e; max-width:700px; margin:18px 0 44px;">The names matter less than the contracts. What kills legibility is not calling the file <span style="font-family:'JetBrains Mono',monospace; font-size:15px;">pipeline.ts</span> instead of <span style="font-family:'JetBrains Mono',monospace; font-size:15px;">flow.ts</span> — it is a message builder implemented inline in the flow, or a <span style="font-family:'JetBrains Mono',monospace; font-size:15px;">model_call</span> hidden in a service.</p>
+
+      <div style="border:3px solid #211C17; box-shadow:1px 1px 0 #211C17, 2px 2px 0 #211C17, 3px 3px 0 #211C17, 4px 4px 0 #211C17, 5px 5px 0 #211C17, 6px 6px 0 #211C17, 7px 7px 0 #211C17, 8px 8px 0 #211C17; overflow:hidden; background:#F4EBDB;">
+        <table style="width:100%; border-collapse:collapse; font-size:14px;">
+          <thead>
+            <tr style="background:#211C17; color:#F4EBDB; font-family:'JetBrains Mono',monospace;">
+              <th style="text-align:left; padding:13px 18px; letter-spacing:1px; font-size:13px;">MODULE</th>
+              <th style="text-align:left; padding:13px 18px; font-weight:500; font-size:13px;">OWNS</th>
+              <th style="text-align:left; padding:13px 18px; font-weight:500; font-size:13px;">MUST NOT CONTAIN</th>
+            </tr>
+          </thead>
+          <tbody>
+            <sc-for list="{{ contracts }}" as="c" hint-placeholder-count="11">
+              <tr style="border-top:2px solid #211C17; background:{{ c.bg }};">
+                <td style="padding:11px 18px; font-family:'JetBrains Mono',monospace; font-size:13.5px; font-weight:700; color:{{ c.accent }}; white-space:nowrap;">{{ c.name }}</td>
+                <td style="padding:11px 18px; color:#3a342e;">{{ c.owns }}</td>
+                <td style="padding:11px 18px; color:#8a4a4a;">{{ c.not }}</td>
+              </tr>
+            </sc-for>
+          </tbody>
+        </table>
+      </div>
+
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:24px; margin-top:44px;">
+        <div style="border-left:3px solid #C0521F; padding:4px 0 4px 18px;">
+          <div style="font-weight:700; font-size:16px;">Prompts are markdown, not string literals</div>
+          <div style="font-size:14.5px; line-height:1.55; color:#5a5249; margin-top:6px;">One <span style="font-family:'JetBrains Mono',monospace; font-size:13px;">.md</span> file per role, with frontmatter for per-role model defaults. A prompt diff in review is a prompt diff, not a code diff with noise. Static instruction lives in markdown; dynamic assembly lives in <span style="font-family:'JetBrains Mono',monospace; font-size:13px;">messages.ts</span>. Simple agents load them with <span style="font-family:'JetBrains Mono',monospace; font-size:13px;">define_agent</span>; stage factories load the body as <span style="font-family:'JetBrains Mono',monospace; font-size:13px;">system</span>.</div>
+        </div>
+        <div style="border-left:3px solid #15706A; padding:4px 0 4px 18px;">
+          <div style="font-weight:700; font-size:16px;">Schemas are the contracts</div>
+          <div style="font-size:14.5px; line-height:1.55; color:#5a5249; margin-top:6px;">One zod schema per model boundary in <span style="font-family:'JetBrains Mono',monospace; font-size:13px;">types.ts</span>; pass it to <span style="font-family:'JetBrains Mono',monospace; font-size:13px;">model_call({ schema })</span> and read <span style="font-family:'JetBrains Mono',monospace; font-size:13px;">r.content</span> fully typed. Field constraints belong in <span style="font-family:'JetBrains Mono',monospace; font-size:13px;">.describe()</span>; the prompt states the role. One home per rule — never both.</div>
+        </div>
+        <div style="border-left:3px solid #A8336A; padding:4px 0 4px 18px;">
+          <div style="font-weight:700; font-size:16px;">Quarantine the casts</div>
+          <div style="font-size:14.5px; line-height:1.55; color:#5a5249; margin-top:6px;">Scope state is a string-keyed map of <span style="font-family:'JetBrains Mono',monospace; font-size:13px;">unknown</span>; something has to cast. Concentrate all of it in <span style="font-family:'JetBrains Mono',monospace; font-size:13px;">state.ts</span> — key constants and typed <span style="font-family:'JetBrains Mono',monospace; font-size:13px;">read_*</span> helpers, adjacent, visible in one screenful.</div>
+        </div>
+        <div style="border-left:3px solid #7A5230; padding:4px 0 4px 18px;">
+          <div style="font-weight:700; font-size:16px;">Test with a stub engine, not a mocked flow</div>
+          <div style="font-size:14.5px; line-height:1.55; color:#5a5249; margin-top:6px;">The <span style="font-family:'JetBrains Mono',monospace; font-size:13px;">Engine</span> type is a small interface — a scripted stub is ~40 lines and runs the <em>real</em> flow through the <em>real</em> <span style="font-family:'JetBrains Mono',monospace; font-size:13px;">run()</span> with zero network. Route canned responses by the prompt's stable first line; validate fixtures through the caller's own schema so they can never drift.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== ANTI-PATTERNS ===================== -->
+  <div id="antipatterns" style="position:relative; padding:96px 40px; max-width:1320px; margin:0 auto;">
+    <div style="font-family:'JetBrains Mono',monospace; font-size:13px; letter-spacing:3px; color:#C0521F; margin-bottom:18px;">04 · ANTI-PATTERNS</div>
+    <h2 style="font-family:'DM Serif Display',serif; font-weight:400; font-size:54px; line-height:1; margin:0;">Observed <span style="font-style:italic; color:#A8336A;">in the wild.</span></h2>
+    <p style="font-size:18px; line-height:1.6; color:#3a342e; max-width:660px; margin:18px 0 48px;">Every one of these earned its place in the blueprint by the pain of its presence in a real codebase. The fix is in each card.</p>
+
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:18px;">
+      <sc-for list="{{ antipatterns }}" as="a" hint-placeholder-count="10">
+        <div style="background:#F4EBDB; border:3px solid #211C17; box-shadow:1px 1px 0 #211C17, 2px 2px 0 #211C17, 3px 3px 0 #211C17, 4px 4px 0 #211C17; padding:20px 22px; display:flex; gap:16px;">
+          <div style="font-family:'DM Serif Display',serif; font-size:30px; color:#A8336A; line-height:1; flex:none;">{{ a.n }}</div>
+          <div>
+            <div style="font-weight:700; font-size:15.5px;">{{ a.title }}</div>
+            <div style="font-size:14px; line-height:1.5; color:#5a5249; margin-top:5px;">{{ a.body }}</div>
+            <div style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#15706A; margin-top:8px;">FIX → {{ a.fix }}</div>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+
+  <!-- ===================== ENFORCE ===================== -->
+  <div style="position:relative; background:#211C17; color:#F4EBDB; border-top:3px solid #211C17; padding:96px 40px;">
+    <div style="max-width:1320px; margin:0 auto; display:flex; gap:64px; align-items:flex-start;">
+      <div style="flex:none; width:440px;">
+        <div style="font-family:'JetBrains Mono',monospace; font-size:13px; letter-spacing:3px; color:#D6982A; margin-bottom:18px;">05 · ENFORCE IT WITH RULES</div>
+        <h2 style="font-family:'DM Serif Display',serif; font-weight:400; font-size:50px; line-height:1.02; margin:0; color:#F4EBDB;">Conventions decay. <span style="font-style:italic; color:#D6982A;">Machine-checked conventions don't.</span></h2>
+        <p style="font-size:17px; line-height:1.6; color:#C9C0AE; margin:24px 0 0;">The consumers that stayed clean all enforce the blueprint with <a href="https://ast-grep.github.io/" style="color:#D6982A; border-bottom:1px solid #D6982A;">ast-grep</a> rules in CI: <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">create_engine</span> confined to <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">engine.ts</span>, no imperative loops in the composition layer, fascicle value imports confined to the files allowed to know about it.</p>
+        <p style="font-size:17px; line-height:1.6; color:#C9C0AE; margin:18px 0 0;">Working, tested copies of all three rules ship in the reference app — copy the directory into your own app as a starting point. Each rule is a few lines, and each turns an architecture review comment into a build failure.</p>
+        <a href="https://github.com/robmclarty/fascicle/tree/main/examples/pr-improve/rules" style="display:inline-block; margin-top:28px; background:#C0521F; color:#F4EBDB; font-weight:700; font-size:14px; padding:13px 24px; border:3px solid #F4EBDB; box-shadow:1px 1px 0 #C0521F, 2px 2px 0 #C0521F, 3px 3px 0 #C0521F, 4px 4px 0 #C0521F, 5px 5px 0 #C0521F;">Copy the rules →</a>
+      </div>
+
+      <div style="flex:1; min-width:0;">
+        <div style="border:3px solid #F4EBDB;">
+          <div style="display:flex; align-items:center; justify-content:space-between; padding:12px 16px; border-bottom:1px solid #4a443c; background:#26211b;">
+            <div style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#8a8278;">rules/create-engine-only-in-engine.yml</div>
+            <button onClick="{{ copy }}" data-orig="COPY" data-copy="id: create-engine-only-in-engine
+message: 'create_engine may be called in exactly one file: src/engine.ts.'
+severity: error
+language: typescript
+files:
+  - src/**/*.ts
+ignores:
+  - src/**/__tests__/**
+  - src/engine.ts
+rule:
+  pattern: create_engine($$$)" style="background:transparent; color:#8a8278; font-family:'JetBrains Mono',monospace; font-size:11px; letter-spacing:1px; border:1px solid #4a443c; padding:5px 11px; cursor:pointer;">COPY</button>
+          </div>
+          <div style="padding:24px 26px; font-family:'JetBrains Mono',monospace; font-size:14px; line-height:1.9; color:#E8DFCD; white-space:pre; overflow-x:auto;"><span style="color:#15a39a;">id</span>: create-engine-only-in-engine<br><span style="color:#15a39a;">message</span>: <span style="color:#D6982A;">"create_engine may be called in exactly one file: src/engine.ts."</span><br><span style="color:#15a39a;">severity</span>: <span style="color:#A8336A;">error</span><br><span style="color:#15a39a;">language</span>: typescript<br><span style="color:#15a39a;">files</span>:<br>  - src/**/*.ts<br><span style="color:#15a39a;">ignores</span>:<br>  - src/**/__tests__/**<br>  - src/engine.ts<br><span style="color:#15a39a;">rule</span>:<br>  <span style="color:#15a39a;">pattern</span>: <span style="color:#C0521F;">create_engine($$$)</span></div>
+        </div>
+        <div style="margin-top:18px; font-family:'JetBrains Mono',monospace; font-size:12.5px; color:#8a8278;">Runnable in the repo: pnpm --filter ./examples/pr-improve check:rules</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== CHECKLIST / CTA ===================== -->
+  <div style="position:relative; background:#C0521F; border-top:3px solid #211C17; padding:96px 40px; overflow:hidden;">
+    <div style="position:absolute; top:-40px; right:-30px; width:280px; height:280px; background-image:radial-gradient(#211C17 3px, transparent 3.5px); background-size:18px 18px; opacity:0.25; transform:rotate(-8deg);"></div>
+    <div style="position:relative; max-width:1000px; margin:0 auto;">
+      <h2 style="font-family:'DM Serif Display',serif; font-weight:400; font-size:56px; line-height:1; margin:0; color:#F4EBDB;">Before calling an agent app done.</h2>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px 40px; margin:40px 0 0; font-size:15.5px; line-height:1.5; color:#FBEEDC;">
+        <div style="display:flex; gap:12px;"><span style="font-family:'JetBrains Mono',monospace; color:#211C17; font-weight:700;">☐</span><span>One composition layer, fascicle vocabulary only; the header diagram matches the code.</span></div>
+        <div style="display:flex; gap:12px;"><span style="font-family:'JetBrains Mono',monospace; color:#211C17; font-weight:700;">☐</span><span><span style="font-family:'JetBrains Mono',monospace; font-size:13.5px;">create_engine</span> in exactly one file; provider swap is one env var; disposal in <span style="font-family:'JetBrains Mono',monospace; font-size:13.5px;">finally</span>.</span></div>
+        <div style="display:flex; gap:12px;"><span style="font-family:'JetBrains Mono',monospace; color:#211C17; font-weight:700;">☐</span><span>Every model boundary has a zod schema; stages return <span style="font-family:'JetBrains Mono',monospace; font-size:13.5px;">Step&lt;In, GenerateResult&lt;Out&gt;&gt;</span>.</span></div>
+        <div style="display:flex; gap:12px;"><span style="font-family:'JetBrains Mono',monospace; color:#211C17; font-weight:700;">☐</span><span>System prompts are markdown with frontmatter; dynamic content assembled in <span style="font-family:'JetBrains Mono',monospace; font-size:13.5px;">messages.ts</span>.</span></div>
+        <div style="display:flex; gap:12px;"><span style="font-family:'JetBrains Mono',monospace; color:#211C17; font-weight:700;">☐</span><span>Scope-state casts live only in <span style="font-family:'JetBrains Mono',monospace; font-size:13.5px;">state.ts</span> readers; tools re-parse inputs and share one confinement helper.</span></div>
+        <div style="display:flex; gap:12px;"><span style="font-family:'JetBrains Mono',monospace; color:#211C17; font-weight:700;">☐</span><span>The flow runs end to end against a stub engine; boundaries are enforced by lint rules, not memory.</span></div>
+      </div>
+      <div style="margin-top:48px; display:flex; gap:16px; flex-wrap:wrap;">
+        <a href="https://github.com/robmclarty/fascicle/blob/main/docs/blueprint.md" style="display:inline-block; background:#F4EBDB; color:#211C17; font-weight:700; font-size:15px; padding:15px 30px; border:3px solid #211C17;" class="fc-btn"><span class="fc-btn-label">Read the full blueprint →</span></a>
+        <a href="docs.html" style="display:inline-block; background:#211C17; color:#F4EBDB; font-weight:700; font-size:15px; padding:15px 30px; border:3px solid #211C17;" class="fc-btn"><span class="fc-btn-label">Open the docs</span></a>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== FOOTER ===================== -->
+  <div style="position:relative; background:#211C17; color:#C9C0AE; padding:56px 40px 44px;">
+    <div style="max-width:1320px; margin:0 auto; display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:40px;">
+      <div style="max-width:340px;">
+        <div style="display:flex; align-items:center; gap:12px; margin-bottom:16px;">
+          <div style="width:20px; height:20px; background:#C0521F; border:2px solid #F4EBDB;"></div>
+          <div style="font-family:'JetBrains Mono',monospace; font-weight:700; font-size:18px; letter-spacing:2px; color:#F4EBDB;">FASCICLE</div>
+        </div>
+        <p style="font-size:14px; line-height:1.6; margin:0;">Composable TypeScript toolkit for agentic workflows. Compose LLM calls, tools, and plain functions into a Step&lt;i, o&gt;.</p>
+        <div style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#7A5230; margin-top:20px;">Apache-2.0 · © 2026</div>
+      </div>
+      <div style="display:flex; gap:64px; flex-wrap:wrap;">
+        <div>
+          <div style="font-family:'JetBrains Mono',monospace; font-size:12px; letter-spacing:2px; color:#D6982A; margin-bottom:14px;">DOCS</div>
+          <div style="display:flex; flex-direction:column; gap:10px; font-size:14px;">
+            <a href="docs.html">Getting started</a>
+            <a href="docs.html">Concepts</a>
+            <a href="docs.html">Primitives</a>
+            <a href="blueprint.html">Architecture</a>
+          </div>
+        </div>
+        <div>
+          <div style="font-family:'JetBrains Mono',monospace; font-size:12px; letter-spacing:2px; color:#D6982A; margin-bottom:14px;">BLUEPRINT</div>
+          <div style="display:flex; flex-direction:column; gap:10px; font-size:14px;">
+            <a href="https://github.com/robmclarty/fascicle/blob/main/docs/blueprint.md">Full spec</a>
+            <a href="https://github.com/robmclarty/fascicle/tree/main/examples/pr-improve">Reference app</a>
+            <a href="https://github.com/robmclarty/fascicle/tree/main/examples/pr-improve/rules">ast-grep rules</a>
+          </div>
+        </div>
+        <div>
+          <div style="font-family:'JetBrains Mono',monospace; font-size:12px; letter-spacing:2px; color:#D6982A; margin-bottom:14px;">PROJECT</div>
+          <div style="display:flex; flex-direction:column; gap:10px; font-size:14px;">
+            <a href="https://github.com/robmclarty/fascicle">GitHub</a>
+            <a href="https://github.com/robmclarty/fascicle/blob/main/LICENSE">License</a>
+            <a href="https://github.com/robmclarty/fascicle/blob/main/CHANGELOG.md">Changelog</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<template id="__bundler_thumbnail" data-bg-color="#F4EBDB">
+  <svg viewBox="0 0 1200 800" xmlns="http://www.w3.org/2000/svg">
+    <rect width="1200" height="800" fill="#F4EBDB"/>
+    <rect x="518" y="286" width="164" height="164" fill="#15706A" stroke="#211C17" stroke-width="12"/>
+    <text x="600" y="556" font-family="monospace" font-size="58" font-weight="700" fill="#211C17" text-anchor="middle" letter-spacing="8">BLUEPRINT</text>
+  </svg>
+</template></x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  copy(e) {
+    const t = e.currentTarget;
+    const text = t.getAttribute('data-copy') || '';
+    try { if (navigator.clipboard) navigator.clipboard.writeText(text); } catch (_) {}
+    const orig = t.getAttribute('data-orig') || t.textContent;
+    t.setAttribute('data-orig', orig);
+    t.textContent = 'COPIED ✓';
+    clearTimeout(t._t);
+    t._t = setTimeout(() => { t.textContent = orig; }, 1300);
+  }
+
+  renderVals() {
+    const accents = ['#C0521F', '#15706A', '#A8336A', '#7A5230'];
+    const cdef = [
+      ['flow.ts', 'topology, in fascicle vocabulary', 'string building, IO, business logic, `as` casts'],
+      ['engine.ts', 'env to create_engine, provider selection', 'anything about the flow'],
+      ['stages/', 'one model_call factory per role, prompt loading', 'message formatting, result extraction'],
+      ['prompts/', 'static role instruction as markdown', 'code, dynamic content'],
+      ['messages.ts', 'user-message assembly from typed inputs', 'fascicle imports'],
+      ['types.ts', 'zod schemas plus inferred types', 'logic'],
+      ['state.ts', 'stash key constants, typed readers', 'anything except keys and readers'],
+      ['tools/', 'Tool factories, shared safety, limits', 'prompt text, flow knowledge'],
+      ['render.ts', 'output artifacts (markdown, JSON reports)', 'model calls'],
+      ['services/', 'side-effecting domain IO', 'fascicle imports'],
+      ['main.ts', 'argv/HTTP in, run(...), adapters, disposal', 'composition'],
+    ];
+    const contracts = cdef.map(([name, owns, not], i) => ({
+      name, owns, not, accent: accents[i % 4], bg: i % 2 ? '#EFE3CE' : '#F4EBDB',
+    }));
+
+    const adef = [
+      ['Scattered fascicle calls', 'model_call and combinators sprinkled through business logic. The topology becomes unreadable and unswappable.', 'gather into one composition layer, or drop to tier 1 behind a port'],
+      ['Control flow buried in step bodies', 'An if / for / try-fallback inside a step is invisible to trajectories and to describe().', 'lift to branch / loop / fallback'],
+      ['Composition theater', 'Single-step flows whose only contribution is a span name; combinator chains around a linear two-call sequence.', 'collapse to a step, or to plain code behind a port'],
+      ['Two sources of truth for model defaults', 'Defaults in engine.ts, redefined in main.ts, env overrides parsed but never reaching the flow.', 'one role-to-model table, resolved once, passed as data'],
+      ['Output rules stated in three places', 'System prompt, .describe(), and an auditor prompt — three copies to keep in sync.', 'one home per rule: schema for field constraints, prompt for the role'],
+      ['Mutable closures smuggled through the graph', 'let stopped = false captured by three steps.', 'loop carry-state and accretion result types'],
+      ['Stringly-typed cross-module contracts', "Matching on err.message === 'Retries exhausted'; duck-typing provider blobs.", 'typed error kinds and typed accessors'],
+      ['Capability built ahead of adoption', 'Exported atoms and adapters no production path calls. Dead abstraction reads as load-bearing.', 'build the layer when the second caller arrives'],
+      ['Anonymous steps in observed flows', 'checkpoint rejects them at construction; unnamed spans make trajectories unreadable.', 'name every step you might resume or watch'],
+      ['Workarounds without an exit condition', 'A substrate-bug workaround with no note on when it can die.', 'cite the version and state what change lets you delete it'],
+    ];
+    const antipatterns = adef.map(([title, body, fix], i) => ({ n: String(i + 1).padStart(2, '0'), title, body, fix }));
+
+    return { contracts, antipatterns, copy: (e) => this.copy(e) };
+  }
+}
+</script>
+</body>
+</html>

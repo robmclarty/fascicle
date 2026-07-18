@@ -42,6 +42,7 @@
     </div>
     <div style="display:flex; gap:26px; align-items:center; font-size:14px; font-weight:500;">
       <a href="index.html">Home</a>
+      <a href="blueprint.html">Architecture</a>
       <a id="gh-stars" href="https://github.com/robmclarty/fascicle" style="background:#211C17; color:#F4EBDB; padding:8px 16px; font-family:'JetBrains Mono',monospace; font-size:12px; letter-spacing:1px; white-space:nowrap;">GITHUB</a>
     </div>
   </div>
@@ -121,6 +122,11 @@ try {
             <div onClick="{{ goConcepts }}" style="cursor:pointer; background:#C0521F; color:#F4EBDB; font-weight:700; font-size:15px; padding:14px 26px; border:3px solid #211C17;" class="fc-btn"><span class="fc-btn-label">Next: Concepts →</span></div>
             <div onClick="{{ goProviders }}" style="cursor:pointer; background:#F4EBDB; color:#211C17; font-weight:700; font-size:15px; padding:14px 26px; border:3px solid #211C17;" class="fc-btn"><span class="fc-btn-label">Configure a provider →</span></div>
           </div>
+
+          <div style="margin-top:44px; background:#EFE3CE; border:3px solid #211C17; box-shadow:1px 1px 0 #211C17, 2px 2px 0 #211C17, 3px 3px 0 #211C17, 4px 4px 0 #211C17, 5px 5px 0 #211C17; padding:24px 28px;">
+            <div style="font-family:'JetBrains Mono',monospace; font-size:12px; letter-spacing:2px; color:#15706A; margin-bottom:10px;">BUILDING A WHOLE APP?</div>
+            <div style="font-size:15.5px; line-height:1.6; color:#3a342e;">Once your flow outgrows one file, follow <a href="blueprint.html" style="color:#C0521F; font-weight:700; border-bottom:2px solid #C0521F;">the agent blueprint</a> — the standard architecture for fascicle apps: one composition layer, markdown prompts, module contracts, and ast-grep rules to enforce the boundaries.</div>
+          </div>
         </div>
       </sc-if>
 
@@ -137,7 +143,7 @@ try {
             <div style="background:#EFE3CE; border:3px solid #211C17; box-shadow:1px 1px 0 #211C17, 2px 2px 0 #211C17, 3px 3px 0 #211C17, 4px 4px 0 #211C17, 5px 5px 0 #211C17; padding:22px;">
               <div style="font-family:'JetBrains Mono',monospace; font-size:14px; font-weight:700; color:#C0521F;">core</div>
               <div style="font-family:'DM Serif Display',serif; font-size:24px; margin:6px 0 8px;">Composition</div>
-              <div style="font-size:14px; line-height:1.55; color:#3a342e;">18 primitives for composing work out of plain values. No network, no LLM calls, no ambient state.</div>
+              <div style="font-size:14px; line-height:1.55; color:#3a342e;">21 primitives for composing work out of plain values. No network, no LLM calls, no ambient state.</div>
             </div>
             <div style="background:#EFE3CE; border:3px solid #211C17; box-shadow:1px 1px 0 #211C17, 2px 2px 0 #211C17, 3px 3px 0 #211C17, 4px 4px 0 #211C17, 5px 5px 0 #211C17; padding:22px;">
               <div style="font-family:'JetBrains Mono',monospace; font-size:14px; font-weight:700; color:#15706A;">engine</div>
@@ -182,11 +188,11 @@ const output = await handle.result" style="background:transparent; color:#8a8278
       <sc-if value="{{ isPrimitives }}">
         <div>
           <div style="font-family:'JetBrains Mono',monospace; font-size:12px; letter-spacing:3px; color:#C0521F; margin-bottom:14px;">CORE · API REFERENCE</div>
-          <h1 style="font-family:'DM Serif Display',serif; font-weight:400; font-size:60px; line-height:1; margin:0 0 20px;">The 18 primitives</h1>
+          <h1 style="font-family:'DM Serif Display',serif; font-weight:400; font-size:60px; line-height:1; margin:0 0 20px;">The 21 primitives</h1>
           <p style="font-size:18px; line-height:1.6; color:#3a342e; max-width:660px;">Every composer takes a <span style="font-family:'JetBrains Mono',monospace; font-size:15px;">Step&lt;i, o&gt;</span> and returns one. Click any primitive to expand its signature and an example.</p>
 
           <div style="margin-top:32px; display:flex; flex-direction:column; gap:12px;">
-            <sc-for list="{{ primitives }}" as="p" hint-placeholder-count="18">
+            <sc-for list="{{ primitives }}" as="p" hint-placeholder-count="21">
               <div style="border:3px solid #211C17; box-shadow:1px 1px 0 #211C17, 2px 2px 0 #211C17, 3px 3px 0 #211C17, 4px 4px 0 #211C17; background:#F4EBDB;">
                 <div onClick="{{ p.toggle }}" style="cursor:pointer; display:flex; align-items:center; gap:16px; padding:16px 20px;">
                   <div style="font-family:'JetBrains Mono',monospace; font-size:18px; font-weight:700; color:{{ p.color }}; min-width:130px;">{{ p.name }}</div>
@@ -215,7 +221,7 @@ const output = await handle.result" style="background:transparent; color:#8a8278
           <h2 style="font-family:'DM Serif Display',serif; font-weight:400; font-size:32px; margin:48px 0 16px;">The config shape</h2>
           <div style="border:3px solid #211C17; box-shadow:1px 1px 0 #211C17, 2px 2px 0 #211C17, 3px 3px 0 #211C17, 4px 4px 0 #211C17, 5px 5px 0 #211C17;">
             <div style="display:flex; align-items:center; justify-content:space-between; padding:11px 16px; background:#26211b; border-bottom:1px solid #4a443c;"><span style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#8a8278;">EngineConfig</span></div>
-            <div style="white-space:pre; overflow-x:auto; background:#211C17; color:#E8DFCD; padding:20px; font-family:'JetBrains Mono',monospace; font-size:14px; line-height:1.85;"><span style="color:#A8336A;">type</span> <span style="color:#15a39a;">EngineConfig</span> = {<br>  providers: <span style="color:#15a39a;">ProviderConfigMap</span>     <span style="color:#6f675c;">// required</span><br>  pricing?: <span style="color:#15a39a;">PricingTable</span><br>  defaults?: <span style="color:#15a39a;">EngineDefaults</span><br>}</div>
+            <div style="white-space:pre; overflow-x:auto; background:#211C17; color:#E8DFCD; padding:20px; font-family:'JetBrains Mono',monospace; font-size:14px; line-height:1.85;"><span style="color:#A8336A;">type</span> <span style="color:#15a39a;">EngineConfig</span> = {<br>  providers: <span style="color:#15a39a;">ProviderConfigMap</span>     <span style="color:#6f675c;">// required</span><br>  custom_providers?: <span style="color:#15a39a;">Record</span>&lt;<span style="color:#15a39a;">string</span>, <span style="color:#15a39a;">ProviderFactory</span>&gt;<br>  pricing?: <span style="color:#15a39a;">PricingTable</span><br>  default_retry?: <span style="color:#15a39a;">RetryPolicy</span><br>  default_effort?: <span style="color:#15a39a;">EffortLevel</span><br>  default_max_steps?: <span style="color:#15a39a;">number</span><br>  defaults?: <span style="color:#15a39a;">EngineDefaults</span><br>}</div>
           </div>
 
           <h2 style="font-family:'DM Serif Display',serif; font-weight:400; font-size:32px; margin:48px 0 16px;">Engine defaults</h2>
@@ -239,7 +245,7 @@ const result = await engine.generate({ prompt: 'hello' })" style="background:tra
           <p style="font-size:16px; line-height:1.6; color:#3a342e; margin-bottom:18px;">Retries apply only to provider-side failures — 429s, 5xx, and network errors. Backoff is exponential with jitter; <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">Retry-After</span> always wins.</p>
           <div style="border:3px solid #211C17; box-shadow:1px 1px 0 #211C17, 2px 2px 0 #211C17, 3px 3px 0 #211C17, 4px 4px 0 #211C17, 5px 5px 0 #211C17;">
             <div style="display:flex; align-items:center; justify-content:space-between; padding:11px 16px; background:#26211b; border-bottom:1px solid #4a443c;"><span style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#8a8278;">DEFAULT_RETRY</span></div>
-            <div style="white-space:pre; overflow-x:auto; background:#211C17; color:#E8DFCD; padding:20px; font-family:'JetBrains Mono',monospace; font-size:14px; line-height:1.85;"><span style="color:#C0521F;">const</span> DEFAULT_RETRY: <span style="color:#15a39a;">RetryPolicy</span> = {<br>  max_attempts: <span style="color:#D6982A;">3</span>,<br>  initial_delay_ms: <span style="color:#D6982A;">500</span>,<br>  max_delay_ms: <span style="color:#D6982A;">30_000</span>,<br>  retry_on: [<span style="color:#D6982A;">'rate_limit'</span>, <span style="color:#D6982A;">'provider_5xx'</span>, <span style="color:#D6982A;">'network'</span>],<br>}</div>
+            <div style="white-space:pre; overflow-x:auto; background:#211C17; color:#E8DFCD; padding:20px; font-family:'JetBrains Mono',monospace; font-size:14px; line-height:1.85;"><span style="color:#C0521F;">const</span> DEFAULT_RETRY: <span style="color:#15a39a;">RetryPolicy</span> = {<br>  max_attempts: <span style="color:#D6982A;">3</span>,<br>  initial_delay_ms: <span style="color:#D6982A;">500</span>,<br>  max_delay_ms: <span style="color:#D6982A;">30_000</span>,<br>  retry_on: [<span style="color:#D6982A;">'rate_limit'</span>, <span style="color:#D6982A;">'provider_5xx'</span>, <span style="color:#D6982A;">'network'</span>, <span style="color:#D6982A;">'timeout'</span>],<br>}</div>
           </div>
 
           <h2 style="font-family:'DM Serif Display',serif; font-weight:400; font-size:32px; margin:48px 0 16px;">Lifecycle</h2>
@@ -252,7 +258,7 @@ const result = await engine.generate({ prompt: 'hello' })" style="background:tra
         <div>
           <div style="font-family:'JetBrains Mono',monospace; font-size:12px; letter-spacing:3px; color:#C0521F; margin-bottom:14px;">ENGINE</div>
           <h1 style="font-family:'DM Serif Display',serif; font-weight:400; font-size:60px; line-height:1; margin:0 0 20px;">Providers</h1>
-          <p style="font-size:18px; line-height:1.6; color:#3a342e; max-width:680px;">Eight adapters ship with the engine layer. Seven wrap Vercel's AI SDK; the eighth, <span style="font-family:'JetBrains Mono',monospace; font-size:15px;">claude_cli</span>, spawns the <span style="font-family:'JetBrains Mono',monospace; font-size:15px;">claude</span> binary. Each SDK is an optional peer.</p>
+          <p style="font-size:18px; line-height:1.6; color:#3a342e; max-width:680px;">Eight adapters ship with the engine layer. Seven wrap Vercel's AI SDK by default — and five of those (<span style="font-family:'JetBrains Mono',monospace; font-size:14px;">anthropic</span>, <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">openai</span>, <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">openrouter</span>, <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">lmstudio</span>, <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">ollama</span>) can instead run <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">transport: 'native'</span>: raw HTTP, no AI SDK in the path, no peer to install. The eighth, <span style="font-family:'JetBrains Mono',monospace; font-size:15px;">claude_cli</span>, spawns the <span style="font-family:'JetBrains Mono',monospace; font-size:15px;">claude</span> binary. Each SDK is an optional peer.</p>
 
           <h2 style="font-family:'DM Serif Display',serif; font-weight:400; font-size:32px; margin:44px 0 16px;">Capability matrix</h2>
           <div style="border:3px solid #211C17; box-shadow:1px 1px 0 #211C17, 2px 2px 0 #211C17, 3px 3px 0 #211C17, 4px 4px 0 #211C17, 5px 5px 0 #211C17, 6px 6px 0 #211C17; overflow:hidden;">
@@ -322,7 +328,7 @@ const result = await engine.generate({ prompt: 'hello' })" style="background:tra
               </tbody>
             </table>
           </div>
-          <p style="font-size:13.5px; line-height:1.6; color:#7A5230; margin-top:14px; font-family:'JetBrains Mono',monospace;">ollama · lmstudio · claude_cli drop effort and record <span style="color:#A8336A;">effort_ignored</span> on the trajectory.</p>
+          <p style="font-size:13.5px; line-height:1.6; color:#7A5230; margin-top:14px; font-family:'JetBrains Mono',monospace;">ollama · lmstudio drop effort and record <span style="color:#A8336A;">effort_ignored</span> on the trajectory. claude_cli forwards it verbatim as <span style="color:#A8336A;">CLAUDE_CODE_EFFORT_LEVEL</span> in the subprocess env.</p>
         </div>
       </sc-if>
 
@@ -404,23 +410,26 @@ class Component extends DCLogic {
       ['step', 'COMPOSE', 'Lift a plain function into a Step<i, o>.', "step('double', (n) => n * 2)"],
       ['sequence', 'COMPOSE', 'Run A then B then C, threading each output into the next.', "sequence([\n  step('add', (n) => n + 1),\n  step('double', (n) => n * 2),\n])"],
       ['parallel', 'COMPOSE', 'Run a named map of steps concurrently.', "parallel({\n  title: write_title,\n  body:  write_body,\n})"],
-      ['branch', 'COMPOSE', 'Pick then / otherwise by a predicate on the input.', "branch(\n  (x) => x.score > 0.5,\n  ship_step,\n  revise_step,\n)"],
-      ['map', 'COMPOSE', 'Run a step per item, with an optional concurrency cap.', "map(summarize, { concurrency: 4 })"],
+      ['branch', 'COMPOSE', 'Route on when(input): then or otherwise.', "branch({\n  when: (x) => x.score > 0.5,\n  then: ship_step,\n  otherwise: revise_step,\n})"],
+      ['map', 'COMPOSE', 'Run do per item of items(input), with an optional concurrency cap.', "map({\n  items: (files) => files,\n  do: summarize,\n  concurrency: 4,\n})"],
       ['pipe', 'COMPOSE', "Post-process an inner step's output with a plain function.", "pipe(model_call({ engine }), (r) => r.content)"],
       ['compose', 'COMPOSE', 'Label a composite so it shows up by intent in trajectories.', "compose('draft-stage', sequence([\n  outline,\n  expand,\n]))"],
-      ['retry', 'RESILIENCE', 'Re-run on failure with exponential backoff and jitter.', "retry(flaky_step, {\n  max_attempts: 5,\n  initial_delay_ms: 250,\n})"],
+      ['retry', 'RESILIENCE', 'Re-run on failure with exponential backoff.', "retry(flaky_step, {\n  max_attempts: 5,\n  backoff_ms: 250,\n})"],
       ['fallback', 'RESILIENCE', 'Run a backup step if the primary throws.', "fallback(primary, backup)"],
       ['timeout', 'RESILIENCE', 'Cancel an inner step after N milliseconds.', "timeout(slow_step, 10_000)"],
-      ['adversarial', 'MULTI', 'Build, critique, loop until accept or max_rounds.', "adversarial({\n  build:    draft,\n  critique: judge,\n  max_rounds: 3,\n})"],
-      ['ensemble', 'MULTI', 'Run N members, pick the highest by score.', "ensemble([a, b, c], {\n  score: (out) => rate(out),\n})"],
-      ['tournament', 'MULTI', 'Single-elimination bracket between members.', "tournament([a, b, c, d], {\n  compare: pick_winner,\n})"],
-      ['consensus', 'MULTI', 'Run N members, accept only if a quorum agree.', "consensus([a, b, c], { quorum: 2 })"],
+      ['adversarial', 'MULTI', 'Build, critique, loop until accept or max_rounds.', "adversarial({\n  build:    draft,\n  critique: judge,\n  accept:   (c) => c.approved,\n  max_rounds: 3,\n})"],
+      ['ensemble', 'MULTI', 'Run named members, pick the highest by score.', "ensemble({\n  members: { a, b, c },\n  score: (out) => rate(out),\n})"],
+      ['ensemble_step', 'MULTI', 'Pick-best where the scorer is itself a Step, e.g. a model judge with its own span.', "ensemble_step({\n  members: { a, b, c },\n  score: judge,\n  rank_by: (r) => r.score,\n})"],
+      ['tournament', 'MULTI', 'Single-elimination bracket between members.', "tournament({\n  members: { a, b, c, d },\n  compare: pick_winner,\n})"],
+      ['consensus', 'MULTI', 'Run all members each round; accept when your agree(results) predicate holds.', "consensus({\n  members: { a, b, c },\n  agree: (r) => new Set(Object.values(r)).size === 1,\n  max_rounds: 3,\n})"],
       ['loop', 'STATE', 'Bounded iteration with carry-state and an optional convergence guard.', "loop({\n  init:   (topic) => topic,\n  body:   refine,\n  guard:  step('done', (s) => ({ stop: ok(s), state: s })),\n  finish: (s) => s,\n  max_rounds: 5,\n})"],
       ['checkpoint', 'STATE', 'Memoize a named inner step by key, via a store.', "checkpoint(expensive, {\n  key: (spec) => `build:${spec.hash}`,\n})"],
-      ['suspend', 'STATE', 'Pause for external input; resume with resume_data.', "suspend({\n  id: 'approve',\n  resume_schema: z.object({ approved: z.boolean() }),\n  combine: (input, r) => r.approved ? 'ship' : 'hold',\n})"],
+      ['suspend', 'STATE', 'Pause for external input; resume with resume_data.', "suspend({\n  id: 'approve',\n  on: (input) => notify(input),\n  resume_schema: z.object({ approved: z.boolean() }),\n  combine: (input, r) => r.approved ? 'ship' : 'hold',\n})"],
       ['scope', 'STATE', 'Stash named values and use them later without rewiring.', "scope([\n  stash('user_id', lookup),\n  use(['user_id'], publish),\n])"],
+      ['improve', 'LEARN', 'Bounded online propose → score → accept/reject loop with plateau detection.', "improve({\n  seed: make_seed,\n  propose: rewrite,\n  score: judge,\n  budget: { max_rounds: 5, patience: 2 },\n})"],
+      ['learn', 'LEARN', "Offline reflection over recorded trajectories; returns the analyzer's proposals.", "learn({\n  flow: reviewer,\n  source: { kind: 'dir', dir: '.trajectories' },\n  analyzer: analyze,\n})"],
     ];
-    const tagColor = { COMPOSE: 0, RESILIENCE: 1, MULTI: 2, STATE: 3 };
+    const tagColor = { COMPOSE: 0, RESILIENCE: 1, MULTI: 2, STATE: 3, LEARN: 1 };
     const primitives = primDef.map(([name, tag, desc, example]) => {
       const c = palette[tagColor[tag]];
       const open = this.state.open === name;
@@ -433,7 +442,7 @@ class Component extends DCLogic {
     const mrow = (name, i, img, reason) => ({ name, accent: accents[i % 4], bg: i % 2 ? '#EFE3CE' : '#F4EBDB', text: Y, tools: Y, schema: Y, streaming: Y, image: img, reasoning: reason });
     const matrix = [
       mrow('anthropic', 0, Y, Y), mrow('openai', 1, Y, Y), mrow('google', 2, Y, Y), mrow('openrouter', 3, Y, Y),
-      mrow('bedrock', 0, Y, Y), mrow('ollama', 1, N, N), mrow('lmstudio', 2, N, N), mrow('claude_cli', 3, N, N),
+      mrow('bedrock', 0, Y, Y), mrow('ollama', 1, N, N), mrow('lmstudio', 2, N, N), mrow('claude_cli', 3, N, Y),
     ];
 
     // ---- effort table ----
@@ -473,8 +482,9 @@ class Component extends DCLogic {
       ['suspended_error', 'first pass through suspend(...)'],
       ['resume_validation_error', 'resume_data does not match resume_schema'],
       ['describe_cycle_error', 'describe hitting a cyclic composition'],
-      ['provider_error', 'HTTP failures from AI SDK providers'],
+      ['provider_error', 'HTTP failures from providers (AI SDK and native transports)'],
       ['rate_limit_error', '429 responses after retry exhaustion'],
+      ['on_chunk_error', 'an on_chunk streaming callback throwing'],
       ['tool_error', "a tool's execute throws"],
       ['schema_validation_error', 'schema parsing failed after repair attempts'],
       ['engine_config_error', 'invalid create_engine(config)'],

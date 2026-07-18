@@ -10,9 +10,7 @@ Provider SDKs are optional peers, loaded on the first `generate` against that
 provider. The error is descriptive and arrives at call time, not construction:
 
 ```text
-optional peer '@ai-sdk/anthropic' is not installed. Install it with
-  `pnpm add @ai-sdk/anthropic`
-or exclude the anthropic provider from create_engine(config).providers.
+missing peer dependency '@ai-sdk/anthropic'. Install it with: pnpm add @ai-sdk/anthropic. Cause: …
 ```
 
 Install the peer for the provider you actually call, or drop that provider from

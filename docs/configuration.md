@@ -270,14 +270,14 @@ The legacy top-level `default_retry`, `default_effort`, and `default_max_steps` 
 
 ## Retry policy
 
-Retries apply only to provider-side failures — 429 rate limits, 5xx errors, and network failures. The default:
+Retries apply only to provider-side failures — 429 rate limits, 5xx errors, network failures, and turn-timeout expiry. The default:
 
 ```ts
 const DEFAULT_RETRY: RetryPolicy = {
   max_attempts: 3,
   initial_delay_ms: 500,
   max_delay_ms: 30_000,
-  retry_on: ['rate_limit', 'provider_5xx', 'network'],
+  retry_on: ['rate_limit', 'provider_5xx', 'network', 'timeout'],
 };
 ```
 

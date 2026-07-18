@@ -2,7 +2,7 @@
 
 ![A substrate for agents — three mushrooms (model_call, step, tool) fruit from a shared mycelium network; every mushroom is a Step<i, o>, every thread is a composition](./mycelium.svg)
 
-Compose agents out of LLM calls, tool calls, and plain functions. Everything is a `Step<i, o>`. Wire steps together with 18 primitives (`sequence`, `parallel`, `branch`, `retry`, `loop`, `ensemble`, `checkpoint`, …) and run them as plain values. One `generate` surface fronts eight provider adapters: Anthropic, OpenAI, Google, OpenRouter, AWS Bedrock, Ollama, LM Studio, and a `claude_cli` subprocess that drives the Claude Code CLI.
+Compose agents out of LLM calls, tool calls, and plain functions. Everything is a `Step<i, o>`. Wire steps together with 21 primitives (`sequence`, `parallel`, `branch`, `retry`, `loop`, `ensemble`, `checkpoint`, …) and run them as plain values. One `generate` surface fronts eight provider adapters: Anthropic, OpenAI, Google, OpenRouter, AWS Bedrock, Ollama, LM Studio, and a `claude_cli` subprocess that drives the Claude Code CLI.
 
 No framework lifecycle. No ambient state. No decorators. Adapters are passed in per run.
 
@@ -57,7 +57,7 @@ try {
 
 ## What's in the box
 
-**Composition primitives (18).** Every composer takes `Step<i, o>` and returns `Step<i, o>`. Anything that fits a step fits any composition of steps.
+**Composition primitives (21).** Every composer takes `Step<i, o>` and returns `Step<i, o>`. Anything that fits a step fits any composition of steps.
 
 | Primitive | Shape |
 | --- | --- |
@@ -74,11 +74,14 @@ try {
 | `compose` | label a composite so it shows up by intent in trajectories |
 | `adversarial` | build, critique, repeat until accept or `max_rounds` |
 | `ensemble` | run N members, pick the highest-scoring result |
+| `ensemble_step` | pick-best where the scorer is itself a `Step` (a model judge with its own span) |
 | `tournament` | single-elimination bracket |
 | `consensus` | run N concurrently, accept when an `agree` predicate holds |
 | `checkpoint` | memoize an inner step by key in a `CheckpointStore` |
 | `suspend` | pause for external input; resume later with `resume_data` |
 | `scope` / `stash` / `use` | named state across non-adjacent steps |
+| `improve` | bounded online propose → score → accept/reject self-improvement loop |
+| `learn` | offline reflection over recorded trajectories |
 
 Plus `run`, `run.stream`, and `describe`.
 
@@ -167,11 +170,18 @@ await handle.close();
 
 For zero-latency streaming from inside a long-running flow, pair it with `http_logger` from `fascicle/adapters`. See [docs/viewer.md](./docs/viewer.md) for the full transport story.
 
+## Building an app on fascicle
+
+**[docs/blueprint.md](./docs/blueprint.md) is the recommended architecture for apps built on fascicle** — distilled from the reference apps and production consumers. One composition layer (`flow.ts`) that holds the whole topology, `create_engine` confined to one file, prompts as markdown with frontmatter, zod schemas as the stage contracts, stub-engine testing, and [ast-grep rules](./examples/pr-improve/rules/) that turn each boundary into a build failure. If you are a coding agent scaffolding a new fascicle app, follow the blueprint and its checklist.
+
+The canonical worked example is [examples/pr-improve/](./examples/pr-improve/), with its design rationale in [examples/pr-improve/docs/architecture.md](./examples/pr-improve/docs/architecture.md).
+
 ## Where to go next
 
+- [docs/blueprint.md](./docs/blueprint.md) — **the agent blueprint**: the standard app architecture (start here when building an app)
 - [docs/getting-started.md](./docs/getting-started.md) — install and run your first flow
 - [docs/concepts.md](./docs/concepts.md) — step-as-value, trajectories, cancellation
-- [docs/composition.md](./docs/composition.md) — full composition surface: the 18 primitives, run/stream, checkpointing
+- [docs/composition.md](./docs/composition.md) — full composition surface: the 21 primitives, run/stream, checkpointing
 - [docs/api-reference.md](./docs/api-reference.md) — the public surface at a glance
 - [docs/configuration.md](./docs/configuration.md) — engine config, defaults, pricing, retries
 - [docs/providers.md](./docs/providers.md) — per-provider adapter notes
@@ -179,7 +189,6 @@ For zero-latency streaming from inside a long-running flow, pair it with `http_l
 - [docs/cookbook.md](./docs/cookbook.md) — retries, fan-out, judges, HITL, tool loops
 - [docs/human-in-the-loop.md](./docs/human-in-the-loop.md) — suspend/resume approval over HTTP and streaming to a `useChat` UI via `fascicle/ui`
 - [docs/writing-a-harness.md](./docs/writing-a-harness.md) — building a runner around fascicle
-- [docs/blueprint.md](./docs/blueprint.md) is the agent blueprint: the standard app architecture (one composition layer, markdown prompts, normalized module shapes)
 - [docs/embedding-under-a-harness.md](./docs/embedding-under-a-harness.md) — running a fascicle agent as somebody's child process
 - [docs/troubleshooting.md](./docs/troubleshooting.md) — first-run errors and what they mean
 - [docs/comparison.md](./docs/comparison.md) — how fascicle compares to LangChain, Mastra, and others

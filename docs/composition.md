@@ -60,7 +60,7 @@ This one invariant buys the rest:
 - **No coupling.** Steps are values, not registered entities. Two
   unrelated flows never share state unless the caller injects it.
 
-## The 18 primitives
+## The 21 primitives
 
 Copy these one-liners into an LLM's system prompt and it can write flows
 from English specifications:
@@ -85,6 +85,9 @@ from English specifications:
 - `adversarial({ build, critique, accept, max_rounds })` — propose, critique,
   loop.
 - `ensemble({ members, score, select? })` — pick the best of several.
+- `ensemble_step({ members, score, rank_by, select? })` — pick-best where
+  scoring is itself a `Step` (a model judge with its own span); returns the
+  winner plus its structured score.
 - `tournament({ members, compare })` — single-elimination bracket.
 - `consensus({ members, agree, max_rounds })` — multi-round concurrent
   agreement.
@@ -92,6 +95,10 @@ from English specifications:
 - `suspend({ id, on, resume_schema, combine })` — pause for external input.
 - `scope([...])` / `stash(key, source)` / `use(keys, fn)` — named state when
   chaining is not enough.
+- `improve({ seed, propose, score, budget })` — bounded online self-improvement
+  loop: propose → score → accept/reject with plateau detection.
+- `learn({ flow, source, analyzer })` — offline reflection over recorded
+  trajectories; returns the analyzer's proposals plus summary metadata.
 
 ## Running a flow
 

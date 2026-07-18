@@ -482,4 +482,4 @@ const judge = model_call({
 const flow = sequence([do_research, judge]);
 ```
 
-More CLI patterns — schema-constrained output, sub-agents, session resume, sandboxing — in [cli.md](./cli.md).
+More CLI patterns — schema-constrained output, sub-agents, session resume, sandboxing — in [cli.md](./cli.md). For how to organize a whole app around these recipes — one composition layer, stage factories, markdown prompts — see [blueprint.md](./blueprint.md).

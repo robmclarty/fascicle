@@ -96,7 +96,7 @@ fascicle uses the AI SDK strictly as a single-turn provider layer: every AI SDK 
 | ollama (native)     | ✅   | ✅    | ✅     | ✅        | —           | —         |
 | lmstudio            | ✅   | ✅    | ✅     | ✅        | —           | —         |
 | lmstudio (native)   | ✅   | ✅    | ✅     | ✅        | —           | ✅        |
-| claude_cli          | ✅   | ✅    | ✅     | ✅        | —           | —         |
+| claude_cli          | ✅   | ✅    | ✅     | ✅        | —           | ✅        |
 
 `supports(capability)` on any adapter reflects this table. Two things to read off the native rows: **no native transport claims `image_input`** (image parts throw `provider_capability_error`; use `transport: 'ai_sdk'` for vision in v1), and the OpenAI-compatible core (openai / openrouter / lmstudio native) always forwards `reasoning_effort`, so those three report `reasoning` on native even where their `ai_sdk` row does not — non-reasoning and local models simply drop the field server-side. `ollama` native ignores effort entirely (D2). There is one more capability the table omits: `structured_output`, meaning the provider constrains decoding to the schema natively. Every provider satisfies `schema` (via the engine's prompt + parse + repair loop when the provider cannot constrain the decode); no native transport claims `structured_output`, so schema requests there always ride the repair loop.
 
@@ -113,9 +113,9 @@ fascicle uses the AI SDK strictly as a single-turn provider layer: every AI SDK 
 | bedrock      | `budgetTokens: 1024`  | `budgetTokens: 5000`  | `budgetTokens: 20000` | non-reasoning models drop it         |
 | ollama       | dropped   | dropped   | dropped   | records `effort_ignored` on trajectory |
 | lmstudio     | dropped   | dropped   | dropped   | records `effort_ignored` on trajectory |
-| claude_cli   | dropped   | dropped   | dropped   | not forwarded to the CLI             |
+| claude_cli   | `CLAUDE_CODE_EFFORT_LEVEL=low` | `CLAUDE_CODE_EFFORT_LEVEL=medium` | `CLAUDE_CODE_EFFORT_LEVEL=high` | `'none'` sets no env var |
 
-`xhigh` and `max` raise the ceiling: anthropic and bedrock use `budgetTokens: 32000` and `64000`; google maps both to `thinkingBudget: 32768` (the Gemini 2.5 Pro ceiling); openai clamps both to `reasoningEffort: high`; openrouter forwards the level verbatim. The anthropic budgets are shared by both transports; on `native` they are sent as the API's `thinking.budget_tokens` directly.
+`xhigh` and `max` raise the ceiling: anthropic and bedrock use `budgetTokens: 32000` and `64000`; google maps both to `thinkingBudget: 32768` (the Gemini 2.5 Pro ceiling); openai clamps both to `reasoningEffort: high`; openrouter forwards the level verbatim, and so does `claude_cli` (the env var takes `xhigh` / `max` as-is). The anthropic budgets are shared by both transports; on `native` they are sent as the API's `thinking.budget_tokens` directly.
 
 The table above is the `ai_sdk` mapping. On `transport: 'native'`, the OpenAI-compatible core maps effort to the wire's flat `reasoning_effort` string (`low`/`medium`/`high`, with `xhigh`/`max` clamped to `high`) for **all three** dialects — so `openai`, `openrouter`, **and** `lmstudio` native forward `reasoning_effort` rather than dropping it (`lmstudio` diverges from its `ai_sdk` row here); non-reasoning and local models ignore the field server-side. `ollama` native ignores effort entirely (D2) and records `effort_ignored`.
 
@@ -454,12 +454,10 @@ Need short names? Keep a plain `Record<string, string>` in your own code and res
 Every peer is loaded lazily on first `generate` against that provider. Missing peers throw a descriptive error at call time, not at construction:
 
 ```text
-Error: optional peer '@ai-sdk/anthropic' is not installed. Install it with
-  `pnpm add @ai-sdk/anthropic`
-or exclude the anthropic provider from create_engine(config).providers.
+missing peer dependency '@ai-sdk/anthropic'. Install it with: pnpm add @ai-sdk/anthropic. Cause: …
 ```
 
-This means constructing an engine with seven providers does not force you to install seven SDKs — only the ones you actually call.
+This means constructing an engine with all eight providers does not force you to install their seven SDKs — only the ones you actually call.
 
 ## Usage normalization
 

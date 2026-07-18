@@ -89,4 +89,3 @@ await handle.close()
 Localhost only by default. `--host 0.0.0.0` is allowed but the CLI warns:
 the dashboard has no auth and exposes whatever is in your trajectory
 stream. Do not bind it to a public interface.
-</content>

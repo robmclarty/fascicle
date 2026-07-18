@@ -2,7 +2,7 @@
 
 Multi-agent deliberation is not a framework feature. It is composition.
 
-By "deliberation" we mean the patterns that run several attempts at the same task and adjudicate between them: keep the best of N, run a bracket, loop until the attempts agree, build-then-critique until a judge accepts. Other frameworks ship these as bespoke orchestrators with their own lifecycle, their own state, and their own way of being configured. fascicle ships them as four ordinary `Step<i, o>` values assembled from the [18 primitives](./composition.md). There is nothing in `ensemble`, `tournament`, `consensus`, or `adversarial` that you could not have written yourself with `parallel`, `loop`, `scope`, and `compose`.
+By "deliberation" we mean the patterns that run several attempts at the same task and adjudicate between them: keep the best of N, run a bracket, loop until the attempts agree, build-then-critique until a judge accepts. Other frameworks ship these as bespoke orchestrators with their own lifecycle, their own state, and their own way of being configured. fascicle ships them as four ordinary `Step<i, o>` values assembled from the [21 primitives](./composition.md). There is nothing in `ensemble`, `tournament`, `consensus`, or `adversarial` that you could not have written yourself with `parallel`, `loop`, `scope`, and `compose`.
 
 That is the whole claim, and it has consequences. Read [concepts.md](./concepts.md) first if "everything is a `Step<i, o>`" is not yet reflexive; the rest of this page assumes it.
 

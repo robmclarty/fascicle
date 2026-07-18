@@ -10,26 +10,28 @@ The guiding principle: stop building to product standards while distributing to
 personal-tool standards. Phase 1 made the shipped surface match the pitch.
 Phase 2 points it at the two real deployments. Phase 3 makes the work known.
 
-**Status (v0.9.1).** Phase 1 is fully shipped (v0.6.0–v0.6.3). Several changes
+**Status (v0.9.6).** Phase 1 is fully shipped (v0.6.0–v0.6.3). Several changes
 landed after this plan was written and are not sequenced below: verbatim model
 resolution (v0.7.0, breaking), the collapse of the internal `@repo/*` workspace
 into a single `src/` tree (v0.8.0), the MCP bridge (v0.8.8), and the provider
 sovereignty build. That last one arrived in two tracks: the AI SDK v7 catch-up
 shipped as v0.9.0 (per [the v7 upgrade spec](../research/ai-sdk-v7-upgrade-spec.md)),
-and the structural track that demotes the SDK behind a native provider seam is
-landed on main awaiting release: an open `custom_providers` registry, a
-`transport: 'native'` raw-HTTP Anthropic adapter, and a SDK-agnostic `generate`
-where the AI SDK call is one provider kind among peers (per
+and the structural track that demotes the SDK behind a native provider seam
+shipped as v0.9.2: an open `custom_providers` registry, `transport: 'native'`
+raw-HTTP adapters, and a SDK-agnostic `generate` where the AI SDK call is one
+provider kind among peers (per
 [the provider sovereignty spec](../research/provider-sovereignty-spec.md),
-sequenced by [its intent](../research/provider-sovereignty-intent.md)). That
-series continues in the native-expansion build (per
-[its intent](../research/native-expansion-intent.md)): a shared
-OpenAI-compatible native core behind `openai`, `openrouter`, and `lmstudio`,
-native Ollama on `/api/chat`, engine-owned turn-timeout budgets, a `prepare_step`
-loop hook, a transport-neutral `fascicle/otel` bridge, and
-`engine.with_providers()` for post-construction provider derivation. The live
-edge is mid-Phase 2: the MCP adapter has shipped, and the first deployment that
-realizes the two remaining Phase 2 items at once has begun (see Phase 2 below).
+sequenced by [its intent](../research/provider-sovereignty-intent.md)). The
+native-expansion build (per
+[its intent](../research/native-expansion-intent.md)) shipped in the same
+release: a shared OpenAI-compatible native core behind `openai`, `openrouter`,
+and `lmstudio`, native Ollama on `/api/chat`, engine-owned turn-timeout budgets,
+a `prepare_step` loop hook, a transport-neutral `fascicle/otel` bridge, and
+`engine.with_providers()` for post-construction provider derivation. Since then:
+the agent blueprint (`docs/blueprint.md`, v0.9.6) standardized the consumer-app
+architecture. The live edge is mid-Phase 2: the MCP adapter has shipped, and the
+first deployment that realizes the two remaining Phase 2 items at once has begun
+(see Phase 2 below).
 
 ## Phase 1: make it true (✅ shipped, v0.6.0–v0.6.3)
 
@@ -96,11 +98,11 @@ Two deployment shapes, both script-shaped, unattended, observability-first.
 
 ## Phase 3: make it known
 
-- A docs site.
-- Three essays already latent in the codebase: deliberation as a composition
-  primitive; regression-testing model behavior with mutation-tested judges
-  (`bench`/`judges`/`regression`); and the memory-system case study once it
-  exists.
+- ✅ A docs site — `site/` deploys to GitHub Pages on every push to main.
+- Three essays latent in the codebase: two have shipped as docs
+  ([deliberation as composition](./deliberation-as-composition.md) and
+  [regression-testing model behavior](./regression-testing-model-behavior.md),
+  v0.8.9); the memory-system case study remains pending until it exists.
 - Then a launch, as a demonstration artifact backed by production proof rather
   than a falsification test. The `claude_cli` rebase onto the Agent SDK slots in
   wherever provider metering forces it.

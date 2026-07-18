@@ -42,6 +42,7 @@
       <a href="#why">Why</a>
       <a href="#primitives">Primitives</a>
       <a href="#providers">Providers</a>
+      <a href="blueprint.html">Architecture</a>
       <a href="docs.html">Docs</a>
       <a id="gh-stars" href="https://github.com/robmclarty/fascicle" style="background:#211C17; color:#F4EBDB; padding:8px 16px; font-family:'JetBrains Mono',monospace; font-size:12px; letter-spacing:1px; white-space:nowrap;">GITHUB</a>
     </div>
@@ -53,7 +54,7 @@
       <div style="flex:1; min-width:0; padding-top:6px;">
         <div style="font-family:'JetBrains Mono',monospace; font-size:13px; letter-spacing:3px; text-transform:uppercase; color:#C0521F; margin-bottom:26px;">Composable agentic toolkit</div>
         <h1 style="font-family:'DM Serif Display',serif; font-weight:400; font-size:84px; line-height:0.98; margin:0; letter-spacing:-0.5px;">Compose agents like <span style="font-style:italic; color:#15706A;">plain values.</span></h1>
-        <p style="font-size:20px; line-height:1.55; color:#3a342e; margin:30px 0 0; max-width:480px;">Compose LLM calls, tools, and plain functions into a <span style="font-family:'JetBrains Mono',monospace; font-size:16px; background:#211C17; color:#F4EBDB; padding:2px 8px;">Step&lt;i, o&gt;</span>. Wire eighteen primitives together over one generate surface. No magic. Just logic.</p>
+        <p style="font-size:20px; line-height:1.55; color:#3a342e; margin:30px 0 0; max-width:480px;">Compose LLM calls, tools, and plain functions into a <span style="font-family:'JetBrains Mono',monospace; font-size:16px; background:#211C17; color:#F4EBDB; padding:2px 8px;">Step&lt;i, o&gt;</span>. Wire twenty-one primitives together over one generate surface. No magic. Just logic.</p>
 
         <div style="display:flex; gap:16px; margin-top:38px;">
           <a href="docs.html" style="background:#C0521F; color:#F4EBDB; font-weight:700; font-size:15px; padding:15px 28px; border:3px solid #211C17;" class="fc-btn"><span class="fc-btn-label">Get started →</span></a>
@@ -91,10 +92,10 @@
         </div>
         <div id="primitives" style="margin-top:22px;">
           <div style="margin-bottom:12px;">
-            <div style="font-family:'JetBrains Mono',monospace; font-size:12px; letter-spacing:2px; color:#7A5230;">18 PRIMITIVES · EVERY COMP TAKES A STEP, RETURNS A STEP</div>
+            <div style="font-family:'JetBrains Mono',monospace; font-size:12px; letter-spacing:2px; color:#7A5230;">21 PRIMITIVES · EVERY COMP TAKES A STEP, RETURNS A STEP</div>
           </div>
           <div style="display:flex; flex-wrap:wrap; gap:8px; font-family:'JetBrains Mono',monospace; font-size:13px;">
-            <sc-for list="{{ primCells }}" as="p" hint-placeholder-count="18">
+            <sc-for list="{{ primCells }}" as="p" hint-placeholder-count="21">
               <div onClick="{{ p.select }}" style="cursor:pointer; padding:7px 12px; border:2px solid #211C17; background:{{ p.bg }}; color:{{ p.fg }}; transition:transform .06s;" style-active="transform:translateY(2px);">{{ p.name }}</div>
             </sc-for>
           </div>
@@ -312,7 +313,7 @@ try {
         </tbody>
       </table>
     </div>
-    <div style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#7A5230; margin-top:14px;">✅ supported · — not in v1 (ollama, lmstudio, claude_cli have no image input or reasoning effort)</div>
+    <div style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#7A5230; margin-top:14px;">✅ supported · — not in v1 (ollama, lmstudio, claude_cli have no image input; ollama and lmstudio also drop reasoning effort)</div>
   </div>
 
   <!-- ===================== CTA ===================== -->
@@ -347,6 +348,7 @@ try {
             <a href="docs.html">Concepts</a>
             <a href="docs.html">Primitives</a>
             <a href="docs.html">Configuration</a>
+            <a href="blueprint.html">Architecture</a>
           </div>
         </div>
         <div>
@@ -354,8 +356,10 @@ try {
           <div style="display:flex; flex-direction:column; gap:10px; font-family:'JetBrains Mono',monospace; font-size:13px;">
             <span>core</span>
             <span>engine</span>
-            <span>observability</span>
-            <span>stores</span>
+            <span>composites</span>
+            <span>adapters</span>
+            <span>mcp</span>
+            <span>viewer</span>
           </div>
         </div>
         <div>
@@ -389,7 +393,7 @@ class Component extends DCLogic {
   tokenize(line) {
     if (line === '') return { tokens: [{ t: ' ', color: '#E8DFCD' }] };
     const kw = new Set(['import', 'from', 'const', 'await', 'try', 'finally', 'return', 'type', 'of', 'new', 'let']);
-    const fns = new Set(['run', 'sequence', 'step', 'parallel', 'branch', 'map', 'pipe', 'retry', 'fallback', 'timeout', 'adversarial', 'ensemble', 'tournament', 'consensus', 'checkpoint', 'suspend', 'scope', 'stash', 'use', 'create_engine', 'model_call', 'dispose', 'generate', 'rate', 'judge', 'publish', 'pick_winner']);
+    const fns = new Set(['run', 'sequence', 'step', 'parallel', 'branch', 'map', 'pipe', 'retry', 'fallback', 'timeout', 'adversarial', 'ensemble', 'ensemble_step', 'tournament', 'consensus', 'checkpoint', 'suspend', 'scope', 'stash', 'use', 'improve', 'learn', 'create_engine', 'model_call', 'dispose', 'generate', 'rate', 'judge', 'publish', 'pick_winner', 'notify', 'analyze']);
     const re = /(\/\/[^\n]*)|('(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`|"(?:[^"\\]|\\.)*")|(\b\d[\w]*\b)|([A-Za-z_$][\w$]*)|(\s+)|([^])/g;
     const tokens = []; let m;
     while ((m = re.exec(line)) !== null) {
@@ -431,27 +435,30 @@ class Component extends DCLogic {
       case 'step': flowLines = ["const flow = step('double', (n) => n * 2)"]; input = "21"; break;
       case 'sequence': flowLines = ["const flow = sequence([", "  step('brief', (topic) => `Brief: ${topic}`),", "  " + inner + ",", "])"]; break;
       case 'parallel': flowLines = ["const flow = parallel({", "  summary: " + inner + ",", "  title:   " + inner + ",", "})"]; break;
-      case 'branch': flowLines = ["const flow = branch(", "  (x) => x.urgent,", "  " + inner + ",", "  step('queue', (x) => x),", ")"]; break;
-      case 'map': flowLines = ["const flow = map(" + inner + ", { concurrency: 4 })"]; input = "['a', 'b', 'c']"; break;
+      case 'branch': flowLines = ["const flow = branch({", "  when: (x) => x.urgent,", "  then: " + inner + ",", "  otherwise: step('queue', (x) => x),", "})"]; break;
+      case 'map': flowLines = ["const flow = map({", "  items: (xs) => xs,", "  do: " + inner + ",", "  concurrency: 4,", "})"]; input = "['a', 'b', 'c']"; break;
       case 'pipe': flowLines = ["const flow = pipe(" + inner + ", (r) => r.content)"]; break;
       case 'retry': flowLines = ["const flow = retry(" + inner + ", { max_attempts: 3 })"]; break;
       case 'fallback': flowLines = ["const flow = fallback(", "  " + inner + ",", "  step('cached', () => CACHED),", ")"]; break;
       case 'timeout': flowLines = ["const flow = timeout(" + inner + ", 10_000)"]; break;
       case 'loop': flowLines = ["const flow = loop({", "  init:   (topic) => topic,", "  body:   " + inner + ",", "  guard:  step('check', (s) => ({ stop: true, state: s })),", "  finish: (s) => s,", "  max_rounds: 5,", "})"]; break;
       case 'compose': flowLines = ["const flow = compose('draft-stage', " + inner + ")"]; break;
-      case 'adversarial': flowLines = ["const flow = adversarial({", "  build:    " + inner + ",", "  critique: judge,", "  max_rounds: 3,", "})"]; break;
-      case 'ensemble': flowLines = ["const flow = ensemble(", "  [" + inner + ", " + inner + ", " + inner + "],", "  { score: (out) => rate(out) },", ")"]; break;
-      case 'tournament': flowLines = ["const flow = tournament(", "  [" + inner + ", " + inner + "],", "  { compare: pick_winner },", ")"]; break;
-      case 'consensus': flowLines = ["const flow = consensus(", "  [" + inner + ", " + inner + ", " + inner + "],", "  { quorum: 2 },", ")"]; break;
+      case 'adversarial': flowLines = ["const flow = adversarial({", "  build:    " + inner + ",", "  critique: judge,", "  accept:   (c) => c.approved,", "  max_rounds: 3,", "})"]; break;
+      case 'ensemble': flowLines = ["const flow = ensemble({", "  members: { a: " + inner + ", b: " + inner + " },", "  score: (out) => rate(out),", "})"]; break;
+      case 'ensemble_step': flowLines = ["const flow = ensemble_step({", "  members: { a: " + inner + ", b: " + inner + " },", "  score: judge,", "  rank_by: (r) => r.score,", "})"]; break;
+      case 'tournament': flowLines = ["const flow = tournament({", "  members: { a: " + inner + ", b: " + inner + " },", "  compare: pick_winner,", "})"]; break;
+      case 'consensus': flowLines = ["const flow = consensus({", "  members: { a: " + inner + ", b: " + inner + ", c: " + inner + " },", "  agree: (r) => new Set(Object.values(r)).size === 1,", "  max_rounds: 3,", "})"]; break;
       case 'checkpoint': flowLines = ["const flow = checkpoint(", "  " + inner + ",", "  { key: (topic) => `brief:${topic}` },", ")"]; break;
-      case 'suspend': flowLines = ["const flow = suspend({", "  id: 'approve',", "  resume_schema: z.object({ ok: z.boolean() }),", "  combine: (input, r) => r.ok ? 'ship' : 'hold',", "})"]; break;
+      case 'suspend': flowLines = ["const flow = suspend({", "  id: 'approve',", "  on: (input) => notify(input),", "  resume_schema: z.object({ ok: z.boolean() }),", "  combine: (input, r) => r.ok ? 'ship' : 'hold',", "})"]; break;
       case 'scope': flowLines = ["const flow = scope([", "  stash('draft', " + inner + "),", "  use(['draft'], (s) => publish(s.draft)),", "])"]; break;
+      case 'improve': flowLines = ["const flow = improve({", "  seed: step('seed', (t) => ({ content: t, score: 0 })),", "  propose: " + inner + ",", "  score: judge,", "  budget: { max_rounds: 5, patience: 2 },", "})"]; break;
+      case 'learn': flowLines = ["const flow = learn({", "  flow: " + inner + ",", "  source: { kind: 'dir', dir: '.trajectories' },", "  analyzer: analyze,", "})"]; break;
       default: flowLines = ["const flow = " + inner];
     }
 
     const flowText = flowLines.join('\n');
     const usesModel = /model_call/.test(flowText);
-    const known = ['sequence', 'step', 'parallel', 'branch', 'map', 'pipe', 'retry', 'fallback', 'timeout', 'loop', 'compose', 'adversarial', 'ensemble', 'tournament', 'consensus', 'checkpoint', 'suspend', 'scope', 'stash', 'use'];
+    const known = ['sequence', 'step', 'parallel', 'branch', 'map', 'pipe', 'retry', 'fallback', 'timeout', 'loop', 'compose', 'adversarial', 'ensemble', 'ensemble_step', 'tournament', 'consensus', 'checkpoint', 'suspend', 'scope', 'stash', 'use', 'improve', 'learn'];
     const used = known.filter(n => new RegExp('\\b' + n + '\\b').test(flowText));
     used.push('run');
     if (usesModel) { used.push('model_call', 'create_engine'); }
@@ -493,35 +500,6 @@ class Component extends DCLogic {
   }
 
   renderVals() {
-    const groups = [
-      { label: 'COMPOSE', color: '#C0521F', items: [
-        { name: 'step', desc: 'Lift a plain function into a Step<i, o>.' },
-        { name: 'sequence', desc: 'Run A then B then C, threading each output into the next input.' },
-        { name: 'parallel', desc: 'Run a named map of steps concurrently.' },
-        { name: 'branch', desc: 'Pick then / otherwise by a predicate on the input.' },
-        { name: 'map', desc: 'Run a step per item, with an optional concurrency cap.' },
-        { name: 'pipe', desc: "Post-process an inner step's output with a plain function." },
-        { name: 'compose', desc: 'Label a composite so it shows up by intent in trajectories.' },
-      ]},
-      { label: 'RESILIENCE', color: '#15706A', items: [
-        { name: 'retry', desc: 'Re-run on failure with exponential backoff and jitter.' },
-        { name: 'fallback', desc: 'Run a backup step if the primary throws.' },
-        { name: 'timeout', desc: 'Cancel an inner step after N milliseconds.' },
-      ]},
-      { label: 'MULTI-MODEL', color: '#A8336A', items: [
-        { name: 'adversarial', desc: 'Build, critique, loop until accept or max_rounds.' },
-        { name: 'ensemble', desc: 'Run N members, pick the highest by score.' },
-        { name: 'tournament', desc: 'Single-elimination bracket between members.' },
-        { name: 'consensus', desc: 'Run N, accept only if a quorum agree.' },
-      ]},
-      { label: 'STATE & CONTROL', color: '#7A5230', items: [
-        { name: 'loop', desc: 'Bounded iteration with carry-state and an optional convergence guard.' },
-        { name: 'checkpoint', desc: 'Memoize a named inner step by key, via a store.' },
-        { name: 'suspend', desc: 'Pause for external input; resume with resume_data.' },
-        { name: 'scope', desc: 'Stash named values and use them later without rewiring.' },
-      ]},
-    ];
-
     const Y = '\u2705', N = '\u2014';
     const mk = (name, accent, bg, img, reason) => ({
       name, accent, bg, text: Y, tools: Y, schema: Y, streaming: Y, image: img, reasoning: reason,
@@ -534,7 +512,7 @@ class Component extends DCLogic {
       mk('bedrock',    '#C0521F', '#F4EBDB', Y, Y),
       mk('ollama',     '#15706A', '#EFE3CE', N, N),
       mk('lmstudio',   '#A8336A', '#F4EBDB', N, N),
-      mk('claude_cli', '#7A5230', '#EFE3CE', N, N),
+      mk('claude_cli', '#7A5230', '#EFE3CE', N, Y),
     ];
 
     const prim = this.state.prim, prov = this.state.prov;
@@ -548,7 +526,7 @@ class Component extends DCLogic {
       const on = name === prov;
       return { name, select: () => this.selectProv(name), bg: on ? '#C0521F' : '#F4EBDB', fg: on ? '#F4EBDB' : '#211C17' };
     });
-    const primOrder = ['step', 'sequence', 'parallel', 'branch', 'map', 'pipe', 'retry', 'fallback', 'timeout', 'loop', 'compose', 'adversarial', 'ensemble', 'tournament', 'consensus', 'checkpoint', 'suspend', 'scope'];
+    const primOrder = ['step', 'sequence', 'parallel', 'branch', 'map', 'pipe', 'retry', 'fallback', 'timeout', 'loop', 'compose', 'adversarial', 'ensemble', 'ensemble_step', 'tournament', 'consensus', 'checkpoint', 'suspend', 'scope', 'improve', 'learn'];
     const primCells = primOrder.map(name => {
       const on = name === prim;
       return { name, select: () => this.selectPrim(name), bg: on ? '#C0521F' : '#F4EBDB', fg: on ? '#F4EBDB' : '#211C17' };
