@@ -9,3 +9,16 @@
 
 export { researcher } from './agent.js'
 export type { FetchFn, ResearcherConfig, SearchFn } from './agent.js'
+
+export {
+  research_source_schema,
+  summarizer_output_schema,
+} from './schema.js'
+export type {
+  ResearchDepth,
+  ResearchSource,
+  ResearcherInput,
+  ResearcherOutput,
+  SearchHit,
+  SummarizerOutput,
+} from './schema.js'

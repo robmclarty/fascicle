@@ -1,6 +1,5 @@
-import { run } from '#core'
-import type { TrajectoryEvent, TrajectoryLogger } from '#core'
-import type { Engine, GenerateOptions, GenerateResult } from '#engine'
+import { run } from 'fascicle'
+import type { Engine, GenerateOptions, GenerateResult, TrajectoryEvent, TrajectoryLogger } from 'fascicle'
 import { afterEach, describe, expect, it } from 'vitest'
 import { reviewer } from '../index.js'
 import type { ReviewerOutput } from '../schema.js'

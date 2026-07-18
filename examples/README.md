@@ -2,7 +2,7 @@
 
 Runnable reference flows. Two kinds live here: single-file examples at this root (each is one `pnpm exec tsx examples/<name>.ts` away), and five full example apps in subdirectories, which are separate workspace members consuming the library via `fascicle: workspace:*`.
 
-All of them import the published surface (`fascicle`, `fascicle/adapters`, `fascicle/mcp`, …), so everything here is copy-pasteable into an npm consumer. (Exception: the packaged agent examples — `reviewer.ts`, `documenter.ts`, `researcher.ts` — use the repo-only dev alias `fascicle/agents`; only `define_agent` is published, via the umbrella package.)
+All of them import the published surface (`fascicle`, `fascicle/adapters`, `fascicle/mcp`, …), so everything here is copy-pasteable into an npm consumer. The reference agents (reviewer, documenter, researcher) are themselves demo code under [`agents/`](./agents/) — each one a markdown prompt + zod schema folded through `define_agent`; copy the agent directory alongside the example that uses it.
 
 ## The architecture these examples embody
 

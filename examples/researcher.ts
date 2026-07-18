@@ -12,11 +12,11 @@
  * Run directly:
  *   pnpm exec tsx examples/researcher.ts
  *
- * Note: the `fascicle/agents` import is workspace-private (not published to npm),
- * so this example runs inside this repo only.
+ * The agent definition itself is demo code in `./agents/` — copy it alongside
+ * this file when porting the example into your own project.
  */
 
-import { researcher, type ResearcherOutput, type SummarizerOutput } from 'fascicle/agents'
+import { researcher, type ResearcherOutput, type SummarizerOutput } from './agents/researcher/index.js'
 import { run } from 'fascicle'
 import type { Engine, GenerateOptions, GenerateResult } from 'fascicle'
 

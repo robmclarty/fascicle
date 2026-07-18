@@ -19,8 +19,8 @@
  * Subsequent runs compare against bench/reviewer/baseline.json and exit 1 on
  * regression.
  *
- * Note: the `fascicle/agents` import is workspace-private (not published to npm),
- * so this example runs inside this repo only.
+ * The agent definition itself is demo code in `./agents/` — copy it alongside
+ * this file when porting the example into your own project.
  */
 
 import { readFile } from 'node:fs/promises'
@@ -32,7 +32,7 @@ import {
   type ReviewFinding,
   type ReviewerInput,
   type ReviewerOutput,
-} from 'fascicle/agents'
+} from './agents/reviewer/index.js'
 import {
   bench,
   judge_with,

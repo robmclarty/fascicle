@@ -10,11 +10,11 @@
  * Run directly:
  *   pnpm exec tsx examples/documenter.ts
  *
- * Note: the `fascicle/agents` import is workspace-private (not published to npm),
- * so this example runs inside this repo only.
+ * The agent definition itself is demo code in `./agents/` — copy it alongside
+ * this file when porting the example into your own project.
  */
 
-import { documenter, type DocumenterOutput } from 'fascicle/agents'
+import { documenter, type DocumenterOutput } from './agents/documenter/index.js'
 import { run } from 'fascicle'
 import type { Engine, GenerateOptions, GenerateResult } from 'fascicle'
 

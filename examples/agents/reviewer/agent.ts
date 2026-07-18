@@ -6,9 +6,8 @@
  * the diff and any focus areas as the user message.
  */
 
-import type { Step } from '#core'
-import type { Engine } from '#engine'
-import { define_agent } from '../define_agent.js'
+import type { Engine, Step } from 'fascicle'
+import { define_agent } from 'fascicle/agents'
 import {
   reviewer_output_schema,
   type ReviewerInput,

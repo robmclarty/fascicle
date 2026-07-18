@@ -9,3 +9,11 @@
 
 export { documenter } from './agent.js'
 export type { DocumenterConfig } from './agent.js'
+
+export { documenter_output_schema } from './schema.js'
+export type {
+  DocumenterInput,
+  DocumenterOutput,
+  DocumenterStyle,
+  DocumenterTarget,
+} from './schema.js'

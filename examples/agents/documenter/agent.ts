@@ -6,9 +6,8 @@
  * the file/symbol target and the requested style into the user message.
  */
 
-import type { Step } from '#core'
-import type { Engine } from '#engine'
-import { define_agent } from '../define_agent.js'
+import type { Engine, Step } from 'fascicle'
+import { define_agent } from 'fascicle/agents'
 import {
   documenter_output_schema,
   type DocumenterInput,

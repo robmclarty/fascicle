@@ -31,6 +31,9 @@ export default defineConfig({
       // builder dispatch test (Phase C, PR B).
       'examples/pr-improve/src/tools/**/*.{test,spec}.ts',
       'examples/pr-improve/src/stages/**/*.{test,spec}.ts',
+      // Reference agents are demo code, but their behavior tests (stub-engine
+      // driven, no network) still run so the examples cannot rot silently.
+      'examples/agents/**/__tests__/**/*.{test,spec}.ts',
     ],
     pool: 'forks',
     reporters: ['default'],

@@ -1,5 +1,5 @@
-import { run } from '#core'
-import type { Engine, GenerateOptions, GenerateResult } from '#engine'
+import { run } from 'fascicle'
+import type { Engine, GenerateOptions, GenerateResult } from 'fascicle'
 import { afterEach, describe, expect, it } from 'vitest'
 import { documenter } from '../index.js'
 import type { DocumenterOutput } from '../schema.js'

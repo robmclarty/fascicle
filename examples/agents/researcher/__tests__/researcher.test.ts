@@ -1,6 +1,5 @@
-import { aborted_error, run } from '#core'
-import type { TrajectoryEvent, TrajectoryLogger } from '#core'
-import type { Engine, GenerateOptions, GenerateResult } from '#engine'
+import { aborted_error, run } from 'fascicle'
+import type { Engine, GenerateOptions, GenerateResult, TrajectoryEvent, TrajectoryLogger } from 'fascicle'
 import { afterEach, describe, expect, it } from 'vitest'
 import { researcher, type FetchFn, type SearchFn } from '../index.js'
 import { format_summarizer_user } from '../agent.js'

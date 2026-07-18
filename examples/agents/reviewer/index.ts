@@ -9,3 +9,14 @@
 
 export { reviewer } from './agent.js'
 export type { ReviewerConfig } from './agent.js'
+
+export {
+  review_finding_schema,
+  reviewer_output_schema,
+} from './schema.js'
+export type {
+  ReviewFinding,
+  ReviewFocus,
+  ReviewerInput,
+  ReviewerOutput,
+} from './schema.js'

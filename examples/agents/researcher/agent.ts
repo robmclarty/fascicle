@@ -11,10 +11,9 @@
  * the boundary. `ctx.abort` is forwarded to both so cancellation propagates.
  */
 
-import { compose, loop, step } from '#core'
-import type { RunContext, Step } from '#core'
-import type { Engine } from '#engine'
-import { define_agent } from '../define_agent.js'
+import { compose, loop, step } from 'fascicle'
+import type { Engine, RunContext, Step } from 'fascicle'
+import { define_agent } from 'fascicle/agents'
 import {
   summarizer_output_schema,
   type ResearchDepth,
