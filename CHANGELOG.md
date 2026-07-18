@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.9.6 — 2026-07-17
+
+### Added
+
+- `docs/blueprint.md`: a standard app architecture for building on fascicle — one composition layer, three adoption tiers, markdown prompts, normalized module shapes, stub-engine testing, and field-observed anti-patterns distilled from the example apps and production consumers.
+- Three ast-grep boundary rules wired into `examples/pr-improve` (runnable via `check:rules`): `create_engine` confined to `engine.ts`, no imperative loops in `flow.ts`, and fascicle value imports confined to the files allowed to know about it.
+
 ## v0.9.5 — 2026-07-12
 
 ### Fixed
