@@ -2,8 +2,8 @@
  * Umbrella entry point for fascicle.
  *
  * Re-exports the full public surface of `core` (composition
- * layer) plus `engine` (AI engine layer) so downstream apps
- * can install a single package.
+ * layer) plus `engine` (AI engine layer), and `define_agent`
+ * from `agents`, so downstream apps can install a single package.
  *
  * `aborted_error` lives in core and is re-exported by engine, so both
  * layers surface the same class (NOTES.md D5).
@@ -15,6 +15,9 @@
 
 export * from '#core'
 export * from '#composites'
+
+export { define_agent } from '#agents'
+export type { AgentBuiltPrompt, DefineAgentConfig } from '#agents'
 
 export { create_engine } from '#engine'
 
