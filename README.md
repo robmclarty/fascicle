@@ -104,6 +104,25 @@ await run(flow, input, {
 
 `run.stream(flow, input)` returns `{ events, result }` for incremental observation.
 
+**Markdown-defined agents.** When an agent is just a prompt plus an output schema, `define_agent` (the `fascicle/agents` subpath) folds a markdown file — frontmatter `name` / `model` / `temperature`, body as the prompt — and a zod schema into a `Step<i, o>`:
+
+<!-- snippet: check -->
+```typescript
+import { z } from 'zod';
+import { create_engine } from 'fascicle';
+import { define_agent } from 'fascicle/agents';
+
+const engine = create_engine({ providers: { claude_cli: { auth_mode: 'oauth' } } });
+
+const reviewer = define_agent({
+  md_path: new URL('./prompts/reviewer.md', import.meta.url),
+  schema: z.object({ findings: z.array(z.string()), summary: z.string() }),
+  engine,
+});
+```
+
+This is the [blueprint's](./docs/blueprint.md) recommended shape for simple one-prompt agents; reference agents built on it (reviewer, documenter, researcher) live in [examples/agents/](./examples/agents/).
+
 **MCP bridge.** The `fascicle/mcp` subpath connects flows to the Model Context Protocol both ways. `mcp_client` turns an external MCP server's tools into plain `Tool[]`; `serve_flow` exposes a composed flow as an MCP tool to hosts like Claude Desktop or Cursor. It is pure adapter glue over the existing `Tool` and `run` contracts, and `@modelcontextprotocol/sdk` is an optional peer you only install when you use it.
 
 <!-- snippet: check -->

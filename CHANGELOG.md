@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **`fascicle/agents` subpath.** `define_agent` — the markdown-plus-schema agent loader the blueprint recommends for simple one-prompt agents — is now importable by consumers via `import { define_agent } from 'fascicle/agents'`. It was previously reachable only inside the repo. Ships as its own bundle entry (`dist/agents.js`), smoke-verified at build time.
+- A dedicated architecture page on the site (`site/blueprint.html`): the agent blueprint's one rule, adoption tiers, module contracts, anti-patterns, and ast-grep enforcement story, linked from both existing pages. `AGENTS.md` and the README now route agents and humans building *on* fascicle to `docs/blueprint.md` first, and a new `examples/README.md` indexes the example apps around it.
+- Opt-in `build` + `publish` steps in the check runner, included by `pnpm check:all`: the tsdown bundle with export smoke imports, and the npm pack manifest + `@arethetypeswrong/cli` validation. Packaging regressions now fail the done-gate instead of surfacing at release time.
+
+### Changed
+
+- Documentation synced with the implementation across `docs/` and the site. The composition surface is documented as 21 primitives (adding `ensemble_step`, `improve`, and `learn` to every list and to the site's interactive tour); site code samples now show the real config-object APIs (`branch` / `map` / `ensemble` / `tournament` / `consensus`, `adversarial`'s required `accept`, `suspend`'s required `on`, `retry`'s `backoff_ms`); engine docs corrected for `claude_cli` reasoning-effort forwarding (`CLAUDE_CODE_EFFORT_LEVEL`), the `'timeout'` member of `DEFAULT_RETRY.retry_on`, the real missing-peer error message, `inherit_env` semantics, the full `EngineConfig` shape, and the complete error and Engine-method lists.
+- The reference agents (reviewer, documenter, researcher) moved from `src/agents/` to `examples/agents/` as copy-pasteable demo code — they were never published (their markdown prompts do not ship in `dist/`), and their own docstring called them canonical examples. Their behavior tests still run in the default suite. `src/agents` now contains exactly the published surface: `define_agent`.
+
+### Internal
+
+- Hardened `define_agent` mutation coverage from 91.8% to 98.2% ahead of publication (frontmatter quoting and key-trim edges, primitive-input placeholder substitution, system-key omission, the pre-call abort guard); the three residual survivors are documented equivalent mutants.
+
 ## v0.9.6 — 2026-07-17
 
 ### Added

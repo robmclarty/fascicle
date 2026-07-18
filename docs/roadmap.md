@@ -92,9 +92,11 @@ Two deployment shapes, both script-shaped, unattended, observability-first.
   adjudicator (the version/conflict reconciliation that off-the-shelf RAG lacks) is
   the first slice, scaffolded and proven end-to-end against the published surface.
 - Done (v0.8.0): top-level examples import the published `fascicle` surface so
-  they are consumer-runnable; the built-in agents stay workspace-private
-  (`fascicle/agents` is a dev-only alias, not a published export), so the five
-  agent examples are repo-only.
+  they are consumer-runnable. Superseded post-v0.9.6: `define_agent` now ships
+  as the published `fascicle/agents` subpath, and the reference agents
+  (reviewer, documenter, researcher) moved to `examples/agents/` as
+  copy-pasteable demo code — so the agent examples are consumer-runnable too,
+  by copying the agent directory alongside the example.
 
 ## Phase 3: make it known
 
