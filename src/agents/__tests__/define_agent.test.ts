@@ -2,7 +2,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { aborted_error, run } from '#core'
-import type { TrajectoryEvent, TrajectoryLogger } from '#core'
+import type { RunContext, TrajectoryEvent, TrajectoryLogger } from '#core'
 import type { Engine, GenerateOptions, GenerateResult } from '#engine'
 import { afterEach, describe, expect, it } from 'vitest'
 import { z } from 'zod'
@@ -654,5 +654,113 @@ describe('define_agent', () => {
         await expect(pending).rejects.toBeInstanceOf(aborted_error)
       },
     )
+  })
+
+  describe('frontmatter quoting edges', () => {
+    it('leaves mismatched quote pairs verbatim', async () => {
+      await with_tmp_md(
+        ['---', 'model: "x\'', '---', 'Body.'].join('\n'),
+        async (path) => {
+          const { engine, calls } = make_mock_engine('ok')
+          const agent = define_agent({ md_path: path, schema: z.string(), engine })
+          await run(agent, {}, { install_signal_handlers: false })
+          expect(calls[0]?.opts.model).toBe('"x\'')
+        },
+      )
+    })
+
+    it('leaves a leading single quote with a double-quote tail verbatim', async () => {
+      await with_tmp_md(
+        ['---', "model: 'x\"", '---', 'Body.'].join('\n'),
+        async (path) => {
+          const { engine, calls } = make_mock_engine('ok')
+          const agent = define_agent({ md_path: path, schema: z.string(), engine })
+          await run(agent, {}, { install_signal_handlers: false })
+          expect(calls[0]?.opts.model).toBe("'x\"")
+        },
+      )
+    })
+
+    it('leaves a value that is a single quote character alone', async () => {
+      await with_tmp_md(
+        ['---', "model: '", '---', 'Body.'].join('\n'),
+        async (path) => {
+          const { engine, calls } = make_mock_engine('ok')
+          const agent = define_agent({ md_path: path, schema: z.string(), engine })
+          await run(agent, {}, { install_signal_handlers: false })
+          expect(calls[0]?.opts.model).toBe("'")
+        },
+      )
+    })
+
+    it('trims whitespace between the key and the colon', async () => {
+      await with_tmp_md(
+        ['---', 'name : trimmed_id', '---', 'Body.'].join('\n'),
+        async (path) => {
+          const { engine } = make_mock_engine('ok')
+          const agent = define_agent({ md_path: path, schema: z.string(), engine })
+          expect(agent.id).toBe('trimmed_id')
+        },
+      )
+    })
+  })
+
+  describe('substitution and option-shape edges', () => {
+    it('leaves placeholders untouched for primitive inputs (no index access on strings)', async () => {
+      await with_tmp_md('Echo {{0}} and {{who}}.', async (path) => {
+        const { engine, calls } = make_mock_engine('ok')
+        const agent = define_agent({ md_path: path, schema: z.string(), engine })
+        await run(agent, 'abc', { install_signal_handlers: false })
+        expect(calls[0]?.opts.prompt).toBe('Echo {{0}} and {{who}}.')
+      })
+    })
+
+    it('omits the system key entirely (not an explicit undefined) without build_prompt', async () => {
+      await with_tmp_md('Just a body.', async (path) => {
+        const { engine, calls } = make_mock_engine('ok')
+        const agent = define_agent({ md_path: path, schema: z.string(), engine })
+        await run(agent, {}, { install_signal_handlers: false })
+        expect(calls.length).toBe(1)
+        expect(Object.hasOwn(calls[0]?.opts ?? {}, 'system')).toBe(false)
+      })
+    })
+
+    it('omits the system key when build_prompt is set but the body is empty', async () => {
+      await with_tmp_md(['---', 'name: bodyless', '---', ''].join('\n'), async (path) => {
+        const { engine, calls } = make_mock_engine('ok')
+        const agent = define_agent({
+          md_path: path,
+          schema: z.string(),
+          engine,
+          build_prompt: () => 'U',
+        })
+        await run(agent, {}, { install_signal_handlers: false })
+        expect(calls[0]?.opts.prompt).toBe('U')
+        expect(Object.hasOwn(calls[0]?.opts ?? {}, 'system')).toBe(false)
+      })
+    })
+
+    it('throws aborted_error before calling the engine when the signal is already aborted', async () => {
+      await with_tmp_md('Body.', async (path) => {
+        const { engine, calls } = make_mock_engine('ok')
+        const agent = define_agent({ md_path: path, schema: z.string(), engine })
+        const { logger } = recording_logger()
+        const controller = new AbortController()
+        controller.abort()
+        const ctx: RunContext = {
+          run_id: 'r1',
+          trajectory: logger,
+          state: new Map(),
+          abort: controller.signal,
+          emit: () => {},
+          on_cleanup: () => {},
+          streaming: false,
+        }
+        const pending = Promise.resolve(agent.run({}, ctx))
+        await expect(pending).rejects.toBeInstanceOf(aborted_error)
+        await expect(pending).rejects.toThrow('aborted before agent call')
+        expect(calls.length).toBe(0)
+      })
+    })
   })
 })
