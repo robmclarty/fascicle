@@ -51,6 +51,10 @@
       "types": "./dist/adapters.d.ts",
       "import": "./dist/adapters.js"
     },
+    "./agents": {
+      "types": "./dist/agents.d.ts",
+      "import": "./dist/agents.js"
+    },
     "./mcp": {
       "types": "./dist/mcp.d.ts",
       "import": "./dist/mcp.js"

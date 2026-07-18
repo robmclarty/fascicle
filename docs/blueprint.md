@@ -175,7 +175,7 @@ Two loading mechanisms, by weight:
 **Simple agents: `define_agent`.** When an agent is a prompt plus an output schema, fascicle already does the whole job. The markdown body becomes the prompt (with `{{key}}` substitution against string fields of the input), or the system prompt when you supply `build_prompt`; frontmatter `model` / `temperature` become call defaults:
 
 ```ts
-import { define_agent } from 'fascicle'
+import { define_agent } from 'fascicle/agents'
 
 const reviewer = define_agent({
   md_path: new URL('../prompts/reviewer.md', import.meta.url),

@@ -27,6 +27,8 @@ const REQUIRED_FILES = [
   'dist/index.d.ts',
   'dist/adapters.js',
   'dist/adapters.d.ts',
+  'dist/agents.js',
+  'dist/agents.d.ts',
   'dist/mcp.js',
   'dist/mcp.d.ts',
   'dist/stdio.js',

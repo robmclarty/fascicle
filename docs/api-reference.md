@@ -8,8 +8,9 @@ reference; for full option shapes and behavior, follow the links into
 Everything is exported from the umbrella entry point and its subpaths:
 
 ```ts
-import { /* composition + engine + define_agent */ } from 'fascicle';
+import { /* composition + engine */ } from 'fascicle';
 import { /* loggers + stores */ } from 'fascicle/adapters';
+import { /* define_agent */ } from 'fascicle/agents';
 import { /* MCP bridge */ } from 'fascicle/mcp';
 import { /* stdio child contract */ } from 'fascicle/stdio';
 import { /* OpenTelemetry bridge */ } from 'fascicle/otel';
@@ -139,7 +140,7 @@ streaming chunks. Types: `ModelCallConfig`, `ModelCallInput`.
 ### `define_agent` — markdown-driven agents
 
 ```ts
-import { define_agent } from 'fascicle';
+import { define_agent } from 'fascicle/agents';
 
 const reviewer = define_agent({ md_path, schema, engine, build_prompt });
 ```

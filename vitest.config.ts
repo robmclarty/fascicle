@@ -18,7 +18,6 @@ export default defineConfig({
       { find: /^fascicle\/mcp$/, replacement: fileURLToPath(new URL('./src/mcp/index.ts', import.meta.url)) },
       { find: /^fascicle\/stdio$/, replacement: fileURLToPath(new URL('./src/stdio/index.ts', import.meta.url)) },
       { find: /^fascicle\/ui$/, replacement: fileURLToPath(new URL('./src/ui/index.ts', import.meta.url)) },
-      // Repo-only dev alias: built-in agents are not part of the published exports.
       { find: /^fascicle\/agents$/, replacement: fileURLToPath(new URL('./src/agents/index.ts', import.meta.url)) },
       { find: /^fascicle$/, replacement: fileURLToPath(new URL('./src/index.ts', import.meta.url)) },
     ],
