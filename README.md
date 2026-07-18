@@ -179,6 +179,7 @@ For zero-latency streaming from inside a long-running flow, pair it with `http_l
 - [docs/cookbook.md](./docs/cookbook.md) — retries, fan-out, judges, HITL, tool loops
 - [docs/human-in-the-loop.md](./docs/human-in-the-loop.md) — suspend/resume approval over HTTP and streaming to a `useChat` UI via `fascicle/ui`
 - [docs/writing-a-harness.md](./docs/writing-a-harness.md) — building a runner around fascicle
+- [docs/blueprint.md](./docs/blueprint.md) is the agent blueprint: the standard app architecture (one composition layer, markdown prompts, normalized module shapes)
 - [docs/embedding-under-a-harness.md](./docs/embedding-under-a-harness.md) — running a fascicle agent as somebody's child process
 - [docs/troubleshooting.md](./docs/troubleshooting.md) — first-run errors and what they mean
 - [docs/comparison.md](./docs/comparison.md) — how fascicle compares to LangChain, Mastra, and others

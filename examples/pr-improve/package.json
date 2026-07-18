@@ -10,7 +10,8 @@
   "scripts": {
     "improve": "tsx src/main.ts",
     "improve:stub": "tsx src/main.ts --stub --fixture fixtures/pr-sample.patch",
-    "improve:pr": "tsx src/main.ts --provider claude_cli --pr"
+    "improve:pr": "tsx src/main.ts --provider claude_cli --pr",
+    "check:rules": "ast-grep scan src"
   },
   "dependencies": {
     "fascicle": "workspace:*",
