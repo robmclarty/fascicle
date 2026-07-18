@@ -10,7 +10,7 @@ If your task is to construct a new agent that *consumes* the published `fascicle
 
 **`pnpm check:all` is the single source of truth for "done".** If it exits 0, your work is complete. If it exits non-zero, it is not. No other signal counts.
 
-`pnpm check` runs the default (fast) set — every check except the opt-in `mutation` step — and is what you should use in tight feedback loops. `pnpm check:all` adds the opt-in checks (Stryker mutation testing) and is the gate before declaring done.
+`pnpm check` runs the default (fast) set — every check except the opt-in steps — and is what you should use in tight feedback loops. `pnpm check:all` adds the opt-in checks (Stryker `mutation`, plus the `build` + `publish` packaging gate) and is the gate before declaring done.
 
 Before declaring a task finished:
 
@@ -33,7 +33,7 @@ pnpm test:watch                # watch-mode tests while implementing
 pnpm exec tsc --noEmit         # just types
 ```
 
-`pnpm check:all` (every check, including opt-in) is the final gate before declaring done. Stryker's `mutation` step is the slowest and is opt-in for exactly this reason; incremental mode keeps re-runs cheap once the shared baseline at `stryker.incremental.json` is up to date.
+`pnpm check:all` (every check, including opt-in) is the final gate before declaring done. Stryker's `mutation` step is the slowest and is opt-in for exactly this reason; incremental mode keeps re-runs cheap once the shared baseline at `stryker.incremental.json` is up to date. The `build` + `publish` steps re-bundle and validate the npm packaging (pack manifest + type resolution), so surface changes fail here instead of at release time.
 
 ## Conventions
 

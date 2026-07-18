@@ -121,6 +121,26 @@ const CHECKS = [
     args: ['exec', 'cspell', '--no-progress', '--no-summary', '--reporter=default'],
     output_file: null,
   },
+  // Packaging gate: `prepublishOnly` runs these at release time, but a
+  // surface change (new subpath, renamed export) should fail check:all, not
+  // the eventual publish. Opt-in because a full bundle rebuild is slower
+  // than the inner-loop checks above.
+  {
+    name: 'build',
+    description: 'tsdown bundle + export smoke imports (prerequisite of publish)',
+    command: 'node',
+    args: ['scripts/build.mjs'],
+    output_file: null,
+    opt_in: true,
+  },
+  {
+    name: 'publish',
+    description: 'npm pack manifest + @arethetypeswrong/cli against dist',
+    command: 'node',
+    args: ['scripts/check-publish.mjs'],
+    output_file: null, // check-publish writes .check/attw.json directly
+    opt_in: true,
+  },
 ];
 
 /**
