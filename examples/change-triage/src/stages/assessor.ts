@@ -6,6 +6,12 @@
  * in flow.ts via messages.ts; this file is prompt wiring plus a factory.
  * `schema_repair_attempts` lets the engine re-prompt small local models that
  * drop a field or wrap the JSON in prose.
+ *
+ * This is the stage-factory tier deliberately, to show it alongside
+ * docs-concierge's `define_agent` stage — the blueprint's two prompt-loading
+ * mechanisms. This role happens to only read `.content`, so it could be a
+ * `define_agent`; keep the factory when you need the `GenerateResult` envelope
+ * (usage, cost, tool calls) or `model_call` options like `tools`.
  */
 
 import { model_call, type Engine, type GenerateResult, type Step } from 'fascicle'
