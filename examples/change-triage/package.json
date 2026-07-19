@@ -1,0 +1,19 @@
+{
+  "name": "@repo/example-change-triage",
+  "version": "0.0.0",
+  "description": "Release-risk triage for a change set: deterministic detectors + one schema-mode model call, with a score floor the model cannot undercut.",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "triage": "tsx src/main.ts",
+    "triage:stub": "tsx src/main.ts --stub --diff fixtures/risky.patch",
+    "check:rules": "ast-grep scan src"
+  },
+  "dependencies": {
+    "fascicle": "workspace:*",
+    "zod": "*"
+  },
+  "devDependencies": {
+    "tsx": "*"
+  }
+}

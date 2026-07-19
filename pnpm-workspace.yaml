@@ -6,6 +6,8 @@ packages:
   - 'examples/mcp-server'
   - 'examples/pr-improve'
   - 'examples/swebench'
+  - 'examples/change-triage'
+  - 'examples/docs-concierge'
 
 allowBuilds:
   '@ast-grep/cli': true

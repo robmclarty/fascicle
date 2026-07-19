@@ -705,6 +705,93 @@ describe('define_agent', () => {
     })
   })
 
+  describe('call-shaping config (model, schema_repair_attempts)', () => {
+    const md_with_model = ['---', 'name: shaped', 'model: from-frontmatter', '---', '', 'body'].join('\n')
+    const md_without_model = ['---', 'name: shaped', '---', '', 'body'].join('\n')
+
+    it('config.model wins over frontmatter model', async () => {
+      await with_tmp_md(md_with_model, async (path) => {
+        const { engine, calls } = make_mock_engine({ ok: true })
+        const agent = define_agent({
+          md_path: path,
+          schema: z.object({ ok: z.boolean() }),
+          engine,
+          model: 'from-config',
+        })
+        await run(agent, {}, { install_signal_handlers: false })
+        expect(calls[0]?.opts.model).toBe('from-config')
+      })
+    })
+
+    it('config.model applies when frontmatter has no model', async () => {
+      await with_tmp_md(md_without_model, async (path) => {
+        const { engine, calls } = make_mock_engine({ ok: true })
+        const agent = define_agent({
+          md_path: path,
+          schema: z.object({ ok: z.boolean() }),
+          engine,
+          model: 'from-config',
+        })
+        await run(agent, {}, { install_signal_handlers: false })
+        expect(calls[0]?.opts.model).toBe('from-config')
+      })
+    })
+
+    it('frontmatter model remains the default when config omits one', async () => {
+      await with_tmp_md(md_with_model, async (path) => {
+        const { engine, calls } = make_mock_engine({ ok: true })
+        const agent = define_agent({
+          md_path: path,
+          schema: z.object({ ok: z.boolean() }),
+          engine,
+        })
+        await run(agent, {}, { install_signal_handlers: false })
+        expect(calls[0]?.opts.model).toBe('from-frontmatter')
+      })
+    })
+
+    it('forwards schema_repair_attempts to engine.generate', async () => {
+      await with_tmp_md(md_without_model, async (path) => {
+        const { engine, calls } = make_mock_engine({ ok: true })
+        const agent = define_agent({
+          md_path: path,
+          schema: z.object({ ok: z.boolean() }),
+          engine,
+          schema_repair_attempts: 2,
+        })
+        await run(agent, {}, { install_signal_handlers: false })
+        expect(calls[0]?.opts.schema_repair_attempts).toBe(2)
+      })
+    })
+
+    it('omits the schema_repair_attempts key entirely when unset', async () => {
+      await with_tmp_md(md_without_model, async (path) => {
+        const { engine, calls } = make_mock_engine({ ok: true })
+        const agent = define_agent({
+          md_path: path,
+          schema: z.object({ ok: z.boolean() }),
+          engine,
+        })
+        await run(agent, {}, { install_signal_handlers: false })
+        expect(Object.hasOwn(calls[0]?.opts ?? {}, 'schema_repair_attempts')).toBe(false)
+      })
+    })
+
+    it('forwards schema_repair_attempts: 0 (falsy but set)', async () => {
+      await with_tmp_md(md_without_model, async (path) => {
+        const { engine, calls } = make_mock_engine({ ok: true })
+        const agent = define_agent({
+          md_path: path,
+          schema: z.object({ ok: z.boolean() }),
+          engine,
+          schema_repair_attempts: 0,
+        })
+        await run(agent, {}, { install_signal_handlers: false })
+        expect(calls[0]?.opts.schema_repair_attempts).toBe(0)
+      })
+    })
+  })
+
   describe('substitution and option-shape edges', () => {
     it('leaves placeholders untouched for primitive inputs (no index access on strings)', async () => {
       await with_tmp_md('Echo {{0}} and {{who}}.', async (path) => {

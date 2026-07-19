@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **`define_agent` call-shaping config.** `DefineAgentConfig` accepts `model` and `schema_repair_attempts`, closing the gap where the blueprint's "models are threaded as data" rule could not be followed on the `fascicle/agents` surface (and where schema repair — set on every model call observed in production consumers — required dropping to a stage factory). Precedence: `config.model` > frontmatter `model` > engine default; the blueprint's stage-factory section now states the same rule.
+- Two blueprint reference apps translated from production consumers, workspace-wired with stub-engine tests and the blueprint's ast-grep rules: `examples/change-triage/` (deterministic detectors + one schema-mode model call, a score floor the model cannot undercut, a privacy screen on the model's view) and `examples/docs-concierge/` (grounded Q&A with number-based citations, a `define_agent` stage, and a one-way gate that prefers abstaining over confidently wrong).
+
 ## v0.9.7 — 2026-07-17
 
 ### Added

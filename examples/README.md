@@ -1,6 +1,6 @@
 # Examples
 
-Runnable reference flows. Two kinds live here: single-file examples at this root (each is one `pnpm exec tsx examples/<name>.ts` away), and five full example apps in subdirectories, which are separate workspace members consuming the library via `fascicle: workspace:*`.
+Runnable reference flows. Two kinds live here: single-file examples at this root (each is one `pnpm exec tsx examples/<name>.ts` away), and seven full example apps in subdirectories, which are separate workspace members consuming the library via `fascicle: workspace:*`.
 
 All of them import the published surface (`fascicle`, `fascicle/adapters`, `fascicle/mcp`, …), so everything here is copy-pasteable into an npm consumer. The reference agents (reviewer, documenter, researcher) are themselves demo code under [`agents/`](./agents/) — each one a markdown prompt + zod schema folded through `define_agent`; copy the agent directory alongside the example that uses it.
 
@@ -13,6 +13,8 @@ All of them import the published surface (`fascicle`, `fascicle/adapters`, `fasc
 | App | What it shows |
 | --- | --- |
 | [pr-improve/](./pr-improve/) | the canonical blueprint reference: a 4-stage PR-improvement pipeline with pure-composition `flow.ts`, provider-dispatched builder tools, and the blueprint's [ast-grep rules](./pr-improve/rules/) enforced in CI |
+| [change-triage/](./change-triage/) | deterministic + model hybrid: zero-token detectors, one schema-mode model call, a score floor the model cannot undercut, and a privacy screen on the model's view |
+| [docs-concierge/](./docs-concierge/) | model-proposes, code-decides: grounded Q&A with number-based citations, a `define_agent` stage with a markdown prompt, and a one-way gate that prefers abstaining over confidently wrong |
 | [amplify/](./amplify/) | online self-improvement over a real codebase: propose → score → accept/reject with test-suite gates |
 | [red-green-refactor/](./red-green-refactor/) | a bounded TDD loop (`loop` at the top, phase modules below) |
 | [swebench/](./swebench/) | a SWE-bench harness: per-instance worktrees, fan-out, structured verdicts |

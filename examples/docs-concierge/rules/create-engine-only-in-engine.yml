@@ -1,0 +1,11 @@
+id: create-engine-only-in-engine
+message: "create_engine may be called in exactly one file: src/engine.ts. Every other module receives a ready-made Engine, so provider selection lives in one place and swapping providers stays a single env change. See docs/blueprint.md."
+severity: error
+language: typescript
+files:
+  - src/**/*.ts
+ignores:
+  - src/**/__tests__/**
+  - src/engine.ts
+rule:
+  pattern: create_engine($$$)

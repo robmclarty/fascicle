@@ -1,0 +1,19 @@
+{
+  "name": "@repo/example-docs-concierge",
+  "version": "0.0.0",
+  "description": "Grounded Q&A over a local docs directory: retrieve, answer with citations, and a one-way gate that prefers abstaining over being confidently wrong.",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "ask": "tsx src/main.ts",
+    "ask:stub": "tsx src/main.ts --stub \"Who can delete a project?\"",
+    "check:rules": "ast-grep scan src"
+  },
+  "dependencies": {
+    "fascicle": "workspace:*",
+    "zod": "*"
+  },
+  "devDependencies": {
+    "tsx": "*"
+  }
+}

@@ -1,0 +1,35 @@
+diff --git a/migrations/20260701_add_plan_tier.sql b/migrations/20260701_add_plan_tier.sql
+new file mode 100644
+index 0000000..1a2b3c4
+--- /dev/null
++++ b/migrations/20260701_add_plan_tier.sql
+@@ -0,0 +1,4 @@
++ALTER TABLE accounts ADD COLUMN plan_tier TEXT NOT NULL DEFAULT 'free';
++UPDATE accounts SET plan_tier = 'pro' WHERE seats > 10;
++CREATE INDEX idx_accounts_plan_tier ON accounts (plan_tier);
++
+diff --git a/src/auth/session.ts b/src/auth/session.ts
+index 5d6e7f8..9a0b1c2 100644
+--- a/src/auth/session.ts
++++ b/src/auth/session.ts
+@@ -41,9 +41,10 @@ export function resolve_session(req: Request): Session | null {
+   const token = req.headers.get('authorization')
+   if (token === null) return null
+-  const session = verify_token(token)
+-  if (session === null) return null
+-  return session
++  // Trust cached sessions for an hour to cut token verification load.
++  const cached = session_cache.get(token)
++  if (cached !== undefined) return cached
++  return verify_token(token)
+ }
+diff --git a/seeds/accounts.seed.json b/seeds/accounts.seed.json
+index 2b3c4d5..6e7f8a9 100644
+--- a/seeds/accounts.seed.json
++++ b/seeds/accounts.seed.json
+@@ -1,5 +1,6 @@
+ [
+   { "name": "Dana Point", "email": "dana@example.com", "phone": "5550001234" },
++  { "name": "Lee Field", "email": "lee@example.com", "phone": "5550005678" },
+   { "name": "Ash Grove", "email": "ash@example.com", "phone": "5550009999" }
+ ]

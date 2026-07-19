@@ -13,6 +13,11 @@
  *   sent — the markdown carries the full instruction.
  * - With `build_prompt`, the body is the system prompt and `build_prompt(input)`
  *   produces the user message (string, or `{ user, system? }` to override).
+ * - `config.model` and `config.schema_repair_attempts` shape the call from
+ *   code. An explicit `model` wins over frontmatter `model` (frontmatter stays
+ *   the role default when the app threads nothing; the engine default is the
+ *   last resort), so a resolved role-to-model table and env overrides actually
+ *   reach the call.
  *
  * The factory keeps no engine state. Each call delegates to `engine.generate`
  * with the resolved prompts, the schema, and `ctx.abort` / `ctx.trajectory`
@@ -42,6 +47,17 @@ export type DefineAgentConfig<i, o> = {
   readonly engine: Engine
   readonly name?: string
   readonly build_prompt?: (input: i) => AgentBuiltPrompt
+  /**
+   * Model for this agent's calls, typically threaded from the app's resolved
+   * role-to-model table. Wins over frontmatter `model`; when both are absent
+   * the engine default applies.
+   */
+  readonly model?: string
+  /**
+   * Forwarded to `engine.generate`: how many times the engine may re-prompt
+   * the model to repair schema-invalid output before failing the call.
+   */
+  readonly schema_repair_attempts?: number
 }
 
 type Frontmatter = {
@@ -166,8 +182,12 @@ export function define_agent<i, o>(config: DefineAgentConfig<i, o>): Step<i, o> 
     if (system_prompt !== undefined && system_prompt !== '') {
       opts.system = system_prompt
     }
-    if (frontmatter.model !== undefined) opts.model = frontmatter.model
+    const model = config.model ?? frontmatter.model
+    if (model !== undefined) opts.model = model
     if (frontmatter.temperature !== undefined) opts.temperature = frontmatter.temperature
+    if (config.schema_repair_attempts !== undefined) {
+      opts.schema_repair_attempts = config.schema_repair_attempts
+    }
   
     const result = await config.engine.generate<o>(opts)
   

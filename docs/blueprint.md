@@ -172,7 +172,7 @@ Why files instead of `const REVIEWER_SYSTEM = \`...\``:
 
 Two loading mechanisms, by weight:
 
-**Simple agents: `define_agent`.** When an agent is a prompt plus an output schema, fascicle already does the whole job. The markdown body becomes the prompt (with `{{key}}` substitution against string fields of the input), or the system prompt when you supply `build_prompt`; frontmatter `model` / `temperature` become call defaults:
+**Simple agents: `define_agent`.** When an agent is a prompt plus an output schema, fascicle already does the whole job. The markdown body becomes the prompt (with `{{key}}` substitution against string fields of the input), or the system prompt when you supply `build_prompt`. Thread the role's model and repair budget as config; frontmatter `model` / `temperature` are the role defaults when the app threads nothing:
 
 ```ts
 import { define_agent } from 'fascicle/agents'
@@ -181,6 +181,8 @@ const reviewer = define_agent({
   md_path: new URL('../prompts/reviewer.md', import.meta.url),
   schema: reviewer_output_schema,
   engine,
+  model: models.reviewer,
+  schema_repair_attempts: 2,
   build_prompt: (input: ReviewerInput) => format_reviewer_message(input),
 })
 ```
@@ -195,7 +197,7 @@ export function make_reviewer_call(
   const prompt = load_prompt(new URL('../prompts/reviewer.md', import.meta.url))
   return model_call({
     engine,
-    model: prompt.model ?? model,
+    model,
     system: prompt.body,
     schema: reviewer_output_schema,
     schema_repair_attempts: 2,
@@ -203,6 +205,8 @@ export function make_reviewer_call(
   })
 }
 ```
+
+Model precedence is the same in both mechanisms: an explicitly threaded model (the factory argument here, `config.model` in `define_agent`) wins over frontmatter `model`, which stays the role default when the app threads nothing; the engine default is the last resort. Anything else re-creates the parsed-but-never-applied env override from anti-pattern 4.
 
 Rules that keep this honest:
 
@@ -412,3 +416,4 @@ Before calling an agent app done:
 - [composition.md](./composition.md) for the full primitive surface
 - [cookbook.md](./cookbook.md) for worked composition patterns
 - [`examples/pr-improve/`](../examples/pr-improve/) for the canonical tier-3 reference, and [`examples/pr-improve/docs/architecture.md`](../examples/pr-improve/docs/architecture.md) for its rationale
+- [`examples/change-triage/`](../examples/change-triage/) for the deterministic + model hybrid (detectors, a score floor, a privacy screen), and [`examples/docs-concierge/`](../examples/docs-concierge/) for model-proposes-code-decides gating with a `define_agent` stage; both are translations of production consumers into blueprint form

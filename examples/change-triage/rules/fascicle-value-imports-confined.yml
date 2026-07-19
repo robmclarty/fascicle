@@ -1,0 +1,23 @@
+id: fascicle-value-imports-confined
+message: "Value imports from 'fascicle' are confined to the files allowed to know about it: src/engine.ts (create_engine), src/flow.ts (composition), src/main.ts (run), and src/stages/** (model_call). Everywhere else import only types (`import type { ... } from 'fascicle'`), so business logic stays fascicle-free and the composition layer stays the one place the topology lives. See docs/blueprint.md."
+severity: error
+language: typescript
+files:
+  - src/**/*.ts
+ignores:
+  - src/**/__tests__/**
+  - src/engine.ts
+  - src/flow.ts
+  - src/main.ts
+  - src/stages/**/*.ts
+rule:
+  any:
+    - pattern: import { $$$ } from '$PATH'
+    - pattern: import { $$$ } from "$PATH"
+    - pattern: import $NAME from '$PATH'
+    - pattern: import $NAME from "$PATH"
+    - pattern: import * as $NAME from '$PATH'
+    - pattern: import * as $NAME from "$PATH"
+constraints:
+  PATH:
+    regex: '^fascicle(/|$)'

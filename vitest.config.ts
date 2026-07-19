@@ -33,6 +33,10 @@ export default defineConfig({
       // Reference agents are demo code, but their behavior tests (stub-engine
       // driven, no network) still run so the examples cannot rot silently.
       'examples/agents/**/__tests__/**/*.{test,spec}.ts',
+      // Blueprint reference apps translated from production consumers: their
+      // stub-engine flow tests and pure-module tests run for the same reason.
+      'examples/change-triage/src/**/__tests__/**/*.{test,spec}.ts',
+      'examples/docs-concierge/src/**/__tests__/**/*.{test,spec}.ts',
     ],
     pool: 'forks',
     reporters: ['default'],

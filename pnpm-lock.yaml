@@ -115,6 +115,32 @@ importers:
         specifier: '*'
         version: 4.23.0
 
+  examples/change-triage:
+    dependencies:
+      fascicle:
+        specifier: workspace:*
+        version: link:../..
+      zod:
+        specifier: '*'
+        version: 4.4.3
+    devDependencies:
+      tsx:
+        specifier: '*'
+        version: 4.23.0
+
+  examples/docs-concierge:
+    dependencies:
+      fascicle:
+        specifier: workspace:*
+        version: link:../..
+      zod:
+        specifier: '*'
+        version: 4.4.3
+    devDependencies:
+      tsx:
+        specifier: '*'
+        version: 4.23.0
+
   examples/mcp-server:
     dependencies:
       '@modelcontextprotocol/sdk':
