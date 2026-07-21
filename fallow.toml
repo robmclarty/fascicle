@@ -13,8 +13,14 @@ entry = [
   "stryker.config.mjs",
 ]
 
+# The GitHub Pages marketing site: browser scripts loaded by <script> tags, not
+# part of the published package or its module graph. Analyzing it reports every
+# file as unused and its DOM handlers as complexity findings, neither of which
+# is actionable.
+ignorePatterns = ["site/**"]
+
 # CLI/tooling deps used via command line or config files, not imported from source.
-ignoreDependencies = ["@ast-grep/cli", "@stryker-mutator/vitest-runner"]
+ignoreDependencies = ["@ast-grep/cli", "@stryker-mutator/vitest-runner", "publint"]
 
 [rules]
 unused-exports = "error"
