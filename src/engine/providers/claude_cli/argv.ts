@@ -1,10 +1,9 @@
 /**
- * Argv builder for the claude CLI invocation (spec §6.1).
+ * Argv builder for the claude CLI invocation.
  *
  * Every option value is a separate argv element; option names are never
- * string-interpolated with values (constraints §3 subprocess discipline #8).
- * The returned array is a readonly frozen copy; mutation would indicate a
- * caller bug.
+ * string-interpolated with values. The returned array is a readonly frozen
+ * copy; mutation would indicate a caller bug.
  */
 
 import type { ClaudeCliCallOptions, ClaudeCliProviderConfig } from './types.js'
@@ -19,6 +18,15 @@ export type BuildArgvInput = {
   readonly compiled_schema?: string
 }
 
+/**
+ * Assemble the full argv array for one `claude` CLI invocation.
+ *
+ * Always runs the CLI in non-interactive, streaming JSON mode (`-p
+ * --output-format stream-json --verbose`) so the adapter can parse events
+ * line by line. Flags are appended in a fixed order; `--resume` is only
+ * added when a session id is present, and `--append-system-prompt` only
+ * when there's a non-empty merged system prompt.
+ */
 export function build_cli_argv(input: BuildArgvInput): ReadonlyArray<string> {
   const args: string[] = []
   args.push('-p')
@@ -63,6 +71,13 @@ export function build_cli_argv(input: BuildArgvInput): ReadonlyArray<string> {
   return Object.freeze(args)
 }
 
+/**
+ * Join the caller's `system` prompt and the `append_system_prompt` call
+ * option into the single string passed to `--append-system-prompt`.
+ *
+ * Empty or undefined parts are dropped; when both parts are present they're
+ * separated by a blank line.
+ */
 export function merge_system(
   opts_system: string | undefined,
   append: string | undefined,
@@ -73,6 +88,10 @@ export function merge_system(
   return parts.join('\n\n')
 }
 
+/**
+ * Merge the caller's `allowed_tools` allowlist with the tool names derived
+ * from `opts.tools`, de-duplicating while preserving first-seen order.
+ */
 export function merge_allowed_tools(
   call_allowlist: ReadonlyArray<string> | undefined,
   tool_names: ReadonlyArray<string>,

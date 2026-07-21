@@ -5,9 +5,9 @@
  * at `ms` milliseconds. If the inner step does not complete in time, throws
  * `timeout_error`. The inner step is responsible for honoring `ctx.abort`;
  * a step that ignores the signal still triggers `timeout_error` on schedule
- * but continues running in the background (spec.md §9 F4).
+ * but continues running in the background.
  *
- * Cancellation (constraints.md §5.1, spec.md §6.8): the inner step runs with
+ * Cancellation: the inner step runs with
  * `AbortSignal.any([ctx.abort, timeout_local])`. On timer expiry, the local
  * controller aborts with a `timeout_error` as its reason; on parent abort
  * the parent reason flows through. The timer is always cleared in a finally
@@ -20,6 +20,9 @@ import type { RunContext, Step } from './types.js'
 
 let timeout_counter = 0
 
+/**
+ * Generate a unique step id of the form `timeout_<n>`.
+ */
 function next_id(): string {
   timeout_counter += 1
   return `timeout_${timeout_counter}`
@@ -29,6 +32,13 @@ export type TimeoutOptions = {
   readonly name?: string
 }
 
+/**
+ * Build a deadline-bounded step around `inner`.
+ *
+ * Races the inner dispatch against a timer that aborts the composed signal
+ * with `timeout_error`. The `timed_out` flag distinguishes timer expiry from
+ * a parent abort so the right error propagates.
+ */
 export function timeout<i, o>(
   inner: Step<i, o>,
   ms: number,

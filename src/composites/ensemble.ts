@@ -1,14 +1,5 @@
 /**
- * ensemble: N-of-M pick-best.
- *
- * `ensemble({ members, score, select? })` runs every member concurrently with
- * the same input, scores each result, and returns the winner (highest or
- * lowest by `select`) plus the complete score map. Tie-breaking is "any tied
- * result is acceptable".
- *
- * Implemented as a `compose`d `sequence` of `parallel(members)` followed by
- * a single picking step. Cancellation, fan-out, and abort propagation come
- * from `parallel`'s own contract.
+ * ensemble: N-of-M pick-best with a plain-function scorer.
  */
 
 import { compose, parallel, sequence, step } from '#core'
@@ -26,6 +17,18 @@ export type EnsembleResult<o> = {
   readonly scores: Record<string, number>
 }
 
+/**
+ * Builds a Step that runs every member concurrently with the same input,
+ * scores each result, and returns the winner plus the complete score map.
+ *
+ * `select` picks the highest (`'max'`, the default) or lowest (`'min'`)
+ * score. Tie-breaking is "any tied result is acceptable": the first member
+ * (in `members` key order) holding the best score wins.
+ *
+ * Implemented as a `compose`d `sequence` of `parallel(members)` followed by
+ * a single picking step. Cancellation, fan-out, and abort propagation come
+ * from `parallel`'s own contract.
+ */
 export function ensemble<i, o>(
   config: EnsembleConfig<i, o>,
 ): Step<i, EnsembleResult<o>> {

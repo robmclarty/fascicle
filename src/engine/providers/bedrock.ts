@@ -44,6 +44,9 @@ const BEDROCK_THINKING_BUDGETS: Record<EffortLevel, number> = {
   max: 64000,
 }
 
+/**
+ * Map an EffortLevel to the Bedrock `reasoningConfig` provider option.
+ */
 export function translate_bedrock_effort(effort: EffortLevel): EffortTranslation {
   // `none` is the only level with a 0 budget, so the budget alone decides
   // whether reasoning is requested.
@@ -61,6 +64,9 @@ export function translate_bedrock_effort(effort: EffortLevel): EffortTranslation
   }
 }
 
+/**
+ * Normalize Bedrock's raw usage payload into UsageTotals.
+ */
 export function normalize_bedrock_usage(raw: RawProviderUsage | undefined): UsageTotals {
   return default_normalize_usage(raw)
 }
@@ -74,6 +80,11 @@ const SUPPORTED: ReadonlySet<ProviderCapability> = new Set([
   'reasoning',
 ])
 
+/**
+ * Build the Bedrock ai_sdk adapter: validates the required region, resolves
+ * the chosen auth mode (bearer token, SigV4 keys, or the ambient AWS
+ * credential chain), and lazily loads @ai-sdk/amazon-bedrock to build models.
+ */
 export const create_bedrock_adapter = (init: ProviderInit): AiSdkProviderAdapter => {
   const region = typeof init['region'] === 'string' ? init['region'] : ''
   if (region.length === 0) {

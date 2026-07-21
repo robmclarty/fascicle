@@ -1,9 +1,9 @@
 /**
- * Sandbox wrapper for the claude_cli adapter (spec §5.1, F30).
+ * Sandbox wrapper for the claude_cli adapter.
  *
- * Builds the `{ spawn_cmd, prefix_args }` pair for bwrap and greywall. When no
- * sandbox is configured, returns { spawn_cmd: binary, prefix_args: [] } — the
- * caller then concatenates prefix_args before the CLI argv.
+ * Builds the `{ spawn_cmd, prefix_args }` pair for bwrap and greywall. When
+ * no sandbox is configured, returns `{ spawn_cmd: binary, prefix_args: [] }`;
+ * the caller then concatenates prefix_args before the CLI argv.
  *
  * Both wrappers allow the binary to execute while restricting network reach
  * to the allowlist and write access to additional paths on top of the
@@ -35,6 +35,12 @@ export type SandboxPlan = {
   readonly prefix_args: ReadonlyArray<string>
 }
 
+/**
+ * Pick the sandbox wrapper (if any) and build its wrapping argv.
+ *
+ * Returns the unwrapped binary with no prefix args when `sandbox` is
+ * undefined.
+ */
 export function build_sandbox_plan(
   binary: string,
   sandbox: SandboxProviderConfig | undefined,
@@ -48,6 +54,15 @@ export function build_sandbox_plan(
   return { spawn_cmd: 'greywall', prefix_args: build_greywall_args(binary, sandbox) }
 }
 
+/**
+ * Build the `bwrap` argv prefix that sandboxes the claude binary.
+ *
+ * Read-only binds the base OS directories, mounts fresh `/proc`, `/dev`,
+ * and a tmpfs `/tmp`, and unshares the user/pid/ipc/uts/cgroup namespaces
+ * so the child can't see or touch the host outside what's explicitly bound
+ * in. Network access is off (`--unshare-net`) unless a non-empty
+ * `network_allowlist` is given.
+ */
 function build_bwrap_args(
   binary: string,
   sandbox: Extract<SandboxProviderConfig, { kind: 'bwrap' }>,
@@ -91,6 +106,13 @@ function build_bwrap_args(
   return args
 }
 
+/**
+ * Build the greywall argv prefix: `--settings <path> -- <binary>`.
+ *
+ * Uses `sandbox.settings_path` directly when the caller supplied one;
+ * otherwise writes a fresh settings file derived from
+ * `network_allowlist`/`additional_write_paths`.
+ */
 function build_greywall_args(
   binary: string,
   sandbox: Extract<SandboxProviderConfig, { kind: 'greywall' }>,
@@ -99,6 +121,10 @@ function build_greywall_args(
   return ['--settings', settings_path, '--', binary]
 }
 
+/**
+ * Write a greywall JSON settings file for one sandboxed run to a fresh
+ * temp directory and return its path.
+ */
 function write_greywall_settings(
   sandbox: Extract<SandboxProviderConfig, { kind: 'greywall' }>,
 ): string {

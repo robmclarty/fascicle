@@ -4,7 +4,7 @@
  * DEFAULT_PRICING is frozen at module load. Per-engine overrides flow through
  * engine config or register_price; the defaults are never mutated.
  *
- * Cost math formula (spec §5.10):
+ * Cost math formula:
  *   input_usd        = (input_tokens - cached - cache_write) * input_per_million / 1e6
  *   cached_input_usd = cached                                * (cached_per_million ?? input_per_million) / 1e6
  *   cache_write_usd  = cache_write                           * (cache_write_per_million ?? input_per_million) / 1e6
@@ -16,10 +16,10 @@
  * reasoning_usd separately.
  *
  * Fields on CostBreakdown are omitted (not zeroed) when the corresponding
- * usage field was 0 across the whole call: see §5.10 / F17. compute_cost is
- * called per-turn, so it reports the fields that saw usage in THIS turn. The
- * top-level aggregation stage is responsible for deciding which fields to
- * omit on the aggregated CostBreakdown.
+ * usage field was 0 across the whole call. compute_cost is called per turn,
+ * so it reports the fields that saw usage in THIS turn. The top-level
+ * aggregation stage decides which fields to omit on the aggregated
+ * CostBreakdown.
  */
 
 import type { CostBreakdown, Pricing, PricingTable, UsageTotals } from './types.js'
@@ -73,10 +73,19 @@ export const DEFAULT_PRICING: PricingTable = Object.freeze({
   'google:gemini-2.5-flash': { input_per_million: 0.075, output_per_million: 0.3 },
 })
 
+/**
+ * Build the `provider:model_id` key used to look up a pricing table entry.
+ */
 export function pricing_key(provider: string, model_id: string): string {
   return `${provider}:${model_id}`
 }
 
+/**
+ * Round a dollar amount to 6 decimal places.
+ *
+ * Per-token rates produce long floating-point tails; 6 places keeps
+ * sub-cent precision without leaking binary rounding noise into reports.
+ */
 function round6(value: number): number {
   return Math.round(value * 1e6) / 1e6
 }

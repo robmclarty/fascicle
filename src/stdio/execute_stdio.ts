@@ -57,6 +57,15 @@ export type StdioIo = {
   readonly error_stream: { write(chunk: string): unknown }
 }
 
+/**
+ * Runs the stdio agent contract over injected `io`: read input, run the
+ * flow, dispose the engine, write output, and return the outcome as a
+ * value.
+ *
+ * Disposes the engine before writing output so a teardown failure on the
+ * success path yields code 1 and no stdout, keeping "code 0 means stdout
+ * carries an authoritative result" true even when disposal fails.
+ */
 export async function execute_stdio<i, o>(
   flow: Step<i, o>,
   options: RunStdioOptions<i, o>,
@@ -78,6 +87,14 @@ type ProduceResult =
   | { readonly kind: 'ok'; readonly json: string }
   | { readonly kind: 'failed'; readonly code: 1 | 2; readonly failure: StdioFailure }
 
+/**
+ * Reads stdin, parses and validates it against the input schema, runs the
+ * flow, then validates and serializes the result.
+ *
+ * Returns a tagged result instead of throwing so `execute_stdio` can dispose
+ * the engine and choose the right exit code regardless of which stage
+ * failed.
+ */
 async function produce_output<i, o>(
   flow: Step<i, o>,
   options: RunStdioOptions<i, o>,
@@ -162,6 +179,10 @@ async function produce_output<i, o>(
   return { kind: 'ok', json }
 }
 
+/**
+ * Disposes the caller's engine when one was supplied, returning a
+ * `StdioFailure` if disposal throws and `null` otherwise.
+ */
 async function dispose_engine(
   engine: RunStdioOptions<never, never>['engine'],
 ): Promise<StdioFailure | null> {
@@ -174,6 +195,9 @@ async function dispose_engine(
   }
 }
 
+/**
+ * Builds a `StdioFailure` for the given stage from a thrown value.
+ */
 function make_failure(stage: NonNullable<StdioFailure['stage']>, err: unknown): StdioFailure {
   const cause = safe_cause(err)
   return {
@@ -183,6 +207,13 @@ function make_failure(stage: NonNullable<StdioFailure['stage']>, err: unknown): 
   }
 }
 
+/**
+ * Reduces a thrown value to a JSON-safe cause for `StdioFailure`.
+ *
+ * An `Error` is reduced to its `name`, `message`, and Zod's `path` property
+ * when present (`safeParse` issues carry one); anything else is passed
+ * through `to_json_safe`.
+ */
 function safe_cause(err: unknown): unknown {
   if (err instanceof Error) {
     const path = Reflect.get(err, 'path')
@@ -195,8 +226,14 @@ function safe_cause(err: unknown): unknown {
   return to_json_safe(err)
 }
 
-// The glue serializes the failure with JSON.stringify; cause must never make
-// that throw (circular refs, BigInt) or silently vanish (undefined-only).
+/**
+ * Round-trips a value through `JSON.stringify`/`parse` so it is safe to
+ * embed in a `StdioFailure` that the glue will serialize again.
+ *
+ * Never throws and never returns a value that would make that later
+ * serialization throw or silently vanish: a circular reference or a BigInt
+ * becomes `undefined` instead.
+ */
 function to_json_safe(value: unknown): unknown {
   try {
     const json = JSON.stringify(value)

@@ -5,11 +5,10 @@
  * is an object keyed by the child name; all children must accept the same
  * input type.
  *
- * Cancellation (constraints.md §5.1, spec.md §6.8): each child runs with a
- * composed abort signal — `AbortSignal.any([ctx.abort, child_local])`. On
- * abort the composer awaits all in-flight children (success, failure, or
- * aborted) before rethrowing `ctx.abort.reason`. This matches the
- * "agent-pattern" composer contract in spec.md §6.8.
+ * Cancellation: each child runs with a composed abort signal,
+ * `AbortSignal.any([ctx.abort, child_local])`. On abort the composer awaits
+ * all in-flight children (success, failure, or aborted) before rethrowing
+ * `ctx.abort.reason`.
  *
  * When several children fail, a `suspended_error` is preferred over an
  * application error so a human-approval gate inside a branch stays resumable
@@ -31,6 +30,9 @@ type ParallelOutputs<children extends Record<string, AnyStep>> = {
 
 let parallel_counter = 0
 
+/**
+ * Generate a unique step id of the form `parallel_<n>`.
+ */
 function next_id(): string {
   parallel_counter += 1
   return `parallel_${parallel_counter}`
@@ -40,6 +42,14 @@ export type ParallelOptions = {
   readonly name?: string
 }
 
+/**
+ * Build a step that runs named children concurrently on the same input.
+ *
+ * Returns an object keyed by child name. All children settle before any
+ * error propagates; a `suspended_error` wins over application errors so a
+ * human-approval gate stays resumable instead of being masked by a sibling's
+ * failure.
+ */
 export function parallel<i, children extends Record<string, Step<i, unknown>>>(
   members: children,
   options?: ParallelOptions,

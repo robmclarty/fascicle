@@ -3,7 +3,7 @@
  *
  * Conforms to `TrajectoryLogger`. POSTs each event as a single line of
  * newline-delimited JSON to a configured URL. Pairs naturally with the
- * fascicle viewer's `/api/ingest` endpoint, but is a generic adapter — the
+ * fascicle viewer's `/api/ingest` endpoint, but is a generic adapter: the
  * receiver can be anything that accepts NDJSON over HTTP.
  *
  * Failure policy: drop on transport error and invoke the optional `on_error`
@@ -28,11 +28,22 @@ export type HttpLoggerOptions = {
   readonly on_error?: (err: unknown) => void
 }
 
+/**
+ * Default `HttpLoggerFetch`, backed by the global `fetch`.
+ */
 const default_fetch: HttpLoggerFetch = async (url, init) => {
   const res = await fetch(url, init)
   return { ok: res.ok, status: res.status }
 }
 
+/**
+ * Create a `TrajectoryLogger` that POSTs each event as NDJSON to
+ * `options.url`.
+ *
+ * Never throws: a transport failure is dropped and reported through the
+ * optional `on_error` callback, so a dev viewer being unreachable never
+ * blocks the flow.
+ */
 export function http_logger(options: HttpLoggerOptions): TrajectoryLogger {
   const { url, on_error } = options
   const send = options.fetch ?? default_fetch

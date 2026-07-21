@@ -1,15 +1,15 @@
 /**
  * Ollama local-provider adapter.
  *
- * Dispatches on `transport` (D3): the default 'ai_sdk' backend wraps
+ * Dispatches on `transport`: the default 'ai_sdk' backend wraps
  * ai-sdk-ollama as an optional peer; 'native' talks to the daemon's own
- * /api/chat endpoint (D2, NDJSON wire) — the compat tail is served by
- * pointing the `openai` provider's base_url at /v1 instead. No API key;
- * base_url is the daemon root and is required on both transports. Ollama
- * does not support reasoning effort: the ai_sdk branch drops the field and
- * records `effort_ignored`; the native branch ignores it entirely (thinking
- * is opt-in via provider_options.ollama.think). Ollama does not emit
- * image_input capability by default in v1.
+ * /api/chat endpoint over its NDJSON wire. The OpenAI-compatible tail is
+ * served instead by pointing the `openai` provider's base_url at Ollama's
+ * /v1. No API key; base_url is the daemon root and is required on both
+ * transports. Ollama does not support reasoning effort: the ai_sdk branch
+ * drops the field and records `effort_ignored`; the native branch ignores it
+ * entirely (thinking is opt-in via provider_options.ollama.think). Ollama
+ * does not emit the image_input capability.
  */
 
 import type { EffortLevel, ProviderInit, UsageTotals } from '../types.js'
@@ -30,11 +30,18 @@ type OllamaSdk = {
   createOllama: (config: { baseURL?: string }) => (model_id: string) => unknown
 }
 
+/**
+ * Ollama has no reasoning-effort control on this transport, so every
+ * non-`none` level is reported as ignored and no provider option is emitted.
+ */
 export function translate_ollama_effort(effort: EffortLevel): EffortTranslation {
   const ignored = effort !== 'none'
   return { provider_options: {}, effort_ignored: ignored }
 }
 
+/**
+ * Normalize Ollama's raw usage payload into UsageTotals.
+ */
 export function normalize_ollama_usage(raw: RawProviderUsage | undefined): UsageTotals {
   // default_normalize_usage already maps undefined to a zero total; Ollama
   // additionally never reports cache or reasoning tokens, so strip them.
@@ -56,6 +63,10 @@ const SUPPORTED: ReadonlySet<ProviderCapability> = new Set([
   'structured_output',
 ])
 
+/**
+ * Build the Ollama adapter, picking the native or ai_sdk backend per the
+ * resolved `transport`.
+ */
 export const create_ollama_adapter = (init: ProviderInit): ProviderAdapter => {
   if (resolve_transport(init, 'ollama') === 'native') {
     return create_ollama_native_adapter(init)
@@ -63,6 +74,10 @@ export const create_ollama_adapter = (init: ProviderInit): ProviderAdapter => {
   return create_ollama_ai_sdk_adapter(init)
 }
 
+/**
+ * Build the Ollama ai_sdk adapter: validates the required base_url and
+ * lazily loads ai-sdk-ollama to build models.
+ */
 const create_ollama_ai_sdk_adapter = (init: ProviderInit): AiSdkProviderAdapter => {
   const base_url = typeof init.base_url === 'string' ? init.base_url : ''
   if (base_url.length === 0) {

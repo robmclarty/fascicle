@@ -44,6 +44,12 @@ Options:
   --help          show this message
 `
 
+/**
+ * Parses CLI argv into a validated `CliArgs`, exiting on bad input.
+ *
+ * `--help` prints usage and exits 0. Invalid numeric flags, or a missing
+ * <path> without `--listen`, write to stderr and exit 2.
+ */
 function parse(argv: readonly string[]): CliArgs {
   const { values, positionals } = parseArgs({
     args: [...argv],
@@ -91,6 +97,12 @@ function parse(argv: readonly string[]): CliArgs {
   }
 }
 
+/**
+ * Opens `url` in the platform's default browser, best-effort.
+ *
+ * Spawns the platform opener (`open`, `cmd /c start`, or `xdg-open`)
+ * detached and swallows failures; the CLI prints the URL either way.
+ */
 function open_browser(url: string): void {
   const platform = process.platform
   const cmd = platform === 'darwin' ? 'open' : platform === 'win32' ? 'cmd' : 'xdg-open'
@@ -104,6 +116,14 @@ function open_browser(url: string): void {
   }
 }
 
+/**
+ * CLI entry point: parses argv, starts the viewer, and wires shutdown.
+ *
+ * Warns but proceeds when the tailed path does not exist yet or when the
+ * bind host is 0.0.0.0 (the dashboard has no auth). Optionally opens the
+ * browser, then installs SIGINT/SIGTERM handlers that close the viewer
+ * before exiting.
+ */
 export async function run_viewer_cli(argv: readonly string[]): Promise<void> {
   const args = parse(argv)
 
@@ -149,6 +169,9 @@ export async function run_viewer_cli(argv: readonly string[]): Promise<void> {
   process.on('SIGTERM', () => { void shutdown() })
 }
 
+/**
+ * Renders an unknown thrown value as a human-readable message.
+ */
 function describe_error(err: unknown): string {
   if (err instanceof Error) return err.message
   try {
@@ -160,7 +183,7 @@ function describe_error(err: unknown): string {
 
 // ESM main-module detection. The bundler inlines this file into dist/index.js,
 // so a fragile suffix check (`endsWith('/cli.js')`) would fire whenever a
-// consumer's own entry script happened to be named cli.js — see
+// consumer's own entry script happened to be named cli.js, see
 // https://nodejs.org/api/esm.html#importmetaurl. Compare the resolved path of
 // this module against argv[1] so the auto-execute only fires when the file is
 // run directly (e.g. `tsx packages/viewer/src/cli.ts`), not when imported.

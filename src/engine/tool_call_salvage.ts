@@ -101,6 +101,9 @@ export function scan_balanced_json(
   return undefined
 }
 
+/**
+ * Check for a non-null, non-array object.
+ */
 function is_plain_object(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
@@ -120,14 +123,26 @@ function call_shape(
   return { name, args }
 }
 
+/**
+ * Check whether a span intersects any masked region.
+ */
 function overlaps_any(span: Span, masks: ReadonlyArray<Span>): boolean {
   return masks.some((m) => span.start < m.end && m.start < span.end)
 }
 
+/**
+ * Find the mask covering a text index, if any, so scanners can jump past it.
+ */
 function mask_containing(masks: ReadonlyArray<Span>, index: number): Span | undefined {
   return masks.find((m) => index >= m.start && index < m.end)
 }
 
+/**
+ * Strip at most one leading and one trailing newline.
+ *
+ * Qwen XML parameter values are written on their own lines; the wrapping
+ * newlines are markup, but interior whitespace is real data and stays.
+ */
 function trim_one_newline(value: string): string {
   let out = value
   if (out.startsWith('\n')) out = out.slice(1)
@@ -135,6 +150,12 @@ function trim_one_newline(value: string): string {
   return out
 }
 
+/**
+ * Extract qwen_xml `<function=name>` candidates from a tool_call block body.
+ *
+ * Parameters land as a string map (typed coercion happens at validation).
+ * Spans are offset by `inner_start` back into the full-text coordinate space.
+ */
 function scan_qwen_functions(inner_start: number, inner: string): Candidate[] {
   const out: Candidate[] = []
   for (const fn of inner.matchAll(FUNCTION_RE)) {
@@ -158,6 +179,12 @@ function scan_qwen_functions(inner_start: number, inner: string): Candidate[] {
   return out
 }
 
+/**
+ * Scan `<tool_call>` blocks for hermes and qwen_xml candidates.
+ *
+ * Every block extent (accepted, rejected, or unterminated) is returned as a
+ * mask so later passes never re-match payloads inside it.
+ */
 function scan_tool_call_blocks(text: string): { candidates: Candidate[]; masks: Span[] } {
   const candidates: Candidate[] = []
   const masks: Span[] = []
@@ -197,6 +224,12 @@ function scan_tool_call_blocks(text: string): { candidates: Candidate[]; masks: 
   return { candidates, masks }
 }
 
+/**
+ * Scan code fences for JSON-format candidates.
+ *
+ * All fences become masks (keeping the bare pass out of code samples), but
+ * only fences with no info string or `json` are parsed as candidates.
+ */
 function scan_fences(
   text: string,
   block_masks: ReadonlyArray<Span>,
@@ -222,6 +255,13 @@ function scan_fences(
   return { candidates, masks }
 }
 
+/**
+ * Scan unmasked text for bare `{name, arguments}` JSON objects.
+ *
+ * A complete object that is not call-shaped is skipped whole rather than
+ * descended into, so substructures of ordinary JSON output cannot
+ * false-positive.
+ */
 function scan_bare_json(text: string, masks: ReadonlyArray<Span>): Candidate[] {
   const out: Candidate[] = []
   let i = 0
@@ -250,6 +290,14 @@ function scan_bare_json(text: string, masks: ReadonlyArray<Span>): Candidate[] {
   return out
 }
 
+/**
+ * Promote a candidate to a `SalvagedCall` when its tool exists and its
+ * arguments validate.
+ *
+ * This is the second half of the double gate described in the header.
+ * qwen_xml candidates get one retry with per-parameter JSON coercion, since
+ * XML parameter values always arrive as strings.
+ */
 function validate_candidate(
   candidate: Candidate,
   tool_map: ReadonlyMap<string, Tool>,
@@ -292,6 +340,10 @@ function validate_candidate(
   }
 }
 
+/**
+ * Remove the accepted calls' spans from the text, back to front so earlier
+ * offsets stay valid, then drop any emptied `<tool_call>` wrappers.
+ */
 function strip_spans(text: string, spans: ReadonlyArray<Span>): string {
   let out = text
   const descending = spans.toSorted((a, b) => b.start - a.start)
@@ -301,6 +353,14 @@ function strip_spans(text: string, spans: ReadonlyArray<Span>): string {
   return out.replace(EMPTY_BLOCK_RE, '').trim()
 }
 
+/**
+ * Recover tool calls from assistant text, per the header's format rules.
+ *
+ * Runs the three scanners in masking order (blocks, fences, bare JSON),
+ * validates every candidate against the tool registry, and returns the
+ * surviving calls plus the text with their spans stripped. Returns undefined
+ * when nothing survives.
+ */
 export function salvage_tool_calls(
   text: string,
   tool_map: ReadonlyMap<string, Tool>,

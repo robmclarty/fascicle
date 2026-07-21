@@ -15,6 +15,11 @@ import { mcp_sdk_missing_error } from './errors.js'
 
 export type McpClientSdk = Awaited<ReturnType<typeof load_client_sdk>>
 
+/**
+ * Dynamically imports the `@modelcontextprotocol/sdk` client modules,
+ * throwing a typed `mcp_sdk_missing_error` when the optional peer is not
+ * installed.
+ */
 export async function load_client_sdk() {
   try {
     const [client_mod, stdio_mod, http_mod] = await Promise.all([

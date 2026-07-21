@@ -11,10 +11,9 @@
  * or scheduling a backoff. A suspend's `on()` side effect therefore runs once
  * per run, not once per attempt.
  *
- * Cancellation / cleanup (constraints.md §5.2, spec.md §6.8): cleanup handlers
- * registered by the inner step accumulate across attempts. The parent
- * `ctx.abort` is honored between attempts — a pending abort short-circuits
- * the backoff and propagates. See spec.md §5.7 and §9 F11.
+ * Cancellation / cleanup: cleanup handlers registered by the inner step
+ * accumulate across attempts. The parent `ctx.abort` is honored between
+ * attempts; a pending abort short-circuits the backoff and propagates.
  */
 
 import { aborted_error, is_control_flow_error } from './errors.js'
@@ -32,11 +31,20 @@ export type RetryConfig = {
 
 let retry_counter = 0
 
+/**
+ * Generate a unique step id of the form `retry_<n>`.
+ */
 function next_id(): string {
   retry_counter += 1
   return `retry_${retry_counter}`
 }
 
+/**
+ * Sleep for `ms` unless the run is aborted first.
+ *
+ * Rejects immediately with the abort reason (or an `aborted_error`) when
+ * `ctx.abort` fires, so a pending abort never waits out a backoff delay.
+ */
 async function abortable_wait(ms: number, ctx: RunContext): Promise<void> {
   if (ms <= 0) return
   await new Promise<void>((resolve, reject) => {
@@ -58,6 +66,13 @@ async function abortable_wait(ms: number, ctx: RunContext): Promise<void> {
   })
 }
 
+/**
+ * Build a retrying step around `inner`.
+ *
+ * Runs `inner` up to `max_attempts` times with exponential backoff between
+ * failures. Application errors consume an attempt and fire `on_error`;
+ * control-flow signals propagate untouched.
+ */
 export function retry<i, o>(inner: Step<i, o>, config: RetryConfig): Step<i, o> {
   const id = next_id()
   const max_attempts = Math.max(1, Math.floor(config.max_attempts))

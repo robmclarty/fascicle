@@ -8,9 +8,7 @@
  * with `run_options.resume_data[id]` populated), the provided value is
  * validated against `resume_schema` and passed to `combine(input, resume,
  * ctx)`; the result is returned. Invalid resume data throws
- * `resume_validation_error` built from zod 4's `.flatten()` (spec.md §9 F5).
- *
- * See spec.md §5.15, §6.4.
+ * `resume_validation_error` built from zod 4's flattened issue format.
  */
 
 import { z } from 'zod'
@@ -30,6 +28,12 @@ export type SuspendConfig<i, o, resume> = {
   ) => Promise<o> | o | Step<unknown, o>
 }
 
+/**
+ * Structurally detect a `Step` returned from `combine`.
+ *
+ * `combine` may return either a plain value or a Step to dispatch; this local
+ * check distinguishes the two without importing the shared helper.
+ */
 function is_step(value: unknown): value is Step<unknown, unknown> {
   if (typeof value !== 'object' || value === null) return false
   if (!('id' in value) || !('kind' in value) || !('run' in value)) return false
@@ -37,6 +41,14 @@ function is_step(value: unknown): value is Step<unknown, unknown> {
   return typeof id === 'string' && typeof kind === 'string' && typeof run === 'function'
 }
 
+/**
+ * Build a human-in-the-loop pause step.
+ *
+ * First run fires the `on` side effect and throws `suspended_error`; a resume
+ * run validates `resume_data[id]` against `resume_schema` and feeds it to
+ * `combine`. The step's id is the user-supplied suspend id so resume data can
+ * be addressed to it.
+ */
 export function suspend<i, o, resume>(config: SuspendConfig<i, o, resume>): Step<i, o> {
   const suspend_id = config.id
   const on_fn = config.on

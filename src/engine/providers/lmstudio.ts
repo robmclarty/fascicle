@@ -1,13 +1,13 @@
 /**
  * LM Studio provider adapter.
  *
- * Dispatches on `transport` (D3): the default 'ai_sdk' backend wraps
+ * Dispatches on `transport`: the default 'ai_sdk' backend wraps
  * @ai-sdk/openai-compatible as an optional peer; 'native' builds the lmstudio
- * dialect of the shared OpenAI-compatible core (D1) — no auth, `max_tokens` as
- * the token-limit field, and tolerant usage (D10), since a local server that
- * omits or approximates token counts is a fact of local-first running, not a
- * broken response. LM Studio exposes an OpenAI-compatible local server; base_url
- * is required on both transports. No reasoning support.
+ * dialect of the shared OpenAI-compatible core, with no auth, `max_tokens` as
+ * the token-limit field, and tolerant usage, since a local server that omits
+ * or approximates token counts is a fact of local-first running, not a broken
+ * response. LM Studio exposes an OpenAI-compatible local server; base_url is
+ * required on both transports. No reasoning support.
  */
 
 import type { EffortLevel, ProviderInit, UsageTotals } from '../types.js'
@@ -37,11 +37,18 @@ type OpenaiCompatibleSdk = {
   }) => (model_id: string) => unknown
 }
 
+/**
+ * LM Studio has no reasoning-effort control, so every non-`none` level is
+ * reported as ignored and no provider option is emitted.
+ */
 export function translate_lmstudio_effort(effort: EffortLevel): EffortTranslation {
   const ignored = effort !== 'none'
   return { provider_options: {}, effort_ignored: ignored }
 }
 
+/**
+ * Normalize LM Studio's raw usage payload into UsageTotals.
+ */
 export function normalize_lmstudio_usage(raw: RawProviderUsage | undefined): UsageTotals {
   // default_normalize_usage already maps undefined to a zero total; LM Studio
   // additionally never reports cache or reasoning tokens, so strip them.
@@ -63,6 +70,10 @@ const SUPPORTED: ReadonlySet<ProviderCapability> = new Set([
   'structured_output',
 ])
 
+/**
+ * Build the LM Studio adapter, picking the native or ai_sdk backend per the
+ * resolved `transport`.
+ */
 export const create_lmstudio_adapter = (init: ProviderInit): ProviderAdapter => {
   if (resolve_transport(init, 'lmstudio') === 'native') {
     return create_lmstudio_native_adapter(init)
@@ -71,10 +82,10 @@ export const create_lmstudio_adapter = (init: ProviderInit): ProviderAdapter => 
 }
 
 /**
- * Build the lmstudio dialect (Appendix A1) and hand it to the shared
- * OpenAI-compatible core: no auth, the `max_tokens` token-limit field, and
- * tolerant usage (D10). The base_url guard mirrors the ai_sdk branch; the core
- * has no api_key to check under `auth: { kind: 'none' }`.
+ * Build the lmstudio dialect and hand it to the shared OpenAI-compatible
+ * core: no auth, the `max_tokens` token-limit field, and tolerant usage. The
+ * base_url guard mirrors the ai_sdk branch; the core has no api_key to check
+ * under `auth: { kind: 'none' }`.
  */
 const create_lmstudio_native_adapter = (init: ProviderInit): NativeProviderAdapter => {
   const base_url = typeof init.base_url === 'string' ? init.base_url : ''
@@ -95,6 +106,10 @@ const create_lmstudio_native_adapter = (init: ProviderInit): NativeProviderAdapt
   return create_openai_compatible_adapter(dialect)
 }
 
+/**
+ * Build the LM Studio ai_sdk adapter: validates the required base_url and
+ * lazily loads @ai-sdk/openai-compatible to build models.
+ */
 const create_lmstudio_ai_sdk_adapter = (init: ProviderInit): AiSdkProviderAdapter => {
   const base_url = typeof init.base_url === 'string' ? init.base_url : ''
   if (base_url.length === 0) {

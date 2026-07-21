@@ -6,11 +6,9 @@
  * value. On a miss, runs `inner`, persists its result at `key`, and returns
  * it. Corrupted reads (store throws on `get`) are treated as a miss.
  *
- * Fail-fast (constraints.md §7 invariant 8, spec.md §9 F6): wrapping an
- * anonymous inner step throws synchronously at construction time with the
- * message `checkpoint requires a named step; got anonymous`.
- *
- * See spec.md §5.14, §6.3.
+ * Wrapping an anonymous inner step throws synchronously at construction time
+ * with the message `checkpoint requires a named step; got anonymous`, because
+ * a cached result must map back to a stable, identifiable step.
  */
 
 import { dispatch_step, register_traced_kind } from './runner.js'
@@ -23,11 +21,23 @@ export type CheckpointConfig<i> = {
 
 let checkpoint_counter = 0
 
+/**
+ * Generate a unique step id of the form `checkpoint_<n>`.
+ */
 function next_id(): string {
   checkpoint_counter += 1
   return `checkpoint_${checkpoint_counter}`
 }
 
+/**
+ * Wrap `inner` with persist-and-resume behavior keyed by `config.key`.
+ *
+ * `key` is a fixed string or a function of the input. Without a
+ * `checkpoint_store` on the run context, the wrapper runs `inner` directly.
+ * A stored `null` or `undefined` counts as a miss, so those values are
+ * re-computed rather than replayed. Throws at construction time when `inner`
+ * is anonymous.
+ */
 export function checkpoint<i, o>(inner: Step<i, o>, config: CheckpointConfig<i>): Step<i, o> {
   if (inner.anonymous === true) {
     throw new Error('checkpoint requires a named step; got anonymous')

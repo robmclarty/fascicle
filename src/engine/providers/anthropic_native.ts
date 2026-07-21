@@ -1,22 +1,22 @@
 /**
- * Native Anthropic provider adapter (depth-1 raw HTTP).
+ * Native Anthropic provider adapter (raw HTTP).
  *
  * Talks to the Messages API directly over global fetch with zero `ai` /
- * `@ai-sdk/*` in its module graph (D4). It owns request/response mapping
- * only: generate.ts wraps invoke_turn in retry + classification + abort
- * (D5), so failures are thrown in shapes the shared classify_provider_error
- * already understands (`status` + `responseHeaders` for HTTP transients,
+ * `@ai-sdk/*` in its module graph. It owns request/response mapping only:
+ * generate.ts wraps invoke_turn in retry + classification + abort, so
+ * failures are thrown in shapes the shared classify_provider_error already
+ * understands (`status` + `responseHeaders` for HTTP transients,
  * `kind: 'network'` for transport failures) instead of being re-classified
  * or retried here.
  *
  * Selected via `transport: 'native'` on the anthropic provider init. The
  * adapter name stays 'anthropic' so DEFAULT_PRICING keys and UsageTotals
- * fields keep working across transports (C6). Schema requests ride the
- * engine's prompt + parse + repair loop (D6), so `TurnRequest.schema` is
- * intentionally unread. Streaming hand-rolls the SSE parse; the aggregator
- * rebuilds the non-stream payload shape and feeds it through the same
+ * fields keep working across transports. Schema requests ride the engine's
+ * prompt + parse + repair loop, so `TurnRequest.schema` is intentionally
+ * unread. Streaming hand-rolls the SSE parse; the aggregator rebuilds the
+ * non-stream payload shape and feeds it through the same
  * parse_messages_response, so streamed and non-streamed results are equal by
- * construction (C4) rather than by parallel code paths.
+ * construction rather than by parallel code paths.
  */
 
 import { z } from 'zod'
@@ -43,7 +43,7 @@ import { create_sse_decoder } from './sse_native.js'
 import type { NativeProviderAdapter, ProviderCapability } from './types.js'
 
 /**
- * Effort → extended-thinking budget tokens per spec §6.3. Lives here (not in
+ * Effort level to extended-thinking budget tokens. Lives here (not in
  * anthropic.ts) because both transports map effort from this table and the
  * ai_sdk factory already imports this module for transport dispatch; the
  * reverse import would be a cycle.
@@ -83,6 +83,11 @@ export type AnthropicMessage = {
   content: AnthropicContentBlock[]
 }
 
+/**
+ * Map user message content to Messages-API text blocks, dropping empty text
+ * (the API rejects empty blocks). Image parts throw a capability error: they
+ * are not mapped on this transport.
+ */
 function to_user_blocks(content: string | UserContentPart[]): AnthropicContentBlock[] {
   if (typeof content === 'string') {
     return content.trim().length > 0 ? [{ type: 'text', text: content }] : []
@@ -101,6 +106,10 @@ function to_user_blocks(content: string | UserContentPart[]): AnthropicContentBl
   return blocks
 }
 
+/**
+ * Map assistant message content to Messages-API blocks: text parts become
+ * text blocks (empties dropped), tool-call parts become tool_use blocks.
+ */
 function to_assistant_blocks(
   content: string | AssistantContentPart[],
 ): AnthropicContentBlock[] {
@@ -181,6 +190,10 @@ export function to_anthropic_messages(messages: ReadonlyArray<Message>): {
   }
 }
 
+/**
+ * Map fascicle tool definitions to the Messages-API tool shape, converting
+ * each zod input schema to JSON Schema.
+ */
 export function to_anthropic_tools(
   tools: ReadonlyArray<Tool>,
 ): Array<{ name: string; description: string; input_schema: unknown }> {
@@ -191,6 +204,11 @@ export function to_anthropic_tools(
   }))
 }
 
+/**
+ * Build the Messages-API request body for one turn: mapped messages and
+ * tools, the effort-derived thinking block, the required max_tokens default,
+ * and the `provider_options.anthropic` wire passthrough merged last.
+ */
 export function build_messages_body(req: TurnRequest): Record<string, unknown> {
   const { system: hoisted_system, messages } = to_anthropic_messages(req.messages)
   const system_parts = [req.system, hoisted_system].filter(
@@ -233,6 +251,9 @@ export function build_messages_body(req: TurnRequest): Record<string, unknown> {
   return passthrough === undefined ? body : { ...body, ...passthrough }
 }
 
+/**
+ * Map the Messages-API stop_reason to the engine's FinishReason.
+ */
 export function map_anthropic_stop_reason(raw: unknown): FinishReason {
   switch (raw) {
     case 'tool_use':
@@ -250,6 +271,8 @@ export function map_anthropic_stop_reason(raw: unknown): FinishReason {
 }
 
 /**
+ * Map the Messages-API usage object to UsageTotals.
+ *
  * The API reports input_tokens EXCLUSIVE of cache reads and writes, while
  * compute_cost subtracts both back out of UsageTotals.input_tokens to price
  * the fresh remainder. So the inclusive total is the sum of all three; a
@@ -274,6 +297,11 @@ export function map_anthropic_usage(raw: unknown): UsageTotals {
   return totals
 }
 
+/**
+ * Parse a non-stream Messages-API response payload into a TurnResult. The
+ * stream aggregator rebuilds this same payload shape and feeds it here too,
+ * so both paths share one parser.
+ */
 export function parse_messages_response(payload: unknown): TurnResult {
   if (payload === null || typeof payload !== 'object') {
     throw new provider_error('anthropic native: response payload is not a JSON object')
@@ -314,7 +342,7 @@ export function parse_messages_response(payload: unknown): TurnResult {
  * overloaded_error is the SSE analog of a 529, api_error of a 500, and
  * rate_limit_error of a 429, so classify_provider_error sees the transients
  * it already retries. Anything else is a permanent provider_error. Whether a
- * retry actually happens stays retry_turn's call — once chunks have streamed
+ * retry actually happens stays retry_turn's call: once chunks have streamed
  * it refuses, exactly as on the ai_sdk path.
  */
 function stream_event_error(event: object): Error {
@@ -336,6 +364,10 @@ function stream_event_error(event: object): Error {
   return new provider_error(detail)
 }
 
+/**
+ * Read the `index` field every stream event carries, identifying which
+ * content block (text or tool_use) the event applies to.
+ */
 function read_block_index(event: object): number {
   const index: unknown = Reflect.get(event, 'index')
   if (typeof index !== 'number') {
@@ -351,7 +383,7 @@ function read_block_index(event: object): number {
  * JSON text (input_json_delta) held per open block and parsed at
  * content_block_stop. complete() feeds the synthetic payload through
  * parse_messages_response, which is what makes the streamed TurnResult equal
- * the non-streamed one by construction (C4). A stream that ends without
+ * the non-streamed one by construction. A stream that ends without
  * message_stop is truncated output, so complete() fails loud instead of
  * returning a partial turn.
  */
@@ -662,8 +694,9 @@ async function consume_sse_response(response: Response, req: TurnRequest): Promi
   return aggregator.complete()
 }
 
-// 'structured_output' is intentionally absent, schema rides the prompt +
-// parse + repair loop (D6); image parts are unmapped on this transport.
+// 'structured_output' is intentionally absent: schema requests ride the
+// prompt + parse + repair loop instead of constrained decoding. Image parts
+// are unmapped on this transport.
 const SUPPORTED: ReadonlySet<ProviderCapability> = new Set([
   'text',
   'tools',
@@ -672,6 +705,11 @@ const SUPPORTED: ReadonlySet<ProviderCapability> = new Set([
   'reasoning',
 ])
 
+/**
+ * Build the native Anthropic adapter: validates the required api_key,
+ * normalizes base_url, and wires invoke_turn to POST /messages directly
+ * (streamed or not) through the mappers above.
+ */
 export const create_anthropic_native_adapter = (
   init: ProviderInit,
 ): NativeProviderAdapter => {

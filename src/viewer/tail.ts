@@ -2,7 +2,7 @@
  * JSONL file tailer.
  *
  * Watches a file for appends and emits one parsed trajectory event per
- * complete line. Handles three pathological cases the spec calls out:
+ * complete line. Handles three pathological cases:
  *
  *   - Truncation / rotation: a watcher event whose stat is shorter than the
  *     current offset means the file shrunk. Reset offset to 0 and re-stream.
@@ -11,9 +11,12 @@
  *   - Schema failures: a line that fails `trajectory_event_schema.parse` is
  *     dropped and surfaced to `on_parse_error`. The stream keeps going.
  *
- * The watcher is fs.watch-based with a debounced re-read; on platforms where
- * fs.watch is flaky for appends we still catch up because the next tick
- * re-stats and re-reads from the saved offset.
+ * The watcher is fs.watch-based; reads are serialized and change events
+ * that arrive mid-read are coalesced into one extra pass rather than
+ * dropped, so a burst of appends never starts overlapping reads. Each pass
+ * re-stats and re-reads from the saved offset, which also covers platforms
+ * where fs.watch misses some append notifications: the next successful
+ * change event catches the file up regardless.
  */
 
 import { type FSWatcher, watch as fs_watch } from 'node:fs'
@@ -32,6 +35,15 @@ export type Tail = {
   readonly drain: () => Promise<void>
 }
 
+/**
+ * Starts tailing `path` and returns a handle to stop or drain it.
+ *
+ * Watches the file with `fs.watch` and re-reads from the last known offset
+ * on every change, buffering an incomplete trailing line until the rest
+ * arrives. Overlapping change events are coalesced: a read already in
+ * flight absorbs any events that fire while it runs instead of starting a
+ * second concurrent read.
+ */
 export function start_tail(options: TailOptions): Tail {
   const { path, on_event, on_parse_error, on_io_error } = options
   let offset = 0
@@ -68,6 +80,8 @@ export function start_tail(options: TailOptions): Tail {
       return
     }
     if (st.size < offset) {
+      // File is shorter than our offset: it was truncated or rotated.
+      // Restart from the top instead of seeking to a now-invalid offset.
       offset = 0
       buffer = ''
     }
@@ -95,8 +109,14 @@ export function start_tail(options: TailOptions): Tail {
       handle_line(line)
       nl = buffer.indexOf('\n')
     }
+    // Anything left in `buffer` has no trailing newline yet; keep it for
+    // the next read instead of parsing a half-written line.
   }
 
+  // Coalesces watcher bursts: if `schedule` fires while a read is already
+  // running, it just flags `pending` and returns. The running loop below
+  // checks `pending` after each pass and does one more pass if it was set,
+  // so a burst of change events never starts overlapping reads.
   const schedule = (): void => {
     if (closed) return
     if (busy) {

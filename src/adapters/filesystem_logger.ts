@@ -19,6 +19,10 @@ export type FilesystemLoggerOptions = {
   readonly output_path: string
 }
 
+/**
+ * Create a `TrajectoryLogger` that appends one JSON object per line to
+ * `output_path`, creating the parent directory if needed.
+ */
 export function filesystem_logger(options: FilesystemLoggerOptions): TrajectoryLogger {
   const { output_path } = options
   mkdirSync(dirname(output_path), { recursive: true })

@@ -5,9 +5,9 @@
  * wire (any chunk boundary, including mid-line) and returns the data payloads
  * of every event completed by that chunk; flush() drains an event left open
  * when the stream ends without a trailing blank line. Only `data:` fields
- * matter to the streams fascicle consumes — the Messages API repeats the
+ * matter to the streams fascicle consumes (the Messages API repeats the
  * event type inside the JSON payload and the Chat Completions stream sends
- * nothing but data frames — so `event:`/`id:`/`retry:` fields and `:`
+ * nothing but data frames), so `event:`/`id:`/`retry:` fields and `:`
  * comments are dropped. Multi-line data joins with '\n' per the SSE spec.
  */
 export function create_sse_decoder(): {

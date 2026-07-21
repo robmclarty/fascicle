@@ -1,22 +1,5 @@
 /**
  * ensemble_step: N-of-M pick-best with a Step-based scorer.
- *
- * `ensemble_step({ members, score, rank_by, select? })` is the sibling of
- * `ensemble` for the case where scoring is itself a `Step` (e.g. a separate
- * model call, a sub-flow, anything that wants its own trajectory span and
- * abort routing). Each member runs concurrently with the same input; the
- * `score` step is dispatched once per result; `rank_by` projects a number
- * out of the structured scored output; the highest- or lowest-ranking
- * winner is returned alongside its full structured score and the score
- * map for the rest.
- *
- * Returning `winner_scored` avoids the cost of re-scoring the winner — the
- * structured output from the round's scoring run is preserved verbatim.
- *
- * Implemented as a `compose`d `scope` over (`stash(parallel(members))` →
- * `to_pairs` → `map(score per result, threading id)` → `use` to pick
- * winner). Cancellation, fan-out, and abort propagation come from the
- * underlying `parallel` and `map` contracts.
  */
 
 import { compose, map, parallel, scope, stash, step, use } from '#core'
@@ -37,12 +20,33 @@ export type EnsembleStepResult<o, ranked> = {
   readonly scored: Record<string, ranked>
 }
 
+// Scope variable keys, underscore-prefixed to avoid colliding with any
+// stashes a user-supplied step might set in the same scope chain.
 const RESULTS_KEY = '__ensemble_step_results'
 const ITEM_KEY = '__ensemble_step_item'
 
 type Pair<o> = { readonly id: string; readonly value: o }
 type ScoredPair<ranked> = { readonly id: string; readonly scored: ranked }
 
+/**
+ * Builds a Step that runs every member concurrently, scores each result via
+ * a scoring `Step`, and returns the best-ranking winner.
+ *
+ * Sibling of `ensemble` for the case where scoring is itself a `Step` (e.g.
+ * a separate model call, a sub-flow, anything that wants its own trajectory
+ * span and abort routing). The `score` step is dispatched once per member
+ * result; `rank_by` projects a number out of the structured scored output;
+ * `select` picks the highest (`'max'`, default) or lowest (`'min'`) rank.
+ *
+ * The result carries `winner_scored`, the structured output from the round's
+ * scoring run preserved verbatim, so callers never pay to re-score the
+ * winner. `scored` holds the structured score for every member.
+ *
+ * Implemented as a `compose`d `scope` over (`stash(parallel(members))` ->
+ * `to_pairs` -> `map(score per result, threading id)` -> `use` to pick the
+ * winner). Cancellation, fan-out, and abort propagation come from the
+ * underlying `parallel` and `map` contracts.
+ */
 export function ensemble_step<i, o, ranked>(
   config: EnsembleStepConfig<i, o, ranked>,
 ): Step<i, EnsembleStepResult<o, ranked>> {

@@ -15,6 +15,10 @@
 import { randomUUID } from 'node:crypto'
 import type { TrajectoryLogger } from '#core'
 
+/**
+ * Create a `TrajectoryLogger` that writes one JSON object per line via
+ * `write_line`.
+ */
 export function line_logger(write_line: (event: Record<string, unknown>) => void): TrajectoryLogger {
   const stack: string[] = []
 

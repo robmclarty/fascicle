@@ -1,20 +1,30 @@
 /**
- * Cost decomposition from CLI-reported total_cost_usd (spec §10).
+ * Cost decomposition from the CLI's reported `total_cost_usd`.
  *
  * The CLI reports a single total_cost_usd and per-turn usage; it does not
- * break cost down by component or by turn. The adapter synthesizes a
- * component split by computing an implied per-million rate from the total
- * and allocating that rate to each token component, weighted by
- * CACHE_READ_MULTIPLIER and CACHE_WRITE_MULTIPLIER.
+ * break cost down by component or by turn. This module synthesizes a
+ * component split by computing an implied per-million-token rate from the
+ * total and allocating that rate to each token component, weighted by
+ * `CACHE_READ_MULTIPLIER` and `CACHE_WRITE_MULTIPLIER`.
  *
- * Per-turn allocation splits total_cost_usd across turns proportional to
- * each turn's output_tokens. Sum equality is preserved exactly by giving any
- * floating-point rounding remainder to the last turn.
+ * Per-turn allocation splits `total_cost_usd` across turns proportional to
+ * each turn's output tokens. Sum equality is preserved exactly by giving
+ * any floating-point rounding remainder to the last turn.
  */
 
 import type { CostBreakdown, UsageTotals } from '../../types.js'
 import { CACHE_READ_MULTIPLIER, CACHE_WRITE_MULTIPLIER } from './constants.js'
 
+/**
+ * Split a single `total_cost_usd` figure into an input/output cost
+ * breakdown, weighted by token counts.
+ *
+ * Cache-read and cache-write tokens are cheaper and pricier respectively
+ * than base input tokens, so they're weighted by `CACHE_READ_MULTIPLIER`
+ * and `CACHE_WRITE_MULTIPLIER` before the total is distributed
+ * proportionally across all weighted components. Returns an all-zero
+ * estimate when there's no usage or no cost to distribute.
+ */
 export function decompose_total_cost(
   total_cost_usd: number,
   usage: UsageTotals,
@@ -65,6 +75,15 @@ export type TurnUsage = {
   readonly usage: UsageTotals
 }
 
+/**
+ * Split a call's total cost across its turns, proportional to each turn's
+ * output tokens, then decompose each turn's share into a `CostBreakdown`.
+ *
+ * Falls back to an equal split when every turn reports zero output tokens
+ * (the proportional weights would otherwise all be zero). The last turn
+ * absorbs the floating-point rounding remainder so the per-turn totals sum
+ * exactly to `total_cost_usd`.
+ */
 export function allocate_cost_across_turns(
   total_cost_usd: number,
   turns: ReadonlyArray<TurnUsage>,

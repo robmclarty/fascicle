@@ -1,12 +1,12 @@
 /**
  * Public type surface for the AI engine layer.
  *
- * Type aliases and interfaces use PascalCase per constraints §2. Value-level
- * field names remain snake_case.
+ * Type aliases and interfaces use PascalCase, per the naming convention.
+ * Value-level field names remain snake_case.
  *
  * Shared runtime types (TrajectoryLogger, TrajectoryEvent, RunContext) live in
- * core. The engine imports them via `import type` only; no value
- * import from core is permitted anywhere in packages/engine/src/.
+ * core. The engine imports them via `import type` only; `errors.ts` holds the
+ * single exception, the one value import from core that engine source makes.
  */
 
 import type { z } from 'zod'
@@ -172,7 +172,7 @@ export type StreamChunk =
   | { kind: 'finish'; finish_reason: FinishReason; usage: UsageTotals }
 
 /**
- * Neutral single-turn result shared by every depth-1 transport (`ai_sdk`,
+ * Neutral single-turn result shared by every transport (`ai_sdk`,
  * `native`). The tool-call loop consumes it through InvokeOnce; a native
  * adapter's invoke_turn produces it directly. Staying provider-agnostic here is
  * what lets salvage, approval, cost, and retry sit in one loop above any
@@ -214,10 +214,10 @@ export type TurnRequest = {
 }
 
 /**
- * Context handed to a prepare_step hook (D6): the turn's index and the
- * would-be request messages (the full accumulated transcript at that point in
- * the loop). Kept minimal by design; per-step model/effort switching is out of
- * scope (Open question N-Q1).
+ * Context handed to a prepare_step hook: the turn's index and the would-be
+ * request messages (the full accumulated transcript at that point in the
+ * loop). Kept minimal by design; per-step model/effort switching is out of
+ * scope.
  */
 export type PrepareStepContext = {
   readonly step_index: number
@@ -231,8 +231,8 @@ export type PrepareStepContext = {
 export type PrepareStepResult = { messages?: ReadonlyArray<Message> } | undefined
 
 /**
- * Per-turn message hook (D6). run_tool_loop calls it before each turn on every
- * depth-1 transport. Returning replacement messages reshapes ONLY what is sent
+ * Per-turn message hook. run_tool_loop calls it before each turn on every
+ * transport. Returning replacement messages reshapes ONLY what is sent
  * to the model for that turn (pruning, summarizing, windowing); the canonical
  * transcript the loop appends to is untouched, so salvage, approval,
  * Tool.ends_turn, and schema-repair keep operating on the real history. May be
@@ -256,7 +256,7 @@ export type GenerateOptions<t = string> = {
   max_steps?: number
   /**
    * Per-turn wall-clock budget in milliseconds. When set, the engine composes
-   * a timeout signal with `abort` around every depth-1 turn (D5); expiry before
+   * a timeout signal with `abort` around every turn; expiry before
    * any chunk streams throws a retryable timeout, while an expiry after chunks
    * have flowed becomes a non-retryable stream interruption. undefined (the
    * default) leaves turns unbounded. Must be > 0.
@@ -285,7 +285,7 @@ export type GenerateOptions<t = string> = {
   on_tool_approval?: ToolApprovalHandler
   /**
    * Per-turn hook to reshape the messages sent to the model without mutating
-   * the canonical transcript (D6). Called before every turn with the step
+   * the canonical transcript. Called before every turn with the step
    * index and the would-be request messages; return `{ messages }` to
    * prune/replace that turn's request or undefined for a no-op. A
    * `step_prepared` trajectory event records every turn it replaced. See
@@ -414,7 +414,7 @@ export type Engine = {
   resolve_price: (provider: string, model_id: string) => Pricing | undefined
   list_prices: () => PricingTable
   /**
-   * Derive a NEW engine with additional or overriding providers (D8) — the
+   * Derive a NEW engine with additional or overriding providers: the
    * value-semantic answer to "register a provider after construction", not
    * mutable runtime registration. `providers` shallow-merge by name over this
    * engine's configured providers (a same-named entry overrides), and

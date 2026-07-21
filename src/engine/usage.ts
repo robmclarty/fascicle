@@ -1,9 +1,5 @@
 /**
- * Usage aggregation.
- *
- * Absent fields stay absent on the aggregated total if no step reported them
- * at all. Fields present on any step are summed with absent values contributing
- * 0 for arithmetic purposes (spec §5.3).
+ * Usage aggregation across a generate call's steps.
  */
 
 import type { StepRecord, UsageTotals } from './types.js'
@@ -19,6 +15,15 @@ const OPTIONAL_FIELDS: ReadonlyArray<OptionalFieldKey> = [
   'cache_write_tokens',
 ]
 
+/**
+ * Sum token usage across every step of a generate call.
+ *
+ * `input_tokens` and `output_tokens` always total. The optional fields
+ * (`reasoning_tokens`, `cached_input_tokens`, `cache_write_tokens`) stay
+ * absent on the result unless at least one step reported them; once
+ * present, every step contributes to the sum, with steps that omit the
+ * field counting as 0.
+ */
 export function sum_usage(steps: ReadonlyArray<StepRecord>): UsageTotals {
   let input_tokens = 0
   let output_tokens = 0

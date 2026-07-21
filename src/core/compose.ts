@@ -3,7 +3,7 @@
  *
  * `compose(name, inner)` wraps any step and labels its trajectory span with
  * `name`. The inner step's own span (e.g. a `sequence`) appears as a child of
- * the compose span — the implementation tree is preserved while the user's
+ * the compose span: the implementation tree is preserved while the user's
  * intent ("this whole thing is an ensemble") is surfaced in observability.
  *
  * Used by the composites package to make built-in patterns appear under
@@ -19,11 +19,22 @@ import type { RunContext, Step } from './types.js'
 
 let compose_counter = 0
 
+/**
+ * Generate a unique step id of the form `<name>_<n>`, using the user-supplied
+ * label so compose ids read naturally in traces.
+ */
 function next_id(name: string): string {
   compose_counter += 1
   return `${name}_${compose_counter}`
 }
 
+/**
+ * Wrap `inner` in a named composite step.
+ *
+ * The step's `kind` is always `'compose'`; `name` becomes the
+ * `display_name` used as the span label. Throws a `TypeError` when `name`
+ * is not a non-empty string, catching the mistake at construction time.
+ */
 export function compose<i, o>(name: string, inner: Step<i, o>): Step<i, o> {
   if (typeof name !== 'string' || name.length === 0) {
     throw new TypeError('compose(name, inner): name must be a non-empty string')

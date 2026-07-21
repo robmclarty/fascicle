@@ -2,7 +2,7 @@
  * Google Gemini provider adapter.
  *
  * Wraps @ai-sdk/google as an optional peer. Effort maps to the
- * `thinking_budget` provider option per spec §6.3.
+ * `thinking_budget` provider option.
  */
 
 import type { EffortLevel, ProviderInit, UsageTotals } from '../types.js'
@@ -35,6 +35,10 @@ const GOOGLE_THINKING_BUDGET: Record<Exclude<EffortLevel, 'none'>, number> = {
   max: 32768,
 }
 
+/**
+ * Map an EffortLevel to Google's `thinkingConfig.thinkingBudget` provider
+ * option.
+ */
 export function translate_google_effort(effort: EffortLevel): EffortTranslation {
   if (effort === 'none') {
     return { provider_options: {}, effort_ignored: false }
@@ -47,6 +51,9 @@ export function translate_google_effort(effort: EffortLevel): EffortTranslation 
   }
 }
 
+/**
+ * Normalize Google's raw usage payload into UsageTotals.
+ */
 export function normalize_google_usage(raw: RawProviderUsage | undefined): UsageTotals {
   // Google never reports cache-write tokens, and `default_normalize_usage` only
   // sets that field when the raw payload carries it, so the default is exact.
@@ -62,6 +69,10 @@ const SUPPORTED: ReadonlySet<ProviderCapability> = new Set([
   'reasoning',
 ])
 
+/**
+ * Build the Google ai_sdk adapter: validates the required api_key and lazily
+ * loads @ai-sdk/google to build models.
+ */
 export const create_google_adapter = (init: ProviderInit): AiSdkProviderAdapter => {
   const api_key = typeof init.api_key === 'string' ? init.api_key : ''
   if (api_key.length === 0) {

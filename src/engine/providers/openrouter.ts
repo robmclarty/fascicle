@@ -1,19 +1,20 @@
 /**
  * OpenRouter provider adapter.
  *
- * Dispatches on `transport` (D3): the default 'ai_sdk' backend wraps
+ * Dispatches on `transport`: the default 'ai_sdk' backend wraps
  * @openrouter/ai-sdk-provider as an optional peer; 'native' builds the
- * openrouter dialect of the shared OpenAI-compatible core (D1) — Bearer auth
- * plus the optional `HTTP-Referer`/`X-Title` attribution headers, `max_tokens`
- * as the token-limit field, and strict usage (a hosted aggregator omitting
- * usage is a broken response, not a local-runtime quirk).
+ * openrouter dialect of the shared OpenAI-compatible core, with Bearer auth
+ * plus the optional `HTTP-Referer`/`X-Title` attribution headers,
+ * `max_tokens` as the token-limit field, and strict usage (a hosted
+ * aggregator omitting usage is a broken response, not a local-runtime
+ * quirk).
  *
  * Reasoning effort support varies per upstream model; OpenRouter itself
  * forwards the `reasoning` provider option. The ai_sdk backend translates
- * effort to the OpenRouter `reasoning.effort` shape; the native core maps it to
- * the flat `reasoning_effort` field per Appendix A4. Effort_ignored is false so
- * that the orchestrator does not emit effort_ignored indiscriminately; upstream
- * models that don't support reasoning will drop the field.
+ * effort to the OpenRouter `reasoning.effort` shape; the native core maps it
+ * to the flat `reasoning_effort` field. Effort_ignored is false so that the
+ * orchestrator does not emit effort_ignored indiscriminately; upstream
+ * models that don't support reasoning drop the field themselves.
  */
 
 import type { EffortLevel, ProviderInit, UsageTotals } from '../types.js'
@@ -43,10 +44,14 @@ type OpenrouterSdk = {
   }) => (model_id: string) => unknown
 }
 
-// OpenRouter forwards the effort string verbatim to the upstream model.
-// `low`/`medium`/`high` work everywhere; `xhigh`/`max` flow through but
-// only the upstream model decides what they mean. Models that don't
-// recognize the value drop it silently.
+/**
+ * Map an EffortLevel to OpenRouter's `reasoning.effort` provider option.
+ *
+ * OpenRouter forwards the effort string verbatim to the upstream model.
+ * `low`/`medium`/`high` work everywhere; `xhigh`/`max` flow through but only
+ * the upstream model decides what they mean. Models that don't recognize
+ * the value drop it silently.
+ */
 export function translate_openrouter_effort(effort: EffortLevel): EffortTranslation {
   if (effort === 'none') return { provider_options: {}, effort_ignored: false }
   return {
@@ -57,6 +62,9 @@ export function translate_openrouter_effort(effort: EffortLevel): EffortTranslat
   }
 }
 
+/**
+ * Normalize OpenRouter's raw usage payload into UsageTotals.
+ */
 export function normalize_openrouter_usage(raw: RawProviderUsage | undefined): UsageTotals {
   return default_normalize_usage(raw)
 }
@@ -77,6 +85,10 @@ const SUPPORTED: ReadonlySet<ProviderCapability> = new Set([
  */
 const DEFAULT_BASE_URL = 'https://openrouter.ai/api/v1'
 
+/**
+ * Build the OpenRouter adapter, picking the native or ai_sdk backend per the
+ * resolved `transport`.
+ */
 export const create_openrouter_adapter = (init: ProviderInit): ProviderAdapter => {
   if (resolve_transport(init, 'openrouter') === 'native') {
     return create_openrouter_native_adapter(init)
@@ -85,10 +97,10 @@ export const create_openrouter_adapter = (init: ProviderInit): ProviderAdapter =
 }
 
 /**
- * Build the openrouter dialect (Appendix A1) and hand it to the shared
- * OpenAI-compatible core: Bearer auth, the optional `HTTP-Referer`/`X-Title`
- * attribution headers, the `max_tokens` token-limit field, and strict usage.
- * The empty-api_key guard rides on the core, which throws the same
+ * Build the openrouter dialect and hand it to the shared OpenAI-compatible
+ * core: Bearer auth, the optional `HTTP-Referer`/`X-Title` attribution
+ * headers, the `max_tokens` token-limit field, and strict usage. The
+ * empty-api_key guard rides on the core, which throws the same
  * `openrouter provider requires a non-empty api_key` engine_config_error.
  */
 const create_openrouter_native_adapter = (init: ProviderInit): NativeProviderAdapter => {
@@ -112,6 +124,10 @@ const create_openrouter_native_adapter = (init: ProviderInit): NativeProviderAda
   return create_openai_compatible_adapter(dialect)
 }
 
+/**
+ * Build the OpenRouter ai_sdk adapter: validates the required api_key and
+ * lazily loads @openrouter/ai-sdk-provider to build models.
+ */
 const create_openrouter_ai_sdk_adapter = (init: ProviderInit): AiSdkProviderAdapter => {
   const api_key = typeof init.api_key === 'string' ? init.api_key : ''
   if (api_key.length === 0) {

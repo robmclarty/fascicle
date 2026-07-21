@@ -5,7 +5,7 @@
  * error in the root, and on successful completion. Each handler has a
  * 5-second timeout; timeouts are recorded in the trajectory but do not block
  * other handlers. A handler that throws is recorded as `cleanup_error`;
- * subsequent handlers still execute. See constraints.md §5.2 / spec.md §6.8.
+ * subsequent handlers still execute.
  */
 
 import type { CleanupFn, TrajectoryLogger } from './types.js'
@@ -17,6 +17,14 @@ export type CleanupRegistry = {
   readonly run_all: () => Promise<void>
 }
 
+/**
+ * Create the per-run cleanup registry.
+ *
+ * `register` collects handlers during the run; `run_all` fires them once in
+ * LIFO order and is idempotent. A registration arriving after the flush is
+ * not executed; it is recorded as `cleanup_registered_after_flush` so the
+ * leak is visible in the trajectory instead of silently dropped.
+ */
 export function create_cleanup_registry(trajectory: TrajectoryLogger): CleanupRegistry {
   const handlers: CleanupFn[] = []
   let ran = false
@@ -44,6 +52,15 @@ export function create_cleanup_registry(trajectory: TrajectoryLogger): CleanupRe
   return { register, run_all }
 }
 
+/**
+ * Run a single cleanup handler, never letting it fail the run.
+ *
+ * Races the handler against a 5-second timer. Whichever loses the race only
+ * results in a trajectory record (`cleanup_timeout` or `cleanup_error`); the
+ * returned promise always resolves so the remaining handlers still execute.
+ * A timed-out handler keeps running in the background; it is abandoned, not
+ * killed.
+ */
 async function run_one(fn: CleanupFn, trajectory: TrajectoryLogger): Promise<void> {
   let timeout_id: ReturnType<typeof setTimeout> | null = null
   try {

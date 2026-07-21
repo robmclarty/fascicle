@@ -1,14 +1,14 @@
 /**
- * claude_cli adapter factory (spec §5.5, §6, §8, §13).
+ * claude_cli adapter factory.
  *
  * Exports a `create_claude_cli_adapter(init)` factory that returns a
  * `ExternalAgentAdapter`. The factory closure-captures a per-instance
  * `spawn_runtime` (which owns its own `Set<ChildProcess>` live registry), so
- * two factory invocations produce two independent registries (constraints §7
- * invariant 5: no module-level mutable state).
+ * two factory invocations produce two independent registries; no state is
+ * shared at module scope.
  *
  * The returned adapter exposes exactly `{ kind: 'external', name, generate,
- * dispose, supports }` — no `build_model`, `translate_effort`, or
+ * dispose, supports }`, with no `build_model`, `translate_effort`, or
  * `normalize_usage` members.
  */
 
@@ -103,6 +103,13 @@ const CLAUDE_CLI_EFFORT_VALUES: Record<Exclude<EffortLevel, 'none'>, string> = {
   max: 'max',
 }
 
+/**
+ * Build the `CLAUDE_CODE_EFFORT_LEVEL` env var entry for a given effort
+ * level.
+ *
+ * Returns an empty object for `undefined` or `'none'`, which leaves the
+ * inherited environment (and thus the CLI's own default) untouched.
+ */
 export function effort_env_for_claude_cli(
   effort: EffortLevel | undefined,
 ): Record<string, string> {
@@ -110,6 +117,12 @@ export function effort_env_for_claude_cli(
   return { CLAUDE_CODE_EFFORT_LEVEL: CLAUDE_CLI_EFFORT_VALUES[effort] }
 }
 
+/**
+ * Pull the `claude_cli`-scoped provider options out of `provider_options`.
+ *
+ * Returns an empty object when the caller didn't set any, so downstream
+ * code can read fields without an undefined check.
+ */
 export function extract_call_opts(opts: GenerateOptions<unknown>): ClaudeCliCallOptions {
   const raw = opts.provider_options?.['claude_cli']
   if (raw === undefined || raw === null || typeof raw !== 'object') {
@@ -118,6 +131,11 @@ export function extract_call_opts(opts: GenerateOptions<unknown>): ClaudeCliCall
   return raw
 }
 
+/**
+ * Count how many `user` messages are in the prompt.
+ *
+ * A plain string prompt counts as a single user message.
+ */
 export function count_user_messages(prompt: string | Message[]): number {
   if (typeof prompt === 'string') return 1
   let count = 0
@@ -127,6 +145,13 @@ export function count_user_messages(prompt: string | Message[]): number {
   return count
 }
 
+/**
+ * Extract the first user message's text to send as CLI stdin.
+ *
+ * `generate` rejects prompts with more than one user message (claude_cli
+ * only supports a single turn per invocation), so only the first one is
+ * ever relevant here.
+ */
 export function extract_prompt_text(prompt: string | Message[]): string {
   if (typeof prompt === 'string') return prompt
   for (const m of prompt) {
@@ -141,6 +166,12 @@ export function extract_prompt_text(prompt: string | Message[]): string {
   return ''
 }
 
+/**
+ * Pull the system message content out of a `Message[]` prompt.
+ *
+ * Returns `undefined` for a plain string prompt or when no system message
+ * is present.
+ */
 export function extract_system_text(prompt: string | Message[]): string | undefined {
   if (typeof prompt === 'string') return undefined
   for (const m of prompt) {
@@ -149,13 +180,26 @@ export function extract_system_text(prompt: string | Message[]): string | undefi
   return undefined
 }
 
+/**
+ * Serialize a Zod schema to the JSON Schema string the CLI's
+ * `--json-schema` flag expects.
+ */
 export function compile_schema<T>(schema: z.ZodType<T>): string {
-  // `claude --json-schema` rejects a top-level $schema/$id (the draft-2020-12 URI
-  // z.toJSONSchema stamps); strip them — the field constraints drive constrained decode.
+  // `claude --json-schema` rejects a top-level $schema/$id (the
+  // draft-2020-12 URI z.toJSONSchema stamps); strip them, the field
+  // constraints alone drive constrained decode.
   const { $schema: _schema, $id: _id, ...json } = z.toJSONSchema(schema)
   return JSON.stringify(json)
 }
 
+/**
+ * Turn a closed CLI subprocess's exit code, signal, and stderr into an
+ * `Error`.
+ *
+ * Checks stderr for an auth failure first, then for a missing sandbox
+ * binary, then falls back to a generic exit-code error. The stderr
+ * snippet attached to each error is truncated to 512 bytes.
+ */
 export function classify_close_error(
   code: number | null,
   signal: NodeJS.Signals | null,
@@ -209,6 +253,16 @@ type RunOutcome = {
   readonly chunks: StreamChunk[]
 }
 
+/**
+ * Spawn one claude CLI invocation, stream its stdout into parsed events,
+ * and wait for it to close.
+ *
+ * Runs `session.wait_close()` and the stdout-consuming loop concurrently:
+ * the process can still be flushing stdout while it exits, so waiting for
+ * close first would drop those trailing lines. Throws if the process
+ * exits non-zero or closes without ever emitting a terminal `result`
+ * event.
+ */
 async function run_cli(
   spawn_runtime: ReturnType<typeof create_spawn_runtime>,
   args: RunArgs,
@@ -278,6 +332,13 @@ async function run_cli(
   return { parsed, chunks }
 }
 
+/**
+ * Build a claude_cli `ExternalAgentAdapter` bound to one config.
+ *
+ * Validates the auth config eagerly, before any call is made, and wires up
+ * a spawn runtime plus an in-flight abort-controller registry that
+ * `dispose()` uses to cancel every call still running.
+ */
 export function create_claude_cli_adapter(init: ProviderInit): ExternalAgentAdapter {
   const config = init as ClaudeCliProviderConfig
   validate_auth_config(config)
@@ -306,9 +367,10 @@ export function create_claude_cli_adapter(init: ProviderInit): ExternalAgentAdap
         throw new aborted_error('aborted', { reason: opts.abort.reason })
       }
 
-      // Stamp ts on this subprocess provider's events too, matching the
-      // ai_sdk path. The external branch in generate.ts returns before the
-      // main path's with_timestamps wrap, so it has to happen here.
+      // Stamp timestamps on this subprocess provider's trajectory events
+      // too, matching the ai_sdk path: the external branch in generate.ts
+      // returns before the main path's with_timestamps wrap runs, so it
+      // has to happen here instead.
       const trajectory = with_timestamps(opts.trajectory)
       const call_opts = extract_call_opts(opts)
       const option_ignored = create_option_ignored_dedup(trajectory)

@@ -1,15 +1,5 @@
 /**
- * consensus: run-until-agreement.
- *
- * `consensus({ members, agree, max_rounds })` runs every member concurrently
- * with the same input. If `agree(results)` is true, returns the results with
- * `converged: true`. Otherwise re-runs all members up to `max_rounds` times,
- * returning the last results with `converged: false` if no agreement is
- * reached.
- *
- * Implemented as a `compose`d `loop` whose body runs `parallel(members)` and
- * whose guard evaluates `agree`. State carries the original input alongside
- * the most recent results so each round receives the same input.
+ * consensus: run-until-agreement composite over concurrent members.
  */
 
 import { compose, loop, parallel, pipe, scope, stash, step, use } from '#core'
@@ -32,6 +22,18 @@ type ConsensusState<i, o> = {
   readonly results: Record<string, o>
 }
 
+/**
+ * Builds a Step that runs every member concurrently with the same input
+ * until `agree(results)` accepts a round.
+ *
+ * On agreement, returns the round's results with `converged: true`.
+ * Otherwise re-runs all members up to `max_rounds` times and returns the
+ * last results with `converged: false` if no agreement is reached.
+ *
+ * Implemented as a `compose`d `loop` whose body runs `parallel(members)` and
+ * whose guard evaluates `agree`. State carries the original input alongside
+ * the most recent results so each round receives the same input.
+ */
 export function consensus<i, o>(
   config: ConsensusConfig<i, o>,
 ): Step<i, ConsensusResult<o>> {

@@ -19,6 +19,10 @@ export type StderrLoggerOptions = {
   readonly stream?: { write(chunk: string): unknown }
 }
 
+/**
+ * Create a `TrajectoryLogger` that writes one JSON object per line to
+ * stderr, or to `options.stream` when supplied.
+ */
 export function stderr_logger(options: StderrLoggerOptions = {}): TrajectoryLogger {
   const stream = options.stream ?? process.stderr
   return line_logger((event) => {

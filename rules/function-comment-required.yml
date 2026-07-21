@@ -1,0 +1,49 @@
+id: function-comment-required
+message: Every module-level function needs a /** ... */ doc comment directly above it, with a one-line description of what it is and why it does what it does. Inner-function and inline comments use // instead.
+severity: error
+language: typescript
+files:
+  - src/**/*.ts
+ignores:
+  - src/**/__tests__/**
+rule:
+  all:
+    - inside:
+        kind: program
+        stopBy: neighbor
+    - any:
+        - kind: function_declaration
+        - kind: generator_function_declaration
+        - all:
+            - kind: export_statement
+            - has:
+                any:
+                  - kind: function_declaration
+                  - kind: generator_function_declaration
+                  - all:
+                      - kind: lexical_declaration
+                      - has:
+                          kind: variable_declarator
+                          has:
+                            field: value
+                            any:
+                              - kind: arrow_function
+                              - kind: function_expression
+        - all:
+            - kind: lexical_declaration
+            - has:
+                kind: variable_declarator
+                has:
+                  field: value
+                  any:
+                    - kind: arrow_function
+                    - kind: function_expression
+    - not:
+        follows:
+          any:
+            - kind: comment
+              regex: ^/\*\*
+            - kind: function_signature
+            - kind: export_statement
+              has:
+                kind: function_signature

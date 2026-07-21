@@ -9,6 +9,9 @@
 import { randomUUID } from 'node:crypto'
 import type { TrajectoryLogger } from '#core'
 
+/**
+ * Create a `TrajectoryLogger` whose methods do nothing.
+ */
 export function noop_logger(): TrajectoryLogger {
   return {
     record: () => {},

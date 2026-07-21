@@ -1,12 +1,6 @@
 /**
  * Inbound MCP: connect to an external MCP server and surface its tools as plain
  * fascicle `Tool[]`.
- *
- * `mcp_client` owns the connection lifecycle (config in, `{ tools, close }`
- * out) so callers do not have to import SDK transport classes themselves. Each
- * advertised MCP tool becomes an ordinary `Tool`: its JSON Schema is bridged to
- * Zod for the loop's `safeParse` and the provider, and `execute` forwards to
- * `callTool`, propagating the run's abort signal.
  */
 
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js'
@@ -61,6 +55,17 @@ export type McpClientHandle = {
   readonly close: () => Promise<void>
 }
 
+/**
+ * Connects to an MCP server and surfaces its advertised tools as fascicle
+ * `Tool[]`, plus a `close` handle for the connection.
+ *
+ * Owns the connection lifecycle (config in, `{ tools, close }` out) so callers
+ * do not have to import SDK transport classes themselves. Each advertised MCP
+ * tool becomes an ordinary `Tool`: its JSON Schema is bridged to Zod for the
+ * loop's `safeParse` and the provider, and `execute` forwards to `callTool`,
+ * propagating the run's abort signal. For the `client` transport variant the
+ * caller keeps ownership of the connection, so `close` is a no-op.
+ */
 export async function mcp_client(
   config: McpClientConfig,
   options: McpClientOptions = {},
@@ -84,6 +89,10 @@ export async function mcp_client(
   }
 }
 
+/**
+ * Returns the caller's already-connected client as-is, or lazily loads the
+ * SDK and connects a fresh client over the configured transport.
+ */
 async function connect_client(
   config: McpClientConfig,
   options: McpClientOptions,
@@ -95,6 +104,10 @@ async function connect_client(
   return client
 }
 
+/**
+ * Constructs the SDK transport matching the config: a spawned child process
+ * for `stdio`, a Streamable HTTP connection for `http`.
+ */
 function build_transport(
   sdk: McpClientSdk,
   config: McpStdioConfig | McpStreamableHttpConfig,
@@ -114,6 +127,13 @@ function build_transport(
   return new sdk.StreamableHTTPClientTransport(new URL(config.url), opts) as Transport
 }
 
+/**
+ * Wraps one advertised MCP tool as a fascicle `Tool` whose `execute` forwards
+ * to `callTool` on the shared client.
+ *
+ * An already-aborted signal short-circuits before the wire call; otherwise the
+ * signal is passed through so cancelling the run cancels the remote call.
+ */
 function to_fascicle_tool(
   client: Client,
   advertised: { name: string; description?: string | undefined; inputSchema: unknown },

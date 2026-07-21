@@ -27,6 +27,13 @@ export type ViewerHandle = {
   readonly close: () => Promise<void>
 }
 
+/**
+ * Starts the viewer: brings up the HTTP/SSE server and, if `options.path`
+ * is set, a file tail that feeds the same broadcaster.
+ *
+ * Defaults to `127.0.0.1:4242` with a 1000-event ring buffer. HTTP ingest
+ * and SSE are always available; tailing is opt-in via `path`.
+ */
 export async function start_viewer(options: StartViewerOptions = {}): Promise<ViewerHandle> {
   const host = options.host ?? '127.0.0.1'
   const port = options.port ?? 4242
@@ -55,6 +62,12 @@ export async function start_viewer(options: StartViewerOptions = {}): Promise<Vi
   return wrap_handle(server, tail, host, port)
 }
 
+/**
+ * Combines the server and optional tail into a single `ViewerHandle`.
+ *
+ * `close` stops the tail first, then closes the server, mirroring the
+ * startup order (server first, tail second) in reverse.
+ */
 function wrap_handle(
   server: ViewerServer,
   tail: Tail | null,

@@ -22,6 +22,14 @@ import type { Step } from '#core'
 import { execute_stdio } from './execute_stdio.js'
 import type { RunStdioOptions } from './execute_stdio.js'
 
+/**
+ * Runs a flow as the stdio agent contract against the real process streams,
+ * then exits with the outcome's code.
+ *
+ * On a non-zero outcome, writes the `StdioFailure` as the last line on
+ * stderr so a parent process can take the tail line as machine-readable
+ * detail.
+ */
 export async function run_stdio<i, o>(
   flow: Step<i, o>,
   options: RunStdioOptions<i, o> = {},
@@ -41,6 +49,10 @@ export async function run_stdio<i, o>(
   process.exit(outcome.code)
 }
 
+/**
+ * Writes a chunk to a stream and resolves only once it is flushed, so the
+ * caller can safely exit the process afterward without truncating output.
+ */
 function write_flushed(stream: NodeJS.WriteStream, chunk: string): Promise<void> {
   return new Promise((resolve, reject) => {
     stream.write(chunk, (err) => {

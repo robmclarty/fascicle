@@ -1,5 +1,5 @@
 /**
- * describe(step) and describe.json(step) — composition introspection.
+ * describe(step) and describe.json(step): composition introspection.
  *
  * `describe(step)` is the text-tree renderer. Multi-line string with
  * hierarchical indentation. Function values render as `<fn>` (or
@@ -46,6 +46,9 @@ export type DescribeOptions = {
 
 type Path = Set<Step<unknown, unknown>>
 
+/**
+ * Render a step tree as an indented multi-line string.
+ */
 function describe_text<i, o>(root: Step<i, o>, options?: DescribeOptions): string {
   const lines: string[] = []
   const strict = Boolean(options?.strict)
@@ -53,16 +56,30 @@ function describe_text<i, o>(root: Step<i, o>, options?: DescribeOptions): strin
   return lines.join('\n')
 }
 
+/**
+ * Render a step tree as a serializable `FlowNode` tree.
+ */
 function describe_json<i, o>(root: Step<i, o>, options?: DescribeOptions): FlowNode {
   const strict = Boolean(options?.strict)
   return render_json(root, new Set(), strict)
 }
 
+/**
+ * Public entry point: `describe(step)` for text, `describe.json(step)` for
+ * the `FlowNode` tree.
+ */
 export const describe: {
   <i, o>(root: Step<i, o>, options?: DescribeOptions): string
   json: <i, o>(root: Step<i, o>, options?: DescribeOptions) => FlowNode
 } = Object.assign(describe_text, { json: describe_json })
 
+/**
+ * Append one node (label line, config lines, then children) to `lines`.
+ *
+ * `path` holds the steps on the current root-to-node path for cycle
+ * detection; membership is added before recursing and removed in a `finally`
+ * so shared (diamond) references are not misreported as cycles.
+ */
 function render_text(
   node: Step<unknown, unknown>,
   depth: number,
@@ -97,6 +114,13 @@ function render_text(
   }
 }
 
+/**
+ * Render a single config value for the text tree.
+ *
+ * Functions become `<fn>` or `<fn:name>`, zod schemas `<schema>`, and Step
+ * references `kind(id)`; arrays and plain objects recurse. Strings are
+ * JSON-quoted so empty and whitespace values stay visible.
+ */
 function render_value_text(value: unknown, path: Path, strict: boolean): string {
   if (typeof value === 'function') {
     const name = typeof value.name === 'string' && value.name.length > 0 ? value.name : ''
@@ -128,6 +152,12 @@ function render_value_text(value: unknown, path: Path, strict: boolean): string 
   return JSON.stringify(value)
 }
 
+/**
+ * Convert one step node to a `FlowNode`, recursing into config and children.
+ *
+ * Uses the same path-based cycle detection as `render_text`: back-references
+ * become `{ kind: '<cycle>', id }` in loose mode and throw in strict mode.
+ */
 function render_json(
   node: Step<unknown, unknown>,
   path: Path,
@@ -165,6 +195,14 @@ function render_json(
   }
 }
 
+/**
+ * Convert a single config value to a JSON-safe `FlowValue`.
+ *
+ * Functions serialize as `{ kind: '<fn>', name? }`, schemas as
+ * `{ kind: '<schema>' }`, Step references as `{ kind, id }`. `undefined`
+ * maps to `null` and bigints/symbols to strings so the result survives
+ * `JSON.stringify` without loss.
+ */
 function render_value_json(value: unknown, path: Path, strict: boolean): FlowValue {
   if (typeof value === 'function') {
     const name = typeof value.name === 'string' && value.name.length > 0 ? value.name : ''
@@ -197,6 +235,10 @@ function render_value_json(value: unknown, path: Path, strict: boolean): FlowVal
   return JSON.stringify(value)
 }
 
+/**
+ * Detect a zod schema by its internal marker properties (`_zod` in zod 4,
+ * `_def` in zod 3) without importing zod.
+ */
 function is_zod_schema(value: unknown): boolean {
   if (typeof value !== 'object' || value === null) return false
   return '_zod' in value || '_def' in value

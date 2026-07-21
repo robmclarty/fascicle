@@ -1,16 +1,15 @@
 /**
  * Shared provider-adapter shape.
  *
- * Each file under packages/engine/src/providers/ exports a factory that
- * accepts a ProviderInit shape and returns a ProviderAdapter. Factories are
+ * Each file under src/engine/providers/ exports a factory that accepts a
+ * ProviderInit shape and returns a ProviderAdapter. Factories are
  * synchronous; build_model is async so SDK loading is deferred until a model
  * is actually needed. Missing peer dependencies surface as engine_config_error
  * on first build_model call with a clear message naming the missing peer.
  *
- * Invariant 13 (inverted): only the ai_sdk transport module
- * (providers/ai_sdk/invoke.ts) may import from `ai` or invoke
- * generateText/streamText. ai_sdk adapters build the provider model and
- * translate parameters; they do not orchestrate the call.
+ * Only the ai_sdk transport module (providers/ai_sdk/invoke.ts) may import
+ * from `ai` or invoke generateText/streamText. ai_sdk adapters build the
+ * provider model and translate parameters; they do not orchestrate the call.
  */
 
 import type {
@@ -26,9 +25,10 @@ import type {
 import { engine_config_error } from '../errors.js'
 
 /**
- * Which depth-1 backend a provider factory returns (D3). The provider name
- * stays the same across transports so pricing keys and usage fields carry
- * over; only the wire implementation changes.
+ * Which backend a provider factory returns: 'ai_sdk' wraps the Vercel AI SDK
+ * provider package, 'native' talks to the provider's HTTP API directly. The
+ * provider name stays the same across transports so pricing keys and usage
+ * fields carry over; only the wire implementation changes.
  */
 export type ProviderTransport = 'ai_sdk' | 'native'
 
@@ -98,7 +98,7 @@ export type AiSdkProviderAdapter = {
 }
 
 /**
- * Depth-1 raw-HTTP transport: implements a single turn against a provider's own
+ * Raw-HTTP transport: implements a single turn against a provider's own
  * API with zero `ai` / `@ai-sdk/*` in its module graph. generate.ts wraps
  * invoke_turn in retry + classification + abort, so a native adapter owns only
  * request/response mapping (and streaming via TurnRequest.dispatch_chunk); it
@@ -132,6 +132,13 @@ export type ProviderAdapter =
 
 export type ProviderFactory = (init: ProviderInit) => ProviderAdapter
 
+/**
+ * Map raw provider usage to UsageTotals, the mapper most adapters share.
+ *
+ * Missing usage zeroes the totals. Optional fields (reasoning and cache
+ * tokens) are set only when the raw payload carries them, reading the
+ * flattened field first and the AI SDK's *_details container second.
+ */
 export function default_normalize_usage(
   raw: RawProviderUsage | undefined,
 ): UsageTotals {
@@ -154,6 +161,11 @@ export function default_normalize_usage(
   return totals
 }
 
+/**
+ * Dynamically import an optional peer dependency, rethrowing an import
+ * failure as an error that names the package and the install command so a
+ * missing peer is diagnosable from the message alone.
+ */
 export async function load_optional_peer<t>(
   specifier: string,
 ): Promise<t> {

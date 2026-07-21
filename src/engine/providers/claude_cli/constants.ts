@@ -1,10 +1,10 @@
 /**
- * Frozen constants for the claude_cli provider (spec §5.1 defaults, §6.3
- * escalation window, §10.2 cost decomposition multipliers, §11 F19 auth
- * pattern list).
+ * Frozen constants for the claude_cli provider: startup and idle defaults,
+ * the escalation window, cost decomposition multipliers, and the auth
+ * failure pattern list.
  *
  * Arrays are Object.freeze-d at module load so downstream code cannot mutate
- * them (constraints §7 invariant 25).
+ * them.
  */
 
 export const CLI_BINARY_DEFAULT = 'claude'

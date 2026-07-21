@@ -1,9 +1,10 @@
 /**
  * Schema parse and repair helpers.
  *
- * The tool-loop / generate orchestrator (phase 2) owns the repair loop itself
- * (counting toward max_steps, re-dispatching through the provider). This
- * module exposes the parse primitive and the canonical repair-prompt shape.
+ * The tool-loop / generate orchestrator owns the repair loop itself (counting
+ * attempts toward `max_steps`, re-dispatching through the provider). This
+ * module exposes only the parse primitive and the canonical repair-prompt
+ * shape.
  */
 
 import type { z } from 'zod'
@@ -26,7 +27,7 @@ export type ParseOutcome<t> =
  * that both parses as JSON and matches the schema wins.
  *
  * When every candidate fails, we prefer the schema-validation error from the
- * FIRST candidate that parsed as JSON — that error reflects the model's
+ * FIRST candidate that parsed as JSON: that error reflects the model's
  * primary output and is what a repair prompt should feed back. Later
  * candidates (e.g. the bracket-slice fallback) often produce noisy errors
  * like "expected object, received array" that misdirect the model. Only when
@@ -56,6 +57,11 @@ export function parse_with_schema<t>(
 
 const FENCE_BLOCK = /```(?:[\w-]*)\s*\n?([\s\S]*?)\n?```/g
 
+/**
+ * Generate JSON substrings to try parsing, from strictest to most lenient:
+ * the trimmed text as-is, the body of every fenced code block, and the
+ * outermost `{...}` and `[...]` slices. Duplicate candidates are dropped.
+ */
 function json_candidates(text: string): string[] {
   const candidates: string[] = []
   const seen = new Set<string>()
@@ -75,6 +81,11 @@ function json_candidates(text: string): string[] {
   return candidates
 }
 
+/**
+ * Slice `text` from its first `open` character through its last matching
+ * `close` character, inclusive. Returns an empty string if `open` is absent
+ * or `close` does not appear after it.
+ */
 function slice_outermost(text: string, open: string, close: string): string {
   const first = text.indexOf(open)
   const last = text.lastIndexOf(close)
@@ -84,8 +95,9 @@ function slice_outermost(text: string, open: string, close: string): string {
 
 /**
  * Build the canonical repair message appended after a schema parse failure.
- * Content mirrors spec §6.5 exactly so the repair prompt is predictable and
- * user-inspectable in trajectory output.
+ *
+ * The wording is fixed rather than adapter-specific, so the repair prompt
+ * stays predictable and is easy to read back from trajectory output.
  */
 export function build_repair_message(zod_error: unknown): Message {
   return { role: 'user', content: build_repair_prompt_text(zod_error) }
@@ -117,6 +129,13 @@ export function throw_schema_validation(zod_error: unknown, raw_text: string): n
   )
 }
 
+/**
+ * Render an unknown error value as a display string.
+ *
+ * Handles `Error` instances, plain strings, and objects with a string
+ * `message` directly; falls back to `JSON.stringify`, and finally to a fixed
+ * placeholder if even that throws.
+ */
 export function format_zod_error(err: unknown): string {
   if (err === null || err === undefined) return 'unknown error'
   if (typeof err === 'string') return err

@@ -41,6 +41,7 @@ pnpm exec tsc --noEmit         # just types
 - **Functional/procedural.** No classes. Use modules, closures, and plain data. Enforced by `rules/no-class.yml`.
 - **Named exports.** No default exports. Enforced by `rules/no-default-export.yml`.
 - **Naming:** `snake_case` for variables and functions, `PascalCase` for types and interfaces, `SCREAMING_SNAKE_CASE` for constants. Exports are enforced by `rules/snake-case-exports.yml`.
+- **Function docs.** Every module-level function carries a `/** ... */` block directly above it: one line saying what it is, then optional paragraphs on why it behaves the way it does. Comments inside function bodies use `//`. Comments state what the code does now, in the present tense, with no design-history references. Enforced by `rules/function-comment-required.yml`.
 - **File extensions:** import with `.js` even from `.ts` files (NodeNext resolution).
 - **Tests colocated in `__tests__/`:** unit tests for `foo.ts` live at `__tests__/foo.test.ts` next to it (e.g. `src/core/branch.ts` ↔ `src/core/__tests__/branch.test.ts`). Cross-cutting tests (integration, signal handling, fixtures) live under `src/<module>/test/` instead, which is outside the source-semantics rules and spell-check.
 - **Coverage floor:** 70% lines/functions/branches/statements. Raise it as the codebase matures.

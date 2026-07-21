@@ -6,8 +6,8 @@
  * `concurrency` caps simultaneous in-flight items; omitted means full
  * parallelism.
  *
- * Cancellation (constraints.md §5.1, spec.md §6.8): each in-flight item runs
- * with a composed abort signal via `AbortSignal.any([ctx.abort, child_local])`.
+ * Cancellation: each in-flight item runs with a composed abort signal via
+ * `AbortSignal.any([ctx.abort, child_local])`.
  * On abort no new items start. The composer awaits all in-flight items before
  * rethrowing `ctx.abort.reason`.
  */
@@ -25,11 +25,21 @@ export type MapConfig<input, item, result> = {
 
 let map_counter = 0
 
+/**
+ * Generate a unique step id of the form `map_<n>`.
+ */
 function next_id(): string {
   map_counter += 1
   return `map_${map_counter}`
 }
 
+/**
+ * Build a per-item execution step.
+ *
+ * Extracts an array via `items(input)`, runs `do` once per element through a
+ * bounded worker pool, and returns results in input order. The first item
+ * failure stops new work and propagates after in-flight items settle.
+ */
 export function map<input, item, result>(
   config: MapConfig<input, item, result>,
 ): Step<input, result[]> {

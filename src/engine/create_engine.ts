@@ -1,25 +1,10 @@
 /**
- * Engine factory (spec §5.8).
+ * Engine factory.
  *
- * create_engine validates each provider entry at construction, merges user
- * pricing over DEFAULT_PRICING into a per-instance table, and returns an Engine
- * whose methods close over this instance state. Model resolution is a verbatim
- * pass-through: `model` is sent to the provider unchanged.
- *
- * Credentials / init values are validated synchronously by each provider
- * adapter factory; SDK loading is deferred to the first generate call. A
- * generate call that references a provider absent from the construction
- * providers map throws provider_not_configured_error at call time.
- *
- * list_prices returns a defensive shallow copy; mutating the returned object
- * does not affect engine state.
- *
- * with_providers derives a NEW engine from the retained construction config
- * (D8): incoming providers / custom_providers shallow-merge by name over the
- * originals, the merged config is re-validated by a recursive create_engine
- * (same shadow-throws rule, fresh adapters, independent disposal), and this
- * engine is left untouched. It is the value-semantic answer to runtime
- * registration, not a mutable registry.
+ * `create_engine` validates each provider entry at construction, merges user
+ * pricing over DEFAULT_PRICING into a per-instance table, and returns an
+ * Engine whose methods close over this instance state. Model resolution is a
+ * verbatim pass-through: `model` is sent to the provider unchanged.
  */
 
 import type {
@@ -41,6 +26,16 @@ import { get_provider_factory, list_builtin_providers } from './providers/regist
 import type { ProviderAdapter, ProviderFactory } from './providers/types.js'
 import { generate, type EngineInternals } from './generate.js'
 
+/**
+ * Build the provider-name to adapter map from `providers`, resolving each
+ * name to a `custom_providers` factory when one is supplied, or the built-in
+ * registry factory otherwise.
+ *
+ * Each factory validates its init value synchronously, so a bad credential
+ * throws here at construction time rather than later; loading the
+ * underlying SDK is deferred until the first `generate` call. Throws if
+ * `custom_providers` tries to shadow a built-in provider name.
+ */
 function build_provider_adapters(
   providers: EngineConfig['providers'],
   custom_providers: EngineConfig['custom_providers'],
@@ -70,6 +65,13 @@ function build_provider_adapters(
   return adapters
 }
 
+/**
+ * Validate `config` and construct an `Engine`.
+ *
+ * Provider entries are validated synchronously via `build_provider_adapters`.
+ * A `generate` call that names a provider absent from `config.providers`
+ * still throws `provider_not_configured_error`, but only at call time.
+ */
 export function create_engine(config: EngineConfig): Engine {
   if (
     config.providers === null ||
@@ -88,9 +90,16 @@ export function create_engine(config: EngineConfig): Engine {
   }
 
   const defaults = config.defaults
+  // `config.defaults.*` is the current nested layer; `config.default_retry`,
+  // `config.default_effort`, and `config.default_max_steps` are older
+  // top-level fields kept for compatibility. Where both are set, the nested
+  // `defaults` value wins, and the built-in constant is the last resort.
   const default_retry = defaults?.retry_policy ?? config.default_retry ?? DEFAULT_RETRY
   const default_effort = defaults?.effort ?? config.default_effort ?? 'none'
   const default_max_steps = defaults?.max_steps ?? config.default_max_steps ?? 10
+  // Validated once here, at construction, rather than on every generate call
+  // that ends up using the default: a bad default should fail fast instead
+  // of surfacing deep inside the first call that needs it.
   if (defaults?.tool_call_repair_attempts !== undefined && defaults.tool_call_repair_attempts < 0) {
     throw new engine_config_error('defaults.tool_call_repair_attempts must be >= 0')
   }
@@ -148,12 +157,22 @@ export function create_engine(config: EngineConfig): Engine {
       return pricing[pricing_key(provider, model_id)]
     },
     list_prices(): PricingTable {
+      // Defensive shallow copy: mutating the returned object does not affect
+      // engine state.
       return { ...pricing }
     },
     with_providers(
       providers: ProviderConfigMap,
       custom_providers?: Record<string, ProviderFactory>,
     ): Engine {
+      // Derives a NEW engine from the retained construction config:
+      // `providers`/`custom_providers` shallow-merge by name over the
+      // originals, the merged config is re-validated by a recursive
+      // create_engine call (same validation, fresh adapters, independent
+      // disposal), and this engine is left untouched. This is the
+      // value-semantic way to add providers at runtime, not a mutable
+      // registry.
+      //
       // Since `...config` below already carries `config.custom_providers`
       // forward unconditionally, this merge only changes the result when the
       // `custom_providers` ARGUMENT contributes entries. That leaves a cluster of
@@ -166,7 +185,7 @@ export function create_engine(config: EngineConfig): Engine {
       // and forcing the spread-in below on always passes the `undefined` "no
       // customs" sentinel. A Stryker-disable can't fence these off: on the same
       // lines the whole-condition `false` and the right-disjunct mutants DO change
-      // behavior — they drop a supplied argument — and the suite kills those.
+      // behavior, they drop a supplied argument, and the suite kills those.
       const merged_custom =
         config.custom_providers !== undefined || custom_providers !== undefined
           ? { ...config.custom_providers, ...custom_providers }
@@ -181,9 +200,9 @@ export function create_engine(config: EngineConfig): Engine {
       if (dispose_promise !== undefined) return dispose_promise
       disposed = true
       // Stryker disable next-line ArrayDeclaration: seeding this accumulator
-      // non-empty is observationally identical — every element is awaited by the
-      // Promise.all below and then discarded by `.then(() => undefined)`, so a
-      // stray value cannot change what dispose() resolves to or when.
+      // non-empty is observationally identical: every element is awaited by
+      // the Promise.all below and then discarded by `.then(() => undefined)`,
+      // so a stray value cannot change what dispose() resolves to or when.
       const tasks: Promise<void>[] = []
       for (const adapter of adapters.values()) {
         // Any adapter kind may hold resources: external always defines

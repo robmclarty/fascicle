@@ -1,20 +1,10 @@
 /**
- * Authentication enforcement for the claude_cli adapter (spec §4, §6.1).
+ * Authentication enforcement for the claude_cli adapter.
  *
- * - build_env composes the subprocess env from config + caller overrides.
- *   Regardless of auth_mode, it seeds the standard process-env keys
- *   (PATH, HOME, SHELL, USER, LOGNAME, LANG, TMPDIR) so the spawned
- *   subprocess can locate the sandbox wrapper (greywall/bwrap) and the
- *   claude binary on PATH. Set `inherit_env: false` to opt out and start
- *   from an empty env. Under oauth mode the *full* process.env is also
- *   inherited (the CLI needs HOME/etc plus session-specific vars to reach
- *   the logged-in OAuth session). Auth-mode scrub runs last on the merged
- *   result so nothing — caller env, inherited env, or config — can
- *   re-introduce ANTHROPIC_API_KEY under 'oauth'.
- * - validate_auth_config throws engine_config_error synchronously when
- *   auth_mode === 'api_key' without a non-empty api_key.
- * - stderr_is_auth_failure matches captured stderr against the frozen
- *   CLI_AUTH_ERROR_PATTERNS list, case-insensitively.
+ * Composes the subprocess environment from provider config and call-level
+ * overrides, validates that `auth_mode: 'api_key'` has a key to use, and
+ * recognizes CLI stderr auth failures so they can be surfaced as
+ * `provider_auth_error` instead of a generic exit-code error.
  */
 
 import { engine_config_error } from '../../errors.js'
@@ -25,10 +15,9 @@ import { CLI_AUTH_ERROR_PATTERNS } from './constants.js'
  * Standard env keys forwarded from process.env so the spawn target
  * (greywall/bwrap on PATH, then `claude`) can be resolved and run.
  *
- * Mirrors `STANDARD_KEYS` in
- * packages/fascicle/src/forward_standard_env.ts. Keep the two lists in
- * sync; engine cannot import from fascicle (the umbrella depends on
- * engine, not the other way).
+ * Mirrors `STANDARD_KEYS` in `src/forward_standard_env.ts`. Keep the two
+ * lists in sync; engine cannot import from fascicle (the umbrella depends
+ * on engine, not the other way).
  */
 const STANDARD_ENV_KEYS = [
   'PATH',
@@ -40,6 +29,13 @@ const STANDARD_ENV_KEYS = [
   'TMPDIR',
 ] as const
 
+/**
+ * Throw `engine_config_error` synchronously when `auth_mode: 'api_key'` is
+ * set without a non-empty `api_key`.
+ *
+ * Runs at adapter construction time so a misconfigured provider fails
+ * fast, before any CLI subprocess is spawned.
+ */
 export function validate_auth_config(config: ClaudeCliProviderConfig): void {
   const auth_mode = config.auth_mode ?? 'auto'
   if (auth_mode === 'api_key') {
@@ -53,6 +49,21 @@ export function validate_auth_config(config: ClaudeCliProviderConfig): void {
   }
 }
 
+/**
+ * Compose the subprocess environment for one claude CLI invocation.
+ *
+ * Regardless of `auth_mode`, seeds the standard process-env keys (PATH,
+ * HOME, SHELL, USER, LOGNAME, LANG, TMPDIR) by default so the spawned
+ * subprocess can locate the sandbox wrapper (greywall/bwrap) and the
+ * claude binary on PATH. Set `inherit_env: false` on the provider config to
+ * opt out and start from an empty env instead.
+ *
+ * Under `auth_mode: 'oauth'` the full `process.env` is inherited instead
+ * of just the standard keys, because the CLI needs HOME plus
+ * session-specific vars to reach the already-logged-in OAuth session. The
+ * auth-mode scrub runs last, after config and caller overrides are merged
+ * in, so nothing can re-introduce `ANTHROPIC_API_KEY` under `'oauth'`.
+ */
 export function build_env(
   config: ClaudeCliProviderConfig,
   caller_env: Record<string, string> | undefined,
@@ -92,6 +103,13 @@ export function build_env(
   return env
 }
 
+/**
+ * Check whether captured CLI stderr looks like an auth failure.
+ *
+ * Matches case-insensitively against the frozen `CLI_AUTH_ERROR_PATTERNS`
+ * list; used to turn a nonzero CLI exit into `provider_auth_error` instead
+ * of a generic `claude_cli_error`.
+ */
 export function stderr_is_auth_failure(stderr: string): boolean {
   if (stderr.length === 0) return false
   const lower = stderr.toLowerCase()

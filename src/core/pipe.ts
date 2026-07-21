@@ -3,8 +3,6 @@
  *
  * `pipe(inner, fn)` runs `inner`, passes its output to `fn`, returns `fn`'s
  * result. Use for shape adaptation when composing heterogeneous steps.
- *
- * See spec.md §5.6.
  */
 
 import { is_step } from './is_step.js'
@@ -13,6 +11,9 @@ import type { RunContext, Step } from './types.js'
 
 let pipe_counter = 0
 
+/**
+ * Generate a unique step id of the form `pipe_<n>`.
+ */
 function next_id(): string {
   pipe_counter += 1
   return `pipe_${pipe_counter}`
@@ -22,6 +23,13 @@ export type PipeOptions = {
   readonly name?: string
 }
 
+/**
+ * Build an output-transforming step around `inner`.
+ *
+ * The argument checks reject Steps passed where functions belong: `pipe` is
+ * not variadic, and the early `TypeError`s point misuse at `step(fn)` or
+ * `sequence([...])` instead of failing obscurely at run time.
+ */
 export function pipe<i, a, b>(
   inner: Step<i, a>,
   fn: (value: a) => b | Promise<b>,

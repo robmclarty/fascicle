@@ -1,7 +1,7 @@
 /**
- * Build a GenerateResult from a parsed CLI stream (spec §5.4, §7.3, §10).
+ * Build a GenerateResult from a parsed CLI stream.
  *
- * Given a completed ParsedStream and the call's resolved alias, this module
+ * Given a completed ParsedStream and the call's resolved model, this module
  * synthesizes:
  *   - per-turn StepRecord entries with output-weighted cost
  *   - aggregate GenerateResult with CLI-reported total_cost_usd
@@ -28,6 +28,14 @@ import type { ParsedStream, TurnCollected } from './stream_parse.js'
 import { allocate_cost_across_turns, type TurnUsage } from './cost.js'
 import { claude_cli_error } from '../../errors.js'
 
+/**
+ * Sum a list of per-turn `UsageTotals` into one aggregate total.
+ *
+ * Optional fields (`cached_input_tokens`, `cache_write_tokens`,
+ * `reasoning_tokens`) are included in the sum only when at least one input
+ * reports them, so the aggregate omits a field entirely rather than
+ * reporting a false zero.
+ */
 function sum_usage(totals: ReadonlyArray<UsageTotals>): UsageTotals {
   let input = 0
   let output = 0
@@ -48,6 +56,12 @@ function sum_usage(totals: ReadonlyArray<UsageTotals>): UsageTotals {
   return out
 }
 
+/**
+ * Sum a list of per-turn `CostBreakdown`s into one aggregate breakdown.
+ *
+ * Returns `undefined` for an empty list. Optional cache fields are
+ * included only when at least one input breakdown reports them.
+ */
 function aggregate_cost_breakdowns(
   breakdowns: ReadonlyArray<CostBreakdown>,
 ): CostBreakdown | undefined {
@@ -84,6 +98,14 @@ function aggregate_cost_breakdowns(
   return agg
 }
 
+/**
+ * Return the parsed stream's collected turns, or synthesize a single turn
+ * from the top-level result when none were collected.
+ *
+ * A `result` event with no preceding `assistant` events (an immediate
+ * error, or a response with no visible turns) leaves `parsed.turns` empty;
+ * this keeps `build_generate_result` from having to special-case that.
+ */
 function normalize_turns(parsed: ParsedStream): ReadonlyArray<TurnCollected> {
   if (parsed.turns.length > 0) return parsed.turns
   const synth: TurnCollected = {
@@ -96,6 +118,13 @@ function normalize_turns(parsed: ParsedStream): ReadonlyArray<TurnCollected> {
   return [synth]
 }
 
+/**
+ * Build a `ToolCallRecord` for one tool call, attaching its matching
+ * result (output or error) when present.
+ *
+ * `duration_ms` is always 0: the CLI's stream-json events don't report
+ * per-tool-call timing, so there's nothing to measure it against.
+ */
 function tool_call_record(
   step_index: number,
   call: { id: string; name: string; input: unknown },
@@ -128,6 +157,14 @@ export type BuildResultInput<T> = {
   readonly parsed_content?: T
 }
 
+/**
+ * Assemble a `GenerateResult<T>` from a parsed CLI stream.
+ *
+ * Throws a `claude_cli_error` instead of returning when the CLI reported
+ * an error result, since `FinishReason` has no `'error'` member and
+ * returning `finish_reason: 'stop'` would make the failure look like a
+ * successful call.
+ */
 export function build_generate_result<T>(input: BuildResultInput<T>): GenerateResult<T> {
   const { parsed, resolved } = input
 

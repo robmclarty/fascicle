@@ -9,9 +9,7 @@
  * writes only affect the inner map.
  *
  * Using `stash` or `use` outside a `scope` is a runtime error with a clear
- * message (spec.md §9 F1).
- *
- * See spec.md §5.16.
+ * message.
  */
 
 import { dispatch_step, register_traced_kind, throw_if_aborted } from './runner.js'
@@ -27,6 +25,12 @@ type LastOutput<children> = children extends readonly [...unknown[], Step<unknow
 
 const scope_states = new WeakSet<ReadonlyMap<string, unknown>>()
 
+/**
+ * Check whether a state map was created by `scope`.
+ *
+ * The root `RunContext.state` map is not registered in `scope_states`, which
+ * is how `stash`/`use` detect they are running outside any scope.
+ */
 function is_scope_state(state: ReadonlyMap<string, unknown>): boolean {
   return scope_states.has(state)
 }
@@ -35,16 +39,25 @@ let scope_counter = 0
 let stash_counter = 0
 let use_counter = 0
 
+/**
+ * Generate a unique step id of the form `scope_<n>`.
+ */
 function next_scope_id(): string {
   scope_counter += 1
   return `scope_${scope_counter}`
 }
 
+/**
+ * Generate a unique step id of the form `stash_<n>`.
+ */
 function next_stash_id(): string {
   stash_counter += 1
   return `stash_${stash_counter}`
 }
 
+/**
+ * Generate a unique step id of the form `use_<n>`.
+ */
 function next_use_id(): string {
   use_counter += 1
   return `use_${use_counter}`
@@ -62,6 +75,13 @@ export type UseOptions = {
   readonly name?: string
 }
 
+/**
+ * Build a step that runs children in sequence under a fresh state map.
+ *
+ * The local map is seeded from the parent state (inner scopes read outer
+ * values) and registered so `stash`/`use` inside recognize it; writes stay
+ * local to this scope. Outputs chain like `sequence`.
+ */
 export function scope<const children extends readonly AnyStep[]>(
   children: children,
   options?: ScopeOptions,
@@ -95,6 +115,12 @@ export function scope<const children extends readonly AnyStep[]>(
   } as Step<unknown, LastOutput<children>>
 }
 
+/**
+ * Build a step that stores its source's output in scope state at `key`.
+ *
+ * Passes the value through unchanged so it composes mid-chain. Throws when
+ * run outside a `scope`.
+ */
 export function stash<i, v>(
   key: string,
   source: Step<i, v>,
@@ -125,6 +151,12 @@ export function stash<i, v>(
   }
 }
 
+/**
+ * Build a step that projects named scope values into a function call.
+ *
+ * Reads `keys` from scope state (missing keys project as `undefined`) and
+ * invokes `fn(projection, input, ctx)`. Throws when run outside a `scope`.
+ */
 export function use<const keys extends readonly string[], i, o>(
   keys: keys,
   fn: (

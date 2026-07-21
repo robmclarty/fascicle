@@ -6,7 +6,7 @@
  * `backup` error propagates. Control-flow signals (`suspended_error`,
  * `aborted_error`) are not failures: they propagate instead of triggering the
  * backup, so a human-approval gate is never silently bypassed and the backup
- * never runs under an aborted context. See spec.md §5.8.
+ * never runs under an aborted context.
  */
 
 import { is_control_flow_error } from './errors.js'
@@ -15,6 +15,9 @@ import type { RunContext, Step } from './types.js'
 
 let fallback_counter = 0
 
+/**
+ * Generate a unique step id of the form `fallback_<n>`.
+ */
 function next_id(): string {
   fallback_counter += 1
   return `fallback_${fallback_counter}`
@@ -24,6 +27,12 @@ export type FallbackOptions = {
   readonly name?: string
 }
 
+/**
+ * Build a primary-or-backup step.
+ *
+ * Runs `primary`; on an application error runs `backup` with the same input.
+ * Control-flow signals propagate without triggering the backup.
+ */
 export function fallback<i, o>(
   primary: Step<i, o>,
   backup: Step<i, o>,

@@ -1,11 +1,11 @@
 /**
  * OpenAI provider adapter.
  *
- * Dispatches on `transport` (D3): the default 'ai_sdk' backend wraps
+ * Dispatches on `transport`: the default 'ai_sdk' backend wraps
  * @ai-sdk/openai as an optional peer; 'native' builds the openai dialect of
- * the shared OpenAI-compatible core (D1) — Bearer auth, an OpenAI-Organization
- * header, `max_completion_tokens`, and `reasoning_effort` per Appendix A4.
- * Effort maps to the o-series `reasoning_effort` string per spec §6.3.
+ * the shared OpenAI-compatible core, with Bearer auth, an
+ * OpenAI-Organization header, `max_completion_tokens`, and
+ * `reasoning_effort`. Effort maps to the o-series `reasoning_effort` string.
  * Non-reasoning models silently ignore the effort field (providers without
  * reasoning support drop it; signaling is model-specific and handled by the
  * orchestrator via the `effort_ignored` flag).
@@ -47,6 +47,9 @@ const OPENAI_REASONING_EFFORT: Record<Exclude<EffortLevel, 'none'>, string> = {
   max: 'high',
 }
 
+/**
+ * Map an EffortLevel to OpenAI's `reasoningEffort` provider option.
+ */
 export function translate_openai_effort(effort: EffortLevel): EffortTranslation {
   if (effort === 'none') {
     return { provider_options: {}, effort_ignored: false }
@@ -59,6 +62,9 @@ export function translate_openai_effort(effort: EffortLevel): EffortTranslation 
   }
 }
 
+/**
+ * Normalize OpenAI's raw usage payload into UsageTotals.
+ */
 export function normalize_openai_usage(raw: RawProviderUsage | undefined): UsageTotals {
   return default_normalize_usage(raw)
 }
@@ -79,6 +85,10 @@ const SUPPORTED: ReadonlySet<ProviderCapability> = new Set([
  */
 const DEFAULT_BASE_URL = 'https://api.openai.com/v1'
 
+/**
+ * Build the OpenAI adapter, picking the native or ai_sdk backend per the
+ * resolved `transport`.
+ */
 export const create_openai_adapter = (init: ProviderInit): ProviderAdapter => {
   if (resolve_transport(init, 'openai') === 'native') {
     return create_openai_native_adapter(init)
@@ -87,10 +97,10 @@ export const create_openai_adapter = (init: ProviderInit): ProviderAdapter => {
 }
 
 /**
- * Build the openai dialect (Appendix A1) and hand it to the shared
- * OpenAI-compatible core: Bearer auth, an optional OpenAI-Organization header,
- * the `max_completion_tokens` token-limit field, and strict usage (a hosted
- * API omitting usage is a broken response, not a local-runtime quirk). The
+ * Build the openai dialect and hand it to the shared OpenAI-compatible core:
+ * Bearer auth, an optional OpenAI-Organization header, the
+ * `max_completion_tokens` token-limit field, and strict usage (a hosted API
+ * omitting usage is a broken response, not a local-runtime quirk). The
  * empty-api_key guard rides on the core, which throws the same
  * `openai provider requires a non-empty api_key` engine_config_error.
  */
@@ -113,6 +123,10 @@ const create_openai_native_adapter = (init: ProviderInit): NativeProviderAdapter
   return create_openai_compatible_adapter(dialect)
 }
 
+/**
+ * Build the OpenAI ai_sdk adapter: validates the required api_key and lazily
+ * loads @ai-sdk/openai to build models.
+ */
 const create_openai_ai_sdk_adapter = (init: ProviderInit): AiSdkProviderAdapter => {
   const api_key = typeof init.api_key === 'string' ? init.api_key : ''
   if (api_key.length === 0) {

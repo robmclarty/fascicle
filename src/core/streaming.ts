@@ -4,8 +4,8 @@
  * `run.stream(flow, input)` is a secondary entry point returning
  * `{ events, result }`. Events are observed via an async iterable; the result
  * promise resolves once the flow completes. Streaming is purely
- * observational — composers do not know it exists, and `run` and `run.stream`
- * produce identical final results (spec.md §6.7).
+ * observational: composers do not know it exists, and `run` and `run.stream`
+ * produce identical final results.
  *
  * The event buffer has a default high-water mark of 10,000. When the consumer
  * never iterates, emissions past the mark drop the oldest events and record a
@@ -23,6 +23,15 @@ export type StreamingChannel = {
   readonly close: () => void
 }
 
+/**
+ * Build the logger/iterable pair backing `run.stream`.
+ *
+ * Wraps a base `TrajectoryLogger` so every recorded event is also enqueued
+ * for the async iterable. A single pending `waiter` hands events straight to
+ * a blocked consumer; otherwise events buffer up to `high_water_mark`, after
+ * which the oldest are dropped and counted for the `events_dropped` marker
+ * emitted at close.
+ */
 export function create_streaming_channel(
   base: TrajectoryLogger,
   high_water_mark = STREAMING_HIGH_WATER_MARK,

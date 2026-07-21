@@ -1,5 +1,5 @@
 /**
- * fascicle/ui — bridge a run's event stream to the AI SDK "UI message stream".
+ * fascicle/ui: bridge a run's event stream to the AI SDK "UI message stream".
  *
  * `run.stream(flow, input)` yields `TrajectoryEvent`s; under streaming,
  * `model_call` records `model_chunk` events carrying an engine `StreamChunk`.
@@ -53,18 +53,34 @@ export type UiMapperState = {
   readonly tool_names: Map<string, string>
 }
 
+/**
+ * Create an empty `UiMapperState` for a new stream.
+ */
 export function create_ui_mapper_state(): UiMapperState {
   return { open_text: new Set(), open_reasoning: new Set(), tool_names: new Map() }
 }
 
+/**
+ * Build the UI message chunk id for a step's text block.
+ */
 function text_id(step_index: number): string {
   return `text-${step_index}`
 }
 
+/**
+ * Build the UI message chunk id for a step's reasoning block.
+ */
 function reasoning_id(step_index: number): string {
   return `reasoning-${step_index}`
 }
 
+/**
+ * Close the text/reasoning blocks open for one step, returning the
+ * `*-end` chunks needed and updating `state` in place.
+ *
+ * Called on a `step_finish` chunk, so only that step's blocks close; blocks
+ * open for other steps are untouched.
+ */
 function close_step_blocks(step_index: number, state: UiMapperState): UIMessageChunk[] {
   const parts: UIMessageChunk[] = []
   if (state.open_text.delete(step_index)) {
@@ -76,6 +92,13 @@ function close_step_blocks(step_index: number, state: UiMapperState): UIMessageC
   return parts
 }
 
+/**
+ * Close every text/reasoning block still open in `state`, returning the
+ * `*-end` chunks needed.
+ *
+ * Used on stream `finish` and to flush any blocks still open when the
+ * underlying event iterable ends.
+ */
 export function close_open_blocks(state: UiMapperState): UIMessageChunk[] {
   const parts: UIMessageChunk[] = []
   for (const step_index of state.open_text) {
@@ -89,6 +112,10 @@ export function close_open_blocks(state: UiMapperState): UIMessageChunk[] {
   return parts
 }
 
+/**
+ * Map a single engine `StreamChunk` to the `UIMessageChunk`s it produces,
+ * opening and closing text/reasoning blocks in `state` as needed.
+ */
 function map_chunk(chunk: StreamChunk, state: UiMapperState): UIMessageChunk[] {
   switch (chunk.kind) {
     case 'text': {
@@ -139,6 +166,11 @@ function map_chunk(chunk: StreamChunk, state: UiMapperState): UIMessageChunk[] {
   }
 }
 
+/**
+ * Narrow an untyped `TrajectoryEvent['chunk']` payload to a `StreamChunk`
+ * when it looks like one (an object with a string `kind`), otherwise
+ * return `undefined`.
+ */
 function as_stream_chunk(value: unknown): StreamChunk | undefined {
   if (typeof value !== 'object' || value === null) return undefined
   const kind = Reflect.get(value, 'kind')
@@ -152,7 +184,7 @@ function as_stream_chunk(value: unknown): StreamChunk | undefined {
 
 /**
  * Map one run event to zero or more UI message chunks, advancing `state`.
- * Non-`model_chunk` events (spans, cost, user emits) yield nothing in v1.
+ * Non-`model_chunk` events (spans, cost, user emits) yield nothing.
  */
 export function to_ui_message_chunks(
   event: TrajectoryEvent,
@@ -163,6 +195,11 @@ export function to_ui_message_chunks(
   return chunk === undefined ? [] : map_chunk(chunk, state)
 }
 
+/**
+ * Build the `ReadableStream<UIMessageChunk>` that drives a `run.stream(...)`
+ * handle through `to_ui_message_chunks`, used by both the `Response` and
+ * Node `ServerResponse` entry points below.
+ */
 function build_stream(
   handle: RunStreamLike,
   options: ToUiStreamOptions,

@@ -1,7 +1,7 @@
 /**
  * Closed registry of every `Step.kind` produced by the composition layer.
  *
- * Studio (and any other consumer that needs to enumerate primitives — palette,
+ * Studio (and any other consumer that needs to enumerate primitives: palette,
  * docs, code generation) can rely on this being the exhaustive set. New
  * primitives must add their kind here. The `step_kinds_cover_runner` contract
  * test in `step_kinds.test.ts` asserts every dispatch handler corresponds to a
@@ -33,6 +33,9 @@ export const STEP_KINDS = [
 
 export type StepKind = (typeof STEP_KINDS)[number]
 
+/**
+ * Check whether a value is one of the registered `Step.kind` strings.
+ */
 export function is_step_kind(value: unknown): value is StepKind {
   return typeof value === 'string' && (STEP_KINDS as readonly string[]).includes(value)
 }

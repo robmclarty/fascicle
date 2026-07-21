@@ -3,8 +3,8 @@
  *
  * Unknown provider names throw provider_not_configured_error. Custom
  * providers enter via `EngineConfig.custom_providers` at construction,
- * resolved custom-first in create_engine; runtime (post-construction)
- * registration stays deferred.
+ * resolved custom-first in create_engine; there is no runtime
+ * (post-construction) registration.
  */
 
 import { provider_not_configured_error } from '../errors.js'
@@ -29,10 +29,17 @@ const BUILTIN_PROVIDERS: ReadonlyMap<string, ProviderFactory> = new Map<string, 
   ['claude_cli', create_claude_cli_adapter],
 ])
 
+/**
+ * List the names of every built-in provider, in registration order.
+ */
 export function list_builtin_providers(): ReadonlyArray<string> {
   return [...BUILTIN_PROVIDERS.keys()]
 }
 
+/**
+ * Look up a built-in provider's adapter factory by name, throwing
+ * provider_not_configured_error for unknown names.
+ */
 export function get_provider_factory(name: string): ProviderFactory {
   const factory = BUILTIN_PROVIDERS.get(name)
   if (factory === undefined) throw new provider_not_configured_error(name)

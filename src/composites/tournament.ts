@@ -33,6 +33,13 @@ export type TournamentResult<o> = {
   readonly bracket: ReadonlyArray<BracketRecord>
 }
 
+/**
+ * Build a single-elimination bracket step over named members.
+ *
+ * All members run concurrently via `parallel`; the bracket step then reduces
+ * survivors round by round with `compare`, recording every match. Requires at
+ * least one member so a winner always exists.
+ */
 export function tournament<i, o>(
   config: TournamentConfig<i, o>,
 ): Step<i, TournamentResult<o>> {

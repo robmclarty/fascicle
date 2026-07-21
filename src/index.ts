@@ -6,11 +6,11 @@
  * can install a single package.
  *
  * `aborted_error` lives in core and is re-exported by engine, so both
- * layers surface the same class (NOTES.md D5).
+ * layers surface the same class.
  *
  * `model_call` is the sole sanctioned bridge between the two layers; it is
- * the only file under packages/fascicle/src/ that imports values from both
- * core and engine (enforced by model-call-is-sole-bridge).
+ * the only file under `src/` that imports values from both core and engine
+ * (enforced by `rules/model-call-is-sole-bridge.yml`).
  */
 
 export * from '#core'

@@ -1,19 +1,15 @@
 /**
  * Retry policy for provider-side failures.
  *
- * Narrow scope: retry 429 rate limits, provider 5xx, network errors, and
- * engine turn-timeout expiry (D5: `turn_timeout_ms` throws a typed timeout the
- * shared classifier treats as retryable). Composition-layer retry wraps the
- * whole generate call; this helper transparently retries a single provider
+ * Narrow scope: retries 429 rate limits, provider 5xx errors, network
+ * errors, and engine turn-timeout expiry (`turn_timeout_ms` throws a typed
+ * timeout that the shared classifier treats as retryable). Composition-layer
+ * retry wraps the whole generate call; this module retries a single provider
  * call between tool-loop turns.
  *
- * Invariants:
- *   - abort.aborted interrupts backoff waits and throws aborted_error.
- *   - Once a streaming response has delivered a chunk, the caller MUST NOT
- *     retry (spec §6.8). This helper is not wrapped around streaming calls
- *     past first chunk; the orchestrator enforces that boundary.
- *   - rate_limit respects Retry-After in both numeric seconds and HTTP-date
- *     forms.
+ * Once a streaming response has delivered a chunk, the caller must not retry
+ * it: this helper is never wrapped around a streaming call past its first
+ * chunk, and the orchestrator enforces that boundary.
  */
 
 import type { RetryFailureKind, RetryPolicy } from './types.js'
@@ -32,6 +28,13 @@ export type RetryableError =
   | { kind: 'network'; message?: string }
   | { kind: 'timeout'; message?: string }
 
+/**
+ * Parse an HTTP `Retry-After` header value into a millisecond delay.
+ *
+ * Accepts both forms the header allows: a plain integer or decimal number of
+ * seconds, and an HTTP-date. Returns `undefined` for anything else (missing,
+ * blank, or unparseable).
+ */
 export function parse_retry_after(value: string | null | undefined): number | undefined {
   if (value === null || value === undefined) return undefined
   const trimmed = value.trim()
@@ -44,12 +47,26 @@ export function parse_retry_after(value: string | null | undefined): number | un
   return Math.max(0, parsed - Date.now())
 }
 
+/**
+ * Compute the delay before the next retry attempt.
+ *
+ * Exponential backoff (`initial_delay_ms * 2^attempt`) plus up to one
+ * `initial_delay_ms` of random jitter, capped at `max_delay_ms`. The jitter
+ * spreads retries from concurrent callers apart so they don't all retry in
+ * lockstep.
+ */
 function compute_backoff(policy: RetryPolicy, attempt: number): number {
   const base = policy.initial_delay_ms * 2 ** attempt
   const jitter = Math.random() * policy.initial_delay_ms
   return Math.min(base + jitter, policy.max_delay_ms)
 }
 
+/**
+ * Wait `ms` milliseconds, or reject immediately with `aborted_error` if
+ * `abort` fires first.
+ *
+ * A zero or negative `ms` resolves synchronously without arming a timer.
+ */
 function wait_ms(ms: number, abort?: AbortSignal): Promise<void> {
   return new Promise<void>((resolve, reject) => {
     if (ms <= 0) {
@@ -72,6 +89,9 @@ function wait_ms(ms: number, abort?: AbortSignal): Promise<void> {
   })
 }
 
+/**
+ * Check whether `policy` allows retrying a failure of the given `kind`.
+ */
 function is_retryable(kind: RetryFailureKind, policy: RetryPolicy): boolean {
   return policy.retry_on.includes(kind)
 }
@@ -80,8 +100,10 @@ function is_retryable(kind: RetryFailureKind, policy: RetryPolicy): boolean {
  * Retry `fn` under `policy`. `fn` must throw a RetryableError-shaped object to
  * trigger retry; any other thrown value short-circuits as a permanent failure.
  *
- * Returns the value from the last successful fn() call. On exhaustion, throws
- * rate_limit_error (for 429s) or provider_error (for 5xx/network/timeout).
+ * An aborted `abort` signal interrupts a pending backoff wait and throws
+ * `aborted_error`. Returns the value from the last successful `fn()` call. On
+ * exhaustion, throws `rate_limit_error` (for 429s) or `provider_error` (for
+ * 5xx/network/timeout).
  */
 export async function retry_with_policy<t>(
   fn: (attempt: number) => Promise<t>,
@@ -141,16 +163,30 @@ export async function retry_with_policy<t>(
   }
 }
 
+/**
+ * Read `key` off `err` and return it only if the value is a string.
+ */
 function read_string(err: object, key: string): string | undefined {
   const value: unknown = Reflect.get(err, key)
   return typeof value === 'string' ? value : undefined
 }
 
+/**
+ * Read `key` off `err` and return it only if the value is a number.
+ */
 function read_number(err: object, key: string): number | undefined {
   const value: unknown = Reflect.get(err, key)
   return typeof value === 'number' ? value : undefined
 }
 
+/**
+ * Classify a thrown value into a `RetryableError`, or `undefined` if it
+ * does not carry one of the recognized retryable `kind`s.
+ *
+ * Providers throw plain objects tagged with `kind` (set by
+ * `classify_provider_error` in generate.ts); this reads that shape back out
+ * field by field rather than trusting it wholesale.
+ */
 function classify_retryable(err: unknown): RetryableError | undefined {
   if (err === null || typeof err !== 'object') return undefined
   const kind = read_string(err, 'kind')

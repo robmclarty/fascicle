@@ -4,7 +4,7 @@
  * The contract: given a `current` report and a `baseline` report, produce a
  * `RegressionReport` whose `ok` flag is false when any tracked metric got
  * worse beyond a threshold. The function does NOT short-circuit on first
- * failure — every metric and every per-case delta is computed so callers can
+ * failure; every metric and every per-case delta is computed so callers can
  * print or assert against the whole report.
  *
  * Tracked metrics:
@@ -14,9 +14,8 @@
  *                             counts as a regression; default 10%)
  *
  * Baselines are plain JSON, written via `write_baseline` and read via
- * `read_baseline`. They live wherever the caller decides — typically
- * `bench/<flow>/baseline.json`, checked into git per
- * `research/explorations/2026-04-eval-surface.md` §3.
+ * `read_baseline`. They live wherever the caller decides, typically
+ * `bench/<flow>/baseline.json` checked into git.
  */
 
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
@@ -51,6 +50,14 @@ export type RegressionCompareOptions = {
   readonly cost_threshold?: number
 }
 
+/**
+ * Diff a current `BenchReport` against a baseline.
+ *
+ * Compares `pass_rate`, each judge's mean score, and total cost, then every
+ * individual case. Score metrics regress on any drop beyond
+ * `score_threshold` (default 0); cost regresses on a relative increase above
+ * `cost_threshold` (default 10%).
+ */
 export function regression_compare(
   current: BenchReport,
   baseline: BenchReport,
@@ -102,6 +109,13 @@ export function regression_compare(
   return { ok, deltas, per_case }
 }
 
+/**
+ * Compute per-case deltas across the union of case ids in both reports.
+ *
+ * Cases present on only one side still appear (missing side scores count as
+ * 0). A case regresses when a judge score drops beyond the threshold, its
+ * cost rises beyond the relative threshold, or it flips from ok to failing.
+ */
 function compute_per_case(
   current: BenchReport,
   baseline: BenchReport,
@@ -147,6 +161,12 @@ function compute_per_case(
   return out
 }
 
+/**
+ * Extract a finite numeric score from a raw score entry.
+ *
+ * Accepts a bare number or an object with a numeric `score` field; anything
+ * else (missing, NaN, non-numeric) counts as 0 so deltas stay well-defined.
+ */
 function score_value(s: unknown): number {
   if (s === undefined || s === null) return 0
   if (typeof s === 'number') return Number.isFinite(s) ? s : 0
@@ -157,6 +177,9 @@ function score_value(s: unknown): number {
   return 0
 }
 
+/**
+ * Index case results by their `case_id` for pairwise lookup.
+ */
 function index_by_case_id<I, O, S>(
   cases: ReadonlyArray<CaseResult<I, O, S>>,
 ): Map<string, CaseResult<I, O, S>> {
@@ -165,6 +188,9 @@ function index_by_case_id<I, O, S>(
   return m
 }
 
+/**
+ * Union the judge names appearing in either report, sorted for stable output.
+ */
 function collect_judge_names(a: BenchReport, b: BenchReport): string[] {
   const names = new Set<string>([
     ...Object.keys(a.summary.mean_scores),
@@ -173,6 +199,12 @@ function collect_judge_names(a: BenchReport, b: BenchReport): string[] {
   return [...names].toSorted()
 }
 
+/**
+ * Read and validate a baseline `BenchReport` from a JSON file.
+ *
+ * Validation is structural (required fields present), so a hand-edited or
+ * truncated baseline fails loudly with the offending path in the message.
+ */
 export async function read_baseline(path: string): Promise<BenchReport> {
   const text = await readFile(path, 'utf8')
   const parsed: unknown = JSON.parse(text)
@@ -180,11 +212,17 @@ export async function read_baseline(path: string): Promise<BenchReport> {
   return parsed
 }
 
+/**
+ * Write a `BenchReport` as pretty-printed JSON, creating parent directories.
+ */
 export async function write_baseline(path: string, report: BenchReport): Promise<void> {
   await mkdir(dirname(path), { recursive: true })
   await writeFile(path, `${JSON.stringify(report, null, 2)}\n`, 'utf8')
 }
 
+/**
+ * Assert that parsed JSON has the structural shape of a `BenchReport`.
+ */
 function validate_report(value: unknown, path: string): asserts value is BenchReport {
   if (value === null || typeof value !== 'object') {
     throw new Error(`baseline at ${path} is not an object`)

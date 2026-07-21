@@ -10,7 +10,7 @@
  *   step name and engine call defaults; the body is the system prompt.
  * - Without `build_prompt`, the body (after `{{key}}` substitution against
  *   top-level string fields of the input) is the user prompt and no system is
- *   sent — the markdown carries the full instruction.
+ *   sent; the markdown carries the full instruction.
  * - With `build_prompt`, the body is the system prompt and `build_prompt(input)`
  *   produces the user message (string, or `{ user, system? }` to override).
  * - `config.model` and `config.schema_repair_attempts` shape the call from
@@ -23,7 +23,7 @@
  * with the resolved prompts, the schema, and `ctx.abort` / `ctx.trajectory`
  * threaded through. An `agent.call` trajectory event carries the agent name,
  * resolved model id, and engine-reported usage. No retry or fallback is baked
- * in — wrap with `retry()` from core if you need it.
+ * in; wrap with `retry()` from core if you need it.
  *
  * Frontmatter parser is intentionally tiny (no gray-matter): bare `key: value`
  * lines, optional `'`/`"` quotes, `temperature` coerced to number. Anything
@@ -76,6 +76,9 @@ const FRONTMATTER_OPEN = /^---\s*\r?\n/
 const FRONTMATTER_CLOSE = /^---\s*$/m
 const PLACEHOLDER_RE = /\{\{(\w+)\}\}/g
 
+/**
+ * Strip one matching pair of surrounding single or double quotes.
+ */
 function unquote(raw: string): string {
   if (raw.length >= 2) {
     const first = raw[0]
@@ -87,6 +90,15 @@ function unquote(raw: string): string {
   return raw
 }
 
+/**
+ * Split a markdown file into frontmatter fields and prompt body.
+ *
+ * Parses only the flat `key: value` subset of YAML that agent files need:
+ * recognized keys are `name`, `description`, `model`, and `temperature`
+ * (coerced to a number); unrecognized keys are ignored. A file without an
+ * opening `---` is all body. Malformed frontmatter throws rather than
+ * silently producing a wrong prompt.
+ */
 function parse_frontmatter(content: string): ParsedPrompt {
   const open_match = content.match(FRONTMATTER_OPEN)
   if (!open_match) return { frontmatter: {}, body: content }
@@ -126,6 +138,12 @@ function parse_frontmatter(content: string): ParsedPrompt {
   return { frontmatter: out, body }
 }
 
+/**
+ * Read the markdown file from a filesystem path, `URL`, or `file://` string.
+ *
+ * Accepting all three lets callers pass `new URL('./x.md', import.meta.url)`
+ * or its string form without caring about the difference.
+ */
 function read_md_sync(path: string | URL): string {
   if (path instanceof URL) {
     return readFileSync(fileURLToPath(path), 'utf8')
@@ -136,6 +154,12 @@ function read_md_sync(path: string | URL): string {
   return readFileSync(path, 'utf8')
 }
 
+/**
+ * Replace `{{key}}` placeholders with top-level string fields of the input.
+ *
+ * Non-string values and unknown keys leave the placeholder untouched, so a
+ * typo'd placeholder is visible in the sent prompt instead of vanishing.
+ */
 function substitute(template: string, input: unknown): string {
   if (input === null || typeof input !== 'object') return template
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion
@@ -146,6 +170,14 @@ function substitute(template: string, input: unknown): string {
   })
 }
 
+/**
+ * Load a markdown-defined agent as a `Step<i, o>`.
+ *
+ * Reads and parses the file once at factory time; each run resolves the
+ * user/system prompts (via `build_prompt` or `{{key}}` substitution), calls
+ * `engine.generate` with the schema and threaded abort/trajectory, and
+ * records an `agent.call` event with the resolved model and usage.
+ */
 export function define_agent<i, o>(config: DefineAgentConfig<i, o>): Step<i, o> {
   const text = read_md_sync(config.md_path)
   const { frontmatter, body } = parse_frontmatter(text)

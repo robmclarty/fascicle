@@ -1,25 +1,12 @@
 /**
  * improve: bounded online self-improvement loop.
  *
- * `improve({ seed, propose, score, budget })` runs a round-bounded loop that
- * threads a `parent` candidate through repeated propose → score → accept/reject
- * cycles. The kernel decides acceptance via a hard gate (`scored.accepted`) and
- * an epsilon-improvement test (`scored.score > parent_score + epsilon`).
- * Plateau detection stops the loop early when no progress has been made for
- * `patience` rounds; an optional wall-clock budget caps total runtime.
- *
- * `improve` is the *online* counterpart to `learn`: where `learn` reflects on
- * recorded trajectories offline, `improve` runs the propose/score loop live
- * inside a single run. The amplify example is a domain-specific consumer of
- * this same pattern (filesystem mutation, test-suite gates, subprocess
- * research). `improve` strips those opinions out so any domain can plug in
+ * The *online* counterpart to `learn`: where `learn` reflects on recorded
+ * trajectories offline, `improve` runs a propose/score loop live inside a
+ * single run. The amplify example is a domain-specific consumer of this
+ * same pattern (filesystem mutation, test-suite gates, subprocess
+ * research); `improve` strips those opinions out so any domain can plug in
  * its own `propose` and `score` steps.
- *
- * Implemented as a `compose`d `scope` of (seed) → (init state) → (loop) →
- * (unwrap). The loop body is itself a small `scope` that snapshots prior
- * state, builds a round input, dispatches the proposers + scorer via
- * `ensemble_step`, and merges the outcome back into state via `use`.
- * State threading is the entire job.
  */
 
 import { compose, loop, scope, step, stash, use } from '#core'
@@ -82,6 +69,8 @@ export type ImproveResult<c> = {
   readonly history: ReadonlyArray<HistoryEntry<c>>
 }
 
+// Scope variable key for the pre-round state snapshot, underscore-prefixed
+// to avoid colliding with stashes set by user-supplied steps.
 const PRIOR_KEY = '__improve_prior'
 
 type ImproveState<c> = {
@@ -95,6 +84,23 @@ type ImproveState<c> = {
   readonly stopped_by?: 'budget' | 'plateau'
 }
 
+/**
+ * Builds a Step that runs a round-bounded loop threading a `parent`
+ * candidate through repeated propose -> score -> accept/reject cycles.
+ *
+ * Acceptance requires both a hard gate (`scored.accepted`) and an
+ * epsilon-improvement test (`scored.score > parent_score + epsilon`).
+ * Rejected rounds with a `reason` feed a bounded lessons list back into the
+ * next round's input. Plateau detection stops the loop early when no
+ * progress has been made for `patience` rounds; an optional wall-clock
+ * budget caps total runtime.
+ *
+ * Implemented as a `compose`d `scope` of (seed) -> (init state) -> (loop) ->
+ * (unwrap). The loop body is itself a small `scope` that snapshots prior
+ * state, builds a round input, dispatches the proposers + scorer via
+ * `ensemble_step`, and merges the outcome back into state via `use`.
+ * State threading is the entire job.
+ */
 export function improve<i, c>(
   config: ImproveConfig<i, c>,
 ): Step<i, ImproveResult<c>> {

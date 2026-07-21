@@ -9,10 +9,10 @@
  * the final state to the loop's output value.
  *
  * Non-convergence is data, not error: when `max_rounds` is exhausted without
- * `guard` returning stop, the loop returns `{ value, converged: false, rounds }`.
- * This matches the existing convention from adversarial/consensus.
+ * `guard` returning stop, the loop returns `{ value, converged: false, rounds }`,
+ * the same convention `adversarial` and `consensus` use.
  *
- * Cancellation: between rounds the parent `ctx.abort` is honored — a pending
+ * Cancellation: between rounds the parent `ctx.abort` is honored; a pending
  * abort short-circuits and propagates `ctx.abort.reason`. The body and guard
  * receive the parent context unchanged; their own dispatch routes already
  * thread cancellation per the runner contract.
@@ -43,11 +43,22 @@ export type LoopResult<o> = {
 
 let loop_counter = 0
 
+/**
+ * Generate a unique step id, prefixed with the display name when one is set.
+ */
 function next_id(name: string | undefined): string {
   loop_counter += 1
   return `${name ?? 'loop'}_${loop_counter}`
 }
 
+/**
+ * Build a bounded iteration step with carry-state.
+ *
+ * Threads `state` through up to `max_rounds` runs of `body`, lets the
+ * optional `guard` stop early, then projects the final state through
+ * `finish`. Returns `{ value, converged, rounds }` so callers can tell a
+ * converged run from an exhausted one.
+ */
 export function loop<i, state, o>(
   config: LoopConfig<i, state, o>,
 ): Step<i, LoopResult<o>> {

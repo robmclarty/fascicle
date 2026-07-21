@@ -4,8 +4,6 @@
  * `branch({ when, then, otherwise })` evaluates `when(input)`; if truthy, runs
  * `then`, else runs `otherwise`. Both branches must return the same output
  * type.
- *
- * See spec.md §5.4.
  */
 
 import { dispatch_step, register_traced_kind } from './runner.js'
@@ -20,11 +18,21 @@ export type BranchConfig<i, o> = {
 
 let branch_counter = 0
 
+/**
+ * Generate a unique step id of the form `branch_<n>`.
+ */
 function next_id(): string {
   branch_counter += 1
   return `branch_${branch_counter}`
 }
 
+/**
+ * Build a conditional-routing step.
+ *
+ * Evaluates `when(input)` at run time and dispatches to `then` or `otherwise`.
+ * Both branches appear as children so `describe()` renders the full tree even
+ * though only one branch runs.
+ */
 export function branch<i, o>(config: BranchConfig<i, o>): Step<i, o> {
   const id = next_id()
   const { when, then: then_step, otherwise: otherwise_step, name } = config

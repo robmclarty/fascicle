@@ -27,6 +27,14 @@ export type ServeFlowOptions<i, o> = {
   to_result?: (output: o) => { text: string; structured?: Record<string, unknown> }
 }
 
+/**
+ * Registers a fascicle flow as a tool on a caller-owned MCP server.
+ *
+ * Drives the flow with `run`, threading the per-request abort signal so an
+ * MCP client cancellation aborts the in-flight flow, and maps the result
+ * into a `CallToolResult`. A thrown flow becomes an `isError` result rather
+ * than a JSON-RPC protocol error.
+ */
 export function serve_flow<i, o>(options: ServeFlowOptions<i, o>): void {
   const { server, flow, name, description, input_schema, trajectory, to_result } = options
   server.registerTool(

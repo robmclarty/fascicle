@@ -1,5 +1,5 @@
 /**
- * OpenTelemetry bridge for fascicle trajectory events (D7, Layer 1).
+ * OpenTelemetry bridge for fascicle trajectory events.
  *
  * `create_otel_trajectory_logger` returns a plain TrajectoryLogger that turns
  * the engine's own span + event stream into OpenTelemetry spans: the
@@ -10,9 +10,9 @@
  * transports get traces without any AI-SDK involvement.
  *
  * This module is the ONLY place `@opentelemetry/api` is imported, and it lives
- * outside `src/engine/` on purpose (C2): the engine's `ai + zod` npm-dep
- * invariant holds unmodified, and an app that never imports `fascicle/otel`
- * pulls in zero OTel packages at runtime.
+ * outside `src/engine/` on purpose: the engine's `ai + zod` npm-dep invariant
+ * holds unmodified, and an app that never imports `fascicle/otel` pulls in
+ * zero OTel packages at runtime.
  *
  * Nesting is resolved two ways, in order: an explicit `parent_span_id` on the
  * start meta (how the composition runner threads composer-span parenthood) wins;
@@ -51,6 +51,10 @@ export type OtelTrajectoryLoggerOptions = {
 // Event/meta keys that are bridge plumbing, not span attributes.
 const INTERNAL_KEYS: ReadonlySet<string> = new Set(['kind', 'span_id', 'parent_span_id'])
 
+/**
+ * JSON-stringify `value`, falling back to `String(value)` when `stringify`
+ * throws or returns `undefined` (e.g. for functions or symbols).
+ */
 function safe_json(value: unknown): string {
   try {
     return JSON.stringify(value) ?? String(value)
@@ -59,6 +63,13 @@ function safe_json(value: unknown): string {
   }
 }
 
+/**
+ * Convert a JS value into an OTel-compatible attribute value.
+ *
+ * Primitives and homogeneous primitive arrays pass through unchanged;
+ * anything else falls back to `safe_json`; `null`/`undefined` drop out
+ * entirely (returning `undefined`) so the caller can omit the attribute.
+ */
 function to_attribute_value(value: unknown): AttributeValue | undefined {
   if (value === null || value === undefined) return undefined
   const kind = typeof value
@@ -75,6 +86,13 @@ function to_attribute_value(value: unknown): AttributeValue | undefined {
   return safe_json(value)
 }
 
+/**
+ * Build an OTel `Attributes` object from event/meta fields.
+ *
+ * Skips the bridge's internal plumbing keys (`kind`, `span_id`,
+ * `parent_span_id`) and prefixes the rest with `prefix` so they stay out of
+ * OTel's semantic-convention namespace.
+ */
 function to_attributes(
   meta: Readonly<Record<string, unknown>> | undefined,
   prefix: string,
@@ -91,6 +109,13 @@ function to_attributes(
 
 type OpenSpan = { readonly span: Span; readonly context: Context }
 
+/**
+ * Create a `TrajectoryLogger` that mirrors spans and events onto
+ * OpenTelemetry, using `options.tracer` (or the global `fascicle` tracer).
+ *
+ * Parent resolution favors an explicit `parent_span_id` on the start meta;
+ * otherwise it falls back to the currently open span on an internal stack.
+ */
 export function create_otel_trajectory_logger(
   options: OtelTrajectoryLoggerOptions = {},
 ): TrajectoryLogger {

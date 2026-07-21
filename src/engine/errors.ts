@@ -4,12 +4,12 @@
  * This is the only source file in the engine module permitted to use the
  * `class` keyword. `Error` is a built-in and `instanceof` branching is how
  * the retry helper and composition-layer composers distinguish failure modes.
- * See constraints §2.
+ * Every other engine file stays class-free.
  *
  * `aborted_error` is defined in the core module and re-exported here so that
- * `instanceof aborted_error` is true regardless of which layer surfaced it
- * (D5 in NOTES.md). This is the one value-level import from core permitted
- * in engine source — see `rules/no-core-value-import-in-engine.yml` ignores.
+ * `instanceof aborted_error` is true regardless of which layer surfaced it.
+ * This is the one value-level import from core permitted in engine source;
+ * see the ignores in `rules/no-core-value-import-in-engine.yml`.
  */
 
 export { aborted_error } from '#core'
@@ -53,14 +53,14 @@ export class provider_error extends Error {
 }
 
 /**
- * Turn-timeout expiry (D5). Thrown by the engine-owned retry_turn wrapper when
- * a depth-1 invoke_turn exceeds `turn_timeout_ms` before any chunk streamed.
+ * Turn-timeout expiry. Thrown by the engine-owned retry_turn wrapper when a
+ * single invoke_turn exceeds `turn_timeout_ms` before any chunk streamed.
  * Its `kind` is the RetryFailureKind wire value `'timeout'` (not the class
  * name) on purpose: that is the discriminant classify_retryable /
  * classify_provider_error already key on, so the shared classifier treats an
- * expiry as retryable without any timeout-specific branch. A mid-stream expiry
- * never reaches here — retry_turn converts it to a non-retryable stream
- * interruption first (C4 parity).
+ * expiry as retryable without any timeout-specific branch. A mid-stream
+ * expiry never reaches here; retry_turn converts it to a non-retryable
+ * stream interruption first.
  */
 export class turn_timeout_error extends Error {
   readonly kind = 'timeout' as const;

@@ -1,10 +1,10 @@
 /**
  * Anthropic provider adapter.
  *
- * Dispatches on `transport` (D3): the default 'ai_sdk' backend wraps
+ * Dispatches on `transport`: the default 'ai_sdk' backend wraps
  * @ai-sdk/anthropic as an optional peer; 'native' returns the raw-HTTP
  * adapter from anthropic_native.ts. Effort levels map to extended-thinking
- * budget tokens per spec §6.3.
+ * budget tokens.
  */
 
 import type { EffortLevel, ProviderInit, UsageTotals } from '../types.js'
@@ -31,6 +31,12 @@ type AnthropicSdk = {
   }) => (model_id: string) => unknown
 }
 
+/**
+ * Map an effort level to Anthropic's extended-thinking provider options.
+ *
+ * `none` (a zero budget) sends no thinking config at all rather than an
+ * explicit "disabled" value, so non-reasoning models see a plain request.
+ */
 export function translate_anthropic_effort(effort: EffortLevel): EffortTranslation {
   const budget = ANTHROPIC_THINKING_BUDGETS[effort]
   if (effort === 'none' || budget === 0) {
@@ -49,6 +55,10 @@ export function translate_anthropic_effort(effort: EffortLevel): EffortTranslati
   }
 }
 
+/**
+ * Normalize Anthropic usage via the shared default mapper; the AI SDK already
+ * reports cache and reasoning tokens in the fields the default reads.
+ */
 export function normalize_anthropic_usage(raw: RawProviderUsage | undefined): UsageTotals {
   return default_normalize_usage(raw)
 }
@@ -62,6 +72,10 @@ const SUPPORTED: ReadonlySet<ProviderCapability> = new Set([
   'reasoning',
 ])
 
+/**
+ * Build the Anthropic adapter, dispatching on `init.transport`: 'native' for
+ * the raw-HTTP Messages API adapter, otherwise the AI SDK wrapper.
+ */
 export const create_anthropic_adapter = (init: ProviderInit): ProviderAdapter => {
   if (resolve_transport(init, 'anthropic') === 'native') {
     return create_anthropic_native_adapter(init)
@@ -69,6 +83,11 @@ export const create_anthropic_adapter = (init: ProviderInit): ProviderAdapter =>
   return create_anthropic_ai_sdk_adapter(init)
 }
 
+/**
+ * Build the AI SDK-backed Anthropic adapter. Requires a non-empty api_key at
+ * construction; @ai-sdk/anthropic itself loads lazily on first build_model so
+ * the peer is only required when a model is actually used.
+ */
 const create_anthropic_ai_sdk_adapter = (init: ProviderInit): AiSdkProviderAdapter => {
   const api_key = typeof init.api_key === 'string' ? init.api_key : ''
   if (api_key.length === 0) {

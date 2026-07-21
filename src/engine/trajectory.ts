@@ -2,9 +2,10 @@
  * Trajectory span and record helpers for the engine.
  *
  * When a TrajectoryLogger is supplied to generate, these helpers emit the
- * documented engine events (spec §5.3, §6.2). When undefined, every helper
- * is a no-op. Higher-level orchestration (phase 2) drives span lifecycle;
- * these helpers capture the event shape and keep dispatch consistent.
+ * engine's event vocabulary. When it is undefined, every helper is a no-op,
+ * so call sites never need to branch on whether tracing is on. The tool loop
+ * drives span lifecycle; these helpers capture the event shape and keep
+ * dispatch consistent.
  */
 
 import type { TrajectoryLogger } from '#core'
@@ -23,6 +24,9 @@ export type GenerateSpanStartMeta = {
   streaming: boolean
 }
 
+/**
+ * Open the `engine.generate` span that brackets one whole generate call.
+ */
 export function start_generate_span(
   trajectory: TrajectoryLogger | undefined,
   meta: GenerateSpanStartMeta,
@@ -31,6 +35,10 @@ export function start_generate_span(
   return trajectory.start_span('engine.generate', { ...meta })
 }
 
+/**
+ * Close the `engine.generate` span with usage, finish reason, resolved model,
+ * or the error message on failure.
+ */
 export function end_generate_span(
   trajectory: TrajectoryLogger | undefined,
   span_id: string | undefined,
@@ -45,6 +53,9 @@ export function end_generate_span(
   trajectory.end_span(span_id, { ...meta })
 }
 
+/**
+ * Open an `engine.generate.step` span for one model turn in the tool loop.
+ */
 export function start_step_span(
   trajectory: TrajectoryLogger | undefined,
   index: number,
@@ -53,6 +64,9 @@ export function start_step_span(
   return trajectory.start_span('engine.generate.step', { index })
 }
 
+/**
+ * Close an `engine.generate.step` span with per-step usage or error.
+ */
 export function end_step_span(
   trajectory: TrajectoryLogger | undefined,
   span_id: string | undefined,
@@ -62,6 +76,10 @@ export function end_step_span(
   trajectory.end_span(span_id, { ...meta })
 }
 
+/**
+ * Record that a provider request went out, with an optional prompt-token
+ * estimate for providers that report one before the response arrives.
+ */
 export function record_request_sent(
   trajectory: TrajectoryLogger | undefined,
   step_index: number,
@@ -78,6 +96,9 @@ export function record_request_sent(
   trajectory.record({ kind: 'request_sent', ...event })
 }
 
+/**
+ * Record a provider response with its finish reason and output token count.
+ */
 export function record_response_received(
   trajectory: TrajectoryLogger | undefined,
   step_index: number,
@@ -103,6 +124,9 @@ export type ToolCallRecordEvent = {
   error?: { message: string }
 }
 
+/**
+ * Record a tool invocation request: name, call id, input, and duration.
+ */
 export function record_tool_call(
   trajectory: TrajectoryLogger | undefined,
   meta: ToolCallRecordEvent,
@@ -152,10 +176,7 @@ export function record_tool_result(
 }
 
 /**
- * Wrap a logger so engine events carry a `ts` (epoch milliseconds) even when
- * generate is called directly with a caller-supplied logger rather than through
- * the core runner. When the logger is already runner-decorated, the existing
- * `ts` is preserved. Private to the engine to avoid widening the public surface.
+ * Add a `ts` (epoch milliseconds) to span meta unless one is already set.
  */
 function stamp_ts(meta: Record<string, unknown> | undefined): Record<string, unknown> {
   const out: Record<string, unknown> = { ...meta }
@@ -163,6 +184,12 @@ function stamp_ts(meta: Record<string, unknown> | undefined): Record<string, unk
   return out
 }
 
+/**
+ * Wrap a logger so engine events carry a `ts` (epoch milliseconds) even when
+ * generate is called directly with a caller-supplied logger rather than
+ * through the core runner. When the logger is already runner-decorated, the
+ * existing `ts` is preserved.
+ */
 export function with_timestamps(
   inner: TrajectoryLogger | undefined,
 ): TrajectoryLogger | undefined {
@@ -184,6 +211,10 @@ export function with_timestamps(
 
 export type CostEventSource = 'engine_derived' | 'provider_reported'
 
+/**
+ * Record a per-step cost breakdown, tagged with whether the engine derived it
+ * from pricing tables or the provider reported it directly.
+ */
 export function record_cost(
   trajectory: TrajectoryLogger | undefined,
   step_index: number,
@@ -206,14 +237,17 @@ export function record_cost(
 }
 
 /**
- * Deduplication helper for `pricing_missing`. The spec requires emission at
- * most once per generate call per {provider, model_id}. Callers thread a
- * single instance through the per-call orchestration.
+ * Deduplication helper for `pricing_missing`. The event fires at most once
+ * per generate call per {provider, model_id}. Callers thread a single
+ * instance through the per-call orchestration.
  */
 export type PricingMissingDedup = {
   emit: (provider: string, model_id: string) => void
 }
 
+/**
+ * Build the per-call dedup that emits `pricing_missing` once per model.
+ */
 export function create_pricing_missing_dedup(
   trajectory: TrajectoryLogger | undefined,
 ): PricingMissingDedup {
@@ -229,6 +263,10 @@ export function create_pricing_missing_dedup(
   }
 }
 
+/**
+ * Record that a requested reasoning-effort setting was ignored because the
+ * model does not support it.
+ */
 export function record_effort_ignored(
   trajectory: TrajectoryLogger | undefined,
   model_id: string,
@@ -249,7 +287,7 @@ export type SchemaValidationFailedEvent = {
  * Emit a structured event when a schema-driven generate call returns text
  * that fails parse + zod validation. Persists the raw model output and a
  * formatted zod issues summary to the trajectory so the failure is debuggable
- * without needing stdout. Spec §6.5.
+ * without needing stdout.
  */
 export function record_schema_validation_failed(
   trajectory: TrajectoryLogger | undefined,
@@ -323,6 +361,10 @@ export type ToolApprovalEventKind =
   | 'tool_approval_granted'
   | 'tool_approval_denied'
 
+/**
+ * Record one stage of the tool-approval handshake (requested, granted, or
+ * denied) for a specific tool call.
+ */
 export function record_tool_approval(
   trajectory: TrajectoryLogger | undefined,
   kind: ToolApprovalEventKind,
@@ -338,16 +380,18 @@ export function record_tool_approval(
 }
 
 /**
- * Deduplication helper for `option_ignored`. Spec constraints §5.3 / taste
- * principle 12 require emission at most once per generate call per option
- * key. External adapters whose transports do not honor a caller-supplied
- * option (max_steps, tool_error_policy, on_tool_approval) route the emit
- * through this dedup.
+ * Deduplication helper for `option_ignored`. The event fires at most once per
+ * generate call per option key. External adapters whose transports do not
+ * honor a caller-supplied option (max_steps, tool_error_policy,
+ * on_tool_approval) route the emit through this dedup.
  */
 export type OptionIgnoredDedup = {
   emit: (option: string, provider: string) => void
 }
 
+/**
+ * Build the per-call dedup that emits `option_ignored` once per option key.
+ */
 export function create_option_ignored_dedup(
   trajectory: TrajectoryLogger | undefined,
 ): OptionIgnoredDedup {

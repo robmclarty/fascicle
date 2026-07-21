@@ -1,5 +1,5 @@
 /**
- * Tool-call loop orchestration (spec §6.4).
+ * Tool-call loop orchestration.
  *
  * Invariants:
  *   - Tools execute SEQUENTIALLY within a turn (no parallel dispatch).
@@ -123,16 +123,16 @@ export type ToolLoopConfig = {
   readonly pricing_dedup: PricingMissingDedup
   readonly on_finish_step?: (record: StepRecord) => void
   /**
-   * Per-turn message hook (D6). Called before each turn with the would-be
-   * request messages; a returned `{ messages }` replaces the request for THAT
-   * turn only (config.messages, the canonical transcript, is untouched).
+   * Per-turn message hook. Called before each turn with the would-be request
+   * messages; a returned `{ messages }` replaces the request for THAT turn
+   * only (config.messages, the canonical transcript, is untouched).
    * undefined disables the hook.
    */
   readonly prepare_step?: PrepareStepHook
   /**
    * Mutable so the budget survives schema-repair re-invocations of the loop
-   * within one generate call (precedent: pricing_dedup). undefined = salvage
-   * disabled.
+   * within one generate call, the same threading pattern as pricing_dedup.
+   * undefined disables salvage.
    */
   readonly salvage_budget?: { remaining: number }
   readonly max_tool_calls_per_step?: number
@@ -146,11 +146,18 @@ export type ToolLoopResult = {
   readonly max_steps_reached: boolean
 }
 
+/**
+ * Throw `aborted_error` (tagged with the step index) if the signal has fired.
+ */
 function throw_if_aborted(abort: AbortSignal, step_index: number): void {
   if (!abort.aborted) return
   throw new aborted_error('aborted', { reason: abort.reason, step_index })
 }
 
+/**
+ * Like `throw_if_aborted`, but names the tool call that was about to run so
+ * the error shows exactly where the abort landed.
+ */
 function throw_if_aborted_in_flight(
   abort: AbortSignal,
   step_index: number,
@@ -164,6 +171,9 @@ function throw_if_aborted_in_flight(
   })
 }
 
+/**
+ * Reduce any thrown value to a message string, never throwing itself.
+ */
 function serialize_error(err: unknown): string {
   if (err instanceof Error) return err.message
   if (typeof err === 'string') return err
@@ -174,6 +184,14 @@ function serialize_error(err: unknown): string {
   }
 }
 
+/**
+ * Resolve whether a tool call may execute.
+ *
+ * Evaluates `needs_approval` (boolean or async predicate); when approval is
+ * required, records the request event and awaits the handler in a race
+ * against `abort`. A missing handler fails closed with
+ * `tool_approval_denied_error` so approval-gated tools never run silently.
+ */
 async function request_approval(
   tool: Tool,
   input: unknown,
@@ -245,6 +263,9 @@ async function request_approval(
   return approved
 }
 
+/**
+ * Emit a `tool_result` stream chunk when streaming is active.
+ */
 async function dispatch_tool_result_chunk(
   dispatch_chunk: ((chunk: StreamChunk) => Promise<void>) | undefined,
   step_index: number,
@@ -259,6 +280,10 @@ async function dispatch_tool_result_chunk(
   await dispatch_chunk(chunk)
 }
 
+/**
+ * Build the `role: 'tool'` message that feeds a tool's result back to the
+ * model, JSON-serializing non-string content.
+ */
 function build_tool_result_message(
   tool_call_id: string,
   tool_name: string,
@@ -274,6 +299,10 @@ function build_tool_result_message(
   }
 }
 
+/**
+ * JSON-stringify with a `String(value)` fallback for circular references and
+ * other values `JSON.stringify` rejects.
+ */
 function safe_json_stringify(value: unknown): string {
   try {
     return JSON.stringify(value) ?? String(value)
@@ -282,6 +311,10 @@ function safe_json_stringify(value: unknown): string {
   }
 }
 
+/**
+ * Build the assistant history message for a turn: plain text when there are
+ * no tool calls, otherwise structured text plus tool_call parts.
+ */
 function build_assistant_message(text: string, tool_calls: ReadonlyArray<RawToolCall>): Message {
   if (tool_calls.length === 0) return { role: 'assistant', content: text }
   const parts: Array<
@@ -295,6 +328,12 @@ function build_assistant_message(text: string, tool_calls: ReadonlyArray<RawTool
   return { role: 'assistant', content: parts }
 }
 
+/**
+ * Derive the step's cost from pricing tables and record it.
+ *
+ * Missing pricing for a paid provider emits `pricing_missing` (deduped per
+ * call) and yields no breakdown; free providers skip the emit entirely.
+ */
 function compute_and_record_cost(
   config: ToolLoopConfig,
   step_index: number,
@@ -312,6 +351,10 @@ function compute_and_record_cost(
   return breakdown
 }
 
+/**
+ * Validate a raw tool-call input against the tool's zod schema before
+ * execution, returning the parsed value or a feedback-ready error message.
+ */
 function validate_tool_input(
   tool: Tool,
   input: unknown,
@@ -326,13 +369,13 @@ function validate_tool_input(
 }
 
 /**
- * Apply the prepare_step hook (D6) for one turn. Returns the messages to send
- * to the transport: the hook's replacement when it returns `{ messages }`, else
- * config.messages unchanged. The replacement is ephemeral — it is fed ONLY to
+ * Apply the prepare_step hook for one turn. Returns the messages to send to
+ * the transport: the hook's replacement when it returns `{ messages }`, else
+ * config.messages unchanged. The replacement is ephemeral; it is fed ONLY to
  * invoke_once for this turn, never pushed onto config.messages, so the loop's
  * salvage/approval/ends_turn/schema-repair machinery keeps reading the real
- * transcript. A step_prepared event (recorded inline, as request_sent is) makes
- * the mid-loop mutation legible with the before/after message counts.
+ * transcript. A step_prepared event (recorded inline, as request_sent is)
+ * makes the mid-loop mutation legible with the before/after message counts.
  */
 async function apply_prepare_step(
   config: ToolLoopConfig,
@@ -354,6 +397,14 @@ async function apply_prepare_step(
   return replacement
 }
 
+/**
+ * Run the model-turn / tool-execution loop to completion.
+ *
+ * Each iteration invokes the transport seam once, salvages text-embedded
+ * tool calls when eligible, clamps to `max_tool_calls_per_step`, executes
+ * calls sequentially under the header invariants, and feeds results back
+ * until the model stops, a terminal tool fires, or `max_steps` is reached.
+ */
 export async function run_tool_loop(config: ToolLoopConfig): Promise<ToolLoopResult> {
   const steps: StepRecord[] = []
   const tool_calls_all: ToolCallRecord[] = []

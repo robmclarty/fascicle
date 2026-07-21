@@ -4,8 +4,6 @@
  * `sequence([a, b, c])` runs a, b, c in declared order. The input to sequence
  * is passed to the first child; each subsequent child receives the previous
  * child's output. The composer returns the last child's output.
- *
- * See spec.md §5.2 and §6.1.
  */
 
 import { is_step } from './is_step.js'
@@ -26,6 +24,9 @@ type LastOutput<children> = children extends readonly [...unknown[], Step<unknow
 
 let sequence_counter = 0
 
+/**
+ * Generate a unique step id of the form `sequence_<n>`.
+ */
 function next_id(): string {
   sequence_counter += 1
   return `sequence_${sequence_counter}`
@@ -35,6 +36,13 @@ export type SequenceOptions = {
   readonly name?: string
 }
 
+/**
+ * Build a step that chains children, each feeding the next.
+ *
+ * Validates every element up front so a non-Step (usually a bare function)
+ * fails at construction with a pointed message rather than at run time.
+ * Checks `ctx.abort` before each child so aborts land on step boundaries.
+ */
 export function sequence<const children extends readonly AnyStep[]>(
   children: children,
   options?: SequenceOptions,

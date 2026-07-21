@@ -1,5 +1,5 @@
 /**
- * Public surface for the claude_cli provider adapter (spec §5.5, §6, §8, §13).
+ * Public surface for the claude_cli provider adapter.
  *
  * `create_claude_cli_adapter(init)` (in `./adapter.ts`) returns a
  * `ExternalAgentAdapter`; `effort_env_for_claude_cli` maps fascicle's

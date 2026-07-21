@@ -1,19 +1,8 @@
 /**
  * adversarial: build-and-critique loop.
  *
- * `adversarial({ build, critique, accept, max_rounds })` runs up to
- * `max_rounds` iterations of: build a candidate (receiving the prior
- * candidate and critique notes when available) -> critique the candidate
- * -> check `accept(critique_result)`. Returns `{ candidate, converged,
- * rounds }`. Does not throw on non-convergence.
- *
- * Implemented as a `compose`d `loop` whose body builds a new candidate
- * and whose guard runs the critique step and checks `accept`. State is
- * threaded through `scope`/`stash`/`use` so the build and critique steps
- * remain unmodified user-supplied `Step` values.
- *
  * This file is the canonical example of how a user-built composite is
- * structured — the entire implementation is a composition of core
+ * structured: the entire implementation is a composition of core
  * primitives. Read it as documentation.
  */
 
@@ -49,6 +38,12 @@ type AdversarialState<input, candidate> = {
   readonly last_critique?: AdversarialCritiqueResult
 }
 
+/**
+ * Projects loop state into the build step's input.
+ *
+ * Omits `prior` and `critique` until they exist, so the first round's build
+ * sees only the original input and later rounds see what came before.
+ */
 function build_input_from_state<i, c>(
   s: AdversarialState<i, c>,
 ): AdversarialBuildInput<i, c> {
@@ -57,6 +52,20 @@ function build_input_from_state<i, c>(
   return { input: s.input, prior: s.candidate, critique: s.critique_notes }
 }
 
+/**
+ * Builds a Step that runs up to `max_rounds` iterations of build ->
+ * critique -> accept.
+ *
+ * Each round builds a candidate (receiving the prior candidate and critique
+ * notes when available), critiques it, then checks `accept(critique_result)`.
+ * Returns `{ candidate, converged, rounds }`. Does not throw on
+ * non-convergence; `converged: false` reports it instead.
+ *
+ * Implemented as a `compose`d `loop` whose body builds a new candidate and
+ * whose guard runs the critique step and checks `accept`. State is threaded
+ * through `scope`/`stash`/`use` so the build and critique steps remain
+ * unmodified user-supplied `Step` values.
+ */
 export function adversarial<input, candidate>(
   config: AdversarialConfig<input, candidate>,
 ): Step<input, AdversarialResult<candidate>> {

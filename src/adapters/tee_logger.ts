@@ -8,12 +8,15 @@
  * The first sink's `start_span` return value is treated as canonical and
  * returned to the caller; the tee remembers each sink's per-sink id so that
  * `end_span(canonical_id, ...)` translates back to the right id for each sink.
- * Within any one sink the wire format stays internally consistent — only the
+ * Within any one sink the wire format stays internally consistent; only the
  * across-sink ids may differ.
  */
 
 import type { TrajectoryLogger } from '#core'
 
+/**
+ * Create a `TrajectoryLogger` that fans every call out to `loggers`.
+ */
 export function tee_logger(...loggers: ReadonlyArray<TrajectoryLogger>): TrajectoryLogger {
   if (loggers.length === 0) {
     throw new Error('tee_logger: at least one logger required')

@@ -2,23 +2,8 @@
  * bench: run a flow against a fixture set, score each result, return a report.
  *
  * Online counterpart to `learn`: where `learn` reflects on past trajectories
- * after the fact, `bench` runs the flow live against fresh `cases`, judges
- * each output, and produces a `BenchReport` you can compare against a
- * committed baseline via `regression_compare`.
- *
- * Each case becomes one `run(flow, case.input, ...)`. Per-case observability:
- *   - `trajectory_dir` writes `${dir}/${case.id}.jsonl` via filesystem_logger
- *   - `live_url` POSTs each event via http_logger to a viewer's /api/ingest
- *   - both can be combined; bench tees them with an internal cost tracker
- *
- * Cost is tracked per-case in-process by intercepting `kind: 'cost'` events
- * on the trajectory pipeline. The cost number matches what would be on disk
- * even when no trajectory_dir is set.
- *
- * Judges run as Steps after each case, with the same trajectory logger so
- * judge spans land in the case's trajectory file (or push). A judge that
- * throws or returns undefined abstains: the entry is omitted from
- * `case.scores` and the case does not contribute to that judge's mean.
+ * after the fact, `bench` runs the flow live against fresh cases and judges
+ * each output.
  */
 
 import { mkdir } from 'node:fs/promises'
@@ -79,6 +64,25 @@ export type BenchOptions = {
   readonly install_signal_handlers?: boolean
 }
 
+/**
+ * Runs `flow` against every case, judges each output, and produces a
+ * `BenchReport` you can compare against a committed baseline via
+ * `regression_compare`.
+ *
+ * Each case becomes one `run(flow, case.input, ...)`. Per-case observability:
+ *   - `trajectory_dir` writes `${dir}/${case.id}.jsonl` via `filesystem_logger`
+ *   - `live_url` POSTs each event via `http_logger` to a viewer's /api/ingest
+ *   - both can be combined; bench tees them with an internal cost tracker
+ *
+ * Cost is tracked per-case in-process by intercepting `kind: 'cost'` events
+ * on the trajectory pipeline, so the cost number matches what would be on
+ * disk even when no `trajectory_dir` is set.
+ *
+ * Judges run as Steps after each case, with the same trajectory logger so
+ * judge spans land in the case's trajectory file (or push). A judge that
+ * throws or returns undefined abstains: the entry is omitted from
+ * `case.scores` and the case does not contribute to that judge's mean.
+ */
 export async function bench<I, O, S = Score>(
   flow: Step<I, O>,
   cases: ReadonlyArray<BenchCase<I>>,
@@ -164,7 +168,7 @@ export async function bench<I, O, S = Score>(
       ...(trajectory_path !== undefined ? { trajectory_path } : {}),
     }
     if (options.on_case) {
-      // The on_case callback receives the lossy-typed shape — bench's S is
+      // The on_case callback receives the lossy-typed shape: bench's S is
       // generic but the callback hook is a single concrete signature.
       // oxlint-disable-next-line typescript/no-unsafe-type-assertion
       options.on_case(result as unknown as CaseResult)
@@ -183,6 +187,13 @@ export async function bench<I, O, S = Score>(
   }
 }
 
+/**
+ * Aggregates per-case results into the report summary.
+ *
+ * A judge's mean only averages the cases where that judge produced a score;
+ * abstained cases do not drag the mean down, and a judge that never scored
+ * is omitted from `mean_scores` entirely.
+ */
 function summarize<I, O, S>(
   cases: ReadonlyArray<CaseResult<I, O, S>>,
   judge_names: ReadonlyArray<string>,
@@ -215,6 +226,14 @@ function summarize<I, O, S>(
   }
 }
 
+/**
+ * Coerces a raw judge return value into a `Score`.
+ *
+ * Accepts a bare finite number or an object with a finite numeric `score`
+ * and optional string `reason`. Anything else (including NaN/Infinity, or a
+ * non-string `reason`, which is dropped) normalizes toward `undefined` or a
+ * reason-less score; `undefined` means the judge abstained.
+ */
 export function normalize_score(raw: unknown): Score | undefined {
   if (raw === undefined || raw === null) return undefined
   if (typeof raw === 'number') {
@@ -231,6 +250,10 @@ export function normalize_score(raw: unknown): Score | undefined {
   return undefined
 }
 
+/**
+ * Extracts the numeric value from a score-shaped entry, tolerating both bare
+ * numbers and `{ score }` objects since `S` is caller-defined.
+ */
 function score_value_of(s: unknown): number | undefined {
   if (s === undefined || s === null) return undefined
   if (typeof s === 'number') return Number.isFinite(s) ? s : undefined
@@ -241,6 +264,11 @@ function score_value_of(s: unknown): number | undefined {
   return undefined
 }
 
+/**
+ * Builds a minimal `TrajectoryLogger` that ignores everything except
+ * `kind: 'cost'` events and accumulates their `total_usd` into a running
+ * total, read back via `total()` after the case finishes.
+ */
 function create_cost_tracker(): {
   readonly logger: TrajectoryLogger
   readonly total: () => number
@@ -261,6 +289,14 @@ function create_cost_tracker(): {
   }
 }
 
+/**
+ * Runs `fn` over `items` with at most `limit` calls in flight, preserving
+ * input order in the results.
+ *
+ * Uses a shared-index worker pool: each of the `limit` workers claims the
+ * next unclaimed index and writes its result into that slot, so completion
+ * order never reorders the output.
+ */
 async function run_with_concurrency<t, r>(
   items: ReadonlyArray<t>,
   limit: number,
@@ -289,18 +325,30 @@ async function run_with_concurrency<t, r>(
   return results
 }
 
+/**
+ * Clamps the requested concurrency to a positive integer, defaulting to full
+ * fan-out (one worker per case) when unset or invalid.
+ */
 function resolve_concurrency(value: number | undefined, n_cases: number): number {
   if (value === undefined) return Math.max(1, n_cases)
   if (!Number.isFinite(value) || value <= 0) return Math.max(1, n_cases)
   return Math.max(1, Math.floor(value))
 }
 
+/**
+ * Picks a human-readable name for the report: the flow's `display_name`
+ * config when set, else its step id or kind.
+ */
 function describe_flow_name<I, O>(flow: Step<I, O>): string {
   const display = flow.config?.['display_name']
   if (typeof display === 'string' && display.length > 0) return display
   return flow.id ?? flow.kind ?? 'flow'
 }
 
+/**
+ * Short random base36 suffix to keep default run ids unique across
+ * same-millisecond starts.
+ */
 function random_suffix(): string {
   return Math.random().toString(36).slice(2, 8)
 }

@@ -1,15 +1,15 @@
 /**
- * AI SDK telemetry wiring (D7, Layer 2), confined to the ai_sdk transport.
+ * AI SDK telemetry wiring, confined to the ai_sdk transport.
  *
- * `@ai-sdk/otel` is adopted strictly below the turn seam (the ADR's
- * boundary-litmus: it instruments one turn inside this module, never the loop).
- * The peer is loaded lazily and only when telemetry is explicitly enabled, so
- * the disabled default (every call that does not opt in) pulls in nothing.
+ * `@ai-sdk/otel` is adopted strictly below the turn seam: it instruments one
+ * turn inside this module, never the loop. The peer is loaded lazily and only
+ * when telemetry is explicitly enabled, so the disabled default (every call
+ * that does not opt in) pulls in nothing.
  *
  * This is the ONLY place `@ai-sdk/otel` is referenced. generate.ts and
  * create_engine.ts thread a plain `AiSdkTelemetrySettings` value through the
  * seam and stay SDK-agnostic; loop-level, transport-neutral tracing is the
- * separate `fascicle/otel` bridge (Layer 1).
+ * separate `fascicle/otel` bridge.
  */
 
 import type { AiSdkTelemetrySettings } from '../../types.js'
@@ -35,6 +35,10 @@ export type AiSdkTelemetryPassthrough = {
   metadata?: Readonly<Record<string, string | number | boolean>>
 }
 
+/**
+ * Build the AI SDK's `experimental_telemetry` option from engine settings,
+ * loading the `@ai-sdk/otel` peer only when telemetry is enabled.
+ */
 export async function build_ai_sdk_telemetry(
   settings: AiSdkTelemetrySettings | undefined,
 ): Promise<AiSdkTelemetryPassthrough | undefined> {

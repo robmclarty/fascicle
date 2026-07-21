@@ -1,28 +1,30 @@
 /**
- * Ollama native adapter (depth-1 raw HTTP) on the daemon's own /api/chat.
+ * Ollama native adapter, talking raw HTTP to the daemon's own /api/chat
+ * endpoint.
  *
- * Deliberately NOT the OpenAI-compatible core (D2): the compat tail is already
- * served by pointing the `openai` provider's base_url at Ollama's /v1, while
- * this endpoint exposes what compat hides — `options` (num_predict,
- * temperature, top_p and every other runtime knob), `keep_alive`, and `think`,
- * all reachable raw through `provider_options.ollama` (D9). The wire is its
- * own dialect too: newline-delimited JSON frames rather than SSE, tool-call
- * `arguments` as objects rather than JSON strings, no tool-call ids (the
- * adapter synthesizes deterministic ones), and tool results keyed by
- * `tool_name` rather than a call id.
+ * Deliberately not the OpenAI-compatible core: the OpenAI-compatible tail is
+ * already served by pointing the `openai` provider's base_url at Ollama's
+ * /v1, while this endpoint exposes what that compat layer hides: `options`
+ * (num_predict, temperature, top_p, and every other runtime knob),
+ * `keep_alive`, and `think`, all reachable raw through
+ * `provider_options.ollama`. The wire is its own dialect too:
+ * newline-delimited JSON frames rather than SSE, tool-call `arguments` as
+ * objects rather than JSON strings, no tool-call ids (the adapter
+ * synthesizes deterministic ones), and tool results keyed by `tool_name`
+ * rather than a call id.
  *
- * Zero `ai` / `@ai-sdk/*` in the module graph (C3). The adapter owns
+ * This module imports nothing from `ai` or `@ai-sdk/*`. The adapter owns
  * request/response mapping only: generate.ts wraps invoke_turn in retry +
  * classification + abort, so failures are thrown in the shapes the shared
  * classify_provider_error already understands (`status` + `responseHeaders`
  * for HTTP transients, `kind: 'network'` for transport failures), never
  * retried here. Schema requests ride the engine's prompt + parse + repair
  * loop, so `TurnRequest.schema` is intentionally unread; effort is ignored
- * entirely (D2 — thinking is opt-in via `provider_options.ollama.think`).
- * Usage is always tolerant (D10): a local daemon that omits eval counts
- * zeroes the totals, never throws. The NDJSON aggregator rebuilds the
- * non-stream payload shape and feeds it through the same parse_ollama_chat,
- * so streamed and non-streamed results are equal by construction (C4).
+ * entirely, since thinking is opt-in via `provider_options.ollama.think`.
+ * Usage is always tolerant: a local daemon that omits eval counts zeroes the
+ * totals instead of throwing. The NDJSON aggregator rebuilds the non-stream
+ * payload shape and feeds it through the same parse_ollama_chat, so streamed
+ * and non-streamed results are equal by construction.
  */
 
 import type {
@@ -55,6 +57,11 @@ export type OllamaChatMessage =
   | { role: 'assistant'; content: string; tool_calls?: OllamaToolCall[] }
   | { role: 'tool'; content: string; tool_name: string }
 
+/**
+ * Map user message content to a plain string, the shape this wire expects
+ * (no part-array support). Image parts throw a capability error: they are
+ * not mapped on the native transport.
+ */
 function to_user_content(content: string | UserContentPart[]): string {
   if (typeof content === 'string') return content
   const parts: string[] = []
@@ -73,6 +80,11 @@ function to_user_content(content: string | UserContentPart[]): string {
   return parts.join('\n')
 }
 
+/**
+ * Map assistant message content to this wire's message shape: text parts
+ * join into `content`, and tool-call parts become `tool_calls` entries with
+ * structured (not JSON-string) arguments.
+ */
 function to_assistant_message(content: string | AssistantContentPart[]): OllamaChatMessage {
   if (typeof content === 'string') return { role: 'assistant', content }
   const text_parts: string[] = []
@@ -118,6 +130,11 @@ export function to_ollama_messages(messages: ReadonlyArray<Message>): OllamaChat
   return out
 }
 
+/**
+ * Build the /api/chat request body for one turn: mapped messages and tools,
+ * sampling params under the `options` bag, and the `provider_options.ollama`
+ * wire passthrough merged last.
+ */
 export function build_ollama_chat_body(req: TurnRequest): Record<string, unknown> {
   const messages: OllamaChatMessage[] = []
   if (req.system !== undefined && req.system.length > 0) {
@@ -128,15 +145,15 @@ export function build_ollama_chat_body(req: TurnRequest): Record<string, unknown
   const body: Record<string, unknown> = {
     model: req.model_id,
     messages,
-    // /api/chat streams by default, so the flag is always explicit — a
+    // /api/chat streams by default, so the flag is always explicit: a
     // non-stream call that omits it would get NDJSON back.
     stream: req.stream,
   }
   // Tool definitions use the OpenAI function shape verbatim on this endpoint.
   if (req.tools.length > 0) body['tools'] = to_chat_tools(req.tools)
   // Sampling params live under the runtime's `options` bag, not at the top
-  // level. Effort is intentionally unread (D2): there is no reasoning_effort
-  // on this wire, and `think` is opt-in via provider_options.ollama.
+  // level. Effort is intentionally unread: there is no reasoning_effort on
+  // this wire, and `think` is opt-in via provider_options.ollama.
   const options: Record<string, unknown> = {}
   if (req.max_tokens !== undefined) options['num_predict'] = req.max_tokens
   if (req.temperature !== undefined) options['temperature'] = req.temperature
@@ -144,16 +161,18 @@ export function build_ollama_chat_body(req: TurnRequest): Record<string, unknown
   if (Object.keys(options).length > 0) body['options'] = options
   // provider_options.ollama is raw wire-format passthrough (think, keep_alive,
   // format, options, ...), shallow-merged last so an explicit user key beats
-  // every derived field (D9). Shallow means a passthrough `options` object
+  // every derived field. Shallow means a passthrough `options` object
   // replaces the engine-derived one wholesale rather than merging into it.
   const passthrough = req.provider_options?.['ollama']
   return passthrough === undefined ? body : { ...body, ...passthrough }
 }
 
 /**
- * Appendix A2, Ollama row: the presence of tool calls wins (the wire reports
- * done_reason 'stop' on a tool-call turn), then `length`; everything else —
- * 'stop', 'load', absent — means the model stopped on its own.
+ * Map the daemon's done_reason, plus whether the turn produced tool calls,
+ * to the engine's FinishReason. The presence of tool calls wins, since the
+ * wire reports done_reason 'stop' on a tool-call turn too, then `length`;
+ * everything else ('stop', 'load', or absent) means the model stopped on its
+ * own.
  */
 export function map_ollama_finish_reason(raw: unknown, has_tool_calls: boolean): FinishReason {
   if (has_tool_calls) return 'tool_calls'
@@ -161,10 +180,11 @@ export function map_ollama_finish_reason(raw: unknown, has_tool_calls: boolean):
 }
 
 /**
- * Appendix A3, Ollama row: prompt_eval_count → input_tokens, eval_count →
- * output_tokens; no cache or reasoning fields exist on this wire. Counts are
- * always tolerant (D10): a local daemon that omits them (or a mid-stream
- * frame, which never carries them) zeroes the totals, never throws.
+ * Map the daemon's usage fields to UsageTotals: prompt_eval_count becomes
+ * input_tokens, eval_count becomes output_tokens; no cache or reasoning
+ * fields exist on this wire. Counts are always tolerant: a local daemon that
+ * omits them (or a mid-stream frame, which never carries them) zeroes the
+ * totals instead of throwing.
  */
 export function map_ollama_usage(payload: unknown): UsageTotals {
   if (payload === null || typeof payload !== 'object') {
@@ -180,8 +200,8 @@ export function map_ollama_usage(payload: unknown): UsageTotals {
 
 /**
  * This wire sends no tool-call id, so one is synthesized from the step index
- * and the call's ordinal within the turn — deterministic, so the streamed and
- * non-streamed parses of the same turn agree (C4), and unique across steps so
+ * and the call's ordinal within the turn: deterministic, so the streamed and
+ * non-streamed parses of the same turn agree, and unique across steps so
  * transcript tool results stay unambiguous. A wire id is preferred if a
  * future daemon version starts sending one.
  */
@@ -224,9 +244,9 @@ function parse_ollama_tool_call(
 }
 
 /**
- * The one response parser every path feeds (C4): non-stream parses the
- * payload directly, and the NDJSON aggregator rebuilds this same payload
- * shape from its frames before calling it.
+ * The one response parser every path feeds: non-stream parses the payload
+ * directly, and the NDJSON aggregator rebuilds this same payload shape from
+ * its frames before calling it.
  */
 export function parse_ollama_chat(payload: unknown, step_index: number): TurnResult {
   if (payload === null || typeof payload !== 'object') {
@@ -253,16 +273,20 @@ export function parse_ollama_chat(payload: unknown, step_index: number): TurnRes
 }
 
 /**
- * Incremental NDJSON framing: push() takes decoded text at any chunk boundary
- * (including mid-line) and returns the complete lines it finished; flush()
- * drains a final line left open when the stream ends without a trailing
- * newline. Blank lines are dropped; JSON parsing is the aggregator's job.
+ * Append one decoded line to `out`, trimming a trailing `\r` and dropping
+ * blank lines; JSON parsing is the aggregator's job.
  */
 function take_line(raw: string, out: string[]): void {
   const line = raw.endsWith('\r') ? raw.slice(0, -1) : raw
   if (line.trim().length > 0) out.push(line)
 }
 
+/**
+ * Incremental NDJSON framing: push() takes decoded text at any chunk
+ * boundary (including mid-line) and returns the complete lines it finished;
+ * flush() drains a final line left open when the stream ends without a
+ * trailing newline.
+ */
 export function create_ndjson_decoder(): {
   push: (text: string) => string[]
   flush: () => string[]
@@ -294,14 +318,14 @@ export function create_ndjson_decoder(): {
  * Consume /api/chat NDJSON frames, dispatching StreamChunks as they arrive
  * and rebuilding the non-stream payload as it goes: `message.content`
  * accumulates into the turn text, and `message.tool_calls` entries arrive
- * WHOLE per frame — arguments are complete objects on this wire, so each call
- * dispatches tool_call_start then tool_call_end with no input deltas between.
- * The `done: true` frame carries done_reason and the eval counts and closes
- * the turn (step_finish); frames after it are ignored. A stream that ends
- * without one is truncated output, so complete() fails loud instead of
- * returning a partial turn. complete() feeds the synthetic payload through
- * parse_ollama_chat, which is what makes the streamed TurnResult equal the
- * non-streamed one by construction (C4).
+ * whole per frame, since arguments are complete objects on this wire, so
+ * each call dispatches tool_call_start then tool_call_end with no input
+ * deltas between. The `done: true` frame carries done_reason and the eval
+ * counts and closes the turn (step_finish); frames after it are ignored. A
+ * stream that ends without one is truncated output, so complete() fails
+ * loud instead of returning a partial turn. complete() feeds the synthetic
+ * payload through parse_ollama_chat, which is what makes the streamed
+ * TurnResult equal the non-streamed one by construction.
  */
 export function create_ollama_stream_aggregator(
   step_index: number,
@@ -506,11 +530,11 @@ async function consume_ndjson_response(response: Response, req: TurnRequest): Pr
   return aggregator.complete()
 }
 
-// 'structured_output' is intentionally absent (schema rides the prompt +
-// parse + repair loop, parity with native Anthropic; the daemon's `format`
-// field stays reachable via provider_options.ollama.format); 'reasoning' is
-// absent because effort is ignored on this wire (D2); image parts are
-// unmapped on this transport.
+// 'structured_output' is intentionally absent: schema rides the prompt +
+// parse + repair loop, parity with native Anthropic, though the daemon's
+// `format` field stays reachable via provider_options.ollama.format.
+// 'reasoning' is absent because effort is ignored on this wire; image parts
+// are unmapped on this transport.
 const SUPPORTED: ReadonlySet<ProviderCapability> = new Set([
   'text',
   'tools',
@@ -518,6 +542,11 @@ const SUPPORTED: ReadonlySet<ProviderCapability> = new Set([
   'streaming',
 ])
 
+/**
+ * Build the native Ollama adapter: validates the required base_url and wires
+ * invoke_turn to POST /api/chat directly (streamed or not) through the
+ * mappers above.
+ */
 export const create_ollama_native_adapter = (init: ProviderInit): NativeProviderAdapter => {
   const raw_base_url = typeof init.base_url === 'string' ? init.base_url : ''
   if (raw_base_url.length === 0) {

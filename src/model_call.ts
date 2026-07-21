@@ -1,16 +1,16 @@
 /**
- * model_call — the single sanctioned bridge between the composition and
+ * model_call: the single sanctioned bridge between the composition and
  * engine layers.
  *
- * This is the only file under packages/fascicle/src/ permitted to import
- * value symbols from both core and engine (enforced by the
- * model-call-is-sole-bridge ast-grep rule in rules/).
+ * This is the only file under `src/` permitted to import value symbols from
+ * both `core` and `engine` (enforced by the model-call-is-sole-bridge
+ * ast-grep rule in `rules/`).
  *
- * The returned Step auto-threads ctx.abort, ctx.trajectory, and — only when
- * run.stream is driving — an on_chunk forwarder into ctx.emit. Callers cannot
- * override these; the composition layer owns cancellation and trajectory
- * plumbing. Cost events flow out via ctx.trajectory per the engine's own
- * emission rules (constraints §5.3).
+ * The returned Step auto-threads ctx.abort, ctx.trajectory, and, only when
+ * run.stream is driving, an on_chunk forwarder that records each chunk as a
+ * `model_chunk` trajectory event. Callers cannot override these: the
+ * composition layer owns cancellation and trajectory plumbing. Cost events
+ * flow out via ctx.trajectory per the engine's own emission rules.
  */
 
 import { createHash } from 'node:crypto'
@@ -92,6 +92,12 @@ function engine_trajectory(
   }
 }
 
+/**
+ * Derive a short, stable hash from the call's model, provider, system
+ * prompt, and tool/schema shape.
+ *
+ * Used to build a default step id when the caller doesn't supply `cfg.id`.
+ */
 function stable_signature(input: {
   model: string | undefined
   provider: string | undefined
@@ -109,6 +115,14 @@ function stable_signature(input: {
   return createHash('sha256').update(payload).digest('hex').slice(0, 8)
 }
 
+/**
+ * Build a `Step` that calls `cfg.engine.generate` with `cfg` translated into
+ * `GenerateOptions`.
+ *
+ * Threads `ctx.abort` and `ctx.trajectory` (nested under the model_call
+ * step's own span) into every call, and, when `run.stream` is driving,
+ * records each chunk as a `model_chunk` trajectory event.
+ */
 export function model_call<T = string>(
   cfg: ModelCallConfig<T>,
 ): Step<ModelCallInput, GenerateResult<T>> {

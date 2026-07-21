@@ -1,27 +1,27 @@
 /**
- * JSON-lines stream parser for the claude CLI stdout (spec §7).
+ * JSON-lines stream parser for the claude CLI stdout.
  *
- * The parser is a line-buffered state machine with minimal state:
+ * The CLI (run with `--output-format stream-json`) writes one JSON event per
+ * line: `system` (session init), `assistant` (model output), `user` (tool
+ * results echoed back into the conversation), `result` (the single terminal
+ * event carrying totals), and `rate_limit_event` (informational rate-limit
+ * budget report). The parser is a line-buffered state machine with minimal
+ * state:
  *   - buffered partial line
- *   - last-seen event type (assistant | user/tool_result | system | result)
- *     used to increment step_index on the turn boundary (new assistant
- *     following a user/tool_result)
- *   - current step_index
+ *   - last-seen event type (assistant | user/tool_result | system | result);
+ *     an `assistant` event that follows a user/tool_result marks a turn
+ *     boundary and increments `step_index`
+ *   - current `step_index`
  *
  * Malformed JSON records `{ kind: 'cli_parse_error', line }` to trajectory
  * and skips; unknown event types record `{ kind: 'cli_unknown_event', raw }`
- * and skip (spec §7.1, §7.4). Neither ever throws.
+ * and skip. Neither ever throws.
  *
  * Event shapes are Zod-validated via `cli_event_schema` (a
- * `z.discriminatedUnion` over the recognized CLI event types: system,
- * assistant, user, result, rate_limit_event). Per-entry content arrays use
- * `.transform` to silently drop invalid entries rather than rejecting the
- * whole event — this preserves forward compatibility with new CLI content
- * types.
- *
- * `rate_limit_event` is informational: the CLI emits it between turns to
- * report current rate-limit budget. The parser records a structured
- * `cli_rate_limit_event` to trajectory and does not affect turn state.
+ * `z.discriminatedUnion` over the recognized CLI event types). Per-entry
+ * content arrays use `.transform` to silently drop invalid entries rather
+ * than rejecting the whole event; this preserves forward compatibility with
+ * new CLI content types.
  */
 
 import { z } from 'zod'
@@ -181,6 +181,9 @@ type ParserState = {
   received_result: boolean
 }
 
+/**
+ * Build a fresh, empty `ParserState` for one CLI invocation.
+ */
 export function create_parser_state(): ParserState {
   return {
     buffer: '',
@@ -198,6 +201,13 @@ export function create_parser_state(): ParserState {
   }
 }
 
+/**
+ * Convert the CLI's raw usage fields to fascicle's `UsageTotals` shape.
+ *
+ * `cache_read_input_tokens` maps to `cached_input_tokens` and
+ * `cache_creation_input_tokens` maps to `cache_write_tokens`; both are
+ * omitted when the CLI didn't report them.
+ */
 function map_usage(raw: CliUsageRaw | undefined): UsageTotals {
   if (raw === undefined) return { input_tokens: 0, output_tokens: 0 }
   const out: UsageTotals = {
@@ -213,6 +223,9 @@ function map_usage(raw: CliUsageRaw | undefined): UsageTotals {
   return out
 }
 
+/**
+ * Record a line that failed to parse as JSON to the trajectory logger.
+ */
 function record_parse_error(
   trajectory: TrajectoryLogger | undefined,
   line: string,
@@ -220,6 +233,9 @@ function record_parse_error(
   trajectory?.record({ kind: 'cli_parse_error', line })
 }
 
+/**
+ * Record a parsed-but-unrecognized CLI event to the trajectory logger.
+ */
 function record_unknown_event(
   trajectory: TrajectoryLogger | undefined,
   raw: unknown,
@@ -227,6 +243,9 @@ function record_unknown_event(
   trajectory?.record({ kind: 'cli_unknown_event', raw })
 }
 
+/**
+ * Record the CLI's `system` (session init) event to the trajectory logger.
+ */
 function record_session_started(
   trajectory: TrajectoryLogger | undefined,
   session_id: string | undefined,
@@ -235,6 +254,9 @@ function record_session_started(
   trajectory?.record({ kind: 'cli_session_started', session_id, model })
 }
 
+/**
+ * Record a `rate_limit_event` to the trajectory logger.
+ */
 function record_rate_limit(
   trajectory: TrajectoryLogger | undefined,
   event: Extract<CliEvent, { type: 'rate_limit_event' }>,
@@ -252,6 +274,10 @@ function record_rate_limit(
   })
 }
 
+/**
+ * Push the in-progress turn onto `state.turns` and reset the per-turn
+ * accumulators for the next turn.
+ */
 function flush_turn(state: ParserState): void {
   state.turns.push({
     step_index: state.current_step_index,
@@ -266,11 +292,19 @@ function flush_turn(state: ParserState): void {
   state.turn_usage = { input_tokens: 0, output_tokens: 0 }
 }
 
+/**
+ * Validate a parsed JSON value against `cli_event_schema`, returning
+ * `undefined` instead of throwing on a mismatch.
+ */
 function as_event(raw: unknown): CliEvent | undefined {
   const result = cli_event_schema.safeParse(raw)
   return result.success ? result.data : undefined
 }
 
+/**
+ * Append a `StreamChunk` to the output array and, if the caller passed an
+ * `on_chunk` dispatcher, await its delivery too.
+ */
 async function emit_chunk(
   chunks: StreamChunk[],
   dispatch: ((chunk: StreamChunk) => Promise<void>) | undefined,
@@ -280,6 +314,16 @@ async function emit_chunk(
   if (dispatch !== undefined) await dispatch(chunk)
 }
 
+/**
+ * Handle one `assistant` event: emit `text`, `tool_call_start`, and
+ * `tool_call_end` chunks for its content and accumulate them onto the
+ * current turn.
+ *
+ * An `assistant` event that follows a `user`/tool-result event marks a new
+ * turn boundary: it first emits a synthetic `step_finish` chunk for the
+ * turn that just ended, flushes that turn onto `state.turns`, and advances
+ * `current_step_index`.
+ */
 async function handle_assistant(
   state: ParserState,
   event: Extract<CliEvent, { type: 'assistant' }>,
@@ -326,6 +370,10 @@ async function handle_assistant(
   state.last_event_type = 'assistant'
 }
 
+/**
+ * Handle one `user` event: emit a `tool_result` chunk for each tool result
+ * in its content and accumulate them onto the current turn.
+ */
 async function handle_user(
   state: ParserState,
   event: Extract<CliEvent, { type: 'user' }>,
@@ -357,6 +405,14 @@ async function handle_user(
   state.last_event_type = 'user_tool_result'
 }
 
+/**
+ * Handle the terminal `result` event: capture the call's session id, cost,
+ * duration, and final usage, flush the last in-progress turn, and emit the
+ * closing `finish` chunk.
+ *
+ * Falls back to `event.result` for `final_text` only when no assistant
+ * text was collected during the stream.
+ */
 async function handle_result(
   state: ParserState,
   event: Extract<CliEvent, { type: 'result' }>,
@@ -383,6 +439,9 @@ async function handle_result(
   })
 }
 
+/**
+ * Dispatch one validated `CliEvent` to its type-specific handler.
+ */
 async function handle_event(
   state: ParserState,
   event: CliEvent,
@@ -413,6 +472,13 @@ async function handle_event(
   }
 }
 
+/**
+ * Parse and handle one line of CLI stdout.
+ *
+ * Blank lines are skipped. Lines that aren't valid JSON, or that don't
+ * match any known event shape, are recorded to the trajectory logger and
+ * otherwise ignored; this function never throws.
+ */
 export async function consume_line(
   state: ParserState,
   line: string,
@@ -437,6 +503,13 @@ export async function consume_line(
   await handle_event(state, event, chunks, dispatch, trajectory)
 }
 
+/**
+ * Append raw stdout text to the parser's line buffer and consume every
+ * complete line it now contains.
+ *
+ * Any trailing partial line (no `\n` yet) stays buffered for the next
+ * call.
+ */
 export async function feed_chunk(
   state: ParserState,
   chunk: string,
@@ -454,6 +527,14 @@ export async function feed_chunk(
   }
 }
 
+/**
+ * Consume a final buffered line that has no trailing newline.
+ *
+ * `feed_chunk` only parses complete `\n`-terminated lines, so a trailing
+ * unterminated fragment stays in the buffer until the caller knows the
+ * stream has actually ended. Call this once, after the last `feed_chunk`,
+ * to parse that fragment as one last line.
+ */
 export async function flush_remaining(
   state: ParserState,
   chunks: StreamChunk[],
@@ -466,6 +547,10 @@ export async function flush_remaining(
   await consume_line(state, line, chunks, dispatch, trajectory)
 }
 
+/**
+ * Take an immutable copy of the parser state's accumulated results as a
+ * `ParsedStream`.
+ */
 export function snapshot(state: ParserState): ParsedStream {
   const base: {
     final_text: string

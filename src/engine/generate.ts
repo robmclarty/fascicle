@@ -1,13 +1,13 @@
 /**
- * generate(opts) — single public entry point for model calls.
+ * `generate(opts)`: the single public entry point for model calls.
  *
- * This file is SDK-agnostic (constraints §7 invariant 13, inverted): it
- * resolves options, gates capabilities, and owns retry + trajectory, and it
- * drives every depth-1 turn — ai_sdk and native alike — through the neutral
- * invoke_turn seam. The Vercel AI SDK call itself lives in
+ * This file is SDK-agnostic: it resolves options, gates capabilities, and
+ * owns retry and trajectory recording, and it drives every turn
+ * (both the `ai_sdk` and native transports) through the neutral
+ * `invoke_turn` seam. The Vercel AI SDK call itself lives in
  * providers/ai_sdk/invoke.ts, the only module allowed to import from `ai`
- * (rule no-ai-import-outside-ai-sdk-provider). tool_loop.ts consumes the
- * InvokeOnce seam built here.
+ * (enforced by the no-ai-import-outside-ai-sdk-provider rule). tool_loop.ts
+ * consumes the InvokeOnce seam built here.
  */
 
 import type {
@@ -93,6 +93,15 @@ export type EngineInternals = {
   readonly default_provider_options?: Readonly<Record<string, Readonly<Record<string, unknown>>>>
 }
 
+/**
+ * Build the initial message list for a generate call from `opts.system` and
+ * `opts.prompt`.
+ *
+ * A non-empty string `system` is prepended as a system message. A string
+ * `prompt` becomes a single user message; a `Message[]` prompt is copied
+ * through element-by-element so the returned array can be mutated without
+ * affecting the caller's.
+ */
 export function build_initial_messages<T>(opts: GenerateOptions<T>): Message[] {
   const messages: Message[] = []
   if (typeof opts.system === 'string' && opts.system.length > 0) {
@@ -134,6 +143,17 @@ export function split_leading_system_messages(messages: ReadonlyArray<Message>):
   return { system: system_parts.join('\n\n'), messages: rest }
 }
 
+/**
+ * Classify a thrown provider error into the shape `retry_with_policy`
+ * understands.
+ *
+ * Passes through anything that already carries a recognized `kind`.
+ * Otherwise inspects `statusCode`/`status`: 429 becomes `rate_limit`
+ * (reading `Retry-After` off `responseHeaders` when present), 5xx becomes
+ * `provider_5xx`, and a known `ECONNRESET`/`ETIMEDOUT`/`ENOTFOUND`/
+ * `ECONNREFUSED` error code becomes `network`. Anything else passes through
+ * unclassified, which `retry_with_policy` treats as non-retryable.
+ */
 export function classify_provider_error(err: unknown): unknown {
   if (err === null || typeof err !== 'object') return err
   // Already-classified shape: pass through.
@@ -216,14 +236,14 @@ type TurnDeadline = {
 }
 
 /**
- * Compose the per-attempt turn signal (D5): the user's abort OR'd with a fresh
- * `turn_timeout_ms` deadline via AbortSignal.any (the src/core/timeout.ts
- * precedent). `timed_out()` distinguishes an expiry (retryable) from a user
- * abort (terminal) in the retry_turn ladder; `dispose()` clears the timer so a
- * settled attempt never leaves one armed. With no budget the user's abort
- * passes through untouched, so the un-timed path stays byte-for-byte as before.
- * Armed fresh inside retry_with_policy's callback so each retry gets its own
- * full budget rather than sharing one deadline across attempts.
+ * Compose the per-attempt turn signal: the user's abort OR'd with a fresh
+ * `turn_timeout_ms` deadline via `AbortSignal.any` (the same pattern
+ * `src/core/timeout.ts` uses). `timed_out()` distinguishes an expiry
+ * (retryable) from a user abort (terminal) in the `retry_turn` ladder;
+ * `dispose()` clears the timer so a settled attempt never leaves one armed.
+ * With no budget configured, the user's abort signal passes through
+ * unchanged. Armed fresh inside `retry_with_policy`'s callback so each retry
+ * gets its own full budget rather than sharing one deadline across attempts.
  */
 function arm_turn_timeout(
   user_abort: AbortSignal,
@@ -250,8 +270,8 @@ function arm_turn_timeout(
 }
 
 /**
- * Engine-owned wrapper shared verbatim by both depth-1 transports: one turn
- * attempt inside retry_with_policy. The catch ladder classifies by CAUSE, not
+ * Engine-owned wrapper shared by both transports: one turn attempt inside
+ * retry_with_policy. The catch ladder classifies by CAUSE, not
  * by the shape the transport happened to throw: on_chunk_error passes through,
  * then a genuine user abort wins, then any error once a chunk has flowed is a
  * non-retryable stream interruption, then a pre-chunk `turn_timeout_ms` expiry
@@ -261,8 +281,9 @@ function arm_turn_timeout(
  * aborted_error and the native one as a raw AbortError, so both must be read as
  * the same interruption rather than the ai_sdk timeout masquerading as a user
  * cancel. call_once receives the composed abort+timeout signal so the deadline
- * actually cancels the in-flight request. Adapters may swap `classify`, never
- * the ladder (D5: the engine owns retry; hidden adapter retries are illegible).
+ * actually cancels the in-flight request. Adapters may swap `classify`, but
+ * never the ladder itself: the engine owns retry, so a hidden adapter-level
+ * retry would be invisible to anything relying on this ladder.
  */
 function retry_turn(
   call_once: (turn_abort: AbortSignal) => Promise<TurnResult>,
@@ -279,8 +300,8 @@ function retry_turn(
         return await call_once(deadline.signal)
       } catch (err: unknown) {
         if (err instanceof on_chunk_error) throw err
-        // A genuine user abort wins over everything below it — including a
-        // deadline that fired in the same tick — so an intentional cancel
+        // A genuine user abort wins over everything below it, including a
+        // deadline that fired in the same tick, so an intentional cancel
         // always surfaces as aborted_error.
         if (args.abort.aborted) {
           throw new aborted_error('aborted', {
@@ -428,6 +449,21 @@ function build_native_invoke(cfg: NativeInvokeConfig): InvokeOnce {
   }
 }
 
+/**
+ * Resolve a `generate` call's options against engine defaults, run the tool
+ * loop, and return the aggregated result.
+ *
+ * A provider whose adapter is `external` (`adapter.kind === 'external'`)
+ * delegates the whole call to `adapter.generate` before any of the logic
+ * below runs. For `ai_sdk` and native adapters, this function resolves
+ * model, provider, system prompt, and `provider_options` against engine
+ * defaults, checks the adapter supports every capability the call actually
+ * uses (schema, tools, streaming), builds the `InvokeOnce` closure for the
+ * resolved transport, and drives it through `run_tool_loop`. When a schema
+ * is set and the model's output fails validation, it appends a repair
+ * message and re-invokes the loop, until the response parses, repair
+ * attempts run out, or `max_steps` is reached.
+ */
 export async function generate<T = string>(
   opts_in: GenerateOptions<T>,
   engine: EngineInternals,
@@ -739,10 +775,23 @@ export async function generate<T = string>(
   }
 }
 
+/**
+ * Round `v` to 6 decimal places, the resolution used for the USD cost fields.
+ */
 export function round6(v: number): number {
   return Math.round(v * 1e6) / 1e6
 }
 
+/**
+ * Sum per-step cost breakdowns into a single `CostBreakdown` for the whole
+ * generate call.
+ *
+ * Returns `undefined` if no step reports a cost, unless `provider` is free
+ * (`FREE_PROVIDERS`) and at least one step ran; in that case it returns an
+ * explicit all-zero breakdown instead of omitting cost entirely. The
+ * optional fields (`cached_input_usd`, `cache_write_usd`, `reasoning_usd`)
+ * are included only when at least one step reported them.
+ */
 export function aggregate_cost(
   steps: ReadonlyArray<GenerateResult['steps'][number]>,
   provider: string,

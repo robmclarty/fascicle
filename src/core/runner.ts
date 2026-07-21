@@ -35,6 +35,12 @@ type Dispatcher = (
 
 const dispatch = new Map<string, Dispatcher>()
 
+/**
+ * Register the dispatch handler for a step kind.
+ *
+ * Composer files call this (directly or via `register_traced_kind`) at module
+ * load, which is how the runner stays free of composer-specific logic.
+ */
 export function register_kind(kind: string, fn: Dispatcher): void {
   dispatch.set(kind, fn)
 }
@@ -111,6 +117,13 @@ let signal_handler_installed = false
 let sigint_handler: (() => void) | null = null
 let sigterm_handler: (() => void) | null = null
 
+/**
+ * Install process-wide SIGINT/SIGTERM handlers once.
+ *
+ * The handlers abort every active run with an `aborted_error` naming the
+ * signal, so a Ctrl-C tears down all in-flight flows through the normal
+ * abort/cleanup path instead of killing the process mid-step.
+ */
 function ensure_signal_handlers(): void {
   if (signal_handler_installed) return
   signal_handler_installed = true
@@ -125,6 +138,12 @@ function ensure_signal_handlers(): void {
   process.on('SIGTERM', sigterm_handler)
 }
 
+/**
+ * Remove the process signal handlers once the last active run settles.
+ *
+ * Keeps a library embed from leaving stray `process.on` listeners behind
+ * after all runs complete.
+ */
 function release_signal_handlers(): void {
   if (!signal_handler_installed) return
   if (active_runs.size > 0) return
@@ -177,6 +196,13 @@ function decorate_logger(inner: TrajectoryLogger, run_id: string): TrajectoryLog
   }
 }
 
+/**
+ * Route a step to its registered kind handler.
+ *
+ * This is the single entry point composers use to run children. On failure
+ * the step's id is prepended to the error's `path`, so an error surfacing
+ * from a deep tree carries the chain of step ids it crossed.
+ */
 export async function dispatch_step<i, o>(
   flow: Step<i, o>,
   input: i,
@@ -196,6 +222,12 @@ export async function dispatch_step<i, o>(
   }
 }
 
+/**
+ * Prepend a step id to the `path` array carried on an error object.
+ *
+ * Mutates the error in place so the path accumulates as the error bubbles up
+ * through nested dispatches. Non-object errors are left untouched.
+ */
 export function prepend_path(err: unknown, id: string): void {
   if (err === null || typeof err !== 'object') return
   const existing = Reflect.get(err, 'path')
@@ -248,6 +280,15 @@ type StartResult<o> = {
   readonly result: Promise<o>
 }
 
+/**
+ * Construct a run context and execute a flow to settlement.
+ *
+ * Shared engine behind `run` and `run.stream`; `high_water_mark` selects the
+ * mode (null means no streaming channel). Owns the full run lifecycle:
+ * abort wiring, logger decoration, cleanup registration, signal handlers,
+ * and the settle-time teardown ordering (cleanup handlers first, then
+ * unlinking and stream close).
+ */
 function start_run<i, o>(
   flow: Step<i, o>,
   input: i,
@@ -329,6 +370,12 @@ function start_run<i, o>(
   return { events: stream_events, result }
 }
 
+/**
+ * Build an async iterable that is immediately done.
+ *
+ * Non-streaming runs hand this to callers so the `events` field always has
+ * the same shape regardless of mode.
+ */
 function empty_async_iterable(): AsyncIterable<TrajectoryEvent> {
   return {
     [Symbol.asyncIterator]() {
@@ -340,6 +387,9 @@ function empty_async_iterable(): AsyncIterable<TrajectoryEvent> {
   }
 }
 
+/**
+ * Execute a flow and resolve with its final output.
+ */
 async function run_impl<i, o>(
   flow: Step<i, o>,
   input: i,
@@ -349,6 +399,9 @@ async function run_impl<i, o>(
   return result
 }
 
+/**
+ * Execute a flow while exposing its trajectory events as an async iterable.
+ */
 function run_stream<i, o>(
   flow: Step<i, o>,
   input: i,
@@ -358,6 +411,14 @@ function run_stream<i, o>(
   return { events, result }
 }
 
+/**
+ * The public entry point for executing a flow.
+ *
+ * Callable as `run(flow, input, options?)` for a plain result, or
+ * `run.stream(flow, input, options?)` for `{ events, result }`. Both share
+ * one implementation, so a streamed run and a plain run of the same flow
+ * produce identical output.
+ */
 export const run: typeof run_impl & { stream: typeof run_stream } = Object.assign(run_impl, {
   stream: run_stream,
 })

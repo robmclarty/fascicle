@@ -83,6 +83,9 @@ type MetaPlus = LearnMeta & {
   readonly prior: unknown
 }
 
+/**
+ * Recursively collect every `.jsonl` file path under a directory.
+ */
 async function walk_jsonl(dir: string): Promise<string[]> {
   const out: string[] = []
   const entries = await readdir(dir, { withFileTypes: true })
@@ -97,6 +100,13 @@ async function walk_jsonl(dir: string): Promise<string[]> {
   return out
 }
 
+/**
+ * Parse one JSONL file into validated trajectory events.
+ *
+ * Malformed JSON lines and lines that fail schema validation are skipped,
+ * each recorded as a `learn.parse_error` event with a 1-indexed line number,
+ * so a single corrupt line never sinks an analysis run.
+ */
 async function read_jsonl(file_path: string, ctx: RunContext): Promise<TrajectoryEvent[]> {
   const content = await readFile(file_path, 'utf8')
   const lines = content.split('\n')
@@ -121,6 +131,10 @@ async function read_jsonl(file_path: string, ctx: RunContext): Promise<Trajector
   return events
 }
 
+/**
+ * Throw the abort reason (wrapped in `aborted_error` if needed) when the run
+ * has been cancelled.
+ */
 function throw_if_aborted(ctx: RunContext): void {
   if (!ctx.abort.aborted) return
   const reason = ctx.abort.reason
@@ -128,6 +142,13 @@ function throw_if_aborted(ctx: RunContext): void {
   throw new aborted_error('aborted', reason === undefined ? {} : { reason })
 }
 
+/**
+ * Materialize a `TrajectorySource` into an event array.
+ *
+ * `dir` sources walk recursively and sort paths for deterministic order.
+ * File-backed sources check `ctx.abort` between files, so cancellation lands
+ * at file-level granularity.
+ */
 async function resolve_events(
   source: TrajectorySource,
   ctx: RunContext,
@@ -146,6 +167,9 @@ async function resolve_events(
   return all
 }
 
+/**
+ * List the distinct `run_id` values in the events, in first-seen order.
+ */
 function collect_run_ids(events: ReadonlyArray<TrajectoryEvent>): ReadonlyArray<string> {
   const seen = new Set<string>()
   const out: string[] = []
@@ -159,6 +183,14 @@ function collect_run_ids(events: ReadonlyArray<TrajectoryEvent>): ReadonlyArray<
   return out
 }
 
+/**
+ * Build the offline self-improvement step.
+ *
+ * Composes a scope that resolves and caps the recorded events, builds the
+ * `LearnInput` (including `describe(flow)`), runs the user's analyzer, and
+ * wraps its proposals with the stashed meta (event count, run ids) into a
+ * `LearnResult`.
+ */
 export function learn<i extends LearnInput, o>(
   config: LearnConfig<i, o>,
 ): Step<unknown, LearnResult<o>> {

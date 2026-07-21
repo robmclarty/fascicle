@@ -1,14 +1,14 @@
 /**
- * OpenAI-compatible native core (depth-1 raw HTTP).
+ * OpenAI-compatible native core: one `chat/completions` implementation
+ * talking raw HTTP, shared by every OpenAI-compatible provider.
  *
- * One `chat/completions` implementation parameterized by a dialect config
- * (D1): base_url, auth strategy, extra headers, stream-usage behavior,
- * token-limit field name, and usage tolerance (D10). The `openai`,
- * `openrouter`, and `lmstudio` factories each build a dialect and share this
- * core; pointing base_url at any compat server (including Ollama's /v1)
- * rides the same path.
+ * Parameterized by a dialect config: base_url, auth strategy, extra headers,
+ * stream-usage behavior, token-limit field name, and usage tolerance. The
+ * `openai`, `openrouter`, and `lmstudio` factories each build a dialect and
+ * share this core; pointing base_url at any compat server (including
+ * Ollama's /v1) rides the same path.
  *
- * Zero `ai` / `@ai-sdk/*` in the module graph (C3). The adapter owns
+ * This module imports nothing from `ai` or `@ai-sdk/*`. The adapter owns
  * request/response mapping only: generate.ts wraps invoke_turn in retry +
  * classification + abort, so failures are thrown in shapes the shared
  * classify_provider_error already understands (`status` + `responseHeaders`
@@ -18,8 +18,8 @@
  * the SSE parse (`data:` lines, the literal `[DONE]` terminator, index-keyed
  * tool_call delta accumulation); the aggregator rebuilds the non-stream
  * payload shape and feeds it through the same parse_chat_completion, so
- * streamed and non-streamed results are equal by construction (C4) rather
- * than by parallel code paths.
+ * streamed and non-streamed results are equal by construction rather than by
+ * parallel code paths.
  */
 
 import { z } from 'zod'
@@ -45,12 +45,11 @@ import { create_sse_decoder } from './sse_native.js'
 import type { NativeProviderAdapter, ProviderCapability } from './types.js'
 
 /**
- * Per-dialect wire knobs (Appendix A1). `name` is the provider name the
- * adapter reports and the `provider_options` key it reads, kept stable across
- * transports so pricing keys and usage fields carry over (C6).
- * `tolerant_usage` marks backends whose usage may be absent or approximate
- * (lmstudio, ollama-compat): the mapper returns zeroed totals instead of
- * throwing (D10).
+ * Per-dialect wire knobs. `name` is the provider name the adapter reports
+ * and the `provider_options` key it reads, kept stable across transports so
+ * pricing keys and usage fields carry over. `tolerant_usage` marks backends
+ * whose usage may be absent or approximate (lmstudio, ollama-compat): the
+ * mapper returns zeroed totals instead of throwing.
  */
 export type OpenAICompatibleDialect = {
   readonly name: string
@@ -63,10 +62,10 @@ export type OpenAICompatibleDialect = {
 }
 
 /**
- * Effort map per Appendix A4: the wire enum is `low | medium | high` only, so
- * `xhigh` and `max` clamp to `high`, the same clamp as the ai_sdk transport's
- * `reasoningEffort`. `none` omits the field entirely. Non-reasoning models
- * ignore the field server-side; the adapter does not model-sniff.
+ * The wire enum is `low | medium | high` only, so `xhigh` and `max` clamp to
+ * `high`, the same clamp as the ai_sdk transport's `reasoningEffort`. `none`
+ * omits the field entirely. Non-reasoning models ignore the field
+ * server-side; the adapter does not model-sniff.
  */
 export const OPENAI_COMPATIBLE_REASONING_EFFORT: Record<
   Exclude<EffortLevel, 'none'>,
@@ -91,6 +90,11 @@ export type ChatMessage =
   | { role: 'assistant'; content: string | null; tool_calls?: ChatToolCall[] }
   | { role: 'tool'; tool_call_id: string; content: string }
 
+/**
+ * Map user message content to this wire's shape (a string, or an array of
+ * text parts). Image parts throw a capability error: they are not mapped on
+ * the native transport.
+ */
 function to_user_content(
   content: string | UserContentPart[],
   provider: string,
@@ -110,6 +114,11 @@ function to_user_content(
   return parts.length > 0 ? parts : ''
 }
 
+/**
+ * Map assistant message content to Chat Completions shape: text parts join
+ * into `content`, and tool-call parts become `tool_calls` entries with
+ * JSON-stringified arguments.
+ */
 function to_assistant_message(content: string | AssistantContentPart[]): ChatMessage {
   if (typeof content === 'string') return { role: 'assistant', content }
   const text_parts: string[] = []
@@ -170,6 +179,10 @@ export function to_chat_messages(
   return out
 }
 
+/**
+ * Map fascicle Tool[] to the Chat Completions function-tool shape,
+ * converting each zod input schema to JSON Schema.
+ */
 export function to_chat_tools(tools: ReadonlyArray<Tool>): Array<{
   type: 'function'
   function: { name: string; description: string; parameters: unknown }
@@ -184,6 +197,12 @@ export function to_chat_tools(tools: ReadonlyArray<Tool>): Array<{
   }))
 }
 
+/**
+ * Build the Chat Completions request body for one turn: mapped messages and
+ * tools, the token-limit field named per dialect, sampling params, the
+ * effort-derived reasoning_effort, and the dialect's
+ * `provider_options.<name>` wire passthrough merged last.
+ */
 export function build_chat_completions_body(
   req: TurnRequest,
   dialect: OpenAICompatibleDialect,
@@ -208,18 +227,21 @@ export function build_chat_completions_body(
   if (req.stream) {
     body['stream'] = true
     // Usage arrives on the final pre-DONE chunk only when asked for; local
-    // backends that ignore the flag fall under tolerant_usage (D10).
+    // backends that ignore the flag fall under tolerant_usage.
     if (dialect.stream_include_usage) body['stream_options'] = { include_usage: true }
   }
   // provider_options.<name> is raw wire-format passthrough (snake_case
   // chat/completions keys), shallow-merged last so an explicit user key beats
   // every derived field: the effort-derived reasoning_effort, the token
-  // limit, sampling params (D9). Wire keys are the user asserting they know
-  // the wire; the adapter does not reconcile interactions the API rejects.
+  // limit, sampling params. Wire keys are the user asserting they know the
+  // wire; the adapter does not reconcile interactions the API rejects.
   const passthrough = req.provider_options?.[dialect.name]
   return passthrough === undefined ? body : { ...body, ...passthrough }
 }
 
+/**
+ * Map the Chat Completions finish_reason to the engine's FinishReason.
+ */
 export function map_chat_finish_reason(raw: unknown): FinishReason {
   switch (raw) {
     case 'tool_calls':
@@ -228,26 +250,29 @@ export function map_chat_finish_reason(raw: unknown): FinishReason {
       return 'length'
     case 'content_filter':
       return 'content_filter'
-    // stop and anything unrecognized both mean "the model stopped on its own"
-    // (Appendix A2).
+    // stop and anything unrecognized both mean "the model stopped on its own".
     default:
       return 'stop'
   }
 }
 
 /**
- * Usage map per Appendix A3. prompt_tokens is already INCLUSIVE of cached
- * tokens on this API, unlike Anthropic's exclusive accounting, so a straight
- * copy is correct; compute_cost subtracts the cached portion back out. There
- * is no cache-write concept on this wire. A missing usage object throws under
- * a strict dialect (a hosted API omitting usage is a broken response) and
- * zeroes under a tolerant one (D10).
+ * Read a numeric field from a usage object, or undefined if absent or not a
+ * number.
  */
 function read_number(source: object, key: string): number | undefined {
   const value: unknown = Reflect.get(source, key)
   return typeof value === 'number' ? value : undefined
 }
 
+/**
+ * Map the Chat Completions usage object to UsageTotals. prompt_tokens is
+ * already INCLUSIVE of cached tokens on this API, unlike Anthropic's
+ * exclusive accounting, so a straight copy is correct; compute_cost
+ * subtracts the cached portion back out. There is no cache-write concept on
+ * this wire. A missing usage object throws under a strict dialect (a hosted
+ * API omitting usage is a broken response) and zeroes under a tolerant one.
+ */
 export function map_chat_usage(raw: unknown, dialect: OpenAICompatibleDialect): UsageTotals {
   if (raw === null || typeof raw !== 'object') {
     if (dialect.tolerant_usage) return { input_tokens: 0, output_tokens: 0 }
@@ -272,6 +297,11 @@ export function map_chat_usage(raw: unknown, dialect: OpenAICompatibleDialect): 
   return totals
 }
 
+/**
+ * Parse one Chat Completions tool_calls entry into the engine's tool-call
+ * shape, throwing a provider_error if the entry is missing id, function
+ * name, or valid JSON arguments.
+ */
 function parse_tool_call(raw: unknown, provider: string): TurnResult['tool_calls'][number] {
   if (raw === null || typeof raw !== 'object') {
     throw new provider_error(`${provider} native: malformed tool_calls entry in response`)
@@ -302,9 +332,9 @@ function parse_tool_call(raw: unknown, provider: string): TurnResult['tool_calls
 }
 
 /**
- * The one response parser every path feeds (C4): non-stream parses the
- * payload directly, and the streaming aggregator (next step) rebuilds this
- * same payload shape from deltas before calling it.
+ * The one response parser every path feeds: non-stream parses the payload
+ * directly, and the streaming aggregator (next step) rebuilds this same
+ * payload shape from deltas before calling it.
  */
 export function parse_chat_completion(
   payload: unknown,
@@ -343,14 +373,14 @@ export function parse_chat_completion(
  * StreamChunks as they arrive and rebuilding the non-stream payload as it
  * goes: `delta.content` accumulates into the message text, and
  * `delta.tool_calls[]` entries accumulate `function.arguments` string deltas
- * keyed by their `index` field (A5). A tool call closes — parsed input
- * dispatched — when the choice's finish_reason frame arrives, or at `[DONE]`
- * for servers that never send one. Usage rides the final pre-DONE frame
+ * keyed by their `index` field. A tool call closes (parsed input dispatched)
+ * when the choice's finish_reason frame arrives, or at `[DONE]` for servers
+ * that never send one. Usage rides the final pre-DONE frame
  * (stream_options.include_usage); a stream that ends without `[DONE]` is
  * truncated output, so complete() fails loud instead of returning a partial
  * turn. complete() feeds the synthetic payload through parse_chat_completion,
  * which is what makes the streamed TurnResult equal the non-streamed one by
- * construction (C4).
+ * construction.
  */
 export function create_chat_stream_aggregator(
   dialect: OpenAICompatibleDialect,
@@ -647,6 +677,12 @@ const SUPPORTED: ReadonlySet<ProviderCapability> = new Set([
   'reasoning',
 ])
 
+/**
+ * Build a native OpenAI-compatible adapter from a dialect: validates the
+ * dialect's api_key when auth is `bearer`, normalizes base_url, and wires
+ * invoke_turn to POST /chat/completions directly (streamed or not) through
+ * the mappers above.
+ */
 export const create_openai_compatible_adapter = (
   dialect: OpenAICompatibleDialect,
 ): NativeProviderAdapter => {

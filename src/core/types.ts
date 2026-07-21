@@ -6,7 +6,7 @@
  * engine). Adapter packages import types from here; nothing in
  * this file imports from any adapter.
  *
- * Type aliases and interfaces use PascalCase per constraints.md §2.
+ * Type aliases and interfaces use PascalCase, per the naming convention.
  * Value-level identifiers (field names, function parameter names) remain
  * snake_case; those are the value contract, not the type contract.
  */

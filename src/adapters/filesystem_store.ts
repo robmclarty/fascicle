@@ -5,9 +5,9 @@
  * a JSON file under the configured root directory. Writes are all-or-nothing:
  * values are written to a temporary sibling file and then atomically renamed
  * into place, so an interrupted write never leaves a partially-written file
- * at the target key (spec.md §6.3, §6.8). On `get`, a missing file, a partial
- * temp file that is not atomically renamed, or a JSON parse failure each read
- * as a cache miss (returning `null`) rather than an error.
+ * at the target key. On `get`, a missing file, a partial temp file that was
+ * never atomically renamed, or a JSON parse failure each read as a cache
+ * miss (returning `null`) rather than an error.
  *
  * Paths are accepted at construction; the store never reads `process.env`.
  */
@@ -21,12 +21,22 @@ export type FilesystemStoreOptions = {
   readonly root_dir: string
 }
 
+/**
+ * Turn a checkpoint key into a filesystem-safe filename.
+ *
+ * Slugs the key down to `[a-zA-Z0-9._-]` and appends a short hash of the
+ * full key, so two keys that slug to the same string still land on distinct
+ * files.
+ */
 function safe_filename(key: string): string {
   const hash = createHash('sha256').update(key).digest('hex').slice(0, 12)
   const slug = key.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 64)
   return `${slug}.${hash}.json`
 }
 
+/**
+ * Create a `CheckpointStore` backed by JSON files under `options.root_dir`.
+ */
 export function filesystem_store(options: FilesystemStoreOptions): CheckpointStore {
   const { root_dir } = options
 

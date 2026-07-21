@@ -1,8 +1,8 @@
 /**
- * Public types for the claude_cli subprocess provider (spec §5.1, §5.3, §5.4).
+ * Public types for the claude_cli subprocess provider.
  *
  * Value fields are snake_case; exported type aliases are PascalCase. These
- * types are re-exported from packages/engine/src/index.ts so callers can
+ * types are re-exported from `src/engine/index.ts` so callers can
  * narrow provider-scoped options and provider_reported values at their use
  * site.
  */

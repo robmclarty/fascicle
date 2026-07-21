@@ -2,7 +2,7 @@
  * Public entry point for engine.
  *
  * Exposes `create_engine(config)` and re-exports every public type and typed
- * error from spec §5 / §9, plus the provider-authoring surface
+ * error, plus the provider-authoring surface
  * (`ProviderFactory`, the adapter union, the neutral turn types
  * `TurnRequest`/`TurnResult`, and `default_normalize_usage`) for
  * `custom_providers`. Built-in adapters and internal orchestration helpers

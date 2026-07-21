@@ -1,18 +1,18 @@
 /**
  * Stock judges for `bench`.
  *
- * A `Judge<I, O, S>` is a `Step<{ input, output, meta }, S>` — i.e. just a
- * step that scores a flow's input/output/metadata triple. Returning
- * `undefined` (or throwing) means the judge abstains; bench records the
- * absence as a missing key in `case.scores` and excludes the case from that
- * judge's `mean_scores` denominator.
+ * A `Judge<I, O, S>` is a `Step<{ input, output, meta }, S>`: just a step
+ * that scores a flow's input/output/metadata triple. Returning `undefined`
+ * (or throwing) means the judge abstains; bench records the absence as a
+ * missing key in `case.scores` and excludes the case from that judge's
+ * `mean_scores` denominator.
  *
- *   judge_equals  — strict equality vs. `meta.expected`
- *   judge_with    — wrap a user-supplied scoring function
- *   judge_llm     — prompt a model + parse the rubric score out of the reply
+ *   judge_equals: strict equality vs. `meta.expected`
+ *   judge_with:   wrap a user-supplied scoring function
+ *   judge_llm:    prompt a model + parse the rubric score out of the reply
  *
  * `judge_llm` is engine-agnostic: callers pass their already-configured
- * model_call step (Step<string, string>), which keeps composites decoupled
+ * model_call step (`Step<string, string>`), which keeps composites decoupled
  * from engine. The user-facing wiring lives in their own code.
  */
 
@@ -21,10 +21,19 @@ import type { Step } from '#core'
 import { normalize_score } from './bench.js'
 import type { Judge, JudgeArgs, Score } from './bench.js'
 
+/**
+ * Narrows an unknown value to a plain string-keyed record (non-null object,
+ * not an array).
+ */
 export function is_record(v: unknown): v is Record<string, unknown> {
   return v !== null && typeof v === 'object' && !Array.isArray(v)
 }
 
+/**
+ * Structural equality over JSON-shaped values: primitives by `===`, arrays
+ * element-wise, records key-by-key with sorted keys. Anything else (class
+ * instances, functions) only compares equal by reference.
+ */
 export function deep_equal(a: unknown, b: unknown): boolean {
   if (a === b) return true
   // null, primitives, and array/record mismatches all fall through to the
@@ -51,6 +60,10 @@ export function deep_equal(a: unknown, b: unknown): boolean {
   return true
 }
 
+/**
+ * Judge that scores 1 when the output deep-equals `meta.expected`, 0
+ * otherwise. Abstains when the case has no `meta` or no `expected` key.
+ */
 export function judge_equals<O>(): Judge<unknown, O> {
   return step('judge_equals', (args: JudgeArgs<unknown, O>): Score | undefined => {
     if (args.meta === undefined) return undefined
@@ -65,6 +78,11 @@ export type JudgeWithFn<I, O> = (
   args: JudgeArgs<I, O>,
 ) => number | Score | undefined | Promise<number | Score | undefined>
 
+/**
+ * Wraps a plain scoring function as a Judge. The function may return a bare
+ * number, a `Score`, or `undefined` to abstain; the result is normalized
+ * via `normalize_score`.
+ */
 export function judge_with<I, O>(fn: JudgeWithFn<I, O>): Judge<I, O> {
   return step('judge_with', async (args: JudgeArgs<I, O>): Promise<Score | undefined> => {
     const raw = await fn(args)
@@ -78,6 +96,14 @@ export type JudgeLlmConfig = {
   readonly scale?: { readonly min: number; readonly max: number }
 }
 
+/**
+ * Judge that prompts a model with a rubric and parses the score out of the
+ * reply.
+ *
+ * Built as a three-step sequence: render the rubric prompt, run the
+ * caller-supplied model step, parse the JSON score from the reply. An
+ * unparseable reply makes the judge abstain rather than fail the case.
+ */
 export function judge_llm<I, O>(config: JudgeLlmConfig): Judge<I, O> {
   const scale = config.scale ?? { min: 0, max: 1 }
   const build_prompt = step('judge_llm_build_prompt', (args: JudgeArgs<I, O>): string =>
@@ -90,6 +116,10 @@ export function judge_llm<I, O>(config: JudgeLlmConfig): Judge<I, O> {
   return compose('judge_llm', inner)
 }
 
+/**
+ * Renders the evaluator prompt: rubric, required JSON reply shape with the
+ * score scale, and the case's input/output serialized as JSON.
+ */
 export function render_prompt<I, O>(
   rubric: string,
   scale: { min: number; max: number },
@@ -112,6 +142,13 @@ export function render_prompt<I, O>(
   ].join('\n')
 }
 
+/**
+ * Parses a model reply into a `Score`, or `undefined` (abstain) when no
+ * valid JSON object with a finite numeric `score` can be extracted.
+ *
+ * Tolerates prose around the JSON via `extract_json_object` and clamps the
+ * score into the configured scale rather than rejecting out-of-range values.
+ */
 export function parse_score(
   reply: string,
   scale: { min: number; max: number },
@@ -134,6 +171,11 @@ export function parse_score(
   return reason === undefined ? { score: clamped } : { score: clamped, reason }
 }
 
+/**
+ * Pulls the outermost `{...}` slice out of a reply that may wrap the JSON
+ * in prose or code fences. Returns the text as-is when it already starts
+ * with `{`.
+ */
 export function extract_json_object(text: string): string | undefined {
   if (text.startsWith('{')) return text
   const start = text.indexOf('{')

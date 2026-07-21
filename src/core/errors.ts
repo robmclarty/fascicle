@@ -1,9 +1,9 @@
 /**
  * Typed errors for the composition layer.
  *
- * This is the only source file in packages/core/src/ that uses the `class`
+ * This is the only source file in the core layer that uses the `class`
  * keyword. `Error` is a built-in and `instanceof` branching is how composers
- * like `retry` and `fallback` distinguish failure modes. See constraints.md §2.
+ * like `retry` and `fallback` distinguish failure modes.
  */
 
 export class timeout_error extends Error {

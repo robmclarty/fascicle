@@ -1,13 +1,12 @@
 /**
  * The ai_sdk transport: the engine's only Vercel AI SDK call site.
  *
- * Invariant 13 (constraints §7, inverted): only this module imports from `ai`
- * or invokes generateText / streamText. generate.ts drives this transport
- * through create_ai_sdk_turn and stays SDK-agnostic; run_tool_loop sees the
- * same neutral TurnResult a native adapter produces. Rule-enforced by
- * rules/no-ai-import-outside-ai-sdk-provider.yml.
+ * Only this module imports from `ai` or invokes generateText / streamText.
+ * generate.ts drives this transport through create_ai_sdk_turn and stays
+ * SDK-agnostic; run_tool_loop sees the same neutral TurnResult a native
+ * adapter produces. Enforced by rules/no-ai-import-outside-ai-sdk-provider.yml.
  *
- * Retry stays out of this module on purpose (D5): generate.ts wraps the turn
+ * Retry stays out of this module on purpose: generate.ts wraps the turn
  * returned here in the engine-owned retry_turn, exactly as it wraps a native
  * adapter's invoke_turn. This module owns request/response mapping only.
  */
@@ -44,6 +43,9 @@ import {
 } from '../types.js'
 import { build_ai_sdk_telemetry, type AiSdkTelemetryPassthrough } from './telemetry.js'
 
+/**
+ * Map the AI SDK's finish reason string to the engine's FinishReason.
+ */
 export function map_finish_reason(raw: string | undefined): FinishReason {
   switch (raw) {
     case 'stop':
@@ -61,6 +63,11 @@ export function map_finish_reason(raw: string | undefined): FinishReason {
   }
 }
 
+/**
+ * Extract the usage fields `default_normalize_usage` understands from an AI
+ * SDK usage object, tolerating both the SDK's camelCase shape and the
+ * flattened snake_case fields some provider mocks return directly.
+ */
 export function to_raw_provider_usage(usage: unknown): RawProviderUsage {
   if (usage === null || typeof usage !== 'object') return {}
   const raw: RawProviderUsage = {}
@@ -96,6 +103,9 @@ export function to_raw_provider_usage(usage: unknown): RawProviderUsage {
   return raw
 }
 
+/**
+ * Map fascicle's Message[] to the AI SDK's ModelMessage[] shape.
+ */
 export function to_sdk_messages(messages: ReadonlyArray<Message>): ModelMessage[] {
   const out: ModelMessage[] = []
   for (const m of messages) {
@@ -193,6 +203,12 @@ export function split_leading_system(messages: ReadonlyArray<ModelMessage>): {
   return { system: system_parts.join('\n\n'), messages: rest }
 }
 
+/**
+ * Map fascicle's Tool[] to the AI SDK's ToolSet.
+ *
+ * Returns undefined for an empty tool list so the caller can omit `tools`
+ * from the call params entirely instead of passing an empty object.
+ */
 export function to_sdk_tools(tools: ReadonlyArray<Tool>): ToolSet | undefined {
   if (tools.length === 0) return undefined
   const entries: ToolSet = {}
@@ -205,6 +221,10 @@ export function to_sdk_tools(tools: ReadonlyArray<Tool>): ToolSet | undefined {
   return entries
 }
 
+/**
+ * Map one AI SDK stream part to the engine's StreamChunk shape, or undefined
+ * for a part kind the engine does not model.
+ */
 export function map_stream_part_to_chunk(
   part: TextStreamPart<ToolSet>,
   step_index: number,
@@ -250,6 +270,10 @@ export function map_stream_part_to_chunk(
   }
 }
 
+/**
+ * Normalize a raw AI SDK usage object into UsageTotals for a streamed
+ * step_finish chunk.
+ */
 export function default_usage_from_sdk(usage: unknown): UsageTotals {
   // Streamed step_finish chunks must carry the same cache/reasoning
   // granularity the step record gets via adapter.normalize_usage; every
@@ -258,6 +282,10 @@ export function default_usage_from_sdk(usage: unknown): UsageTotals {
   return default_normalize_usage(to_raw_provider_usage(usage))
 }
 
+/**
+ * Run one streamText call, dispatching StreamChunks as parts arrive and
+ * accumulating them into a TurnResult once the stream completes.
+ */
 async function collect_stream(
   params: Parameters<typeof streamText>[0],
   step_index: number,
@@ -316,6 +344,11 @@ async function collect_stream(
   }
 }
 
+/**
+ * Run one generateText call and map its result into a TurnResult, recovering
+ * a schema-validation failure from the SDK via recover_no_object_generated
+ * instead of letting it throw.
+ */
 async function collect_non_stream(
   params: Parameters<typeof generateText>[0],
   adapter: AiSdkProviderAdapter,

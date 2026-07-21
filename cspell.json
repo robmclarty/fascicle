@@ -119,6 +119,7 @@
     "composable",
     "vendored",
     "forkable",
-    "evals"
+    "evals",
+    "unshares"
   ]
 }

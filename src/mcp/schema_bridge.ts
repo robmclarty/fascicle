@@ -21,6 +21,13 @@
 import { z } from 'zod'
 import { as_record, is_record } from './internal.js'
 
+/**
+ * Converts a JSON Schema node into a Zod type, never throwing.
+ *
+ * A malformed or unrecognized schema falls back to `z.unknown()` instead of
+ * propagating an error, since an arbitrary remote MCP server's schema must
+ * never crash tool discovery.
+ */
 export function json_schema_to_zod(schema: unknown): z.ZodType {
   try {
     return convert(schema)
@@ -30,6 +37,13 @@ export function json_schema_to_zod(schema: unknown): z.ZodType {
   }
 }
 
+/**
+ * Converts one JSON Schema node to a Zod type, recursing into nested schemas.
+ *
+ * Checks `const`, `enum`, `anyOf`, `oneOf`, and `allOf` before `type`, since
+ * those keywords can appear without a `type` and take precedence when they
+ * do. A `description` on the node carries through to the returned Zod type.
+ */
 function convert(node: unknown): z.ZodType {
   const schema = as_record(node)
   if (schema === undefined) return z.unknown()
@@ -58,6 +72,10 @@ function convert(node: unknown): z.ZodType {
   return described(z.unknown())
 }
 
+/**
+ * Maps a single JSON Schema `type` keyword to the matching Zod primitive or
+ * container, falling back to `z.unknown()` for an unrecognized type.
+ */
 function for_type(type: string, schema: Record<string, unknown>): z.ZodType {
   switch (type) {
     case 'object':
@@ -79,6 +97,14 @@ function for_type(type: string, schema: Record<string, unknown>): z.ZodType {
   }
 }
 
+/**
+ * Builds a Zod object type from a JSON Schema object's `properties` and
+ * `required`, marking any key absent from `required` as optional.
+ *
+ * Uses `z.looseObject` rather than `z.object` so keys the remote server
+ * accepts but this conversion did not anticipate still pass through instead
+ * of being stripped or rejected.
+ */
 function build_object(schema: Record<string, unknown>): z.ZodType {
   const properties = as_record(schema['properties']) ?? {}
   const required = new Set(string_array(schema['required']))
@@ -90,6 +116,9 @@ function build_object(schema: Record<string, unknown>): z.ZodType {
   return z.looseObject(shape)
 }
 
+/**
+ * Builds a Zod array type from a JSON Schema array's `items`.
+ */
 function build_array(schema: Record<string, unknown>): z.ZodType {
   // A positional-tuple `items` array and a missing `items` both convert to
   // `z.unknown()`, so one permissive element type covers every case. Tuple
@@ -97,6 +126,12 @@ function build_array(schema: Record<string, unknown>): z.ZodType {
   return z.array(convert(schema['items']))
 }
 
+/**
+ * Converts a JSON Schema `enum` array to a Zod type.
+ *
+ * An all-string enum maps to `z.enum`; a mixed-type enum maps to a union of
+ * literals instead, since `z.enum` only accepts strings.
+ */
 function enum_of(values: unknown[]): z.ZodType {
   if (values.length === 0) return z.unknown()
   if (values.every((v): v is string => typeof v === 'string')) {
@@ -105,20 +140,36 @@ function enum_of(values: unknown[]): z.ZodType {
   return combine_union(values.map(literal_of))
 }
 
+/**
+ * Converts a JSON Schema `anyOf` or `oneOf` array to a Zod union, converting
+ * each branch independently.
+ */
 function union_of(nodes: unknown[]): z.ZodType {
   return combine_union(nodes.map(convert))
 }
 
+/**
+ * Converts a JSON Schema `type` array (e.g. `["string", "null"]`) to a Zod
+ * union of the matching primitive types.
+ */
 function union_of_types(types: unknown[], schema: Record<string, unknown>): z.ZodType {
   return combine_union(types.map((t) => for_type(String(t), schema)))
 }
 
+/**
+ * Converts a JSON Schema `allOf` array to a Zod intersection of every branch.
+ */
 function intersection_of(nodes: unknown[]): z.ZodType {
   const parts = nodes.map(convert)
   if (parts.length === 0) return z.unknown()
   return parts.reduce((acc, part) => z.intersection(acc, part))
 }
 
+/**
+ * Builds a Zod union from a list of variants, collapsing the degenerate
+ * cases: zero variants becomes `z.unknown()`, one variant is returned as is,
+ * since `z.union` requires at least two.
+ */
 function combine_union(variants: z.ZodType[]): z.ZodType {
   const [first, second, ...rest] = variants
   if (first === undefined) return z.unknown()
@@ -126,6 +177,10 @@ function combine_union(variants: z.ZodType[]): z.ZodType {
   return z.union([first, second, ...rest])
 }
 
+/**
+ * Converts a single JSON value, as used in a `const` or an `enum` entry, to
+ * a Zod literal.
+ */
 function literal_of(value: unknown): z.ZodType {
   if (
     typeof value === 'string' ||
@@ -139,6 +194,10 @@ function literal_of(value: unknown): z.ZodType {
   return z.unknown()
 }
 
+/**
+ * Filters a value down to the strings it contains, or an empty array when it
+ * is not an array at all.
+ */
 function string_array(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string') : []
 }

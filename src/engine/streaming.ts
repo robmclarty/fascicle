@@ -1,11 +1,11 @@
 /**
  * Streaming chunk normalization and dispatch.
  *
- * Provider events are normalized into the discriminated StreamChunk union from
- * spec §5.6. The dispatcher synchronously invokes on_chunk per provider event;
- * on throw or rejected promise it signals the caller to abort the in-flight
- * request (the actual request-abort is wired in phase 2's generate
- * orchestrator) and surfaces on_chunk_error.
+ * Provider events are normalized into the discriminated `StreamChunk` union.
+ * The dispatcher synchronously invokes on_chunk per provider event; on throw
+ * or rejected promise it signals the caller to abort the in-flight request
+ * (the request-abort itself is wired up in the generate orchestrator) and
+ * surfaces on_chunk_error.
  *
  * Chunk ordering invariants (enforced by the orchestrator that feeds the
  * dispatcher, not here):

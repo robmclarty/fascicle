@@ -9,6 +9,12 @@
 
 import type { Step } from './types.js'
 
+/**
+ * Check whether a value is structurally a `Step`.
+ *
+ * True when the value has a string `id`, a string `kind`, and a callable
+ * `run`.
+ */
 export function is_step(value: unknown): value is Step<unknown, unknown> {
   if (typeof value !== 'object' || value === null) return false
   if (!('id' in value) || !('kind' in value) || !('run' in value)) return false

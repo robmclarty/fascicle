@@ -1,19 +1,21 @@
 /**
- * Subprocess lifecycle for the claude_cli adapter (spec §6, constraints §5.10).
+ * Subprocess lifecycle for the claude_cli adapter.
  *
  * The factory exposes:
- *   - `live_children`: a closure-captured Set<ChildProcess> per-adapter-factory
- *     call (constraints §7 invariant 5: no module-level mutable state).
+ *   - `live_children`: a closure-captured Set<ChildProcess> per
+ *     adapter-factory call; no state is shared at module scope, so two
+ *     factory invocations track two independent sets of children.
  *   - `spawn_cli(...)`: spawns the child with { detached: true, stdio: [...],
- *     env, cwd, shell: false }; arms startup + stall timers; SIGTERM→SIGKILL
- *     escalation on signal; removes from live set on close.
- *   - `dispose_all()`: issues SIGTERM→SIGKILL for every live child and awaits
- *     every close.
+ *     env, cwd, shell: false }; arms startup + stall timers; escalates
+ *     SIGTERM to SIGKILL on signal; removes the child from the live set on
+ *     close.
+ *   - `dispose_all()`: sends SIGTERM then SIGKILL to every live child and
+ *     awaits every close.
  *
  * A single process-wide `exit` handler synchronously SIGKILLs every live
- * child across every spawn registry (constraints §5.10 #5). The handler is
- * installed once per Node process and iterates a registry of adapter
- * live-sets.
+ * child across every spawn registry, so a crashing or exiting host process
+ * doesn't leak subprocesses. The handler is installed once per Node
+ * process and iterates a registry of adapter live-sets.
  *
  * `node:child_process` imports are confined to this directory (enforced by
  * rules/no-child-process-outside-claude-cli.yml). The spawn call passes
@@ -54,6 +56,15 @@ type ChildRegistry = Set<ChildProcess>
 const ALL_REGISTRIES: Set<ChildRegistry> = new Set()
 let exit_handler_installed = false
 
+/**
+ * Install the process-wide `exit` handler that SIGKILLs every live child
+ * across every spawn registry. Calling this more than once is a no-op.
+ *
+ * Children are spawned with `detached: true`, which makes each one the
+ * leader of its own process group; signaling `-child.pid` (a negative pid)
+ * targets the whole group instead of just the direct child, so any
+ * grandchildren the CLI itself spawned die too.
+ */
 function install_exit_handler_once(): void {
   if (exit_handler_installed) return
   exit_handler_installed = true
@@ -78,6 +89,14 @@ export type SpawnRuntime = {
   readonly dispose_all: () => Promise<void>
 }
 
+/**
+ * Build a `SpawnRuntime`: a per-adapter-instance registry of live children
+ * plus the `spawn_cli`/`dispose_all` operations that manage them.
+ *
+ * Registers `live_children` in the module-wide `ALL_REGISTRIES` set so the
+ * process `exit` handler installed by `install_exit_handler_once` can find
+ * and kill this runtime's children too.
+ */
 export function create_spawn_runtime(): SpawnRuntime {
   const live_children: ChildRegistry = new Set()
   ALL_REGISTRIES.add(live_children)
@@ -273,6 +292,15 @@ export function create_spawn_runtime(): SpawnRuntime {
   return { live_children, spawn_cli, dispose_all }
 }
 
+/**
+ * Turn a child process's stdout into an async iterable of complete lines.
+ *
+ * Buffers partial output across `data` events and yields only on `\n`
+ * boundaries; on `end`, flushes a trailing line that has no terminator.
+ * Calls `on_data` on every chunk, before buffering, so the caller can reset
+ * startup/stall timers on any byte of output rather than only on line
+ * boundaries.
+ */
 async function* build_stdout_lines(
   child: ChildProcess,
   on_data: () => void,
