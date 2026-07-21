@@ -9,10 +9,10 @@ ergonomics fit is to try it.
 ## The reframe: it is not fascicle versus the AI SDK
 
 The most common framing of this decision is a false one. fascicle is *built on*
-the Vercel AI SDK for its default path: `ai` is a required peer, and the AI SDK
-is how six of the eight built-in providers reach a model out of the box. You are
-not choosing between fascicle and the AI SDK. You are choosing *at which layer* a
-vendor owns your code.
+the Vercel AI SDK for its default path: `ai` is a required peer, and seven of its
+eight providers are AI-SDK-backed out of the box. You are not choosing between
+fascicle and the AI SDK. You are choosing *at which layer* a vendor owns your
+code.
 
 On the default `ai_sdk` transport the AI SDK owns everything below a single model
 call: message translation, tool-schema mapping, streaming, usage normalization.
@@ -22,11 +22,12 @@ composition layer. The question this page answers is whether that upper layer ea
 its place, or whether the AI SDK's own agent layer (`ToolLoopAgent`,
 `WorkflowAgent`, `HarnessAgent`) is enough on its own.
 
-The accounting has since shifted, and it matters for the argument below. Providers
-now plug in at one of three depths, and five of the eight (`anthropic`, `openai`,
-`openrouter`, `lmstudio`, `ollama`) can run `transport: 'native'`: raw HTTP,
-hand-rolled streaming, no `@ai-sdk/*` package in the path. Only `google` and
-`bedrock` are AI-SDK-only; `claude_cli` is a subprocess and never was. The same
+That default is no longer the only path, and the difference matters for the
+argument below. Providers plug in at one of three depths, and five of the eight
+(`anthropic`, `openai`, `openrouter`, `lmstudio`, `ollama`) can be switched to
+`transport: 'native'`: raw HTTP, hand-rolled streaming, no `@ai-sdk/*` package in
+the path. Only `google` and `bedrock` are AI-SDK-only; `claude_cli` is a
+subprocess and never was. The same
 tool loop, retry, salvage, cost, and trajectory sit above both depth-1 kinds, so
 the transport swaps without the loop changing. The honest residual: `ai` itself is
 still a required peer, because the `ai_sdk` transport module is statically imported

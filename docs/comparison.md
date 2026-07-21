@@ -24,12 +24,13 @@ ergonomics fit your taste is to try it — start with
    vector stores, memory, evals, hosted dashboards), or do one thing well? Breadth
    sells; depth composes.
 5. **Transport awareness.** Does it know more than one way to reach a model (HTTPS
-   SDKs, subprocess CLIs, MCP), or assume everything is an SDK call?
+   SDKs, raw HTTP, subprocess CLIs, MCP), or assume everything is an SDK call?
 
 **Fascicle's answers:** (1) `Step<i, o>` values, (2) pure values — no registry,
 (3) a library you call, (4) narrow — composition plus a model engine, (5) yes —
-HTTPS SDKs and a subprocess CLI are both first-class, and the `fascicle/mcp`
-subpath bridges MCP both ways.
+providers plug in at one of three depths (an AI SDK model, a raw-HTTP
+`transport: 'native'` turn, or an external agent process), all under one loop, and
+the `fascicle/mcp` subpath bridges MCP both ways.
 
 ## At a glance
 
@@ -66,13 +67,17 @@ several SaaS integrations.
 
 A TypeScript-first AI framework with `Agent`, `Workflow`, `Tool`, memory, RAG, and
 evals wired into a central `Mastra` object. It overlaps on workflow composition and
-shares fascicle's provider layer (the Vercel AI SDK). It diverges on the central
-registry (ambient state fascicle refuses by design) and on its workflow builder
-returning a `Workflow` rather than a `Step`, so the "anything that fits a step fits
-any composition" invariant doesn't hold.
+shares fascicle's default provider layer (the Vercel AI SDK). It diverges on the
+central registry (ambient state fascicle refuses by design) and on its workflow
+builder returning a `Workflow` rather than a `Step`, so the "anything that fits a
+step fits any composition" invariant doesn't hold.
 
-**Choose it when** you want RAG, memory, and evals batteries-included in one
-TypeScript framework.
+**Choose it when** you want RAG, memory, and a hosted eval/observability product
+batteries-included in one TypeScript framework. The eval overlap is narrower than
+it looks: fascicle ships scoring as composition (`bench` over fixtures, `Judge`
+steps, and `regression_compare` against a committed baseline), so the batteries
+Mastra adds are the retrieval and memory abstractions and the dashboard, not the
+ability to score a run.
 
 ### Inngest AgentKit
 
@@ -123,10 +128,13 @@ A2A) batteries-included, or you are in the AWS / Bedrock ecosystem.
 
 ## Different layer, not competition
 
-- **Vercel AI SDK** is the provider abstraction fascicle's engine sits *on* (seven
-  of eight providers): `generateText`/`streamText` are the single-turn driver below
-  fascicle's loop, not `sequence`/`parallel`/`checkpoint`. At *that* layer it is
-  ancestry, not overlap. Note, though, that since v6/v7 the SDK also ships an agent
+- **Vercel AI SDK** is the provider abstraction fascicle's engine sits *on* by
+  default (seven of eight providers out of the box): `generateText`/`streamText` are
+  the single-turn driver below fascicle's loop, not
+  `sequence`/`parallel`/`checkpoint`. At *that* layer it is ancestry, not overlap.
+  The dependency is per-transport rather than structural: five providers can run
+  `transport: 'native'` on raw HTTP with no `@ai-sdk/*` package in the path, and the
+  loop above them does not change. Note, though, that since v6/v7 the SDK also ships an agent
   layer of its own (`ToolLoopAgent`, `WorkflowAgent`, and `HarnessAgent`, the last
   of which wraps CLI harnesses like Claude Code), and *that* layer is a genuine
   competing implementation of what fascicle owns rather than a substrate for it.
@@ -159,9 +167,13 @@ None of these is unprecedented alone; the concentration is the point.
    `process.env`.
 3. **Streaming as observation, not a second vocabulary.** `run` and `run.stream`
    execute the same graph; steps don't know which runner drives them.
-4. **Subprocess providers are first-class.** The `claude_cli` adapter drives the
-   Claude CLI as a provider with full process-group lifecycle, alongside the HTTPS
-   SDK providers.
+4. **Every transport is first-class under one loop.** An AI SDK model, a raw-HTTP
+   native turn, and a subprocess agent are three depths behind the same seam: the
+   `claude_cli` adapter drives the Claude CLI with full process-group lifecycle,
+   `transport: 'native'` talks to five providers' own wire formats with no SDK in
+   the path, and `custom_providers` accepts an adapter fascicle has never heard of.
+   The tool loop, salvage, approval, retry, cost, and trajectory above them are
+   identical.
 5. **A small, hand-picked surface.** 21 composition primitives and one `generate`
    function, shipped as a single npm package — no "pick four packages and align
    their versions" tax.
@@ -169,7 +181,7 @@ None of these is unprecedented alone; the concentration is the point.
 ## When to choose something else
 
 - You want the largest library of pre-built integrations → **LangChain**.
-- You want RAG, memory, and evals batteries-included → **Mastra**.
+- You want RAG, memory, and a hosted eval product batteries-included → **Mastra**.
 - You want durable execution as managed infrastructure → **Inngest AgentKit**.
 - Your product is a single agent with tool handoffs → **OpenAI Agents SDK**.
 - You want the model to drive the loop, with multi-agent orchestration built in →
