@@ -1,0 +1,43 @@
+{
+  "checks": {
+    "types": { "use": "tsc", "order": 1 },
+    "lint": { "use": "oxlint", "order": 1 },
+    "struct": { "use": "ast-grep", "order": 1 },
+    "links": { "use": "links", "order": 1 },
+    "deps": {
+      "command": "node",
+      "args": ["scripts/check-deps.mjs"],
+      "description": "core/engine production deps + engine optional peers invariant (constraints.md §7.2)",
+      "order": 1
+    },
+
+    "dead": { "use": "fallow", "order": 2 },
+    "dupes": { "use": "fallow", "order": 2 },
+    "health": { "use": "fallow", "order": 2 },
+
+    "docs": { "use": "markdownlint-cli2", "order": 3 },
+    "spell": { "use": "cspell", "order": 3 },
+    "snippets": { "use": "snippets", "order": 3 },
+    "test": { "use": "vitest", "order": 3 },
+
+    "build": { "use": "build", "order": 10 },
+
+    "publint": { "use": "publint", "order": 20 },
+    "pack": { "use": "pack", "order": 20 },
+    "smoke": { "use": "smoke", "order": 20 },
+    "attw": {
+      "use": "attw",
+      "args": ["exec", "attw", "--pack", ".", "--format", "json", "--profile", "esm-only"],
+      "description": "Are the types wrong? (esm-only profile: this package ships ESM only)",
+      "order": 20
+    },
+    "publish": {
+      "command": "node",
+      "args": ["scripts/check-publish.mjs"],
+      "description": "Legacy preflight kept for the side-by-side: npm pack manifest + attw hard-error filter",
+      "order": 21
+    },
+
+    "security": false
+  }
+}
