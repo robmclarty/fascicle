@@ -14,6 +14,13 @@ allowBuilds:
   esbuild: true
   fallow: true
 
+# The global minimumReleaseAge quarantine exists to blunt third-party registry
+# compromise. These are first-party packages published from repos on this
+# machine, so the quarantine buys nothing and only delays adopting a fix.
+minimumReleaseAgeExclude:
+  - checkride
+  - fallow
+
 # pnpm reads overrides from this file (not the package.json `pnpm` field) in a
 # workspace. smol-toml >=1.6.1 forces markdownlint-cli2's pinned 1.6.0 up past
 # the advisory ADR-0001 tracks. fast-uri >=3.1.2 forces ajv's transitive pin

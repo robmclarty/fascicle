@@ -3,7 +3,11 @@
     "types": { "use": "tsc", "order": 1 },
     "lint": { "use": "oxlint", "order": 1 },
     "struct": { "use": "ast-grep", "order": 1 },
-    "links": { "use": "links", "order": 1 },
+    "links": {
+      "use": "links",
+      "exclude": [".ridgeline", ".plumbbob", ".fascicle"],
+      "order": 1
+    },
     "deps": {
       "command": "node",
       "args": ["scripts/check-deps.mjs"],
@@ -17,25 +21,22 @@
 
     "docs": { "use": "markdownlint-cli2", "order": 3 },
     "spell": { "use": "cspell", "order": 3 },
-    "snippets": { "use": "snippets", "order": 3 },
     "test": { "use": "vitest", "order": 3 },
 
-    "build": { "use": "build", "order": 10 },
+    "mutation": { "use": "stryker", "optIn": true, "order": 4 },
 
-    "publint": { "use": "publint", "order": 20 },
-    "pack": { "use": "pack", "order": 20 },
-    "smoke": { "use": "smoke", "order": 20 },
+    "build": { "use": "build", "optIn": true, "order": 10 },
+
+    "publint": { "use": "publint", "optIn": true, "order": 20 },
+    "pack": { "use": "pack", "optIn": true, "order": 20 },
+    "smoke": { "use": "smoke", "optIn": true, "order": 20 },
+    "snippets": { "use": "snippets-dist", "optIn": true, "order": 20 },
     "attw": {
       "use": "attw",
-      "args": ["exec", "attw", "--pack", ".", "--format", "json", "--profile", "esm-only"],
+      "profile": "esm-only",
       "description": "Are the types wrong? (esm-only profile: this package ships ESM only)",
+      "optIn": true,
       "order": 20
-    },
-    "publish": {
-      "command": "node",
-      "args": ["scripts/check-publish.mjs"],
-      "description": "Legacy preflight kept for the side-by-side: npm pack manifest + attw hard-error filter",
-      "order": 21
     },
 
     "security": false

@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Internal
+
+- **The check suite is now [checkride](https://www.npmjs.com/package/checkride) 0.6.0**, replacing the hand-rolled orchestrator. `scripts/check.mjs`, `check-links.mjs`, `check-doc-snippets.mjs`, and `check-publish.mjs` are deleted (~960 lines) in favour of built-in slots; `scripts/check-deps.mjs` stays as the one custom check, since the core/engine dependency invariant is fascicle-specific. The `pnpm check` / `check:all` / `check:json` / `check:bail` contract is unchanged and `pnpm check --changed` is new.
+- **Existing debt is grandfathered in `checkride.baseline.json`** (333 diagnostics across lint, struct, dead, dupes, health, spell). The gate ratchets: frozen debt passes, new findings fail. The `dupes` and `health` slots are now enforced rather than folded into a single fallow invocation that could not fail on them.
+- The packaging gate gains `publint` and splits the old monolithic `publish` step into `pack`, `smoke`, and `attw` (pinned to the `esm-only` profile). Doc snippets are typechecked against the built `.d.ts` as part of `pnpm check:publish`, rather than as a separate CI step.
+
 ## v0.9.8 — 2026-07-19
 
 ### Added

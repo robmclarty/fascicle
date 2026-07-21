@@ -68,6 +68,9 @@ importers:
       '@vitest/coverage-v8':
         specifier: 4.1.10
         version: 4.1.10(vitest@4.1.10)
+      checkride:
+        specifier: 0.6.0
+        version: 0.6.0
       cspell:
         specifier: 10.0.1
         version: 10.0.1
@@ -1864,6 +1867,11 @@ packages:
 
   chardet@2.1.1:
     resolution: {integrity: sha512-PsezH1rqdV9VvyNhxxOW32/d75r01NY7TQCmOqomRo15ZSOKbpTFVsfjghxo6JloQUCGnH4k1LGu0R4yCLlWQQ==}
+
+  checkride@0.6.0:
+    resolution: {integrity: sha512-vl2M9lF74aFyVwoVHfusuXAf5gcptINhc9Ofvw4vKVGVjSeIxz1NdMa6oViAvcmiL1jhn+mTEFQ4t23TiHBKsA==}
+    engines: {node: '>=22.18.0', pnpm: '>=9.0.0'}
+    hasBin: true
 
   cjs-module-lexer@1.4.3:
     resolution: {integrity: sha512-9z8TZaGM1pfswYeXrUpzPrkx8UnWYdhJclsiYMm6x/w5+nN+8Tf/LnAgfLGQCm59qAOxU8WwHEq2vNwF6i4j+Q==}
@@ -4850,6 +4858,8 @@ snapshots:
   character-reference-invalid@2.0.1: {}
 
   chardet@2.1.1: {}
+
+  checkride@0.6.0: {}
 
   cjs-module-lexer@1.4.3: {}
 

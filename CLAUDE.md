@@ -19,7 +19,7 @@ This file only adds what is Claude-specific.
 
 - **fallow MCP server** is wired up in `.mcp.json`. Prefer calling fallow tools (`analyze`, `check_changed`) during implementation over waiting for the final `pnpm check`.
 - **ast-grep MCP server** is also wired up. Use it when editing `rules/` or hunting structural patterns that plain grep can't express.
-- **Don't shell out to run `pnpm check:all` repeatedly during tight loops.** `pnpm check` (default, excludes the opt-in steps) is fine for iteration; for even tighter loops use `pnpm check --bail --only <relevant checks>` or `pnpm exec tsc --noEmit`. Run `pnpm check:all` once at the end — it adds the opt-in `mutation` (Stryker, the slowest check) and `build` + `publish` (packaging gate) steps.
+- **Don't shell out to run `pnpm check:all` repeatedly during tight loops.** `pnpm check` (default, excludes the opt-in slots) is fine for iteration; for even tighter loops use `pnpm check --bail --only <relevant checks>`, `pnpm check --changed`, or `pnpm exec tsc --noEmit`. Run `pnpm check:all` once at the end — it adds the opt-in `mutation` (Stryker, the slowest check) and the `build` + packaging gate slots.
 
 ## What Claude should avoid
 

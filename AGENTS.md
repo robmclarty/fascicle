@@ -10,7 +10,9 @@ If your task is to construct a new agent that *consumes* the published `fascicle
 
 **`pnpm check:all` is the single source of truth for "done".** If it exits 0, your work is complete. If it exits non-zero, it is not. No other signal counts.
 
-`pnpm check` runs the default (fast) set — every check except the opt-in steps — and is what you should use in tight feedback loops. `pnpm check:all` adds the opt-in checks (Stryker `mutation`, plus the `build` + `publish` packaging gate) and is the gate before declaring done.
+The suite is [checkride](https://www.npmjs.com/package/checkride), configured in `checkride.config.json`. Each check occupies a named slot; `deps` is the one custom check (a fascicle-specific invariant), everything else is a checkride built-in.
+
+`pnpm check` runs the default (fast) set — every slot except the opt-in ones — and is what you should use in tight feedback loops. `pnpm check:all` adds the opt-in slots (Stryker `mutation`, plus the `build` → `publint`/`attw`/`pack`/`smoke`/`snippets` packaging gate) and is the gate before declaring done.
 
 Before declaring a task finished:
 
@@ -20,20 +22,27 @@ Before declaring a task finished:
 4. Fix the root cause, not the symptom.
 5. Re-run `pnpm check:all`.
 
+### The baseline
+
+`checkride.baseline.json` grandfathers the diagnostics that predate the gate, so a slot reporting `N baselined (grandfathered)` is green. Only findings *absent* from the baseline fail a run, which is what makes the gate ratchet: existing debt is frozen, new debt is blocked.
+
+**Never run `checkride baseline` to make a failure go away.** Re-baselining is a deliberate act (recording paid-down debt, or absorbing a tool's fingerprint change) and belongs in its own commit with the reason stated. A finding your change introduced gets fixed, not grandfathered.
+
 ## Tight feedback loops
 
 During iteration, use narrower commands for faster turnaround:
 
 ```bash
-pnpm check                     # default set (excludes opt-in mutation)
+pnpm check                     # default set (excludes the opt-in slots)
 pnpm check --bail              # stop at first failure
 pnpm check --only types,lint   # just the fast checks
+pnpm check --changed           # affected-only, against the git diff
 pnpm check --include mutation  # default set plus opt-in mutation
 pnpm test:watch                # watch-mode tests while implementing
 pnpm exec tsc --noEmit         # just types
 ```
 
-`pnpm check:all` (every check, including opt-in) is the final gate before declaring done. Stryker's `mutation` step is the slowest and is opt-in for exactly this reason; incremental mode keeps re-runs cheap once the shared baseline at `stryker.incremental.json` is up to date. The `build` + `publish` steps re-bundle and validate the npm packaging (pack manifest + type resolution), so surface changes fail here instead of at release time.
+`pnpm check:all` (every slot, including opt-in) is the final gate before declaring done. Stryker's `mutation` slot is the slowest and is opt-in for exactly this reason; incremental mode keeps re-runs cheap once the shared baseline at `stryker.incremental.json` is up to date. `build` re-bundles, then `publint`, `attw`, `pack`, `smoke`, and `snippets` validate the npm packaging against `dist/` (manifest, type resolution, import liveness, doc snippets vs the built `.d.ts`), so surface changes fail here instead of at release time.
 
 ## Conventions
 
@@ -68,8 +77,9 @@ This is a **single package**. All source lives under `src/`, organized as deep m
 - Do not disable lint rules to pass the check. If a rule is wrong for a case, discuss first or use a scoped inline suppression with a comment explaining why.
 - Do not add dependencies casually. Every new dep is surface area. Fallow will catch unused ones.
 - Do not add a file that is not imported by something. Fallow will flag it.
-- Do not skip writing tests for new behavior. Stryker runs as the opt-in `mutation` step (`pnpm check:all`) and will catch tests that pass trivially.
+- Do not skip writing tests for new behavior. Stryker runs as the opt-in `mutation` slot (`pnpm check:all`) and will catch tests that pass trivially.
 - Do not bypass `pnpm check:all` by running individual tools and claiming done.
+- Do not re-baseline to clear a failure you introduced. See "The baseline" above.
 
 ## MCP tools available
 

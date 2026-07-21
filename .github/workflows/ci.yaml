@@ -27,8 +27,8 @@ jobs:
         run: pnpm check
       - name: Build
         run: pnpm build
-      - name: Doc snippets vs built types
-        run: node scripts/check-doc-snippets.mjs --dist
+      # Consumes dist/: publint, attw, the pack manifest, the import smoke test,
+      # and the doc snippets typechecked against the built .d.ts.
       - name: Validate publish surface
         run: pnpm check:publish
 
