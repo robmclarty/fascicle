@@ -32,3 +32,7 @@ examples/red-green-refactor/.trajectory/
 # working research notes, specs, and explorations (root only; the design
 # rationale bundled with examples/amplify/research/ stays tracked)
 /research/
+
+# plumbbob build artifacts (intents, build logs, reports); they absorb the
+# research notes above, so they stay local for the same reason
+/.plumbbob/
