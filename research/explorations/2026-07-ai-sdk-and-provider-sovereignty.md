@@ -13,8 +13,7 @@ It captures the research and the argument behind that spec: what the Vercel AI S
 actually gives us, what we already own on top of it, where the dependency is load
 bearing versus incidental, and a taxonomy of provider integration depth that the
 spec turns into code. Sibling reading: [`2026-04-competition.md`](./2026-04-competition.md)
-and [`2026-06-strands.md`](./2026-06-strands.md) (the "who drives the loop" axis),
-and the `ai` build spec at [`.ridgeline/builds/ai/spec.md`](../../.ridgeline/builds/ai/spec.md).
+and [`2026-06-strands.md`](./2026-06-strands.md) (the "who drives the loop" axis).
 
 ## The question that started this
 
