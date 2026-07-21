@@ -131,7 +131,7 @@ A2A) batteries-included, or you are in the AWS / Bedrock ecosystem.
   of which wraps CLI harnesses like Claude Code), and *that* layer is a genuine
   competing implementation of what fascicle owns rather than a substrate for it.
   fascicle's stance is to depend on the turn driver and decline the agent layer;
-  see [the v7 capability triage](../research/explorations/2026-07-ai-sdk-v7-upgrade-and-capability-triage.md).
+  see [the agent-layer boundary](./providers.md#the-agent-layer-boundary).
 - **Claude Agent SDK** is a *lower* layer — Anthropic's SDK for building directly
   on Claude Code's tool loop. fascicle's `claude_cli` provider sits on the same
   territory but presents it as one more provider behind `generate`. A fascicle step

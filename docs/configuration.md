@@ -464,7 +464,7 @@ const engine = create_engine({
 });
 ```
 
-The two layers compose: run Layer 1 for a transport-neutral trace of the whole loop, and enable Layer 2 for extra spans inside `ai_sdk` turns. `AiSdkTelemetrySettings` is exported from `fascicle` for typing the settings object; `create_otel_trajectory_logger` and `OtelTrajectoryLoggerOptions` are exported from `fascicle/otel`. The full rationale for why `@ai-sdk/otel` is adopted only below the seam is in the [agent-layer boundary ADR](../research/explorations/2026-07-ai-sdk-agent-layer-boundary.md).
+The two layers compose: run Layer 1 for a transport-neutral trace of the whole loop, and enable Layer 2 for extra spans inside `ai_sdk` turns. `AiSdkTelemetrySettings` is exported from `fascicle` for typing the settings object; `create_otel_trajectory_logger` and `OtelTrajectoryLoggerOptions` are exported from `fascicle/otel`. `@ai-sdk/otel` is adopted only below the seam, for the reasons in [the agent-layer boundary](./providers.md#the-agent-layer-boundary).
 
 ## Lifecycle
 

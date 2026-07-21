@@ -78,7 +78,7 @@ The same recipe reaches vLLM, LiteLLM, or any other OpenAI-compatible gateway â€
 
 ## The agent-layer boundary
 
-fascicle uses the AI SDK strictly as a single-turn provider layer: every AI SDK call is `generateText` / `streamText` pinned to one step, issued from the one `ai_sdk` transport module, and the loop above it (multi-step execution, tool approval, salvage, `ends_turn`, cost, retry, trajectory) is fascicle's own. The SDK's agent layer (`ToolLoopAgent`, `WorkflowAgent`, `HarnessAgent`, `toolApproval`, scoped tool context, `@ai-sdk/otel`) is declined by a written decision record; the litmus test is that a framework must let you call one turn below its own loop. Before reaching for any of those APIs, read the [agent-layer boundary ADR](../research/explorations/2026-07-ai-sdk-agent-layer-boundary.md).
+fascicle uses the AI SDK strictly as a single-turn provider layer: every AI SDK call is `generateText` / `streamText` pinned to one step, issued from the one `ai_sdk` transport module, and the loop above it (multi-step execution, tool approval, salvage, `ends_turn`, cost, retry, trajectory) is fascicle's own. The SDK's agent layer (`ToolLoopAgent`, `WorkflowAgent`, `HarnessAgent`, `toolApproval`, scoped tool context, `@ai-sdk/otel`) is declined by design; the litmus test is that a framework must let you call one turn below its own loop. Anything the agent layer would own belongs above the seam, in fascicle's composition surface, so that swapping a provider never means swapping a loop.
 
 ## Capability matrix
 

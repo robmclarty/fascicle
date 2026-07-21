@@ -28,3 +28,7 @@ examples/red-green-refactor/.trajectory/
 
 # playwright MCP scratch (browser snapshots/logs from interactive testing)
 .playwright-mcp/
+
+# working research notes, specs, and explorations (root only; the design
+# rationale bundled with examples/amplify/research/ stays tracked)
+/research/

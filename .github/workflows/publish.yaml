@@ -5,7 +5,7 @@ name: Publish
 # this exact workflow's identity, minted per run, so there is no secret to
 # leak or rotate and no 2FA bypass. Provenance links the published tarball to
 # this commit and workflow run, verifiable on npmjs.com and via
-# `npm audit signatures`. See research/provenance-publish-spec.md.
+# `npm audit signatures`. See SECURITY.md for the full supply-chain posture.
 #
 # One-time setup outside the repo:
 #   - npmjs.com: package fascicle -> Settings -> Trusted Publisher ->

@@ -2,8 +2,8 @@
 
 Deferred composition primitives tracked here. Nothing on this list is scoped
 into v1. This file is the library-design parking lot for composers only; the
-product and distribution roadmap (and the live open design questions that
-touch composition) lives in [`docs/roadmap.md`](../../docs/roadmap.md).
+roadmap (and the live open design questions that touch composition) lives in
+[`docs/roadmap.md`](../../docs/roadmap.md).
 
 ## Bar for promotion
 
