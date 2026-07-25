@@ -29,9 +29,10 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { bench, create_engine } from 'fascicle'
-import type { BenchReport, EffortLevel, Engine } from 'fascicle'
+import { bench } from 'fascicle'
+import type { BenchReport, Engine } from 'fascicle'
 
+import { create_app_engine, read_engine_env } from './engine.js'
 import { SMOKE_INSTANCES } from './instances.js'
 import { solve_instance } from './flow.js'
 import type { SolveConfig } from './flow.js'
@@ -42,19 +43,12 @@ import {
   write_predictions,
 } from './judge.js'
 import { resolve_sandbox_factory } from './sandbox.js'
+import type { SandboxFactory } from './sandbox.js'
 import type { Prediction, SweBenchInstance } from './types.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const PACKAGE_ROOT = join(HERE, '..')
 const RUNS_DIR = join(PACKAGE_ROOT, '.runs')
-
-const VALID_EFFORTS: ReadonlySet<EffortLevel> = new Set([
-  'none', 'low', 'medium', 'high', 'xhigh', 'max',
-])
-
-function is_effort(value: string): value is EffortLevel {
-  return (VALID_EFFORTS as ReadonlySet<string>).has(value)
-}
 
 function pad2(n: number): string {
   return String(n).padStart(2, '0')
@@ -74,39 +68,44 @@ function predictions_from_report(report: BenchReport<SweBenchInstance, Predictio
   return predictions
 }
 
-type ProviderChoice =
-  | { readonly kind: 'claude_cli'; readonly model: string; readonly effort: EffortLevel; readonly shared_engine?: undefined }
-  | { readonly kind: 'anthropic'; readonly model: string; readonly shared_engine: Engine }
-
-function resolve_provider(): ProviderChoice {
-  const raw = (process.env['SWEBENCH_PROVIDER'] ?? 'claude_cli').toLowerCase()
-  if (raw === 'claude_cli') {
-    const model = process.env['SWEBENCH_MODEL'] ?? 'sonnet'
-    const effort_raw = process.env['SWEBENCH_EFFORT'] ?? 'medium'
-    if (!is_effort(effort_raw)) {
-      throw new Error(
-        `SWEBENCH_EFFORT="${effort_raw}" is not a valid effort level (none|low|medium|high|xhigh|max).`,
-      )
+/**
+ * Build the solve config, plus the engine the caller must dispose.
+ *
+ * The API path shares one engine across every case; the CLI path builds one per
+ * case inside the flow, because each needs its own sandbox cwd. Returning both
+ * together keeps "who owns disposal" answerable at the call site.
+ */
+function build_solve_config(
+  cfg: ReturnType<typeof read_engine_env>,
+  sandbox_factory: SandboxFactory,
+  model_name_or_path: string,
+): { readonly config: SolveConfig; readonly shared_engine?: Engine } {
+  if (cfg.provider === 'claude_cli') {
+    return {
+      config: {
+        provider: 'claude_cli',
+        model: cfg.model,
+        effort: cfg.effort,
+        sandbox_factory,
+        model_name_or_path,
+      },
     }
-    return { kind: 'claude_cli', model, effort: effort_raw }
   }
-  if (raw === 'anthropic') {
-    const api_key = process.env['ANTHROPIC_API_KEY'] ?? ''
-    if (api_key.length === 0) {
-      throw new Error('SWEBENCH_PROVIDER=anthropic requires ANTHROPIC_API_KEY.')
-    }
-    const model = process.env['SWEBENCH_MODEL'] ?? 'sonnet'
-    const shared_engine = create_engine({
-      providers: { anthropic: { api_key } },
-      defaults: { model },
-    })
-    return { kind: 'anthropic', model, shared_engine }
+  const shared_engine = create_app_engine(cfg)
+  return {
+    config: {
+      provider: 'anthropic',
+      engine: shared_engine,
+      model: cfg.model,
+      sandbox_factory,
+      model_name_or_path,
+    },
+    shared_engine,
   }
-  throw new Error(`SWEBENCH_PROVIDER="${raw}" not recognized. Use 'claude_cli' or 'anthropic'.`)
 }
 
 export async function run_swebench_smoke(): Promise<void> {
-  const provider = resolve_provider()
+  const cfg = read_engine_env()
 
   const run_id = make_run_id()
   const run_dir = join(RUNS_DIR, run_id)
@@ -117,23 +116,13 @@ export async function run_swebench_smoke(): Promise<void> {
 
   const sandbox_factory = resolve_sandbox_factory(process.env['SWEBENCH_SANDBOX'])
   const model_name_or_path =
-    process.env['SWEBENCH_MODEL_NAME'] ?? `fascicle-smoke-${provider.kind}-${provider.model}`
+    process.env['SWEBENCH_MODEL_NAME'] ?? `fascicle-smoke-${cfg.provider}-${cfg.model}`
 
-  const solve_config: SolveConfig = provider.kind === 'claude_cli'
-    ? {
-        provider: 'claude_cli',
-        model: provider.model,
-        effort: provider.effort,
-        sandbox_factory,
-        model_name_or_path,
-      }
-    : {
-        provider: 'anthropic',
-        engine: provider.shared_engine,
-        model: provider.model,
-        sandbox_factory,
-        model_name_or_path,
-      }
+  const { config: solve_config, shared_engine } = build_solve_config(
+    cfg,
+    sandbox_factory,
+    model_name_or_path,
+  )
   const flow = solve_instance(solve_config)
 
   const filter = process.env['SWEBENCH_INSTANCE']
@@ -152,7 +141,7 @@ export async function run_swebench_smoke(): Promise<void> {
 
   console.log(
     `swebench smoke run ${run_id}: ${String(cases.length)} case(s), ` +
-      `provider=${provider.kind} model=${provider.model} ` +
+      `provider=${cfg.provider} model=${cfg.model} ` +
       `sandbox=${process.env['SWEBENCH_SANDBOX'] ?? 'noop'}`,
   )
   console.log(`run dir: ${run_dir}`)
@@ -170,7 +159,7 @@ export async function run_swebench_smoke(): Promise<void> {
       },
     )
   } finally {
-    if (provider.kind === 'anthropic') await provider.shared_engine.dispose()
+    await shared_engine?.dispose()
   }
 
   await writeFile(report_path, `${JSON.stringify(report, null, 2)}\n`)

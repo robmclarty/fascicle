@@ -24,12 +24,15 @@ import { mkdir } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { create_engine, run, type EffortLevel } from 'fascicle'
+import { run, type EffortLevel } from 'fascicle'
 import { filesystem_logger, http_logger, tee_logger } from 'fascicle/adapters'
 import type { TrajectoryLogger } from 'fascicle'
 
-import { build_loop } from './loop.js'
-import { load_metric } from './metric.js'
+import { create_app_engine, DEFAULT_MODELS } from './engine.js'
+import { build_flow, type ResearchMode } from './flow.js'
+import { score_candidate } from './services/evaluate.js'
+import { load_metric } from './services/metric.js'
+import { filesystem_workspace } from './services/workspace.js'
 import type { Brief } from './types.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -121,6 +124,16 @@ function parse_args(argv: ReadonlyArray<string>): CliArgs {
   return { metric, rounds, candidates, budget_min, task, effort }
 }
 
+/**
+ * Pick the research mode from the environment.
+ *
+ * `web` lets the CLI's hosted WebSearch pull recent techniques; `offline`
+ * falls back to the model's training knowledge, at the cost of staleness.
+ */
+function pick_research_mode(): ResearchMode {
+  return process.env['AMPLIFY_RESEARCH'] === 'offline' ? 'offline' : 'web'
+}
+
 function pad2(n: number): string {
   return String(n).padStart(2, '0')
 }
@@ -150,10 +163,7 @@ export async function run_amplify(argv: ReadonlyArray<string>): Promise<void> {
     run_dir,
   }
 
-  const engine = create_engine({
-    providers: { claude_cli: { auth_mode: 'oauth' } },
-    defaults: { provider: 'claude_cli', model: 'opus', effort: cli.effort },
-  })
+  const engine = create_app_engine(cli.effort)
 
   const file_sink = filesystem_logger({
     output_path: join(run_dir, 'trajectory.jsonl'),
@@ -175,9 +185,11 @@ export async function run_amplify(argv: ReadonlyArray<string>): Promise<void> {
     console.log(`live-pushing trajectory to ${viewer_url}`)
   }
 
-  const loop = build_loop({
-    engine,
+  const flow = build_flow(engine, DEFAULT_MODELS, {
     candidates_per_round: cli.candidates,
+    research: pick_research_mode(),
+    workspace: filesystem_workspace,
+    score: score_candidate,
     budget: {
       max_rounds: cli.rounds,
       max_wallclock_ms: cli.budget_min * 60_000,
@@ -191,7 +203,12 @@ export async function run_amplify(argv: ReadonlyArray<string>): Promise<void> {
   console.log(`run dir: ${run_dir}`)
 
   try {
-    await run(loop, brief, { trajectory, install_signal_handlers: false })
+    const summary = await run(flow, brief, { trajectory, install_signal_handlers: false })
+    console.log('')
+    console.log(`stopped by:  ${summary.stopped_by} after ${String(summary.rounds_used)} round(s)`)
+    console.log(`baseline:    ${String(summary.baseline)}`)
+    console.log(`final score: ${String(summary.final_score)}`)
+    console.log(`improvement: ${summary.improvement_pct.toFixed(1)}%`)
     console.log(`✓ amplify done. trajectory: ${join(run_dir, 'trajectory.jsonl')}`)
   } finally {
     await engine.dispose()

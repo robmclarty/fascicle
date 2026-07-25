@@ -27,7 +27,7 @@ Each load-bearing decision below is traced to a finding in [`02-landscape.md`](.
 
 **Rejected.** MAP-Elites islands. Too much complexity for a demo. Worth trying if a user finds the v1 plateau is sticky.
 
-**Where.** `src/loop.ts:run_one_round` builds an `ensemble` of N `propose` members. Each member is one Anthropic call. Selection is `select: 'max'` over the per-candidate score (sign-flipped for `minimize` direction).
+**Where.** `src/flow.ts` fans a round out with `map` over N proposer inputs, then scores them with a second `map` at concurrency 1. Selection is `pick_winner` in `src/round.ts`, best score wins for the metric's direction. (This originally used `ensemble` with a `score` callback; the callback populated a mutable map, so the round moved to `map` plus a pure `decide_round` when the app was translated to the blueprint.)
 
 ---
 
@@ -57,7 +57,7 @@ Each load-bearing decision below is traced to a finding in [`02-landscape.md`](.
 
 ## D5. Diff-style "swap in / restore" instead of per-candidate worktree
 
-**Why.** Each candidate is one file's full content. Eval needs that file at a stable path so the test/bench tooling resolves imports. The simplest mechanism that's safe under parallel proposes is: **swap-in before each candidate's eval, restore after, sequential.** The ensemble's `score` callback is documented as sequential (`packages/core/src/ensemble.ts:88-92`) so this is fs-safe.
+**Why.** Each candidate is one file's full content. Eval needs that file at a stable path so the test/bench tooling resolves imports. The simplest mechanism that's safe under parallel proposes is: **swap-in before each candidate's eval, restore after, sequential.** The scoring `map` runs at concurrency 1, so this is fs-safe.
 
 **Rejected.** Per-candidate worktree (copy `target/` to `.runs/<run>/cand-K/`). Avoids restore but bloats disk and requires symlinking `node_modules`. Also means the gate command's `cwd` would have to change per candidate — a moving target compared to the simple "always run from `target_dir`" of the swap-in approach.
 
@@ -109,7 +109,7 @@ Each load-bearing decision below is traced to a finding in [`02-landscape.md`](.
 
 **Why `xhigh` as default.** It's the most reasoning Opus 4.7 will allocate without saturating the wall-clock; `max` is also exposed via `--effort max`. The proposer is the cognitively hardest call — it reasons about parent code + metric + lessons + research and emits a complete file rewrite — so allocating the highest available effort is the right default. Aider's architect/editor split makes the same argument: the reasoner is expensive, the executor doesn't need to be.
 
-**How it flows through fascicle.** Amplify passes `defaults.effort = cli.effort` to `create_engine`. The `claude_cli` provider's `effort_env_for_claude_cli()` (`packages/engine/src/providers/claude_cli/index.ts`) translates that value to the `CLAUDE_CODE_EFFORT_LEVEL` env var injected into the spawn args. Settings precedence: `--effort` flag → `AMPLIFY_EFFORT` env → `'xhigh'` default.
+**How it flows through fascicle.** Amplify passes `defaults.effort = cli.effort` to `create_engine`. The `claude_cli` provider's `effort_env_for_claude_cli()` (`src/engine/providers/claude_cli/index.ts`) translates that value to the `CLAUDE_CODE_EFFORT_LEVEL` env var injected into the spawn args. Settings precedence: `--effort` flag → `AMPLIFY_EFFORT` env → `'xhigh'` default.
 
 **Rejected.** Sonnet for proposals. The point of the demo is using the most capable reasoning we can afford.
 
@@ -139,7 +139,7 @@ Each load-bearing decision below is traced to a finding in [`02-landscape.md`](.
 
 **Rejected.** Statistical significance test on the bench samples. Worth doing for serious work; demo doesn't need it.
 
-**Where.** `src/loop.ts:strictly_better` and the `EPSILON` constant.
+**Where.** `src/round.ts:strictly_better` and the `EPSILON` constant.
 
 ---
 
@@ -147,4 +147,4 @@ Each load-bearing decision below is traced to a finding in [`02-landscape.md`](.
 
 **Why.** Replay is the single most useful debugging affordance. One JSONL per run, one line per fascicle event (including our `amplify.*` custom events), is the same shape the rest of the repo uses. Mirrors red-green-refactor. Plays nicely with Inspect AI / Braintrust later.
 
-**Where.** `src/main.ts` wires `filesystem_logger` to `<run_dir>/trajectory.jsonl`; events are recorded inside `src/loop.ts` via `ctx.trajectory.record(...)`.
+**Where.** `src/main.ts` wires `filesystem_logger` to `<run_dir>/trajectory.jsonl`; events are recorded from named steps in `src/flow.ts` via `ctx.trajectory.record(...)`.

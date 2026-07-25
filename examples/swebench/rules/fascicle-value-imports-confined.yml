@@ -1,0 +1,26 @@
+id: fascicle-value-imports-confined
+message: "Value imports from 'fascicle' are confined to the files allowed to know about it: src/engine.ts (create_engine), src/flow.ts (composition), src/main.ts (run + bench), src/stages/** (model_call), and src/judge.ts (a bench Judge is a Step, so building one is composition). Everywhere else import only types (`import type { ... } from 'fascicle'`), so business logic stays fascicle-free and the composition layer stays the one place the topology lives. See docs/blueprint.md."
+severity: error
+language: typescript
+files:
+  - src/**/*.ts
+ignores:
+  - src/**/__tests__/**
+  - src/engine.ts
+  - src/flow.ts
+  - src/main.ts
+  - src/stages/**/*.ts
+  # A `Judge<In, Out>` is a `Step`, so judge.ts builds steps the same way a
+  # stage factory does; the tool surface next to it stays type-only.
+  - src/judge.ts
+rule:
+  any:
+    - pattern: import { $$$ } from '$PATH'
+    - pattern: import { $$$ } from "$PATH"
+    - pattern: import $NAME from '$PATH'
+    - pattern: import $NAME from "$PATH"
+    - pattern: import * as $NAME from '$PATH'
+    - pattern: import * as $NAME from "$PATH"
+constraints:
+  PATH:
+    regex: '^fascicle$'

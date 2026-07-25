@@ -1,51 +1,17 @@
 /**
  * Structural backstops that the agent's prompt cannot lie its way past.
  *
- * - `snapshot_tests` reads every `*.test.ts` under the toy's src and counts
- *   the number of `it(...)` / `test(...)` definitions per file.
  * - `assert_one_test_added` compares two snapshots and throws unless exactly
  *   one new test definition appeared (and no existing tests were removed).
  * - `assert_tests_unchanged` throws if any byte of any test file changed
  *   between two snapshots — used after GREEN and REFACTOR to keep the agent
  *   from "fixing" failures by editing the test.
+ *
+ * Pure functions over snapshots. Taking the snapshots is IO and lives in
+ * `services/snapshot.ts`, which keeps these assertions testable with literals.
  */
 
-import { readFile, readdir } from 'node:fs/promises'
-import { join } from 'node:path'
-
-import { TOY_SRC } from './oracle.js'
-
-export type FileEntry = { readonly content: string; readonly test_count: number }
-export type Snapshot = ReadonlyMap<string, FileEntry>
-
-const TEST_CALL_RE = /\b(?:it|test)\s*(?:\.\w+)?\s*\(/g
-
-function count_tests(content: string): number {
-  return (content.match(TEST_CALL_RE) ?? []).length
-}
-
-async function list_test_files(root: string): Promise<readonly string[]> {
-  let entries: readonly string[]
-  try {
-    entries = await readdir(root, { recursive: true })
-  } catch {
-    return []
-  }
-  return entries
-    .filter((name) => name.endsWith('.test.ts'))
-    .map((name) => join(root, name))
-    .toSorted()
-}
-
-export async function snapshot_tests(): Promise<Snapshot> {
-  const files = await list_test_files(TOY_SRC)
-  const map = new Map<string, FileEntry>()
-  for (const path of files) {
-    const content = await readFile(path, 'utf8')
-    map.set(path, { content, test_count: count_tests(content) })
-  }
-  return map
-}
+import type { Snapshot } from './types.js'
 
 function total_tests(snap: Snapshot): number {
   let n = 0

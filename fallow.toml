@@ -11,6 +11,9 @@ entry = [
   "test/**/*.test.ts",
   "test/**/*.mjs",
   "stryker.config.mjs",
+  # Build and check-suite entry points: run by checkride and CI as commands,
+  # never imported, so nothing in the module graph reaches them.
+  "scripts/*.mjs",
 ]
 
 # The GitHub Pages marketing site: browser scripts loaded by <script> tags, not

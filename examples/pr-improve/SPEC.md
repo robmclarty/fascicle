@@ -249,6 +249,12 @@ examples/pr-improve/
     │   ├── pragmatist.ts                  # stage 2
     │   ├── builder.ts                     # stage 3 (tool_loop + worktree-scoped tools)
     │   └── build_reviewer.ts              # stage 4 + feedback loop
+    ├── prompts/                            # one markdown system prompt per role
+    │   ├── load.ts                         # frontmatter + body loader
+    │   ├── reviewer.md
+    │   ├── pragmatist.md
+    │   ├── builder.md
+    │   └── build_reviewer.md
     ├── tools/                              # builder's toolset, all worktree-scoped
     │   ├── list_dir.ts
     │   ├── read_file.ts
@@ -265,19 +271,19 @@ examples/pr-improve/
 
 Single tsconfig, single package boundary, no monorepo gymnastics.
 
-**Subprocess calls (`gh`, `git`)** must use the safe spawn helper pattern in this repo (no shell-string concatenation). Mirror how `packages/engine/src/providers/claude_cli/spawn.ts` invokes the CLI: argv array, no `shell: true`, env passed explicitly. (Reference for spawn hygiene only — we don't depend on the `claude_cli` provider.)
+**Subprocess calls (`gh`, `git`)** must use the safe spawn helper pattern in this repo (no shell-string concatenation). Mirror how `src/engine/providers/claude_cli/spawn.ts` invokes the CLI: argv array, no `shell: true`, env passed explicitly. (Reference for spawn hygiene only — we don't depend on the `claude_cli` provider.)
 
 ### Reuse — read these before writing anything new
 
-- `examples/red-green-refactor/src/harness.ts` — canonical multi-stage `scope` + `stash` + `use` flow. **Mirror this structure.**
+- `examples/red-green-refactor/src/flow.ts` — canonical multi-stage `scope` + `stash` + `use` flow. **Mirror this structure.**
 - `examples/reviewer.ts` — schema-driven reviewer with stub engine for tests.
 - `examples/adversarial_build.ts` — API-backed adversarial build↔critique loop. **This is the structural template for stages 3–4** (NOT `adversarial_claude_cli.ts`, which we're explicitly not using).
 - `examples/tool_loop.ts` — tool-equipped agent pattern. The builder is a tool_loop with file-editing tools.
-- `packages/agents/src/define_agent.ts` — markdown-defined agent factory; stage prompts live as markdown files loaded through this so we can iterate on prompts without redeploying.
-- `packages/engine/src/index.ts` — `create_engine` factory; multi-provider config is a single object.
-- `packages/observability/src/filesystem_logger.ts` — write trajectory to `.fascicle-pr-bot/<run-id>/trajectory.jsonl` for viewer replay (uploaded to S3 on container exit).
+- `src/agents/define_agent.ts` — markdown-defined agent factory; stage prompts live as markdown files loaded through this so we can iterate on prompts without redeploying.
+- `src/engine/index.ts` — `create_engine` factory; multi-provider config is a single object.
+- `src/adapters/filesystem_logger.ts` — write trajectory to `.fascicle-pr-bot/<run-id>/trajectory.jsonl` for viewer replay (uploaded to S3 on container exit).
 
-For subprocess calls (`gh`, `git`) the worker still follows the safe-spawn pattern shown in `packages/engine/src/providers/claude_cli/spawn.ts` (argv array, no `shell: true`, env passed explicitly) — we're using that file as a *reference for spawn hygiene*, not depending on the provider it implements.
+For subprocess calls (`gh`, `git`) the worker still follows the safe-spawn pattern shown in `src/engine/providers/claude_cli/spawn.ts` (argv array, no `shell: true`, env passed explicitly) — we're using that file as a *reference for spawn hygiene*, not depending on the provider it implements.
 
 ### What we are *not* building
 
@@ -360,7 +366,7 @@ Goal: stand up the whole pipeline working end-to-end on a real PR, locally, befo
 
 1. Extend `engine.ts` with a `claude_cli` provider branch (auth_mode `oauth`, no API key). Model defaults are the `sonnet` / `opus` families, resolved against the chosen provider.
 2. Add CLI flags to `main.ts`: `--pr <number>` (mutually exclusive with `--fixture`), `--provider <name>` (overrides `FASCICLE_PROVIDER` env). The `--push` flag from the original spec was dropped: real-PR runs always post the review and (on success) open the improvement PR + linking comment. Preview-only behavior is available via `--fixture` for local iteration.
-3. Add `src/github/pr.ts` (gh CLI wrappers — view, diff, create, comment, push) and `src/github/workspace.ts` (`git worktree add` + `gh pr checkout` helpers). Use the safe-spawn pattern from `packages/engine/src/providers/claude_cli/spawn.ts` as a hygiene reference.
+3. Add `src/github/pr.ts` (gh CLI wrappers — view, diff, create, comment, push) and `src/github/workspace.ts` (`git worktree add` + `gh pr checkout` helpers). Use the safe-spawn pattern from `src/engine/providers/claude_cli/spawn.ts` as a hygiene reference.
 4. Add `bin/pr-improve` — a thin shell wrapper around `tsx src/main.ts` so the user can `ln -s` it into `~/.local/bin/`. No build step.
 5. Verify the builder works under `claude_cli`. The engine uses the CLI's built-in file tools instead of our explicit `tool_loop` toolset. `make_builder_call`'s factory signature stays the same; `flow.ts` does not change.
 6. Demo: from inside a checkout of the fascicle repo (or any GitHub project), run `pr-improve <n>` against a real open PR → review comment lands → improvement PR (if pragmatist accepts) appears on GitHub with a linking comment on the original.
@@ -371,7 +377,7 @@ The first real-PR run aborted at the reviewer stage; that exposed three classes 
 
 - **Multi-candidate JSON extraction.** Sonnet wraps schema-driven output in markdown fences with surrounding prose. `parse_with_schema` now tries the trimmed text, then every fenced block, then the outermost `{...}` slice, then the outermost `[...]` slice, and picks the first that both parses and validates.
 - **Configurable claude_cli repair count.** The adapter previously hardcoded one repair; chained parse-then-zod failures exhausted the budget. The loop now honors `opts.schema_repair_attempts`. All four flow stages set it to 2.
-- **Reviewer prompt hardening.** Schema constraints (one_liner ≤ 120 chars, allowed category and severity values) are now restated in prose in `REVIEWER_SYSTEM`, alongside an explicit "JSON only — no fences, no prose" directive.
+- **Reviewer prompt hardening.** An explicit "JSON only, no fences, no prose" directive was added to the reviewer prompt. (Superseded: the field-level constraints this originally restated in prose now live in `.describe()` on the schema in `types.ts`, which travels to the model as part of the JSON schema, and the prompt states only the role and the output contract.)
 - **Unconditional worktree cleanup.** `run_pr_mode` wraps the post-`setup_worktree` body in `try/finally`. Worktree leaks (and the `.fascicle/` clutter they cause) no longer require manual `git worktree remove --force`. `.fascicle/` is also now in `.gitignore` so any stray dir from a SIGKILL doesn't pollute git status.
 
 ### Phase C — API engine + explicit `tool_loop` builder

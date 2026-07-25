@@ -6,7 +6,8 @@
   "private": true,
   "scripts": {
     "swebench": "tsx src/main.ts",
-    "test": "vitest run --config vitest.config.ts"
+    "test": "vitest run --config vitest.config.ts",
+    "check:rules": "ast-grep scan src"
   },
   "dependencies": {
     "fascicle": "workspace:*",

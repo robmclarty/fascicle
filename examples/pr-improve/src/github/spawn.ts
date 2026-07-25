@@ -2,7 +2,7 @@
  * Safe-spawn helper for `gh` and `git` subprocesses.
  *
  * Argv array, `shell: false`, env passed explicitly. Modeled on
- * `packages/engine/src/providers/claude_cli/spawn.ts:93-100`. Captures
+ * `src/engine/providers/claude_cli/spawn.ts:93-100`. Captures
  * stdout/stderr; errors include the failing argv and stderr for actionable
  * messages.
  *

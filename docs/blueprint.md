@@ -244,19 +244,22 @@ No formatting, no extraction, no flow knowledge. If a stage file imports `messag
 
 ## state.ts: quarantine the casts
 
-Scope state (`scope` / `stash` / `use`) is a string-keyed map of `unknown`; something has to cast. Concentrate all of it here:
+Scope state (`scope` / `stash` / `use`) is keyed by string and holds `unknown`; something has to cast. Concentrate all of it here:
 
 ```ts
 export const K = { PR: 'pr', SUGGESTIONS: 'suggestions', SPEC: 'spec' } as const
 
-export function read_pr(s: ReadonlyMap<string, unknown>): PRContext {
-  const v = s.get(K.PR)
-  if (v === undefined) throw new Error(`scope state missing key "${K.PR}"`)
-  return v as PRContext
+export function read_pr(state: { [k: string]: unknown }): PRContext {
+  return state[K.PR] as PRContext
 }
 ```
 
 The `read_*` helpers are the only place `as` appears on scope state. `flow.ts` writes `use([K.PR, K.SPEC], (s) => format_builder_message(read_pr(s), read_spec(s)))` and stays clean. Nothing enforces that `stash(K.PR, ...)` stored what `read_pr` claims, so keep keys and readers adjacent in this one file where a mismatch is visible in one screenful.
+
+Match the reader's parameter type to how the state arrives, which differs by call site:
+
+- **`use([...], fn)`** hands `fn` a plain object projection of just the requested keys, so readers take `{ [k: string]: unknown }` and index it. Keys absent from state project as `undefined`, so a reader for an optional value should return `T | undefined` rather than assert.
+- **`ctx.state` inside a `step` body** is the live `ReadonlyMap<string, unknown>`, so a reader for that call site takes `ReadonlyMap<string, unknown>` and uses `.get(key)`. Prefer `use` where you can: the projection is what makes the flow's data dependencies visible in `flow.ts` instead of buried in a step body.
 
 ## tools/: capability factories
 

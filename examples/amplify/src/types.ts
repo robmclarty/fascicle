@@ -73,3 +73,79 @@ export type RoundResult = {
   readonly accepted: boolean
   readonly parent_score: number
 }
+
+/** Role-to-model table, threaded into the flow as data. */
+export type FlowModels = {
+  readonly proposer: string
+  readonly researcher: string
+}
+
+/**
+ * The loop's carry-state: everything one round needs from the last one.
+ *
+ * Immutable and spread-updated per round, so nothing about the run's progress
+ * lives in a closure variable and the whole history is inspectable from a
+ * single value.
+ */
+export type RoundState = {
+  readonly round: number
+  readonly parent_content: string
+  readonly parent_score: number
+  readonly baseline: number
+  readonly lessons: ReadonlyArray<Lesson>
+  readonly budget: BudgetState
+  readonly history: ReadonlyArray<RoundRecord>
+}
+
+/** What one settled round contributes to the run's history. */
+export type RoundRecord = {
+  readonly round: number
+  readonly winner_id: string
+  readonly winner_value: number | null
+  readonly parent_score: number
+  readonly accepted: boolean
+  readonly candidates: number
+}
+
+/** Everything one proposer needs to write its prompt. */
+export type ProposerInput = {
+  readonly brief: Brief
+  readonly research: string
+  readonly round: number
+  readonly proposer_id: string
+  readonly parent_content: string
+  readonly parent_score: number
+  readonly lessons: ReadonlyArray<Lesson>
+}
+
+/** The pure decision a settled round produces, before any file is written. */
+export type RoundOutcome = {
+  readonly next_state: RoundState
+  readonly accepted: boolean
+  readonly record: RoundRecord
+}
+
+/** What the flow hands back to the shell. */
+export type RunSummary = {
+  readonly baseline: number
+  readonly final_score: number
+  readonly improvement_pct: number
+  readonly rounds_used: number
+  readonly stopped_by: 'budget' | 'plateau' | 'max_rounds'
+  readonly history: ReadonlyArray<RoundRecord>
+}
+
+export type BudgetConfig = {
+  readonly max_rounds: number
+  readonly max_wallclock_ms: number
+  readonly patience: number
+}
+
+export type BudgetState = {
+  readonly rounds_used: number
+  readonly rounds_since_progress: number
+  readonly started_at: number
+  readonly max_rounds: number
+  readonly max_wallclock_ms: number
+  readonly patience: number
+}

@@ -26,17 +26,13 @@ export default defineConfig({
     include: [
       'src/**/*.{test,spec}.ts',
       'test/**/*.{test,spec}.ts',
-      // pr-improve worktree-scoped builder tools (Phase C, PR A) +
-      // builder dispatch test (Phase C, PR B).
-      'examples/pr-improve/src/tools/**/*.{test,spec}.ts',
-      'examples/pr-improve/src/stages/**/*.{test,spec}.ts',
-      // Reference agents are demo code, but their behavior tests (stub-engine
-      // driven, no network) still run so the examples cannot rot silently.
+      // The examples are demo code, but their tests are stub-engine driven and
+      // hit no network, so they run in the default suite: an example that no
+      // longer matches the library is a docs bug that ships. Every example app
+      // colocates tests in `__tests__/`, so these two globs cover all of them
+      // and a new app is picked up without editing this list.
+      'examples/*/src/**/__tests__/**/*.{test,spec}.ts',
       'examples/agents/**/__tests__/**/*.{test,spec}.ts',
-      // Blueprint reference apps translated from production consumers: their
-      // stub-engine flow tests and pure-module tests run for the same reason.
-      'examples/change-triage/src/**/__tests__/**/*.{test,spec}.ts',
-      'examples/docs-concierge/src/**/__tests__/**/*.{test,spec}.ts',
     ],
     pool: 'forks',
     reporters: ['default'],

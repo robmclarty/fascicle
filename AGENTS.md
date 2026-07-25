@@ -58,7 +58,7 @@ pnpm exec tsc --noEmit         # just types
 
 ## Source layout
 
-This is a **single package**. All source lives under `src/`, organized as deep modules: `src/<module>/` (core, engine, composites, agents, adapters, mcp, viewer), each with a barrel `index.ts` that is its only public face. The umbrella surface sits at the `src/` root (`index.ts`, `model_call.ts`, `forward_standard_env.ts`); that is what bundles to npm as `fascicle`, and the `adapters`, `agents`, `mcp`, `otel`, `stdio`, and `ui` modules are additionally published as `fascicle/<module>` subpaths. The 5 apps under `examples/*/` are the only other workspace members; they depend on the library via `fascicle: workspace:*`.
+This is a **single package**. All source lives under `src/`, organized as deep modules: `src/<module>/` (core, engine, composites, agents, adapters, mcp, viewer), each with a barrel `index.ts` that is its only public face. The umbrella surface sits at the `src/` root (`index.ts`, `model_call.ts`, `forward_standard_env.ts`); that is what bundles to npm as `fascicle`, and the `adapters`, `agents`, `mcp`, `otel`, `stdio`, and `ui` modules are additionally published as `fascicle/<module>` subpaths. The 7 apps under `examples/*/` are the only other workspace members; they depend on the library via `fascicle: workspace:*`.
 
 **Barrels are import/export only.** An `index.ts` contains only `import`, `export … from`, `export { … }`, and `export type` statements (bare side-effect imports are fine). No runtime logic: module logic lives in a named sibling file (e.g. `create_engine` in `create_engine.ts`, `start_viewer` in `start_viewer.ts`) that the barrel re-exports. Enforced by `rules/no-logic-in-barrel.yml`.
 

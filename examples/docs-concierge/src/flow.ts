@@ -21,7 +21,7 @@ import { screen_question } from './screen.js'
 import type { Retriever } from './services/retriever.js'
 import { K, read_assessment, read_passages, read_question } from './state.js'
 import { make_answerer } from './stages/answerer.js'
-import type { AskInput, Outcome, Passage } from './types.js'
+import type { AskInput, Assessment, Outcome, Passage } from './types.js'
 
 export type FlowModels = {
   readonly answerer: string
@@ -42,7 +42,7 @@ export function build_flow(engine: Engine, models: FlowModels, env: FlowEnv): St
     step('retrieve', async (question: string) => env.retriever.search(question, env.k)),
   ])
 
-  const answerer_subflow: Step<unknown, unknown> = sequence([
+  const answerer_subflow: Step<unknown, Assessment> = sequence([
     use([K.QUESTION, K.PASSAGES], (s) => ({
       question: read_question(s),
       passages: read_passages(s),

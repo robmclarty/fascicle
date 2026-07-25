@@ -18,16 +18,26 @@ shape change.
 
 ## Layers
 
-| Layer              | File                | Role                                                  |
-| ------------------ | ------------------- | ----------------------------------------------------- |
-| Instance fixtures  | `src/instances.ts`  | 5 vendored cases; swap for HF loader at scale.        |
-| Types              | `src/types.ts`      | Wire shapes (`SweBenchInstance`, `Prediction`, etc.). |
-| Sandbox seam       | `src/sandbox.ts`    | `Sandbox` interface + `local`/`docker`/`noop` impls.  |
-| Tools              | `src/tools.ts`      | Per-case tools closing over the sandbox.              |
-| Prompt             | `src/prompt.ts`     | Initial prompt and system message.                    |
-| Solve flow         | `src/flow.ts`       | The `Step<SweBenchInstance, Prediction>` itself.      |
-| Judges + eval      | `src/judge.ts`      | Cheap in-bench judges + `sb-cli` shellout.            |
-| Driver             | `src/main.ts`       | CLI entry. Writes predictions/report/trajectories.    |
+Module split per [docs/blueprint.md](../../docs/blueprint.md).
+
+| Layer              | File                  | Role                                                    |
+| ------------------ | --------------------- | ------------------------------------------------------- |
+| Instance fixtures  | `src/instances.ts`    | 5 vendored cases; swap for HF loader at scale.          |
+| Types              | `src/types.ts`        | Wire shapes (`SweBenchInstance`, `Prediction`, etc.).   |
+| Engine             | `src/engine.ts`       | The only `create_engine` site; provider + model defaults.|
+| Sandbox seam       | `src/sandbox.ts`      | `Sandbox` interface + `local`/`docker`/`noop` impls.    |
+| Tools              | `src/tools/`          | One file per tool, all closing over the sandbox; caps in `limits.ts`. |
+| Prompt             | `src/prompts/solver.md` | The solver role as markdown, loaded by `prompts/load.ts`. |
+| Message            | `src/messages.ts`     | `format_solve_message`: the per-case user message.      |
+| Solve flow         | `src/flow.ts`         | The `Step<SweBenchInstance, Prediction>` itself.        |
+| Judges + eval      | `src/judge.ts`        | Cheap in-bench judges + `sb-cli` shellout.              |
+| Driver             | `src/main.ts`         | CLI entry. Writes predictions/report/trajectories.      |
+
+`flow.ts` is one named `step` rather than a composition, which is the blueprint's
+documented escape hatch: the tool surface closes over a per-case sandbox handle
+that only exists at runtime, so the wiring cannot be expressed statically. The
+step body stays wiring-only, with formatting, engine construction, and the tool
+surface each in their own module.
 
 ## Sandboxes
 

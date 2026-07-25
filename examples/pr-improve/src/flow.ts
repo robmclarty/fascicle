@@ -60,16 +60,9 @@ import { make_build_reviewer_call } from './stages/build_reviewer.js'
 import { make_builder_call } from './stages/builder.js'
 import { make_pragmatist_call } from './stages/pragmatist.js'
 import { make_reviewer_call } from './stages/reviewer.js'
-import type { BuildVerdict, FinalResult, Handoff, PRContext, PragmatistOutput, ReviewerOutput, Suggestion } from './types.js'
+import type { BuildVerdict, FinalResult, FlowModels, Handoff, PRContext, PragmatistOutput, ReviewerOutput, Suggestion } from './types.js'
 
 export const MAX_BUILD_REVIEW_ROUNDS = 3
-
-export type FlowModels = {
-  readonly reviewer: string
-  readonly pragmatist: string
-  readonly builder: string
-  readonly build_reviewer: string
-}
 
 export type FlowEnv = {
   readonly worktree_root: string

@@ -12,24 +12,29 @@ For the full design rationale — the academic landscape, the OSS prior art, the
 ┌─ scope ────────────────────────────────────────────────────┐
 │  stash(BRIEF)         user input: task + target + metric   │
 │  stash(BASELINE)      score the starter; this is the floor │
-│  stash(RESEARCH)      one-shot online research summary     │
+│  stash(RESEARCH)      fallback(web researcher, offline)    │
+│  seed round state     parent contents + baseline + budget  │
 │                                                            │
-│  while !budget.exhausted() && !budget.plateau():           │
-│    ensemble(N propose):  parallel model_call               │
-│       └─ score():          (sequential, fs-isolated)       │
-│            ├─ syntax: tsc --noEmit                         │
-│            ├─ gate:   metric.gate.command (exit 0 = pass)  │
-│            └─ measure: metric.score(impl_path)             │
-│    if winner > parent + ε: accept; commit to disk          │
-│    else: append lessons; budget.note_no_progress()         │
+│  loop(guard: budget exhausted or plateau):                 │
+│    map(propose, concurrency N):   parallel model_call      │
+│    map(score,   concurrency 1):   (sequential, fs-isolated)│
+│         ├─ syntax: tsc --noEmit                            │
+│         ├─ gate:   metric.gate.command (exit 0 = pass)     │
+│         └─ measure: metric.score(impl_path)                │
+│    branch(round accepted?)                                 │
+│      then      ─ commit the winner as the new parent       │
+│      otherwise ─ keep the parent, bank the lessons         │
 └────────────────────────────────────────────────────────────┘
 ```
 
-The harness uses three fascicle primitives heavily:
+The harness uses five fascicle primitives heavily:
 
 - `scope` / `stash` / `use` — the named-state pattern (typed projection of run-time state across phases)
-- `ensemble` — N parallel members, scored, winner picked by `select: 'max'`
-- `model_call` — `claude_cli` provider with `model: 'opus'` (latest Opus, resolved by the CLI) at `effort: 'xhigh'` (highest adaptive-reasoning level supported)
+- `loop` — the round loop, with the stop rule as a `guard` and progress as immutable carry-state rather than mutable closure variables
+- `map` — the per-round fan-out: proposals run concurrently, scoring runs at concurrency 1 because each candidate is swapped into the metric's mutable path while it is evaluated
+- `branch` — the accept/reject decision, so it shows up in the trajectory
+- `fallback` — the research stage degrades from web search to offline as an edge in the topology, not a `try` inside a step
+- `model_call` — `claude_cli` provider with `model: 'opus'` (an id the CLI resolves; API providers need a concrete id) at `effort: 'xhigh'`
 
 The starter target is a deliberately slow log aggregator (`target/src/log_aggregator.ts`) with several plausible improvement axes: pre-compile the regex, single-pass, streaming, drop substring allocations.
 
@@ -40,18 +45,29 @@ examples/amplify/
 ├── package.json
 ├── vitest.config.ts                   harness self-tests
 ├── research/                          design rationale (read this for "why")
+├── rules/                             the blueprint's ast-grep rules (pnpm check:rules)
 ├── src/
-│   ├── main.ts                        CLI entry
-│   ├── loop.ts                        the scope([...]) flow
-│   ├── propose.ts                     model_call → CandidateSpec (zod-validated)
-│   ├── apply.ts                       archive + swap-in/restore
-│   ├── evaluate.ts                    cascade: syntax → gate → measure
-│   ├── budget.ts                      iters / wall-clock / patience guards
-│   ├── lessons.ts                     bounded ring buffer of failure summaries
-│   ├── research.ts                    Claude Code CLI WebSearch tool with offline fallback
-│   ├── prompts.ts                     SYSTEM + per-stage prompts
-│   ├── metric.ts                      builtin/custom Metric loader
-│   └── types.ts                       Metric, Brief, Candidate, Score
+│   ├── main.ts                        the shell: argv, engine, adapters, exit
+│   ├── flow.ts                        THE composition layer: scope + loop + branch
+│   ├── engine.ts                      the only create_engine call site
+│   ├── state.ts                       scope keys + typed readers
+│   ├── round.ts                       pure round arithmetic (seed, decide, summarize)
+│   ├── budget.ts                      iters / wall-clock / patience rules (pure)
+│   ├── lessons.ts                     bounded ring buffer of failure summaries (pure)
+│   ├── messages.ts                    format_* user-message builders
+│   ├── types.ts                       Metric, Brief, Candidate, Score, RoundState
+│   ├── prompts/
+│   │   ├── proposer.md                the proposer role, as markdown
+│   │   ├── researcher.md              the researcher role, as markdown
+│   │   └── load.ts                    frontmatter + body loader
+│   ├── stages/
+│   │   ├── proposer.ts                model_call → Proposal (zod-validated)
+│   │   └── researcher.ts              web and offline researcher factories
+│   ├── services/
+│   │   ├── workspace.ts               archive + swap-in/restore (Workspace port)
+│   │   ├── evaluate.ts                cascade: syntax → gate → measure (CandidateScorer port)
+│   │   └── metric.ts                  builtin/custom Metric loader
+│   └── __tests__/                     budget, lessons, and the whole flow on a stub engine
 ├── metrics/
 │   ├── speed.ts                       tests pass + median wall-clock (default)
 │   ├── golden.ts                      tests pass + per-char match vs golden

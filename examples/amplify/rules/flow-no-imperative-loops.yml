@@ -1,0 +1,12 @@
+id: flow-no-imperative-loops
+message: "The composition layer expresses iteration with fascicle's loop()/map(), not hand-written for/while/do. Imperative control flow inside flow.ts is invisible to the trajectory and cannot be composed around. See docs/blueprint.md."
+severity: error
+language: typescript
+files:
+  - src/flow.ts
+rule:
+  any:
+    - kind: for_statement
+    - kind: for_in_statement
+    - kind: while_statement
+    - kind: do_statement

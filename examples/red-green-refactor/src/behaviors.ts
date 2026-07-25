@@ -5,10 +5,7 @@
  * than one test per RED phase.
  */
 
-export type Behavior = {
-  readonly id: string
-  readonly description: string
-}
+import type { Behavior } from './types.js'
 
 export const SEED_BEHAVIORS: readonly Behavior[] = [
   {

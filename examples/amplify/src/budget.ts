@@ -6,63 +6,58 @@
  * progress was being made; a plateau alone runs forever if the model keeps
  * producing tiny noise-level wins. All three together are the OpenEvolve /
  * AlphaEvolve / Karpathy autoresearch pattern.
+ *
+ * Pure functions over an immutable `BudgetState`, which rides inside the
+ * loop's carry-state. `now` is a parameter rather than a `Date.now()` call so
+ * the wall-clock rule is testable without waiting for a clock.
  */
 
-export type BudgetConfig = {
-  readonly max_rounds: number
-  readonly max_wallclock_ms: number
-  readonly patience: number
-}
+import type { BudgetConfig, BudgetState } from './types.js'
 
-export type Budget = {
-  exhausted: () => boolean
-  plateau: () => boolean
-  note_progress: () => void
-  note_no_progress: () => void
-  next_round: () => number
-  state: () => Readonly<BudgetState>
-}
-
-export type BudgetState = {
-  readonly rounds_used: number
-  readonly rounds_since_progress: number
-  readonly elapsed_ms: number
-  readonly max_rounds: number
-  readonly max_wallclock_ms: number
-  readonly patience: number
-}
-
-export function make_budget(config: BudgetConfig): Budget {
-  const started = Date.now()
-  let rounds_used = 0
-  let rounds_since_progress = 0
-
-  const elapsed = (): number => Date.now() - started
-
+export function initial_budget(config: BudgetConfig, started_at: number): BudgetState {
   return {
-    next_round: (): number => {
-      rounds_used += 1
-      return rounds_used
-    },
-    note_progress: (): void => {
-      rounds_since_progress = 0
-    },
-    note_no_progress: (): void => {
-      rounds_since_progress += 1
-    },
-    exhausted: (): boolean => {
-      return rounds_used >= config.max_rounds || elapsed() >= config.max_wallclock_ms
-    },
-    plateau: (): boolean => {
-      return rounds_since_progress >= config.patience
-    },
-    state: (): Readonly<BudgetState> => ({
-      rounds_used,
-      rounds_since_progress,
-      elapsed_ms: elapsed(),
-      max_rounds: config.max_rounds,
-      max_wallclock_ms: config.max_wallclock_ms,
-      patience: config.patience,
-    }),
+    rounds_used: 0,
+    rounds_since_progress: 0,
+    started_at,
+    max_rounds: config.max_rounds,
+    max_wallclock_ms: config.max_wallclock_ms,
+    patience: config.patience,
   }
+}
+
+/** Count a round as started. */
+export function open_round(state: BudgetState): BudgetState {
+  return { ...state, rounds_used: state.rounds_used + 1 }
+}
+
+export function note_progress(state: BudgetState): BudgetState {
+  return { ...state, rounds_since_progress: 0 }
+}
+
+export function note_no_progress(state: BudgetState): BudgetState {
+  return { ...state, rounds_since_progress: state.rounds_since_progress + 1 }
+}
+
+export function budget_exhausted(state: BudgetState, now: number): boolean {
+  return state.rounds_used >= state.max_rounds || now - state.started_at >= state.max_wallclock_ms
+}
+
+export function budget_plateau(state: BudgetState): boolean {
+  return state.rounds_since_progress >= state.patience
+}
+
+/**
+ * Why the loop should stop, or `undefined` to keep going.
+ *
+ * Returned as a reason rather than a boolean so the run summary can report
+ * which of the three rules actually fired.
+ */
+export function stop_reason(
+  state: BudgetState,
+  now: number,
+): 'max_rounds' | 'budget' | 'plateau' | undefined {
+  if (budget_plateau(state)) return 'plateau'
+  if (state.rounds_used >= state.max_rounds) return 'max_rounds'
+  if (now - state.started_at >= state.max_wallclock_ms) return 'budget'
+  return undefined
 }

@@ -6,7 +6,8 @@
   "private": true,
   "scripts": {
     "rgr": "tsx src/main.ts",
-    "test:toy": "vitest run --config vitest.config.ts"
+    "test:toy": "vitest run --config vitest.config.ts",
+    "check:rules": "ast-grep scan src"
   },
   "dependencies": {
     "fascicle": "workspace:*",

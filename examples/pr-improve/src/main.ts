@@ -30,10 +30,11 @@ import {
   create_app_engine,
   make_stub_engine,
   read_engine_env,
+  STUB_MODELS,
   type Provider,
   type StubResponse,
 } from './engine.js'
-import { build_flow, type FlowModels } from './flow.js'
+import { build_flow } from './flow.js'
 import {
   ensure_git_repo,
   gh_pr_comment,
@@ -60,7 +61,7 @@ import {
   render_review_comment,
   render_review_comment_empty,
 } from './render.js'
-import { PragmatistOutputSchema, type FinalResult, type PRContext, type Suggestion } from './types.js'
+import { pragmatist_output_schema, type FinalResult, type PRContext, type Suggestion } from './types.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const PACKAGE_ROOT = join(HERE, '..')
@@ -117,13 +118,6 @@ function parse_argv(argv: ReadonlyArray<string>): CliArgs {
   if (pr !== undefined) Object.assign(out, { pr })
   if (provider !== undefined) Object.assign(out, { provider })
   return out
-}
-
-function default_models(_provider: Provider | undefined): FlowModels {
-  // Model names are provider-agnostic family names ("latest of that family").
-  // The transport is the engine's configured provider; resolution maps each
-  // family to the right id per provider.
-  return { reviewer: 'sonnet', pragmatist: 'opus', builder: 'sonnet', build_reviewer: 'opus' }
 }
 
 async function load_pr_from_fixture(path: string): Promise<PRContext> {
@@ -339,12 +333,11 @@ async function run_fixture_mode(
   trajectory: ReturnType<typeof tee_logger>,
 ): Promise<FinalResult> {
   if (args.fixture === undefined) throw new Error('internal: run_fixture_mode without fixture')
-  const engine = args.stub
-    ? make_stub_engine(stub_responses())
-    : create_app_engine(read_engine_env(process.env, args.provider))
+  const cfg = args.stub ? undefined : read_engine_env(process.env, args.provider)
+  const engine = cfg === undefined ? make_stub_engine(stub_responses()) : create_app_engine(cfg)
   try {
     const pr = await load_pr_from_fixture(resolve(args.fixture))
-    const flow = build_flow(engine, default_models(args.provider), {
+    const flow = build_flow(engine, cfg?.models ?? STUB_MODELS, {
       worktree_root: run_dir,
       provider: args.provider ?? 'claude_cli',
     })
@@ -361,7 +354,7 @@ async function run_fixture_mode(
       if (stub_spec_raw !== undefined) {
         await writeFile(
           join(run_dir, 'IMPROVEMENT_SPEC.md'),
-          render_improvement_spec(pr, PragmatistOutputSchema.parse(stub_spec_raw)),
+          render_improvement_spec(pr, pragmatist_output_schema.parse(stub_spec_raw)),
         )
       }
     }
@@ -419,7 +412,7 @@ async function run_pr_mode(
     const engine = create_app_engine(cfg, { cwd: wt.worktree_path })
     let result: FinalResult
     try {
-      const flow = build_flow(engine, default_models(provider), {
+      const flow = build_flow(engine, cfg.models, {
         worktree_root: wt.worktree_path,
         provider,
       })

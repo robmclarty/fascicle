@@ -12,13 +12,17 @@ All of them import the published surface (`fascicle`, `fascicle/adapters`, `fasc
 
 | App | What it shows |
 | --- | --- |
-| [pr-improve/](./pr-improve/) | the canonical blueprint reference: a 4-stage PR-improvement pipeline with pure-composition `flow.ts`, provider-dispatched builder tools, and the blueprint's [ast-grep rules](./pr-improve/rules/) enforced in CI |
+| [pr-improve/](./pr-improve/) | the canonical blueprint reference: a 4-stage PR-improvement pipeline with pure-composition `flow.ts`, markdown prompts, and provider-dispatched builder tools |
 | [change-triage/](./change-triage/) | deterministic + model hybrid: zero-token detectors, one schema-mode model call, a score floor the model cannot undercut, and a privacy screen on the model's view |
 | [docs-concierge/](./docs-concierge/) | model-proposes, code-decides: grounded Q&A with number-based citations, a `define_agent` stage with a markdown prompt, and a one-way gate that prefers abstaining over confidently wrong |
-| [amplify/](./amplify/) | online self-improvement over a real codebase: propose → score → accept/reject with test-suite gates |
-| [red-green-refactor/](./red-green-refactor/) | a bounded TDD loop (`loop` at the top, phase modules below) |
-| [swebench/](./swebench/) | a SWE-bench harness: per-instance worktrees, fan-out, structured verdicts |
+| [amplify/](./amplify/) | online self-improvement over a real codebase: a `loop` whose guard is the budget, `map` fan-out per round, and a `branch` on accept/reject with test-suite gates |
+| [red-green-refactor/](./red-green-refactor/) | a bounded TDD loop with the test oracle and file snapshots behind ports, so the whole cycle runs in tests against a stub engine |
+| [swebench/](./swebench/) | a SWE-bench harness: per-instance sandboxes, a per-case tool surface, structured verdicts, and the blueprint's escape hatch used deliberately |
 | [mcp-server/](./mcp-server/) | serving a composed flow as an MCP tool via `serve_flow` |
+
+Six of the seven carry the blueprint's [ast-grep rules](./pr-improve/rules/) in their own `rules/` directory, run for every app by the `examples` slot of `pnpm check` (`scripts/check-example-rules.mjs`) and runnable per app with `pnpm --filter ./examples/<app> check:rules`. `mcp-server` is the exception: it is a three-file demo of one export with no composition layer to police, so blueprint rules there would be ceremony.
+
+Their tests run in the default suite too (stub engines, no network), so an example that stops matching the library fails `pnpm check` rather than rotting quietly.
 
 ## Single-file examples
 
