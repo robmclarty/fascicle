@@ -1,12 +1,29 @@
 # Changelog
 
-## Unreleased
+## v0.9.9 — 2026-07-24
+
+No library behavior changes in this release. Every `src/` edit in this range is
+a documentation comment, so the published runtime is unchanged from v0.9.8; the
+work is in the docs surface, the example apps, and the check suite.
+
+### Changed
+
+- **The public docs surface is now written for the public.** `research/` and the internal build trees are untracked, and the adoption and comparison pages are back in sync with the native transports: the AI SDK is the *default* path for seven of the eight providers rather than the only path, and both pages' AI-SDK-backed versus native counts are corrected.
+- **Every example app now matches [docs/blueprint.md](./docs/blueprint.md).** `pr-improve`, the canonical reference, moved its four system prompts into markdown files with frontmatter, renamed its schemas to `snake_case`, and moved the field-level output rules out of prose and into `.describe()` on the schemas, where they travel to the model as part of the JSON schema. `red-green-refactor`, `swebench`, and `amplify` predated the blueprint and were translated: one `create_engine` call site each, markdown prompts, and `state`/`stages`/`services` splits. `amplify`'s round loop was a `while` over mutable parent state driving an `ensemble` whose score callback populated a captured map; it is now `loop` + `map` + `branch` over immutable carry-state, with `fallback` replacing a buried try/catch, so the stop rule, the fan-out, and the accept/reject decision are all visible in the trajectory.
+
+### Fixed
+
+- **`docs/blueprint.md`'s `state.ts` snippet did not compile.** It declared its scope-state readers over `ReadonlyMap` and called `.get()`, but `use(keys, fn)` hands `fn` a plain object projection of the requested keys. The snippet now shows the real shape, with the `ReadonlyMap` variant documented for readers that go through `ctx.state` inside a step body instead.
+- **`examples/pr-improve` could not run on its own default provider.** It defaulted every role to `'sonnet'`/`'opus'` and claimed in comments that the engine expands those per provider. It does not — `model` is passed to the provider verbatim — so the documented default path (`FASCICLE_PROVIDER=anthropic`) sent a literal `"sonnet"` and got a not-found error. There is now one per-provider model table, resolved once and threaded as data, which also removes a second copy of that table and makes the `FASCICLE_MODEL_*` overrides reach the flow; they were previously parsed and discarded.
 
 ### Internal
 
 - **The check suite is now [checkride](https://www.npmjs.com/package/checkride) 0.6.0**, replacing the hand-rolled orchestrator. `scripts/check.mjs`, `check-links.mjs`, `check-doc-snippets.mjs`, and `check-publish.mjs` are deleted (~960 lines) in favour of built-in slots; `scripts/check-deps.mjs` stays as the one custom check, since the core/engine dependency invariant is fascicle-specific. The `pnpm check` / `check:all` / `check:json` / `check:bail` contract is unchanged and `pnpm check --changed` is new.
-- **Existing debt is grandfathered in `checkride.baseline.json`** (333 diagnostics across lint, struct, dead, dupes, health, spell). The gate ratchets: frozen debt passes, new findings fail. The `dupes` and `health` slots are now enforced rather than folded into a single fallow invocation that could not fail on them.
+- **Existing debt is grandfathered in `checkride.baseline.json`** (308 diagnostics across lint, struct, dead, dupes, health, spell). The gate ratchets: frozen debt passes, new findings fail. The `dupes` and `health` slots are now enforced rather than folded into a single fallow invocation that could not fail on them.
 - The packaging gate gains `publint` and splits the old monolithic `publish` step into `pack`, `smoke`, and `attw` (pinned to the `esm-only` profile). Doc snippets are typechecked against the built `.d.ts` as part of `pnpm check:publish`, rather than as a separate CI step.
+- **The blueprint is machine-checked on the examples.** All six composition apps carry its ast-grep rules, run for every app by a new `examples` check slot; `check:rules` was previously invoked by no CI job and no slot, and the library's own rules never matched the example apps because their `files:` globs are anchored at the repo root. `vitest` now globs `examples/*/src/**/__tests__`, so `swebench`'s and `amplify`'s suites, which had never executed, run in CI: 13 example tests became 51.
+- Every module-level function in `src/` now carries a doc block, enforced by `rules/function-comment-required.yml`, and the comments are written in the present tense with no design-history references.
+- Tooling: fallow 3.6.0, `publint` added, and the marketing site dropped from analysis (it reported every file as unused and its DOM handlers as complexity findings).
 
 ## v0.9.8 — 2026-07-19
 
