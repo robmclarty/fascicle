@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **Bedrock guardrails are documented and pinned by a wire contract test.** `provider_options.bedrock.guardrailConfig` reaches the top level of the Converse command through a seam `@ai-sdk/amazon-bedrock` does not document: its provider-options schema omits the key, and the request builder rest-spreads unknown keys into the command body, so a peer upgrade that tightens that spread would drop guardrails silently. `bedrock_guardrail_wire.test.ts` drives the real peer over a stubbed fetch and asserts the key lands top-level, survives the effort-translation merge, and that a `guardrail_intervened` stop surfaces as `finish_reason: 'content_filter'`. The bedrock section of `docs/providers.md` gains the matching recipe. No runtime changes.
+
 ## v0.9.9 — 2026-07-24
 
 No library behavior changes in this release. Every `src/` edit in this range is

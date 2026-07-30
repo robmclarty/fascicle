@@ -333,6 +333,27 @@ await engine.generate({
 
 Model ids are AWS Bedrock ids passed verbatim — on-demand ids like `anthropic.claude-3-5-sonnet-20241022-v2:0` or cross-region inference profiles like `us.anthropic.claude-sonnet-4-20250514-v1:0`. The trailing `:0` version suffix rides through untouched. Effort maps to the Bedrock `reasoningConfig.budgetTokens` field for Claude models (the same budgets as the `anthropic` adapter); models without reasoning drop it.
 
+Guardrails ride `provider_options.bedrock.guardrailConfig`, engine-wide via `defaults` or per call. The two-level merge keeps it alongside the effort translation's `reasoningConfig`, and it lands at the top level of the Converse request:
+
+```ts
+const engine = create_engine({
+  providers: { bedrock: { region: 'us-east-1' } },
+  defaults: {
+    provider_options: {
+      bedrock: {
+        guardrailConfig: {
+          guardrailIdentifier: 'arn:aws:bedrock:us-east-1:123456789012:guardrail/abc123',
+          guardrailVersion: '1',
+          trace: 'enabled',
+        },
+      },
+    },
+  },
+});
+```
+
+A guardrail intervention surfaces as `finish_reason: 'content_filter'`, so treat that as its own outcome rather than a normal completion. The pass-through relies on `@ai-sdk/amazon-bedrock` spreading unknown provider-option keys into the Converse command (its documented options schema omits `guardrailConfig`); a wire contract test pins that seam in this repo, but pin your own peer version and verify with `trace: 'enabled'` on first deploy.
+
 No default pricing ships for Bedrock (ids are region- and profile-specific). Add your own with `engine.register_price('bedrock', '<model-id>', { ... })`; until then cost is omitted, not an error.
 
 ## ollama
