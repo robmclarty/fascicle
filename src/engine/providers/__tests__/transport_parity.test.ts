@@ -9,6 +9,11 @@
  * mapping, tool-call shape) versus the hand-rolled native mapper turns this
  * suite red — which is the whole reason the seam exists.
  *
+ * `provider_reported` sits outside the golden and is pinned on its own: the SDK
+ * legs must report under the provider's own key and must report the same
+ * payload streamed and non-streamed, while the native legs report nothing. See
+ * `neutral` for why the two transports are not expected to match there.
+ *
  * Wire sharing per provider:
  *   - anthropic: one Messages-API (`/v1/messages`) fixture feeds both legs; the
  *     native adapter and @ai-sdk/anthropic both speak that wire, so this is
@@ -182,6 +187,24 @@ type ParitySpec = {
   readonly ai_sdk: AiSdkProviderAdapter
   readonly text: CaseFixtures
   readonly tool: CaseFixtures
+  /** The key the SDK's providerMetadata uses for this provider. */
+  readonly reported_key: string
+}
+
+/**
+ * Drop `provider_reported` from a TurnResult, leaving the neutral fields both
+ * transports must map identically.
+ *
+ * `provider_reported` is deliberately outside the golden: it carries the AI
+ * SDK's own providerMetadata verbatim, whose keys are the peer's synthesis
+ * (anthropic reports `container`, `iterations`, `contextManagement`) rather
+ * than fields on the wire. A native mapper reproducing that would be copying a
+ * peer's choices instead of reading the response, so the two transports are
+ * pinned separately below.
+ */
+function neutral(result: TurnResult): Omit<TurnResult, 'provider_reported'> {
+  const { provider_reported: _reported, ...rest } = result
+  return rest
 }
 
 function declare_parity_suite(make_spec: () => ParitySpec): void {
@@ -202,10 +225,27 @@ function declare_parity_suite(make_spec: () => ParitySpec): void {
         stub_fetch(fixtures.sse)
         const ai_sdk_s = await run_ai_sdk_turn(spec.ai_sdk, spec.model_id, true)
 
-        expect(native_ns, 'native non-streamed').toEqual(fixtures.golden)
-        expect(ai_sdk_ns, 'ai_sdk non-streamed').toEqual(fixtures.golden)
-        expect(native_s, 'native streamed').toEqual(fixtures.golden)
-        expect(ai_sdk_s, 'ai_sdk streamed').toEqual(fixtures.golden)
+        expect(neutral(native_ns), 'native non-streamed').toEqual(fixtures.golden)
+        expect(neutral(ai_sdk_ns), 'ai_sdk non-streamed').toEqual(fixtures.golden)
+        expect(neutral(native_s), 'native streamed').toEqual(fixtures.golden)
+        expect(neutral(ai_sdk_s), 'ai_sdk streamed').toEqual(fixtures.golden)
+
+        // The SDK keys its metadata by provider name, which is what lets
+        // provider_reported ride through untranslated, and it reports the same
+        // payload from the recorded JSON and SSE bodies. Pinning that here
+        // proves the stream/non-stream parity against the real peers rather
+        // than a mocked finish-step.
+        expect(ai_sdk_ns.provider_reported, 'ai_sdk non-streamed').toHaveProperty(
+          spec.reported_key,
+        )
+        expect(ai_sdk_s.provider_reported, 'ai_sdk streamed').toEqual(
+          ai_sdk_ns.provider_reported,
+        )
+
+        // The native mappers report nothing: they read the wire, not the SDK's
+        // synthesized metadata. Asserted so the asymmetry stays deliberate.
+        expect(native_ns.provider_reported, 'native non-streamed').toBeUndefined()
+        expect(native_s.provider_reported, 'native streamed').toBeUndefined()
       })
     }
   })
@@ -325,6 +365,7 @@ declare_parity_suite(() => ({
   model_id: OPENAI_MODEL,
   native: openai_native_adapter(),
   ai_sdk: openai_ai_sdk_adapter(),
+  reported_key: 'openai',
   text: {
     json: json_factory(OPENAI_TEXT_JSON),
     sse: sse_factory(openai_sse(OPENAI_TEXT_SSE)),
@@ -446,6 +487,7 @@ declare_parity_suite(() => ({
   model_id: ANTHROPIC_MODEL,
   native: as_native(create_anthropic_adapter({ api_key: 'sk-test', transport: 'native' })),
   ai_sdk: as_ai_sdk(create_anthropic_adapter({ api_key: 'sk-test' })),
+  reported_key: 'anthropic',
   text: {
     json: json_factory(ANTHROPIC_TEXT_JSON),
     sse: sse_factory(anthropic_sse(ANTHROPIC_TEXT_SSE)),

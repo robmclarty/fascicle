@@ -539,6 +539,9 @@ export async function run_tool_loop(config: ToolLoopConfig): Promise<ToolLoopRes
       }
       const breakdown = compute_and_record_cost(config, step_index, turn.usage)
       if (breakdown !== undefined) record_step.cost = breakdown
+      if (turn.provider_reported !== undefined) {
+        record_step.provider_reported = turn.provider_reported
+      }
       steps.push(record_step)
       if (config.on_finish_step !== undefined) config.on_finish_step(record_step)
       end_step_span(config.trajectory, step_span, {
@@ -892,6 +895,9 @@ export async function run_tool_loop(config: ToolLoopConfig): Promise<ToolLoopRes
     }
     const breakdown = compute_and_record_cost(config, step_index, turn.usage)
     if (breakdown !== undefined) step_record.cost = breakdown
+    if (turn.provider_reported !== undefined) {
+      step_record.provider_reported = turn.provider_reported
+    }
     steps.push(step_record)
     if (config.on_finish_step !== undefined) config.on_finish_step(step_record)
     end_step_span(config.trajectory, step_span, {

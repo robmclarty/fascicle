@@ -162,7 +162,7 @@ The prompt is written to stdin — either the first user message's text, or the 
 
 The CLI is a one-shot invocation. Multi-turn chat is represented by `session_id`, not by a `Message[]` history. Calling `generate({ prompt: [...] })` with two or more user messages throws `provider_capability_error('multi_turn_history', 'use provider_options.claude_cli.session_id instead')`.
 
-The idiomatic pattern: capture `result.provider_reported.session_id` on the first call, then pass it as `session_id` on follow-ups.
+The idiomatic pattern: capture `result.provider_reported.claude_cli.session_id` on the first call, then pass it as `session_id` on follow-ups. `provider_reported` is keyed by provider name (see [Provider-reported detail](./providers.md#provider-reported-detail)), and this adapter reports `session_id` and `duration_ms` under `claude_cli`.
 
 ## Tool bridging
 

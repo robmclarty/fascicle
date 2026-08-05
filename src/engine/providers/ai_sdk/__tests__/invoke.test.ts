@@ -6,6 +6,7 @@ import {
   map_finish_reason,
   map_stream_part_to_chunk,
   split_leading_system,
+  to_provider_reported,
   to_raw_provider_usage,
   to_sdk_messages,
   to_sdk_tools,
@@ -141,6 +142,38 @@ describe('default_usage_from_sdk', () => {
     expect(default_usage_from_sdk({ inputTokens: 5, outputTokens: 3 })).toStrictEqual({
       input_tokens: 5,
       output_tokens: 3,
+    })
+  })
+})
+
+describe('to_provider_reported', () => {
+  it('returns undefined for a provider that reported nothing', () => {
+    expect(to_provider_reported(undefined)).toBeUndefined()
+    expect(to_provider_reported(null)).toBeUndefined()
+    expect(to_provider_reported('trace')).toBeUndefined()
+    expect(to_provider_reported({})).toBeUndefined()
+  })
+
+  it('keeps the SDK provider keys and payloads untranslated', () => {
+    const trace = { guardrail: { inputAssessment: { pii: ['EMAIL'] } } }
+    expect(to_provider_reported({ amazonBedrock: { trace }, bedrock: { trace } })).toStrictEqual({
+      amazonBedrock: { trace },
+      bedrock: { trace },
+    })
+  })
+
+  it('copies the top level without cloning the opaque payload', () => {
+    const payload = { trace: { guardrail: {} } }
+    const metadata = { bedrock: payload }
+    const reported = to_provider_reported(metadata)
+    expect(reported).not.toBe(metadata)
+    expect(reported?.['bedrock']).toBe(payload)
+  })
+
+  it('keeps a reported key whose value is falsy or empty', () => {
+    expect(to_provider_reported({ openai: {}, anthropic: null })).toStrictEqual({
+      openai: {},
+      anthropic: null,
     })
   })
 })

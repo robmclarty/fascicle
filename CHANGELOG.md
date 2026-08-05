@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **`provider_reported` now carries what an `ai_sdk` provider reports, for every provider on that transport.** The AI SDK returns provider-volunteered detail on `providerMetadata` (Bedrock's guardrail trace, Anthropic's cache breakdown, OpenAI's service tier), already keyed by provider name. The transport read `text`, `toolCalls`, `finishReason`, and `usage` off the result and dropped the rest, so `GenerateResult.provider_reported` was structurally unreachable for every ai_sdk provider: only `claude_cli` ever populated it. The neutral `TurnResult` gains an optional `provider_reported`, the transport fills it from `providerMetadata` on both the `generateText` result and the streamed step-finish (so a streamed run and a plain run of the same call still report identically), the loop copies it onto `steps[i].provider_reported`, and `generate` folds the last reporting step into the call-level field. Keys and payloads ride through untranslated, so `provider_reported.bedrock.trace` needs no translation layer and a custom `ai_sdk` provider is served without per-provider code; a `native` adapter fills the same field from its own `invoke_turn`. Finish-reason mapping is untouched: a guardrail intervention still surfaces as `content_filter`, now with the trace beside it. This closes a real blind spot for Bedrock guardrails configured with a PII action of `NONE`, which detect and report without rewriting: the model output is byte-identical whether such a guardrail is attached and detecting or absent entirely, so the trace was the only in-process evidence it ran. `bedrock_guardrail_wire.test.ts` pins the round trip against the real peer over a stubbed fetch, and `provider_reported.test.ts` pins pass-through, stream parity, and the multi-step semantics.
+
+### Fixed
+
+- **`docs/cli.md` named a `provider_reported` path that does not exist.** The multi-turn recipe said to capture `result.provider_reported.session_id`, but the adapter reports under a provider-name key, so the value has always been at `result.provider_reported.claude_cli.session_id`. Following the documented path yielded `undefined` and a fresh session on every call.
+
 ## v0.9.11 — 2026-08-05
 
 ### Added

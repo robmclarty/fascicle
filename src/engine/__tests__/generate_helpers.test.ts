@@ -4,6 +4,7 @@ import {
   aggregate_cost,
   build_initial_messages,
   classify_provider_error,
+  last_provider_reported,
   round6,
   split_leading_system_messages,
 } from '../generate.js'
@@ -207,5 +208,36 @@ describe('round6 and aggregate_cost', () => {
 
   it('returns undefined for a free provider with no steps at all', () => {
     expect(aggregate_cost([], 'ollama')).toBeUndefined()
+  })
+})
+
+describe('last_provider_reported', () => {
+  const reported_step = (
+    index: number,
+    provider_reported?: Record<string, unknown>,
+  ): GenerateResult['steps'][number] => ({
+    ...step(undefined),
+    index,
+    ...(provider_reported !== undefined ? { provider_reported } : {}),
+  })
+
+  it('returns undefined when no step reported anything', () => {
+    expect(last_provider_reported([])).toBeUndefined()
+    expect(last_provider_reported([reported_step(0), reported_step(1)])).toBeUndefined()
+  })
+
+  it('takes the payload of the last reporting step', () => {
+    const first = { bedrock: { trace: 'first' } }
+    const last = { bedrock: { trace: 'last' } }
+    expect(
+      last_provider_reported([reported_step(0, first), reported_step(1, last)]),
+    ).toBe(last)
+  })
+
+  it('skips back over later steps that reported nothing', () => {
+    const first = { bedrock: { trace: 'first' } }
+    expect(
+      last_provider_reported([reported_step(0, first), reported_step(1), reported_step(2)]),
+    ).toBe(first)
   })
 })

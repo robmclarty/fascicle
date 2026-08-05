@@ -100,6 +100,12 @@ export type StepRecord = {
   usage: UsageTotals
   cost?: CostBreakdown
   finish_reason: FinishReason
+  /**
+   * This turn's provider-reported detail, keyed by provider name. See
+   * TurnResult.provider_reported; a multi-step call keeps every turn's payload
+   * here, since the call-level field can only carry one.
+   */
+  provider_reported?: Record<string, unknown>
 }
 
 export type UserContentPart =
@@ -187,6 +193,18 @@ export type TurnResult = {
   }>
   readonly finish_reason: FinishReason
   readonly usage: UsageTotals
+  /**
+   * Opaque detail the provider reported about this turn, keyed by provider
+   * name: Bedrock's guardrail trace, Anthropic's cache breakdown, whatever a
+   * given provider volunteers beyond text/usage/finish_reason. The keys are the
+   * provider's own, so a caller narrows `provider_reported['bedrock']` at its
+   * use site rather than the engine modelling every payload.
+   *
+   * Absent when the provider reported nothing, never an empty object. The loop
+   * copies it onto the step record and generate folds it into
+   * GenerateResult.provider_reported.
+   */
+  readonly provider_reported?: Record<string, unknown>
 }
 
 /**
@@ -303,6 +321,12 @@ export type GenerateResult<t = string> = {
   cost?: CostBreakdown
   finish_reason: FinishReason
   model_resolved: { provider: string; model_id: string }
+  /**
+   * Provider-keyed detail for the call, taken from the last step that reported
+   * any: provider payloads are opaque, so they cannot be summed the way usage
+   * and cost are. Mirrors `content` and `finish_reason` in reflecting the final
+   * turn; `steps[i].provider_reported` holds every turn's own payload.
+   */
   provider_reported?: Record<string, unknown>
 }
 

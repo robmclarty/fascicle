@@ -369,7 +369,7 @@ const engine = create_engine({
 });
 ```
 
-A guardrail intervention surfaces as `finish_reason: 'content_filter'`, so treat that as its own outcome rather than a normal completion. The pass-through relies on `@ai-sdk/amazon-bedrock` spreading unknown provider-option keys into the Converse command (its documented options schema omits `guardrailConfig`); a wire contract test pins that seam in this repo, but pin your own peer version and verify with `trace: 'enabled'` on first deploy.
+A guardrail intervention surfaces as `finish_reason: 'content_filter'`, so treat that as its own outcome rather than a normal completion. With `trace: 'enabled'`, the assessment AWS returns alongside the response lands on `provider_reported.bedrock.trace` (and under the peer's own `amazonBedrock` alias); see [Provider-reported detail](#provider-reported-detail). That is the only in-process signal for a PII action of `NONE`, which detects and reports without rewriting: the model output is byte-identical whether the guardrail is attached and detecting or absent entirely, so without the trace such a guardrail is invisible to the running agent. The pass-through relies on `@ai-sdk/amazon-bedrock` spreading unknown provider-option keys into the Converse command (its documented options schema omits `guardrailConfig`); a wire contract test pins that seam in this repo, but pin your own peer version and verify with `trace: 'enabled'` on first deploy.
 
 No default pricing ships for Bedrock (ids are region- and profile-specific). Add your own with `engine.register_price('bedrock', '<model-id>', { ... })`; until then cost is omitted, not an error.
 
@@ -512,6 +512,26 @@ type UsageTotals = {
 ```
 
 Fields that a provider cannot report are absent from the result (not zero). `GenerateResult.usage` is the sum across all steps; per-step totals live in `steps[i].usage`.
+
+## Provider-reported detail
+
+Providers volunteer detail beyond text, usage, and finish reason: Bedrock's guardrail trace, Anthropic's cache breakdown, OpenAI's service tier. All of it arrives on `GenerateResult.provider_reported`, keyed by provider name and otherwise untranslated:
+
+```ts
+const res = await engine.generate({ prompt: 'hi', max_tokens: 64 });
+const bedrock = res.provider_reported?.['bedrock']; // opaque: narrow at the use site
+```
+
+The keys are the provider's own and the payloads are opaque, so the engine models neither. The field is absent, never an empty object, when a provider reported nothing on that call.
+
+Two properties are worth knowing:
+
+- **Per turn and per call.** Every step keeps its own payload in `steps[i].provider_reported`. The call-level field carries the payload of the last step that reported one, the same way `content` and `finish_reason` reflect the final turn. Opaque payloads cannot be summed the way usage and cost are, and a provider reports the same keys on every turn, so merging them would overwrite rather than combine.
+- **The same under streaming.** A streamed run and a plain run of the same call report the same payload, because the AI SDK carries it on the streamed step-finish as well as on the plain result.
+
+For an `ai_sdk` provider this is the SDK's `providerMetadata` passed through, so it works for every provider on that transport, including custom ones, with no per-provider code. A `native` adapter fills the same field by setting `provider_reported` on the `TurnResult` it returns. The `claude_cli` provider, which owns its whole loop, reports `session_id` and `duration_ms` under a `claude_cli` key (see [cli.md](./cli.md#multi-turn-is-via-session_id)).
+
+One gap: when the AI SDK rejects a structured-output response before fascicle's own schema repair sees it, the recovered turn has no payload to report, because the SDK's error does not carry one. The repair turn that follows reports normally.
 
 ## Cost estimation
 

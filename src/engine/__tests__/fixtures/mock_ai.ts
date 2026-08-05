@@ -16,6 +16,7 @@ export type FakeStreamPart =
       type: 'finish-step'
       finishReason: string
       usage: { inputTokens: number; outputTokens: number } & Record<string, unknown>
+      providerMetadata?: Record<string, unknown>
     }
   | { type: 'error'; error: unknown }
   | { type: 'abort' }
@@ -25,6 +26,7 @@ export type FakeGenerateTextResult = {
   toolCalls: Array<{ toolCallId: string; toolName: string; input: unknown }>
   finishReason: string
   usage: { inputTokens: number; outputTokens: number } & Record<string, unknown>
+  providerMetadata?: Record<string, unknown>
 }
 
 export type FakeStreamScript = {

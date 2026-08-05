@@ -11,6 +11,11 @@
  * the behavior at the wire: stub fetch, drive the real peer through
  * create_ai_sdk_turn, and assert on the captured request body.
  *
+ * The return leg is pinned here too. With `trace: 'enabled'` the peer reports
+ * the assessment on `providerMetadata`, which the transport passes through to
+ * `provider_reported`, so the suite asserts the trace lands under the `bedrock`
+ * key against the real peer's own shape rather than a hand-built payload.
+ *
  * No live network (C5): fetch is stubbed. The bearer-token auth path is used,
  * so no SigV4 signing or ambient AWS credentials are involved, and the peer
  * loads lazily inside build_model, after the stub is installed.
@@ -43,13 +48,33 @@ type CapturedRequest = {
   readonly body: Record<string, unknown>
 }
 
+/**
+ * A guardrail trace as AWS shapes it with `trace: 'enabled'`: an assessment
+ * with a PII entity whose action is NONE, meaning detected and reported but
+ * not rewritten. The model output is byte-identical with or without the
+ * guardrail attached, so this payload is the only in-process evidence the
+ * guardrail ran at all.
+ */
+const GUARDRAIL_TRACE = {
+  guardrail: {
+    inputAssessment: {
+      'gr-1': {
+        sensitiveInformationPolicy: {
+          piiEntities: [{ type: 'EMAIL', match: 'a@b.example', action: 'NONE' }],
+        },
+      },
+    },
+  },
+}
+
 /** Minimal Converse response the SDK's response schema accepts. */
-function converse_response(stop_reason: string): Response {
+function converse_response(stop_reason: string, trace?: unknown): Response {
   return new Response(
     JSON.stringify({
       output: { message: { role: 'assistant', content: [{ text: 'hello' }] } },
       stopReason: stop_reason,
       usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
+      ...(trace !== undefined ? { trace } : {}),
     }),
     { status: 200, headers: { 'content-type': 'application/json' } },
   )
@@ -59,7 +84,7 @@ function converse_response(stop_reason: string): Response {
  * Stub global fetch to capture each outgoing request and answer with a fixed
  * Converse response. Returns the capture list, which fills as calls land.
  */
-function stub_capturing_fetch(stop_reason: string): CapturedRequest[] {
+function stub_capturing_fetch(stop_reason: string, trace?: unknown): CapturedRequest[] {
   const captured: CapturedRequest[] = []
   vi.stubGlobal(
     'fetch',
@@ -67,7 +92,7 @@ function stub_capturing_fetch(stop_reason: string): CapturedRequest[] {
       const raw = typeof init?.body === 'string' ? init.body : '{}'
       const parsed: unknown = JSON.parse(raw)
       captured.push({ url: String(input), body: json_record.parse(parsed) })
-      return converse_response(stop_reason)
+      return converse_response(stop_reason, trace)
     }),
   )
   return captured
@@ -145,5 +170,28 @@ describe('bedrock guardrail wire contract', () => {
     stub_capturing_fetch('guardrail_intervened')
     const result = await run_turn({ bedrock: { guardrailConfig: GUARDRAIL_CONFIG } })
     expect(result.finish_reason).toBe('content_filter')
+  })
+
+  it('round-trips the guardrail trace to provider_reported.bedrock.trace', async () => {
+    stub_capturing_fetch('guardrail_intervened', GUARDRAIL_TRACE)
+    const result = await run_turn({ bedrock: { guardrailConfig: GUARDRAIL_CONFIG } })
+
+    // The peer keys the payload under both `bedrock` and its own
+    // `amazonBedrock` alias; `bedrock` is the one that matches fascicle's
+    // provider id, so it is what a caller narrows on.
+    expect(result.provider_reported?.['bedrock']).toMatchObject({ trace: GUARDRAIL_TRACE })
+    expect(result.provider_reported?.['amazonBedrock']).toMatchObject({ trace: GUARDRAIL_TRACE })
+
+    // The trace is additive: the intervention still maps to content_filter.
+    expect(result.finish_reason).toBe('content_filter')
+  })
+
+  it('reports no trace key when the guardrail runs without trace enabled', async () => {
+    stub_capturing_fetch('end_turn')
+    const result = await run_turn({
+      bedrock: { guardrailConfig: { ...GUARDRAIL_CONFIG, trace: 'disabled' } },
+    })
+    const reported = result.provider_reported?.['bedrock']
+    expect(reported === undefined || !('trace' in json_record.parse(reported))).toBe(true)
   })
 })

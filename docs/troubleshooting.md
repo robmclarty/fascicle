@@ -97,6 +97,17 @@ with `engine.register_price(provider, model_id, { ... })` or the `pricing` confi
 key. `is_estimate` is always `true`; treat the number as a budget signal. See
 [configuration.md](./configuration.md#pricing).
 
+## `GenerateResult.provider_reported` is missing
+
+The field is present only when the provider volunteered detail on that call, and
+it is keyed by provider name: read `provider_reported.bedrock`, not
+`provider_reported.trace`. For Bedrock guardrails the assessment arrives only
+with `trace: 'enabled'` in `guardrailConfig`; without it AWS sends no trace and
+the field carries the rest of the metadata or nothing at all. A guardrail whose
+PII action is `NONE` rewrites nothing, so the trace is the only in-process
+evidence it ran. See
+[providers.md](./providers.md#provider-reported-detail).
+
 ## `schema_validation_error`
 
 The model returned text that failed your zod `schema` after the repair passes

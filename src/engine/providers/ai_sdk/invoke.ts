@@ -104,6 +104,27 @@ export function to_raw_provider_usage(usage: unknown): RawProviderUsage {
 }
 
 /**
+ * Normalize an AI SDK `providerMetadata` value into the neutral
+ * TurnResult.provider_reported shape.
+ *
+ * The SDK's metadata is already keyed by provider name, which is the shape
+ * provider_reported documents, so the keys ride through untranslated and every
+ * ai_sdk provider is served by this one seam: bedrock's guardrail `trace`,
+ * anthropic's cache detail, openai's own fields. The payloads stay opaque
+ * (callers narrow them at the use site), so this copies the top level and
+ * inspects nothing below it. An absent or empty map returns undefined, keeping
+ * "the provider reported nothing" spelled one way.
+ */
+export function to_provider_reported(metadata: unknown): Record<string, unknown> | undefined {
+  if (metadata === null || typeof metadata !== 'object') return undefined
+  const keys = Object.keys(metadata)
+  if (keys.length === 0) return undefined
+  const reported: Record<string, unknown> = {}
+  for (const key of keys) reported[key] = Reflect.get(metadata, key)
+  return reported
+}
+
+/**
  * Map fascicle's Message[] to the AI SDK's ModelMessage[] shape.
  */
 export function to_sdk_messages(messages: ReadonlyArray<Message>): ModelMessage[] {
@@ -299,6 +320,7 @@ async function collect_stream(
   const tool_calls: RawToolCall[] = []
   let finish_reason: FinishReason = 'stop'
   let raw_usage: RawProviderUsage = {}
+  let provider_reported: Record<string, unknown> | undefined
   let first = true
 
   for await (const part of stream_result.stream) {
@@ -319,6 +341,10 @@ async function collect_stream(
     if (part.type === 'finish-step') {
       finish_reason = map_finish_reason(part.finishReason)
       raw_usage = to_raw_provider_usage(part.usage)
+      // The streamed finish-step carries the same providerMetadata generateText
+      // returns on its result, which is what keeps a streamed run's
+      // provider_reported identical to a plain run's.
+      provider_reported = to_provider_reported(part.providerMetadata)
     }
     if (part.type === 'error') {
       throw part.error
@@ -341,6 +367,8 @@ async function collect_stream(
     tool_calls,
     finish_reason,
     usage: adapter.normalize_usage(raw_usage),
+    // Stryker disable next-line ConditionalExpression: an always-true spread only adds an explicit `provider_reported: undefined` key, which every reader of TurnResult treats identically to the absent key.
+    ...(provider_reported !== undefined ? { provider_reported } : {}),
   }
 }
 
@@ -370,11 +398,17 @@ async function collect_non_stream(
     })
   }
   const raw_usage = to_raw_provider_usage(result.usage)
+  // result.providerMetadata rather than result.finalStep.providerMetadata: the
+  // two are the same value under stopWhen isStepCount(1), and the flat field
+  // exists across the whole `ai` ^7 peer range this package declares.
+  const provider_reported = to_provider_reported(result.providerMetadata)
   return {
     text: result.text,
     tool_calls,
     finish_reason: map_finish_reason(result.finishReason),
     usage: adapter.normalize_usage(raw_usage),
+    // Stryker disable next-line ConditionalExpression: see collect_stream; the always-true spread is unobservable through every TurnResult reader.
+    ...(provider_reported !== undefined ? { provider_reported } : {}),
   }
 }
 
@@ -388,6 +422,10 @@ async function collect_non_stream(
  * turn result, so `parse_with_schema` re-validates it and the repair loop
  * engages exactly as it does for the prompt-based path. Returns undefined for
  * any other error so the caller rethrows.
+ *
+ * The recovered turn carries no provider_reported: the SDK's error exposes
+ * text, usage, finishReason and response metadata, but not providerMetadata,
+ * so there is nothing to read. The repair turn that follows reports normally.
  */
 function recover_no_object_generated(
   err: unknown,

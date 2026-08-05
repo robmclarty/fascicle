@@ -753,6 +753,8 @@ export async function generate<T = string>(
       model_resolved: { provider: target.provider, model_id: target.model_id },
     }
     if (aggregated_cost !== undefined) result.cost = aggregated_cost
+    const aggregated_reported = last_provider_reported(steps_accum)
+    if (aggregated_reported !== undefined) result.provider_reported = aggregated_reported
 
     if (on_chunk_provided) {
       await dispatcher.dispatch({
@@ -780,6 +782,22 @@ export async function generate<T = string>(
  */
 export function round6(v: number): number {
   return Math.round(v * 1e6) / 1e6
+}
+
+/**
+ * Pick the call-level `provider_reported` from the step records: the payload of
+ * the last step that reported one.
+ *
+ * Provider payloads are opaque, so unlike usage and cost there is nothing to
+ * sum and no safe way to merge two turns' keys (a provider reports the same keys
+ * every turn, so merging would silently overwrite rather than combine). Taking
+ * the final reporting turn matches how `content` and `finish_reason` are drawn
+ * from the last turn; every turn's own payload stays on `steps[i]`.
+ */
+export function last_provider_reported(
+  steps: ReadonlyArray<GenerateResult['steps'][number]>,
+): Record<string, unknown> | undefined {
+  return steps.findLast((s) => s.provider_reported !== undefined)?.provider_reported
 }
 
 /**
