@@ -1,6 +1,6 @@
 {
   "name": "fascicle",
-  "version": "0.9.10",
+  "version": "0.9.11",
   "description": "Compose agents like plain values. A TypeScript toolkit that wires LLM calls, tools, and functions into typed steps over eight providers. No framework, no ambient state.",
   "keywords": [
     "agents",
@@ -136,9 +136,6 @@
   },
   "peerDependenciesMeta": {
     "@ai-sdk/amazon-bedrock": {
-      "optional": true
-    },
-    "@aws-sdk/credential-providers": {
       "optional": true
     },
     "@aws-sdk/credential-providers": {

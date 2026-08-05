@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.9.11 — 2026-08-05
 
 ### Added
 
@@ -9,6 +9,10 @@
 ### Fixed
 
 - **`bedrock` documented an ambient AWS credential chain it never had.** The adapter's doc comments, `docs/providers.md`, and `docs/troubleshooting.md` all said that omitting credentials falls back to the AWS credential chain. It does not: `@ai-sdk/amazon-bedrock` resolves SigV4 keys from `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` and never opens `~/.aws/credentials`, so "omit the keys" silently produced an unauthenticated client that failed with a SigV4 error reading like a missing IAM grant. The claim is corrected everywhere and the real capability is now the `use_credential_chain` flag above. Lambda was never affected, since the execution role injects those env vars. `bedrock_credential_chain_wire.test.ts` pins the fix where it actually bit: with every AWS variable deleted from the environment and only a shared-credentials profile on disk, driving the real peer over a stubbed fetch and asserting the profile's key appears in the SigV4 `Authorization` scope. Its negative control asserts the same environment fails without the flag, so the suite cannot be masked by ambient credentials the way the bug was.
+
+### Internal
+
+- **The site's three pages carry real head metadata.** `index.html`, `docs.html`, and `blueprint.html` shipped with a head holding only charset and viewport, so tabs showed the bare URL and every link preview and search result had nothing to render. Each page now sets `lang="en"`, a distinct title and description drawn from its own copy, a canonical link, and the Open Graph and Twitter text tags. These sit in the static head rather than the `<helmet>` block, so crawlers that never run JavaScript still see them. No library changes.
 
 ## v0.9.10 — 2026-07-30
 
