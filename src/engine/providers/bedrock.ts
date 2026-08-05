@@ -22,6 +22,14 @@
  * Effort maps to the Anthropic extended-thinking budget, emitted under the
  * bedrock `reasoningConfig` provider option; models that do not support
  * reasoning drop the field upstream.
+ *
+ * Guardrails ride `provider_options.bedrock.guardrailConfig`, which the peer
+ * rest-spreads into the top level of the Converse command (an undocumented seam,
+ * pinned by bedrock_guardrail_wire.test.ts). With `trace: 'enabled'` the
+ * assessment comes back on `provider_reported.bedrock.trace`, which is the only
+ * in-process evidence that a guardrail whose PII action is `NONE` ran at all:
+ * that action detects and reports without rewriting, so the output is identical
+ * whether such a guardrail is attached or absent.
  */
 
 import type { BedrockCredentialProvider, EffortLevel, ProviderInit, UsageTotals } from '../types.js'

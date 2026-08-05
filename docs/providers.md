@@ -369,7 +369,23 @@ const engine = create_engine({
 });
 ```
 
-A guardrail intervention surfaces as `finish_reason: 'content_filter'`, so treat that as its own outcome rather than a normal completion. With `trace: 'enabled'`, the assessment AWS returns alongside the response lands on `provider_reported.bedrock.trace` (and under the peer's own `amazonBedrock` alias); see [Provider-reported detail](#provider-reported-detail). That is the only in-process signal for a PII action of `NONE`, which detects and reports without rewriting: the model output is byte-identical whether the guardrail is attached and detecting or absent entirely, so without the trace such a guardrail is invisible to the running agent. The pass-through relies on `@ai-sdk/amazon-bedrock` spreading unknown provider-option keys into the Converse command (its documented options schema omits `guardrailConfig`); a wire contract test pins that seam in this repo, but pin your own peer version and verify with `trace: 'enabled'` on first deploy.
+A guardrail intervention surfaces as `finish_reason: 'content_filter'`, so treat that as its own outcome rather than a normal completion. With `trace: 'enabled'`, the assessment AWS returns alongside the response lands on `provider_reported.bedrock.trace` (and under the peer's own `amazonBedrock` alias); see [Provider-reported detail](#provider-reported-detail):
+
+```ts
+type GuardrailReport = { trace?: unknown };
+
+const res = await engine.generate({ prompt: 'summarize this ticket' });
+if (res.finish_reason === 'content_filter') {
+  // provider_reported is absent when the provider reported nothing, and opaque
+  // when present: read it optionally, and give it a shape at the use site.
+  const reported = res.provider_reported?.['bedrock'] as GuardrailReport | undefined;
+  console.log(reported?.trace);
+}
+```
+
+The trace is worth reading on ordinary completions too, not just interventions. It is the only in-process signal for a PII action of `NONE`, which detects and reports **without** rewriting: the model output is byte-identical whether such a guardrail is attached and detecting or absent entirely, so a caller reading only `content` and `finish_reason` cannot tell the two apart. If a guardrail looks ignored, [troubleshooting.md](./troubleshooting.md#a-bedrock-guardrail-seems-ignored-and-the-output-is-unchanged) separates that case from a genuinely dropped config.
+
+The pass-through relies on `@ai-sdk/amazon-bedrock` spreading unknown provider-option keys into the Converse command (its documented options schema omits `guardrailConfig`); a wire contract test pins that seam in this repo, but pin your own peer version and verify with `trace: 'enabled'` on first deploy.
 
 No default pricing ships for Bedrock (ids are region- and profile-specific). Add your own with `engine.register_price('bedrock', '<model-id>', { ... })`; until then cost is omitted, not an error.
 

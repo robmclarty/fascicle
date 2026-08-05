@@ -108,6 +108,26 @@ PII action is `NONE` rewrites nothing, so the trace is the only in-process
 evidence it ran. See
 [providers.md](./providers.md#provider-reported-detail).
 
+## A Bedrock guardrail seems ignored and the output is unchanged
+
+Check what the guardrail is configured to *do* before suspecting the wiring. A
+PII action of `NONE` detects and reports without rewriting, so unchanged output
+is the expected result rather than a dropped config. A benign prompt cannot
+distinguish "attached and detecting" from "not attached" at all: with
+`trace: 'enabled'`, `provider_reported.bedrock.trace` is the only in-process
+difference between the two.
+
+To test the wiring rather than the policy, pass a deliberately invalid
+`guardrailIdentifier`. AWS answers `The provided guardrail identifier is
+invalid.` only if the config actually reached the Converse command, whereas a
+silently dropped `provider_options.bedrock.guardrailConfig` produces a call that
+*succeeds*. Success is the failure signal. The probe needs no guardrail to
+exist, so it works before one is provisioned.
+
+To test enforcement instead, trip the policy: expect
+`finish_reason: 'content_filter'` and the guardrail's own block message as the
+content. See [providers.md](./providers.md#bedrock).
+
 ## `schema_validation_error`
 
 The model returned text that failed your zod `schema` after the repair passes
