@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.10.0 — 2026-08-05
 
 ### Added
 
@@ -9,6 +9,10 @@
 ### Fixed
 
 - **`docs/cli.md` named a `provider_reported` path that does not exist.** The multi-turn recipe said to capture `result.provider_reported.session_id`, but the adapter reports under a provider-name key, so the value has always been at `result.provider_reported.claude_cli.session_id`. Following the documented path yielded `undefined` and a fresh session on every call.
+
+### Internal
+
+- **The Bedrock guardrail docs show how to read the trace the change above made readable.** `docs/providers.md` gains a worked read of `provider_reported.bedrock.trace` beside the existing guardrail recipe, `docs/troubleshooting.md` gains an entry for the symptom that actually gets reported ("the guardrail seems ignored, the output came back unchanged"), and the adapter docstring carries the same claim at the source. The entry separates policy from wiring: a PII action of `NONE` detects without rewriting, so unchanged output is the configured behaviour rather than a dropped `guardrailConfig`, and the way to test the wiring instead is a deliberately invalid `guardrailIdentifier`: AWS rejects the call only if the config reached the Converse command, so a call that succeeds is the failure signal.
 
 ## v0.9.11 — 2026-08-05
 
