@@ -312,6 +312,20 @@ export type ProviderInit = {
   [k: string]: unknown
 }
 
+/**
+ * AWS credentials as `@ai-sdk/amazon-bedrock`'s `credentialProvider` seam
+ * expects them. The SDK supplies `region` itself, calls the provider once per
+ * request, and never passes arguments, so a provider that caches and refreshes
+ * (as `fromNodeProviderChain()` does) is the norm rather than the exception.
+ */
+export type BedrockCredentials = {
+  accessKeyId: string
+  secretAccessKey: string
+  sessionToken?: string
+}
+
+export type BedrockCredentialProvider = () => PromiseLike<BedrockCredentials>
+
 export type ProviderConfigMap = {
   anthropic?: { api_key: string; base_url?: string; transport?: ProviderTransport }
   openai?: { api_key: string; base_url?: string; organization?: string; transport?: ProviderTransport }
@@ -332,6 +346,8 @@ export type ProviderConfigMap = {
     secret_access_key?: string
     session_token?: string
     base_url?: string
+    use_credential_chain?: boolean
+    credential_provider?: BedrockCredentialProvider
   }
   claude_cli?: ClaudeCliProviderConfig
   [custom: string]: ProviderInit | undefined

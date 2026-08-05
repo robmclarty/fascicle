@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **The bedrock provider has a real ambient-credential mode.** `use_credential_chain: true` loads `@aws-sdk/credential-providers` (a new optional peer) and hands `fromNodeProviderChain()` to the SDK, so `~/.aws/credentials` profiles, SSO, and ECS/EC2 instance roles authenticate without exporting keys into the environment first. `credential_provider` is the escape hatch for callers that already hold a provider, such as an assume-role flow; supplying both is an `engine_config_error`. The chain is built once per adapter so its memoized credential cache survives across requests.
+
+### Fixed
+
+- **`bedrock` documented an ambient AWS credential chain it never had.** The adapter's doc comments, `docs/providers.md`, and `docs/troubleshooting.md` all said that omitting credentials falls back to the AWS credential chain. It does not: `@ai-sdk/amazon-bedrock` resolves SigV4 keys from `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` and never opens `~/.aws/credentials`, so "omit the keys" silently produced an unauthenticated client that failed with a SigV4 error reading like a missing IAM grant. The claim is corrected everywhere and the real capability is now the `use_credential_chain` flag above. Lambda was never affected, since the execution role injects those env vars. `bedrock_credential_chain_wire.test.ts` pins the fix where it actually bit: with every AWS variable deleted from the environment and only a shared-credentials profile on disk, driving the real peer over a stubbed fetch and asserting the profile's key appears in the SigV4 `Authorization` scope. Its negative control asserts the same environment fails without the flag, so the suite cannot be masked by ambient credentials the way the bug was.
+
 ## v0.9.10 — 2026-07-30
 
 ### Added

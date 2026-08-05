@@ -121,6 +121,7 @@
   },
   "peerDependencies": {
     "@ai-sdk/amazon-bedrock": "^5.0.0",
+    "@aws-sdk/credential-providers": "^3.0.0",
     "@ai-sdk/anthropic": "^4.0.0",
     "@ai-sdk/google": "^4.0.0",
     "@ai-sdk/openai": "^4.0.0",
@@ -135,6 +136,12 @@
   },
   "peerDependenciesMeta": {
     "@ai-sdk/amazon-bedrock": {
+      "optional": true
+    },
+    "@aws-sdk/credential-providers": {
+      "optional": true
+    },
+    "@aws-sdk/credential-providers": {
       "optional": true
     },
     "@ai-sdk/anthropic": {

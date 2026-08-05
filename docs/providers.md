@@ -312,11 +312,12 @@ const engine = create_engine({
   providers: {
     bedrock: {
       region: process.env.BEDROCK_REGION ?? process.env.AWS_REGION!,
-      // pick ONE auth path, or omit all of them for the ambient AWS credential chain:
+      // pick ONE auth path:
       api_key: process.env.AWS_BEARER_TOKEN_BEDROCK,        // Bedrock API key (bearer); wins over SigV4
       access_key_id: process.env.AWS_ACCESS_KEY_ID,         // SigV4
       secret_access_key: process.env.AWS_SECRET_ACCESS_KEY,
       session_token: process.env.AWS_SESSION_TOKEN,         // optional, for temporary creds
+      use_credential_chain: true,                           // or: resolve via the AWS credential chain
     },
   },
 });
@@ -329,7 +330,23 @@ await engine.generate({
 });
 ```
 
-`region` is required (set it explicitly or via `BEDROCK_REGION` / `AWS_REGION`); the adapter throws `engine_config_error` without one. Credentials are optional: supply an `api_key` (Bedrock bearer token, which takes precedence), SigV4 keys (`access_key_id` + `secret_access_key`, plus an optional `session_token`), or omit all of them to use the ambient AWS credential chain (env vars, shared config, instance/role providers).
+`region` is required (set it explicitly or via `BEDROCK_REGION` / `AWS_REGION`); the adapter throws `engine_config_error` without one. Credentials resolve down this ladder:
+
+| Config | Credential source |
+| --- | --- |
+| `api_key` | Bedrock bearer token. Replaces SigV4 entirely, so it wins over everything below. |
+| `access_key_id` / `secret_access_key` / `session_token` | Explicit SigV4 keys. Any one of them present means you are driving credentials, so no dynamic source is attached. |
+| `use_credential_chain: true` | The AWS credential chain — env vars, `~/.aws/credentials` and `~/.aws/config` profiles, SSO, ECS/EC2 instance roles. Requires the `@aws-sdk/credential-providers` optional peer. |
+| `credential_provider` | A function you supply, called once per request, returning `{ accessKeyId, secretAccessKey, sessionToken? }`. The escape hatch for assume-role flows that already hold a provider. |
+| none of the above | `@ai-sdk/amazon-bedrock` reads `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` **from the environment only**, and throws if they are unset. |
+
+> **Omitting credentials is not the credential chain.** `@ai-sdk/amazon-bedrock` reads the two AWS env vars and nothing else — it never opens `~/.aws/credentials`. A profile that works with `aws` CLI commands will still fail here unless you set `use_credential_chain: true` or export the keys into the environment first. The failure surfaces as a SigV4 credentials error that reads like a missing IAM grant.
+
+```bash
+pnpm add @aws-sdk/credential-providers   # only needed for use_credential_chain
+```
+
+`use_credential_chain` is a fallback rather than an override, so it is safe to set unconditionally: on a laptop it picks up your profile, and in Lambda the execution role's env-var credentials take precedence if you forward them. Setting both `use_credential_chain` and `credential_provider` is an `engine_config_error` — they are two answers to the same question, not a fallback pair.
 
 Model ids are AWS Bedrock ids passed verbatim — on-demand ids like `anthropic.claude-3-5-sonnet-20241022-v2:0` or cross-region inference profiles like `us.anthropic.claude-sonnet-4-20250514-v1:0`. The trailing `:0` version suffix rides through untouched. Effort maps to the Bedrock `reasoningConfig.budgetTokens` field for Claude models (the same budgets as the `anthropic` adapter); models without reasoning drop it.
 

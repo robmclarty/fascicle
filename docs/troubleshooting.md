@@ -57,8 +57,14 @@ variable is set and passed into the config:
 | `ollama` / `lmstudio` | no key; a reachable local `base_url`               |
 
 `bedrock` throws `engine_config_error` if `region` is missing entirely (set it or
-`AWS_REGION`); credentials beyond that are optional and fall back to the ambient
-AWS credential chain. Per-provider notes: [providers.md](./providers.md).
+`AWS_REGION`). Beyond that, supply an `api_key`, explicit SigV4 keys, or
+`use_credential_chain: true`. Omitting all three does *not* reach the AWS
+credential chain: `@ai-sdk/amazon-bedrock` reads `AWS_ACCESS_KEY_ID` /
+`AWS_SECRET_ACCESS_KEY` from the environment only and never opens
+`~/.aws/credentials`, so a working `aws` CLI profile still fails with a SigV4
+credentials error that looks like a missing IAM grant. Set
+`use_credential_chain: true` (and install `@aws-sdk/credential-providers`) to
+use the profile. Per-provider notes: [providers.md](./providers.md).
 
 ## `claude_cli` problems
 
