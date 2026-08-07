@@ -269,6 +269,7 @@ Typed errors live in `fascicle`:
 | `rate_limit_error`               | 429 responses after retry exhaustion                  |
 | `tool_error`                     | a tool's `execute` throws                             |
 | `schema_validation_error`        | `schema` parsing failed after repair attempts         |
+| `incomplete_generation_error`    | `schema` set and the call finished on a non-`stop` reason |
 | `engine_config_error`            | invalid `create_engine(config)`                       |
 | `engine_disposed_error`          | calling `generate` after `engine.dispose()`           |
 | `model_required_error`           | no `model` given and no `defaults.model` set          |

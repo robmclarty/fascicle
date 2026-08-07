@@ -12,6 +12,8 @@
  * see the ignores in `rules/no-core-value-import-in-engine.yml`.
  */
 
+import type { FinishReason } from './types.js'
+
 export { aborted_error } from '#core'
 
 export class rate_limit_error extends Error {
@@ -63,6 +65,9 @@ export class provider_error extends Error {
  * stream interruption first.
  */
 export class turn_timeout_error extends Error {
+  // classify_retryable reads this off an `unknown` via read_string(err, 'kind'),
+  // a dynamic access no static analysis can resolve back to this field.
+  // fallow-ignore-next-line unused-class-member
   readonly kind = 'timeout' as const;
   readonly timeout_ms: number;
   readonly step_index: number | undefined;
@@ -75,6 +80,9 @@ export class turn_timeout_error extends Error {
 }
 
 export class schema_validation_error extends Error {
+  // Part of the published discriminant surface: consumers switch on `kind`
+  // outside this repo, so the field has no in-repo production reader.
+  // fallow-ignore-next-line unused-class-member
   readonly kind = 'schema_validation_error' as const;
   readonly zod_error: unknown;
   readonly raw_text: string;
@@ -226,5 +234,34 @@ export class provider_auth_error extends Error {
     this.name = 'provider_auth_error'
     this.provider = provider
     this.refresh_command = metadata.refresh_command
+  }
+}
+
+/**
+ * A generate call that set a schema finished for a reason other than 'stop'
+ * (content_filter, length, max_steps, tool_calls), so no schema-validated
+ * value exists and validation was never attempted. Carries the raw model text
+ * and the last provider-reported payload, so a guardrail trace or other
+ * block detail stays reachable from the catch. Distinct from
+ * schema_validation_error, which covers a response that completed normally
+ * and then failed validation after its repair attempts ran out.
+ */
+export class incomplete_generation_error extends Error {
+  readonly kind = 'incomplete_generation_error' as const;
+  readonly finish_reason: FinishReason;
+  readonly raw_text: string;
+  readonly provider_reported: Record<string, unknown> | undefined;
+  constructor(
+    finish_reason: FinishReason,
+    raw_text: string,
+    provider_reported?: Record<string, unknown>,
+  ) {
+    super(
+      `generation finished with '${finish_reason}' before a schema-validated response was produced`,
+    )
+    this.name = 'incomplete_generation_error'
+    this.finish_reason = finish_reason
+    this.raw_text = raw_text
+    this.provider_reported = provider_reported
   }
 }

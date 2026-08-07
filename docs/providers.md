@@ -383,6 +383,21 @@ if (res.finish_reason === 'content_filter') {
 }
 ```
 
+Set a `schema` and the same intervention arrives as a throw instead: a blocked call produces no schema-valid value, so the engine raises `incomplete_generation_error` rather than handing back the block message typed as your schema. The trace stays reachable, on the error:
+
+```ts
+import { incomplete_generation_error } from 'fascicle';
+
+try {
+  const res = await engine.generate({ prompt: 'triage this ticket', schema: TriageSchema });
+  score(res.content);
+} catch (err) {
+  if (!(err instanceof incomplete_generation_error)) throw err;
+  const reported = err.provider_reported?.['bedrock'] as GuardrailReport | undefined;
+  console.log(err.finish_reason, reported?.trace, err.raw_text);
+}
+```
+
 The trace is worth reading on ordinary completions too, not just interventions. It is the only in-process signal for a PII action of `NONE`, which detects and reports **without** rewriting: the model output is byte-identical whether such a guardrail is attached and detecting or absent entirely, so a caller reading only `content` and `finish_reason` cannot tell the two apart. If a guardrail looks ignored, [troubleshooting.md](./troubleshooting.md#a-bedrock-guardrail-seems-ignored-and-the-output-is-unchanged) separates that case from a genuinely dropped config.
 
 The pass-through relies on `@ai-sdk/amazon-bedrock` spreading unknown provider-option keys into the Converse command (its documented options schema omits `guardrailConfig`); a wire contract test pins that seam in this repo, but pin your own peer version and verify with `trace: 'enabled'` on first deploy.
@@ -547,7 +562,7 @@ Two properties are worth knowing:
 
 For an `ai_sdk` provider this is the SDK's `providerMetadata` passed through, so it works for every provider on that transport, including custom ones, with no per-provider code. A `native` adapter fills the same field by setting `provider_reported` on the `TurnResult` it returns. The `claude_cli` provider, which owns its whole loop, reports `session_id` and `duration_ms` under a `claude_cli` key (see [cli.md](./cli.md#multi-turn-is-via-session_id)).
 
-One gap: when the AI SDK rejects a structured-output response before fascicle's own schema repair sees it, the recovered turn has no payload to report, because the SDK's error does not carry one. The repair turn that follows reports normally.
+One gap: when the AI SDK rejects a structured-output response before fascicle's own schema repair sees it, the recovered turn has no payload to report, because the SDK's error does not carry one. The repair turn that follows reports normally. This affects only the providers that declare the `structured_output` capability (`ollama`, `lmstudio`); everywhere else the schema rides the prompt and the turn reports as usual. On those two, if the recovered turn also carries a non-`stop` finish reason there is no repair turn at all — the call throws `incomplete_generation_error` with `provider_reported` undefined for the same reason.
 
 ## Cost estimation
 

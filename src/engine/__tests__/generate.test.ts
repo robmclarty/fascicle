@@ -29,6 +29,7 @@ import { create_engine } from '../create_engine.js'
 import {
   aborted_error,
   engine_config_error,
+  incomplete_generation_error,
   model_required_error,
   on_chunk_error,
   provider_capability_error,
@@ -452,6 +453,69 @@ describe('generate: structured output', () => {
     await expect(
       basic_engine().generate({ model: 'claude-opus', prompt: 'x', schema }),
     ).rejects.toBeInstanceOf(schema_validation_error)
+  })
+
+  it('returns the validated value for a schema that validates to undefined', async () => {
+    enqueue_generate_text(make_text_result('"skip"'))
+    const schema = z.string().transform(() => undefined)
+    const result = await basic_engine().generate({ model: 'claude-opus', prompt: 'x', schema })
+    expect(result.content).toBeUndefined()
+  })
+
+  it('throws incomplete_generation_error on a content_filter finish without attempting repair', async () => {
+    enqueue_generate_text({ ...make_text_result('blocked'), finishReason: 'content-filter' })
+    const schema = z.object({ n: z.number() })
+    const err: unknown = await basic_engine()
+      .generate({ model: 'claude-opus', prompt: 'x', schema })
+      .catch((e: unknown) => e)
+    expect(err).toBeInstanceOf(incomplete_generation_error)
+    expect(err).not.toBeInstanceOf(schema_validation_error)
+    const incomplete = err as incomplete_generation_error
+    expect(incomplete.kind).toBe('incomplete_generation_error')
+    expect(incomplete.finish_reason).toBe('content_filter')
+    expect(incomplete.raw_text).toBe('blocked')
+    expect(mock_state.generate_text_call_count).toBe(1)
+  })
+
+  it('throws incomplete_generation_error when the model stops on tool_calls with a schema set', async () => {
+    enqueue_generate_text({
+      text: 'stub',
+      toolCalls: [],
+      finishReason: 'tool-calls',
+      usage: { inputTokens: 1, outputTokens: 1 },
+    })
+    const schema = z.object({ n: z.number() })
+    const err: unknown = await basic_engine()
+      .generate({ model: 'claude-opus', prompt: 'x', schema })
+      .catch((e: unknown) => e)
+    expect(err).toBeInstanceOf(incomplete_generation_error)
+    expect((err as incomplete_generation_error).finish_reason).toBe('tool_calls')
+    expect((err as incomplete_generation_error).raw_text).toBe('stub')
+  })
+
+  it('throws incomplete_generation_error when the step cap ends a schema call', async () => {
+    enqueue_generate_text_fn(infinite)
+    enqueue_generate_text_fn(infinite)
+    const schema = z.object({ n: z.number() })
+    const err: unknown = await basic_engine()
+      .generate({
+        model: 'claude-opus',
+        prompt: 'x',
+        max_steps: 2,
+        schema,
+        tools: [
+          {
+            name: 'loop',
+            description: 'loop',
+            input_schema: z.object({}).passthrough(),
+            execute: () => 'again',
+          },
+        ],
+      })
+      .catch((e: unknown) => e)
+    expect(err).toBeInstanceOf(incomplete_generation_error)
+    expect((err as incomplete_generation_error).finish_reason).toBe('max_steps')
+    expect((err as incomplete_generation_error).raw_text).toBe('')
   })
 })
 

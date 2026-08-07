@@ -14,6 +14,11 @@
  *      streamed finish-step as well as the generateText result.
  *   3. Multi-step calls keep every turn's payload on its step record, and the
  *      call-level field names the last turn that reported one.
+ *   4. A schema call that ends on a non-`stop` finish throws rather than
+ *      returning, so the payload has to ride the thrown
+ *      `incomplete_generation_error` to stay reachable at all. This is the
+ *      only route by which a caller can read a guardrail's own account of a
+ *      block it just caused.
  *
  * The real-peer proof that a bedrock guardrail trace lands under the `bedrock`
  * key lives in providers/__tests__/bedrock_guardrail_wire.test.ts.
@@ -21,7 +26,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
-import type { Tool } from '../types.js'
+import type { StreamChunk, Tool } from '../types.js'
 import {
   build_mock_ai_module,
   build_mock_registry_module,
@@ -35,6 +40,7 @@ vi.mock('ai', async () => build_mock_ai_module())
 vi.mock('../providers/registry.js', async () => build_mock_registry_module())
 
 import { create_engine } from '../create_engine.js'
+import { incomplete_generation_error } from '../errors.js'
 
 const CACHE_METADATA = { anthropic: { cacheCreationInputTokens: 320, cacheReadInputTokens: 0 } }
 
@@ -231,5 +237,123 @@ describe('provider_reported across a multi-step tool call', () => {
     expect(result.steps[0]?.provider_reported).toStrictEqual(first)
     expect('provider_reported' in (result.steps[1] ?? {})).toBe(false)
     expect(result.provider_reported).toStrictEqual(first)
+  })
+})
+
+type GuardrailAssessment = {
+  contentPolicy?: { filters?: Array<{ type: string; action: string }> }
+  sensitiveInformationPolicy?: { piiEntities?: Array<{ type: string; action: string }> }
+}
+
+type GuardrailReport = {
+  trace?: { guardrail?: { inputAssessment?: Record<string, GuardrailAssessment> } }
+}
+
+describe('provider_reported on a schema call that finishes without a validated value', () => {
+  const schema = z.object({ verdict: z.string() })
+
+  it('rides the thrown error on the plain path', async () => {
+    enqueue_generate_text({
+      ...make_text_result('blocked'),
+      finishReason: 'content-filter',
+      providerMetadata: CACHE_METADATA,
+    })
+
+    const err: unknown = await engine()
+      .generate({ model: 'claude-opus-4-8', prompt: 'hi', schema })
+      .catch((e: unknown) => e)
+
+    expect(err).toBeInstanceOf(incomplete_generation_error)
+    const incomplete = err as incomplete_generation_error
+    expect(incomplete.finish_reason).toBe('content_filter')
+    expect(incomplete.raw_text).toBe('blocked')
+    expect(incomplete.provider_reported).toStrictEqual(CACHE_METADATA)
+  })
+
+  it('rides the thrown error on the streamed path, which emits no finish chunk', async () => {
+    enqueue_stream([
+      { type: 'text-delta', text: 'blocked' },
+      {
+        type: 'finish-step',
+        finishReason: 'content-filter',
+        usage: USAGE,
+        providerMetadata: CACHE_METADATA,
+      },
+    ])
+
+    const chunks: StreamChunk[] = []
+    const err: unknown = await engine()
+      .generate({
+        model: 'claude-opus-4-8',
+        prompt: 'hi',
+        schema,
+        on_chunk: (chunk) => {
+          chunks.push(chunk)
+        },
+      })
+      .catch((e: unknown) => e)
+
+    expect(err).toBeInstanceOf(incomplete_generation_error)
+    const incomplete = err as incomplete_generation_error
+    expect(incomplete.finish_reason).toBe('content_filter')
+    expect(incomplete.raw_text).toBe('blocked')
+    expect(incomplete.provider_reported).toStrictEqual(CACHE_METADATA)
+    expect(chunks.some((c) => c.kind === 'finish')).toBe(false)
+  })
+
+  it('exposes the guardrail assessment types on the error without reaching for the matched text', async () => {
+    // The shape AWS returns under `trace: 'enabled'`. A safety consumer needs
+    // the entity/action types to explain a block; `match` holds the offending
+    // text itself and must stay out of any reasoning string it builds.
+    const trace = {
+      guardrail: {
+        inputAssessment: {
+          'gr-1': {
+            contentPolicy: {
+              filters: [{ type: 'PROMPT_ATTACK', confidence: 'HIGH', action: 'BLOCKED' }],
+            },
+            sensitiveInformationPolicy: {
+              piiEntities: [{ type: 'EMAIL', match: 'a@b.example', action: 'ANONYMIZED' }],
+            },
+          },
+        },
+      },
+    }
+    enqueue_generate_text({
+      ...make_text_result('Sorry, this request was blocked.'),
+      finishReason: 'content-filter',
+      providerMetadata: { bedrock: { trace } },
+    })
+
+    const err: unknown = await engine()
+      .generate({ model: 'claude-opus-4-8', prompt: 'hi', schema })
+      .catch((e: unknown) => e)
+
+    expect(err).toBeInstanceOf(incomplete_generation_error)
+    const reported = (err as incomplete_generation_error).provider_reported?.['bedrock'] as
+      | GuardrailReport
+      | undefined
+    const assessment = reported?.trace?.guardrail?.inputAssessment?.['gr-1']
+    const reasons = [
+      ...(assessment?.contentPolicy?.filters ?? []).map((f) => `${f.type}:${f.action}`),
+      ...(assessment?.sensitiveInformationPolicy?.piiEntities ?? []).map(
+        (e) => `${e.type}:${e.action}`,
+      ),
+    ]
+    expect(reasons).toEqual(['PROMPT_ATTACK:BLOCKED', 'EMAIL:ANONYMIZED'])
+    expect(JSON.stringify(reasons)).not.toContain('a@b.example')
+  })
+
+  it('falls back to the last reporting turn when the blocked turn reports nothing', async () => {
+    const first = { anthropic: { cacheCreationInputTokens: 320 } }
+    enqueue_generate_text(tool_turn(first))
+    enqueue_generate_text({ ...make_text_result('blocked'), finishReason: 'content-filter' })
+
+    const err: unknown = await engine()
+      .generate({ model: 'claude-opus-4-8', prompt: 'hi', schema, tools: [echo_tool()] })
+      .catch((e: unknown) => e)
+
+    expect(err).toBeInstanceOf(incomplete_generation_error)
+    expect((err as incomplete_generation_error).provider_reported).toStrictEqual(first)
   })
 })

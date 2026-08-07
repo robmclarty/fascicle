@@ -236,8 +236,8 @@ All are `Error` subclasses. Catch by class.
 **Engine.** `provider_not_configured_error`, `model_required_error`,
 `engine_config_error`, `engine_disposed_error`, `provider_auth_error`,
 `provider_error`, `rate_limit_error`, `provider_capability_error`,
-`schema_validation_error`, `tool_error`, `tool_approval_denied_error`,
-`on_chunk_error`, `claude_cli_error`.
+`schema_validation_error`, `incomplete_generation_error`, `tool_error`,
+`tool_approval_denied_error`, `on_chunk_error`, `claude_cli_error`.
 
 The [troubleshooting guide](./troubleshooting.md) maps the common ones to causes
 and fixes.

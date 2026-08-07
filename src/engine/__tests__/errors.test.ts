@@ -4,6 +4,7 @@ import {
   claude_cli_error,
   engine_config_error,
   engine_disposed_error,
+  incomplete_generation_error,
   model_required_error,
   on_chunk_error,
   provider_auth_error,
@@ -170,6 +171,29 @@ describe('typed errors', () => {
     expect(bare.refresh_command).toBeUndefined()
   })
 
+  it('incomplete_generation_error carries finish_reason / raw_text / provider_reported', () => {
+    const trace = { bedrock: { trace: { inputAssessment: { type: 'PROMPT_ATTACK' } } } }
+    const err = new incomplete_generation_error('content_filter', 'blocked', trace)
+    expect(err.kind).toBe('incomplete_generation_error')
+    expect(err.finish_reason).toBe('content_filter')
+    expect(err.raw_text).toBe('blocked')
+    expect(err.provider_reported).toStrictEqual(trace)
+    expect(err.message).toBe(
+      "generation finished with 'content_filter' before a schema-validated response was produced",
+    )
+    expect(err).not.toBeInstanceOf(schema_validation_error)
+  })
+
+  it('incomplete_generation_error leaves provider_reported undefined when none is reported', () => {
+    const err = new incomplete_generation_error('length', '{"v":42')
+    expect(err.finish_reason).toBe('length')
+    expect(err.raw_text).toBe('{"v":42')
+    expect(err.provider_reported).toBeUndefined()
+    expect(err.message).toBe(
+      "generation finished with 'length' before a schema-validated response was produced",
+    )
+  })
+
   it('sets .name to match each error kind', () => {
     expect(new rate_limit_error('x').name).toBe('rate_limit_error')
     expect(new provider_error('x').name).toBe('provider_error')
@@ -186,6 +210,7 @@ describe('typed errors', () => {
     expect(new engine_disposed_error().name).toBe('engine_disposed_error')
     expect(new claude_cli_error('binary_not_found', 'x').name).toBe('claude_cli_error')
     expect(new provider_auth_error('p', 'x').name).toBe('provider_auth_error')
+    expect(new incomplete_generation_error('length', '').name).toBe('incomplete_generation_error')
   })
 
   it('every typed error is an instance of Error', () => {
@@ -201,6 +226,7 @@ describe('typed errors', () => {
       new engine_config_error('x'),
       new on_chunk_error('x', null),
       new provider_capability_error('x', 'y'),
+      new incomplete_generation_error('content_filter', ''),
     ]
     for (const err of errors) {
       expect(err).toBeInstanceOf(Error)

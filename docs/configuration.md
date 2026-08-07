@@ -388,7 +388,7 @@ type GenerateOptions<t = string> = {
 A few highlights:
 
 - `effort: 'none' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'` is translated per-provider. See [providers.md](./providers.md) for the per-provider mapping. Providers that do not support reasoning effort (e.g. Ollama) silently drop it and record `effort_ignored` on the trajectory.
-- `schema` is a zod schema. On failure, the engine attempts `schema_repair_attempts` repair passes (default 1) before throwing `schema_validation_error`.
+- `schema` is a zod schema. On failure, the engine attempts `schema_repair_attempts` repair passes (default 1) before throwing `schema_validation_error`. If the call instead finishes on a non-`stop` reason (content filter, token limit, step cap) no valid value can exist, so it throws `incomplete_generation_error` without attempting repair.
 - `tools` is the agentic tool-use surface; tools have zod `input_schema` and an `execute` closure. See the cookbook for tool loops.
 - `turn_timeout_ms` bounds each model turn's wall-clock; expiry throws a retryable timeout. See [Turn timeout budgets](#turn-timeout-budgets).
 - `prepare_step` reshapes the messages sent to the model before each turn without mutating the transcript. See [Reshaping each turn: `prepare_step`](#reshaping-each-turn-prepare_step).

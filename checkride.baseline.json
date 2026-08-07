@@ -77,8 +77,6 @@
       "dead-code:circular_dependencies:src/viewer/cli.ts->src/viewer/index.ts",
       "dead-code:duplicate_exports:aborted_error",
       "dead-code:duplicate_exports:build_improvement_branch",
-      "dead-code:unused_class_members:src/engine/errors.ts:66:2",
-      "dead-code:unused_class_members:src/engine/errors.ts:78:2",
       "dead-code:unused_dependencies:examples/amplify/package.json:fascicle",
       "dead-code:unused_dependencies:examples/change-triage/package.json:fascicle",
       "dead-code:unused_dependencies:examples/docs-concierge/package.json:fascicle",

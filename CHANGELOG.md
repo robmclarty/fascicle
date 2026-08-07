@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- **A schema call that finished without finishing no longer returns unchecked text typed as your schema.** `generate` gated schema parsing on `finish_reason === 'stop'` and, on any other finish, fell through to returning the raw model text cast to `T`. A Bedrock guardrail block, a `max_tokens` truncation, or a step-cap exit therefore produced a `GenerateResult<T>` whose `content` was a string wearing the schema's type: reading a field off it crashed, and a defensive consumer got `undefined` fields instead, so a blocked call could score as a low-risk one. The gate now throws `incomplete_generation_error` (exported from `fascicle`) carrying `finish_reason`, `raw_text`, and `provider_reported`, the last so a guardrail's own assessment stays reachable from the catch without logging the matched text. Repair is still not attempted, which was the one correct half of the old behaviour: re-prompting a model that was blocked or cut off cannot produce the missing value. The error is deliberately distinct from `schema_validation_error`, which continues to mean a response that completed normally and then failed validation. **Breaking for schema callers** who relied on the old return: those calls now reject, and a streamed one rejects after its text deltas without emitting a `finish` chunk, matching what `schema_validation_error` already did. Calls without a schema are untouched — `content_filter` and `length` still return the partial text with the finish reason. `claude_cli` was never affected (it validates unconditionally and reports every completion as `stop`), so this closes a divergence between the transports rather than opening one. The flipped criterion is pinned in `spec_coverage.test.ts`, the finish reasons and the no-repair guarantee in `generate.test.ts`, and the payload's survival onto the error across plain, streamed, and multi-step runs in `provider_reported.test.ts`.
+
+- **A schema that validates to `undefined` returned the raw model text instead of the validated value.** `generate` tracked its parsed value in a `T | undefined` and gated the final read on `content_parsed !== undefined`, so a schema whose `.transform()` or `.catch()` legitimately yields `undefined` parsed successfully and was then discarded in favour of the raw string, cast to `T`. The parsed value now rides a `{ value: T }` holder, which distinguishes "validated to undefined" from "nothing parsed" and collapses the three-way final-content branch to two. This also retires the comment claiming the fallthrough was unreachable: it was reachable before this release, and the branch that remains is the no-schema one.
+
+### Internal
+
+- **The two grandfathered `unused_class_members` findings on `errors.ts` are resolved rather than baselined.** `turn_timeout_error.kind` and `schema_validation_error.kind` have no in-repo production reader — `classify_retryable` reaches them through `read_string(err, 'kind')` on an `unknown`, and external consumers switch on the discriminant outside this repo — so the finding was a limitation of static analysis, not real debt. Both now carry an inline `fallow-ignore-next-line` with the reason beside the field, and the baseline entries are gone. The entries were anchored by `line:col`, so any edit above them re-surfaced frozen debt as a new finding; documenting the intent at the field removes that fragility.
+
 ## v0.10.0 — 2026-08-05
 
 ### Added

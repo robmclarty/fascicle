@@ -159,7 +159,7 @@ All failures inside a run bubble out of `run(...)` as normal promise rejections.
 - `timeout_error` — a `timeout(...)` step tripped.
 - `suspended_error` — a `suspend(...)` step paused the flow.
 - `resume_validation_error` — `resume_data` did not match the suspend's `resume_schema`.
-- `provider_error`, `rate_limit_error`, `tool_error`, `schema_validation_error`, `engine_config_error` — originate in the engine layer.
+- `provider_error`, `rate_limit_error`, `tool_error`, `schema_validation_error`, `incomplete_generation_error`, `engine_config_error` — originate in the engine layer.
 
 The error path carries a `.path` array with the step ids that led to the failure, so surfacing it to stdout or a log line is usually enough.
 

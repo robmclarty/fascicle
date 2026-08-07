@@ -124,15 +124,36 @@ silently dropped `provider_options.bedrock.guardrailConfig` produces a call that
 *succeeds*. Success is the failure signal. The probe needs no guardrail to
 exist, so it works before one is provisioned.
 
-To test enforcement instead, trip the policy: expect
-`finish_reason: 'content_filter'` and the guardrail's own block message as the
-content. See [providers.md](./providers.md#bedrock).
+To test enforcement instead, trip the policy: on a call without a `schema`,
+expect `finish_reason: 'content_filter'` and the guardrail's own block message as
+the content. With a `schema` set the same block throws
+`incomplete_generation_error` instead, carrying that message on `raw_text` and
+the trace on `provider_reported`. See [providers.md](./providers.md#bedrock).
 
 ## `schema_validation_error`
 
 The model returned text that failed your zod `schema` after the repair passes
 (`schema_repair_attempts`, default 1). The error carries the zod error and the raw
 text. Loosen the schema, raise the repair budget, or pick a more capable model.
+
+## `incomplete_generation_error`
+
+A call with a `schema` finished for a reason other than `stop` — a content
+filter fired, the token limit truncated the response, or the step cap ended the
+loop — so no schema-valid value exists. No repair is attempted: re-prompting a
+model that was blocked or cut off does not produce the missing value.
+
+Read `finish_reason` to tell the cases apart, `raw_text` for whatever text did
+arrive (a half-written JSON object on `length`, a block message on
+`content_filter`), and `provider_reported` for the provider's own account,
+including a Bedrock guardrail trace. Raise `max_tokens` for `length`, raise
+`max_steps` for `max_steps`, and treat `content_filter` as a policy outcome to
+report rather than a failure to retry.
+
+Without a `schema`, these finish reasons still return normally with the partial
+text as `content` — the throw exists because the alternative is returning an
+unvalidated string typed as your schema, which reads downstream as a valid
+low-risk answer.
 
 ## `engine_disposed_error`
 

@@ -26,10 +26,12 @@ vi.mock('../providers/registry.js', async () => build_mock_registry_module())
 import { create_engine } from '../create_engine.js'
 import {
   aborted_error,
+  incomplete_generation_error,
   provider_capability_error,
   provider_error,
   provider_not_configured_error,
   rate_limit_error,
+  schema_validation_error,
   tool_approval_denied_error,
 } from '../errors.js'
 
@@ -525,7 +527,7 @@ describe('spec §9: failure modes (remaining)', () => {
     ).rejects.toBeInstanceOf(rate_limit_error)
   })
 
-  it('F10 token limit exceeded mid-stream returns finish_reason length with partial content', async () => {
+  it('F10 token limit without a schema returns finish_reason length with partial content', async () => {
     enqueue_generate_text({
       text: 'partial response cut off',
       toolCalls: [],
@@ -538,20 +540,30 @@ describe('spec §9: failure modes (remaining)', () => {
     })
     expect(result.finish_reason).toBe('length')
     expect(result.content).toBe('partial response cut off')
-  
+  })
+
+  it('F10 token limit with a schema throws incomplete_generation_error instead of truncated text', async () => {
     enqueue_generate_text({
       text: '{"v":42',
       toolCalls: [],
       finishReason: 'length',
       usage: { inputTokens: 10, outputTokens: 500 },
     })
-    const with_schema = await basic_engine().generate({
-      model: 'claude-opus',
-      prompt: 'x',
-      schema: z.object({ v: z.number() }),
-    })
-    expect(with_schema.finish_reason).toBe('length')
-    expect(with_schema.content).toBe('{"v":42')
+    const err: unknown = await basic_engine()
+      .generate({
+        model: 'claude-opus',
+        prompt: 'x',
+        schema: z.object({ v: z.number() }),
+      })
+      .catch((e: unknown) => e)
+    expect(err).toBeInstanceOf(incomplete_generation_error)
+    expect(err).not.toBeInstanceOf(schema_validation_error)
+    const incomplete = err as incomplete_generation_error
+    expect(incomplete.kind).toBe('incomplete_generation_error')
+    expect(incomplete.finish_reason).toBe('length')
+    expect(incomplete.raw_text).toBe('{"v":42')
+    expect(incomplete.provider_reported).toBeUndefined()
+    expect(mock_state.generate_text_call_count).toBe(1)
   })
 
   it('F12 abort during tool execute surfaces tool_call_in_flight metadata', async () => {
@@ -592,7 +604,7 @@ describe('spec §9: failure modes (remaining)', () => {
     })
   })
 
-  it('F13 content_filter finish reason is returned normally, not thrown', async () => {
+  it('F13 content_filter finish reason without a schema is returned normally, not thrown', async () => {
     enqueue_generate_text({
       text: 'filtered response',
       toolCalls: [],

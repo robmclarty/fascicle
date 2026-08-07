@@ -75,6 +75,7 @@ export {
   claude_cli_error,
   engine_config_error,
   engine_disposed_error,
+  incomplete_generation_error,
   model_required_error,
   on_chunk_error,
   provider_auth_error,

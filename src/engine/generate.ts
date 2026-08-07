@@ -30,6 +30,7 @@ import type {
 import {
   aborted_error,
   engine_config_error,
+  incomplete_generation_error,
   model_required_error,
   on_chunk_error,
   provider_capability_error,
@@ -462,7 +463,12 @@ function build_native_invoke(cfg: NativeInvokeConfig): InvokeOnce {
  * resolved transport, and drives it through `run_tool_loop`. When a schema
  * is set and the model's output fails validation, it appends a repair
  * message and re-invokes the loop, until the response parses, repair
- * attempts run out, or `max_steps` is reached.
+ * attempts run out, or `max_steps` is reached. When a schema is set and the
+ * loop finishes for any reason other than `'stop'` (a content filter, the
+ * token limit, the step cap), no validated value can exist, so it throws
+ * `incomplete_generation_error` carrying the finish reason, the raw text,
+ * and the last `provider_reported` payload rather than returning unchecked
+ * text. Without a schema those finish reasons return normally.
  */
 export async function generate<T = string>(
   opts_in: GenerateOptions<T>,
@@ -671,9 +677,10 @@ export async function generate<T = string>(
   // Stryker disable next-line StringLiteral: finish_reason is overwritten by loop_result.finish_reason before it is read.
   let finish_reason: FinishReason = 'stop'
   let repair_remaining = schema_repair_attempts
-  let content_parsed: T | undefined
-  // Stryker disable next-line ConditionalExpression,EqualityOperator: for a schema call this is overwritten in the loop before use; for a no-schema call schema_satisfied is never read (the opts.schema === undefined final-content branch wins).
-  let schema_satisfied = opts.schema === undefined
+  // A holder rather than a bare `T | undefined`: a schema can legitimately
+  // validate to undefined (a `.transform()` or `.catch()` that returns it), and
+  // that has to stay distinguishable from "nothing parsed".
+  let content_parsed: { value: T } | undefined
   // One holder per generate call so schema-repair re-invocations of the loop
   // cannot refill the salvage budget.
   const salvage_budget =
@@ -709,12 +716,17 @@ export async function generate<T = string>(
       finish_reason = loop_result.finish_reason
 
       if (opts.schema === undefined) break
-      if (finish_reason !== 'stop') break
+      if (finish_reason !== 'stop') {
+        throw new incomplete_generation_error(
+          finish_reason,
+          text,
+          last_provider_reported(steps_accum),
+        )
+      }
 
       const parse = parse_with_schema(opts.schema, text)
       if (parse.ok) {
-        content_parsed = parse.value
-        schema_satisfied = true
+        content_parsed = { value: parse.value }
         break
       }
       record_schema_validation_failed(trajectory, {
@@ -733,13 +745,12 @@ export async function generate<T = string>(
     const aggregated_cost = aggregate_cost(steps_accum, target.provider)
 
     let final_content: T
-    if (opts.schema === undefined) {
-      // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion
-      final_content = text as T
-    } else if (schema_satisfied && content_parsed !== undefined) {
-      final_content = content_parsed
+    if (content_parsed !== undefined) {
+      final_content = content_parsed.value
     } else {
-      // Unreachable: if schema set and not satisfied we throw above.
+      // No schema, so there is nothing to validate and the raw text is the
+      // content. A schema call cannot arrive here: the loop either filled the
+      // holder or threw.
       // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion
       final_content = text as T
     }
