@@ -12,6 +12,7 @@
  * see the ignores in `rules/no-core-value-import-in-engine.yml`.
  */
 
+import type { SchemaIssue } from '#schema'
 import type { FinishReason } from './types.js'
 
 export { aborted_error } from '#core'
@@ -84,12 +85,12 @@ export class schema_validation_error extends Error {
   // outside this repo, so the field has no in-repo production reader.
   // fallow-ignore-next-line unused-class-member
   readonly kind = 'schema_validation_error' as const;
-  readonly zod_error: unknown;
+  readonly schema_issues: ReadonlyArray<SchemaIssue>;
   readonly raw_text: string;
-  constructor(message: string, zod_error: unknown, raw_text: string) {
+  constructor(message: string, schema_issues: ReadonlyArray<SchemaIssue>, raw_text: string) {
     super(message)
     this.name = 'schema_validation_error'
-    this.zod_error = zod_error
+    this.schema_issues = schema_issues
     this.raw_text = raw_text
   }
 }

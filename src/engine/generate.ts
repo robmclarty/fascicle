@@ -43,12 +43,12 @@ import {
   provider_not_configured_error,
   turn_timeout_error,
 } from './errors.js'
+import { format_schema_issues } from '#schema'
 import { merge_provider_options } from './merge_defaults.js'
 import { FREE_PROVIDERS, pricing_key } from './pricing.js'
 import { parse_retry_after, retry_with_policy } from './retry.js'
 import {
   build_repair_message,
-  format_zod_error,
   parse_with_schema,
   throw_schema_validation,
 } from './schema.js'
@@ -749,14 +749,14 @@ export async function generate<T = string>(
       }
       record_schema_validation_failed(trajectory, {
         attempt: repair_remaining === schema_repair_attempts ? 'initial' : 'repair',
-        zod_issues: format_zod_error(parse.error),
+        schema_issues: format_schema_issues(parse.issues),
         raw_text: text,
       })
       if (repair_remaining <= 0 || total_steps >= max_steps) {
-        throw_schema_validation(parse.error, text)
+        throw_schema_validation(parse.issues, text)
       }
       repair_remaining -= 1
-      messages_mutable.push(build_repair_message(parse.error))
+      messages_mutable.push(build_repair_message(parse.issues))
     }
 
     const aggregated_usage = sum_usage(steps_accum)

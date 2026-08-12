@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
+import { format_schema_issues } from '#schema'
 import {
   build_repair_message,
   build_repair_prompt_text,
@@ -87,7 +88,7 @@ describe('parse_with_schema', () => {
     const outcome = await parse_with_schema(triage, text)
     expect(outcome.ok).toBe(false)
     if (!outcome.ok) {
-      const message = (outcome.error as Error).message
+      const message = format_schema_issues(outcome.issues)
       expect(message).toContain('rejected:')
       expect(message).toContain('accepted.0.id:')
     }
@@ -107,7 +108,7 @@ describe('parse_with_schema', () => {
 
 describe('build_repair_message', () => {
   it('produces a user-role message matching the canonical shape', () => {
-    const message = build_repair_message(new Error('expected number, got string'))
+    const message = build_repair_message([{ message: 'expected number, got string' }])
     expect(message.role).toBe('user')
     expect(message.content as string).toContain('did not match the expected schema')
     expect(message.content as string).toContain('expected number, got string')
@@ -115,7 +116,7 @@ describe('build_repair_message', () => {
   })
 
   it('explicitly forbids markdown code fences and prose in the response', () => {
-    const message = build_repair_message(new Error('boom'))
+    const message = build_repair_message([{ message: 'boom' }])
     expect(message.content as string).toContain('no markdown code fences')
     expect(message.content as string).toContain('no surrounding prose')
   })
@@ -123,20 +124,20 @@ describe('build_repair_message', () => {
 
 describe('build_repair_prompt_text', () => {
   it('returns a string with the same content as build_repair_message', () => {
-    const err = new Error('expected number, got string')
-    expect(build_repair_prompt_text(err)).toBe(build_repair_message(err).content)
+    const issues = [{ message: 'expected number, got string' }]
+    expect(build_repair_prompt_text(issues)).toBe(build_repair_message(issues).content)
   })
 })
 
 describe('throw_schema_validation', () => {
-  it('throws schema_validation_error with zod error and raw text', () => {
-    const zerr = new Error('boom')
+  it('throws schema_validation_error with the schema issues and raw text', () => {
+    const issues = [{ message: 'boom' }]
     try {
-      throw_schema_validation(zerr, 'raw model output')
+      throw_schema_validation(issues, 'raw model output')
       expect.unreachable('should throw')
     } catch (err) {
       expect(err).toBeInstanceOf(schema_validation_error)
-      expect((err as schema_validation_error).zod_error).toBe(zerr)
+      expect((err as schema_validation_error).schema_issues).toBe(issues)
       expect((err as schema_validation_error).raw_text).toBe('raw model output')
     }
   })

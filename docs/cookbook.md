@@ -357,7 +357,7 @@ const out = await run(plan, 'migrate the payments service to pg17');
 // out.content is typed as z.infer<typeof plan_schema>
 ```
 
-`schema_validation_error` carries `.zod_error` and `.raw_text` so your harness can surface both to a human. A call that never got far enough to validate — blocked by a content filter, truncated by the token limit, ended by the step cap — throws `incomplete_generation_error` instead, carrying `.finish_reason`, `.raw_text`, and `.provider_reported`.
+`schema_validation_error` carries `.schema_issues` and `.raw_text` so your harness can surface both to a human. A call that never got far enough to validate — blocked by a content filter, truncated by the token limit, ended by the step cap — throws `incomplete_generation_error` instead, carrying `.finish_reason`, `.raw_text`, and `.provider_reported`.
 
 ## Streaming tokens to a consumer
 

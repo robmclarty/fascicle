@@ -1,59 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
-import {
-  format_zod_error,
-  parse_with_schema,
-  throw_schema_validation,
-} from '../schema.js'
+import { parse_with_schema, throw_schema_validation } from '../schema.js'
 import { schema_validation_error } from '../errors.js'
 
-describe('format_zod_error', () => {
-  it('returns "unknown error" for null and undefined', () => {
-    expect(format_zod_error(null)).toBe('unknown error')
-    expect(format_zod_error(undefined)).toBe('unknown error')
-  })
-
-  it('returns a string error as-is', () => {
-    expect(format_zod_error('boom')).toBe('boom')
-  })
-
-  it('returns the message of an Error', () => {
-    expect(format_zod_error(new Error('exploded'))).toBe('exploded')
-  })
-
-  it('returns a string message property of a plain object', () => {
-    expect(format_zod_error({ message: 'plain message' })).toBe('plain message')
-  })
-
-  it('serializes an object whose message is not a string', () => {
-    expect(format_zod_error({ message: 123 })).toBe('{"message":123}')
-  })
-
-  it('serializes an object with no message property', () => {
-    expect(format_zod_error({ code: 'X', detail: 'Y' })).toBe('{"code":"X","detail":"Y"}')
-  })
-
-  it('serializes non-object primitives', () => {
-    expect(format_zod_error(42)).toBe('42')
-  })
-
-  it('falls back to "unknown error" when serialization throws', () => {
-    const circular: Record<string, unknown> = {}
-    circular['self'] = circular
-    expect(format_zod_error(circular)).toBe('unknown error')
-  })
-
-  it('falls back to "unknown error" when JSON.stringify yields undefined', () => {
-    // A function is not null/string/Error/object-with-message, and
-    // JSON.stringify(fn) === undefined, so the ?? fallback must apply.
-    expect(format_zod_error(() => undefined)).toBe('unknown error')
-  })
-})
-
 describe('throw_schema_validation', () => {
-  it('throws with a message that includes the formatted zod error', () => {
+  it('throws with a message that includes the formatted schema issues', () => {
     try {
-      throw_schema_validation(new Error('expected number'), 'raw')
+      throw_schema_validation([{ message: 'expected number' }], 'raw')
       expect.unreachable('should throw')
     } catch (err) {
       expect(err).toBeInstanceOf(schema_validation_error)
@@ -69,19 +22,20 @@ describe('parse_with_schema edge cases', async () => {
     const outcome = await parse_with_schema(schema, '   ')
     expect(outcome.ok).toBe(false)
     if (!outcome.ok) {
-      expect((outcome.error as Error).message).toContain('No JSON-parseable content')
+      expect(outcome.issues[0]?.message).toContain('No JSON-parseable content')
     }
   })
 
   it('surfaces the JSON parse error (not a schema error) when nothing parses', async () => {
     // The catch must record the parse error and skip validation; otherwise a
-    // schema failure on `undefined` would mask the real parse failure. The
-    // SyntaxError is what tells the two apart: a schema failure arrives as a
-    // plain Error carrying the formatted issues.
+    // schema failure on `undefined` would mask the real parse failure. A
+    // JSON parse issue carries no `path`, and its message is the JSON
+    // parser's own, not the no-content fallback or a schema issue.
     const outcome = await parse_with_schema(schema, 'totally not json')
     expect(outcome.ok).toBe(false)
     if (!outcome.ok) {
-      expect(outcome.error).toBeInstanceOf(SyntaxError)
+      expect(outcome.issues[0]?.path).toBeUndefined()
+      expect(outcome.issues[0]?.message).not.toContain('No JSON-parseable content')
     }
   })
 

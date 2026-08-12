@@ -148,9 +148,10 @@ the trace on `provider_reported`. See [providers.md](./providers.md#bedrock).
 
 ## `schema_validation_error`
 
-The model returned text that failed your zod `schema` after the repair passes
-(`schema_repair_attempts`, default 1). The error carries the zod error and the raw
-text. Loosen the schema, raise the repair budget, or pick a more capable model.
+The model returned text that failed your `schema` after the repair passes
+(`schema_repair_attempts`, default 1). The error carries `.schema_issues` (the
+vendor-neutral issue list) and the raw text. Loosen the schema, raise the
+repair budget, or pick a more capable model.
 
 ## `incomplete_generation_error`
 

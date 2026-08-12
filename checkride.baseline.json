@@ -101,7 +101,6 @@
       "dead-code:unused_types:src/engine/retry.ts:RetryableError"
     ],
     "dupes": [
-      "dupes:dup:0394e641",
       "dupes:dup:053bec9d",
       "dupes:dup:06d8daf9",
       "dupes:dup:0d3c7545",
@@ -128,6 +127,7 @@
       "dupes:dup:90a1f667",
       "dupes:dup:92740f7a",
       "dupes:dup:94cb1be7",
+      "dupes:dup:98958429",
       "dupes:dup:a0e2222f",
       "dupes:dup:a77bd4cb",
       "dupes:dup:a9e4ed60",
@@ -309,6 +309,7 @@
       "src/engine/providers/claude_cli/spawn.ts:eslint(no-await-in-loop):Unexpected `await` inside a loop.",
       "src/engine/providers/claude_cli/stream_parse.ts:eslint(no-await-in-loop):Unexpected `await` inside a loop.",
       "src/engine/retry.ts:eslint(no-await-in-loop):Unexpected `await` inside a loop.",
+      "src/engine/schema.ts:eslint(no-await-in-loop):Unexpected `await` inside a loop.",
       "src/engine/tool_loop.ts:eslint(no-await-in-loop):Unexpected `await` inside a loop.",
       "src/stdio/__tests__/e2e/stdio.test.ts:eslint(no-await-in-loop):Unexpected `await` inside a loop.",
       "src/viewer/__tests__/server.test.ts:eslint(no-await-in-loop):Unexpected `await` inside a loop.",

@@ -6,6 +6,8 @@
  * like `retry` and `fallback` distinguish failure modes.
  */
 
+import type { SchemaIssue } from '#schema'
+
 export class timeout_error extends Error {
   readonly kind = 'timeout_error' as const;
   readonly timeout_ms: number;
@@ -30,8 +32,8 @@ export class suspended_error extends Error {
 
 export class resume_validation_error extends Error {
   readonly kind = 'resume_validation_error' as const;
-  readonly issues: unknown;
-  constructor(message: string, issues: unknown) {
+  readonly issues: ReadonlyArray<SchemaIssue>;
+  constructor(message: string, issues: ReadonlyArray<SchemaIssue>) {
     super(message)
     this.name = 'resume_validation_error'
     this.issues = issues

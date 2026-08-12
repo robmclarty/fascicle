@@ -30,7 +30,7 @@ describe('typed errors', () => {
   })
 
   it('resume_validation_error preserves its issues payload', () => {
-    const issues = [{ path: 'foo', error: 'bad' }]
+    const issues = [{ message: 'bad', path: ['foo'] }]
     const err = new resume_validation_error('bad resume', issues)
     expect(err.kind).toBe('resume_validation_error')
     expect(err.issues).toBe(issues)

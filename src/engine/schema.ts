@@ -7,13 +7,13 @@
  * shape.
  */
 
-import { format_schema_issues, validate_schema, type AnySchema } from '#schema'
+import { format_schema_issues, validate_schema, type AnySchema, type SchemaIssue } from '#schema'
 import type { Message } from './types.js'
 import { schema_validation_error } from './errors.js'
 
 export type ParseOutcome<t> =
   | { ok: true; value: t }
-  | { ok: false; error: unknown }
+  | { ok: false; issues: ReadonlyArray<SchemaIssue> }
 
 /**
  * Attempt to parse `text` as JSON and validate it with `schema`. Returns a
@@ -26,10 +26,10 @@ export type ParseOutcome<t> =
  * block in the text, and the outermost {…} / […] slice. The first candidate
  * that both parses as JSON and matches the schema wins.
  *
- * When every candidate fails, we prefer the schema-validation error from the
- * FIRST candidate that parsed as JSON: that error reflects the model's
- * primary output and is what a repair prompt should feed back. Later
- * candidates (e.g. the bracket-slice fallback) often produce noisy errors
+ * When every candidate fails, we prefer the schema-validation issues from the
+ * FIRST candidate that parsed as JSON: those issues reflect the model's
+ * primary output and are what a repair prompt should feed back. Later
+ * candidates (e.g. the bracket-slice fallback) often produce noisy issues
  * like "expected object, received array" that misdirect the model. Only when
  * NO candidate parses as JSON do we surface the JSON parse error.
  *
@@ -42,27 +42,23 @@ export async function parse_with_schema<t>(
   text: string,
 ): Promise<ParseOutcome<t>> {
   const candidates = json_candidates(text)
-  let json_parse_error: unknown = new Error('No JSON-parseable content found in model output')
-  let first_schema_error: unknown
+  let json_parse_issues: ReadonlyArray<SchemaIssue> = [
+    { message: 'No JSON-parseable content found in model output' },
+  ]
+  let first_schema_issues: ReadonlyArray<SchemaIssue> | undefined
   for (const candidate of candidates) {
     let parsed: unknown
     try {
       parsed = JSON.parse(candidate)
     } catch (err: unknown) {
-      json_parse_error = err
+      json_parse_issues = [{ message: err instanceof Error ? err.message : String(err) }]
       continue
     }
     const result = await validate_schema(schema, parsed)
     if (result.ok) return { ok: true, value: result.value }
-    // `error` carries an Error rather than the issues themselves so the two
-    // consumers below (`format_zod_error`, `schema_validation_error`) keep
-    // reading one shape whether the failure was JSON or schema. Step 13
-    // replaces the carrier with the issue list.
-    if (first_schema_error === undefined) {
-      first_schema_error = new Error(format_schema_issues(result.issues))
-    }
+    first_schema_issues ??= result.issues
   }
-  return { ok: false, error: first_schema_error ?? json_parse_error }
+  return { ok: false, issues: first_schema_issues ?? json_parse_issues }
 }
 
 const FENCE_BLOCK = /```(?:[\w-]*)\s*\n?([\s\S]*?)\n?```/g
@@ -109,8 +105,8 @@ function slice_outermost(text: string, open: string, close: string): string {
  * The wording is fixed rather than adapter-specific, so the repair prompt
  * stays predictable and is easy to read back from trajectory output.
  */
-export function build_repair_message(zod_error: unknown): Message {
-  return { role: 'user', content: build_repair_prompt_text(zod_error) }
+export function build_repair_message(issues: ReadonlyArray<SchemaIssue>): Message {
+  return { role: 'user', content: build_repair_prompt_text(issues) }
 }
 
 /**
@@ -118,8 +114,8 @@ export function build_repair_message(zod_error: unknown): Message {
  * a single stdin string rather than a Message. Same wording as
  * build_repair_message so the on-wire instruction is identical across providers.
  */
-export function build_repair_prompt_text(zod_error: unknown): string {
-  const serialized = format_zod_error(zod_error)
+export function build_repair_prompt_text(issues: ReadonlyArray<SchemaIssue>): string {
+  const serialized = format_schema_issues(issues)
   return (
     `Your previous response did not match the expected schema. Error: ${serialized}. ` +
     'Please provide a corrected response that strictly conforms to the schema. ' +
@@ -128,35 +124,16 @@ export function build_repair_prompt_text(zod_error: unknown): string {
 }
 
 /**
- * Throw schema_validation_error carrying the zod error and the raw model text.
+ * Throw schema_validation_error carrying the schema issues and the raw model text.
  * Called by the orchestrator when all repair attempts are exhausted.
  */
-export function throw_schema_validation(zod_error: unknown, raw_text: string): never {
+export function throw_schema_validation(
+  issues: ReadonlyArray<SchemaIssue>,
+  raw_text: string,
+): never {
   throw new schema_validation_error(
-    `schema validation failed: ${format_zod_error(zod_error)}`,
-    zod_error,
+    `schema validation failed: ${format_schema_issues(issues)}`,
+    issues,
     raw_text,
   )
-}
-
-/**
- * Render an unknown error value as a display string.
- *
- * Handles `Error` instances, plain strings, and objects with a string
- * `message` directly; falls back to `JSON.stringify`, and finally to a fixed
- * placeholder if even that throws.
- */
-export function format_zod_error(err: unknown): string {
-  if (err === null || err === undefined) return 'unknown error'
-  if (typeof err === 'string') return err
-  if (err instanceof Error) return err.message
-  if (typeof err === 'object' && 'message' in err) {
-    const msg = (err as { message?: unknown }).message
-    if (typeof msg === 'string') return msg
-  }
-  try {
-    return JSON.stringify(err) ?? 'unknown error'
-  } catch {
-    return 'unknown error'
-  }
 }

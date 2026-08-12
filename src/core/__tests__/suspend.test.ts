@@ -37,7 +37,7 @@ describe('suspend', () => {
     expect(result).toBe('decision: yes')
   })
 
-  it('throws resume_validation_error with flattened zod issues on invalid resume (F5)', async () => {
+  it('throws resume_validation_error with the vendor-neutral issue list on invalid resume (F5)', async () => {
     const schema = z.object({ n: z.number(), s: z.string() })
     const combine_spy = vi.fn(() => 'never')
     const flow = suspend({
@@ -46,7 +46,7 @@ describe('suspend', () => {
       resume_schema: schema,
       combine: combine_spy,
     })
-  
+
     let caught: unknown = undefined
     try {
       await run(flow, 'input', {
@@ -58,8 +58,9 @@ describe('suspend', () => {
     }
     expect(caught).toBeInstanceOf(resume_validation_error)
     if (caught instanceof resume_validation_error) {
-      const issues = caught.issues as { formErrors?: unknown; fieldErrors?: unknown }
-      expect(issues.fieldErrors).toBeDefined()
+      expect(caught.issues.length).toBeGreaterThan(0)
+      expect(caught.issues.some((issue) => issue.path?.[0] === 'n')).toBe(true)
+      expect(caught.issues.some((issue) => issue.path?.[0] === 's')).toBe(true)
     }
     expect(combine_spy).not.toHaveBeenCalled()
   })

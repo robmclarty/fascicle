@@ -72,7 +72,7 @@ if (is_main) {
       if (err instanceof schema_validation_error) {
         console.error('schema_validation_error:')
         console.error(`  raw_text:  ${err.raw_text}`)
-        console.error(`  zod_error: ${JSON.stringify(err.zod_error)}`)
+        console.error(`  schema_issues: ${JSON.stringify(err.schema_issues)}`)
       } else {
         console.error(err)
       }

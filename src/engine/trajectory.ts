@@ -279,15 +279,15 @@ export type SchemaValidationFailedAttempt = 'initial' | 'repair'
 
 export type SchemaValidationFailedEvent = {
   attempt: SchemaValidationFailedAttempt
-  zod_issues: string
+  schema_issues: string
   raw_text: string
 }
 
 /**
  * Emit a structured event when a schema-driven generate call returns text
- * that fails parse + zod validation. Persists the raw model output and a
- * formatted zod issues summary to the trajectory so the failure is debuggable
- * without needing stdout.
+ * that fails parse + schema validation. Persists the raw model output and a
+ * formatted schema issues summary to the trajectory so the failure is
+ * debuggable without needing stdout.
  */
 export function record_schema_validation_failed(
   trajectory: TrajectoryLogger | undefined,
@@ -297,7 +297,7 @@ export function record_schema_validation_failed(
   trajectory.record({
     kind: 'schema_validation_failed',
     attempt: meta.attempt,
-    zod_issues: meta.zod_issues,
+    schema_issues: meta.schema_issues,
     raw_text: meta.raw_text,
   })
 }

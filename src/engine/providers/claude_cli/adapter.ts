@@ -64,9 +64,9 @@ import {
   provider_capability_error,
   schema_validation_error,
 } from '../../errors.js'
+import { format_schema_issues } from '#schema'
 import {
   build_repair_prompt_text,
-  format_zod_error,
   parse_with_schema,
 } from '../../schema.js'
 import {
@@ -516,7 +516,7 @@ export function create_claude_cli_adapter(init: ProviderInit): ExternalAgentAdap
             }
             record_schema_validation_failed(trajectory, {
               attempt: repairs_done === 0 ? 'initial' : 'repair',
-              zod_issues: format_zod_error(attempt.error),
+              schema_issues: format_schema_issues(attempt.issues),
               raw_text: parsed.final_text,
             })
             if (repairs_done >= max_repairs) {
@@ -524,7 +524,7 @@ export function create_claude_cli_adapter(init: ProviderInit): ExternalAgentAdap
                 max_repairs === 0
                   ? 'schema validation failed and repair is disabled (schema_repair_attempts: 0)'
                   : `schema validation failed after ${String(max_repairs)} repair attempt${max_repairs === 1 ? '' : 's'}`,
-                attempt.error,
+                attempt.issues,
                 parsed.final_text,
               )
             }
@@ -532,7 +532,7 @@ export function create_claude_cli_adapter(init: ProviderInit): ExternalAgentAdap
             if (repair_session_id === undefined) {
               throw new schema_validation_error(
                 'schema validation failed and no session_id available for repair',
-                attempt.error,
+                attempt.issues,
                 parsed.final_text,
               )
             }
@@ -542,7 +542,7 @@ export function create_claude_cli_adapter(init: ProviderInit): ExternalAgentAdap
             }
             const repair_outcome = await run_cli(spawn_runtime, {
               ...base_args,
-              stdin_text: build_repair_prompt_text(attempt.error),
+              stdin_text: build_repair_prompt_text(attempt.issues),
               call_opts: repair_call_opts,
             })
             parsed = repair_outcome.parsed

@@ -55,11 +55,11 @@ describe('typed errors', () => {
     expect(err.cause_kind).toBe('provider_5xx')
   })
 
-  it('schema_validation_error carries zod_error and raw_text', () => {
-    const zerr = new Error('expected object, got string')
-    const err = new schema_validation_error('validation failed', zerr, 'not json')
+  it('schema_validation_error carries schema_issues and raw_text', () => {
+    const issues = [{ message: 'expected object, got string' }]
+    const err = new schema_validation_error('validation failed', issues, 'not json')
     expect(err.kind).toBe('schema_validation_error')
-    expect(err.zod_error).toBe(zerr)
+    expect(err.schema_issues).toBe(issues)
     expect(err.raw_text).toBe('not json')
   })
 
@@ -197,7 +197,7 @@ describe('typed errors', () => {
   it('sets .name to match each error kind', () => {
     expect(new rate_limit_error('x').name).toBe('rate_limit_error')
     expect(new provider_error('x').name).toBe('provider_error')
-    expect(new schema_validation_error('x', null, '').name).toBe('schema_validation_error')
+    expect(new schema_validation_error('x', [], '').name).toBe('schema_validation_error')
     expect(new tool_error('x', { tool_name: 't', tool_call_id: 'c', cause: null }).name).toBe('tool_error')
     expect(
       new tool_approval_denied_error('x', { tool_name: 't', step_index: 0, tool_call_id: 'c' }).name,
@@ -218,7 +218,7 @@ describe('typed errors', () => {
       new aborted_error(),
       new rate_limit_error('x'),
       new provider_error('x'),
-      new schema_validation_error('x', null, ''),
+      new schema_validation_error('x', [], ''),
       new tool_error('x', { tool_name: 't', tool_call_id: 'c', cause: null }),
       new tool_approval_denied_error('x', { tool_name: 't', step_index: 0, tool_call_id: 'c' }),
       new model_required_error(),
