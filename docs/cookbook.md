@@ -17,6 +17,7 @@ Short, worked patterns you can copy into a harness. Each pattern assumes the con
 - [Observing a run with a filesystem logger](#observing-a-run-with-a-filesystem-logger)
 - [Threading state with scope](#threading-state-with-scope)
 - [Multi-provider fallback](#multi-provider-fallback)
+- [Escalation tiering with a judge](#escalation-tiering-with-a-judge)
 - [Using the `claude_cli` provider for one task and `anthropic` for another](#using-the-claude_cli-provider-for-one-task-and-anthropic-for-another)
 
 ## Retries on flaky work
@@ -445,6 +446,161 @@ Pair with `retry` if you want retries on the primary before falling back:
 ```ts
 const ask = fallback(retry(primary, { max_attempts: 2, backoff_ms: 500 }), backup);
 ```
+
+The `handoff` option builds the backup's input from the original input and the
+error, so the backup knows why it is running instead of retrying blind:
+
+```ts
+const ask = fallback(primary, backup, {
+  handoff: (prompt, err) =>
+    `${prompt}\n\n(A previous attempt failed: ${err instanceof Error ? err.message : 'unknown'}. Answer from scratch.)`,
+});
+```
+
+Control-flow signals (suspend, abort) still propagate without triggering the
+backup, and `handoff` is never called for them.
+
+## Escalation tiering with a judge
+
+`fallback` escalates on a *throw*. This pattern escalates on *mediocrity*: run
+a cheap model first, have a judge read the answer it actually produced, and
+only pay for the strong model when the judge says the cheap one is in trouble.
+Gateway-level routers (NVIDIA's Switchyard, for one) apply the same idea at
+the wire; in a fascicle app you own the call site, so it is plain composition
+with the verdict visible in the trajectory.
+
+Three mechanics carry the pattern:
+
+1. **Judge completed work, not predicted difficulty.** The judge rates the
+   weak draft, not the request.
+2. **Buffer the weak answer.** A verdict that does not escalate costs one weak
+   call plus one judge call; the draft is served as-is.
+3. **Fail open.** A judge that errors must serve the buffered draft, never
+   escalate. This is `fallback` around the judge.
+
+```ts
+import { branch, fallback, model_call, pipe, scope, sequence, stash, step, use } from 'fascicle';
+import { z } from 'zod';
+
+const verdict_schema = z.object({
+  escalate: z.boolean(),
+  reason: z.string(),
+});
+
+type Turn = {
+  prompt: string;
+  draft: string;
+  verdict: z.infer<typeof verdict_schema>;
+};
+
+const weak_draft = pipe(
+  model_call({ engine, model: 'haiku', id: 'weak_draft' }),
+  (r) => r.content,
+);
+
+const strong_answer = pipe(
+  model_call({ engine, model: 'opus', id: 'strong_answer' }),
+  (r) => r.content,
+);
+
+const judge = pipe(
+  model_call({ engine, model: 'sonnet', id: 'judge', schema: verdict_schema,
+    system: 'Judge the draft against the request. Escalate only on real trouble.' }),
+  (r) => r.content,
+);
+
+// A judge that dies must not escalate: fail open to "serve the draft".
+const safe_judge = fallback(
+  judge,
+  step('fail_open', () => ({ escalate: false, reason: 'judge unavailable' })),
+);
+
+const escalate_or_serve = branch({
+  when: (t: Turn) => t.verdict.escalate,
+  then: sequence([
+    step('handoff', (t: Turn, ctx) => {
+      ctx.emit({ escalated: true, reason: t.verdict.reason });
+      return `${t.prompt}\n\nA smaller model got stuck; its draft:\n${t.draft}`;
+    }),
+    strong_answer,
+  ]),
+  otherwise: step('serve_draft', (t: Turn) => t.draft),
+});
+
+const answer = scope([
+  stash('prompt', step('accept', (prompt: string) => prompt)),
+  stash('draft', weak_draft),
+  use(['prompt', 'draft'], ({ prompt, draft }) =>
+    `Request:\n${String(prompt)}\n\nDraft answer:\n${String(draft)}`),
+  stash('verdict', safe_judge),
+  use(['prompt', 'draft', 'verdict'], (t) => t as Turn),
+  escalate_or_serve,
+]);
+```
+
+`run(answer, prompt)` serves the weak draft unless the judge escalates; the
+`escalated` emit and the per-span costs land in the trajectory, so you can see
+exactly which requests paid for the strong tier and why.
+
+### Latching over many turns
+
+For a long run over many work items, one escalate verdict is weak evidence:
+require consecutive confirmations, then latch. Hold the streak in a `loop`'s
+carry-state:
+
+```ts
+import { branch, loop, step } from 'fascicle';
+
+type TierState = {
+  tasks: string[];
+  done: string[];
+  streak: number;   // consecutive escalate verdicts
+  latched: boolean; // once true, skip the weak tier and the judge entirely
+};
+
+const tiered_run = loop({
+  init: (tasks: string[]): TierState => ({ tasks, done: [], streak: 0, latched: false }),
+  body: branch({
+    when: (s: TierState) => s.latched,
+    then: strong_turn,      // latched: straight to the strong tier, no judge
+    otherwise: judged_turn, // the pattern above, reshaped to Step<TierState, TierState>
+  }),
+  guard: step('remaining', (s: TierState) => ({ stop: s.tasks.length === 0, state: s })),
+  finish: (s) => s.done,
+  max_rounds: 100,
+});
+```
+
+`judged_turn` pops the next task and runs the weak-draft-then-judge flow. The
+streak rules that make it stable:
+
+- an escalate verdict increments `streak`; a decline resets it to zero;
+- a fail-open judge *holds* the streak (neither increments nor resets), so a
+  flaky judge can neither force nor block a latch;
+- when the streak reaches two, the current task is redone on the strong tier
+  (that turn pays for all three calls) and `latched` flips, so every later
+  round takes the `then` arm with no judge overhead.
+
+### Calibrating when the weak tier is enough
+
+Whether the judge should escalate eagerly or reluctantly is an empirical
+question, and trajectory logs make it measurable. The minimum-data path:
+
+1. **Run the task set on the strong tier alone** (~40–75 representative
+   tasks). This is the quality baseline, and its trajectories record cost.
+2. **Probe the weak tier** on ~20 of those tasks, stratified: easy and clean,
+   easy but subtle, hard and structural, hard but localized. Don't
+   over-represent one project or task shape.
+3. **Quadrant the overlap.** RESCUE = strong-fail ∩ weak-pass (tiering wins
+   here). LOSS = strong-pass ∩ weak-fail (never serve weak here). SAFE = both
+   pass (free savings). HARD = both fail (tiering is irrelevant).
+4. **Tune the judge** (its prompt, and the confirmation count in the latch)
+   to the most permissive setting that keeps LOSS escalated without burning
+   strong-tier calls on SAFE.
+
+`bench` over a fixture set is the natural harness for the two probe runs, and
+`regression_compare` against a committed baseline keeps the calibration from
+drifting as prompts and models change.
 
 ## Using the `claude_cli` provider for one task and `anthropic` for another
 
