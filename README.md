@@ -12,7 +12,7 @@ No framework lifecycle. No ambient state. No decorators. Adapters are passed in 
 pnpm add fascicle zod
 ```
 
-fascicle is ESM-only and requires Node >= 24. Provider SDKs are optional peers — install only the ones you use. See [docs/providers.md](./docs/providers.md).
+fascicle is ESM-only and requires Node >= 24. `ai` and every provider SDK are optional peers — install only the ones you use. `pnpm add fascicle zod` alone builds and runs a flow against `transport: 'native'` or `claude_cli`, with no AI SDK package installed at all. See [docs/providers.md](./docs/providers.md).
 
 ## A 60-second tour
 
@@ -152,13 +152,13 @@ serve_flow({
 
 | Provider     | Peer dep                      | Auth                |
 | ------------ | ----------------------------- | ------------------- |
-| `anthropic`  | `@ai-sdk/anthropic`, or none with `transport: 'native'` | API key |
-| `openai`     | `@ai-sdk/openai`, or none with `transport: 'native'` | API key      |
-| `google`     | `@ai-sdk/google`              | API key             |
-| `openrouter` | `@openrouter/ai-sdk-provider`, or none with `transport: 'native'` | API key |
-| `bedrock`    | `@ai-sdk/amazon-bedrock`      | `region` + AWS credentials |
-| `ollama`     | `ai-sdk-ollama`, or none with `transport: 'native'` | local `base_url` |
-| `lmstudio`   | `@ai-sdk/openai-compatible`, or none with `transport: 'native'` | local `base_url` |
+| `anthropic`  | `ai` + `@ai-sdk/anthropic`, or none with `transport: 'native'` | API key |
+| `openai`     | `ai` + `@ai-sdk/openai`, or none with `transport: 'native'` | API key |
+| `google`     | `ai` + `@ai-sdk/google`       | API key             |
+| `openrouter` | `ai` + `@openrouter/ai-sdk-provider`, or none with `transport: 'native'` | API key |
+| `bedrock`    | `ai` + `@ai-sdk/amazon-bedrock` | `region` + AWS credentials |
+| `ollama`     | `ai` + `ai-sdk-ollama`, or none with `transport: 'native'` | local `base_url` |
+| `lmstudio`   | `ai` + `@ai-sdk/openai-compatible`, or none with `transport: 'native'` | local `base_url` |
 | `claude_cli` | none (spawns `claude`)        | OAuth or API key    |
 
 Full details: [docs/providers.md](./docs/providers.md). The `claude_cli` adapter has its own guide: [docs/cli.md](./docs/cli.md).

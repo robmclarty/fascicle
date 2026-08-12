@@ -8,6 +8,8 @@
 
 ### Added
 
+- **`ai` is now an optional peer dependency.** It was the last mandatory peer on a package whose own `dependencies` block is empty, so `pnpm add fascicle` forced an install of the AI SDK core even for a `transport: 'native'`-only or `claude_cli`-only setup that never imports it. `ai` is loaded lazily from the one `ai_sdk` turn seam (`src/engine/generate.ts`), same as every `@ai-sdk/*` provider package, so it drops to `peerDependenciesMeta: { ai: { optional: true } }` alongside them; a missing `ai` reports through the same `load_optional_peer` message step 7 named it in. `docs/providers.md` and `README.md` now show `ai` alongside each `ai_sdk`-kind provider's install snippet, since the official `@ai-sdk/*` packages only peer-depend on `zod`, not `ai` — installing just `@ai-sdk/anthropic` no longer pulls `ai` in transitively now that fascicle's own peer is optional.
+
 - **`BenchOptions` gains `abort`, and a cancelled bench rejects instead of returning a report.** `bench` accepted no signal at all and defaulted `install_signal_handlers` to `false`, so there was no cancellation path through a bench run. The signal now forwards to every per-case `run` and is re-checked before each case is claimed, so an abort halts scheduling at the queue rather than only cancelling work already in flight, and it is checked once more before the report is built, so neither a full fan-out (no queue to halt) nor a flow that ignores `ctx.abort` can yield a report for a run the caller cancelled. An `aborted_error` raised inside a case or a judge propagates rather than being flattened into `ok: false`. Abort reasons follow core's shape: an `Error` reason propagates verbatim, anything else is wrapped in `aborted_error`.
 
 ### Changed

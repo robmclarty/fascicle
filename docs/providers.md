@@ -6,16 +6,16 @@ Eight adapters ship with the engine layer:
 
 | Name          | Kind                 | Peer dep                      | Credentials required     |
 | ------------- | -------------------- | ----------------------------- | ------------------------ |
-| `anthropic`   | `ai_sdk` or `native` | `@ai-sdk/anthropic` (ai_sdk only) | `api_key`            |
-| `openai`      | `ai_sdk` or `native` | `@ai-sdk/openai` (ai_sdk only)    | `api_key`            |
-| `google`      | `ai_sdk`             | `@ai-sdk/google`              | `api_key`                |
-| `openrouter`  | `ai_sdk` or `native` | `@openrouter/ai-sdk-provider` (ai_sdk only) | `api_key`      |
-| `bedrock`     | `ai_sdk`             | `@ai-sdk/amazon-bedrock`      | `region` + AWS creds     |
-| `ollama`      | `ai_sdk` or `native` | `ai-sdk-ollama` (ai_sdk only)     | none, `base_url` only |
-| `lmstudio`    | `ai_sdk` or `native` | `@ai-sdk/openai-compatible` (ai_sdk only) | none, `base_url` only |
+| `anthropic`   | `ai_sdk` or `native` | `ai` + `@ai-sdk/anthropic` (ai_sdk only) | `api_key`  |
+| `openai`      | `ai_sdk` or `native` | `ai` + `@ai-sdk/openai` (ai_sdk only)    | `api_key`  |
+| `google`      | `ai_sdk`             | `ai` + `@ai-sdk/google`       | `api_key`                |
+| `openrouter`  | `ai_sdk` or `native` | `ai` + `@openrouter/ai-sdk-provider` (ai_sdk only) | `api_key` |
+| `bedrock`     | `ai_sdk`             | `ai` + `@ai-sdk/amazon-bedrock` | `region` + AWS creds   |
+| `ollama`      | `ai_sdk` or `native` | `ai` + `ai-sdk-ollama` (ai_sdk only) | none, `base_url` only |
+| `lmstudio`    | `ai_sdk` or `native` | `ai` + `@ai-sdk/openai-compatible` (ai_sdk only) | none, `base_url` only |
 | `claude_cli`  | `external`           | none (spawns `claude`)        | `oauth` session or key   |
 
-The `ai_sdk` adapters wrap Vercel's AI SDK. Five providers can instead run `transport: 'native'`, raw HTTP with no AI SDK in the path and no peer to install: `anthropic` targets the Messages API, `openai` / `openrouter` / `lmstudio` share one OpenAI Chat Completions core, and `ollama` targets its own `/api/chat` endpoint (see [`transport`](#transport-picking-a-depth-1-backend)). `claude_cli` spawns the `claude` binary and parses its `--output-format stream-json` stream; see [cli.md](./cli.md) for the full guide.
+The `ai_sdk` adapters wrap Vercel's AI SDK, so they need both the shared `ai` package and their own per-provider `@ai-sdk/*` (or equivalent) package — `pnpm add ai @ai-sdk/anthropic`, not `@ai-sdk/anthropic` alone. Six providers are entirely **SDK-free**, pulling in neither `ai` nor any `@ai-sdk/*` package: five via `transport: 'native'` — `anthropic` targets the Messages API, `openai` / `openrouter` / `lmstudio` share one OpenAI Chat Completions core, and `ollama` targets its own `/api/chat` endpoint (see [`transport`](#transport-picking-a-depth-1-backend)) — and `claude_cli`, which spawns the `claude` binary and parses its `--output-format stream-json` stream instead of calling any SDK; see [cli.md](./cli.md) for the full guide. `google` and `bedrock` remain `ai_sdk`-only, so they always need `ai`.
 
 ## Three integration depths
 
@@ -124,7 +124,7 @@ The table above is the `ai_sdk` mapping. On `transport: 'native'`, the OpenAI-co
 ## anthropic
 
 ```bash
-pnpm add @ai-sdk/anthropic
+pnpm add ai @ai-sdk/anthropic
 ```
 
 ```ts
@@ -181,7 +181,7 @@ The default transport stays `'ai_sdk'` until the native path has accumulated pro
 ## openai
 
 ```bash
-pnpm add @ai-sdk/openai
+pnpm add ai @ai-sdk/openai
 ```
 
 ```ts
@@ -229,7 +229,7 @@ The same core powers any OpenAI-compatible server via `base_url` — see [the co
 ## google
 
 ```bash
-pnpm add @ai-sdk/google
+pnpm add ai @ai-sdk/google
 ```
 
 ```ts
@@ -250,7 +250,7 @@ Pass a concrete model id like `gemini-2.5-pro` or `gemini-2.5-flash`. The `model
 ## openrouter
 
 ```bash
-pnpm add @openrouter/ai-sdk-provider
+pnpm add ai @openrouter/ai-sdk-provider
 ```
 
 ```ts
@@ -302,7 +302,7 @@ Same provider name, pricing keys, usage fields, and streamed-equals-non-streamed
 ## bedrock
 
 ```bash
-pnpm add @ai-sdk/amazon-bedrock
+pnpm add ai @ai-sdk/amazon-bedrock
 ```
 
 Reaches Anthropic, Llama, Nova, and other models hosted on AWS Bedrock through the official AI SDK provider.
@@ -407,7 +407,7 @@ No default pricing ships for Bedrock (ids are region- and profile-specific). Add
 ## ollama
 
 ```bash
-pnpm add ai-sdk-ollama
+pnpm add ai ai-sdk-ollama
 ```
 
 Local only. Requires Ollama running and the model pulled.
@@ -451,7 +451,7 @@ const engine = create_engine({
 ## lmstudio
 
 ```bash
-pnpm add @ai-sdk/openai-compatible
+pnpm add ai @ai-sdk/openai-compatible
 ```
 
 LM Studio exposes an OpenAI-compatible server on a local port.
@@ -526,7 +526,13 @@ Every peer is loaded lazily on first `generate` against that provider. Missing p
 missing peer dependency '@ai-sdk/anthropic'. Install it with: pnpm add @ai-sdk/anthropic. Cause: …
 ```
 
-This means constructing an engine with all eight providers does not force you to install their seven SDKs — only the ones you actually call.
+This means constructing an engine with all eight providers does not force you to install their seven SDKs — only the ones you actually call. `ai`, the package the `ai_sdk` kind calls `generateText` / `streamText` on, is itself an optional peer for the same reason: it is only imported from the one `ai_sdk` turn seam, so a `transport: 'native'` or `claude_cli` call never loads it. Missing it reports the same way:
+
+```text
+missing peer dependency 'ai'. Install it with: pnpm add ai. Cause: …
+```
+
+`pnpm add fascicle` alone, with no AI SDK peer of any kind installed, builds and runs a flow against `anthropic`/`openai`/`openrouter`/`lmstudio`/`ollama` on `transport: 'native'` or against `claude_cli`.
 
 ## Usage normalization
 
