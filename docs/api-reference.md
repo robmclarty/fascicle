@@ -20,6 +20,12 @@ import { /* useChat stream adapters */ } from 'fascicle/ui';
 fascicle is ESM-only and requires Node >= 24. There are no default exports and no
 classes other than `Error` subclasses.
 
+`fascicle` itself has no mandatory peers. Two subpaths need one to do their work:
+`fascicle/mcp` needs `@modelcontextprotocol/sdk`, which it loads dynamically and
+reports as `mcp_sdk_missing_error` when absent; `fascicle/ui` needs `ai`, which it
+imports statically because it speaks the AI SDK's UI message-stream protocol, so a
+missing `ai` fails at module resolution rather than with a fascicle error.
+
 ## Running a flow
 
 | Export | Shape | Notes |

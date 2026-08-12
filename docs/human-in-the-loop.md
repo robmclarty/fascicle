@@ -69,7 +69,11 @@ version is [`examples/suspend_resume.ts`](../examples/suspend_resume.ts).
 Once a run is resumed, stream its model output straight to a `useChat` endpoint
 (rendered by AI Elements or Streamdown) with `fascicle/ui`. It maps the run's
 event stream onto the AI SDK UI message-stream protocol and returns an SSE
-`Response` you can hand back from a route handler:
+`Response` you can hand back from a route handler.
+
+This subpath speaks the AI SDK's UI protocol, so it imports `ai` directly and is
+the one subpath that needs that optional peer even on `transport: 'native'`:
+`pnpm add ai`. Without it the import fails at module resolution.
 
 <!-- snippet: check -->
 
