@@ -340,16 +340,14 @@ describe('SIGTERM → SIGKILL escalator (spec §6.3, §12 #13)', () => {
   
       const start = Date.now()
       session.request_terminate('disposed')
-  
-      // At 1000ms elapsed (well before SIGKILL_ESCALATION_MS = 2000), child
-      // should still be alive because it ignores SIGTERM.
-      await new Promise((r) => setTimeout(r, 1000))
-      expect(is_alive(session.child)).toBe(true)
-  
-      // Now wait up to the escalation window + margin for SIGKILL.
+
       await wait_for_exit(session.child, SIGKILL_ESCALATION_MS + 1500)
       const elapsed = Date.now() - start
-  
+
+      // Asserted by outcome rather than by sampling liveness mid-window: that
+      // check races the escalator under parallel load, and a wider margin
+      // pushes it past SIGKILL instead of clear of it. Load only grows
+      // `elapsed`, so the floor below stays safe.
       expect(is_alive(session.child)).toBe(false)
       expect(session.child.signalCode).toBe('SIGKILL')
       expect(elapsed).toBeGreaterThanOrEqual(SIGKILL_ESCALATION_MS - 200)
