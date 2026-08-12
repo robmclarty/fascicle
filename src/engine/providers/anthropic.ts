@@ -34,12 +34,13 @@ type AnthropicSdk = {
 /**
  * Map an effort level to Anthropic's extended-thinking provider options.
  *
- * `none` (a zero budget) sends no thinking config at all rather than an
- * explicit "disabled" value, so non-reasoning models see a plain request.
+ * A zero budget (which is what `none` maps to) sends no thinking config at all
+ * rather than an explicit "disabled" value, so non-reasoning models see a plain
+ * request.
  */
 export function translate_anthropic_effort(effort: EffortLevel): EffortTranslation {
   const budget = ANTHROPIC_THINKING_BUDGETS[effort]
-  if (effort === 'none' || budget === 0) {
+  if (budget === 0) {
     return { provider_options: {}, effort_ignored: false }
   }
   return {

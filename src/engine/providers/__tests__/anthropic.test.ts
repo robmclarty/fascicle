@@ -18,10 +18,14 @@ describe('translate_anthropic_effort', () => {
   // by the provider's zod schema and never reaches the wire.
   it('maps low/medium/high to Anthropic thinking budgetTokens per spec §6.3', () => {
     const low = translate_anthropic_effort('low')
-    expect(
-      (low.provider_options['anthropic'] as { thinking: { budgetTokens: number } }).thinking
-        .budgetTokens,
-    ).toBe(1024)
+    // Whole-shape assertion: the `type: 'enabled'` literal and the
+    // effort_ignored flag are as load-bearing as the budget itself.
+    expect(low).toEqual({
+      provider_options: {
+        anthropic: { thinking: { type: 'enabled', budgetTokens: 1024 } },
+      },
+      effort_ignored: false,
+    })
     const medium = translate_anthropic_effort('medium')
     expect(
       (medium.provider_options['anthropic'] as { thinking: { budgetTokens: number } }).thinking
@@ -112,9 +116,17 @@ describe('transport dispatch', () => {
     expect(adapter.name).toBe('anthropic')
   })
 
-  it('throws engine_config_error on an unknown transport', () => {
-    expect(() => create_anthropic_adapter({ api_key: 'secret', transport: 'grpc' })).toThrow(
-      engine_config_error,
+  it('throws engine_config_error on an unknown transport, tagged with the provider', () => {
+    let err: unknown
+    try {
+      create_anthropic_adapter({ api_key: 'secret', transport: 'grpc' })
+    } catch (e) {
+      err = e
+    }
+    expect(err).toBeInstanceOf(engine_config_error)
+    expect((err as engine_config_error).message).toBe(
+      `anthropic provider: transport must be 'ai_sdk' or 'native', got "grpc"`,
     )
+    expect((err as engine_config_error).provider).toBe('anthropic')
   })
 })
