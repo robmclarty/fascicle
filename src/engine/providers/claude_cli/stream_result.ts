@@ -13,7 +13,7 @@
  * usage.
  */
 
-import type { z } from 'zod'
+import type { ToolSchema } from '#schema'
 import type {
   ResolvedModel,
   CostBreakdown,
@@ -153,7 +153,7 @@ function tool_call_record(
 export type BuildResultInput<T> = {
   readonly parsed: ParsedStream
   readonly resolved: ResolvedModel
-  readonly schema?: z.ZodType<T>
+  readonly schema?: ToolSchema<T>
   readonly parsed_content?: T
 }
 

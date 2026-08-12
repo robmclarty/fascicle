@@ -304,7 +304,9 @@ function validate_candidate(
 ): SalvagedCall | undefined {
   const tool = tool_map.get(candidate.name)
   if (tool === undefined) return undefined
-  const schema: z.ZodType = tool.input_schema
+  // Narrowed back to zod until step 12 moves this to `await validate_schema`.
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+  const schema = tool.input_schema as z.ZodType
   const raw = schema.safeParse(candidate.args)
   if (raw.success) {
     return {

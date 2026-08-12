@@ -200,7 +200,9 @@ export function to_anthropic_tools(
   return tools.map((tool) => ({
     name: tool.name,
     description: tool.description,
-    input_schema: z.toJSONSchema(tool.input_schema),
+    // Narrowed back to zod until step 14 emits through `to_json_schema`.
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+    input_schema: z.toJSONSchema(tool.input_schema as z.ZodType),
   }))
 }
 

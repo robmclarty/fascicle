@@ -41,14 +41,14 @@ describe('run_shell allowlist', () => {
 
   it('rejects empty argv', async () => {
     const tool = make_run_shell(root)
-    const parse = tool.input_schema.safeParse({ argv: [] })
-    expect(parse.success).toBe(false)
+    const parse = await tool.input_schema['~standard'].validate({ argv: [] })
+    expect(parse.issues).toBeDefined()
   })
 
-  it('rejects empty-string entries inside argv via schema', () => {
+  it('rejects empty-string entries inside argv via schema', async () => {
     const tool = make_run_shell(root)
-    const parse = tool.input_schema.safeParse({ argv: ['git', ''] })
-    expect(parse.success).toBe(false)
+    const parse = await tool.input_schema['~standard'].validate({ argv: ['git', ''] })
+    expect(parse.issues).toBeDefined()
   })
 
   it('rejects git with no subcommand', async () => {

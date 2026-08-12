@@ -92,6 +92,19 @@ const CANNED_SUMMARY: Record<string, string> = {
   'safe-rename': 'safe rename, no issues.',
 }
 
+/**
+ * Check a canned reply against whatever schema the caller passed, through the
+ * Standard Schema interface every validator implements.
+ */
+async function validate_canned<t>(
+  schema: GenerateOptions<t>['schema'],
+  reply: unknown,
+): Promise<unknown> {
+  const checked = await schema?.['~standard'].validate(reply)
+  if (checked?.issues !== undefined) throw new Error('stub: canned response failed its schema')
+  return checked === undefined ? reply : checked.value
+}
+
 function make_stub_engine(): Engine {
   return {
     generate: async <t = string>(opts: GenerateOptions<t>): Promise<GenerateResult<t>> => {
@@ -100,7 +113,7 @@ function make_stub_engine(): Engine {
       const findings = CANNED_FINDINGS[id] ?? []
       const summary = CANNED_SUMMARY[id] ?? 'no findings.'
       const reply: ReviewerOutput = { findings, summary }
-      const parsed = opts.schema ? opts.schema.parse(reply) : reply
+      const parsed = await validate_canned(opts.schema, reply)
       return {
         // oxlint-disable-next-line typescript/no-unsafe-type-assertion
         content: parsed as t,

@@ -21,6 +21,13 @@ export type ServeFlowOptions<i, o> = {
   flow: Step<i, o>
   name: string
   description: string
+  /**
+   * Stays zod rather than joining the rest of the surface on `ToolSchema`.
+   * `McpServer.registerTool` types `inputSchema` as a zod schema and offers no
+   * JSON Schema entry point, and the SDK carries zod as a hard runtime
+   * dependency, so a `serve_flow` caller already has zod resolved. Widening
+   * this to a neutral schema would typecheck and then fail inside the SDK.
+   */
   input_schema: z.ZodType<i>
   trajectory?: TrajectoryLogger
   // Overrides the default value-to-CallToolResult mapping.

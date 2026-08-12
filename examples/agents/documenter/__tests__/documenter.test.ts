@@ -16,7 +16,9 @@ function make_mock_engine(canned: unknown): {
   const engine: Engine = {
     generate: async <t = string>(opts: GenerateOptions<t>): Promise<GenerateResult<t>> => {
       calls.push({ opts: opts })
-      const parsed = opts.schema ? opts.schema.parse(canned) : canned
+      const checked = await opts.schema?.['~standard'].validate(canned)
+      if (checked?.issues !== undefined) throw new Error('stub: canned response failed its schema')
+      const parsed = checked === undefined ? canned : checked.value
       return {
         // oxlint-disable-next-line typescript/no-unsafe-type-assertion
         content: parsed as t,

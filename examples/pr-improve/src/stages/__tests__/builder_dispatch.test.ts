@@ -28,7 +28,9 @@ function make_capture_engine(): { engine: Engine; calls: CapturedCall[] } {
         tool_names: tools.map((t) => t.name),
         provider_options: opts.provider_options,
       })
-      const parsed = opts.schema ? opts.schema.parse(HANDOFF_FIXTURE) : HANDOFF_FIXTURE
+      const checked = await opts.schema?.['~standard'].validate(HANDOFF_FIXTURE)
+      if (checked?.issues !== undefined) throw new Error('stub: canned response failed its schema')
+      const parsed = checked === undefined ? HANDOFF_FIXTURE : checked.value
       return {
         // oxlint-disable-next-line typescript/no-unsafe-type-assertion
         content: parsed as T,

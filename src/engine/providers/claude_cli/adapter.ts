@@ -427,7 +427,8 @@ export function create_claude_cli_adapter(init: ProviderInit): ExternalAgentAdap
 
       let compiled_schema: string | undefined
       if (opts.schema !== undefined) {
-        compiled_schema = compile_schema(opts.schema)
+        // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+        compiled_schema = compile_schema(opts.schema as z.ZodType)
       } else if (
         typeof call_opts.output_json_schema === 'string' &&
         call_opts.output_json_schema.length > 0
@@ -508,7 +509,8 @@ export function create_claude_cli_adapter(init: ProviderInit): ExternalAgentAdap
           const max_repairs = opts.schema_repair_attempts ?? 1
           let repairs_done = 0
           for (;;) {
-            const attempt = parse_with_schema(opts.schema, parsed.final_text)
+            // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+            const attempt = parse_with_schema(opts.schema as z.ZodType<T>, parsed.final_text)
             if (attempt.ok) {
               parsed_content = attempt.value
               break

@@ -192,7 +192,9 @@ export function to_chat_tools(tools: ReadonlyArray<Tool>): Array<{
     function: {
       name: tool.name,
       description: tool.description,
-      parameters: z.toJSONSchema(tool.input_schema),
+      // Narrowed back to zod until step 14 emits through `to_json_schema`.
+      // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+      parameters: z.toJSONSchema(tool.input_schema as z.ZodType),
     },
   }))
 }

@@ -23,7 +23,7 @@ import {
   type TextStreamPart,
   type ToolSet,
 } from 'ai'
-import type { z } from 'zod'
+import type { ToolSchema } from '#schema'
 import type {
   AiSdkTelemetrySettings,
   FinishReason,
@@ -450,7 +450,7 @@ export type AiSdkTurnConfig = {
   readonly model_id: string
   readonly dispatcher: ChunkDispatcher
   readonly tools: ReadonlyArray<Tool>
-  readonly schema: z.ZodType | undefined
+  readonly schema: ToolSchema | undefined
   readonly provider_options: Readonly<Record<string, Readonly<Record<string, unknown>>>> | undefined
   readonly temperature: number | undefined
   readonly max_tokens: number | undefined

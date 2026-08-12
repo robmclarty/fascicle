@@ -127,7 +127,9 @@ export function make_stub_engine(responses: ReadonlyArray<StubResponse>): Engine
           `make_stub_engine: no canned response matches system prefix\nGot system:\n${system.slice(0, 200)}`,
         )
       }
-      const parsed = opts.schema ? opts.schema.parse(match.content) : match.content
+      const checked = await opts.schema?.['~standard'].validate(match.content)
+      if (checked?.issues !== undefined) throw new Error('stub: canned response failed its schema')
+      const parsed = checked === undefined ? match.content : checked.value
       return {
         // oxlint-disable-next-line typescript/no-unsafe-type-assertion
         content: parsed as T,

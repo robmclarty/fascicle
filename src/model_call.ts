@@ -26,7 +26,7 @@ import type {
   Tool,
   ToolApprovalHandler,
 } from '#engine'
-import type { z } from 'zod'
+import type { ToolSchema } from '#schema'
 
 export type ModelCallInput = string | ReadonlyArray<Message>
 
@@ -46,7 +46,7 @@ export type ModelCallConfig<T = string> = {
   readonly id?: string
   readonly system?: string
   readonly tools?: ReadonlyArray<Tool>
-  readonly schema?: z.ZodType<T>
+  readonly schema?: ToolSchema<T>
   readonly effort?: EffortLevel
   readonly max_steps?: number
   readonly provider_options?: Record<string, unknown>

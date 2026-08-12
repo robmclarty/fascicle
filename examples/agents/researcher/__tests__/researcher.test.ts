@@ -89,7 +89,9 @@ function make_scripted_harness(script: RoundScript): ScriptedHarness {
       })
       const round = script[idx]
       if (!round) throw new Error(`scripted engine ran out of rounds (call ${String(idx + 1)})`)
-      const parsed = opts.schema ? opts.schema.parse(round.summary) : round.summary
+      const checked = await opts.schema?.['~standard'].validate(round.summary)
+      if (checked?.issues !== undefined) throw new Error('stub: canned response failed its schema')
+      const parsed = checked === undefined ? round.summary : checked.value
       return {
         // oxlint-disable-next-line typescript/no-unsafe-type-assertion
         content: parsed as t,

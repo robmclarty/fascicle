@@ -12,6 +12,7 @@
  */
 
 import { z } from 'zod'
+import type { AnySchema } from '#schema'
 import { resume_validation_error, suspended_error } from './errors.js'
 import { dispatch_step, register_traced_kind } from './runner.js'
 import type { RunContext, Step } from './types.js'
@@ -20,7 +21,7 @@ export type SuspendConfig<i, o, resume> = {
   readonly id: string
   readonly name?: string
   readonly on: (input: i, ctx: RunContext) => Promise<void> | void
-  readonly resume_schema: z.ZodType<resume>
+  readonly resume_schema: AnySchema<resume>
   readonly combine: (
     input: i,
     resume: resume,
@@ -63,7 +64,10 @@ export function suspend<i, o, resume>(config: SuspendConfig<i, o, resume>): Step
       throw new suspended_error(suspend_id, { input })
     }
   
-    const parsed = resume_schema.safeParse(resume_value)
+    // Narrowed back to zod until step 12 moves this to `await validate_schema`
+    // and step 13 replaces the flattened-issue payload.
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+    const parsed = (resume_schema as z.ZodType<resume>).safeParse(resume_value)
     if (!parsed.success) {
       const issues = z.flattenError(parsed.error)
       throw new resume_validation_error(

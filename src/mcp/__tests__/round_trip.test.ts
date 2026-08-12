@@ -48,8 +48,10 @@ describe('mcp round trip (serve_flow -> wire -> mcp_client)', () => {
     expect(tool?.description).toBe('Uppercase the input text.')
 
     // The input schema survived Zod -> JSON Schema -> Zod and still validates.
-    expect(tool?.input_schema.safeParse({ text: 'hi' }).success).toBe(true)
-    expect(tool?.input_schema.safeParse({ text: 1 }).success).toBe(false)
+    expect((await tool?.input_schema['~standard'].validate({ text: 'hi' }))?.issues)
+      .toBeUndefined()
+    expect((await tool?.input_schema['~standard'].validate({ text: 1 }))?.issues)
+      .toBeDefined()
 
     // Structured output round-trips as an object via structuredContent.
     const output = await tool?.execute({ text: 'hi' }, exec_ctx())

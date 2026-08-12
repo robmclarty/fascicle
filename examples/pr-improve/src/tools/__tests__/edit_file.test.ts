@@ -94,9 +94,13 @@ describe('edit_file', () => {
     )
   })
 
-  it('input schema rejects empty find string', () => {
+  it('input schema rejects empty find string', async () => {
     const tool = make_edit_file(root)
-    const result = tool.input_schema.safeParse({ path: 'a.txt', find: '', replace: 'x' })
-    expect(result.success).toBe(false)
+    const result = await tool.input_schema['~standard'].validate({
+      path: 'a.txt',
+      find: '',
+      replace: 'x',
+    })
+    expect(result.issues).toBeDefined()
   })
 })

@@ -9,7 +9,7 @@
  * single exception, the one value import from core that engine source makes.
  */
 
-import type { z } from 'zod'
+import type { ToolSchema } from '#schema'
 import type { TrajectoryLogger } from '#core'
 import type { ClaudeCliProviderConfig } from './providers/claude_cli/types.js'
 import type { ProviderFactory, ProviderTransport } from './providers/types.js'
@@ -132,7 +132,7 @@ export type ToolExecContext = {
 export type Tool<i = unknown, o = unknown> = {
   name: string
   description: string
-  input_schema: z.ZodType<i>
+  input_schema: ToolSchema<i>
   execute: (input: i, ctx: ToolExecContext) => Promise<o> | o
   needs_approval?: boolean | ((input: i) => boolean | Promise<boolean>)
   /**
@@ -222,7 +222,7 @@ export type TurnRequest = {
   readonly stream: boolean
   readonly model_id: string
   readonly system?: string
-  readonly schema?: z.ZodType
+  readonly schema?: ToolSchema
   readonly effort: EffortLevel
   readonly provider_options?: Readonly<Record<string, Readonly<Record<string, unknown>>>>
   readonly temperature?: number
@@ -265,7 +265,7 @@ export type GenerateOptions<t = string> = {
   provider?: string
   prompt: string | Message[]
   system?: string
-  schema?: z.ZodType<t>
+  schema?: ToolSchema<t>
   tools?: Tool[]
   effort?: EffortLevel
   temperature?: number

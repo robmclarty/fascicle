@@ -359,9 +359,11 @@ function validate_tool_input(
   tool: Tool,
   input: unknown,
 ): { ok: true; value: unknown } | { ok: false; message: string } {
-  // The schema field is typed as z.ZodType<i>; we call safeParse in the
-  // runtime position where the input has not been narrowed.
-  const schema: z.ZodType = tool.input_schema
+  // The surface type is neutral but this path still runs zod's safeParse, so
+  // it narrows back to zod here. Step 12 replaces the whole body with
+  // `await validate_schema` and this narrowing goes with it.
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+  const schema = tool.input_schema as z.ZodType
   const parsed = schema.safeParse(input)
   if (parsed.success) return { ok: true, value: parsed.data }
   const error_message = serialize_error(parsed.error)

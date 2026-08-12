@@ -73,9 +73,9 @@ describe('list_dir', () => {
     expect(out.truncated).toBe(true)
   })
 
-  it('rejects empty path input via schema', () => {
+  it('rejects empty path input via schema', async () => {
     const tool = make_list_dir(root)
-    const result = tool.input_schema.safeParse({ path: '' })
-    expect(result.success).toBe(false)
+    const result = await tool.input_schema['~standard'].validate({ path: '' })
+    expect(result.issues).toBeDefined()
   })
 })

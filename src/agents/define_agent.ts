@@ -35,7 +35,7 @@ import { fileURLToPath } from 'node:url'
 import { aborted_error, step } from '#core'
 import type { RunContext, Step } from '#core'
 import type { Engine, GenerateOptions } from '#engine'
-import type { z } from 'zod'
+import type { ToolSchema } from '#schema'
 
 export type AgentBuiltPrompt =
   | string
@@ -43,7 +43,7 @@ export type AgentBuiltPrompt =
 
 export type DefineAgentConfig<i, o> = {
   readonly md_path: string | URL
-  readonly schema: z.ZodType<o>
+  readonly schema: ToolSchema<o>
   readonly engine: Engine
   readonly name?: string
   readonly build_prompt?: (input: i) => AgentBuiltPrompt

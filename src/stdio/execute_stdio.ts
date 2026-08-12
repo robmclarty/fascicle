@@ -18,13 +18,14 @@
  */
 
 import type { z } from 'zod'
+import type { AnySchema } from '#schema'
 import { run } from '#core'
 import type { Step, TrajectoryLogger } from '#core'
 import { stderr_logger } from '#adapters'
 
 export type RunStdioOptions<i, o> = {
-  readonly input_schema?: z.ZodType<i>
-  readonly output_schema?: z.ZodType<o>
+  readonly input_schema?: AnySchema<i>
+  readonly output_schema?: AnySchema<o>
   // Structural on purpose: anything with an async dispose qualifies, and the
   // stdio module never imports the engine layer.
   readonly engine?: { readonly dispose: () => Promise<void> }
@@ -116,7 +117,10 @@ async function produce_output<i, o>(
 
   let input: i
   if (options.input_schema !== undefined) {
-    const checked = options.input_schema.safeParse(parsed)
+    // Narrowed back to zod until step 12 moves both IO checks to
+    // `await validate_schema`; the zod import goes with them.
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+    const checked = (options.input_schema as z.ZodType<i>).safeParse(parsed)
     if (!checked.success) {
       return {
         kind: 'failed',
@@ -148,7 +152,8 @@ async function produce_output<i, o>(
 
   let output: unknown = result
   if (options.output_schema !== undefined) {
-    const checked = options.output_schema.safeParse(result)
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+    const checked = (options.output_schema as z.ZodType<o>).safeParse(result)
     if (!checked.success) {
       return {
         kind: 'failed',
