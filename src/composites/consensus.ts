@@ -2,7 +2,7 @@
  * consensus: run-until-agreement composite over concurrent members.
  */
 
-import { compose, loop, parallel, pipe, scope, stash, step, use } from '#core'
+import { compose, loop, parallel, scope, stash, step, use } from '#core'
 import type { Step } from '#core'
 
 export type ConsensusConfig<i, o> = {
@@ -60,16 +60,13 @@ export function consensus<i, o>(
     state: s,
   }))
 
-  const inner = pipe(
-    loop<i, S, Record<string, o>>({
-      init: (input) => ({ input, results: {} }),
-      body,
-      guard,
-      finish: (s) => s.results,
-      max_rounds,
-    }),
-    (result) => ({ result: result.value, converged: result.converged }),
-  )
+  const inner = loop<i, S, ConsensusResult<o>>({
+    init: (input) => ({ input, results: {} }),
+    body,
+    guard,
+    finish: (s, { converged }) => ({ result: s.results, converged }),
+    max_rounds,
+  })
 
   return compose(config.name ?? 'consensus', inner)
 }

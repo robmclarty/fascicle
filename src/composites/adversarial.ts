@@ -6,7 +6,7 @@
  * primitives. Read it as documentation.
  */
 
-import { compose, loop, pipe, scope, stash, step, use } from '#core'
+import { compose, loop, scope, stash, step, use } from '#core'
 import type { Step } from '#core'
 
 export type AdversarialBuildInput<input, candidate> = {
@@ -107,25 +107,18 @@ export function adversarial<input, candidate>(
     }),
   ])
 
-  const inner = pipe(
-    loop<input, S, candidate>({
-      init: (input) => ({ input }),
-      body,
-      guard,
-      finish: (s) => {
-        if (s.candidate === undefined) {
-          throw new Error('adversarial: finished without a candidate')
-        }
-        return s.candidate
-      },
-      max_rounds,
-    }),
-    (result) => ({
-      candidate: result.value,
-      converged: result.converged,
-      rounds: result.rounds,
-    }),
-  )
+  const inner = loop<input, S, AdversarialResult<candidate>>({
+    init: (input) => ({ input }),
+    body,
+    guard,
+    finish: (s, { converged, rounds }) => {
+      if (s.candidate === undefined) {
+        throw new Error('adversarial: finished without a candidate')
+      }
+      return { candidate: s.candidate, converged, rounds }
+    },
+    max_rounds,
+  })
 
   return compose(config.name ?? 'adversarial', inner)
 }

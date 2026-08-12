@@ -85,7 +85,11 @@ from English specifications:
   the backup or the handoff.
 - `timeout(inner, ms)` — cancel `inner` after `ms`.
 - `loop({ init, body, guard?, finish, max_rounds })` — bounded iteration
-  with carry-state. Non-convergence is data, not error.
+  with carry-state, returning whatever `finish` projects. Non-convergence is
+  data, not error: `finish(state, { converged, rounds })` receives it, so a
+  projection folds in as much or as little of the outcome as it needs
+  (`finish: (s) => s` to carry the state straight out,
+  `finish: (s, outcome) => ({ value: s, ...outcome })` for the whole thing).
 - `compose(name, inner)` — label a composite step so it shows up by intent
   in trajectories and `describe` output.
 - `adversarial({ build, critique, accept, max_rounds })` — propose, critique,

@@ -11,7 +11,7 @@
  *           ├ stash SPEC  ← pragmatist (model_call)
  *           └ branch (any accepted?)
  *               then ─ scope
- *                 ├ stash LOOP_RESULT  ← loop({ body: build+review, guard: pass? })
+ *                 ├ stash FINAL_STATE  ← loop({ body: build+review, guard: pass? })
  *                 └ assemble FinalResult
  *               otherwise ─ FinalResult { no_changes_proposed }
  *         otherwise ─ FinalResult { no_changes_proposed }
@@ -48,8 +48,8 @@ import {
   loop_converged,
   next_loop_state,
   read_handoff,
+  read_final_state,
   read_loop_input,
-  read_loop_result,
   read_pr,
   read_spec,
   read_suggestions,
@@ -136,9 +136,9 @@ export function build_flow(
   }))
 
   const with_build: Step<PragmatistOutput, FinalResult> = scope([
-    stash(K.LOOP_RESULT, build_review_loop),
-    use([K.PR, K.SPEC, K.LOOP_RESULT, K.SUGGESTIONS], (s) =>
-      assemble_final_result(read_pr(s), read_spec(s), read_loop_result(s), read_suggestions(s)),
+    stash(K.FINAL_STATE, build_review_loop),
+    use([K.PR, K.SPEC, K.FINAL_STATE, K.SUGGESTIONS], (s) =>
+      assemble_final_result(read_pr(s), read_spec(s), read_final_state(s), read_suggestions(s)),
     ),
   ])
 

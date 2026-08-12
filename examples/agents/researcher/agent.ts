@@ -149,7 +149,7 @@ export function researcher(
 
   function build_loop(depth: ResearchDepth): Step<ResearcherInput, ResearcherOutput> {
     const cap = DEPTH_CAPS[depth]
-    const inner = loop<ResearcherInput, ResearcherState, ResearcherOutput>({
+    return loop<ResearcherInput, ResearcherState, ResearcherOutput>({
       init: (input): ResearcherState => ({
         original_query: input.query,
         query: input.query,
@@ -168,13 +168,6 @@ export function researcher(
       }),
       max_rounds: cap.rounds,
     })
-    return step<ResearcherInput, ResearcherOutput>(
-      'researcher_inner',
-      async (input, ctx): Promise<ResearcherOutput> => {
-        const result = await inner.run(input, ctx)
-        return result.value
-      },
-    )
   }
 
   const dispatcher = step<ResearcherInput, ResearcherOutput>(

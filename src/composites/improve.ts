@@ -10,7 +10,7 @@
  */
 
 import { compose, loop, scope, step, stash, use } from '#core'
-import type { LoopResult, Step } from '#core'
+import type { Step } from '#core'
 import { ensemble_step } from './ensemble_step.js'
 
 export type Candidate<c> = {
@@ -271,16 +271,16 @@ export function improve<i, c>(
     max_rounds,
   })
 
-  const unwrap = step(
-    'improve_unwrap',
-    (result: LoopResult<ImproveResult<c>>, ctx): ImproveResult<c> => {
+  const record_stop = step(
+    'improve_stop',
+    (result: ImproveResult<c>, ctx): ImproveResult<c> => {
       ctx.trajectory.record({
         kind: 'improve.stop',
-        stopped_by: result.value.stopped_by,
-        rounds_used: result.value.rounds_used,
-        final_score: result.value.best.score,
+        stopped_by: result.stopped_by,
+        rounds_used: result.rounds_used,
+        final_score: result.best.score,
       })
-      return result.value
+      return result
     },
   )
 
@@ -288,7 +288,7 @@ export function improve<i, c>(
     seed,
     init_state,
     round_loop,
-    unwrap,
+    record_stop,
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion
   ]) as Step<i, ImproveResult<c>>
 

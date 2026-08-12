@@ -37,7 +37,6 @@ import {
   use,
   type Engine,
   type GenerateResult,
-  type LoopResult,
   type Step,
 } from 'fascicle'
 
@@ -246,8 +245,8 @@ export function build_flow(engine: Engine, models: FlowModels, env: FlowEnv): St
     stash(K.RESEARCH, research_subflow),
     seed_round_state,
     round_loop,
-    use([K.BRIEF], (s, r: LoopResult<RoundState>) =>
-      summarize_run(r.value, read_brief(s).metric.direction, stop_reason(r.value.budget, now()) ?? 'max_rounds'),
+    use([K.BRIEF], (s, r: RoundState) =>
+      summarize_run(r, read_brief(s).metric.direction, stop_reason(r.budget, now()) ?? 'max_rounds'),
     ),
   ])
 }

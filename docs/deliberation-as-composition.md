@@ -82,10 +82,12 @@ compose(name, loop({
   init: (input) => ({ input, results: {} }),
   body: /* scope: run parallel(members) on the carried input */,
   guard: /* step: { stop: agree(results), state } */,
-  finish: (state) => state.results,
+  finish: (state, { converged }) => ({ result: state.results, converged }),
   max_rounds,
 }));
 ```
+
+`finish` is where the result shape is decided: `loop` returns exactly what it projects, and its second argument carries the iteration's outcome, which is how `converged` reaches the caller without a second envelope around it.
 
 The `body` is itself a `scope([...])` block that stashes the round's state, extracts the original input, runs `parallel(members)`, and folds the results back into the carried state. The point of routing the input through `scope` / `stash` / `use` is that each round gets the same input, and the members stay unmodified user-supplied `Step` values. The loop owns the iteration; the members own nothing about it.
 
@@ -101,7 +103,7 @@ compose(name, loop({
   init: (input) => ({ input }),
   body: /* scope: build a candidate from { input, prior?, critique? } */,
   guard: /* scope: critique the candidate, stop when accept(notes) */,
-  finish: (state) => state.candidate,
+  finish: (state, { converged, rounds }) => ({ candidate: state.candidate, converged, rounds }),
   max_rounds,
 }));
 ```

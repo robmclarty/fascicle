@@ -6,8 +6,6 @@
  * structured `FinalResult` and the harness decides what to write).
  */
 
-import type { LoopResult } from 'fascicle'
-
 import type { LoopState } from './state.js'
 import type { FinalResult, Handoff, PRContext, PragmatistOutput, Suggestion } from './types.js'
 
@@ -122,10 +120,9 @@ export function build_improvement_branch(pr: PRContext): string {
 export function assemble_final_result(
   pr: PRContext,
   _spec: PragmatistOutput,
-  loop_result: LoopResult<LoopState>,
+  final_state: LoopState,
   suggestions: ReadonlyArray<Suggestion>,
 ): FinalResult {
-  const final_state = loop_result.value
   if (final_state.last_verdict?.kind === 'pass' && final_state.last_handoff !== null) {
     const branch = build_improvement_branch(pr)
     return {
@@ -138,5 +135,5 @@ export function assemble_final_result(
       suggestions,
     }
   }
-  return { kind: 'did_not_converge', pr, rounds: loop_result.rounds, suggestions }
+  return { kind: 'did_not_converge', pr, rounds: final_state.round, suggestions }
 }

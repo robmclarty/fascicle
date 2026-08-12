@@ -21,7 +21,7 @@ scope
        ├ stash SPEC  ← pragmatist (model_call)
        └ branch (any accepted?)
            then ─ scope
-             ├ stash LOOP_RESULT ← loop({ body: build+review, guard: pass? })
+             ├ stash FINAL_STATE ← loop({ body: build+review, guard: pass? })
              └ assemble FinalResult
            otherwise ─ no_changes_proposed
      otherwise ─ no_changes_proposed

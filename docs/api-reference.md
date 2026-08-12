@@ -62,7 +62,7 @@ fits a step fits any composition of steps.
 | `branch({ when, then, otherwise })` | route on `when(input)` |
 | `map({ items, do, concurrency? })` | run `do` per item of `items(input)`, optional in-flight cap |
 | `parallel({ a, b })` | run a named map of steps concurrently |
-| `loop({ init, body, guard?, finish, max_rounds })` | bounded iteration with carry-state and optional convergence guard |
+| `loop({ init, body, guard?, finish, max_rounds })` | bounded iteration with carry-state and optional convergence guard; returns `finish(state, { converged, rounds })` |
 | `retry(step, policy)` | re-run on failure with exponential backoff |
 | `fallback(primary, backup, { handoff? })` | run a backup if the primary throws; `handoff(input, err)` maps the backup's input |
 | `timeout(step, ms)` | cancel an inner step after N ms (throws `timeout_error`) |
@@ -270,7 +270,7 @@ the roadmap). The public type exports:
 
 **Composition.** `Step`, `StepMetadata`, `StepKind`, `RunContext`,
 `TrajectoryLogger`, `TrajectoryEvent`, `CheckpointStore`, `DescribeOptions`,
-`FlowNode`, `FlowValue`, `LoopConfig`, `LoopResult`, `LoopGuardResult`, plus the
+`FlowNode`, `FlowValue`, `LoopConfig`, `LoopOutcome`, `LoopGuardResult`, plus the
 trajectory event shapes (`SpanStartEvent`, `SpanEndEvent`, `EmitEvent`,
 `CustomTrajectoryEvent`, `ParsedTrajectoryEvent`, `TrajectoryParseResult`).
 

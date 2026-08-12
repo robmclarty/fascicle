@@ -6,8 +6,6 @@
  * lookups in one place so flow.ts never sees `as` casts.
  */
 
-import type { LoopResult } from 'fascicle'
-
 import type { BuildVerdict, Handoff, PRContext, PragmatistOutput, Suggestion } from './types.js'
 
 export const K = {
@@ -17,7 +15,7 @@ export const K = {
   LOOP_INPUT: 'loop_input',
   HANDOFF: 'handoff',
   VERDICT: 'verdict',
-  LOOP_RESULT: 'loop_result',
+  FINAL_STATE: 'final_state',
 } as const
 
 export type LoopState = {
@@ -83,7 +81,7 @@ export function read_verdict(state: { [k: string]: unknown }): BuildVerdict {
   return state[K.VERDICT] as BuildVerdict
 }
 
-export function read_loop_result(state: { [k: string]: unknown }): LoopResult<LoopState> {
+export function read_final_state(state: { [k: string]: unknown }): LoopState {
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-  return state[K.LOOP_RESULT] as LoopResult<LoopState>
+  return state[K.FINAL_STATE] as LoopState
 }
