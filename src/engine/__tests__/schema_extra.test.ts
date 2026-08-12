@@ -62,56 +62,58 @@ describe('throw_schema_validation', () => {
   })
 })
 
-describe('parse_with_schema edge cases', () => {
+describe('parse_with_schema edge cases', async () => {
   const schema = z.object({ name: z.string() })
 
-  it('reports a no-content error when the text has no JSON candidates', () => {
-    const outcome = parse_with_schema(schema, '   ')
+  it('reports a no-content error when the text has no JSON candidates', async () => {
+    const outcome = await parse_with_schema(schema, '   ')
     expect(outcome.ok).toBe(false)
     if (!outcome.ok) {
       expect((outcome.error as Error).message).toContain('No JSON-parseable content')
     }
   })
 
-  it('surfaces the JSON parse error (not a schema error) when nothing parses', () => {
-    // The catch must record the parse error and skip safeParse; otherwise a
-    // ZodError from safeParse(undefined) would mask the real parse failure.
-    const outcome = parse_with_schema(schema, 'totally not json')
+  it('surfaces the JSON parse error (not a schema error) when nothing parses', async () => {
+    // The catch must record the parse error and skip validation; otherwise a
+    // schema failure on `undefined` would mask the real parse failure. The
+    // SyntaxError is what tells the two apart: a schema failure arrives as a
+    // plain Error carrying the formatted issues.
+    const outcome = await parse_with_schema(schema, 'totally not json')
     expect(outcome.ok).toBe(false)
     if (!outcome.ok) {
-      expect('issues' in (outcome.error as object)).toBe(false)
+      expect(outcome.error).toBeInstanceOf(SyntaxError)
     }
   })
 
-  it('extracts the outermost-brace slice from surrounding prose', () => {
+  it('extracts the outermost-brace slice from surrounding prose', async () => {
     // The slice must include the closing brace and survive a leading offset
     // (a +1/-1 slip on the open index would drop or shift the slice).
-    const outcome = parse_with_schema(schema, 'x{"name":"ada"}y')
+    const outcome = await parse_with_schema(schema, 'x{"name":"ada"}y')
     expect(outcome.ok).toBe(true)
     if (outcome.ok) expect(outcome.value).toEqual({ name: 'ada' })
   })
 
-  it('captures a whitespace-containing fenced block the brace-slice cannot recover', () => {
+  it('captures a whitespace-containing fenced block the brace-slice cannot recover', async () => {
     // The leading {"wrong":true} makes the outermost-brace slice span past the
     // fence into invalid JSON, so only the fence capture works -- and that
     // capture must span the space inside the object.
     const text = '{"wrong":true}\n\n```json\n{"name": "ada"}\n```'
-    const outcome = parse_with_schema(schema, text)
+    const outcome = await parse_with_schema(schema, text)
     expect(outcome.ok).toBe(true)
     if (outcome.ok) expect(outcome.value).toEqual({ name: 'ada' })
   })
 
-  it('keeps the outermost-brace slice intact (closing brace included)', () => {
+  it('keeps the outermost-brace slice intact (closing brace included)', async () => {
     // A missing +1 in the slice would drop the final "}" and fail to parse.
-    const outcome = parse_with_schema(schema, 'prefix {"name":"ada"} suffix')
+    const outcome = await parse_with_schema(schema, 'prefix {"name":"ada"} suffix')
     expect(outcome.ok).toBe(true)
     if (outcome.ok) expect(outcome.value).toEqual({ name: 'ada' })
   })
 
-  it('deduplicates identical candidates (bare JSON object)', () => {
+  it('deduplicates identical candidates (bare JSON object)', async () => {
     // text === its own outermost-brace slice; both must collapse to one
     // candidate, and a valid parse still succeeds.
-    const outcome = parse_with_schema(schema, '{"name":"ada"}')
+    const outcome = await parse_with_schema(schema, '{"name":"ada"}')
     expect(outcome.ok).toBe(true)
   })
 })

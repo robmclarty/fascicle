@@ -65,7 +65,7 @@ describe('execute_stdio', () => {
     expect(io.stdout_writes).toEqual([])
   })
 
-  it('returns 2/validate_input with zod issues in cause when input fails the schema', async () => {
+  it('returns 2/validate_input with schema issues in cause when input fails the schema', async () => {
     const io = fake_io(JSON.stringify({ topic: 42 }))
     const outcome = expect_failed(
       await execute_stdio(echo, { input_schema: z.object({ topic: z.string() }) }, io),
@@ -74,7 +74,7 @@ describe('execute_stdio', () => {
     expect(outcome.code).toBe(2)
     expect(outcome.failure.stage).toBe('validate_input')
     expect(outcome.failure.cause).toEqual([
-      expect.objectContaining({ code: 'invalid_type', path: ['topic'] }),
+      expect.objectContaining({ message: expect.any(String), path: ['topic'] }),
     ])
     expect(io.stdout_writes).toEqual([])
   })

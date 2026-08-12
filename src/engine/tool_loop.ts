@@ -46,7 +46,7 @@
  * invoke_turn); tests inject a mock seam directly.
  */
 
-import type { z } from 'zod'
+import { format_schema_issues, validate_schema } from '#schema'
 import type { TrajectoryLogger } from '#core'
 import type {
   CostBreakdown,
@@ -352,22 +352,16 @@ function compute_and_record_cost(
 }
 
 /**
- * Validate a raw tool-call input against the tool's zod schema before
- * execution, returning the parsed value or a feedback-ready error message.
+ * Validate a raw tool-call input against the tool's schema before execution,
+ * returning the parsed value or a feedback-ready error message.
  */
-function validate_tool_input(
+async function validate_tool_input(
   tool: Tool,
   input: unknown,
-): { ok: true; value: unknown } | { ok: false; message: string } {
-  // The surface type is neutral but this path still runs zod's safeParse, so
-  // it narrows back to zod here. Step 12 replaces the whole body with
-  // `await validate_schema` and this narrowing goes with it.
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-  const schema = tool.input_schema as z.ZodType
-  const parsed = schema.safeParse(input)
-  if (parsed.success) return { ok: true, value: parsed.data }
-  const error_message = serialize_error(parsed.error)
-  return { ok: false, message: `invalid tool input: ${error_message}` }
+): Promise<{ ok: true; value: unknown } | { ok: false; message: string }> {
+  const parsed = await validate_schema(tool.input_schema, input)
+  if (parsed.ok) return { ok: true, value: parsed.value }
+  return { ok: false, message: `invalid tool input: ${format_schema_issues(parsed.issues)}` }
 }
 
 /**
@@ -469,7 +463,7 @@ export async function run_tool_loop(config: ToolLoopConfig): Promise<ToolLoopRes
       config.salvage_budget !== undefined &&
       config.salvage_budget.remaining > 0
     ) {
-      salvage = salvage_tool_calls(turn.text, tool_map)
+      salvage = await salvage_tool_calls(turn.text, tool_map)
       if (salvage !== undefined) {
         config.salvage_budget.remaining -= 1
         history_text = salvage.stripped_text
@@ -632,7 +626,7 @@ export async function run_tool_loop(config: ToolLoopConfig): Promise<ToolLoopRes
         continue
       }
 
-      const validation = validate_tool_input(tool, raw_call.input)
+      const validation = await validate_tool_input(tool, raw_call.input)
       if (!validation.ok) {
         const record: ToolCallRecord = {
           id: raw_call.id,

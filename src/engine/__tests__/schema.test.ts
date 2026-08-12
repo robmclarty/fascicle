@@ -11,97 +11,96 @@ import { schema_validation_error } from '../errors.js'
 const user_schema = z.object({ name: z.string(), age: z.number().int() })
 
 describe('parse_with_schema', () => {
-  it('returns ok: true on valid JSON matching the schema', () => {
-    const outcome = parse_with_schema(user_schema, '{"name":"ada","age":36}')
+  it('returns ok: true on valid JSON matching the schema', async () => {
+    const outcome = await parse_with_schema(user_schema, '{"name":"ada","age":36}')
     expect(outcome.ok).toBe(true)
     if (outcome.ok) {
       expect(outcome.value).toEqual({ name: 'ada', age: 36 })
     }
   })
 
-  it('returns ok: false on malformed JSON', () => {
-    const outcome = parse_with_schema(user_schema, '{not json')
+  it('returns ok: false on malformed JSON', async () => {
+    const outcome = await parse_with_schema(user_schema, '{not json')
     expect(outcome.ok).toBe(false)
   })
 
-  it('returns ok: false on schema mismatch', () => {
-    const outcome = parse_with_schema(user_schema, '{"name":"ada","age":"thirty"}')
+  it('returns ok: false on schema mismatch', async () => {
+    const outcome = await parse_with_schema(user_schema, '{"name":"ada","age":"thirty"}')
     expect(outcome.ok).toBe(false)
   })
 
-  it('parses JSON wrapped in a ```json fence', () => {
+  it('parses JSON wrapped in a ```json fence', async () => {
     const fenced = '```json\n{"name":"ada","age":36}\n```'
-    const outcome = parse_with_schema(user_schema, fenced)
+    const outcome = await parse_with_schema(user_schema, fenced)
     expect(outcome.ok).toBe(true)
     if (outcome.ok) expect(outcome.value).toEqual({ name: 'ada', age: 36 })
   })
 
-  it('parses JSON wrapped in a plain ``` fence (no language tag)', () => {
+  it('parses JSON wrapped in a plain ``` fence (no language tag)', async () => {
     const fenced = '```\n{"name":"ada","age":36}\n```'
-    const outcome = parse_with_schema(user_schema, fenced)
+    const outcome = await parse_with_schema(user_schema, fenced)
     expect(outcome.ok).toBe(true)
   })
 
-  it('parses JSON wrapped in a fence with surrounding whitespace', () => {
+  it('parses JSON wrapped in a fence with surrounding whitespace', async () => {
     const fenced = '\n\n```json\n{"name":"ada","age":36}\n```\n\n'
-    const outcome = parse_with_schema(user_schema, fenced)
+    const outcome = await parse_with_schema(user_schema, fenced)
     expect(outcome.ok).toBe(true)
   })
 
-  it('extracts JSON from a fenced block embedded in surrounding prose', () => {
+  it('extracts JSON from a fenced block embedded in surrounding prose', async () => {
     const messy =
       'Looking at the diff, here is the JSON:\n\n```json\n{"name":"ada","age":36}\n```\n\nHope that helps.'
-    const outcome = parse_with_schema(user_schema, messy)
+    const outcome = await parse_with_schema(user_schema, messy)
     expect(outcome.ok).toBe(true)
     if (outcome.ok) expect(outcome.value).toEqual({ name: 'ada', age: 36 })
   })
 
-  it('extracts JSON from unfenced prose via outermost-braces fallback', () => {
+  it('extracts JSON from unfenced prose via outermost-braces fallback', async () => {
     const text = 'Here is the result: {"name":"ada","age":36} - end.'
-    const outcome = parse_with_schema(user_schema, text)
+    const outcome = await parse_with_schema(user_schema, text)
     expect(outcome.ok).toBe(true)
   })
 
-  it('handles top-level JSON arrays via the brackets fallback', () => {
+  it('handles top-level JSON arrays via the brackets fallback', async () => {
     const list_schema = z.array(z.number().int())
     const messy = 'Three numbers: [1, 2, 3] - done.'
-    const outcome = parse_with_schema(list_schema, messy)
+    const outcome = await parse_with_schema(list_schema, messy)
     expect(outcome.ok).toBe(true)
     if (outcome.ok) expect(outcome.value).toEqual([1, 2, 3])
   })
 
-  it('prefers a schema-matching candidate even when an earlier one parses', () => {
+  it('prefers a schema-matching candidate even when an earlier one parses', async () => {
     const text =
       'first I tried this: {"wrong": true}\n\n```json\n{"name":"ada","age":36}\n```'
-    const outcome = parse_with_schema(user_schema, text)
+    const outcome = await parse_with_schema(user_schema, text)
     expect(outcome.ok).toBe(true)
     if (outcome.ok) expect(outcome.value).toEqual({ name: 'ada', age: 36 })
   })
 
-  it('surfaces the schema error from the first parseable candidate, not later fallbacks', () => {
+  it('surfaces the schema error from the first parseable candidate, not later fallbacks', async () => {
     const triage = z.object({
       accepted: z.array(z.object({ id: z.string() })),
       rejected: z.array(z.object({ id: z.string() })),
     })
     const text = '{"accepted":[{"wrong_field":"x"}]}'
-    const outcome = parse_with_schema(triage, text)
+    const outcome = await parse_with_schema(triage, text)
     expect(outcome.ok).toBe(false)
     if (!outcome.ok) {
-      const err = outcome.error as { issues?: ReadonlyArray<{ path: ReadonlyArray<string | number> }> }
-      const paths = (err.issues ?? []).map((i) => i.path.join('.'))
-      expect(paths).toContain('rejected')
-      expect(paths.some((p) => p.startsWith('accepted'))).toBe(true)
+      const message = (outcome.error as Error).message
+      expect(message).toContain('rejected:')
+      expect(message).toContain('accepted.0.id:')
     }
   })
 
-  it('returns ok: false when fenced content is itself invalid JSON', () => {
+  it('returns ok: false when fenced content is itself invalid JSON', async () => {
     const fenced = '```json\n{not json}\n```'
-    const outcome = parse_with_schema(user_schema, fenced)
+    const outcome = await parse_with_schema(user_schema, fenced)
     expect(outcome.ok).toBe(false)
   })
 
-  it('returns ok: false on prose with no JSON-parseable content', () => {
-    const outcome = parse_with_schema(user_schema, 'I cannot answer that.')
+  it('returns ok: false on prose with no JSON-parseable content', async () => {
+    const outcome = await parse_with_schema(user_schema, 'I cannot answer that.')
     expect(outcome.ok).toBe(false)
   })
 })

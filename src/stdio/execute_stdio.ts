@@ -17,8 +17,7 @@
  * direction, unserializable result).
  */
 
-import type { z } from 'zod'
-import type { AnySchema } from '#schema'
+import { validate_schema, type AnySchema } from '#schema'
 import { run } from '#core'
 import type { Step, TrajectoryLogger } from '#core'
 import { stderr_logger } from '#adapters'
@@ -117,22 +116,19 @@ async function produce_output<i, o>(
 
   let input: i
   if (options.input_schema !== undefined) {
-    // Narrowed back to zod until step 12 moves both IO checks to
-    // `await validate_schema`; the zod import goes with them.
-    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-    const checked = (options.input_schema as z.ZodType<i>).safeParse(parsed)
-    if (!checked.success) {
+    const checked = await validate_schema(options.input_schema, parsed)
+    if (!checked.ok) {
       return {
         kind: 'failed',
         code: 2,
         failure: {
           error: 'input failed schema validation',
           stage: 'validate_input',
-          cause: to_json_safe(checked.error.issues),
+          cause: to_json_safe(checked.issues),
         },
       }
     }
-    input = checked.data
+    input = checked.value
   } else {
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion
     input = parsed as i
@@ -152,20 +148,19 @@ async function produce_output<i, o>(
 
   let output: unknown = result
   if (options.output_schema !== undefined) {
-    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-    const checked = (options.output_schema as z.ZodType<o>).safeParse(result)
-    if (!checked.success) {
+    const checked = await validate_schema(options.output_schema, result)
+    if (!checked.ok) {
       return {
         kind: 'failed',
         code: 2,
         failure: {
           error: 'flow result failed schema validation',
           stage: 'validate_output',
-          cause: to_json_safe(checked.error.issues),
+          cause: to_json_safe(checked.issues),
         },
       }
     }
-    output = checked.data
+    output = checked.value
   }
 
   let json: string | undefined
@@ -215,9 +210,9 @@ function make_failure(stage: NonNullable<StdioFailure['stage']>, err: unknown): 
 /**
  * Reduces a thrown value to a JSON-safe cause for `StdioFailure`.
  *
- * An `Error` is reduced to its `name`, `message`, and Zod's `path` property
- * when present (`safeParse` issues carry one); anything else is passed
- * through `to_json_safe`.
+ * An `Error` is reduced to its `name`, `message`, and the `path` property the
+ * runner stamps on it as it bubbles up through nested steps; anything else is
+ * passed through `to_json_safe`.
  */
 function safe_cause(err: unknown): unknown {
   if (err instanceof Error) {

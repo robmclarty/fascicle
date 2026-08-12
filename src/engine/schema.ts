@@ -7,7 +7,7 @@
  * shape.
  */
 
-import type { z } from 'zod'
+import { format_schema_issues, validate_schema, type AnySchema } from '#schema'
 import type { Message } from './types.js'
 import { schema_validation_error } from './errors.js'
 
@@ -32,11 +32,15 @@ export type ParseOutcome<t> =
  * candidates (e.g. the bracket-slice fallback) often produce noisy errors
  * like "expected object, received array" that misdirect the model. Only when
  * NO candidate parses as JSON do we surface the JSON parse error.
+ *
+ * Async because Standard Schema permits a vendor's `validate` to return a
+ * promise; the ripple stops at generate.ts and the claude_cli adapter, both of
+ * which already await their surrounding work.
  */
-export function parse_with_schema<t>(
-  schema: z.ZodType<t>,
+export async function parse_with_schema<t>(
+  schema: AnySchema<t>,
   text: string,
-): ParseOutcome<t> {
+): Promise<ParseOutcome<t>> {
   const candidates = json_candidates(text)
   let json_parse_error: unknown = new Error('No JSON-parseable content found in model output')
   let first_schema_error: unknown
@@ -48,9 +52,15 @@ export function parse_with_schema<t>(
       json_parse_error = err
       continue
     }
-    const result = schema.safeParse(parsed)
-    if (result.success) return { ok: true, value: result.data }
-    if (first_schema_error === undefined) first_schema_error = result.error
+    const result = await validate_schema(schema, parsed)
+    if (result.ok) return { ok: true, value: result.value }
+    // `error` carries an Error rather than the issues themselves so the two
+    // consumers below (`format_zod_error`, `schema_validation_error`) keep
+    // reading one shape whether the failure was JSON or schema. Step 13
+    // replaces the carrier with the issue list.
+    if (first_schema_error === undefined) {
+      first_schema_error = new Error(format_schema_issues(result.issues))
+    }
   }
   return { ok: false, error: first_schema_error ?? json_parse_error }
 }

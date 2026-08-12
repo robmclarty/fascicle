@@ -9,7 +9,7 @@
  *   qwen_xml  <tool_call><function=x><parameter=k>v</parameter></function></tool_call>
  *
  * A candidate is accepted ONLY when its name resolves in the call's tool
- * registry AND its arguments validate against that tool's zod input_schema.
+ * registry AND its arguments validate against that tool's input_schema.
  * That double gate is the guard against a false positive on an ordinary
  * answer that merely contains JSON.
  *
@@ -29,7 +29,7 @@
  * Never throws; returns undefined when zero candidates survive validation.
  */
 
-import type { z } from 'zod'
+import { validate_schema } from '#schema'
 import type { SalvageFormat, Tool } from './types.js'
 
 export type SalvagedCall = {
@@ -298,20 +298,18 @@ function scan_bare_json(text: string, masks: ReadonlyArray<Span>): Candidate[] {
  * qwen_xml candidates get one retry with per-parameter JSON coercion, since
  * XML parameter values always arrive as strings.
  */
-function validate_candidate(
+async function validate_candidate(
   candidate: Candidate,
   tool_map: ReadonlyMap<string, Tool>,
-): SalvagedCall | undefined {
+): Promise<SalvagedCall | undefined> {
   const tool = tool_map.get(candidate.name)
   if (tool === undefined) return undefined
-  // Narrowed back to zod until step 12 moves this to `await validate_schema`.
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-  const schema = tool.input_schema as z.ZodType
-  const raw = schema.safeParse(candidate.args)
-  if (raw.success) {
+  const schema = tool.input_schema
+  const raw = await validate_schema(schema, candidate.args)
+  if (raw.ok) {
     return {
       name: candidate.name,
-      input: raw.data,
+      input: raw.value,
       format: candidate.format,
       span: candidate.span,
     }
@@ -332,11 +330,11 @@ function validate_candidate(
       coerced[k] = v
     }
   }
-  const retried = schema.safeParse(coerced)
-  if (!retried.success) return undefined
+  const retried = await validate_schema(schema, coerced)
+  if (!retried.ok) return undefined
   return {
     name: candidate.name,
-    input: retried.data,
+    input: retried.value,
     format: candidate.format,
     span: candidate.span,
   }
@@ -363,10 +361,10 @@ function strip_spans(text: string, spans: ReadonlyArray<Span>): string {
  * surviving calls plus the text with their spans stripped. Returns undefined
  * when nothing survives.
  */
-export function salvage_tool_calls(
+export async function salvage_tool_calls(
   text: string,
   tool_map: ReadonlyMap<string, Tool>,
-): SalvageOutcome | undefined {
+): Promise<SalvageOutcome | undefined> {
   if (text.length === 0) return undefined
   const blocks = scan_tool_call_blocks(text)
   const fences = scan_fences(text, blocks.masks)
@@ -377,11 +375,12 @@ export function salvage_tool_calls(
     ...scan_bare_json(text, all_masks),
   ].toSorted((a, b) => a.span.start - b.span.start)
 
-  const calls: SalvagedCall[] = []
-  for (const c of candidates) {
-    const validated = validate_candidate(c, tool_map)
-    if (validated !== undefined) calls.push(validated)
-  }
+  // Validated together rather than in sequence: a Standard Schema validator
+  // may be async, and candidates are independent, so awaiting them one at a
+  // time would only add latency. Promise.all preserves the textual order the
+  // candidates were sorted into.
+  const validated = await Promise.all(candidates.map((c) => validate_candidate(c, tool_map)))
+  const calls = validated.filter((c) => c !== undefined)
   if (calls.length === 0) return undefined
   return {
     calls,

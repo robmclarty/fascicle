@@ -509,8 +509,7 @@ export function create_claude_cli_adapter(init: ProviderInit): ExternalAgentAdap
           const max_repairs = opts.schema_repair_attempts ?? 1
           let repairs_done = 0
           for (;;) {
-            // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-            const attempt = parse_with_schema(opts.schema as z.ZodType<T>, parsed.final_text)
+            const attempt = await parse_with_schema(opts.schema, parsed.final_text)
             if (attempt.ok) {
               parsed_content = attempt.value
               break

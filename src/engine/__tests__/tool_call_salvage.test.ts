@@ -49,10 +49,10 @@ describe('scan_balanced_json', () => {
   })
 })
 
-describe('salvage_tool_calls: hermes', () => {
-  it('salvages a single block and strips it from the text', () => {
+describe('salvage_tool_calls: hermes', async () => {
+  it('salvages a single block and strips it from the text', async () => {
     const text = 'I will call the tool.\n<tool_call>{"name":"echo","arguments":{"value":"hi"}}</tool_call>\nDone.'
-    const outcome = salvage_tool_calls(text, echo_registry)
+    const outcome = await salvage_tool_calls(text, echo_registry)
     expect(outcome).toBeDefined()
     expect(outcome?.calls).toHaveLength(1)
     expect(outcome?.calls[0]).toMatchObject({
@@ -63,115 +63,115 @@ describe('salvage_tool_calls: hermes', () => {
     expect(outcome?.stripped_text).toBe('I will call the tool.\n\nDone.')
   })
 
-  it('handles nested braces and quotes inside argument strings', () => {
+  it('handles nested braces and quotes inside argument strings', async () => {
     const text = '<tool_call>{"name":"echo","arguments":{"value":"a } { \\" b"}}</tool_call>'
-    const outcome = salvage_tool_calls(text, echo_registry)
+    const outcome = await salvage_tool_calls(text, echo_registry)
     expect(outcome?.calls[0]?.input).toEqual({ value: 'a } { " b' })
   })
 
-  it('rejects an unknown tool name', () => {
+  it('rejects an unknown tool name', async () => {
     const text = '<tool_call>{"name":"nope","arguments":{"value":"hi"}}</tool_call>'
-    expect(salvage_tool_calls(text, echo_registry)).toBeUndefined()
+    expect(await salvage_tool_calls(text, echo_registry)).toBeUndefined()
   })
 
-  it('rejects arguments that fail the schema', () => {
+  it('rejects arguments that fail the schema', async () => {
     const text = '<tool_call>{"name":"echo","arguments":{"value":42}}</tool_call>'
-    expect(salvage_tool_calls(text, echo_registry)).toBeUndefined()
+    expect(await salvage_tool_calls(text, echo_registry)).toBeUndefined()
   })
 
-  it('salvages two blocks in textual order', () => {
+  it('salvages two blocks in textual order', async () => {
     const text =
       '<tool_call>{"name":"echo","arguments":{"value":"first"}}</tool_call> then ' +
       '<tool_call>{"name":"echo","arguments":{"value":"second"}}</tool_call>'
-    const outcome = salvage_tool_calls(text, echo_registry)
+    const outcome = await salvage_tool_calls(text, echo_registry)
     expect(outcome?.calls.map((c) => c.input)).toEqual([{ value: 'first' }, { value: 'second' }])
     expect(outcome?.stripped_text).toBe('then')
   })
 
-  it('ignores an unterminated block without throwing', () => {
+  it('ignores an unterminated block without throwing', async () => {
     const text = '<tool_call>{"name":"echo","arguments":{"value":"hi"}}'
-    expect(salvage_tool_calls(text, echo_registry)).toBeUndefined()
+    expect(await salvage_tool_calls(text, echo_registry)).toBeUndefined()
   })
 
-  it('yields exactly one call per block (no double-match by the bare pass)', () => {
+  it('yields exactly one call per block (no double-match by the bare pass)', async () => {
     const text = '<tool_call>{"name":"echo","arguments":{"value":"hi"}}</tool_call>'
-    const outcome = salvage_tool_calls(text, echo_registry)
+    const outcome = await salvage_tool_calls(text, echo_registry)
     expect(outcome?.calls).toHaveLength(1)
     expect(outcome?.stripped_text).toBe('')
   })
 })
 
-describe('salvage_tool_calls: bare and fenced json', () => {
-  it('salvages a bare object mid-prose and keeps the surrounding prose', () => {
+describe('salvage_tool_calls: bare and fenced json', async () => {
+  it('salvages a bare object mid-prose and keeps the surrounding prose', async () => {
     const text = 'Let me run it: {"name":"echo","arguments":{"value":"hi"}} and wait.'
-    const outcome = salvage_tool_calls(text, echo_registry)
+    const outcome = await salvage_tool_calls(text, echo_registry)
     expect(outcome?.calls[0]).toMatchObject({ name: 'echo', format: 'json' })
     expect(outcome?.stripped_text).toBe('Let me run it:  and wait.')
   })
 
-  it('salvages a ```json fence and strips the whole fence', () => {
+  it('salvages a ```json fence and strips the whole fence', async () => {
     const text = 'Calling:\n```json\n{"name":"echo","arguments":{"value":"hi"}}\n```\nend'
-    const outcome = salvage_tool_calls(text, echo_registry)
+    const outcome = await salvage_tool_calls(text, echo_registry)
     expect(outcome?.calls[0]).toMatchObject({ name: 'echo', format: 'json' })
     expect(outcome?.stripped_text).toBe('Calling:\n\nend')
   })
 
-  it('salvages a plain fence with no info string', () => {
+  it('salvages a plain fence with no info string', async () => {
     const text = '```\n{"name":"echo","arguments":{"value":"hi"}}\n```'
-    const outcome = salvage_tool_calls(text, echo_registry)
+    const outcome = await salvage_tool_calls(text, echo_registry)
     expect(outcome?.calls).toHaveLength(1)
     expect(outcome?.stripped_text).toBe('')
   })
 
-  it('does not parse a fence with a non-json info string but masks it', () => {
+  it('does not parse a fence with a non-json info string but masks it', async () => {
     const text = '```python\n{"name":"echo","arguments":{"value":"hi"}}\n```'
-    expect(salvage_tool_calls(text, echo_registry)).toBeUndefined()
+    expect(await salvage_tool_calls(text, echo_registry)).toBeUndefined()
   })
 
-  it('rejects an object with an extra third key', () => {
+  it('rejects an object with an extra third key', async () => {
     const text = '{"name":"echo","arguments":{"value":"hi"},"id":"x"}'
-    expect(salvage_tool_calls(text, echo_registry)).toBeUndefined()
+    expect(await salvage_tool_calls(text, echo_registry)).toBeUndefined()
   })
 
-  it('rejects non-string name, array arguments, and null arguments', () => {
+  it('rejects non-string name, array arguments, and null arguments', async () => {
     expect(
-      salvage_tool_calls('{"name":42,"arguments":{"value":"hi"}}', echo_registry),
+      await salvage_tool_calls('{"name":42,"arguments":{"value":"hi"}}', echo_registry),
     ).toBeUndefined()
-    expect(salvage_tool_calls('{"name":"echo","arguments":[1]}', echo_registry)).toBeUndefined()
-    expect(salvage_tool_calls('{"name":"echo","arguments":null}', echo_registry)).toBeUndefined()
+    expect(await salvage_tool_calls('{"name":"echo","arguments":[1]}', echo_registry)).toBeUndefined()
+    expect(await salvage_tool_calls('{"name":"echo","arguments":null}', echo_registry)).toBeUndefined()
   })
 
-  it('does not throw on broken JSON', () => {
-    expect(salvage_tool_calls('{"name": "echo", ', echo_registry)).toBeUndefined()
+  it('does not throw on broken JSON', async () => {
+    expect(await salvage_tool_calls('{"name": "echo", ', echo_registry)).toBeUndefined()
   })
 
-  it('keeps invalid candidates in the text while salvaging valid ones', () => {
+  it('keeps invalid candidates in the text while salvaging valid ones', async () => {
     const text =
       '{"name":"nope","arguments":{"value":"a"}} and {"name":"echo","arguments":{"value":"b"}}'
-    const outcome = salvage_tool_calls(text, echo_registry)
+    const outcome = await salvage_tool_calls(text, echo_registry)
     expect(outcome?.calls).toHaveLength(1)
     expect(outcome?.calls[0]?.input).toEqual({ value: 'b' })
     expect(outcome?.stripped_text).toBe('{"name":"nope","arguments":{"value":"a"}} and')
   })
 
-  it('does not re-match a rejected hermes payload as bare json (mask rule)', () => {
+  it('does not re-match a rejected hermes payload as bare json (mask rule)', async () => {
     // Shape-valid payload, unknown tool: the block is rejected, and the bare
     // pass must not resurrect the JSON inside it.
     const text = '<tool_call>{"name":"nope","arguments":{"value":"a"}}</tool_call>'
-    expect(salvage_tool_calls(text, echo_registry)).toBeUndefined()
+    expect(await salvage_tool_calls(text, echo_registry)).toBeUndefined()
   })
 
-  it('does not descend into a non-call object to find nested candidates', () => {
+  it('does not descend into a non-call object to find nested candidates', async () => {
     const text = '{"outer":true,"inner":{"name":"echo","arguments":{"value":"hi"}}}'
-    expect(salvage_tool_calls(text, echo_registry)).toBeUndefined()
+    expect(await salvage_tool_calls(text, echo_registry)).toBeUndefined()
   })
 })
 
-describe('salvage_tool_calls: qwen_xml', () => {
-  it('salvages string params', () => {
+describe('salvage_tool_calls: qwen_xml', async () => {
+  it('salvages string params', async () => {
     const text =
       '<tool_call><function=echo><parameter=value>\nhi\n</parameter></function></tool_call>'
-    const outcome = salvage_tool_calls(text, echo_registry)
+    const outcome = await salvage_tool_calls(text, echo_registry)
     expect(outcome?.calls[0]).toMatchObject({
       name: 'echo',
       input: { value: 'hi' },
@@ -180,20 +180,20 @@ describe('salvage_tool_calls: qwen_xml', () => {
     expect(outcome?.stripped_text).toBe('')
   })
 
-  it('coerces a numeric string param when the schema wants a number', () => {
+  it('coerces a numeric string param when the schema wants a number', async () => {
     const tools = registry(make_tool({ name: 'add', input_schema: z.object({ n: z.number() }) }))
     const text = '<tool_call><function=add><parameter=n>3</parameter></function></tool_call>'
-    const outcome = salvage_tool_calls(text, tools)
+    const outcome = await salvage_tool_calls(text, tools)
     expect(outcome?.calls[0]?.input).toEqual({ n: 3 })
   })
 
-  it('keeps a numeric-looking string when the schema wants a string (raw-first)', () => {
+  it('keeps a numeric-looking string when the schema wants a string (raw-first)', async () => {
     const text = '<tool_call><function=echo><parameter=value>3</parameter></function></tool_call>'
-    const outcome = salvage_tool_calls(text, echo_registry)
+    const outcome = await salvage_tool_calls(text, echo_registry)
     expect(outcome?.calls[0]?.input).toEqual({ value: '3' })
   })
 
-  it('coerces params independently: one parses, one stays a raw string', () => {
+  it('coerces params independently: one parses, one stays a raw string', async () => {
     const tools = registry(
       make_tool({
         name: 'mix',
@@ -202,11 +202,11 @@ describe('salvage_tool_calls: qwen_xml', () => {
     )
     const text =
       '<tool_call><function=mix><parameter=n>3</parameter><parameter=label>plain text</parameter></function></tool_call>'
-    const outcome = salvage_tool_calls(text, tools)
+    const outcome = await salvage_tool_calls(text, tools)
     expect(outcome?.calls[0]?.input).toEqual({ n: 3, label: 'plain text' })
   })
 
-  it('coerces an object-valued param against an object schema', () => {
+  it('coerces an object-valued param against an object schema', async () => {
     const tools = registry(
       make_tool({
         name: 'cfg',
@@ -215,50 +215,50 @@ describe('salvage_tool_calls: qwen_xml', () => {
     )
     const text =
       '<tool_call><function=cfg><parameter=options>{"deep":true}</parameter></function></tool_call>'
-    const outcome = salvage_tool_calls(text, tools)
+    const outcome = await salvage_tool_calls(text, tools)
     expect(outcome?.calls[0]?.input).toEqual({ options: { deep: true } })
   })
 
-  it('rejects when coercion still fails the schema', () => {
+  it('rejects when coercion still fails the schema', async () => {
     const tools = registry(make_tool({ name: 'add', input_schema: z.object({ n: z.number() }) }))
     const text = '<tool_call><function=add><parameter=n>lots</parameter></function></tool_call>'
-    expect(salvage_tool_calls(text, tools)).toBeUndefined()
+    expect(await salvage_tool_calls(text, tools)).toBeUndefined()
   })
 
-  it('strips exactly one leading and trailing newline and keeps interior ones', () => {
+  it('strips exactly one leading and trailing newline and keeps interior ones', async () => {
     const text =
       '<tool_call><function=echo><parameter=value>\nline1\nline2\n</parameter></function></tool_call>'
-    const outcome = salvage_tool_calls(text, echo_registry)
+    const outcome = await salvage_tool_calls(text, echo_registry)
     expect(outcome?.calls[0]?.input).toEqual({ value: 'line1\nline2' })
   })
 
-  it('salvages two functions in one block', () => {
+  it('salvages two functions in one block', async () => {
     const text =
       '<tool_call><function=echo><parameter=value>a</parameter></function>' +
       '<function=echo><parameter=value>b</parameter></function></tool_call>'
-    const outcome = salvage_tool_calls(text, echo_registry)
+    const outcome = await salvage_tool_calls(text, echo_registry)
     expect(outcome?.calls.map((c) => c.input)).toEqual([{ value: 'a' }, { value: 'b' }])
     expect(outcome?.stripped_text).toBe('')
   })
 
-  it('rejects a function body with garbage between parameters', () => {
+  it('rejects a function body with garbage between parameters', async () => {
     const text =
       '<tool_call><function=echo>note<parameter=value>hi</parameter></function></tool_call>'
-    expect(salvage_tool_calls(text, echo_registry)).toBeUndefined()
+    expect(await salvage_tool_calls(text, echo_registry)).toBeUndefined()
   })
 
-  it('ignores a function missing its closing tag without throwing', () => {
+  it('ignores a function missing its closing tag without throwing', async () => {
     const text = '<tool_call><function=echo><parameter=value>hi</parameter></tool_call>'
-    expect(salvage_tool_calls(text, echo_registry)).toBeUndefined()
+    expect(await salvage_tool_calls(text, echo_registry)).toBeUndefined()
   })
 })
 
-describe('salvage_tool_calls: cross-format and degenerate input', () => {
-  it('salvages a hermes block and a bare object together in textual order', () => {
+describe('salvage_tool_calls: cross-format and degenerate input', async () => {
+  it('salvages a hermes block and a bare object together in textual order', async () => {
     const text =
       'first {"name":"echo","arguments":{"value":"bare"}} then ' +
       '<tool_call>{"name":"echo","arguments":{"value":"hermes"}}</tool_call>'
-    const outcome = salvage_tool_calls(text, echo_registry)
+    const outcome = await salvage_tool_calls(text, echo_registry)
     expect(outcome?.calls.map((c) => [c.format, c.input])).toEqual([
       ['json', { value: 'bare' }],
       ['hermes', { value: 'hermes' }],
@@ -266,9 +266,9 @@ describe('salvage_tool_calls: cross-format and degenerate input', () => {
     expect(outcome?.stripped_text).toBe('first  then')
   })
 
-  it('returns undefined for empty, whitespace, and candidate-free text', () => {
-    expect(salvage_tool_calls('', echo_registry)).toBeUndefined()
-    expect(salvage_tool_calls('   \n  ', echo_registry)).toBeUndefined()
-    expect(salvage_tool_calls('The answer is 42.', echo_registry)).toBeUndefined()
+  it('returns undefined for empty, whitespace, and candidate-free text', async () => {
+    expect(await salvage_tool_calls('', echo_registry)).toBeUndefined()
+    expect(await salvage_tool_calls('   \n  ', echo_registry)).toBeUndefined()
+    expect(await salvage_tool_calls('The answer is 42.', echo_registry)).toBeUndefined()
   })
 })

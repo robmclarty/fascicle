@@ -77,7 +77,6 @@ import type {
   ProviderAdapter,
 } from './providers/types.js'
 import type { AiSdkTurn, AiSdkTurnConfig } from './providers/ai_sdk/invoke.js'
-import type { z } from 'zod'
 
 export type EngineInternals = {
   readonly pricing: PricingTable
@@ -743,11 +742,7 @@ export async function generate<T = string>(
         )
       }
 
-      // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-      // Narrowed back to zod until step 12 moves parse_with_schema onto
-      // Standard Schema.
-      // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-      const parse = parse_with_schema(opts.schema as z.ZodType<T>, text)
+      const parse = await parse_with_schema(opts.schema, text)
       if (parse.ok) {
         content_parsed = { value: parse.value }
         break

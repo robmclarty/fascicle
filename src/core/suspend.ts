@@ -8,11 +8,10 @@
  * with `run_options.resume_data[id]` populated), the provided value is
  * validated against `resume_schema` and passed to `combine(input, resume,
  * ctx)`; the result is returned. Invalid resume data throws
- * `resume_validation_error` built from zod 4's flattened issue format.
+ * `resume_validation_error` carrying the issues in zod 4's flattened shape.
  */
 
-import { z } from 'zod'
-import type { AnySchema } from '#schema'
+import { validate_schema, type AnySchema, type SchemaIssue } from '#schema'
 import { resume_validation_error, suspended_error } from './errors.js'
 import { dispatch_step, register_traced_kind } from './runner.js'
 import type { RunContext, Step } from './types.js'
@@ -43,6 +42,33 @@ function is_step(value: unknown): value is Step<unknown, unknown> {
 }
 
 /**
+ * Group issues by their first path segment, reproducing the shape
+ * `z.flattenError` produced when this path ran through zod directly.
+ *
+ * Kept only so the `resume_validation_error` payload does not change under a
+ * step that is meant to swap the validator, not the report; step 13 replaces
+ * it with the vendor-neutral issue list.
+ */
+function flatten_issues(issues: ReadonlyArray<SchemaIssue>): {
+  formErrors: string[]
+  fieldErrors: Record<string, string[]>
+} {
+  const formErrors: string[] = []
+  const fieldErrors: Record<string, string[]> = {}
+  for (const issue of issues) {
+    const field = issue.path?.[0]
+    if (field === undefined) {
+      formErrors.push(issue.message)
+      continue
+    }
+    const key = String(field)
+    const bucket = (fieldErrors[key] ??= [])
+    bucket.push(issue.message)
+  }
+  return { formErrors, fieldErrors }
+}
+
+/**
  * Build a human-in-the-loop pause step.
  *
  * First run fires the `on` side effect and throws `suspended_error`; a resume
@@ -64,19 +90,15 @@ export function suspend<i, o, resume>(config: SuspendConfig<i, o, resume>): Step
       throw new suspended_error(suspend_id, { input })
     }
   
-    // Narrowed back to zod until step 12 moves this to `await validate_schema`
-    // and step 13 replaces the flattened-issue payload.
-    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-    const parsed = (resume_schema as z.ZodType<resume>).safeParse(resume_value)
-    if (!parsed.success) {
-      const issues = z.flattenError(parsed.error)
+    const parsed = await validate_schema(resume_schema, resume_value)
+    if (!parsed.ok) {
       throw new resume_validation_error(
         `resume data for ${suspend_id} failed validation`,
-        issues,
+        flatten_issues(parsed.issues),
       )
     }
-  
-    const result = await combine_fn(input, parsed.data, ctx)
+
+    const result = await combine_fn(input, parsed.value, ctx)
     if (is_step(result)) {
       return dispatch_step(result, input, ctx)
     }
