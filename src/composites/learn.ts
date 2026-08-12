@@ -29,10 +29,10 @@ import {
   aborted_error,
   compose,
   describe,
+  parse_trajectory_event,
   scope,
   stash,
   step,
-  trajectory_event_schema,
   use,
 } from '#core'
 import type { RunContext, Step, TrajectoryEvent } from '#core'
@@ -121,7 +121,7 @@ async function read_jsonl(file_path: string, ctx: RunContext): Promise<Trajector
       ctx.trajectory.record({ kind: 'learn.parse_error', path: file_path, line: i + 1 })
       continue
     }
-    const result = trajectory_event_schema.safeParse(parsed)
+    const result = parse_trajectory_event(parsed)
     if (result.success) {
       events.push(result.data)
     } else {

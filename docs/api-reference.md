@@ -185,6 +185,21 @@ roll your own to target any sink.
 | `tee_logger(...loggers)` | logger | fan one event stream out to several loggers |
 | `filesystem_store(options)` | store | filesystem-backed `CheckpointStore` |
 
+### Reading a trajectory back
+
+Exported from `fascicle` for anything consuming a recorded JSONL stream (the
+viewer, `learn`, your own studio). The gate is permissive on purpose: any
+non-array object with a string `kind` is an event, so a consumer never drops a
+line a newer producer emits. The guards are how you narrow one.
+
+| Export | Kind | Notes |
+| --- | --- | --- |
+| `parse_trajectory_event(value)` | fn | `{ success: true, data }` or `{ success: false, error }`; `data` is the value itself, uncopied |
+| `is_span_start_event(value)` | guard | `span_start` with a string `span_id` and `name` |
+| `is_span_end_event(value)` | guard | `span_end` with a string `span_id` |
+| `is_emit_event(value)` | guard | a `ctx.emit` event; the payload is the caller's |
+| `is_custom_trajectory_event(value)` | guard | the fallback shape: any string `kind`, well-known ones included |
+
 ## MCP bridge (`fascicle/mcp`)
 
 Connects flows to the Model Context Protocol both ways. Pure adapter glue over
@@ -250,8 +265,8 @@ the roadmap). The public type exports:
 **Composition.** `Step`, `StepMetadata`, `StepKind`, `RunContext`,
 `TrajectoryLogger`, `TrajectoryEvent`, `CheckpointStore`, `DescribeOptions`,
 `FlowNode`, `FlowValue`, `LoopConfig`, `LoopResult`, `LoopGuardResult`, plus the
-trajectory event schemas (`SpanStartEvent`, `SpanEndEvent`, `EmitEvent`,
-`CustomTrajectoryEvent`, `ParsedTrajectoryEvent`).
+trajectory event shapes (`SpanStartEvent`, `SpanEndEvent`, `EmitEvent`,
+`CustomTrajectoryEvent`, `ParsedTrajectoryEvent`, `TrajectoryParseResult`).
 
 **Engine.** `Engine`, `EngineConfig`, `EngineDefaults`, `GenerateOptions`,
 `GenerateResult`, `Message`, `UserContentPart`, `AssistantContentPart`,

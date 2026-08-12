@@ -293,7 +293,7 @@ async function main() {
     process.exit(1);
   }
   const mcp_mod = await import(pathToFileURL(DIST_MCP_JS).href);
-  const EXPECTED_MCP = ['mcp_client', 'serve_flow', 'json_schema_to_zod'];
+  const EXPECTED_MCP = ['mcp_client', 'serve_flow', 'json_schema_to_standard'];
   const missing_mcp = EXPECTED_MCP.filter((name) => typeof mcp_mod[name] === 'undefined');
   if (missing_mcp.length > 0) {
     console.error(`\nbuild: mcp smoke test missing exports: ${missing_mcp.join(', ')}`);

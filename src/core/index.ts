@@ -50,11 +50,11 @@ export { is_step_kind, STEP_KINDS } from './step_kinds.js'
 export type { StepKind } from './step_kinds.js'
 
 export {
-  custom_event_schema,
-  emit_event_schema,
-  span_end_event_schema,
-  span_start_event_schema,
-  trajectory_event_schema,
+  is_custom_trajectory_event,
+  is_emit_event,
+  is_span_end_event,
+  is_span_start_event,
+  parse_trajectory_event,
 } from './trajectory.js'
 export type {
   CustomTrajectoryEvent,
@@ -62,6 +62,7 @@ export type {
   ParsedTrajectoryEvent,
   SpanEndEvent,
   SpanStartEvent,
+  TrajectoryParseResult,
 } from './trajectory.js'
 
 export { flow_schema_data as flow_schema }

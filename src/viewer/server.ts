@@ -17,7 +17,7 @@ import { createReadStream, statSync } from 'node:fs'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { trajectory_event_schema, type ParsedTrajectoryEvent } from '#core'
+import { parse_trajectory_event, type ParsedTrajectoryEvent } from '#core'
 import type { Broadcaster } from './broadcast.js'
 
 const SSE_HEARTBEAT_MS = 15_000
@@ -259,7 +259,7 @@ function handle_ingest(
       if (on_parse_error) on_parse_error(err, line)
       return
     }
-    const result = trajectory_event_schema.safeParse(parsed)
+    const result = parse_trajectory_event(parsed)
     if (!result.success) {
       rejected++
       if (on_parse_error) on_parse_error(result.error, line)

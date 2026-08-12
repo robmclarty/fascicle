@@ -66,21 +66,24 @@ describe('fascicle umbrella re-export', () => {
     expect(result).toBe(2)
   })
 
-  it('re-exports the studio-facing surfaces (STEP_KINDS, schemas)', () => {
+  it('re-exports the studio-facing surfaces (STEP_KINDS, event guards)', () => {
     expect(Array.isArray(umbrella.STEP_KINDS)).toBe(true)
     expect(umbrella.STEP_KINDS).toContain('sequence')
     expect(typeof umbrella.is_step_kind).toBe('function')
-    expect(typeof umbrella.trajectory_event_schema).toBe('object')
-    expect(typeof umbrella.span_start_event_schema).toBe('object')
-    expect(typeof umbrella.span_end_event_schema).toBe('object')
-    expect(typeof umbrella.emit_event_schema).toBe('object')
-    expect(typeof umbrella.custom_event_schema).toBe('object')
+    expect(typeof umbrella.parse_trajectory_event).toBe('function')
+    expect(typeof umbrella.is_span_start_event).toBe('function')
+    expect(typeof umbrella.is_span_end_event).toBe('function')
+    expect(typeof umbrella.is_emit_event).toBe('function')
+    expect(typeof umbrella.is_custom_trajectory_event).toBe('function')
   })
 
-  it('parses a wire trajectory event through the umbrella schema', () => {
+  it('parses a wire trajectory event through the umbrella guard', () => {
     const event = { kind: 'span_start', span_id: 's:1', name: 'sequence', run_id: 'r-1' }
-    const parsed = umbrella.trajectory_event_schema.parse(event)
-    expect(parsed.kind).toBe('span_start')
+    const result = umbrella.parse_trajectory_event(event)
+    expect(result.success).toBe(true)
+    if (!result.success) return
+    expect(result.data.kind).toBe('span_start')
+    expect(umbrella.is_span_start_event(event)).toBe(true)
   })
 
   it('echoes step meta through the umbrella step() and describe.json()', () => {

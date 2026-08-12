@@ -8,7 +8,7 @@
  *     current offset means the file shrunk. Reset offset to 0 and re-stream.
  *   - Partial last line: if the trailing chunk has no `\n`, buffer it and
  *     wait. Never parse a half-written line.
- *   - Schema failures: a line that fails `trajectory_event_schema.parse` is
+ *   - Schema failures: a line that fails `parse_trajectory_event` is
  *     dropped and surfaced to `on_parse_error`. The stream keeps going.
  *
  * The watcher is fs.watch-based; reads are serialized and change events
@@ -21,7 +21,7 @@
 
 import { type FSWatcher, watch as fs_watch } from 'node:fs'
 import { open, stat } from 'node:fs/promises'
-import { trajectory_event_schema, type ParsedTrajectoryEvent } from '#core'
+import { parse_trajectory_event, type ParsedTrajectoryEvent } from '#core'
 
 export type TailOptions = {
   readonly path: string
@@ -63,7 +63,7 @@ export function start_tail(options: TailOptions): Tail {
       if (on_parse_error) on_parse_error(err, line)
       return
     }
-    const result = trajectory_event_schema.safeParse(parsed)
+    const result = parse_trajectory_event(parsed)
     if (!result.success) {
       if (on_parse_error) on_parse_error(result.error, line)
       return

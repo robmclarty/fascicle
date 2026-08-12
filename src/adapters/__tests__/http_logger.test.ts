@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { trajectory_event_schema } from '#core'
+import { parse_trajectory_event, type ParsedTrajectoryEvent } from '#core'
 import { http_logger, type HttpLoggerFetch } from '../http_logger.js'
 
 type Captured = {
@@ -32,8 +32,14 @@ async function flush(): Promise<void> {
   await new Promise((r) => setImmediate(r))
 }
 
+function parse_body(body: string): ParsedTrajectoryEvent {
+  const result = parse_trajectory_event(JSON.parse(body))
+  if (!result.success) throw result.error
+  return result.data
+}
+
 describe('http_logger', () => {
-  it('POSTs each record as one NDJSON line and the bytes parse back via trajectory_event_schema', async () => {
+  it('POSTs each record as one NDJSON line and the bytes parse back via parse_trajectory_event', async () => {
     const { calls, fetch } = recording_fetch()
     const logger = http_logger({ url: 'http://localhost:4242/api/ingest', fetch })
 
@@ -48,8 +54,7 @@ describe('http_logger', () => {
     expect(calls[0]?.body.endsWith('\n')).toBe(true)
 
     for (const c of calls) {
-      const parsed = trajectory_event_schema.parse(JSON.parse(c.body))
-      expect(parsed.kind).toBe('emit')
+      expect(parse_body(c.body).kind).toBe('emit')
     }
   })
 
@@ -62,8 +67,8 @@ describe('http_logger', () => {
     await flush()
 
     expect(calls).toHaveLength(2)
-    const start = trajectory_event_schema.parse(JSON.parse(calls[0]?.body ?? ''))
-    const end = trajectory_event_schema.parse(JSON.parse(calls[1]?.body ?? ''))
+    const start = parse_body(calls[0]?.body ?? '')
+    const end = parse_body(calls[1]?.body ?? '')
     expect(start.kind).toBe('span_start')
     expect(end.kind).toBe('span_end')
     expect(start.span_id).toBe(id)

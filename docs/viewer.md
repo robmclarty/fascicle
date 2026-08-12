@@ -21,7 +21,7 @@ pnpm fascicle-viewer .trajectory.jsonl
 ```
 
 The viewer tails the file with `fs.watch`, parses each new line through
-`trajectory_event_schema` from `core`, and pushes parsed events to
+`parse_trajectory_event` from `core`, and pushes parsed events to
 the browser via SSE. Works on a finished run too — point it at any old
 `.jsonl` for a static replay.
 
