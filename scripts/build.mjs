@@ -182,11 +182,29 @@ async function main() {
     process.exit(1);
   }
 
-  // Required runtime peers: static imports of `ai` and `zod`.
-  if (!/from\s+["']ai["']/.test(dist_text)) {
-    console.error(`\nbuild: dist missing \`from 'ai'\` — peer not preserved as external`);
+  // `ai` is reached lazily: generate.ts imports the ai_sdk turn seam with
+  // `await import(...)`, so the entry chunk must NOT import `ai` statically —
+  // that edge is what put the SDK on the graph of every consumer, native
+  // transports included. The split chunk it points at must still import `ai`
+  // rather than inline it, or the peer stopped being external.
+  if (/from\s+["']ai["']/.test(dist_text)) {
+    console.error(`\nbuild: dist statically imports 'ai' — the ai_sdk seam must stay lazy`);
     process.exit(1);
   }
+  const lazy_chunk = dist_text.match(/import\(\s*["']\.\/([^"']+\.js)["']\s*\)/);
+  if (lazy_chunk === null) {
+    console.error(`\nbuild: dist has no lazy chunk import — the ai_sdk seam was inlined`);
+    process.exit(1);
+  }
+  const lazy_chunk_text = await readFile(join(DIST_DIR, lazy_chunk[1]), 'utf8');
+  if (!/from\s+["']ai["']/.test(lazy_chunk_text)) {
+    console.error(
+      `\nbuild: ${lazy_chunk[1]} missing \`from 'ai'\` — peer not preserved as external`,
+    );
+    process.exit(1);
+  }
+
+  // Required runtime peer: a static import of `zod`.
   if (!/from\s+["']zod["']/.test(dist_text)) {
     console.error(`\nbuild: dist missing \`from 'zod'\` — peer not preserved as external`);
     process.exit(1);

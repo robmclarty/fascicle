@@ -8,6 +8,11 @@
  * providers/ai_sdk/invoke.ts, the only module allowed to import from `ai`
  * (enforced by the no-ai-import-outside-ai-sdk-provider rule). tool_loop.ts
  * consumes the InvokeOnce seam built here.
+ *
+ * That seam is reached by `await import(...)` rather than a static import, and
+ * the types it exports come in type-only (erased at compile time), so `ai`
+ * enters the module graph only on a call that actually selects the ai_sdk
+ * transport. A native-transport or claude_cli user never loads it.
  */
 
 import type {
@@ -70,11 +75,7 @@ import type {
   NativeProviderAdapter,
   ProviderAdapter,
 } from './providers/types.js'
-import {
-  create_ai_sdk_turn,
-  type AiSdkTurn,
-  type AiSdkTurnConfig,
-} from './providers/ai_sdk/invoke.js'
+import type { AiSdkTurn, AiSdkTurnConfig } from './providers/ai_sdk/invoke.js'
 
 export type EngineInternals = {
   readonly pricing: PricingTable
@@ -564,6 +565,13 @@ export async function generate<T = string>(
     // All SDK specifics (message/tool mapping, Output.object structured-output
     // gating, the generateText/streamText call) live behind create_ai_sdk_turn;
     // this branch only threads resolved options through the seam.
+    //
+    // Imported here rather than at the top of the file because that static edge
+    // was the one thing that made `ai` mandatory for every consumer: loading it
+    // inside the ai_sdk branch keeps it off the graph of a native-transport
+    // install. The module resolves once per process and is cached thereafter,
+    // so the cost falls on the first ai_sdk call only.
+    const { create_ai_sdk_turn } = await import('./providers/ai_sdk/invoke.js')
     invoke_once = build_ai_sdk_invoke({
       invoke_turn: create_ai_sdk_turn({
         adapter,
