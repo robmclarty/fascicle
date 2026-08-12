@@ -1,0 +1,18 @@
+id: no-engine-npm-dep
+message: "The engine module (outside providers/) depends on no npm packages: node: builtins, relative paths, and #-aliases only (recovers the check-deps.mjs engine-deps invariant now that there is one manifest). 'ai' is confined to providers/ai_sdk/ by no-ai-import-outside-ai-sdk-provider, and provider SDKs (@ai-sdk/*, ai-sdk-ollama, @openrouter/*) to providers/ by no-provider-sdk-outside-providers; neither is allowed here."
+severity: error
+language: typescript
+files:
+  - src/engine/**/*.ts
+ignores:
+  - src/**/__tests__/**
+  - src/engine/providers/**/*.ts
+  - "**/*.test.ts"
+rule:
+  any:
+    - pattern: import $$$ from '$PATH'
+    - pattern: import $$$ from "$PATH"
+constraints:
+  PATH:
+    not:
+      regex: '^(node:|#|\.)'

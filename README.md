@@ -9,10 +9,10 @@ No framework lifecycle. No ambient state. No decorators. Adapters are passed in 
 ## Install
 
 ```bash
-pnpm add fascicle zod
+pnpm add fascicle
 ```
 
-fascicle is ESM-only and requires Node >= 24. `ai` and every provider SDK are optional peers — install only the ones you use. `pnpm add fascicle zod` alone builds and runs a flow against `transport: 'native'` or `claude_cli`, with no AI SDK package installed at all. See [docs/providers.md](./docs/providers.md).
+fascicle is ESM-only and requires Node >= 24. `ai`, `zod`, and every provider SDK are optional peers — install only the ones you use. `pnpm add fascicle` alone builds and runs a flow against `transport: 'native'` or `claude_cli`, with no AI SDK package and no schema library installed at all; schemas accept any [Standard Schema](https://standardschema.dev) — zod, ArkType, Valibot, whichever you already use. See [docs/providers.md](./docs/providers.md).
 
 ## A 60-second tour
 

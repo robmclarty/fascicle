@@ -204,9 +204,11 @@ async function main() {
     process.exit(1);
   }
 
-  // Required runtime peer: a static import of `zod`.
-  if (!/from\s+["']zod["']/.test(dist_text)) {
-    console.error(`\nbuild: dist missing \`from 'zod'\` — peer not preserved as external`);
+  // `zod` is no longer imported as a value anywhere fascicle's own code runs:
+  // its one remaining site (src/mcp/serve.ts) is `import type`, erased at
+  // build time, so no dist chunk should carry a runtime `from 'zod'` either.
+  if (/from\s+["']zod["']/.test(dist_text)) {
+    console.error(`\nbuild: dist statically imports 'zod' — it should be type-only now`);
     process.exit(1);
   }
 

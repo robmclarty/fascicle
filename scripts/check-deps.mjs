@@ -3,11 +3,11 @@
  * Dependency and publishability invariants for the single-package layout.
  *
  *   Dependency shape
- *   - "core may only depend on zod" and "engine may only depend on ai+zod"
- *     are now enforced at the import level by the ast-grep rules
- *     rules/no-core-npm-dep-except-zod.yml and
- *     rules/no-engine-npm-dep-except-ai-zod.yml (the single root manifest can
- *     no longer express per-module dependency shape).
+ *   - "core depends on no npm packages" and "engine (outside providers/)
+ *     depends on no npm packages" are enforced at the import level by the
+ *     ast-grep rules rules/no-core-npm-dep.yml and
+ *     rules/no-engine-npm-dep.yml (the single root manifest can no longer
+ *     express per-module dependency shape).
  *   - The provider SDKs MUST be declared as OPTIONAL peers on the root manifest
  *     (checked here).
  *

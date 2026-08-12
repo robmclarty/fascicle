@@ -81,13 +81,16 @@ yours small.
 
 ### What keeps the surface small
 
-- **No direct runtime dependencies.** fascicle's `package.json` has an empty
-  `dependencies` field. `ai`, `zod`, and every provider SDK are *peer*
-  dependencies you install explicitly, so installing fascicle pulls in no
-  transitive tree of its own. You choose and audit what actually gets added.
-- **Provider SDKs are optional peers, loaded lazily.** Installing fascicle does not
-  drag in eight LLM SDKs; you install only the ones you call, and each is imported
-  on first use rather than at load time.
+- **No direct runtime dependencies, and zero mandatory peers.** fascicle's
+  `package.json` has an empty `dependencies` field, and `ai`, `zod`, and every
+  provider SDK are *optional peer* dependencies you install explicitly, so
+  `pnpm add fascicle` alone pulls in no transitive tree of its own. You choose
+  and audit what actually gets added.
+- **Provider SDKs and the schema library are optional peers, loaded lazily.**
+  Installing fascicle does not drag in eight LLM SDKs or a schema library; you
+  install only what you call, and each is imported on first use rather than at
+  load time. Schemas accept any Standard Schema implementation, so the one you
+  already use works without fascicle naming it.
 - **No install scripts.** fascicle ships no `preinstall`, `install`, or
   `postinstall` hook, so the most common npm malware-execution path (code that runs
   automatically at install time) does not exist in this package.
@@ -129,8 +132,9 @@ naming plainly:
   break-glass path (manual, when CI is unavailable) lack an attestation and are
   noted as such in the release.
 - **fascicle does not vouch for your other dependencies.** Vulnerabilities in `ai`,
-  a provider SDK, or their transitive dependencies remain your audit surface.
-  fascicle avoids adding its own tree, but it cannot vet the peers you install
+  `zod` or another schema library, a provider SDK, or their transitive
+  dependencies remain your audit surface. fascicle avoids adding its own tree,
+  but it cannot vet the peers you install
   alongside it.
 - **Pre-1.0 support window.** Only the latest published minor receives security
   fixes (see the Supported versions section above); there is no back-porting.

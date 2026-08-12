@@ -7,8 +7,10 @@ A 10-minute tour: install, compose your first flow, run it, observe what happene
 From npm (as a consumer):
 
 ```bash
-pnpm add fascicle zod
+pnpm add fascicle
 ```
+
+`ai`, `zod`, and every provider SDK are optional peers — install only the ones you use. Schemas accept any [Standard Schema](https://standardschema.dev) (zod, ArkType, Valibot, …), so nothing beyond `fascicle` itself is required to build and run a flow.
 
 From this repo (as a contributor):
 

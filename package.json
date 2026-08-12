@@ -172,6 +172,9 @@
     },
     "ai-sdk-ollama": {
       "optional": true
+    },
+    "zod": {
+      "optional": true
     }
   },
   "devDependencies": {

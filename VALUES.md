@@ -86,9 +86,10 @@ edit instead of a rewrite. You keep the right to change direction.
 
 ## Security and privacy
 
-The smallest surface is the safest one. fascicle has no direct runtime dependencies,
-runs no install scripts, and loads provider SDKs only when you call them, so it adds
-little to your attack surface and nothing you did not choose. Local models are
+The smallest surface is the safest one. fascicle has no direct runtime dependencies and
+zero mandatory peer dependencies — `ai`, `zod`, and every provider SDK are optional,
+loaded only when you call them — so it adds little to your attack surface and nothing
+you did not choose. Local models are
 first-class precisely so your data and your prompts can stay on machines you control.
 The full posture, including the honest admission that fascicle is itself a dependency
 and therefore a vector, lives in [SECURITY.md](./SECURITY.md).

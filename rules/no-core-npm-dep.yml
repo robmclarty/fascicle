@@ -1,0 +1,17 @@
+id: no-core-npm-dep
+message: "The core module depends on no npm packages: node: builtins, relative paths, and #-aliases only (recovers the check-deps.mjs core-deps invariant now that there is one manifest). Anything vendor-specific goes through the #schema/#policy bottom-of-DAG zones instead of a direct import here."
+severity: error
+language: typescript
+files:
+  - src/core/**/*.ts
+ignores:
+  - src/**/__tests__/**
+  - "**/*.test.ts"
+rule:
+  any:
+    - pattern: import $$$ from '$PATH'
+    - pattern: import $$$ from "$PATH"
+constraints:
+  PATH:
+    not:
+      regex: '^(node:|#|\.)'
