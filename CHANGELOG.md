@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.10.2 — 2026-08-11
+
+### Added
+
+- **`fallback` gains a `handoff` option, so the backup can be told why it is running.** `fallback(primary, backup, { handoff })` calls `handoff(input, err)` when the primary throws an application error and runs the backup on the result, instead of retrying the same input blind; a handoff note like "a previous attempt failed, answer from scratch" is the intended use. Omitting the option keeps the old behaviour exactly: the backup receives the original input. Control-flow signals are untouched by the new path: suspend and abort still propagate without triggering the backup, and the handoff is never called for them, so an approval gate cannot be bypassed through a mapped input. Tests pin the mapped-input path, the handoff argument order, the success path (no handoff call), and the control-flow bypass.
+
+### Internal
+
+- **The cookbook gains an escalation-tiering recipe: judge the cheap model's actual work, escalate only on real trouble.** Where `fallback` escalates on a throw, the recipe escalates on mediocrity. It covers the single-request shape (a buffered weak draft, a fail-open judge expressed as `fallback` around the judge so a dead judge serves the draft rather than escalating, and an escalate-or-serve `branch` that emits the verdict into the trajectory), a multi-turn latch that holds a confirmation streak in `loop` carry-state (an escalate verdict increments, a decline resets, a fail-open judge holds, two confirmations latch the run onto the strong tier), and a calibration method for deciding when the weak tier is enough (RESCUE/LOSS/SAFE/HARD quadrants over a strong-tier baseline plus a stratified weak-tier probe, harnessed with `bench` and pinned with `regression_compare`). The multi-provider fallback recipe picks up a `handoff` example.
+- **`docs/comparison.md` places NVIDIA's Switchyard.** A wire-level routing proxy is a different layer, not competition: aligned with fascicle on keeping routing policy outside the model surface (its `libsy` library hands every model call back to the caller, the same separation as adapters passed in per run and verbatim model resolution), different on where routing belongs (rewriting traffic for clients you cannot modify versus explicit composition when you own the call site), and usable today as one more OpenAI-compatible gateway behind the compat recipe in `docs/providers.md`.
+- **The check runner (checkride) is upgraded from 0.6.0 to 0.12.1.**
+
 ## v0.10.1 — 2026-08-07
 
 ### Fixed
