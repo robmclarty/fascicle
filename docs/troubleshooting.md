@@ -79,6 +79,22 @@ use the profile. Per-provider notes: [providers.md](./providers.md).
 Every `claude_cli_error` carries a `stderr_snippet` (first 512 bytes of stderr).
 Full guide: [cli.md](./cli.md).
 
+## A cancelled run keeps consuming tokens or holding resources
+
+Cancellation is cooperative, not preemptive: `timeout(inner, ms)` and a SIGINT/SIGTERM
+abort both signal `ctx.abort`, but neither can force a step that ignores that signal to
+stop. `run(...)` returns (or throws `timeout_error`/`aborted_error`) on schedule, while
+the abandoned step — a `model_call` whose transport never saw the signal, a tight loop
+that never checks `ctx.abort.aborted`, a subprocess started without it — keeps running in
+the background. For a model call this means the provider keeps generating, and billing,
+tokens for a response nothing will read.
+
+There is no fix on fascicle's side: JavaScript has no way to preempt a promise it does
+not control. The fix is in the step: pass `ctx.abort` to every `fetch`, `child_process`,
+or other abortable call the step makes, and check `ctx.abort.aborted` between iterations
+of any loop that does not otherwise await something abortable. See
+[concepts.md](./concepts.md#cancellation-is-cooperative).
+
 ## Streaming stops retrying / logs look out of order
 
 - Retries do not resume past the first delivered chunk. Once a stream has started,

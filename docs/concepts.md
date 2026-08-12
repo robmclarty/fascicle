@@ -186,6 +186,14 @@ For embedded runtimes — tests, Lambda, worker threads, anything that owns its 
 
 `timeout(inner, ms)` builds on the same mechanism: it aborts the inner step's signal after the deadline and throws `timeout_error`.
 
+### Cancellation is cooperative
+
+`timeout` and abort only *signal* intent — they cannot kill work that ignores `ctx.abort`. `timeout(inner, ms)` races the inner step against a deadline: when the deadline wins, `timeout_error` throws and `run(...)` returns control to the caller, but the inner step's promise is not cancelled. If that step never checks `ctx.abort` (a tight CPU-bound loop, a `fetch` call that was not given the signal, a tool's `execute` that awaits an unrelated promise), it keeps running in the background after fascicle has already moved on. The same is true of a SIGINT/SIGTERM abort, and of a `ctx.on_cleanup` handler that outlives its own timeout — it is abandoned, not killed, and the remaining handlers run without waiting for it.
+
+Abandoned work is not free. A `model_call` step that outlives its `timeout` keeps the underlying HTTP request open and the provider keeps generating (and billing) tokens for a response nothing will read; a subprocess or socket that was never wired to `ctx.abort` keeps holding its resource. fascicle has no scheduler that can preempt a promise it does not control — that would require language-level cancellation Node/JS does not offer.
+
+The fix is on the step author: thread `ctx.abort` into every long-running operation a step performs, not just the outermost one. Pass it to `fetch`'s `signal` option, to `child_process` spawn options, and check `ctx.abort.aborted` between iterations of any loop that does not otherwise await an abortable call. A step that never touches `ctx.abort` is not wrong, but it is not cancellable — treat that as a property to design for, not an edge case to patch later. See [troubleshooting.md](./troubleshooting.md#a-cancelled-run-keeps-consuming-tokens-or-holding-resources) for how to spot this in practice.
+
 ## Scope, stash, and use
 
 Most chains thread values implicitly via `sequence` and `parallel`. When that is not enough — two non-adjacent steps need to agree on a value, or a child step needs a configuration value its parent produced — use `scope`:
