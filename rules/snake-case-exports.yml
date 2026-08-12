@@ -5,10 +5,11 @@ language: typescript
 files:
   - src/core/**/*.ts
   - src/engine/**/*.ts
+  - src/policy/**/*.ts
+  - src/schema/**/*.ts
 ignores:
   - src/**/__tests__/**
-  - src/core/**/*.test.ts
-  - src/engine/**/*.test.ts
+  - "**/*.test.ts"
 rule:
   any:
     - pattern: export function $NAME($$$) { $$$ }
