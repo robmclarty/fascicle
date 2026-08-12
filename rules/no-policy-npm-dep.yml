@@ -1,0 +1,17 @@
+id: no-policy-npm-dep
+message: "The policy module is the bottom of the dependency DAG: node: builtins and relative paths only. No npm package, and no #-alias either, because both core and engine import #policy and any edge back out of it closes a cycle."
+severity: error
+language: typescript
+files:
+  - src/policy/**/*.ts
+ignores:
+  - src/**/__tests__/**
+  - "**/*.test.ts"
+rule:
+  any:
+    - pattern: import $$$ from '$PATH'
+    - pattern: import $$$ from "$PATH"
+constraints:
+  PATH:
+    not:
+      regex: '^(node:|\.)'

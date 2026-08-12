@@ -13,6 +13,7 @@ export default defineConfig({
       { find: /^#agents$/, replacement: fileURLToPath(new URL('./src/agents/index.ts', import.meta.url)) },
       { find: /^#stdio$/, replacement: fileURLToPath(new URL('./src/stdio/index.ts', import.meta.url)) },
       { find: /^#ui$/, replacement: fileURLToPath(new URL('./src/ui/index.ts', import.meta.url)) },
+      { find: /^#policy$/, replacement: fileURLToPath(new URL('./src/policy/index.ts', import.meta.url)) },
       // Published surface (examples + doc snippets import these names).
       { find: /^fascicle\/adapters$/, replacement: fileURLToPath(new URL('./src/adapters/index.ts', import.meta.url)) },
       { find: /^fascicle\/mcp$/, replacement: fileURLToPath(new URL('./src/mcp/index.ts', import.meta.url)) },

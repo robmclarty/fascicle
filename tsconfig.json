@@ -36,7 +36,8 @@
       "#viewer": ["./src/viewer/index.ts"],
       "#agents": ["./src/agents/index.ts"],
       "#stdio": ["./src/stdio/index.ts"],
-      "#ui": ["./src/ui/index.ts"]
+      "#ui": ["./src/ui/index.ts"],
+      "#policy": ["./src/policy/index.ts"]
     }
   },
   "include": [

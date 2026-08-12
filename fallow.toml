@@ -89,13 +89,17 @@ patterns = ["src/ui/**"]
 name = "otel"
 patterns = ["src/otel/**"]
 
-[[boundaries.rules]] # core: bottom of the DAG, imports no sibling module
-from = "core"
-allow = ["mcp", "stdio", "ui"]
+[[boundaries.zones]]
+name = "policy"
+patterns = ["src/policy/**"]
 
-[[boundaries.rules]] # engine: may reference core (type-only, see ast-grep), nothing else
+[[boundaries.rules]] # core: imports no sibling module except the policy algebra
+from = "core"
+allow = ["mcp", "stdio", "ui", "policy"]
+
+[[boundaries.rules]] # engine: may reference core (type-only, see ast-grep) and policy, nothing else
 from = "engine"
-allow = ["core", "mcp", "stdio", "ui"]
+allow = ["core", "mcp", "stdio", "ui", "policy"]
 
 [[boundaries.rules]] # composites: core + adapters only
 from = "composites"
@@ -128,3 +132,7 @@ allow = ["core", "engine", "mcp", "stdio"]
 [[boundaries.rules]] # otel: core only (transport-neutral trajectory-to-OTel bridge; own subpath, C2)
 from = "otel"
 allow = ["core"]
+
+[[boundaries.rules]] # policy: bottom of the DAG; core and engine import it, so it imports nothing
+from = "policy"
+allow = []
