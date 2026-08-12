@@ -144,6 +144,25 @@ A2A) batteries-included, or you are in the AWS / Bedrock ecosystem.
   on Claude Code's tool loop. fascicle's `claude_cli` provider sits on the same
   territory but presents it as one more provider behind `generate`. A fascicle step
   could drop down to the Agent SDK.
+- **Switchyard** (NVIDIA NeMo) is a wire-level proxy, not a composition layer: a
+  Rust server (plus `libsy`, its embeddable routing library) that translates
+  between the OpenAI Chat, Anthropic Messages, and OpenAI Responses formats and
+  routes traffic across backends with weak/strong tiering algorithms: an
+  up-front LLM classifier, signal-driven stage routing, judge-confirmed
+  escalation, and random A/B splits. Two of its calls align with fascicle's:
+  `libsy` never calls a model itself (an algorithm picks a target and hands the
+  call back to you, the same separation as fascicle's adapters passed in per
+  run), and routing policy lives outside the model surface (the reason
+  fascicle's engine resolves models verbatim instead of aliasing). It differs on
+  where routing belongs. Switchyard rewrites traffic for clients you cannot
+  modify: Claude Code or Codex speaking their native APIs to vLLM, NIM, or
+  Ollama. In a fascicle app you own the call site, so tier routing is better
+  written as explicit composition (`branch`, `fallback`, a `Judge` step) where
+  the decision and its cost are visible in the trajectory rather than buried in
+  a proxy. The two compose rather than compete: a Switchyard server is one more
+  OpenAI-compatible gateway reachable through
+  [the compat recipe](./providers.md#openai-compatible-servers-the-compat-recipe).
+  As of mid-2026 it is pre-alpha and explicitly not for production use.
 - **BAML** is a schema/prompt DSL for describing one call at a time; BAML functions
   wrap trivially as fascicle steps (`step('extract', boundary.Extract)`).
 - **LlamaIndex / DSPy / CrewAI / AutoGen / Pydantic AI / Genkit** solve adjacent or
@@ -187,6 +206,8 @@ None of these is unprecedented alone; the concentration is the point.
 - You want the model to drive the loop, with multi-agent orchestration built in →
   **Strands Agents**.
 - You only need provider abstraction, no composition → **Vercel AI SDK** directly.
+- You need to route or translate at the wire for a client you don't control
+  (Claude Code against vLLM) → **Switchyard** or another gateway.
 - You work in Python → fascicle is TypeScript-only by design; look at Pydantic AI,
   DSPy, or the Python frameworks above.
 
