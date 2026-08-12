@@ -17,124 +17,291 @@
  * and skips; unknown event types record `{ kind: 'cli_unknown_event', raw }`
  * and skip. Neither ever throws.
  *
- * Event shapes are Zod-validated via `cli_event_schema` (a
- * `z.discriminatedUnion` over the recognized CLI event types). Per-entry
- * content arrays use `.transform` to silently drop invalid entries rather
- * than rejecting the whole event; this preserves forward compatibility with
- * new CLI content types.
+ * Event shapes are validated by hand-written type guards. `as_event` is the
+ * discriminated gate over the recognized CLI event types: a value must be a
+ * non-array object whose `type` names a known event, and that event's own
+ * fields must type-check, or the whole line is rejected as `cli_unknown_event`.
+ * This mirrors the strictness of the `z.discriminatedUnion` it replaced: an
+ * optional field carrying the wrong type rejects the event, unknown keys ride
+ * along unused, and a sub-object (`usage`, `rate_limit_info`) is validated field
+ * by field. Per-entry content arrays are the one deliberately permissive layer:
+ * `as_assistant_part` / `as_user_part` recognize a single entry at a time and
+ * the collector drops the ones that don't match, so a content type a future CLI
+ * emits never rejects the surrounding event.
  */
 
-import { z } from 'zod'
 import type { TrajectoryLogger } from '#core'
 import type { StreamChunk, UsageTotals } from '../../types.js'
 
-const cli_usage_schema = z.object({
-  input_tokens: z.number().optional(),
-  output_tokens: z.number().optional(),
-  cache_read_input_tokens: z.number().optional(),
-  cache_creation_input_tokens: z.number().optional(),
-})
+export type CliUsageRaw = {
+  input_tokens?: number
+  output_tokens?: number
+  cache_read_input_tokens?: number
+  cache_creation_input_tokens?: number
+}
 
-const assistant_text_part_schema = z.object({
-  type: z.literal('text'),
-  text: z.string(),
-})
+type CliTextPart = { type: 'text'; text: string }
+type CliToolUsePart = { type: 'tool_use'; id: string; name: string; input: unknown }
+export type CliAssistantContent = CliTextPart | CliToolUsePart
 
-const assistant_tool_use_part_schema = z.object({
-  type: z.literal('tool_use'),
-  id: z.string(),
-  name: z.string(),
-  input: z.unknown(),
-})
+export type CliUserContent = {
+  type: 'tool_result'
+  tool_use_id: string
+  content?: unknown
+  is_error?: boolean
+}
 
-const assistant_content_part_schema = z.discriminatedUnion('type', [
-  assistant_text_part_schema,
-  assistant_tool_use_part_schema,
-])
+type CliSystemEvent = {
+  type: 'system'
+  subtype?: string
+  session_id?: string
+  model?: string
+}
 
-const user_tool_result_part_schema = z.object({
-  type: z.literal('tool_result'),
-  tool_use_id: z.string(),
-  content: z.unknown().optional(),
-  is_error: z.boolean().optional(),
-})
+type CliAssistantEvent = {
+  type: 'assistant'
+  message: { content: CliAssistantContent[] }
+}
 
-type AssistantContentPart = z.infer<typeof assistant_content_part_schema>
-type UserToolResultPart = z.infer<typeof user_tool_result_part_schema>
+type CliUserEvent = {
+  type: 'user'
+  message: { content: CliUserContent[] }
+}
 
-const assistant_content_array_schema = z.array(z.unknown()).transform((arr) => {
-  const out: AssistantContentPart[] = []
-  for (const entry of arr) {
-    const result = assistant_content_part_schema.safeParse(entry)
-    if (result.success) out.push(result.data)
+type CliResultEvent = {
+  type: 'result'
+  subtype?: string
+  session_id?: string
+  total_cost_usd?: number
+  duration_ms?: number
+  is_error?: boolean
+  usage?: CliUsageRaw
+  result?: string
+}
+
+type CliRateLimitInfo = {
+  status?: string
+  resetsAt?: number
+  rateLimitType?: string
+  overageStatus?: string
+  overageResetsAt?: number
+  isUsingOverage?: boolean
+}
+
+type CliRateLimitEvent = {
+  type: 'rate_limit_event'
+  rate_limit_info?: CliRateLimitInfo
+  session_id?: string
+}
+
+export type CliEvent =
+  | CliSystemEvent
+  | CliAssistantEvent
+  | CliUserEvent
+  | CliResultEvent
+  | CliRateLimitEvent
+
+/** A non-null, non-array object: the shape every CLI event and sub-object takes. */
+function is_record(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+/** `key` is absent (or `undefined`), or holds a string. */
+function opt_string(rec: Record<string, unknown>, key: string): boolean {
+  const value = rec[key]
+  return value === undefined || typeof value === 'string'
+}
+
+/** `key` is absent (or `undefined`), or holds a number. */
+function opt_number(rec: Record<string, unknown>, key: string): boolean {
+  const value = rec[key]
+  return value === undefined || typeof value === 'number'
+}
+
+/** `key` is absent (or `undefined`), or holds a boolean. */
+function opt_boolean(rec: Record<string, unknown>, key: string): boolean {
+  const value = rec[key]
+  return value === undefined || typeof value === 'boolean'
+}
+
+/**
+ * The optional `usage` sub-object of a `result` event. Absent is fine; a present
+ * value must be an object whose known token counts are numbers when given. A
+ * `null`, an array, or a mistyped count rejects the event.
+ */
+function is_valid_usage(value: unknown): boolean {
+  if (value === undefined) return true
+  if (!is_record(value)) return false
+  return (
+    opt_number(value, 'input_tokens') &&
+    opt_number(value, 'output_tokens') &&
+    opt_number(value, 'cache_read_input_tokens') &&
+    opt_number(value, 'cache_creation_input_tokens')
+  )
+}
+
+/**
+ * The optional `rate_limit_info` sub-object of a `rate_limit_event`, under the
+ * same rule as usage: absent is fine, a present value is validated field by
+ * field or the event is rejected.
+ */
+function is_valid_rate_limit_info(value: unknown): boolean {
+  if (value === undefined) return true
+  if (!is_record(value)) return false
+  return (
+    opt_string(value, 'status') &&
+    opt_number(value, 'resetsAt') &&
+    opt_string(value, 'rateLimitType') &&
+    opt_string(value, 'overageStatus') &&
+    opt_number(value, 'overageResetsAt') &&
+    opt_boolean(value, 'isUsingOverage')
+  )
+}
+
+/**
+ * Recognize one `assistant` content entry, or `undefined` for anything
+ * unrecognized. `text` needs a string `text`; `tool_use` needs string `id` and
+ * `name` and carries its opaque `input` through (absent `input` becomes
+ * `undefined`, one deliberate tolerance the old `z.unknown()` did not grant).
+ * Callers drop the `undefined` results, so an unknown entry type never rejects
+ * the surrounding event.
+ */
+function as_assistant_part(value: unknown): CliAssistantContent | undefined {
+  if (!is_record(value)) return undefined
+  if (value['type'] === 'text') {
+    const text = value['text']
+    return typeof text === 'string' ? { type: 'text', text } : undefined
   }
-  return out
-})
-
-const user_content_array_schema = z.array(z.unknown()).transform((arr) => {
-  const out: UserToolResultPart[] = []
-  for (const entry of arr) {
-    const result = user_tool_result_part_schema.safeParse(entry)
-    if (result.success) out.push(result.data)
+  if (value['type'] === 'tool_use') {
+    const id = value['id']
+    const name = value['name']
+    if (typeof id !== 'string') return undefined
+    if (typeof name !== 'string') return undefined
+    return { type: 'tool_use', id, name, input: value['input'] }
   }
-  return out
-})
+  return undefined
+}
 
-const system_event_schema = z.object({
-  type: z.literal('system'),
-  subtype: z.string().optional(),
-  session_id: z.string().optional(),
-  model: z.string().optional(),
-})
+/**
+ * Recognize one `user` content entry as a tool result, or `undefined`. Requires
+ * a string `tool_use_id`; `is_error` must be boolean when present, and a present
+ * `content` of any shape is carried through. Callers drop the `undefined`
+ * results.
+ */
+function as_user_part(value: unknown): CliUserContent | undefined {
+  if (!is_record(value)) return undefined
+  if (value['type'] !== 'tool_result') return undefined
+  const tool_use_id = value['tool_use_id']
+  if (typeof tool_use_id !== 'string') return undefined
+  if (!opt_boolean(value, 'is_error')) return undefined
+  const part: CliUserContent = { type: 'tool_result', tool_use_id }
+  if ('content' in value) part.content = value['content']
+  const is_error = value['is_error']
+  if (typeof is_error === 'boolean') part.is_error = is_error
+  return part
+}
 
-const assistant_event_schema = z.object({
-  type: z.literal('assistant'),
-  message: z.object({ content: assistant_content_array_schema }),
-})
+/**
+ * Collect the valid parts of an `assistant`/`user` content array. Returns
+ * `undefined` (rejecting the event) when `value` is not an array; otherwise maps
+ * each entry through `recognize` and keeps the ones it accepts.
+ */
+function collect_parts<T>(
+  value: unknown,
+  recognize: (entry: unknown) => T | undefined,
+): T[] | undefined {
+  if (!Array.isArray(value)) return undefined
+  const parts: T[] = []
+  for (const entry of value) {
+    const part = recognize(entry)
+    if (part !== undefined) parts.push(part)
+  }
+  return parts
+}
 
-const user_event_schema = z.object({
-  type: z.literal('user'),
-  message: z.object({ content: user_content_array_schema }),
-})
+/** A `system` event whose optional metadata fields type-check. */
+function is_system_event(raw: Record<string, unknown>): raw is CliSystemEvent {
+  return (
+    opt_string(raw, 'subtype') &&
+    opt_string(raw, 'session_id') &&
+    opt_string(raw, 'model')
+  )
+}
 
-const result_event_schema = z.object({
-  type: z.literal('result'),
-  subtype: z.string().optional(),
-  session_id: z.string().optional(),
-  total_cost_usd: z.number().optional(),
-  duration_ms: z.number().optional(),
-  is_error: z.boolean().optional(),
-  usage: cli_usage_schema.optional(),
-  result: z.string().optional(),
-})
+/** A `result` event whose optional fields and `usage` sub-object type-check. */
+function is_result_event(raw: Record<string, unknown>): raw is CliResultEvent {
+  return (
+    opt_string(raw, 'subtype') &&
+    opt_string(raw, 'session_id') &&
+    opt_number(raw, 'total_cost_usd') &&
+    opt_number(raw, 'duration_ms') &&
+    opt_boolean(raw, 'is_error') &&
+    is_valid_usage(raw['usage']) &&
+    opt_string(raw, 'result')
+  )
+}
 
-const rate_limit_info_schema = z.object({
-  status: z.string().optional(),
-  resetsAt: z.number().optional(),
-  rateLimitType: z.string().optional(),
-  overageStatus: z.string().optional(),
-  overageResetsAt: z.number().optional(),
-  isUsingOverage: z.boolean().optional(),
-})
+/** A `rate_limit_event` whose `rate_limit_info` sub-object and `session_id` type-check. */
+function is_rate_limit_event(raw: Record<string, unknown>): raw is CliRateLimitEvent {
+  return is_valid_rate_limit_info(raw['rate_limit_info']) && opt_string(raw, 'session_id')
+}
 
-const rate_limit_event_schema = z.object({
-  type: z.literal('rate_limit_event'),
-  rate_limit_info: rate_limit_info_schema.optional(),
-  session_id: z.string().optional(),
-})
+/**
+ * Recognize a pass-through event in place: hand the original object back (extra
+ * keys and all, since nothing downstream reads them) when `recognize` accepts
+ * it, or `undefined` to reject. Narrowing keeps this cast-free.
+ */
+function gate<T extends CliEvent>(
+  raw: Record<string, unknown>,
+  recognize: (value: Record<string, unknown>) => value is T,
+): T | undefined {
+  return recognize(raw) ? raw : undefined
+}
 
-const cli_event_schema = z.discriminatedUnion('type', [
-  system_event_schema,
-  assistant_event_schema,
-  user_event_schema,
-  result_event_schema,
-  rate_limit_event_schema,
-])
+/**
+ * Normalize an `assistant` event: its `message` must be an object and its
+ * `content` an array, whose recognized parts are kept and the rest dropped.
+ */
+function as_assistant_event(raw: Record<string, unknown>): CliEvent | undefined {
+  const message = raw['message']
+  if (!is_record(message)) return undefined
+  const content = collect_parts(message['content'], as_assistant_part)
+  return content === undefined ? undefined : { type: 'assistant', message: { content } }
+}
 
-export type CliUsageRaw = z.infer<typeof cli_usage_schema>
-export type CliAssistantContent = AssistantContentPart
-export type CliUserContent = UserToolResultPart
-export type CliEvent = z.infer<typeof cli_event_schema>
+/** Normalize a `user` event, under the same rule as `as_assistant_event`. */
+function as_user_event(raw: Record<string, unknown>): CliEvent | undefined {
+  const message = raw['message']
+  if (!is_record(message)) return undefined
+  const content = collect_parts(message['content'], as_user_part)
+  return content === undefined ? undefined : { type: 'user', message: { content } }
+}
+
+/**
+ * The wire gate: validate a parsed JSON value against the recognized CLI event
+ * shapes, returning the typed event or `undefined` on any mismatch.
+ *
+ * `assistant` and `user` are normalized (their content arrays are filtered down
+ * to the recognized parts); the pass-through events are recognized in place, so
+ * unknown keys survive but are never read.
+ */
+function as_event(raw: unknown): CliEvent | undefined {
+  if (!is_record(raw)) return undefined
+  switch (raw['type']) {
+    case 'system':
+      return gate(raw, is_system_event)
+    case 'assistant':
+      return as_assistant_event(raw)
+    case 'user':
+      return as_user_event(raw)
+    case 'result':
+      return gate(raw, is_result_event)
+    case 'rate_limit_event':
+      return gate(raw, is_rate_limit_event)
+    default:
+      return undefined
+  }
+}
 
 export type TurnCollected = {
   readonly step_index: number
@@ -290,15 +457,6 @@ function flush_turn(state: ParserState): void {
   state.turn_tool_calls = []
   state.turn_tool_results = []
   state.turn_usage = { input_tokens: 0, output_tokens: 0 }
-}
-
-/**
- * Validate a parsed JSON value against `cli_event_schema`, returning
- * `undefined` instead of throwing on a mismatch.
- */
-function as_event(raw: unknown): CliEvent | undefined {
-  const result = cli_event_schema.safeParse(raw)
-  return result.success ? result.data : undefined
 }
 
 /**

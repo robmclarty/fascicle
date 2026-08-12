@@ -403,6 +403,164 @@ describe('§7.4 — tolerance', () => {
   })
 })
 
+describe('§7.3 — event-level strictness (a mistyped field rejects the whole event)', () => {
+  // Characterization: each malformed event must be recorded as one
+  // cli_unknown_event, never partially accepted. A trailing valid result event
+  // keeps the stream well-formed so only the bad line is counted.
+  const rejected: ReadonlyArray<readonly [string, unknown]> = [
+    ['system subtype non-string', { type: 'system', subtype: 1 }],
+    ['system session_id non-string', { type: 'system', session_id: 1 }],
+    ['system model non-string', { type: 'system', model: 1 }],
+    ['result subtype non-string', { type: 'result', subtype: 1 }],
+    ['result session_id non-string', { type: 'result', session_id: 1 }],
+    ['result total_cost_usd non-number', { type: 'result', total_cost_usd: 'x' }],
+    ['result duration_ms non-number', { type: 'result', duration_ms: 'x' }],
+    ['result is_error non-boolean', { type: 'result', is_error: 'x' }],
+    ['result result non-string', { type: 'result', result: 1 }],
+    ['result usage null', { type: 'result', usage: null }],
+    ['result usage array', { type: 'result', usage: [] }],
+    ['result usage input_tokens non-number', { type: 'result', usage: { input_tokens: 'x' } }],
+    ['result usage output_tokens non-number', { type: 'result', usage: { output_tokens: 'x' } }],
+    ['result usage cache_read non-number', { type: 'result', usage: { cache_read_input_tokens: 'x' } }],
+    ['result usage cache_creation non-number', { type: 'result', usage: { cache_creation_input_tokens: 'x' } }],
+    ['rate_limit session_id non-string', { type: 'rate_limit_event', session_id: 1 }],
+    ['rate_limit info non-object', { type: 'rate_limit_event', rate_limit_info: 'x' }],
+    ['rate_limit info array', { type: 'rate_limit_event', rate_limit_info: [] }],
+    ['rate_limit info status non-string', { type: 'rate_limit_event', rate_limit_info: { status: 1 } }],
+    ['rate_limit info resetsAt non-number', { type: 'rate_limit_event', rate_limit_info: { resetsAt: 'x' } }],
+    ['rate_limit info rateLimitType non-string', { type: 'rate_limit_event', rate_limit_info: { rateLimitType: 1 } }],
+    ['rate_limit info overageStatus non-string', { type: 'rate_limit_event', rate_limit_info: { overageStatus: 1 } }],
+    ['rate_limit info overageResetsAt non-number', { type: 'rate_limit_event', rate_limit_info: { overageResetsAt: 'x' } }],
+    ['rate_limit info isUsingOverage non-boolean', { type: 'rate_limit_event', rate_limit_info: { isUsingOverage: 'x' } }],
+    ['assistant message null', { type: 'assistant', message: null }],
+    ['user message null', { type: 'user', message: null }],
+    ['user message non-object', { type: 'user', message: 'x' }],
+    ['user message content non-array', { type: 'user', message: { content: 'x' } }],
+    ['top-level array', [1, 2]],
+    ['top-level null', null],
+  ]
+  it.each(rejected)('%s records exactly one cli_unknown_event', async (_label, event) => {
+    const trajectory = create_captured_trajectory()
+    const { parsed } = await feed(
+      [jline(init_event), jline(event), jline(result_event())],
+      trajectory,
+    )
+    expect(
+      trajectory.events.filter((e) => e.kind === 'cli_unknown_event').length,
+    ).toBe(1)
+    // the trailing valid result still lands, proving only the bad line was dropped
+    expect(parsed.received_result).toBe(true)
+  })
+
+  it('unknown top-level and usage keys are ignored, not rejected', async () => {
+    const { parsed, chunks } = await feed([
+      jline(init_event),
+      jline(
+        result_event({
+          unexpected_field: 'ok',
+          usage: { input_tokens: 3, output_tokens: 1, future_token_kind: 9 },
+        }),
+      ),
+    ])
+    expect(parsed.received_result).toBe(true)
+    expect(chunks.filter((c) => c.kind === 'finish').length).toBe(1)
+    expect(parsed.final_usage.input_tokens).toBe(3)
+    expect(parsed.final_usage.output_tokens).toBe(1)
+  })
+})
+
+describe('§7.4 — content entries drop individually without rejecting the event', () => {
+  const dropped_assistant: ReadonlyArray<readonly [string, unknown]> = [
+    ['text with non-string text', { type: 'text', text: 1 }],
+    ['tool_use missing id', { type: 'tool_use', name: 'n', input: {} }],
+    ['tool_use non-string id', { type: 'tool_use', id: 1, name: 'n', input: {} }],
+    ['tool_use missing name', { type: 'tool_use', id: 'i', input: {} }],
+    ['tool_use non-string name', { type: 'tool_use', id: 'i', name: 1, input: {} }],
+    ['unknown part type', { type: 'future_part', data: 1 }],
+    // an unknown type is dropped even when it carries otherwise-valid id/name:
+    // the `type` gate, not the fields, is what admits a tool_use.
+    ['unknown type carrying id and name', { type: 'future_part', id: 'x', name: 'n', input: {} }],
+    ['non-object entry', 42],
+    ['null entry', null],
+  ]
+  it.each(dropped_assistant)(
+    'assistant content: %s is dropped, keeping its valid sibling',
+    async (_label, bad) => {
+      const trajectory = create_captured_trajectory()
+      const { chunks } = await feed(
+        [
+          jline(init_event),
+          jline({
+            type: 'assistant',
+            message: { content: [bad, { type: 'text', text: 'kept' }] },
+          }),
+          jline(result_event({ result: 'kept' })),
+        ],
+        trajectory,
+      )
+      expect(chunks.filter((c) => c.kind === 'text').length).toBe(1)
+      expect(chunks.filter((c) => c.kind === 'tool_call_start').length).toBe(0)
+      expect(
+        trajectory.events.filter((e) => e.kind === 'cli_unknown_event').length,
+      ).toBe(0)
+    },
+  )
+
+  const dropped_user: ReadonlyArray<readonly [string, unknown]> = [
+    ['missing tool_use_id', { type: 'tool_result', content: 'x' }],
+    ['non-string tool_use_id', { type: 'tool_result', tool_use_id: 1, content: 'x' }],
+    ['non-boolean is_error', { type: 'tool_result', tool_use_id: 't', is_error: 'x' }],
+    ['non-tool_result type', { type: 'text', text: 'x' }],
+    // a non-tool_result entry is dropped even when it carries a valid
+    // tool_use_id: the `type` gate is what admits a tool result.
+    ['non-tool_result type carrying tool_use_id', { type: 'text', tool_use_id: 't', content: 'x' }],
+    ['non-object entry', 42],
+    ['null entry', null],
+  ]
+  it.each(dropped_user)('user content: %s is dropped', async (_label, bad) => {
+    const trajectory = create_captured_trajectory()
+    const { chunks } = await feed(
+      [
+        jline(init_event),
+        jline({
+          type: 'assistant',
+          message: { content: [{ type: 'tool_use', id: 'tu-1', name: 'Read', input: {} }] },
+        }),
+        jline({ type: 'user', message: { content: [bad] } }),
+        jline(result_event()),
+      ],
+      trajectory,
+    )
+    expect(chunks.filter((c) => c.kind === 'tool_result').length).toBe(0)
+    expect(
+      trajectory.events.filter((e) => e.kind === 'cli_unknown_event').length,
+    ).toBe(0)
+  })
+
+  it('a valid tool_result with an explicit is_error: false is kept as a success', async () => {
+    const { chunks } = await feed([
+      jline(init_event),
+      jline({
+        type: 'assistant',
+        message: { content: [{ type: 'tool_use', id: 'tu-1', name: 'Read', input: {} }] },
+      }),
+      jline({
+        type: 'user',
+        message: {
+          content: [{ type: 'tool_result', tool_use_id: 'tu-1', content: 'body', is_error: false }],
+        },
+      }),
+      jline(result_event()),
+    ])
+    const tr = chunks.find((c) => c.kind === 'tool_result')
+    expect(tr?.kind).toBe('tool_result')
+    if (tr?.kind === 'tool_result') {
+      expect(tr.output).toBe('body')
+      expect(tr.error).toBeUndefined()
+    }
+  })
+})
+
 describe('line buffering across partial chunks', () => {
   it('accumulates partial JSON across multiple feed_chunk calls', async () => {
     const state = create_parser_state()
@@ -477,10 +635,13 @@ describe('usage mapping', () => {
   })
 
   it('treats missing usage fields as zero (input_tokens, output_tokens)', async () => {
-    const { parsed } = await feed([
+    const { parsed, chunks } = await feed([
       jline(init_event),
       jline({ type: 'result', subtype: 'success' }),
     ])
+    // a result carrying no usage object is still a valid, accepted result
+    expect(parsed.received_result).toBe(true)
+    expect(chunks.filter((c) => c.kind === 'finish').length).toBe(1)
     expect(parsed.final_usage.input_tokens).toBe(0)
     expect(parsed.final_usage.output_tokens).toBe(0)
   })
