@@ -32,16 +32,22 @@ export default {
   incremental: true,
   incrementalFile: 'stryker.incremental.json',
   thresholds: {
-    high: 85,
-    low: 84,
-    // Ratchet: the real score sits at 88.33% (clean full-repo gate after hardening
-    // the shared orchestration core: generate.ts 77.6% -> 95.79% and tool_loop.ts
-    // 83.7% -> 94.59%, on top of the anthropic_native.ts hardening (73.9% -> 98.2%)
-    // and the earlier native-provider + otel work), so the gate floor is raised from
-    // 83 to 84. ~4.3 points of headroom absorb the timing-sensitive spawn/timeout/map
-    // suites (91 Timeout mutants count as killed and can flip on a slow run). Bump it
-    // further as coverage climbs; never lower it to make a failing run pass.
-    break: 84,
+    // `high` and `low` only colour the report; `break` is the only gate that
+    // fails a run.
+    high: 90,
+    low: 86,
+    // Ratchet: the real score sits at 89.00% (clean full-repo gate after closing
+    // the last un-hardened wire adapter, providers/anthropic.ts 66.1% -> 100%),
+    // so the floor is raised from 84 to 86.
+    //
+    // Headroom is sized from the measured flake surface, not a guess. Only
+    // Timeout mutants can flip on a slow run, and there are 91 of 10677 scored
+    // = 0.85pt worst case if every one flipped at once. 3 points is ~3.5x that,
+    // which is why this step is +2 rather than the +1 of earlier ratchets: the
+    // old comment justified ~4.3pt with the same 91 Timeouts, overestimating
+    // their weight by roughly 5x. Bump further as coverage climbs; never lower
+    // it to make a failing run pass.
+    break: 86,
   },
   tempDirName: '.stryker-tmp',
   cleanTempDir: true,
