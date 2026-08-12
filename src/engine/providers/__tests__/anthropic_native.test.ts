@@ -366,7 +366,10 @@ describe('build_messages_body', () => {
   // order is pinned too: these are the exact bytes the Messages API receives,
   // and the emission moved from `z.toJSONSchema` to the neutral `#schema`
   // zone underneath them. `$schema` is deliberately present, since only
-  // `claude --json-schema` rejects it.
+  // `claude --json-schema` rejects it. `weather_tool` carries no defaulted
+  // field, so the later move to a composed input-direction emission left
+  // these bytes untouched as well; `#schema`'s own suite covers the shapes
+  // that emission does change.
   it('emits byte-identical tool JSON Schema, $schema key included', () => {
     const body = build_messages_body(make_req({ tools: [weather_tool] }))
     const tools = body['tools'] as Array<Record<string, unknown>>

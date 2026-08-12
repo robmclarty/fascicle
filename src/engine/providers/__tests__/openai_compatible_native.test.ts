@@ -282,7 +282,9 @@ describe('to_chat_tools', () => {
 
   // C3 (wire-identical-payloads). Serialized so key order is pinned too:
   // these are the exact bytes Chat Completions receives, unchanged by the
-  // move to the neutral `#schema` zone.
+  // move to the neutral `#schema` zone and unchanged again by that zone's
+  // move to a composed input-direction emission, which only re-shapes
+  // `required` for defaulted fields and `weather_tool` has none.
   it('emits byte-identical tool JSON Schema, $schema key included', () => {
     const tools = to_chat_tools([weather_tool])
     expect(JSON.stringify(tools[0]?.function.parameters)).toBe(

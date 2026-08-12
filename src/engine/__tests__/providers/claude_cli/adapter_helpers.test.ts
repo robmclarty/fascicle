@@ -139,7 +139,9 @@ describe('compile_schema', () => {
   // C3 (wire-identical-payloads) for the CLI's `--json-schema` argv value.
   // The strip moved from a bespoke rest-spread in this adapter to the
   // `strip_meta` option on the shared emitter; these are the bytes that
-  // change if that option ever stops being passed.
+  // change if that option ever stops being passed. The schema carries no
+  // defaulted field, so the composed input-direction emission leaves the
+  // rest of the value alone.
   it('emits byte-identical argv JSON, $schema and $id absent', () => {
     expect(compile_schema(z.object({ city: z.string() }))).toBe(
       '{"type":"object","properties":{"city":{"type":"string"}},' +

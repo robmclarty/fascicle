@@ -150,6 +150,25 @@ describe('an ArkType schema reaches each provider as JSON Schema', () => {
     })
   })
 
+  it('forbids invented keys, though ArkType publishes no such constraint itself', () => {
+    // Neutrality has to mean the same guard for the same shape whichever
+    // library described it. ArkType emits no `additionalProperties` in either
+    // direction, so without the composed emission an ArkType tool would reach
+    // the model looser than the identical zod one.
+    const tools = to_anthropic_tools([weather])
+    expect(tools[0]?.input_schema).toMatchObject({ additionalProperties: false })
+    expect(to_chat_tools([weather])[0]?.function.parameters).toMatchObject({
+      additionalProperties: false,
+    })
+  })
+
+  it('leaves a defaulted ArkType field optional, as it does for zod', () => {
+    const with_default = { ...weather, input_schema: type({ city: 'string', units: 'string = "c"' }) }
+    expect(to_anthropic_tools([with_default])[0]?.input_schema).toMatchObject({
+      required: ['city'],
+    })
+  })
+
   it('emits through the claude_cli compiler, still stripping $schema', () => {
     const json = JSON.parse(compile_schema(type({ city: 'string' }))) as Record<string, unknown>
     expect(json).not.toHaveProperty('$schema')
