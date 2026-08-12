@@ -41,18 +41,18 @@ A provider absent from `providers` throws `provider_not_configured_error` at cal
 
 Five providers take an optional `transport` selector: `'ai_sdk'` (the default) wraps that provider's AI SDK peer, `'native'` talks to the provider's own API directly over `fetch` with no peer to install. `anthropic` native targets the Messages API; `openai`, `openrouter`, and `lmstudio` native ride a shared OpenAI Chat Completions core; `ollama` native targets its own `/api/chat` endpoint. The provider name, pricing keys, and effort mapping are identical across transports. See [providers.md](./providers.md#transport-picking-a-depth-1-backend).
 
-Every provider's SDK is an optional peer dependency, loaded on first `generate`. Install only the ones you use.
+Every provider's SDK is an optional peer dependency, loaded on first `generate`, and so is the shared `ai` package that the `ai_sdk` adapters wrap. Install `ai` alongside the per-provider package rather than the per-provider package alone: the official `@ai-sdk/*` packages peer-depend on `zod`, not on `ai`, so nothing pulls it in for you. Install only the providers you use.
 
 ```bash
 # install peers as needed
-pnpm add @ai-sdk/anthropic
-pnpm add @ai-sdk/openai
-pnpm add @ai-sdk/google
-pnpm add @ai-sdk/openai-compatible  # openrouter
-pnpm add ai-sdk-ollama
-pnpm add @ai-sdk/openai-compatible  # lmstudio
-pnpm add @ai-sdk/amazon-bedrock     # bedrock
-# claude_cli has no peer; it spawns the `claude` binary
+pnpm add ai @ai-sdk/anthropic
+pnpm add ai @ai-sdk/openai
+pnpm add ai @ai-sdk/google
+pnpm add ai @openrouter/ai-sdk-provider   # openrouter
+pnpm add ai ai-sdk-ollama
+pnpm add ai @ai-sdk/openai-compatible     # lmstudio
+pnpm add ai @ai-sdk/amazon-bedrock        # bedrock
+# nothing to install for transport: 'native', or for claude_cli, which spawns the `claude` binary
 ```
 
 Full per-provider notes live in [providers.md](./providers.md). The `claude_cli` adapter has its own guide: [cli.md](./cli.md).
