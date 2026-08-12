@@ -1,197 +1,341 @@
 /**
- * JSON Schema to Zod conversion for inbound MCP tools.
+ * A Standard Schema over an inbound MCP tool's advertised JSON Schema.
  *
- * An MCP tool advertises its input as JSON Schema, but a fascicle `Tool` carries
- * a Zod `input_schema` that the tool loop `safeParse`s before `execute` and the
- * engine serializes back to JSON Schema for the provider. So the converted Zod
- * must do two things at once: stay permissive enough never to reject an arg the
- * remote server would accept, and round-trip through `z.toJSONSchema` to a shape
- * the provider can fill.
+ * An MCP tool advertises its input as JSON Schema, and a fascicle `Tool` carries
+ * a `ToolSchema` that the tool loop validates before `execute` and the engine
+ * emits back to the provider as JSON Schema. Those are two faces of one object,
+ * so this bridge builds both directly over the schema the server sent: emission
+ * hands the advertised schema back unchanged, and validation walks it.
  *
- * Two deliberate choices serve those goals. Objects are `looseObject` so extra
- * keys survive to the server (which re-validates and is the real authority), and
- * a freeform object maps to `z.looseObject({})` (emits `{type:"object"}`) rather
- * than `z.unknown()` (emits `{}`), preserving the "takes an object" signal. Value
- * constraints (min/max, length, pattern, format) are intentionally not modeled:
- * they add rejection risk for marginal provider benefit, and the server enforces
- * them anyway. Structure, types, enums, const, unions, and descriptions are
- * preserved; anything unrecognized degrades to `z.unknown()`.
+ * The old bridge converted the advertised schema into Zod so the provider path
+ * could convert it back, a round trip that was lossy by construction. Verbatim
+ * emission is strictly higher fidelity: whatever the server declared is what the
+ * model is told, including the constraints (`minLength`, `format`, `pattern`)
+ * the Zod conversion dropped.
+ *
+ * Validation stays deliberately loose, unchanged from the Zod bridge's reach:
+ * structure, types, enums, const, unions, and required keys are checked, value
+ * constraints are not, extra keys pass through to the server, and anything
+ * unrecognized accepts. The remote server re-validates its own arguments and is
+ * the authority on them, so this check is a guard against an obviously wrong
+ * call, not the contract.
  */
 
-import { z } from 'zod'
+import type { SchemaIssue, ToolSchema } from '#schema'
 import { as_record, is_record } from './internal.js'
 
 /**
- * Converts a JSON Schema node into a Zod type, never throwing.
+ * Builds a `ToolSchema` over an MCP server's advertised JSON Schema.
  *
- * A malformed or unrecognized schema falls back to `z.unknown()` instead of
- * propagating an error, since an arbitrary remote MCP server's schema must
- * never crash tool discovery.
+ * The advertised schema is snapshotted once, deeply, and both faces of the
+ * returned object read that snapshot. A malformed or hostile schema degrades to
+ * the empty schema during the snapshot rather than propagating an error, since
+ * an arbitrary remote server's advertisement must never crash tool discovery,
+ * and it leaves both faces describing the same thing: accept anything, emit
+ * nothing.
  */
-export function json_schema_to_zod(schema: unknown): z.ZodType {
+export function json_schema_to_standard(schema: unknown): ToolSchema {
+  const advertised = snapshot(schema)
+  return {
+    '~standard': {
+      version: 1,
+      vendor: 'fascicle-mcp',
+      validate: (value: unknown) => {
+        const issues = check(advertised, value, [])
+        return issues.length === 0 ? { value } : { issues }
+      },
+      jsonSchema: {
+        // `target` is ignored in both directions: fascicle applies no transform,
+        // so there is no re-targeting to do, and the dialect on the wire is
+        // whichever one the server chose to advertise. Each call returns a fresh
+        // copy because consumers mutate what they are handed (the AI SDK stamps
+        // `additionalProperties` onto it in place), and a shared snapshot would
+        // stop being verbatim after the first turn.
+        input: () => clone_schema(advertised),
+        output: () => clone_schema(advertised),
+      },
+    },
+  }
+}
+
+/**
+ * Deep-copies the advertised schema, or yields the empty schema when it is not
+ * an object or cannot be read.
+ *
+ * Copying here means every later read walks plain data: a schema with throwing
+ * accessors or a cycle fails once, at discovery, instead of on some later call.
+ */
+function snapshot(schema: unknown): Record<string, unknown> {
   try {
-    return convert(schema)
+    const record = as_record(schema)
+    return record === undefined ? {} : clone_schema(record)
   } catch {
-    // An arbitrary remote schema must never crash tool discovery.
-    return z.unknown()
+    return {}
   }
 }
 
 /**
- * Converts one JSON Schema node to a Zod type, recursing into nested schemas.
- *
- * Checks `const`, `enum`, `anyOf`, `oneOf`, and `allOf` before `type`, since
- * those keywords can appear without a `type` and take precedence when they
- * do. A `description` on the node carries through to the returned Zod type.
+ * Deep-copies one JSON Schema node.
  */
-function convert(node: unknown): z.ZodType {
+function clone_schema(schema: Record<string, unknown>): Record<string, unknown> {
+  const copy: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(schema)) copy[key] = clone_value(value)
+  return copy
+}
+
+/**
+ * Deep-copies a value inside a schema, recursing through arrays and objects and
+ * returning every other value as is.
+ */
+function clone_value(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(clone_value)
+  return is_record(value) ? clone_schema(value) : value
+}
+
+/**
+ * Checks one value against one JSON Schema node, returning the issues it
+ * violated, or an empty array when it passes.
+ *
+ * A node that is not an object constrains nothing and accepts, which is what
+ * makes a construct this bridge does not model degrade rather than reject.
+ */
+function check(node: unknown, value: unknown, path: ReadonlyArray<PropertyKey>): SchemaIssue[] {
   const schema = as_record(node)
-  if (schema === undefined) return z.unknown()
-
-  const described = (inner: z.ZodType): z.ZodType => {
-    const description = schema['description']
-    return typeof description === 'string' ? inner.describe(description) : inner
-  }
-
-  if ('const' in schema) return described(literal_of(schema['const']))
-  if (Array.isArray(schema['enum'])) return described(enum_of(schema['enum']))
-  if (Array.isArray(schema['anyOf'])) return described(union_of(schema['anyOf']))
-  if (Array.isArray(schema['oneOf'])) return described(union_of(schema['oneOf']))
-  if (Array.isArray(schema['allOf'])) return described(intersection_of(schema['allOf']))
-
-  const type = schema['type']
-  if (Array.isArray(type)) {
-    return described(union_of_types(type, schema))
-  }
-  if (typeof type === 'string') {
-    return described(for_type(type, schema))
-  }
-  // No explicit type: an object with declared properties is still an object;
-  // otherwise nothing structural is known, so stay permissive.
-  if (is_record(schema['properties'])) return described(build_object(schema))
-  return described(z.unknown())
+  if (schema === undefined) return []
+  return check_keywords(schema, value, path) ?? check_shape(schema, value, path)
 }
 
 /**
- * Maps a single JSON Schema `type` keyword to the matching Zod primitive or
- * container, falling back to `z.unknown()` for an unrecognized type.
- */
-function for_type(type: string, schema: Record<string, unknown>): z.ZodType {
-  switch (type) {
-    case 'object':
-      return build_object(schema)
-    case 'array':
-      return build_array(schema)
-    case 'string':
-      return z.string()
-    case 'number':
-      return z.number()
-    case 'integer':
-      return z.number().int()
-    case 'boolean':
-      return z.boolean()
-    case 'null':
-      return z.null()
-    default:
-      return z.unknown()
-  }
-}
-
-/**
- * Builds a Zod object type from a JSON Schema object's `properties` and
- * `required`, marking any key absent from `required` as optional.
+ * Checks the keywords that stand on their own, returning `undefined` when the
+ * node carries none of them.
  *
- * Uses `z.looseObject` rather than `z.object` so keys the remote server
- * accepts but this conversion did not anticipate still pass through instead
- * of being stripped or rejected.
+ * These are checked before `type` because they can appear without one and take
+ * precedence when they do: a node with both `enum` and `type` is constrained by
+ * the enum, which is the narrower of the two.
  */
-function build_object(schema: Record<string, unknown>): z.ZodType {
+function check_keywords(
+  schema: Record<string, unknown>,
+  value: unknown,
+  path: ReadonlyArray<PropertyKey>,
+): SchemaIssue[] | undefined {
+  if ('const' in schema) return check_const(schema['const'], value, path)
+  if (Array.isArray(schema['enum'])) return check_enum(schema['enum'], value, path)
+  if (Array.isArray(schema['anyOf'])) return check_any_of(schema['anyOf'], value, path)
+  if (Array.isArray(schema['oneOf'])) return check_any_of(schema['oneOf'], value, path)
+  if (Array.isArray(schema['allOf'])) return check_all_of(schema['allOf'], value, path)
+  return undefined
+}
+
+/**
+ * Checks the node's declared shape: its `type`, in either the single or the
+ * array form.
+ *
+ * A node with no `type` but declared `properties` is still an object; a node
+ * with neither says nothing structural and accepts.
+ */
+function check_shape(
+  schema: Record<string, unknown>,
+  value: unknown,
+  path: ReadonlyArray<PropertyKey>,
+): SchemaIssue[] {
+  const type = schema['type']
+  if (Array.isArray(type)) return check_type_union(type, schema, value, path)
+  if (typeof type === 'string') return check_type(type, schema, value, path)
+  if (is_record(schema['properties'])) return check_object(schema, value, path)
+  return []
+}
+
+/**
+ * Checks a `const`, which pins the value to one JSON literal.
+ *
+ * An object or array `const` accepts anything: matching it would mean a deep
+ * comparison the server performs itself, and rejecting a valid argument is the
+ * one failure mode this bridge must not have.
+ */
+function check_const(
+  expected: unknown,
+  value: unknown,
+  path: ReadonlyArray<PropertyKey>,
+): SchemaIssue[] {
+  if (expected === null) return value === null ? [] : [issue('expected null', path)]
+  if (
+    typeof expected === 'string' ||
+    typeof expected === 'number' ||
+    typeof expected === 'boolean'
+  ) {
+    return value === expected ? [] : [issue(`expected ${JSON.stringify(expected)}`, path)]
+  }
+  return []
+}
+
+/**
+ * Checks an `enum`, which pins the value to one of a list of JSON literals.
+ * An empty enum constrains nothing and accepts.
+ */
+function check_enum(
+  values: unknown[],
+  value: unknown,
+  path: ReadonlyArray<PropertyKey>,
+): SchemaIssue[] {
+  if (values.length === 0) return []
+  if (values.some((candidate) => check_const(candidate, value, path).length === 0)) return []
+  return [issue(`expected one of ${values.map((v) => JSON.stringify(v)).join(', ')}`, path)]
+}
+
+/**
+ * Checks an `anyOf` or `oneOf`, which passes when any branch passes.
+ *
+ * `oneOf`'s exactly-one semantics are deliberately relaxed to at-least-one: the
+ * distinction only ever rejects a value the server would accept.
+ *
+ * A single-branch union reports that branch's own issues rather than a generic
+ * "no variant matched", since with one variant there is no ambiguity about
+ * which one failed.
+ */
+function check_any_of(
+  nodes: unknown[],
+  value: unknown,
+  path: ReadonlyArray<PropertyKey>,
+): SchemaIssue[] {
+  if (nodes.length === 0) return []
+  if (nodes.length === 1) return check(nodes[0], value, path)
+  if (nodes.some((node) => check(node, value, path).length === 0)) return []
+  return [issue(`expected one of ${nodes.length} variants`, path)]
+}
+
+/**
+ * Checks an `allOf`, which passes only when every branch passes.
+ */
+function check_all_of(
+  nodes: unknown[],
+  value: unknown,
+  path: ReadonlyArray<PropertyKey>,
+): SchemaIssue[] {
+  return nodes.flatMap((node) => check(node, value, path))
+}
+
+/**
+ * Checks the array form of `type` (`["string", "null"]`), which passes when the
+ * value matches any listed type. The other keywords on the node apply to
+ * whichever type matched, so each branch sees the whole node.
+ */
+function check_type_union(
+  types: unknown[],
+  schema: Record<string, unknown>,
+  value: unknown,
+  path: ReadonlyArray<PropertyKey>,
+): SchemaIssue[] {
+  if (types.length === 0) return []
+  if (types.length === 1) return check_type(String(types[0]), schema, value, path)
+  if (types.some((type) => check_type(String(type), schema, value, path).length === 0)) return []
+  return [issue(`expected one of ${types.map(String).join(', ')}`, path)]
+}
+
+/**
+ * The scalar `type` keywords, as predicates over the value.
+ *
+ * `number` rejects `NaN` and infinities because neither survives JSON, and
+ * `integer` is the same check narrowed to whole values.
+ */
+const SCALAR_TYPES: Record<string, (value: unknown) => boolean> = {
+  string: (value) => typeof value === 'string',
+  number: (value) => typeof value === 'number' && Number.isFinite(value),
+  integer: (value) => Number.isInteger(value),
+  boolean: (value) => typeof value === 'boolean',
+  null: (value) => value === null,
+}
+
+/**
+ * Checks one `type` keyword. `object` and `array` recurse into the node's own
+ * `properties` and `items`; everything else is a scalar predicate.
+ *
+ * An unrecognized type accepts, so a vendor extension cannot reject an argument
+ * the server would take.
+ */
+function check_type(
+  type: string,
+  schema: Record<string, unknown>,
+  value: unknown,
+  path: ReadonlyArray<PropertyKey>,
+): SchemaIssue[] {
+  if (type === 'object') return check_object(schema, value, path)
+  if (type === 'array') return check_array(schema, value, path)
+  const matches = SCALAR_TYPES[type]
+  if (matches === undefined) return []
+  return matches(value) ? [] : [type_issue(type, value, path)]
+}
+
+/**
+ * Checks an object against its `properties` and `required`.
+ *
+ * Keys the schema does not declare are left alone rather than rejected, so an
+ * argument this bridge did not anticipate still reaches the server, which
+ * re-validates and is the real authority. A `required` name with no entry in
+ * `properties` is likewise not enforced: there is nothing to check it against.
+ */
+function check_object(
+  schema: Record<string, unknown>,
+  value: unknown,
+  path: ReadonlyArray<PropertyKey>,
+): SchemaIssue[] {
+  if (!is_record(value)) return [type_issue('object', value, path)]
   const properties = as_record(schema['properties']) ?? {}
   const required = new Set(string_array(schema['required']))
-  const shape: Record<string, z.ZodType> = {}
-  for (const [key, prop] of Object.entries(properties)) {
-    const child = convert(prop)
-    shape[key] = required.has(key) ? child : child.optional()
+  const issues: SchemaIssue[] = []
+  for (const [key, property] of Object.entries(properties)) {
+    const child = value[key]
+    if (child === undefined) {
+      if (required.has(key)) issues.push(issue('required', [...path, key]))
+      continue
+    }
+    issues.push(...check(property, child, [...path, key]))
   }
-  return z.looseObject(shape)
+  return issues
 }
 
 /**
- * Builds a Zod array type from a JSON Schema array's `items`.
- */
-function build_array(schema: Record<string, unknown>): z.ZodType {
-  // A positional-tuple `items` array and a missing `items` both convert to
-  // `z.unknown()`, so one permissive element type covers every case. Tuple
-  // schemas are rare in MCP tools and the server re-validates them anyway.
-  return z.array(convert(schema['items']))
-}
-
-/**
- * Converts a JSON Schema `enum` array to a Zod type.
+ * Checks an array against its `items`.
  *
- * An all-string enum maps to `z.enum`; a mixed-type enum maps to a union of
- * literals instead, since `z.enum` only accepts strings.
+ * A positional-tuple `items` (an array rather than a node) is not a record, so
+ * every element accepts. Tuple schemas are rare in MCP tools and the server
+ * re-validates them anyway.
  */
-function enum_of(values: unknown[]): z.ZodType {
-  if (values.length === 0) return z.unknown()
-  if (values.every((v): v is string => typeof v === 'string')) {
-    return z.enum(values)
-  }
-  return combine_union(values.map(literal_of))
+function check_array(
+  schema: Record<string, unknown>,
+  value: unknown,
+  path: ReadonlyArray<PropertyKey>,
+): SchemaIssue[] {
+  if (!Array.isArray(value)) return [type_issue('array', value, path)]
+  return value.flatMap((item, index) => check(schema['items'], item, [...path, index]))
 }
 
 /**
- * Converts a JSON Schema `anyOf` or `oneOf` array to a Zod union, converting
- * each branch independently.
+ * Builds a type-mismatch issue naming what was expected and what arrived.
  */
-function union_of(nodes: unknown[]): z.ZodType {
-  return combine_union(nodes.map(convert))
+function type_issue(
+  expected: string,
+  value: unknown,
+  path: ReadonlyArray<PropertyKey>,
+): SchemaIssue {
+  return issue(`expected ${expected}, received ${describe(value)}`, path)
 }
 
 /**
- * Converts a JSON Schema `type` array (e.g. `["string", "null"]`) to a Zod
- * union of the matching primitive types.
+ * Names a value's type the way a JSON Schema reader would, separating `null`
+ * and arrays out of `typeof`'s `object`.
  */
-function union_of_types(types: unknown[], schema: Record<string, unknown>): z.ZodType {
-  return combine_union(types.map((t) => for_type(String(t), schema)))
+function describe(value: unknown): string {
+  if (value === null) return 'null'
+  if (Array.isArray(value)) return 'array'
+  return typeof value
 }
 
 /**
- * Converts a JSON Schema `allOf` array to a Zod intersection of every branch.
+ * Builds one issue, omitting the path entirely at the root so a failure about
+ * the value as a whole does not report an empty path.
  */
-function intersection_of(nodes: unknown[]): z.ZodType {
-  const parts = nodes.map(convert)
-  if (parts.length === 0) return z.unknown()
-  return parts.reduce((acc, part) => z.intersection(acc, part))
-}
-
-/**
- * Builds a Zod union from a list of variants, collapsing the degenerate
- * cases: zero variants becomes `z.unknown()`, one variant is returned as is,
- * since `z.union` requires at least two.
- */
-function combine_union(variants: z.ZodType[]): z.ZodType {
-  const [first, second, ...rest] = variants
-  if (first === undefined) return z.unknown()
-  if (second === undefined) return first
-  return z.union([first, second, ...rest])
-}
-
-/**
- * Converts a single JSON value, as used in a `const` or an `enum` entry, to
- * a Zod literal.
- */
-function literal_of(value: unknown): z.ZodType {
-  if (
-    typeof value === 'string' ||
-    typeof value === 'number' ||
-    typeof value === 'boolean'
-  ) {
-    return z.literal(value)
-  }
-  if (value === null) return z.null()
-  // Object and array literals are not expressible as z.literal; accept anything.
-  return z.unknown()
+function issue(message: string, path: ReadonlyArray<PropertyKey>): SchemaIssue {
+  return path.length === 0 ? { message } : { message, path: [...path] }
 }
 
 /**

@@ -233,7 +233,6 @@
       "health:src/engine/tool_call_salvage.ts:scan_balanced_json",
       "health:src/engine/tool_call_salvage.ts:scan_tool_call_blocks",
       "health:src/engine/tool_loop.ts:run_tool_loop",
-      "health:src/mcp/schema_bridge.ts:convert",
       "health:src/model_call.ts:inner",
       "health:src/otel/__tests__/trajectory_logger.test.ts:<arrow>:36:72",
       "health:src/otel/trajectory_logger.ts:to_attribute_value",

@@ -1,221 +1,315 @@
 import { describe, expect, it } from 'vitest'
-import { z } from 'zod'
-import { json_schema_to_zod } from '../schema_bridge.js'
+import { json_schema_to_standard } from '../schema_bridge.js'
 
-describe('json_schema_to_zod', () => {
-  it('converts primitive types', () => {
-    expect(json_schema_to_zod({ type: 'string' }).safeParse('x').success).toBe(true)
-    expect(json_schema_to_zod({ type: 'string' }).safeParse(1).success).toBe(false)
-    expect(json_schema_to_zod({ type: 'number' }).safeParse(1.5).success).toBe(true)
-    expect(json_schema_to_zod({ type: 'integer' }).safeParse(2).success).toBe(true)
-    expect(json_schema_to_zod({ type: 'integer' }).safeParse(2.5).success).toBe(false)
-    expect(json_schema_to_zod({ type: 'boolean' }).safeParse(true).success).toBe(true)
-    expect(json_schema_to_zod({ type: 'null' }).safeParse(null).success).toBe(true)
+async function accepts(schema: unknown, value: unknown): Promise<boolean> {
+  const result = await json_schema_to_standard(schema)['~standard'].validate(value)
+  return result.issues === undefined
+}
+
+function emitted(schema: unknown): Record<string, unknown> {
+  return json_schema_to_standard(schema)['~standard'].jsonSchema.input({
+    target: 'draft-2020-12',
+  })
+}
+
+describe('json_schema_to_standard validation', () => {
+  it('converts primitive types', async () => {
+    expect(await accepts({ type: 'string' }, 'x')).toBe(true)
+    expect(await accepts({ type: 'string' }, 1)).toBe(false)
+    expect(await accepts({ type: 'number' }, 1.5)).toBe(true)
+    expect(await accepts({ type: 'integer' }, 2)).toBe(true)
+    expect(await accepts({ type: 'integer' }, 2.5)).toBe(false)
+    expect(await accepts({ type: 'boolean' }, true)).toBe(true)
+    expect(await accepts({ type: 'null' }, null)).toBe(true)
   })
 
-  it('honors required vs optional object properties and keeps extra keys', () => {
-    const schema = json_schema_to_zod({
+  it('honors required vs optional object properties and keeps extra keys', async () => {
+    const schema = {
       type: 'object',
       properties: { a: { type: 'string' }, b: { type: 'number' } },
       required: ['a'],
-    })
-    expect(schema.safeParse({ a: 'x' }).success).toBe(true)
-    expect(schema.safeParse({ b: 1 }).success).toBe(false)
+    }
+    expect(await accepts(schema, { a: 'x' })).toBe(true)
+    expect(await accepts(schema, { b: 1 })).toBe(false)
     // Loose objects pass unmodeled args through to the server, which re-validates.
-    const parsed = schema.safeParse({ a: 'x', extra: true })
-    expect(parsed.success).toBe(true)
-    expect(parsed.success && parsed.data).toEqual({ a: 'x', extra: true })
+    const parsed = await json_schema_to_standard(schema)['~standard'].validate({
+      a: 'x',
+      extra: true,
+    })
+    expect(parsed.issues).toBeUndefined()
+    expect('value' in parsed && parsed.value).toEqual({ a: 'x', extra: true })
   })
 
-  it('converts nested objects and arrays', () => {
-    const schema = json_schema_to_zod({
+  it('converts nested objects and arrays', async () => {
+    const schema = {
       type: 'object',
       properties: {
         items: { type: 'array', items: { type: 'string' } },
         nested: { type: 'object', properties: { n: { type: 'number' } }, required: ['n'] },
       },
       required: ['items', 'nested'],
-    })
-    expect(schema.safeParse({ items: ['a', 'b'], nested: { n: 1 } }).success).toBe(true)
-    expect(schema.safeParse({ items: [1], nested: { n: 1 } }).success).toBe(false)
-    expect(schema.safeParse({ items: [], nested: {} }).success).toBe(false)
+    }
+    expect(await accepts(schema, { items: ['a', 'b'], nested: { n: 1 } })).toBe(true)
+    expect(await accepts(schema, { items: [1], nested: { n: 1 } })).toBe(false)
+    expect(await accepts(schema, { items: [], nested: {} })).toBe(false)
   })
 
-  it('converts enum, const, and unions', () => {
-    expect(json_schema_to_zod({ enum: ['a', 'b'] }).safeParse('a').success).toBe(true)
-    expect(json_schema_to_zod({ enum: ['a', 'b'] }).safeParse('c').success).toBe(false)
-    expect(json_schema_to_zod({ const: 42 }).safeParse(42).success).toBe(true)
-    expect(json_schema_to_zod({ const: 42 }).safeParse(43).success).toBe(false)
-    const u = json_schema_to_zod({ anyOf: [{ type: 'string' }, { type: 'number' }] })
-    expect(u.safeParse('x').success).toBe(true)
-    expect(u.safeParse(1).success).toBe(true)
-    expect(u.safeParse(true).success).toBe(false)
+  it('converts enum, const, and unions', async () => {
+    expect(await accepts({ enum: ['a', 'b'] }, 'a')).toBe(true)
+    expect(await accepts({ enum: ['a', 'b'] }, 'c')).toBe(false)
+    expect(await accepts({ const: 42 }, 42)).toBe(true)
+    expect(await accepts({ const: 42 }, 43)).toBe(false)
+    const u = { anyOf: [{ type: 'string' }, { type: 'number' }] }
+    expect(await accepts(u, 'x')).toBe(true)
+    expect(await accepts(u, 1)).toBe(true)
+    expect(await accepts(u, true)).toBe(false)
   })
 
-  it('intersects allOf members', () => {
-    const schema = json_schema_to_zod({
+  it('intersects allOf members', async () => {
+    const schema = {
       allOf: [
         { type: 'object', properties: { a: { type: 'string' } }, required: ['a'] },
         { type: 'object', properties: { b: { type: 'number' } }, required: ['b'] },
       ],
-    })
-    expect(schema.safeParse({ a: 'x', b: 1 }).success).toBe(true)
-    expect(schema.safeParse({ a: 'x' }).success).toBe(false)
+    }
+    expect(await accepts(schema, { a: 'x', b: 1 })).toBe(true)
+    expect(await accepts(schema, { a: 'x' })).toBe(false)
   })
 
-  it('treats a mixed-type enum as a union of literals', () => {
-    const schema = json_schema_to_zod({ enum: ['on', 1, true] })
-    expect(schema.safeParse('on').success).toBe(true)
-    expect(schema.safeParse(1).success).toBe(true)
-    expect(schema.safeParse(true).success).toBe(true)
-    expect(schema.safeParse('off').success).toBe(false)
+  it('treats a mixed-type enum as a union of literals', async () => {
+    const schema = { enum: ['on', 1, true] }
+    expect(await accepts(schema, 'on')).toBe(true)
+    expect(await accepts(schema, 1)).toBe(true)
+    expect(await accepts(schema, true)).toBe(true)
+    expect(await accepts(schema, 'off')).toBe(false)
   })
 
-  it('unwraps a single-member union', () => {
-    const schema = json_schema_to_zod({ anyOf: [{ type: 'boolean' }] })
-    expect(schema.safeParse(true).success).toBe(true)
-    expect(schema.safeParse('x').success).toBe(false)
+  it('unwraps a single-member union', async () => {
+    const schema = { anyOf: [{ type: 'boolean' }] }
+    expect(await accepts(schema, true)).toBe(true)
+    expect(await accepts(schema, 'x')).toBe(false)
   })
 
-  it('supports boolean and null const', () => {
-    expect(json_schema_to_zod({ const: true }).safeParse(true).success).toBe(true)
-    expect(json_schema_to_zod({ const: true }).safeParse(false).success).toBe(false)
-    expect(json_schema_to_zod({ const: null }).safeParse(null).success).toBe(true)
+  it('supports boolean and null const', async () => {
+    expect(await accepts({ const: true }, true)).toBe(true)
+    expect(await accepts({ const: true }, false)).toBe(false)
+    expect(await accepts({ const: null }, null)).toBe(true)
   })
 
-  it('accepts an array of objects', () => {
-    const schema = json_schema_to_zod({
+  it('accepts an array of objects', async () => {
+    const schema = {
       type: 'array',
       items: { type: 'object', properties: { id: { type: 'integer' } }, required: ['id'] },
-    })
-    expect(schema.safeParse([{ id: 1 }, { id: 2 }]).success).toBe(true)
-    expect(schema.safeParse([{ id: 'x' }]).success).toBe(false)
+    }
+    expect(await accepts(schema, [{ id: 1 }, { id: 2 }])).toBe(true)
+    expect(await accepts(schema, [{ id: 'x' }])).toBe(false)
   })
 
-  it('handles the array type form for nullable', () => {
-    const schema = json_schema_to_zod({ type: ['string', 'null'] })
-    expect(schema.safeParse('x').success).toBe(true)
-    expect(schema.safeParse(null).success).toBe(true)
-    expect(schema.safeParse(1).success).toBe(false)
+  it('handles the array type form for nullable', async () => {
+    const schema = { type: ['string', 'null'] }
+    expect(await accepts(schema, 'x')).toBe(true)
+    expect(await accepts(schema, null)).toBe(true)
+    expect(await accepts(schema, 1)).toBe(false)
   })
 
-  it('degrades to a permissive type for unrecognized constructs', () => {
+  it('handles a single-entry array type form', async () => {
+    const schema = { type: ['integer'] }
+    expect(await accepts(schema, 3)).toBe(true)
+    expect(await accepts(schema, 3.5)).toBe(false)
+  })
+
+  it('degrades to a permissive type for unrecognized constructs', async () => {
     // A $ref/vendor construct it cannot model must never reject a valid arg.
-    const schema = json_schema_to_zod({ $ref: '#/definitions/Thing' })
-    expect(schema.safeParse({ anything: 1 }).success).toBe(true)
-    expect(schema.safeParse('string').success).toBe(true)
-    expect(schema.safeParse(null).success).toBe(true)
+    const schema = { $ref: '#/definitions/Thing' }
+    expect(await accepts(schema, { anything: 1 })).toBe(true)
+    expect(await accepts(schema, 'string')).toBe(true)
+    expect(await accepts(schema, null)).toBe(true)
   })
 
-  it('never throws on malformed input', () => {
-    expect(() => json_schema_to_zod(null)).not.toThrow()
-    expect(() => json_schema_to_zod(42)).not.toThrow()
-    expect(json_schema_to_zod(null).safeParse({ x: 1 }).success).toBe(true)
+  it('never throws on malformed input', async () => {
+    expect(() => json_schema_to_standard(null)).not.toThrow()
+    expect(() => json_schema_to_standard(42)).not.toThrow()
+    expect(await accepts(null, { x: 1 })).toBe(true)
   })
 
-  it('returns a permissive schema when conversion throws partway through', () => {
+  it('returns a permissive schema when reading the advertised schema throws', async () => {
     // A schema whose property access throws must be caught, not propagated:
     // tool discovery cannot crash on a hostile remote schema.
-    const hostile = new Proxy(
-      {},
-      {
-        get() {
-          throw new Error('boom')
-        },
-        has() {
-          return false
+    const hostile = {
+      get type(): string {
+        throw new Error('boom')
+      },
+    }
+    expect(await accepts(hostile, { anything: 1 })).toBe(true)
+    expect(emitted(hostile)).toEqual({})
+  })
+
+  it('returns a permissive schema when the advertised schema is cyclic', async () => {
+    const cyclic: Record<string, unknown> = { type: 'object' }
+    cyclic['properties'] = { self: cyclic }
+    expect(await accepts(cyclic, 'not an object')).toBe(true)
+    expect(emitted(cyclic)).toEqual({})
+  })
+
+  it('degrades an unrecognized type keyword to a permissive schema', async () => {
+    const schema = { type: 'bogus-type' }
+    expect(await accepts(schema, 'x')).toBe(true)
+    expect(await accepts(schema, { any: 1 })).toBe(true)
+  })
+
+  it('treats oneOf as a union', async () => {
+    const schema = { oneOf: [{ type: 'string' }, { type: 'number' }] }
+    expect(await accepts(schema, 'x')).toBe(true)
+    expect(await accepts(schema, 1)).toBe(true)
+    expect(await accepts(schema, true)).toBe(false)
+  })
+
+  it('treats a typeless schema with properties as an object', async () => {
+    const schema = { properties: { a: { type: 'string' } }, required: ['a'] }
+    expect(await accepts(schema, { a: 'x' })).toBe(true)
+    expect(await accepts(schema, { a: 1 })).toBe(false)
+    expect(await accepts(schema, {})).toBe(false)
+  })
+
+  it('accepts anything for an empty enum', async () => {
+    expect(await accepts({ enum: [] }, 'x')).toBe(true)
+  })
+
+  it('accepts anything for an empty anyOf', async () => {
+    expect(await accepts({ anyOf: [] }, 'x')).toBe(true)
+  })
+
+  it('accepts anything for an empty allOf and an empty type list', async () => {
+    expect(await accepts({ allOf: [] }, 'x')).toBe(true)
+    expect(await accepts({ type: [] }, 'x')).toBe(true)
+  })
+
+  it('matches only null for a null const and rejects other values', async () => {
+    expect(await accepts({ const: null }, null)).toBe(true)
+    expect(await accepts({ const: null }, 'x')).toBe(false)
+  })
+
+  it('stays permissive for a const whose value is not a primitive', async () => {
+    // Object/array consts are not matched structurally, so they degrade to an
+    // accept-anything check rather than a null- or literal-shaped one.
+    expect(await accepts({ const: { a: 1 } }, 'x')).toBe(true)
+  })
+
+  it('accepts a permissive array for tuple-style items', async () => {
+    const schema = { type: 'array', items: [{ type: 'string' }, { type: 'number' }] }
+    expect(await accepts(schema, ['a', 1])).toBe(true)
+    expect(await accepts(schema, [1, 'a', true])).toBe(true)
+  })
+
+  it('rejects a non-object where an object is declared, and a non-array for an array', async () => {
+    expect(await accepts({ type: 'object', properties: {} }, [])).toBe(false)
+    expect(await accepts({ type: 'object', properties: {} }, null)).toBe(false)
+    expect(await accepts({ type: 'array', items: { type: 'string' } }, {})).toBe(false)
+  })
+
+  it('rejects NaN and infinities for a number, matching what survives JSON', async () => {
+    expect(await accepts({ type: 'number' }, Number.NaN)).toBe(false)
+    expect(await accepts({ type: 'number' }, Number.POSITIVE_INFINITY)).toBe(false)
+    expect(await accepts({ type: 'integer' }, Number.NaN)).toBe(false)
+  })
+
+  it('does not enforce a required name that has no declared property', async () => {
+    // There is nothing to check it against, and rejecting an arg the server
+    // would accept is the one failure mode this bridge must not have.
+    expect(await accepts({ type: 'object', required: ['a'] }, {})).toBe(true)
+  })
+
+  it('reports the dotted path to a nested failure', async () => {
+    const result = await json_schema_to_standard({
+      type: 'object',
+      properties: {
+        opts: {
+          type: 'object',
+          properties: { list: { type: 'array', items: { type: 'string' } } },
+          required: ['list'],
         },
       },
-    )
-    expect(json_schema_to_zod(hostile).safeParse({ anything: 1 }).success).toBe(true)
+      required: ['opts'],
+    })['~standard'].validate({ opts: { list: ['ok', 7] } })
+
+    expect(result.issues).toEqual([
+      { message: 'expected string, received number', path: ['opts', 'list', 1] },
+    ])
   })
 
-  it('does not apply a non-string description', () => {
-    // Only a string `description` is forwarded; a non-string one is dropped so
-    // it cannot leak into the emitted JSON Schema.
-    const js = z.toJSONSchema(json_schema_to_zod({ type: 'string', description: 123 }))
-    expect('description' in js).toBe(false)
-  })
-
-  it('degrades an unrecognized type keyword to a permissive schema', () => {
-    const schema = json_schema_to_zod({ type: 'bogus-type' })
-    expect(schema.safeParse('x').success).toBe(true)
-    expect(schema.safeParse({ any: 1 }).success).toBe(true)
-  })
-
-  it('treats oneOf as a union', () => {
-    const schema = json_schema_to_zod({ oneOf: [{ type: 'string' }, { type: 'number' }] })
-    expect(schema.safeParse('x').success).toBe(true)
-    expect(schema.safeParse(1).success).toBe(true)
-    expect(schema.safeParse(true).success).toBe(false)
-  })
-
-  it('treats a typeless schema with properties as an object', () => {
-    const schema = json_schema_to_zod({
+  it('reports a missing required key at that key, and a root failure with no path', async () => {
+    const missing = await json_schema_to_standard({
+      type: 'object',
       properties: { a: { type: 'string' } },
       required: ['a'],
-    })
-    expect(schema.safeParse({ a: 'x' }).success).toBe(true)
-    expect(schema.safeParse({ a: 1 }).success).toBe(false)
-    expect(schema.safeParse({}).success).toBe(false)
+    })['~standard'].validate({})
+    expect(missing.issues).toEqual([{ message: 'required', path: ['a'] }])
+
+    const root = await json_schema_to_standard({ type: 'string' })['~standard'].validate(1)
+    expect(root.issues).toEqual([{ message: 'expected string, received number' }])
   })
+})
 
-  it('keeps an object permissive but still typed when no properties are required', () => {
-    // Without `required`, every property is optional, but the result must still
-    // emit `{type:"object"}` rather than degrading to the empty schema.
-    const js = z.toJSONSchema(json_schema_to_zod({ type: 'object', properties: { a: { type: 'string' } } }))
-    expect(js).toMatchObject({ type: 'object' })
-  })
-
-  it('accepts anything for an empty enum', () => {
-    expect(json_schema_to_zod({ enum: [] }).safeParse('x').success).toBe(true)
-  })
-
-  it('emits a string enum as an enum, not a union of literals', () => {
-    const js = z.toJSONSchema(json_schema_to_zod({ enum: ['a', 'b'] })) as Record<string, unknown>
-    expect(js['type']).toBe('string')
-    expect(js['enum']).toEqual(['a', 'b'])
-  })
-
-  it('accepts anything for an empty anyOf', () => {
-    expect(json_schema_to_zod({ anyOf: [] }).safeParse('x').success).toBe(true)
-  })
-
-  it('matches only null for a null const and rejects other values', () => {
-    const schema = json_schema_to_zod({ const: null })
-    expect(schema.safeParse(null).success).toBe(true)
-    expect(schema.safeParse('x').success).toBe(false)
-  })
-
-  it('stays permissive for a const whose value is not a primitive', () => {
-    // Object/array consts are not expressible as z.literal, so they degrade to
-    // an accept-anything schema rather than a null- or literal-shaped one.
-    expect(json_schema_to_zod({ const: { a: 1 } }).safeParse('x').success).toBe(true)
-  })
-
-  it('accepts a permissive array for tuple-style items', () => {
-    const schema = json_schema_to_zod({ type: 'array', items: [{ type: 'string' }, { type: 'number' }] })
-    expect(schema.safeParse(['a', 1]).success).toBe(true)
-    expect(schema.safeParse([1, 'a', true]).success).toBe(true)
-  })
-
-  it('preserves provider fidelity: a freeform object emits {type:object}, not {}', () => {
-    // The whole point: z.unknown() would emit {} and starve the provider of the
-    // parameter shape, so a typeless object must round-trip as an object.
-    const freeform = z.toJSONSchema(json_schema_to_zod({ type: 'object' }))
-    expect(freeform).toMatchObject({ type: 'object' })
-
-    const shaped = z.toJSONSchema(
-      json_schema_to_zod({
-        type: 'object',
-        properties: { city: { type: 'string', description: 'A city name' } },
-        required: ['city'],
-      }),
-    )
-    expect(shaped).toMatchObject({
+describe('json_schema_to_standard emission', () => {
+  it('emits the server schema verbatim, in both directions', () => {
+    // The whole point of the step: no round trip, so the constraints a Zod
+    // conversion dropped (minLength, format, pattern) reach the model intact.
+    const server = {
+      $schema: 'https://json-schema.org/draft/2020-12/schema',
       type: 'object',
-      properties: { city: { type: 'string', description: 'A city name' } },
+      properties: {
+        city: { type: 'string', description: 'A city name', minLength: 1 },
+        when: { type: 'string', format: 'date-time' },
+        code: { type: 'string', pattern: '^[A-Z]{3}$' },
+        tags: { type: 'array', items: { type: 'string' }, maxItems: 5 },
+      },
       required: ['city'],
-    })
+      additionalProperties: false,
+    }
+    const standard = json_schema_to_standard(server)['~standard']
+
+    expect(standard.jsonSchema.input({ target: 'draft-2020-12' })).toEqual(server)
+    expect(standard.jsonSchema.output({ target: 'draft-2020-12' })).toEqual(server)
+  })
+
+  it('emits verbatim whatever the target, since fascicle applies no transform', () => {
+    const server = { type: 'object', properties: { a: { type: 'string' } } }
+    const standard = json_schema_to_standard(server)['~standard']
+    expect(standard.jsonSchema.input({ target: 'draft-07' })).toEqual(server)
+    expect(standard.jsonSchema.input({ target: 'openapi-3.0' })).toEqual(server)
+  })
+
+  it('emits a freeform object as {type:object}, not the empty schema', () => {
+    // z.unknown() would emit {} and starve the provider of the parameter shape.
+    expect(emitted({ type: 'object' })).toEqual({ type: 'object' })
+  })
+
+  it('emits the empty schema for an advertisement that is not an object', () => {
+    expect(emitted(null)).toEqual({})
+    expect(emitted(42)).toEqual({})
+  })
+
+  it('hands out a fresh copy each call, so a mutating consumer cannot rewrite it', () => {
+    // The AI SDK stamps `additionalProperties: false` onto the emitted schema in
+    // place; a shared object would stop being verbatim after the first turn.
+    const server = { type: 'object', properties: { a: { type: 'string' } } }
+    const standard = json_schema_to_standard(server)['~standard']
+
+    const first = standard.jsonSchema.input({ target: 'draft-2020-12' })
+    first['additionalProperties'] = false
+    const properties = first['properties']
+    if (properties !== null && typeof properties === 'object') {
+      ;(properties as Record<string, unknown>)['a'] = { type: 'number' }
+    }
+
+    expect(standard.jsonSchema.input({ target: 'draft-2020-12' })).toEqual(server)
+    expect(server).toEqual({ type: 'object', properties: { a: { type: 'string' } } })
+  })
+
+  it('does not alias the advertised schema, so a later server-side edit cannot leak in', () => {
+    const server: Record<string, unknown> = { type: 'object' }
+    const standard = json_schema_to_standard(server)['~standard']
+    server['type'] = 'string'
+    expect(standard.jsonSchema.input({ target: 'draft-2020-12' })).toEqual({ type: 'object' })
   })
 })

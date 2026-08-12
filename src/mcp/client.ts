@@ -9,7 +9,7 @@ import type { Tool, ToolExecContext } from '#engine'
 import { mcp_error } from './errors.js'
 import { is_record } from './internal.js'
 import { call_result_to_output } from './result_mapping.js'
-import { json_schema_to_zod } from './schema_bridge.js'
+import { json_schema_to_standard } from './schema_bridge.js'
 import { load_client_sdk, type McpClientSdk } from './sdk_loader.js'
 
 const DEFAULT_CLIENT_INFO = { name: 'fascicle', version: '0.0.0' }
@@ -61,10 +61,11 @@ export type McpClientHandle = {
  *
  * Owns the connection lifecycle (config in, `{ tools, close }` out) so callers
  * do not have to import SDK transport classes themselves. Each advertised MCP
- * tool becomes an ordinary `Tool`: its JSON Schema is bridged to Zod for the
- * loop's `safeParse` and the provider, and `execute` forwards to `callTool`,
- * propagating the run's abort signal. For the `client` transport variant the
- * caller keeps ownership of the connection, so `close` is a no-op.
+ * tool becomes an ordinary `Tool`: its JSON Schema is wrapped as a `ToolSchema`
+ * the loop validates against and the provider receives back unchanged, and
+ * `execute` forwards to `callTool`, propagating the run's abort signal. For the
+ * `client` transport variant the caller keeps ownership of the connection, so
+ * `close` is a no-op.
  */
 export async function mcp_client(
   config: McpClientConfig,
@@ -145,7 +146,7 @@ function to_fascicle_tool(
   return {
     name,
     description,
-    input_schema: json_schema_to_zod(advertised.inputSchema),
+    input_schema: json_schema_to_standard(advertised.inputSchema),
     execute: async (input: unknown, ctx: ToolExecContext) => {
       if (ctx.abort.aborted) {
         throw ctx.abort.reason instanceof Error

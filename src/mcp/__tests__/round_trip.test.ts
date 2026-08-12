@@ -36,7 +36,7 @@ describe('mcp round trip (serve_flow -> wire -> mcp_client)', () => {
       flow: shout,
       name: 'shout',
       description: 'Uppercase the input text.',
-      input_schema: z.object({ text: z.string() }),
+      input_schema: z.object({ text: z.string().min(1) }),
     })
 
     const client = await linked_client(server)
@@ -47,11 +47,17 @@ describe('mcp round trip (serve_flow -> wire -> mcp_client)', () => {
     expect(tool).toBeDefined()
     expect(tool?.description).toBe('Uppercase the input text.')
 
-    // The input schema survived Zod -> JSON Schema -> Zod and still validates.
     expect((await tool?.input_schema['~standard'].validate({ text: 'hi' }))?.issues)
       .toBeUndefined()
     expect((await tool?.input_schema['~standard'].validate({ text: 1 }))?.issues)
       .toBeDefined()
+
+    // No round trip: what the server advertised is what a provider is handed,
+    // including the `minLength` the old Zod conversion dropped on the way through.
+    const advertised = (await client.listTools()).tools.find((t) => t.name === 'shout')?.inputSchema
+    expect(advertised).toMatchObject({ properties: { text: { minLength: 1 } } })
+    expect(tool?.input_schema['~standard'].jsonSchema.input({ target: 'draft-2020-12' }))
+      .toEqual(advertised)
 
     // Structured output round-trips as an object via structuredContent.
     const output = await tool?.execute({ text: 'hi' }, exec_ctx())
