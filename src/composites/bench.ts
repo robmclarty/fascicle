@@ -8,9 +8,10 @@
 
 import { mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
-import { run } from '#core'
+import { aborted_error, run, suspended_error } from '#core'
 import type { Step, TrajectoryEvent, TrajectoryLogger } from '#core'
 import { filesystem_logger, http_logger, tee_logger } from '#adapters'
+import { bench_suspend_error } from './errors.js'
 
 export type Score = { readonly score: number; readonly reason?: string }
 
@@ -62,6 +63,7 @@ export type BenchOptions = {
   readonly live_url?: string
   readonly run_id?: string
   readonly install_signal_handlers?: boolean
+  readonly abort?: AbortSignal
 }
 
 /**
@@ -82,6 +84,13 @@ export type BenchOptions = {
  * judge spans land in the case's trajectory file (or push). A judge that
  * throws or returns undefined abstains: the entry is omitted from
  * `case.scores` and the case does not contribute to that judge's mean.
+ *
+ * Control-flow signals are not case failures and never reach a `CaseResult`.
+ * `abort` forwards to every per-case `run` and is re-checked before each case
+ * is claimed, so cancelling rejects the whole bench rather than returning a
+ * report that silently covers fewer cases than it was given. A
+ * `suspended_error` from an approval gate rejects with `bench_suspend_error`:
+ * `bench` has no resume path, so a suspend is a usage error, not a zero score.
  */
 export async function bench<I, O, S = Score>(
   flow: Step<I, O>,
@@ -93,6 +102,9 @@ export async function bench<I, O, S = Score>(
   const flow_name = describe_flow_name(flow)
   const concurrency = resolve_concurrency(options.concurrency, cases.length)
   const install_signal_handlers = options.install_signal_handlers ?? false
+  const run_options = options.abort === undefined ? {} : { abort: options.abort }
+
+  throw_if_aborted(options.abort)
 
   if (options.trajectory_dir !== undefined) {
     await mkdir(options.trajectory_dir, { recursive: true })
@@ -126,9 +138,11 @@ export async function bench<I, O, S = Score>(
       output = await run(flow, bc.input, {
         trajectory: case_logger,
         install_signal_handlers,
+        ...run_options,
       })
       ok = true
     } catch (err) {
+      rethrow_control_flow(err, bc.id)
       error = err instanceof Error ? err.message : String(err)
       ok = false
     }
@@ -145,8 +159,10 @@ export async function bench<I, O, S = Score>(
           raw = await run(judge, judge_input, {
             trajectory: case_logger,
             install_signal_handlers,
+            ...run_options,
           })
-        } catch {
+        } catch (err) {
+          rethrow_control_flow(err, bc.id)
           continue
         }
         const normalized = normalize_score(raw)
@@ -176,7 +192,13 @@ export async function bench<I, O, S = Score>(
     return result
   }
 
-  const cases_out = await run_with_concurrency(cases, concurrency, run_one)
+  const cases_out = await run_with_concurrency(cases, concurrency, run_one, options.abort)
+
+  // An abort that fires while every case is already in flight has no queue to
+  // halt, and a flow that never checks `ctx.abort` finishes regardless. Both
+  // would otherwise yield a full report for a cancelled run.
+  throw_if_aborted(options.abort)
+
   const summary = summarize(cases_out, judge_entries.map(([n]) => n))
 
   return {
@@ -185,6 +207,34 @@ export async function bench<I, O, S = Score>(
     cases: cases_out,
     summary,
   }
+}
+
+/**
+ * Rethrows the control-flow signals that must never become a `CaseResult`.
+ *
+ * An `aborted_error` cancels the whole bench: a report claiming every
+ * remaining case failed is worse than no report. A `suspended_error` becomes
+ * `bench_suspend_error` naming the case, because `bench` cannot resume an
+ * approval gate and scoring the paused case as a failure corrupts the
+ * benchmark. Anything else returns, and the caller records it as a failure.
+ */
+function rethrow_control_flow(err: unknown, case_id: string): void {
+  if (err instanceof aborted_error) throw err
+  if (err instanceof suspended_error) throw new bench_suspend_error(case_id, err.suspend_id)
+}
+
+/**
+ * Rejects once `signal` has fired, so an abort stops the bench claiming
+ * further cases instead of running the queue to completion.
+ *
+ * Mirrors core's abort shape: an `Error` reason propagates verbatim, anything
+ * else is wrapped, so a caller aborting with its own `aborted_error` sees that
+ * instance rather than a copy.
+ */
+function throw_if_aborted(signal: AbortSignal | undefined): void {
+  if (signal?.aborted !== true) return
+  const reason: unknown = signal.reason
+  throw reason instanceof Error ? reason : new aborted_error('aborted', { reason })
 }
 
 /**
@@ -296,11 +346,17 @@ function create_cost_tracker(): {
  * Uses a shared-index worker pool: each of the `limit` workers claims the
  * next unclaimed index and writes its result into that slot, so completion
  * order never reorders the output.
+ *
+ * `abort` is re-checked before each claim, so a signal that fires mid-run
+ * halts scheduling at the queue rather than only cancelling work already in
+ * flight. The full fan-out path has no queue to halt: every item is already
+ * running, so the caller re-checks the signal before reading the results.
  */
 async function run_with_concurrency<t, r>(
   items: ReadonlyArray<t>,
   limit: number,
   fn: (item: t) => Promise<r>,
+  abort?: AbortSignal,
 ): Promise<r[]> {
   if (items.length === 0) return []
   if (limit >= items.length) {
@@ -310,6 +366,7 @@ async function run_with_concurrency<t, r>(
   let next = 0
   const worker = async (): Promise<void> => {
     while (true) {
+      throw_if_aborted(abort)
       const idx = next
       next += 1
       if (idx >= items.length) return

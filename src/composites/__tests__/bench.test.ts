@@ -1,11 +1,19 @@
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { mkdtemp, readdir, readFile, rm } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { sequence, step } from '#core'
+import { aborted_error, sequence, step, suspend } from '#core'
 import type { Step, TrajectoryEvent } from '#core'
 import { afterEach, describe, expect, it } from 'vitest'
-import { bench, type CaseResult, normalize_score, type Score } from '../bench.js'
+import { z } from 'zod'
+import {
+  bench,
+  type CaseResult,
+  type JudgeArgs,
+  normalize_score,
+  type Score,
+} from '../bench.js'
+import { bench_suspend_error } from '../errors.js'
 import { judge_equals, judge_with } from '../judges.js'
 
 afterEach(() => {
@@ -403,6 +411,192 @@ describe('bench concurrency', () => {
     const cases = Array.from({ length: 6 }, (_, i) => ({ id: `c${String(i)}`, input: i }))
     await bench(flow, cases, {}, { concurrency: 3 })
     expect(peak()).toBe(3)
+  })
+})
+
+/**
+ * Awaits a rejection and returns the reason typed, so a test can read the
+ * error's own fields without the resolved `BenchReport` widening the union.
+ */
+async function rejection<e>(promise: Promise<unknown>): Promise<e> {
+  return promise.then(
+    () => {
+      throw new Error('expected the bench to reject')
+    },
+    (err: unknown) => err as e,
+  )
+}
+
+/**
+ * A flow that pauses on a human-approval gate. `bench` passes no `resume_data`,
+ * so every case hits the first-encounter branch and throws `suspended_error`.
+ */
+function approval_gate(id: string): Step<number, number> {
+  return suspend({
+    id,
+    on: () => {},
+    resume_schema: z.object({ ok: z.boolean() }),
+    combine: (input: number, r) => (r.ok ? input : 0),
+  })
+}
+
+describe('bench control flow', () => {
+  it('rejects with bench_suspend_error naming the case and suspend id', async () => {
+    const err = await rejection<bench_suspend_error>(
+      bench(approval_gate('approve_spend'), [{ id: 'case-7', input: 1 }], {}),
+    )
+    expect(err).toBeInstanceOf(bench_suspend_error)
+    expect(err.case_id).toBe('case-7')
+    expect(err.suspend_id).toBe('approve_spend')
+    expect(err.message).toContain('case-7')
+    expect(err.message).toContain('approve_spend')
+  })
+
+  it('rejects rather than scoring a suspended case as a failure', async () => {
+    // The old behaviour recorded { ok: false, error: 'suspended at ...' }, which
+    // scored an un-run case as a zero and silently moved the pass_rate.
+    const gate = approval_gate('gate')
+    await expect(bench(gate, [{ id: 'a', input: 1 }, { id: 'b', input: 2 }], {}))
+      .rejects.toBeInstanceOf(bench_suspend_error)
+  })
+
+  it('rejects when a judge suspends, naming the case it judged', async () => {
+    const gated_judge = suspend({
+      id: 'judge_gate',
+      on: () => {},
+      resume_schema: z.object({ ok: z.boolean() }),
+      combine: (_: JudgeArgs<number, number>, r): Score | undefined =>
+        r.ok ? { score: 1 } : undefined,
+    })
+    const err = await rejection<bench_suspend_error>(
+      bench(double, [{ id: 'judged', input: 1 }], { gated: gated_judge }),
+    )
+    expect(err).toBeInstanceOf(bench_suspend_error)
+    expect(err.case_id).toBe('judged')
+    expect(err.suspend_id).toBe('judge_gate')
+  })
+
+  it('rethrows an aborted_error from a judge instead of abstaining', async () => {
+    // The judge loop's catch abstains on application errors; a cancellation
+    // is not one, and abstaining would let the report survive the abort.
+    const cancelled = new aborted_error('cancelled in judge')
+    const cancelling_judge = judge_with<number, number>(() => {
+      throw cancelled
+    })
+    await expect(bench(double, [{ id: 'a', input: 1 }], { j: cancelling_judge }))
+      .rejects.toBe(cancelled)
+  })
+
+  it('halts scheduling and rejects when the abort fires mid-bench', async () => {
+    const controller = new AbortController()
+    const started: number[] = []
+    const flow = step('watch', async (n: number) => {
+      started.push(n)
+      if (n === 2) controller.abort(new aborted_error('cancelled by test'))
+      await new Promise((resolve) => setTimeout(resolve, 1))
+      return n
+    })
+    const cases = [1, 2, 3, 4].map((n) => ({ id: `c${String(n)}`, input: n }))
+
+    await expect(
+      bench(flow, cases, {}, { concurrency: 1, abort: controller.signal }),
+    ).rejects.toBeInstanceOf(aborted_error)
+    expect(started).toEqual([1, 2])
+  })
+
+  it('propagates the abort reason verbatim when it is an Error', async () => {
+    const controller = new AbortController()
+    const reason = new aborted_error('user hit ctrl-c')
+    const flow = step('trip', (n: number) => {
+      controller.abort(reason)
+      return n
+    })
+    const cases = [1, 2].map((n) => ({ id: `c${String(n)}`, input: n }))
+
+    await expect(
+      bench(flow, cases, {}, { concurrency: 1, abort: controller.signal }),
+    ).rejects.toBe(reason)
+  })
+
+  it('wraps a non-Error abort reason in aborted_error', async () => {
+    const controller = new AbortController()
+    const flow = step('trip', (n: number) => {
+      controller.abort('shutting down')
+      return n
+    })
+    const cases = [1, 2].map((n) => ({ id: `c${String(n)}`, input: n }))
+
+    const err = await rejection<aborted_error>(
+      bench(flow, cases, {}, { concurrency: 1, abort: controller.signal }),
+    )
+    expect(err).toBeInstanceOf(aborted_error)
+    expect(err.reason).toBe('shutting down')
+  })
+
+  it('rejects a pre-aborted bench without running any case', async () => {
+    const controller = new AbortController()
+    controller.abort(new aborted_error('cancelled before start'))
+    const started: number[] = []
+    const flow = step('watch', (n: number) => {
+      started.push(n)
+      return n
+    })
+
+    await expect(
+      bench(flow, [{ id: 'a', input: 1 }], {}, { abort: controller.signal }),
+    ).rejects.toBeInstanceOf(aborted_error)
+    expect(started).toEqual([])
+  })
+
+  it('rejects a pre-aborted bench with no cases rather than reporting on nothing', async () => {
+    const controller = new AbortController()
+    controller.abort(new aborted_error('cancelled before start'))
+    await expect(bench(double, [], {}, { abort: controller.signal }))
+      .rejects.toBeInstanceOf(aborted_error)
+  })
+
+  it('rejects a pre-aborted bench before creating the trajectory dir', async () => {
+    const base = await mkdtemp(join(tmpdir(), 'bench-preabort-'))
+    const controller = new AbortController()
+    controller.abort(new aborted_error('cancelled before start'))
+    try {
+      await expect(
+        bench(double, [{ id: 'a', input: 1 }], {}, {
+          abort: controller.signal,
+          trajectory_dir: join(base, 'never'),
+        }),
+      ).rejects.toBeInstanceOf(aborted_error)
+      expect(await readdir(base)).toEqual([])
+    } finally {
+      await rm(base, { recursive: true, force: true })
+    }
+  })
+
+  it('forwards the abort signal into each per-case run', async () => {
+    const controller = new AbortController()
+    let observed: boolean | undefined
+    const flow = step('probe', async (n: number, ctx) => {
+      controller.abort(new aborted_error('mid-case'))
+      await Promise.resolve()
+      observed = ctx.abort.aborted
+      return n
+    })
+
+    // Full fan-out: one case, so there is no queue to halt. The signal still
+    // has to reach the run, and the finished case must not become a report.
+    await expect(
+      bench(flow, [{ id: 'a', input: 1 }], {}, { abort: controller.signal }),
+    ).rejects.toBeInstanceOf(aborted_error)
+    expect(observed).toBe(true)
+  })
+
+  it('still records an ordinary flow error as a failed case', async () => {
+    const boom = step('boom', (): number => {
+      throw new Error('application failure')
+    })
+    const report = await bench(boom, [{ id: 'a', input: 1 }], {})
+    expect(report.cases[0]?.ok).toBe(false)
+    expect(report.cases[0]?.error).toBe('application failure')
   })
 })
 

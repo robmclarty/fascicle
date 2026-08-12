@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Fixed
+
+- **`bench` no longer scores a suspended or cancelled run as a set of failed cases.** A `suspended_error` from a human-approval gate inside a benched flow was caught by the same handler as an application failure and recorded as `{ ok: false, error: 'suspended at ...' }`, so a paused case scored a zero and moved `pass_rate` without anything reporting that the flow never finished. `bench` has no resume path, so a suspend inside a benched flow is a usage error: it now rejects with `bench_suspend_error` (exported from `fascicle`), carrying `case_id` and `suspend_id` so the offending case is named rather than searched for. The judge loop's `catch { continue }` abstain path had the same hole and gets the same guard. **Breaking** for anyone benching a flow that suspends: those runs rejected nothing before and reject now, which is the point, since the old report was wrong.
+
+### Added
+
+- **`BenchOptions` gains `abort`, and a cancelled bench rejects instead of returning a report.** `bench` accepted no signal at all and defaulted `install_signal_handlers` to `false`, so there was no cancellation path through a bench run. The signal now forwards to every per-case `run` and is re-checked before each case is claimed, so an abort halts scheduling at the queue rather than only cancelling work already in flight, and it is checked once more before the report is built, so neither a full fan-out (no queue to halt) nor a flow that ignores `ctx.abort` can yield a report for a run the caller cancelled. An `aborted_error` raised inside a case or a judge propagates rather than being flattened into `ok: false`. Abort reasons follow core's shape: an `Error` reason propagates verbatim, anything else is wrapped in `aborted_error`.
+
 ### Changed
 
 - **`retry` (composition layer) now jitters its backoff by default and caps it at 30s.** `RetryConfig` gains `max_delay_ms` (defaults to 30_000, matching the engine retry layer's cap) and `jitter` (defaults to `true`), both now expressed through the `#policy` backoff algebra the engine retry layer already used. Un-jittered retries from concurrent callers stampede back onto a recovering dependency in lockstep, and jittering is cheapest to add now, before `retry` has callers depending on its old exact-doubling delays. **Breaking:** a `retry(...)` call with a large `backoff_ms` or high `max_attempts` now serves a longer, randomized delay per attempt and is capped at 30s where it was previously uncapped; pass `jitter: false` and an explicit `max_delay_ms` to keep the old behavior exactly. `retry.test.ts` pins the default-on jitter clamped to an explicit cap, and the old exact-doubling assertion now runs with `jitter: false`.

@@ -51,6 +51,8 @@ export type {
 export { tournament } from './tournament.js'
 export type { BracketRecord, TournamentConfig, TournamentResult } from './tournament.js'
 
+export { bench_suspend_error } from './errors.js'
+
 export { bench, normalize_score } from './bench.js'
 export type {
   BenchCase,

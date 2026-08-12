@@ -79,7 +79,7 @@ const report = await bench(classify, cases, { exact: judge_equals<string>() }, {
 console.log(report.summary.pass_rate, report.summary.mean_scores.exact);
 ```
 
-`bench` runs cases concurrently (cap it with `options.concurrency`), tracks cost per case by intercepting `cost` events on the trajectory pipeline, and writes each case's trajectory under `trajectory_dir` when set. It never throws on a failed case; a case that throws is recorded with `ok: false` and drags down `pass_rate`. See the per-case observability options in [`src/composites/bench.ts`](../src/composites/bench.ts).
+`bench` runs cases concurrently (cap it with `options.concurrency`), tracks cost per case by intercepting `cost` events on the trajectory pipeline, and writes each case's trajectory under `trajectory_dir` when set. It never throws on a failed case; a case whose flow throws is recorded with `ok: false` and drags down `pass_rate`. Control-flow signals are the exception, because they are not case results: pass `options.abort` and a cancelled bench rejects rather than reporting on cases it never ran, and a flow that pauses on a human-approval gate rejects with `bench_suspend_error` rather than scoring the paused case as a zero. See the per-case observability options in [`src/composites/bench.ts`](../src/composites/bench.ts).
 
 ## `regression_compare` diffs two reports
 
