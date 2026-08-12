@@ -12,7 +12,7 @@
  * `normalize_usage` members.
  */
 
-import { z } from 'zod'
+import { to_json_schema, type ToolSchema } from '#schema'
 import type {
   ResolvedModel,
   EffortLevel,
@@ -181,15 +181,14 @@ export function extract_system_text(prompt: string | Message[]): string | undefi
 }
 
 /**
- * Serialize a Zod schema to the JSON Schema string the CLI's
- * `--json-schema` flag expects.
+ * Serialize a schema to the JSON Schema string the CLI's `--json-schema`
+ * flag expects.
+ *
+ * `strip_meta` is what makes this CLI-specific: `claude --json-schema`
+ * rejects a top-level `$schema`/`$id`, which every other provider tolerates.
  */
-export function compile_schema<T>(schema: z.ZodType<T>): string {
-  // `claude --json-schema` rejects a top-level $schema/$id (the
-  // draft-2020-12 URI z.toJSONSchema stamps); strip them, the field
-  // constraints alone drive constrained decode.
-  const { $schema: _schema, $id: _id, ...json } = z.toJSONSchema(schema)
-  return JSON.stringify(json)
+export function compile_schema<T>(schema: ToolSchema<T>): string {
+  return JSON.stringify(to_json_schema(schema, { strip_meta: true }))
 }
 
 /**
@@ -427,8 +426,7 @@ export function create_claude_cli_adapter(init: ProviderInit): ExternalAgentAdap
 
       let compiled_schema: string | undefined
       if (opts.schema !== undefined) {
-        // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-        compiled_schema = compile_schema(opts.schema as z.ZodType)
+        compiled_schema = compile_schema(opts.schema)
       } else if (
         typeof call_opts.output_json_schema === 'string' &&
         call_opts.output_json_schema.length > 0

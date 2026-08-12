@@ -267,7 +267,7 @@ describe('to_chat_messages', () => {
 })
 
 describe('to_chat_tools', () => {
-  it('maps tools to the function-tool shape via z.toJSONSchema', () => {
+  it('maps tools to the function-tool shape via to_json_schema', () => {
     const tools = to_chat_tools([weather_tool])
     expect(tools).toHaveLength(1)
     expect(tools[0]?.type).toBe('function')
@@ -278,6 +278,18 @@ describe('to_chat_tools', () => {
       properties: { city: { type: 'string' } },
       required: ['city'],
     })
+  })
+
+  // C3 (wire-identical-payloads). Serialized so key order is pinned too:
+  // these are the exact bytes Chat Completions receives, unchanged by the
+  // move to the neutral `#schema` zone.
+  it('emits byte-identical tool JSON Schema, $schema key included', () => {
+    const tools = to_chat_tools([weather_tool])
+    expect(JSON.stringify(tools[0]?.function.parameters)).toBe(
+      '{"$schema":"https://json-schema.org/draft/2020-12/schema",' +
+        '"type":"object","properties":{"city":{"type":"string"}},' +
+        '"required":["city"],"additionalProperties":false}',
+    )
   })
 })
 

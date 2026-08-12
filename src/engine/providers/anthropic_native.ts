@@ -19,7 +19,7 @@
  * construction rather than by parallel code paths.
  */
 
-import { z } from 'zod'
+import { to_json_schema } from '#schema'
 import type {
   AssistantContentPart,
   EffortLevel,
@@ -192,7 +192,7 @@ export function to_anthropic_messages(messages: ReadonlyArray<Message>): {
 
 /**
  * Map fascicle tool definitions to the Messages-API tool shape, converting
- * each zod input schema to JSON Schema.
+ * each input schema to JSON Schema.
  */
 export function to_anthropic_tools(
   tools: ReadonlyArray<Tool>,
@@ -200,9 +200,7 @@ export function to_anthropic_tools(
   return tools.map((tool) => ({
     name: tool.name,
     description: tool.description,
-    // Narrowed back to zod until step 14 emits through `to_json_schema`.
-    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-    input_schema: z.toJSONSchema(tool.input_schema as z.ZodType),
+    input_schema: to_json_schema(tool.input_schema),
   }))
 }
 

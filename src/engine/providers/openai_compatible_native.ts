@@ -22,7 +22,7 @@
  * parallel code paths.
  */
 
-import { z } from 'zod'
+import { to_json_schema } from '#schema'
 import type {
   AssistantContentPart,
   EffortLevel,
@@ -181,7 +181,7 @@ export function to_chat_messages(
 
 /**
  * Map fascicle Tool[] to the Chat Completions function-tool shape,
- * converting each zod input schema to JSON Schema.
+ * converting each input schema to JSON Schema.
  */
 export function to_chat_tools(tools: ReadonlyArray<Tool>): Array<{
   type: 'function'
@@ -192,9 +192,7 @@ export function to_chat_tools(tools: ReadonlyArray<Tool>): Array<{
     function: {
       name: tool.name,
       description: tool.description,
-      // Narrowed back to zod until step 14 emits through `to_json_schema`.
-      // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-      parameters: z.toJSONSchema(tool.input_schema as z.ZodType),
+      parameters: to_json_schema(tool.input_schema),
     },
   }))
 }

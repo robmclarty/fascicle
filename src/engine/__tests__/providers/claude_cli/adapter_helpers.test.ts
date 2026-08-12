@@ -121,7 +121,7 @@ describe('extract_system_text', () => {
 })
 
 describe('compile_schema', () => {
-  it('serializes the JSON Schema of a Zod type', () => {
+  it('serializes the JSON Schema of a schema', () => {
     const json = JSON.parse(compile_schema(z.object({ x: z.number() }))) as Record<string, unknown>
     expect(json['type']).toBe('object')
     expect((json['properties'] as Record<string, unknown>)['x']).toMatchObject({ type: 'number' })
@@ -134,6 +134,17 @@ describe('compile_schema', () => {
     // field constraints survive the strip
     expect((json['properties'] as Record<string, unknown>)['a']).toMatchObject({ type: 'string' })
     expect(json['required']).toEqual(['a'])
+  })
+
+  // C3 (wire-identical-payloads) for the CLI's `--json-schema` argv value.
+  // The strip moved from a bespoke rest-spread in this adapter to the
+  // `strip_meta` option on the shared emitter; these are the bytes that
+  // change if that option ever stops being passed.
+  it('emits byte-identical argv JSON, $schema and $id absent', () => {
+    expect(compile_schema(z.object({ city: z.string() }))).toBe(
+      '{"type":"object","properties":{"city":{"type":"string"}},' +
+        '"required":["city"],"additionalProperties":false}',
+    )
   })
 })
 

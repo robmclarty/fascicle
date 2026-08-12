@@ -349,7 +349,7 @@ describe('build_messages_body', () => {
     expect(body).not.toHaveProperty('top_k')
   })
 
-  it('maps tools to Messages-API shape via z.toJSONSchema', () => {
+  it('maps tools to Messages-API shape via to_json_schema', () => {
     const body = build_messages_body(make_req({ tools: [weather_tool] }))
     const tools = body['tools'] as Array<Record<string, unknown>>
     expect(tools).toHaveLength(1)
@@ -361,6 +361,24 @@ describe('build_messages_body', () => {
       required: ['city'],
     })
   })
+
+  // C3 (wire-identical-payloads). Serialized rather than structural, so key
+  // order is pinned too: these are the exact bytes the Messages API receives,
+  // and the emission moved from `z.toJSONSchema` to the neutral `#schema`
+  // zone underneath them. `$schema` is deliberately present, since only
+  // `claude --json-schema` rejects it.
+  it('emits byte-identical tool JSON Schema, $schema key included', () => {
+    const body = build_messages_body(make_req({ tools: [weather_tool] }))
+    const tools = body['tools'] as Array<Record<string, unknown>>
+    expect(JSON.stringify(tools[0]?.['input_schema'])).toBe(
+      '{"$schema":"https://json-schema.org/draft/2020-12/schema",' +
+        '"type":"object","properties":{"city":{"type":"string"}},' +
+        '"required":["city"],"additionalProperties":false}',
+    )
+  })
+
+  // Neutral-vendor emission is proved for real against ArkType in
+  // `src/engine/__tests__/vendor_neutrality.test.ts`, not stubbed here.
 
   it('omits the system key when neither req.system nor a hoisted system is present', () => {
     expect(build_messages_body(make_req())).not.toHaveProperty('system')
