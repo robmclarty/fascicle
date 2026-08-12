@@ -76,7 +76,11 @@ from English specifications:
   passing a Step as `fn` throws at construction.
 - `retry(inner, { max_attempts, backoff_ms?, on_error? })` — re-run on
   failure with exponential backoff.
-- `fallback(primary, backup)` — run `backup` if `primary` throws.
+- `fallback(primary, backup, { handoff? })` — run `backup` if `primary`
+  throws. `handoff(input, err)` builds the backup's input, so the backup can
+  be told why the primary failed; without it the backup gets the original
+  input. Control-flow signals (suspend, abort) propagate without triggering
+  the backup or the handoff.
 - `timeout(inner, ms)` — cancel `inner` after `ms`.
 - `loop({ init, body, guard?, finish, max_rounds })` — bounded iteration
   with carry-state. Non-convergence is data, not error.

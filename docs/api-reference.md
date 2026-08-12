@@ -58,7 +58,7 @@ fits a step fits any composition of steps.
 | `parallel({ a, b })` | run a named map of steps concurrently |
 | `loop({ init, body, guard?, finish, max_rounds })` | bounded iteration with carry-state and optional convergence guard |
 | `retry(step, policy)` | re-run on failure with exponential backoff |
-| `fallback(primary, backup)` | run a backup if the primary throws |
+| `fallback(primary, backup, { handoff? })` | run a backup if the primary throws; `handoff(input, err)` maps the backup's input |
 | `timeout(step, ms)` | cancel an inner step after N ms (throws `timeout_error`) |
 
 **Multi-model**

@@ -45,6 +45,74 @@ describe('fallback', () => {
     expect(backup_input).toBe(42)
   })
 
+  it('runs backup with handoff(input, err) when handoff is set', async () => {
+    let handoff_input: number | undefined
+    let handoff_err: unknown
+    let backup_input: number | undefined
+    const primary = step('primary', (_: number) => {
+      throw new Error('primary failed')
+    })
+    const backup = step('backup', (x: number) => {
+      backup_input = x
+      return `backup:${x}`
+    })
+
+    const flow = fallback(primary, backup, {
+      handoff: (input, err) => {
+        handoff_input = input
+        handoff_err = err
+        return input + 100
+      },
+    })
+    const result = await run(flow, 42, { install_signal_handlers: false })
+
+    expect(handoff_input).toBe(42)
+    expect(handoff_err).toBeInstanceOf(Error)
+    expect((handoff_err as Error).message).toBe('primary failed')
+    expect(backup_input).toBe(142)
+    expect(result).toBe('backup:142')
+  })
+
+  it('does not call handoff when primary succeeds', async () => {
+    let handoff_called = false
+    const primary = step('primary', (x: number) => `primary:${x}`)
+    const backup = step('backup', (x: number) => `backup:${x}`)
+
+    const flow = fallback(primary, backup, {
+      handoff: (input) => {
+        handoff_called = true
+        return input
+      },
+    })
+    const result = await run(flow, 1, { install_signal_handlers: false })
+
+    expect(result).toBe('primary:1')
+    expect(handoff_called).toBe(false)
+  })
+
+  it('does not call handoff on a control-flow signal', async () => {
+    let handoff_called = false
+    const primary = suspend({
+      id: 'gate',
+      on: async () => {},
+      resume_schema: z.object({ ok: z.boolean() }),
+      combine: (_: number, r) => (r.ok ? 1 : 0),
+    })
+    const backup = step('backup', (_: number) => -1)
+
+    const flow = fallback(primary, backup, {
+      handoff: (input) => {
+        handoff_called = true
+        return input
+      },
+    })
+
+    await expect(run(flow, 0, { install_signal_handlers: false })).rejects.toBeInstanceOf(
+      suspended_error,
+    )
+    expect(handoff_called).toBe(false)
+  })
+
   it('returns primary result when primary succeeds', async () => {
     let backup_called = false
     const primary = step('primary', (x: number) => `primary:${x}`)
