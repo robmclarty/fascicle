@@ -14,6 +14,8 @@
 
 import type { RetryFailureKind, RetryPolicy } from './types.js'
 import { aborted_error, provider_error, rate_limit_error } from './errors.js'
+import { compute_backoff, wait_with_abort } from '#policy'
+import type { BackoffPolicy } from '#policy'
 
 export const DEFAULT_RETRY: RetryPolicy = {
   max_attempts: 3,
@@ -48,48 +50,6 @@ export function parse_retry_after(value: string | null | undefined): number | un
 }
 
 /**
- * Compute the delay before the next retry attempt.
- *
- * Exponential backoff (`initial_delay_ms * 2^attempt`) plus up to one
- * `initial_delay_ms` of random jitter, capped at `max_delay_ms`. The jitter
- * spreads retries from concurrent callers apart so they don't all retry in
- * lockstep.
- */
-function compute_backoff(policy: RetryPolicy, attempt: number): number {
-  const base = policy.initial_delay_ms * 2 ** attempt
-  const jitter = Math.random() * policy.initial_delay_ms
-  return Math.min(base + jitter, policy.max_delay_ms)
-}
-
-/**
- * Wait `ms` milliseconds, or reject immediately with `aborted_error` if
- * `abort` fires first.
- *
- * A zero or negative `ms` resolves synchronously without arming a timer.
- */
-function wait_ms(ms: number, abort?: AbortSignal): Promise<void> {
-  return new Promise<void>((resolve, reject) => {
-    if (ms <= 0) {
-      resolve()
-      return
-    }
-    if (abort?.aborted === true) {
-      reject(new aborted_error('aborted', { reason: abort.reason }))
-      return
-    }
-    const timer = setTimeout(() => {
-      if (abort !== undefined) abort.removeEventListener('abort', on_abort)
-      resolve()
-    }, ms)
-    const on_abort = (): void => {
-      clearTimeout(timer)
-      reject(new aborted_error('aborted', { reason: abort?.reason }))
-    }
-    abort?.addEventListener('abort', on_abort, { once: true })
-  })
-}
-
-/**
  * Check whether `policy` allows retrying a failure of the given `kind`.
  */
 function is_retryable(kind: RetryFailureKind, policy: RetryPolicy): boolean {
@@ -110,6 +70,12 @@ export async function retry_with_policy<t>(
   policy: RetryPolicy = DEFAULT_RETRY,
   abort?: AbortSignal,
 ): Promise<t> {
+  const backoff_policy: BackoffPolicy = {
+    initial_delay_ms: policy.initial_delay_ms,
+    max_delay_ms: policy.max_delay_ms,
+    jitter: true,
+  }
+  const signal = abort ?? new AbortController().signal
   let attempt = 0
   let last_rate_limit_after: number | undefined
   while (true) {
@@ -151,14 +117,14 @@ export async function retry_with_policy<t>(
         )
       }
 
-      let delay = compute_backoff(policy, attempt - 1)
+      let delay = compute_backoff(backoff_policy, attempt - 1)
       if (retryable.kind === 'rate_limit' && retryable.retry_after_ms !== undefined) {
         // When the server supplies Retry-After, honor it even if it exceeds
         // max_delay_ms; the server's instruction outranks the local backoff cap.
         delay = Math.max(delay, retryable.retry_after_ms)
         last_rate_limit_after = retryable.retry_after_ms
       }
-      await wait_ms(delay, abort)
+      await wait_with_abort(delay, signal, (reason) => new aborted_error('aborted', { reason }))
     }
   }
 }
