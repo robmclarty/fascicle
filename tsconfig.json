@@ -37,7 +37,8 @@
       "#agents": ["./src/agents/index.ts"],
       "#stdio": ["./src/stdio/index.ts"],
       "#ui": ["./src/ui/index.ts"],
-      "#policy": ["./src/policy/index.ts"]
+      "#policy": ["./src/policy/index.ts"],
+      "#schema": ["./src/schema/index.ts"]
     }
   },
   "include": [

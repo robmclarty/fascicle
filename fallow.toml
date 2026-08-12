@@ -93,13 +93,17 @@ patterns = ["src/otel/**"]
 name = "policy"
 patterns = ["src/policy/**"]
 
-[[boundaries.rules]] # core: imports no sibling module except the policy algebra
-from = "core"
-allow = ["mcp", "stdio", "ui", "policy"]
+[[boundaries.zones]]
+name = "schema"
+patterns = ["src/schema/**"]
 
-[[boundaries.rules]] # engine: may reference core (type-only, see ast-grep) and policy, nothing else
+[[boundaries.rules]] # core: imports no sibling module except the policy algebra and the schema seam
+from = "core"
+allow = ["mcp", "stdio", "ui", "policy", "schema"]
+
+[[boundaries.rules]] # engine: may reference core (type-only, see ast-grep), policy, and schema, nothing else
 from = "engine"
-allow = ["core", "mcp", "stdio", "ui", "policy"]
+allow = ["core", "mcp", "stdio", "ui", "policy", "schema"]
 
 [[boundaries.rules]] # composites: core + adapters only
 from = "composites"
@@ -115,15 +119,15 @@ allow = ["core", "mcp", "stdio", "ui"]
 
 [[boundaries.rules]] # agents: core + composites + engine only
 from = "agents"
-allow = ["core", "engine", "composites", "mcp", "stdio", "ui"]
+allow = ["core", "engine", "composites", "mcp", "stdio", "ui", "schema"]
 
 [[boundaries.rules]] # mcp: core + engine only (bridges flows/tools to the MCP wire)
 from = "mcp"
-allow = ["core", "engine", "stdio", "ui"]
+allow = ["core", "engine", "stdio", "ui", "schema"]
 
 [[boundaries.rules]] # stdio: core + adapters only (single-shot child-process entry helper)
 from = "stdio"
-allow = ["core", "adapters", "ui"]
+allow = ["core", "adapters", "ui", "schema"]
 
 [[boundaries.rules]] # ui: core + engine only (bridges the run stream to the AI SDK UI wire)
 from = "ui"
@@ -135,4 +139,8 @@ allow = ["core"]
 
 [[boundaries.rules]] # policy: bottom of the DAG; core and engine import it, so it imports nothing
 from = "policy"
+allow = []
+
+[[boundaries.rules]] # schema: bottom of the DAG; core, engine, mcp, stdio, and agents import it, so it imports nothing
+from = "schema"
 allow = []

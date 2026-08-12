@@ -1,0 +1,22 @@
+id: no-schema-npm-dep
+message: "The schema module is the bottom of the dependency DAG: node: builtins, relative paths, and a TYPE-ONLY import of @standard-schema/spec only. That package is a devDependency whose ESM entry is zero bytes, so a value import would put a dependency consumers never installed into the shipped bundle. No other npm package, and no #-alias either, because core/engine/mcp/stdio all import #schema and any edge back out of it closes a cycle."
+severity: error
+language: typescript
+files:
+  - src/schema/**/*.ts
+ignores:
+  - src/**/__tests__/**
+  - "**/*.test.ts"
+rule:
+  all:
+    - any:
+        - pattern: import $$$ from '$PATH'
+        - pattern: import $$$ from "$PATH"
+    - not:
+        any:
+          - pattern: import type $$$ from '@standard-schema/spec'
+          - pattern: import type $$$ from "@standard-schema/spec"
+constraints:
+  PATH:
+    not:
+      regex: '^(node:|\.)'
