@@ -71,6 +71,7 @@ import {
   type InvokeOnceArgs,
   type InvokeOnceResult,
 } from './tool_loop.js'
+import { missing_peer_error } from './providers/types.js'
 import type {
   NativeProviderAdapter,
   ProviderAdapter,
@@ -570,8 +571,17 @@ export async function generate<T = string>(
     // was the one thing that made `ai` mandatory for every consumer: loading it
     // inside the ai_sdk branch keeps it off the graph of a native-transport
     // install. The module resolves once per process and is cached thereafter,
-    // so the cost falls on the first ai_sdk call only.
-    const { create_ai_sdk_turn } = await import('./providers/ai_sdk/invoke.js')
+    // so the cost falls on the first ai_sdk call only. On failure this rethrows
+    // via missing_peer_error naming `ai` (the peer this module's own static
+    // `from 'ai'` import reaches for), not a raw module-resolution error
+    // naming this local path.
+    let ai_sdk_invoke_mod: typeof import('./providers/ai_sdk/invoke.js')
+    try {
+      ai_sdk_invoke_mod = await import('./providers/ai_sdk/invoke.js')
+    } catch (err: unknown) {
+      throw missing_peer_error('ai', err)
+    }
+    const { create_ai_sdk_turn } = ai_sdk_invoke_mod
     invoke_once = build_ai_sdk_invoke({
       invoke_turn: create_ai_sdk_turn({
         adapter,

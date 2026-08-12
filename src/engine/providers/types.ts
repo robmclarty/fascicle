@@ -162,9 +162,25 @@ export function default_normalize_usage(
 }
 
 /**
+ * Build the standard missing-peer error: names the package and the install
+ * command so a missing peer is diagnosable from the message alone. Shared so
+ * every optional-peer failure reads identically, whether the failing
+ * `import()` names the peer directly (load_optional_peer below) or a local
+ * module that reaches the peer through its own static import (the ai_sdk
+ * turn seam in generate.ts, whose dynamic import must stay written in
+ * generate.ts for its relative specifier to resolve correctly).
+ */
+export function missing_peer_error(peer_name: string, cause: unknown): Error {
+  const detail = cause instanceof Error ? cause.message : JSON.stringify(cause)
+  const message =
+    `missing peer dependency '${peer_name}'. Install it with: pnpm add ${peer_name}. Cause: ${detail}`
+  return new Error(message, { cause })
+}
+
+/**
  * Dynamically import an optional peer dependency, rethrowing an import
- * failure as an error that names the package and the install command so a
- * missing peer is diagnosable from the message alone.
+ * failure via missing_peer_error so a missing peer is diagnosable from the
+ * message alone.
  */
 export async function load_optional_peer<t>(
   specifier: string,
@@ -173,10 +189,7 @@ export async function load_optional_peer<t>(
   try {
     mod = await import(specifier)
   } catch (err: unknown) {
-    const detail = err instanceof Error ? err.message : JSON.stringify(err)
-    const message =
-      `missing peer dependency '${specifier}'. Install it with: pnpm add ${specifier}. Cause: ${detail}`
-    throw new Error(message, { cause: err })
+    throw missing_peer_error(specifier, err)
   }
   // eslint-disable-next-line typescript-eslint/no-unsafe-type-assertion
   return mod as t
