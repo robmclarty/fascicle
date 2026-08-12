@@ -57,6 +57,25 @@ function is_retryable(kind: RetryFailureKind, policy: RetryPolicy): boolean {
 }
 
 /**
+ * Map an abort reason onto the error this layer rejects with, always wrapping
+ * so an abort can only ever surface as `aborted_error` with the caller's
+ * reason attached.
+ *
+ * The engine's convention, and the opposite of core's propagate-verbatim rule.
+ * Two things depend on the wrap. A bare `controller.abort()` sets
+ * `signal.reason` to a `DOMException`, which is an `Error` on Node, so
+ * propagating would leak a non-fascicle error out of a boundary documented as
+ * throwing `aborted_error`. And the engine's other abort sites (`generate`,
+ * `tool_loop`, the adapters) wrap in order to attach `step_index` and
+ * `tool_call_in_flight`, which only the construction site knows; propagating
+ * would discard them. Wrapping a reason that is already an `aborted_error`
+ * nests one inside the other, which is the accepted cost of that contract.
+ */
+function to_abort_error(reason: unknown): Error {
+  return new aborted_error('aborted', { reason })
+}
+
+/**
  * Retry `fn` under `policy`. `fn` must throw a RetryableError-shaped object to
  * trigger retry; any other thrown value short-circuits as a permanent failure.
  *
@@ -80,7 +99,7 @@ export async function retry_with_policy<t>(
   let last_rate_limit_after: number | undefined
   while (true) {
     if (abort?.aborted === true) {
-      throw new aborted_error('aborted', { reason: abort.reason })
+      throw to_abort_error(abort.reason)
     }
     try {
       return await fn(attempt)
@@ -124,7 +143,7 @@ export async function retry_with_policy<t>(
         delay = Math.max(delay, retryable.retry_after_ms)
         last_rate_limit_after = retryable.retry_after_ms
       }
-      await wait_with_abort(delay, signal, (reason) => new aborted_error('aborted', { reason }))
+      await wait_with_abort(delay, signal, to_abort_error)
     }
   }
 }

@@ -184,6 +184,8 @@ Steps cooperate by:
 
 For embedded runtimes — tests, Lambda, worker threads, anything that owns its own signal stack — opt out with `install_signal_handlers: false` and forward cancellation yourself.
 
+**Abort reasons take one of two shapes, by layer.** Composition (`retry`, `timeout`, `parallel`, `map`, `bench`) propagates an `Error` abort reason verbatim and wraps anything else in `aborted_error`, so the cause you aborted with is the error you catch. A SIGINT surfaces as the runner's own `aborted_error('received SIGINT')`, and a `timeout` firing inside a retry still surfaces as `timeout_error`. The engine (`generate` and everything under it) always wraps, so a cancelled model call throws `aborted_error` with your reason on `.reason` and the engine's `step_index` attached. The split is deliberate: `abort()` with no reason sets `signal.reason` to a `DOMException`, and the engine's contract is that only fascicle errors cross its boundary.
+
 `timeout(inner, ms)` builds on the same mechanism: it aborts the inner step's signal after the deadline and throws `timeout_error`.
 
 ### Cancellation is cooperative

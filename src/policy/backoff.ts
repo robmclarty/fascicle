@@ -23,6 +23,13 @@ export type BackoffPolicy = {
  *
  * Each layer surfaces an abort as its own error, so the caller supplies the
  * mapping instead of this zone owning an error taxonomy it cannot import.
+ *
+ * The two callers pass genuinely different factories, and that is settled, not
+ * pending: core propagates an `Error` reason verbatim so an upstream cause
+ * survives, while the engine always wraps so its boundary can only ever throw
+ * `aborted_error`. Both were weighed once both layers rode this algebra; see
+ * the factories in `core/retry.ts` and `engine/retry.ts` for what each protects.
+ * Collapsing them to one rule breaks one layer or the other.
  */
 export type AbortErrorFactory = (reason: unknown) => Error
 

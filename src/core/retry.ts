@@ -51,6 +51,17 @@ function next_id(): string {
 /**
  * Map an abort reason onto the error a retry rejects with, preserving an
  * `Error` reason verbatim rather than wrapping it in `aborted_error`.
+ *
+ * Core's convention, shared with `timeout`, `parallel`, `map`, the runner's
+ * `throw_if_aborted`, and `bench`: this layer owns the signal chain, so the
+ * cause set upstream has to survive it. Wrapping would turn `timeout`'s
+ * `timeout_error` into an abort, and would flatten the runner's
+ * `aborted_error('received SIGINT')` into a bare 'aborted' that
+ * `runner.ts`'s catch cannot repair, since that repair only fires when the
+ * escaping error is not already an `aborted_error`.
+ *
+ * The engine's retry deliberately does the opposite; `#policy`'s
+ * `AbortErrorFactory` is where the two meet.
  */
 function to_abort_error(reason: unknown): Error {
   return reason instanceof Error ? reason : new aborted_error('aborted', { reason })

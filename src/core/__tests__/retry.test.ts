@@ -333,6 +333,33 @@ describe('retry', () => {
     expect(calls).toBe(1)
   })
 
+  it('propagates an Error abort reason verbatim rather than wrapping it', async () => {
+    const controller = new AbortController()
+    // The shape the runner's signal handlers abort with, so this is what a
+    // real SIGINT looks like to a retry sitting in a backoff.
+    const sigint = new aborted_error('received SIGINT', { reason: { signal: 'SIGINT' } })
+    const inner = step('x', (_: number) => {
+      setTimeout(() => {
+        controller.abort(sigint)
+      }, 5)
+      throw new Error('fail')
+    })
+    const flow = retry(inner, { max_attempts: 3, backoff_ms: 1000 })
+    let err: unknown
+    try {
+      await run(flow, 0, { install_signal_handlers: false, abort: controller.signal })
+    } catch (e) {
+      err = e
+    }
+    // Core's abort shape, not the engine's: the same instance comes back, so
+    // the upstream cause survives the retry. Wrapping would replace this
+    // message with a bare 'aborted', and the runner's catch cannot repair that
+    // (it only unwraps when the escaping error is not already an
+    // aborted_error). See the note on to_abort_error in src/core/retry.ts.
+    expect(err).toBe(sigint)
+    expect((err as aborted_error).message).toBe('received SIGINT')
+  })
+
   it('skips the timer entirely for a non-positive backoff', async () => {
     const spy = vi.spyOn(globalThis, 'setTimeout')
     try {

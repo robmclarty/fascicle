@@ -109,6 +109,31 @@ describe('retry_with_policy', () => {
     expect(attempts).toBe(1)
   })
 
+  it('wraps a bare abort, whose reason is a DOMException, not an aborted_error', async () => {
+    const controller = new AbortController()
+    setTimeout(() => controller.abort(), 20)
+    let err: unknown
+    try {
+      await retry_with_policy(
+        async () => {
+          throw { kind: 'rate_limit', retry_after_ms: 1000 }
+        },
+        { ...FAST_POLICY, max_attempts: 5 },
+        controller.signal,
+      )
+    } catch (e) {
+      err = e
+    }
+    // The engine's abort shape, and the reason it cannot adopt core's
+    // propagate-an-Error-verbatim rule: a bare abort() sets signal.reason to a
+    // DOMException, which IS instanceof Error, so propagating would leak a
+    // non-fascicle error out of a boundary documented as throwing
+    // aborted_error. See to_abort_error in src/engine/retry.ts.
+    expect(err).toBeInstanceOf(aborted_error)
+    expect((err as aborted_error).reason).toBeInstanceOf(Error)
+    expect((err as aborted_error).reason).not.toBeInstanceOf(aborted_error)
+  })
+
   it('does not retry 4xx failures outside rate_limit', async () => {
     let attempts = 0
     const fail = new Error('bad request')
