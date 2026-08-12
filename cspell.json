@@ -1,7 +1,10 @@
 {
   "version": "0.2",
   "language": "en",
-  "files": ["src/**/*.ts", "**/*.md"],
+  "files": [
+    "src/**/*.ts",
+    "**/*.md"
+  ],
   "ignorePaths": [
     "**/node_modules/**",
     "dist/**",
@@ -123,6 +126,7 @@
     "vendored",
     "forkable",
     "evals",
-    "unshares"
+    "unshares",
+    "libsy"
   ]
 }
