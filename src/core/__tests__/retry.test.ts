@@ -182,34 +182,45 @@ describe('retry', () => {
     expect(a.id).not.toBe(b.id)
   })
 
-  it('exposes resolved config as step metadata', () => {
+  it('exposes a fully-specified resolved config as step metadata', () => {
     const inner = step('x', (n: number) => n)
     const full = retry(inner, {
       max_attempts: 4,
       backoff_ms: 20,
+      max_delay_ms: 5_000,
+      jitter: false,
       on_error: noop_on_error,
       name: 'my_retry',
     }).config
     expect(full?.['max_attempts']).toBe(4)
     expect(full?.['backoff_ms']).toBe(20)
+    expect(full?.['max_delay_ms']).toBe(5_000)
+    expect(full?.['jitter']).toBe(false)
     expect(full?.['on_error']).toBe(noop_on_error)
     expect(full?.['display_name']).toBe('my_retry')
+  })
 
+  it('defaults max_delay_ms to 30s and jitter to on (D9) in resolved config metadata', () => {
+    const inner = step('x', (n: number) => n)
     const minimal = retry(inner, { max_attempts: 2 }).config
     expect(minimal?.['max_attempts']).toBe(2)
     expect(minimal?.['backoff_ms']).toBe(1000) // DEFAULT_BACKOFF_MS
+    expect(minimal?.['max_delay_ms']).toBe(30_000) // DEFAULT_MAX_DELAY_MS
+    expect(minimal?.['jitter']).toBe(true) // jitter defaults on (D9)
     expect('on_error' in (minimal ?? {})).toBe(false)
     expect('display_name' in (minimal ?? {})).toBe(false)
   })
 
-  it('schedules each backoff as backoff_ms * 2^(attempt-1)', async () => {
+  it('schedules each backoff as backoff_ms * 2^(attempt-1) with jitter disabled', async () => {
     const spy = vi.spyOn(globalThis, 'setTimeout')
     try {
       const inner = step('always_fail', (_: number) => {
         throw new Error('fail')
       })
       await expect(
-        run(retry(inner, { max_attempts: 3, backoff_ms: 10 }), 0, { install_signal_handlers: false }),
+        run(retry(inner, { max_attempts: 3, backoff_ms: 10, jitter: false }), 0, {
+          install_signal_handlers: false,
+        }),
       ).rejects.toThrow('fail')
       const delays = spy.mock.calls
         .map((c) => c[1])
@@ -217,6 +228,33 @@ describe('retry', () => {
       expect(delays).toEqual([10, 20])
     } finally {
       spy.mockRestore()
+    }
+  })
+
+  it('jitters backoff by default and clamps it to max_delay_ms (D9)', async () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0.5)
+    const real_set = globalThis.setTimeout
+    const spy = vi
+      .spyOn(globalThis, 'setTimeout')
+      .mockImplementation(((fn: () => void) => real_set(fn, 0)) as never)
+    try {
+      const inner = step('always_fail', (_: number) => {
+        throw new Error('fail')
+      })
+      await expect(
+        run(retry(inner, { max_attempts: 4, backoff_ms: 100, max_delay_ms: 300 }), 0, {
+          install_signal_handlers: false,
+        }),
+      ).rejects.toThrow('fail')
+      const delays = spy.mock.calls
+        .map((c) => c[1])
+        .filter((ms): ms is number => typeof ms === 'number')
+      // base = 100 * 2^(attempt-1), + jitter (0.5*100=50), min(.., 300):
+      // attempt1 -> 150, attempt2 -> 250, attempt3 -> min(450,300)=300
+      expect(delays).toEqual([150, 250, 300])
+    } finally {
+      spy.mockRestore()
+      vi.restoreAllMocks()
     }
   })
 

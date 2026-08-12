@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- **`retry` (composition layer) now jitters its backoff by default and caps it at 30s.** `RetryConfig` gains `max_delay_ms` (defaults to 30_000, matching the engine retry layer's cap) and `jitter` (defaults to `true`), both now expressed through the `#policy` backoff algebra the engine retry layer already used. Un-jittered retries from concurrent callers stampede back onto a recovering dependency in lockstep, and jittering is cheapest to add now, before `retry` has callers depending on its old exact-doubling delays. **Breaking:** a `retry(...)` call with a large `backoff_ms` or high `max_attempts` now serves a longer, randomized delay per attempt and is capped at 30s where it was previously uncapped; pass `jitter: false` and an explicit `max_delay_ms` to keep the old behavior exactly. `retry.test.ts` pins the default-on jitter clamped to an explicit cap, and the old exact-doubling assertion now runs with `jitter: false`.
+
 ## v0.10.2 — 2026-08-11
 
 ### Added

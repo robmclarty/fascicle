@@ -1,10 +1,14 @@
 /**
  * retry: re-run on failure.
  *
- * `retry(inner, { max_attempts, backoff_ms?, on_error? })` runs `inner`. If it
- * throws an application error, retries up to `max_attempts - 1` more times with
- * exponential backoff (`backoff_ms * 2^(attempt-1)`). `on_error` is called on
- * every such failure. The last error is rethrown if all attempts fail.
+ * `retry(inner, { max_attempts, backoff_ms?, max_delay_ms?, jitter?, on_error? })`
+ * runs `inner`. If it throws an application error, retries up to
+ * `max_attempts - 1` more times with exponential backoff
+ * (`backoff_ms * 2^(attempt-1)`), jittered by up to one `backoff_ms` and
+ * clamped to `max_delay_ms` (default 30s) through the shared `#policy`
+ * algebra. `jitter` defaults on: un-jittered concurrent retries stampede in
+ * lockstep. `on_error` is called on every such failure. The last error is
+ * rethrown if all attempts fail.
  *
  * Control-flow signals (`suspended_error`, `aborted_error`) are not failures:
  * they propagate immediately without consuming an attempt, firing `on_error`,
@@ -19,13 +23,18 @@
 import { aborted_error, is_control_flow_error } from './errors.js'
 import { dispatch_step, register_traced_kind } from './runner.js'
 import type { RunContext, Step } from './types.js'
+import { compute_backoff, wait_with_abort } from '#policy'
+import type { BackoffPolicy } from '#policy'
 
 const DEFAULT_BACKOFF_MS = 1_000
+const DEFAULT_MAX_DELAY_MS = 30_000
 
 export type RetryConfig = {
   readonly name?: string
   readonly max_attempts: number
   readonly backoff_ms?: number
+  readonly max_delay_ms?: number
+  readonly jitter?: boolean
   readonly on_error?: (err: unknown, attempt: number) => void
 }
 
@@ -40,30 +49,11 @@ function next_id(): string {
 }
 
 /**
- * Sleep for `ms` unless the run is aborted first.
- *
- * Rejects immediately with the abort reason (or an `aborted_error`) when
- * `ctx.abort` fires, so a pending abort never waits out a backoff delay.
+ * Map an abort reason onto the error a retry rejects with, preserving an
+ * `Error` reason verbatim rather than wrapping it in `aborted_error`.
  */
-async function abortable_wait(ms: number, ctx: RunContext): Promise<void> {
-  if (ms <= 0) return
-  await new Promise<void>((resolve, reject) => {
-    if (ctx.abort.aborted) {
-      const reason = ctx.abort.reason
-      reject(reason instanceof Error ? reason : new aborted_error('aborted', { reason }))
-      return
-    }
-    const timer = setTimeout(() => {
-      ctx.abort.removeEventListener('abort', on_abort)
-      resolve()
-    }, ms)
-    const on_abort = (): void => {
-      clearTimeout(timer)
-      const reason = ctx.abort.reason
-      reject(reason instanceof Error ? reason : new aborted_error('aborted', { reason }))
-    }
-    ctx.abort.addEventListener('abort', on_abort, { once: true })
-  })
+function to_abort_error(reason: unknown): Error {
+  return reason instanceof Error ? reason : new aborted_error('aborted', { reason })
 }
 
 /**
@@ -77,14 +67,16 @@ export function retry<i, o>(inner: Step<i, o>, config: RetryConfig): Step<i, o> 
   const id = next_id()
   const max_attempts = Math.max(1, Math.floor(config.max_attempts))
   const backoff_ms = config.backoff_ms ?? DEFAULT_BACKOFF_MS
+  const max_delay_ms = config.max_delay_ms ?? DEFAULT_MAX_DELAY_MS
+  const jitter = config.jitter ?? true
   const on_error = config.on_error
+  const backoff_policy: BackoffPolicy = { initial_delay_ms: backoff_ms, max_delay_ms, jitter }
 
   const run_fn = async (input: i, ctx: RunContext): Promise<o> => {
     let last_err: unknown = undefined
     for (let attempt = 1; attempt <= max_attempts; attempt += 1) {
       if (ctx.abort.aborted) {
-        const reason = ctx.abort.reason
-        throw reason instanceof Error ? reason : new aborted_error('aborted', { reason })
+        throw to_abort_error(ctx.abort.reason)
       }
       try {
         return await dispatch_step(inner, input, ctx)
@@ -93,14 +85,14 @@ export function retry<i, o>(inner: Step<i, o>, config: RetryConfig): Step<i, o> 
         last_err = err
         if (on_error) on_error(err, attempt)
         if (attempt >= max_attempts) break
-        const delay = backoff_ms * 2 ** (attempt - 1)
-        await abortable_wait(delay, ctx)
+        const delay = compute_backoff(backoff_policy, attempt - 1)
+        await wait_with_abort(delay, ctx.abort, to_abort_error)
       }
     }
     throw last_err
   }
 
-  const config_meta: Record<string, unknown> = { max_attempts, backoff_ms }
+  const config_meta: Record<string, unknown> = { max_attempts, backoff_ms, max_delay_ms, jitter }
   if (on_error) config_meta['on_error'] = on_error
   if (config.name !== undefined) config_meta['display_name'] = config.name
 
