@@ -74,8 +74,10 @@ from English specifications:
 - `pipe(inner, fn)` — post-process `inner`'s output. Strictly binary: one
   Step, one plain mapping function. To chain Steps use `sequence([...])`;
   passing a Step as `fn` throws at construction.
-- `retry(inner, { max_attempts, backoff_ms?, on_error? })` — re-run on
-  failure with exponential backoff.
+- `retry(inner, { max_attempts, backoff_ms?, max_delay_ms?, jitter?, on_error? })`
+  — re-run on failure with exponential backoff, jittered by up to one
+  `backoff_ms` and clamped to `max_delay_ms` (default 30s). `jitter`
+  defaults on.
 - `fallback(primary, backup, { handoff? })` — run `backup` if `primary`
   throws. `handoff(input, err)` builds the backup's input, so the backup can
   be told why the primary failed; without it the backup gets the original
