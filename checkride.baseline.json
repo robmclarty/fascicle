@@ -1,9 +1,7 @@
 {
   "schema_version": 1,
   "slots": {
-    "dead": [
-      "dead-code:circular_dependencies:src/viewer/cli.ts->src/viewer/index.ts"
-    ],
+    "dead": [],
     "dupes": [
       "dupes:dup:053bec9d",
       "dupes:dup:06d8daf9",

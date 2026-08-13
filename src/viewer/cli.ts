@@ -17,7 +17,7 @@ import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { parseArgs } from 'node:util'
 import { fileURLToPath } from 'node:url'
-import { start_viewer } from './index.js'
+import { start_viewer } from './start_viewer.js'
 
 type CliArgs = {
   readonly path?: string
