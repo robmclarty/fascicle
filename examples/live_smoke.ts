@@ -329,6 +329,11 @@ export async function run_live_smoke(): Promise<{
     const cells: SmokeCell[] = []
     for (const backend of available) {
       for (const streamed of [false, true]) {
+        // Live smoke drives each backend/mode sequentially on purpose: this is a
+        // diagnostic run against real providers, not a throughput path, and
+        // serial keeps the printed cell report ordered and the load on live
+        // endpoints gentle.
+        // ast-grep-ignore: no-serial-accumulation
         cells.push(await run_cell(engine, backend, streamed))
       }
     }

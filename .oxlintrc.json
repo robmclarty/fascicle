@@ -19,6 +19,7 @@
     "typescript/prefer-nullish-coalescing": "error",
     "typescript/prefer-optional-chain": "error",
     "no-console": "warn",
+    "no-await-in-loop": "off",
     "eqeqeq": "error",
     "unicorn/no-thenable": "off"
   },
@@ -27,6 +28,12 @@
       "files": ["**/*.test.ts"],
       "rules": {
         "typescript/no-unsafe-type-assertion": "off"
+      }
+    },
+    {
+      "files": ["examples/**", "scripts/**"],
+      "rules": {
+        "no-console": "off"
       }
     }
   ],
