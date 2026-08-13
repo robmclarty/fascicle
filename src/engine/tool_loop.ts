@@ -394,6 +394,657 @@ async function apply_prepare_step(
 }
 
 /**
+ * Mutable accumulators shared across loop iterations: the step records and
+ * the flat list of every tool call the loop resolved.
+ */
+type LoopAccumulator = {
+  readonly steps: StepRecord[]
+  readonly tool_calls: ToolCallRecord[]
+}
+
+/**
+ * Per-step working state threaded through the call-execution helpers.
+ * `records` and `feed` accumulate in call order; `all_records` aliases the
+ * loop-wide accumulator; `terminal_fired` flips when a call to a Tool
+ * flagged ends_turn executes successfully (see the header invariant).
+ */
+type StepContext = {
+  readonly config: ToolLoopConfig
+  readonly tool_map: ReadonlyMap<string, Tool>
+  readonly step_index: number
+  readonly step_span: string | undefined
+  readonly would_exceed_after: boolean
+  readonly records: ToolCallRecord[]
+  readonly all_records: ToolCallRecord[]
+  readonly feed: Message[]
+  terminal_fired: boolean
+}
+
+/**
+ * One turn's effective view of the model output after salvage: the calls to
+ * execute, the text history should carry, and the per-call salvage formats.
+ * `outcome` is undefined when no salvage applied (native calls pass through).
+ */
+type SalvageView = {
+  readonly calls: ReadonlyArray<RawToolCall>
+  readonly history_text: string
+  readonly formats: ReadonlyMap<string, SalvageFormat>
+  readonly outcome: SalvageOutcome | undefined
+}
+
+/**
+ * Assemble the loop's return value from the accumulated steps and records.
+ */
+function loop_result(
+  acc: LoopAccumulator,
+  text: string,
+  finish_reason: FinishReason,
+  max_steps_reached: boolean,
+): ToolLoopResult {
+  return { text, steps: acc.steps, tool_calls: acc.tool_calls, finish_reason, max_steps_reached }
+}
+
+/**
+ * Invoke the transport seam once for one turn, bracketed by request_sent /
+ * response_received events. A thrown invoke (or prepare_step) closes the
+ * step span with the error before rethrowing.
+ */
+async function invoke_turn(
+  config: ToolLoopConfig,
+  step_index: number,
+  step_span: string | undefined,
+): Promise<TurnResult> {
+  try {
+    const request_messages = await apply_prepare_step(config, step_index)
+    config.trajectory?.record({ kind: 'request_sent', step_index })
+    const turn = await config.invoke_once({
+      step_index,
+      messages: request_messages,
+      tools: config.tools,
+      abort: config.abort,
+      stream: config.stream,
+    })
+    config.trajectory?.record({
+      kind: 'response_received',
+      step_index,
+      output_tokens: turn.usage.output_tokens,
+      finish_reason: turn.finish_reason,
+    })
+    return turn
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err)
+    end_step_span(config.trajectory, step_span, { error: message })
+    throw err
+  }
+}
+
+/**
+ * Salvage text-embedded tool calls from an eligible turn.
+ *
+ * A turn that "stopped" with plain text may hold a call the runtime failed
+ * to parse into tool_calls; salvage before deciding the step ends the loop.
+ * History gets the stripped text + structured parts (raw markup in history
+ * would teach the model the text format works, and a tool result without a
+ * matching call part is rejected by OpenAI-compatible APIs);
+ * StepRecord.text keeps the raw text for debugging. Returns the native view
+ * unchanged when the turn is ineligible or nothing salvages.
+ */
+async function salvage_turn(
+  config: ToolLoopConfig,
+  turn: TurnResult,
+  tool_map: ReadonlyMap<string, Tool>,
+  step_index: number,
+): Promise<SalvageView> {
+  const native: SalvageView = {
+    calls: turn.tool_calls,
+    history_text: turn.text,
+    formats: new Map(),
+    outcome: undefined,
+  }
+  const budget = config.salvage_budget
+  const eligible =
+    turn.tool_calls.length === 0 &&
+    (turn.finish_reason === 'stop' || turn.finish_reason === 'length') &&
+    config.tools.length > 0 &&
+    budget !== undefined &&
+    budget.remaining > 0
+  if (!eligible) return native
+
+  const outcome = await salvage_tool_calls(turn.text, tool_map)
+  if (outcome === undefined) return native
+  budget.remaining -= 1
+  const formats = new Map<string, SalvageFormat>()
+  const calls = outcome.calls.map((c, n) => {
+    const id = `salvaged_${step_index}_${n}`
+    formats.set(id, c.format)
+    return { id, name: c.name, input: c.input }
+  })
+  record_tool_call_salvaged(config.trajectory, {
+    step_index,
+    calls: calls.map((c) => ({
+      tool_call_id: c.id,
+      name: c.name,
+      // Stryker disable next-line StringLiteral: formats has an entry for every id (set just above), so the ?? 'json' fallback is unreachable.
+      format: formats.get(c.id) ?? 'json',
+    })),
+    raw_text: turn.text,
+  })
+  await dispatch_salvaged_call_chunks(config, calls, step_index)
+  return { calls, history_text: outcome.stripped_text, formats, outcome }
+}
+
+/**
+ * Mirror the native stream for salvaged calls, which emits start/end for
+ * every call the model attempted, including ones the per-step clamp later
+ * drops.
+ */
+async function dispatch_salvaged_call_chunks(
+  config: ToolLoopConfig,
+  calls: ReadonlyArray<RawToolCall>,
+  step_index: number,
+): Promise<void> {
+  if (config.dispatch_chunk === undefined) return
+  for (const c of calls) {
+    await config.dispatch_chunk({
+      kind: 'tool_call_start',
+      id: c.id,
+      name: c.name,
+      step_index,
+    })
+    await config.dispatch_chunk({
+      kind: 'tool_call_end',
+      id: c.id,
+      input: c.input,
+      step_index,
+    })
+  }
+}
+
+/**
+ * Apply `max_tool_calls_per_step` to a turn's calls, native and salvaged
+ * alike. Dropped calls never reach history; the model re-issues them on a
+ * later turn if it still wants them.
+ */
+function clamp_calls(
+  config: ToolLoopConfig,
+  calls: ReadonlyArray<RawToolCall>,
+  step_index: number,
+): { kept: ReadonlyArray<RawToolCall>; dropped: ReadonlyArray<RawToolCall> } {
+  const cap = config.max_tool_calls_per_step
+  if (cap === undefined || calls.length <= cap) return { kept: calls, dropped: [] }
+  const kept = calls.slice(0, cap)
+  const dropped = calls.slice(cap)
+  record_tool_calls_dropped(config.trajectory, {
+    step_index,
+    max_tool_calls_per_step: cap,
+    kept: kept.length,
+    dropped: dropped.map((d) => ({ tool_call_id: d.id, name: d.name })),
+  })
+  return { kept, dropped }
+}
+
+/**
+ * Record a call that resolved to an error on the feed-back path: the error
+ * record, the fed-back error tool_result message, the tool_call trajectory
+ * event, and the stream chunk, in that order. Throw-policy paths raise
+ * before reaching here.
+ */
+async function record_failed_call(
+  ctx: StepContext,
+  call: { id: string; name: string; input: unknown },
+  message: string,
+  timing: { duration_ms: number; started_at: number },
+): Promise<void> {
+  const record: ToolCallRecord = {
+    id: call.id,
+    name: call.name,
+    input: call.input,
+    error: { message },
+    duration_ms: timing.duration_ms,
+    started_at: timing.started_at,
+  }
+  ctx.records.push(record)
+  ctx.all_records.push(record)
+  ctx.feed.push(
+    build_tool_result_message(call.id, call.name, { error: message }),
+  )
+  record_tool_call(ctx.config.trajectory, {
+    step_index: ctx.step_index,
+    name: call.name,
+    tool_call_id: call.id,
+    input: call.input,
+    duration_ms: timing.duration_ms,
+    error: { message },
+  })
+  await dispatch_tool_result_chunk(
+    ctx.config.dispatch_chunk,
+    ctx.step_index,
+    call.id,
+    undefined,
+    { message },
+  )
+}
+
+/**
+ * Record a call that never reached execution (the final-turn max_steps skip,
+ * the per-step-cap drop): an error record and a tool_result stream chunk,
+ * but no tool_call trajectory event, no execution, and no fed-back tool
+ * message.
+ */
+async function record_unexecuted_call(
+  ctx: StepContext,
+  call: RawToolCall,
+  message: string,
+): Promise<void> {
+  const record: ToolCallRecord = {
+    id: call.id,
+    name: call.name,
+    input: call.input,
+    error: { message },
+    duration_ms: 0,
+    started_at: Date.now(),
+  }
+  ctx.records.push(record)
+  ctx.all_records.push(record)
+  await dispatch_tool_result_chunk(
+    ctx.config.dispatch_chunk,
+    ctx.step_index,
+    call.id,
+    undefined,
+    { message },
+  )
+}
+
+/**
+ * Look up the named tool and validate the raw input against its schema.
+ * Returns undefined when the failure was recorded on the feed-back path;
+ * throws under 'throw' policy for an unknown tool.
+ */
+async function resolve_tool_and_input(
+  ctx: StepContext,
+  raw_call: RawToolCall,
+): Promise<{ tool: Tool; input: unknown } | undefined> {
+  const tool = ctx.tool_map.get(raw_call.name)
+  if (tool === undefined) {
+    const err_message = `unknown tool '${raw_call.name}'`
+    if (ctx.config.tool_error_policy === 'throw') {
+      const thrown = new tool_error(err_message, {
+        tool_name: raw_call.name,
+        tool_call_id: raw_call.id,
+        cause: new Error(err_message),
+      })
+      end_step_span(ctx.config.trajectory, ctx.step_span, { error: err_message })
+      throw thrown
+    }
+    await record_failed_call(ctx, raw_call, err_message, {
+      duration_ms: 0,
+      started_at: Date.now(),
+    })
+    return undefined
+  }
+
+  const validation = await validate_tool_input(tool, raw_call.input)
+  if (!validation.ok) {
+    await record_failed_call(ctx, raw_call, validation.message, {
+      duration_ms: 0,
+      started_at: Date.now(),
+    })
+    return undefined
+  }
+
+  return { tool, input: validation.value }
+}
+
+/**
+ * Resolve whether the call may execute (see request_approval). A denial
+ * either throws ('throw' policy) or records the denied call and returns
+ * false; an abort or handler rejection closes the step span and rethrows.
+ */
+async function approve_call(
+  ctx: StepContext,
+  tool: Tool,
+  input: unknown,
+  raw_call: RawToolCall,
+): Promise<boolean> {
+  let approved: boolean
+  try {
+    approved = await request_approval(
+      tool,
+      input,
+      ctx.step_index,
+      raw_call.id,
+      ctx.config.abort,
+      ctx.config.on_tool_approval,
+      ctx.config.trajectory,
+    )
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err)
+    end_step_span(ctx.config.trajectory, ctx.step_span, { error: message })
+    throw err
+  }
+  if (approved) return true
+
+  const denied_message = 'tool_approval_denied'
+  if (ctx.config.tool_error_policy === 'throw') {
+    const thrown = new tool_approval_denied_error(
+      `tool '${tool.name}' approval denied`,
+      { tool_name: tool.name, step_index: ctx.step_index, tool_call_id: raw_call.id },
+    )
+    end_step_span(ctx.config.trajectory, ctx.step_span, { error: denied_message })
+    throw thrown
+  }
+  await record_failed_call(
+    ctx,
+    { id: raw_call.id, name: tool.name, input },
+    denied_message,
+    { duration_ms: 0, started_at: Date.now() },
+  )
+  return false
+}
+
+/**
+ * Execute an approved call and record the outcome: a success record with
+ * output (flipping terminal_fired for an ends_turn tool), or the error path
+ * via record_execute_failure.
+ */
+async function execute_approved_call(
+  ctx: StepContext,
+  tool: Tool,
+  input: unknown,
+  raw_call: RawToolCall,
+): Promise<void> {
+  const started_at = Date.now()
+  const tool_ctx: ToolExecContext = {
+    abort: ctx.config.abort,
+    tool_call_id: raw_call.id,
+    step_index: ctx.step_index,
+    ...(ctx.config.trajectory !== undefined ? { trajectory: ctx.config.trajectory } : {}),
+  }
+
+  let output: unknown
+  let err_message: string | undefined
+  let thrown: unknown
+  try {
+    const execute = tool.execute
+    const maybe = execute(input, tool_ctx)
+    output = maybe instanceof Promise ? await maybe : maybe
+  } catch (err: unknown) {
+    thrown = err
+    err_message = serialize_error(err)
+  }
+
+  const duration_ms = Date.now() - started_at
+
+  if (thrown !== undefined) {
+    await record_execute_failure(ctx, tool, raw_call, input, {
+      thrown,
+      err_message,
+      duration_ms,
+      started_at,
+    })
+    return
+  }
+
+  const record: ToolCallRecord = {
+    id: raw_call.id,
+    name: tool.name,
+    input,
+    output,
+    duration_ms,
+    started_at,
+  }
+  ctx.records.push(record)
+  ctx.all_records.push(record)
+  if (tool.ends_turn === true) ctx.terminal_fired = true
+  ctx.feed.push(build_tool_result_message(raw_call.id, tool.name, output ?? ''))
+  record_tool_call(ctx.config.trajectory, {
+    step_index: ctx.step_index,
+    name: tool.name,
+    tool_call_id: raw_call.id,
+    input,
+    duration_ms,
+  })
+  await dispatch_tool_result_chunk(ctx.config.dispatch_chunk, ctx.step_index, raw_call.id, output)
+}
+
+/**
+ * Handle a throwing execute: an abort in flight or 'throw' policy closes
+ * the step span and throws; feed-back policy records the failure with the
+ * measured timing.
+ */
+async function record_execute_failure(
+  ctx: StepContext,
+  tool: Tool,
+  raw_call: RawToolCall,
+  input: unknown,
+  failure: {
+    thrown: unknown
+    err_message: string | undefined
+    duration_ms: number
+    started_at: number
+  },
+): Promise<void> {
+  if (ctx.config.abort.aborted) {
+    const abort_err = new aborted_error('aborted', {
+      reason: ctx.config.abort.reason,
+      step_index: ctx.step_index,
+      tool_call_in_flight: { id: raw_call.id, name: tool.name },
+    })
+    end_step_span(ctx.config.trajectory, ctx.step_span, { error: 'aborted' })
+    throw abort_err
+  }
+  if (ctx.config.tool_error_policy === 'throw') {
+    const wrapped = new tool_error(
+      `tool '${tool.name}' failed: ${failure.err_message ?? 'unknown'}`,
+      {
+        tool_name: tool.name,
+        tool_call_id: raw_call.id,
+        cause: failure.thrown,
+      },
+    )
+    end_step_span(ctx.config.trajectory, ctx.step_span, {
+      // Stryker disable next-line StringLiteral: err_message is always a string in this branch (set from serialize_error in the catch), so the ?? 'tool error' fallback is unreachable.
+      error: failure.err_message ?? 'tool error',
+    })
+    throw wrapped
+  }
+  await record_failed_call(
+    ctx,
+    { id: raw_call.id, name: tool.name, input },
+    // Stryker disable next-line StringLiteral: err_message is always a string here (see catch above), so this ?? 'unknown' fallback is unreachable.
+    failure.err_message ?? 'unknown',
+    { duration_ms: failure.duration_ms, started_at: failure.started_at },
+  )
+}
+
+/**
+ * Run one raw tool call through the guard chain — final-turn skip, tool
+ * lookup, input validation, approval — then execute it. Each guard either
+ * records the failure (feed-back policy) and stops, or throws (throw
+ * policy / abort).
+ */
+async function process_call(ctx: StepContext, raw_call: RawToolCall): Promise<void> {
+  throw_if_aborted_in_flight(ctx.config.abort, ctx.step_index, {
+    id: raw_call.id,
+    name: raw_call.name,
+  })
+
+  // A successful terminal call needs no follow-up turn, so it is exempt
+  // from this skip: it executes below and ends the loop cleanly, winning
+  // over the coincident max_steps cap.
+  if (ctx.would_exceed_after && ctx.tool_map.get(raw_call.name)?.ends_turn !== true) {
+    await record_unexecuted_call(ctx, raw_call, 'max_steps_exceeded_before_execution')
+    return
+  }
+
+  const resolved = await resolve_tool_and_input(ctx, raw_call)
+  if (resolved === undefined) return
+
+  const approved = await approve_call(ctx, resolved.tool, resolved.input, raw_call)
+  if (!approved) return
+
+  throw_if_aborted_in_flight(ctx.config.abort, ctx.step_index, {
+    id: raw_call.id,
+    name: resolved.tool.name,
+  })
+
+  await execute_approved_call(ctx, resolved.tool, resolved.input, raw_call)
+}
+
+/**
+ * Stamp salvage provenance onto the records of calls that came from text
+ * salvage rather than structured output.
+ */
+function mark_salvaged(
+  records: ReadonlyArray<ToolCallRecord>,
+  formats: ReadonlyMap<string, SalvageFormat>,
+): void {
+  for (const r of records) {
+    const format = formats.get(r.id)
+    if (format !== undefined) {
+      r.salvaged = true
+      r.salvaged_format = format
+    }
+  }
+}
+
+/**
+ * Emit a tool_result for every resolved call in this step (success carries
+ * output, feed-back failures carry error). Throw-policy and aborted calls
+ * exit before here and surface loudly as a thrown error instead.
+ */
+function emit_tool_results(
+  config: ToolLoopConfig,
+  step_index: number,
+  records: ReadonlyArray<ToolCallRecord>,
+): void {
+  for (const r of records) {
+    record_tool_result(config.trajectory, {
+      step_index,
+      name: r.name,
+      tool_call_id: r.id,
+      duration_ms: r.duration_ms,
+      ...(r.error !== undefined ? { error: r.error } : { output: r.output }),
+    })
+  }
+}
+
+/**
+ * The finish reason a tool-call step reports. A salvaged step reports
+ * 'tool_calls': downstream consumers see the same shape a native tool turn
+ * produces; the salvaged flags carry provenance. A terminal step reports
+ * 'tool_calls' (it genuinely made calls); the loop-level finish_reason
+ * 'stop' is the separate signal that generation ended.
+ */
+function resolve_turn_finish_reason(
+  ctx: StepContext,
+  salvaged: boolean,
+  turn_finish: FinishReason,
+): FinishReason {
+  if (ctx.terminal_fired) return 'tool_calls'
+  if (ctx.would_exceed_after) return 'max_steps'
+  if (salvaged) return 'tool_calls'
+  return turn_finish
+}
+
+/**
+ * Build one StepRecord — cost derived and recorded, provider_reported
+ * passed through — push it, notify on_finish_step, and close the step span.
+ */
+function push_step_record(
+  config: ToolLoopConfig,
+  acc: LoopAccumulator,
+  step_index: number,
+  turn: TurnResult,
+  tool_calls: ToolCallRecord[],
+  finish_reason: FinishReason,
+  step_span: string | undefined,
+): void {
+  const record: StepRecord = {
+    index: step_index,
+    text: turn.text,
+    tool_calls,
+    usage: turn.usage,
+    finish_reason,
+  }
+  const breakdown = compute_and_record_cost(config, step_index, turn.usage)
+  if (breakdown !== undefined) record.cost = breakdown
+  if (turn.provider_reported !== undefined) {
+    record.provider_reported = turn.provider_reported
+  }
+  acc.steps.push(record)
+  if (config.on_finish_step !== undefined) config.on_finish_step(record)
+  end_step_span(config.trajectory, step_span, {
+    usage: turn.usage,
+    finish_reason,
+  })
+}
+
+/**
+ * Run one loop iteration: invoke the turn, salvage and clamp its calls,
+ * execute them sequentially, and record the step. Returns the finished
+ * ToolLoopResult when this step ends the loop (no calls, terminal tool,
+ * max_steps), undefined when the loop should continue.
+ */
+async function run_loop_step(
+  config: ToolLoopConfig,
+  tool_map: ReadonlyMap<string, Tool>,
+  acc: LoopAccumulator,
+  step_index: number,
+): Promise<ToolLoopResult | undefined> {
+  const step_span = start_step_span(config.trajectory, step_index)
+  const turn = await invoke_turn(config, step_index, step_span)
+
+  const view = await salvage_turn(config, turn, tool_map, step_index)
+  const { kept, dropped } = clamp_calls(config, view.calls, step_index)
+  config.messages.push(build_assistant_message(view.history_text, kept))
+
+  if (kept.length === 0) {
+    push_step_record(config, acc, step_index, turn, [], turn.finish_reason, step_span)
+    return loop_result(acc, turn.text, turn.finish_reason, false)
+  }
+
+  // This turn has tool calls. Execute them sequentially.
+  const ctx: StepContext = {
+    config,
+    tool_map,
+    step_index,
+    step_span,
+    would_exceed_after: step_index + 1 >= config.max_steps,
+    records: [],
+    all_records: acc.tool_calls,
+    feed: [],
+    terminal_fired: false,
+  }
+  for (const raw_call of kept) await process_call(ctx, raw_call)
+
+  // Dropped calls mirror the max_steps precedent: a record with an error
+  // and a tool_result event/chunk, but no tool_call event, no execution,
+  // and no fed-back tool message (their call parts are not in history).
+  for (const d of dropped) {
+    await record_unexecuted_call(ctx, d, 'dropped_max_tool_calls_per_step')
+  }
+
+  mark_salvaged(ctx.records, view.formats)
+  emit_tool_results(config, step_index, ctx.records)
+  for (const m of ctx.feed) config.messages.push(m)
+
+  const turn_finish_reason = resolve_turn_finish_reason(
+    ctx,
+    view.outcome !== undefined,
+    turn.finish_reason,
+  )
+  push_step_record(config, acc, step_index, turn, ctx.records, turn_finish_reason, step_span)
+
+  // A successful terminal call ends the loop cleanly. Placed before the
+  // max_steps break so a terminal finish wins over a coincident cap: the
+  // full step is already recorded, so the result stays complete.
+  if (ctx.terminal_fired) return loop_result(acc, turn.text, 'stop', false)
+  if (ctx.would_exceed_after) return loop_result(acc, turn.text, 'max_steps', true)
+  return undefined
+}
+
+/**
  * Run the model-turn / tool-execution loop to completion.
  *
  * Each iteration invokes the transport seam once, salvages text-embedded
@@ -402,523 +1053,16 @@ async function apply_prepare_step(
  * until the model stops, a terminal tool fires, or `max_steps` is reached.
  */
 export async function run_tool_loop(config: ToolLoopConfig): Promise<ToolLoopResult> {
-  const steps: StepRecord[] = []
-  const tool_calls_all: ToolCallRecord[] = []
-  let text = ''
-  let finish_reason: FinishReason = 'stop'
-  let step_index = config.step_index_start
-  let max_steps_reached = false
-
+  const acc: LoopAccumulator = { steps: [], tool_calls: [] }
   const tool_map = new Map<string, Tool>()
   for (const t of config.tools) tool_map.set(t.name, t)
 
+  let step_index = config.step_index_start
   while (true) {
     throw_if_aborted(config.abort, step_index)
-
-    if (step_index >= config.max_steps) {
-      max_steps_reached = true
-      finish_reason = 'max_steps'
-      break
-    }
-
-    const step_span = start_step_span(config.trajectory, step_index)
-
-    let turn: TurnResult
-    try {
-      const request_messages = await apply_prepare_step(config, step_index)
-      config.trajectory?.record({ kind: 'request_sent', step_index })
-      turn = await config.invoke_once({
-        step_index,
-        messages: request_messages,
-        tools: config.tools,
-        abort: config.abort,
-        stream: config.stream,
-      })
-      config.trajectory?.record({
-        kind: 'response_received',
-        step_index,
-        output_tokens: turn.usage.output_tokens,
-        finish_reason: turn.finish_reason,
-      })
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err)
-      end_step_span(config.trajectory, step_span, { error: message })
-      throw err
-    }
-
-    // A turn that "stopped" with plain text may hold a call the runtime
-    // failed to parse into tool_calls; salvage before deciding the step ends
-    // the loop. History gets the stripped text + structured parts (raw markup
-    // in history would teach the model the text format works, and a tool
-    // result without a matching call part is rejected by OpenAI-compatible
-    // APIs); StepRecord.text keeps the raw text for debugging.
-    let effective_calls: ReadonlyArray<RawToolCall> = turn.tool_calls
-    let history_text = turn.text
-    let salvage: SalvageOutcome | undefined
-    const salvaged_formats = new Map<string, SalvageFormat>()
-    if (
-      turn.tool_calls.length === 0 &&
-      (turn.finish_reason === 'stop' || turn.finish_reason === 'length') &&
-      config.tools.length > 0 &&
-      config.salvage_budget !== undefined &&
-      config.salvage_budget.remaining > 0
-    ) {
-      salvage = await salvage_tool_calls(turn.text, tool_map)
-      if (salvage !== undefined) {
-        config.salvage_budget.remaining -= 1
-        history_text = salvage.stripped_text
-        effective_calls = salvage.calls.map((c, n) => {
-          const id = `salvaged_${step_index}_${n}`
-          salvaged_formats.set(id, c.format)
-          return { id, name: c.name, input: c.input }
-        })
-        record_tool_call_salvaged(config.trajectory, {
-          step_index,
-          calls: effective_calls.map((c) => ({
-            tool_call_id: c.id,
-            name: c.name,
-            // Stryker disable next-line StringLiteral: salvaged_formats has an entry for every id (set just above), so the ?? 'json' fallback is unreachable.
-            format: salvaged_formats.get(c.id) ?? 'json',
-          })),
-          raw_text: turn.text,
-        })
-        if (config.dispatch_chunk !== undefined) {
-          // Mirror the native stream, which emits start/end for every call
-          // the model attempted, including ones the clamp below drops.
-          for (const c of effective_calls) {
-            await config.dispatch_chunk({
-              kind: 'tool_call_start',
-              id: c.id,
-              name: c.name,
-              step_index,
-            })
-            await config.dispatch_chunk({
-              kind: 'tool_call_end',
-              id: c.id,
-              input: c.input,
-              step_index,
-            })
-          }
-        }
-      }
-    }
-
-    // Clamp applies to native and salvaged calls alike. Dropped calls never
-    // reach history; the model re-issues them on a later turn if it still
-    // wants them.
-    let dropped_calls: ReadonlyArray<RawToolCall> = []
-    const per_step_cap = config.max_tool_calls_per_step
-    if (per_step_cap !== undefined && effective_calls.length > per_step_cap) {
-      dropped_calls = effective_calls.slice(per_step_cap)
-      effective_calls = effective_calls.slice(0, per_step_cap)
-      record_tool_calls_dropped(config.trajectory, {
-        step_index,
-        max_tool_calls_per_step: per_step_cap,
-        kept: effective_calls.length,
-        dropped: dropped_calls.map((d) => ({ tool_call_id: d.id, name: d.name })),
-      })
-    }
-
-    const step_tool_records: ToolCallRecord[] = []
-    const assistant_message = build_assistant_message(history_text, effective_calls)
-    config.messages.push(assistant_message)
-
-    if (effective_calls.length === 0) {
-      text = turn.text
-      finish_reason = turn.finish_reason
-      const record_step: StepRecord = {
-        index: step_index,
-        text: turn.text,
-        tool_calls: [],
-        usage: turn.usage,
-        finish_reason: turn.finish_reason,
-      }
-      const breakdown = compute_and_record_cost(config, step_index, turn.usage)
-      if (breakdown !== undefined) record_step.cost = breakdown
-      if (turn.provider_reported !== undefined) {
-        record_step.provider_reported = turn.provider_reported
-      }
-      steps.push(record_step)
-      if (config.on_finish_step !== undefined) config.on_finish_step(record_step)
-      end_step_span(config.trajectory, step_span, {
-        usage: turn.usage,
-        finish_reason: turn.finish_reason,
-      })
-      break
-    }
-
-    // This turn has tool calls. Execute them sequentially.
-    const would_exceed_after = step_index + 1 >= config.max_steps
-    const tool_results_to_feed: Message[] = []
-    // Set true when a call to a Tool flagged ends_turn executes successfully;
-    // ends the loop after this step (see the terminal-finish break below).
-    let terminal_fired = false
-
-    for (const raw_call of effective_calls) {
-      throw_if_aborted_in_flight(config.abort, step_index, { id: raw_call.id, name: raw_call.name })
-
-      // A successful terminal call needs no follow-up turn, so it is exempt
-      // from this skip: it executes below and ends the loop cleanly, winning
-      // over the coincident max_steps cap.
-      if (would_exceed_after && tool_map.get(raw_call.name)?.ends_turn !== true) {
-        const record: ToolCallRecord = {
-          id: raw_call.id,
-          name: raw_call.name,
-          input: raw_call.input,
-          error: { message: 'max_steps_exceeded_before_execution' },
-          duration_ms: 0,
-          started_at: Date.now(),
-        }
-        step_tool_records.push(record)
-        tool_calls_all.push(record)
-        await dispatch_tool_result_chunk(
-          config.dispatch_chunk,
-          step_index,
-          raw_call.id,
-          undefined,
-          { message: 'max_steps_exceeded_before_execution' },
-        )
-        continue
-      }
-
-      const tool = tool_map.get(raw_call.name)
-      if (tool === undefined) {
-        const err_message = `unknown tool '${raw_call.name}'`
-        if (config.tool_error_policy === 'throw') {
-          const thrown = new tool_error(err_message, {
-            tool_name: raw_call.name,
-            tool_call_id: raw_call.id,
-            cause: new Error(err_message),
-          })
-          end_step_span(config.trajectory, step_span, { error: err_message })
-          throw thrown
-        }
-        const record: ToolCallRecord = {
-          id: raw_call.id,
-          name: raw_call.name,
-          input: raw_call.input,
-          error: { message: err_message },
-          duration_ms: 0,
-          started_at: Date.now(),
-        }
-        step_tool_records.push(record)
-        tool_calls_all.push(record)
-        tool_results_to_feed.push(
-          build_tool_result_message(raw_call.id, raw_call.name, {
-            error: err_message,
-          }),
-        )
-        record_tool_call(config.trajectory, {
-          step_index,
-          name: raw_call.name,
-          tool_call_id: raw_call.id,
-          input: raw_call.input,
-          duration_ms: 0,
-          error: { message: err_message },
-        })
-        await dispatch_tool_result_chunk(
-          config.dispatch_chunk,
-          step_index,
-          raw_call.id,
-          undefined,
-          { message: err_message },
-        )
-        continue
-      }
-
-      const validation = await validate_tool_input(tool, raw_call.input)
-      if (!validation.ok) {
-        const record: ToolCallRecord = {
-          id: raw_call.id,
-          name: raw_call.name,
-          input: raw_call.input,
-          error: { message: validation.message },
-          duration_ms: 0,
-          started_at: Date.now(),
-        }
-        step_tool_records.push(record)
-        tool_calls_all.push(record)
-        tool_results_to_feed.push(
-          build_tool_result_message(raw_call.id, raw_call.name, {
-            error: validation.message,
-          }),
-        )
-        record_tool_call(config.trajectory, {
-          step_index,
-          name: raw_call.name,
-          tool_call_id: raw_call.id,
-          input: raw_call.input,
-          duration_ms: 0,
-          error: { message: validation.message },
-        })
-        await dispatch_tool_result_chunk(
-          config.dispatch_chunk,
-          step_index,
-          raw_call.id,
-          undefined,
-          { message: validation.message },
-        )
-        continue
-      }
-
-      let approved: boolean
-      try {
-        approved = await request_approval(
-          tool,
-          validation.value,
-          step_index,
-          raw_call.id,
-          config.abort,
-          config.on_tool_approval,
-          config.trajectory,
-        )
-      } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : String(err)
-        end_step_span(config.trajectory, step_span, { error: message })
-        throw err
-      }
-
-      if (!approved) {
-        const denied_message = 'tool_approval_denied'
-        if (config.tool_error_policy === 'throw') {
-          const thrown = new tool_approval_denied_error(
-            `tool '${tool.name}' approval denied`,
-            { tool_name: tool.name, step_index, tool_call_id: raw_call.id },
-          )
-          end_step_span(config.trajectory, step_span, { error: denied_message })
-          throw thrown
-        }
-        const record: ToolCallRecord = {
-          id: raw_call.id,
-          name: tool.name,
-          input: validation.value,
-          error: { message: denied_message },
-          duration_ms: 0,
-          started_at: Date.now(),
-        }
-        step_tool_records.push(record)
-        tool_calls_all.push(record)
-        tool_results_to_feed.push(
-          build_tool_result_message(raw_call.id, tool.name, { error: denied_message }),
-        )
-        record_tool_call(config.trajectory, {
-          step_index,
-          name: tool.name,
-          tool_call_id: raw_call.id,
-          input: validation.value,
-          duration_ms: 0,
-          error: { message: denied_message },
-        })
-        await dispatch_tool_result_chunk(
-          config.dispatch_chunk,
-          step_index,
-          raw_call.id,
-          undefined,
-          { message: denied_message },
-        )
-        continue
-      }
-
-      throw_if_aborted_in_flight(config.abort, step_index, {
-        id: raw_call.id,
-        name: tool.name,
-      })
-
-      const started_at = Date.now()
-      const tool_ctx: ToolExecContext = {
-        abort: config.abort,
-        tool_call_id: raw_call.id,
-        step_index,
-        ...(config.trajectory !== undefined ? { trajectory: config.trajectory } : {}),
-      }
-
-      let output: unknown
-      let err_message: string | undefined
-      let thrown: unknown
-      try {
-        const execute = tool.execute
-        const maybe = execute(validation.value, tool_ctx)
-        output = maybe instanceof Promise ? await maybe : maybe
-      } catch (err: unknown) {
-        thrown = err
-        err_message = serialize_error(err)
-      }
-
-      const duration_ms = Date.now() - started_at
-
-      if (thrown !== undefined) {
-        if (config.abort.aborted) {
-          const abort_err = new aborted_error('aborted', {
-            reason: config.abort.reason,
-            step_index,
-            tool_call_in_flight: { id: raw_call.id, name: tool.name },
-          })
-          end_step_span(config.trajectory, step_span, { error: 'aborted' })
-          throw abort_err
-        }
-        if (config.tool_error_policy === 'throw') {
-          const wrapped = new tool_error(`tool '${tool.name}' failed: ${err_message ?? 'unknown'}`, {
-            tool_name: tool.name,
-            tool_call_id: raw_call.id,
-            cause: thrown,
-          })
-          // Stryker disable next-line StringLiteral: err_message is always a string in this branch (set from serialize_error in the catch), so the ?? 'tool error' fallback is unreachable.
-          end_step_span(config.trajectory, step_span, { error: err_message ?? 'tool error' })
-          throw wrapped
-        }
-        const record: ToolCallRecord = {
-          id: raw_call.id,
-          name: tool.name,
-          input: validation.value,
-          // Stryker disable next-line StringLiteral: err_message is always a string here (see catch above), so this ?? 'unknown' fallback is unreachable.
-          error: { message: err_message ?? 'unknown' },
-          duration_ms,
-          started_at,
-        }
-        step_tool_records.push(record)
-        tool_calls_all.push(record)
-        tool_results_to_feed.push(
-          // Stryker disable next-line StringLiteral: unreachable ?? 'unknown' fallback (err_message is always a string here).
-          build_tool_result_message(raw_call.id, tool.name, { error: err_message ?? 'unknown' }),
-        )
-        record_tool_call(config.trajectory, {
-          step_index,
-          name: tool.name,
-          tool_call_id: raw_call.id,
-          input: validation.value,
-          duration_ms,
-          // Stryker disable next-line StringLiteral: unreachable ?? 'unknown' fallback (err_message is always a string here).
-          error: { message: err_message ?? 'unknown' },
-        })
-        await dispatch_tool_result_chunk(
-          config.dispatch_chunk,
-          step_index,
-          raw_call.id,
-          undefined,
-          // Stryker disable next-line StringLiteral: unreachable ?? 'unknown' fallback (err_message is always a string here).
-          { message: err_message ?? 'unknown' },
-        )
-        continue
-      }
-
-      const record: ToolCallRecord = {
-        id: raw_call.id,
-        name: tool.name,
-        input: validation.value,
-        output,
-        duration_ms,
-        started_at,
-      }
-      step_tool_records.push(record)
-      tool_calls_all.push(record)
-      if (tool.ends_turn === true) terminal_fired = true
-      tool_results_to_feed.push(
-        build_tool_result_message(raw_call.id, tool.name, output ?? ''),
-      )
-      record_tool_call(config.trajectory, {
-        step_index,
-        name: tool.name,
-        tool_call_id: raw_call.id,
-        input: validation.value,
-        duration_ms,
-      })
-      await dispatch_tool_result_chunk(config.dispatch_chunk, step_index, raw_call.id, output)
-    }
-
-    // Dropped calls mirror the max_steps precedent: a record with an error
-    // and a tool_result event/chunk, but no tool_call event, no execution,
-    // and no fed-back tool message (their call parts are not in history).
-    for (const d of dropped_calls) {
-      const record: ToolCallRecord = {
-        id: d.id,
-        name: d.name,
-        input: d.input,
-        error: { message: 'dropped_max_tool_calls_per_step' },
-        duration_ms: 0,
-        started_at: Date.now(),
-      }
-      step_tool_records.push(record)
-      tool_calls_all.push(record)
-      await dispatch_tool_result_chunk(
-        config.dispatch_chunk,
-        step_index,
-        d.id,
-        undefined,
-        { message: 'dropped_max_tool_calls_per_step' },
-      )
-    }
-
-    for (const r of step_tool_records) {
-      const format = salvaged_formats.get(r.id)
-      if (format !== undefined) {
-        r.salvaged = true
-        r.salvaged_format = format
-      }
-    }
-
-    // Emit a tool_result for every resolved call in this step (success carries
-    // output, feed-back failures carry error). Throw-policy and aborted calls
-    // exit before here and surface loudly as a thrown error instead.
-    for (const r of step_tool_records) {
-      record_tool_result(config.trajectory, {
-        step_index,
-        name: r.name,
-        tool_call_id: r.id,
-        duration_ms: r.duration_ms,
-        ...(r.error !== undefined ? { error: r.error } : { output: r.output }),
-      })
-    }
-
-    for (const m of tool_results_to_feed) config.messages.push(m)
-
-    // A salvaged step reports 'tool_calls': downstream consumers see the same
-    // shape a native tool turn produces; the salvaged flags carry provenance.
-    // A terminal step reports 'tool_calls' (it genuinely made calls); the loop
-    // finish_reason 'stop' below is the separate signal that generation ended.
-    const turn_finish_reason: FinishReason = terminal_fired
-      ? 'tool_calls'
-      : would_exceed_after
-        ? 'max_steps'
-        : salvage !== undefined
-          ? 'tool_calls'
-          : turn.finish_reason
-    const step_record: StepRecord = {
-      index: step_index,
-      text: turn.text,
-      tool_calls: step_tool_records,
-      usage: turn.usage,
-      finish_reason: turn_finish_reason,
-    }
-    const breakdown = compute_and_record_cost(config, step_index, turn.usage)
-    if (breakdown !== undefined) step_record.cost = breakdown
-    if (turn.provider_reported !== undefined) {
-      step_record.provider_reported = turn.provider_reported
-    }
-    steps.push(step_record)
-    if (config.on_finish_step !== undefined) config.on_finish_step(step_record)
-    end_step_span(config.trajectory, step_span, {
-      usage: turn.usage,
-      finish_reason: turn_finish_reason,
-    })
-
-    // A successful terminal call ends the loop cleanly. Placed before the
-    // max_steps break so a terminal finish wins over a coincident cap: the
-    // full step is already recorded, so the result stays complete.
-    if (terminal_fired) {
-      finish_reason = 'stop'
-      text = turn.text
-      break
-    }
-
-    if (would_exceed_after) {
-      max_steps_reached = true
-      finish_reason = 'max_steps'
-      text = turn.text
-      break
-    }
-
+    if (step_index >= config.max_steps) return loop_result(acc, '', 'max_steps', true)
+    const finished = await run_loop_step(config, tool_map, acc, step_index)
+    if (finished !== undefined) return finished
     step_index += 1
   }
-
-  return { text, steps, tool_calls: tool_calls_all, finish_reason, max_steps_reached }
 }
