@@ -76,6 +76,83 @@ function to_abort_error(reason: unknown): Error {
 }
 
 /**
+ * Build the `rate_limit_error` thrown when 429 retries exhaust. Prefers the
+ * failing attempt's own `Retry-After`, falling back to the most recent one a
+ * prior attempt carried (`last_rate_limit_after`).
+ */
+function build_rate_limit_error(
+  retryable: Extract<RetryableError, { kind: 'rate_limit' }>,
+  attempt: number,
+  last_rate_limit_after: number | undefined,
+): rate_limit_error {
+  const metadata: { attempts: number; retry_after_ms?: number; status?: number } = {
+    attempts: attempt,
+  }
+  if (retryable.retry_after_ms !== undefined) metadata.retry_after_ms = retryable.retry_after_ms
+  else if (last_rate_limit_after !== undefined) metadata.retry_after_ms = last_rate_limit_after
+  if (retryable.status !== undefined) metadata.status = retryable.status
+  return new rate_limit_error(
+    retryable.message ?? `rate limited after ${attempt} attempts`,
+    metadata,
+  )
+}
+
+/**
+ * Build the `provider_error` thrown when 5xx/network/timeout retries exhaust.
+ * Timeout collapses onto the `network` cause; only 5xx carries status/body.
+ */
+function build_provider_error(
+  retryable: Exclude<RetryableError, { kind: 'rate_limit' }>,
+  attempt: number,
+): provider_error {
+  const cause_kind = retryable.kind === 'provider_5xx' ? 'provider_5xx' : 'network'
+  const metadata: { status?: number; body?: string; cause_kind: typeof cause_kind } = {
+    cause_kind,
+  }
+  if (retryable.kind === 'provider_5xx') {
+    if (retryable.status !== undefined) metadata.status = retryable.status
+    if (retryable.body !== undefined) metadata.body = retryable.body
+  }
+  return new provider_error(
+    retryable.message ?? `${retryable.kind} after ${attempt} attempts`,
+    metadata,
+  )
+}
+
+/**
+ * Map an exhausted retryable failure onto the error this layer rejects with:
+ * `rate_limit_error` for 429s, `provider_error` for everything else.
+ */
+function build_exhaustion_error(
+  retryable: RetryableError,
+  attempt: number,
+  last_rate_limit_after: number | undefined,
+): Error {
+  if (retryable.kind === 'rate_limit') {
+    return build_rate_limit_error(retryable, attempt, last_rate_limit_after)
+  }
+  return build_provider_error(retryable, attempt)
+}
+
+/**
+ * Compute the pre-retry backoff for `attempt`. A rate-limit `Retry-After`
+ * outranks the local cap (`Math.max`), so a server instruction longer than
+ * `max_delay_ms` is honored; the honored value is returned so the caller can
+ * carry it onto a later failure that omits its own.
+ */
+function next_backoff(
+  retryable: RetryableError,
+  backoff_policy: BackoffPolicy,
+  attempt: number,
+): { delay: number; retry_after_ms?: number } {
+  const delay = compute_backoff(backoff_policy, attempt - 1)
+  if (retryable.kind === 'rate_limit' && retryable.retry_after_ms !== undefined) {
+    return { delay: Math.max(delay, retryable.retry_after_ms), retry_after_ms: retryable.retry_after_ms }
+  }
+  return { delay }
+}
+
+/**
  * Retry `fn` under `policy`. `fn` must throw a RetryableError-shaped object to
  * trigger retry; any other thrown value short-circuits as a permanent failure.
  *
@@ -105,45 +182,14 @@ export async function retry_with_policy<t>(
       return await fn(attempt)
     } catch (err: unknown) {
       const retryable = classify_retryable(err)
-      if (retryable === undefined) throw err
-      if (!is_retryable(retryable.kind, policy)) throw err
+      if (retryable === undefined || !is_retryable(retryable.kind, policy)) throw err
       attempt += 1
       if (attempt >= policy.max_attempts) {
-        if (retryable.kind === 'rate_limit') {
-          const metadata: { attempts: number; retry_after_ms?: number; status?: number } = {
-            attempts: attempt,
-          }
-          if (retryable.retry_after_ms !== undefined) metadata.retry_after_ms = retryable.retry_after_ms
-          else if (last_rate_limit_after !== undefined) metadata.retry_after_ms = last_rate_limit_after
-          if (retryable.status !== undefined) metadata.status = retryable.status
-          throw new rate_limit_error(
-            retryable.message ?? `rate limited after ${attempt} attempts`,
-            metadata,
-          )
-        }
-        const cause_kind =
-          retryable.kind === 'provider_5xx' ? 'provider_5xx' : 'network'
-        const metadata: { status?: number; body?: string; cause_kind: typeof cause_kind } = {
-          cause_kind,
-        }
-        if (retryable.kind === 'provider_5xx') {
-          if (retryable.status !== undefined) metadata.status = retryable.status
-          if (retryable.body !== undefined) metadata.body = retryable.body
-        }
-        throw new provider_error(
-          retryable.message ?? `${retryable.kind} after ${attempt} attempts`,
-          metadata,
-        )
+        throw build_exhaustion_error(retryable, attempt, last_rate_limit_after)
       }
-
-      let delay = compute_backoff(backoff_policy, attempt - 1)
-      if (retryable.kind === 'rate_limit' && retryable.retry_after_ms !== undefined) {
-        // When the server supplies Retry-After, honor it even if it exceeds
-        // max_delay_ms; the server's instruction outranks the local backoff cap.
-        delay = Math.max(delay, retryable.retry_after_ms)
-        last_rate_limit_after = retryable.retry_after_ms
-      }
-      await wait_with_abort(delay, signal, to_abort_error)
+      const backoff = next_backoff(retryable, backoff_policy, attempt)
+      last_rate_limit_after = backoff.retry_after_ms ?? last_rate_limit_after
+      await wait_with_abort(backoff.delay, signal, to_abort_error)
     }
   }
 }

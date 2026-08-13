@@ -111,7 +111,6 @@
       "health:src/engine/providers/openai_compatible_native.ts:handle_data",
       "health:src/engine/providers/openai_compatible_native.ts:on_tool_call_delta",
       "health:src/engine/retry.ts:classify_retryable",
-      "health:src/engine/retry.ts:retry_with_policy",
       "health:src/engine/tool_call_salvage.ts:scan_balanced_json",
       "health:src/engine/tool_call_salvage.ts:scan_tool_call_blocks",
       "health:src/engine/tool_loop.ts:run_tool_loop",
