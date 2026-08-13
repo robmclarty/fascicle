@@ -24,7 +24,7 @@ export const DEFAULT_RETRY: RetryPolicy = {
   retry_on: ['rate_limit', 'provider_5xx', 'network', 'timeout'],
 }
 
-export type RetryableError =
+type RetryableError =
   | { kind: 'rate_limit'; retry_after_ms?: number; status?: number; message?: string }
   | { kind: 'provider_5xx'; status?: number; body?: string; message?: string }
   | { kind: 'network'; message?: string }

@@ -51,6 +51,16 @@ ignoreDependencies = [
   "@arethetypeswrong/cli",
 ]
 
+# `aborted_error` is defined in core and deliberately re-exported by engine so
+# that `instanceof aborted_error` holds regardless of which layer surfaced it
+# (src/engine/errors.ts); the engine's own modules import it from that barrel.
+# The duplicate-export is that re-export contract, not a copy, so it resolves in
+# config rather than the baseline (D1).
+ignoreExports = [
+  { file = "src/core/errors.ts", exports = ["aborted_error"] },
+  { file = "src/engine/errors.ts", exports = ["aborted_error"] },
+]
+
 [rules]
 unused-exports = "error"
 unused-files = "error"

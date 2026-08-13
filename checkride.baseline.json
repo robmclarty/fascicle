@@ -2,23 +2,7 @@
   "schema_version": 1,
   "slots": {
     "dead": [
-      "dead-code:circular_dependencies:src/viewer/cli.ts->src/viewer/index.ts",
-      "dead-code:duplicate_exports:aborted_error",
-      "dead-code:unused_exports:src/core/runner.ts:prepend_path",
-      "dead-code:unused_exports:src/core/runner.ts:register_kind",
-      "dead-code:unused_exports:src/core/runner.ts:resolve_span_label",
-      "dead-code:unused_exports:src/engine/providers/anthropic_native.ts:create_stream_aggregator",
-      "dead-code:unused_exports:src/engine/providers/claude_cli/stream_parse.ts:consume_line",
-      "dead-code:unused_exports:src/engine/providers/ollama_native.ts:create_ollama_stream_aggregator",
-      "dead-code:unused_exports:src/engine/providers/openai_compatible_native.ts:OPENAI_COMPATIBLE_REASONING_EFFORT",
-      "dead-code:unused_types:src/composites/regression.ts:Score",
-      "dead-code:unused_types:src/core/runner.ts:RunOptions",
-      "dead-code:unused_types:src/core/runner.ts:StreamingRunHandle",
-      "dead-code:unused_types:src/engine/providers/claude_cli/stream_parse.ts:CliAssistantContent",
-      "dead-code:unused_types:src/engine/providers/claude_cli/stream_parse.ts:CliEvent",
-      "dead-code:unused_types:src/engine/providers/claude_cli/stream_parse.ts:CliUsageRaw",
-      "dead-code:unused_types:src/engine/providers/claude_cli/stream_parse.ts:CliUserContent",
-      "dead-code:unused_types:src/engine/retry.ts:RetryableError"
+      "dead-code:circular_dependencies:src/viewer/cli.ts->src/viewer/index.ts"
     ],
     "dupes": [
       "dupes:dup:053bec9d",

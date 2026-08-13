@@ -67,7 +67,7 @@ export type OpenAICompatibleDialect = {
  * omits the field entirely. Non-reasoning models ignore the field
  * server-side; the adapter does not model-sniff.
  */
-export const OPENAI_COMPATIBLE_REASONING_EFFORT: Record<
+const OPENAI_COMPATIBLE_REASONING_EFFORT: Record<
   Exclude<EffortLevel, 'none'>,
   'low' | 'medium' | 'high'
 > = {

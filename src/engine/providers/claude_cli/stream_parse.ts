@@ -33,7 +33,7 @@
 import type { TrajectoryLogger } from '#core'
 import type { StreamChunk, UsageTotals } from '../../types.js'
 
-export type CliUsageRaw = {
+type CliUsageRaw = {
   input_tokens?: number
   output_tokens?: number
   cache_read_input_tokens?: number
@@ -42,9 +42,9 @@ export type CliUsageRaw = {
 
 type CliTextPart = { type: 'text'; text: string }
 type CliToolUsePart = { type: 'tool_use'; id: string; name: string; input: unknown }
-export type CliAssistantContent = CliTextPart | CliToolUsePart
+type CliAssistantContent = CliTextPart | CliToolUsePart
 
-export type CliUserContent = {
+type CliUserContent = {
   type: 'tool_result'
   tool_use_id: string
   content?: unknown
@@ -94,7 +94,7 @@ type CliRateLimitEvent = {
   session_id?: string
 }
 
-export type CliEvent =
+type CliEvent =
   | CliSystemEvent
   | CliAssistantEvent
   | CliUserEvent
@@ -637,7 +637,7 @@ async function handle_event(
  * match any known event shape, are recorded to the trajectory logger and
  * otherwise ignored; this function never throws.
  */
-export async function consume_line(
+async function consume_line(
   state: ParserState,
   line: string,
   chunks: StreamChunk[],

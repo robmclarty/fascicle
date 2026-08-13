@@ -235,7 +235,3 @@ function validate_report(value: unknown, path: string): asserts value is BenchRe
     throw new Error(`baseline at ${path} missing cases/summary`)
   }
 }
-
-// Runtime-side type re-export: regression consumers want both the diff types
-// and the underlying CaseResult/Score shapes from one import.
-export type { Score } from './bench.js'

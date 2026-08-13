@@ -387,7 +387,7 @@ function read_block_index(event: object): number {
  * message_stop is truncated output, so complete() fails loud instead of
  * returning a partial turn.
  */
-export function create_stream_aggregator(
+function create_stream_aggregator(
   step_index: number,
   dispatch: (chunk: StreamChunk) => Promise<void>,
 ): {

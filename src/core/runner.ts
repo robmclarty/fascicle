@@ -38,10 +38,10 @@ const dispatch = new Map<string, Dispatcher>()
 /**
  * Register the dispatch handler for a step kind.
  *
- * Composer files call this (directly or via `register_traced_kind`) at module
- * load, which is how the runner stays free of composer-specific logic.
+ * Composer files call this via `register_traced_kind` at module load, which is
+ * how the runner stays free of composer-specific logic.
  */
-export function register_kind(kind: string, fn: Dispatcher): void {
+function register_kind(kind: string, fn: Dispatcher): void {
   dispatch.set(kind, fn)
 }
 
@@ -54,7 +54,7 @@ export function register_kind(kind: string, fn: Dispatcher): void {
  * `name` surfaces under that label in the trajectory, while unconfigured
  * composers retain their kind-based label.
  */
-export function resolve_span_label(
+function resolve_span_label(
   flow: Step<unknown, unknown>,
   fallback: string,
 ): string {
@@ -95,7 +95,7 @@ export function register_traced_kind(kind: string): void {
   })
 }
 
-export type RunOptions = {
+type RunOptions = {
   readonly install_signal_handlers?: boolean
   readonly trajectory?: TrajectoryLogger
   readonly checkpoint_store?: CheckpointStore
@@ -107,7 +107,7 @@ export type RunOptions = {
   readonly abort?: AbortSignal
 }
 
-export type StreamingRunHandle<o> = {
+type StreamingRunHandle<o> = {
   readonly events: AsyncIterable<TrajectoryEvent>
   readonly result: Promise<o>
 }
@@ -228,7 +228,7 @@ export async function dispatch_step<i, o>(
  * Mutates the error in place so the path accumulates as the error bubbles up
  * through nested dispatches. Non-object errors are left untouched.
  */
-export function prepend_path(err: unknown, id: string): void {
+function prepend_path(err: unknown, id: string): void {
   if (err === null || typeof err !== 'object') return
   const existing = Reflect.get(err, 'path')
   const next: string[] = Array.isArray(existing)

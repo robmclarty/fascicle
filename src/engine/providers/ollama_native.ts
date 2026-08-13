@@ -327,7 +327,7 @@ export function create_ndjson_decoder(): {
  * payload through parse_ollama_chat, which is what makes the streamed
  * TurnResult equal the non-streamed one by construction.
  */
-export function create_ollama_stream_aggregator(
+function create_ollama_stream_aggregator(
   step_index: number,
   dispatch: (chunk: StreamChunk) => Promise<void>,
 ): {
