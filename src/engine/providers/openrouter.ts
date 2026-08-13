@@ -29,6 +29,7 @@ import {
   type ProviderCapability,
   type RawProviderUsage,
 } from './types.js'
+import { read_dialect_init } from './native_shared.js'
 import {
   create_openai_compatible_adapter,
   type OpenAICompatibleDialect,
@@ -104,9 +105,7 @@ export const create_openrouter_adapter = (init: ProviderInit): ProviderAdapter =
  * `openrouter provider requires a non-empty api_key` engine_config_error.
  */
 const create_openrouter_native_adapter = (init: ProviderInit): NativeProviderAdapter => {
-  const api_key = typeof init.api_key === 'string' ? init.api_key : ''
-  const base_url =
-    typeof init.base_url === 'string' && init.base_url.length > 0 ? init.base_url : DEFAULT_BASE_URL
+  const { api_key, base_url } = read_dialect_init(init, DEFAULT_BASE_URL)
   const http_referer = typeof init['http_referer'] === 'string' ? init['http_referer'] : undefined
   const x_title = typeof init['x_title'] === 'string' ? init['x_title'] : undefined
   const extra_headers: Record<string, string> = {}

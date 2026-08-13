@@ -37,10 +37,16 @@ import type {
 } from '../types.js'
 import {
   engine_config_error,
-  provider_auth_error,
   provider_capability_error,
   provider_error,
 } from '../errors.js'
+import {
+  consume_framed_stream,
+  invoke_http_turn,
+  map_messages_by_role,
+  parse_tool_call_arguments,
+  split_assistant_parts,
+} from './native_shared.js'
 import { create_sse_decoder } from './sse_native.js'
 import type { NativeProviderAdapter, ProviderCapability } from './types.js'
 
@@ -121,20 +127,13 @@ function to_user_content(
  */
 function to_assistant_message(content: string | AssistantContentPart[]): ChatMessage {
   if (typeof content === 'string') return { role: 'assistant', content }
-  const text_parts: string[] = []
-  const tool_calls: ChatToolCall[] = []
-  for (const part of content) {
-    if (part.type === 'text') {
-      text_parts.push(part.text)
-    } else {
-      tool_calls.push({
-        id: part.id,
-        type: 'function',
-        function: { name: part.name, arguments: JSON.stringify(part.input) },
-      })
-    }
-  }
-  const text = text_parts.join('')
+  const { texts, tool_parts } = split_assistant_parts(content)
+  const tool_calls: ChatToolCall[] = tool_parts.map((part) => ({
+    id: part.id,
+    type: 'function',
+    function: { name: part.name, arguments: JSON.stringify(part.input) },
+  }))
+  const text = texts.join('')
   // A tool-call turn with no prose sends content: null, the shape the API
   // itself produces; an all-text turn keeps its (possibly empty) string.
   const message: ChatMessage = {
@@ -155,28 +154,16 @@ export function to_chat_messages(
   messages: ReadonlyArray<Message>,
   provider: string,
 ): ChatMessage[] {
-  const out: ChatMessage[] = []
-  for (const message of messages) {
-    switch (message.role) {
-      case 'system':
-        out.push({ role: 'system', content: message.content })
-        break
-      case 'user':
-        out.push({ role: 'user', content: to_user_content(message.content, provider) })
-        break
-      case 'assistant':
-        out.push(to_assistant_message(message.content))
-        break
-      case 'tool':
-        out.push({
-          role: 'tool',
-          tool_call_id: message.tool_call_id,
-          content: message.content,
-        })
-        break
-    }
-  }
-  return out
+  return map_messages_by_role<ChatMessage>(messages, {
+    system: (content) => ({ role: 'system', content }),
+    user: (content) => ({ role: 'user', content: to_user_content(content, provider) }),
+    assistant: to_assistant_message,
+    tool: (message) => ({
+      role: 'tool',
+      tool_call_id: message.tool_call_id,
+      content: message.content,
+    }),
+  })
 }
 
 /**
@@ -315,19 +302,8 @@ function parse_tool_call(raw: unknown, provider: string): TurnResult['tool_calls
   if (typeof name !== 'string') {
     throw new provider_error(`${provider} native: malformed tool_calls entry in response`)
   }
-  // arguments is a JSON string on this wire; some servers send '' for
-  // no-argument calls, which means the same as '{}'.
-  const raw_args: unknown = Reflect.get(fn, 'arguments')
-  let input: unknown = {}
-  if (typeof raw_args === 'string' && raw_args.length > 0) {
-    try {
-      input = JSON.parse(raw_args)
-    } catch {
-      throw new provider_error(
-        `${provider} native: tool_calls arguments for ${name} is not valid JSON`,
-      )
-    }
-  }
+  // arguments is a JSON string on this wire.
+  const input = parse_tool_call_arguments(Reflect.get(fn, 'arguments'), provider, name)
   return { id, name, input }
 }
 
@@ -544,127 +520,22 @@ export function create_chat_stream_aggregator(
   }
 }
 
-/** OpenAI-style error bodies are `{ error: { message } }`; fall back to the raw body. */
-function extract_error_message(body: string): string {
-  if (body.length === 0) return '(empty body)'
-  try {
-    const parsed: unknown = JSON.parse(body)
-    if (parsed !== null && typeof parsed === 'object') {
-      const error: unknown = Reflect.get(parsed, 'error')
-      if (error !== null && typeof error === 'object') {
-        const message: unknown = Reflect.get(error, 'message')
-        if (typeof message === 'string' && message.length > 0) return message
-      }
-    }
-  } catch {
-    // Not JSON; fall through to the raw snippet.
-  }
-  return body.length > 300 ? `${body.slice(0, 300)}...` : body
-}
-
 /**
- * Map a non-2xx response to what the engine's retry stack expects: 401
- * becomes a typed provider_auth_error, 429/5xx keep `status` +
- * `responseHeaders` so classify_provider_error marks them retryable
- * (rate_limit honoring retry-after, provider_5xx), and any other 4xx is a
- * permanent provider_error that surfaces as-is.
- */
-async function response_error(response: Response, provider: string): Promise<Error> {
-  let body = ''
-  try {
-    body = await response.text()
-  } catch {
-    // Body is best-effort detail; classification needs only the status.
-  }
-  const detail = extract_error_message(body)
-  const status = response.status
-  if (status === 401) {
-    return new provider_auth_error(
-      provider,
-      `${provider} authentication failed (401): ${detail}`,
-    )
-  }
-  if (status === 429 || status >= 500) {
-    const retry_after = response.headers.get('retry-after')
-    return Object.assign(
-      new Error(`${provider} API error ${status}: ${detail}`),
-      { status },
-      retry_after !== null ? { responseHeaders: { 'retry-after': retry_after } } : {},
-    )
-  }
-  return new provider_error(`${provider} API error ${status}: ${detail}`, { status, body })
-}
-
-/**
- * A user abort surfaces as the fetch AbortError; retry_turn converts it via
- * its own signal check, so it is rethrown untouched. Everything else is a
- * transport failure wrapped in the `kind: 'network'` shape the shared
- * classify_provider_error marks retryable.
- */
-function rethrow_network_failure(err: unknown, abort: AbortSignal, provider: string): never {
-  if (abort.aborted) throw err
-  const detail = err instanceof Error ? err.message : String(err)
-  throw Object.assign(new Error(`${provider} native: network failure: ${detail}`), {
-    kind: 'network',
-  })
-}
-
-/**
- * Drain a streaming chat/completions response: decode bytes, reassemble SSE
- * events, and feed each data payload to the aggregator, which dispatches
- * chunks through req.dispatch_chunk as they arrive. Transport failures
- * mid-read wrap as network errors; aggregator throws (malformed frames, a
- * rejecting on_chunk) pass through untouched, with the reader cancelled so
- * the connection is released.
+ * Drain a streaming chat/completions response through the shared
+ * framed-stream consumer: SSE framing feeding the aggregator, which
+ * dispatches chunks through req.dispatch_chunk as they arrive. The
+ * aggregator's `handle_data` name is part of its exported API, so it is
+ * adapted to the consumer's `handle` shape here rather than renamed.
  */
 async function consume_sse_response(
   response: Response,
   req: TurnRequest,
   dialect: OpenAICompatibleDialect,
 ): Promise<TurnResult> {
-  const body = response.body
-  if (body === null) {
-    throw new provider_error(`${dialect.name} native: streaming response has no body`)
-  }
-  const dispatch = req.dispatch_chunk ?? (async (): Promise<void> => {})
-  const aggregator = create_chat_stream_aggregator(dialect, req.step_index, dispatch)
-  const reader = body.getReader()
-  const text_decoder = new TextDecoder()
-  const sse = create_sse_decoder()
-
-  const next_bytes = async (): Promise<Uint8Array | undefined> => {
-    let step: Awaited<ReturnType<typeof reader.read>>
-    try {
-      step = await reader.read()
-    } catch (err: unknown) {
-      rethrow_network_failure(err, req.abort, dialect.name)
-    }
-    return step.done ? undefined : step.value
-  }
-
-  // Sequential awaits are the contract here: chunk order is an engine
-  // invariant and each frame mutates aggregator state, so no parallelism.
-  try {
-    while (true) {
-      // oxlint-disable-next-line no-await-in-loop
-      const bytes = await next_bytes()
-      if (bytes === undefined) break
-      for (const data of sse.push(text_decoder.decode(bytes, { stream: true }))) {
-        // oxlint-disable-next-line no-await-in-loop
-        await aggregator.handle_data(data)
-      }
-    }
-  } finally {
-    // Frees the connection when an error exits the loop early; a no-op on a
-    // fully drained stream.
-    void reader.cancel().catch(() => {})
-  }
-  const tail = [...sse.push(text_decoder.decode()), ...sse.flush()]
-  for (const data of tail) {
-    // oxlint-disable-next-line no-await-in-loop
-    await aggregator.handle_data(data)
-  }
-  return aggregator.complete()
+  return consume_framed_stream(response, req, dialect.name, create_sse_decoder(), (dispatch) => {
+    const aggregator = create_chat_stream_aggregator(dialect, req.step_index, dispatch)
+    return { handle: aggregator.handle_data, complete: aggregator.complete }
+  })
 }
 
 // 'structured_output' is intentionally absent (schema rides the prompt +
@@ -705,21 +576,19 @@ export const create_openai_compatible_adapter = (
     kind: 'native',
     name: dialect.name,
     async invoke_turn(req: TurnRequest): Promise<TurnResult> {
-      let response: Response
-      try {
-        response = await fetch(`${base_url}/chat/completions`, {
-          method: 'POST',
+      return invoke_http_turn(
+        req,
+        dialect.name,
+        {
+          url: `${base_url}/chat/completions`,
           headers,
-          body: JSON.stringify(build_chat_completions_body(req, dialect)),
-          signal: req.abort,
-        })
-      } catch (err: unknown) {
-        rethrow_network_failure(err, req.abort, dialect.name)
-      }
-      if (!response.ok) throw await response_error(response, dialect.name)
-      if (req.stream) return consume_sse_response(response, req, dialect)
-      const payload: unknown = await response.json()
-      return parse_chat_completion(payload, dialect)
+          build_body: () => build_chat_completions_body(req, dialect),
+        },
+        {
+          stream: (response) => consume_sse_response(response, req, dialect),
+          parse: (payload) => parse_chat_completion(payload, dialect),
+        },
+      )
     },
     supports: (capability) => SUPPORTED.has(capability),
   }

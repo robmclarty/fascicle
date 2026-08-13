@@ -162,6 +162,19 @@ export function default_normalize_usage(
 }
 
 /**
+ * Usage mapper for local backends (Ollama, LM Studio) whose servers never
+ * report cache or reasoning tokens: default-normalize, then strip those
+ * fields so a stray *_details container cannot invent them.
+ */
+export function normalize_local_usage(raw: RawProviderUsage | undefined): UsageTotals {
+  const base = default_normalize_usage(raw)
+  delete base.cached_input_tokens
+  delete base.cache_write_tokens
+  delete base.reasoning_tokens
+  return base
+}
+
+/**
  * Build the standard missing-peer error: names the package and the install
  * command so a missing peer is diagnosable from the message alone. Shared so
  * every optional-peer failure reads identically, whether the failing

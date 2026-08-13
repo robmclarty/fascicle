@@ -12,16 +12,15 @@
  * does not emit the image_input capability.
  */
 
-import type { EffortLevel, ProviderInit, UsageTotals } from '../types.js'
+import type { EffortLevel, ProviderInit } from '../types.js'
 import {
-  default_normalize_usage,
   load_optional_peer,
+  normalize_local_usage,
   resolve_transport,
   type AiSdkProviderAdapter,
   type EffortTranslation,
   type ProviderAdapter,
   type ProviderCapability,
-  type RawProviderUsage,
 } from './types.js'
 import { create_ollama_native_adapter } from './ollama_native.js'
 import { engine_config_error } from '../errors.js'
@@ -40,17 +39,11 @@ export function translate_ollama_effort(effort: EffortLevel): EffortTranslation 
 }
 
 /**
- * Normalize Ollama's raw usage payload into UsageTotals.
+ * Normalize Ollama's raw usage payload into UsageTotals: the shared
+ * local-backend mapper, since Ollama never reports cache or reasoning
+ * tokens.
  */
-export function normalize_ollama_usage(raw: RawProviderUsage | undefined): UsageTotals {
-  // default_normalize_usage already maps undefined to a zero total; Ollama
-  // additionally never reports cache or reasoning tokens, so strip them.
-  const base = default_normalize_usage(raw)
-  delete base.cached_input_tokens
-  delete base.cache_write_tokens
-  delete base.reasoning_tokens
-  return base
-}
+export const normalize_ollama_usage = normalize_local_usage
 
 const SUPPORTED: ReadonlySet<ProviderCapability> = new Set([
   'text',

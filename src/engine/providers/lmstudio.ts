@@ -10,17 +10,16 @@
  * required on both transports. No reasoning support.
  */
 
-import type { EffortLevel, ProviderInit, UsageTotals } from '../types.js'
+import type { EffortLevel, ProviderInit } from '../types.js'
 import {
-  default_normalize_usage,
   load_optional_peer,
+  normalize_local_usage,
   resolve_transport,
   type AiSdkProviderAdapter,
   type EffortTranslation,
   type NativeProviderAdapter,
   type ProviderAdapter,
   type ProviderCapability,
-  type RawProviderUsage,
 } from './types.js'
 import {
   create_openai_compatible_adapter,
@@ -47,17 +46,11 @@ export function translate_lmstudio_effort(effort: EffortLevel): EffortTranslatio
 }
 
 /**
- * Normalize LM Studio's raw usage payload into UsageTotals.
+ * Normalize LM Studio's raw usage payload into UsageTotals: the shared
+ * local-backend mapper, since LM Studio never reports cache or reasoning
+ * tokens.
  */
-export function normalize_lmstudio_usage(raw: RawProviderUsage | undefined): UsageTotals {
-  // default_normalize_usage already maps undefined to a zero total; LM Studio
-  // additionally never reports cache or reasoning tokens, so strip them.
-  const base = default_normalize_usage(raw)
-  delete base.cached_input_tokens
-  delete base.cache_write_tokens
-  delete base.reasoning_tokens
-  return base
-}
+export const normalize_lmstudio_usage = normalize_local_usage
 
 const SUPPORTED: ReadonlySet<ProviderCapability> = new Set([
   'text',

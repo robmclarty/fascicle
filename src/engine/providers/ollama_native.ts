@@ -39,10 +39,17 @@ import type {
 } from '../types.js'
 import {
   engine_config_error,
-  provider_auth_error,
   provider_capability_error,
   provider_error,
 } from '../errors.js'
+import {
+  consume_framed_stream,
+  create_line_splitter,
+  invoke_http_turn,
+  map_messages_by_role,
+  parse_tool_call_arguments,
+  split_assistant_parts,
+} from './native_shared.js'
 import { to_chat_tools } from './openai_compatible_native.js'
 import type { NativeProviderAdapter, ProviderCapability } from './types.js'
 import type { ProviderInit } from '../types.js'
@@ -87,20 +94,16 @@ function to_user_content(content: string | UserContentPart[]): string {
  */
 function to_assistant_message(content: string | AssistantContentPart[]): OllamaChatMessage {
   if (typeof content === 'string') return { role: 'assistant', content }
-  const text_parts: string[] = []
-  const tool_calls: OllamaToolCall[] = []
-  for (const part of content) {
-    if (part.type === 'text') {
-      text_parts.push(part.text)
-    } else {
-      // arguments is a structured object on this wire, not a JSON string, and
-      // the API has no id field on tool calls, so the part's id is dropped
-      // here and re-synthesized deterministically when a response is parsed.
-      tool_calls.push({ function: { name: part.name, arguments: part.input } })
-    }
+  const { texts, tool_parts } = split_assistant_parts(content)
+  const message: OllamaChatMessage = { role: 'assistant', content: texts.join('') }
+  if (tool_parts.length > 0) {
+    // arguments is a structured object on this wire, not a JSON string, and
+    // the API has no id field on tool calls, so the part's id is dropped
+    // here and re-synthesized deterministically when a response is parsed.
+    message.tool_calls = tool_parts.map((part) => ({
+      function: { name: part.name, arguments: part.input },
+    }))
   }
-  const message: OllamaChatMessage = { role: 'assistant', content: text_parts.join('') }
-  if (tool_calls.length > 0) message.tool_calls = tool_calls
   return message
 }
 
@@ -110,24 +113,12 @@ function to_assistant_message(content: string | AssistantContentPart[]): OllamaC
  * `tool_name`, since this wire has no tool_call_id to round-trip.
  */
 export function to_ollama_messages(messages: ReadonlyArray<Message>): OllamaChatMessage[] {
-  const out: OllamaChatMessage[] = []
-  for (const message of messages) {
-    switch (message.role) {
-      case 'system':
-        out.push({ role: 'system', content: message.content })
-        break
-      case 'user':
-        out.push({ role: 'user', content: to_user_content(message.content) })
-        break
-      case 'assistant':
-        out.push(to_assistant_message(message.content))
-        break
-      case 'tool':
-        out.push({ role: 'tool', tool_name: message.name, content: message.content })
-        break
-    }
-  }
-  return out
+  return map_messages_by_role<OllamaChatMessage>(messages, {
+    system: (content) => ({ role: 'system', content }),
+    user: (content) => ({ role: 'user', content: to_user_content(content) }),
+    assistant: to_assistant_message,
+    tool: (message) => ({ role: 'tool', tool_name: message.name, content: message.content }),
+  })
 }
 
 /**
@@ -228,18 +219,10 @@ function parse_ollama_tool_call(
   // arguments is a structured object on this wire; a string is tolerated as
   // JSON for compat-shaped proxies ('' meaning '{}', like the OpenAI wire).
   const raw_args: unknown = Reflect.get(fn, 'arguments')
-  let input: unknown = {}
-  if (typeof raw_args === 'string' && raw_args.length > 0) {
-    try {
-      input = JSON.parse(raw_args)
-    } catch {
-      throw new provider_error(
-        `ollama native: tool_calls arguments for ${name} is not valid JSON`,
-      )
-    }
-  } else if (raw_args !== null && typeof raw_args === 'object') {
-    input = raw_args
-  }
+  const input: unknown =
+    raw_args !== null && typeof raw_args === 'object'
+      ? raw_args
+      : parse_tool_call_arguments(raw_args, 'ollama', name)
   return { id, name, input }
 }
 
@@ -273,45 +256,18 @@ export function parse_ollama_chat(payload: unknown, step_index: number): TurnRes
 }
 
 /**
- * Append one decoded line to `out`, trimming a trailing `\r` and dropping
- * blank lines; JSON parsing is the aggregator's job.
- */
-function take_line(raw: string, out: string[]): void {
-  const line = raw.endsWith('\r') ? raw.slice(0, -1) : raw
-  if (line.trim().length > 0) out.push(line)
-}
-
-/**
  * Incremental NDJSON framing: push() takes decoded text at any chunk
- * boundary (including mid-line) and returns the complete lines it finished;
- * flush() drains a final line left open when the stream ends without a
- * trailing newline.
+ * boundary (including mid-line) and returns the complete lines it finished
+ * (blank lines dropped; JSON parsing is the aggregator's job); flush() drains
+ * a final line left open when the stream ends without a trailing newline.
  */
 export function create_ndjson_decoder(): {
   push: (text: string) => string[]
   flush: () => string[]
 } {
-  let buffer = ''
-
-  return {
-    push(text: string): string[] {
-      buffer += text
-      const out: string[] = []
-      let newline = buffer.indexOf('\n')
-      while (newline >= 0) {
-        take_line(buffer.slice(0, newline), out)
-        buffer = buffer.slice(newline + 1)
-        newline = buffer.indexOf('\n')
-      }
-      return out
-    },
-    flush(): string[] {
-      const out: string[] = []
-      if (buffer.length > 0) take_line(buffer, out)
-      buffer = ''
-      return out
-    },
-  }
+  return create_line_splitter((line, out) => {
+    if (line.trim().length > 0) out.push(line)
+  })
 }
 
 /**
@@ -331,7 +287,7 @@ function create_ollama_stream_aggregator(
   step_index: number,
   dispatch: (chunk: StreamChunk) => Promise<void>,
 ): {
-  handle_line: (line: string) => Promise<void>
+  handle: (line: string) => Promise<void>
   complete: () => TurnResult
 } {
   let text = ''
@@ -359,7 +315,7 @@ function create_ollama_stream_aggregator(
   }
 
   return {
-    async handle_line(line: string): Promise<void> {
+    async handle(line: string): Promise<void> {
       if (done) return
       let frame: unknown
       try {
@@ -413,121 +369,15 @@ function create_ollama_stream_aggregator(
   }
 }
 
-/** Ollama error bodies are `{ error: "message" }`; tolerate the nested OpenAI shape too. */
-function extract_error_message(body: string): string {
-  if (body.length === 0) return '(empty body)'
-  try {
-    const parsed: unknown = JSON.parse(body)
-    if (parsed !== null && typeof parsed === 'object') {
-      const error: unknown = Reflect.get(parsed, 'error')
-      if (typeof error === 'string' && error.length > 0) return error
-      if (error !== null && typeof error === 'object') {
-        const message: unknown = Reflect.get(error, 'message')
-        if (typeof message === 'string' && message.length > 0) return message
-      }
-    }
-  } catch {
-    // Not JSON; fall through to the raw snippet.
-  }
-  return body.length > 300 ? `${body.slice(0, 300)}...` : body
-}
-
 /**
- * Map a non-2xx response to what the engine's retry stack expects: 401
- * becomes a typed provider_auth_error (rare locally, but base_url may point
- * at a fronted daemon), 429/5xx keep `status` + `responseHeaders` so
- * classify_provider_error marks them retryable, and any other 4xx (a missing
- * model, a malformed request) is a permanent provider_error.
- */
-async function response_error(response: Response): Promise<Error> {
-  let body = ''
-  try {
-    body = await response.text()
-  } catch {
-    // Body is best-effort detail; classification needs only the status.
-  }
-  const detail = extract_error_message(body)
-  const status = response.status
-  if (status === 401) {
-    return new provider_auth_error('ollama', `ollama authentication failed (401): ${detail}`)
-  }
-  if (status === 429 || status >= 500) {
-    const retry_after = response.headers.get('retry-after')
-    return Object.assign(
-      new Error(`ollama API error ${status}: ${detail}`),
-      { status },
-      retry_after !== null ? { responseHeaders: { 'retry-after': retry_after } } : {},
-    )
-  }
-  return new provider_error(`ollama API error ${status}: ${detail}`, { status, body })
-}
-
-/**
- * A user abort surfaces as the fetch AbortError; retry_turn converts it via
- * its own signal check, so it is rethrown untouched. Everything else is a
- * transport failure wrapped in the `kind: 'network'` shape the shared
- * classify_provider_error marks retryable.
- */
-function rethrow_network_failure(err: unknown, abort: AbortSignal): never {
-  if (abort.aborted) throw err
-  const detail = err instanceof Error ? err.message : String(err)
-  throw Object.assign(new Error(`ollama native: network failure: ${detail}`), {
-    kind: 'network',
-  })
-}
-
-/**
- * Drain a streaming /api/chat response: decode bytes, reassemble NDJSON
- * lines, and feed each to the aggregator, which dispatches chunks through
- * req.dispatch_chunk as they arrive. Transport failures mid-read wrap as
- * network errors; aggregator throws (malformed frames, a rejecting on_chunk)
- * pass through untouched, with the reader cancelled so the connection is
- * released.
+ * Drain a streaming /api/chat response through the shared framed-stream
+ * consumer: NDJSON framing feeding the aggregator, which dispatches chunks
+ * through req.dispatch_chunk as they arrive.
  */
 async function consume_ndjson_response(response: Response, req: TurnRequest): Promise<TurnResult> {
-  const body = response.body
-  if (body === null) {
-    throw new provider_error('ollama native: streaming response has no body')
-  }
-  const dispatch = req.dispatch_chunk ?? (async (): Promise<void> => {})
-  const aggregator = create_ollama_stream_aggregator(req.step_index, dispatch)
-  const reader = body.getReader()
-  const text_decoder = new TextDecoder()
-  const ndjson = create_ndjson_decoder()
-
-  const next_bytes = async (): Promise<Uint8Array | undefined> => {
-    let step: Awaited<ReturnType<typeof reader.read>>
-    try {
-      step = await reader.read()
-    } catch (err: unknown) {
-      rethrow_network_failure(err, req.abort)
-    }
-    return step.done ? undefined : step.value
-  }
-
-  // Sequential awaits are the contract here: chunk order is an engine
-  // invariant and each frame mutates aggregator state, so no parallelism.
-  try {
-    while (true) {
-      // oxlint-disable-next-line no-await-in-loop
-      const bytes = await next_bytes()
-      if (bytes === undefined) break
-      for (const line of ndjson.push(text_decoder.decode(bytes, { stream: true }))) {
-        // oxlint-disable-next-line no-await-in-loop
-        await aggregator.handle_line(line)
-      }
-    }
-  } finally {
-    // Frees the connection when an error exits the loop early; a no-op on a
-    // fully drained stream.
-    void reader.cancel().catch(() => {})
-  }
-  const tail = [...ndjson.push(text_decoder.decode()), ...ndjson.flush()]
-  for (const line of tail) {
-    // oxlint-disable-next-line no-await-in-loop
-    await aggregator.handle_line(line)
-  }
-  return aggregator.complete()
+  return consume_framed_stream(response, req, 'ollama', create_ndjson_decoder(), (dispatch) =>
+    create_ollama_stream_aggregator(req.step_index, dispatch),
+  )
 }
 
 // 'structured_output' is intentionally absent: schema rides the prompt +
@@ -560,21 +410,19 @@ export const create_ollama_native_adapter = (init: ProviderInit): NativeProvider
     kind: 'native',
     name: 'ollama',
     async invoke_turn(req: TurnRequest): Promise<TurnResult> {
-      let response: Response
-      try {
-        response = await fetch(`${base_url}/api/chat`, {
-          method: 'POST',
+      return invoke_http_turn(
+        req,
+        'ollama',
+        {
+          url: `${base_url}/api/chat`,
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify(build_ollama_chat_body(req)),
-          signal: req.abort,
-        })
-      } catch (err: unknown) {
-        rethrow_network_failure(err, req.abort)
-      }
-      if (!response.ok) throw await response_error(response)
-      if (req.stream) return consume_ndjson_response(response, req)
-      const payload: unknown = await response.json()
-      return parse_ollama_chat(payload, req.step_index)
+          build_body: () => build_ollama_chat_body(req),
+        },
+        {
+          stream: (response) => consume_ndjson_response(response, req),
+          parse: (payload) => parse_ollama_chat(payload, req.step_index),
+        },
+      )
     },
     supports: (capability) => SUPPORTED.has(capability),
   }

@@ -35,10 +35,10 @@ import type {
 } from '../types.js'
 import {
   engine_config_error,
-  provider_auth_error,
   provider_capability_error,
   provider_error,
 } from '../errors.js'
+import { consume_framed_stream, invoke_http_turn } from './native_shared.js'
 import { create_sse_decoder } from './sse_native.js'
 import type { NativeProviderAdapter, ProviderCapability } from './types.js'
 
@@ -84,14 +84,20 @@ export type AnthropicMessage = {
 }
 
 /**
+ * Wrap non-blank text in a single text block; blank text maps to no blocks,
+ * since the API rejects empty text blocks.
+ */
+function text_blocks(text: string): AnthropicContentBlock[] {
+  return text.trim().length > 0 ? [{ type: 'text', text }] : []
+}
+
+/**
  * Map user message content to Messages-API text blocks, dropping empty text
  * (the API rejects empty blocks). Image parts throw a capability error: they
  * are not mapped on this transport.
  */
 function to_user_blocks(content: string | UserContentPart[]): AnthropicContentBlock[] {
-  if (typeof content === 'string') {
-    return content.trim().length > 0 ? [{ type: 'text', text: content }] : []
-  }
+  if (typeof content === 'string') return text_blocks(content)
   const blocks: AnthropicContentBlock[] = []
   for (const part of content) {
     if (part.type === 'image') {
@@ -101,7 +107,7 @@ function to_user_blocks(content: string | UserContentPart[]): AnthropicContentBl
         "image parts are not mapped on the native transport; use transport: 'ai_sdk'",
       )
     }
-    if (part.text.trim().length > 0) blocks.push({ type: 'text', text: part.text })
+    blocks.push(...text_blocks(part.text))
   }
   return blocks
 }
@@ -113,13 +119,11 @@ function to_user_blocks(content: string | UserContentPart[]): AnthropicContentBl
 function to_assistant_blocks(
   content: string | AssistantContentPart[],
 ): AnthropicContentBlock[] {
-  if (typeof content === 'string') {
-    return content.trim().length > 0 ? [{ type: 'text', text: content }] : []
-  }
+  if (typeof content === 'string') return text_blocks(content)
   const blocks: AnthropicContentBlock[] = []
   for (const part of content) {
     if (part.type === 'text') {
-      if (part.text.trim().length > 0) blocks.push({ type: 'text', text: part.text })
+      blocks.push(...text_blocks(part.text))
     } else {
       blocks.push({ type: 'tool_use', id: part.id, name: part.name, input: part.input })
     }
@@ -298,6 +302,19 @@ export function map_anthropic_usage(raw: unknown): UsageTotals {
 }
 
 /**
+ * Read the id and name a tool_use block must carry, throwing a
+ * provider_error naming `where` the malformed block appeared.
+ */
+function read_tool_use_identity(block: object, where: string): { id: string; name: string } {
+  const id: unknown = Reflect.get(block, 'id')
+  const name: unknown = Reflect.get(block, 'name')
+  if (typeof id !== 'string' || typeof name !== 'string') {
+    throw new provider_error(`anthropic native: malformed tool_use block in ${where}`)
+  }
+  return { id, name }
+}
+
+/**
  * Parse a non-stream Messages-API response payload into a TurnResult. The
  * stream aggregator rebuilds this same payload shape and feeds it here too,
  * so both paths share one parser.
@@ -317,13 +334,7 @@ export function parse_messages_response(payload: unknown): TurnResult {
         const text: unknown = Reflect.get(block, 'text')
         if (typeof text === 'string') text_parts.push(text)
       } else if (type === 'tool_use') {
-        const id: unknown = Reflect.get(block, 'id')
-        const name: unknown = Reflect.get(block, 'name')
-        if (typeof id !== 'string' || typeof name !== 'string') {
-          throw new provider_error(
-            'anthropic native: malformed tool_use block in response content',
-          )
-        }
+        const { id, name } = read_tool_use_identity(block, 'response content')
         tool_calls.push({ id, name, input: Reflect.get(block, 'input') })
       }
       // thinking / redacted_thinking blocks have no TurnResult field; skipped.
@@ -391,7 +402,7 @@ function create_stream_aggregator(
   step_index: number,
   dispatch: (chunk: StreamChunk) => Promise<void>,
 ): {
-  handle_event: (data: string) => Promise<void>
+  handle: (data: string) => Promise<void>
   complete: () => TurnResult
 } {
   type SyntheticToolUse = { type: 'tool_use'; id: string; name: string; input: unknown }
@@ -429,11 +440,7 @@ function create_stream_aggregator(
       return
     }
     if (type === 'tool_use') {
-      const id: unknown = Reflect.get(block, 'id')
-      const name: unknown = Reflect.get(block, 'name')
-      if (typeof id !== 'string' || typeof name !== 'string') {
-        throw new provider_error('anthropic native: malformed tool_use block in stream')
-      }
+      const { id, name } = read_tool_use_identity(block, 'stream')
       const synthetic: SyntheticToolUse = {
         type: 'tool_use',
         id,
@@ -507,7 +514,7 @@ function create_stream_aggregator(
   }
 
   return {
-    async handle_event(data: string): Promise<void> {
+    async handle(data: string): Promise<void> {
       let event: unknown
       try {
         event = JSON.parse(data)
@@ -568,130 +575,15 @@ function create_stream_aggregator(
   }
 }
 
-/** Anthropic error bodies are `{ type: 'error', error: { message } }`; fall back to the raw body. */
-function extract_error_message(body: string): string {
-  if (body.length === 0) return '(empty body)'
-  try {
-    const parsed: unknown = JSON.parse(body)
-    // Stryker disable next-line ConditionalExpression,LogicalOperator: the
-    // enclosing try/catch already funnels every non-object parse to the raw
-    // snippet, so this guard only narrows unknown -> object for Reflect.get;
-    // forcing it true/false throws-and-catches to the same fallback (equivalent).
-    if (parsed !== null && typeof parsed === 'object') {
-      const error: unknown = Reflect.get(parsed, 'error')
-      // Stryker disable next-line ConditionalExpression,LogicalOperator: same as
-      // above -- a non-object error still reaches the raw-snippet fallback via the
-      // catch or the message-not-a-string check, so both boundaries are equivalent.
-      if (error !== null && typeof error === 'object') {
-        const message: unknown = Reflect.get(error, 'message')
-        if (typeof message === 'string' && message.length > 0) return message
-      }
-    }
-  } catch {
-    // Not JSON; fall through to the raw snippet.
-  }
-  return body.length > 300 ? `${body.slice(0, 300)}...` : body
-}
-
 /**
- * Map a non-2xx response to what the engine's retry stack expects: 401
- * becomes a typed provider_auth_error, 429/5xx keep `status` +
- * `responseHeaders` so classify_provider_error marks them retryable
- * (rate_limit honoring retry-after, provider_5xx), and any other 4xx is a
- * permanent provider_error that surfaces as-is.
- */
-async function response_error(response: Response): Promise<Error> {
-  let body = ''
-  try {
-    body = await response.text()
-  } catch {
-    // Body is best-effort detail; classification needs only the status.
-  }
-  const detail = extract_error_message(body)
-  const status = response.status
-  if (status === 401) {
-    return new provider_auth_error(
-      'anthropic',
-      `anthropic authentication failed (401): ${detail}`,
-    )
-  }
-  if (status === 429 || status >= 500) {
-    const retry_after = response.headers.get('retry-after')
-    return Object.assign(
-      new Error(`anthropic API error ${status}: ${detail}`),
-      { status },
-      retry_after !== null ? { responseHeaders: { 'retry-after': retry_after } } : {},
-    )
-  }
-  return new provider_error(`anthropic API error ${status}: ${detail}`, { status, body })
-}
-
-/**
- * A user abort surfaces as the fetch/reader AbortError; retry_turn converts
- * it via its own signal check, so it is rethrown untouched. Everything else
- * is a transport failure wrapped in the `kind: 'network'` shape the shared
- * classify_provider_error marks retryable.
- */
-function rethrow_network_failure(err: unknown, abort: AbortSignal): never {
-  if (abort.aborted) throw err
-  const detail = err instanceof Error ? err.message : String(err)
-  throw Object.assign(new Error(`anthropic native: network failure: ${detail}`), {
-    kind: 'network',
-  })
-}
-
-/**
- * Drain a streaming Messages response: decode bytes, reassemble SSE events,
- * and feed them to the aggregator, which dispatches chunks through
- * req.dispatch_chunk as they arrive. Transport failures mid-read wrap as
- * network errors; aggregator throws (malformed events, mid-stream error
- * events, a rejecting on_chunk) pass through untouched, with the reader
- * cancelled so the connection is released.
+ * Drain a streaming Messages response through the shared framed-stream
+ * consumer: SSE framing feeding the aggregator, which dispatches chunks
+ * through req.dispatch_chunk as they arrive.
  */
 async function consume_sse_response(response: Response, req: TurnRequest): Promise<TurnResult> {
-  const body = response.body
-  if (body === null) {
-    throw new provider_error('anthropic native: streaming response has no body')
-  }
-  const dispatch = req.dispatch_chunk ?? (async (): Promise<void> => {})
-  const aggregator = create_stream_aggregator(req.step_index, dispatch)
-  const reader = body.getReader()
-  const text_decoder = new TextDecoder()
-  const sse = create_sse_decoder()
-
-  const next_bytes = async (): Promise<Uint8Array | undefined> => {
-    let step: Awaited<ReturnType<typeof reader.read>>
-    try {
-      step = await reader.read()
-    } catch (err: unknown) {
-      rethrow_network_failure(err, req.abort)
-    }
-    return step.done ? undefined : step.value
-  }
-
-  // Sequential awaits are the contract here: chunk order is an engine
-  // invariant and each event mutates aggregator state, so no parallelism.
-  try {
-    while (true) {
-      // oxlint-disable-next-line no-await-in-loop
-      const bytes = await next_bytes()
-      if (bytes === undefined) break
-      for (const data of sse.push(text_decoder.decode(bytes, { stream: true }))) {
-        // oxlint-disable-next-line no-await-in-loop
-        await aggregator.handle_event(data)
-      }
-    }
-  } finally {
-    // Frees the connection when an error exits the loop early; a no-op on a
-    // fully drained stream.
-    void reader.cancel().catch(() => {})
-  }
-  const tail = [...sse.push(text_decoder.decode()), ...sse.flush()]
-  for (const data of tail) {
-    // oxlint-disable-next-line no-await-in-loop
-    await aggregator.handle_event(data)
-  }
-  return aggregator.complete()
+  return consume_framed_stream(response, req, 'anthropic', create_sse_decoder(), (dispatch) =>
+    create_stream_aggregator(req.step_index, dispatch),
+  )
 }
 
 // 'structured_output' is intentionally absent: schema requests ride the
@@ -730,25 +622,23 @@ export const create_anthropic_native_adapter = (
     kind: 'native',
     name: 'anthropic',
     async invoke_turn(req: TurnRequest): Promise<TurnResult> {
-      let response: Response
-      try {
-        response = await fetch(`${base_url}/messages`, {
-          method: 'POST',
+      return invoke_http_turn(
+        req,
+        'anthropic',
+        {
+          url: `${base_url}/messages`,
           headers: {
             'content-type': 'application/json',
             'x-api-key': api_key,
             'anthropic-version': ANTHROPIC_VERSION,
           },
-          body: JSON.stringify(build_messages_body(req)),
-          signal: req.abort,
-        })
-      } catch (err: unknown) {
-        rethrow_network_failure(err, req.abort)
-      }
-      if (!response.ok) throw await response_error(response)
-      if (req.stream) return consume_sse_response(response, req)
-      const payload: unknown = await response.json()
-      return parse_messages_response(payload)
+          build_body: () => build_messages_body(req),
+        },
+        {
+          stream: (response) => consume_sse_response(response, req),
+          parse: parse_messages_response,
+        },
+      )
     },
     supports: (capability) => SUPPORTED.has(capability),
   }
