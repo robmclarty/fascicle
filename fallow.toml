@@ -14,6 +14,22 @@ entry = [
   # Build and check-suite entry points: run by checkride and CI as commands,
   # never imported, so nothing in the module graph reaches them.
   "scripts/*.mjs",
+  # Single-file example demos: each is run directly via `pnpm exec tsx
+  # examples/<name>.ts`, never imported. The subset that's stub-driven and
+  # network-free is also imported by test/examples.test.ts; this glob covers
+  # the rest (live CLI/HTTP/network demos that can't run in the default suite).
+  "examples/*.ts",
+  # amplify's chart renderer: invoked by scripts/demo.sh as a CLI, not imported.
+  "examples/amplify/scripts/*.mjs",
+  # amplify's pluggable metrics: resolved by name via a dynamic import built
+  # from a runtime string (services/metric.ts), so no static import reaches them.
+  "examples/amplify/metrics/*.ts",
+  # amplify's mutable benchmark target: loaded via the IMPL_PATH env var by
+  # target/bench.ts (scripts/demo.sh), never statically imported.
+  "examples/amplify/target/src/*.ts",
+  # amplify's target-package tests: run via its own target/vitest.config.ts,
+  # outside the root vitest.config.ts include globs (scoped to src/__tests__/).
+  "examples/amplify/target/tests/*.test.ts",
 ]
 
 # The GitHub Pages marketing site: browser scripts loaded by <script> tags, not
@@ -23,7 +39,17 @@ entry = [
 ignorePatterns = ["site/**"]
 
 # CLI/tooling deps used via command line or config files, not imported from source.
-ignoreDependencies = ["@ast-grep/cli", "@stryker-mutator/vitest-runner", "publint"]
+# `fascicle` is examples' self-reference to the workspace package via
+# `workspace:*`, which fallow cannot resolve as a real import (D7). checkride's
+# `attw` slot invokes `@arethetypeswrong/cli` as a CLI, never an import, same as
+# publint above (D8).
+ignoreDependencies = [
+  "@ast-grep/cli",
+  "@stryker-mutator/vitest-runner",
+  "publint",
+  "fascicle",
+  "@arethetypeswrong/cli",
+]
 
 [rules]
 unused-exports = "error"
