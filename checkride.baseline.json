@@ -102,7 +102,6 @@
       "health:src/engine/providers/anthropic_native.ts:on_block_delta",
       "health:src/engine/providers/anthropic_native.ts:parse_messages_response",
       "health:src/engine/providers/anthropic_native.ts:stream_event_error",
-      "health:src/engine/providers/claude_cli/adapter.ts:generate",
       "health:src/engine/providers/claude_cli/auth.ts:build_env",
       "health:src/engine/providers/claude_cli/cost.ts:allocate_cost_across_turns",
       "health:src/engine/providers/claude_cli/spawn.ts:spawn_cli",

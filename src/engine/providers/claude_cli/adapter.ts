@@ -20,6 +20,7 @@ import type {
   GenerateResult,
   Message,
   ProviderInit,
+  StepRecord,
   StreamChunk,
   Tool,
 } from '../../types.js'
@@ -49,6 +50,7 @@ import {
   feed_chunk,
   flush_remaining,
   snapshot,
+  type ParsedStream,
 } from './stream_parse.js'
 import { build_generate_result } from './stream_result.js'
 import {
@@ -331,6 +333,373 @@ async function run_cli(
   return { parsed, chunks }
 }
 
+/** Span ids one generate call holds open; `first_step` is cleared once closed. */
+type GenerateSpans = {
+  generate: string | undefined
+  first_step: string | undefined
+}
+
+/**
+ * Emit `option_ignored` events for the loop-control options this provider
+ * cannot honor: the CLI runs its own tool loop on the far side of the
+ * subprocess boundary.
+ */
+function emit_ignored_options<T>(
+  opts: GenerateOptions<T>,
+  trajectory: RunArgs['trajectory'],
+): void {
+  const option_ignored = create_option_ignored_dedup(trajectory)
+  if (opts.max_steps !== undefined) {
+    option_ignored.emit('max_steps', PROVIDER_NAME)
+  }
+  if (opts.tool_error_policy !== undefined) {
+    option_ignored.emit('tool_error_policy', PROVIDER_NAME)
+  }
+  if (opts.on_tool_approval !== undefined) {
+    option_ignored.emit('on_tool_approval', PROVIDER_NAME)
+  }
+  if (opts.tool_call_repair_attempts !== undefined) {
+    option_ignored.emit('tool_call_repair_attempts', PROVIDER_NAME)
+  }
+  if (opts.max_tool_calls_per_step !== undefined) {
+    option_ignored.emit('max_tool_calls_per_step', PROVIDER_NAME)
+  }
+}
+
+/**
+ * Reject requests the CLI cannot express: multi-turn user history (one user
+ * turn per invocation; continuation goes through `session_id`), and
+ * executable tools under `tool_bridge: 'forbid'`.
+ */
+function validate_request(
+  prompt: string | Message[],
+  tools_list: ReadonlyArray<Tool>,
+  tool_bridge: ToolBridgeMode,
+): void {
+  if (count_user_messages(prompt) >= 2) {
+    throw new provider_capability_error(
+      PROVIDER_NAME,
+      'multi_turn_history',
+      'use provider_options.claude_cli.session_id instead',
+    )
+  }
+  if (tools_list.length > 0 && tool_bridge === 'forbid') {
+    const has_execute = tools_list.some((t) => typeof t.execute === 'function')
+    if (has_execute) {
+      throw new provider_capability_error(
+        PROVIDER_NAME,
+        'tool_execute',
+        'tool_bridge is forbid; tools with execute closures cannot run under claude_cli',
+      )
+    }
+  }
+}
+
+/**
+ * Record which executable tools the allowlist-only bridge is dropping:
+ * their names still pass through `--allowedTools`, but their execute
+ * closures cannot run on this side of the subprocess boundary.
+ */
+function record_allowlist_only_drop(
+  tools_list: ReadonlyArray<Tool>,
+  tool_bridge: ToolBridgeMode,
+  trajectory: RunArgs['trajectory'],
+): void {
+  if (tools_list.length === 0 || tool_bridge !== 'allowlist_only' || trajectory === undefined) {
+    return
+  }
+  const dropped = tools_list
+    .filter((t) => typeof t.execute === 'function')
+    .map((t) => t.name)
+  trajectory.record({
+    kind: 'cli_tool_bridge_allowlist_only',
+    dropped,
+  })
+}
+
+/**
+ * Choose the JSON Schema string for `--json-schema`: a typed `opts.schema`
+ * compiles and wins; otherwise a raw `output_json_schema` string passes
+ * through verbatim.
+ */
+function resolve_compiled_schema<T>(
+  opts: GenerateOptions<T>,
+  call_opts: ClaudeCliCallOptions,
+): string | undefined {
+  if (opts.schema !== undefined) return compile_schema(opts.schema)
+  if (
+    typeof call_opts.output_json_schema === 'string' &&
+    call_opts.output_json_schema.length > 0
+  ) {
+    return call_opts.output_json_schema
+  }
+  return undefined
+}
+
+/**
+ * Wrap `opts.on_chunk` so sync and async callbacks dispatch the same way: a
+ * returned thenable is awaited, any other return is fire-and-done. Returns
+ * `undefined` when the caller isn't streaming, which downstream code uses
+ * as the streaming flag.
+ */
+function make_dispatch_chunk<T>(
+  opts: GenerateOptions<T>,
+): ((chunk: StreamChunk) => Promise<void>) | undefined {
+  if (opts.on_chunk === undefined) return undefined
+  return async (chunk: StreamChunk): Promise<void> => {
+    const maybe = opts.on_chunk?.(chunk)
+    if (maybe !== undefined && typeof maybe.then === 'function') {
+      await maybe
+    }
+  }
+}
+
+/**
+ * Create this call's AbortController, register it in the adapter's
+ * in-flight set (`dispose()` aborts everything still registered), and
+ * forward the caller's abort signal into it, including one already aborted.
+ * `unlink` undoes both and must run however generate settles, or the
+ * registry would pin settled calls alive.
+ */
+function link_caller_abort(
+  in_flight: Set<AbortController>,
+  caller_abort: AbortSignal | undefined,
+): { controller: AbortController; unlink: () => void } {
+  const controller = new AbortController()
+  in_flight.add(controller)
+  const on_caller_abort = (): void => {
+    controller.abort(caller_abort?.reason)
+  }
+  if (caller_abort !== undefined) {
+    if (caller_abort.aborted) controller.abort(caller_abort.reason)
+    else caller_abort.addEventListener('abort', on_caller_abort, { once: true })
+  }
+  return {
+    controller,
+    unlink: (): void => {
+      if (caller_abort !== undefined) {
+        caller_abort.removeEventListener('abort', on_caller_abort)
+      }
+      in_flight.delete(controller)
+    },
+  }
+}
+
+/**
+ * Open the generate span and the first step span before the CLI spawns, so
+ * their timing brackets the whole subprocess run.
+ */
+function open_spans<T>(
+  trajectory: RunArgs['trajectory'],
+  opts: GenerateOptions<T>,
+  resolved: ResolvedModel,
+  has_tools: boolean,
+  streaming: boolean,
+): GenerateSpans {
+  return {
+    generate: start_generate_span(trajectory, {
+      model: opts.model ?? resolved.model_id,
+      provider: PROVIDER_NAME,
+      model_id: resolved.model_id,
+      has_tools,
+      has_schema: opts.schema !== undefined,
+      streaming,
+    }),
+    first_step: start_step_span(trajectory, 0),
+  }
+}
+
+/**
+ * Failure message for schema validation that exhausted its repair budget.
+ * Zero names the opt-out explicitly so "repair disabled" reads differently
+ * from "repairs tried and failed".
+ */
+function repair_exhausted_message(max_repairs: number): string {
+  if (max_repairs === 0) {
+    return 'schema validation failed and repair is disabled (schema_repair_attempts: 0)'
+  }
+  return `schema validation failed after ${String(max_repairs)} repair attempt${max_repairs === 1 ? '' : 's'}`
+}
+
+/**
+ * Validate the CLI's final text against `schema`, re-invoking the CLI with
+ * a repair prompt on failure, up to `max_repairs` times.
+ *
+ * Each repair resumes the previous attempt's `session_id`, so a snapshot
+ * without one makes validation failure terminal immediately. The returned
+ * snapshot is the one the repair loop settled on; the result must be built
+ * from it, not from the first attempt's.
+ */
+async function parse_schema_with_repair<T>(
+  spawn_runtime: ReturnType<typeof create_spawn_runtime>,
+  base_args: RunArgs,
+  schema: ToolSchema<T>,
+  max_repairs: number,
+  first_parsed: ParsedStream,
+  trajectory: RunArgs['trajectory'],
+): Promise<{ parsed: ParsedStream; parsed_content: T }> {
+  let parsed = first_parsed
+  let repairs_done = 0
+  for (;;) {
+    const attempt = await parse_with_schema(schema, parsed.final_text)
+    if (attempt.ok) {
+      return { parsed, parsed_content: attempt.value }
+    }
+    record_schema_validation_failed(trajectory, {
+      attempt: repairs_done === 0 ? 'initial' : 'repair',
+      schema_issues: format_schema_issues(attempt.issues),
+      raw_text: parsed.final_text,
+    })
+    if (repairs_done >= max_repairs) {
+      throw new schema_validation_error(
+        repair_exhausted_message(max_repairs),
+        attempt.issues,
+        parsed.final_text,
+      )
+    }
+    const repair_session_id = parsed.session_id
+    if (repair_session_id === undefined) {
+      throw new schema_validation_error(
+        'schema validation failed and no session_id available for repair',
+        attempt.issues,
+        parsed.final_text,
+      )
+    }
+    const repair_outcome = await run_cli(spawn_runtime, {
+      ...base_args,
+      stdin_text: build_repair_prompt_text(attempt.issues),
+      call_opts: { ...base_args.call_opts, session_id: repair_session_id },
+    })
+    parsed = repair_outcome.parsed
+    repairs_done += 1
+  }
+}
+
+/**
+ * Resolve the call's final parse snapshot and validated content. Without a
+ * schema the first snapshot is final and content stays undefined; with one,
+ * the repair loop takes over.
+ */
+async function resolve_content<T>(
+  spawn_runtime: ReturnType<typeof create_spawn_runtime>,
+  base_args: RunArgs,
+  opts: GenerateOptions<T>,
+  first_parsed: ParsedStream,
+): Promise<{ parsed: ParsedStream; parsed_content: T | undefined }> {
+  if (opts.schema === undefined) {
+    return { parsed: first_parsed, parsed_content: undefined }
+  }
+  return parse_schema_with_repair(
+    spawn_runtime,
+    base_args,
+    opts.schema,
+    opts.schema_repair_attempts ?? 1,
+    first_parsed,
+    base_args.trajectory,
+  )
+}
+
+/**
+ * Assemble the `build_generate_result` input, attaching the schema and its
+ * validated value only when structured output was requested.
+ */
+function assemble_result<T>(
+  parsed: ParsedStream,
+  resolved: ResolvedModel,
+  schema: ToolSchema<T> | undefined,
+  parsed_content: T | undefined,
+): GenerateResult<T> {
+  return build_generate_result<T>({
+    parsed,
+    resolved,
+    ...(schema !== undefined ? { schema } : {}),
+    ...(parsed_content !== undefined ? { parsed_content } : {}),
+  })
+}
+
+/**
+ * Forward the CLI's per-turn provider-reported costs into the trajectory.
+ */
+function record_provider_costs(
+  trajectory: RunArgs['trajectory'],
+  steps: ReadonlyArray<StepRecord>,
+): void {
+  for (const step of steps) {
+    if (step.cost !== undefined) {
+      record_cost(trajectory, step.index, step.cost, 'provider_reported')
+    }
+  }
+}
+
+/**
+ * Close the eagerly-opened first step span against the steps the CLI
+ * reported, then emit paired open/close spans for steps 1..n; those arrive
+ * all at once on process close, so their spans carry usage, not timing.
+ * Clears `spans.first_step` so the error path cannot close it twice.
+ */
+function close_step_spans(
+  trajectory: RunArgs['trajectory'],
+  spans: GenerateSpans,
+  steps: ReadonlyArray<StepRecord>,
+): void {
+  if (steps.length === 0) {
+    end_step_span(trajectory, spans.first_step, {})
+    spans.first_step = undefined
+    return
+  }
+  const head = steps[0]
+  if (head !== undefined) {
+    end_step_span(trajectory, spans.first_step, {
+      usage: head.usage,
+      finish_reason: head.finish_reason,
+    })
+  }
+  spans.first_step = undefined
+  for (let i = 1; i < steps.length; i += 1) {
+    const s = steps[i]
+    if (s === undefined) continue
+    const id = start_step_span(trajectory, i)
+    end_step_span(trajectory, id, {
+      usage: s.usage,
+      finish_reason: s.finish_reason,
+    })
+  }
+}
+
+/**
+ * Emit the terminal `finish` chunk streaming callers expect; the CLI stream
+ * has no equivalent event, so it is synthesized from the final result.
+ */
+async function dispatch_finish<T>(
+  dispatch_chunk: ((chunk: StreamChunk) => Promise<void>) | undefined,
+  result: GenerateResult<T>,
+): Promise<void> {
+  if (dispatch_chunk === undefined) return
+  await dispatch_chunk({
+    kind: 'finish',
+    finish_reason: result.finish_reason,
+    usage: result.usage,
+  })
+}
+
+/**
+ * Close whatever spans are still open with the failure message. A failure
+ * after the step spans already closed (e.g. in the finish-chunk dispatch)
+ * closes only the generate span.
+ */
+function close_spans_on_error(
+  trajectory: RunArgs['trajectory'],
+  spans: GenerateSpans,
+  err: unknown,
+): void {
+  const message = err instanceof Error ? err.message : String(err)
+  if (spans.first_step !== undefined) {
+    end_step_span(trajectory, spans.first_step, { error: message })
+    spans.first_step = undefined
+  }
+  end_generate_span(trajectory, spans.generate, { error: message })
+}
+
 /**
  * Build a claude_cli `ExternalAgentAdapter` bound to one config.
  *
@@ -372,125 +741,47 @@ export function create_claude_cli_adapter(init: ProviderInit): ExternalAgentAdap
       // has to happen here instead.
       const trajectory = with_timestamps(opts.trajectory)
       const call_opts = extract_call_opts(opts)
-      const option_ignored = create_option_ignored_dedup(trajectory)
-
-      if (opts.max_steps !== undefined) {
-        option_ignored.emit('max_steps', PROVIDER_NAME)
-      }
-      if (opts.tool_error_policy !== undefined) {
-        option_ignored.emit('tool_error_policy', PROVIDER_NAME)
-      }
-      if (opts.on_tool_approval !== undefined) {
-        option_ignored.emit('on_tool_approval', PROVIDER_NAME)
-      }
-      if (opts.tool_call_repair_attempts !== undefined) {
-        option_ignored.emit('tool_call_repair_attempts', PROVIDER_NAME)
-      }
-      if (opts.max_tool_calls_per_step !== undefined) {
-        option_ignored.emit('max_tool_calls_per_step', PROVIDER_NAME)
-      }
-
-      const user_count = count_user_messages(opts.prompt)
-      if (user_count >= 2) {
-        throw new provider_capability_error(
-          PROVIDER_NAME,
-          'multi_turn_history',
-          'use provider_options.claude_cli.session_id instead',
-        )
-      }
+      emit_ignored_options(opts, trajectory)
 
       const tools_list: ReadonlyArray<Tool> = opts.tools ?? []
       const tool_bridge: ToolBridgeMode = call_opts.tool_bridge ?? 'allowlist_only'
-      if (tools_list.length > 0 && tool_bridge === 'forbid') {
-        const has_execute = tools_list.some((t) => typeof t.execute === 'function')
-        if (has_execute) {
-          throw new provider_capability_error(
-            PROVIDER_NAME,
-            'tool_execute',
-            'tool_bridge is forbid; tools with execute closures cannot run under claude_cli',
-          )
-        }
-      }
+      validate_request(opts.prompt, tools_list, tool_bridge)
 
-      const tool_names: string[] = tools_list.map((t) => t.name)
-      const merged_allowed_tools = merge_allowed_tools(call_opts.allowed_tools, tool_names)
-      if (tools_list.length > 0 && tool_bridge === 'allowlist_only' && trajectory !== undefined) {
-        const dropped = tools_list
-          .filter((t) => typeof t.execute === 'function')
-          .map((t) => t.name)
-        trajectory.record({
-          kind: 'cli_tool_bridge_allowlist_only',
-          dropped,
-        })
-      }
+      const merged_allowed_tools = merge_allowed_tools(
+        call_opts.allowed_tools,
+        tools_list.map((t) => t.name),
+      )
+      record_allowlist_only_drop(tools_list, tool_bridge, trajectory)
 
-      let compiled_schema: string | undefined
-      if (opts.schema !== undefined) {
-        compiled_schema = compile_schema(opts.schema)
-      } else if (
-        typeof call_opts.output_json_schema === 'string' &&
-        call_opts.output_json_schema.length > 0
-      ) {
-        compiled_schema = call_opts.output_json_schema
-      }
-
-      const system_from_prompt = extract_system_text(opts.prompt)
       const merged_system = merge_system(
-        opts.system ?? system_from_prompt,
+        opts.system ?? extract_system_text(opts.prompt),
         call_opts.append_system_prompt,
       )
-
-      const stdin_text = extract_prompt_text(opts.prompt)
-
       const env = build_env(config, call_opts.env, resolved_auth_mode)
       Object.assign(env, effort_env_for_claude_cli(opts.effort))
-
       const sandbox_plan = build_sandbox_plan(resolved_binary, config.sandbox)
+      const dispatch_chunk = make_dispatch_chunk(opts)
 
-      const cwd = config.default_cwd
-      const dispatch_chunk =
-        opts.on_chunk !== undefined
-          ? async (chunk: StreamChunk): Promise<void> => {
-              const maybe = opts.on_chunk?.(chunk)
-              if (maybe !== undefined && typeof maybe.then === 'function') {
-                await maybe
-              }
-            }
-          : undefined
-
-      const controller = new AbortController()
-      in_flight.add(controller)
-
-      const caller_abort = opts.abort
-      const on_caller_abort = (): void => {
-        controller.abort(caller_abort?.reason)
-      }
-      if (caller_abort !== undefined) {
-        if (caller_abort.aborted) controller.abort(caller_abort.reason)
-        else caller_abort.addEventListener('abort', on_caller_abort, { once: true })
-      }
-
-      const generate_span = start_generate_span(trajectory, {
-        model: opts.model ?? resolved.model_id,
-        provider: PROVIDER_NAME,
-        model_id: resolved.model_id,
-        has_tools: tools_list.length > 0,
-        has_schema: opts.schema !== undefined,
-        streaming: dispatch_chunk !== undefined,
-      })
-      let first_step_span: string | undefined = start_step_span(trajectory, 0)
+      const { controller, unlink } = link_caller_abort(in_flight, opts.abort)
+      const spans = open_spans(
+        trajectory,
+        opts,
+        resolved,
+        tools_list.length > 0,
+        dispatch_chunk !== undefined,
+      )
 
       const base_args: RunArgs = {
         model_id: resolved.model_id,
-        stdin_text,
+        stdin_text: extract_prompt_text(opts.prompt),
         merged_system,
         merged_allowed_tools,
         call_opts,
-        compiled_schema,
+        compiled_schema: resolve_compiled_schema(opts, call_opts),
         env,
         spawn_cmd: sandbox_plan.spawn_cmd,
         prefix_args: sandbox_plan.prefix_args,
-        cwd,
+        cwd: config.default_cwd,
         startup_timeout_ms: resolved_startup_timeout,
         stall_timeout_ms: resolved_stall_timeout,
         abort: controller.signal,
@@ -500,126 +791,29 @@ export function create_claude_cli_adapter(init: ProviderInit): ExternalAgentAdap
 
       try {
         const first_outcome = await run_cli(spawn_runtime, base_args)
-        let parsed = first_outcome.parsed
+        const { parsed, parsed_content } = await resolve_content(
+          spawn_runtime,
+          base_args,
+          opts,
+          first_outcome.parsed,
+        )
 
-        let parsed_content: T | undefined
-        if (opts.schema !== undefined) {
-          const max_repairs = opts.schema_repair_attempts ?? 1
-          let repairs_done = 0
-          for (;;) {
-            const attempt = await parse_with_schema(opts.schema, parsed.final_text)
-            if (attempt.ok) {
-              parsed_content = attempt.value
-              break
-            }
-            record_schema_validation_failed(trajectory, {
-              attempt: repairs_done === 0 ? 'initial' : 'repair',
-              schema_issues: format_schema_issues(attempt.issues),
-              raw_text: parsed.final_text,
-            })
-            if (repairs_done >= max_repairs) {
-              throw new schema_validation_error(
-                max_repairs === 0
-                  ? 'schema validation failed and repair is disabled (schema_repair_attempts: 0)'
-                  : `schema validation failed after ${String(max_repairs)} repair attempt${max_repairs === 1 ? '' : 's'}`,
-                attempt.issues,
-                parsed.final_text,
-              )
-            }
-            const repair_session_id = parsed.session_id
-            if (repair_session_id === undefined) {
-              throw new schema_validation_error(
-                'schema validation failed and no session_id available for repair',
-                attempt.issues,
-                parsed.final_text,
-              )
-            }
-            const repair_call_opts: ClaudeCliCallOptions = {
-              ...call_opts,
-              session_id: repair_session_id,
-            }
-            const repair_outcome = await run_cli(spawn_runtime, {
-              ...base_args,
-              stdin_text: build_repair_prompt_text(attempt.issues),
-              call_opts: repair_call_opts,
-            })
-            parsed = repair_outcome.parsed
-            repairs_done += 1
-          }
-        }
-
-
-        const result_input: {
-          parsed: typeof parsed
-          resolved: ResolvedModel
-          schema?: typeof opts.schema
-          parsed_content?: T
-        } = {
-          parsed,
-          resolved,
-        }
-        if (opts.schema !== undefined) result_input.schema = opts.schema
-        if (parsed_content !== undefined) result_input.parsed_content = parsed_content
-
-        const result = build_generate_result<T>(result_input)
-
-        for (const step of result.steps) {
-          if (step.cost !== undefined) {
-            record_cost(trajectory, step.index, step.cost, 'provider_reported')
-          }
-        }
-
-        if (result.steps.length > 0) {
-          const head = result.steps[0]
-          if (head !== undefined) {
-            end_step_span(trajectory, first_step_span, {
-              usage: head.usage,
-              finish_reason: head.finish_reason,
-            })
-          }
-          first_step_span = undefined
-          for (let i = 1; i < result.steps.length; i += 1) {
-            const s = result.steps[i]
-            if (s === undefined) continue
-            const id = start_step_span(trajectory, i)
-            end_step_span(trajectory, id, {
-              usage: s.usage,
-              finish_reason: s.finish_reason,
-            })
-          }
-        } else {
-          end_step_span(trajectory, first_step_span, {})
-          first_step_span = undefined
-        }
-
-        end_generate_span(trajectory, generate_span, {
+        const result = assemble_result<T>(parsed, resolved, opts.schema, parsed_content)
+        record_provider_costs(trajectory, result.steps)
+        close_step_spans(trajectory, spans, result.steps)
+        end_generate_span(trajectory, spans.generate, {
           usage: result.usage,
           finish_reason: result.finish_reason,
           model_resolved: result.model_resolved,
         })
-
-        if (dispatch_chunk !== undefined) {
-          await dispatch_chunk({
-            kind: 'finish',
-            finish_reason: result.finish_reason,
-            usage: result.usage,
-          })
-        }
+        await dispatch_finish(dispatch_chunk, result)
 
         return result
       } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : String(err)
-        if (first_step_span !== undefined) {
-          end_step_span(trajectory, first_step_span, { error: message })
-          first_step_span = undefined
-        }
-        end_generate_span(trajectory, generate_span, { error: message })
+        close_spans_on_error(trajectory, spans, err)
         throw err
       } finally {
-        if (caller_abort !== undefined) {
-          caller_abort.removeEventListener('abort', on_caller_abort)
-        }
-        in_flight.delete(controller)
+        unlink()
       }
     },
     async dispose(): Promise<void> {
