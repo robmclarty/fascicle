@@ -15,11 +15,9 @@ import {
 } from '../bench.js'
 import { bench_suspend_error } from '../errors.js'
 import { judge_equals, judge_with } from '../judges.js'
+import { remove_signal_listeners } from '../../../test/fixtures/signal_listeners.js'
 
-afterEach(() => {
-  for (const l of process.listeners('SIGINT')) process.off('SIGINT', l)
-  for (const l of process.listeners('SIGTERM')) process.off('SIGTERM', l)
-})
+afterEach(remove_signal_listeners)
 
 const double = step('double', (n: number) => n * 2)
 

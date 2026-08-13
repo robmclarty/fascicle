@@ -2,34 +2,16 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { aborted_error, run } from '#core'
-import type { RunContext, TrajectoryEvent, TrajectoryLogger } from '#core'
+import type { RunContext } from '#core'
 import type { Engine, GenerateOptions, GenerateResult } from '#engine'
 import { afterEach, describe, expect, it } from 'vitest'
 import { z } from 'zod'
 import { define_agent } from '../define_agent.js'
+import { recording_logger } from '../../../test/fixtures/trajectory.js'
+import { remove_signal_listeners } from '../../../test/fixtures/signal_listeners.js'
 
 function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
-}
-
-function recording_logger(): { logger: TrajectoryLogger; events: TrajectoryEvent[] } {
-  const events: TrajectoryEvent[] = []
-  let id = 0
-  const logger: TrajectoryLogger = {
-    record: (event) => {
-      events.push(event)
-    },
-    start_span: (name, meta) => {
-      id += 1
-      const span_id = `span_${id}`
-      events.push({ kind: 'span_start', span_id, name, ...meta })
-      return span_id
-    },
-    end_span: (span_id, meta) => {
-      events.push({ kind: 'span_end', span_id, ...meta })
-    },
-  }
-  return { logger, events }
 }
 
 type CapturedCall = {
@@ -82,10 +64,7 @@ async function with_tmp_md(
 }
 
 describe('define_agent', () => {
-  afterEach(() => {
-    for (const l of process.listeners('SIGINT')) process.off('SIGINT', l)
-    for (const l of process.listeners('SIGTERM')) process.off('SIGTERM', l)
-  })
+  afterEach(remove_signal_listeners)
 
   it('parses frontmatter and substitutes {{name}} placeholders into the user prompt', async () => {
     await with_tmp_md(

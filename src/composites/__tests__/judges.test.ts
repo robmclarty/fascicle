@@ -12,11 +12,9 @@ import {
   parse_score,
   render_prompt,
 } from '../judges.js'
+import { remove_signal_listeners } from '../../../test/fixtures/signal_listeners.js'
 
-afterEach(() => {
-  for (const l of process.listeners('SIGINT')) process.off('SIGINT', l)
-  for (const l of process.listeners('SIGTERM')) process.off('SIGTERM', l)
-})
+afterEach(remove_signal_listeners)
 
 const zero_fn = (): number => 0
 

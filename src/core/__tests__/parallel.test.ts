@@ -5,37 +5,15 @@ import { parallel } from '../parallel.js'
 import { run } from '../runner.js'
 import { step } from '../step.js'
 import { suspend } from '../suspend.js'
-import type { TrajectoryEvent, TrajectoryLogger } from '../types.js'
+import { recording_logger } from '../../../test/fixtures/trajectory.js'
+import { remove_signal_listeners } from '../../../test/fixtures/signal_listeners.js'
 
 function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-function recording_logger(): { logger: TrajectoryLogger; events: TrajectoryEvent[] } {
-  const events: TrajectoryEvent[] = []
-  let id = 0
-  const logger: TrajectoryLogger = {
-    record: (event) => {
-      events.push(event)
-    },
-    start_span: (name, meta) => {
-      id += 1
-      const span_id = `span_${id}`
-      events.push({ kind: 'span_start', span_id, name, ...meta })
-      return span_id
-    },
-    end_span: (span_id, meta) => {
-      events.push({ kind: 'span_end', span_id, ...meta })
-    },
-  }
-  return { logger, events }
-}
-
 describe('parallel', () => {
-  afterEach(() => {
-    for (const l of process.listeners('SIGINT')) process.off('SIGINT', l)
-    for (const l of process.listeners('SIGTERM')) process.off('SIGTERM', l)
-  })
+  afterEach(remove_signal_listeners)
 
   it('runs two children concurrently (spec §10 test 3)', async () => {
     const flow = parallel({

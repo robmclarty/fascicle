@@ -1,37 +1,15 @@
 import { aborted_error, run, step } from '#core'
-import type { TrajectoryEvent, TrajectoryLogger } from '#core'
 import { afterEach, describe, expect, it } from 'vitest'
 import { consensus } from '../consensus.js'
+import { recording_logger } from '../../../test/fixtures/trajectory.js'
+import { remove_signal_listeners } from '../../../test/fixtures/signal_listeners.js'
 
 function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-function recording_logger(): { logger: TrajectoryLogger; events: TrajectoryEvent[] } {
-  const events: TrajectoryEvent[] = []
-  let id = 0
-  const logger: TrajectoryLogger = {
-    record: (event) => {
-      events.push(event)
-    },
-    start_span: (name, meta) => {
-      id += 1
-      const span_id = `span_${id}`
-      events.push({ kind: 'span_start', span_id, name, ...meta })
-      return span_id
-    },
-    end_span: (span_id, meta) => {
-      events.push({ kind: 'span_end', span_id, ...meta })
-    },
-  }
-  return { logger, events }
-}
-
 describe('consensus (composite)', () => {
-  afterEach(() => {
-    for (const l of process.listeners('SIGINT')) process.off('SIGINT', l)
-    for (const l of process.listeners('SIGTERM')) process.off('SIGTERM', l)
-  })
+  afterEach(remove_signal_listeners)
 
   it('converges when members agree on round 2 (spec §10 test 12)', async () => {
     let round = 0

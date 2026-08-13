@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { aborted_error } from '../errors.js'
 import { run } from '../runner.js'
 import { step } from '../step.js'
+import { remove_signal_listeners } from '../../../test/fixtures/signal_listeners.js'
 
 async function wait(ms: number): Promise<void> {
   return new Promise((resolve) => {
@@ -10,14 +11,7 @@ async function wait(ms: number): Promise<void> {
 }
 
 describe('run()', () => {
-  afterEach(() => {
-    for (const listener of process.listeners('SIGINT')) {
-      process.off('SIGINT', listener)
-    }
-    for (const listener of process.listeners('SIGTERM')) {
-      process.off('SIGTERM', listener)
-    }
-  })
+  afterEach(remove_signal_listeners)
 
   it('resolves an atomic step to its output', async () => {
     await expect(run(step('id', (x: number) => x + 1), 1)).resolves.toBe(2)

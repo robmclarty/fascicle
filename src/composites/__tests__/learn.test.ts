@@ -2,29 +2,11 @@ import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { aborted_error, describe as describe_flow, run, step } from '#core'
-import type { TrajectoryEvent, TrajectoryLogger } from '#core'
+import type { TrajectoryEvent } from '#core'
 import { afterEach, describe, expect, it } from 'vitest'
 import { learn, type LearnInput } from '../learn.js'
-
-function recording_logger(): { logger: TrajectoryLogger; events: TrajectoryEvent[] } {
-  const events: TrajectoryEvent[] = []
-  let id = 0
-  const logger: TrajectoryLogger = {
-    record: (event) => {
-      events.push(event)
-    },
-    start_span: (name, meta) => {
-      id += 1
-      const span_id = `span_${id}`
-      events.push({ kind: 'span_start', span_id, name, ...meta })
-      return span_id
-    },
-    end_span: (span_id, meta) => {
-      events.push({ kind: 'span_end', span_id, ...meta })
-    },
-  }
-  return { logger, events }
-}
+import { recording_logger } from '../../../test/fixtures/trajectory.js'
+import { remove_signal_listeners } from '../../../test/fixtures/signal_listeners.js'
 
 function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
@@ -33,10 +15,7 @@ function wait(ms: number): Promise<void> {
 const trivial_flow = step('trivial', (x: unknown) => x)
 
 describe('learn (composite)', () => {
-  afterEach(() => {
-    for (const l of process.listeners('SIGINT')) process.off('SIGINT', l)
-    for (const l of process.listeners('SIGTERM')) process.off('SIGTERM', l)
-  })
+  afterEach(remove_signal_listeners)
 
   it('forwards LearnInput to the analyzer with flow_description, events, and prior', async () => {
     let captured: LearnInput | undefined

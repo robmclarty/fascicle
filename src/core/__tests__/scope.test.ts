@@ -3,12 +3,10 @@ import { aborted_error } from '../errors.js'
 import { run } from '../runner.js'
 import { scope, stash, use } from '../scope.js'
 import { step } from '../step.js'
+import { remove_signal_listeners } from '../../../test/fixtures/signal_listeners.js'
 
 describe('scope / stash / use', () => {
-  afterEach(() => {
-    for (const l of process.listeners('SIGINT')) process.off('SIGINT', l)
-    for (const l of process.listeners('SIGTERM')) process.off('SIGTERM', l)
-  })
+  afterEach(remove_signal_listeners)
 
   it('reads two stashed values via a terminal use (criterion 16)', async () => {
     const flow = scope([
