@@ -44,6 +44,7 @@ import {
   turn_timeout_error,
 } from './errors.js'
 import { format_schema_issues } from '#schema'
+import type { TrajectoryLogger } from '#core'
 import { merge_provider_options } from './merge_defaults.js'
 import { FREE_PROVIDERS, pricing_key } from './pricing.js'
 import { parse_retry_after, retry_with_policy } from './retry.js'
@@ -70,9 +71,11 @@ import {
   type InvokeOnce,
   type InvokeOnceArgs,
   type InvokeOnceResult,
+  type ToolLoopConfig,
 } from './tool_loop.js'
 import { missing_peer_error } from './providers/types.js'
 import type {
+  AiSdkProviderAdapter,
   NativeProviderAdapter,
   ProviderAdapter,
 } from './providers/types.js'
@@ -453,6 +456,492 @@ function build_native_invoke(cfg: NativeInvokeConfig): InvokeOnce {
 }
 
 /**
+ * Resolve the provider name: per-call, then the engine default, then the sole
+ * configured adapter, then 'anthropic'.
+ */
+function resolve_provider<T>(
+  opts_in: GenerateOptions<T>,
+  engine: EngineInternals,
+): string {
+  const sole_provider =
+    engine.adapters.size === 1 ? [...engine.adapters.keys()][0] : undefined
+  return opts_in.provider ?? engine.default_provider ?? sole_provider ?? 'anthropic'
+}
+
+/**
+ * Resolve the model/provider pair for one call and freeze the resolved
+ * options view.
+ *
+ * The model must resolve (per-call, then engine default) or the call cannot
+ * proceed. Engine-default provider_options merge under per-call ones here so
+ * every transport downstream sees a single already-merged view instead of
+ * re-merging per branch.
+ */
+function resolve_target<T>(
+  opts_in: GenerateOptions<T>,
+  engine: EngineInternals,
+): { opts: GenerateOptions<T>; target: ResolvedModel } {
+  const resolved_model = opts_in.model ?? engine.default_model
+  if (resolved_model === undefined) throw new model_required_error()
+  const resolved_provider = resolve_provider(opts_in, engine)
+
+  const merged_provider_options = merge_provider_options(
+    engine.default_provider_options,
+    opts_in.provider_options,
+  )
+
+  const opts: GenerateOptions<T> = {
+    ...opts_in,
+    model: resolved_model,
+    provider: resolved_provider,
+  }
+  if (opts_in.system === undefined && engine.default_system !== undefined) {
+    opts.system = engine.default_system
+  }
+  if (merged_provider_options !== undefined) {
+    opts.provider_options = merged_provider_options
+  }
+  return {
+    opts,
+    target: { provider: resolved_provider, model_id: resolved_model },
+  }
+}
+
+/**
+ * Reject a call that uses a capability the resolved adapter does not
+ * implement. Checked up front, before any transport work, so the failure is a
+ * typed capability error rather than a mid-call provider rejection.
+ */
+function assert_capabilities<T>(
+  adapter: AiSdkProviderAdapter | NativeProviderAdapter,
+  provider: string,
+  opts: GenerateOptions<T>,
+  tools_list: ReadonlyArray<Tool>,
+  on_chunk_provided: boolean,
+): void {
+  if (opts.schema !== undefined && !adapter.supports('schema')) {
+    throw new provider_capability_error(provider, 'schema')
+  }
+  if (tools_list.length > 0 && !adapter.supports('tools')) {
+    throw new provider_capability_error(provider, 'tools')
+  }
+  if (on_chunk_provided && !adapter.supports('streaming')) {
+    throw new provider_capability_error(provider, 'streaming')
+  }
+}
+
+type TurnConfig = {
+  readonly effort: EffortLevel
+  readonly retry_policy: RetryPolicy
+  readonly turn_timeout_ms: number | undefined
+}
+
+/**
+ * Resolve the per-turn knobs (effort, retry policy, turn timeout) against
+ * engine defaults. Validated here, before any transport is built, so a bad
+ * budget fails as a config error, never as a spurious timeout.
+ */
+function resolve_turn_config<T>(
+  opts: GenerateOptions<T>,
+  engine: EngineInternals,
+): TurnConfig {
+  const effort: EffortLevel = opts.effort ?? engine.default_effort
+  const retry_policy = opts.retry ?? engine.default_retry
+  const turn_timeout_ms = opts.turn_timeout_ms ?? engine.default_turn_timeout_ms
+  if (turn_timeout_ms !== undefined && turn_timeout_ms <= 0) {
+    // A zero/negative budget would fire the deadline before the request even
+    // starts; reject rather than silently disable or hang.
+    throw new engine_config_error('turn_timeout_ms must be > 0')
+  }
+  return { effort, retry_policy, turn_timeout_ms }
+}
+
+type LoopLimits = {
+  readonly max_steps: number
+  readonly tool_error_policy: 'feed_back' | 'throw'
+  readonly schema_repair_attempts: number
+  readonly salvage_budget: { remaining: number } | undefined
+  readonly max_tool_calls_per_step: number | undefined
+}
+
+/**
+ * Resolve the tool-call salvage budget. Returned as a holder rather than a
+ * count: one holder per generate call so schema-repair re-invocations of the
+ * loop cannot refill the salvage budget. undefined disables salvage.
+ */
+function resolve_salvage_budget<T>(
+  opts: GenerateOptions<T>,
+  engine: EngineInternals,
+): { remaining: number } | undefined {
+  const tool_call_repair_attempts =
+    opts.tool_call_repair_attempts ?? engine.default_tool_call_repair_attempts ?? 0
+  if (tool_call_repair_attempts < 0) {
+    throw new engine_config_error('tool_call_repair_attempts must be >= 0')
+  }
+  return tool_call_repair_attempts > 0
+    ? { remaining: tool_call_repair_attempts }
+    : undefined
+}
+
+/**
+ * Resolve the loop-level limits and policies against engine defaults,
+ * rejecting configurations the tool loop cannot honor.
+ */
+function resolve_loop_limits<T>(
+  opts: GenerateOptions<T>,
+  engine: EngineInternals,
+): LoopLimits {
+  const max_steps = opts.max_steps ?? engine.default_max_steps
+  const tool_error_policy =
+    // Stryker disable next-line StringLiteral: run_tool_loop treats any non-'throw' policy as feed_back, so '' and 'feed_back' resolve to identical behavior.
+    opts.tool_error_policy ?? engine.default_tool_error_policy ?? 'feed_back'
+  const schema_repair_attempts =
+    opts.schema_repair_attempts ?? engine.default_schema_repair_attempts ?? 1
+  const salvage_budget = resolve_salvage_budget(opts, engine)
+  const max_tool_calls_per_step =
+    opts.max_tool_calls_per_step ?? engine.default_max_tool_calls_per_step
+  if (max_tool_calls_per_step !== undefined && max_tool_calls_per_step < 1) {
+    // A cap of 0 would drop every call and strand the loop in its stop
+    // branch with orphaned records; reject rather than guess.
+    throw new engine_config_error('max_tool_calls_per_step must be >= 1')
+  }
+  return {
+    max_steps,
+    tool_error_policy,
+    schema_repair_attempts,
+    salvage_budget,
+    max_tool_calls_per_step,
+  }
+}
+
+type AiSdkTransportConfig<T> = {
+  readonly adapter: AiSdkProviderAdapter
+  readonly target: ResolvedModel
+  readonly opts: GenerateOptions<T>
+  readonly effort: EffortLevel
+  readonly retry_policy: RetryPolicy
+  readonly turn_timeout_ms: number | undefined
+  readonly dispatcher: ChunkDispatcher
+  readonly tools_list: ReadonlyArray<Tool>
+  readonly trajectory: TrajectoryLogger | undefined
+  readonly telemetry: AiSdkTelemetrySettings | undefined
+}
+
+/**
+ * Build the ai_sdk-transport InvokeOnce for one call: translate effort, merge
+ * provider options, load the SDK seam, and wrap it in the engine-owned retry
+ * via build_ai_sdk_invoke.
+ */
+async function build_ai_sdk_transport<T>(
+  cfg: AiSdkTransportConfig<T>,
+): Promise<InvokeOnce> {
+  const { adapter, opts, effort } = cfg
+  const effort_translation = adapter.translate_effort(effort)
+  // Stryker disable next-line LogicalOperator,StringLiteral: no adapter reports effort_ignored for effort 'none', so && vs || and 'none' vs '' cannot change whether this records (the ConditionalExpression twins are covered by the effort tests).
+  if (effort !== 'none' && effort_translation.effort_ignored) {
+    record_effort_ignored(cfg.trajectory, cfg.target.model_id)
+  }
+  // Effort translation is the lowest-precedence layer; engine defaults and
+  // per-call provider_options (already merged into opts.provider_options, with
+  // per-call winning) override it. Without this merge the user's provider_options
+  // were computed then dropped, a silent no-op for every provider.
+  const combined_provider_options = merge_provider_options(
+    effort_translation.provider_options,
+    opts.provider_options,
+  )
+  const provider_options =
+    combined_provider_options !== undefined &&
+    Object.keys(combined_provider_options).length > 0
+      ? combined_provider_options
+      : undefined
+
+  // All SDK specifics (message/tool mapping, Output.object structured-output
+  // gating, the generateText/streamText call) live behind create_ai_sdk_turn;
+  // this builder only threads resolved options through the seam.
+  //
+  // Imported here rather than at the top of the file because that static edge
+  // was the one thing that made `ai` mandatory for every consumer: loading it
+  // inside the ai_sdk branch keeps it off the graph of a native-transport
+  // install. The module resolves once per process and is cached thereafter,
+  // so the cost falls on the first ai_sdk call only. On failure this rethrows
+  // via missing_peer_error naming `ai` (the peer this module's own static
+  // `from 'ai'` import reaches for), not a raw module-resolution error
+  // naming this local path.
+  let ai_sdk_invoke_mod: typeof import('./providers/ai_sdk/invoke.js')
+  try {
+    ai_sdk_invoke_mod = await import('./providers/ai_sdk/invoke.js')
+  } catch (err: unknown) {
+    throw missing_peer_error('ai', err)
+  }
+  const { create_ai_sdk_turn } = ai_sdk_invoke_mod
+  return build_ai_sdk_invoke({
+    invoke_turn: create_ai_sdk_turn({
+      adapter,
+      model_id: cfg.target.model_id,
+      dispatcher: cfg.dispatcher,
+      tools: cfg.tools_list,
+      schema: opts.schema,
+      // The merge produces the two-level per-provider shape the seam
+      // declares; the merged value is typed loosely upstream.
+      // eslint-disable-next-line typescript-eslint/no-unsafe-type-assertion
+      provider_options: provider_options as AiSdkTurnConfig['provider_options'],
+      temperature: opts.temperature,
+      max_tokens: opts.max_tokens,
+      top_p: opts.top_p,
+      telemetry: cfg.telemetry,
+    }),
+    retry_policy: cfg.retry_policy,
+    turn_timeout_ms: cfg.turn_timeout_ms,
+  })
+}
+
+/**
+ * Build the message list one generate call starts from. When a schema is set,
+ * the JSON-only instruction folds into the existing system message (or is
+ * prepended as one) so the model sees it exactly once, wherever the system
+ * prompt came from.
+ */
+function build_prompt_messages<T>(opts: GenerateOptions<T>): Message[] {
+  const schema_prefix =
+    opts.schema !== undefined
+      ? 'You must respond with a single JSON value that conforms to the expected schema. Return ONLY the JSON value, with no markdown or commentary.'
+      : undefined
+  const initial_messages = build_initial_messages(opts)
+  if (schema_prefix !== undefined) {
+    const idx = initial_messages.findIndex((m) => m.role === 'system')
+    if (idx >= 0) {
+      const sys = initial_messages[idx]
+      // Stryker disable next-line OptionalChaining: sys is initial_messages[idx] at a found index, so it is always a defined system Message; sys.role and sys?.role read identically.
+      if (sys?.role === 'system') {
+        initial_messages[idx] = {
+          role: 'system',
+          content: `${sys.content}\n\n${schema_prefix}`,
+        }
+      }
+    } else {
+      initial_messages.unshift({ role: 'system', content: schema_prefix })
+    }
+  }
+  return initial_messages
+}
+
+type LoopConfigInputs<T> = {
+  readonly opts: GenerateOptions<T>
+  readonly target: ResolvedModel
+  readonly pricing: PricingTable
+  readonly invoke_once: InvokeOnce
+  readonly messages: Message[]
+  readonly tools_list: ReadonlyArray<Tool>
+  readonly trajectory: TrajectoryLogger | undefined
+  readonly dispatcher: ChunkDispatcher
+  readonly on_chunk_provided: boolean
+  readonly limits: LoopLimits
+}
+
+/**
+ * Assemble the ToolLoopConfig base shared by every loop invocation of one
+ * generate call. Everything here is per-call state: the mutable transcript,
+ * the pricing lookup, and the pricing_missing dedup all live for exactly one
+ * call, which is what lets schema-repair re-invocations share them. The
+ * conditional spreads keep optional fields absent rather than undefined for
+ * exactOptionalPropertyTypes.
+ */
+function build_loop_config<T>(
+  cfg: LoopConfigInputs<T>,
+): Omit<ToolLoopConfig, 'step_index_start'> {
+  const { opts, target, limits } = cfg
+  const abort = opts.abort ?? new AbortController().signal
+  const resolve_pricing = (): Pricing | undefined => {
+    return cfg.pricing[pricing_key(target.provider, target.model_id)]
+  }
+  const dispatch_chunk =
+    cfg.on_chunk_provided
+      ? async (chunk: StreamChunk): Promise<void> => {
+          await cfg.dispatcher.dispatch(chunk)
+        }
+      : undefined
+  return {
+    invoke_once: cfg.invoke_once,
+    messages: cfg.messages,
+    tools: cfg.tools_list,
+    max_steps: limits.max_steps,
+    tool_error_policy: limits.tool_error_policy,
+    abort,
+    on_tool_approval: opts.on_tool_approval,
+    trajectory: cfg.trajectory,
+    stream: cfg.on_chunk_provided,
+    dispatch_chunk,
+    provider: target.provider,
+    model_id: target.model_id,
+    resolve_pricing,
+    pricing_dedup: create_pricing_missing_dedup(cfg.trajectory),
+    ...(limits.salvage_budget !== undefined
+      ? { salvage_budget: limits.salvage_budget }
+      : {}),
+    ...(limits.max_tool_calls_per_step !== undefined
+      ? { max_tool_calls_per_step: limits.max_tool_calls_per_step }
+      : {}),
+    ...(opts.prepare_step !== undefined ? { prepare_step: opts.prepare_step } : {}),
+  }
+}
+
+type SchemaStepConfig<T> = {
+  readonly schema: NonNullable<GenerateOptions<T>['schema']>
+  readonly text: string
+  readonly trajectory: TrajectoryLogger | undefined
+  readonly attempt: 'initial' | 'repair'
+  readonly can_repair: boolean
+}
+
+type SchemaStepOutcome<T> =
+  | { readonly parsed: { readonly value: T } }
+  | { readonly repair_message: Message }
+
+/**
+ * One schema-validation pass over the loop's final text. A successful parse
+ * returns the value in a holder (a schema can legitimately validate to
+ * undefined, which must stay distinguishable from "nothing parsed"). A failed
+ * parse records the trajectory event first, then either throws (`can_repair`
+ * false: the repair or step budget is spent) or hands back the repair message
+ * to append before re-invoking the loop.
+ */
+async function parse_schema_step<T>(
+  cfg: SchemaStepConfig<T>,
+): Promise<SchemaStepOutcome<T>> {
+  const parse = await parse_with_schema(cfg.schema, cfg.text)
+  if (parse.ok) return { parsed: { value: parse.value } }
+  record_schema_validation_failed(cfg.trajectory, {
+    attempt: cfg.attempt,
+    schema_issues: format_schema_issues(parse.issues),
+    raw_text: cfg.text,
+  })
+  if (!cfg.can_repair) throw_schema_validation(parse.issues, cfg.text)
+  return { repair_message: build_repair_message(parse.issues) }
+}
+
+type GenerateLoopConfig<T> = {
+  readonly base: Omit<ToolLoopConfig, 'step_index_start'>
+  readonly schema: GenerateOptions<T>['schema']
+  readonly schema_repair_attempts: number
+}
+
+type GenerateLoopOutcome<T> = {
+  readonly steps: GenerateResult<T>['steps']
+  readonly tool_calls: GenerateResult<T>['tool_calls']
+  readonly text: string
+  readonly finish_reason: FinishReason
+  readonly content_parsed: { value: T } | undefined
+}
+
+/**
+ * Drive run_tool_loop to a final answer, re-invoking it for schema repair.
+ *
+ * Without a schema this is a single loop invocation. With one, the final text
+ * must parse: a non-'stop' finish reason means no validated value can exist
+ * (a content filter, the token limit, the step cap), so this throws
+ * incomplete_generation_error rather than returning unchecked text; a failed
+ * parse appends the repair message to the shared transcript and re-enters the
+ * loop until the response parses, repair attempts run out, or max_steps is
+ * reached. step_index_start advances by the accumulated step count so step
+ * indices stay call-global across re-invocations.
+ */
+async function run_generate_loop<T>(
+  cfg: GenerateLoopConfig<T>,
+): Promise<GenerateLoopOutcome<T>> {
+  const { base, schema } = cfg
+  const steps_accum: GenerateResult<T>['steps'] = []
+  const tool_calls_accum: GenerateResult<T>['tool_calls'] = []
+  // Stryker disable next-line StringLiteral: text is overwritten by loop_result.text on the first (guaranteed) loop iteration before it is ever read.
+  let text = ''
+  // Stryker disable next-line StringLiteral: finish_reason is overwritten by loop_result.finish_reason before it is read.
+  let finish_reason: FinishReason = 'stop'
+  let repair_remaining = cfg.schema_repair_attempts
+  // A holder rather than a bare `T | undefined`: a schema can legitimately
+  // validate to undefined (a `.transform()` or `.catch()` that returns it), and
+  // that has to stay distinguishable from "nothing parsed".
+  let content_parsed: { value: T } | undefined
+
+  while (true) {
+    const loop_result = await run_tool_loop({
+      ...base,
+      step_index_start: steps_accum.length,
+    })
+    for (const s of loop_result.steps) steps_accum.push(s)
+    for (const tc of loop_result.tool_calls) tool_calls_accum.push(tc)
+    text = loop_result.text
+    finish_reason = loop_result.finish_reason
+
+    if (schema === undefined) break
+    if (finish_reason !== 'stop') {
+      throw new incomplete_generation_error(
+        finish_reason,
+        text,
+        last_provider_reported(steps_accum),
+      )
+    }
+    const schema_step = await parse_schema_step<T>({
+      schema,
+      text,
+      trajectory: base.trajectory,
+      attempt: repair_remaining === cfg.schema_repair_attempts ? 'initial' : 'repair',
+      can_repair: repair_remaining > 0 && steps_accum.length < base.max_steps,
+    })
+    if ('parsed' in schema_step) {
+      content_parsed = schema_step.parsed
+      break
+    }
+    repair_remaining -= 1
+    base.messages.push(schema_step.repair_message)
+  }
+
+  return {
+    steps: steps_accum,
+    tool_calls: tool_calls_accum,
+    text,
+    finish_reason,
+    content_parsed,
+  }
+}
+
+/**
+ * Fold the loop outcome into the caller-facing GenerateResult: usage and cost
+ * aggregate across every step (schema-repair re-invocations included), the
+ * content is the parsed holder's value when a schema ran, and cost /
+ * provider_reported attach only when a step actually reported them.
+ */
+function assemble_result<T>(
+  outcome: GenerateLoopOutcome<T>,
+  target: ResolvedModel,
+): GenerateResult<T> {
+  const aggregated_usage = sum_usage(outcome.steps)
+  const aggregated_cost = aggregate_cost(outcome.steps, target.provider)
+
+  let final_content: T
+  if (outcome.content_parsed !== undefined) {
+    final_content = outcome.content_parsed.value
+  } else {
+    // No schema, so there is nothing to validate and the raw text is the
+    // content. A schema call cannot arrive here: the loop either filled the
+    // holder or threw.
+    // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion
+    final_content = outcome.text as T
+  }
+
+  const result: GenerateResult<T> = {
+    content: final_content,
+    tool_calls: outcome.tool_calls,
+    steps: outcome.steps,
+    usage: aggregated_usage,
+    finish_reason: outcome.finish_reason,
+    model_resolved: { provider: target.provider, model_id: target.model_id },
+  }
+  if (aggregated_cost !== undefined) result.cost = aggregated_cost
+  const aggregated_reported = last_provider_reported(outcome.steps)
+  if (aggregated_reported !== undefined) result.provider_reported = aggregated_reported
+  return result
+}
+
+/**
  * Resolve a `generate` call's options against engine defaults, run the tool
  * loop, and return the aggregated result.
  *
@@ -480,31 +969,7 @@ export async function generate<T = string>(
     throw new aborted_error('aborted', { reason: opts_in.abort.reason })
   }
 
-  const resolved_model = opts_in.model ?? engine.default_model
-  if (resolved_model === undefined) throw new model_required_error()
-  const sole_provider =
-    engine.adapters.size === 1 ? [...engine.adapters.keys()][0] : undefined
-  const resolved_provider =
-    opts_in.provider ?? engine.default_provider ?? sole_provider ?? 'anthropic'
-
-  const merged_provider_options = merge_provider_options(
-    engine.default_provider_options,
-    opts_in.provider_options,
-  )
-
-  const opts: GenerateOptions<T> = {
-    ...opts_in,
-    model: resolved_model,
-    provider: resolved_provider,
-  }
-  if (opts_in.system === undefined && engine.default_system !== undefined) {
-    opts.system = engine.default_system
-  }
-  if (merged_provider_options !== undefined) {
-    opts.provider_options = merged_provider_options
-  }
-
-  const target: ResolvedModel = { provider: resolved_provider, model_id: resolved_model }
+  const { opts, target } = resolve_target(opts_in, engine)
 
   const adapter = engine.adapters.get(target.provider)
   if (adapter === undefined) {
@@ -522,84 +987,24 @@ export async function generate<T = string>(
   const on_chunk_provided = opts.on_chunk !== undefined
   const tools_list: ReadonlyArray<Tool> = opts.tools ?? []
 
-  if (opts.schema !== undefined && !adapter.supports('schema')) {
-    throw new provider_capability_error(target.provider, 'schema')
-  }
-  if (tools_list.length > 0 && !adapter.supports('tools')) {
-    throw new provider_capability_error(target.provider, 'tools')
-  }
-  if (on_chunk_provided && !adapter.supports('streaming')) {
-    throw new provider_capability_error(target.provider, 'streaming')
-  }
+  assert_capabilities(adapter, target.provider, opts, tools_list, on_chunk_provided)
 
-  const effort: EffortLevel = opts.effort ?? engine.default_effort
-  const retry_policy = opts.retry ?? engine.default_retry
-  const turn_timeout_ms = opts.turn_timeout_ms ?? engine.default_turn_timeout_ms
-  if (turn_timeout_ms !== undefined && turn_timeout_ms <= 0) {
-    // A zero/negative budget would fire the deadline before the request even
-    // starts; reject rather than silently disable or hang.
-    throw new engine_config_error('turn_timeout_ms must be > 0')
-  }
+  const turn = resolve_turn_config(opts, engine)
   const dispatcher = create_chunk_dispatcher(opts.on_chunk)
 
   let invoke_once: InvokeOnce
   if (adapter.kind === 'ai_sdk') {
-    const effort_translation = adapter.translate_effort(effort)
-    // Stryker disable next-line LogicalOperator,StringLiteral: no adapter reports effort_ignored for effort 'none', so && vs || and 'none' vs '' cannot change whether this records (the ConditionalExpression twins are covered by the effort tests).
-    if (effort !== 'none' && effort_translation.effort_ignored) {
-      record_effort_ignored(trajectory, target.model_id)
-    }
-    // Effort translation is the lowest-precedence layer; engine defaults and
-    // per-call provider_options (already merged into opts.provider_options, with
-    // per-call winning) override it. Without this merge the user's provider_options
-    // were computed then dropped, a silent no-op for every provider.
-    const combined_provider_options = merge_provider_options(
-      effort_translation.provider_options,
-      opts.provider_options,
-    )
-    const provider_options =
-      combined_provider_options !== undefined &&
-      Object.keys(combined_provider_options).length > 0
-        ? combined_provider_options
-        : undefined
-
-    // All SDK specifics (message/tool mapping, Output.object structured-output
-    // gating, the generateText/streamText call) live behind create_ai_sdk_turn;
-    // this branch only threads resolved options through the seam.
-    //
-    // Imported here rather than at the top of the file because that static edge
-    // was the one thing that made `ai` mandatory for every consumer: loading it
-    // inside the ai_sdk branch keeps it off the graph of a native-transport
-    // install. The module resolves once per process and is cached thereafter,
-    // so the cost falls on the first ai_sdk call only. On failure this rethrows
-    // via missing_peer_error naming `ai` (the peer this module's own static
-    // `from 'ai'` import reaches for), not a raw module-resolution error
-    // naming this local path.
-    let ai_sdk_invoke_mod: typeof import('./providers/ai_sdk/invoke.js')
-    try {
-      ai_sdk_invoke_mod = await import('./providers/ai_sdk/invoke.js')
-    } catch (err: unknown) {
-      throw missing_peer_error('ai', err)
-    }
-    const { create_ai_sdk_turn } = ai_sdk_invoke_mod
-    invoke_once = build_ai_sdk_invoke({
-      invoke_turn: create_ai_sdk_turn({
-        adapter,
-        model_id: target.model_id,
-        dispatcher,
-        tools: tools_list,
-        schema: opts.schema,
-        // The merge produces the two-level per-provider shape the seam
-        // declares; the merged value is typed loosely upstream.
-        // eslint-disable-next-line typescript-eslint/no-unsafe-type-assertion
-        provider_options: provider_options as AiSdkTurnConfig['provider_options'],
-        temperature: opts.temperature,
-        max_tokens: opts.max_tokens,
-        top_p: opts.top_p,
-        telemetry: engine.default_ai_sdk_telemetry,
-      }),
-      retry_policy,
-      turn_timeout_ms,
+    invoke_once = await build_ai_sdk_transport({
+      adapter,
+      target,
+      opts,
+      effort: turn.effort,
+      retry_policy: turn.retry_policy,
+      turn_timeout_ms: turn.turn_timeout_ms,
+      dispatcher,
+      tools_list,
+      trajectory,
+      telemetry: engine.default_ai_sdk_telemetry,
     })
   } else {
     // No effort translation here: a native adapter receives the resolved
@@ -608,10 +1013,10 @@ export async function generate<T = string>(
     invoke_once = build_native_invoke({
       adapter,
       model_id: target.model_id,
-      retry_policy,
-      turn_timeout_ms,
+      retry_policy: turn.retry_policy,
+      turn_timeout_ms: turn.turn_timeout_ms,
       dispatcher,
-      effort,
+      effort: turn.effort,
       schema: opts.schema,
       // The merge produces the two-level per-provider shape TurnRequest
       // declares; GenerateOptions types it loosely as Record<string, unknown>.
@@ -623,49 +1028,11 @@ export async function generate<T = string>(
     })
   }
 
-  const abort = opts.abort ?? new AbortController().signal
-  const max_steps = opts.max_steps ?? engine.default_max_steps
-  const tool_error_policy =
-    // Stryker disable next-line StringLiteral: run_tool_loop treats any non-'throw' policy as feed_back, so '' and 'feed_back' resolve to identical behavior.
-    opts.tool_error_policy ?? engine.default_tool_error_policy ?? 'feed_back'
-  const schema_repair_attempts =
-    opts.schema_repair_attempts ?? engine.default_schema_repair_attempts ?? 1
-  const tool_call_repair_attempts =
-    opts.tool_call_repair_attempts ?? engine.default_tool_call_repair_attempts ?? 0
-  if (tool_call_repair_attempts < 0) {
-    throw new engine_config_error('tool_call_repair_attempts must be >= 0')
-  }
-  const max_tool_calls_per_step =
-    opts.max_tool_calls_per_step ?? engine.default_max_tool_calls_per_step
-  if (max_tool_calls_per_step !== undefined && max_tool_calls_per_step < 1) {
-    // A cap of 0 would drop every call and strand the loop in its stop
-    // branch with orphaned records; reject rather than guess.
-    throw new engine_config_error('max_tool_calls_per_step must be >= 1')
-  }
-
-  const schema_prefix =
-    opts.schema !== undefined
-      ? 'You must respond with a single JSON value that conforms to the expected schema. Return ONLY the JSON value, with no markdown or commentary.'
-      : undefined
-  const initial_messages = build_initial_messages(opts)
-  if (schema_prefix !== undefined) {
-    const idx = initial_messages.findIndex((m) => m.role === 'system')
-    if (idx >= 0) {
-      const sys = initial_messages[idx]
-      // Stryker disable next-line OptionalChaining: sys is initial_messages[idx] at a found index, so it is always a defined system Message; sys.role and sys?.role read identically.
-      if (sys?.role === 'system') {
-        initial_messages[idx] = {
-          role: 'system',
-          content: `${sys.content}\n\n${schema_prefix}`,
-        }
-      }
-    } else {
-      initial_messages.unshift({ role: 'system', content: schema_prefix })
-    }
-  }
+  const limits = resolve_loop_limits(opts, engine)
+  const initial_messages = build_prompt_messages(opts)
 
   const generate_span = start_generate_span(trajectory, {
-    model: resolved_model,
+    model: target.model_id,
     provider: target.provider,
     model_id: target.model_id,
     has_tools: tools_list.length > 0,
@@ -673,129 +1040,38 @@ export async function generate<T = string>(
     streaming: on_chunk_provided,
   })
 
-  const pricing_dedup = create_pricing_missing_dedup(trajectory)
-
-  const resolve_pricing = (): Pricing | undefined => {
-    return engine.pricing[pricing_key(target.provider, target.model_id)]
-  }
-
-  const dispatch_chunk =
-    on_chunk_provided
-      ? async (chunk: StreamChunk): Promise<void> => {
-          await dispatcher.dispatch(chunk)
-        }
-      : undefined
-
-  const messages_mutable: Message[] = [...initial_messages]
-  let total_steps = 0
-  const steps_accum: GenerateResult<T>['steps'] = []
-  const tool_calls_accum: GenerateResult<T>['tool_calls'] = []
-  // Stryker disable next-line StringLiteral: text is overwritten by loop_result.text on the first (guaranteed) loop iteration before it is ever read.
-  let text = ''
-  // Stryker disable next-line StringLiteral: finish_reason is overwritten by loop_result.finish_reason before it is read.
-  let finish_reason: FinishReason = 'stop'
-  let repair_remaining = schema_repair_attempts
-  // A holder rather than a bare `T | undefined`: a schema can legitimately
-  // validate to undefined (a `.transform()` or `.catch()` that returns it), and
-  // that has to stay distinguishable from "nothing parsed".
-  let content_parsed: { value: T } | undefined
-  // One holder per generate call so schema-repair re-invocations of the loop
-  // cannot refill the salvage budget.
-  const salvage_budget =
-    tool_call_repair_attempts > 0 ? { remaining: tool_call_repair_attempts } : undefined
+  const base = build_loop_config({
+    opts,
+    target,
+    pricing: engine.pricing,
+    invoke_once,
+    messages: [...initial_messages],
+    tools_list,
+    trajectory,
+    dispatcher,
+    on_chunk_provided,
+    limits,
+  })
 
   try {
-    while (true) {
-      const loop_result = await run_tool_loop({
-        invoke_once,
-        messages: messages_mutable,
-        tools: tools_list,
-        max_steps,
-        step_index_start: total_steps,
-        tool_error_policy,
-        abort,
-        on_tool_approval: opts.on_tool_approval,
-        trajectory,
-        stream: on_chunk_provided,
-        dispatch_chunk,
-        provider: target.provider,
-        model_id: target.model_id,
-        resolve_pricing,
-        pricing_dedup,
-        ...(salvage_budget !== undefined ? { salvage_budget } : {}),
-        ...(max_tool_calls_per_step !== undefined ? { max_tool_calls_per_step } : {}),
-        ...(opts.prepare_step !== undefined ? { prepare_step: opts.prepare_step } : {}),
-      })
-
-      for (const s of loop_result.steps) steps_accum.push(s)
-      for (const tc of loop_result.tool_calls) tool_calls_accum.push(tc)
-      total_steps = steps_accum.length
-      text = loop_result.text
-      finish_reason = loop_result.finish_reason
-
-      if (opts.schema === undefined) break
-      if (finish_reason !== 'stop') {
-        throw new incomplete_generation_error(
-          finish_reason,
-          text,
-          last_provider_reported(steps_accum),
-        )
-      }
-
-      const parse = await parse_with_schema(opts.schema, text)
-      if (parse.ok) {
-        content_parsed = { value: parse.value }
-        break
-      }
-      record_schema_validation_failed(trajectory, {
-        attempt: repair_remaining === schema_repair_attempts ? 'initial' : 'repair',
-        schema_issues: format_schema_issues(parse.issues),
-        raw_text: text,
-      })
-      if (repair_remaining <= 0 || total_steps >= max_steps) {
-        throw_schema_validation(parse.issues, text)
-      }
-      repair_remaining -= 1
-      messages_mutable.push(build_repair_message(parse.issues))
-    }
-
-    const aggregated_usage = sum_usage(steps_accum)
-    const aggregated_cost = aggregate_cost(steps_accum, target.provider)
-
-    let final_content: T
-    if (content_parsed !== undefined) {
-      final_content = content_parsed.value
-    } else {
-      // No schema, so there is nothing to validate and the raw text is the
-      // content. A schema call cannot arrive here: the loop either filled the
-      // holder or threw.
-      // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion
-      final_content = text as T
-    }
-
-    const result: GenerateResult<T> = {
-      content: final_content,
-      tool_calls: tool_calls_accum,
-      steps: steps_accum,
-      usage: aggregated_usage,
-      finish_reason,
-      model_resolved: { provider: target.provider, model_id: target.model_id },
-    }
-    if (aggregated_cost !== undefined) result.cost = aggregated_cost
-    const aggregated_reported = last_provider_reported(steps_accum)
-    if (aggregated_reported !== undefined) result.provider_reported = aggregated_reported
+    const outcome = await run_generate_loop<T>({
+      base,
+      schema: opts.schema,
+      schema_repair_attempts: limits.schema_repair_attempts,
+    })
+    const result = assemble_result(outcome, target)
 
     if (on_chunk_provided) {
       await dispatcher.dispatch({
         kind: 'finish',
-        finish_reason,
-        usage: aggregated_usage,
+        finish_reason: outcome.finish_reason,
+        usage: result.usage,
       })
     }
 
     end_generate_span(trajectory, generate_span, {
-      usage: aggregated_usage,
-      finish_reason,
+      usage: result.usage,
+      finish_reason: outcome.finish_reason,
       model_resolved: result.model_resolved,
     })
     return result
