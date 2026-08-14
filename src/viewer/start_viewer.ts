@@ -59,25 +59,22 @@ export async function start_viewer(options: StartViewerOptions = {}): Promise<Vi
     })
   }
 
-  return wrap_handle(server, tail, host, port)
+  return wrap_handle(server, tail, host)
 }
 
 /**
  * Combines the server and optional tail into a single `ViewerHandle`.
  *
  * `close` stops the tail first, then closes the server, mirroring the
- * startup order (server first, tail second) in reverse.
+ * startup order (server first, tail second) in reverse. The port is read
+ * back from `server.url` rather than the requested `port` option, since
+ * a caller that passes `0` gets whatever port the OS actually bound.
  */
-function wrap_handle(
-  server: ViewerServer,
-  tail: Tail | null,
-  host: string,
-  port: number,
-): ViewerHandle {
+function wrap_handle(server: ViewerServer, tail: Tail | null, host: string): ViewerHandle {
   return {
     url: server.url,
     host,
-    port,
+    port: Number(new URL(server.url).port),
     close: async () => {
       if (tail) tail.stop()
       await server.close()
