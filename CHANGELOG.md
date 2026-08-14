@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.11.1 — 2026-08-13
+
+### Fixed
+- Broke an import cycle between the viewer CLI and its barrel module.
+
+### Internal
+- Reduced complexity across the engine, core, composites, and adapter layers by decomposing large functions (provider dispatch, tool-loop orchestration, generate, retry, native-provider streaming, and more) to clear the health complexity gate.
+- Removed dead exports, types, and duplicate re-exports surfaced by dead-code analysis; extracted shared test and trajectory-logger scaffolding to cut duplication.
+- Health's complexity metric (CRAP) now reads real test coverage instead of an estimate; closed the viewer CLI's coverage gap with new in-process tests and retired the mutation-testing excludes that existed only because those files were untested.
+- Scoped health complexity checks to production source only, de-flaked a claude_cli timing test, and tuned fallow/lint config.
+
 ## v0.11.0 — 2026-08-12
 
 ### Changed
