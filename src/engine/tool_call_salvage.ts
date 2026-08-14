@@ -61,6 +61,39 @@ const FENCE_RE = /```([^\n]*)\n([\s\S]*?)```/g
 const EMPTY_BLOCK_RE = /<tool_call>\s*<\/tool_call>/g
 
 /**
+ * From `open` at an opening quote, return the index of the matching closing
+ * quote, honoring backslash escapes. Returns `text.length` for an unterminated
+ * string, so the caller's scan runs off the end and yields no object.
+ */
+function skip_json_string(text: string, open: number): number {
+  let escaped = false
+  for (let i = open + 1; i < text.length; i += 1) {
+    const ch = text[i]
+    if (escaped) escaped = false
+    else if (ch === '\\') escaped = true
+    else if (ch === '"') return i
+  }
+  return text.length
+}
+
+/**
+ * Parse `text.slice(start, end)` as JSON, pairing the value with `end`, or
+ * `undefined` when the slice is not valid JSON. JSON.parse is the sole
+ * semantic authority; the scanner only fixed the extent.
+ */
+function parse_json_extent(
+  text: string,
+  start: number,
+  end: number,
+): { value: unknown; end: number } | undefined {
+  try {
+    return { value: JSON.parse(text.slice(start, end)), end }
+  } catch {
+    return undefined
+  }
+}
+
+/**
  * Find the extent of one balanced JSON object starting at `start_index`
  * (which must point at `{`), respecting strings and escapes so braces inside
  * string values do not affect the depth count. The scanner only finds the
@@ -72,30 +105,15 @@ export function scan_balanced_json(
 ): { value: unknown; end: number } | undefined {
   if (text[start_index] !== '{') return undefined
   let depth = 0
-  let in_string = false
-  let escaped = false
   for (let i = start_index; i < text.length; i += 1) {
     const ch = text[i]
-    if (in_string) {
-      if (escaped) escaped = false
-      else if (ch === '\\') escaped = true
-      else if (ch === '"') in_string = false
-      continue
-    }
     if (ch === '"') {
-      in_string = true
+      i = skip_json_string(text, i)
     } else if (ch === '{') {
       depth += 1
     } else if (ch === '}') {
       depth -= 1
-      if (depth === 0) {
-        const end = i + 1
-        try {
-          return { value: JSON.parse(text.slice(start_index, end)), end }
-        } catch {
-          return undefined
-        }
-      }
+      if (depth === 0) return parse_json_extent(text, start_index, i + 1)
     }
   }
   return undefined
@@ -180,6 +198,40 @@ function scan_qwen_functions(inner_start: number, inner: string): Candidate[] {
 }
 
 /**
+ * Parse a hermes `<tool_call>{...}</tool_call>` payload into a candidate. The
+ * block's whole extent (`span`) is used so a later strip removes the wrapper
+ * too. Returns `undefined` when the inner object is not call-shaped.
+ */
+function scan_hermes_block(text: string, inner_start: number, span: Span): Candidate | undefined {
+  const brace = text.indexOf('{', inner_start)
+  const scanned = brace === -1 ? undefined : scan_balanced_json(text, brace)
+  const shaped = scanned === undefined ? undefined : call_shape(scanned.value)
+  if (shaped === undefined) return undefined
+  return { name: shaped.name, args: shaped.args, format: 'hermes', span }
+}
+
+/**
+ * Parse one located `<tool_call>` block's inner content into candidates,
+ * dispatching on whether it opens with a qwen `<function=` tag or a hermes
+ * `{` object.
+ */
+function scan_block_candidates(
+  text: string,
+  inner_start: number,
+  close: number,
+  span: Span,
+): Candidate[] {
+  const inner = text.slice(inner_start, close)
+  const trimmed = inner.trim()
+  if (trimmed.startsWith('<function=')) return scan_qwen_functions(inner_start, inner)
+  if (trimmed.startsWith('{')) {
+    const candidate = scan_hermes_block(text, inner_start, span)
+    return candidate === undefined ? [] : [candidate]
+  }
+  return []
+}
+
+/**
  * Scan `<tool_call>` blocks for hermes and qwen_xml candidates.
  *
  * Every block extent (accepted, rejected, or unterminated) is returned as a
@@ -200,25 +252,10 @@ function scan_tool_call_blocks(text: string): { candidates: Candidate[]; masks: 
       break
     }
     const block_end = close + TOOL_CALL_CLOSE.length
-    masks.push({ start: open, end: block_end })
+    const span: Span = { start: open, end: block_end }
+    masks.push(span)
     const inner_start = open + TOOL_CALL_OPEN.length
-    const inner = text.slice(inner_start, close)
-    const trimmed = inner.trim()
-    if (trimmed.startsWith('<function=')) {
-      candidates.push(...scan_qwen_functions(inner_start, inner))
-    } else if (trimmed.startsWith('{')) {
-      const brace = text.indexOf('{', inner_start)
-      const scanned = brace === -1 ? undefined : scan_balanced_json(text, brace)
-      const shaped = scanned === undefined ? undefined : call_shape(scanned.value)
-      if (shaped !== undefined) {
-        candidates.push({
-          name: shaped.name,
-          args: shaped.args,
-          format: 'hermes',
-          span: { start: open, end: block_end },
-        })
-      }
-    }
+    candidates.push(...scan_block_candidates(text, inner_start, close, span))
     pos = block_end
   }
   return { candidates, masks }

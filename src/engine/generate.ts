@@ -137,6 +137,72 @@ export function split_leading_system_messages(messages: ReadonlyArray<Message>):
   return split_leading_system_run(messages, (m) => m.content)
 }
 
+const RETRY_CLASSIFIED_KINDS = new Set(['rate_limit', 'provider_5xx', 'network', 'timeout'])
+const NETWORK_ERROR_CODES = new Set(['ECONNRESET', 'ETIMEDOUT', 'ENOTFOUND', 'ECONNREFUSED'])
+
+/**
+ * True when `err` already carries a `kind` this layer treats as retryable, so
+ * the classifier passes it through untouched.
+ */
+function has_retry_kind(err: object): boolean {
+  const kind = Reflect.get(err, 'kind')
+  return typeof kind === 'string' && RETRY_CLASSIFIED_KINDS.has(kind)
+}
+
+/**
+ * Read the HTTP status off either `statusCode` or `status`, in that order.
+ */
+function resolve_error_status(err: object): number | undefined {
+  const status = Reflect.get(err, 'statusCode')
+  if (typeof status === 'number') return status
+  const status_alt = Reflect.get(err, 'status')
+  return typeof status_alt === 'number' ? status_alt : undefined
+}
+
+/**
+ * Copy the error's `message` onto a classification record when it is a string,
+ * returning the same record for chaining.
+ */
+function with_error_message(
+  err: object,
+  out: Record<string, unknown>,
+): Record<string, unknown> {
+  const message = Reflect.get(err, 'message')
+  if (typeof message === 'string') out['message'] = message
+  return out
+}
+
+/**
+ * Parse a `Retry-After` value off the error's `responseHeaders`, if present.
+ */
+function retry_after_from_error(err: object): number | undefined {
+  const headers = Reflect.get(err, 'responseHeaders')
+  if (headers === null || typeof headers !== 'object') return undefined
+  const hv = Reflect.get(headers, 'retry-after')
+  return typeof hv === 'string' ? parse_retry_after(hv) : undefined
+}
+
+/**
+ * Build the `rate_limit` classification for a 429, attaching the message and a
+ * parsed `Retry-After` when either is present.
+ */
+function classify_rate_limit(err: object): Record<string, unknown> {
+  const out = with_error_message(err, { kind: 'rate_limit', status: 429 })
+  const retry_after_ms = retry_after_from_error(err)
+  if (retry_after_ms !== undefined) out['retry_after_ms'] = retry_after_ms
+  return out
+}
+
+/**
+ * Build the `network` classification when `err.code` is a known network error
+ * code, or `undefined` when it is not.
+ */
+function classify_network_error(err: object): Record<string, unknown> | undefined {
+  const code = Reflect.get(err, 'code')
+  if (typeof code !== 'string' || !NETWORK_ERROR_CODES.has(code)) return undefined
+  return with_error_message(err, { kind: 'network' })
+}
+
 /**
  * Classify a thrown provider error into the shape `retry_with_policy`
  * understands.
@@ -150,57 +216,13 @@ export function split_leading_system_messages(messages: ReadonlyArray<Message>):
  */
 export function classify_provider_error(err: unknown): unknown {
   if (err === null || typeof err !== 'object') return err
-  // Already-classified shape: pass through.
-  const existing_kind = Reflect.get(err, 'kind')
-  if (
-    typeof existing_kind === 'string' &&
-    (existing_kind === 'rate_limit' ||
-      existing_kind === 'provider_5xx' ||
-      existing_kind === 'network' ||
-      existing_kind === 'timeout')
-  ) {
-    return err
+  if (has_retry_kind(err)) return err
+  const status = resolve_error_status(err)
+  if (status === 429) return classify_rate_limit(err)
+  if (status !== undefined && status >= 500 && status < 600) {
+    return with_error_message(err, { kind: 'provider_5xx', status })
   }
-  const status = Reflect.get(err, 'statusCode')
-  const status_alt = Reflect.get(err, 'status')
-  const resolved_status =
-    typeof status === 'number'
-      ? status
-      : typeof status_alt === 'number'
-        ? status_alt
-        : undefined
-  if (resolved_status === 429) {
-    const headers = Reflect.get(err, 'responseHeaders')
-    let retry_after_ms: number | undefined
-    if (headers !== null && typeof headers === 'object') {
-      const hv = Reflect.get(headers, 'retry-after')
-      if (typeof hv === 'string') retry_after_ms = parse_retry_after(hv)
-    }
-    const message = Reflect.get(err, 'message')
-    const out: Record<string, unknown> = { kind: 'rate_limit', status: 429 }
-    if (typeof message === 'string') out['message'] = message
-    if (retry_after_ms !== undefined) out['retry_after_ms'] = retry_after_ms
-    return out
-  }
-  if (resolved_status !== undefined && resolved_status >= 500 && resolved_status < 600) {
-    const message = Reflect.get(err, 'message')
-    const out: Record<string, unknown> = { kind: 'provider_5xx', status: resolved_status }
-    if (typeof message === 'string') out['message'] = message
-    return out
-  }
-  const code = Reflect.get(err, 'code')
-  if (
-    code === 'ECONNRESET' ||
-    code === 'ETIMEDOUT' ||
-    code === 'ENOTFOUND' ||
-    code === 'ECONNREFUSED'
-  ) {
-    const message = Reflect.get(err, 'message')
-    const out: Record<string, unknown> = { kind: 'network' }
-    if (typeof message === 'string') out['message'] = message
-    return out
-  }
-  return err
+  return classify_network_error(err) ?? err
 }
 
 type AiSdkInvokeConfig = {

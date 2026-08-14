@@ -211,6 +211,47 @@ function read_number(err: object, key: string): number | undefined {
 }
 
 /**
+ * Assemble the `rate_limit` retryable shape, copying the optional
+ * `retry_after_ms`, `status`, and `message` fields when each is present.
+ */
+function build_retryable_rate_limit(err: object): RetryableError {
+  const base: RetryableError = { kind: 'rate_limit' }
+  const retry_after = read_number(err, 'retry_after_ms')
+  if (retry_after !== undefined) base.retry_after_ms = retry_after
+  const status = read_number(err, 'status')
+  if (status !== undefined) base.status = status
+  const message = read_string(err, 'message')
+  if (message !== undefined) base.message = message
+  return base
+}
+
+/**
+ * Assemble the `provider_5xx` retryable shape, copying the optional `status`,
+ * `body`, and `message` fields when each is present.
+ */
+function build_retryable_5xx(err: object): RetryableError {
+  const base: RetryableError = { kind: 'provider_5xx' }
+  const status = read_number(err, 'status')
+  if (status !== undefined) base.status = status
+  const body = read_string(err, 'body')
+  if (body !== undefined) base.body = body
+  const message = read_string(err, 'message')
+  if (message !== undefined) base.message = message
+  return base
+}
+
+/**
+ * Assemble a `network` or `timeout` retryable shape, copying the optional
+ * `message` when present.
+ */
+function build_retryable_signal(err: object, kind: 'network' | 'timeout'): RetryableError {
+  const base: RetryableError = { kind }
+  const message = read_string(err, 'message')
+  if (message !== undefined) base.message = message
+  return base
+}
+
+/**
  * Classify a thrown value into a `RetryableError`, or `undefined` if it
  * does not carry one of the recognized retryable `kind`s.
  *
@@ -221,31 +262,8 @@ function read_number(err: object, key: string): number | undefined {
 function classify_retryable(err: unknown): RetryableError | undefined {
   if (err === null || typeof err !== 'object') return undefined
   const kind = read_string(err, 'kind')
-  if (kind === 'rate_limit') {
-    const base: RetryableError = { kind: 'rate_limit' }
-    const retry_after = read_number(err, 'retry_after_ms')
-    if (retry_after !== undefined) base.retry_after_ms = retry_after
-    const status = read_number(err, 'status')
-    if (status !== undefined) base.status = status
-    const message = read_string(err, 'message')
-    if (message !== undefined) base.message = message
-    return base
-  }
-  if (kind === 'provider_5xx') {
-    const base: RetryableError = { kind: 'provider_5xx' }
-    const status = read_number(err, 'status')
-    if (status !== undefined) base.status = status
-    const body = read_string(err, 'body')
-    if (body !== undefined) base.body = body
-    const message = read_string(err, 'message')
-    if (message !== undefined) base.message = message
-    return base
-  }
-  if (kind === 'network' || kind === 'timeout') {
-    const base: RetryableError = { kind }
-    const message = read_string(err, 'message')
-    if (message !== undefined) base.message = message
-    return base
-  }
+  if (kind === 'rate_limit') return build_retryable_rate_limit(err)
+  if (kind === 'provider_5xx') return build_retryable_5xx(err)
+  if (kind === 'network' || kind === 'timeout') return build_retryable_signal(err, kind)
   return undefined
 }
