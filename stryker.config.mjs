@@ -20,11 +20,7 @@ export default {
     '!src/**/*.spec.ts',
     '!src/**/test/**',
     '!src/**/__tests__/**',
-    // CLI entry points: process/argv/IO glue, exercised by running the binary,
-    // not by unit tests. Mutating them only yields no-coverage noise.
-    '!src/viewer/cli.ts',
-    '!src/viewer/start_viewer.ts',
-    // Same reasoning: process glue (stdin/stdout/exit) exercised by the
+    // CLI entry point: process glue (stdin/stdout/exit) exercised by the
     // spawn-based contract tests in src/stdio/__tests__/e2e/, not unit tests.
     '!src/stdio/run_stdio.ts',
   ],
