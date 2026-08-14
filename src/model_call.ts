@@ -15,7 +15,7 @@
 
 import { createHash } from 'node:crypto'
 import { aborted_error, step } from '#core'
-import type { Step, TrajectoryLogger } from '#core'
+import type { RunContext, Step, TrajectoryLogger } from '#core'
 import type {
   EffortLevel,
   Engine,
@@ -116,6 +116,47 @@ function stable_signature(input: {
 }
 
 /**
+ * Copy `value` onto `target[key]` only when it is defined, so an absent optional
+ * config field leaves the key off `GenerateOptions` rather than present-as-undefined.
+ */
+function assign_if_present<T, K extends keyof T>(target: T, key: K, value: T[K]): void {
+  if (value !== undefined) target[key] = value
+}
+
+/**
+ * Translate `cfg` into a `GenerateOptions`, folding each supplied optional field
+ * in via `assign_if_present`. `tools` (spread to a fresh array) and
+ * `retry_policy` (renamed to `retry`) are the two fields that do not copy
+ * straight across and stay explicit; the rest map name-for-name.
+ */
+function build_generate_options<T>(
+  cfg: ModelCallConfig<T>,
+  prompt: Message[],
+  ctx: RunContext,
+): GenerateOptions<T> {
+  const opts: GenerateOptions<T> = {
+    prompt,
+    abort: ctx.abort,
+    trajectory: engine_trajectory(ctx.trajectory, ctx.parent_span_id),
+  }
+  assign_if_present(opts, 'model', cfg.model)
+  assign_if_present(opts, 'provider', cfg.provider)
+  assign_if_present(opts, 'system', cfg.system)
+  if (cfg.tools !== undefined) opts.tools = [...cfg.tools]
+  assign_if_present(opts, 'schema', cfg.schema)
+  assign_if_present(opts, 'effort', cfg.effort)
+  assign_if_present(opts, 'max_steps', cfg.max_steps)
+  assign_if_present(opts, 'provider_options', cfg.provider_options)
+  if (cfg.retry_policy !== undefined) opts.retry = cfg.retry_policy
+  assign_if_present(opts, 'tool_error_policy', cfg.tool_error_policy)
+  assign_if_present(opts, 'schema_repair_attempts', cfg.schema_repair_attempts)
+  assign_if_present(opts, 'tool_call_repair_attempts', cfg.tool_call_repair_attempts)
+  assign_if_present(opts, 'max_tool_calls_per_step', cfg.max_tool_calls_per_step)
+  assign_if_present(opts, 'on_tool_approval', cfg.on_tool_approval)
+  return opts
+}
+
+/**
  * Build a `Step` that calls `cfg.engine.generate` with `cfg` translated into
  * `GenerateOptions`.
  *
@@ -161,38 +202,14 @@ export function model_call<T = string>(
         step_index: 0,
       })
     }
-  
+
     const prompt: Message[] =
       typeof input === 'string'
         ? [{ role: 'user', content: [{ type: 'text', text: input }] }]
         : [...input]
-  
-    const opts: GenerateOptions<T> = {
-      prompt,
-      abort: ctx.abort,
-      trajectory: engine_trajectory(ctx.trajectory, ctx.parent_span_id),
-    }
-    if (cfg.model !== undefined) opts.model = cfg.model
-    if (cfg.provider !== undefined) opts.provider = cfg.provider
-    if (cfg.system !== undefined) opts.system = cfg.system
-    if (cfg.tools !== undefined) opts.tools = [...cfg.tools]
-    if (cfg.schema !== undefined) opts.schema = cfg.schema
-    if (cfg.effort !== undefined) opts.effort = cfg.effort
-    if (cfg.max_steps !== undefined) opts.max_steps = cfg.max_steps
-    if (cfg.provider_options !== undefined) opts.provider_options = cfg.provider_options
-    if (cfg.retry_policy !== undefined) opts.retry = cfg.retry_policy
-    if (cfg.tool_error_policy !== undefined) opts.tool_error_policy = cfg.tool_error_policy
-    if (cfg.schema_repair_attempts !== undefined) {
-      opts.schema_repair_attempts = cfg.schema_repair_attempts
-    }
-    if (cfg.tool_call_repair_attempts !== undefined) {
-      opts.tool_call_repair_attempts = cfg.tool_call_repair_attempts
-    }
-    if (cfg.max_tool_calls_per_step !== undefined) {
-      opts.max_tool_calls_per_step = cfg.max_tool_calls_per_step
-    }
-    if (cfg.on_tool_approval !== undefined) opts.on_tool_approval = cfg.on_tool_approval
-  
+
+    const opts = build_generate_options<T>(cfg, prompt, ctx)
+
     if (ctx.streaming) {
       opts.on_chunk = (chunk) => {
         // Record with kind preserved. ctx.emit would clobber kind to 'emit'
@@ -202,7 +219,7 @@ export function model_call<T = string>(
         ctx.trajectory.record({ kind: 'model_chunk', step_id, chunk })
       }
     }
-  
+
     return cfg.engine.generate(opts)
   })
 

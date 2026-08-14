@@ -38,6 +38,62 @@ function next_id(): string {
   return `parallel_${parallel_counter}`
 }
 
+type Settled =
+  | { readonly status: 'ok'; readonly key: string; readonly value: unknown }
+  | { readonly status: 'err'; readonly key: string; readonly err: unknown }
+
+/**
+ * Run one child under its own composed abort signal and settle it: an
+ * `'ok'`/`'err'` record rather than a thrown error, so a sibling's failure
+ * never short-circuits `Promise.all` before every child has finished.
+ */
+async function run_child(
+  entry: readonly [string, AnyStep],
+  local: AbortController | undefined,
+  input: unknown,
+  ctx: RunContext,
+): Promise<Settled> {
+  const [key, child] = entry
+  if (!local) throw new Error('parallel: missing controller')
+  const composed = AbortSignal.any([ctx.abort, local.signal])
+  const child_ctx: RunContext = { ...ctx, abort: composed }
+  try {
+    const value = await dispatch_step(child, input, child_ctx)
+    return { status: 'ok', key, value }
+  } catch (err) {
+    return { status: 'err', key, err }
+  }
+}
+
+type ErrorChoice = { readonly thrown: boolean; readonly err: unknown }
+
+/**
+ * Choose which settled error (if any) `run_fn` should rethrow: a
+ * `suspended_error` wins over any application error so a human-approval gate
+ * inside a branch stays resumable rather than masked by a sibling's failure;
+ * otherwise the first error in declared order propagates.
+ */
+function pick_error(settled: ReadonlyArray<Settled>): ErrorChoice {
+  let first_err: unknown
+  let has_err = false
+  let suspended: unknown
+  let has_suspended = false
+  for (const s of settled) {
+    if (s.status !== 'err') continue
+    if (!has_err) {
+      first_err = s.err
+      has_err = true
+    }
+    if (!has_suspended && s.err instanceof suspended_error) {
+      suspended = s.err
+      has_suspended = true
+    }
+  }
+  if (has_suspended) return { thrown: true, err: suspended }
+  if (has_err) return { thrown: true, err: first_err }
+  return { thrown: false, err: undefined }
+}
+
 export type ParallelOptions = {
   readonly name?: string
 }
@@ -65,40 +121,14 @@ export function parallel<i, children extends Record<string, Step<i, unknown>>>(
 
     try {
       const settled = await Promise.all(
-        entries.map(async ([key, child], idx) => {
-          const local = controllers[idx]
-          if (!local) throw new Error('parallel: missing controller')
-          const composed = AbortSignal.any([ctx.abort, local.signal])
-          const child_ctx: RunContext = { ...ctx, abort: composed }
-          try {
-            const value = await dispatch_step(child, input, child_ctx)
-            return { status: 'ok' as const, key, value }
-          } catch (err) {
-            return { status: 'err' as const, key, err }
-          }
-        }),
+        entries.map((entry, idx) => run_child(entry, controllers[idx], input, ctx)),
       )
-  
+
       throw_if_aborted(ctx)
 
-      let first_err: unknown
-      let has_err = false
-      let suspended: unknown
-      let has_suspended = false
-      for (const s of settled) {
-        if (s.status !== 'err') continue
-        if (!has_err) {
-          first_err = s.err
-          has_err = true
-        }
-        if (!has_suspended && s.err instanceof suspended_error) {
-          suspended = s.err
-          has_suspended = true
-        }
-      }
-      if (has_suspended) throw suspended
-      if (has_err) throw first_err
-  
+      const choice = pick_error(settled)
+      if (choice.thrown) throw choice.err
+
       const out: Record<string, unknown> = {}
       for (const s of settled) {
         if (s.status === 'ok') out[s.key] = s.value

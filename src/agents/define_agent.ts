@@ -90,6 +90,66 @@ function unquote(raw: string): string {
   return raw
 }
 
+type MutableFrontmatter = { -readonly [K in keyof Frontmatter]: Frontmatter[K] }
+
+/**
+ * Locate the frontmatter block and split it from the body.
+ *
+ * Returns `null` when there is no opening `---` (the file is all body).
+ * A block opened but never closed throws rather than silently producing a
+ * wrong prompt.
+ */
+function split_frontmatter(
+  content: string,
+): { readonly yaml_block: string; readonly body: string } | null {
+  const open_match = content.match(FRONTMATTER_OPEN)
+  if (!open_match) return null
+  const after_open = content.slice(open_match[0].length)
+  const close_match = FRONTMATTER_CLOSE.exec(after_open)
+  if (close_match?.index === undefined) {
+    throw new Error('define_agent: malformed frontmatter (missing closing `---`)')
+  }
+  const yaml_block = after_open.slice(0, close_match.index)
+  const body = after_open.slice(close_match.index + close_match[0].length).replace(/^\r?\n/, '')
+  return { yaml_block, body }
+}
+
+/**
+ * Coerce a `temperature` value to a finite number, throwing on anything else.
+ * `raw` is the pre-unquote text, so the error message echoes what the file held.
+ */
+function parse_temperature(value: string, raw: string): number {
+  const n = Number(value)
+  if (!Number.isFinite(n)) {
+    throw new Error(`define_agent: temperature must be a number, got: ${raw}`)
+  }
+  return n
+}
+
+/**
+ * Parse one `key: value` frontmatter line into `out`. Blank and `#` comment
+ * lines are skipped; a line without a colon throws; unrecognized keys are
+ * ignored so only `name`/`description`/`model`/`temperature` reach the agent.
+ */
+function assign_frontmatter_field(out: MutableFrontmatter, raw: string): void {
+  const line = raw.trim()
+  if (line === '' || line.startsWith('#')) return
+  const colon_idx = line.indexOf(':')
+  if (colon_idx === -1) {
+    throw new Error(`define_agent: malformed frontmatter line: ${raw}`)
+  }
+  const key = line.slice(0, colon_idx).trim()
+  const value_raw = line.slice(colon_idx + 1).trim()
+  const value = unquote(value_raw)
+  if (key === 'name' || key === 'description' || key === 'model') {
+    out[key] = value
+    return
+  }
+  if (key === 'temperature') {
+    out.temperature = parse_temperature(value, value_raw)
+  }
+}
+
 /**
  * Split a markdown file into frontmatter fields and prompt body.
  *
@@ -100,42 +160,13 @@ function unquote(raw: string): string {
  * silently producing a wrong prompt.
  */
 function parse_frontmatter(content: string): ParsedPrompt {
-  const open_match = content.match(FRONTMATTER_OPEN)
-  if (!open_match) return { frontmatter: {}, body: content }
-  const after_open = content.slice(open_match[0].length)
-  const close_match = FRONTMATTER_CLOSE.exec(after_open)
-  if (close_match?.index === undefined) {
-    throw new Error('define_agent: malformed frontmatter (missing closing `---`)')
+  const split = split_frontmatter(content)
+  if (split === null) return { frontmatter: {}, body: content }
+  const out: MutableFrontmatter = {}
+  for (const raw of split.yaml_block.split(/\r?\n/)) {
+    assign_frontmatter_field(out, raw)
   }
-  const yaml_block = after_open.slice(0, close_match.index)
-  const body = after_open.slice(close_match.index + close_match[0].length).replace(/^\r?\n/, '')
-
-  const out: { -readonly [K in keyof Frontmatter]: Frontmatter[K] } = {}
-  const lines = yaml_block.split(/\r?\n/)
-  for (const raw of lines) {
-    const line = raw.trim()
-    if (line === '' || line.startsWith('#')) continue
-    const colon_idx = line.indexOf(':')
-    if (colon_idx === -1) {
-      throw new Error(`define_agent: malformed frontmatter line: ${raw}`)
-    }
-    const key = line.slice(0, colon_idx).trim()
-    const value_raw = line.slice(colon_idx + 1).trim()
-    const value = unquote(value_raw)
-    if (key === 'name' || key === 'description' || key === 'model') {
-      out[key] = value
-      continue
-    }
-    if (key === 'temperature') {
-      const n = Number(value)
-      if (!Number.isFinite(n)) {
-        throw new Error(`define_agent: temperature must be a number, got: ${value_raw}`)
-      }
-      out.temperature = n
-      continue
-    }
-  }
-  return { frontmatter: out, body }
+  return { frontmatter: out, body: split.body }
 }
 
 /**

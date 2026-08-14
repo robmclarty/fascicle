@@ -120,8 +120,44 @@ function render_text(
  * Functions become `<fn>` or `<fn:name>`, zod schemas `<schema>`, and Step
  * references `kind(id)`; arrays and plain objects recurse. Strings are
  * JSON-quoted so empty and whitespace values stay visible.
+ *
+ * Steps, arrays, and renderable objects each own a branch; everything else
+ * (functions, the empty markers, schemas, primitives) resolves through
+ * `render_scalar_text`. The three object-shaped cases are mutually exclusive at
+ * runtime, so their order relative to the scalar cases is immaterial.
  */
 function render_value_text(value: unknown, path: Path, strict: boolean): string {
+  if (is_step(value)) return render_step_text(value, path, strict)
+  if (Array.isArray(value)) {
+    return `[${value.map((item: unknown) => render_value_text(item, path, strict)).join(', ')}]`
+  }
+  if (is_renderable_object(value)) {
+    const entries = Object.entries({ ...value }).map(
+      ([k, v]: [string, unknown]) => `${k}: ${render_value_text(v, path, strict)}`,
+    )
+    return `{ ${entries.join(', ')} }`
+  }
+  return render_scalar_text(value)
+}
+
+/**
+ * Render a Step reference for the text tree: a back-reference on the current
+ * path becomes `<cycle>(id)` (or throws under strict mode); otherwise `kind(id)`.
+ */
+function render_step_text(value: Step<unknown, unknown>, path: Path, strict: boolean): string {
+  if (path.has(value)) {
+    if (strict) throw new describe_cycle_error(value.id)
+    return `<cycle>(${value.id})`
+  }
+  return `${value.kind}(${value.id})`
+}
+
+/**
+ * Render the non-recursive value cases for the text tree: functions (`<fn>` or
+ * `<fn:name>`), the empty markers, zod schemas, and (via `render_primitive_text`)
+ * raw primitives.
+ */
+function render_scalar_text(value: unknown): string {
   if (typeof value === 'function') {
     const name = typeof value.name === 'string' && value.name.length > 0 ? value.name : ''
     return name ? `<fn:${name}>` : '<fn>'
@@ -129,22 +165,15 @@ function render_value_text(value: unknown, path: Path, strict: boolean): string 
   if (value === null) return 'null'
   if (value === undefined) return 'undefined'
   if (is_zod_schema(value)) return '<schema>'
-  if (is_step(value)) {
-    if (path.has(value)) {
-      if (strict) throw new describe_cycle_error(value.id)
-      return `<cycle>(${value.id})`
-    }
-    return `${value.kind}(${value.id})`
-  }
-  if (Array.isArray(value)) {
-    return `[${value.map((item: unknown) => render_value_text(item, path, strict)).join(', ')}]`
-  }
-  if (typeof value === 'object') {
-    const entries = Object.entries({ ...value }).map(
-      ([k, v]: [string, unknown]) => `${k}: ${render_value_text(v, path, strict)}`,
-    )
-    return `{ ${entries.join(', ')} }`
-  }
+  return render_primitive_text(value)
+}
+
+/**
+ * Render a primitive (or unrecognized) value for the text tree. Strings are
+ * JSON-quoted so empty and whitespace values stay visible; bigints keep an `n`
+ * suffix; anything unexpected falls back to JSON.
+ */
+function render_primitive_text(value: unknown): string {
   if (typeof value === 'string') return JSON.stringify(value)
   if (typeof value === 'bigint') return `${value.toString()}n`
   if (typeof value === 'symbol') return value.toString()
@@ -202,8 +231,42 @@ function render_json(
  * `{ kind: '<schema>' }`, Step references as `{ kind, id }`. `undefined`
  * maps to `null` and bigints/symbols to strings so the result survives
  * `JSON.stringify` without loss.
+ *
+ * Mirrors `render_value_text`: steps, arrays, and renderable objects each own a
+ * branch, and everything else resolves through `render_scalar_json`.
  */
 function render_value_json(value: unknown, path: Path, strict: boolean): FlowValue {
+  if (is_step(value)) return render_step_json(value, path, strict)
+  if (Array.isArray(value)) {
+    return value.map((item: unknown) => render_value_json(item, path, strict))
+  }
+  if (is_renderable_object(value)) {
+    const out: { [key: string]: FlowValue } = {}
+    for (const [k, v] of Object.entries({ ...value })) {
+      out[k] = render_value_json(v, path, strict)
+    }
+    return out
+  }
+  return render_scalar_json(value)
+}
+
+/**
+ * Serialize a Step reference: a back-reference on the current path becomes
+ * `{ kind: '<cycle>', id }` (or throws under strict mode); otherwise `{ kind, id }`.
+ */
+function render_step_json(value: Step<unknown, unknown>, path: Path, strict: boolean): FlowValue {
+  if (path.has(value)) {
+    if (strict) throw new describe_cycle_error(value.id)
+    return { kind: '<cycle>', id: value.id }
+  }
+  return { kind: value.kind, id: value.id }
+}
+
+/**
+ * Serialize the non-recursive value cases: functions, the empty markers, zod
+ * schemas, and (via `render_primitive_json`) raw primitives.
+ */
+function render_scalar_json(value: unknown): FlowValue {
   if (typeof value === 'function') {
     const name = typeof value.name === 'string' && value.name.length > 0 ? value.name : ''
     return name ? { kind: '<fn>', name } : { kind: '<fn>' }
@@ -211,23 +274,15 @@ function render_value_json(value: unknown, path: Path, strict: boolean): FlowVal
   if (value === null) return null
   if (value === undefined) return null
   if (is_zod_schema(value)) return { kind: '<schema>' }
-  if (is_step(value)) {
-    if (path.has(value)) {
-      if (strict) throw new describe_cycle_error(value.id)
-      return { kind: '<cycle>', id: value.id }
-    }
-    return { kind: value.kind, id: value.id }
-  }
-  if (Array.isArray(value)) {
-    return value.map((item: unknown) => render_value_json(item, path, strict))
-  }
-  if (typeof value === 'object') {
-    const out: { [key: string]: FlowValue } = {}
-    for (const [k, v] of Object.entries({ ...value })) {
-      out[k] = render_value_json(v, path, strict)
-    }
-    return out
-  }
+  return render_primitive_json(value)
+}
+
+/**
+ * Serialize a primitive (or unrecognized) value. `undefined` already resolves
+ * to `null` in `render_scalar_json`; bigints and symbols become strings so the
+ * result survives `JSON.stringify` without loss.
+ */
+function render_primitive_json(value: unknown): FlowValue {
   if (typeof value === 'string') return value
   if (typeof value === 'number' || typeof value === 'boolean') return value
   if (typeof value === 'bigint') return `${value.toString()}n`
@@ -242,4 +297,13 @@ function render_value_json(value: unknown, path: Path, strict: boolean): FlowVal
 function is_zod_schema(value: unknown): boolean {
   if (typeof value !== 'object' || value === null) return false
   return '_zod' in value || '_def' in value
+}
+
+/**
+ * True for a plain object rendered by recursing into its own entries: an object
+ * that is neither null nor a zod schema. The Step and array cases are checked
+ * before this at every call site, so they never reach it.
+ */
+function is_renderable_object(value: unknown): value is object {
+  return typeof value === 'object' && value !== null && !is_zod_schema(value)
 }
