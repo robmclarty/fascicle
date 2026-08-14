@@ -34,6 +34,7 @@ import type {
   UsageTotals,
 } from '../../types.js'
 import { aborted_error } from '../../errors.js'
+import { split_leading_system_run } from '../../leading_system.js'
 import type { ChunkDispatcher } from '../../streaming.js'
 import type { RawToolCall } from '../../tool_loop.js'
 import {
@@ -209,19 +210,7 @@ export function split_leading_system(messages: ReadonlyArray<ModelMessage>): {
   system?: string
   messages: ModelMessage[]
 } {
-  let run_end = 0
-  const system_parts: string[] = []
-  while (run_end < messages.length) {
-    const m = messages[run_end]
-    if (m?.role !== 'system') break
-    system_parts.push(m.content)
-    run_end += 1
-  }
-  const rest = messages.slice(run_end)
-  if (system_parts.length === 0 || rest.length === 0) {
-    return { messages: [...messages] }
-  }
-  return { system: system_parts.join('\n\n'), messages: rest }
+  return split_leading_system_run(messages, (m) => m.content)
 }
 
 /**

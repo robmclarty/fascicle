@@ -45,6 +45,7 @@ import {
 } from './errors.js'
 import { format_schema_issues } from '#schema'
 import type { TrajectoryLogger } from '#core'
+import { split_leading_system_run } from './leading_system.js'
 import { merge_provider_options } from './merge_defaults.js'
 import { FREE_PROVIDERS, pricing_key } from './pricing.js'
 import { parse_retry_after, retry_with_policy } from './retry.js'
@@ -133,20 +134,7 @@ export function split_leading_system_messages(messages: ReadonlyArray<Message>):
   system?: string
   messages: Message[]
 } {
-  let run_end = 0
-  const system_parts: string[] = []
-  while (run_end < messages.length) {
-    const m = messages[run_end]
-    // Stryker disable next-line OptionalChaining: within the loop guard run_end < messages.length, m is always an in-bounds (defined) Message, so m.role and m?.role read identically.
-    if (m?.role !== 'system') break
-    system_parts.push(m.content)
-    run_end += 1
-  }
-  const rest = messages.slice(run_end)
-  if (system_parts.length === 0 || rest.length === 0) {
-    return { messages: [...messages] }
-  }
-  return { system: system_parts.join('\n\n'), messages: rest }
+  return split_leading_system_run(messages, (m) => m.content)
 }
 
 /**
