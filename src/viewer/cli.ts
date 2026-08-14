@@ -50,7 +50,7 @@ Options:
  * `--help` prints usage and exits 0. Invalid numeric flags, or a missing
  * <path> without `--listen`, write to stderr and exit 2.
  */
-function parse(argv: readonly string[]): CliArgs {
+export function parse(argv: readonly string[]): CliArgs {
   const { values, positionals } = parseArgs({
     args: [...argv],
     allowPositionals: true,
@@ -103,7 +103,7 @@ function parse(argv: readonly string[]): CliArgs {
  * Spawns the platform opener (`open`, `cmd /c start`, or `xdg-open`)
  * detached and swallows failures; the CLI prints the URL either way.
  */
-function open_browser(url: string): void {
+export function open_browser(url: string): void {
   const platform = process.platform
   const cmd = platform === 'darwin' ? 'open' : platform === 'win32' ? 'cmd' : 'xdg-open'
   const args = platform === 'win32' ? ['/c', 'start', '""', url] : [url]
