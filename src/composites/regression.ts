@@ -130,24 +130,12 @@ function compute_per_case(
   for (const id of all_ids) {
     const c = by_id_current.get(id)
     const b = by_id_baseline.get(id)
-    const score_deltas: Record<string, number> = {}
-    let any_score_regression = false
-    const judge_names = new Set<string>([
-      ...Object.keys(c?.scores ?? {}),
-      ...Object.keys(b?.scores ?? {}),
-    ])
-    for (const name of judge_names) {
-      const c_score = score_value(c?.scores[name])
-      const b_score = score_value(b?.scores[name])
-      const delta = c_score - b_score
-      score_deltas[name] = delta
-      if (delta < -score_threshold) any_score_regression = true
-    }
-    const cost_delta = (c?.cost_usd ?? 0) - (b?.cost_usd ?? 0)
-    const cost_ratio_regression =
-      b?.cost_usd !== undefined && b.cost_usd > 0
-        ? cost_delta / b.cost_usd > cost_threshold
-        : (c?.cost_usd ?? 0) > 0 && (b?.cost_usd ?? 0) === 0 && cost_threshold < Infinity
+    const { score_deltas, any_regression } = compute_score_deltas(c, b, score_threshold)
+    const { cost_delta, is_regression: cost_regression } = compute_cost_regression(
+      c,
+      b,
+      cost_threshold,
+    )
     const ok_regression = b?.ok === true && c?.ok !== true
     out.push({
       case_id: id,
@@ -155,10 +143,55 @@ function compute_per_case(
       ...(c !== undefined ? { current: c } : {}),
       score_deltas,
       cost_delta,
-      is_regression: any_score_regression || cost_ratio_regression || ok_regression,
+      is_regression: any_regression || cost_regression || ok_regression,
     })
   }
   return out
+}
+
+/**
+ * Compute per-judge score deltas for one case pair across the union of judge
+ * names on both sides (a missing side scores 0), flagging a regression when
+ * any judge's score drops beyond the threshold.
+ */
+function compute_score_deltas(
+  c: CaseResult | undefined,
+  b: CaseResult | undefined,
+  score_threshold: number,
+): { score_deltas: Record<string, number>; any_regression: boolean } {
+  const score_deltas: Record<string, number> = {}
+  let any_regression = false
+  const judge_names = new Set<string>([
+    ...Object.keys(c?.scores ?? {}),
+    ...Object.keys(b?.scores ?? {}),
+  ])
+  for (const name of judge_names) {
+    const delta = score_value(c?.scores[name]) - score_value(b?.scores[name])
+    score_deltas[name] = delta
+    if (delta < -score_threshold) any_regression = true
+  }
+  return { score_deltas, any_regression }
+}
+
+/**
+ * Compute the cost delta for one case pair and whether it regressed. With a
+ * positive baseline cost, a relative rise beyond `cost_threshold` regresses;
+ * with a zero baseline, any positive current cost regresses (unless the
+ * threshold is Infinity). A missing side counts as 0.
+ */
+function compute_cost_regression(
+  c: CaseResult | undefined,
+  b: CaseResult | undefined,
+  cost_threshold: number,
+): { cost_delta: number; is_regression: boolean } {
+  const baseline_cost = b?.cost_usd ?? 0
+  const current_cost = c?.cost_usd ?? 0
+  const cost_delta = current_cost - baseline_cost
+  const is_regression =
+    baseline_cost > 0
+      ? cost_delta / baseline_cost > cost_threshold
+      : current_cost > 0 && baseline_cost === 0 && cost_threshold < Infinity
+  return { cost_delta, is_regression }
 }
 
 /**

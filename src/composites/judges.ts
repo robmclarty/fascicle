@@ -39,15 +39,29 @@ export function deep_equal(a: unknown, b: unknown): boolean {
   // null, primitives, and array/record mismatches all fall through to the
   // Array.isArray and is_record guards below, so no separate null/typeof
   // pre-checks are needed.
-  if (Array.isArray(a) || Array.isArray(b)) {
-    if (!Array.isArray(a) || !Array.isArray(b)) return false
-    if (a.length !== b.length) return false
-    for (let i = 0; i < a.length; i += 1) {
-      if (!deep_equal(a[i], b[i])) return false
-    }
-    return true
-  }
+  if (Array.isArray(a) || Array.isArray(b)) return arrays_equal(a, b)
   if (!is_record(a) || !is_record(b)) return false
+  return records_equal(a, b)
+}
+
+/**
+ * Element-wise deep equality once at least one side is an array: both must be
+ * arrays of the same length with every index equal.
+ */
+function arrays_equal(a: unknown, b: unknown): boolean {
+  if (!Array.isArray(a) || !Array.isArray(b)) return false
+  if (a.length !== b.length) return false
+  for (let i = 0; i < a.length; i += 1) {
+    if (!deep_equal(a[i], b[i])) return false
+  }
+  return true
+}
+
+/**
+ * Key-by-key deep equality over two records: same sorted key sets, and each
+ * value deep-equal under the shared key.
+ */
+function records_equal(a: Record<string, unknown>, b: Record<string, unknown>): boolean {
   const ak = Object.keys(a).toSorted()
   const bk = Object.keys(b).toSorted()
   if (ak.length !== bk.length) return false

@@ -27,12 +27,8 @@
     ],
     "health": [
       "health:src/agents/define_agent.ts:<arrow>:218:34",
-      "health:src/composites/bench.ts:run_one",
       "health:src/composites/ensemble.ts:pick",
       "health:src/composites/improve.ts:merge_outcome",
-      "health:src/composites/judges.ts:deep_equal",
-      "health:src/composites/regression.ts:compute_per_case",
-      "health:src/composites/tournament.ts:bracket_step",
       "health:src/core/describe.ts:render_text",
       "health:src/engine/providers/ai_sdk/invoke.ts:<arrow>:583:9",
       "health:src/engine/providers/anthropic_native.ts:handle",

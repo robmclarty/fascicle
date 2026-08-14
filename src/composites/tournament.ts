@@ -57,44 +57,67 @@ export function tournament<i, o>(
     let current: string[] = [...keys]
     const bracket: BracketRecord[] = []
     let round = 0
-  
+
     while (current.length > 1) {
       round += 1
-      const next_round: string[] = []
-      for (let i = 0; i < current.length; i += 2) {
-        const a_id = current[i]
-        const b_id = current[i + 1]
-        if (a_id === undefined) continue
-        if (b_id === undefined) {
-          next_round.push(a_id)
-          continue
-        }
-        const a_val = results[a_id]
-        const b_val = results[b_id]
-        if (a_val === undefined || b_val === undefined) {
-          throw new Error('tournament: missing result for match')
-        }
-        const pick = await compare_fn(a_val, b_val)
-        const winner_id = pick === 'a' ? a_id : b_id
-        bracket.push({ round, a_id, b_id, winner_id })
-        next_round.push(winner_id)
-      }
-      current = next_round
+      current = await play_round(current, results, compare_fn, round, bracket)
     }
-  
-    const final_id = current[0]
-    if (final_id === undefined) {
-      throw new Error('tournament: no winner')
-    }
-    const winner = results[final_id]
-    if (winner === undefined) {
-      throw new Error('tournament: winner missing from results')
-    }
-    return { winner, bracket }
+
+    return { winner: winner_of(current, results), bracket }
   })
 
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion
   const inner = sequence([fan_out, bracket_step]) as Step<i, TournamentResult<o>>
 
   return compose(config.name ?? 'tournament', inner)
+}
+
+/**
+ * Plays one bracket round: pairs survivors two at a time, comparing each pair
+ * and recording a `BracketRecord`, and returns the ids advancing. An unpaired
+ * trailing survivor takes a bye. Every paired id must have a settled result.
+ */
+async function play_round<o>(
+  current: ReadonlyArray<string>,
+  results: Record<string, o>,
+  compare: (a: o, b: o) => Promise<'a' | 'b'> | 'a' | 'b',
+  round: number,
+  bracket: BracketRecord[],
+): Promise<string[]> {
+  const next_round: string[] = []
+  for (let i = 0; i < current.length; i += 2) {
+    const a_id = current[i]
+    const b_id = current[i + 1]
+    if (a_id === undefined) continue
+    if (b_id === undefined) {
+      next_round.push(a_id)
+      continue
+    }
+    const a_val = results[a_id]
+    const b_val = results[b_id]
+    if (a_val === undefined || b_val === undefined) {
+      throw new Error('tournament: missing result for match')
+    }
+    const pick = await compare(a_val, b_val)
+    const winner_id = pick === 'a' ? a_id : b_id
+    bracket.push({ round, a_id, b_id, winner_id })
+    next_round.push(winner_id)
+  }
+  return next_round
+}
+
+/**
+ * Extracts the tournament winner from the single surviving id, throwing when
+ * no survivor remains or its result is missing.
+ */
+function winner_of<o>(current: ReadonlyArray<string>, results: Record<string, o>): o {
+  const final_id = current[0]
+  if (final_id === undefined) {
+    throw new Error('tournament: no winner')
+  }
+  const winner = results[final_id]
+  if (winner === undefined) {
+    throw new Error('tournament: winner missing from results')
+  }
+  return winner
 }

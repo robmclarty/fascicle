@@ -113,22 +113,8 @@ export async function bench<I, O, S = Score>(
   const judge_entries = Object.entries(judges)
 
   const run_one = async (bc: BenchCase<I>): Promise<CaseResult<I, O, S>> => {
-    const trajectory_path =
-      options.trajectory_dir === undefined
-        ? undefined
-        : join(options.trajectory_dir, `${bc.id}.jsonl`)
-    const sinks: TrajectoryLogger[] = []
-    if (trajectory_path !== undefined) {
-      sinks.push(filesystem_logger({ output_path: trajectory_path }))
-    }
-    if (options.live_url !== undefined) {
-      sinks.push(http_logger({ url: options.live_url }))
-    }
-    const cost_tracker = create_cost_tracker()
-    const case_logger: TrajectoryLogger =
-      sinks.length === 0
-        ? cost_tracker.logger
-        : tee_logger(...sinks, cost_tracker.logger)
+    const { trajectory_path, case_logger, cost_tracker } = build_case_logging(options, bc.id)
+    const ctx: CaseRunContext = { case_logger, install_signal_handlers, run_options }
 
     const start = Date.now()
     let output: O | undefined
@@ -147,30 +133,10 @@ export async function bench<I, O, S = Score>(
       ok = false
     }
 
-    const scores: Record<string, S> = {}
-    if (ok && output !== undefined) {
-      const judge_input: JudgeArgs<I, O> = bc.meta === undefined
-        ? { input: bc.input, output }
-        : { input: bc.input, output, meta: bc.meta }
-      for (const [name, judge] of judge_entries) {
-        let raw: unknown
-        try {
-          // oxlint-disable-next-line no-await-in-loop
-          raw = await run(judge, judge_input, {
-            trajectory: case_logger,
-            install_signal_handlers,
-            ...run_options,
-          })
-        } catch (err) {
-          rethrow_control_flow(err, bc.id)
-          continue
-        }
-        const normalized = normalize_score(raw)
-        if (normalized === undefined) continue
-        // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-        scores[name] = normalized as S
-      }
-    }
+    const scores: Record<string, S> =
+      ok && output !== undefined
+        ? await run_judges(judge_entries, build_judge_input(bc, output), ctx, bc.id)
+        : {}
 
     const duration_ms = Date.now() - start
     const result: CaseResult<I, O, S> = {
@@ -207,6 +173,92 @@ export async function bench<I, O, S = Score>(
     cases: cases_out,
     summary,
   }
+}
+
+/**
+ * Per-case run context shared by the flow run and every judge run: the tee'd
+ * trajectory logger, the signal-handler flag, and the optional abort forward.
+ */
+type CaseRunContext = {
+  readonly case_logger: TrajectoryLogger
+  readonly install_signal_handlers: boolean
+  readonly run_options: { readonly abort?: AbortSignal }
+}
+
+/**
+ * Builds the per-case trajectory pipeline: an optional filesystem sink when
+ * `trajectory_dir` is set, an optional HTTP sink when `live_url` is set, and
+ * always an in-process cost tracker, all tee'd together. Returns the resolved
+ * trajectory path (undefined when no dir is set) alongside the logger and
+ * tracker.
+ */
+function build_case_logging(
+  options: BenchOptions,
+  case_id: string,
+): {
+  readonly trajectory_path: string | undefined
+  readonly case_logger: TrajectoryLogger
+  readonly cost_tracker: ReturnType<typeof create_cost_tracker>
+} {
+  const trajectory_path =
+    options.trajectory_dir === undefined
+      ? undefined
+      : join(options.trajectory_dir, `${case_id}.jsonl`)
+  const sinks: TrajectoryLogger[] = []
+  if (trajectory_path !== undefined) {
+    sinks.push(filesystem_logger({ output_path: trajectory_path }))
+  }
+  if (options.live_url !== undefined) {
+    sinks.push(http_logger({ url: options.live_url }))
+  }
+  const cost_tracker = create_cost_tracker()
+  const case_logger: TrajectoryLogger =
+    sinks.length === 0 ? cost_tracker.logger : tee_logger(...sinks, cost_tracker.logger)
+  return { trajectory_path, case_logger, cost_tracker }
+}
+
+/**
+ * Assembles the judge input triple, including `meta` only when the case
+ * carries it so the optional field stays absent rather than `undefined`.
+ */
+function build_judge_input<I, O>(bc: BenchCase<I>, output: O): JudgeArgs<I, O> {
+  return bc.meta === undefined
+    ? { input: bc.input, output }
+    : { input: bc.input, output, meta: bc.meta }
+}
+
+/**
+ * Runs each judge as a Step over the case's input/output, collecting the
+ * normalized scores. A judge that throws a control-flow signal rethrows via
+ * `rethrow_control_flow`; any other throw, or an abstaining `undefined`,
+ * omits that judge from the scores rather than failing the case.
+ */
+async function run_judges<I, O, S>(
+  judge_entries: ReadonlyArray<readonly [string, Judge<I, O, S>]>,
+  judge_input: JudgeArgs<I, O>,
+  ctx: CaseRunContext,
+  case_id: string,
+): Promise<Record<string, S>> {
+  const scores: Record<string, S> = {}
+  for (const [name, judge] of judge_entries) {
+    let raw: unknown
+    try {
+      // oxlint-disable-next-line no-await-in-loop
+      raw = await run(judge, judge_input, {
+        trajectory: ctx.case_logger,
+        install_signal_handlers: ctx.install_signal_handlers,
+        ...ctx.run_options,
+      })
+    } catch (err) {
+      rethrow_control_flow(err, case_id)
+      continue
+    }
+    const normalized = normalize_score(raw)
+    if (normalized === undefined) continue
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+    scores[name] = normalized as S
+  }
+  return scores
 }
 
 /**
