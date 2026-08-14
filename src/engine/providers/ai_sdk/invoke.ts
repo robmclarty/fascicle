@@ -65,6 +65,60 @@ export function map_finish_reason(raw: string | undefined): FinishReason {
 }
 
 /**
+ * Read a numeric field off an object by key, or undefined when it is absent or
+ * not a number. The single typeof guard behind every usage-field read below.
+ */
+function read_number(source: object, key: string): number | undefined {
+  const value = Reflect.get(source, key)
+  return typeof value === 'number' ? value : undefined
+}
+
+/**
+ * Read the AI SDK's nested `inputTokenDetails` (cache read/write counts) onto
+ * `raw`. Present-but-empty details still seed `input_token_details` so the
+ * "the SDK reported details" signal survives even when both counts are absent.
+ */
+function read_input_details(usage: object, raw: RawProviderUsage): void {
+  const details = Reflect.get(usage, 'inputTokenDetails')
+  if (details === null || typeof details !== 'object') return
+  raw.input_token_details = {}
+  const cache_read = read_number(details, 'cacheReadTokens')
+  if (cache_read !== undefined) raw.input_token_details.cached_tokens = cache_read
+  const cache_write = read_number(details, 'cacheWriteTokens')
+  if (cache_write !== undefined) raw.input_token_details.cache_creation_input_tokens = cache_write
+}
+
+/**
+ * Read the AI SDK's nested `outputTokenDetails` (reasoning-token count) onto
+ * `raw`, seeding `output_token_details` whenever the details object is present.
+ */
+function read_output_details(usage: object, raw: RawProviderUsage): void {
+  const details = Reflect.get(usage, 'outputTokenDetails')
+  if (details === null || typeof details !== 'object') return
+  raw.output_token_details = {}
+  const reasoning = read_number(details, 'reasoningTokens')
+  if (reasoning !== undefined) raw.output_token_details.reasoning_tokens = reasoning
+}
+
+/**
+ * Read the flattened snake_case usage fields some provider mocks return
+ * directly. The `input_tokens`/`output_tokens` flats are fallbacks: they fill
+ * in only when the camelCase read did not already set the same total.
+ */
+function read_flat_usage(usage: object, raw: RawProviderUsage): void {
+  const cached = read_number(usage, 'cached_input_tokens')
+  if (cached !== undefined) raw.cached_input_tokens = cached
+  const cache_write = read_number(usage, 'cache_write_tokens')
+  if (cache_write !== undefined) raw.cache_write_tokens = cache_write
+  const reasoning = read_number(usage, 'reasoning_tokens')
+  if (reasoning !== undefined) raw.reasoning_tokens = reasoning
+  const input_flat = read_number(usage, 'input_tokens')
+  if (raw.input_tokens === undefined && input_flat !== undefined) raw.input_tokens = input_flat
+  const output_flat = read_number(usage, 'output_tokens')
+  if (raw.output_tokens === undefined && output_flat !== undefined) raw.output_tokens = output_flat
+}
+
+/**
  * Extract the usage fields `default_normalize_usage` understands from an AI
  * SDK usage object, tolerating both the SDK's camelCase shape and the
  * flattened snake_case fields some provider mocks return directly.
@@ -72,35 +126,13 @@ export function map_finish_reason(raw: string | undefined): FinishReason {
 export function to_raw_provider_usage(usage: unknown): RawProviderUsage {
   if (usage === null || typeof usage !== 'object') return {}
   const raw: RawProviderUsage = {}
-  const input_tokens = Reflect.get(usage, 'inputTokens')
-  if (typeof input_tokens === 'number') raw.input_tokens = input_tokens
-  const output_tokens = Reflect.get(usage, 'outputTokens')
-  if (typeof output_tokens === 'number') raw.output_tokens = output_tokens
-  const input_details = Reflect.get(usage, 'inputTokenDetails')
-  if (input_details !== null && typeof input_details === 'object') {
-    const cache_read = Reflect.get(input_details, 'cacheReadTokens')
-    const cache_write = Reflect.get(input_details, 'cacheWriteTokens')
-    raw.input_token_details = {}
-    if (typeof cache_read === 'number') raw.input_token_details.cached_tokens = cache_read
-    if (typeof cache_write === 'number') raw.input_token_details.cache_creation_input_tokens = cache_write
-  }
-  const output_details = Reflect.get(usage, 'outputTokenDetails')
-  if (output_details !== null && typeof output_details === 'object') {
-    const reasoning = Reflect.get(output_details, 'reasoningTokens')
-    raw.output_token_details = {}
-    if (typeof reasoning === 'number') raw.output_token_details.reasoning_tokens = reasoning
-  }
-  // Passthrough for mocks that provide flattened fields directly.
-  const cached_flat = Reflect.get(usage, 'cached_input_tokens')
-  if (typeof cached_flat === 'number') raw.cached_input_tokens = cached_flat
-  const cache_write_flat = Reflect.get(usage, 'cache_write_tokens')
-  if (typeof cache_write_flat === 'number') raw.cache_write_tokens = cache_write_flat
-  const reasoning_flat = Reflect.get(usage, 'reasoning_tokens')
-  if (typeof reasoning_flat === 'number') raw.reasoning_tokens = reasoning_flat
-  const input_flat = Reflect.get(usage, 'input_tokens')
-  if (raw.input_tokens === undefined && typeof input_flat === 'number') raw.input_tokens = input_flat
-  const output_flat = Reflect.get(usage, 'output_tokens')
-  if (raw.output_tokens === undefined && typeof output_flat === 'number') raw.output_tokens = output_flat
+  const input_tokens = read_number(usage, 'inputTokens')
+  if (input_tokens !== undefined) raw.input_tokens = input_tokens
+  const output_tokens = read_number(usage, 'outputTokens')
+  if (output_tokens !== undefined) raw.output_tokens = output_tokens
+  read_input_details(usage, raw)
+  read_output_details(usage, raw)
+  read_flat_usage(usage, raw)
   return raw
 }
 
@@ -293,6 +325,47 @@ export function default_usage_from_sdk(usage: unknown): UsageTotals {
 }
 
 /**
+ * The running TurnResult fields collect_stream builds as it consumes the SDK
+ * stream: text and tool calls accrue across parts, while finish reason, usage,
+ * and provider_reported are overwritten by the terminal finish-step.
+ */
+type StreamAccumulator = {
+  text: string
+  tool_calls: RawToolCall[]
+  finish_reason: FinishReason
+  raw_usage: RawProviderUsage
+  provider_reported: Record<string, unknown> | undefined
+}
+
+/**
+ * Fold one stream part's accumulated state into `acc`: text deltas append,
+ * tool-call parts push a RawToolCall, and the finish-step overwrites finish
+ * reason, usage, and provider_reported. The finish-step's providerMetadata is
+ * the same value generateText returns on its result, which is what keeps a
+ * streamed run's provider_reported identical to a plain run's. Parts with no
+ * accumulated state (error, abort, stream framing) are the caller's to handle.
+ */
+function accumulate_stream_part(part: TextStreamPart<ToolSet>, acc: StreamAccumulator): void {
+  if (part.type === 'text-delta') {
+    acc.text += part.text
+    return
+  }
+  if (part.type === 'tool-call') {
+    acc.tool_calls.push({
+      id: part.toolCallId,
+      name: part.toolName,
+      input: part.input,
+    })
+    return
+  }
+  if (part.type === 'finish-step') {
+    acc.finish_reason = map_finish_reason(part.finishReason)
+    acc.raw_usage = to_raw_provider_usage(part.usage)
+    acc.provider_reported = to_provider_reported(part.providerMetadata)
+  }
+}
+
+/**
  * Run one streamText call, dispatching StreamChunks as parts arrive and
  * accumulating them into a TurnResult once the stream completes.
  */
@@ -305,11 +378,13 @@ async function collect_stream(
   adapter: AiSdkProviderAdapter,
 ): Promise<TurnResult> {
   const stream_result = streamText(params)
-  let text = ''
-  const tool_calls: RawToolCall[] = []
-  let finish_reason: FinishReason = 'stop'
-  let raw_usage: RawProviderUsage = {}
-  let provider_reported: Record<string, unknown> | undefined
+  const acc: StreamAccumulator = {
+    text: '',
+    tool_calls: [],
+    finish_reason: 'stop',
+    raw_usage: {},
+    provider_reported: undefined,
+  }
   let first = true
 
   for await (const part of stream_result.stream) {
@@ -317,24 +392,7 @@ async function collect_stream(
       first = false
       on_first_chunk()
     }
-    if (part.type === 'text-delta') {
-      text += part.text
-    }
-    if (part.type === 'tool-call') {
-      tool_calls.push({
-        id: part.toolCallId,
-        name: part.toolName,
-        input: part.input,
-      })
-    }
-    if (part.type === 'finish-step') {
-      finish_reason = map_finish_reason(part.finishReason)
-      raw_usage = to_raw_provider_usage(part.usage)
-      // The streamed finish-step carries the same providerMetadata generateText
-      // returns on its result, which is what keeps a streamed run's
-      // provider_reported identical to a plain run's.
-      provider_reported = to_provider_reported(part.providerMetadata)
-    }
+    accumulate_stream_part(part, acc)
     if (part.type === 'error') {
       throw part.error
     }
@@ -352,12 +410,12 @@ async function collect_stream(
   }
 
   return {
-    text,
-    tool_calls,
-    finish_reason,
-    usage: adapter.normalize_usage(raw_usage),
+    text: acc.text,
+    tool_calls: acc.tool_calls,
+    finish_reason: acc.finish_reason,
+    usage: adapter.normalize_usage(acc.raw_usage),
     // Stryker disable next-line ConditionalExpression: an always-true spread only adds an explicit `provider_reported: undefined` key, which every reader of TurnResult treats identically to the absent key.
-    ...(provider_reported !== undefined ? { provider_reported } : {}),
+    ...(acc.provider_reported !== undefined ? { provider_reported: acc.provider_reported } : {}),
   }
 }
 

@@ -315,6 +315,47 @@ function read_tool_use_identity(block: object, where: string): { id: string; nam
 }
 
 /**
+ * Fold one response `content` block into the text/tool_call accumulators.
+ * Text blocks append their string; tool_use blocks contribute a call whose id
+ * and name are validated by read_tool_use_identity; thinking /
+ * redacted_thinking blocks have no TurnResult field and are skipped.
+ */
+function push_content_block(
+  block: unknown,
+  text_parts: string[],
+  tool_calls: Array<{ id: string; name: string; input: unknown }>,
+): void {
+  if (block === null || typeof block !== 'object') return
+  const type: unknown = Reflect.get(block, 'type')
+  if (type === 'text') {
+    const text: unknown = Reflect.get(block, 'text')
+    if (typeof text === 'string') text_parts.push(text)
+    return
+  }
+  if (type === 'tool_use') {
+    const { id, name } = read_tool_use_identity(block, 'response content')
+    tool_calls.push({ id, name, input: Reflect.get(block, 'input') })
+  }
+}
+
+/**
+ * Walk a response payload's `content` array into the flat text and tool_call
+ * lists a TurnResult carries. A non-array `content` yields empty lists,
+ * matching a payload that carried no content blocks.
+ */
+function collect_content_blocks(content: unknown): {
+  text_parts: string[]
+  tool_calls: Array<{ id: string; name: string; input: unknown }>
+} {
+  const text_parts: string[] = []
+  const tool_calls: Array<{ id: string; name: string; input: unknown }> = []
+  if (Array.isArray(content)) {
+    for (const block of content) push_content_block(block, text_parts, tool_calls)
+  }
+  return { text_parts, tool_calls }
+}
+
+/**
  * Parse a non-stream Messages-API response payload into a TurnResult. The
  * stream aggregator rebuilds this same payload shape and feeds it here too,
  * so both paths share one parser.
@@ -323,23 +364,7 @@ export function parse_messages_response(payload: unknown): TurnResult {
   if (payload === null || typeof payload !== 'object') {
     throw new provider_error('anthropic native: response payload is not a JSON object')
   }
-  const content: unknown = Reflect.get(payload, 'content')
-  const text_parts: string[] = []
-  const tool_calls: Array<{ id: string; name: string; input: unknown }> = []
-  if (Array.isArray(content)) {
-    for (const block of content) {
-      if (block === null || typeof block !== 'object') continue
-      const type: unknown = Reflect.get(block, 'type')
-      if (type === 'text') {
-        const text: unknown = Reflect.get(block, 'text')
-        if (typeof text === 'string') text_parts.push(text)
-      } else if (type === 'tool_use') {
-        const { id, name } = read_tool_use_identity(block, 'response content')
-        tool_calls.push({ id, name, input: Reflect.get(block, 'input') })
-      }
-      // thinking / redacted_thinking blocks have no TurnResult field; skipped.
-    }
-  }
+  const { text_parts, tool_calls } = collect_content_blocks(Reflect.get(payload, 'content'))
   return {
     text: text_parts.join(''),
     tool_calls,

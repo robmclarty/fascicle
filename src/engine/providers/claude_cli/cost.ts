@@ -76,6 +76,30 @@ export type TurnUsage = {
 }
 
 /**
+ * Split `total_cost_usd` into a per-turn total for each turn, proportional to
+ * its output tokens, falling back to an equal split when every turn reports
+ * zero output (the proportional weights would otherwise all be zero). The last
+ * turn absorbs the floating-point rounding remainder so the shares sum exactly
+ * to `total_cost_usd`. Caller guarantees a non-empty `turns`.
+ */
+function split_total_across_turns(
+  total_cost_usd: number,
+  turns: ReadonlyArray<TurnUsage>,
+): number[] {
+  const total_output = turns.reduce((sum, t) => sum + Math.max(0, t.output_tokens), 0)
+  const per_turn = turns.map((t) =>
+    total_output === 0
+      ? total_cost_usd / turns.length
+      : total_cost_usd * (Math.max(0, t.output_tokens) / total_output),
+  )
+
+  const assigned = per_turn.reduce((a, b) => a + b, 0)
+  const last_index = turns.length - 1
+  per_turn[last_index] = (per_turn[last_index] ?? 0) + (total_cost_usd - assigned)
+  return per_turn
+}
+
+/**
  * Split a call's total cost across its turns, proportional to each turn's
  * output tokens, then decompose each turn's share into a `CostBreakdown`.
  *
@@ -89,36 +113,6 @@ export function allocate_cost_across_turns(
   turns: ReadonlyArray<TurnUsage>,
 ): ReadonlyArray<CostBreakdown> {
   if (turns.length === 0) return []
-
-  const total_output = turns.reduce((sum, t) => sum + Math.max(0, t.output_tokens), 0)
-
-  const per_turn_totals: number[] = Array.from({ length: turns.length }, () => 0)
-  if (total_output === 0) {
-    const equal_share = total_cost_usd / turns.length
-    for (let i = 0; i < turns.length; i += 1) per_turn_totals[i] = equal_share
-  } else {
-    for (let i = 0; i < turns.length; i += 1) {
-      const t = turns[i]
-      if (t === undefined) continue
-      const share = Math.max(0, t.output_tokens) / total_output
-      per_turn_totals[i] = total_cost_usd * share
-    }
-  }
-
-  const running_sum = per_turn_totals.reduce((a, b) => a + b, 0)
-  const remainder = total_cost_usd - running_sum
-  if (turns.length > 0) {
-    const last_index = turns.length - 1
-    const current = per_turn_totals[last_index] ?? 0
-    per_turn_totals[last_index] = current + remainder
-  }
-
-  const out: CostBreakdown[] = []
-  for (let i = 0; i < turns.length; i += 1) {
-    const t = turns[i]
-    if (t === undefined) continue
-    const total = per_turn_totals[i] ?? 0
-    out.push(decompose_total_cost(total, t.usage))
-  }
-  return out
+  const per_turn = split_total_across_turns(total_cost_usd, turns)
+  return turns.map((t, i) => decompose_total_cost(per_turn[i] ?? 0, t.usage))
 }

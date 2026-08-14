@@ -50,6 +50,68 @@ export function validate_auth_config(config: ClaudeCliProviderConfig): void {
 }
 
 /**
+ * Copy the string-valued entries of `source` onto `target`, dropping any
+ * `undefined` slot (the shape `process.env` and caller overrides both carry).
+ */
+function copy_string_entries(
+  target: Record<string, string>,
+  source: Record<string, string | undefined>,
+): void {
+  for (const [key, value] of Object.entries(source)) {
+    if (typeof value === 'string') target[key] = value
+  }
+}
+
+/**
+ * Seed the base subprocess env before caller overrides and the auth scrub.
+ *
+ * `inherit_env: false` starts from an empty env. Otherwise `'oauth'` inherits
+ * the full `process.env` (the CLI needs HOME plus session-specific vars to
+ * reach the logged-in session); every other mode inherits only the standard
+ * keys needed to resolve the sandbox wrapper and the claude binary on PATH.
+ */
+function seed_base_env(
+  config: ClaudeCliProviderConfig,
+  auth_mode: AuthMode,
+): Record<string, string> {
+  const env: Record<string, string> = {}
+  if (config.inherit_env === false) return env
+  if (auth_mode === 'oauth') {
+    copy_string_entries(env, process.env)
+    return env
+  }
+  for (const key of STANDARD_ENV_KEYS) {
+    const value = process.env[key]
+    if (typeof value === 'string') env[key] = value
+  }
+  return env
+}
+
+/**
+ * Apply the auth-mode scrub last, after base and caller env are merged, so
+ * nothing can re-introduce `ANTHROPIC_API_KEY` under `'oauth'`. `'api_key'`
+ * forces the configured key (empty string when absent); `'auto'` forwards a
+ * non-empty configured key and otherwise leaves the inherited env untouched.
+ */
+function apply_auth_key(
+  env: Record<string, string>,
+  config: ClaudeCliProviderConfig,
+  auth_mode: AuthMode,
+): void {
+  if (auth_mode === 'oauth') {
+    delete env['ANTHROPIC_API_KEY']
+    return
+  }
+  if (auth_mode === 'api_key') {
+    env['ANTHROPIC_API_KEY'] = typeof config.api_key === 'string' ? config.api_key : ''
+    return
+  }
+  if (typeof config.api_key === 'string' && config.api_key.length > 0) {
+    env['ANTHROPIC_API_KEY'] = config.api_key
+  }
+}
+
+/**
  * Compose the subprocess environment for one claude CLI invocation.
  *
  * Regardless of `auth_mode`, seeds the standard process-env keys (PATH,
@@ -69,37 +131,9 @@ export function build_env(
   caller_env: Record<string, string> | undefined,
   auth_mode: AuthMode,
 ): Record<string, string> {
-  const env: Record<string, string> = {}
-  const inherit_env = config.inherit_env !== false
-  if (inherit_env) {
-    if (auth_mode === 'oauth') {
-      for (const [k, v] of Object.entries(process.env)) {
-        if (typeof v === 'string') env[k] = v
-      }
-    } else {
-      for (const key of STANDARD_ENV_KEYS) {
-        const v = process.env[key]
-        if (typeof v === 'string') env[key] = v
-      }
-    }
-  }
-  if (caller_env !== undefined) {
-    for (const [k, v] of Object.entries(caller_env)) {
-      if (typeof v === 'string') env[k] = v
-    }
-  }
-  if (auth_mode === 'oauth') {
-    delete env['ANTHROPIC_API_KEY']
-    return env
-  }
-  if (auth_mode === 'api_key') {
-    const api_key = typeof config.api_key === 'string' ? config.api_key : ''
-    env['ANTHROPIC_API_KEY'] = api_key
-    return env
-  }
-  if (typeof config.api_key === 'string' && config.api_key.length > 0) {
-    env['ANTHROPIC_API_KEY'] = config.api_key
-  }
+  const env = seed_base_env(config, auth_mode)
+  if (caller_env !== undefined) copy_string_entries(env, caller_env)
+  apply_auth_key(env, config, auth_mode)
   return env
 }
 
