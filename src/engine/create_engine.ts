@@ -10,6 +10,7 @@
 import type {
   Engine,
   EngineConfig,
+  EngineDefaults,
   GenerateOptions,
   GenerateResult,
   Pricing,
@@ -66,6 +67,116 @@ function build_provider_adapters(
 }
 
 /**
+ * Mutable draft of a deeply `readonly` type, used to assemble an object field
+ * by field before returning it under its public, frozen-looking type.
+ */
+type Writable<T> = { -readonly [K in keyof T]: T[K] }
+
+/**
+ * Seed a fresh, mutable pricing table from DEFAULT_PRICING and layer any
+ * per-engine `config.pricing` overrides on top.
+ *
+ * The result is the engine's own table: register_price mutates it in place,
+ * and DEFAULT_PRICING (frozen at module load) is never touched.
+ */
+function merge_pricing(overrides: EngineConfig['pricing']): Record<string, Pricing> {
+  const pricing: Record<string, Pricing> = { ...DEFAULT_PRICING }
+  if (overrides !== undefined) {
+    for (const [key, value] of Object.entries(overrides)) {
+      pricing[key] = value
+    }
+  }
+  return pricing
+}
+
+/**
+ * Resolve the three always-present scalar defaults.
+ *
+ * `config.defaults.*` is the current nested layer; `config.default_retry`,
+ * `config.default_effort`, and `config.default_max_steps` are older top-level
+ * fields kept for compatibility. The nested value wins where both are set, and
+ * the built-in constant is the last resort.
+ */
+function resolve_default_scalars(
+  config: EngineConfig,
+): Pick<EngineInternals, 'default_retry' | 'default_effort' | 'default_max_steps'> {
+  const defaults: EngineDefaults = config.defaults ?? {}
+  return {
+    default_retry: defaults.retry_policy ?? config.default_retry ?? DEFAULT_RETRY,
+    default_effort: defaults.effort ?? config.default_effort ?? 'none',
+    default_max_steps: defaults.max_steps ?? config.default_max_steps ?? 10,
+  }
+}
+
+/**
+ * Validate the numeric defaults once, at construction: a bad bound should fail
+ * fast here rather than surfacing deep inside the first generate call that ends
+ * up using the default.
+ */
+function validate_numeric_defaults(defaults: EngineDefaults | undefined): void {
+  if (defaults === undefined) return
+  const { tool_call_repair_attempts, max_tool_calls_per_step, turn_timeout_ms } = defaults
+  if (tool_call_repair_attempts !== undefined && tool_call_repair_attempts < 0) {
+    throw new engine_config_error('defaults.tool_call_repair_attempts must be >= 0')
+  }
+  if (max_tool_calls_per_step !== undefined && max_tool_calls_per_step < 1) {
+    throw new engine_config_error('defaults.max_tool_calls_per_step must be >= 1')
+  }
+  if (turn_timeout_ms !== undefined && turn_timeout_ms <= 0) {
+    throw new engine_config_error('defaults.turn_timeout_ms must be > 0')
+  }
+}
+
+/**
+ * Copy `value` onto `target[key]` only when it is defined, so an absent optional
+ * default leaves the key off the object rather than present-as-undefined.
+ */
+function assign_if_present<T, K extends keyof T>(target: T, key: K, value: T[K]): void {
+  if (value !== undefined) target[key] = value
+}
+
+/**
+ * Assemble the per-instance EngineInternals from the resolved required fields
+ * plus whichever optional `defaults.*` knobs were supplied.
+ *
+ * The optional defaults form a fixed source-to-target table (`defaults.model` ->
+ * `default_model`, and so on); each is folded in only when present, matching the
+ * conditional-spread shape this replaced.
+ */
+function build_internals(
+  base: Pick<
+    EngineInternals,
+    'pricing' | 'adapters' | 'default_retry' | 'default_effort' | 'default_max_steps'
+  >,
+  defaults: EngineDefaults | undefined,
+): EngineInternals {
+  const internals: Writable<EngineInternals> = {
+    pricing: base.pricing,
+    adapters: base.adapters,
+    default_retry: base.default_retry,
+    default_effort: base.default_effort,
+    default_max_steps: base.default_max_steps,
+  }
+  if (defaults !== undefined) {
+    assign_if_present(internals, 'default_model', defaults.model)
+    assign_if_present(internals, 'default_provider', defaults.provider)
+    assign_if_present(internals, 'default_system', defaults.system)
+    assign_if_present(internals, 'default_tool_error_policy', defaults.tool_error_policy)
+    assign_if_present(internals, 'default_schema_repair_attempts', defaults.schema_repair_attempts)
+    assign_if_present(
+      internals,
+      'default_tool_call_repair_attempts',
+      defaults.tool_call_repair_attempts,
+    )
+    assign_if_present(internals, 'default_max_tool_calls_per_step', defaults.max_tool_calls_per_step)
+    assign_if_present(internals, 'default_turn_timeout_ms', defaults.turn_timeout_ms)
+    assign_if_present(internals, 'default_ai_sdk_telemetry', defaults.ai_sdk_telemetry)
+    assign_if_present(internals, 'default_provider_options', defaults.provider_options)
+  }
+  return internals
+}
+
+/**
  * Validate `config` and construct an `Engine`.
  *
  * Provider entries are validated synchronously via `build_provider_adapters`.
@@ -73,74 +184,20 @@ function build_provider_adapters(
  * still throws `provider_not_configured_error`, but only at call time.
  */
 export function create_engine(config: EngineConfig): Engine {
-  if (
-    config.providers === null ||
-    typeof config.providers !== 'object'
-  ) {
+  if (config.providers === null || typeof config.providers !== 'object') {
     throw new engine_config_error('EngineConfig.providers is required')
   }
 
   const adapters = build_provider_adapters(config.providers, config.custom_providers)
+  const pricing = merge_pricing(config.pricing)
+  const { default_retry, default_effort, default_max_steps } = resolve_default_scalars(config)
+  validate_numeric_defaults(config.defaults)
 
-  const pricing: Record<string, Pricing> = { ...DEFAULT_PRICING }
-  if (config.pricing !== undefined) {
-    for (const [key, value] of Object.entries(config.pricing)) {
-      pricing[key] = value
-    }
-  }
-
-  const defaults = config.defaults
-  // `config.defaults.*` is the current nested layer; `config.default_retry`,
-  // `config.default_effort`, and `config.default_max_steps` are older
-  // top-level fields kept for compatibility. Where both are set, the nested
-  // `defaults` value wins, and the built-in constant is the last resort.
-  const default_retry = defaults?.retry_policy ?? config.default_retry ?? DEFAULT_RETRY
-  const default_effort = defaults?.effort ?? config.default_effort ?? 'none'
-  const default_max_steps = defaults?.max_steps ?? config.default_max_steps ?? 10
-  // Validated once here, at construction, rather than on every generate call
-  // that ends up using the default: a bad default should fail fast instead
-  // of surfacing deep inside the first call that needs it.
-  if (defaults?.tool_call_repair_attempts !== undefined && defaults.tool_call_repair_attempts < 0) {
-    throw new engine_config_error('defaults.tool_call_repair_attempts must be >= 0')
-  }
-  if (defaults?.max_tool_calls_per_step !== undefined && defaults.max_tool_calls_per_step < 1) {
-    throw new engine_config_error('defaults.max_tool_calls_per_step must be >= 1')
-  }
-  if (defaults?.turn_timeout_ms !== undefined && defaults.turn_timeout_ms <= 0) {
-    throw new engine_config_error('defaults.turn_timeout_ms must be > 0')
-  }
-
-  const get_internals = (): EngineInternals => ({
-    pricing,
-    adapters,
-    default_retry,
-    default_effort,
-    default_max_steps,
-    ...(defaults?.model !== undefined ? { default_model: defaults.model } : {}),
-    ...(defaults?.provider !== undefined ? { default_provider: defaults.provider } : {}),
-    ...(defaults?.system !== undefined ? { default_system: defaults.system } : {}),
-    ...(defaults?.tool_error_policy !== undefined
-      ? { default_tool_error_policy: defaults.tool_error_policy }
-      : {}),
-    ...(defaults?.schema_repair_attempts !== undefined
-      ? { default_schema_repair_attempts: defaults.schema_repair_attempts }
-      : {}),
-    ...(defaults?.tool_call_repair_attempts !== undefined
-      ? { default_tool_call_repair_attempts: defaults.tool_call_repair_attempts }
-      : {}),
-    ...(defaults?.max_tool_calls_per_step !== undefined
-      ? { default_max_tool_calls_per_step: defaults.max_tool_calls_per_step }
-      : {}),
-    ...(defaults?.turn_timeout_ms !== undefined
-      ? { default_turn_timeout_ms: defaults.turn_timeout_ms }
-      : {}),
-    ...(defaults?.ai_sdk_telemetry !== undefined
-      ? { default_ai_sdk_telemetry: defaults.ai_sdk_telemetry }
-      : {}),
-    ...(defaults?.provider_options !== undefined
-      ? { default_provider_options: defaults.provider_options }
-      : {}),
-  })
+  const get_internals = (): EngineInternals =>
+    build_internals(
+      { pricing, adapters, default_retry, default_effort, default_max_steps },
+      config.defaults,
+    )
 
   let disposed = false
   let dispose_promise: Promise<void> | undefined

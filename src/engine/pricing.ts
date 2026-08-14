@@ -91,6 +91,51 @@ function round6(value: number): number {
 }
 
 /**
+ * The breakdown for a turn whose model has no pricing entry.
+ *
+ * Free providers (ollama, lmstudio) still report an all-zero, estimated
+ * breakdown; a priced provider missing a table entry returns undefined so the
+ * caller can surface a `pricing_missing` event instead of a fake zero.
+ */
+function missing_pricing_breakdown(provider: string): CostBreakdown | undefined {
+  if (!FREE_PROVIDERS.has(provider)) return undefined
+  return {
+    total_usd: 0,
+    input_usd: 0,
+    output_usd: 0,
+    currency: 'USD',
+    is_estimate: true,
+  }
+}
+
+/**
+ * Split reasoning tokens between a surfaced `reasoning_usd` field and the
+ * output total.
+ *
+ * With a dedicated `reasoning_per_million` rate the reasoning cost is surfaced
+ * separately and left out of output; without one it rolls into output at the
+ * output rate. Absent reasoning tokens leave output untouched and surface
+ * nothing.
+ */
+function apply_reasoning_cost(
+  plain_output_usd_raw: number,
+  reasoning: number,
+  has_reasoning_rate: boolean,
+  reasoning_usd_raw: number,
+): { output_usd_raw: number; surface_reasoning_usd: number | undefined } {
+  if (reasoning > 0) {
+    if (has_reasoning_rate) {
+      return { output_usd_raw: plain_output_usd_raw, surface_reasoning_usd: round6(reasoning_usd_raw) }
+    }
+    return {
+      output_usd_raw: plain_output_usd_raw + reasoning_usd_raw,
+      surface_reasoning_usd: undefined,
+    }
+  }
+  return { output_usd_raw: plain_output_usd_raw, surface_reasoning_usd: undefined }
+}
+
+/**
  * Compute a CostBreakdown for a single turn's usage.
  *
  * Returns undefined when pricing is absent AND the provider is not free. Free
@@ -106,54 +151,30 @@ export function compute_cost(
   pricing: Pricing | undefined,
   provider: string,
 ): CostBreakdown | undefined {
-  if (pricing === undefined) {
-    if (!FREE_PROVIDERS.has(provider)) return undefined
-    const breakdown: CostBreakdown = {
-      total_usd: 0,
-      input_usd: 0,
-      output_usd: 0,
-      currency: 'USD',
-      is_estimate: true,
-    }
-    return breakdown
-  }
+  if (pricing === undefined) return missing_pricing_breakdown(provider)
 
-  const input_tokens = usage.input_tokens
-  const output_tokens = usage.output_tokens
   const cached = usage.cached_input_tokens ?? 0
   const cache_write = usage.cache_write_tokens ?? 0
   const reasoning = usage.reasoning_tokens ?? 0
 
-  const fresh_input = Math.max(0, input_tokens - cached - cache_write)
+  const fresh_input = Math.max(0, usage.input_tokens - cached - cache_write)
   const cached_rate = pricing.cached_input_per_million ?? pricing.input_per_million
   const cache_write_rate = pricing.cache_write_per_million ?? pricing.input_per_million
-  const has_reasoning_rate = pricing.reasoning_per_million !== undefined
   const reasoning_rate = pricing.reasoning_per_million ?? pricing.output_per_million
 
   const input_usd_raw = (fresh_input * pricing.input_per_million) / 1e6
   const cached_usd_raw = (cached * cached_rate) / 1e6
   const cache_write_usd_raw = (cache_write * cache_write_rate) / 1e6
   const reasoning_usd_raw = (reasoning * reasoning_rate) / 1e6
-  const plain_output_tokens = Math.max(0, output_tokens - reasoning)
+  const plain_output_tokens = Math.max(0, usage.output_tokens - reasoning)
   const plain_output_usd_raw = (plain_output_tokens * pricing.output_per_million) / 1e6
 
-  const input_usd = round6(input_usd_raw)
-
-  let output_usd_raw = plain_output_usd_raw
-  let surface_reasoning_usd: number | undefined
-  if (reasoning > 0) {
-    if (has_reasoning_rate) {
-      surface_reasoning_usd = round6(reasoning_usd_raw)
-    } else {
-      output_usd_raw = plain_output_usd_raw + reasoning_usd_raw
-    }
-  }
-  const output_usd = round6(output_usd_raw)
-
-  let cached_input_usd: number | undefined
-  let cache_write_usd: number | undefined
-  if (cached > 0) cached_input_usd = round6(cached_usd_raw)
-  if (cache_write > 0) cache_write_usd = round6(cache_write_usd_raw)
+  const { output_usd_raw, surface_reasoning_usd } = apply_reasoning_cost(
+    plain_output_usd_raw,
+    reasoning,
+    pricing.reasoning_per_million !== undefined,
+    reasoning_usd_raw,
+  )
 
   const total_raw =
     input_usd_raw +
@@ -164,13 +185,13 @@ export function compute_cost(
 
   const breakdown: CostBreakdown = {
     total_usd: round6(total_raw),
-    input_usd,
-    output_usd,
+    input_usd: round6(input_usd_raw),
+    output_usd: round6(output_usd_raw),
     currency: 'USD',
     is_estimate: true,
   }
-  if (cached_input_usd !== undefined) breakdown.cached_input_usd = cached_input_usd
-  if (cache_write_usd !== undefined) breakdown.cache_write_usd = cache_write_usd
+  if (cached > 0) breakdown.cached_input_usd = round6(cached_usd_raw)
+  if (cache_write > 0) breakdown.cache_write_usd = round6(cache_write_usd_raw)
   if (surface_reasoning_usd !== undefined) breakdown.reasoning_usd = surface_reasoning_usd
   return breakdown
 }

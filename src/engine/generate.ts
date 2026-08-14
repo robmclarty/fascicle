@@ -1116,6 +1116,66 @@ export function last_provider_reported(
 }
 
 /**
+ * Running totals accumulated across per-step cost breakdowns. Each optional
+ * field carries a `_present` flag so the final breakdown can include it only
+ * when at least one step reported it, distinct from a summed zero.
+ */
+interface CostAccumulator {
+  any_present: boolean
+  total: number
+  input: number
+  output: number
+  cached_present: boolean
+  cached: number
+  cache_write_present: boolean
+  cache_write: number
+  reasoning_present: boolean
+  reasoning: number
+}
+
+/**
+ * Fold every step's `cost` into a single {@link CostAccumulator}, skipping steps
+ * that reported none. The required fields always sum; each optional field sums
+ * and flips its `_present` flag only on the steps that carried it.
+ */
+function sum_step_costs(
+  steps: ReadonlyArray<GenerateResult['steps'][number]>,
+): CostAccumulator {
+  const acc: CostAccumulator = {
+    any_present: false,
+    total: 0,
+    input: 0,
+    output: 0,
+    cached_present: false,
+    cached: 0,
+    cache_write_present: false,
+    cache_write: 0,
+    reasoning_present: false,
+    reasoning: 0,
+  }
+  for (const s of steps) {
+    if (s.cost === undefined) continue
+    acc.any_present = true
+    acc.total += s.cost.total_usd
+    acc.input += s.cost.input_usd
+    acc.output += s.cost.output_usd
+    if (s.cost.cached_input_usd !== undefined) {
+      acc.cached_present = true
+      acc.cached += s.cost.cached_input_usd
+    }
+    if (s.cost.cache_write_usd !== undefined) {
+      acc.cache_write_present = true
+      acc.cache_write += s.cost.cache_write_usd
+    }
+    if (s.cost.reasoning_usd !== undefined) {
+      acc.reasoning_present = true
+      acc.reasoning += s.cost.reasoning_usd
+    }
+  }
+  return acc
+}
+
+/**
  * Sum per-step cost breakdowns into a single `CostBreakdown` for the whole
  * generate call.
  *
@@ -1129,36 +1189,8 @@ export function aggregate_cost(
   steps: ReadonlyArray<GenerateResult['steps'][number]>,
   provider: string,
 ): CostBreakdown | undefined {
-  let any_present = false
-  let total = 0
-  let input = 0
-  let output = 0
-  let cached_present = false
-  let cached = 0
-  let cache_write_present = false
-  let cache_write = 0
-  let reasoning_present = false
-  let reasoning = 0
-  for (const s of steps) {
-    if (s.cost === undefined) continue
-    any_present = true
-    total += s.cost.total_usd
-    input += s.cost.input_usd
-    output += s.cost.output_usd
-    if (s.cost.cached_input_usd !== undefined) {
-      cached_present = true
-      cached += s.cost.cached_input_usd
-    }
-    if (s.cost.cache_write_usd !== undefined) {
-      cache_write_present = true
-      cache_write += s.cost.cache_write_usd
-    }
-    if (s.cost.reasoning_usd !== undefined) {
-      reasoning_present = true
-      reasoning += s.cost.reasoning_usd
-    }
-  }
-  if (!any_present) {
+  const acc = sum_step_costs(steps)
+  if (!acc.any_present) {
     if (FREE_PROVIDERS.has(provider) && steps.length > 0) {
       return {
         total_usd: 0,
@@ -1171,15 +1203,15 @@ export function aggregate_cost(
     return undefined
   }
   const out: CostBreakdown = {
-    total_usd: round6(total),
-    input_usd: round6(input),
-    output_usd: round6(output),
+    total_usd: round6(acc.total),
+    input_usd: round6(acc.input),
+    output_usd: round6(acc.output),
     currency: 'USD',
     is_estimate: true,
   }
-  if (cached_present) out.cached_input_usd = round6(cached)
-  if (cache_write_present) out.cache_write_usd = round6(cache_write)
-  if (reasoning_present) out.reasoning_usd = round6(reasoning)
+  if (acc.cached_present) out.cached_input_usd = round6(acc.cached)
+  if (acc.cache_write_present) out.cache_write_usd = round6(acc.cache_write)
+  if (acc.reasoning_present) out.reasoning_usd = round6(acc.reasoning)
   return out
 }
 
