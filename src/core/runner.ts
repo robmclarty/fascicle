@@ -250,6 +250,33 @@ export function throw_if_aborted(ctx: RunContext): void {
 }
 
 /**
+ * Install a fan-out abort listener over a set of child controllers: when
+ * `ctx.abort` fires, every controller currently in `controllers` is aborted
+ * with the same reason. An already-aborted parent fires immediately instead
+ * of registering a listener.
+ *
+ * Concurrent composers (`map`, `parallel`) use this to propagate a parent
+ * abort into each in-flight child's composed signal. `controllers` is read by
+ * reference, so a caller that appends to the array after installing (as
+ * `map` does per newly-started item) is still covered by later aborts.
+ * Returns the listener so the caller can remove it once its children settle.
+ */
+export function install_abort_fan_out(
+  ctx: RunContext,
+  controllers: ReadonlyArray<AbortController>,
+): () => void {
+  const on_parent_abort = (): void => {
+    for (const c of controllers) c.abort(ctx.abort.reason)
+  }
+  if (ctx.abort.aborted) {
+    on_parent_abort()
+  } else {
+    ctx.abort.addEventListener('abort', on_parent_abort, { once: true })
+  }
+  return on_parent_abort
+}
+
+/**
  * Forward a caller-owned AbortSignal into the run's internal controller and
  * return an unlink function. The reason is preserved so the original
  * cancellation cause propagates out of `run`. The listener is `once` and the

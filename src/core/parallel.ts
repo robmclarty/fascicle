@@ -16,8 +16,8 @@
  * in declared order propagates.
  */
 
-import { aborted_error, suspended_error } from './errors.js'
-import { dispatch_step, register_traced_kind } from './runner.js'
+import { suspended_error } from './errors.js'
+import { dispatch_step, install_abort_fan_out, register_traced_kind, throw_if_aborted } from './runner.js'
 import type { RunContext, Step } from './types.js'
 
 type AnyStep = Step<unknown, unknown>
@@ -61,15 +61,8 @@ export function parallel<i, children extends Record<string, Step<i, unknown>>>(
 
   const run_fn = async (input: i, ctx: RunContext): Promise<ParallelOutputs<children>> => {
     const controllers = entries.map(() => new AbortController())
-    const on_parent_abort = (): void => {
-      for (const c of controllers) c.abort(ctx.abort.reason)
-    }
-    if (ctx.abort.aborted) {
-      on_parent_abort()
-    } else {
-      ctx.abort.addEventListener('abort', on_parent_abort, { once: true })
-    }
-  
+    const on_parent_abort = install_abort_fan_out(ctx, controllers)
+
     try {
       const settled = await Promise.all(
         entries.map(async ([key, child], idx) => {
@@ -86,10 +79,7 @@ export function parallel<i, children extends Record<string, Step<i, unknown>>>(
         }),
       )
   
-      if (ctx.abort.aborted) {
-        const reason = ctx.abort.reason
-        throw reason instanceof Error ? reason : new aborted_error('aborted', { reason })
-      }
+      throw_if_aborted(ctx)
 
       let first_err: unknown
       let has_err = false

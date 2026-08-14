@@ -12,8 +12,7 @@
  * rethrowing `ctx.abort.reason`.
  */
 
-import { aborted_error } from './errors.js'
-import { dispatch_step, register_traced_kind } from './runner.js'
+import { dispatch_step, install_abort_fan_out, register_traced_kind, throw_if_aborted } from './runner.js'
 import type { RunContext, Step } from './types.js'
 
 export type MapConfig<input, item, result> = {
@@ -53,16 +52,8 @@ export function map<input, item, result>(
   
     const limit = concurrency === undefined ? list.length : Math.max(1, concurrency)
     const controllers: AbortController[] = []
-  
-    const on_parent_abort = (): void => {
-      for (const c of controllers) c.abort(ctx.abort.reason)
-    }
-    if (ctx.abort.aborted) {
-      on_parent_abort()
-    } else {
-      ctx.abort.addEventListener('abort', on_parent_abort, { once: true })
-    }
-  
+    const on_parent_abort = install_abort_fan_out(ctx, controllers)
+
     let cursor = 0
     let worker_error: unknown = undefined
   
@@ -100,10 +91,7 @@ export function map<input, item, result>(
       }
       await Promise.all(workers)
   
-      if (ctx.abort.aborted) {
-        const reason = ctx.abort.reason
-        throw reason instanceof Error ? reason : new aborted_error('aborted', { reason })
-      }
+      throw_if_aborted(ctx)
       if (worker_error !== undefined) throw worker_error
   
       return results

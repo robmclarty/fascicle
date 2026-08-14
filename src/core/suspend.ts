@@ -13,6 +13,7 @@
 
 import { validate_schema, type AnySchema } from '#schema'
 import { resume_validation_error, suspended_error } from './errors.js'
+import { is_step } from './is_step.js'
 import { dispatch_step, register_traced_kind } from './runner.js'
 import type { RunContext, Step } from './types.js'
 
@@ -26,19 +27,6 @@ export type SuspendConfig<i, o, resume> = {
     resume: resume,
     ctx: RunContext,
   ) => Promise<o> | o | Step<unknown, o>
-}
-
-/**
- * Structurally detect a `Step` returned from `combine`.
- *
- * `combine` may return either a plain value or a Step to dispatch; this local
- * check distinguishes the two without importing the shared helper.
- */
-function is_step(value: unknown): value is Step<unknown, unknown> {
-  if (typeof value !== 'object' || value === null) return false
-  if (!('id' in value) || !('kind' in value) || !('run' in value)) return false
-  const { id, kind, run } = value
-  return typeof id === 'string' && typeof kind === 'string' && typeof run === 'function'
 }
 
 /**
