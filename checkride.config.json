@@ -23,12 +23,12 @@
 
     "dead": { "use": "fallow", "order": 2 },
     "dupes": { "use": "fallow", "order": 2 },
-    "health": { "use": "fallow", "order": 2 },
 
     "docs": { "use": "markdownlint-cli2", "order": 3 },
     "spell": { "use": "cspell", "order": 3 },
     "test": { "use": "vitest", "order": 3 },
 
+    "health": { "use": "fallow", "order": 4 },
     "mutation": { "use": "stryker", "optIn": true, "order": 4 },
 
     "build": { "use": "build", "optIn": true, "order": 10 },
