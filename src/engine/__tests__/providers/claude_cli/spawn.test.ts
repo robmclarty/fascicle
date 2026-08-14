@@ -548,7 +548,7 @@ describe('startup and stall timers (spec §6.2)', () => {
     const handle = await track(
       await write_mock_script([
         { op: 'line', data: { type: 'system', subtype: 'init', session_id: 's', model: 'm' } },
-        { op: 'delay', ms: 400 },
+        { op: 'delay', ms: 2000 },
         { op: 'exit', code: 0 },
       ]),
     )
@@ -559,13 +559,17 @@ describe('startup and stall timers (spec §6.2)', () => {
       argv: [],
       env: build_mock_env({ MOCK_CLAUDE_SCRIPT: handle.script_path }),
       stdin: '',
-      startup_timeout_ms: 150,
+      // Wide startup window: a real subprocess only has to emit its first byte
+      // before this fires, and Node process startup can exceed a tight window
+      // under concurrent test load. The child then lives well past the window
+      // (delay 2000ms), so the timer-cleared invariant is still what is proven.
+      startup_timeout_ms: 1000,
       stall_timeout_ms: 0,
     })
     const lines: string[] = []
     for await (const l of session.stdout_lines) lines.push(l)
     // If the startup timer were not cleared on first byte it would fire at
-    // 150ms and abort this 400ms child; wait_close would reject instead.
+    // 1000ms and abort this 2000ms child; wait_close would reject instead.
     const outcome = await session.wait_close()
     expect(outcome.code).toBe(0)
     expect(lines).toHaveLength(1)
