@@ -10,12 +10,13 @@
  * callback. Never throws, never blocks the user's flow on a dev tool being
  * up. The flow always wins; the viewer is best-effort.
  *
- * Hierarchical span ids are tracked in-process, mirroring `filesystem_logger`
- * so the wire format is identical.
+ * Span bookkeeping (including the `parent_span_id` handling that mirrors
+ * `filesystem_logger` so the wire format is identical) lives in the shared
+ * `trajectory_recorder`; this adapter only supplies the emit sink.
  */
 
-import { randomUUID } from 'node:crypto'
 import type { TrajectoryLogger } from '#core'
+import { trajectory_recorder } from './trajectory_recorder.js'
 
 export type HttpLoggerFetch = (
   url: string,
@@ -47,7 +48,6 @@ const default_fetch: HttpLoggerFetch = async (url, init) => {
 export function http_logger(options: HttpLoggerOptions): TrajectoryLogger {
   const { url, on_error } = options
   const send = options.fetch ?? default_fetch
-  const stack: string[] = []
 
   const post = (event: Record<string, unknown>): void => {
     const body = `${JSON.stringify(event)}\n`
@@ -64,28 +64,5 @@ export function http_logger(options: HttpLoggerOptions): TrajectoryLogger {
       })
   }
 
-  const start_span: TrajectoryLogger['start_span'] = (name, meta) => {
-    const span_id = `${name}:${randomUUID().slice(0, 8)}`
-    const event: Record<string, unknown> = { kind: 'span_start', span_id, name, ...meta }
-    // Prefer the caller-threaded structural parent; fall back to the open-span
-    // stack only when none was supplied (best-effort under concurrency).
-    if (event['parent_span_id'] === undefined && stack.length > 0) {
-      event['parent_span_id'] = stack[stack.length - 1]
-    }
-    post(event)
-    stack.push(span_id)
-    return span_id
-  }
-
-  const end_span: TrajectoryLogger['end_span'] = (id, meta) => {
-    post({ kind: 'span_end', span_id: id, ...meta })
-    const idx = stack.lastIndexOf(id)
-    if (idx !== -1) stack.splice(idx, 1)
-  }
-
-  const record: TrajectoryLogger['record'] = (event) => {
-    post({ ...event })
-  }
-
-  return { record, start_span, end_span }
+  return trajectory_recorder(post)
 }
