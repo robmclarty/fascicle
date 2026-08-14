@@ -77,6 +77,12 @@ minTokens = 50
 # Per-function complexity thresholds. Tune to project.
 maxCyclomatic = 15
 maxCognitive = 15
+# Real per-function CRAP scores from the vitest Istanbul dump, instead of
+# fallow's static estimate. Requires the order-3 test slot to have run first
+# (checkride's order 4 always follows it; a bare `pnpm check --only health`
+# reads whatever dump is on disk, so re-run test first if a finding looks
+# stale or surprising).
+coverage = ".check/coverage/coverage-final.json"
 # Complexity thresholds are tuned for library internals; demo, tooling, and
 # test code is linear by design and its quality is guarded by the mutation
 # gate and blueprint rules instead (D3, health-is-production-metric).

@@ -26,22 +26,7 @@
       "dupes:dup:f5bf1f40"
     ],
     "health": [
-      "health:src/agents/define_agent.ts:<arrow>:218:34",
-      "health:src/composites/ensemble.ts:pick",
-      "health:src/composites/improve.ts:merge_outcome",
-      "health:src/core/describe.ts:render_text",
-      "health:src/engine/providers/ai_sdk/invoke.ts:<arrow>:583:9",
-      "health:src/engine/providers/anthropic_native.ts:handle",
-      "health:src/engine/providers/anthropic_native.ts:on_block_delta",
-      "health:src/engine/providers/anthropic_native.ts:stream_event_error",
-      "health:src/engine/providers/claude_cli/spawn.ts:spawn_cli",
-      "health:src/engine/providers/claude_cli/stream_result.ts:sum_usage",
-      "health:src/engine/providers/ollama_native.ts:parse_ollama_tool_call",
-      "health:src/engine/providers/openai_compatible_native.ts:handle_data",
-      "health:src/engine/providers/openai_compatible_native.ts:on_tool_call_delta",
-      "health:src/otel/trajectory_logger.ts:to_attribute_value",
-      "health:src/stdio/execute_stdio.ts:produce_output",
-      "health:src/ui/to_ui_message_stream.ts:map_chunk"
+      "health:src/engine/providers/anthropic_native.ts:handle"
     ],
     "lint": [],
     "spell": [],
