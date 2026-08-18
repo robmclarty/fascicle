@@ -3,7 +3,7 @@ import { make_capture_engine } from 'fascicle/testing'
 import { describe, expect, it } from 'vitest'
 
 import type { Provider } from '../../engine.js'
-import { CLAUDE_CLI_BUILDER_TOOLS, make_builder_call } from '../builder.js'
+import { CLAUDE_CLI_BUILDER_TOOLS, make_builder_step } from '../builder.js'
 import type { Handoff } from '../../types.js'
 
 const HANDOFF_FIXTURE: Handoff = {
@@ -39,10 +39,10 @@ const EXPECTED_API_TOOL_NAMES = [
   'run_shell',
 ] as const
 
-describe('make_builder_call dispatch', () => {
+describe('make_builder_step dispatch', () => {
   it('claude_cli: schema-only path with provider_options.allowed_tools', async () => {
     const { engine, calls } = capture_engine()
-    const step = make_builder_call(engine, 'sonnet', '/tmp/wt-cli', 'claude_cli')
+    const step = make_builder_step(engine, 'sonnet', '/tmp/wt-cli', 'claude_cli')
     await run(step, 'noop prompt', { install_signal_handlers: false })
 
     expect(calls).toHaveLength(1)
@@ -57,7 +57,7 @@ describe('make_builder_call dispatch', () => {
     '%s: explicit worktree-scoped tools, no claude_cli provider_options',
     async (provider) => {
       const { engine, calls } = capture_engine()
-      const step = make_builder_call(engine, 'sonnet', '/tmp/wt-api', provider)
+      const step = make_builder_step(engine, 'sonnet', '/tmp/wt-api', provider)
       await run(step, 'noop prompt', { install_signal_handlers: false })
 
       expect(calls).toHaveLength(1)

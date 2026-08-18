@@ -1,12 +1,12 @@
 /**
  * Stage: proposer. One candidate per call, structured as JSON.
  *
- * Schema-driven via `model_call({ schema })`: if the model produces malformed
+ * Schema-driven via `model_step({ schema })`: if the model produces malformed
  * output the engine repairs it, and if repair is exhausted the step throws.
  * The flow turns that throw into a failed candidate, which becomes a lesson.
  */
 
-import { model_call, type Engine, type GenerateResult, type Step } from 'fascicle'
+import { model_step, type Engine, type Step } from 'fascicle'
 import { z } from 'zod'
 
 import { load_prompt } from '../prompts/load.js'
@@ -18,12 +18,12 @@ const proposal_schema = z.object({
 
 export type Proposal = z.infer<typeof proposal_schema>
 
-export function make_proposer_call(
+export function make_proposer_step(
   engine: Engine,
   model: string,
-): Step<string, GenerateResult<Proposal>> {
+): Step<string, Proposal> {
   const prompt = load_prompt(new URL('../prompts/proposer.md', import.meta.url))
-  return model_call({
+  return model_step({
     engine,
     model,
     system: prompt.body,

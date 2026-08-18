@@ -1,22 +1,13 @@
 /**
- * Scope state keys + loop state + pure state-transition helpers.
+ * Build-review loop state: the carry-state record and its pure transitions.
  *
- * The keys in `K` are the only string identifiers the flow needs to share
- * between stash sites and use sites. Reader functions wrap unsafe state
- * lookups in one place so flow.ts never sees `as` casts.
+ * The chain-based flow threads everything else through typed bindings, so
+ * this file holds only what the loop iterates on: round count, the previous
+ * reviewer feedback, and the last handoff/verdict pair the shell reads off
+ * the final state.
  */
 
-import type { BuildVerdict, Handoff, PRContext, PragmatistOutput, Suggestion } from './types.js'
-
-export const K = {
-  PR: 'pr',
-  SUGGESTIONS: 'suggestions',
-  SPEC: 'spec',
-  LOOP_INPUT: 'loop_input',
-  HANDOFF: 'handoff',
-  VERDICT: 'verdict',
-  FINAL_STATE: 'final_state',
-} as const
+import type { BuildVerdict, Handoff } from './types.js'
 
 export type LoopState = {
   readonly round: number
@@ -47,41 +38,4 @@ export function next_loop_state(
 
 export function loop_converged(state: LoopState): boolean {
   return state.last_verdict?.kind === 'pass'
-}
-
-// Reader helpers: one place where the unsafe assertions live so flow.ts stays clean.
-
-export function read_pr(state: { [k: string]: unknown }): PRContext {
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-  return state[K.PR] as PRContext
-}
-
-export function read_suggestions(state: { [k: string]: unknown }): ReadonlyArray<Suggestion> {
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-  return state[K.SUGGESTIONS] as ReadonlyArray<Suggestion>
-}
-
-export function read_spec(state: { [k: string]: unknown }): PragmatistOutput {
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-  return state[K.SPEC] as PragmatistOutput
-}
-
-export function read_loop_input(state: { [k: string]: unknown }): LoopState {
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-  return state[K.LOOP_INPUT] as LoopState
-}
-
-export function read_handoff(state: { [k: string]: unknown }): Handoff {
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-  return state[K.HANDOFF] as Handoff
-}
-
-export function read_verdict(state: { [k: string]: unknown }): BuildVerdict {
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-  return state[K.VERDICT] as BuildVerdict
-}
-
-export function read_final_state(state: { [k: string]: unknown }): LoopState {
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-  return state[K.FINAL_STATE] as LoopState
 }

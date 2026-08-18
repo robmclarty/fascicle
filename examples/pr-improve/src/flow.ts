@@ -3,34 +3,31 @@
  *
  * Read top-to-bottom and you see the agent topology:
  *
- *   scope
- *     ├ stash PR
- *     ├ stash SUGGESTIONS  ← reviewer (model_call)
- *     └ branch (any suggestions?)
- *         then ─ scope
- *           ├ stash SPEC  ← pragmatist (model_call)
- *           └ branch (any accepted?)
- *               then ─ scope
- *                 ├ stash FINAL_STATE  ← loop({ body: build+review, guard: pass? })
- *                 └ assemble FinalResult
+ *   chain 'pr'
+ *     ├ suggestions ← reviewer via ctx.call (model_step)
+ *     └ output ← branch (any suggestions?)
+ *         then ─ chain 'review'
+ *           ├ spec ← pragmatist via ctx.call (model_step)
+ *           └ output ← branch (any accepted?)
+ *               then ─ chain 'accepted'
+ *                 ├ final_state ← loop({ body: build+review, guard: pass? })
+ *                 └ output: assemble FinalResult
  *               otherwise ─ FinalResult { no_changes_proposed }
  *         otherwise ─ FinalResult { no_changes_proposed }
  *
- * Each model call is its own dispatched step; format/render/state-transition
- * helpers live in messages.ts / render.ts / state.ts and are plugged in via
- * `use(...)` projections so this file stays at the fascicle level.
+ * Each model boundary is a `model_step` invoked via `ctx.call` and declared
+ * as `arm` metadata so `describe` renders the whole tree. Formatting helpers
+ * live in messages.ts / render.ts; the build-review loop threads
+ * `{ pr, spec, state }` as carry-state (state.ts holds the LoopState
+ * transitions), so no ambient scope keys remain.
  */
 
 import {
   branch,
+  chain,
   loop,
-  scope,
-  sequence,
-  stash,
   step,
-  use,
   type Engine,
-  type GenerateResult,
   type Step,
 } from 'fascicle'
 
@@ -44,23 +41,15 @@ import {
 import { assemble_final_result } from './render.js'
 import {
   initial_loop_state,
-  K,
   loop_converged,
   next_loop_state,
-  read_handoff,
-  read_final_state,
-  read_loop_input,
-  read_pr,
-  read_spec,
-  read_suggestions,
-  read_verdict,
   type LoopState,
 } from './state.js'
-import { make_build_reviewer_call } from './stages/build_reviewer.js'
-import { make_builder_call } from './stages/builder.js'
-import { make_pragmatist_call } from './stages/pragmatist.js'
-import { make_reviewer_call } from './stages/reviewer.js'
-import type { BuildVerdict, FinalResult, FlowModels, Handoff, PRContext, PragmatistOutput, ReviewerOutput, Suggestion } from './types.js'
+import { make_build_reviewer_step } from './stages/build_reviewer.js'
+import { make_builder_step } from './stages/builder.js'
+import { make_pragmatist_step } from './stages/pragmatist.js'
+import { make_reviewer_step } from './stages/reviewer.js'
+import type { FinalResult, FlowModels, PRContext, PragmatistOutput, Suggestion } from './types.js'
 
 export const MAX_BUILD_REVIEW_ROUNDS = 3
 
@@ -69,97 +58,94 @@ export type FlowEnv = {
   readonly provider: Provider
 }
 
+// The record each branch level threads forward: the PR plus what the prior
+// model stages concluded about it.
+type ReviewCtx = {
+  readonly pr: PRContext
+  readonly suggestions: ReadonlyArray<Suggestion>
+}
+
+type AcceptedCtx = ReviewCtx & { readonly spec: PragmatistOutput }
+
+// Loop carry-state: the PR and spec ride alongside the mutable loop state so
+// the build-review iteration is a static Step.
+type BuildCarry = {
+  readonly pr: PRContext
+  readonly spec: PragmatistOutput
+  readonly state: LoopState
+}
+
 export function build_flow(
   engine: Engine,
   models: FlowModels,
   env: FlowEnv,
 ): Step<PRContext, FinalResult> {
-  const reviewer_call = make_reviewer_call(engine, models.reviewer)
-  const pragmatist_call = make_pragmatist_call(engine, models.pragmatist)
-  const builder_call = make_builder_call(engine, models.builder, env.worktree_root, env.provider)
-  const build_reviewer_call = make_build_reviewer_call(engine, models.build_reviewer)
+  const reviewer = make_reviewer_step(engine, models.reviewer)
+  const pragmatist = make_pragmatist_step(engine, models.pragmatist)
+  const builder = make_builder_step(engine, models.builder, env.worktree_root, env.provider)
+  const build_reviewer = make_build_reviewer_step(engine, models.build_reviewer)
 
-  const reviewer_subflow: Step<unknown, ReadonlyArray<Suggestion>> = sequence([
-    use([K.PR], (s) => format_reviewer_message(read_pr(s))),
-    reviewer_call,
-    step('extract_suggestions', (r: GenerateResult<ReviewerOutput>) => r.content.suggestions),
-  ])
+  const emit_no_changes: Step<ReviewCtx, FinalResult> = step('no_changes', (c) => ({
+    kind: 'no_changes_proposed',
+    pr: c.pr,
+    suggestions: c.suggestions,
+  }))
 
-  const pragmatist_subflow: Step<unknown, PragmatistOutput> = sequence([
-    use([K.PR, K.SUGGESTIONS], (s) =>
-      format_pragmatist_message(read_pr(s), read_suggestions(s)),
-    ),
-    pragmatist_call,
-    step('extract_spec', (r: GenerateResult<PragmatistOutput>) => r.content),
-  ])
+  const build_iteration = chain<BuildCarry, 'carry'>('carry')
+    .step('handoff', ({ carry }, ctx) =>
+      ctx.call(builder, format_builder_message(carry.pr, carry.spec, carry.state)),
+      { arm: builder })
+    .step('verdict', ({ carry, handoff }, ctx) =>
+      ctx.call(build_reviewer, format_build_review_message(carry.pr, carry.spec, handoff, carry.state)),
+      { arm: build_reviewer })
+    .output(({ carry, handoff, verdict }): BuildCarry => ({
+      ...carry,
+      state: next_loop_state(carry.state, handoff, verdict),
+    }))
 
-  const build_review_iteration: Step<LoopState, LoopState> = scope([
-    stash(K.LOOP_INPUT, step('preserve_loop_state', (ls: LoopState) => ls)),
-    stash(
-      K.HANDOFF,
-      sequence([
-        use([K.PR, K.SPEC, K.LOOP_INPUT], (s) =>
-          format_builder_message(read_pr(s), read_spec(s), read_loop_input(s)),
-        ),
-        builder_call,
-        step('extract_handoff', (r: GenerateResult<Handoff>) => r.content),
-      ]),
-    ),
-    stash(
-      K.VERDICT,
-      sequence([
-        use([K.PR, K.SPEC, K.LOOP_INPUT, K.HANDOFF], (s) =>
-          format_build_review_message(read_pr(s), read_spec(s), read_handoff(s), read_loop_input(s)),
-        ),
-        build_reviewer_call,
-        step('extract_verdict', (r: GenerateResult<BuildVerdict>) => r.content),
-      ]),
-    ),
-    use([K.LOOP_INPUT, K.HANDOFF, K.VERDICT], (s) =>
-      next_loop_state(read_loop_input(s), read_handoff(s), read_verdict(s)),
-    ),
-  ])
-
-  const build_review_loop = loop<unknown, LoopState, LoopState>({
+  const build_review_loop = loop<AcceptedCtx, BuildCarry, LoopState>({
     name: 'build_review',
-    init: () => initial_loop_state,
-    body: build_review_iteration,
-    guard: step('check_pass', (state: LoopState) => ({ stop: loop_converged(state), state })),
-    finish: (state) => state,
+    init: (c) => ({ pr: c.pr, spec: c.spec, state: initial_loop_state }),
+    body: build_iteration,
+    guard: step('check_pass', (c: BuildCarry) => ({ stop: loop_converged(c.state), state: c })),
+    finish: (c) => c.state,
     max_rounds: MAX_BUILD_REVIEW_ROUNDS,
   })
 
-  const emit_no_changes: Step<unknown, FinalResult> = use([K.PR, K.SUGGESTIONS], (s) => ({
-    kind: 'no_changes_proposed',
-    pr: read_pr(s),
-    suggestions: read_suggestions(s),
-  }))
+  const with_build = chain<AcceptedCtx, 'accepted'>('accepted')
+    .step('final_state', ({ accepted }, ctx) => ctx.call(build_review_loop, accepted),
+      { arm: build_review_loop })
+    .output(({ accepted, final_state }) =>
+      assemble_final_result(accepted.pr, accepted.spec, final_state, accepted.suggestions),
+    )
 
-  const with_build: Step<PragmatistOutput, FinalResult> = scope([
-    stash(K.FINAL_STATE, build_review_loop),
-    use([K.PR, K.SPEC, K.FINAL_STATE, K.SUGGESTIONS], (s) =>
-      assemble_final_result(read_pr(s), read_spec(s), read_final_state(s), read_suggestions(s)),
-    ),
-  ])
+  const accept_gate = branch<AcceptedCtx, FinalResult>({
+    name: 'has_accepted_changes',
+    when: (c) => c.spec.accepted.length > 0,
+    then: with_build,
+    otherwise: emit_no_changes,
+  })
 
-  const with_pragmatist: Step<ReadonlyArray<Suggestion>, FinalResult> = scope([
-    stash(K.SPEC, pragmatist_subflow),
-    branch<PragmatistOutput, FinalResult>({
-      name: 'has_accepted_changes',
-      when: (spec) => spec.accepted.length > 0,
-      then: with_build,
-      otherwise: emit_no_changes,
-    }),
-  ])
+  const with_pragmatist = chain<ReviewCtx, 'review'>('review')
+    .step('spec', ({ review }, ctx) =>
+      ctx.call(pragmatist, format_pragmatist_message(review.pr, review.suggestions)),
+      { arm: pragmatist })
+    .step('result', ({ review, spec }, ctx) => ctx.call(accept_gate, { ...review, spec }),
+      { arm: accept_gate })
+    .output(({ result }) => result)
 
-  return scope([
-    stash(K.PR, step('init_pr', (pr: PRContext) => pr)),
-    stash(K.SUGGESTIONS, reviewer_subflow),
-    branch<ReadonlyArray<Suggestion>, FinalResult>({
-      name: 'has_suggestions',
-      when: (suggestions) => suggestions.length > 0,
-      then: with_pragmatist,
-      otherwise: emit_no_changes,
-    }),
-  ])
+  const suggestion_gate = branch<ReviewCtx, FinalResult>({
+    name: 'has_suggestions',
+    when: (c) => c.suggestions.length > 0,
+    then: with_pragmatist,
+    otherwise: emit_no_changes,
+  })
+
+  return chain<PRContext, 'pr'>('pr')
+    .step('suggestions', async ({ pr }, ctx) =>
+      (await ctx.call(reviewer, format_reviewer_message(pr))).suggestions,
+      { arm: reviewer })
+    .step('result', ({ pr, suggestions }, ctx) => ctx.call(suggestion_gate, { pr, suggestions }),
+      { arm: suggestion_gate })
+    .output(({ result }) => result)
 }

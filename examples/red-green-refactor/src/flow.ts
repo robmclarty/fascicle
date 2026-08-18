@@ -4,13 +4,15 @@
  * Read top-to-bottom and you see the agent topology:
  *
  *   timeout(10 min)
- *     └ scope
- *         ├ stash BEHAVIOR     ← the behavior to drive in
- *         ├ stash BEFORE_RED   ← snapshot the toy's test files
- *         ├ red_phase      ─ ask → run tests → assert red → snapshot → assert one test added
- *         ├ green_phase    ─ adversarial(build = ask → run tests, accept = passed)
- *         │                  → assert converged → assert tests unchanged
- *         └ refactor_phase ─ ask → run tests → assert still green → assert tests unchanged
+ *     └ chain 'behavior'
+ *         ├ before_red      ← snapshot the toy's test files
+ *         ├ stage 'red'     ─ ask → run tests → assert red → snapshot →
+ *         │                   assert exactly one test added
+ *         ├ stage 'green'   ─ adversarial(build = ask → run tests,
+ *         │                   accept = passed) → assert converged →
+ *         │                   assert tests unchanged
+ *         └ stage 'refactor' ─ ask → run tests → assert still green →
+ *                             assert tests unchanged
  *
  * RED is a one-shot guarded by two assertions: vitest must go red, AND the
  * snapshot diff must show exactly one new test definition. GREEN is an
@@ -19,21 +21,18 @@
  *
  * The test oracle and the snapshotter arrive as ports on `FlowEnv`, so the
  * flow never spawns a process itself and a test can inject scripted phases.
+ * Snapshots thread through chain bindings (`before_red`, `after_red`), so
+ * this file declares no state shape at all.
  */
 
 import {
   adversarial,
-  scope,
-  sequence,
-  stash,
+  chain,
   step,
   timeout,
-  use,
   type AdversarialBuildInput,
   type AdversarialCritiqueResult,
-  type AdversarialResult,
   type Engine,
-  type GenerateResult,
   type Step,
 } from 'fascicle'
 
@@ -41,9 +40,8 @@ import { assert_one_test_added, assert_tests_unchanged } from './backstop.js'
 import { format_green_message, format_red_message, format_refactor_message } from './messages.js'
 import type { Snapshotter } from './services/snapshot.js'
 import type { TestOracle } from './services/vitest.js'
-import { K, read_after_red, read_before_red, read_behavior } from './state.js'
-import { make_coder_call } from './stages/coder.js'
-import type { Behavior, FlowModels, TestVerdict } from './types.js'
+import { make_coder_step } from './stages/coder.js'
+import type { Behavior, FlowModels, Snapshot, TestVerdict } from './types.js'
 
 const PER_BEHAVIOR_TIMEOUT_MS = 10 * 60 * 1000
 export const GREEN_MAX_ROUNDS = 4
@@ -64,37 +62,16 @@ export function build_flow(
   models: FlowModels,
   env: FlowEnv,
 ): Step<Behavior, undefined> {
-  const ask = make_coder_call(engine, models.coder)
-  const discard = step('discard_generate_result', (_: GenerateResult) => undefined)
+  const ask = make_coder_step(engine, models.coder)
   const run_tests = step('run_tests', (_input: unknown, ctx) => env.oracle(ctx.abort))
-  const take_snapshot = step('take_snapshot', () => env.snapshot())
 
-  const red_phase: Step<unknown, undefined> = sequence([
-    use([K.BEHAVIOR], (s) => format_red_message(read_behavior(s))),
-    ask,
-    discard,
-    run_tests,
-    step('assert_red', (verdict: TestVerdict) => {
-      if (verdict.passed) {
-        throw new Error(`RED failed: vitest passed but should have failed.\n${verdict_tail(verdict.tail)}`)
-      }
-      return undefined
-    }),
-    stash(K.AFTER_RED, take_snapshot),
-    use([K.BEFORE_RED, K.AFTER_RED], (s) => {
-      assert_one_test_added(read_before_red(s), read_after_red(s))
-      return undefined
-    }),
-  ])
-
-  const green_build: Step<AdversarialBuildInput<Behavior, TestVerdict>, TestVerdict> = sequence([
-    step('format_green_message', (i: AdversarialBuildInput<Behavior, TestVerdict>) =>
-      format_green_message(i.input, i.prior),
-    ),
-    ask,
-    discard,
-    run_tests,
-  ])
+  const green_build: Step<AdversarialBuildInput<Behavior, TestVerdict>, TestVerdict> = step(
+    'green_round',
+    async (i, ctx) => {
+      await ctx.call(ask, format_green_message(i.input, i.prior))
+      return ctx.call(run_tests, undefined)
+    },
+  )
 
   const green_loop = adversarial<Behavior, TestVerdict>({
     build: green_build,
@@ -106,42 +83,52 @@ export function build_flow(
     max_rounds: GREEN_MAX_ROUNDS,
   })
 
-  const green_phase: Step<unknown, undefined> = sequence([
-    use([K.BEHAVIOR], (s) => read_behavior(s)),
-    green_loop,
-    step('assert_green_converged', (r: AdversarialResult<TestVerdict>) => {
-      if (!r.converged) {
+  const cycle = chain<Behavior, 'behavior'>('behavior')
+    .step('before_red', () => env.snapshot())
+    .stage('red')
+    .step('red_ask', async ({ behavior }, ctx) => {
+      await ctx.call(ask, format_red_message(behavior))
+      return undefined
+    }, { arm: ask })
+    .step('red_verdict', (_s, ctx) => ctx.call(run_tests, undefined), { arm: run_tests })
+    .step('assert_red', ({ red_verdict }) => {
+      if (red_verdict.passed) {
         throw new Error(
-          `GREEN did not converge in ${String(r.rounds)} rounds.\n${verdict_tail(r.candidate.tail)}`,
+          `RED failed: vitest passed but should have failed.\n${verdict_tail(red_verdict.tail)}`,
         )
       }
       return undefined
-    }),
-    assert_tests_frozen(env, 'GREEN'),
-  ])
-
-  const refactor_phase: Step<unknown, undefined> = sequence([
-    use([K.BEHAVIOR], (s) => format_refactor_message(read_behavior(s))),
-    ask,
-    discard,
-    run_tests,
-    step('assert_still_green', (verdict: TestVerdict) => {
-      if (!verdict.passed) {
-        throw new Error(`REFACTOR broke tests:\n${verdict_tail(verdict.tail)}`)
+    })
+    .step('after_red', () => env.snapshot())
+    .step('one_test_added', ({ before_red, after_red }) => {
+      assert_one_test_added(before_red, after_red)
+      return undefined
+    })
+    .stage('green')
+    .step('green', ({ behavior }, ctx) => ctx.call(green_loop, behavior), { arm: green_loop })
+    .step('assert_green_converged', ({ green }) => {
+      if (!green.converged) {
+        throw new Error(
+          `GREEN did not converge in ${String(green.rounds)} rounds.\n${verdict_tail(green.candidate.tail)}`,
+        )
       }
       return undefined
-    }),
-    assert_tests_frozen(env, 'REFACTOR'),
-  ])
-
-  const cycle: Step<unknown, undefined> = scope([
-    stash(K.BEHAVIOR, step('init_behavior', (b: Behavior) => b)),
-    stash(K.BEFORE_RED, take_snapshot),
-    red_phase,
-    green_phase,
-    refactor_phase,
-    step('cycle_done', () => undefined),
-  ])
+    })
+    .step('green_tests_frozen', ({ after_red }) => assert_tests_frozen(env, after_red, 'GREEN'))
+    .stage('refactor')
+    .step('refactor_ask', async ({ behavior }, ctx) => {
+      await ctx.call(ask, format_refactor_message(behavior))
+      return undefined
+    }, { arm: ask })
+    .step('refactor_verdict', (_s, ctx) => ctx.call(run_tests, undefined), { arm: run_tests })
+    .step('assert_still_green', ({ refactor_verdict }) => {
+      if (!refactor_verdict.passed) {
+        throw new Error(`REFACTOR broke tests:\n${verdict_tail(refactor_verdict.tail)}`)
+      }
+      return undefined
+    })
+    .step('refactor_tests_frozen', ({ after_red }) => assert_tests_frozen(env, after_red, 'REFACTOR'))
+    .output(() => undefined)
 
   return timeout(cycle, PER_BEHAVIOR_TIMEOUT_MS)
 }
@@ -153,10 +140,12 @@ export function build_flow(
  * test RED added is the only test that may exist for this behavior and no
  * later phase can make a failure go away by editing it.
  */
-function assert_tests_frozen(env: FlowEnv, phase: string): Step<unknown, undefined> {
-  return use([K.AFTER_RED], async (s) => {
-    const now = await env.snapshot()
-    assert_tests_unchanged(read_after_red(s), now, phase)
-    return undefined
-  })
+async function assert_tests_frozen(
+  env: FlowEnv,
+  after_red: Snapshot,
+  phase: string,
+): Promise<undefined> {
+  const now = await env.snapshot()
+  assert_tests_unchanged(after_red, now, phase)
+  return undefined
 }

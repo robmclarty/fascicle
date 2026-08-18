@@ -23,7 +23,6 @@ examples/red-green-refactor/
 │   ├── main.ts             the shell — iterates SEED_BEHAVIORS one at a time
 │   ├── flow.ts             THE composition layer: the RGR cycle as one Step
 │   ├── engine.ts           the only create_engine call site
-│   ├── state.ts            scope keys + typed readers
 │   ├── types.ts            Behavior, TestVerdict, Snapshot, FlowModels
 │   ├── messages.ts         per-phase user messages (format_*)
 │   ├── backstop.ts         pure structural assertions over snapshots
@@ -32,7 +31,7 @@ examples/red-green-refactor/
 │   │   ├── coder.md        the coder role, as markdown with frontmatter
 │   │   └── load.ts         frontmatter + body loader
 │   ├── stages/
-│   │   └── coder.ts        make_coder_call: the one model_call factory
+│   │   └── coder.ts        make_coder_step: the one model_step factory
 │   ├── services/
 │   │   ├── vitest.ts       spawns vitest, returns TestVerdict (TestOracle port)
 │   │   └── snapshot.ts     reads the toy's test files (Snapshotter port)
@@ -48,26 +47,25 @@ The oracle and the snapshotter reach `flow.ts` as ports on `FlowEnv` rather than
 
 ## How the flow is built
 
-The cycle is a single `scope` so we can `stash` the Behavior at the top and `use` it inside each phase, even though the phases mostly emit other types (`TestVerdict`, `GenerateResult`):
+The cycle is a single `chain` whose stage barriers mark the three phases; the behavior and both snapshots thread through typed bindings, so each phase reads exactly what it names:
 
 ```ts
-scope([
-  stash(K.BEHAVIOR,   step('init_behavior', (b: Behavior) => b)),
-  stash(K.BEFORE_RED, take_snapshot),
-  red_phase,        // assert vitest red AND exactly one new it(...)
-  green_phase,      // adversarial loop until vitest green; tests must be frozen
-  refactor_phase,   // optional cleanup; tests must still pass and remain frozen
-]);
+chain<Behavior, 'behavior'>('behavior')
+  .step('before_red', () => env.snapshot())
+  .stage('red')       // ask → run tests → assert red → exactly one new it(...)
+  .stage('green')     // adversarial loop until vitest green; tests must be frozen
+  .stage('refactor')  // optional cleanup; tests must still pass and remain frozen
+  .output(() => undefined);
 ```
 
 GREEN uses fascicle's `adversarial` composer:
 
 ```ts
 adversarial<Behavior, TestVerdict>({
-  build: sequence([
-    step('format_green_message', (i) => format_green_message(i.input, i.prior)),  // sees prior verdict on retry
-    ask, discard, run_tests,
-  ]),
+  build: step('green_round', async (i, ctx) => {
+    await ctx.call(ask, format_green_message(i.input, i.prior));  // sees prior verdict on retry
+    return ctx.call(run_tests, undefined);
+  }),
   critique: step('verdict', (v) => ({ verdict: v.passed ? 'pass' : 'fail', notes: v.tail })),
   accept:    (c) => c.verdict === 'pass',
   max_rounds: 4,

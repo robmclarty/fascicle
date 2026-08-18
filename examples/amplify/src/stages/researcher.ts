@@ -7,7 +7,7 @@
  * visible edge in the topology rather than a `try` buried in a step body.
  */
 
-import { model_call, type Engine, type GenerateResult, type Step } from 'fascicle'
+import { model_step, type Engine, type Step } from 'fascicle'
 
 import { load_prompt } from '../prompts/load.js'
 
@@ -23,11 +23,11 @@ function research_prompt(): string {
  * Only the `claude_cli` provider honours `allowed_tools`; on other providers
  * the option is inert and this is simply the offline call.
  */
-export function make_web_researcher_call(
+export function make_web_researcher_step(
   engine: Engine,
   model: string,
-): Step<string, GenerateResult> {
-  return model_call({
+): Step<string, string> {
+  return model_step({
     engine,
     model,
     system: research_prompt(),
@@ -37,11 +37,11 @@ export function make_web_researcher_call(
   })
 }
 
-export function make_offline_researcher_call(
+export function make_offline_researcher_step(
   engine: Engine,
   model: string,
-): Step<string, GenerateResult> {
-  return model_call({
+): Step<string, string> {
+  return model_step({
     engine,
     model,
     system: research_prompt(),

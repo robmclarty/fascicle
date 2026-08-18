@@ -6,17 +6,17 @@
  * the whole pipeline. Cap = 3 accepted changes.
  */
 
-import { model_call, type Engine, type GenerateResult, type Step } from 'fascicle'
+import { model_step, type Engine, type Step } from 'fascicle'
 
 import { load_prompt } from '../prompts/load.js'
 import { pragmatist_output_schema, type PragmatistOutput } from '../types.js'
 
-export function make_pragmatist_call(
+export function make_pragmatist_step(
   engine: Engine,
   model: string,
-): Step<string, GenerateResult<PragmatistOutput>> {
+): Step<string, PragmatistOutput> {
   const prompt = load_prompt(new URL('../prompts/pragmatist.md', import.meta.url))
-  return model_call({
+  return model_step({
     engine,
     model,
     system: prompt.body,

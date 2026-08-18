@@ -6,17 +6,17 @@
  * threads `feedback` into the next iteration's builder prompt.
  */
 
-import { model_call, type Engine, type GenerateResult, type Step } from 'fascicle'
+import { model_step, type Engine, type Step } from 'fascicle'
 
 import { load_prompt } from '../prompts/load.js'
 import { build_verdict_schema, type BuildVerdict } from '../types.js'
 
-export function make_build_reviewer_call(
+export function make_build_reviewer_step(
   engine: Engine,
   model: string,
-): Step<string, GenerateResult<BuildVerdict>> {
+): Step<string, BuildVerdict> {
   const prompt = load_prompt(new URL('../prompts/build_reviewer.md', import.meta.url))
-  return model_call({
+  return model_step({
     engine,
     model,
     system: prompt.body,

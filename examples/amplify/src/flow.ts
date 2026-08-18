@@ -3,23 +3,24 @@
  *
  * Read top-to-bottom and you see the agent topology:
  *
- *   scope
- *     ├ stash BRIEF      ← the task, target dir, and metric
- *     ├ stash BASELINE   ← score the starter file as it stands
- *     ├ stash RESEARCH   ← fallback(web researcher, offline researcher)
- *     ├ seed round state ← parent contents + baseline + budget
- *     └ loop({ max_rounds, guard: budget/plateau })
- *         └ scope
- *             ├ stash ROUND      ← open the round (bumps the counters)
- *             ├ stash CANDIDATES ← map(propose, N) → map(score, 1)
- *             └ branch (round accepted?)
- *                 then ─ commit the winner as the new parent
- *                 otherwise ─ keep the parent, bank the lessons
+ *   chain 'brief'
+ *     ├ baseline ← score the starter file as it stands
+ *     ├ research ← fallback(web researcher, offline researcher), cached
+ *     ├ seeded   ← parent contents + baseline + budget
+ *     └ rounds   ← loop({ max_rounds, guard: budget/plateau })
+ *         └ chain 'carry' (one round)
+ *             ├ round      ← open the round (bumps the counters)
+ *             ├ inputs     ← per-proposer inputs (research + lessons)
+ *             ├ specs      ← map(propose, N concurrent)
+ *             ├ candidates ← map(score, concurrency 1)
+ *             ├ outcome    ← decide_round (winner, accept/reject, lessons)
+ *             └ settled    ← branch (accepted? commit winner : keep parent)
  *
  * Three things this shape buys over the imperative version: the stop rule is
  * a `guard` on the `loop` rather than a `while` condition, the accept/reject
  * decision is a `branch` that shows up in the trajectory, and round-to-round
- * progress is loop carry-state instead of mutable closure variables.
+ * progress is loop carry-state (`{ brief, research, state }`) instead of
+ * mutable closure variables or ambient scope keys.
  *
  * Proposals fan out concurrently; scoring runs at concurrency 1 because each
  * candidate is swapped into the metric's mutable path while it is evaluated.
@@ -27,16 +28,14 @@
 
 import {
   branch,
+  chain,
   fallback,
   loop,
   map,
-  scope,
+  pipe,
   sequence,
-  stash,
   step,
-  use,
   type Engine,
-  type GenerateResult,
   type Step,
 } from 'fascicle'
 
@@ -51,17 +50,8 @@ import {
 } from './round.js'
 import type { CandidateScorer } from './services/evaluate.js'
 import type { Workspace } from './services/workspace.js'
-import {
-  K,
-  read_baseline,
-  read_brief,
-  read_candidates,
-  read_proposer,
-  read_research,
-  read_round,
-} from './state.js'
-import { make_proposer_call, type Proposal } from './stages/proposer.js'
-import { make_offline_researcher_call, make_web_researcher_call } from './stages/researcher.js'
+import { make_proposer_step } from './stages/proposer.js'
+import { make_offline_researcher_step, make_web_researcher_step } from './stages/researcher.js'
 import type {
   Brief,
   BudgetConfig,
@@ -69,7 +59,6 @@ import type {
   CandidateSpec,
   FlowModels,
   ProposerInput,
-  RoundOutcome,
   RoundState,
   RunSummary,
 } from './types.js'
@@ -90,17 +79,120 @@ export type FlowEnv = {
   readonly now?: () => number
 }
 
+// Loop carry-state for the round loop: the brief and research summary ride
+// alongside the mutable round state so the loop body is a static Step.
+type RoundCarry = {
+  readonly brief: Brief
+  readonly research: string
+  readonly state: RoundState
+}
+
+type ScoreItem = {
+  readonly brief: Brief
+  readonly round: number
+  readonly spec: CandidateSpec
+}
+
 function clamp_research(s: string): string {
   return s.length <= RESEARCH_MAX_CHARS ? s : `${s.slice(0, RESEARCH_MAX_CHARS)}\n…(truncated)`
 }
 
 export function build_flow(engine: Engine, models: FlowModels, env: FlowEnv): Step<Brief, RunSummary> {
   const now = env.now ?? (() => Date.now())
-  const proposer_call = make_proposer_call(engine, models.proposer)
+  const proposer = make_proposer_step(engine, models.proposer)
 
-  const baseline_subflow: Step<unknown, number> = sequence([
-    use([K.BRIEF], (s) => read_brief(s)),
-    step('measure_baseline', async (brief: Brief) => {
+  // The web tool is absent on older CLIs and can fail outright; degrading to
+  // the offline researcher is an edge in the topology, not a buried try/catch.
+  const research_prompt = step('research_prompt', (b: Brief) => format_research_message(b))
+  const web_research: Step<Brief, string> = sequence([
+    research_prompt,
+    pipe(make_web_researcher_step(engine, models.researcher), clamp_research),
+  ])
+  const offline_research: Step<Brief, string> = sequence([
+    research_prompt,
+    pipe(make_offline_researcher_step(engine, models.researcher), clamp_research),
+  ])
+  const research_arm: Step<Brief, string> =
+    env.research === 'offline' ? offline_research : fallback(web_research, offline_research)
+
+  const propose_one: Step<ProposerInput, CandidateSpec> = step(
+    'propose_one',
+    async (input, ctx) => {
+      const proposal = await ctx.call(proposer, format_propose_message(input))
+      return {
+        proposer_id: input.proposer_id,
+        rationale: proposal.rationale,
+        content: proposal.content,
+      }
+    },
+  )
+  const propose_each = map({
+    name: 'propose',
+    items: (inputs: ReadonlyArray<ProposerInput>) => inputs,
+    do: propose_one,
+    concurrency: env.candidates_per_round,
+  })
+
+  const score_one: Step<ScoreItem, Candidate> = step('score_candidate', async (item, ctx) => {
+    const candidate = await env.score(item.brief, item.round, item.spec)
+    ctx.trajectory.record({
+      kind: 'amplify.candidate',
+      proposer_id: candidate.spec.proposer_id,
+      accepted: candidate.score.accepted,
+      stage_failed: candidate.score.stage_failed ?? null,
+      value: candidate.score.accepted ? candidate.score.value : null,
+    })
+    return candidate
+  })
+  const score_each = map({
+    name: 'score',
+    items: (items: ReadonlyArray<ScoreItem>) => items,
+    do: score_one,
+    concurrency: 1,
+  })
+
+  const settle = branch<{ brief: Brief; next_state: RoundState; accepted: boolean }, RoundState>({
+    name: 'round_accepted',
+    when: (o) => o.accepted,
+    then: step('commit_winner', async (o) => {
+      await env.workspace.commit_parent(o.brief.metric.mutable_path, o.next_state.parent_content)
+      return o.next_state
+    }),
+    otherwise: step('keep_parent', (o) => o.next_state),
+  })
+
+  const round_body = chain<RoundCarry, 'carry'>('carry')
+    .step('round', ({ carry }) => begin_round(carry.state))
+    .step('inputs', ({ carry, round }) =>
+      build_proposer_inputs(carry.brief, carry.research, round, env.candidates_per_round))
+    .step('specs', ({ inputs }, ctx) => ctx.call(propose_each, inputs), { arm: propose_each })
+    .step('candidates', ({ carry, round, specs }, ctx) =>
+      ctx.call(score_each, specs.map((spec) => ({ brief: carry.brief, round: round.round, spec }))),
+      { arm: score_each })
+    .step('outcome', ({ carry, round, candidates }, ctx) => {
+      const outcome = decide_round(carry.brief, round, candidates)
+      ctx.trajectory.record({ kind: 'amplify.round', ...outcome.record })
+      return outcome
+    })
+    .step('settled', ({ carry, outcome }, ctx) =>
+      ctx.call(settle, { brief: carry.brief, next_state: outcome.next_state, accepted: outcome.accepted }),
+      { arm: settle })
+    .output(({ carry, settled }): RoundCarry => ({ ...carry, state: settled }))
+
+  const round_loop = loop<RoundCarry, RoundCarry, RoundState>({
+    name: 'amplify_rounds',
+    init: (c) => c,
+    body: round_body,
+    guard: step('check_budget', (c: RoundCarry) => ({
+      stop: stop_reason(c.state.budget, now()) !== undefined,
+      state: c,
+    })),
+    finish: (c) => c.state,
+    max_rounds: env.budget.max_rounds,
+  })
+
+  return chain<Brief, 'brief'>('brief')
+    .step('baseline', async ({ brief }) => {
       const parent = await env.workspace.read_parent(brief.metric.mutable_path)
       const candidate = await env.score(brief, 0, {
         content: parent,
@@ -113,140 +205,19 @@ export function build_flow(engine: Engine, models: FlowModels, env: FlowEnv): St
         )
       }
       return candidate.score.value
-    }),
-  ])
-
-  const extract_research = step(
-    'extract_research',
-    (r: GenerateResult) => clamp_research(r.content),
-  )
-
-  const web_research: Step<unknown, string> = sequence([
-    use([K.BRIEF], (s) => format_research_message(read_brief(s))),
-    make_web_researcher_call(engine, models.researcher),
-    extract_research,
-  ])
-
-  const offline_research: Step<unknown, string> = sequence([
-    use([K.BRIEF], (s) => format_research_message(read_brief(s))),
-    make_offline_researcher_call(engine, models.researcher),
-    extract_research,
-  ])
-
-  // The web tool is absent on older CLIs and can fail outright; degrading to
-  // the offline researcher is an edge in the topology, not a buried try/catch.
-  const research_subflow: Step<unknown, string> = sequence([
-    env.research === 'offline' ? offline_research : fallback(web_research, offline_research),
-    use([K.BRIEF], async (s, summary: string) => {
-      await env.workspace.cache_research(read_brief(s).run_dir, summary)
+    })
+    .step('research', async ({ brief }, ctx) => {
+      const summary = await ctx.call(research_arm, brief)
+      await env.workspace.cache_research(brief.run_dir, summary)
       return summary
-    }),
-  ])
-
-  const seed_round_state: Step<unknown, RoundState> = sequence([
-    use([K.BRIEF], (s) => read_brief(s).metric.mutable_path),
-    step('read_parent', (path: string) => env.workspace.read_parent(path)),
-    use([K.BASELINE], (s, parent_content: string) =>
-      initial_round_state(parent_content, read_baseline(s), env.budget, now()),
-    ),
-  ])
-
-  const propose_subflow: Step<ProposerInput, CandidateSpec> = scope([
-    stash(K.PROPOSER, step('init_proposer', (i: ProposerInput) => i)),
-    use([K.PROPOSER], (s) => format_propose_message(read_proposer(s))),
-    proposer_call,
-    use([K.PROPOSER], (s, r: GenerateResult<Proposal>) => ({
-      proposer_id: read_proposer(s).proposer_id,
-      rationale: r.content.rationale,
-      content: r.content.content,
-    })),
-  ])
-
-  const score_subflow: Step<CandidateSpec, Candidate> = sequence([
-    use([K.BRIEF, K.ROUND], (s, spec: CandidateSpec) => ({
-      brief: read_brief(s),
-      round: read_round(s).round,
-      spec,
-    })),
-    step('score_candidate', (a: { brief: Brief; round: number; spec: CandidateSpec }) =>
-      env.score(a.brief, a.round, a.spec),
-    ),
-    step('record_candidate', (c: Candidate, ctx) => {
-      ctx.trajectory.record({
-        kind: 'amplify.candidate',
-        proposer_id: c.spec.proposer_id,
-        accepted: c.score.accepted,
-        stage_failed: c.score.stage_failed ?? null,
-        value: c.score.accepted ? c.score.value : null,
-      })
-      return c
-    }),
-  ])
-
-  const candidates_subflow: Step<unknown, ReadonlyArray<Candidate>> = sequence([
-    use([K.BRIEF, K.RESEARCH, K.ROUND], (s) =>
-      build_proposer_inputs(read_brief(s), read_research(s), read_round(s), env.candidates_per_round),
-    ),
-    map({
-      name: 'propose',
-      items: (inputs: ReadonlyArray<ProposerInput>) => inputs,
-      do: propose_subflow,
-      concurrency: env.candidates_per_round,
-    }),
-    map({
-      name: 'score',
-      items: (specs: ReadonlyArray<CandidateSpec>) => specs,
-      do: score_subflow,
-      concurrency: 1,
-    }),
-  ])
-
-  const commit_winner: Step<RoundOutcome, RoundState> = sequence([
-    use([K.BRIEF], async (s, o: RoundOutcome) => {
-      await env.workspace.commit_parent(read_brief(s).metric.mutable_path, o.next_state.parent_content)
-      return o
-    }),
-    step('take_next_state', (o: RoundOutcome) => o.next_state),
-  ])
-
-  const round_body: Step<RoundState, RoundState> = scope([
-    stash(K.ROUND, step('open_round', (s: RoundState) => begin_round(s))),
-    stash(K.CANDIDATES, candidates_subflow),
-    use([K.BRIEF, K.ROUND, K.CANDIDATES], (s) =>
-      decide_round(read_brief(s), read_round(s), read_candidates(s)),
-    ),
-    step('record_round', (o: RoundOutcome, ctx) => {
-      ctx.trajectory.record({ kind: 'amplify.round', ...o.record })
-      return o
-    }),
-    branch<RoundOutcome, RoundState>({
-      name: 'round_accepted',
-      when: (o) => o.accepted,
-      then: commit_winner,
-      otherwise: step('keep_parent', (o: RoundOutcome) => o.next_state),
-    }),
-  ])
-
-  const round_loop = loop<RoundState, RoundState, RoundState>({
-    name: 'amplify_rounds',
-    init: (input) => input,
-    body: round_body,
-    guard: step('check_budget', (s: RoundState) => ({
-      stop: stop_reason(s.budget, now()) !== undefined,
-      state: s,
-    })),
-    finish: (state) => state,
-    max_rounds: env.budget.max_rounds,
-  })
-
-  return scope([
-    stash(K.BRIEF, step('init_brief', (b: Brief) => b)),
-    stash(K.BASELINE, baseline_subflow),
-    stash(K.RESEARCH, research_subflow),
-    seed_round_state,
-    round_loop,
-    use([K.BRIEF], (s, r: RoundState) =>
-      summarize_run(r, read_brief(s).metric.direction, stop_reason(r.budget, now()) ?? 'max_rounds'),
-    ),
-  ])
+    }, { arm: research_arm })
+    .step('seeded', async ({ brief, baseline }) => {
+      const parent = await env.workspace.read_parent(brief.metric.mutable_path)
+      return initial_round_state(parent, baseline, env.budget, now())
+    })
+    .step('rounds', ({ brief, research, seeded }, ctx) =>
+      ctx.call(round_loop, { brief, research, state: seeded }), { arm: round_loop })
+    .output(({ brief, rounds }) =>
+      summarize_run(rounds, brief.metric.direction, stop_reason(rounds.budget, now()) ?? 'max_rounds'),
+    )
 }

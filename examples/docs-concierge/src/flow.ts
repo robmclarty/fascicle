@@ -3,25 +3,26 @@
  *
  * Read top-to-bottom and you see the agent topology:
  *
- *   scope
- *     ├ stash QUESTION   ← screen_question (privacy scrub, pure)
- *     ├ stash PASSAGES   ← retrieve (Retriever port; local docs by default)
- *     ├ stash ASSESSMENT ← answerer (define_agent: markdown prompt + schema)
- *     └ gate → Outcome   (one-way narrowing toward abstention, pure)
+ *   chain
+ *     ├ input      ← the raw question
+ *     ├ question   ← screen_question (privacy scrub, pure)
+ *     ├ passages   ← retrieve (Retriever port; local docs by default)
+ *     ├ assessment ← answerer via ctx.call (define_agent: markdown prompt + schema)
+ *     └ output: gate → Outcome (one-way narrowing toward abstention, pure)
  *
  * Retrieval and the model both see the SCREENED question. The model proposes;
  * the gate decides, and it can only narrow toward abstention, so the agent
- * stays silent rather than confidently wrong.
+ * stays silent rather than confidently wrong. Binding types are inferred
+ * from each step's return, so this file declares no state shape at all.
  */
 
-import { scope, sequence, stash, step, use, type Engine, type Step } from 'fascicle'
+import { chain, type Engine, type Step } from 'fascicle'
 
 import { gate, type GateOptions } from './gate.js'
 import { screen_question } from './screen.js'
 import type { Retriever } from './services/retriever.js'
-import { K, read_assessment, read_passages, read_question } from './state.js'
 import { make_answerer } from './stages/answerer.js'
-import type { AskInput, Assessment, Outcome, Passage } from './types.js'
+import type { AskInput, Outcome } from './types.js'
 
 export type FlowModels = {
   readonly answerer: string
@@ -37,25 +38,10 @@ export type FlowEnv = {
 export function build_flow(engine: Engine, models: FlowModels, env: FlowEnv): Step<AskInput, Outcome> {
   const answerer = make_answerer(engine, models.answerer)
 
-  const retrieve_subflow: Step<unknown, ReadonlyArray<Passage>> = sequence([
-    use([K.QUESTION], (s) => read_question(s)),
-    step('retrieve', async (question: string) => env.retriever.search(question, env.k)),
-  ])
-
-  const answerer_subflow: Step<unknown, Assessment> = sequence([
-    use([K.QUESTION, K.PASSAGES], (s) => ({
-      question: read_question(s),
-      passages: read_passages(s),
-    })),
-    answerer,
-  ])
-
-  return scope([
-    stash(K.QUESTION, step('screen_question', (input: AskInput) => screen_question(input.question))),
-    stash(K.PASSAGES, retrieve_subflow),
-    stash(K.ASSESSMENT, answerer_subflow),
-    use([K.ASSESSMENT, K.PASSAGES], (s) =>
-      gate(read_assessment(s), read_passages(s), env.gate ?? {}),
-    ),
-  ])
+  return chain<AskInput>()
+    .step('question', ({ input }) => screen_question(input.question))
+    .step('passages', ({ question }) => env.retriever.search(question, env.k))
+    .step('assessment', ({ question, passages }, ctx) =>
+      ctx.call(answerer, { question, passages }), { arm: answerer })
+    .output(({ assessment, passages }) => gate(assessment, passages, env.gate ?? {}))
 }

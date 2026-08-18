@@ -9,14 +9,14 @@ For the full design rationale — the academic landscape, the OSS prior art, the
 ## How it works
 
 ```text
-┌─ scope ────────────────────────────────────────────────────┐
-│  stash(BRIEF)         user input: task + target + metric   │
-│  stash(BASELINE)      score the starter; this is the floor │
-│  stash(RESEARCH)      fallback(web researcher, offline)    │
-│  seed round state     parent contents + baseline + budget  │
+┌─ chain 'brief' ────────────────────────────────────────────┐
+│  brief          user input: task + target + metric         │
+│  baseline       score the starter; this is the floor       │
+│  research       fallback(web researcher, offline)          │
+│  seeded         parent contents + baseline + budget        │
 │                                                            │
 │  loop(guard: budget exhausted or plateau):                 │
-│    map(propose, concurrency N):   parallel model_call      │
+│    map(propose, concurrency N):   parallel model_step      │
 │    map(score,   concurrency 1):   (sequential, fs-isolated)│
 │         ├─ syntax: tsc --noEmit                            │
 │         ├─ gate:   metric.gate.command (exit 0 = pass)     │
@@ -29,12 +29,12 @@ For the full design rationale — the academic landscape, the OSS prior art, the
 
 The harness uses five fascicle primitives heavily:
 
-- `scope` / `stash` / `use` — the named-state pattern (typed projection of run-time state across phases)
+- `chain` — the spine: named, typed bindings for the brief, baseline, research, and seeded round state
 - `loop` — the round loop, with the stop rule as a `guard` and progress as immutable carry-state rather than mutable closure variables
 - `map` — the per-round fan-out: proposals run concurrently, scoring runs at concurrency 1 because each candidate is swapped into the metric's mutable path while it is evaluated
 - `branch` — the accept/reject decision, so it shows up in the trajectory
 - `fallback` — the research stage degrades from web search to offline as an edge in the topology, not a `try` inside a step
-- `model_call` — `claude_cli` provider with `model: 'opus'` (an id the CLI resolves; API providers need a concrete id) at `effort: 'xhigh'`
+- `model_step` — `claude_cli` provider with `model: 'opus'` (an id the CLI resolves; API providers need a concrete id) at `effort: 'xhigh'`
 
 The starter target is a deliberately slow log aggregator (`target/src/log_aggregator.ts`) with several plausible improvement axes: pre-compile the regex, single-pass, streaming, drop substring allocations.
 
