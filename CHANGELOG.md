@@ -1,5 +1,75 @@
 # Changelog
 
+## v0.12.1 — 2026-08-18
+
+### Added
+
+- **The `gate` composite: paid work survives an approval pause.** `gate(inner, { id, store?, format?, name? })` runs `inner`, checkpoints its result under `gate:<id>`, then suspends with that result as the payload, so the approver sees what they are approving. Resuming passes the inner result through unchanged, and a fresh run after a process restart with the same store replays from the checkpoint instead of paying for the model call again. Built from public primitives only, so it renders as one composite node in `describe`; reach for raw `checkpoint` plus `suspend` when the decision must shape the output.
+
+- **`chain` states its input type once.** `chain('question').input<Request>()` replaces `chain<Request, 'question'>('question')`; the refinement is available only on a freshly opened chain, before the first binding.
+
+- **Arm-first chain bindings.** `.step(name, arm, select)` takes a composed `Step` and a selector from the record to the arm's input: the chain dispatches the arm and records it as the binding's describe child in one statement, so the run tree and the described tree cannot drift apart. The `fn` plus `{ arm }` form remains for bodies that invoke an arm conditionally, in a loop, or more than once.
+
+- **Scripted and sequenced test doubles.** `make_script_engine(responses, options?)` plays a strict call-order queue whose entries are plain content values or `{ content?, tool_calls?, finish_reason?, usage?, throw? }`, so a converging loop, a tool-call path, or a provider error can be scripted without hand-rolling an engine; a `make_stub_engine` response's `content` may now be a function of the call and its per-route index. `text_of(opts)` reads the user-visible prompt out of a captured `GenerateOptions` whatever its shape, and `engine_from_generate(generate)`, the shell both factories are built on, is now exported for custom doubles. `docs/testing.md` is the new guide.
+
+- **Caller-shaped generation knobs everywhere they were missing.** `temperature`, `max_tokens`, `top_p`, `turn_timeout_ms`, and `prepare_step` ride on `ModelCallConfig` (and so on `model_step`); the three sampling knobs also work as `EngineDefaults`, with the per-call value winning. `define_agent` accepts `provider`, `effort`, `temperature`, `max_tokens`, and `top_p` through both markdown frontmatter and code config, code winning over frontmatter and frontmatter over the engine default. Previously the only route to a temperature was frontmatter or dropping to `engine.generate` inside a step body.
+
+- **Terminal and checkpoint trajectory events.** Every run now ends with `run_end` carrying `status: 'done' | 'failed' | 'aborted' | 'suspended'`, so a consumer no longer infers a failed run from silence, and a failing span records `error_name`, `error_kind`, and `error_path` alongside the message. Checkpoint lookups emit `checkpoint` with `status: 'hit' | 'miss' | 'read_error'`; a store that throws still degrades to a miss, but visibly. Guards: `is_run_end_event`, `is_checkpoint_event`.
+
+- **`run.until_suspended` outcomes carry their `payload`.** A driver loop can render what is awaiting approval without threading a side channel out of the `on` callback.
+
+- **A bare predicate as a `loop` guard.** `guard: (state) => boolean`, or a promise of one, no longer needs wrapping in a step that returns `{ stop, state }`.
+
+- **Every type a public signature names.** The composer configs (`SequenceOptions`, `ParallelOptions`, `BranchConfig`, `MapConfig`, `PipeOptions`, `RetryConfig`, `FallbackOptions`, `TimeoutOptions`, `CheckpointConfig`, `SuspendConfig`, `ScopeOptions`, `StashOptions`, `UseOptions`, `GateConfig`), the run vocabulary (`RunOptions`, `StreamingRunHandle`, `StepFn`, `CleanupFn`), the schema vocabulary (`ToolSchema`, `AnySchema`, `SchemaIssue`), `ClaudeCliErrorReason`, and the extractors `StepInput<s>` / `StepOutput<s>` are exported now, and `is_step` joins `is_step_kind` at runtime. Writing the wrapper factories the blueprint teaches no longer requires `Parameters<typeof run>[2]`.
+
+- **A typed error path.** Every fascicle error class declares `path`, and `error_path(err)` reads it off any thrown value, including a foreign error the runner tagged on its way out. The documented diagnostic previously required a cast.
+
+- **CommonJS consumers can `require()` the package.** Each export entry gained a `default` condition pointing at the same ESM file, so Node's native `require(esm)` resolves it on the supported Node 24 floor. No CJS build, no second artifact.
+
+### Changed
+
+- **Provider resolution no longer falls back to `anthropic`.** With several providers configured and neither a per-call `provider` nor `defaults.provider`, `generate` throws the new `provider_required_error` naming what is configured, instead of quietly sending the call to Anthropic. Per-call choice, engine default, and sole-provider inference are unchanged. **Breaking**, and deliberately so for a provider-agnostic library: a multi-provider engine that leaned on the implicit default now has to say which one it meant.
+
+- **A misspelled provider name is reported at construction.** A provider key matching no built-in and no custom adapter throws `engine_config_error` with `unknown provider '<name>'; built-in providers are: ...`, rather than claiming it is not configured on the engine that just declared it. The call-time `provider_not_configured_error` keeps its own meaning.
+
+- **`chain`'s input type parameter defaults to `never`.** An unannotated `chain()` used to produce a spine that accepted anything at `run`; the omission now fails at the `run` call site. **Breaking** for chains that leaned on the inferred `unknown`: state the type with `chain<Input>()` or `chain('name').input<Input>()`. Every call site in this repo already annotated, so the sweep changed none of them.
+
+- **The viewer moved to the `fascicle/viewer` subpath.** `start_viewer`, `run_viewer_cli`, `StartViewerOptions`, and `ViewerHandle` are no longer re-exported from the package root. **Breaking**, one import line. The subpath also publishes `create_broadcaster`, `start_server`, and `start_tail`, which existed in the barrel but could not be reached from the published surface. The `fascicle-viewer` bin is unaffected.
+
+- **`sequence` type checking.** Runtime-built homogeneous arrays infer as `Step<T, T>` through a new overload instead of degrading to `Step<unknown, unknown>` (which let `run(seq, wrong_type)` compile), a sound spread inside a literal tuple no longer false-positives, and a joint mismatch resolves to a branded `SequenceJointMismatch<At, Expected, Got>`, so the first line of the error names the position and the two types instead of two lines about optional properties.
+
+- **Anonymous step ids are `step_<n>`** (previously `anon_<n>`), and a `model_call` without an explicit `id` mixes in an instance counter, so two identical leaves are distinguishable in `describe` and the trajectory.
+
+- **`describe` shows the model call's knobs.** Temperature, token cap, `top_p`, and turn timeout appear by value when set, with `has_prepare_step` alongside the existing flags.
+
+### Fixed
+
+- **`fallback` no longer discards the primary error.** When the backup also fails, the primary error rides along as the backup error's `cause`, so the interesting failure, why the fallback happened at all, survives to the catch site.
+
+- **`retry` rejects a non-finite `max_attempts` at construction.** A `NaN`, easy to produce from arithmetic on a missing config field, previously ran zero attempts and rejected with a literal `undefined`: no message, no stack.
+
+- **`model_call` names a missing engine.** Constructing without one threw `Cannot read properties of undefined (reading 'generate')` at dispatch; it now throws a `TypeError` at construction saying which option is missing and where an `Engine` comes from.
+
+- **The stub engine reports what failed a schema.** It surfaces the validation issues and throws the real `schema_validation_error`, so a test can exercise the same handling production takes; it previously computed the issues, dropped them, and threw a bare `Error`.
+
+- **Docs no longer teach a model id that 404s.** Every family shorthand (`sonnet`, `opus`, `haiku`) on an API transport became a concrete id, since the engine sends `model` verbatim and only `claude_cli` resolves bare tokens; the README tour and the first-run examples were the worst of it. Several recipes moved to local Ollama and other open models. A compile-only snippet gate cannot catch a wrong id, which is how these survived.
+
+- **The cookbook's multi-provider fallback recipe routes to two providers.** Neither `model_step` set `provider`, so both calls, including the one asking for `gpt-4o`, resolved to the same adapter.
+
+- **`docs/composition.md` is the composition guide again.** It was an old module README, still titled `# core`, ending in a stray closing tag that rendered on GitHub, with a public-surface table missing a dozen exports.
+
+- **The stale concurrency caveat is gone.** Six documents warned that bundled span stacks attribute concurrent children to the wrong parent; the loggers have used the runner-threaded `parent_span_id` for a while, and the roadmap already claimed the fixed behavior. The synchronous-write caveat on `filesystem_logger` is real and stays.
+
+- **Standard Schema is documented as such.** The reference printed `schema?: z.ZodType<t>` and said "a zod schema" in four places, while the contract is any Standard Schema; an ArkType or Valibot user reading it would conclude the headline feature did not exist.
+
+- **A viewer regression test that never ran.** Its path to the built bundle carried an extra `..` from the old workspace layout, so it resolved above the repository root and skipped silently.
+
+### Internal
+
+- `markdownlint` and `cspell` no longer ignore `docs/**`. That gap is how the stray tag and the stale claims survived every release; the twelve lint errors and forty-eight spelling flags it surfaced are fixed.
+- The build's bundle invariants walk the root entry's static closure instead of grepping `dist/index.js`, so hoisting the engine into a shared chunk, which the testing subpath's value import now causes, no longer quietly stops the lazy `ai` seam from being checked. `fascicle/ui` is out of scope by design, since it imports `ai` on purpose.
+- Getting-started gained a run scaffold (`"type": "module"`, Node 24, `tsx`), the keyless stub-engine path is advertised where a newcomer will see it, and the examples index marks which examples need a key.
+
 ## v0.12.0 — 2026-08-18
 
 ### Added
