@@ -140,6 +140,12 @@ once in each style in
 [examples/release_notes_direct.ts](../examples/release_notes_direct.ts)
 (direct, with a conditional model boundary as the reason to be direct).
 
+How these primitives layer into a whole app (model boundaries as leaves,
+named arms composed around them, one `chain` spine) is the subject of
+[leaf-arm-spine.md](./leaf-arm-spine.md), including the decision rules for
+choosing between `sequence` and `chain` and between `model_step` and
+`model_call`.
+
 ## The helper tier: wrapping primitives is the extension model
 
 `model_step(cfg)` is the shipped example: `model_call` projected to its

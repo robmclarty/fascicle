@@ -188,6 +188,7 @@ The canonical worked example is [examples/pr-improve/](./examples/pr-improve/), 
 - [docs/getting-started.md](./docs/getting-started.md) — install and run your first flow
 - [docs/concepts.md](./docs/concepts.md) — step-as-value, trajectories, cancellation
 - [docs/composition.md](./docs/composition.md) — full composition surface: the 21 primitives, run/stream, checkpointing
+- [docs/leaf-arm-spine.md](./docs/leaf-arm-spine.md) — the three-layer shape of a fascicle flow and how to choose the right primitive at each layer
 - [docs/api-reference.md](./docs/api-reference.md) — the public surface at a glance
 - [docs/configuration.md](./docs/configuration.md) — engine config, defaults, pricing, retries
 - [docs/providers.md](./docs/providers.md) — per-provider adapter notes

@@ -110,6 +110,12 @@ The names matter less than the contracts. What kills legibility is not calling t
 
 ## flow.ts
 
+The shape to aim for inside this file is the three-layer one:
+model boundaries as leaves, named arms composed around them, one `chain`
+spine. [leaf-arm-spine.md](./leaf-arm-spine.md) is the decision guide for
+that layering; [examples/newsroom.ts](../examples/newsroom.ts) is its
+worked example.
+
 Rules, in order of importance:
 
 1. **Only fascicle vocabulary and plugged-in names.** Every import is a stage factory, a `format_*` / `render_*` / `read_*` function, or a type. If you find yourself writing a template literal or an `await fetch` here, it belongs in a sibling.
