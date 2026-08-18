@@ -37,7 +37,6 @@ import {
   schema_validation_error,
   sequence,
   step,
-  type Step,
 } from 'fascicle'
 
 const engine = create_engine({
@@ -84,21 +83,23 @@ const compose_build_prompt = step(
   },
 )
 
-// `model_step` is generic over its schema type and accepts `string |
-// Message[]` as input, so annotating the leaf to the concrete
-// `Step<string, string>` is what lets `sequence` infer its own boundary.
-const build_call: Step<string, string> = model_step({
-  engine,
-  model: 'sonnet',
-  id: 'build',
-  system:
-    'You are a staff engineer. Given a PRD, produce a concrete, ordered ' +
-    'implementation plan. If a previous draft and critique are supplied, ' +
-    'revise the plan to address every point raised by the critic. Output ' +
-    'plain markdown only.',
-})
-
-const build = sequence([compose_build_prompt, build_call])
+// The model_step leaf sits inline: sequence checks the joint (the prompt
+// step's string output feeds the leaf's string | Message[] input) and the
+// leaf's schema-less default types the sequence boundary as Step<build_in,
+// string> with no annotation.
+const build = sequence([
+  compose_build_prompt,
+  model_step({
+    engine,
+    model: 'sonnet',
+    id: 'build',
+    system:
+      'You are a staff engineer. Given a PRD, produce a concrete, ordered ' +
+      'implementation plan. If a previous draft and critique are supplied, ' +
+      'revise the plan to address every point raised by the critic. Output ' +
+      'plain markdown only.',
+  }),
+])
 
 const critique = model_step<Critique>({
   engine,

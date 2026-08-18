@@ -3,10 +3,20 @@ import { aborted_error } from '../errors.js'
 import { run } from '../runner.js'
 import { sequence } from '../sequence.js'
 import { step } from '../step.js'
+import type { Step } from '../types.js'
 import { recording_logger } from '../../../test/fixtures/trajectory.js'
 import { remove_signal_listeners } from '../../../test/fixtures/signal_listeners.js'
 
 const double_fn = (x: number): number => x * 2
+
+/**
+ * Mimics model_step's shape for the compile-time joint tests: generic over
+ * its output with a default and no inference site in the arguments, union
+ * input.
+ */
+function fake_model_leaf<T = string>(): Step<string | readonly string[], T> {
+  return step('leaf', (input: string | readonly string[]) => String(input) as unknown as T)
+}
 
 describe('sequence', () => {
   afterEach(remove_signal_listeners)
@@ -107,5 +117,44 @@ describe('sequence', () => {
         'sequence(children): children[1] is not a Step, got function — wrap plain functions with step(fn), or use pipe(inner, fn) to transform output',
       ),
     )
+  })
+
+  it('type-checks joints at compile time for literal tuples', () => {
+    const to_len = step('to_len', (s: string) => s.length)
+    const wants_deep = step('wants_deep', (x: { deep: { field: string } }) => Boolean(x.deep))
+
+    // @ts-expect-error a number output cannot feed a step wanting a deep object
+    sequence([to_len, wants_deep])
+
+    // An inline generic leaf keeps its default under inference, so a valid
+    // pipe types end to end through it.
+    const typed = sequence([step('src', (n: number) => String(n)), fake_model_leaf(), to_len])
+    const ok: Step<number, number> = typed
+    // @ts-expect-error the pipe ends in a number, not a string
+    const wrong: Step<number, string> = typed
+
+    // A loose middle accepting unknown composes after any output.
+    const loose_ok: Step<string, number> = sequence([
+      to_len,
+      step('loose', (x: unknown) => String(x)),
+      to_len,
+    ])
+
+    // Width subtyping across a joint stays legal.
+    const wide = step('wide', (s: string) => ({ a: s, b: s.length }))
+    const narrow = step('narrow', (x: { a: string }) => x.a)
+    const width_ok: Step<string, string> = sequence([wide, narrow])
+
+    // A runtime-built array carries no positional types and degrades to the
+    // outer boundary while still running at any length.
+    const dynamic: Array<Step<number, number>> = [step('inc', (n: number) => n + 1)]
+    const dynamic_ok: Step<unknown, unknown> = sequence(dynamic)
+
+    void ok
+    void wrong
+    void loose_ok
+    void width_ok
+    void dynamic_ok
+    expect(true).toBe(true)
   })
 })

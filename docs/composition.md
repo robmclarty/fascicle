@@ -67,7 +67,12 @@ from English specifications:
 
 - `step(id, fn)` / `step(fn)` — atomic unit. Anonymous form cannot be
   checkpointed.
-- `sequence([a, b, c])` — run in order, thread output into input.
+- `sequence([a, b, c])` — run in order, thread output into input. Literal
+  tuples are joint-checked at compile time: each child must accept its
+  predecessor's output, and a mismatch errors on the offending element
+  (arrays built at runtime degrade to `unknown` boundaries). A straight
+  pipe belongs in `sequence`; reach for `chain` when a step needs fan-in,
+  phases, or named per-joint types.
 - `parallel({ a, b, c })` — run concurrently, return `{ a, b, c }`.
 - `branch({ when, then, otherwise })` — route on `when(input)`.
 - `map({ items, do, concurrency? })` — run `do` per item; cap in-flight.

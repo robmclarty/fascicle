@@ -53,9 +53,12 @@ fits a step fits any composition of steps.
 | Primitive | Shape |
 | --- | --- |
 | `step(id?, fn, meta?)` | lift a plain function into `Step<i, o>` |
-| `sequence([a, b, c])` | run in order, threading the value |
+| `sequence([a, b, c])` | run in order, threading the value; literal tuples are joint-checked at compile time (each child must accept its predecessor's output) |
 | `pipe(inner, fn)` | post-process an inner step's output |
 | `compose(label, inner)` | label a composite so it shows up by intent in trajectories |
+
+A straight pipe belongs in `sequence`; reach for `chain` when a step needs
+fan-in, phases, or named per-joint types.
 
 **Control flow**
 
