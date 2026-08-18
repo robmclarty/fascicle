@@ -9,9 +9,9 @@
  */
 
 import { run } from 'fascicle'
+import { make_stub_engine } from 'fascicle/testing'
 import { describe, expect, it } from 'vitest'
 
-import { make_stub_engine } from '../engine.js'
 import { build_flow, type FlowEnv } from '../flow.js'
 import type { CandidateScorer } from '../services/evaluate.js'
 import type { Workspace } from '../services/workspace.js'
@@ -37,9 +37,9 @@ const BRIEF: Brief = {
 
 function stub_engine() {
   return make_stub_engine([
-    { match_system_prefix: 'amplify/researcher', content: '- use a single pass' },
+    { prefix: 'amplify/researcher', content: '- use a single pass' },
     {
-      match_system_prefix: 'amplify/proposer',
+      prefix: 'amplify/proposer',
       content: { rationale: 'single pass', content: 'export const x = 1' },
     },
   ])

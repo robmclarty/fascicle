@@ -1,41 +1,26 @@
 import { run } from 'fascicle'
-import type { Engine, GenerateOptions, GenerateResult } from 'fascicle'
+import { make_capture_engine } from 'fascicle/testing'
 import { afterEach, describe, expect, it } from 'vitest'
 import { documenter } from '../index.js'
 import type { DocumenterOutput } from '../schema.js'
 
-type CapturedCall = {
-  readonly opts: GenerateOptions<unknown>
-}
-
-function make_mock_engine(canned: unknown): {
-  engine: Engine
-  calls: CapturedCall[]
-} {
-  const calls: CapturedCall[] = []
-  const engine: Engine = {
-    generate: async <t = string>(opts: GenerateOptions<t>): Promise<GenerateResult<t>> => {
-      calls.push({ opts: opts })
+// Capture engine whose canned reply also round-trips the caller's schema, so
+// invalid canned data rejects the run the way a real engine would.
+function make_mock_engine(canned: unknown) {
+  return make_capture_engine({
+    result: {
+      content: canned,
+      tool_calls: [],
+      steps: [],
+      usage: { input_tokens: 1, output_tokens: 1 },
+      finish_reason: 'stop',
+      model_resolved: { provider: 'mock', model_id: 'doc' },
+    },
+    on_generate: async (opts) => {
       const checked = await opts.schema?.['~standard'].validate(canned)
       if (checked?.issues !== undefined) throw new Error('stub: canned response failed its schema')
-      const parsed = checked === undefined ? canned : checked.value
-      return {
-        // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-        content: parsed as t,
-        tool_calls: [],
-        steps: [],
-        usage: { input_tokens: 1, output_tokens: 1 },
-        finish_reason: 'stop',
-        model_resolved: { provider: 'mock', model_id: 'doc' },
-      }
     },
-    register_price: () => {},
-    resolve_price: () => undefined,
-    list_prices: () => ({}),
-    with_providers: () => { throw new Error("stub engine does not support with_providers") },
-    dispose: async () => {},
-  }
-  return { engine, calls }
+  })
 }
 
 const canned: DocumenterOutput = {
@@ -72,7 +57,7 @@ describe('documenter', () => {
       },
       { install_signal_handlers: false },
     )
-    expect(calls[0]?.opts.prompt).toBe(
+    expect(calls[0]?.prompt).toBe(
       'Style: tsdoc\n\nSymbol: sum\nSignature: (xs: number[]) => number',
     )
   })
@@ -93,7 +78,7 @@ describe('documenter', () => {
       },
       { install_signal_handlers: false },
     )
-    expect(calls[0]?.opts.prompt).toBe(
+    expect(calls[0]?.prompt).toBe(
       'Style: jsdoc\n\nSymbol: sum\nSignature: (xs: number[]) => number\n\nBody:\nreturn xs.reduce((a, b) => a + b, 0);',
     )
   })
@@ -109,7 +94,7 @@ describe('documenter', () => {
       },
       { install_signal_handlers: false },
     )
-    expect(calls[0]?.opts.prompt).toBe(
+    expect(calls[0]?.prompt).toBe(
       'Style: markdown\n\nFile: src/sum.ts\n\nexport const sum = ...;',
     )
   })
@@ -122,7 +107,7 @@ describe('documenter', () => {
       { target: { kind: 'file', path: 'a', contents: 'b' } },
       { install_signal_handlers: false },
     )
-    const prompt = calls[0]?.opts.prompt
+    const prompt = calls[0]?.prompt
     expect(typeof prompt).toBe('string')
     expect((prompt as string).startsWith('Style: tsdoc')).toBe(true)
   })

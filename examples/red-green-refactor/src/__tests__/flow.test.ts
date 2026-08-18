@@ -6,14 +6,20 @@
  */
 
 import { run } from 'fascicle'
+import { make_stub_engine } from 'fascicle/testing'
 import { describe, expect, it } from 'vitest'
 
-import { make_stub_engine } from '../engine.js'
 import { build_flow, GREEN_MAX_ROUNDS, type FlowEnv } from '../flow.js'
 import type { Behavior, FileEntry, Snapshot, TestVerdict } from '../types.js'
 
 const BEHAVIOR: Behavior = { id: 'add_two_positives', description: '`add(a, b)` sums two positives.' }
 const MODELS = { coder: 'stub' }
+
+// Every model boundary in this flow is prose (no schema), so one canned reply
+// with the match-everything prefix stands in for the coder at each phase.
+function stub_engine() {
+  return make_stub_engine([{ prefix: '', content: 'stub: applied the requested change' }])
+}
 
 const TEST_PATH = 'toy/src/calculator.test.ts'
 
@@ -49,19 +55,19 @@ describe('red-green-refactor flow', () => {
       [verdict(false), verdict(true), verdict(true)],
       [BEFORE, AFTER, AFTER, AFTER],
     )
-    await expect(run(build_flow(make_stub_engine(), MODELS, env), BEHAVIOR)).resolves.toBeUndefined()
+    await expect(run(build_flow(stub_engine(), MODELS, env), BEHAVIOR)).resolves.toBeUndefined()
   })
 
   it('fails RED when the new test does not actually fail', async () => {
     const env = scripted_env([verdict(true)], [BEFORE, AFTER])
-    await expect(run(build_flow(make_stub_engine(), MODELS, env), BEHAVIOR)).rejects.toThrow(
+    await expect(run(build_flow(stub_engine(), MODELS, env), BEHAVIOR)).rejects.toThrow(
       /RED failed: vitest passed/,
     )
   })
 
   it('fails RED when no new test was added', async () => {
     const env = scripted_env([verdict(false)], [BEFORE, BEFORE])
-    await expect(run(build_flow(make_stub_engine(), MODELS, env), BEHAVIOR)).rejects.toThrow(
+    await expect(run(build_flow(stub_engine(), MODELS, env), BEHAVIOR)).rejects.toThrow(
       /no new test was added/,
     )
   })
@@ -69,14 +75,14 @@ describe('red-green-refactor flow', () => {
   it('fails RED when more than one test was added', async () => {
     const splatted = snap('it("a", () => {})\nit("b", () => {})\nit("c", () => {})', 3)
     const env = scripted_env([verdict(false)], [BEFORE, splatted])
-    await expect(run(build_flow(make_stub_engine(), MODELS, env), BEHAVIOR)).rejects.toThrow(
+    await expect(run(build_flow(stub_engine(), MODELS, env), BEHAVIOR)).rejects.toThrow(
       /expected exactly one new test, got 2/,
     )
   })
 
   it('gives GREEN bounded retries and fails the cycle when it never converges', async () => {
     const env = scripted_env([verdict(false)], [BEFORE, AFTER])
-    await expect(run(build_flow(make_stub_engine(), MODELS, env), BEHAVIOR)).rejects.toThrow(
+    await expect(run(build_flow(stub_engine(), MODELS, env), BEHAVIOR)).rejects.toThrow(
       new RegExp(`GREEN did not converge in ${String(GREEN_MAX_ROUNDS)} rounds`),
     )
   })
@@ -84,7 +90,7 @@ describe('red-green-refactor flow', () => {
   it('rejects a GREEN that edited the test file instead of the implementation', async () => {
     const edited = snap('it("a", () => { expect(true).toBe(true) })\nit("b", () => {})', 2)
     const env = scripted_env([verdict(false), verdict(true)], [BEFORE, AFTER, edited])
-    await expect(run(build_flow(make_stub_engine(), MODELS, env), BEHAVIOR)).rejects.toThrow(
+    await expect(run(build_flow(stub_engine(), MODELS, env), BEHAVIOR)).rejects.toThrow(
       /GREEN backstop: test file .* was modified/,
     )
   })
@@ -94,7 +100,7 @@ describe('red-green-refactor flow', () => {
       [verdict(false), verdict(true), verdict(false)],
       [BEFORE, AFTER, AFTER, AFTER],
     )
-    await expect(run(build_flow(make_stub_engine(), MODELS, env), BEHAVIOR)).rejects.toThrow(
+    await expect(run(build_flow(stub_engine(), MODELS, env), BEHAVIOR)).rejects.toThrow(
       /REFACTOR broke tests/,
     )
   })

@@ -143,6 +143,10 @@ patterns = ["src/policy/**"]
 name = "schema"
 patterns = ["src/schema/**"]
 
+[[boundaries.zones]]
+name = "testing"
+patterns = ["src/testing/**"]
+
 [[boundaries.rules]] # core: imports no sibling module except the policy algebra and the schema seam
 from = "core"
 allow = ["mcp", "stdio", "ui", "policy", "schema"]
@@ -190,3 +194,7 @@ allow = []
 [[boundaries.rules]] # schema: bottom of the DAG; core, engine, mcp, stdio, and agents import it, so it imports nothing
 from = "schema"
 allow = []
+
+[[boundaries.rules]] # testing: engine only, type-only (canned Engine doubles); no src module imports it back
+from = "testing"
+allow = ["engine"]

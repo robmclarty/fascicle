@@ -16,33 +16,7 @@
 
 import { documenter, type DocumenterOutput } from './agents/documenter/index.js'
 import { run } from 'fascicle'
-import type { Engine, GenerateOptions, GenerateResult } from 'fascicle'
-
-function make_stub_engine(canned: DocumenterOutput): Engine {
-  return {
-    generate: async <t = string>(
-      opts: GenerateOptions<t>,
-    ): Promise<GenerateResult<t>> => {
-      const checked = await opts.schema?.['~standard'].validate(canned)
-      if (checked?.issues !== undefined) throw new Error('stub: canned response failed its schema')
-      const parsed = checked === undefined ? canned : checked.value
-      return {
-        // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-        content: parsed as t,
-        tool_calls: [],
-        steps: [],
-        usage: { input_tokens: 80, output_tokens: 40 },
-        finish_reason: 'stop',
-        model_resolved: { provider: 'stub', model_id: 'documenter-canned' },
-      }
-    },
-    register_price: () => {},
-    resolve_price: () => undefined,
-    list_prices: () => ({}),
-    with_providers: () => { throw new Error("stub engine does not support with_providers") },
-    dispose: async () => {},
-  }
-}
+import { make_stub_engine } from 'fascicle/testing'
 
 const canned: DocumenterOutput = {
   doc: [
@@ -59,7 +33,7 @@ const canned: DocumenterOutput = {
 export async function run_documenter(): Promise<{
   readonly result: DocumenterOutput
 }> {
-  const engine = make_stub_engine(canned)
+  const engine = make_stub_engine([{ prefix: '', content: canned }])
   try {
     const agent = documenter({ engine })
     const result = await run(

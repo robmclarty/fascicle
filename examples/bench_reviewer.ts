@@ -105,6 +105,9 @@ async function validate_canned<t>(
   return checked === undefined ? reply : checked.value
 }
 
+// Hand-rolled rather than `fascicle/testing`'s make_stub_engine: responses
+// here vary by case id extracted from the user prompt, which a system-prefix
+// router cannot express.
 function make_stub_engine(): Engine {
   return {
     generate: async <t = string>(opts: GenerateOptions<t>): Promise<GenerateResult<t>> => {

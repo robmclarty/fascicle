@@ -25,7 +25,8 @@
 import { z } from 'zod'
 
 import { chain, model_step, run } from 'fascicle'
-import type { Engine, GenerateOptions, GenerateResult, Step } from 'fascicle'
+import { make_stub_engine } from 'fascicle/testing'
+import type { Engine, Step } from 'fascicle'
 
 export const notes_schema = z.object({
   headline: z.string(),
@@ -94,32 +95,6 @@ export function build_flow(engine: Engine, model: string): Step<string, string> 
     .output(({ commits, grouped, notes }) => render_markdown(notes, grouped, commits.length))
 }
 
-export function make_stub_engine(canned: Notes): Engine {
-  return {
-    generate: async <t = string>(opts: GenerateOptions<t>): Promise<GenerateResult<t>> => {
-      const checked = await opts.schema?.['~standard'].validate(canned)
-      if (checked?.issues !== undefined) throw new Error('stub: canned response failed its schema')
-      const parsed = checked === undefined ? canned : checked.value
-      return {
-        // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-        content: parsed as t,
-        tool_calls: [],
-        steps: [],
-        usage: { input_tokens: 120, output_tokens: 60 },
-        finish_reason: 'stop',
-        model_resolved: { provider: 'stub', model_id: 'writer-canned' },
-      }
-    },
-    register_price: () => {},
-    resolve_price: () => undefined,
-    list_prices: () => ({}),
-    with_providers: () => {
-      throw new Error('stub engine does not support with_providers')
-    },
-    dispose: async () => {},
-  }
-}
-
 const SAMPLE_LOG = `\
 bc46bb3 feat(core): add chain and ctx.call primitives
 bfaf23d chore(gitignore): ignore the research scratch dir
@@ -133,7 +108,7 @@ export async function run_with_stub(
   log: string,
   canned: Notes,
 ): Promise<string> {
-  const engine = make_stub_engine(canned)
+  const engine = make_stub_engine([{ prefix: '', content: canned }])
   try {
     return await run(build(engine, 'stub'), log, { install_signal_handlers: false })
   } finally {

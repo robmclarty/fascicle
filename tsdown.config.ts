@@ -18,6 +18,7 @@ export default defineConfig({
     mcp: './src/mcp/index.ts',
     otel: './src/otel/index.ts',
     stdio: './src/stdio/index.ts',
+    testing: './src/testing/index.ts',
     ui: './src/ui/index.ts',
   },
   outDir: './dist',

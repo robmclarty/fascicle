@@ -25,14 +25,13 @@ import { fileURLToPath } from 'node:url'
 
 import { run } from 'fascicle'
 import { filesystem_logger, tee_logger } from 'fascicle/adapters'
+import { make_stub_engine, type StubResponse } from 'fascicle/testing'
 
 import {
   create_app_engine,
-  make_stub_engine,
   read_engine_env,
   STUB_MODELS,
   type Provider,
-  type StubResponse,
 } from './engine.js'
 import { build_flow } from './flow.js'
 import {
@@ -136,7 +135,7 @@ async function load_pr_from_fixture(path: string): Promise<PRContext> {
 function stub_responses(): ReadonlyArray<StubResponse> {
   return [
     {
-      match_system_prefix: 'pr-improve/stage1/reviewer',
+      prefix: 'pr-improve/stage1/reviewer',
       content: {
         suggestions: [
           {
@@ -173,7 +172,7 @@ function stub_responses(): ReadonlyArray<StubResponse> {
       },
     },
     {
-      match_system_prefix: 'pr-improve/stage2/pragmatist',
+      prefix: 'pr-improve/stage2/pragmatist',
       content: {
         accepted: [
           {
@@ -194,7 +193,7 @@ function stub_responses(): ReadonlyArray<StubResponse> {
       },
     },
     {
-      match_system_prefix: 'pr-improve/stage3/builder',
+      prefix: 'pr-improve/stage3/builder',
       content: {
         files_touched: [
           { path: 'src/payments.ts', one_liner: 'Replaced `const total` with `let total` to allow reassignment.' },
@@ -205,7 +204,7 @@ function stub_responses(): ReadonlyArray<StubResponse> {
       },
     },
     {
-      match_system_prefix: 'pr-improve/stage4/build_reviewer',
+      prefix: 'pr-improve/stage4/build_reviewer',
       content: {
         kind: 'pass' as const,
         summary:
@@ -349,7 +348,7 @@ async function run_fixture_mode(
 
     if (result.kind === 'improvement_ready' && args.stub) {
       const stub_spec_raw = stub_responses().find((r) =>
-        r.match_system_prefix.startsWith('pr-improve/stage2'),
+        r.prefix.startsWith('pr-improve/stage2'),
       )?.content
       if (stub_spec_raw !== undefined) {
         await writeFile(

@@ -67,6 +67,10 @@
       "types": "./dist/stdio.d.ts",
       "import": "./dist/stdio.js"
     },
+    "./testing": {
+      "types": "./dist/testing.d.ts",
+      "import": "./dist/testing.js"
+    },
     "./ui": {
       "types": "./dist/ui.d.ts",
       "import": "./dist/ui.js"
@@ -82,7 +86,8 @@
     "#stdio": "./src/stdio/index.ts",
     "#ui": "./src/ui/index.ts",
     "#policy": "./src/policy/index.ts",
-    "#schema": "./src/schema/index.ts"
+    "#schema": "./src/schema/index.ts",
+    "#testing": "./src/testing/index.ts"
   },
   "bin": {
     "fascicle-viewer": "./dist/bin/fascicle-viewer.js"

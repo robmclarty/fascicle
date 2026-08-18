@@ -37,6 +37,8 @@ const DIST_OTEL_JS = join(DIST_DIR, 'otel.js');
 const DIST_OTEL_DTS = join(DIST_DIR, 'otel.d.ts');
 const DIST_STDIO_JS = join(DIST_DIR, 'stdio.js');
 const DIST_STDIO_DTS = join(DIST_DIR, 'stdio.d.ts');
+const DIST_TESTING_JS = join(DIST_DIR, 'testing.js');
+const DIST_TESTING_DTS = join(DIST_DIR, 'testing.d.ts');
 const DIST_UI_JS = join(DIST_DIR, 'ui.js');
 const DIST_UI_DTS = join(DIST_DIR, 'ui.d.ts');
 const DIST_STATIC_DIR = join(DIST_DIR, 'static');
@@ -328,6 +330,19 @@ async function main() {
     process.exit(1);
   }
 
+  process.stderr.write(`▸ build: smoke-importing ${DIST_TESTING_JS}\n`);
+  if (!existsSync(DIST_TESTING_JS) || !existsSync(DIST_TESTING_DTS)) {
+    console.error(`\nbuild: dist/testing.{js,d.ts} were not produced (the ./testing subpath)`);
+    process.exit(1);
+  }
+  const testing_mod = await import(pathToFileURL(DIST_TESTING_JS).href);
+  const EXPECTED_TESTING = ['make_stub_engine', 'make_capture_engine'];
+  const missing_testing = EXPECTED_TESTING.filter((name) => typeof testing_mod[name] === 'undefined');
+  if (missing_testing.length > 0) {
+    console.error(`\nbuild: testing smoke test missing exports: ${missing_testing.join(', ')}`);
+    process.exit(1);
+  }
+
   process.stderr.write(`▸ build: smoke-importing ${DIST_UI_JS}\n`);
   if (!existsSync(DIST_UI_JS) || !existsSync(DIST_UI_DTS)) {
     console.error(`\nbuild: dist/ui.{js,d.ts} were not produced (the ./ui subpath)`);
@@ -342,7 +357,7 @@ async function main() {
   }
 
   process.stderr.write(
-    `\n✔ build ok (${js_stat.size} bytes js, ${dts_stat.size} bytes d.ts, ${EXPECTED_NAMED.length} named exports + describe.json + ${EXPECTED_ADAPTERS.length} adapters + ${EXPECTED_AGENTS.length} agents + ${EXPECTED_MCP.length} mcp + ${EXPECTED_OTEL.length} otel + ${EXPECTED_STDIO.length} stdio + ${EXPECTED_UI.length} ui verified)\n`,
+    `\n✔ build ok (${js_stat.size} bytes js, ${dts_stat.size} bytes d.ts, ${EXPECTED_NAMED.length} named exports + describe.json + ${EXPECTED_ADAPTERS.length} adapters + ${EXPECTED_AGENTS.length} agents + ${EXPECTED_MCP.length} mcp + ${EXPECTED_OTEL.length} otel + ${EXPECTED_STDIO.length} stdio + ${EXPECTED_TESTING.length} testing + ${EXPECTED_UI.length} ui verified)\n`,
   );
 }
 

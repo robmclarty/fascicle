@@ -18,33 +18,7 @@
 
 import { researcher, type ResearcherOutput, type SummarizerOutput } from './agents/researcher/index.js'
 import { run } from 'fascicle'
-import type { Engine, GenerateOptions, GenerateResult } from 'fascicle'
-
-function make_stub_engine(canned: SummarizerOutput): Engine {
-  return {
-    generate: async <t = string>(
-      opts: GenerateOptions<t>,
-    ): Promise<GenerateResult<t>> => {
-      const checked = await opts.schema?.['~standard'].validate(canned)
-      if (checked?.issues !== undefined) throw new Error('stub: canned response failed its schema')
-      const parsed = checked === undefined ? canned : checked.value
-      return {
-        // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-        content: parsed as t,
-        tool_calls: [],
-        steps: [],
-        usage: { input_tokens: 300, output_tokens: 120 },
-        finish_reason: 'stop',
-        model_resolved: { provider: 'stub', model_id: 'researcher-canned' },
-      }
-    },
-    register_price: () => {},
-    resolve_price: () => undefined,
-    list_prices: () => ({}),
-    with_providers: () => { throw new Error("stub engine does not support with_providers") },
-    dispose: async () => {},
-  }
-}
+import { make_stub_engine } from 'fascicle/testing'
 
 const corpus: Readonly<Record<string, { readonly title: string; readonly contents: string }>> = {
   'https://example.test/composition': {
@@ -83,7 +57,7 @@ const canned_summary: SummarizerOutput = {
 export async function run_researcher(): Promise<{
   readonly result: ResearcherOutput
 }> {
-  const engine = make_stub_engine(canned_summary)
+  const engine = make_stub_engine([{ prefix: '', content: canned_summary }])
   try {
     const agent = researcher({
       engine,

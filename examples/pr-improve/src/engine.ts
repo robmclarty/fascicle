@@ -8,14 +8,13 @@
  *   providers is the explicit proof point of this app — no code changes
  *   should be required.
  *
- * - `make_stub_engine(canned)` — in-process stub for Phase A and tests. Picks
- *   a canned response keyed by the system prompt's first line. Validates
- *   each canned response against the call's schema if one is set.
+ * The stub path (Phase A and tests) uses `make_stub_engine` from
+ * `fascicle/testing`, imported by the shell and the tests directly.
  */
 
 import { z } from 'zod'
 
-import { create_engine, type Engine, type GenerateOptions, type GenerateResult } from 'fascicle'
+import { create_engine, type Engine } from 'fascicle'
 
 import type { FlowModels } from './types.js'
 
@@ -110,40 +109,4 @@ export function create_app_engine(cfg: AppEngineConfig, opts: AppEngineOptions =
       },
     },
   })
-}
-
-export type StubResponse = {
-  readonly match_system_prefix: string
-  readonly content: unknown
-}
-
-export function make_stub_engine(responses: ReadonlyArray<StubResponse>): Engine {
-  return {
-    generate: async <T = unknown>(opts: GenerateOptions<T>): Promise<GenerateResult<T>> => {
-      const system = opts.system ?? ''
-      const match = responses.find((r) => system.startsWith(r.match_system_prefix))
-      if (!match) {
-        throw new Error(
-          `make_stub_engine: no canned response matches system prefix\nGot system:\n${system.slice(0, 200)}`,
-        )
-      }
-      const checked = await opts.schema?.['~standard'].validate(match.content)
-      if (checked?.issues !== undefined) throw new Error('stub: canned response failed its schema')
-      const parsed = checked === undefined ? match.content : checked.value
-      return {
-        // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-        content: parsed as T,
-        tool_calls: [],
-        steps: [],
-        usage: { input_tokens: 100, output_tokens: 50 },
-        finish_reason: 'stop',
-        model_resolved: { provider: 'stub', model_id: 'pr-improve-stub' },
-      }
-    },
-    register_price: () => {},
-    resolve_price: () => undefined,
-    list_prices: () => ({}),
-    with_providers: () => { throw new Error("stub engine does not support with_providers") },
-    dispose: async () => {},
-  }
 }

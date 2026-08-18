@@ -5,9 +5,9 @@
  */
 
 import { run } from 'fascicle'
+import { make_capture_engine } from 'fascicle/testing'
 import { describe, expect, it } from 'vitest'
 
-import { make_capture_engine } from '../engine.js'
 import { solve_instance } from '../flow.js'
 import { noop_sandbox } from '../sandbox.js'
 import type { SweBenchInstance } from '../types.js'
@@ -39,7 +39,7 @@ describe('solve_instance', () => {
       { install_signal_handlers: false },
     )
     expect(calls).toHaveLength(1)
-    expect(calls[0]?.tool_names).toEqual([
+    expect((calls[0]?.tools ?? []).map((t) => t.name)).toEqual([
       'read_file',
       'write_file',
       'run_command',
@@ -61,7 +61,7 @@ describe('solve_instance', () => {
       INSTANCE,
       { install_signal_handlers: false },
     )
-    expect(calls[0]?.system.split('\n')[0]).toBe('swebench/solver')
+    expect(calls[0]?.system?.split('\n')[0]).toBe('swebench/solver')
   })
 
   it('returns a Prediction in the shape the eval harness consumes', async () => {

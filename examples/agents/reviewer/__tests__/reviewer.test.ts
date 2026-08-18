@@ -1,5 +1,6 @@
 import { run } from 'fascicle'
-import type { Engine, GenerateOptions, GenerateResult, TrajectoryEvent, TrajectoryLogger } from 'fascicle'
+import type { TrajectoryEvent, TrajectoryLogger } from 'fascicle'
+import { make_capture_engine } from 'fascicle/testing'
 import { afterEach, describe, expect, it } from 'vitest'
 import { reviewer } from '../index.js'
 import type { ReviewerOutput } from '../schema.js'
@@ -24,38 +25,23 @@ function recording_logger(): { logger: TrajectoryLogger; events: TrajectoryEvent
   return { logger, events }
 }
 
-type CapturedCall = {
-  readonly opts: GenerateOptions<unknown>
-}
-
-function make_mock_engine(canned: unknown): {
-  engine: Engine
-  calls: CapturedCall[]
-} {
-  const calls: CapturedCall[] = []
-  const engine: Engine = {
-    generate: async <t = string>(opts: GenerateOptions<t>): Promise<GenerateResult<t>> => {
-      calls.push({ opts: opts })
+// Capture engine whose canned reply also round-trips the caller's schema, so
+// invalid canned data rejects the run the way a real engine would.
+function make_mock_engine(canned: unknown) {
+  return make_capture_engine({
+    result: {
+      content: canned,
+      tool_calls: [],
+      steps: [],
+      usage: { input_tokens: 1, output_tokens: 1 },
+      finish_reason: 'stop',
+      model_resolved: { provider: 'mock', model_id: 'rev' },
+    },
+    on_generate: async (opts) => {
       const checked = await opts.schema?.['~standard'].validate(canned)
       if (checked?.issues !== undefined) throw new Error('stub: canned response failed its schema')
-      const parsed = checked === undefined ? canned : checked.value
-      return {
-        // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-        content: parsed as t,
-        tool_calls: [],
-        steps: [],
-        usage: { input_tokens: 1, output_tokens: 1 },
-        finish_reason: 'stop',
-        model_resolved: { provider: 'mock', model_id: 'rev' },
-      }
     },
-    register_price: () => {},
-    resolve_price: () => undefined,
-    list_prices: () => ({}),
-    with_providers: () => { throw new Error("stub engine does not support with_providers") },
-    dispose: async () => {},
-  }
-  return { engine, calls }
+  })
 }
 
 const canned_findings: ReviewerOutput = {
@@ -102,21 +88,21 @@ describe('reviewer', () => {
       { diff: '+++ a', focus: ['security', 'tests'] },
       { install_signal_handlers: false },
     )
-    expect(calls[0]?.opts.prompt).toBe('Focus areas: security, tests.\n\nDiff:\n\n+++ a')
+    expect(calls[0]?.prompt).toBe('Focus areas: security, tests.\n\nDiff:\n\n+++ a')
   })
 
   it('omits the focus prefix when no focus areas are provided', async () => {
     const { engine, calls } = make_mock_engine(canned_findings)
     const agent = reviewer({ engine })
     await run(agent, { diff: 'D' }, { install_signal_handlers: false })
-    expect(calls[0]?.opts.prompt).toBe('Diff:\n\nD')
+    expect(calls[0]?.prompt).toBe('Diff:\n\nD')
   })
 
   it('passes the markdown body as the system prompt', async () => {
     const { engine, calls } = make_mock_engine(canned_findings)
     const agent = reviewer({ engine })
     await run(agent, { diff: 'D' }, { install_signal_handlers: false })
-    const system = calls[0]?.opts.system
+    const system = calls[0]?.system
     expect(typeof system).toBe('string')
     expect(system).toMatch(/code reviewer/i)
   })

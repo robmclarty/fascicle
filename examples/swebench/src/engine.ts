@@ -13,7 +13,7 @@
  * so the defaults are per provider: `sonnet` is a name only the CLI resolves.
  */
 
-import { create_engine, type Engine, type GenerateResult } from 'fascicle'
+import { create_engine, type Engine } from 'fascicle'
 import type { EffortLevel } from 'fascicle'
 
 type Provider = 'anthropic' | 'claude_cli'
@@ -121,44 +121,4 @@ export function create_case_engine(opts: CaseEngineOptions): Engine {
       ...(opts.effort !== undefined ? { effort: opts.effort } : {}),
     },
   })
-}
-
-/**
- * In-process engine that records the options it was called with and returns a
- * canned reply. The flow test uses it to assert tool wiring per provider
- * without a network or a subprocess.
- */
-export function make_capture_engine(): {
-  readonly engine: Engine
-  readonly calls: ReadonlyArray<{ readonly tool_names: ReadonlyArray<string>; readonly system: string }>
-} {
-  const calls: { tool_names: ReadonlyArray<string>; system: string }[] = []
-  const engine: Engine = {
-    generate: async <T = string>(opts: {
-      readonly tools?: ReadonlyArray<{ readonly name: string }>
-      readonly system?: string
-    }): Promise<GenerateResult<T>> => {
-      calls.push({
-        tool_names: (opts.tools ?? []).map((t) => t.name),
-        system: opts.system ?? '',
-      })
-      return {
-        // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-        content: '' as T,
-        tool_calls: [],
-        steps: [],
-        usage: { input_tokens: 0, output_tokens: 0 },
-        finish_reason: 'stop',
-        model_resolved: { provider: 'stub', model_id: 'swebench-stub' },
-      }
-    },
-    register_price: () => {},
-    resolve_price: () => undefined,
-    list_prices: () => ({}),
-    with_providers: () => {
-      throw new Error('capture engine does not support with_providers')
-    },
-    dispose: async () => {},
-  }
-  return { engine, calls }
 }

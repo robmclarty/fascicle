@@ -24,43 +24,9 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { reviewer, type ReviewerInput, type ReviewerOutput } from './agents/reviewer/index.js'
-import {
-  learn,
-  run,
-  step,
-  type Engine,
-  type GenerateOptions,
-  type GenerateResult,
-  type Improvement,
-  type LearnInput,
-} from 'fascicle'
+import { learn, run, step, type Improvement, type LearnInput } from 'fascicle'
 import { filesystem_logger } from 'fascicle/adapters'
-
-function make_stub_engine(canned: ReviewerOutput): Engine {
-  return {
-    generate: async <t = string>(
-      opts: GenerateOptions<t>,
-    ): Promise<GenerateResult<t>> => {
-      const checked = await opts.schema?.['~standard'].validate(canned)
-      if (checked?.issues !== undefined) throw new Error('stub: canned response failed its schema')
-      const parsed = checked === undefined ? canned : checked.value
-      return {
-        // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-        content: parsed as t,
-        tool_calls: [],
-        steps: [],
-        usage: { input_tokens: 250, output_tokens: 90 },
-        finish_reason: 'stop',
-        model_resolved: { provider: 'stub', model_id: 'reviewer-canned' },
-      }
-    },
-    register_price: () => {},
-    resolve_price: () => undefined,
-    list_prices: () => ({}),
-    with_providers: () => { throw new Error("stub engine does not support with_providers") },
-    dispose: async () => {},
-  }
-}
+import { make_stub_engine } from 'fascicle/testing'
 
 const CANNED_FINDINGS: ReviewerOutput = {
   findings: [
@@ -148,7 +114,11 @@ export async function run_learn_reviewer(): Promise<{
   readonly per_agent: Readonly<Record<string, AgentUsage>>
 }> {
   const dir = await mkdtemp(join(tmpdir(), 'fascicle-learn-reviewer-'))
-  const engine = make_stub_engine(CANNED_FINDINGS)
+  // The learn analyzer aggregates token usage per agent, so the canned usage
+  // numbers are load-bearing: 3 runs x 250/90 is what the demo reports.
+  const engine = make_stub_engine([{ prefix: '', content: CANNED_FINDINGS }], {
+    usage: { input_tokens: 250, output_tokens: 90 },
+  })
   try {
     const reviewer_step = reviewer({ engine })
 

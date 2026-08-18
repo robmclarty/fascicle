@@ -8,9 +8,9 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
 import { run } from 'fascicle'
+import { make_stub_engine } from 'fascicle/testing'
 import { describe, expect, it } from 'vitest'
 
-import { make_stub_engine } from '../engine.js'
 import { build_flow } from '../flow.js'
 
 const FIXTURE = readFileSync(
@@ -23,7 +23,7 @@ const MODELS = { assessor: 'stub' }
 function stub_with_score(score: number) {
   return make_stub_engine([
     {
-      match_system_prefix: 'change-triage/assessor',
+      prefix: 'change-triage/assessor',
       content: {
         score,
         confidence: 'medium',

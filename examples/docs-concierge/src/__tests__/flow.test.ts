@@ -8,9 +8,9 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { run } from 'fascicle'
+import { make_stub_engine } from 'fascicle/testing'
 import { describe, expect, it } from 'vitest'
 
-import { make_stub_engine } from '../engine.js'
 import { build_flow } from '../flow.js'
 import { make_docs_retriever } from '../services/retriever.js'
 
@@ -18,7 +18,7 @@ const DOCS = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'docs')
 
 function build(content: unknown) {
   const engine = make_stub_engine([
-    { match_system_prefix: 'docs-concierge/answerer', content },
+    { prefix: 'docs-concierge/answerer', content },
   ])
   return build_flow(engine, { answerer: 'stub' }, { retriever: make_docs_retriever(DOCS), k: 4 })
 }

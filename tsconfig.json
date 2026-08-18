@@ -29,6 +29,7 @@
       "fascicle/stdio": ["./src/stdio/index.ts"],
       "fascicle/ui": ["./src/ui/index.ts"],
       "fascicle/agents": ["./src/agents/index.ts"],
+      "fascicle/testing": ["./src/testing/index.ts"],
       "#core": ["./src/core/index.ts"],
       "#engine": ["./src/engine/index.ts"],
       "#composites": ["./src/composites/index.ts"],
@@ -38,7 +39,8 @@
       "#stdio": ["./src/stdio/index.ts"],
       "#ui": ["./src/ui/index.ts"],
       "#policy": ["./src/policy/index.ts"],
-      "#schema": ["./src/schema/index.ts"]
+      "#schema": ["./src/schema/index.ts"],
+      "#testing": ["./src/testing/index.ts"]
     }
   },
   "include": [

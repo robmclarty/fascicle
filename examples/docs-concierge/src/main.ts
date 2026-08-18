@@ -14,8 +14,9 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { run } from 'fascicle'
+import { make_stub_engine } from 'fascicle/testing'
 
-import { create_app_engine, make_stub_engine, read_engine_env, type Provider } from './engine.js'
+import { create_app_engine, read_engine_env, type Provider } from './engine.js'
 import { build_flow } from './flow.js'
 import { render_human, render_json } from './render.js'
 import { make_docs_retriever } from './services/retriever.js'
@@ -81,7 +82,7 @@ async function main(): Promise<number> {
   const cfg = args.stub ? undefined : read_engine_env(process.env, args.provider)
   const engine = cfg
     ? create_app_engine(cfg)
-    : make_stub_engine([{ match_system_prefix: 'docs-concierge/answerer', content: STUB_ASSESSMENT }])
+    : make_stub_engine([{ prefix: 'docs-concierge/answerer', content: STUB_ASSESSMENT }])
   const models = { answerer: cfg?.model_answerer ?? 'stub' }
 
   try {

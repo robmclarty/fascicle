@@ -18,33 +18,7 @@
 
 import { reviewer, type ReviewerOutput } from './agents/reviewer/index.js'
 import { run } from 'fascicle'
-import type { Engine, GenerateOptions, GenerateResult } from 'fascicle'
-
-function make_stub_engine(canned: ReviewerOutput): Engine {
-  return {
-    generate: async <t = string>(
-      opts: GenerateOptions<t>,
-    ): Promise<GenerateResult<t>> => {
-      const checked = await opts.schema?.['~standard'].validate(canned)
-      if (checked?.issues !== undefined) throw new Error('stub: canned response failed its schema')
-      const parsed = checked === undefined ? canned : checked.value
-      return {
-        // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-        content: parsed as t,
-        tool_calls: [],
-        steps: [],
-        usage: { input_tokens: 200, output_tokens: 80 },
-        finish_reason: 'stop',
-        model_resolved: { provider: 'stub', model_id: 'reviewer-canned' },
-      }
-    },
-    register_price: () => {},
-    resolve_price: () => undefined,
-    list_prices: () => ({}),
-    with_providers: () => { throw new Error("stub engine does not support with_providers") },
-    dispose: async () => {},
-  }
-}
+import { make_stub_engine } from 'fascicle/testing'
 
 const sample_diff = `\
 --- a/src/payments.ts
@@ -82,7 +56,7 @@ export async function run_reviewer(diff = sample_diff): Promise<{
   readonly diff: string
   readonly review: ReviewerOutput
 }> {
-  const engine = make_stub_engine(canned)
+  const engine = make_stub_engine([{ prefix: '', content: canned }])
   try {
     const agent = reviewer({ engine })
     const review = await run(

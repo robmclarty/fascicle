@@ -18,13 +18,9 @@ import { fileURLToPath } from 'node:url'
 
 import { run } from 'fascicle'
 import { filesystem_logger } from 'fascicle/adapters'
+import { make_stub_engine } from 'fascicle/testing'
 
-import {
-  create_app_engine,
-  make_stub_engine,
-  read_engine_env,
-  type Provider,
-} from './engine.js'
+import { create_app_engine, read_engine_env, type Provider } from './engine.js'
 import { band_at_or_above } from './floor.js'
 import { build_flow } from './flow.js'
 import { render_report } from './render.js'
@@ -89,7 +85,7 @@ async function main(): Promise<number> {
   await mkdir(run_dir, { recursive: true })
 
   const engine = args.stub
-    ? make_stub_engine([{ match_system_prefix: 'change-triage/assessor', content: STUB_ASSESSMENT }])
+    ? make_stub_engine([{ prefix: 'change-triage/assessor', content: STUB_ASSESSMENT }])
     : create_app_engine(read_engine_env(process.env, args.provider))
   const cfg = args.stub ? { model_assessor: 'stub' } : read_engine_env(process.env, args.provider)
 

@@ -61,7 +61,8 @@ import {
   suspended_error,
   timeout,
 } from 'fascicle'
-import type { AdversarialBuildInput, Engine, GenerateOptions, GenerateResult, Step } from 'fascicle'
+import { make_stub_engine } from 'fascicle/testing'
+import type { AdversarialBuildInput, Engine, Step } from 'fascicle'
 
 // ---- domain types and schemas ---------------------------------------------
 
@@ -226,7 +227,7 @@ function parallel_inputs(research: Step<Brief, Corpus>, widen: Step<Corpus, Corp
   })
 }
 
-// ---- stub engine: canned responses routed by system prefix ---------------
+// ---- canned responses routed by system prefix (fascicle/testing) ----------
 
 const CANNED: ReadonlyArray<{ readonly prefix: string; readonly content: unknown }> = [
   { prefix: 'newsroom/summarize', content: 'summarized source material' },
@@ -239,38 +240,10 @@ const CANNED: ReadonlyArray<{ readonly prefix: string; readonly content: unknown
   { prefix: 'newsroom/headline', content: { title: 'The Topology Is the File' } },
 ]
 
-function make_stub_engine(): Engine {
-  return {
-    generate: async <t = string>(opts: GenerateOptions<t>): Promise<GenerateResult<t>> => {
-      const match = CANNED.find((c) => (opts.system ?? '').startsWith(c.prefix))
-      if (!match) throw new Error(`no canned response for system: ${opts.system ?? '(none)'}`)
-      const checked = await opts.schema?.['~standard'].validate(match.content)
-      if (checked?.issues !== undefined) throw new Error(`stub: canned response failed schema for ${match.prefix}`)
-      const parsed = checked === undefined ? match.content : checked.value
-      return {
-        // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-        content: parsed as t,
-        tool_calls: [],
-        steps: [],
-        usage: { input_tokens: 40, output_tokens: 20 },
-        finish_reason: 'stop',
-        model_resolved: { provider: 'stub', model_id: 'newsroom-canned' },
-      }
-    },
-    register_price: () => {},
-    resolve_price: () => undefined,
-    list_prices: () => ({}),
-    with_providers: () => {
-      throw new Error('stub engine does not support with_providers')
-    },
-    dispose: async () => {},
-  }
-}
-
 // ---- main: print the topology, run to the gate, resume, print the article -
 
 export async function run_newsroom(): Promise<string> {
-  const engine = make_stub_engine()
+  const engine = make_stub_engine(CANNED)
   const flow = build_flow(engine)
   const brief: Brief = { kind: 'fresh', topic: 'legible agent composition' }
   try {
@@ -290,7 +263,7 @@ export async function run_newsroom(): Promise<string> {
 }
 
 if (import.meta.url === `file://${process.argv[1] ?? ''}`) {
-  const engine = make_stub_engine()
+  const engine = make_stub_engine(CANNED)
   console.log(describe(build_flow(engine)))
   console.log('--- run: suspends at the editor gate, resumes with approval ---\n')
   run_newsroom()

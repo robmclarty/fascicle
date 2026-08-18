@@ -280,26 +280,26 @@ Match the reader's parameter type to how the state arrives, which differs by cal
 
 ## Testing: stub the engine, not the flow
 
-The `Engine` type is a small interface; a scripted stub is about 40 lines and lets you run the *real* flow through the *real* `run()` with zero network:
+The `Engine` type is a small interface, and `fascicle/testing` ships the two doubles an app needs, so a test runs the *real* flow through the *real* `run()` with zero network and no mocking framework:
 
 ```ts
-export function make_stub_engine(responses: ReadonlyArray<StubResponse>): Engine {
-  return {
-    generate: async <T>(opts: GenerateOptions<T>): Promise<GenerateResult<T>> => {
-      const match = responses.find((r) => (opts.system ?? '').startsWith(r.match_system_prefix))
-      if (!match) throw new Error('no canned response for this call')
-      const parsed = opts.schema ? opts.schema.parse(match.content) : match.content
-      return { content: parsed as T, tool_calls: [], steps: [], usage: { input_tokens: 0, output_tokens: 0 }, finish_reason: 'stop', model_resolved: { provider: 'stub', model_id: 'stub' } }
-    },
-    // remaining Engine members are no-ops
-  }
-}
+import { make_stub_engine, make_capture_engine } from 'fascicle/testing'
+
+const engine = make_stub_engine([
+  { prefix: 'myapp/reviewer', content: { findings: [], summary: 'clean' } },
+  { prefix: 'myapp/planner', content: { steps: ['ship it'] } },
+])
+
+const { engine: capture, calls } = make_capture_engine()
+// ...run a stage against `capture`, then assert on calls[0].tools, .system, ...
 ```
+
+`make_stub_engine(canned, options?)` answers each call with the first entry whose `prefix` the system prompt starts with (an empty-string prefix matches everything, the single-role case) and throws on an unmatched system; `options` sets the reported usage numbers and model id. `make_capture_engine(options?)` records every call's `GenerateOptions` into the live `calls` array and answers with a canned result. Responses that must vary per call (scripted rounds, content keyed off the user prompt) are the one case to hand-roll an `Engine` instead.
 
 Three details that make this pattern pay:
 
 1. **Route canned responses by the prompt's stable first line** (or the `model_call` id). No mocking framework, and the routing key is the same one humans use to orient in trajectories.
-2. **Validate canned content through the caller's own schema** (`opts.schema.parse(match.content)`). Fixtures then cannot drift from the contracts; a schema change breaks the test that ships stale data.
+2. **Validate canned content through the caller's own schema** (`make_stub_engine` runs every canned response through the call's schema). Fixtures then cannot drift from the contracts; a schema change breaks the test that ships stale data.
 3. Because stages keep the `Step<In, GenerateResult<Out>>` contract, integration tests of `flow.ts` cover the topology (branching, looping, convergence) end to end, while stage internals (provider dispatch, tool surfaces) get their own focused tests with a capture engine.
 
 Gate live tests on key presence (`describe.skipIf(!process.env.ANTHROPIC_API_KEY)`) and keep them few: one smoke per provider path.
