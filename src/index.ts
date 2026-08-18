@@ -29,6 +29,7 @@ export {
   provider_capability_error,
   provider_error,
   provider_not_configured_error,
+  provider_required_error,
   rate_limit_error,
   schema_validation_error,
   tool_approval_denied_error,
@@ -39,6 +40,7 @@ export type {
   AiSdkProviderAdapter,
   AiSdkTelemetrySettings,
   AssistantContentPart,
+  ClaudeCliErrorReason,
   CostBreakdown,
   EffortLevel,
   EffortTranslation,
@@ -84,7 +86,8 @@ export { default_normalize_usage } from '#engine'
 export { model_call, model_step } from './model_call.js'
 export type { ModelCallConfig, ModelCallInput } from './model_call.js'
 
-export { forward_standard_env } from './forward_standard_env.js'
+// `ModelCallConfig.schema`, `GenerateOptions.schema`, and `Tool.input_schema`
+// all name it, so the type must be nameable from the umbrella too.
+export type { ToolSchema } from '#schema'
 
-export { run_viewer_cli, start_viewer } from '#viewer'
-export type { StartViewerOptions, ViewerHandle } from '#viewer'
+export { forward_standard_env } from './forward_standard_env.js'

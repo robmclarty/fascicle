@@ -161,6 +161,9 @@ function build_internals(
     assign_if_present(internals, 'default_model', defaults.model)
     assign_if_present(internals, 'default_provider', defaults.provider)
     assign_if_present(internals, 'default_system', defaults.system)
+    assign_if_present(internals, 'default_temperature', defaults.temperature)
+    assign_if_present(internals, 'default_max_tokens', defaults.max_tokens)
+    assign_if_present(internals, 'default_top_p', defaults.top_p)
     assign_if_present(internals, 'default_tool_error_policy', defaults.tool_error_policy)
     assign_if_present(internals, 'default_schema_repair_attempts', defaults.schema_repair_attempts)
     assign_if_present(

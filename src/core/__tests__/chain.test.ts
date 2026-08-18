@@ -1,5 +1,6 @@
 import { describe as vdescribe, expect, it } from 'vitest'
 import { chain } from '../chain.js'
+import type { Chain } from '../chain.js'
 import { describe } from '../describe.js'
 import { run } from '../runner.js'
 import { step } from '../step.js'
@@ -204,9 +205,114 @@ vdescribe('chain', () => {
     expect(arm_runs).toBe(1)
   })
 
+  it('defaults the input type to never so an unstated input fails at run', async () => {
+    const untyped = chain().output((s) => Object.keys(s))
+    const rejected = () =>
+      // @ts-expect-error the input type was never stated, so no real input is accepted
+      run(untyped, 'real', { install_signal_handlers: false })
+    void rejected
+
+    const typed = chain()
+      .input<string>()
+      .output(({ input }) => input.toUpperCase())
+    expect(await run(typed, 'ok', { install_signal_handlers: false })).toBe('OK')
+  })
+
+  it('.input<t>() on a fresh chain equals stating the type argument', async () => {
+    const refined = chain('q').input<string>()
+    const direct: Chain<string, { readonly q: string }> = chain<string, 'q'>('q')
+    const same: Chain<string, { readonly q: string }> = refined
+    void direct
+    void same
+
+    const flow = refined.step('len', ({ q }) => q.length).output(({ len }) => len * 2)
+    expect(await run(flow, 'abcd', { install_signal_handlers: false })).toBe(8)
+  })
+
+  it('refuses .input after the first entry', () => {
+    const after_step = chain<number>().step('a', ({ input }) => input)
+    expect(() =>
+      // @ts-expect-error .input is only available on a freshly opened chain
+      after_step.input<string>(),
+    ).toThrow(TypeError)
+    const after_stage = chain<number>().stage('phase')
+    expect(() =>
+      // @ts-expect-error .input is only available on a freshly opened chain
+      after_stage.input<string>(),
+    ).toThrow(TypeError)
+  })
+
+  it('arm-first step: the chain dispatches the arm with the selected input', async () => {
+    const seen: number[] = []
+    const tenfold = step('tenfold', (n: number) => {
+      seen.push(n)
+      return n * 10
+    })
+    const flow = chain<number>()
+      .step('scaled', tenfold, ({ input }) => input + 1)
+      .step('b', ({ scaled }) => scaled + 1)
+      .output(({ b }) => b)
+
+    expect(await run(flow, 4, { install_signal_handlers: false })).toBe(51)
+    expect(seen).toEqual([5])
+  })
+
+  it('arm-first step records the arm as the binding child in describe', () => {
+    const tenfold = step('tenfold', (n: number) => n * 10)
+    const flow = chain<number>()
+      .step('scaled', tenfold, ({ input }) => input)
+      .output(({ scaled }) => scaled)
+
+    const node = describe.json(flow)
+    const binding = node.children?.find((c) => c.id === 'scaled')
+    expect(binding?.children?.map((c) => c.id)).toEqual(['tenfold'])
+    // The text tree nests the arm one level deeper than its binding.
+    const lines = describe(flow).split('\n')
+    const binding_line = lines.findIndex((l) => l.includes('step(scaled)'))
+    expect(lines[binding_line + 1]).toMatch(/^\s+step\(tenfold\)/)
+  })
+
+  it('arm-first step nests the arm span under the binding span', async () => {
+    type SpanStart = { readonly name: string; readonly span_id: string; readonly meta: Record<string, unknown> }
+    const starts: SpanStart[] = []
+    let n = 0
+    const logger = {
+      record: () => {},
+      start_span: (name: string, meta?: Record<string, unknown>) => {
+        n += 1
+        const span_id = `s${n}`
+        starts.push({ name, span_id, meta: { ...meta } })
+        return span_id
+      },
+      end_span: () => {},
+    }
+
+    const tenfold = step('tenfold', (x: number) => x * 10)
+    const flow = chain<number>()
+      .step('scaled', tenfold, ({ input }) => input)
+      .output(({ scaled }) => scaled)
+    await run(flow, 2, { install_signal_handlers: false, trajectory: logger })
+
+    const binding = starts.find((s) => s.meta['id'] === 'scaled')
+    const arm_span = starts.find((s) => s.meta['id'] === 'tenfold')
+    expect(binding).toBeDefined()
+    expect(arm_span?.meta['parent_span_id']).toBe(binding?.span_id)
+  })
+
+  it('throws when an arm is passed without a select function', () => {
+    const tenfold = step('tenfold', (n: number) => n * 10)
+    expect(() =>
+      // @ts-expect-error the arm form requires a select projection
+      chain<number>().step('scaled', tenfold),
+    ).toThrow('select must be a function')
+  })
+
   it('type-checks binding names and shapes at compile time', () => {
     // @ts-expect-error unknown binding name in the view
     chain<number>().step('a', ({ nope }) => nope)
+    const tenfold = step('tenfold', (n: number) => n * 10)
+    // @ts-expect-error the selection must produce the arm's input type
+    chain<number>().step('bad', tenfold, ({ input }) => String(input))
     const typed = chain<number>()
       .step('a', ({ input }) => input + 1)
       .output(({ a }) => a)

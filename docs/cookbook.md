@@ -79,10 +79,10 @@ import { z } from 'zod';
 const score_schema = z.object({ score: z.number().min(0).max(1) });
 
 const draft = (id: string, system: string) =>
-  model_step({ engine, id, model: 'sonnet', system });
+  model_step({ engine, id, model: 'claude-sonnet-4-6', system });
 
 const style_judge = model_step({
-  engine, model: 'haiku', id: 'style_judge', schema: score_schema,
+  engine, model: 'claude-haiku-4-5', id: 'style_judge', schema: score_schema,
   system: 'Score the draft 0..1 for clarity and fit.',
 });
 
@@ -116,11 +116,11 @@ const critique_schema = z.object({
 const build = sequence([
   step('build_prompt', (b: AdversarialBuildInput<string, string>) =>
     b.critique === undefined ? b.input : `${b.input}\n\nRevise per: ${b.critique}`),
-  model_step({ engine, model: 'sonnet', id: 'build',
+  model_step({ engine, model: 'claude-sonnet-4-6', id: 'build',
     system: 'Draft a 2-sentence explainer.' }),
 ]);
 
-const critique = model_step({ engine, model: 'haiku', id: 'critique', schema: critique_schema,
+const critique = model_step({ engine, model: 'claude-haiku-4-5', id: 'critique', schema: critique_schema,
   system: 'Return {verdict:"pass"|"fail", notes:""}. Be strict.' });
 
 const explain = adversarial({
@@ -155,9 +155,9 @@ const classify = (id: string, model: string) =>
 
 const flow = consensus({
   members: {
-    a: classify('a', 'sonnet'),
-    b: classify('b', 'opus'),
-    c: classify('c', 'haiku'),
+    a: classify('a', 'claude-sonnet-4-6'),
+    b: classify('b', 'claude-opus-4-8'),
+    c: classify('c', 'claude-haiku-4-5'),
   },
   // agree receives the per-member results keyed by member name and returns a
   // boolean. Accept once a strict majority return the same verdict.
@@ -187,12 +187,15 @@ and no absolute score exists; when a judge can score candidates,
 ```ts
 import { create_engine, model_step, tournament } from 'fascicle';
 
+// A bracket pays one call per member plus one per match; a local Ollama model
+// keeps the experiment keyless and free. With a single configured provider,
+// no per-call `provider` is needed.
 const engine = create_engine({
-  providers: { anthropic: { api_key: process.env.ANTHROPIC_API_KEY! } },
+  providers: { ollama: { base_url: 'http://localhost:11434' } },
 });
 
 const draft = (id: string, system: string) =>
-  model_step({ engine, id, model: 'sonnet', system });
+  model_step({ engine, id, model: 'llama3.2:3b', system });
 
 const bracket = tournament({
   members: {
@@ -203,7 +206,7 @@ const bracket = tournament({
   },
   compare: async (a, b) => {
     const r = await engine.generate({
-      model: 'sonnet',
+      model: 'llama3.2:3b',
       prompt: `Which tagline is better?\nA: ${a}\nB: ${b}\nReply only "A" or "B".`,
     });
     return r.content.trim().toUpperCase().startsWith('A') ? 'a' : 'b';
@@ -295,7 +298,7 @@ const get_weather = {
 
 const ask = model_step({
   engine,
-  model: 'sonnet',
+  model: 'claude-sonnet-4-6',
   tools: [get_weather],
   system: 'You have a weather tool. Use it.',
   max_steps: 4,
@@ -351,7 +354,8 @@ const plan_schema = z.object({
 
 const plan = model_step({
   engine,
-  model: 'sonnet',
+  provider: 'openai',
+  model: 'gpt-4o-mini',
   schema: plan_schema,
   system: 'Return a plan object. No prose outside JSON.',
 });
@@ -369,7 +373,8 @@ Plain `run` drops streaming events. `run.stream` delivers them:
 ```ts
 import { model_step, run } from 'fascicle';
 
-const ask = model_step({ engine, model: 'sonnet' });
+// A local model streams without an API key; any provider works the same way.
+const ask = model_step({ engine, provider: 'ollama', model: 'llama3.2:3b' });
 
 const handle = run.stream(ask, 'summarize Rust ownership');
 
@@ -395,7 +400,7 @@ await run(flow, input, {
 });
 ```
 
-One JSON object per line. Use `jq` or anything else to inspect. Note `filesystem_logger` writes synchronously and uses an in-memory span stack — see [concepts.md](./concepts.md#adapter-limits) before using it on a hot path.
+One JSON object per line. Use `jq` or anything else to inspect. Note `filesystem_logger` writes synchronously on every event: fine for dev tools and short runs, not for a hot request path (see [concepts.md](./concepts.md#adapter-limits)).
 
 For custom sinks, write an object that satisfies `TrajectoryLogger`:
 
@@ -433,13 +438,13 @@ Each `.step` merges its result under its name; later bindings destructure whatev
 
 ## Multi-provider fallback
 
-Prefer Anthropic; fall back to OpenAI if it fails:
+Prefer Anthropic; fall back to OpenAI if it fails. With more than one provider configured, every call must name its `provider`: there is no implicit default, and a call that names none throws `provider_required_error`.
 
 ```ts
 import { fallback, model_step } from 'fascicle';
 
-const primary  = model_step({ engine, model: 'sonnet',  id: 'primary'  });
-const backup   = model_step({ engine, model: 'gpt-4o',  id: 'backup'   });
+const primary  = model_step({ engine, provider: 'anthropic', model: 'claude-sonnet-4-6', id: 'primary' });
+const backup   = model_step({ engine, provider: 'openai',    model: 'gpt-4o',            id: 'backup'  });
 
 const ask = fallback(primary, backup);
 ```
@@ -496,11 +501,13 @@ type Turn = {
   verdict: z.infer<typeof verdict_schema>;
 };
 
-const weak_draft = model_step({ engine, model: 'haiku', id: 'weak_draft' });
+// The weak tier is a local model, so a non-escalated turn costs nothing. The
+// engine has two providers, so every call names its transport.
+const weak_draft = model_step({ engine, provider: 'ollama', model: 'llama3.2:3b', id: 'weak_draft' });
 
-const strong_answer = model_step({ engine, model: 'opus', id: 'strong_answer' });
+const strong_answer = model_step({ engine, provider: 'anthropic', model: 'claude-opus-4-8', id: 'strong_answer' });
 
-const judge = model_step({ engine, model: 'sonnet', id: 'judge', schema: verdict_schema,
+const judge = model_step({ engine, provider: 'anthropic', model: 'claude-haiku-4-5', id: 'judge', schema: verdict_schema,
   system: 'Judge the draft against the request. Escalate only on real trouble.' });
 
 // A judge that dies must not escalate: fail open to "serve the draft".
@@ -613,7 +620,7 @@ const engine = create_engine({
 const do_research = model_step({
   engine,
   model: 'sonnet',
-  provider: 'claude_cli',   // engine has two providers; name the transport explicitly
+  provider: 'claude_cli',   // engine has two providers; every call must name its transport
   id: 'research',
   provider_options: {
     claude_cli: { allowed_tools: ['Read', 'Grep', 'Bash'] },
@@ -623,7 +630,8 @@ const do_research = model_step({
 // Direct API for deterministic critique.
 const judge = model_step({
   engine,
-  model: 'haiku',
+  provider: 'anthropic',
+  model: 'claude-haiku-4-5',
   id: 'judge',
   system: 'Be terse. Reply pass or fail.',
 });

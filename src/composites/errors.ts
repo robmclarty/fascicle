@@ -8,6 +8,7 @@
 
 export class bench_suspend_error extends Error {
   readonly kind = 'bench_suspend_error' as const;
+  declare readonly path?: ReadonlyArray<string>;
   readonly case_id: string;
   readonly suspend_id: string;
   constructor(case_id: string, suspend_id: string, message?: string) {

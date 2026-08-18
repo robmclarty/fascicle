@@ -30,19 +30,19 @@ Not every app should be a full composition. Fascicle has three useful adoption t
 
 ```ts
 export type CompleteRequest<T> = {
-  label: string
-  system?: string
-  prompt: string
-  schema: z.ZodType<T>
-}
-export type Complete = <T>(req: CompleteRequest<T>) => Promise<T>
+  label: string;
+  system?: string;
+  prompt: string;
+  schema: z.ZodType<T>;
+};
+export type Complete = <T>(req: CompleteRequest<T>) => Promise<T>;
 
 export const fascicle_complete = (engine: Engine): Complete =>
   async <T>(req: CompleteRequest<T>): Promise<T> => {
     const call = model_step<T>({ engine, id: req.label, schema: req.schema,
-      ...(req.system ? { system: req.system } : {}) })
-    return run(call, req.prompt)
-  }
+      ...(req.system ? { system: req.system } : {}) });
+    return run(call, req.prompt);
+  };
 ```
 
 Business logic takes `Complete` as a dependency and never imports fascicle. You keep provider swap as a one-env-var change, structured output, retry, and cost accounting, without adopting the composition algebra. This tier is underrated: if your flow is a straight line of two calls, a port plus ordinary code reads better than `sequence([step, pipe(model_call, extract)])`.
@@ -57,7 +57,7 @@ const flow = loop<RunInput, LoopState, LoopState>({
   guard: step('gate', (s: LoopState) => gate(config, s)),
   finish: (s) => s,
   max_rounds: config.max_iterations,
-})
+});
 ```
 
 Each of `build`, `check`, `critique`, `record` is a thin `step` that delegates to a phase module (`run_builder(deps, state, ctx)`); the loop's carry-state is one immutable record, spread-updated per step. Resume falls out of `init` for free. The guard is a pure, separately testable function.
@@ -123,12 +123,12 @@ Rules, in order of importance:
 3. **Put the topology diagram in the file header.** An ASCII tree that mirrors the code below it is the cheapest architecture doc you will ever write, and drift is caught in review because they sit in the same diff.
 4. **Recurring stage idiom**: a stage is one `chain` binding, and readers learn to see it as one unit.
 
-```ts
-.step('suggestions', (s, ctx) =>
-  ctx.call(reviewer, format_reviewer_message(s.pr)))
-```
+   ```ts
+   .step('suggestions', (s, ctx) =>
+     ctx.call(reviewer, format_reviewer_message(s.pr)))
+   ```
 
-Format from named bindings, call the model step, bind the typed payload. Nothing else. (Under raw `scope`/`stash`/`use` the same idiom is a three-step sequence: `use` to format, the model step, `stash` the result; `chain` collapses it.)
+   Format from named bindings, call the model step, bind the typed payload. Nothing else. (Under raw `scope`/`stash`/`use` the same idiom is a three-step sequence: `use` to format, the model step, `stash` the result; `chain` collapses it.)
 
 5. **Annotate the outer type of every named subflow** (`Step<In, Out>`). Heterogeneous `sequence` chains do not always infer end to end; explicit annotations catch mismatches at the boundary where they are introduced. If you are tempted to write `sequence([...]) as Step<In, Out>`, a step in the chain has the wrong type; fix that instead.
 6. **The direct style, used honestly.** Occasionally wiring is data-dependent: a `map`'s inner step needs a value that only exists at runtime (a sandbox handle, a per-file root), or the control flow is genuinely dynamic. Then a named `step` body builds the sub-composition and invokes it with `ctx.call(inner, input)`, which keeps spans, abort, and error paths intact (never `inner.run(input, ctx)` directly, which bypasses the dispatcher and loses the span). The remaining cost is static describability only, so: give the step a name, keep the body small, and leave a comment saying why it could not be expressed statically. Unexplained buried control flow is the anti-pattern; the documented direct-style step is a first-class citizen.
@@ -141,14 +141,14 @@ Format from named bindings, call the model step, bind the typed payload. Nothing
 - Dispose in `finally`, always: `try { await run(flow, input, opts) } finally { await engine.dispose() }`.
 
 ```ts
-const ProviderSchema = z.enum(['anthropic', 'openrouter', 'claude_cli'])
-export type Provider = z.infer<typeof ProviderSchema>
+const ProviderSchema = z.enum(['anthropic', 'openrouter', 'claude_cli']);
+export type Provider = z.infer<typeof ProviderSchema>;
 
 export function create_app_engine(cfg: AppEngineConfig): Engine {
   if (cfg.provider === 'claude_cli') {
-    return create_engine({ providers: { claude_cli: { auth_mode: 'oauth' } } })
+    return create_engine({ providers: { claude_cli: { auth_mode: 'oauth' } } });
   }
-  return create_engine({ providers: { [cfg.provider]: { api_key: cfg.api_key } } })
+  return create_engine({ providers: { [cfg.provider]: { api_key: cfg.api_key } } });
 }
 ```
 
@@ -160,7 +160,7 @@ System prompts are contract artifacts, not incidental strings. Keep them as mark
 ---
 name: reviewer
 description: Reviews a PR diff and emits structured suggestions
-model: sonnet
+model: claude-sonnet-4-6
 ---
 
 You are a senior code reviewer. Review the diff for clarity, correctness,
@@ -179,7 +179,7 @@ Two loading mechanisms, by weight:
 **Simple agents: `define_agent`.** When an agent is a prompt plus an output schema, fascicle already does the whole job. The markdown body becomes the prompt (with `{{key}}` substitution against string fields of the input), or the system prompt when you supply `build_prompt`. Thread the role's model and repair budget as config; frontmatter `model` / `temperature` are the role defaults when the app threads nothing:
 
 ```ts
-import { define_agent } from 'fascicle/agents'
+import { define_agent } from 'fascicle/agents';
 
 const reviewer = define_agent({
   md_path: new URL('../prompts/reviewer.md', import.meta.url),
@@ -188,17 +188,17 @@ const reviewer = define_agent({
   model: models.reviewer,
   schema_repair_attempts: 2,
   build_prompt: (input: ReviewerInput) => format_reviewer_message(input),
-})
+});
 ```
 
-**Stage factories: load the body as `system`.** When the role needs options `define_agent` does not expose (`tools`, `provider_options`, `effort`, `max_steps`), keep the stage factory and load the markdown at factory time. A minimal loader is about a dozen lines (split on the closing `---`, parse `key: value` pairs); write it once in `prompts/load.ts`. Return `model_step` so the stage's output is the validated payload itself; drop to `model_call` only when the caller needs the `GenerateResult` envelope (usage, cost, tool calls, finish reason).
+**Stage factories: load the body as `system`.** When the role needs options `define_agent` does not expose (`tools`, `provider_options`, `max_steps`), keep the stage factory and load the markdown at factory time. A minimal loader is about a dozen lines (split on the closing `---`, parse `key: value` pairs); write it once in `prompts/load.ts`. Return `model_step` so the stage's output is the validated payload itself; drop to `model_call` only when the caller needs the `GenerateResult` envelope (usage, cost, tool calls, finish reason).
 
 ```ts
 export function make_reviewer_step(
   engine: Engine,
   model: string,
 ): Step<string, ReviewerOutput> {
-  const prompt = load_prompt(new URL('../prompts/reviewer.md', import.meta.url))
+  const prompt = load_prompt(new URL('../prompts/reviewer.md', import.meta.url));
   return model_step({
     engine,
     model,
@@ -206,7 +206,7 @@ export function make_reviewer_step(
     schema: reviewer_output_schema,
     schema_repair_attempts: 2,
     id: 'reviewer_call',
-  })
+  });
 }
 ```
 
@@ -254,10 +254,10 @@ No formatting, no extraction, no flow knowledge. If a stage file imports `messag
 Raw scope state is keyed by string and holds `unknown`; something has to cast. Concentrate all of it here:
 
 ```ts
-export const K = { PR: 'pr', SUGGESTIONS: 'suggestions', SPEC: 'spec' } as const
+export const K = { PR: 'pr', SUGGESTIONS: 'suggestions', SPEC: 'spec' } as const;
 
 export function read_pr(state: { [k: string]: unknown }): PRContext {
-  return state[K.PR] as PRContext
+  return state[K.PR] as PRContext;
 }
 ```
 
@@ -290,18 +290,18 @@ Match the reader's parameter type to how the state arrives, which differs by cal
 The `Engine` type is a small interface, and `fascicle/testing` ships the two doubles an app needs, so a test runs the *real* flow through the *real* `run()` with zero network and no mocking framework:
 
 ```ts
-import { make_stub_engine, make_capture_engine } from 'fascicle/testing'
+import { make_stub_engine, make_capture_engine } from 'fascicle/testing';
 
 const engine = make_stub_engine([
   { prefix: 'myapp/reviewer', content: { findings: [], summary: 'clean' } },
   { prefix: 'myapp/planner', content: { steps: ['ship it'] } },
-])
+]);
 
-const { engine: capture, calls } = make_capture_engine()
+const { engine: capture, calls } = make_capture_engine();
 // ...run a stage against `capture`, then assert on calls[0].tools, .system, ...
 ```
 
-`make_stub_engine(canned, options?)` answers each call with the first entry whose `prefix` the system prompt starts with (an empty-string prefix matches everything, the single-role case) and throws on an unmatched system; `options` sets the reported usage numbers and model id. `make_capture_engine(options?)` records every call's `GenerateOptions` into the live `calls` array and answers with a canned result. Responses that must vary per call (scripted rounds, content keyed off the user prompt) are the one case to hand-roll an `Engine` instead.
+`make_stub_engine(canned, options?)` answers each call with the first entry whose `prefix` the system prompt starts with (an empty-string prefix matches everything, the single-role case) and throws on an unmatched system; `options` sets the reported usage numbers and model id. `make_capture_engine(options?)` records every call's `GenerateOptions` into the live `calls` array and answers with a canned result. Responses that must vary per call are covered too: a canned `content` may be a function of the call and its per-route index, and `make_script_engine(responses)` plays a strict call-order queue (tool calls, finish reasons, and thrown errors included). `engine_from_generate` wraps a bare `generate` into a full `Engine` when you do need to hand-roll one. The full guide is [testing.md](./testing.md).
 
 Three details that make this pattern pay:
 

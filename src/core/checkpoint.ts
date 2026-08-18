@@ -4,7 +4,9 @@
  * `checkpoint(inner, { key })` checks a persistent store for a completed
  * result at `key` before running `inner`. On a hit, returns the stored
  * value. On a miss, runs `inner`, persists its result at `key`, and returns
- * it. Corrupted reads (store throws on `get`) are treated as a miss.
+ * it. Corrupted reads (store throws on `get`) are treated as a miss. Every
+ * lookup records a `checkpoint` trajectory event with
+ * `status: 'hit' | 'miss' | 'read_error'`.
  *
  * Wrapping an anonymous inner step throws synchronously at construction time
  * with the message `checkpoint requires a named step; got anonymous`, because
@@ -49,15 +51,32 @@ export function checkpoint<i, o>(inner: Step<i, o>, config: CheckpointConfig<i>)
   const run_fn = async (input: i, ctx: RunContext): Promise<o> => {
     const key = typeof key_spec === 'function' ? key_spec(input) : key_spec
     const store = ctx.checkpoint_store
-  
+
     if (store) {
       let cached: unknown = undefined
       let hit = false
+      // Every lookup records exactly one `checkpoint` event so hits, misses,
+      // and swallowed read errors are all visible in the trajectory. A
+      // throwing `store.get` still behaves as a miss (a broken store must not
+      // fail the run), but under `status: 'read_error'` instead of silently.
+      const lookup_meta: Record<string, unknown> = { id, key }
+      if (ctx.parent_span_id !== undefined) lookup_meta['span_id'] = ctx.parent_span_id
       try {
         cached = await store.get(key)
         hit = cached !== null && cached !== undefined
-      } catch {
+        ctx.trajectory.record({
+          kind: 'checkpoint',
+          status: hit ? 'hit' : 'miss',
+          ...lookup_meta,
+        })
+      } catch (err) {
         hit = false
+        ctx.trajectory.record({
+          kind: 'checkpoint',
+          status: 'read_error',
+          error: err instanceof Error ? err.message : String(err),
+          ...lookup_meta,
+        })
       }
       if (hit) {
         // oxlint-disable-next-line typescript/no-unsafe-type-assertion

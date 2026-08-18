@@ -96,12 +96,90 @@ describe('checkpoint', () => {
   it('wraps inner execution in a checkpoint span', async () => {
     const { logger, events } = recording_logger()
     const flow = checkpoint(step('add_one', (x: number) => x + 1), { key: 'k4' })
-  
+
     await run(flow, 1, { trajectory: logger, install_signal_handlers: false })
     const start = events.find((e) => e.kind === 'span_start' && e['name'] === 'checkpoint')
     expect(start).toBeDefined()
     const end = events.find((e) => e.kind === 'span_end' && e['span_id'] === start?.['span_id'])
     expect(end).toBeDefined()
     expect(end?.['error']).toBeUndefined()
+  })
+
+  it('records a checkpoint event with status hit on a cache hit', async () => {
+    const { logger, events } = recording_logger()
+    const flow = checkpoint(step('add_one', (x: number) => x + 1), { key: 'k_hit' })
+    const store = memory_store()
+    store.data.set('k_hit', 42)
+
+    await run(flow, 5, {
+      checkpoint_store: store,
+      trajectory: logger,
+      install_signal_handlers: false,
+    })
+
+    const lookups = events.filter((e) => e.kind === 'checkpoint')
+    expect(lookups).toHaveLength(1)
+    expect(lookups[0]?.['status']).toBe('hit')
+    expect(lookups[0]?.['key']).toBe('k_hit')
+    expect(lookups[0]?.['id']).toBe(flow.id)
+    // Attributed to the checkpoint's own span so a viewer can nest it.
+    const start = events.find((e) => e.kind === 'span_start' && e['name'] === 'checkpoint')
+    expect(lookups[0]?.['span_id']).toBe(start?.['span_id'])
+  })
+
+  it('records a checkpoint event with status miss when nothing is stored', async () => {
+    const { logger, events } = recording_logger()
+    const flow = checkpoint(step('add_one', (x: number) => x + 1), { key: 'k_miss' })
+    const store = memory_store()
+
+    const result = await run(flow, 5, {
+      checkpoint_store: store,
+      trajectory: logger,
+      install_signal_handlers: false,
+    })
+
+    expect(result).toBe(6)
+    const lookups = events.filter((e) => e.kind === 'checkpoint')
+    expect(lookups).toHaveLength(1)
+    expect(lookups[0]?.['status']).toBe('miss')
+    expect(lookups[0]?.['key']).toBe('k_miss')
+  })
+
+  it('records a checkpoint event with status read_error when the store throws, and still runs inner', async () => {
+    const { logger, events } = recording_logger()
+    const flow = checkpoint(step('add_one', (x: number) => x + 1), { key: 'k_err' })
+    const store: CheckpointStore = {
+      async get() {
+        throw new Error('corrupted')
+      },
+      async set() {
+        // noop
+      },
+      async delete() {
+        // noop
+      },
+    }
+
+    const result = await run(flow, 5, {
+      checkpoint_store: store,
+      trajectory: logger,
+      install_signal_handlers: false,
+    })
+
+    // The swallow-to-miss contract holds: a broken store never fails the run.
+    expect(result).toBe(6)
+    const lookups = events.filter((e) => e.kind === 'checkpoint')
+    expect(lookups).toHaveLength(1)
+    expect(lookups[0]?.['status']).toBe('read_error')
+    expect(lookups[0]?.['key']).toBe('k_err')
+    expect(lookups[0]?.['error']).toBe('corrupted')
+  })
+
+  it('records no checkpoint event when no store is configured', async () => {
+    const { logger, events } = recording_logger()
+    const flow = checkpoint(step('add_one', (x: number) => x + 1), { key: 'k_none' })
+
+    await run(flow, 5, { trajectory: logger, install_signal_handlers: false })
+    expect(events.filter((e) => e.kind === 'checkpoint')).toHaveLength(0)
   })
 })

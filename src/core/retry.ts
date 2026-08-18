@@ -75,6 +75,13 @@ function to_abort_error(reason: unknown): Error {
  * control-flow signals propagate untouched.
  */
 export function retry<i, o>(inner: Step<i, o>, config: RetryConfig): Step<i, o> {
+  // A NaN or Infinity max_attempts would make the attempt loop never run (or
+  // never end), so the misconfiguration fails at construction, not mid-run.
+  if (!Number.isFinite(config.max_attempts)) {
+    throw new TypeError(
+      `retry: max_attempts must be a finite number, got ${config.max_attempts}`,
+    )
+  }
   const id = next_id()
   const max_attempts = Math.max(1, Math.floor(config.max_attempts))
   const backoff_ms = config.backoff_ms ?? DEFAULT_BACKOFF_MS
@@ -100,7 +107,8 @@ export function retry<i, o>(inner: Step<i, o>, config: RetryConfig): Step<i, o> 
         await wait_with_abort(delay, ctx.abort, to_abort_error)
       }
     }
-    throw last_err
+    // Stryker disable next-line all: the finiteness guard above forces max_attempts >= 1, so the loop always records an error before this throw; the ?? arm is unreachable belt and braces.
+    throw last_err ?? new Error('retry: no attempts executed')
   }
 
   const config_meta: Record<string, unknown> = { max_attempts, backoff_ms, max_delay_ms, jitter }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { get_provider_factory, list_builtin_providers } from '../registry.js'
-import { provider_not_configured_error } from '../../errors.js'
+import { engine_config_error } from '../../errors.js'
 
 describe('builtin provider registry', () => {
   it('exposes all eight built-in provider factories per spec §5.9', () => {
@@ -16,8 +16,18 @@ describe('builtin provider registry', () => {
     ])
   })
 
-  it('throws provider_not_configured_error for unknown names', () => {
-    expect(() => get_provider_factory('nobody')).toThrow(provider_not_configured_error)
+  it('throws engine_config_error for unknown names, listing the built-ins', () => {
+    let err: unknown
+    try {
+      get_provider_factory('nobody')
+    } catch (e) {
+      err = e
+    }
+    expect(err).toBeInstanceOf(engine_config_error)
+    expect((err as engine_config_error).message).toBe(
+      "unknown provider 'nobody'; built-in providers are: anthropic, openai, google, ollama, lmstudio, openrouter, bedrock, claude_cli",
+    )
+    expect((err as engine_config_error).provider).toBe('nobody')
   })
 
   it('returns a factory for each built-in name', () => {

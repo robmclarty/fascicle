@@ -14,6 +14,8 @@ pnpm add fascicle
 
 fascicle is ESM-only and requires Node >= 24. `ai`, `zod`, and every provider SDK are optional peers — install only the ones you use. `pnpm add fascicle` alone builds and runs a flow against `transport: 'native'` or `claude_cli`, with no AI SDK package and no schema library installed at all; schemas accept any [Standard Schema](https://standardschema.dev) — zod, ArkType, Valibot, whichever you already use. See [docs/providers.md](./docs/providers.md).
 
+No API key on hand? Several runnable examples need zero keys: [examples/hello.ts](./examples/hello.ts), [examples/suspend_resume.ts](./examples/suspend_resume.ts), and [examples/viewer_demo.ts](./examples/viewer_demo.ts) use no engine at all, and [examples/newsroom.ts](./examples/newsroom.ts) runs the full vocabulary against the bundled stub engine from `fascicle/testing`.
+
 ## A 60-second tour
 
 <!-- snippet: check -->
@@ -35,12 +37,14 @@ Add a model call:
 import { create_engine, model_step, run, sequence, step } from 'fascicle';
 
 const engine = create_engine({
-  providers: { anthropic: { api_key: process.env.ANTHROPIC_API_KEY! } },
+  providers: {
+    anthropic: { api_key: process.env.ANTHROPIC_API_KEY!, transport: 'native' },
+  },
 });
 
 const flow = sequence([
   step('brief', (topic: string) => `Write a 2-sentence brief on: ${topic}`),
-  model_step({ engine, model: 'sonnet', system: 'No preamble.' }),
+  model_step({ engine, model: 'claude-sonnet-4-6', system: 'No preamble.' }),
 ]);
 
 try {
@@ -49,6 +53,8 @@ try {
   await engine.dispose();
 }
 ```
+
+`transport: 'native'` keeps the zero-peer promise above: raw HTTP against the Messages API, nothing to install beyond `fascicle`. Drop it to use the default `ai_sdk` transport, which needs `pnpm add ai @ai-sdk/anthropic`.
 
 `model_step` returns the model's answer (a `string`, or the schema-validated value when `schema` is set), keeping flows at the `step, step, model_step, step` cadence. Underneath sits `model_call`, the only sanctioned bridge between composition and the engine: same config, but it returns the full `GenerateResult` envelope (usage, cost, tool calls, finish reason), with an optional `project` to map a slice of it at the source. Both thread `ctx.abort`, `ctx.trajectory`, and streaming chunks for you.
 
@@ -87,7 +93,7 @@ await run(flow, input, {
 });
 ```
 
-`filesystem_logger` writes synchronously and the bundled span stacks aren't async-context-aware — fine for dev tools and short-lived runs, see [docs/concepts.md](./docs/concepts.md#adapter-limits) before wiring it into a long-running server. The `TrajectoryLogger` and `CheckpointStore` contracts (exported from `fascicle`) are tiny — roll your own to push events to Honeycomb, S3, etc.
+`filesystem_logger` writes synchronously (each event blocks the event loop briefly), which is fine for dev tools and short-lived runs; see [docs/concepts.md](./docs/concepts.md#adapter-limits) before wiring it into a long-running server. Span parentage is threaded through the runner, so span trees stay correct under `parallel`/`map` concurrency. The `TrajectoryLogger` and `CheckpointStore` contracts (exported from `fascicle`) are tiny — roll your own to push events to Honeycomb, S3, etc.
 
 `run.stream(flow, input)` returns `{ events, result }` for incremental observation, and `run.until_suspended(flow, input)` drives human-in-the-loop flows: a `suspend` gate resolves to a typed outcome with a `resume` closure instead of throwing.
 
@@ -177,7 +183,7 @@ Or embed it programmatically:
 
 <!-- snippet: check -->
 ```typescript
-import { start_viewer } from 'fascicle';
+import { start_viewer } from 'fascicle/viewer';
 
 const handle = await start_viewer({ port: 4242 });
 // later
@@ -205,12 +211,16 @@ The canonical worked example is [examples/pr-improve/](./examples/pr-improve/), 
 - [docs/providers.md](./docs/providers.md) — per-provider adapter notes
 - [docs/cli.md](./docs/cli.md) — the `claude_cli` subprocess adapter
 - [docs/cookbook.md](./docs/cookbook.md) — retries, fan-out, judges, HITL, tool loops
+- [docs/deliberation-as-composition.md](./docs/deliberation-as-composition.md) — how ensembles, tournaments, consensus, and adversarial loops decompose into the primitives
+- [docs/testing.md](./docs/testing.md) — testing flows with stub, script, and capture engines
+- [docs/regression-testing-model-behavior.md](./docs/regression-testing-model-behavior.md) — regression-testing model behavior with mutation-tested judges and a committed score baseline
 - [docs/human-in-the-loop.md](./docs/human-in-the-loop.md) — suspend/resume approval over HTTP and streaming to a `useChat` UI via `fascicle/ui`
 - [docs/writing-a-harness.md](./docs/writing-a-harness.md) — building a runner around fascicle
 - [docs/embedding-under-a-harness.md](./docs/embedding-under-a-harness.md) — running a fascicle agent as somebody's child process
 - [docs/troubleshooting.md](./docs/troubleshooting.md) — first-run errors and what they mean
 - [docs/comparison.md](./docs/comparison.md) — how fascicle compares to LangChain, Mastra, and others
 - [docs/adoption-decision.md](./docs/adoption-decision.md) weighs whether to adopt fascicle: the honest case, the risks, and when to reach for something else
+- [docs/roadmap.md](./docs/roadmap.md) — what has shipped, what is being considered, and what fascicle deliberately will not do
 - [examples/](./examples/) — runnable reference flows; start with [examples/newsroom.ts](./examples/newsroom.ts), the vocabulary tour
 - [docs/viewer.md](./docs/viewer.md) — viewer details and transport options
 
@@ -220,7 +230,7 @@ Fascicle is early and not accepting outside pull requests yet. Bug reports and f
 
 ## Development
 
-This repo is a **single package**. The code is organized as deep modules under `src/` — `src/core`, `src/engine`, `src/composites`, `src/adapters`, `src/viewer`, `src/agents` — each reachable only through its barrel via the `#<module>` import alias. The umbrella surface at the `src/` root is what publishes to npm as `fascicle`. Architectural boundaries (e.g. core cannot import adapters; engine imports core type-only; no `process.env` outside the audited exceptions) are enforced by the ast-grep rules in `rules/` and a directory-level boundary DAG in `fallow.toml`. The 5 apps under `examples/*/` are separate workspace members that consume the library via `fascicle: workspace:*`.
+This repo is a **single package**. The code is organized as deep modules under `src/` (`core`, `engine`, `composites`, `agents`, `adapters`, `mcp`, `stdio`, `ui`, `otel`, `policy`, `schema`, `testing`, `viewer`), each reachable only through its barrel via the `#<module>` import alias. The umbrella surface at the `src/` root is what publishes to npm as `fascicle`. Architectural boundaries (e.g. core cannot import adapters; engine imports core type-only; no `process.env` outside the audited exceptions) are enforced by the ast-grep rules in `rules/` and a directory-level boundary DAG in `fallow.toml`. The 7 apps under `examples/*/` are separate workspace members that consume the library via `fascicle: workspace:*`.
 
 ```bash
 pnpm install

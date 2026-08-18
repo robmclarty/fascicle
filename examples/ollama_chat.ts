@@ -1,9 +1,11 @@
 /**
- * ollama_chat: drive a local Ollama model through a composed flow.
+ * ollama_chat: drive a local Ollama model through the engine layer.
  *
- * Wraps Ollama's /api/chat endpoint as a step<string, string>, then
- * composes two calls as a sequence: draft -> refine. Proves the
- * composition layer works against a real model without any API key.
+ * Builds an engine on the `ollama` provider's zero-peer native transport
+ * (raw HTTP against the daemon's own /api/chat endpoint, nothing beyond
+ * `fascicle` itself to install), then composes two model boundaries as a
+ * sequence: draft -> refine. Proves the engine and composition layers work
+ * against a real local model without any API key.
  *
  * Prereqs:
  *   1. ollama running at OLLAMA_HOST (default http://localhost:11434)
@@ -16,73 +18,33 @@
  *   OLLAMA_MODEL=qwen2.5:3b pnpm exec tsx examples/ollama_chat.ts
  */
 
-import { z } from 'zod'
+import { create_engine, model_step, run, sequence } from 'fascicle'
 
-import { run, sequence, step } from 'fascicle'
-
-const ollama_chat_response = z.object({
-  message: z.object({ content: z.string() }),
+const engine = create_engine({
+  providers: {
+    ollama: {
+      base_url: process.env['OLLAMA_HOST'] ?? 'http://localhost:11434',
+      transport: 'native',
+    },
+  },
+  defaults: {
+    provider: 'ollama',
+    model: process.env['OLLAMA_MODEL'] ?? 'llama3.2:3b',
+  },
 })
 
-type chat_message = {
-  readonly role: 'system' | 'user' | 'assistant'
-  readonly content: string
-}
-
-type ollama_config = {
-  readonly host: string
-  readonly model: string
-}
-
-const resolve_config = (): ollama_config => ({
-  host: process.env['OLLAMA_HOST'] ?? 'http://localhost:11434',
-  model: process.env['OLLAMA_MODEL'] ?? 'llama3.2:3b',
+const draft = model_step({
+  id: 'draft',
+  engine,
+  system: 'Write a 2-sentence first draft. Plain prose, no preamble, no lists.',
 })
 
-const ollama_chat = async (
-  config: ollama_config,
-  messages: readonly chat_message[],
-): Promise<string> => {
-  let res: Response
-  try {
-    res = await fetch(`${config.host}/api/chat`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ model: config.model, messages, stream: false }),
-    })
-  } catch (cause) {
-    throw new Error(
-      `ollama not reachable at ${config.host} (is ollama running? set OLLAMA_HOST to override)`,
-      { cause },
-    )
-  }
-  if (!res.ok) {
-    throw new Error(`ollama ${String(res.status)}: ${await res.text()}`)
-  }
-  const body = ollama_chat_response.parse(await res.json())
-  return body.message.content.trim()
-}
-
-const draft = step('draft', async (topic: string): Promise<string> =>
-  ollama_chat(resolve_config(), [
-    {
-      role: 'system',
-      content: 'Write a 2-sentence first draft. Plain prose, no preamble, no lists.',
-    },
-    { role: 'user', content: topic },
-  ]),
-)
-
-const refine = step('refine', async (text: string): Promise<string> =>
-  ollama_chat(resolve_config(), [
-    {
-      role: 'system',
-      content:
-        'Rewrite the following to be more concrete and specific. Return only the revised prose, no preamble.',
-    },
-    { role: 'user', content: text },
-  ]),
-)
+const refine = model_step({
+  id: 'refine',
+  engine,
+  system:
+    'Rewrite the following to be more concrete and specific. Return only the revised prose, no preamble.',
+})
 
 const flow = sequence([draft, refine])
 
@@ -102,5 +64,8 @@ if (import.meta.url === `file://${process.argv[1] ?? ''}`) {
     .catch((err: unknown) => {
       console.error(err)
       process.exit(1)
+    })
+    .finally(() => {
+      void engine.dispose()
     })
 }

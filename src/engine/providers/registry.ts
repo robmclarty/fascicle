@@ -1,13 +1,15 @@
 /**
  * Provider name → adapter factory lookup for the built-in set.
  *
- * Unknown provider names throw provider_not_configured_error. Custom
- * providers enter via `EngineConfig.custom_providers` at construction,
- * resolved custom-first in create_engine; there is no runtime
+ * Unknown provider names throw engine_config_error: this lookup only runs at
+ * engine construction, where an unknown name is a config typo, not a
+ * call-time routing miss (that is provider_not_configured_error, thrown by
+ * generate). Custom providers enter via `EngineConfig.custom_providers` at
+ * construction, resolved custom-first in create_engine; there is no runtime
  * (post-construction) registration.
  */
 
-import { provider_not_configured_error } from '../errors.js'
+import { engine_config_error } from '../errors.js'
 import type { ProviderFactory } from './types.js'
 import { create_anthropic_adapter } from './anthropic.js'
 import { create_openai_adapter } from './openai.js'
@@ -38,10 +40,16 @@ export function list_builtin_providers(): ReadonlyArray<string> {
 
 /**
  * Look up a built-in provider's adapter factory by name, throwing
- * provider_not_configured_error for unknown names.
+ * engine_config_error for unknown names (a construction-time typo, distinct
+ * from generate's call-time provider_not_configured_error).
  */
 export function get_provider_factory(name: string): ProviderFactory {
   const factory = BUILTIN_PROVIDERS.get(name)
-  if (factory === undefined) throw new provider_not_configured_error(name)
+  if (factory === undefined) {
+    throw new engine_config_error(
+      `unknown provider '${name}'; built-in providers are: ${list_builtin_providers().join(', ')}`,
+      name,
+    )
+  }
   return factory
 }

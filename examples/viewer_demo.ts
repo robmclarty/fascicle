@@ -5,8 +5,8 @@
  * before succeeding, a map over a list, and a fallback that recovers from
  * an error. No engine layer, no network, no LLM calls.
  *
- *   pnpm tsx examples/viewer_demo.ts
- *   pnpm fascicle-viewer .trajectory.jsonl
+ *   pnpm exec tsx examples/viewer_demo.ts
+ *   pnpm exec fascicle-viewer .trajectory.jsonl
  */
 
 import {

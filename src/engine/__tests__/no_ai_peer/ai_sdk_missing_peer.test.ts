@@ -60,5 +60,6 @@ describe('ai_sdk transport missing-peer message', () => {
     ).toBe(0)
     expect(result.stdout).toContain("missing peer dependency 'ai'")
     expect(result.stdout).toContain('pnpm add ai')
+    expect(result.stdout).toContain('npm install ai')
   }, 30_000)
 })

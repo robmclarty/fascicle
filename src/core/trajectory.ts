@@ -9,6 +9,10 @@
  *   span_start  — composer span open
  *   span_end    — composer span close
  *   emit        — user-emitted event from inside a step (ctx.emit)
+ *   run_end     — terminal run event carrying the run's status, so a consumer
+ *                 distinguishes done / failed / aborted / suspended without
+ *                 inferring from silence
+ *   checkpoint  — checkpoint store lookup outcome (hit / miss / read_error)
  *   <other>     — anything else, recognized by `is_custom_trajectory_event`,
  *                 which only requires a string `kind`
  *
@@ -42,6 +46,21 @@ export type EmitEvent = {
   readonly kind: 'emit'
 } & { readonly [key: string]: unknown }
 
+export type RunEndStatus = 'done' | 'failed' | 'aborted' | 'suspended'
+
+export type RunEndEvent = {
+  readonly kind: 'run_end'
+  readonly status: RunEndStatus
+} & { readonly [key: string]: unknown }
+
+export type CheckpointStatus = 'hit' | 'miss' | 'read_error'
+
+export type CheckpointEvent = {
+  readonly kind: 'checkpoint'
+  readonly status: CheckpointStatus
+  readonly key: string
+} & { readonly [key: string]: unknown }
+
 export type CustomTrajectoryEvent = {
   readonly kind: string
 } & { readonly [key: string]: unknown }
@@ -50,6 +69,8 @@ export type ParsedTrajectoryEvent =
   | SpanStartEvent
   | SpanEndEvent
   | EmitEvent
+  | RunEndEvent
+  | CheckpointEvent
   | CustomTrajectoryEvent
 
 export type TrajectoryParseResult =
@@ -84,6 +105,35 @@ export function is_span_end_event(value: unknown): value is SpanEndEvent {
 /** A `ctx.emit` event: the kind alone identifies it, the payload is the caller's. */
 export function is_emit_event(value: unknown): value is EmitEvent {
   return is_custom_trajectory_event(value) && value.kind === 'emit'
+}
+
+const RUN_END_STATUSES: ReadonlySet<string> = new Set(['done', 'failed', 'aborted', 'suspended'])
+
+/**
+ * A terminal run event: `status` must be one of the known run outcomes, so the
+ * narrowed type's `status` union is truthful. An unknown future status still
+ * passes the wire gate as a custom event.
+ */
+export function is_run_end_event(value: unknown): value is RunEndEvent {
+  if (!is_custom_trajectory_event(value)) return false
+  if (value.kind !== 'run_end') return false
+  const status = value['status']
+  return typeof status === 'string' && RUN_END_STATUSES.has(status)
+}
+
+const CHECKPOINT_STATUSES: ReadonlySet<string> = new Set(['hit', 'miss', 'read_error'])
+
+/**
+ * A checkpoint lookup event: `status` must be a known lookup outcome and `key`
+ * the store key that was consulted, for the same truthful-narrowing reason as
+ * `is_run_end_event`.
+ */
+export function is_checkpoint_event(value: unknown): value is CheckpointEvent {
+  if (!is_custom_trajectory_event(value)) return false
+  if (value.kind !== 'checkpoint') return false
+  const status = value['status']
+  if (typeof status !== 'string' || !CHECKPOINT_STATUSES.has(status)) return false
+  return typeof value['key'] === 'string'
 }
 
 /**

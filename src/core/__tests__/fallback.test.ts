@@ -115,9 +115,96 @@ describe('fallback', () => {
     const backup = step('backup', () => {
       throw new Error('backup failed')
     })
-  
+
     const flow = fallback(primary, backup)
     await expect(run(flow, 0, { install_signal_handlers: false })).rejects.toThrow('backup failed')
+  })
+
+  it('attaches the primary error as the backup error cause when both fail', async () => {
+    const primary_err = new Error('primary failed')
+    const backup_err = new Error('backup failed')
+    const primary = step('primary', () => {
+      throw primary_err
+    })
+    const backup = step('backup', () => {
+      throw backup_err
+    })
+
+    let caught: unknown
+    try {
+      await run(fallback(primary, backup), 0, { install_signal_handlers: false })
+    } catch (err) {
+      caught = err
+    }
+
+    expect(caught).toBe(backup_err)
+    expect((caught as Error).cause).toBe(primary_err)
+  })
+
+  it('does not clobber a cause the backup error already carries', async () => {
+    const own_cause = new Error('backup root cause')
+    const backup_err = new Error('backup failed', { cause: own_cause })
+    const primary = step('primary', () => {
+      throw new Error('primary failed')
+    })
+    const backup = step('backup', () => {
+      throw backup_err
+    })
+
+    let caught: unknown
+    try {
+      await run(fallback(primary, backup), 0, { install_signal_handlers: false })
+    } catch (err) {
+      caught = err
+    }
+
+    expect(caught).toBe(backup_err)
+    expect((caught as Error).cause).toBe(own_cause)
+  })
+
+  it('rethrows a non-Error backup throw untouched when both fail', async () => {
+    const backup_err = { code: 'EFAIL' }
+    const primary = step('primary', () => {
+      throw new Error('primary failed')
+    })
+    const backup = step('backup', () => {
+      throw backup_err
+    })
+
+    let caught: unknown
+    try {
+      await run(fallback(primary, backup), 0, { install_signal_handlers: false })
+    } catch (err) {
+      caught = err
+    }
+
+    // Only Error instances can carry a cause; anything else escapes as-is.
+    expect(caught).toBe(backup_err)
+    expect('cause' in (caught as object)).toBe(false)
+  })
+
+  it('propagates a suspend from the backup without attaching a cause', async () => {
+    const primary = step('primary', (_: number) => {
+      throw new Error('primary failed')
+    })
+    const backup = suspend({
+      id: 'backup_gate',
+      on: async () => {},
+      resume_schema: z.object({ ok: z.boolean() }),
+      combine: (_: number, r) => (r.ok ? 1 : 0),
+    })
+
+    let caught: unknown
+    try {
+      await run(fallback(primary, backup), 0, { install_signal_handlers: false })
+    } catch (err) {
+      caught = err
+    }
+
+    // The suspend is a control-flow signal, not a failure: it must escape
+    // exactly as thrown, without the both-fail cause attachment mutating it.
+    expect(caught).toBeInstanceOf(suspended_error)
+    expect('cause' in (caught as Error)).toBe(false)
   })
 
   it('wraps execution in a fallback span', async () => {

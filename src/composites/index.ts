@@ -2,7 +2,7 @@
  * Public surface for composites.
  *
  * The built-in composite patterns (ensemble, ensemble_step, tournament,
- * consensus, adversarial, improve, learn) are implemented entirely as
+ * consensus, adversarial, gate, improve, learn) are implemented entirely as
  * compositions of core primitives plus `compose` and `loop`. They live
  * here, not in core,
  * because they are conveniences — not architectural primitives. Their
@@ -26,6 +26,9 @@ export type { EnsembleConfig, EnsembleResult } from './ensemble.js'
 
 export { ensemble_step } from './ensemble_step.js'
 export type { EnsembleStepConfig, EnsembleStepResult } from './ensemble_step.js'
+
+export { gate } from './gate.js'
+export type { GateConfig } from './gate.js'
 
 export { improve } from './improve.js'
 export type {

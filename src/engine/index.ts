@@ -82,8 +82,11 @@ export {
   provider_capability_error,
   provider_error,
   provider_not_configured_error,
+  provider_required_error,
   rate_limit_error,
   schema_validation_error,
   tool_approval_denied_error,
   tool_error,
 } from './errors.js'
+
+export type { ClaudeCliErrorReason } from './errors.js'

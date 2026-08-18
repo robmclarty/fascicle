@@ -177,9 +177,9 @@ Use `allowlist_only` when you want the CLI to use its built-in tools and you dec
 
 ## Schema-constrained output
 
-Pass a zod `schema` to `generate({ schema })` and the adapter compiles it to JSON Schema, forwards `--json-schema`, and parses the final CLI text against the schema.
+Pass any Standard Schema (zod, ArkType, Valibot, ...) as `schema` to `generate({ schema })` and the adapter compiles it to JSON Schema, forwards `--json-schema`, and parses the final CLI text against the schema.
 
-If the CLI returns text that fails zod validation, the adapter makes one repair attempt — it resumes the same session (using the `session_id` captured from the first response) and sends a repair prompt. The second failure throws `schema_validation_error` with the zod error and raw text.
+If the CLI returns text that fails schema validation, the adapter makes one repair attempt: it resumes the same session (using the `session_id` captured from the first response) and sends a repair prompt. The second failure throws `schema_validation_error` with the schema issues and raw text.
 
 ## Streaming
 

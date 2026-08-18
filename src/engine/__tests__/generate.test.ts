@@ -34,7 +34,7 @@ import {
   on_chunk_error,
   provider_capability_error,
   provider_error,
-  provider_not_configured_error,
+  provider_required_error,
   rate_limit_error,
   schema_validation_error,
   tool_approval_denied_error,
@@ -369,7 +369,47 @@ describe('generate: dispatch gating (step 2)', () => {
     expect(params.instructions).toBe('call style')
   })
 
-  it('falls back to the anthropic provider name when none is resolvable', async () => {
+  it('applies the engine default sampling knobs when the call omits them', async () => {
+    enqueue_generate_text(make_text_result('ok'))
+    const engine = create_engine({
+      providers: { anthropic: { api_key: 'k' } },
+      defaults: { temperature: 0.2, max_tokens: 128, top_p: 0.7 },
+    })
+    await engine.generate({ model: 'claude-opus', prompt: 'hi' })
+    const params = mock_state.last_generate_text_params as {
+      temperature?: number
+      maxOutputTokens?: number
+      topP?: number
+    }
+    expect(params.temperature).toBe(0.2)
+    expect(params.maxOutputTokens).toBe(128)
+    expect(params.topP).toBe(0.7)
+  })
+
+  it('lets call-level sampling knobs override the engine defaults', async () => {
+    enqueue_generate_text(make_text_result('ok'))
+    const engine = create_engine({
+      providers: { anthropic: { api_key: 'k' } },
+      defaults: { temperature: 0.2, max_tokens: 128, top_p: 0.7 },
+    })
+    await engine.generate({
+      model: 'claude-opus',
+      prompt: 'hi',
+      temperature: 0.9,
+      max_tokens: 64,
+      top_p: 0.5,
+    })
+    const params = mock_state.last_generate_text_params as {
+      temperature?: number
+      maxOutputTokens?: number
+      topP?: number
+    }
+    expect(params.temperature).toBe(0.9)
+    expect(params.maxOutputTokens).toBe(64)
+    expect(params.topP).toBe(0.5)
+  })
+
+  it('throws provider_required_error when several providers are configured and none is chosen', async () => {
     const engine = create_engine({
       providers: { openai: { api_key: 'k' }, ollama: { base_url: 'http://x' } },
     })
@@ -379,11 +419,42 @@ describe('generate: dispatch gating (step 2)', () => {
     } catch (e) {
       err = e
     }
-    // Two adapters -> no sole provider; the '?? anthropic' fallback resolves,
-    // then fails as not-configured. A true sole-provider guard would pick a
-    // real adapter and an empty fallback string would name '' not 'anthropic'.
-    expect(err).toBeInstanceOf(provider_not_configured_error)
-    expect((err as provider_not_configured_error).provider).toBe('anthropic')
+    // Two adapters -> no sole provider, no per-call provider, no default:
+    // resolution has nothing to go on and must fail loud, naming what IS
+    // configured rather than silently guessing a provider.
+    expect(err).toBeInstanceOf(provider_required_error)
+    expect((err as provider_required_error).message).toBe(
+      'no provider specified: pass `provider` to generate() or set `defaults.provider` (configured: openai, ollama)',
+    )
+  })
+
+  it('infers the sole configured provider when the call names none', async () => {
+    enqueue_generate_text(make_text_result('ok'))
+    const engine = create_engine({
+      providers: { openai: { api_key: 'k' } },
+    })
+    const result = await engine.generate({ model: 'gpt-4o', prompt: 'hi' })
+    expect(result.model_resolved).toEqual({ provider: 'openai', model_id: 'gpt-4o' })
+  })
+
+  it('resolves via defaults.provider when several providers are configured', async () => {
+    enqueue_generate_text(make_text_result('ok'))
+    const engine = create_engine({
+      providers: { openai: { api_key: 'k' }, ollama: { base_url: 'http://x' } },
+      defaults: { provider: 'ollama' },
+    })
+    const result = await engine.generate({ model: 'm', prompt: 'hi' })
+    expect(result.model_resolved).toEqual({ provider: 'ollama', model_id: 'm' })
+  })
+
+  it('lets a per-call provider win over defaults.provider', async () => {
+    enqueue_generate_text(make_text_result('ok'))
+    const engine = create_engine({
+      providers: { openai: { api_key: 'k' }, ollama: { base_url: 'http://x' } },
+      defaults: { provider: 'ollama' },
+    })
+    const result = await engine.generate({ model: 'm', provider: 'openai', prompt: 'hi' })
+    expect(result.model_resolved).toEqual({ provider: 'openai', model_id: 'm' })
   })
 
   it('records effort_ignored when the provider drops the effort hint', async () => {

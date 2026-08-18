@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
+  is_checkpoint_event,
   is_custom_trajectory_event,
   is_emit_event,
+  is_run_end_event,
   is_span_end_event,
   is_span_start_event,
   parse_trajectory_event,
@@ -65,6 +67,8 @@ describe('parse_trajectory_event', () => {
       { kind: 'emit', label: 'progress', value: 42, run_id: 'r-1' },
       { kind: 'cost', step_index: 0, total_usd: 0.001, run_id: 'r-1' },
       { kind: 'cli_session_started', session_id: 'abc', model: 'sonnet' },
+      { kind: 'run_end', status: 'failed', error: 'boom', error_name: 'Error', run_id: 'r-1' },
+      { kind: 'checkpoint', status: 'hit', key: 'k1', id: 'checkpoint_1', run_id: 'r-1' },
     ]
     for (const original of samples) {
       const wire = JSON.stringify(original)
@@ -174,6 +178,60 @@ describe('is_span_end_event', () => {
 
   it('rejects a non-event without dereferencing it', () => {
     expect(is_span_end_event(null)).toBe(false)
+  })
+})
+
+describe('is_run_end_event', () => {
+  it('accepts each terminal status', () => {
+    for (const status of ['done', 'failed', 'aborted', 'suspended']) {
+      expect(is_run_end_event({ kind: 'run_end', status })).toBe(true)
+    }
+  })
+
+  it('accepts extra error fields on a failed run_end', () => {
+    expect(
+      is_run_end_event({
+        kind: 'run_end',
+        status: 'failed',
+        error: 'boom',
+        error_name: 'timeout_error',
+        error_kind: 'timeout_error',
+      }),
+    ).toBe(true)
+  })
+
+  it('rejects an unknown or missing status', () => {
+    expect(is_run_end_event({ kind: 'run_end', status: 'exploded' })).toBe(false)
+    expect(is_run_end_event({ kind: 'run_end' })).toBe(false)
+    expect(is_run_end_event({ kind: 'run_end', status: 1 })).toBe(false)
+  })
+
+  it('rejects other kinds and non-events', () => {
+    expect(is_run_end_event({ kind: 'span_end', status: 'done' })).toBe(false)
+    expect(is_run_end_event(null)).toBe(false)
+  })
+})
+
+describe('is_checkpoint_event', () => {
+  it('accepts each lookup status with a string key', () => {
+    for (const status of ['hit', 'miss', 'read_error']) {
+      expect(is_checkpoint_event({ kind: 'checkpoint', status, key: 'k1' })).toBe(true)
+    }
+  })
+
+  it('rejects an unknown or missing status', () => {
+    expect(is_checkpoint_event({ kind: 'checkpoint', status: 'stale', key: 'k1' })).toBe(false)
+    expect(is_checkpoint_event({ kind: 'checkpoint', key: 'k1' })).toBe(false)
+  })
+
+  it('rejects a missing or non-string key', () => {
+    expect(is_checkpoint_event({ kind: 'checkpoint', status: 'hit' })).toBe(false)
+    expect(is_checkpoint_event({ kind: 'checkpoint', status: 'hit', key: 1 })).toBe(false)
+  })
+
+  it('rejects other kinds and non-events', () => {
+    expect(is_checkpoint_event({ kind: 'run_end', status: 'hit', key: 'k1' })).toBe(false)
+    expect(is_checkpoint_event(null)).toBe(false)
   })
 })
 

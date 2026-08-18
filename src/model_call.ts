@@ -22,6 +22,7 @@ import type {
   GenerateOptions,
   GenerateResult,
   Message,
+  PrepareStepHook,
   RetryPolicy,
   Tool,
   ToolApprovalHandler,
@@ -33,14 +34,15 @@ export type ModelCallInput = string | ReadonlyArray<Message>
 export type ModelCallConfig<T = string, projected = GenerateResult<T>> = {
   readonly engine: Engine
   /**
-   * Model or alias string. Optional: if omitted, the engine's
-   * `defaults.model` is used. Errors at call time if neither is set.
+   * Model id, sent to the provider verbatim (there is no alias layer).
+   * Optional: if omitted, the engine's `defaults.model` is used. Errors at
+   * call time if neither is set.
    */
   readonly model?: string
   /**
    * Transport for the model: `anthropic` | `claude_cli` | `openrouter` | ...
-   * Optional: if omitted, the engine's `defaults.provider` (or sole configured
-   * provider, else `anthropic`) is used.
+   * Optional: if omitted, the engine's `defaults.provider` (or its sole
+   * configured provider) is used.
    */
   readonly provider?: string
   readonly id?: string
@@ -48,7 +50,20 @@ export type ModelCallConfig<T = string, projected = GenerateResult<T>> = {
   readonly tools?: ReadonlyArray<Tool>
   readonly schema?: ToolSchema<T>
   readonly effort?: EffortLevel
+  readonly temperature?: number
+  readonly max_tokens?: number
+  readonly top_p?: number
   readonly max_steps?: number
+  /**
+   * Per-turn wall-clock budget in milliseconds, forwarded to the engine.
+   * See `GenerateOptions.turn_timeout_ms`.
+   */
+  readonly turn_timeout_ms?: number
+  /**
+   * Per-turn message hook, forwarded to the engine. See
+   * `GenerateOptions.prepare_step`.
+   */
+  readonly prepare_step?: PrepareStepHook
   readonly provider_options?: Record<string, unknown>
   readonly retry_policy?: RetryPolicy
   readonly tool_error_policy?: 'feed_back' | 'throw'
@@ -122,6 +137,18 @@ function stable_signature(input: {
   return createHash('sha256').update(payload).digest('hex').slice(0, 8)
 }
 
+let model_call_counter = 0
+
+/**
+ * Build the default step id: `model_call:<hash>:<n>`. The instance counter
+ * keeps two leaves built from identical configs distinguishable in describe
+ * and the trajectory; the hash still identifies the call's shape.
+ */
+function next_auto_id(input: Parameters<typeof stable_signature>[0]): string {
+  model_call_counter += 1
+  return `model_call:${stable_signature(input)}:${model_call_counter}`
+}
+
 /**
  * Copy `value` onto `target[key]` only when it is defined, so an absent optional
  * config field leaves the key off `GenerateOptions` rather than present-as-undefined.
@@ -152,6 +179,11 @@ function build_generate_options<T, projected>(
   if (cfg.tools !== undefined) opts.tools = [...cfg.tools]
   assign_if_present(opts, 'schema', cfg.schema)
   assign_if_present(opts, 'effort', cfg.effort)
+  assign_if_present(opts, 'temperature', cfg.temperature)
+  assign_if_present(opts, 'max_tokens', cfg.max_tokens)
+  assign_if_present(opts, 'top_p', cfg.top_p)
+  assign_if_present(opts, 'turn_timeout_ms', cfg.turn_timeout_ms)
+  assign_if_present(opts, 'prepare_step', cfg.prepare_step)
   assign_if_present(opts, 'max_steps', cfg.max_steps)
   assign_if_present(opts, 'provider_options', cfg.provider_options)
   if (cfg.retry_policy !== undefined) opts.retry = cfg.retry_policy
@@ -176,6 +208,14 @@ function build_generate_options<T, projected>(
 export function model_call<T = string, projected = GenerateResult<T>>(
   cfg: ModelCallConfig<T, projected>,
 ): Step<ModelCallInput, projected> {
+  // Guard at construction so a wiring mistake (JS caller, spread gone wrong)
+  // surfaces where it was made instead of as a bare property-read crash at
+  // dispatch time.
+  if (typeof cfg?.engine?.generate !== 'function') {
+    throw new TypeError(
+      'model_call: cfg.engine is required (an Engine from create_engine or fascicle/testing)',
+    )
+  }
   const has_tools = Boolean(cfg.tools && cfg.tools.length > 0)
   const has_schema = cfg.schema !== undefined
   // When `project` is omitted, `projected` defaults to the envelope type, which
@@ -184,13 +224,13 @@ export function model_call<T = string, projected = GenerateResult<T>>(
   const project = cfg.project ?? ((r: GenerateResult<T>) => r as unknown as projected)
   const step_id =
     cfg.id ??
-    `model_call:${stable_signature({
+    next_auto_id({
       model: cfg.model,
       provider: cfg.provider,
       system: cfg.system,
       has_tools,
       has_schema,
-    })}`
+    })
 
   const describe_config: {
     model?: string
@@ -198,17 +238,27 @@ export function model_call<T = string, projected = GenerateResult<T>>(
     has_tools: boolean
     has_schema: boolean
     has_project: boolean
+    has_prepare_step: boolean
     system?: string
     effort?: EffortLevel
+    temperature?: number
+    max_tokens?: number
+    top_p?: number
+    turn_timeout_ms?: number
   } = {
     has_tools,
     has_schema,
     has_project: cfg.project !== undefined,
+    has_prepare_step: cfg.prepare_step !== undefined,
   }
   if (cfg.model !== undefined) describe_config.model = cfg.model
   if (cfg.provider !== undefined) describe_config.provider = cfg.provider
   if (cfg.system !== undefined) describe_config.system = cfg.system
   if (cfg.effort !== undefined) describe_config.effort = cfg.effort
+  if (cfg.temperature !== undefined) describe_config.temperature = cfg.temperature
+  if (cfg.max_tokens !== undefined) describe_config.max_tokens = cfg.max_tokens
+  if (cfg.top_p !== undefined) describe_config.top_p = cfg.top_p
+  if (cfg.turn_timeout_ms !== undefined) describe_config.turn_timeout_ms = cfg.turn_timeout_ms
 
   const inner = step<ModelCallInput, projected>(step_id, async (input, ctx) => {
     if (ctx.abort.aborted) {

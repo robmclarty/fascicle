@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { GenerateResult } from '#engine'
 import { make_capture_engine } from '../make_capture_engine.js'
+import { text_of } from '../text_of.js'
 
 describe('make_capture_engine', () => {
   it('records the GenerateOptions of every call, in order, in the live array', async () => {
@@ -68,6 +69,14 @@ describe('make_capture_engine', () => {
     })
     await engine.generate({ prompt: 'x' })
     expect(seen).toBe(calls[0])
+  })
+
+  it('captured calls read back through text_of without manual navigation', async () => {
+    const { engine, calls } = make_capture_engine()
+    await engine.generate({
+      prompt: [{ role: 'user', content: [{ type: 'text', text: 'summarize the brief' }] }],
+    })
+    expect(calls[0] === undefined ? '' : text_of(calls[0])).toBe('summarize the brief')
   })
 
   it('fills the inert engine members: pricing no-ops, dispose, with_providers throws', async () => {

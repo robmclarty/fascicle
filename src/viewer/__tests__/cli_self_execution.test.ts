@@ -1,16 +1,16 @@
 /**
- * Regression: the umbrella `dist/index.js` inlines packages/viewer/src/cli.ts.
+ * Regression: the viewer entry `dist/viewer.js` inlines src/viewer/cli.ts.
  * A previous self-execution guard used `process.argv[1].endsWith('/cli.js')`,
  * which fired any time a downstream consumer's own entry script happened to
- * be named `cli.js`/`cli.ts` — silently hijacking the import to start the
+ * be named `cli.js`/`cli.ts`, silently hijacking the import to start the
  * viewer. The fix compares argv[1] against `fileURLToPath(import.meta.url)`.
  *
  * This test guards the bundled output: spawn `node` with argv[1] set to a
- * path ending in `/cli.js`, import the built `dist/index.js`, and assert
+ * path ending in `/cli.js`, import the built `dist/viewer.js`, and assert
  * (a) no `fascicle-viewer:` text leaks to stderr (the CLI never auto-ran)
  * and (b) the module exposes the expected named exports.
  *
- * Skipped when `dist/index.js` is missing (unit-test runs without a build).
+ * Skipped when `dist/viewer.js` is missing (unit-test runs without a build).
  * `pnpm check:all` builds first, so CI always exercises this.
  */
 
@@ -21,7 +21,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
 const here = dirname(fileURLToPath(import.meta.url))
-const DIST_INDEX = resolve(here, '../../../../dist/index.js')
+const DIST_VIEWER = resolve(here, '../../../dist/viewer.js')
 
 type SpawnOutcome = {
   readonly code: number | null
@@ -51,13 +51,13 @@ function spawn_probe(script: string, fake_argv1: string): Promise<SpawnOutcome> 
 }
 
 describe('viewer cli self-execution guard (regression)', () => {
-  if (!existsSync(DIST_INDEX)) {
-    it.skip('requires dist/index.js (run `pnpm build` first)', () => {})
+  if (!existsSync(DIST_VIEWER)) {
+    it.skip('requires dist/viewer.js (run `pnpm build` first)', () => {})
     return
   }
 
   it('does not auto-run when imported with argv[1] ending in /cli.js', async () => {
-    const dist_url = pathToFileURL(DIST_INDEX).href
+    const dist_url = pathToFileURL(DIST_VIEWER).href
     const script = `
       const mod = await import(${JSON.stringify(dist_url)});
       const names = ['start_viewer', 'run_viewer_cli'];

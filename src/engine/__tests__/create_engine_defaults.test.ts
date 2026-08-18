@@ -4,7 +4,8 @@
  *
  * Each `defaults.*` knob is set at construction and then OBSERVED flowing through
  * a real engine.generate call: the request-visible ones (system, provider_options,
- * effort) against a captured TurnRequest, the loop knobs (tool_error_policy,
+ * effort, temperature, max_tokens, top_p) against a captured TurnRequest, the loop
+ * knobs (tool_error_policy,
  * schema_repair_attempts, tool_call_repair_attempts, max_tool_calls_per_step,
  * max_steps) against their concrete loop behavior, and ai_sdk_telemetry against the
  * mocked generateText params. Dropping any default (the mutant that empties its
@@ -157,6 +158,61 @@ describe('create_engine folds request-visible defaults into the turn', () => {
     await engine.generate({ model: MODEL, provider: PROVIDER, prompt: 'hi' })
 
     expect(log.requests[0]?.effort).toBe('high')
+  })
+
+  it('applies defaults.temperature, max_tokens, and top_p when the call omits them', async () => {
+    const log: NativeLog = { requests: [] }
+    const engine = create_engine({
+      providers: { [PROVIDER]: {} },
+      custom_providers: { [PROVIDER]: make_native_factory(log, [text_turn('ok')]) },
+      defaults: { temperature: 0.3, max_tokens: 512, top_p: 0.8 },
+    })
+
+    await engine.generate({ model: MODEL, provider: PROVIDER, prompt: 'hi' })
+
+    expect(log.requests[0]?.temperature).toBe(0.3)
+    expect(log.requests[0]?.max_tokens).toBe(512)
+    expect(log.requests[0]?.top_p).toBe(0.8)
+  })
+
+  it('lets per-call sampling knobs win over the defaults', async () => {
+    const log: NativeLog = { requests: [] }
+    const engine = create_engine({
+      providers: { [PROVIDER]: {} },
+      custom_providers: { [PROVIDER]: make_native_factory(log, [text_turn('ok')]) },
+      defaults: { temperature: 0.3, max_tokens: 512, top_p: 0.8 },
+    })
+
+    await engine.generate({
+      model: MODEL,
+      provider: PROVIDER,
+      prompt: 'hi',
+      temperature: 0.9,
+      max_tokens: 64,
+      top_p: 0.5,
+    })
+
+    expect(log.requests[0]?.temperature).toBe(0.9)
+    expect(log.requests[0]?.max_tokens).toBe(64)
+    expect(log.requests[0]?.top_p).toBe(0.5)
+  })
+
+  it('leaves the sampling knobs off the turn when neither default nor call sets them', async () => {
+    const log: NativeLog = { requests: [] }
+    const engine = create_engine({
+      providers: { [PROVIDER]: {} },
+      custom_providers: { [PROVIDER]: make_native_factory(log, [text_turn('ok')]) },
+    })
+
+    await engine.generate({ model: MODEL, provider: PROVIDER, prompt: 'hi' })
+
+    // Absent everywhere means absent on the TurnRequest, not present-as-undefined
+    // (the exactOptionalPropertyTypes contract native adapters rely on).
+    expect(log.requests).toHaveLength(1)
+    const req = log.requests[0] as unknown as Record<string, unknown>
+    expect('temperature' in req).toBe(false)
+    expect('max_tokens' in req).toBe(false)
+    expect('top_p' in req).toBe(false)
   })
 })
 

@@ -120,12 +120,14 @@ Because each composite returns a `Step`, a composite can be a member of another 
 ```typescript
 import { create_engine, ensemble, model_step, tournament } from 'fascicle';
 
+// Any provider works here; an open model through OpenRouter keeps a
+// four-leaf bracket cheap.
 const engine = create_engine({
-  providers: { anthropic: { api_key: process.env.ANTHROPIC_API_KEY! } },
+  providers: { openrouter: { api_key: process.env.OPENROUTER_API_KEY! } },
 });
 
 const draft = (id: string, system: string) =>
-  model_step({ engine, id, model: 'sonnet', system });
+  model_step({ engine, id, model: 'meta-llama/llama-3.3-70b-instruct', system });
 
 // An ensemble is a Step. Score its members, keep the winner.
 const panel = (prefix: string) =>

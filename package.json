@@ -45,35 +45,48 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
     },
     "./adapters": {
       "types": "./dist/adapters.d.ts",
-      "import": "./dist/adapters.js"
+      "import": "./dist/adapters.js",
+      "default": "./dist/adapters.js"
     },
     "./agents": {
       "types": "./dist/agents.d.ts",
-      "import": "./dist/agents.js"
+      "import": "./dist/agents.js",
+      "default": "./dist/agents.js"
     },
     "./mcp": {
       "types": "./dist/mcp.d.ts",
-      "import": "./dist/mcp.js"
+      "import": "./dist/mcp.js",
+      "default": "./dist/mcp.js"
     },
     "./otel": {
       "types": "./dist/otel.d.ts",
-      "import": "./dist/otel.js"
+      "import": "./dist/otel.js",
+      "default": "./dist/otel.js"
     },
     "./stdio": {
       "types": "./dist/stdio.d.ts",
-      "import": "./dist/stdio.js"
+      "import": "./dist/stdio.js",
+      "default": "./dist/stdio.js"
     },
     "./testing": {
       "types": "./dist/testing.d.ts",
-      "import": "./dist/testing.js"
+      "import": "./dist/testing.js",
+      "default": "./dist/testing.js"
     },
     "./ui": {
       "types": "./dist/ui.d.ts",
-      "import": "./dist/ui.js"
+      "import": "./dist/ui.js",
+      "default": "./dist/ui.js"
+    },
+    "./viewer": {
+      "types": "./dist/viewer.d.ts",
+      "import": "./dist/viewer.js",
+      "default": "./dist/viewer.js"
     }
   },
   "imports": {

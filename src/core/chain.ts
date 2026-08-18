@@ -2,26 +2,32 @@
  * chain: named steps over a growing record.
  *
  * `chain<i>(input_name?)` opens a builder whose threaded value is a record of
- * named outputs rather than a single value. `.step(name, fn)` runs `fn` over
- * the record and merges its output back in under `name`; `.stage(name,
- * project?)` concludes a phase: it opens a grouping span in the trajectory
- * and, when `project` is given, replaces the record with the projection so
- * earlier bindings go out of scope; `.output(fn)` closes the builder and
- * returns an ordinary `Step<i, o>`.
+ * named outputs rather than a single value. The input type must be stated,
+ * either as the type argument or via `.input<t>()` on the freshly opened
+ * chain; an unannotated `chain()` defaults to `never` so the omission fails
+ * at the `run` call site instead of accepting anything. `.step(name, fn)`
+ * runs `fn` over the record and merges its output back in under `name`;
+ * `.stage(name, project?)` concludes a phase: it opens a grouping span in
+ * the trajectory and, when `project` is given, replaces the record with the
+ * projection so earlier bindings go out of scope; `.output(fn)` closes the
+ * builder and returns an ordinary `Step<i, o>`.
  *
  * Each `.step` entry is a regular `step(name, fn)` whose input happens to be
  * the record, so anything true of steps (spans, error paths, abort checks
  * between entries) is true of chain entries, and the binding name doubles as
- * the entry's id in trajectories. Invoking another Step from inside a
- * binding is `ctx.call`, exactly as in a hand-written step body; passing
- * that Step as `.step(name, fn, { arm })` additionally records it as the
- * binding's child so `describe` renders the arm's subtree. The arm is
- * metadata only: dispatch runs `fn` and ignores it.
+ * the entry's id in trajectories. A binding whose whole job is to invoke an
+ * arm is `.step(name, arm, select)`: the chain projects the record through
+ * `select`, dispatches the arm via `ctx.call`, and records it as the
+ * binding's child, so what `describe` renders and what runs cannot diverge.
+ * The escape hatch for bodies that need code around the call is
+ * `.step(name, fn, { arm })`: the body does its own `ctx.call` and the arm
+ * is metadata only, recorded for `describe` but never dispatched.
  *
  * Builder values are immutable: every method returns a new chain, so a
  * prefix can be shared and extended in different directions safely.
  */
 
+import { is_step } from './is_step.js'
 import { dispatch_step, register_traced_kind, throw_if_aborted } from './runner.js'
 import { step } from './step.js'
 import type { AnyStep, RunContext, Step } from './types.js'
@@ -43,11 +49,18 @@ export type ChainStepOptions = {
 }
 
 export type Chain<i, acc> = {
-  readonly step: <k extends string, o>(
-    name: k,
-    fn: (s: acc, ctx: RunContext) => Promise<o> | o,
-    options?: ChainStepOptions,
-  ) => Chain<i, merge<acc, { readonly [p in k]: o }>>
+  readonly step: {
+    <k extends string, o>(
+      name: k,
+      fn: (s: acc, ctx: RunContext) => Promise<o> | o,
+      options?: ChainStepOptions,
+    ): Chain<i, merge<acc, { readonly [p in k]: o }>>
+    <k extends string, a, o>(
+      name: k,
+      arm: Step<a, o>,
+      select: (s: acc) => a,
+    ): Chain<i, merge<acc, { readonly [p in k]: o }>>
+  }
   readonly stage: {
     (name: string): Chain<i, acc>
     <next extends Record<string, unknown>>(
@@ -58,14 +71,31 @@ export type Chain<i, acc> = {
   readonly output: <o>(fn: (s: acc, ctx: RunContext) => Promise<o> | o) => Step<i, o>
 }
 
+/**
+ * A freshly opened chain: `Chain` plus `.input<t>()`, which restates the
+ * input type once with the binding name already fixed, so
+ * `chain('q').input<Request>()` equals `chain<Request, 'q'>('q')`. The first
+ * `.step` or `.stage` returns plain `Chain`, so refinement is only possible
+ * before any entry is recorded.
+ */
+export type ChainOpen<i, k extends string, acc> = Chain<i, acc> & {
+  readonly input: <t>() => Chain<t, { readonly [p in k]: t }>
+}
+
 type LooseFn = (s: Record<string, unknown>, ctx: RunContext) => unknown
+
+type LooseSelect = (s: Record<string, unknown>) => unknown
 
 type ChainEntry =
   | { readonly kind: 'step'; readonly name: string; readonly node: Step<Record<string, unknown>, unknown> }
   | { readonly kind: 'stage'; readonly name: string; readonly project?: LooseFn }
 
 type LooseChain = {
-  readonly step: (name: string, fn: LooseFn, options?: ChainStepOptions) => LooseChain
+  readonly step: (
+    name: string,
+    fn_or_arm: LooseFn | AnyStep,
+    options_or_select?: ChainStepOptions | LooseSelect,
+  ) => LooseChain
   readonly stage: (name: string, project?: LooseFn) => LooseChain
   readonly output: (fn: LooseFn) => Step<unknown, unknown>
 }
@@ -154,6 +184,46 @@ function build_chain(
 }
 
 /**
+ * Build the binding node for the arm-first `.step(name, arm, select)` form.
+ *
+ * The chain owns the dispatch: the synthesized body projects the record
+ * through `select` and hands the result to the arm via `ctx.call`, and the
+ * same arm is recorded as the binding's child, so the subtree `describe`
+ * renders and the step that runs are one value by construction.
+ */
+function arm_node(
+  name: string,
+  arm: AnyStep,
+  select: ChainStepOptions | LooseSelect | undefined,
+): Step<Record<string, unknown>, unknown> {
+  if (typeof select !== 'function') {
+    throw new TypeError('chain.step(name, arm, select): select must be a function')
+  }
+  const base = step(name, (s: Record<string, unknown>, ctx: RunContext) =>
+    // The typed surface pairs select's projection with the arm's input, a
+    // pairing the erased AnyStep cannot carry, so the call re-asserts it.
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+    ctx.call(arm, select(s) as never),
+  )
+  return { ...base, children: [arm] }
+}
+
+/**
+ * Build the binding node for the body form `.step(name, fn, { arm? })`.
+ */
+function body_node(
+  name: string,
+  fn: LooseFn,
+  options: ChainStepOptions | LooseSelect | undefined,
+): Step<Record<string, unknown>, unknown> {
+  const base = step(name, fn)
+  const arm = typeof options === 'function' ? undefined : options?.arm
+  // The arm is describe metadata only: recorded as the binding's child so
+  // the subtree renders, never dispatched (the body's ctx.call runs it).
+  return arm === undefined ? base : { ...base, children: [arm] }
+}
+
+/**
  * Internal untyped builder behind `chain`.
  *
  * `bound` holds the binding names of the current stage segment so duplicate
@@ -167,16 +237,15 @@ function make_chain(
   bound: ReadonlySet<string>,
 ): LooseChain {
   return {
-    step: (name, fn, options) => {
+    step: (name, fn_or_arm, options_or_select) => {
       if (bound.has(name)) {
         throw new TypeError(
           `chain.step: binding '${name}' is already defined in this stage; names are single-assignment`,
         )
       }
-      const base = step(name, fn)
-      // The arm is describe metadata only: recorded as the binding's child so
-      // the subtree renders, never dispatched (the body's ctx.call runs it).
-      const node = options?.arm === undefined ? base : { ...base, children: [options.arm] }
+      const node = is_step(fn_or_arm)
+        ? arm_node(name, fn_or_arm, options_or_select)
+        : body_node(name, fn_or_arm, options_or_select)
       return make_chain(
         input_name,
         [...entries, { kind: 'step', name, node }],
@@ -199,18 +268,24 @@ function make_chain(
 /**
  * Open a chain builder whose record starts as `{ [input_name]: input }`.
  *
- * `input_name` defaults to `'input'`. The builder is typed: each `.step`
- * narrows subsequent callbacks to the record accumulated so far, and
+ * `input_name` defaults to `'input'`. The input type defaults to `never`, so
+ * a chain that never states it produces a `Step<never, o>` that no real
+ * input satisfies at `run`; state it as the type argument or, when the
+ * binding is renamed, once via `.input<t>()` on the fresh builder. Each
+ * `.step` narrows subsequent callbacks to the record accumulated so far, and
  * `.stage` with a projection re-types the record to the projection's
  * return, so binding names and views are checked at compile time with no
  * declared state shape.
  */
-export function chain<i, k extends string = 'input'>(
+export function chain<i = never, k extends string = 'input'>(
   input_name?: k,
-): Chain<i, { readonly [p in k]: i }> {
+): ChainOpen<i, k, { readonly [p in k]: i }> {
   const name = input_name ?? 'input'
+  const open = make_chain(name, [], new Set([name]))
+  // `.input` is compile-time refinement over the same empty builder, so
+  // returning it unchanged is the whole implementation.
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-  return make_chain(name, [], new Set([name])) as unknown as Chain<i, { readonly [p in k]: i }>
+  return { ...open, input: () => open } as unknown as ChainOpen<i, k, { readonly [p in k]: i }>
 }
 
 register_traced_kind('chain')

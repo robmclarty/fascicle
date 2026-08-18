@@ -4,7 +4,9 @@
  * `fallback(primary, backup)` runs `primary`. If it throws an application
  * error, runs `backup` with the same input, or with `handoff(input, err)`
  * when the `handoff` option is set, so the backup can be told why it is
- * running. If `backup` also throws, the `backup` error propagates.
+ * running. If `backup` also throws, the `backup` error propagates with the
+ * primary's error attached as its `cause` (unless it already carries one),
+ * so the original failure stays diagnosable from the escaping error.
  * Control-flow signals (`suspended_error`, `aborted_error`) are not
  * failures: they propagate instead of triggering the backup, so a
  * human-approval gate is never silently bypassed and the backup never runs
@@ -51,7 +53,22 @@ export function fallback<i, o>(
     } catch (err) {
       if (is_control_flow_error(err)) throw err
       const backup_input = handoff === undefined ? input : handoff(input, err)
-      return dispatch_step(backup, backup_input, ctx)
+      try {
+        return await dispatch_step(backup, backup_input, ctx)
+      } catch (backup_err) {
+        // When both legs fail, only the backup's error escapes; without this
+        // the primary's failure would be lost entirely. Control-flow signals
+        // are not failures and pass through unmodified, and an existing cause
+        // is never clobbered.
+        if (
+          !is_control_flow_error(backup_err) &&
+          backup_err instanceof Error &&
+          !('cause' in backup_err)
+        ) {
+          backup_err.cause = err
+        }
+        throw backup_err
+      }
     }
   }
 

@@ -771,6 +771,139 @@ describe('define_agent', () => {
     })
   })
 
+  describe('caller-shaped knobs (provider, effort, temperature, max_tokens, top_p)', () => {
+    const md_with_knobs = [
+      '---',
+      'name: knobs',
+      'provider: fm-provider',
+      'effort: high',
+      'temperature: 0.5',
+      'max_tokens: 2048',
+      'top_p: 0.9',
+      '---',
+      '',
+      'body',
+    ].join('\n')
+    const md_bare = ['---', 'name: knobs', '---', '', 'body'].join('\n')
+
+    it('parses frontmatter knobs into the call, coercing the numeric ones', async () => {
+      await with_tmp_md(md_with_knobs, async (path) => {
+        const { engine, calls } = make_mock_engine({ ok: true })
+        const agent = define_agent({
+          md_path: path,
+          schema: z.object({ ok: z.boolean() }),
+          engine,
+        })
+        await run(agent, {}, { install_signal_handlers: false })
+        const opts = calls[0]?.opts
+        expect(opts?.provider).toBe('fm-provider')
+        expect(opts?.effort).toBe('high')
+        // toBe against numbers also proves the frontmatter strings were coerced.
+        expect(opts?.temperature).toBe(0.5)
+        expect(opts?.max_tokens).toBe(2048)
+        expect(opts?.top_p).toBe(0.9)
+      })
+    })
+
+    it('code config wins over frontmatter for every knob', async () => {
+      await with_tmp_md(md_with_knobs, async (path) => {
+        const { engine, calls } = make_mock_engine({ ok: true })
+        const agent = define_agent({
+          md_path: path,
+          schema: z.object({ ok: z.boolean() }),
+          engine,
+          provider: 'cfg-provider',
+          effort: 'low',
+          temperature: 0,
+          max_tokens: 64,
+          top_p: 0.1,
+        })
+        await run(agent, {}, { install_signal_handlers: false })
+        const opts = calls[0]?.opts
+        expect(opts?.provider).toBe('cfg-provider')
+        expect(opts?.effort).toBe('low')
+        // temperature: 0 is falsy but set; resolution must use ??, not ||.
+        expect(opts?.temperature).toBe(0)
+        expect(opts?.max_tokens).toBe(64)
+        expect(opts?.top_p).toBe(0.1)
+      })
+    })
+
+    it('config knobs apply when frontmatter has none', async () => {
+      await with_tmp_md(md_bare, async (path) => {
+        const { engine, calls } = make_mock_engine({ ok: true })
+        const agent = define_agent({
+          md_path: path,
+          schema: z.object({ ok: z.boolean() }),
+          engine,
+          provider: 'cfg-provider',
+          effort: 'max',
+          temperature: 0.2,
+          max_tokens: 512,
+          top_p: 0.7,
+        })
+        await run(agent, {}, { install_signal_handlers: false })
+        const opts = calls[0]?.opts
+        expect(opts?.provider).toBe('cfg-provider')
+        expect(opts?.effort).toBe('max')
+        expect(opts?.temperature).toBe(0.2)
+        expect(opts?.max_tokens).toBe(512)
+        expect(opts?.top_p).toBe(0.7)
+      })
+    })
+
+    it('omits every knob key when neither config nor frontmatter sets one', async () => {
+      await with_tmp_md(md_bare, async (path) => {
+        const { engine, calls } = make_mock_engine({ ok: true })
+        const agent = define_agent({
+          md_path: path,
+          schema: z.object({ ok: z.boolean() }),
+          engine,
+        })
+        await run(agent, {}, { install_signal_handlers: false })
+        for (const key of ['provider', 'effort', 'temperature', 'max_tokens', 'top_p']) {
+          expect(Object.hasOwn(calls[0]?.opts ?? {}, key)).toBe(false)
+        }
+      })
+    })
+
+    it('throws at factory time when max_tokens is not numeric', async () => {
+      await with_tmp_md(
+        ['---', 'max_tokens: lots', '---', '', 'body'].join('\n'),
+        async (path) => {
+          const { engine } = make_mock_engine({ ok: true })
+          expect(() =>
+            define_agent({ md_path: path, schema: z.object({ ok: z.boolean() }), engine }),
+          ).toThrow(/max_tokens must be a number/)
+        },
+      )
+    })
+
+    it('throws at factory time when top_p is not numeric', async () => {
+      await with_tmp_md(
+        ['---', 'top_p: high', '---', '', 'body'].join('\n'),
+        async (path) => {
+          const { engine } = make_mock_engine({ ok: true })
+          expect(() =>
+            define_agent({ md_path: path, schema: z.object({ ok: z.boolean() }), engine }),
+          ).toThrow(/top_p must be a number/)
+        },
+      )
+    })
+
+    it('throws at factory time on an unknown effort level, listing the valid ones', async () => {
+      await with_tmp_md(
+        ['---', 'effort: ultra', '---', '', 'body'].join('\n'),
+        async (path) => {
+          const { engine } = make_mock_engine({ ok: true })
+          expect(() =>
+            define_agent({ md_path: path, schema: z.object({ ok: z.boolean() }), engine }),
+          ).toThrow(/effort must be one of none, low, medium, high, xhigh, max, got: ultra/)
+        },
+      )
+    })
+  })
+
   describe('substitution and option-shape edges', () => {
     it('leaves placeholders untouched for primitive inputs (no index access on strings)', async () => {
       await with_tmp_md('Echo {{0}} and {{who}}.', async (path) => {

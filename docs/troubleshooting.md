@@ -19,10 +19,32 @@ their SDKs. See [providers.md](./providers.md#optional-peer-loading).
 
 ## `provider_not_configured_error`
 
-You called a provider that is not present in `create_engine({ providers })`.
-Constructing an engine never fails for a missing provider; the failure is deferred
-to the first call against it. Add the provider to the config, or set
-`defaults.provider` to one you did configure.
+Two triggers share this error name; the timing tells them apart.
+
+- **At construction:** a key in `create_engine({ providers })` matches no
+  built-in provider and no `custom_providers` entry, so the engine cannot
+  build an adapter for that name at all. Fix the spelling, or register the
+  custom provider factory under `custom_providers`.
+- **At call time:** the resolved `provider` for a `generate` call names an
+  adapter the engine was not configured with. Constructing an engine never
+  fails for a *missing* provider; that failure is deferred to the first call
+  against it. Add the provider to the config, or point `defaults.provider`
+  (or the per-call `provider`) at one you did configure.
+
+## `provider_required_error`
+
+The engine could not pick a provider: the call named none, no
+`defaults.provider` is set, and more than one provider is configured, so
+there is no sole candidate. The message is:
+
+```text
+no provider specified: pass `provider` to generate() or set `defaults.provider` (configured: anthropic, ollama)
+```
+
+There is no fallback provider. Pass `provider` on the call, or set
+`defaults: { provider: '...' }` on the engine. An engine with exactly one
+configured provider never throws this; the sole provider is used. The error
+carries the configured provider names on `.configured`.
 
 ## `model_required_error`
 
@@ -33,14 +55,33 @@ inference profile, an Ollama tag). The one exception is `claude_cli`, where the
 bare tokens `opus`/`sonnet`/`haiku` are resolved by the CLI itself. See
 [configuration.md](./configuration.md#model-and-provider-two-axes).
 
-## `require() of ES Module` / syntax errors on startup
+## `ERR_PACKAGE_PATH_NOT_EXPORTED` — `require()` from CommonJS
 
-fascicle is ESM-only and requires Node >= 24.
+fascicle ships ESM only, but its `exports` map carries a `default` condition,
+so a CommonJS consumer on Node >= 24 (the supported floor) can
+`require('fascicle')` directly: Node loads the ESM build through native
+`require(esm)`. No CJS artifacts exist; the same files serve both.
 
-- Import it (`import { run } from 'fascicle'`); do not `require()` it.
-- Your own package needs `"type": "module"` (or a `.mts` entry).
-- Check `node -v`. On an older Node you will see syntax errors from modern
-  language features long before anything fascicle-specific.
+Seeing this error:
+
+```text
+Error [ERR_PACKAGE_PATH_NOT_EXPORTED]: No "exports" main defined in .../node_modules/fascicle/package.json
+```
+
+means an older fascicle (<= 0.12), whose exports map was import-only. Upgrade,
+or import it (`import { run } from 'fascicle'`) from an ES module.
+
+- Check `node -v`. fascicle requires Node >= 24; on an older Node you will
+  see syntax errors from modern language features long before anything
+  fascicle-specific.
+
+## `not assignable to parameter of type 'never'` at `run()`
+
+An unannotated `chain()` types its input as `never`, so the first
+`run(flow, input)` fails with TS2345: `Argument of type '...' is not
+assignable to parameter of type 'never'`. State the input type when opening
+the chain: `chain<Input>()`, or `chain('name').input<Input>()` when the
+input binding is renamed.
 
 ## Provider auth failures (401 / 403)
 
@@ -100,10 +141,12 @@ of any loop that does not otherwise await something abortable. See
 - Retries do not resume past the first delivered chunk. Once a stream has started,
   a mid-stream failure is not retried; the orchestrator enforces that boundary.
   See [configuration.md](./configuration.md#retry-policy).
-- The bundled `filesystem_logger` writes synchronously and its span stacks are not
-  async-context-aware, so under heavy `parallel`/`map` concurrency the ordering is
-  best-effort. Fine for dev tools and short runs; roll your own `TrajectoryLogger`
-  for a long-running server. See [concepts.md](./concepts.md#adapter-limits).
+- The bundled `filesystem_logger` writes synchronously, so it is meant for dev
+  tools and short runs; roll your own `TrajectoryLogger` for a long-running
+  server. Span parentage is threaded by the runner (`parent_span_id`), so span
+  trees are correct under `parallel`/`map` concurrency; only spans emitted
+  without a parent (a logger driven directly, outside a run) fall back to a
+  best-effort in-memory stack. See [concepts.md](./concepts.md#adapter-limits).
 
 ## `GenerateResult.cost` is missing
 
@@ -204,6 +247,32 @@ restore the check at the flow's boundary.
 a Step where `fn` belongs (e.g. `pipe(a, b, c)`) throws this `TypeError` at flow
 construction. To chain Steps, use `sequence([a, b, c])`. `sequence` likewise
 rejects non-Step children at construction — wrap plain functions with `step(fn)`.
+
+## Locating a failure: reading `.path`
+
+Errors thrown from inside a run carry a `path` array naming the chain of step
+ids that led to the failure, outermost first:
+
+```ts
+import { error_path } from 'fascicle';
+
+try {
+  await run(flow, input);
+} catch (err) {
+  console.error(error_path(err)); // e.g. ['chain_1', 'enrich']
+  throw err;
+}
+```
+
+`error_path` narrows any thrown value; the fascicle error classes also
+declare `path`, so after an `instanceof` check `err.path` typechecks with no
+cast.
+
+The last element is the failing leaf. Auto-derived ids (a `model_call` without
+an explicit id gets one like `model_call:a1b2c3:2`) make a path hard to read
+when a flow holds several model calls; set `id:` on each `model_call` /
+`model_step` so the path names the role (`['review', 'critic']` instead of
+`['review', 'model_call:a1b2c3:2']`).
 
 ## Still stuck
 

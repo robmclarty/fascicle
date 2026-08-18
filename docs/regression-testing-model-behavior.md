@@ -57,13 +57,16 @@ A full bench over a model flow:
 import { bench, create_engine, judge_equals, model_step, pipe } from 'fascicle';
 import type { BenchCase } from 'fascicle';
 
+// A local model: a regression suite reruns on every prompt or model change,
+// so keeping it keyless and free to run lowers the cost of running it often.
+// A hosted provider slots in the same way.
 const engine = create_engine({
-  providers: { anthropic: { api_key: process.env.ANTHROPIC_API_KEY! } },
+  providers: { ollama: { base_url: 'http://localhost:11434' } },
 });
 
 // The flow under test: classify a sentence as "ship" or "hold".
 const classify = pipe(
-  model_step({ engine, model: 'sonnet', system: 'Reply with one word: ship or hold.' }),
+  model_step({ engine, model: 'llama3.2:3b', system: 'Reply with one word: ship or hold.' }),
   (word) => word.trim().toLowerCase(),
 );
 

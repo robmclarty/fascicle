@@ -6,15 +6,17 @@
  * folds those into a `Step<i, o>`:
  *
  * - The markdown file is read once at factory time. Its YAML-style frontmatter
- *   (`name`, `description`, `model`, `temperature`) is parsed into the agent's
- *   step name and engine call defaults; the body is the system prompt.
+ *   (`name`, `description`, `model`, `provider`, `effort`, `temperature`,
+ *   `max_tokens`, `top_p`) is parsed into the agent's step name and engine
+ *   call defaults; the body is the system prompt.
  * - Without `build_prompt`, the body (after `{{key}}` substitution against
  *   top-level string fields of the input) is the user prompt and no system is
  *   sent; the markdown carries the full instruction.
  * - With `build_prompt`, the body is the system prompt and `build_prompt(input)`
  *   produces the user message (string, or `{ user, system? }` to override).
- * - `config.model` and `config.schema_repair_attempts` shape the call from
- *   code. An explicit `model` wins over frontmatter `model` (frontmatter stays
+ * - `config.model`, `config.provider`, `config.effort`, `config.temperature`,
+ *   `config.max_tokens`, `config.top_p`, and `config.schema_repair_attempts`
+ *   shape the call from code. Code wins over frontmatter (frontmatter stays
  *   the role default when the app threads nothing; the engine default is the
  *   last resort), so a resolved role-to-model table and env overrides actually
  *   reach the call.
@@ -26,15 +28,16 @@
  * in; wrap with `retry()` from core if you need it.
  *
  * Frontmatter parser is intentionally tiny (no gray-matter): bare `key: value`
- * lines, optional `'`/`"` quotes, `temperature` coerced to number. Anything
- * richer should go through `build_prompt`.
+ * lines, optional `'`/`"` quotes, `temperature`/`max_tokens`/`top_p` coerced
+ * to number, `effort` validated against the engine's levels. Anything richer
+ * should go through `build_prompt`.
  */
 
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { aborted_error, step } from '#core'
 import type { RunContext, Step } from '#core'
-import type { Engine, GenerateOptions } from '#engine'
+import type { EffortLevel, Engine, GenerateOptions } from '#engine'
 import type { ToolSchema } from '#schema'
 
 export type AgentBuiltPrompt =
@@ -54,6 +57,19 @@ export type DefineAgentConfig<i, o> = {
    */
   readonly model?: string
   /**
+   * Transport for the model. Same precedence as `model`: code wins over
+   * frontmatter `provider`, and the engine default is the last resort.
+   */
+  readonly provider?: string
+  /** Reasoning effort for the call. Wins over frontmatter `effort`. */
+  readonly effort?: EffortLevel
+  /** Sampling temperature. Wins over frontmatter `temperature`. */
+  readonly temperature?: number
+  /** Output token cap. Wins over frontmatter `max_tokens`. */
+  readonly max_tokens?: number
+  /** Nucleus sampling cutoff. Wins over frontmatter `top_p`. */
+  readonly top_p?: number
+  /**
    * Forwarded to `engine.generate`: how many times the engine may re-prompt
    * the model to repair schema-invalid output before failing the call.
    */
@@ -64,7 +80,11 @@ type Frontmatter = {
   readonly name?: string
   readonly description?: string
   readonly model?: string
+  readonly provider?: string
+  readonly effort?: EffortLevel
   readonly temperature?: number
+  readonly max_tokens?: number
+  readonly top_p?: number
 }
 
 type ParsedPrompt = {
@@ -115,21 +135,48 @@ function split_frontmatter(
 }
 
 /**
- * Coerce a `temperature` value to a finite number, throwing on anything else.
- * `raw` is the pre-unquote text, so the error message echoes what the file held.
+ * Coerce a numeric frontmatter value to a finite number, throwing on anything
+ * else. `raw` is the pre-unquote text, so the error message echoes what the
+ * file held.
  */
-function parse_temperature(value: string, raw: string): number {
+function parse_number(key: string, value: string, raw: string): number {
   const n = Number(value)
   if (!Number.isFinite(n)) {
-    throw new Error(`define_agent: temperature must be a number, got: ${raw}`)
+    throw new Error(`define_agent: ${key} must be a number, got: ${raw}`)
   }
   return n
+}
+
+// A Record keyed by EffortLevel so tsc flags this table whenever the engine's
+// union gains or loses a member; the runtime lookup then validates frontmatter.
+const EFFORT_LEVELS: Readonly<Record<EffortLevel, true>> = {
+  none: true,
+  low: true,
+  medium: true,
+  high: true,
+  xhigh: true,
+  max: true,
+}
+
+/**
+ * Validate an `effort` value against the engine's `EffortLevel` union,
+ * throwing at factory time so a typo'd level never reaches a live call.
+ */
+function parse_effort(value: string, raw: string): EffortLevel {
+  if (!Object.hasOwn(EFFORT_LEVELS, value)) {
+    throw new Error(
+      `define_agent: effort must be one of ${Object.keys(EFFORT_LEVELS).join(', ')}, got: ${raw}`,
+    )
+  }
+  // The hasOwn check above proves membership in the union.
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+  return value as EffortLevel
 }
 
 /**
  * Parse one `key: value` frontmatter line into `out`. Blank and `#` comment
  * lines are skipped; a line without a colon throws; unrecognized keys are
- * ignored so only `name`/`description`/`model`/`temperature` reach the agent.
+ * ignored so only the `Frontmatter` fields reach the agent.
  */
 function assign_frontmatter_field(out: MutableFrontmatter, raw: string): void {
   const line = raw.trim()
@@ -141,12 +188,16 @@ function assign_frontmatter_field(out: MutableFrontmatter, raw: string): void {
   const key = line.slice(0, colon_idx).trim()
   const value_raw = line.slice(colon_idx + 1).trim()
   const value = unquote(value_raw)
-  if (key === 'name' || key === 'description' || key === 'model') {
+  if (key === 'name' || key === 'description' || key === 'model' || key === 'provider') {
     out[key] = value
     return
   }
-  if (key === 'temperature') {
-    out.temperature = parse_temperature(value, value_raw)
+  if (key === 'temperature' || key === 'max_tokens' || key === 'top_p') {
+    out[key] = parse_number(key, value, value_raw)
+    return
+  }
+  if (key === 'effort') {
+    out.effort = parse_effort(value, value_raw)
   }
 }
 
@@ -154,9 +205,10 @@ function assign_frontmatter_field(out: MutableFrontmatter, raw: string): void {
  * Split a markdown file into frontmatter fields and prompt body.
  *
  * Parses only the flat `key: value` subset of YAML that agent files need:
- * recognized keys are `name`, `description`, `model`, and `temperature`
- * (coerced to a number); unrecognized keys are ignored. A file without an
- * opening `---` is all body. Malformed frontmatter throws rather than
+ * recognized keys are `name`, `description`, `model`, `provider`, `effort`
+ * (validated against the engine's levels), and `temperature`/`max_tokens`/
+ * `top_p` (coerced to numbers); unrecognized keys are ignored. A file without
+ * an opening `---` is all body. Malformed frontmatter throws rather than
  * silently producing a wrong prompt.
  */
 function parse_frontmatter(content: string): ParsedPrompt {
@@ -199,6 +251,31 @@ function substitute(template: string, input: unknown): string {
     const v = obj[key]
     return typeof v === 'string' ? v : match
   })
+}
+
+/**
+ * Fold the caller-shaped generation knobs onto `opts` with code config
+ * winning over frontmatter (the precedence `model` has always used; the
+ * engine default stays the last resort). Unset knobs leave their key off the
+ * options object entirely rather than present-as-undefined.
+ */
+function apply_call_knobs<i, o>(
+  opts: GenerateOptions<o>,
+  config: DefineAgentConfig<i, o>,
+  frontmatter: Frontmatter,
+): void {
+  const model = config.model ?? frontmatter.model
+  if (model !== undefined) opts.model = model
+  const provider = config.provider ?? frontmatter.provider
+  if (provider !== undefined) opts.provider = provider
+  const effort = config.effort ?? frontmatter.effort
+  if (effort !== undefined) opts.effort = effort
+  const temperature = config.temperature ?? frontmatter.temperature
+  if (temperature !== undefined) opts.temperature = temperature
+  const max_tokens = config.max_tokens ?? frontmatter.max_tokens
+  if (max_tokens !== undefined) opts.max_tokens = max_tokens
+  const top_p = config.top_p ?? frontmatter.top_p
+  if (top_p !== undefined) opts.top_p = top_p
 }
 
 /**
@@ -245,9 +322,7 @@ export function define_agent<i, o>(config: DefineAgentConfig<i, o>): Step<i, o> 
     if (system_prompt !== undefined && system_prompt !== '') {
       opts.system = system_prompt
     }
-    const model = config.model ?? frontmatter.model
-    if (model !== undefined) opts.model = model
-    if (frontmatter.temperature !== undefined) opts.temperature = frontmatter.temperature
+    apply_call_knobs(opts, config, frontmatter)
     if (config.schema_repair_attempts !== undefined) {
       opts.schema_repair_attempts = config.schema_repair_attempts
     }

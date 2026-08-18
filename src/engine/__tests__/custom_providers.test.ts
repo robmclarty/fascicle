@@ -18,10 +18,7 @@ import {
 vi.mock('ai', async () => build_mock_ai_module())
 
 import { create_engine } from '../create_engine.js'
-import {
-  engine_config_error,
-  provider_not_configured_error,
-} from '../errors.js'
+import { engine_config_error } from '../errors.js'
 import {
   default_normalize_usage,
   type ProviderCapability,
@@ -300,14 +297,20 @@ describe('custom_providers', () => {
     expect(log.disposals).toEqual(['acme_native'])
   })
 
-  it('still throws provider_not_configured_error for unknown names', () => {
+  it('still throws engine_config_error for names with neither a built-in nor a custom factory', () => {
     const log = make_log()
     expect(() =>
       create_engine({
         providers: { nobody: { api_key: 'k' } },
         custom_providers: { acme: make_ai_sdk_factory('acme', log) },
       }),
-    ).toThrow(provider_not_configured_error)
+    ).toThrow(engine_config_error)
+    expect(() =>
+      create_engine({
+        providers: { nobody: { api_key: 'k' } },
+        custom_providers: { acme: make_ai_sdk_factory('acme', log) },
+      }),
+    ).toThrow("unknown provider 'nobody'")
   })
 
   it('propagates a custom factory throw at construction, like built-ins', () => {

@@ -202,9 +202,7 @@ export async function build_mock_ai_module(): Promise<Record<string, unknown>> {
 
 export async function build_mock_registry_module(): Promise<Record<string, unknown>> {
   const { default_normalize_usage } = await import('../../providers/types.js')
-  const { engine_config_error, provider_not_configured_error } = await import(
-    '../../errors.js'
-  )
+  const { engine_config_error } = await import('../../errors.js')
   type Init = { api_key?: string; base_url?: string; [k: string]: unknown }
   function make_factory(name: string, credentialed: boolean) {
     return (init: Init) => {
@@ -254,7 +252,14 @@ export async function build_mock_registry_module(): Promise<Record<string, unkno
     list_builtin_providers: () => [...providers.keys()],
     get_provider_factory: (n: string) => {
       const f = providers.get(n)
-      if (f === undefined) throw new provider_not_configured_error(n)
+      // Mirrors the real registry: an unknown name at construction is a
+      // config typo, so it surfaces as engine_config_error.
+      if (f === undefined) {
+        throw new engine_config_error(
+          `unknown provider '${n}'; built-in providers are: ${[...providers.keys()].join(', ')}`,
+          n,
+        )
+      }
       return f
     },
   }

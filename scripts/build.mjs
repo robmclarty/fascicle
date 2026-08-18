@@ -17,7 +17,7 @@
  */
 
 import { spawn } from 'node:child_process';
-import { copyFile, mkdir, readFile, rm, stat } from 'node:fs/promises';
+import { copyFile, mkdir, readFile, readdir, rm, stat } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
@@ -41,6 +41,8 @@ const DIST_TESTING_JS = join(DIST_DIR, 'testing.js');
 const DIST_TESTING_DTS = join(DIST_DIR, 'testing.d.ts');
 const DIST_UI_JS = join(DIST_DIR, 'ui.js');
 const DIST_UI_DTS = join(DIST_DIR, 'ui.d.ts');
+const DIST_VIEWER_JS = join(DIST_DIR, 'viewer.js');
+const DIST_VIEWER_DTS = join(DIST_DIR, 'viewer.d.ts');
 const DIST_STATIC_DIR = join(DIST_DIR, 'static');
 const DIST_STATIC_HTML = join(DIST_STATIC_DIR, 'viewer.html');
 const VIEWER_HTML_SRC = join(REPO_ROOT, 'src', 'viewer', 'static', 'viewer.html');
@@ -167,41 +169,69 @@ async function main() {
   }
 
   process.stderr.write(`▸ build: verifying bundle externals\n`);
-  const dist_text = await readFile(DIST_JS, 'utf8');
+  const chunk_files = (await readdir(DIST_DIR)).filter((f) => f.endsWith('.js'));
+  const chunk_texts = new Map();
+  for (const chunk_file of chunk_files) {
+    chunk_texts.set(chunk_file, await readFile(join(DIST_DIR, chunk_file), 'utf8'));
+  }
+  const all_text = [...chunk_texts.values()].join('\n');
 
   // Internal modules MUST be inlined: neither the old workspace names (@repo/*)
-  // nor the #-import aliases may survive in the published bundle.
-  const repo_static = /from\s+["']@repo\//.test(dist_text);
-  const repo_dynamic = /import\(\s*["']@repo\//.test(dist_text);
+  // nor the #-import aliases may survive in any published chunk.
+  const repo_static = /from\s+["']@repo\//.test(all_text);
+  const repo_dynamic = /import\(\s*["']@repo\//.test(all_text);
   if (repo_static || repo_dynamic) {
     console.error(`\nbuild: @repo/* appears in dist — internal modules were not inlined`);
     process.exit(1);
   }
-  const hash_static = /from\s+["']#/.test(dist_text);
-  const hash_dynamic = /import\(\s*["']#/.test(dist_text);
+  const hash_static = /from\s+["']#/.test(all_text);
+  const hash_dynamic = /import\(\s*["']#/.test(all_text);
   if (hash_static || hash_dynamic) {
     console.error(`\nbuild: #-import alias appears in dist — internal modules were not inlined`);
     process.exit(1);
   }
 
   // `ai` is reached lazily: generate.ts imports the ai_sdk turn seam with
-  // `await import(...)`, so the entry chunk must NOT import `ai` statically —
-  // that edge is what put the SDK on the graph of every consumer, native
-  // transports included. The split chunk it points at must still import `ai`
-  // rather than inline it, or the peer stopped being external.
-  if (/from\s+["']ai["']/.test(dist_text)) {
-    console.error(`\nbuild: dist statically imports 'ai' — the ai_sdk seam must stay lazy`);
-    process.exit(1);
+  // `await import(...)`. A static `from 'ai'` edge on any consumer path is
+  // what once put the SDK on every consumer's graph, native transports
+  // included. The seam may land in any chunk (once another entry shares
+  // engine values, the bundler hoists engine into a common chunk), so the
+  // invariant is checked across all of dist: whichever chunk imports `ai`
+  // must keep it external and be reached only through a dynamic import.
+  // Only the root entry's graph is constrained: fascicle/ui interops with AI
+  // SDK UI messages and imports `ai` statically on purpose, and a consumer of
+  // that subpath has opted in. Walk the static closure of index.js.
+  const static_deps = (text) =>
+    [...text.matchAll(/(?:from\s+|import\s+)["']\.\/([^"']+\.js)["']/g)].map((m) => m[1]);
+  const closure = new Set(['index.js']);
+  const queue = ['index.js'];
+  while (queue.length > 0) {
+    const current = queue.pop();
+    for (const dep of static_deps(chunk_texts.get(current) ?? '')) {
+      if (!closure.has(dep)) {
+        closure.add(dep);
+        queue.push(dep);
+      }
+    }
   }
-  const lazy_chunk = dist_text.match(/import\(\s*["']\.\/([^"']+\.js)["']\s*\)/);
-  if (lazy_chunk === null) {
-    console.error(`\nbuild: dist has no lazy chunk import — the ai_sdk seam was inlined`);
-    process.exit(1);
-  }
-  const lazy_chunk_text = await readFile(join(DIST_DIR, lazy_chunk[1]), 'utf8');
-  if (!/from\s+["']ai["']/.test(lazy_chunk_text)) {
+  const static_ai = [...closure].filter((f) => /from\s+["']ai["']/.test(chunk_texts.get(f) ?? ''));
+  if (static_ai.length > 0) {
     console.error(
-      `\nbuild: ${lazy_chunk[1]} missing \`from 'ai'\` — peer not preserved as external`,
+      `\nbuild: the root entry statically reaches 'ai' via ${static_ai.join(', ')}; the ai_sdk seam must stay lazy`,
+    );
+    process.exit(1);
+  }
+  const dynamic_targets = [...closure].flatMap((f) =>
+    [...(chunk_texts.get(f) ?? '').matchAll(/import\(\s*["']\.\/([^"']+\.js)["']\s*\)/g)].map(
+      (m) => m[1],
+    ),
+  );
+  const seam_chunks = dynamic_targets.filter((t) =>
+    /from\s+["']ai["']/.test(chunk_texts.get(t) ?? ''),
+  );
+  if (seam_chunks.length === 0) {
+    console.error(
+      `\nbuild: no dynamic chunk import from the root entry reaches 'ai'; the ai_sdk seam was inlined or dropped`,
     );
     process.exit(1);
   }
@@ -209,8 +239,9 @@ async function main() {
   // `zod` is no longer imported as a value anywhere fascicle's own code runs:
   // its one remaining site (src/mcp/serve.ts) is `import type`, erased at
   // build time, so no dist chunk should carry a runtime `from 'zod'` either.
-  if (/from\s+["']zod["']/.test(dist_text)) {
-    console.error(`\nbuild: dist statically imports 'zod' — it should be type-only now`);
+  const closure_text = [...closure].map((f) => chunk_texts.get(f) ?? '').join('\n');
+  if (/from\s+["']zod["']/.test(closure_text)) {
+    console.error(`\nbuild: the root entry statically imports 'zod'; it should be type-only now`);
     process.exit(1);
   }
 
@@ -218,9 +249,9 @@ async function main() {
   // are loaded via `await import('<specifier>')` inside provider adapters.
   // They are external-by-dynamic-import; the bundler preserves the literal
   // specifier. Assert the `@ai-sdk/` family appears as a specifier substring.
-  if (!/["']@ai-sdk\//.test(dist_text)) {
+  if (!/["']@ai-sdk\//.test(closure_text)) {
     console.error(
-      `\nbuild: dist missing any \`@ai-sdk/\` specifier — optional peers were not preserved as externals`,
+      `\nbuild: root entry graph missing any \`@ai-sdk/\` specifier; optional peers were not preserved as externals`,
     );
     process.exit(1);
   }
@@ -247,14 +278,6 @@ async function main() {
   }
   if (typeof mod.describe?.json !== 'function') {
     console.error(`\nbuild: smoke test missing describe.json namespace member`);
-    process.exit(1);
-  }
-  if (typeof mod.start_viewer !== 'function') {
-    console.error(`\nbuild: smoke test missing start_viewer export`);
-    process.exit(1);
-  }
-  if (typeof mod.run_viewer_cli !== 'function') {
-    console.error(`\nbuild: smoke test missing run_viewer_cli export`);
     process.exit(1);
   }
 
@@ -356,8 +379,21 @@ async function main() {
     process.exit(1);
   }
 
+  process.stderr.write(`▸ build: smoke-importing ${DIST_VIEWER_JS}\n`);
+  if (!existsSync(DIST_VIEWER_JS) || !existsSync(DIST_VIEWER_DTS)) {
+    console.error(`\nbuild: dist/viewer.{js,d.ts} were not produced (the ./viewer subpath)`);
+    process.exit(1);
+  }
+  const viewer_mod = await import(pathToFileURL(DIST_VIEWER_JS).href);
+  const EXPECTED_VIEWER = ['start_viewer', 'run_viewer_cli', 'create_broadcaster', 'start_server', 'start_tail'];
+  const missing_viewer = EXPECTED_VIEWER.filter((name) => typeof viewer_mod[name] === 'undefined');
+  if (missing_viewer.length > 0) {
+    console.error(`\nbuild: viewer smoke test missing exports: ${missing_viewer.join(', ')}`);
+    process.exit(1);
+  }
+
   process.stderr.write(
-    `\n✔ build ok (${js_stat.size} bytes js, ${dts_stat.size} bytes d.ts, ${EXPECTED_NAMED.length} named exports + describe.json + ${EXPECTED_ADAPTERS.length} adapters + ${EXPECTED_AGENTS.length} agents + ${EXPECTED_MCP.length} mcp + ${EXPECTED_OTEL.length} otel + ${EXPECTED_STDIO.length} stdio + ${EXPECTED_TESTING.length} testing + ${EXPECTED_UI.length} ui verified)\n`,
+    `\n✔ build ok (${js_stat.size} bytes js, ${dts_stat.size} bytes d.ts, ${EXPECTED_NAMED.length} named exports + describe.json + ${EXPECTED_ADAPTERS.length} adapters + ${EXPECTED_AGENTS.length} agents + ${EXPECTED_MCP.length} mcp + ${EXPECTED_OTEL.length} otel + ${EXPECTED_STDIO.length} stdio + ${EXPECTED_TESTING.length} testing + ${EXPECTED_UI.length} ui + ${EXPECTED_VIEWER.length} viewer verified)\n`,
   );
 }
 
@@ -369,8 +405,8 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const dist_index = resolve(here, '..', 'index.js');
-const mod = await import(pathToFileURL(dist_index).href);
+const dist_viewer = resolve(here, '..', 'viewer.js');
+const mod = await import(pathToFileURL(dist_viewer).href);
 await mod.run_viewer_cli(process.argv.slice(2));
 `;
   await writeFile(path, shim, 'utf8');

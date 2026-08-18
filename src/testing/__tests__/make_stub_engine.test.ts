@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
+import { aborted_error, schema_validation_error } from '#engine'
+import type { StreamChunk } from '#engine'
 import { make_stub_engine } from '../make_stub_engine.js'
+import type { StubContentFn } from '../make_stub_engine.js'
 
 describe('make_stub_engine', () => {
   it('routes by system-prompt prefix, first match wins', async () => {
@@ -50,6 +53,100 @@ describe('make_stub_engine', () => {
     ).rejects.toThrow(
       "make_stub_engine: canned response for prefix 'app/typed' failed the caller's schema",
     )
+  })
+
+  it('throws the engine schema_validation_error carrying the issues and raw text', async () => {
+    const engine = make_stub_engine([{ prefix: 'app/typed', content: { wrong: true } }])
+    const failure: unknown = await engine
+      .generate({ prompt: 'x', system: 'app/typed', schema: z.object({ ok: z.boolean() }) })
+      .then(
+        () => undefined,
+        (err: unknown) => err,
+      )
+    expect(failure).toBeInstanceOf(schema_validation_error)
+    if (!(failure instanceof schema_validation_error)) throw new Error('unreachable')
+    expect(failure.kind).toBe('schema_validation_error')
+    expect(failure.schema_issues.length).toBeGreaterThan(0)
+    expect(failure.schema_issues[0]?.path).toEqual(['ok'])
+    expect(failure.raw_text).toBe(JSON.stringify({ wrong: true }))
+    expect(failure.message).toContain('ok:')
+  })
+
+  it('calls function content with the routed options and a per-route call index', async () => {
+    const seen: Array<{ prompt: unknown; call_index: number }> = []
+    const looped: StubContentFn = (opts, call_index) => {
+      seen.push({ prompt: opts.prompt, call_index })
+      return `round ${call_index}`
+    }
+    const engine = make_stub_engine([
+      { prefix: 'app/loop', content: looped },
+      { prefix: '', content: 'static' },
+    ])
+    const first = await engine.generate({ prompt: 'p1', system: 'app/loop' })
+    expect(first.content).toBe('round 0')
+    const other = await engine.generate({ prompt: 'p2', system: 'app/other' })
+    expect(other.content).toBe('static')
+    const second = await engine.generate({ prompt: 'p3', system: 'app/loop' })
+    expect(second.content).toBe('round 1')
+    expect(seen).toEqual([
+      { prompt: 'p1', call_index: 0 },
+      { prompt: 'p3', call_index: 1 },
+    ])
+  })
+
+  it('validates function content through the caller schema like static content', async () => {
+    const engine = make_stub_engine([
+      { prefix: '', content: (_opts: unknown, call_index: number) => ({ round: call_index }) },
+    ])
+    const result = await engine.generate({
+      prompt: 'x',
+      schema: z.object({ round: z.number() }),
+    })
+    expect(result.content).toEqual({ round: 0 })
+  })
+
+  it('emits the content as a text chunk then a finish chunk when on_chunk is provided', async () => {
+    const chunks: StreamChunk[] = []
+    const engine = make_stub_engine([{ prefix: '', content: 'hello' }])
+    const result = await engine.generate({
+      prompt: 'x',
+      on_chunk: (chunk) => {
+        chunks.push(chunk)
+      },
+    })
+    expect(chunks).toEqual([
+      { kind: 'text', text: 'hello', step_index: 0 },
+      { kind: 'finish', finish_reason: 'stop', usage: { input_tokens: 40, output_tokens: 20 } },
+    ])
+    expect(result.content).toBe('hello')
+  })
+
+  it('serializes non-string content as JSON in the emitted text chunk', async () => {
+    const chunks: StreamChunk[] = []
+    const engine = make_stub_engine([{ prefix: '', content: { verdict: 'ship' } }])
+    await engine.generate<unknown>({
+      prompt: 'x',
+      on_chunk: (chunk) => {
+        chunks.push(chunk)
+      },
+    })
+    expect(chunks[0]).toEqual({ kind: 'text', text: '{"verdict":"ship"}', step_index: 0 })
+  })
+
+  it('throws aborted_error when the signal is already aborted, carrying the reason', async () => {
+    const engine = make_stub_engine([{ prefix: '', content: 'x' }])
+    const controller = new AbortController()
+    const cause = new Error('user cancelled')
+    controller.abort(cause)
+    const failure: unknown = await engine
+      .generate({ prompt: 'x', abort: controller.signal })
+      .then(
+        () => undefined,
+        (err: unknown) => err,
+      )
+    expect(failure).toBeInstanceOf(aborted_error)
+    if (!(failure instanceof aborted_error)) throw new Error('unreachable')
+    expect(failure.reason).toBe(cause)
   })
 
   it('returns raw content unchanged when the call carries no schema', async () => {

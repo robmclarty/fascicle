@@ -41,6 +41,7 @@ import {
   provider_capability_error,
   provider_error,
   provider_not_configured_error,
+  provider_required_error,
   turn_timeout_error,
 } from './errors.js'
 import { format_schema_issues } from '#schema'
@@ -93,6 +94,9 @@ export type EngineInternals = {
   readonly default_model?: string
   readonly default_provider?: string
   readonly default_system?: string
+  readonly default_temperature?: number
+  readonly default_max_tokens?: number
+  readonly default_top_p?: number
   readonly default_tool_error_policy?: 'feed_back' | 'throw'
   readonly default_schema_repair_attempts?: number
   readonly default_tool_call_repair_attempts?: number
@@ -467,7 +471,9 @@ function build_native_invoke(cfg: NativeInvokeConfig): InvokeOnce {
 
 /**
  * Resolve the provider name: per-call, then the engine default, then the sole
- * configured adapter, then 'anthropic'.
+ * configured adapter. With several providers configured and neither a per-call
+ * provider nor a default, there is no sane guess, so this throws
+ * provider_required_error naming the configured providers.
  */
 function resolve_provider<T>(
   opts_in: GenerateOptions<T>,
@@ -475,7 +481,11 @@ function resolve_provider<T>(
 ): string {
   const sole_provider =
     engine.adapters.size === 1 ? [...engine.adapters.keys()][0] : undefined
-  return opts_in.provider ?? engine.default_provider ?? sole_provider ?? 'anthropic'
+  const resolved = opts_in.provider ?? engine.default_provider ?? sole_provider
+  if (resolved === undefined) {
+    throw new provider_required_error([...engine.adapters.keys()])
+  }
+  return resolved
 }
 
 /**
@@ -483,8 +493,9 @@ function resolve_provider<T>(
  * options view.
  *
  * The model must resolve (per-call, then engine default) or the call cannot
- * proceed. Engine-default provider_options merge under per-call ones here so
- * every transport downstream sees a single already-merged view instead of
+ * proceed. Engine-default system, sampling knobs (temperature, max_tokens,
+ * top_p), and provider_options merge under per-call ones here so every
+ * transport downstream sees a single already-merged view instead of
  * re-merging per branch.
  */
 function resolve_target<T>(
@@ -507,6 +518,15 @@ function resolve_target<T>(
   }
   if (opts_in.system === undefined && engine.default_system !== undefined) {
     opts.system = engine.default_system
+  }
+  if (opts_in.temperature === undefined && engine.default_temperature !== undefined) {
+    opts.temperature = engine.default_temperature
+  }
+  if (opts_in.max_tokens === undefined && engine.default_max_tokens !== undefined) {
+    opts.max_tokens = engine.default_max_tokens
+  }
+  if (opts_in.top_p === undefined && engine.default_top_p !== undefined) {
+    opts.top_p = engine.default_top_p
   }
   if (merged_provider_options !== undefined) {
     opts.provider_options = merged_provider_options

@@ -154,6 +154,33 @@ describe('retry', () => {
     expect(result).toBe('go')
   })
 
+  it('rejects a NaN max_attempts at construction', () => {
+    const inner = step('x', (n: number) => n)
+    expect(() => retry(inner, { max_attempts: Number.NaN })).toThrow(TypeError)
+    expect(() => retry(inner, { max_attempts: Number.NaN })).toThrow(
+      'retry: max_attempts must be a finite number, got NaN',
+    )
+  })
+
+  it('rejects an Infinity max_attempts at construction', () => {
+    const inner = step('x', (n: number) => n)
+    expect(() => retry(inner, { max_attempts: Number.POSITIVE_INFINITY })).toThrow(TypeError)
+    expect(() => retry(inner, { max_attempts: Number.POSITIVE_INFINITY })).toThrow(
+      'retry: max_attempts must be a finite number, got Infinity',
+    )
+    expect(() => retry(inner, { max_attempts: Number.NEGATIVE_INFINITY })).toThrow(
+      'retry: max_attempts must be a finite number, got -Infinity',
+    )
+  })
+
+  it('still accepts a finite max_attempts after the guard', async () => {
+    // The guard must reject only non-finite values; an ordinary construction
+    // and run stays exactly as before.
+    const inner = step('ok', (n: number) => n + 1)
+    const flow = retry(inner, { max_attempts: 2, backoff_ms: 1 })
+    await expect(run(flow, 1, { install_signal_handlers: false })).resolves.toBe(2)
+  })
+
   it('assigns each retry step a distinct retry_<n> id', () => {
     const a = retry(step('a', (n: number) => n), { max_attempts: 1 })
     const b = retry(step('b', (n: number) => n), { max_attempts: 1 })

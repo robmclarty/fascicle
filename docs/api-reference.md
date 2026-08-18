@@ -22,19 +22,20 @@ import { /* useChat stream adapters */ } from 'fascicle/ui';
 fascicle is ESM-only and requires Node >= 24. There are no default exports and no
 classes other than `Error` subclasses.
 
-`fascicle` itself has no mandatory peers. Two subpaths need one to do their work:
-`fascicle/mcp` needs `@modelcontextprotocol/sdk`, which it loads dynamically and
-reports as `mcp_sdk_missing_error` when absent; `fascicle/ui` needs `ai`, which it
-imports statically because it speaks the AI SDK's UI message-stream protocol, so a
+`fascicle` itself has no mandatory peers. Three subpaths need one to do their
+work: `fascicle/mcp` needs `@modelcontextprotocol/sdk`, which it loads
+dynamically and reports as `mcp_sdk_missing_error` when absent; `fascicle/otel`
+needs `@opentelemetry/api`; and `fascicle/ui` needs `ai`, which it imports
+statically because it speaks the AI SDK's UI message-stream protocol, so a
 missing `ai` fails at module resolution rather than with a fascicle error.
 
 ## Running a flow
 
 | Export | Shape | Notes |
 | --- | --- | --- |
-| `run(flow, input, options?)` | `Promise<output>` | Execute a step. `options`: `{ trajectory?, checkpoint_store?, abort?, resume_data? }`. |
+| `run(flow, input, options?)` | `Promise<output>` | Execute a step. `options`: `{ trajectory?, checkpoint_store?, abort?, resume_data?, install_signal_handlers? }`. |
 | `run.stream(flow, input, options?)` | `{ events, result }` | Same graph as `run`; `events` is an async iterable of `TrajectoryEvent`, `result` resolves to the output. |
-| `run.until_suspended(flow, input, options?)` | `Promise<RunOutcome<output>>` | Same graph as `run`, but a `suspend` gate resolves `{ kind: 'suspended', id, resume }` instead of throwing; `resume(data)` re-runs with the decision and resolves to the next outcome. Completion is `{ kind: 'done', output }`; real errors still throw. |
+| `run.until_suspended(flow, input, options?)` | `Promise<RunOutcome<output>>` | Same graph as `run`, but a `suspend` gate resolves `{ kind: 'suspended', id, payload, resume }` instead of throwing; `payload` is the value the gate surfaced, and `resume(data)` re-runs with the decision and resolves to the next outcome. Completion is `{ kind: 'done', output }`; real errors still throw. |
 | `describe(step, options?)` | `string` | Static text-tree description of a step tree. No execution, no model calls. `describe.json(step)` returns the structured `FlowNode` tree instead. |
 | `ctx.call(step, input)` | `Promise<output>` | On `RunContext`, inside any step body: run another Step with spans, abort, and error paths intact. The direct-style counterpart to composing. |
 
@@ -50,7 +51,7 @@ await run(flow, 1); // 4
 Every composer takes `Step<i, o>` values and returns a `Step<i, o>`. Anything that
 fits a step fits any composition of steps.
 
-**Lift and sequence**
+### Lift and sequence
 
 | Primitive | Shape |
 | --- | --- |
@@ -62,19 +63,19 @@ fits a step fits any composition of steps.
 A straight pipe belongs in `sequence`; reach for `chain` when a step needs
 fan-in, phases, or named per-joint types.
 
-**Control flow**
+### Control flow
 
 | Primitive | Shape |
 | --- | --- |
 | `branch({ when, then, otherwise })` | route on `when(input)` |
 | `map({ items, do, concurrency? })` | run `do` per item of `items(input)`, optional in-flight cap |
 | `parallel({ a, b })` | run a named map of steps concurrently; the step's input is the intersection of the members' inputs |
-| `loop({ init, body, guard?, finish, max_rounds })` | bounded iteration with carry-state and optional convergence guard; returns `finish(state, { converged, rounds })` |
+| `loop({ init, body, guard?, finish, max_rounds })` | bounded iteration with carry-state and an optional convergence guard (a `Step` or a bare `(state) => boolean` predicate); returns `finish(state, { converged, rounds })` |
 | `retry(step, policy)` | re-run on failure with exponential backoff |
 | `fallback(primary, backup, { handoff? })` | run a backup if the primary throws; `handoff(input, err)` maps the backup's input |
 | `timeout(step, ms)` | cancel an inner step after N ms (throws `timeout_error`) |
 
-**Multi-model**
+### Multi-model
 
 | Primitive | Shape |
 | --- | --- |
@@ -86,14 +87,14 @@ fan-in, phases, or named per-joint types.
 
 Each of these returns a result envelope (`{ candidate, converged, rounds }`, `{ winner, scores }`, ...). The optional `project` maps that envelope into the step's output at the source (`project: (r) => r.candidate`), so downstream steps see the value instead of the wrapper; omitted, the envelope itself is the output. `ensemble_step` is the primary pick-best; plain `ensemble` and `tournament` are covered in [advanced-composition.md](./advanced-composition.md), as are `improve` / `learn` and the raw state trio.
 
-**Self-improvement**
+### Self-improvement
 
 | Primitive | Shape |
 | --- | --- |
 | `improve({ seed, propose, score, budget, project? })` | bounded online propose → score → accept/reject loop with plateau detection; `project` maps the result envelope (e.g. `(r) => r.best.content`) |
 | `learn({ flow, source, analyzer })` | offline reflection over recorded trajectories; returns the analyzer's proposals |
 
-**Benchmarking**
+### Benchmarking
 
 | Export | Purpose |
 | --- | --- |
@@ -107,14 +108,15 @@ Each of these returns a result envelope (`{ candidate, converged, rounds }`, `{ 
 The full loop is walked in
 [regression-testing-model-behavior.md](./regression-testing-model-behavior.md).
 
-**State and durability**
+### State and durability
 
 | Primitive | Shape |
 | --- | --- |
-| `chain(input_name?)` → `.step` / `.stage` / `.output` | named steps over a typed record: `.step(name, fn, { arm? })` merges a binding (`arm` records a `ctx.call`ed Step as describe-only child metadata), `.stage(name, project?)` concludes a phase (with `project`, narrows the record), `.output(fn)` projects the result into a `Step` |
+| `chain<i>(input_name?)` → `.input` / `.step` / `.stage` / `.output` | named steps over a typed record; state the input type via `chain<i>()` or `chain('name').input<i>()` (unannotated chains default to `never` and fail at `run`): `.step(name, arm, select)` dispatches a composed arm on the selected slice and records it as the binding's child, `.step(name, fn, { arm? })` is the body form (`arm` records a describe-only child), `.stage(name, project?)` concludes a phase (with `project`, narrows the record), `.output(fn)` projects the result into a `Step` |
 | `scope` / `stash` / `use` | named state at the string-key level; the advanced tier under `chain` (see [advanced-composition.md](./advanced-composition.md)) |
 | `checkpoint(inner, { key })` | memoize an inner step by key in a `CheckpointStore` |
 | `suspend({ id, on, resume_schema, combine })` | pause for external input; resume later with `resume_data` (throws `suspended_error` to signal the pause; `run.until_suspended` surfaces it as a typed outcome instead) |
+| `gate(inner, { id, store?, format?, name? })` | run `inner`, checkpoint its result at `gate:<id>`, then suspend with it as the payload; resume passes the result through, and a restart with the same store replays from the checkpoint instead of re-running `inner` |
 
 ## The engine
 
@@ -140,16 +142,18 @@ const engine = create_engine(config); // EngineConfig -> Engine
 
 ### `generate` options (highlights)
 
-`model` and `provider` are the only routing inputs — `model` is an opaque id sent
-verbatim, `provider` names the transport. Full shape in
-[configuration.md](./configuration.md#generate-options).
+`model` and `provider` are the only routing inputs: `model` is an opaque id sent
+verbatim, `provider` names the transport. `provider` resolves per call, then from
+`defaults.provider`, then to the sole configured provider; an engine with several
+providers and no default throws `provider_required_error` when a call names none.
+Full shape in [configuration.md](./configuration.md#generate-options).
 
 | Field | Meaning |
 | --- | --- |
 | `model`, `provider` | which model / which transport |
 | `prompt` | `string \| Message[]` |
 | `system` | system prompt |
-| `schema` | a zod schema; structured output with repair passes |
+| `schema` | any Standard Schema (zod, ArkType, Valibot, ...); structured output with repair passes |
 | `tools` | agentic tool surface (`Tool[]`); a tool may set `ends_turn: true` to end the loop on a successful call |
 | `effort` | `'none' \| 'low' \| 'medium' \| 'high' \| 'xhigh' \| 'max'`, translated per provider |
 | `abort`, `trajectory`, `on_chunk` | cancellation, observation, streaming |
@@ -160,7 +164,7 @@ verbatim, `provider` names the transport. Full shape in
 ```ts
 import { model_call } from 'fascicle';
 
-const ask = model_call({ engine, model: 'sonnet', system: 'Be terse.' });
+const ask = model_call({ engine, model: 'claude-sonnet-4-6', system: 'Be terse.' });
 ```
 
 `model_call(config)` returns a `Step`, the only sanctioned bridge between the
@@ -169,15 +173,18 @@ streaming chunks. Like the envelope composites, the config takes an optional
 `project` mapping the `GenerateResult` into the step's output at the source
 (`project: (r) => ({ text: r.content, cost: r.cost })`); the projection runs
 inside the step, so `describe` and the trajectory gain no wrapper node.
-Omitted, the envelope is the output. Types: `ModelCallConfig`,
-`ModelCallInput`.
+Omitted, the envelope is the output. The config also carries the caller-shaped
+generation knobs (`temperature`, `max_tokens`, `top_p`, `turn_timeout_ms`,
+`prepare_step`) alongside `model` / `provider` / `system` / `schema` / `tools`
+/ `effort` / `retry`; `abort`, `trajectory`, and `on_chunk` stay runner-owned
+and are threaded automatically. Types: `ModelCallConfig`, `ModelCallInput`.
 
 ### `model_step`: the answer, not the envelope
 
 ```ts
 import { model_step } from 'fascicle';
 
-const ask = model_step({ engine, model: 'sonnet', system: 'Be terse.' });
+const ask = model_step({ engine, model: 'claude-sonnet-4-6', system: 'Be terse.' });
 ```
 
 `model_step(config)` takes the same config as `model_call` (minus `project`)
@@ -198,8 +205,10 @@ const reviewer = define_agent({ md_path, schema, engine, build_prompt });
 ```
 
 `define_agent(config)` folds a markdown file (frontmatter `name` / `description`
-/ `model` / `temperature`, body as the prompt) and an output schema into a
-`Step<i, o>`. Types: `DefineAgentConfig`, `AgentBuiltPrompt`. See
+/ `model` / `provider` / `effort` / `temperature` / `max_tokens` / `top_p`,
+body as the prompt) and an output schema into a `Step<i, o>`. Every knob is
+also accepted on the config; code wins over frontmatter, frontmatter over
+engine defaults. Types: `DefineAgentConfig`, `AgentBuiltPrompt`. See
 [blueprint.md](./blueprint.md#prompts-markdown-not-string-literals).
 
 ## Providers
@@ -250,20 +259,27 @@ line a newer producer emits. The guards are how you narrow one.
 | `is_span_start_event(value)` | guard | `span_start` with a string `span_id` and `name` |
 | `is_span_end_event(value)` | guard | `span_end` with a string `span_id` |
 | `is_emit_event(value)` | guard | a `ctx.emit` event; the payload is the caller's |
+| `is_run_end_event(value)` | guard | the terminal `run_end` event, emitted once per run: `status` is `'done' \| 'failed' \| 'aborted' \| 'suspended'`; failures carry `error` plus `error_name` / `error_kind` / `error_path` when known |
+| `is_checkpoint_event(value)` | guard | a `checkpoint` store lookup: `status` is `'hit' \| 'miss' \| 'read_error'`, with the step `id` and store `key` |
 | `is_custom_trajectory_event(value)` | guard | the fallback shape: any string `kind`, well-known ones included |
 
 ## Testing doubles (`fascicle/testing`)
 
-The two engine doubles an app's tests need, so the real flow runs through the
-real `run()` with zero network. The pattern is worked through in
+The engine doubles an app's tests need, so the real flow runs through the
+real `run()` with zero network. The full guide is [testing.md](./testing.md);
+the pattern is worked through in
 [blueprint.md](./blueprint.md#testing-stub-the-engine-not-the-flow).
 
 | Export | Kind | Notes |
 | --- | --- | --- |
-| `make_stub_engine(canned, options?)` | fn | routes canned responses by system-prompt prefix; validates canned content through the call's schema; throws on an unmatched system |
+| `make_stub_engine(canned, options?)` | fn | routes canned responses by system-prompt prefix; `content` may be a function `(opts, call_index) => value`; validates canned content through the call's schema; throws on an unmatched system |
+| `make_script_engine(responses, options?)` | fn | a strict call-order queue; entries are plain content values or `{ content?, tool_calls?, finish_reason?, usage?, throw? }`; exhaustion throws with the scripted vs received counts |
 | `make_capture_engine(options?)` | fn | records every call's `GenerateOptions` into a live `calls` array, answers with a canned result |
+| `text_of(opts)` | fn | the user-visible prompt text of a captured `GenerateOptions`, whatever the prompt shape |
+| `engine_from_generate(generate)` | fn | wrap a bare `generate` into a full `Engine`; the shell the factories build on, for rolling your own double |
 
-Types: `StubEngineOptions`, `StubResponse`, `CaptureEngine`,
+Types: `StubEngineOptions`, `StubResponse`, `StubContentFn`,
+`ScriptResponse`, `ScriptEngineOptions`, `CaptureEngine`,
 `CaptureEngineOptions`.
 
 ## MCP bridge (`fascicle/mcp`)
@@ -295,15 +311,41 @@ authoritative, 1 = flow failure, 2 = contract violation). See
 | `execute_stdio(flow, options, io)` | fn | the same contract over injected io; returns a `StdioOutcome` instead of exiting |
 | `RunStdioOptions`, `StdioFailure`, `StdioOutcome`, `StdioIo` | type | options and the machine-readable failure envelope |
 
-## Observability viewer
+## UI message streams (`fascicle/ui`)
+
+Bridges a `run.stream(...)` handle onto the AI SDK UI message-stream protocol,
+so a fascicle flow can back a `useChat` endpoint rendered by AI Elements or
+Streamdown. Imports `ai` statically (see the peer note at the top).
+
+| Export | Kind | Notes |
+| --- | --- | --- |
+| `to_ui_message_response(handle, options?)` | fn | turn a `run.stream(...)` handle into an SSE `Response` a `useChat` endpoint can return directly |
+| `pipe_ui_message_stream_to_response(handle, res, options?)` | fn | the same stream piped to a Node `http.ServerResponse`, for `node:http` servers |
+| `to_ui_message_chunks(event, state)` | fn | map one run event to zero or more `UIMessageChunk`s, advancing `state`; the low-level mapper both entry points share |
+| `close_open_blocks(state)` | fn | the `*-end` chunks for every text/reasoning block still open; flushes a stream whose event iterable ends early |
+| `create_ui_mapper_state()` | fn | fresh per-stream mapper state for the low-level API |
+
+Types: `RunStreamLike` (the structural shape of a `run.stream(...)` handle, so
+no core import is needed to satisfy it), `ToUiStreamOptions`, `UiMapperState`.
+
+## Observability viewer (`fascicle/viewer`)
+
+```ts
+import { start_viewer } from 'fascicle/viewer';
+```
 
 | Export | Purpose |
 | --- | --- |
 | `start_viewer(options)` | start the embedded viewer server; returns a `ViewerHandle` (`.close()`) |
 | `run_viewer_cli(argv)` | the `fascicle-viewer` bin entry point |
+| `create_broadcaster(options?)` | fan live trajectory events out to subscribers |
+| `start_server(options)` | the bare HTTP server underneath `start_viewer` |
+| `start_tail(options)` | follow a trajectory JSONL file as it grows |
 
-The `fascicle-viewer` bin ships with the package. See
-[docs/viewer.md](./viewer.md).
+Types: `StartViewerOptions`, `ViewerHandle`, `Broadcaster`,
+`BroadcasterOptions`, `BroadcastEvent`, `Subscriber`, `ServerOptions`,
+`ViewerServer`, `Tail`, `TailOptions`. The `fascicle-viewer` bin ships with
+the package and needs no peer. See [docs/viewer.md](./viewer.md).
 
 ## Errors
 
@@ -315,7 +357,9 @@ All are `Error` subclasses. Catch by class.
 `describe`), `bench_suspend_error` (a benched flow suspended; `bench` has no
 resume path).
 
-**Engine.** `provider_not_configured_error`, `model_required_error`,
+**Engine.** `provider_required_error` (several providers configured, none named
+by the call or `defaults.provider`), `provider_not_configured_error`,
+`model_required_error`,
 `engine_config_error`, `engine_disposed_error`, `provider_auth_error`,
 `provider_error`, `rate_limit_error`, `provider_capability_error`,
 `schema_validation_error`, `incomplete_generation_error`, `tool_error`,
@@ -332,19 +376,47 @@ the roadmap). The public type exports:
 **Composition.** `Step`, `AnyStep`, `StepMetadata`, `StepKind`, `RunContext`,
 `RunOutcome`, `Chain`, `ChainStepOptions`, `TrajectoryLogger`,
 `TrajectoryEvent`, `CheckpointStore`, `DescribeOptions`, `FlowNode`,
-`FlowValue`, `LoopConfig`, `LoopOutcome`, `LoopGuardResult`, plus the
-trajectory event shapes (`SpanStartEvent`, `SpanEndEvent`, `EmitEvent`,
-`CustomTrajectoryEvent`, `ParsedTrajectoryEvent`, `TrajectoryParseResult`).
+`FlowValue`, `LoopConfig`, `LoopOutcome`, `LoopGuardResult`,
+`LoopGuardPredicate`, plus the trajectory event shapes (`SpanStartEvent`,
+`SpanEndEvent`, `EmitEvent`, `RunEndEvent`, `RunEndStatus`,
+`CheckpointEvent`, `CheckpointStatus`, `CustomTrajectoryEvent`,
+`ParsedTrajectoryEvent`, `TrajectoryParseResult`).
+The step-kind vocabulary also ships at runtime: `STEP_KINDS` is the closed
+list and `is_step_kind` its narrowing guard. Every config a composer
+signature names is exported too: `SequenceOptions`, `ParallelOptions`,
+`BranchConfig`, `MapConfig`, `PipeOptions`, `RetryConfig`, `FallbackOptions`,
+`TimeoutOptions`, `CheckpointConfig`, `SuspendConfig`, `ScopeOptions`,
+`StashOptions`, `UseOptions`, `GateConfig`, alongside `RunOptions`,
+`StreamingRunHandle`, `StepFn`, `CleanupFn`, the extractors `StepInput<s>` /
+`StepOutput<s>`, and the schema vocabulary (`ToolSchema`, `AnySchema`,
+`SchemaIssue`). At runtime `is_step` narrows a value to a `Step`, and
+`error_path(err)` reads the `path` a run attached to a thrown error.
+
+**Composites.** The config and result envelope of each deliberation composite
+(`AdversarialConfig` / `AdversarialResult` plus `AdversarialBuildInput` and
+`AdversarialCritiqueResult`, `ConsensusConfig` / `ConsensusResult`,
+`EnsembleConfig` / `EnsembleResult`, `EnsembleStepConfig` /
+`EnsembleStepResult`, `TournamentConfig` / `TournamentResult` /
+`BracketRecord`), the self-improvement tier (`ImproveConfig`,
+`ImproveResult`, `ImproveBudget`, `ImproveRoundInput`, `Candidate`,
+`ScoredCandidate`, `HistoryEntry`, `Lesson`, `LearnConfig`, `LearnResult`,
+`LearnInput`, `Improvement`, `TrajectorySource`), and the bench tier
+(`BenchCase`, `BenchOptions`, `BenchReport`, `BenchSummary`, `CaseResult`,
+`Judge`, `JudgeArgs`, `Score`, `JudgeLlmConfig`, `JudgeWithFn`,
+`RegressionCompareOptions`, `RegressionReport`, `RegressionDelta`,
+`PerCaseDelta`).
 
 **Engine.** `Engine`, `EngineConfig`, `EngineDefaults`, `GenerateOptions`,
 `GenerateResult`, `Message`, `UserContentPart`, `AssistantContentPart`,
 `StreamChunk`, `FinishReason`, `Tool`, `ToolExecContext`, `ToolCallRecord`,
 `ToolApprovalHandler`, `ToolApprovalRequest`, `StepRecord`, `UsageTotals`,
-`CostBreakdown`, `Pricing`, `PricingTable`, `EffortLevel`, `RetryPolicy`,
-`RetryFailureKind`, `ProviderConfigMap`, `ProviderInit`, `ResolvedModel`.
+`CostBreakdown`, `Pricing`, `PricingTable`, `EffortLevel`,
+`EffortTranslation`, `RawProviderUsage`, `PrepareStepContext`,
+`PrepareStepResult`, `RetryPolicy`, `RetryFailureKind`, `ProviderConfigMap`,
+`ProviderInit`, `ResolvedModel`.
 
-**Bridge and viewer.** `ModelCallConfig`, `ModelCallInput`, `StartViewerOptions`,
-`ViewerHandle`.
+**Bridge.** `ModelCallConfig`, `ModelCallInput`. The viewer types live on the
+`fascicle/viewer` subpath.
 
 The provider-authoring types (`ProviderAdapter`, `ProviderFactory`,
 `NativeProviderAdapter`, `TurnRequest`, `TurnResult`, ...) are enumerated in

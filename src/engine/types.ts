@@ -402,9 +402,10 @@ export type AiSdkTelemetrySettings = {
  *
  * | Field                                                                 | Rule                                      |
  * | --------------------------------------------------------------------- | ----------------------------------------- |
- * | `model`                                                               | per-call wins; else default; else `sonnet` |
- * | `provider`                                                            | per-call wins; else default; else sole configured provider; else `anthropic` |
+ * | `model`                                                               | per-call wins; else default; else model_required_error is thrown |
+ * | `provider`                                                            | per-call wins; else default; else sole configured provider; else provider_required_error is thrown |
  * | `system`, `effort`, `max_steps`, `turn_timeout_ms`, `tool_error_policy`, `schema_repair_attempts`, `tool_call_repair_attempts`, `max_tool_calls_per_step` | per-call wins (nullish coalesce) |
+ * | `temperature`, `max_tokens`, `top_p`                                  | per-call wins (nullish coalesce)          |
  * | `retry_policy`                                                        | per-call replaces wholesale                |
  * | `provider_options`                                                    | two-level: per-provider-key shallow merge  |
  * | `prompt`, `tools`, `schema`, `abort`, `trajectory`, `on_chunk`        | not defaultable; always call-supplied      |
@@ -414,6 +415,9 @@ export type EngineDefaults = {
   readonly provider?: string
   readonly system?: string
   readonly effort?: EffortLevel
+  readonly temperature?: number
+  readonly max_tokens?: number
+  readonly top_p?: number
   readonly max_steps?: number
   readonly turn_timeout_ms?: number
   readonly retry_policy?: RetryPolicy

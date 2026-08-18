@@ -10,7 +10,7 @@ From npm (as a consumer):
 pnpm add fascicle
 ```
 
-`ai`, `zod`, and every provider SDK are optional peers — install only the ones you use. Schemas accept any [Standard Schema](https://standardschema.dev) (zod, ArkType, Valibot, …), so nothing beyond `fascicle` itself is required to build and run a flow.
+`ai`, `zod`, and every provider SDK are optional peers — install only the ones you use. Schemas accept any [Standard Schema](https://standardschema.dev) (zod, ArkType, Valibot, …), so nothing beyond `fascicle` itself is required to build and run a flow. (One flag on that promise: the [Calling a model](#calling-a-model) section below drives a hosted provider through its AI SDK adapter, which adds two peer packages and an API key.)
 
 From this repo (as a contributor):
 
@@ -40,6 +40,27 @@ console.log(result); // 4
 ```
 
 That's all of it. Every composable unit is a `Step<i, o>`. Every composer returns a `Step<i, o>`. You can nest arbitrarily.
+
+### Run it
+
+Save the snippet as `index.ts` in a fresh directory. fascicle is ESM-only and requires Node >= 24, so the `package.json` needs `"type": "module"`:
+
+```json
+{
+  "name": "my-flow",
+  "type": "module",
+  "private": true
+}
+```
+
+```bash
+pnpm add fascicle
+pnpm exec tsx index.ts
+# or, with no extra tooling:
+node --experimental-strip-types index.ts
+```
+
+`pnpm exec tsx` is what every example in this repo uses; plain `node` works too because Node >= 24 strips TypeScript types natively.
 
 ## The 22 primitives
 
@@ -76,7 +97,7 @@ Full surface and signatures: [`docs/composition.md`](./composition.md). Runnable
 
 ## Running
 
-`run(flow, input, options?)` executes the flow and returns its output. `run.stream(flow, input, options?)` returns `{ events, result }` so you can observe the run as it unfolds.
+`run(flow, input, options?)` executes the flow and returns its output. `run.stream(flow, input, options?)` returns `{ events, result }` so you can observe the run as it unfolds. `run.until_suspended(flow, input, options?)` drives flows that contain a `suspend` gate: a pause surfaces as a typed `{ kind: 'suspended', id, resume }` outcome instead of a thrown error.
 
 ```ts
 import { run } from 'fascicle';
@@ -105,11 +126,15 @@ await run(flow, input, {
 });
 ```
 
-Adapters are plain objects that conform to `TrajectoryLogger` and `CheckpointStore` (both exported from `fascicle`). Writing your own is the expected path once you outgrow the defaults — the bundled `filesystem_logger` writes synchronously and uses an in-memory span stack, so for long-running servers or heavily concurrent flows you'll want a custom logger. See [docs/concepts.md](./concepts.md#adapter-limits).
+Adapters are plain objects that conform to `TrajectoryLogger` and `CheckpointStore` (both exported from `fascicle`). Writing your own is the expected path once you outgrow the defaults — the bundled `filesystem_logger` writes synchronously, so for long-running servers you'll want a custom logger that buffers and flushes asynchronously. (Span parentage is threaded by the runner, so span trees stay correct even under `parallel`/`map` concurrency.) See [docs/concepts.md](./concepts.md#adapter-limits).
 
 ## Calling a model
 
-The engine layer handles provider routing. Bridge it into a flow with `model_step`:
+The engine layer handles provider routing. Bridge it into a flow with `model_step`. This example uses the `anthropic` provider on its default `ai_sdk` transport, which needs two peer packages and an `ANTHROPIC_API_KEY`:
+
+```bash
+pnpm add ai @ai-sdk/anthropic
+```
 
 ```ts
 import { create_engine, model_step, run } from 'fascicle';
@@ -118,7 +143,7 @@ const engine = create_engine({
   providers: { anthropic: { api_key: process.env.ANTHROPIC_API_KEY! } },
 });
 
-const summarize = model_step({ engine, model: 'sonnet', system: 'Be terse.' });
+const summarize = model_step({ engine, model: 'claude-sonnet-4-6', system: 'Be terse.' });
 
 const result = await run(summarize, 'Summarise Rust ownership in one sentence.');
 console.log(result);
@@ -127,6 +152,18 @@ await engine.dispose();
 ```
 
 `model_step` is the default model boundary: it returns the answer itself (a `string`, or the schema-validated value when `schema` is set) and auto-threads `ctx.abort`, `ctx.trajectory`, and streaming chunks. When the caller wants what surrounds the answer (usage, cost, tool calls, finish reason), `model_call` takes the same config and returns the full `GenerateResult` envelope. Note there is no wrapper around `summarize` above: one call is a leaf, and a leaf runs as-is.
+
+Model ids are opaque and sent to the provider verbatim, so use the provider's real id (`claude-sonnet-4-6`, `gpt-4o`, an Ollama tag). Family shorthands like `'sonnet'` work only on the `claude_cli` transport, where the CLI itself resolves them. See [docs/providers.md](./providers.md).
+
+## Try it without a key
+
+No provider account needed to explore. [examples/hello.ts](../examples/hello.ts), [examples/suspend_resume.ts](../examples/suspend_resume.ts), and [examples/viewer_demo.ts](../examples/viewer_demo.ts) use no engine at all, and [examples/newsroom.ts](../examples/newsroom.ts) runs the whole primitive vocabulary against the stub engine from `fascicle/testing` (canned responses routed by system-prompt prefix, zero network). From a clone of this repo:
+
+```bash
+pnpm exec tsx examples/newsroom.ts
+```
+
+The [examples index](../examples/README.md) flags which examples are keyless and which need a provider.
 
 ## Where to go next
 

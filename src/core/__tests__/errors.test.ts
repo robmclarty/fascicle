@@ -57,4 +57,15 @@ describe('typed errors', () => {
     expect(err.step_index).toBe(3)
     expect(err.tool_call_in_flight).toEqual({ id: 't-1', name: 'search' })
   })
+
+  it('aborted_error leaves step_index undefined when not supplied (core-origin aborts)', () => {
+    expect(new aborted_error().step_index).toBeUndefined()
+    expect(new aborted_error('received SIGINT', { reason: { signal: 'SIGINT' } }).step_index)
+      .toBeUndefined()
+  })
+
+  it('aborted_error preserves an explicit step_index of 0 (engine-origin)', () => {
+    const err = new aborted_error('aborted', { step_index: 0 })
+    expect(err.step_index).toBe(0)
+  })
 })

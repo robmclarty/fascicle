@@ -20,6 +20,7 @@ export default defineConfig({
     stdio: './src/stdio/index.ts',
     testing: './src/testing/index.ts',
     ui: './src/ui/index.ts',
+    viewer: './src/viewer/index.ts',
   },
   outDir: './dist',
   format: ['esm'],

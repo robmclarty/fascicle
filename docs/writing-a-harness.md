@@ -46,15 +46,19 @@ When you want the flow to talk to an LLM, use `model_step`, the default model bo
 ```ts
 import { create_engine, model_step, sequence, run, step } from 'fascicle';
 
+// A local Ollama model on the zero-peer native transport; swap the provider
+// entry (and the model id) to target a hosted provider instead.
 const engine = create_engine({
-  providers: { anthropic: { api_key: process.env.ANTHROPIC_API_KEY! } },
+  providers: {
+    ollama: { base_url: 'http://localhost:11434', transport: 'native' },
+  },
 });
 
 const flow = sequence([
   step('brief', (topic: string) => `Write a 2-sentence brief on: ${topic}`),
   model_step({
     engine,
-    model: 'sonnet',
+    model: 'llama3.2:3b',
     system: 'Return plain prose. No preamble, no lists.',
   }),
 ]);
@@ -87,7 +91,7 @@ await run(flow, input, {
 });
 ```
 
-Both adapter slots accept anything that conforms to `TrajectoryLogger` / `CheckpointStore` (both exported from `fascicle`). Roll your own to push events to Honeycomb, DynamoDB, a tmpfs, whatever fits your deployment. The bundled `filesystem_logger` is sync and uses an in-memory span stack — fine for dev tools, see [concepts.md](./concepts.md#adapter-limits) before using it in long-running servers.
+Both adapter slots accept anything that conforms to `TrajectoryLogger` / `CheckpointStore` (both exported from `fascicle`). Roll your own to push events to Honeycomb, DynamoDB, a tmpfs, whatever fits your deployment. The bundled `filesystem_logger` writes synchronously, which is fine for dev tools and short runs; see [concepts.md](./concepts.md#adapter-limits) before using it in long-running servers. (Span parentage is threaded by the runner, so span trees stay correct under concurrency.)
 
 ## Stream to a consumer
 
@@ -170,7 +174,7 @@ pnpm exec tsx examples/hello.ts
 pnpm exec tsx examples/hello.ts "your custom input here"
 ```
 
-> **Layout note.** This repo is a single installable package (`fascicle`). All source lives under `src/` as deep modules (`src/core`, `src/engine`, `src/composites`, `src/agents`, `src/adapters`, `src/viewer`), each with a barrel `index.ts` reached only through its `#<module>` import alias. The aliases enforce architectural boundaries (e.g. core cannot import from adapters, engine cannot reach into providers). The umbrella surface at the `src/` root is what bundles to npm — the published surface is the only public face.
+> **Layout note.** This repo is a single installable package (`fascicle`). All source lives under `src/` as deep modules (`core`, `engine`, `composites`, `agents`, `adapters`, `mcp`, `stdio`, `ui`, `otel`, `policy`, `schema`, `testing`, `viewer`), each with a barrel `index.ts` reached only through its `#<module>` import alias. The aliases enforce architectural boundaries (e.g. core cannot import from adapters, engine cannot reach into providers). The umbrella surface at the `src/` root is what bundles to npm — the published surface is the only public face.
 
 ## Checklist
 

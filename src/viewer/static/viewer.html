@@ -245,7 +245,8 @@
           $log.replaceChildren()
           for (const row of slice) {
             const div = document.createElement('div')
-            div.className = 'row' + (row.kind === 'error' ? ' err' : '')
+            const failed_run = row.kind === 'run_end' && row.event.status === 'failed'
+            div.className = 'row' + (row.kind === 'error' || failed_run ? ' err' : '')
             const ts = document.createElement('span'); ts.className = 'ts'
             ts.textContent = new Date(row.ts).toLocaleTimeString()
             const kind = document.createElement('span'); kind.className = 'kind'; kind.textContent = row.kind

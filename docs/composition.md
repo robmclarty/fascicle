@@ -1,17 +1,21 @@
-# core
+# Composition
 
 The composition layer of `fascicle`. A thin, owned set of primitives for
-composing agentic workflows out of plain values — no framework, no classes,
+composing agentic workflows out of plain values: no framework, no classes,
 no ambient state.
 
 ## Public surface
+
+Everything below is exported from `fascicle`. The primitives live in
+[`src/core/`](../src/core/) and the built-in composites in
+[`src/composites/`](../src/composites/); the umbrella re-exports both.
 
 | Export | Kind | Purpose |
 | --- | --- | --- |
 | `run(flow, input, options?)` | function | execute a flow to completion |
 | `run.stream(flow, input, options?)` | function | execute a flow and observe events |
-| `run.until_suspended(flow, input, options?)` | function | execute a flow; a `suspend` gate returns a typed outcome with a `resume` closure |
-| `describe(step)` | function | render the composition as a text tree |
+| `run.until_suspended(flow, input, options?)` | function | execute a flow; a `suspend` gate returns a typed `RunOutcome` with a `resume` closure |
+| `describe(step, options?)` | function | render the composition as a text tree; `describe.json(step)` returns the structured `FlowNode` tree instead |
 | `flow_schema` | JSON value | JSON Schema for the YAML flow representation |
 | `step` | factory | atomic or anonymous step |
 | `sequence` | composer | chain steps, threading output into input |
@@ -22,29 +26,44 @@ no ambient state.
 | `retry` | composer | re-run an inner step with exponential backoff |
 | `fallback` | composer | run a backup step on primary failure |
 | `timeout` | composer | cancel an inner step after a deadline |
-| `loop` | composer | bounded iteration with carry-state and optional guard |
+| `loop` | composer | bounded iteration with carry-state and optional guard (`LoopConfig`, `LoopGuardResult`, `LoopOutcome`) |
 | `compose` | composer | label a composite step for trajectory output |
 | `adversarial` | composer | build-and-critique loop |
 | `ensemble` | composer | N-of-M pick best by score |
 | `ensemble_step` | composer | pick best where the scorer is itself a `Step` |
 | `tournament` | composer | single-elimination bracket |
 | `consensus` | composer | multi-round concurrent agreement |
+| `gate` | composer | checkpoint-then-suspend approval envelope; paid work survives the pause |
 | `improve` | composer | bounded online propose → score → accept/reject loop |
 | `learn` | function | offline reflection over recorded trajectories |
+| `bench` / `normalize_score` | functions | run a flow over fixture cases, score every output with every judge, return a `BenchReport` |
+| `judge_equals` / `judge_llm` / `judge_with` | factories | the stock judges for `bench` |
+| `read_baseline` / `write_baseline` / `regression_compare` | functions | persist a report as JSON, load one back, diff a fresh report against it |
 | `checkpoint` | composer | memoize an inner step by key |
 | `suspend` | composer | pause awaiting external input |
-| `chain` | builder | named steps over a growing typed record; the spine |
+| `chain` | builder | named steps over a growing typed record (`Chain`, `ChainStepOptions`); the spine |
 | `scope` / `stash` / `use` | composers | named state across non-adjacent steps |
-| `timeout_error` | class | thrown by `timeout` |
-| `suspended_error` | class | thrown by `suspend` on first pass |
-| `resume_validation_error` | class | thrown by `suspend` on invalid resume data |
-| `aborted_error` | class | thrown on SIGINT/SIGTERM or user abort |
+| `STEP_KINDS` / `is_step_kind` | value / guard | the closed list of step kinds and its narrowing guard (type: `StepKind`) |
+| `parse_trajectory_event`, `is_span_start_event` / `is_span_end_event` / `is_emit_event` / `is_custom_trajectory_event` | fn / guards | parse a recorded trajectory line, then narrow it by shape |
+| `timeout_error` | error | thrown by `timeout` |
+| `suspended_error` | error | thrown by `suspend` on first pass |
+| `resume_validation_error` | error | thrown by `suspend` on invalid resume data |
+| `aborted_error` | error | thrown on SIGINT/SIGTERM or user abort |
+| `describe_cycle_error` | error | thrown when `describe` meets a cycle in the tree |
+| `bench_suspend_error` | error | thrown when a benched flow suspends (`bench` has no resume path) |
 | `RunContext` | type | per-run execution context |
+| `RunOutcome` | type | the `done` / `suspended` result of `run.until_suspended` |
 | `TrajectoryLogger` | type | structured-event observer |
 | `TrajectoryEvent` | type | one structured event |
 | `CheckpointStore` | type | persistent key-value store |
-| `Step` | type | alias for the `step<i, o>` shape |
+| `Step<i, o>` | type | the step contract: `id`, `kind`, and a `run(input, ctx)` function property, plus optional `config`, `children`, `anonymous`, and `meta`. `run` is a function property rather than a method, so strict mode checks `i` contravariantly and a step wired to an input it cannot accept is a compile error |
 | `AnyStep` | type | the erased supertype (`Step<never, unknown>`) held by `children` |
+| `StepMetadata` | type | display name, description, and port labels surfaced by `describe` |
+| `DescribeOptions` / `FlowNode` / `FlowValue` | types | `describe` options and the structured tree `describe.json` returns |
+
+The composites also export their config, result, and judge types (`Judge`,
+`Score`, `BenchCase`, `EnsembleResult`, `AdversarialConfig`, ...); the full
+enumeration is in [api-reference.md](./api-reference.md#exported-types).
 
 ## The step-as-value thesis
 
@@ -93,7 +112,9 @@ from English specifications:
   throws. `handoff(input, err)` builds the backup's input, so the backup can
   be told why the primary failed; without it the backup gets the original
   input. Control-flow signals (suspend, abort) propagate without triggering
-  the backup or the handoff.
+  the backup or the handoff. When the backup fails too, the backup's error is
+  thrown with the primary's error attached as `cause`, so neither failure is
+  lost.
 - `timeout(inner, ms)` — cancel `inner` after `ms`.
 - `loop({ init, body, guard?, finish, max_rounds })` — bounded iteration
   with carry-state, returning whatever `finish` projects. Non-convergence is
@@ -117,18 +138,22 @@ from English specifications:
   no downstream unwrap step is needed.
 - `checkpoint(inner, { key })` — memoize `inner` by key.
 - `suspend({ id, on, resume_schema, combine })` — pause for external input.
+- `gate(inner, { id, store?, format?, name? })` — persist paid work, then
+  pause for approval; resume returns the inner result unchanged.
 - `scope([...])` / `stash(key, source)` / `use(keys, fn)` — named state at
   the key-value level; `chain` is the typed front door over the same idea.
-- `chain(input_name?)` with `.step(name, fn, options?)` /
-  `.stage(name, project?)` / `.output(fn)` — named steps over a growing typed
-  record: `.step` runs `fn(record, ctx)` and merges its output under `name`;
-  `.stage` concludes a phase (a grouping span in the trajectory; with
-  `project`, it replaces the record so earlier bindings go out of scope);
-  `.output` projects the final result and returns an ordinary `Step`. When a
-  binding invokes a composed Step via `ctx.call`, pass it as
-  `options.arm` too: the arm is metadata only (dispatch ignores it), but
-  `describe` renders its subtree as the binding's child, so the static tree
-  shows what the binding runs.
+- `chain<i>(input_name?)` with `.step(name, arm, select)` /
+  `.step(name, fn, options?)` / `.stage(name, project?)` / `.output(fn)` —
+  named steps over a growing typed record; the input type is stated as
+  `chain<i>()` or `chain('name').input<i>()` (unannotated chains default to
+  `never` and fail at `run`): `.step` merges its output under `name`; the
+  arm form dispatches a composed `Step` on the selected slice of the record
+  and records it as the binding's describe child in one statement; `.stage`
+  concludes a phase (a grouping span in the trajectory; with `project`, it
+  replaces the record so earlier bindings go out of scope); `.output`
+  projects the final result and returns an ordinary `Step`. A body that must
+  wrap the call itself uses `ctx.call` and passes the same value as
+  `options.arm` so `describe` still renders the subtree.
 - `improve({ seed, propose, score, budget, project? })` — bounded online
   self-improvement loop: propose → score → accept/reject with plateau
   detection; `project` maps the result envelope (e.g. `(r) => r.best.content`).
@@ -253,8 +278,9 @@ against this; keep compositions acyclic.
 ## YAML representation
 
 A YAML shape of the composition tree exists for documentation and for
-LLM-writable specs. It is **not parsed at runtime** in v1. The shape is
-validated by a JSON Schema, exported as `flow_schema`:
+LLM-writable specs. It is **not parsed at runtime**; a loader stays out of
+the surface until downstream demand appears. The shape is validated by a
+JSON Schema, exported as `flow_schema`:
 
 ```typescript
 import { flow_schema } from 'fascicle';
@@ -264,24 +290,44 @@ import { flow_schema } from 'fascicle';
 
 ## Examples
 
-Runnable references live at the repo root in [`examples/`](../examples/).
-They import from `fascicle` (the umbrella) and exercise the primitives
-exported by this package:
+Runnable references live at the repo root in [`examples/`](../examples/),
+in two kinds: single-file examples (each one
+`pnpm exec tsx examples/<name>.ts` away) and seven full example apps in
+subdirectories. All of them import the published `fascicle` surface, so
+everything there is copy-pasteable into an npm consumer. Highlights among
+the single files:
 
-- [`newsroom.ts`](../examples/newsroom.ts) — the vocabulary tour: every
+- [`hello.ts`](../examples/hello.ts): the smallest viable harness
+- [`newsroom.ts`](../examples/newsroom.ts): the vocabulary tour, every
   primary primitive once, each in its suggested role
-- [`adversarial_build.ts`](../examples/adversarial_build.ts) — build-and-critique
+- [`release_notes.ts`](../examples/release_notes.ts) /
+  [`release_notes_direct.ts`](../examples/release_notes_direct.ts): the same
+  agent in the chain and direct styles
+- [`adversarial_build.ts`](../examples/adversarial_build.ts): build-and-critique
   with an ensemble of judges
-- [`ensemble_judge.ts`](../examples/ensemble_judge.ts) — N-of-M pick best
-- [`streaming_chat.ts`](../examples/streaming_chat.ts) — observe emitted tokens
-- [`suspend_resume.ts`](../examples/suspend_resume.ts) — pause and resume on
-  external input
-- [`ollama_chat.ts`](../examples/ollama_chat.ts) — drive a local Ollama model
+- [`ensemble_judge.ts`](../examples/ensemble_judge.ts): N-of-M pick best
+- [`improve.ts`](../examples/improve.ts) / [`learn.ts`](../examples/learn.ts):
+  the self-improvement tier
+- [`bench_reviewer.ts`](../examples/bench_reviewer.ts): bench and regression
+  over a `define_agent` reviewer
+- [`streaming_chat.ts`](../examples/streaming_chat.ts): observe emitted tokens
+- [`checkpoint_resume.ts`](../examples/checkpoint_resume.ts) /
+  [`suspend_resume.ts`](../examples/suspend_resume.ts): durability, pause,
+  and resume
+- [`hitl_http.ts`](../examples/hitl_http.ts): suspend/confirm/resume over HTTP
+- [`ollama_chat.ts`](../examples/ollama_chat.ts): drive a local Ollama model
   through a composed sequence
-- [`hello.ts`](../examples/hello.ts) — the smallest viable harness
 
-Each file exports an async entry function. A vitest smoke test imports
-each entry and asserts its output shape.
+The seven apps are separate workspace members consuming the published
+package: [`pr-improve/`](../examples/pr-improve/) (the canonical
+[blueprint](./blueprint.md) reference),
+[`change-triage/`](../examples/change-triage/),
+[`docs-concierge/`](../examples/docs-concierge/),
+[`amplify/`](../examples/amplify/),
+[`red-green-refactor/`](../examples/red-green-refactor/),
+[`swebench/`](../examples/swebench/), and
+[`mcp-server/`](../examples/mcp-server/). The full index, with what each
+example shows, is [`examples/README.md`](../examples/README.md).
 
 ## Check command
 
@@ -297,4 +343,3 @@ This is the single source of truth. If it exits 0, your work is complete.
 
 - [concepts.md](./concepts.md) — the mental model behind these primitives.
 - [getting-started.md](./getting-started.md) — install and run your first flow.
-</content>

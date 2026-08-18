@@ -6,6 +6,7 @@ import type {
   Engine,
   GenerateOptions,
   GenerateResult,
+  PrepareStepHook,
   RetryPolicy,
   StreamChunk,
   Tool,
@@ -27,6 +28,7 @@ const sample_retry: RetryPolicy = {
   retry_on: [],
 }
 const approve: ToolApprovalHandler = () => true
+const sample_prepare: PrepareStepHook = () => undefined
 
 function bare_ctx(overrides: Partial<RunContext> = {}): RunContext {
   return {
@@ -46,6 +48,12 @@ function bare_ctx(overrides: Partial<RunContext> = {}): RunContext {
 
 function config_of(step: ReturnType<typeof model_call>): Record<string, unknown> {
   return describe.json(step).config as Record<string, unknown>
+}
+
+// Auto ids are `model_call:<hash>:<counter>`; hash assertions must compare the
+// middle segment so the per-instance counter cannot mask a hash regression.
+function hash_of(id: string): string {
+  return id.split(':')[1] ?? ''
 }
 
 function make_result(content: string): GenerateResult {
@@ -142,15 +150,26 @@ vdescribe('model_call', () => {
     expect(gen_step?.['parent_span_id']).toBe(gen?.['span_id'])
   })
 
-  it('default id is a stable hash over { model, system, has_tools, has_schema }', () => {
+  it('the auto id hash is stable over { model, system, has_tools, has_schema }', () => {
     const { engine } = make_mock_engine()
     const a1 = model_call({ engine, model: 'x' })
     const a2 = model_call({ engine, model: 'x' })
-    expect(a1.id).toBe(a2.id)
+    expect(hash_of(a1.id)).toBe(hash_of(a2.id))
     const b = model_call({ engine, model: 'y' })
-    expect(b.id).not.toBe(a1.id)
+    expect(hash_of(b.id)).not.toBe(hash_of(a1.id))
     const with_system = model_call({ engine, model: 'x', system: 'be brief' })
-    expect(with_system.id).not.toBe(a1.id)
+    expect(hash_of(with_system.id)).not.toBe(hash_of(a1.id))
+  })
+
+  it('identical configs get distinct auto ids via the instance counter', () => {
+    const { engine } = make_mock_engine()
+    const a1 = model_call({ engine, model: 'x' })
+    const a2 = model_call({ engine, model: 'x' })
+    expect(a1.id).not.toBe(a2.id)
+    expect(hash_of(a1.id)).toBe(hash_of(a2.id))
+    const n1 = Number(a1.id.split(':')[2])
+    const n2 = Number(a2.id.split(':')[2])
+    expect(n2).toBe(n1 + 1)
   })
 
   it('normalizes string input to a user message and leaves arrays unchanged', async () => {
@@ -321,6 +340,11 @@ vdescribe('model_call', () => {
       tools: [sample_tool],
       schema: sample_schema,
       effort: 'high',
+      temperature: 0.7,
+      max_tokens: 1024,
+      top_p: 0.9,
+      turn_timeout_ms: 30_000,
+      prepare_step: sample_prepare,
       max_steps: 5,
       provider_options: { temperature: 0.2 },
       retry_policy: sample_retry,
@@ -338,6 +362,11 @@ vdescribe('model_call', () => {
     expect(opts?.tools).toEqual([sample_tool])
     expect(opts?.schema).toBe(sample_schema)
     expect(opts?.effort).toBe('high')
+    expect(opts?.temperature).toBe(0.7)
+    expect(opts?.max_tokens).toBe(1024)
+    expect(opts?.top_p).toBe(0.9)
+    expect(opts?.turn_timeout_ms).toBe(30_000)
+    expect(opts?.prepare_step).toBe(sample_prepare)
     expect(opts?.max_steps).toBe(5)
     expect(opts?.provider_options).toEqual({ temperature: 0.2 })
     expect(opts?.retry).toBe(sample_retry)
@@ -361,6 +390,11 @@ vdescribe('model_call', () => {
       'tools',
       'schema',
       'effort',
+      'temperature',
+      'max_tokens',
+      'top_p',
+      'turn_timeout_ms',
+      'prepare_step',
       'max_steps',
       'provider_options',
       'retry',
@@ -383,24 +417,24 @@ vdescribe('model_call', () => {
     expect(calls[0]?.opts.tools).not.toBe(tools)
   })
 
-  it('varies the default id by provider, tools, and schema', () => {
+  it('varies the auto id hash by provider, tools, and schema', () => {
     const { engine } = make_mock_engine()
-    const base = model_call({ engine, model: 'x' })
-    expect(model_call({ engine, model: 'x', provider: 'p' }).id).not.toBe(base.id)
-    expect(model_call({ engine, model: 'x', tools: [sample_tool] }).id).not.toBe(base.id)
-    expect(model_call({ engine, model: 'x', schema: sample_schema }).id).not.toBe(base.id)
+    const base = hash_of(model_call({ engine, model: 'x' }).id)
+    expect(hash_of(model_call({ engine, model: 'x', provider: 'p' }).id)).not.toBe(base)
+    expect(hash_of(model_call({ engine, model: 'x', tools: [sample_tool] }).id)).not.toBe(base)
+    expect(hash_of(model_call({ engine, model: 'x', schema: sample_schema }).id)).not.toBe(base)
     // The provider/system values themselves feed the hash, not just their presence.
-    expect(model_call({ engine, model: 'x', provider: 'p' }).id).not.toBe(
-      model_call({ engine, model: 'x', provider: 'q' }).id,
+    expect(hash_of(model_call({ engine, model: 'x', provider: 'p' }).id)).not.toBe(
+      hash_of(model_call({ engine, model: 'x', provider: 'q' }).id),
     )
-    expect(model_call({ engine, model: 'x', system: 'a' }).id).not.toBe(
-      model_call({ engine, model: 'x', system: 'b' }).id,
+    expect(hash_of(model_call({ engine, model: 'x', system: 'a' }).id)).not.toBe(
+      hash_of(model_call({ engine, model: 'x', system: 'b' }).id),
     )
   })
 
-  it('default id is "model_call:" followed by an 8-char hex hash', () => {
+  it('default id is "model_call:", an 8-char hex hash, and a counter', () => {
     const { engine } = make_mock_engine()
-    expect(model_call({ engine, model: 'x' }).id).toMatch(/^model_call:[0-9a-f]{8}$/)
+    expect(model_call({ engine, model: 'x' }).id).toMatch(/^model_call:[0-9a-f]{8}:\d+$/)
   })
 
   it('reports has_tools and has_schema in describe config', () => {
@@ -421,6 +455,42 @@ vdescribe('model_call', () => {
     expect('model' in bare).toBe(false)
     expect('provider' in bare).toBe(false)
     expect('system' in bare).toBe(false)
+  })
+
+  it('surfaces the sampling and timeout knobs in describe config when set', () => {
+    const { engine } = make_mock_engine()
+    const cfg = config_of(
+      model_call({
+        engine,
+        model: 'x',
+        temperature: 0.7,
+        max_tokens: 1024,
+        top_p: 0.9,
+        turn_timeout_ms: 30_000,
+      }),
+    )
+    expect(cfg['temperature']).toBe(0.7)
+    expect(cfg['max_tokens']).toBe(1024)
+    expect(cfg['top_p']).toBe(0.9)
+    expect(cfg['turn_timeout_ms']).toBe(30_000)
+  })
+
+  it('omits the sampling and timeout knobs from describe config when absent', () => {
+    const { engine } = make_mock_engine()
+    const bare = config_of(model_call({ engine, model: 'x' }))
+    for (const key of ['temperature', 'max_tokens', 'top_p', 'turn_timeout_ms']) {
+      expect(key in bare).toBe(false)
+    }
+  })
+
+  it('reports has_prepare_step in describe config', () => {
+    const { engine } = make_mock_engine()
+    expect(config_of(model_call({ engine, model: 'x' }))['has_prepare_step']).toBe(false)
+    expect(
+      config_of(model_call({ engine, model: 'x', prepare_step: sample_prepare }))[
+        'has_prepare_step'
+      ],
+    ).toBe(true)
   })
 
   it('the pre-abort error carries the model_call message, reason, and step index', async () => {
@@ -566,6 +636,39 @@ vdescribe('model_call', () => {
   })
 })
 
+// The guard exists precisely for values the type system rules out.
+function as_cfg(value: unknown): Parameters<typeof model_call>[0] {
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+  return value as Parameters<typeof model_call>[0]
+}
+
+vdescribe('model_call engine guard', () => {
+  const guard_message =
+    'model_call: cfg.engine is required (an Engine from create_engine or fascicle/testing)'
+
+  it('throws a TypeError at construction when cfg.engine is missing', () => {
+    expect(() => model_call(as_cfg({ model: 'x' }))).toThrowError(TypeError)
+    expect(() => model_call(as_cfg({ model: 'x' }))).toThrowError(guard_message)
+  })
+
+  it('throws when cfg itself is undefined instead of crashing on a property read', () => {
+    expect(() => model_call(as_cfg(undefined))).toThrowError(TypeError)
+    expect(() => model_call(as_cfg(undefined))).toThrowError(guard_message)
+  })
+
+  it('throws when engine.generate is not a function', () => {
+    expect(() => model_call(as_cfg({ engine: { generate: 'nope' } }))).toThrowError(TypeError)
+    expect(() => model_call(as_cfg({ engine: {} }))).toThrowError(guard_message)
+  })
+
+  it('model_step shares the construction-time guard', () => {
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+    const bad = { model: 'x' } as Parameters<typeof model_step>[0]
+    expect(() => model_step(bad)).toThrowError(TypeError)
+    expect(() => model_step(bad)).toThrowError(guard_message)
+  })
+})
+
 vdescribe('model_step', () => {
   it('returns the content string instead of the GenerateResult envelope', async () => {
     const { engine } = make_mock_engine({ result: make_result('the answer') })
@@ -593,6 +696,26 @@ vdescribe('model_step', () => {
     expect(calls[0]?.opts.prompt).toEqual([
       { role: 'user', content: [{ type: 'text', text: 'ping' }] },
     ])
+  })
+
+  it('inherits the caller-shaped generation knobs from ModelCallConfig', async () => {
+    const { engine, calls } = make_mock_engine()
+    const s = model_step({
+      engine,
+      model: 'mx',
+      temperature: 0.3,
+      max_tokens: 256,
+      top_p: 0.8,
+      turn_timeout_ms: 5_000,
+      prepare_step: sample_prepare,
+    })
+    await run(s, 'ping', { install_signal_handlers: false })
+    const opts = calls[0]?.opts
+    expect(opts?.temperature).toBe(0.3)
+    expect(opts?.max_tokens).toBe(256)
+    expect(opts?.top_p).toBe(0.8)
+    expect(opts?.turn_timeout_ms).toBe(5_000)
+    expect(opts?.prepare_step).toBe(sample_prepare)
   })
 
   it('describes as a single node with no pipe wrapper', () => {

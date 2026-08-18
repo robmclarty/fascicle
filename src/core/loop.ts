@@ -4,7 +4,9 @@
  * `loop({ init, body, guard?, finish, max_rounds, name? })` runs `body` up to
  * `max_rounds` times, threading `state` through each iteration. After every
  * `body` call, an optional `guard` step inspects (and may transform) the state
- * and decides whether to stop. When `guard.stop` is true, the loop exits
+ * and decides whether to stop; a bare `(state) => boolean` predicate is
+ * accepted as shorthand for a guard that stops without transforming.
+ * When `guard.stop` is true, the loop exits
  * "converged"; otherwise it continues until `max_rounds`. `finish` projects
  * the final state to the loop's output value, and is the loop's only output
  * channel: `loop` returns `Step<i, o>`, not an envelope around `o`.
@@ -22,12 +24,15 @@
  */
 
 import { dispatch_step, register_traced_kind, throw_if_aborted } from './runner.js'
+import { step } from './step.js'
 import type { AnyStep, RunContext, Step } from './types.js'
 
 export type LoopGuardResult<state> = {
   readonly stop: boolean
   readonly state: state
 }
+
+export type LoopGuardPredicate<state> = (state: state) => boolean | Promise<boolean>
 
 export type LoopOutcome = {
   readonly converged: boolean
@@ -38,7 +43,7 @@ export type LoopConfig<i, state, o> = {
   readonly name?: string
   readonly init: (input: i) => state
   readonly body: Step<state, state>
-  readonly guard?: Step<state, LoopGuardResult<state>>
+  readonly guard?: Step<state, LoopGuardResult<state>> | LoopGuardPredicate<state>
   readonly finish: (state: state, outcome: LoopOutcome) => o
   readonly max_rounds: number
 }
@@ -54,6 +59,26 @@ function next_id(name: string | undefined): string {
 }
 
 /**
+ * Normalize the guard config to its step form.
+ *
+ * A bare predicate is sugar for the state-preserving guard step, wrapped here
+ * (with an id derived from the loop's, so trees with several loops stay
+ * unambiguous) rather than special-cased in the run loop: the predicate form
+ * then dispatches, traces, and terminates identically to a hand-written guard.
+ */
+function wrap_guard<state>(
+  guard: Step<state, LoopGuardResult<state>> | LoopGuardPredicate<state> | undefined,
+  loop_id: string,
+): Step<state, LoopGuardResult<state>> | undefined {
+  if (guard === undefined) return undefined
+  if (typeof guard !== 'function') return guard
+  return step(`${loop_id}_guard`, async (state: state) => ({
+    stop: await guard(state),
+    state,
+  }))
+}
+
+/**
  * Build a bounded iteration step with carry-state.
  *
  * Threads `state` through up to `max_rounds` runs of `body`, lets the
@@ -63,9 +88,10 @@ function next_id(name: string | undefined): string {
  * its output.
  */
 export function loop<i, state, o>(config: LoopConfig<i, state, o>): Step<i, o> {
-  const { init, body, guard, finish, name } = config
+  const { init, body, finish, name } = config
   const rounds_limit = Math.max(1, Math.floor(config.max_rounds))
   const id = next_id(name)
+  const guard = wrap_guard(config.guard, id)
 
   const run_fn = async (input: i, ctx: RunContext): Promise<o> => {
     let state = init(input)

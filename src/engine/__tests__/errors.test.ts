@@ -11,6 +11,7 @@ import {
   provider_capability_error,
   provider_error,
   provider_not_configured_error,
+  provider_required_error,
   rate_limit_error,
   schema_validation_error,
   tool_approval_denied_error,
@@ -140,6 +141,15 @@ describe('typed errors', () => {
     )
   })
 
+  it('provider_required_error lists the configured providers in its message', () => {
+    const err = new provider_required_error(['openai', 'ollama'])
+    expect(err.kind).toBe('provider_required_error')
+    expect(err.configured).toEqual(['openai', 'ollama'])
+    expect(err.message).toBe(
+      'no provider specified: pass `provider` to generate() or set `defaults.provider` (configured: openai, ollama)',
+    )
+  })
+
   it('engine_disposed_error carries a default message', () => {
     const err = new engine_disposed_error()
     expect(err.kind).toBe('engine_disposed_error')
@@ -204,6 +214,7 @@ describe('typed errors', () => {
     ).toBe('tool_approval_denied_error')
     expect(new model_required_error().name).toBe('model_required_error')
     expect(new provider_not_configured_error('x').name).toBe('provider_not_configured_error')
+    expect(new provider_required_error([]).name).toBe('provider_required_error')
     expect(new engine_config_error('x').name).toBe('engine_config_error')
     expect(new on_chunk_error('x', null).name).toBe('on_chunk_error')
     expect(new provider_capability_error('x', 'y').name).toBe('provider_capability_error')
@@ -223,6 +234,7 @@ describe('typed errors', () => {
       new tool_approval_denied_error('x', { tool_name: 't', step_index: 0, tool_call_id: 'c' }),
       new model_required_error(),
       new provider_not_configured_error('x'),
+      new provider_required_error(['x']),
       new engine_config_error('x'),
       new on_chunk_error('x', null),
       new provider_capability_error('x', 'y'),

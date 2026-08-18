@@ -68,6 +68,30 @@ describe('create_engine', () => {
     ).rejects.toBeInstanceOf(provider_not_configured_error)
   })
 
+  it('surfaces the not-configured message at generate time, not the construction typo one', async () => {
+    const engine = create_engine({ providers: { anthropic: { api_key: 'k' } } })
+    await expect(
+      engine.generate({ model: 'gpt-4o', provider: 'openai', prompt: 'hi' }),
+    ).rejects.toThrow("provider 'openai' is not configured on this engine")
+  })
+
+  it('throws engine_config_error at construction for a misspelled provider name', () => {
+    let err: unknown
+    try {
+      create_engine({ providers: { anthropc: {} } })
+    } catch (e) {
+      err = e
+    }
+    // A typo at construction is a config error naming the real registry, not
+    // a call-time "not configured on this engine" routing failure.
+    expect(err).toBeInstanceOf(engine_config_error)
+    expect((err as engine_config_error).message).toBe(
+      "unknown provider 'anthropc'; built-in providers are: anthropic, openai, google, ollama, lmstudio, openrouter, bedrock, claude_cli",
+    )
+    expect((err as engine_config_error).provider).toBe('anthropc')
+    expect(err).not.toBeInstanceOf(provider_not_configured_error)
+  })
+
   it('passes any model id straight through to the chosen provider', async () => {
     const engine = create_engine({ providers: { anthropic: { api_key: 'k' } } })
     // The model string is opaque; it rides through to the (here unconfigured)

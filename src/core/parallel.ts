@@ -18,11 +18,7 @@
 
 import { suspended_error } from './errors.js'
 import { dispatch_step, install_abort_fan_out, register_traced_kind, throw_if_aborted } from './runner.js'
-import type { AnyStep, RunContext, Step } from './types.js'
-
-type OutputOf<s> = s extends Step<never, infer o> ? o : unknown
-
-type InputOf<s> = s extends Step<infer i, unknown> ? i : never
+import type { AnyStep, RunContext, Step, StepInput, StepOutput } from './types.js'
 
 // Distributes the union of member inputs into an intersection: the parallel
 // step's input must satisfy every child, since each receives it verbatim.
@@ -33,11 +29,11 @@ type UnionToIntersection<u> = (u extends unknown ? (x: u) => void : never) exten
   : never
 
 type ParallelInput<children extends Record<string, AnyStep>> = UnionToIntersection<
-  InputOf<children[keyof children]>
+  StepInput<children[keyof children]>
 >
 
 type ParallelOutputs<children extends Record<string, AnyStep>> = {
-  [k in keyof children]: OutputOf<children[k]>
+  [k in keyof children]: StepOutput<children[k]>
 }
 
 let parallel_counter = 0

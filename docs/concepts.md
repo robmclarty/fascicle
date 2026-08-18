@@ -72,6 +72,8 @@ improve     bounded online propose → score → accept/reject loop
 learn       offline reflection over recorded trajectories
 ```
 
+Two more belong in the everyday vocabulary although they are not composition primitives: `model_step`, the default model leaf (the model's answer as a `Step`, built on `model_call`), and `ctx.call(step, input)`, the direct-style way to run another step from inside a step body with spans, abort, and error paths intact.
+
 Each primitive is described in full with signatures at [`docs/composition.md`](./composition.md). They are not all peers: [leaf-arm-spine.md](./leaf-arm-spine.md) names the primary vocabulary and the decision rules for choosing at each layer, and [advanced-composition.md](./advanced-composition.md) covers the tier you should reach for last (`scope`/`stash`/`use`, plain `ensemble`, `tournament`, `improve`/`learn`).
 
 ## Running a flow
@@ -96,7 +98,7 @@ for await (const event of handle.events) {
 const output = await handle.result;
 ```
 
-Both entry points accept the same `RunOptions`:
+All three entry points accept the same `RunOptions`:
 
 ```ts
 type RunOptions = {
@@ -121,6 +123,7 @@ type RunContext = {
   abort: AbortSignal;
   emit: (event: Record<string, unknown>) => void;
   on_cleanup: (fn: CleanupFn) => void;
+  call: <ci, co>(this: RunContext, s: Step<ci, co>, input: ci) => Promise<co>;
   checkpoint_store?: CheckpointStore;
   resume_data?: Readonly<Record<string, unknown>>;
   streaming: boolean;
@@ -132,6 +135,7 @@ The important seams:
 - `ctx.abort` — the current run's abort signal. Pass it to `fetch`, `child_process`, or any abortable API. Check `ctx.abort.aborted` at loop boundaries.
 - `ctx.emit(event)` — record a streaming event. Steps call this freely; only `run.stream` delivers events to a consumer, plain `run` drops them.
 - `ctx.on_cleanup(fn)` — register teardown. Runs in LIFO order on success, failure, or abort.
+- `ctx.call(step, input)` — run another `Step` from inside a step body, with spans, abort, and error paths intact. The direct-style counterpart to composing, for control flow too dynamic to declare. (The `this` parameter pins it to the context it came from, so a destructured bare `call` is a compile error rather than a silently detached dispatch.)
 - `ctx.trajectory` — the structured-event sink. Either the injected logger or a noop.
 - `ctx.streaming` — `true` inside `run.stream`. `model_call` reads this to decide whether to forward provider chunks.
 
@@ -170,7 +174,7 @@ Writing your own is the expected path once you outgrow the defaults (push to Hon
 The bundled loggers have two known limits worth understanding before you wire them into anything long-running:
 
 - **`filesystem_logger` writes synchronously.** It calls `appendFileSync` on every `record`, `start_span`, and `end_span`. That keeps the implementation a dozen lines and makes failures easy to reason about, but it blocks the event loop on each write. Fine for dev tools, CLIs, and short batch runs; not what you want on a hot request path. Swap in a custom logger that buffers and flushes asynchronously if that matters.
-- **Span stacks are not async-context-aware.** `filesystem_logger` and `http_logger` track open spans on an in-memory stack, so the recorded `parent_span_id` is "whichever span opened most recently." Two siblings spawned concurrently from the same parent will both see whichever opened last as their parent until proper async-context propagation lands. The wire format is internally consistent within a single sink; what's lossy is the cross-sibling ordering under concurrency.
+- **The in-memory span stack is a fallback only.** `filesystem_logger`, `stderr_logger`, and `http_logger` record the `parent_span_id` the runner threads through `RunContext`, so span trees are correct even for concurrent siblings under `parallel`/`map`. The in-memory open-span stack exists only for spans emitted without a parent (an external caller driving a logger directly, outside a run), and that fallback remains best-effort under concurrency.
 
 `http_logger` additionally swallows transport errors by default — pass `on_error` to surface them. Trajectory writes are never load-bearing; a logger that throws does not fail the run.
 
@@ -289,6 +293,7 @@ Typed errors live in `fascicle`:
 | `engine_config_error`            | invalid `create_engine(config)`                       |
 | `engine_disposed_error`          | calling `generate` after `engine.dispose()`           |
 | `model_required_error`           | no `model` given and no `defaults.model` set          |
+| `provider_required_error`        | several providers configured, none named per-call or in `defaults.provider` |
 | `provider_not_configured_error`  | named provider missing from `providers`               |
 | `provider_capability_error`      | a provider refusing an option it cannot honour        |
 | `provider_auth_error`            | auth failure detected mid-run                         |
@@ -302,7 +307,7 @@ Every error bubbles out of `run(...)` as a normal promise rejection. Composition
 
 Not a runtime concept, but a project one. `pnpm check:all` is the single source of truth for "is this done". The pipeline runs types, lint, structural rules, dead-code analysis, tests, coverage, spelling, markdown, and mutation. Exit 0 means done. Exit non-zero means read `.check/summary.json` for which step failed and the per-tool JSON for diagnostics.
 
-`pnpm check` is the same pipeline minus the opt-in `mutation` step — use it during iteration. See [AGENTS.md](../AGENTS.md) for the full contract.
+`pnpm check` runs the default (fast) set: every slot except the opt-in ones. `pnpm check:all` adds the opt-in slots (Stryker `mutation`, plus the `build` and packaging gate slots: `publint`, `attw`, `pack`, `smoke`, `snippets`) and is the gate before declaring done. Use `pnpm check` during iteration. See [AGENTS.md](../AGENTS.md) for the full contract.
 
 ## Further reading
 

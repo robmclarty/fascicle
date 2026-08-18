@@ -91,16 +91,38 @@ export function register_traced_kind(kind: string): void {
       ctx.trajectory.end_span(span_id, { id: flow.id })
       return out
     } catch (err) {
-      ctx.trajectory.end_span(span_id, {
-        id: flow.id,
-        error: err instanceof Error ? err.message : String(err),
-      })
+      ctx.trajectory.end_span(span_id, { id: flow.id, ...error_meta(err) })
       throw err
     }
   })
 }
 
-type RunOptions = {
+/**
+ * Project an escaping error onto trajectory meta fields.
+ *
+ * `error` is always present (the message); `error_name` and `error_kind`
+ * surface the class name and the `kind` discriminant the typed error classes
+ * carry, so a consumer can classify a failure without regex-matching the
+ * message. `error_path` is the chain of step ids the error crossed below this
+ * point, already accumulated on the error by `prepend_path` as it bubbled up.
+ */
+function error_meta(err: unknown): Record<string, unknown> {
+  const meta: Record<string, unknown> = {
+    error: err instanceof Error ? err.message : String(err),
+  }
+  if (err instanceof Error && err.name.length > 0) meta['error_name'] = err.name
+  if (err !== null && typeof err === 'object') {
+    const kind = Reflect.get(err, 'kind')
+    if (typeof kind === 'string') meta['error_kind'] = kind
+    const path = Reflect.get(err, 'path')
+    if (Array.isArray(path)) {
+      meta['error_path'] = path.filter((v): v is string => typeof v === 'string')
+    }
+  }
+  return meta
+}
+
+export type RunOptions = {
   readonly install_signal_handlers?: boolean
   readonly trajectory?: TrajectoryLogger
   readonly checkpoint_store?: CheckpointStore
@@ -112,7 +134,7 @@ type RunOptions = {
   readonly abort?: AbortSignal
 }
 
-type StreamingRunHandle<o> = {
+export type StreamingRunHandle<o> = {
   readonly events: AsyncIterable<TrajectoryEvent>
   readonly result: Promise<o>
 }
@@ -379,6 +401,7 @@ function start_run<i, o>(
   }
 
   const result = (async (): Promise<o> => {
+    let terminal: TrajectoryEvent = { kind: 'run_end', status: 'done' }
     try {
       // Honor an external signal that was already aborted at call time, so the
       // run rejects without dispatching even when the flow is a single leaf
@@ -386,15 +409,26 @@ function start_run<i, o>(
       throw_if_aborted(ctx)
       return await dispatch_step(flow, input, ctx)
     } catch (err) {
+      let thrown: unknown = err
       if (controller.signal.aborted && !(err instanceof aborted_error)) {
         const reason = controller.signal.reason
-        if (reason instanceof aborted_error) throw reason
+        if (reason instanceof aborted_error) thrown = reason
       }
-      throw err
+      // A caller may abort with a plain-Error cause, which surfaces verbatim
+      // rather than as aborted_error; identity with the signal reason is what
+      // marks that ending as a cancellation rather than a failure.
+      const was_aborted =
+        thrown instanceof aborted_error ||
+        (controller.signal.aborted && thrown === controller.signal.reason)
+      terminal = run_end_event(thrown, was_aborted)
+      throw thrown
     } finally {
       try {
         await cleanup.run_all()
       } finally {
+        // Recorded after cleanup so run_end is the true last event of the
+        // run, and before the stream closes so `run.stream` consumers see it.
+        logger.record(terminal)
         unlink_abort()
         active_runs.delete(controller)
         release_signal_handlers()
@@ -404,6 +438,27 @@ function start_run<i, o>(
   })()
 
   return { events: stream_events, result }
+}
+
+/**
+ * Build the terminal `run_end` event for a run that did not complete.
+ *
+ * Control-flow endings get their own statuses (`aborted`, `suspended`) so a
+ * consumer never has to sniff error text to tell a cancellation or a pending
+ * approval from a real failure; only `failed` carries the full error meta.
+ */
+function run_end_event(err: unknown, was_aborted: boolean): TrajectoryEvent {
+  if (err instanceof suspended_error) {
+    return { kind: 'run_end', status: 'suspended', suspend_id: err.suspend_id }
+  }
+  if (was_aborted) {
+    return {
+      kind: 'run_end',
+      status: 'aborted',
+      error: err instanceof Error ? err.message : String(err),
+    }
+  }
+  return { kind: 'run_end', status: 'failed', ...error_meta(err) }
 }
 
 /**
@@ -452,6 +507,10 @@ export type RunOutcome<o> =
   | {
       readonly kind: 'suspended'
       readonly id: string
+      // Whatever the suspend gate raised (for the built-in `suspend` composer,
+      // `{ input }`), so a driver loop can render what awaits approval without
+      // re-running the flow. `unknown` because gates declare no payload type.
+      readonly payload: unknown
       readonly resume: (data: unknown) => Promise<RunOutcome<o>>
     }
 
@@ -460,8 +519,9 @@ export type RunOutcome<o> =
  * thrown `suspended_error`.
  *
  * Resolves `{ kind: 'done', output }` on completion. When a `suspend` gate
- * fires, resolves `{ kind: 'suspended', id, resume }` where `id` is the
- * gate's suspend id and `resume(data)` re-runs the flow from the original
+ * fires, resolves `{ kind: 'suspended', id, payload, resume }` where `id` is
+ * the gate's suspend id, `payload` is what the gate raised on its
+ * `suspended_error`, and `resume(data)` re-runs the flow from the original
  * input with `resume_data[id] = data` merged over the caller's options: the
  * same full re-run semantics as calling `run` again yourself, so pure
  * prefixes replay and `checkpoint`ed steps are served from the store. The
@@ -482,6 +542,7 @@ async function run_until_suspended<i, o>(
     return {
       kind: 'suspended',
       id,
+      payload: err.payload,
       resume: (data) =>
         run_until_suspended(flow, input, {
           ...options,

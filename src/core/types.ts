@@ -86,3 +86,17 @@ export type Step<i, o> = {
  * it accepts is the runner's job, not the type system's.
  */
 export type AnyStep = Step<never, unknown>
+
+/**
+ * Extract a Step's input type. The fallback is `never`, not `unknown`, so a
+ * non-step can never satisfy an input-position check by accident; sequence's
+ * joint checking depends on that. This is the canonical extractor the
+ * composers' internal type machinery builds on.
+ */
+export type StepInput<s> = s extends Step<infer i, unknown> ? i : never
+
+/**
+ * Extract a Step's output type. Falls back to `unknown` so type-erased
+ * plumbing over `AnyStep` degrades to the safe top type instead of lying.
+ */
+export type StepOutput<s> = s extends Step<never, infer o> ? o : unknown

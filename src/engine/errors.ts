@@ -10,6 +10,12 @@
  * `instanceof aborted_error` is true regardless of which layer surfaced it.
  * This is the one value-level import from core permitted in engine source;
  * see the ignores in `rules/no-core-value-import-in-engine.yml`.
+ *
+ * Every class declares an optional `path`: the chain of step ids the error
+ * crossed while bubbling through the core runner's dispatch. The runner
+ * attaches it via Reflect.set (`prepend_path` in core's runner.ts), so the
+ * `declare` modifier types what arrives without emitting a field;
+ * construction never sets it.
  */
 
 import type { SchemaIssue } from '#schema'
@@ -19,6 +25,7 @@ export { aborted_error } from '#core'
 
 export class rate_limit_error extends Error {
   readonly kind = 'rate_limit_error' as const;
+  declare readonly path?: ReadonlyArray<string>;
   readonly retry_after_ms: number | undefined;
   readonly attempts: number;
   readonly status: number | undefined;
@@ -36,6 +43,7 @@ export class rate_limit_error extends Error {
 
 export class provider_error extends Error {
   readonly kind = 'provider_error' as const;
+  declare readonly path?: ReadonlyArray<string>;
   readonly status: number | undefined;
   readonly body: string | undefined;
   readonly cause_kind: 'provider_5xx' | 'network' | 'unknown' | undefined;
@@ -70,6 +78,7 @@ export class turn_timeout_error extends Error {
   // a dynamic access no static analysis can resolve back to this field.
   // fallow-ignore-next-line unused-class-member
   readonly kind = 'timeout' as const;
+  declare readonly path?: ReadonlyArray<string>;
   readonly timeout_ms: number;
   readonly step_index: number | undefined;
   constructor(timeout_ms: number, step_index?: number) {
@@ -85,6 +94,7 @@ export class schema_validation_error extends Error {
   // outside this repo, so the field has no in-repo production reader.
   // fallow-ignore-next-line unused-class-member
   readonly kind = 'schema_validation_error' as const;
+  declare readonly path?: ReadonlyArray<string>;
   readonly schema_issues: ReadonlyArray<SchemaIssue>;
   readonly raw_text: string;
   constructor(message: string, schema_issues: ReadonlyArray<SchemaIssue>, raw_text: string) {
@@ -97,6 +107,7 @@ export class schema_validation_error extends Error {
 
 export class tool_error extends Error {
   readonly kind = 'tool_error' as const;
+  declare readonly path?: ReadonlyArray<string>;
   readonly tool_name: string;
   readonly tool_call_id: string;
   override readonly cause: unknown;
@@ -114,6 +125,7 @@ export class tool_error extends Error {
 
 export class tool_approval_denied_error extends Error {
   readonly kind = 'tool_approval_denied_error' as const;
+  declare readonly path?: ReadonlyArray<string>;
   readonly tool_name: string;
   readonly step_index: number;
   readonly tool_call_id: string;
@@ -131,6 +143,7 @@ export class tool_approval_denied_error extends Error {
 
 export class model_required_error extends Error {
   readonly kind = 'model_required_error' as const;
+  declare readonly path?: ReadonlyArray<string>;
   constructor(
     message = 'no model specified: pass `model` to generate() or set `defaults.model` on the engine',
   ) {
@@ -141,6 +154,7 @@ export class model_required_error extends Error {
 
 export class provider_not_configured_error extends Error {
   readonly kind = 'provider_not_configured_error' as const;
+  declare readonly path?: ReadonlyArray<string>;
   readonly provider: string;
   constructor(provider: string) {
     super(`provider '${provider}' is not configured on this engine`)
@@ -149,8 +163,28 @@ export class provider_not_configured_error extends Error {
   }
 }
 
+/**
+ * No provider could be resolved for a generate call: several providers are
+ * configured, the call named none, and no `defaults.provider` is set. Carries
+ * the configured provider names so the message tells the caller exactly what
+ * the engine can route to.
+ */
+export class provider_required_error extends Error {
+  readonly kind = 'provider_required_error' as const;
+  declare readonly path?: ReadonlyArray<string>;
+  readonly configured: ReadonlyArray<string>;
+  constructor(configured: ReadonlyArray<string>) {
+    super(
+      `no provider specified: pass \`provider\` to generate() or set \`defaults.provider\` (configured: ${configured.join(', ')})`,
+    )
+    this.name = 'provider_required_error'
+    this.configured = configured
+  }
+}
+
 export class engine_config_error extends Error {
   readonly kind = 'engine_config_error' as const;
+  declare readonly path?: ReadonlyArray<string>;
   readonly provider: string | undefined;
   constructor(message: string, provider?: string) {
     super(message)
@@ -161,6 +195,7 @@ export class engine_config_error extends Error {
 
 export class on_chunk_error extends Error {
   readonly kind = 'on_chunk_error' as const;
+  declare readonly path?: ReadonlyArray<string>;
   override readonly cause: unknown;
   constructor(message: string, cause: unknown) {
     super(message)
@@ -171,6 +206,7 @@ export class on_chunk_error extends Error {
 
 export class provider_capability_error extends Error {
   readonly kind = 'provider_capability_error' as const;
+  declare readonly path?: ReadonlyArray<string>;
   readonly provider: string;
   readonly capability: string;
   constructor(provider: string, capability: string, detail?: string) {
@@ -184,6 +220,7 @@ export class provider_capability_error extends Error {
 
 export class engine_disposed_error extends Error {
   readonly kind = 'engine_disposed_error' as const;
+  declare readonly path?: ReadonlyArray<string>;
   constructor(message = 'engine has been disposed; further calls are not permitted') {
     super(message)
     this.name = 'engine_disposed_error'
@@ -206,6 +243,7 @@ export type ClaudeCliErrorReason =
 
 export class claude_cli_error extends Error {
   readonly kind = 'claude_cli_error' as const;
+  declare readonly path?: ReadonlyArray<string>;
   readonly reason: ClaudeCliErrorReason;
   readonly status: number | undefined;
   readonly stderr_snippet: string | undefined;
@@ -224,6 +262,7 @@ export class claude_cli_error extends Error {
 
 export class provider_auth_error extends Error {
   readonly kind = 'provider_auth_error' as const;
+  declare readonly path?: ReadonlyArray<string>;
   readonly provider: string;
   readonly refresh_command: string | undefined;
   constructor(
@@ -249,6 +288,7 @@ export class provider_auth_error extends Error {
  */
 export class incomplete_generation_error extends Error {
   readonly kind = 'incomplete_generation_error' as const;
+  declare readonly path?: ReadonlyArray<string>;
   readonly finish_reason: FinishReason;
   readonly raw_text: string;
   readonly provider_reported: Record<string, unknown> | undefined;

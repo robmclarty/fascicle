@@ -12,6 +12,13 @@ import type { Engine } from '#engine'
 
 /**
  * Build an `Engine` whose only live member is the supplied `generate`.
+ *
+ * A custom double MUST implement only `generate`: accept `GenerateOptions`
+ * and resolve a complete `GenerateResult` (content, tool_calls, steps,
+ * usage, finish_reason, model_resolved). Honoring `opts.abort`,
+ * `opts.on_chunk`, and `opts.schema` is optional; honor whichever the code
+ * under test exercises. It need NOT implement pricing, `with_providers`, or
+ * `dispose`: this shell supplies the inert versions.
  */
 export function engine_from_generate(generate: Engine['generate']): Engine {
   return {

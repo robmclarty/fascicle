@@ -105,6 +105,65 @@ describe('loop', () => {
     ])
   })
 
+  it('accepts a bare predicate guard and terminates identically to the step form', async () => {
+    // Mirrors the step-form test above: same body, same threshold, so the
+    // predicate shorthand must converge with the same value and round count.
+    const flow = loop({
+      init: (n: number) => n,
+      body: step('inc', (n: number) => n + 1),
+      guard: (n: number) => n >= 3,
+      finish: envelope,
+      max_rounds: 10,
+    })
+
+    const result = await run(flow, 0)
+    expect(result.value).toBe(3)
+    expect(result.converged).toBe(true)
+    expect(result.rounds).toBe(3)
+  })
+
+  it('accepts an async predicate guard', async () => {
+    const flow = loop({
+      init: (n: number) => n,
+      body: step('inc', (n: number) => n + 1),
+      guard: async (n: number) => n >= 2,
+      finish: envelope,
+      max_rounds: 10,
+    })
+
+    const result = await run(flow, 0)
+    expect(result.value).toBe(2)
+    expect(result.converged).toBe(true)
+    expect(result.rounds).toBe(2)
+  })
+
+  it('exhausts max_rounds when the predicate guard never stops', async () => {
+    const flow = loop({
+      init: (n: number) => n,
+      body: step('inc', (n: number) => n + 1),
+      guard: (n: number) => n >= 100,
+      finish: envelope,
+      max_rounds: 4,
+    })
+
+    const result = await run(flow, 0)
+    expect(result.value).toBe(4)
+    expect(result.converged).toBe(false)
+    expect(result.rounds).toBe(4)
+  })
+
+  it('wraps a predicate guard as a step in children, id-scoped to the loop', () => {
+    const flow = loop<number, number, number>({
+      init: (n) => n,
+      body: step('inc', (n: number) => n + 1),
+      guard: (n: number) => n >= 1,
+      finish: (n) => n,
+      max_rounds: 1,
+    })
+    expect(flow.children).toHaveLength(2)
+    expect(flow.children?.[1]?.id).toBe(`${flow.id}_guard`)
+  })
+
   it('guard can transform state', async () => {
     const flow = loop({
       init: (n: number) => ({ n, tag: 'init' }),

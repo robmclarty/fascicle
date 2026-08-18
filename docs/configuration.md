@@ -141,6 +141,10 @@ const engine = create_engine({
     ...(openai_key    ? { openai:    { api_key: openai_key    } } : {}),
     ollama: { base_url: ollama_url },
   },
+  // More than one provider may be configured here, so name the default
+  // explicitly; calls without a `provider` would otherwise throw
+  // provider_required_error.
+  defaults: { provider: 'ollama' },
 });
 ```
 
@@ -153,11 +157,11 @@ A model call has two orthogonal inputs, and they are the *only* inputs — there
 - **`model`** — *which* model, as an **opaque string** passed verbatim to the provider as its `model_id`. Use whatever id the provider expects (`claude-opus-4-8`, `gpt-4o`, `us.anthropic.claude-sonnet-4-20250514-v1:0`, `qwen3-coder:30b`). fascicle does not interpret, rewrite, or maintain model names; a bad id surfaces as the provider's own "not found" error.
 - **`provider`** — *how* to reach it (the transport): `anthropic`, `openai`, `google`, `ollama`, `lmstudio`, `openrouter`, `bedrock`, `claude_cli`.
 
-Both are accepted per-call on `generate(opts)` / `model_call({ ... })` and as engine defaults (`defaults.model`, `defaults.provider`).
+Both are accepted per-call on `generate(opts)` / `model_call({ ... })` and as engine defaults (`defaults.model`, `defaults.provider`). The remaining caller-shaped generation knobs (`temperature`, `max_tokens`, `top_p`, `turn_timeout_ms`, `prepare_step`) also ride per-call on both; all but `prepare_step` can be set as engine defaults too, with the per-call value winning.
 
 ### Resolution
 
-There is no resolution step. `model` is sent straight through as the provider's `model_id`; `provider` selects the adapter. The provider axis is resolved first: per-call `provider`, else `defaults.provider`, else the sole configured provider, else `anthropic`. If `model` is omitted and no `defaults.model` is set, `generate` throws `model_required_error`. A `provider` with no adapter configured on the engine throws `provider_not_configured_error`.
+There is no resolution step. `model` is sent straight through as the provider's `model_id`; `provider` selects the adapter. The provider axis is resolved first: per-call `provider`, else `defaults.provider`, else the sole configured provider. With several providers configured and neither a per-call `provider` nor a default, there is no fallback: `generate` throws `provider_required_error` ("no provider specified: pass `provider` to generate() or set `defaults.provider`", naming the configured providers). If `model` is omitted and no `defaults.model` is set, `generate` throws `model_required_error`. A `provider` with no adapter configured on the engine throws `provider_not_configured_error`.
 
 There is no `provider:model` colon shorthand and no `opus`/`sonnet` family shorthand — pass the provider's real id (look it up in the provider's own docs). One exception: the `claude_cli` transport forwards the bare token to the CLI, which resolves `opus`/`sonnet`/`haiku` to the latest itself, so those still work for that provider.
 
@@ -210,6 +214,9 @@ type EngineDefaults = {
   provider?: string;
   system?: string;
   effort?: EffortLevel;
+  temperature?: number;
+  max_tokens?: number;
+  top_p?: number;
   max_steps?: number;
   turn_timeout_ms?: number;
   retry_policy?: RetryPolicy;
@@ -247,8 +254,8 @@ const result = await engine.generate({ prompt: 'hello' });
 | Field                                                                              | Rule                                            |
 | ---------------------------------------------------------------------------------- | ----------------------------------------------- |
 | `model`                                                                            | per-call wins; else default; else throws `model_required_error` |
-| `provider`                                                                         | per-call wins; else default; else sole provider; else `anthropic` |
-| `system`, `effort`, `max_steps`, `turn_timeout_ms`, `tool_error_policy`, `schema_repair_attempts`, `tool_call_repair_attempts`, `max_tool_calls_per_step` | per-call wins via nullish coalesce |
+| `provider`                                                                         | per-call wins; else default; else sole provider; else throws `provider_required_error` |
+| `system`, `effort`, `temperature`, `max_tokens`, `top_p`, `max_steps`, `turn_timeout_ms`, `tool_error_policy`, `schema_repair_attempts`, `tool_call_repair_attempts`, `max_tool_calls_per_step` | per-call wins via nullish coalesce |
 | `retry`                                                                            | per-call replaces wholesale                     |
 | `provider_options`                                                                 | two-level: per-provider key, shallow-merged     |
 | `prepare_step`, `prompt`, `tools`, `schema`, `abort`, `trajectory`, `on_chunk`     | not defaultable; always call-supplied           |
@@ -363,7 +370,7 @@ type GenerateOptions<t = string> = {
   provider?: string;
   prompt: string | Message[];
   system?: string;
-  schema?: z.ZodType<t>;
+  schema?: ToolSchema<t>;
   tools?: Tool[];
   effort?: EffortLevel;
   temperature?: number;
@@ -383,13 +390,15 @@ type GenerateOptions<t = string> = {
   prepare_step?: PrepareStepHook;
   provider_options?: Record<string, unknown>;
 };
+
+// ToolSchema<t> = StandardSchemaV1<unknown, t> & StandardJSONSchemaV1
 ```
 
 A few highlights:
 
 - `effort: 'none' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'` is translated per-provider. See [providers.md](./providers.md) for the per-provider mapping. Providers that do not support reasoning effort (e.g. Ollama) silently drop it and record `effort_ignored` on the trajectory.
-- `schema` is a zod schema. On failure, the engine attempts `schema_repair_attempts` repair passes (default 1) before throwing `schema_validation_error`. If the call instead finishes on a non-`stop` reason (content filter, token limit, step cap) no valid value can exist, so it throws `incomplete_generation_error` without attempting repair.
-- `tools` is the agentic tool-use surface; tools have zod `input_schema` and an `execute` closure. See the cookbook for tool loops.
+- `schema` is any [Standard Schema](https://standardschema.dev) that also carries a JSON Schema (zod, ArkType, Valibot, ...): the printed `ToolSchema<t>` is `StandardSchemaV1<unknown, t> & StandardJSONSchemaV1`. On failure, the engine attempts `schema_repair_attempts` repair passes (default 1) before throwing `schema_validation_error`. If the call instead finishes on a non-`stop` reason (content filter, token limit, step cap) no valid value can exist, so it throws `incomplete_generation_error` without attempting repair.
+- `tools` is the agentic tool-use surface; tools have a Standard Schema `input_schema` and an `execute` closure. See the cookbook for tool loops.
 - `turn_timeout_ms` bounds each model turn's wall-clock; expiry throws a retryable timeout. See [Turn timeout budgets](#turn-timeout-budgets).
 - `prepare_step` reshapes the messages sent to the model before each turn without mutating the transcript. See [Reshaping each turn: `prepare_step`](#reshaping-each-turn-prepare_step).
 - `provider_options` is a two-level record keyed by provider name, merged over `defaults.provider_options`.
@@ -494,7 +503,7 @@ const engine = create_engine({
 });
 ```
 
-Multi-provider with defaults:
+Multi-provider with defaults. With several providers configured, set `defaults.provider` (or pass `provider` per call); there is no fallback, and a call that names neither throws `provider_required_error`:
 
 ```ts
 const engine = create_engine({
@@ -504,7 +513,8 @@ const engine = create_engine({
     ollama:    { base_url: 'http://localhost:11434' },
   },
   defaults: {
-    model: 'sonnet',
+    provider: 'anthropic',
+    model: 'claude-sonnet-4-6',
     effort: 'low',
     max_steps: 8,
     retry_policy: { max_attempts: 5, initial_delay_ms: 250, max_delay_ms: 10_000, retry_on: ['rate_limit', 'provider_5xx'] },

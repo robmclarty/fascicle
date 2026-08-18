@@ -15,9 +15,11 @@ different problems:
 `suspend(...)` fires an `on(...)` side effect (notify a human), then pauses
 the run. Drive the flow with `run.until_suspended`, which reports the pause
 as a typed outcome instead of an exception: `{ kind: 'done', output }` when
-the flow completes, or `{ kind: 'suspended', id, resume }` when a gate
-fires. When the decision arrives, call `resume(data)`; it re-runs the flow
-with the decision keyed under the gate's id, the flow continues into
+the flow completes, or `{ kind: 'suspended', id, payload, resume }` when a
+gate fires. `payload` carries the value the suspend gate surfaced (the draft
+awaiting approval, say), so the harness can render what is being decided
+without re-deriving it. When the decision arrives, call `resume(data)`; it
+re-runs the flow with the decision keyed under the gate's id, the flow continues into
 `combine`, and the promise resolves to the next outcome (so several gates
 are driven by resuming repeatedly). Real errors still throw.
 
@@ -69,6 +71,28 @@ Two things to know before you ship this:
   from `fascicle/adapters`, a database, a queue) and calls
   `run.until_suspended` again after a restart to rebuild the outcome.
 
+> **Paid steps replay on resume.** Resuming after a process restart replays
+> every step before the gate that is not checkpointed, and that includes paid
+> model calls: the provider bills the replay like any other call. Wrap paid
+> leaves in `checkpoint(...)` with a `checkpoint_store` before any `suspend`
+> gate, so a resume reads the memoized result instead of buying it again.
+
+The packaged form of that rule is the `gate` composite:
+
+```ts
+import { gate } from 'fascicle';
+
+const approved = gate(draft_step, { id: 'approve', store });
+```
+
+`gate` runs the inner step, checkpoints its result under `gate:<id>`, then
+suspends with the result as the payload (`format` projects the approver's
+view; the store always holds the raw result). A resume, or a fresh run after
+a restart with the same store, serves the inner result from the checkpoint
+instead of re-running it, so the model call is never re-billed; approval
+passes the inner result through unchanged. Reach for raw `checkpoint` plus
+`suspend` when the approval decision must shape the output (`combine`).
+
 A complete server that runs this over HTTP (POST to start, GET the pending
 approval, POST the decision to resume) is in
 [`examples/hitl_http.ts`](../examples/hitl_http.ts). The minimal mechanical
@@ -94,7 +118,7 @@ import { to_ui_message_response } from 'fascicle/ui';
 const engine = create_engine({
   providers: { anthropic: { api_key: process.env.ANTHROPIC_API_KEY ?? '' } },
 });
-const chat = model_step({ engine, model: 'sonnet' });
+const chat = model_step({ engine, model: 'claude-sonnet-4-6' });
 
 export function chat_handler(): Response {
   return to_ui_message_response(

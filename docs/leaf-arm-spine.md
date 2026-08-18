@@ -79,15 +79,27 @@ name; later bindings destructure whatever earlier names they need, checked
 at compile time. `.stage` marks phase barriers (a grouping span in the
 trajectory; with a projection, earlier bindings go out of scope).
 
-A binding invokes an arm with `ctx.call(arm, input)`, never a bare
-`arm.run(input, ctx)`, which bypasses the dispatcher and loses the span.
-Pass the same value as `arm` metadata so the static tree stays complete:
+The default way to bind an arm is to hand it to the step directly:
+`.step(name, arm, select)` takes the composed `Step` and a selector from the
+record to the arm's input. The chain dispatches `ctx.call(arm, select(record))`
+itself and records the arm as the binding's child, so dispatch and the
+described tree cannot diverge:
+
+```ts
+.step('article', polish, ({ outline, style }) => format_draft_prompt(outline, style))
+```
+
+When the body must wrap the call (invoke the arm conditionally, in a loop,
+or more than once), drop to the function form and pass the same value as
+`arm` metadata so the static tree stays complete:
 
 ```ts
 .step('article', ({ outline, style }, ctx) =>
   ctx.call(polish, format_draft_prompt(outline, style)), { arm: polish })
 ```
 
+Inside a body, always `ctx.call(arm, input)`, never a bare
+`arm.run(input, ctx)`, which bypasses the dispatcher and loses the span.
 Dispatch ignores the metadata (the body's `ctx.call` is what runs the arm);
 `describe` renders the arm's subtree as the binding's child, so the printed
 tree shows the whole topology without running anything.
@@ -131,10 +143,10 @@ export function build_flow(engine: Engine): Step<string, string> {
     project: (r) => r.converged,
   });
 
-  // Spine: one chain; each binding calls its arm and declares it as metadata.
+  // Spine: one chain; each binding hands its arm to the step directly.
   return chain<string, 'url'>('url')
-    .step('summary', ({ url }, ctx) => ctx.call(research, url), { arm: research })
-    .step('verified', ({ summary }, ctx) => ctx.call(fact_gate, summary), { arm: fact_gate })
+    .step('summary', research, ({ url }) => url)
+    .step('verified', fact_gate, ({ summary }) => summary)
     .output(({ summary, verified }) => (verified ? summary : `UNVERIFIED: ${summary}`));
 }
 ```

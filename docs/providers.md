@@ -511,7 +511,7 @@ The CLI resolves the bare tokens `opus`/`sonnet`/`haiku` to the latest itself, s
 
 `model` is an opaque string sent to the provider verbatim as its `model_id`; `provider` names the transport. Both can be set per call and as engine `defaults`. There is no resolution step — no colon shorthand, no family expansion, no alias table:
 
-- `provider` resolves to: per-call `provider`, else `defaults.provider`, else the sole configured provider, else `anthropic`.
+- `provider` resolves to: per-call `provider`, else `defaults.provider`, else the sole configured provider. There is no fallback beyond that: with several providers configured and neither a per-call `provider` nor a default, `generate` throws `provider_required_error` ("no provider specified: pass `provider` to generate() or set `defaults.provider`", naming the configured providers).
 - `model` resolves to: per-call `model`, else `defaults.model`, else a thrown `model_required_error`.
 
 The provider receives `model` as-is and rejects an unknown id itself (a 404 or validation error). A `provider` with no adapter registered on the engine throws `provider_not_configured_error`. (Exception: the `claude_cli` transport forwards `opus`/`sonnet`/`haiku` to the CLI, which resolves them to the latest.)

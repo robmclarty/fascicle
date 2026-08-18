@@ -12,18 +12,23 @@ that reads what you already write.
 ## Quickstart — file tail
 
 ```bash
-# terminal 1: your existing flow, unchanged
-pnpm tsx app.ts
+# terminal 1: generate a demo trajectory (no engine, no API key)
+pnpm exec tsx examples/viewer_demo.ts
 
 # terminal 2: point the viewer at the JSONL file
-pnpm fascicle-viewer .trajectory.jsonl
+pnpm exec fascicle-viewer .trajectory.jsonl
 # → http://127.0.0.1:4242
 ```
 
+[`examples/viewer_demo.ts`](../examples/viewer_demo.ts) writes
+`.trajectory.jsonl` through `filesystem_logger`; any flow of your own that
+logs to a file works the same way. For a one-off run without a local
+install, `pnpm dlx --package=fascicle fascicle-viewer .trajectory.jsonl`.
+
 The viewer tails the file with `fs.watch`, parses each new line through
-`parse_trajectory_event` from `core`, and pushes parsed events to
-the browser via SSE. Works on a finished run too — point it at any old
-`.jsonl` for a static replay.
+`parse_trajectory_event` (exported from `fascicle`), and pushes parsed
+events to the browser via SSE. Works on a finished run too: point it at
+any old `.jsonl` for a static replay.
 
 ## Quickstart — HTTP push (low-latency, opt-in)
 
@@ -41,7 +46,7 @@ await run(flow, input, {
 Then run the viewer in listen-only mode:
 
 ```bash
-pnpm fascicle-viewer --listen
+pnpm exec fascicle-viewer --listen
 ```
 
 `http_logger` drops events on transport error and never blocks the user
@@ -77,7 +82,7 @@ past their cursor that is still in the ring buffer.
 ## Programmatic embed
 
 ```ts
-import { start_viewer } from 'fascicle'
+import { start_viewer } from 'fascicle/viewer'
 
 const handle = await start_viewer({ path: '.trajectory.jsonl', port: 4242 })
 // ...

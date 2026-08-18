@@ -186,7 +186,7 @@ export function normalize_local_usage(raw: RawProviderUsage | undefined): UsageT
 export function missing_peer_error(peer_name: string, cause: unknown): Error {
   const detail = cause instanceof Error ? cause.message : JSON.stringify(cause)
   const message =
-    `missing peer dependency '${peer_name}'. Install it with: pnpm add ${peer_name}. Cause: ${detail}`
+    `missing peer dependency '${peer_name}'. Install it with your package manager, e.g. \`pnpm add ${peer_name}\` or \`npm install ${peer_name}\`. Cause: ${detail}`
   return new Error(message, { cause })
 }
 

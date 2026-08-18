@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { default_normalize_usage, load_optional_peer } from '../types.js'
+import { default_normalize_usage, load_optional_peer, missing_peer_error } from '../types.js'
 
 describe('default_normalize_usage', () => {
   it('returns zero-only usage when raw is undefined', () => {
@@ -52,5 +52,23 @@ describe('load_optional_peer', () => {
       expect(message).toContain('@repo/definitely-not-a-real-package')
       expect(message).toContain('missing peer dependency')
     }
+  })
+})
+
+describe('missing_peer_error', () => {
+  it('names the peer and a package-manager-neutral install hint', () => {
+    const cause = new Error('Cannot find module')
+    const err = missing_peer_error('ai', cause)
+    expect(err.message).toBe(
+      "missing peer dependency 'ai'. Install it with your package manager, e.g. `pnpm add ai` or `npm install ai`. Cause: Cannot find module",
+    )
+    expect(err.cause).toBe(cause)
+  })
+
+  it('stringifies a non-Error cause into the message', () => {
+    const err = missing_peer_error('ai', { code: 'ERR_MODULE_NOT_FOUND' })
+    expect(err.message).toBe(
+      'missing peer dependency \'ai\'. Install it with your package manager, e.g. `pnpm add ai` or `npm install ai`. Cause: {"code":"ERR_MODULE_NOT_FOUND"}',
+    )
   })
 })

@@ -145,16 +145,79 @@ describe('sequence', () => {
     const narrow = step('narrow', (x: { a: string }) => x.a)
     const width_ok: Step<string, string> = sequence([wide, narrow])
 
-    // A runtime-built array carries no positional types and degrades to the
-    // outer boundary while still running at any length.
+    // A runtime-built homogeneous array hits the array overload and keeps
+    // its element type instead of degrading to the unknown boundary.
     const dynamic: Array<Step<number, number>> = [step('inc', (n: number) => n + 1)]
-    const dynamic_ok: Step<unknown, unknown> = sequence(dynamic)
+    const dynamic_ok: Step<number, number> = sequence(dynamic)
 
     void ok
     void wrong
     void loose_ok
     void width_ok
     void dynamic_ok
+    expect(true).toBe(true)
+  })
+
+  it('type-checks homogeneous runtime arrays as Step<T, T>', () => {
+    const homog: Array<Step<number, number>> = [step('inc', (n: number) => n + 1)]
+    const homog_seq = sequence(homog)
+    const homog_ok: Step<number, number> = homog_seq
+
+    // The sound input type is enforced end to end, so a wrong input no
+    // longer compiles the way the old Step<unknown, unknown> degradation did.
+    const rejects_wrong_input = () => {
+      // @ts-expect-error a Step<number, number> sequence cannot run on a string
+      return run(homog_seq, 'not a number')
+    }
+
+    // A heterogeneous runtime array has no checkable joints and no single T,
+    // so it is rejected outright instead of degrading.
+    const hetero: Array<Step<string, number>> = []
+    // @ts-expect-error runtime arrays must be homogeneous Step<T, T>
+    sequence(hetero)
+
+    void homog_ok
+    void rejects_wrong_input
+    expect(true).toBe(true)
+  })
+
+  it('type-checks spread segments inside literal tuples', () => {
+    const to_len = step('to_len', (s: string) => s.length)
+    const to_str = step('to_str', (n: number) => String(n))
+    const mids: Array<Step<number, number>> = [step('inc', (n: number) => n + 1)]
+
+    // A sound mid-tuple spread compiles: the segment is checked as a
+    // homogeneous self-composing block instead of being index-zipped, which
+    // used to smear positions into unions and reject sound code.
+    const mid_spread: Step<string, string> = sequence([to_len, ...mids, to_str])
+
+    // The joint into the spread is still enforced: string self-loops cannot
+    // follow a number output. The expected element resolves to the branded
+    // SequenceJointMismatch, so the error names the joint and both types.
+    const bad_mids: Array<Step<string, string>> = []
+    // @ts-expect-error the spread segment cannot accept the number upstream
+    sequence([to_len, ...bad_mids, to_len])
+
+    // The joint out of the spread accounts for the empty-spread path: a step
+    // accepting only the segment output but not the upstream is rejected.
+    const widening: Array<Step<number, 5>> = []
+    const wants_five = step('five', (n: 5) => n)
+    // @ts-expect-error when the spread is empty a plain number flows through
+    sequence([to_len, ...widening, wants_five])
+
+    // A trailing spread compiles; the output degrades to unknown because the
+    // last child is not statically known.
+    const trailing: Step<string, unknown> = sequence([to_len, ...mids])
+
+    // A leading spread has no fixed first element to anchor joint checking,
+    // so it only compiles when fully homogeneous via the array overload.
+    const leading: Step<number, number> = sequence([...mids, step('dbl', (n: number) => n * 2)])
+    // @ts-expect-error a leading spread cannot end in a non-unifiable step
+    sequence([...mids, to_str])
+
+    void mid_spread
+    void trailing
+    void leading
     expect(true).toBe(true)
   })
 })
