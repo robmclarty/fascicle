@@ -3,6 +3,7 @@ node_modules/
 .check/
 .fallow/
 .stryker-tmp/
+.firecrawl/
 stryker.incremental.json
 coverage/
 *.log
