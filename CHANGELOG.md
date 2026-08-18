@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.12.0 — 2026-08-18
 
 ### Added
 
@@ -18,11 +18,19 @@
 
 - **Docs for the layering.** `docs/leaf-arm-spine.md` names the leaf / arm / spine shape and the decision rules at each layer, `docs/advanced-composition.md` covers the demoted tier (`scope`/`stash`/`use`, plain `ensemble`, `tournament`, `improve`/`learn`), and `examples/newsroom.ts` is the vocabulary tour that uses every primary primitive once.
 
+- **A one-file style pair in the examples.** `examples/release_notes.ts` and `examples/release_notes_direct.ts` build the same release-notes flow two ways — composed through `chain` and arms, and written straight through as one function — so the cost and the benefit of composing are readable side by side rather than asserted. `docs/blueprint.md` is rebuilt around `chain` and points at the pair.
+
 ### Changed
 
 - **The `Step` type is sound.** `run` is a function property rather than a method, so a step's input is checked contravariantly, and `AnyStep` (`Step<never, unknown>`) is added as the erased supertype for code that handles steps generically. **Breaking** for consumers that relied on method bivariance: an assignment that only type-checked under that looser method-parameter rule now errors, which is the point of the change.
 
 - **The examples fleet migrated to the `chain` / `model_step` / arm idioms.** The single-file demos and the reference apps now read as leaves, arms, and one spine per flow, matching the layering `docs/leaf-arm-spine.md` names.
+
+- **The prose surface moved onto the `chain` / `model_step` idiom.** `README.md`, `docs/getting-started.md`, `docs/concepts.md`, `docs/api-reference.md`, `docs/cookbook.md`, `docs/composition.md`, `docs/writing-a-harness.md`, and the site pages now teach leaf / arm / spine first and present `pipe`, `sequence`, and `model_call` as the lower tier those primitives sit on. `docs/concepts.md` and `docs/api-reference.md` also state the sound `Step` shape and `AnyStep`.
+
+### Internal
+
+- Re-baselined the duplication report after the stub-engine paydown, and added the `.firecrawl` web-research scratch directory to `.gitignore`.
 
 ## v0.11.1 — 2026-08-13
 
