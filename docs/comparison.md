@@ -100,8 +100,8 @@ loop. fascicle's unit is a `Step` that *might* contain an LLM call and tool loop
 or be a plain function, or a composition of both.
 
 **Choose it when** the whole product is "an agent with tools and handoffs" — a
-simpler path until you want to wrap that agent in retry, fan it across an ensemble,
-or pipe it into a judge loop with a different model.
+simpler path until you want to wrap that agent in retry, fan it across an
+`ensemble_step`, or pipe it into a judge loop with a different model.
 
 ### Strands Agents
 
@@ -193,9 +193,11 @@ None of these is unprecedented alone; the concentration is the point.
    the path, and `custom_providers` accepts an adapter fascicle has never heard of.
    The tool loop, salvage, approval, retry, cost, and trajectory above them are
    identical.
-5. **A small, hand-picked surface.** 21 composition primitives and one `generate`
+5. **A small, hand-picked surface.** 22 composition primitives and one `generate`
    function, shipped as a single npm package — no "pick four packages and align
-   their versions" tax.
+   their versions" tax. The primitives are layered rather than flat:
+   [leaf-arm-spine.md](./leaf-arm-spine.md) names the leaf / arm / spine roles
+   and the decision rules for choosing at each one.
 
 ## When to choose something else
 

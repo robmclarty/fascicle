@@ -88,13 +88,13 @@ the one subpath that needs that optional peer even on `transport: 'native'`:
 <!-- snippet: check -->
 
 ```ts
-import { create_engine, model_call, run } from 'fascicle';
+import { create_engine, model_step, run } from 'fascicle';
 import { to_ui_message_response } from 'fascicle/ui';
 
 const engine = create_engine({
   providers: { anthropic: { api_key: process.env.ANTHROPIC_API_KEY ?? '' } },
 });
-const chat = model_call({ engine, model: 'sonnet' });
+const chat = model_step({ engine, model: 'sonnet' });
 
 export function chat_handler(): Response {
   return to_ui_message_response(

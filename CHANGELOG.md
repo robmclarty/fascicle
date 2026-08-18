@@ -1,5 +1,29 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **`chain`: named steps over a growing typed record.** `chain(input_name?)` builds a `Step` from `.step(name, fn)` bindings that each merge one named value into the record, `.stage(name, project?)` markers that conclude a phase (with `project`, narrowing the record), and a final `.output(fn)` projection. A step body receives the record plus the run context, so a binding can `ctx.call` a composed arm directly; passing that arm as step-level `{ arm }` metadata records it as a describe-only child, so `describe` still renders the full tree under the binding.
+
+- **`model_step`: the default model boundary.** Takes the same config as `model_call` and returns a `Step` whose output is the content alone: a `string`, or the schema-validated value when `schema` is set. Implemented as one `pipe` over `model_call`; reach for `model_call` when the caller needs the `GenerateResult` envelope (usage, cost, tool calls, finish reason).
+
+- **`run.until_suspended`: suspension as a typed outcome.** Where plain `run` signals a `suspend` gate by throwing `suspended_error`, `run.until_suspended(flow, input, options?)` resolves `{ kind: 'suspended', id, resume }`; calling `resume(data)` re-runs the flow with the decision and resolves to the next outcome. Completion is `{ kind: 'done', output }`; real errors still throw. This supersedes the try/catch dance around `suspended_error`, which remains for plain `run`.
+
+- **A `project` option on the six envelope composites.** `adversarial`, `ensemble`, `ensemble_step`, `tournament`, `consensus`, and `improve` can now map their result envelope into the step's output at the source (`project: (r) => r.candidate`), so downstream steps see the value instead of the wrapper. Omitted, the envelope stays the output, as before.
+
+- **The `fascicle/testing` subpath.** `make_stub_engine(canned, options?)` routes canned responses by system-prompt prefix, validates each one through the call's schema, and throws on an unmatched system; `make_capture_engine(options?)` records every call's `GenerateOptions` into a live `calls` array and answers with a canned result. Types: `StubEngineOptions`, `StubResponse`, `CaptureEngine`, `CaptureEngineOptions`.
+
+- **Compile-time joint checking for literal `sequence` tuples.** Each child of a literal tuple must accept its predecessor's output, and a mismatch errors on the offending element. Arrays built at runtime still degrade to unknown boundaries; annotate the outer `Step<In, Out>` to keep the flow's boundary checked.
+
+- **Docs for the layering.** `docs/leaf-arm-spine.md` names the leaf / arm / spine shape and the decision rules at each layer, `docs/advanced-composition.md` covers the demoted tier (`scope`/`stash`/`use`, plain `ensemble`, `tournament`, `improve`/`learn`), and `examples/newsroom.ts` is the vocabulary tour that uses every primary primitive once.
+
+### Changed
+
+- **The `Step` type is sound.** `run` is a function property rather than a method, so a step's input is checked contravariantly, and `AnyStep` (`Step<never, unknown>`) is added as the erased supertype for code that handles steps generically. **Breaking** for consumers that relied on method bivariance: an assignment that only type-checked under that looser method-parameter rule now errors, which is the point of the change.
+
+- **The examples fleet migrated to the `chain` / `model_step` / arm idioms.** The single-file demos and the reference apps now read as leaves, arms, and one spine per flow, matching the layering `docs/leaf-arm-spine.md` names.
+
 ## v0.11.1 — 2026-08-13
 
 ### Fixed

@@ -2,7 +2,7 @@
 
 ![A substrate for agents — three mushrooms (model_call, step, tool) fruit from a shared mycelium network; every mushroom is a Step<i, o>, every thread is a composition](./mycelium.svg)
 
-Compose agents out of LLM calls, tool calls, and plain functions. Everything is a `Step<i, o>`. Wire steps together with 22 primitives (`sequence`, `parallel`, `chain`, `branch`, `retry`, `loop`, `ensemble`, `checkpoint`, …) and run them as plain values. One `generate` surface fronts eight provider adapters: Anthropic, OpenAI, Google, OpenRouter, AWS Bedrock, Ollama, LM Studio, and a `claude_cli` subprocess that drives the Claude Code CLI.
+Compose agents out of LLM calls, tool calls, and plain functions. Everything is a `Step<i, o>`. Wire steps together with 22 primitives (`sequence`, `parallel`, `chain`, `branch`, `retry`, `loop`, `ensemble_step`, `checkpoint`, …) and run them as plain values. One `generate` surface fronts eight provider adapters: Anthropic, OpenAI, Google, OpenRouter, AWS Bedrock, Ollama, LM Studio, and a `claude_cli` subprocess that drives the Claude Code CLI.
 
 No framework lifecycle. No ambient state. No decorators. Adapters are passed in per run.
 
@@ -68,7 +68,7 @@ try {
 | `model_step` | the model's answer as a step (`model_call` projected to its content) |
 | `chain` | named steps over a typed record: `.step` binds, `.stage` concludes a phase, `.output` projects |
 
-The remaining primitives are specialized composers with the same contract, so they drop into any flow when the task calls for them: control flow (`loop`, `fallback`, `timeout`, `compose`), multi-model orchestration (`adversarial`, `ensemble`, `ensemble_step`, `tournament`, `consensus`), durability (`checkpoint`, `suspend`), self-improvement (`improve`, `learn`), and the named-state primitives `scope` / `stash` / `use` underlying `chain`. One-liners for all of them live in [docs/composition.md](./docs/composition.md), full shapes in [docs/api-reference.md](./docs/api-reference.md).
+The remaining primitives are specialized composers with the same contract, so they drop into any flow when the task calls for them: control flow (`loop`, `fallback`, `timeout`, `compose`), multi-model orchestration (`adversarial`, `ensemble_step`, `consensus`), and durability (`checkpoint`, `suspend`). Behind those sits an advanced tier — the pick-best variants `ensemble` and `tournament`, the raw named-state primitives `scope` / `stash` / `use` underlying `chain`, and the self-improvement pair `improve` / `learn` — covered in [docs/advanced-composition.md](./docs/advanced-composition.md), each entry paired with the primary primitive to try first. One-liners for all of them live in [docs/composition.md](./docs/composition.md), full shapes in [docs/api-reference.md](./docs/api-reference.md), and [docs/leaf-arm-spine.md](./docs/leaf-arm-spine.md) is the decision guide for which layer each belongs to.
 
 Plus `run`, `run.stream`, and `describe`. And inside any step body, `ctx.call(step, input)` runs another Step with spans, abort, and error paths intact: the direct-style counterpart to composing, for control flow too dynamic to declare.
 
@@ -89,7 +89,17 @@ await run(flow, input, {
 
 `filesystem_logger` writes synchronously and the bundled span stacks aren't async-context-aware — fine for dev tools and short-lived runs, see [docs/concepts.md](./docs/concepts.md#adapter-limits) before wiring it into a long-running server. The `TrajectoryLogger` and `CheckpointStore` contracts (exported from `fascicle`) are tiny — roll your own to push events to Honeycomb, S3, etc.
 
-`run.stream(flow, input)` returns `{ events, result }` for incremental observation.
+`run.stream(flow, input)` returns `{ events, result }` for incremental observation, and `run.until_suspended(flow, input)` drives human-in-the-loop flows: a `suspend` gate resolves to a typed outcome with a `resume` closure instead of throwing.
+
+**Stub engines for tests.** The `fascicle/testing` subpath ships the two doubles an app needs — `make_stub_engine` routes canned responses by the system prompt's stable first line and validates them through the call's own schema, `make_capture_engine` records every `GenerateOptions` for assertions — so tests run the real flow through the real `run()` with zero network and no mocking framework:
+
+```typescript
+import { make_stub_engine } from 'fascicle/testing';
+
+const engine = make_stub_engine([
+  { prefix: 'myapp/reviewer', content: { findings: [], summary: 'clean' } },
+]);
+```
 
 **Markdown-defined agents.** When an agent is just a prompt plus an output schema, `define_agent` (the `fascicle/agents` subpath) folds a markdown file — frontmatter `name` / `model` / `temperature`, body as the prompt — and a zod schema into a `Step<i, o>`:
 
@@ -187,8 +197,9 @@ The canonical worked example is [examples/pr-improve/](./examples/pr-improve/), 
 - [docs/blueprint.md](./docs/blueprint.md) — **the agent blueprint**: the standard app architecture (start here when building an app)
 - [docs/getting-started.md](./docs/getting-started.md) — install and run your first flow
 - [docs/concepts.md](./docs/concepts.md) — step-as-value, trajectories, cancellation
-- [docs/composition.md](./docs/composition.md) — full composition surface: the 21 primitives, run/stream, checkpointing
+- [docs/composition.md](./docs/composition.md) — full composition surface: the 22 primitives, run/stream, checkpointing
 - [docs/leaf-arm-spine.md](./docs/leaf-arm-spine.md) — the three-layer shape of a fascicle flow and how to choose the right primitive at each layer
+- [docs/advanced-composition.md](./docs/advanced-composition.md) — the primitives to reach for last (`scope`/`stash`/`use`, `ensemble`, `tournament`, `improve`/`learn`) and when they earn their keep
 - [docs/api-reference.md](./docs/api-reference.md) — the public surface at a glance
 - [docs/configuration.md](./docs/configuration.md) — engine config, defaults, pricing, retries
 - [docs/providers.md](./docs/providers.md) — per-provider adapter notes
@@ -200,7 +211,7 @@ The canonical worked example is [examples/pr-improve/](./examples/pr-improve/), 
 - [docs/troubleshooting.md](./docs/troubleshooting.md) — first-run errors and what they mean
 - [docs/comparison.md](./docs/comparison.md) — how fascicle compares to LangChain, Mastra, and others
 - [docs/adoption-decision.md](./docs/adoption-decision.md) weighs whether to adopt fascicle: the honest case, the risks, and when to reach for something else
-- [examples/](./examples/) — runnable reference flows
+- [examples/](./examples/) — runnable reference flows; start with [examples/newsroom.ts](./examples/newsroom.ts), the vocabulary tour
 - [docs/viewer.md](./docs/viewer.md) — viewer details and transport options
 
 ## Contributing

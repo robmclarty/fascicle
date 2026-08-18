@@ -87,8 +87,8 @@
 
           <h2 style="font-family:'DM Serif Display',serif; font-weight:400; font-size:32px; margin:48px 0 16px;">Install</h2>
           <div style="border:3px solid #211C17; box-shadow:1px 1px 0 #211C17, 2px 2px 0 #211C17, 3px 3px 0 #211C17, 4px 4px 0 #211C17, 5px 5px 0 #211C17;">
-            <div style="display:flex; align-items:center; justify-content:space-between; padding:11px 16px; background:#26211b; border-bottom:1px solid #4a443c;"><span style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#8a8278;">shell</span><button onClick="{{ copy }}" data-orig="COPY" data-copy="pnpm add fascicle zod" style="background:transparent; color:#8a8278; font-family:'JetBrains Mono',monospace; font-size:11px; letter-spacing:1px; border:1px solid #4a443c; padding:4px 11px; cursor:pointer;">COPY</button></div>
-            <div style="white-space:pre; overflow-x:auto; background:#211C17; color:#E8DFCD; padding:18px 20px; font-family:'JetBrains Mono',monospace; font-size:14.5px;"><span style="color:#C0521F;">$</span> pnpm add fascicle zod</div>
+            <div style="display:flex; align-items:center; justify-content:space-between; padding:11px 16px; background:#26211b; border-bottom:1px solid #4a443c;"><span style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#8a8278;">shell</span><button onClick="{{ copy }}" data-orig="COPY" data-copy="pnpm add fascicle" style="background:transparent; color:#8a8278; font-family:'JetBrains Mono',monospace; font-size:11px; letter-spacing:1px; border:1px solid #4a443c; padding:4px 11px; cursor:pointer;">COPY</button></div>
+            <div style="white-space:pre; overflow-x:auto; background:#211C17; color:#E8DFCD; padding:18px 20px; font-family:'JetBrains Mono',monospace; font-size:14.5px;"><span style="color:#C0521F;">$</span> pnpm add fascicle</div>
           </div>
           <p style="font-size:15px; line-height:1.6; color:#5a5249; margin-top:14px;">Provider SDKs are <em>optional peers</em> — each is loaded lazily on first <span style="font-family:'JetBrains Mono',monospace; font-size:13px;">generate</span> against that provider. Install only the ones you call.</p>
 
@@ -106,10 +106,10 @@ await run(flow, 1) // 4" style="background:transparent; color:#8a8278; font-fami
             <div style="white-space:pre; overflow-x:auto; background:#211C17; color:#E8DFCD; padding:20px; font-family:'JetBrains Mono',monospace; font-size:14.5px; line-height:1.85;"><span style="color:#A8336A;">import</span> { run, sequence, step } <span style="color:#A8336A;">from</span> <span style="color:#D6982A;">'fascicle'</span><br><br><span style="color:#C0521F;">const</span> flow = <span style="color:#15a39a;">sequence</span>([<br>  <span style="color:#15a39a;">step</span>(<span style="color:#D6982A;">'add'</span>, (n: <span style="color:#15a39a;">number</span>) =&gt; n + <span style="color:#D6982A;">1</span>),<br>  <span style="color:#15a39a;">step</span>(<span style="color:#D6982A;">'double'</span>, (n: <span style="color:#15a39a;">number</span>) =&gt; n * <span style="color:#D6982A;">2</span>),<br>])<br><br><span style="color:#A8336A;">await</span> <span style="color:#15a39a;">run</span>(flow, <span style="color:#D6982A;">1</span>) <span style="color:#6f675c;">// 4</span></div>
           </div>
 
-          <h2 style="font-family:'DM Serif Display',serif; font-weight:400; font-size:32px; margin:48px 0 16px;">Add a model call</h2>
-          <p style="font-size:16px; line-height:1.6; color:#3a342e; margin-bottom:18px;"><span style="font-family:'JetBrains Mono',monospace; font-size:14px; color:#C0521F;">model_call</span> is the only sanctioned bridge between composition and the engine. It threads abort, trajectory, and streaming for you.</p>
+          <h2 style="font-family:'DM Serif Display',serif; font-weight:400; font-size:32px; margin:48px 0 16px;">Add a model step</h2>
+          <p style="font-size:16px; line-height:1.6; color:#3a342e; margin-bottom:18px;"><span style="font-family:'JetBrains Mono',monospace; font-size:14px; color:#C0521F;">model_step</span> is the default model boundary: it returns the answer itself (a string, or the schema-validated value when <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">schema</span> is set) and threads abort, trajectory, and streaming for you. <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">model_call</span> is the envelope variant, for when the caller wants usage, cost, or tool calls.</p>
           <div style="border:3px solid #211C17; box-shadow:1px 1px 0 #211C17, 2px 2px 0 #211C17, 3px 3px 0 #211C17, 4px 4px 0 #211C17, 5px 5px 0 #211C17;">
-            <div style="display:flex; align-items:center; justify-content:space-between; padding:11px 16px; background:#26211b; border-bottom:1px solid #4a443c;"><span style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#8a8278;">brief-flow.ts</span><button onClick="{{ copy }}" data-orig="COPY" data-copy="import { create_engine, model_call, run, sequence, step } from 'fascicle'
+            <div style="display:flex; align-items:center; justify-content:space-between; padding:11px 16px; background:#26211b; border-bottom:1px solid #4a443c;"><span style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#8a8278;">brief-flow.ts</span><button onClick="{{ copy }}" data-orig="COPY" data-copy="import { create_engine, model_step, run, sequence, step } from 'fascicle'
 
 const engine = create_engine({
   providers: { anthropic: { api_key: process.env.ANTHROPIC_API_KEY! } },
@@ -117,8 +117,7 @@ const engine = create_engine({
 
 const flow = sequence([
   step('brief', (topic: string) => `Write a 2-sentence brief on: ${topic}`),
-  model_call({ engine, model: 'claude-sonnet-4-6', system: 'No preamble.' }),
-  step('extract', (r) => r.content),
+  model_step({ engine, model: 'claude-sonnet-4-6', system: 'No preamble.' }),
 ])
 
 try {
@@ -126,7 +125,7 @@ try {
 } finally {
   await engine.dispose()
 }" style="background:transparent; color:#8a8278; font-family:'JetBrains Mono',monospace; font-size:11px; letter-spacing:1px; border:1px solid #4a443c; padding:4px 11px; cursor:pointer;">COPY</button></div>
-            <div style="white-space:pre; overflow-x:auto; background:#211C17; color:#E8DFCD; padding:20px; font-family:'JetBrains Mono',monospace; font-size:14px; line-height:1.85;"><span style="color:#A8336A;">import</span> { create_engine, model_call, run, sequence, step } <span style="color:#A8336A;">from</span> <span style="color:#D6982A;">'fascicle'</span><br><br><span style="color:#C0521F;">const</span> engine = <span style="color:#15a39a;">create_engine</span>({<br>  providers: { anthropic: { api_key: process.<span style="color:#15a39a;">env</span>.ANTHROPIC_API_KEY! } },<br>})<br><br><span style="color:#C0521F;">const</span> flow = <span style="color:#15a39a;">sequence</span>([<br>  <span style="color:#15a39a;">step</span>(<span style="color:#D6982A;">'brief'</span>, (topic) =&gt; <span style="color:#D6982A;">`Write a 2-sentence brief on: ${topic}`</span>),<br>  <span style="color:#15a39a;">model_call</span>({ engine, model: <span style="color:#D6982A;">'claude-sonnet-4-6'</span>, system: <span style="color:#D6982A;">'No preamble.'</span> }),<br>  <span style="color:#15a39a;">step</span>(<span style="color:#D6982A;">'extract'</span>, (r) =&gt; r.content),<br>])<br><br><span style="color:#A8336A;">await</span> <span style="color:#15a39a;">run</span>(flow, <span style="color:#D6982A;">'Rust ownership'</span>)</div>
+            <div style="white-space:pre; overflow-x:auto; background:#211C17; color:#E8DFCD; padding:20px; font-family:'JetBrains Mono',monospace; font-size:14px; line-height:1.85;"><span style="color:#A8336A;">import</span> { create_engine, model_step, run, sequence, step } <span style="color:#A8336A;">from</span> <span style="color:#D6982A;">'fascicle'</span><br><br><span style="color:#C0521F;">const</span> engine = <span style="color:#15a39a;">create_engine</span>({<br>  providers: { anthropic: { api_key: process.<span style="color:#15a39a;">env</span>.ANTHROPIC_API_KEY! } },<br>})<br><br><span style="color:#C0521F;">const</span> flow = <span style="color:#15a39a;">sequence</span>([<br>  <span style="color:#15a39a;">step</span>(<span style="color:#D6982A;">'brief'</span>, (topic) =&gt; <span style="color:#D6982A;">`Write a 2-sentence brief on: ${topic}`</span>),<br>  <span style="color:#15a39a;">model_step</span>({ engine, model: <span style="color:#D6982A;">'claude-sonnet-4-6'</span>, system: <span style="color:#D6982A;">'No preamble.'</span> }),<br>])<br><br><span style="color:#A8336A;">await</span> <span style="color:#15a39a;">run</span>(flow, <span style="color:#D6982A;">'Rust ownership'</span>)</div>
           </div>
 
           <div style="display:flex; gap:16px; margin-top:48px; flex-wrap:wrap;">
@@ -154,7 +153,7 @@ try {
             <div style="background:#EFE3CE; border:3px solid #211C17; box-shadow:1px 1px 0 #211C17, 2px 2px 0 #211C17, 3px 3px 0 #211C17, 4px 4px 0 #211C17, 5px 5px 0 #211C17; padding:22px;">
               <div style="font-family:'JetBrains Mono',monospace; font-size:14px; font-weight:700; color:#C0521F;">core</div>
               <div style="font-family:'DM Serif Display',serif; font-size:24px; margin:6px 0 8px;">Composition</div>
-              <div style="font-size:14px; line-height:1.55; color:#3a342e;">21 primitives for composing work out of plain values. No network, no LLM calls, no ambient state.</div>
+              <div style="font-size:14px; line-height:1.55; color:#3a342e;">22 primitives for composing work out of plain values. No network, no LLM calls, no ambient state.</div>
             </div>
             <div style="background:#EFE3CE; border:3px solid #211C17; box-shadow:1px 1px 0 #211C17, 2px 2px 0 #211C17, 3px 3px 0 #211C17, 4px 4px 0 #211C17, 5px 5px 0 #211C17; padding:22px;">
               <div style="font-family:'JetBrains Mono',monospace; font-size:14px; font-weight:700; color:#15706A;">engine</div>
@@ -176,7 +175,7 @@ try {
           </div>
 
           <h2 style="font-family:'DM Serif Display',serif; font-weight:400; font-size:32px; margin:48px 0 16px;">Running a flow</h2>
-          <p style="font-size:16px; line-height:1.6; color:#3a342e; margin-bottom:18px;"><span style="font-family:'JetBrains Mono',monospace; font-size:14px;">run(flow, input)</span> executes to completion. <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">run.stream(...)</span> returns <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">{ events, result }</span> — purely observational over the same graph.</p>
+          <p style="font-size:16px; line-height:1.6; color:#3a342e; margin-bottom:18px;"><span style="font-family:'JetBrains Mono',monospace; font-size:14px;">run(flow, input)</span> executes to completion. <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">run.stream(...)</span> returns <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">{ events, result }</span> — purely observational over the same graph. <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">run.until_suspended(...)</span> drives flows with a <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">suspend</span> gate: suspension comes back as a typed outcome with a <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">resume</span> closure instead of a thrown error.</p>
           <div style="border:3px solid #211C17; box-shadow:1px 1px 0 #211C17, 2px 2px 0 #211C17, 3px 3px 0 #211C17, 4px 4px 0 #211C17, 5px 5px 0 #211C17;">
             <div style="display:flex; align-items:center; justify-content:space-between; padding:11px 16px; background:#26211b; border-bottom:1px solid #4a443c;"><span style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#8a8278;">stream.ts</span><button onClick="{{ copy }}" data-orig="COPY" data-copy="const handle = run.stream(flow, input)
 for await (const event of handle.events) {
@@ -186,11 +185,62 @@ const output = await handle.result" style="background:transparent; color:#8a8278
             <div style="white-space:pre; overflow-x:auto; background:#211C17; color:#E8DFCD; padding:20px; font-family:'JetBrains Mono',monospace; font-size:14px; line-height:1.85;"><span style="color:#C0521F;">const</span> handle = run.<span style="color:#15a39a;">stream</span>(flow, input)<br><span style="color:#A8336A;">for await</span> (<span style="color:#C0521F;">const</span> event <span style="color:#A8336A;">of</span> handle.events) {<br>  <span style="color:#A8336A;">if</span> (event.kind === <span style="color:#D6982A;">'emit'</span>) console.<span style="color:#15a39a;">log</span>(event)<br>}<br><span style="color:#C0521F;">const</span> output = <span style="color:#A8336A;">await</span> handle.result</div>
           </div>
 
-          <h2 style="font-family:'DM Serif Display',serif; font-weight:400; font-size:32px; margin:48px 0 16px;">Scope, stash &amp; use</h2>
-          <p style="font-size:16px; line-height:1.6; color:#3a342e; margin-bottom:18px;">When two non-adjacent steps must agree on a value, bind it by name instead of rewiring the whole chain.</p>
+          <h2 style="font-family:'DM Serif Display',serif; font-weight:400; font-size:32px; margin:48px 0 16px;">Named state: chain</h2>
+          <p style="font-size:16px; line-height:1.6; color:#3a342e; margin-bottom:18px;">The moment a step needs a value that is not its immediate predecessor's output, reach for <span style="font-family:'JetBrains Mono',monospace; font-size:14px; color:#C0521F;">chain</span>: each <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">.step</span> merges its result into a growing typed record, later bindings destructure whatever earlier names they need (checked at compile time), and <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">.output</span> projects the result into an ordinary <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">Step</span>.</p>
           <div style="border:3px solid #211C17; box-shadow:1px 1px 0 #211C17, 2px 2px 0 #211C17, 3px 3px 0 #211C17, 4px 4px 0 #211C17, 5px 5px 0 #211C17;">
-            <div style="display:flex; align-items:center; justify-content:space-between; padding:11px 16px; background:#26211b; border-bottom:1px solid #4a443c;"><span style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#8a8278;">scope.ts</span></div>
-            <div style="white-space:pre; overflow-x:auto; background:#211C17; color:#E8DFCD; padding:20px; font-family:'JetBrains Mono',monospace; font-size:14px; line-height:1.85;"><span style="color:#C0521F;">const</span> flow = <span style="color:#15a39a;">scope</span>([<br>  <span style="color:#15a39a;">stash</span>(<span style="color:#D6982A;">'user_id'</span>, <span style="color:#15a39a;">step</span>(<span style="color:#D6982A;">'lookup'</span>, (email) =&gt; <span style="color:#15a39a;">find_user</span>(email))),<br>  <span style="color:#15a39a;">use</span>([<span style="color:#D6982A;">'user_id'</span>], ({ user_id }) =&gt; <span style="color:#15a39a;">publish_event</span>(user_id)),<br>])</div>
+            <div style="display:flex; align-items:center; justify-content:space-between; padding:11px 16px; background:#26211b; border-bottom:1px solid #4a443c;"><span style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#8a8278;">chain.ts</span></div>
+            <div style="white-space:pre; overflow-x:auto; background:#211C17; color:#E8DFCD; padding:20px; font-family:'JetBrains Mono',monospace; font-size:14px; line-height:1.85;"><span style="color:#C0521F;">const</span> flow = <span style="color:#15a39a;">chain</span>(<span style="color:#D6982A;">'email'</span>)<br>  .<span style="color:#15a39a;">step</span>(<span style="color:#D6982A;">'user'</span>, ({ email }) =&gt; <span style="color:#15a39a;">find_user</span>(email))<br>  .<span style="color:#15a39a;">step</span>(<span style="color:#D6982A;">'sent'</span>, ({ email, user }) =&gt; <span style="color:#15a39a;">publish_event</span>(email, user))<br>  .<span style="color:#15a39a;">output</span>(({ sent }) =&gt; sent)</div>
+          </div>
+          <p style="font-size:14px; line-height:1.6; color:#5a5249; margin-top:14px;">Underneath sits the raw state tier — <span style="font-family:'JetBrains Mono',monospace; font-size:13px;">scope</span> / <span style="font-family:'JetBrains Mono',monospace; font-size:13px;">stash</span> / <span style="font-family:'JetBrains Mono',monospace; font-size:13px;">use</span>, string keys over <span style="font-family:'JetBrains Mono',monospace; font-size:13px;">ctx.state</span> — for shapes bindings cannot express. See <a href="https://github.com/robmclarty/fascicle/blob/main/docs/advanced-composition.md" style="color:#C0521F; font-weight:700; border-bottom:2px solid #C0521F;">advanced composition</a> before reaching for it.</p>
+        </div>
+      </sc-if>
+
+      <!-- ============ LAYERS ============ -->
+      <sc-if value="{{ isLayers }}">
+        <div>
+          <div style="font-family:'JetBrains Mono',monospace; font-size:12px; letter-spacing:3px; color:#C0521F; margin-bottom:14px;">CORE · THE DECISION GUIDE</div>
+          <h1 style="font-family:'DM Serif Display',serif; font-weight:400; font-size:60px; line-height:1; margin:0 0 20px;">Leaves, arms, spine</h1>
+          <p style="font-size:18px; line-height:1.6; color:#3a342e; max-width:660px;">Every well-factored fascicle app converges on the same three-layer shape, whatever its domain. The layering is a convention, not a mechanism: it is what keeps a flow readable top to bottom, renders fully under <span style="font-family:'JetBrains Mono',monospace; font-size:15px;">describe</span>, and leaves every piece swappable behind a <span style="font-family:'JetBrains Mono',monospace; font-size:15px;">Step</span> type.</p>
+
+          <div style="display:flex; flex-direction:column; gap:18px; margin-top:32px;">
+            <div style="background:#EFE3CE; border:3px solid #211C17; box-shadow:1px 1px 0 #211C17, 2px 2px 0 #211C17, 3px 3px 0 #211C17, 4px 4px 0 #211C17, 5px 5px 0 #211C17; padding:22px 26px;">
+              <div style="display:flex; align-items:baseline; gap:14px;">
+                <div style="font-family:'DM Serif Display',serif; font-size:28px; color:#C0521F;">Leaves</div>
+                <div style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#7A5230;">model_step · model_call · step · define_agent</div>
+              </div>
+              <p style="font-size:15px; line-height:1.6; color:#3a342e; margin:10px 0 0;">One boundary each: a model role, a tool, a pure function. <span style="font-family:'JetBrains Mono',monospace; font-size:13px;">model_step</span> is the default model boundary; reach for <span style="font-family:'JetBrains Mono',monospace; font-size:13px;">model_call</span> only when the caller wants the envelope (usage, cost, tool calls). Give each model leaf a stable role id as the first line of its system prompt: stub engines route canned responses on it, and trajectory readers orient by it.</p>
+              <div style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#15706A; margin-top:10px;">RULE → if it is one call, keep it a leaf. A single leaf wrapped just for a span name is composition theater.</div>
+            </div>
+            <div style="background:#EFE3CE; border:3px solid #211C17; box-shadow:1px 1px 0 #211C17, 2px 2px 0 #211C17, 3px 3px 0 #211C17, 4px 4px 0 #211C17, 5px 5px 0 #211C17; padding:22px 26px;">
+              <div style="display:flex; align-items:baseline; gap:14px;">
+                <div style="font-family:'DM Serif Display',serif; font-size:28px; color:#15706A;">Arms</div>
+                <div style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#7A5230;">retry · timeout · fallback · checkpoint · map · parallel · sequence · ensemble_step · adversarial · consensus</div>
+              </div>
+              <p style="font-size:15px; line-height:1.6; color:#3a342e; margin:10px 0 0;">A named composition around leaves: hardening, selection, verification, fan-out, straight pipes. The judgment composites return result envelopes; their <span style="font-family:'JetBrains Mono',monospace; font-size:13px;">project</span> option unwraps at the source, so an arm presents a domain value instead of leaking its machinery downstream.</p>
+              <div style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#15706A; margin-top:10px;">RULE → an arm exists when a second primitive genuinely composes around a leaf.</div>
+            </div>
+            <div style="background:#EFE3CE; border:3px solid #211C17; box-shadow:1px 1px 0 #211C17, 2px 2px 0 #211C17, 3px 3px 0 #211C17, 4px 4px 0 #211C17, 5px 5px 0 #211C17; padding:22px 26px;">
+              <div style="display:flex; align-items:baseline; gap:14px;">
+                <div style="font-family:'DM Serif Display',serif; font-size:28px; color:#A8336A;">Spine</div>
+                <div style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#7A5230;">chain · ctx.call · branch · loop</div>
+              </div>
+              <p style="font-size:15px; line-height:1.6; color:#3a342e; margin:10px 0 0;">One <span style="font-family:'JetBrains Mono',monospace; font-size:13px;">chain</span> per flow: the typed record everything threads through. A binding invokes its arm with <span style="font-family:'JetBrains Mono',monospace; font-size:13px;">ctx.call(arm, input)</span> and declares it as <span style="font-family:'JetBrains Mono',monospace; font-size:13px;">arm</span> metadata, so <span style="font-family:'JetBrains Mono',monospace; font-size:13px;">describe</span> renders the whole topology without running anything.</p>
+              <div style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#15706A; margin-top:10px;">RULE → fan-in decides. A step needing only its predecessor stays in sequence; the first step needing anything older moves the flow to chain.</div>
+            </div>
+          </div>
+
+          <div style="margin-top:32px; border-left:6px solid #C0521F; padding:6px 0 6px 24px;">
+            <div style="font-family:'DM Serif Display',serif; font-size:24px; line-height:1.25; color:#211C17;">The topology is the file: the spine reads top to bottom as the agent diagram, arms are named, leaves are role ids.</div>
+          </div>
+
+          <div style="display:flex; gap:16px; margin-top:40px; flex-wrap:wrap;">
+            <a href="https://github.com/robmclarty/fascicle/blob/main/docs/leaf-arm-spine.md" style="display:inline-block; background:#C0521F; color:#F4EBDB; font-weight:700; font-size:15px; padding:14px 26px; border:3px solid #211C17;" class="fc-btn"><span class="fc-btn-label">Read the full decision guide →</span></a>
+            <a href="https://github.com/robmclarty/fascicle/blob/main/examples/newsroom.ts" style="display:inline-block; background:#F4EBDB; color:#211C17; font-weight:700; font-size:15px; padding:14px 26px; border:3px solid #211C17;" class="fc-btn"><span class="fc-btn-label">See the vocabulary tour</span></a>
+          </div>
+
+          <div style="margin-top:44px; background:#EFE3CE; border:3px solid #211C17; box-shadow:1px 1px 0 #211C17, 2px 2px 0 #211C17, 3px 3px 0 #211C17, 4px 4px 0 #211C17, 5px 5px 0 #211C17; padding:24px 28px;">
+            <div style="font-family:'JetBrains Mono',monospace; font-size:12px; letter-spacing:2px; color:#15706A; margin-bottom:10px;">THE ADVANCED TIER</div>
+            <div style="font-size:15.5px; line-height:1.6; color:#3a342e;"><span style="font-family:'JetBrains Mono',monospace; font-size:13.5px;">scope</span>/<span style="font-family:'JetBrains Mono',monospace; font-size:13.5px;">stash</span>/<span style="font-family:'JetBrains Mono',monospace; font-size:13.5px;">use</span>, plain <span style="font-family:'JetBrains Mono',monospace; font-size:13.5px;">ensemble</span>, <span style="font-family:'JetBrains Mono',monospace; font-size:13.5px;">tournament</span>, and <span style="font-family:'JetBrains Mono',monospace; font-size:13.5px;">improve</span>/<span style="font-family:'JetBrains Mono',monospace; font-size:13.5px;">learn</span> remain fully supported, but each has a primary counterpart to try first. <a href="https://github.com/robmclarty/fascicle/blob/main/docs/advanced-composition.md" style="color:#C0521F; font-weight:700; border-bottom:2px solid #C0521F;">Advanced composition</a> covers when each earns its keep.</div>
           </div>
         </div>
       </sc-if>
@@ -199,8 +249,8 @@ const output = await handle.result" style="background:transparent; color:#8a8278
       <sc-if value="{{ isPrimitives }}">
         <div>
           <div style="font-family:'JetBrains Mono',monospace; font-size:12px; letter-spacing:3px; color:#C0521F; margin-bottom:14px;">CORE · API REFERENCE</div>
-          <h1 style="font-family:'DM Serif Display',serif; font-weight:400; font-size:60px; line-height:1; margin:0 0 20px;">The 21 primitives</h1>
-          <p style="font-size:18px; line-height:1.6; color:#3a342e; max-width:660px;">Every composer takes a <span style="font-family:'JetBrains Mono',monospace; font-size:15px;">Step&lt;i, o&gt;</span> and returns one. Click any primitive to expand its signature and an example.</p>
+          <h1 style="font-family:'DM Serif Display',serif; font-weight:400; font-size:60px; line-height:1; margin:0 0 20px;">The primitives</h1>
+          <p style="font-size:18px; line-height:1.6; color:#3a342e; max-width:660px;">Every composer takes a <span style="font-family:'JetBrains Mono',monospace; font-size:15px;">Step&lt;i, o&gt;</span> and returns one. The tags name each primitive's layer (leaf, arm, spine); the advanced tier is supported but not the default — each of those entries names the primary primitive to try first. Click any primitive to expand its signature and an example.</p>
 
           <div style="margin-top:32px; display:flex; flex-direction:column; gap:12px;">
             <sc-for list="{{ primitives }}" as="p" hint-placeholder-count="21">
@@ -377,7 +427,7 @@ const result = await engine.generate({ prompt: 'hello' })" style="background:tra
 </x-dc>
 <script type="text/x-dc" data-dc-script>
 class Component extends DCLogic {
-  state = { section: 'getting-started', provider: 'anthropic', open: 'sequence' };
+  state = { section: 'getting-started', provider: 'anthropic', open: 'chain' };
 
   go(s) { this.setState({ section: s }); try { window.scrollTo(0, 0); } catch (_) {} }
   toggle(name) { this.setState(s => ({ open: s.open === name ? null : name })); }
@@ -398,7 +448,7 @@ class Component extends DCLogic {
     const sec = this.state.section;
     const navDef = [
       { title: 'GET STARTED', items: [['getting-started', 'Getting started']] },
-      { title: 'CORE', items: [['concepts', 'Concepts'], ['primitives', 'Primitives']] },
+      { title: 'CORE', items: [['concepts', 'Concepts'], ['layers', 'Leaf · arm · spine'], ['primitives', 'Primitives']] },
       { title: 'ENGINE', items: [['configuration', 'Configuration'], ['providers', 'Providers'], ['errors', 'Errors']] },
     ];
     const nav = navDef.map(g => ({
@@ -416,31 +466,34 @@ class Component extends DCLogic {
     }));
 
     // ---- primitives ----
-    const palette = ['#C0521F', '#15706A', '#A8336A', '#7A5230'];
+    const palette = ['#C0521F', '#15706A', '#A8336A', '#7A5230', '#8a8278'];
     const primDef = [
-      ['step', 'COMPOSE', 'Lift a plain function into a Step<i, o>.', "step('double', (n) => n * 2)"],
-      ['sequence', 'COMPOSE', 'Run A then B then C, threading each output into the next.', "sequence([\n  step('add', (n) => n + 1),\n  step('double', (n) => n * 2),\n])"],
-      ['parallel', 'COMPOSE', 'Run a named map of steps concurrently.', "parallel({\n  title: write_title,\n  body:  write_body,\n})"],
-      ['branch', 'COMPOSE', 'Route on when(input): then or otherwise.', "branch({\n  when: (x) => x.score > 0.5,\n  then: ship_step,\n  otherwise: revise_step,\n})"],
-      ['map', 'COMPOSE', 'Run do per item of items(input), with an optional concurrency cap.', "map({\n  items: (files) => files,\n  do: summarize,\n  concurrency: 4,\n})"],
-      ['pipe', 'COMPOSE', "Post-process an inner step's output with a plain function.", "pipe(model_call({ engine }), (r) => r.content)"],
-      ['compose', 'COMPOSE', 'Label a composite so it shows up by intent in trajectories.', "compose('draft-stage', sequence([\n  outline,\n  expand,\n]))"],
-      ['retry', 'RESILIENCE', 'Re-run on failure with exponential backoff.', "retry(flaky_step, {\n  max_attempts: 5,\n  backoff_ms: 250,\n})"],
-      ['fallback', 'RESILIENCE', 'Run a backup step if the primary throws.', "fallback(primary, backup)"],
-      ['timeout', 'RESILIENCE', 'Cancel an inner step after N milliseconds.', "timeout(slow_step, 10_000)"],
-      ['adversarial', 'MULTI', 'Build, critique, loop until accept or max_rounds.', "adversarial({\n  build:    draft,\n  critique: judge,\n  accept:   (c) => c.approved,\n  max_rounds: 3,\n})"],
-      ['ensemble', 'MULTI', 'Run named members, pick the highest by score.', "ensemble({\n  members: { a, b, c },\n  score: (out) => rate(out),\n})"],
-      ['ensemble_step', 'MULTI', 'Pick-best where the scorer is itself a Step, e.g. a model judge with its own span.', "ensemble_step({\n  members: { a, b, c },\n  score: judge,\n  rank_by: (r) => r.score,\n})"],
-      ['tournament', 'MULTI', 'Single-elimination bracket between members.', "tournament({\n  members: { a, b, c, d },\n  compare: pick_winner,\n})"],
-      ['consensus', 'MULTI', 'Run all members each round; accept when your agree(results) predicate holds.', "consensus({\n  members: { a, b, c },\n  agree: (r) => new Set(Object.values(r)).size === 1,\n  max_rounds: 3,\n})"],
-      ['loop', 'STATE', 'Bounded iteration with carry-state and an optional convergence guard.', "loop({\n  init:   (topic) => topic,\n  body:   refine,\n  guard:  step('done', (s) => ({ stop: ok(s), state: s })),\n  finish: (s) => s,\n  max_rounds: 5,\n})"],
-      ['checkpoint', 'STATE', 'Memoize a named inner step by key, via a store.', "checkpoint(expensive, {\n  key: (spec) => `build:${spec.hash}`,\n})"],
-      ['suspend', 'STATE', 'Pause for external input; resume with resume_data.', "suspend({\n  id: 'approve',\n  on: (input) => notify(input),\n  resume_schema: z.object({ approved: z.boolean() }),\n  combine: (input, r) => r.approved ? 'ship' : 'hold',\n})"],
-      ['scope', 'STATE', 'Stash named values and use them later without rewiring.', "scope([\n  stash('user_id', lookup),\n  use(['user_id'], publish),\n])"],
-      ['improve', 'LEARN', 'Bounded online propose → score → accept/reject loop with plateau detection.', "improve({\n  seed: make_seed,\n  propose: rewrite,\n  score: judge,\n  budget: { max_rounds: 5, patience: 2 },\n})"],
-      ['learn', 'LEARN', "Offline reflection over recorded trajectories; returns the analyzer's proposals.", "learn({\n  flow: reviewer,\n  source: { kind: 'dir', dir: '.trajectories' },\n  analyzer: analyze,\n})"],
+      ['step', 'LEAF', 'Lift a plain function into a Step<i, o>.', "step('double', (n) => n * 2)"],
+      ['model_step', 'LEAF', 'The default model boundary: returns the answer itself, schema-validated when schema is set.', "model_step({\n  engine,\n  system: 'app/reviewer',\n  schema: review_schema,\n  id: 'review',\n})"],
+      ['model_call', 'LEAF', 'The envelope variant: same config, returns the full GenerateResult (usage, cost, tool calls, finish reason).', "model_call({ engine, model: 'claude-sonnet-4-6' })"],
+      ['sequence', 'ARM', 'Run A then B then C, threading each output into the next; literal tuples are joint-checked at compile time.', "sequence([\n  step('add', (n) => n + 1),\n  step('double', (n) => n * 2),\n])"],
+      ['parallel', 'ARM', 'Run a named map of steps concurrently.', "parallel({\n  title: write_title,\n  body:  write_body,\n})"],
+      ['map', 'ARM', 'Run do per item of items(input), with an optional concurrency cap.', "map({\n  items: (files) => files,\n  do: summarize,\n  concurrency: 4,\n})"],
+      ['pipe', 'ARM', "Post-process an inner step's output with a plain function.", "pipe(fetch_page, (s) => s.slice(0, 4000))"],
+      ['retry', 'ARM', 'Re-run on failure with exponential backoff.', "retry(flaky_step, {\n  max_attempts: 5,\n  backoff_ms: 250,\n})"],
+      ['fallback', 'ARM', 'Run a backup step if the primary throws.', "fallback(primary, backup)"],
+      ['timeout', 'ARM', 'Cancel an inner step after N milliseconds.', "timeout(slow_step, 10_000)"],
+      ['checkpoint', 'ARM', 'Memoize a named inner step by key, via a store.', "checkpoint(expensive, {\n  key: (spec) => `build:${spec.hash}`,\n})"],
+      ['adversarial', 'ARM', 'Build, critique, loop until accept or max_rounds; project unwraps the envelope at the source.', "adversarial({\n  build:    draft,\n  critique: judge,\n  accept:   (c) => c.approved,\n  max_rounds: 3,\n  project: (r) => r.candidate,\n})"],
+      ['ensemble_step', 'ARM', 'The primary pick-best: the scorer is itself a Step, e.g. a model judge with its own span.', "ensemble_step({\n  members: { a, b, c },\n  score: judge,\n  rank_by: (r) => r.score,\n  project: (e) => e.winner,\n})"],
+      ['consensus', 'ARM', 'Run all members each round; accept when your agree(results) predicate holds.', "consensus({\n  members: { a, b, c },\n  agree: (r) => new Set(Object.values(r)).size === 1,\n  max_rounds: 3,\n  project: (r) => r.converged,\n})"],
+      ['suspend', 'ARM', 'Pause for external input; drive with run.until_suspended and resume via the returned closure.', "suspend({\n  id: 'approve',\n  on: (input) => notify(input),\n  resume_schema: z.object({ approved: z.boolean() }),\n  combine: (input, r) => r.approved ? 'ship' : 'hold',\n})"],
+      ['compose', 'ARM', 'Label a composite so it shows up by intent in trajectories.', "compose('research', sequence([\n  fetch_sources,\n  summarize,\n]))"],
+      ['chain', 'SPINE', 'Named steps over a growing typed record: .step binds, .stage concludes a phase, .output projects. One per flow.', "chain('brief')\n  .step('outline', ({ brief }, ctx) => ctx.call(outliner, brief), { arm: outliner })\n  .step('draft', ({ outline }, ctx) => ctx.call(writer, outline), { arm: writer })\n  .output(({ brief, draft }) => `${brief}: ${draft}`)"],
+      ['branch', 'SPINE', 'Route on when(input): then or otherwise.', "branch({\n  when: (x) => x.score > 0.5,\n  then: ship_step,\n  otherwise: revise_step,\n})"],
+      ['loop', 'SPINE', 'Bounded iteration with carry-state and an optional convergence guard.', "loop({\n  init:   (topic) => topic,\n  body:   refine,\n  guard:  step('done', (s) => ({ stop: ok(s), state: s })),\n  finish: (s) => s,\n  max_rounds: 5,\n})"],
+      ['ensemble', 'ADVANCED', 'Pick-best scored by a plain function; prefer ensemble_step when the judge is a model.', "ensemble({\n  members: { a, b, c },\n  score: (out) => rate(out),\n  project: (r) => r.winner,\n})"],
+      ['tournament', 'ADVANCED', 'Single-elimination bracket for pairwise-only quality; prefer ensemble_step when a score exists.', "tournament({\n  members: { a, b, c, d },\n  compare: pick_winner,\n  project: (r) => r.winner,\n})"],
+      ['scope', 'ADVANCED', 'Raw named state by string key (with stash and use); chain is the typed front door over the same idea.', "scope([\n  stash('user_id', lookup),\n  use(['user_id'], publish),\n])"],
+      ['improve', 'ADVANCED', 'Bounded online propose → score → accept/reject loop with plateau detection; specialized, not everyday.', "improve({\n  seed: make_seed,\n  propose: rewrite,\n  score: judge,\n  budget: { max_rounds: 5, patience: 2 },\n  project: (r) => r.best.content,\n})"],
+      ['learn', 'ADVANCED', "Offline reflection over recorded trajectories; never in the request path.", "learn({\n  flow: reviewer,\n  source: { kind: 'dir', dir: '.trajectories' },\n  analyzer: analyze,\n})"],
     ];
-    const tagColor = { COMPOSE: 0, RESILIENCE: 1, MULTI: 2, STATE: 3, LEARN: 1 };
+    const tagColor = { LEAF: 0, ARM: 1, SPINE: 2, ADVANCED: 4 };
     const primitives = primDef.map(([name, tag, desc, example]) => {
       const c = palette[tagColor[tag]];
       const open = this.state.open === name;
@@ -514,6 +567,7 @@ class Component extends DCLogic {
       nav, primitives, matrix, effort, providerTabs, active, errors,
       isGettingStarted: sec === 'getting-started',
       isConcepts: sec === 'concepts',
+      isLayers: sec === 'layers',
       isPrimitives: sec === 'primitives',
       isConfiguration: sec === 'configuration',
       isProviders: sec === 'providers',

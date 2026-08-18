@@ -5,17 +5,17 @@ Short, worked patterns you can copy into a harness. Each pattern assumes the con
 - [Retries on flaky work](#retries-on-flaky-work)
 - [Timeout then fall back](#timeout-then-fall-back)
 - [Fan-out with map and concurrency cap](#fan-out-with-map-and-concurrency-cap)
-- [Ensemble of judges](#ensemble-of-judges)
+- [Pick the best of N with a model judge](#pick-the-best-of-n-with-a-model-judge)
 - [Build-and-critique with adversarial](#build-and-critique-with-adversarial)
 - [Consensus of N runs](#consensus-of-n-runs)
-- [Tournament of candidates](#tournament-of-candidates)
+- [Tournament of candidates (advanced)](#tournament-of-candidates-advanced)
 - [Checkpointing an expensive step](#checkpointing-an-expensive-step)
 - [Human-in-the-loop approval](#human-in-the-loop-approval)
 - [Tool loops](#tool-loops)
 - [Structured output with zod](#structured-output-with-zod)
 - [Streaming tokens to a consumer](#streaming-tokens-to-a-consumer)
 - [Observing a run with a filesystem logger](#observing-a-run-with-a-filesystem-logger)
-- [Threading state with scope](#threading-state-with-scope)
+- [Threading state with chain](#threading-state-with-chain)
 - [Multi-provider fallback](#multi-provider-fallback)
 - [Escalation tiering with a judge](#escalation-tiering-with-a-judge)
 - [Using the `claude_cli` provider for one task and `anthropic` for another](#using-the-claude_cli-provider-for-one-task-and-anthropic-for-another)
@@ -68,44 +68,44 @@ const summarise_all = map({
 });
 ```
 
-## Ensemble of judges
+## Pick the best of N with a model judge
 
-Run N judges, pick the highest scorer. The [`examples/ensemble_judge.ts`](../examples/ensemble_judge.ts) file uses stubs; the real shape with `model_call`:
+Run N drafters concurrently, score each result with a model judge, keep the winner. `ensemble_step` is the primary pick-best: its scorer is itself a `Step`, so the judge gets its own span in the trajectory and returns a structured score. `project` unwraps the winner at the source, so the composite's output is the draft itself, not the pick-best envelope.
 
 ```ts
-import { ensemble, model_call, pipe, step } from 'fascicle';
+import { ensemble_step, model_step } from 'fascicle';
 import { z } from 'zod';
 
-const verdict_schema = z.object({
-  label: z.enum(['ship', 'hold']),
-  confidence: z.number().min(0).max(1),
-  notes: z.string(),
+const score_schema = z.object({ score: z.number().min(0).max(1) });
+
+const draft = (id: string, system: string) =>
+  model_step({ engine, id, model: 'sonnet', system });
+
+const style_judge = model_step({
+  engine, model: 'haiku', id: 'style_judge', schema: score_schema,
+  system: 'Score the draft 0..1 for clarity and fit.',
 });
 
-const judge = (id: string, model: string) =>
-  pipe(
-    model_call({ engine, model, id, schema: verdict_schema, system: 'You are a terse judge.' }),
-    (result) => result.content,
-  );
-
-const jury = ensemble({
+const best_draft = ensemble_step({
   members: {
-    opus:   judge('judge_opus',   'opus'),
-    sonnet: judge('judge_sonnet', 'sonnet'),
-    haiku:  judge('judge_haiku',  'haiku'),
+    terse:   draft('draft_terse', 'Write a terse tagline.'),
+    playful: draft('draft_playful', 'Write a playful tagline.'),
   },
-  score: (r) => r.confidence,
+  score: style_judge,
+  rank_by: (s) => s.score,
+  project: (e) => e.winner,
 });
 ```
 
-`run(jury, brief)` returns `{ winner, scores }`. The runner invokes all three concurrently.
+`run(best_draft, brief)` returns the winning draft; omit `project` to get the full `{ winner_id, winner, winner_scored, scored }` envelope. [`examples/ensemble_judge.ts`](../examples/ensemble_judge.ts) is the runnable version. When quality is computable by a plain function (length, pass rate, a heuristic) rather than a model, plain `ensemble` does the same with less machinery — see [advanced-composition.md](./advanced-composition.md#ensemble-and-tournament-the-other-pick-bests).
 
 ## Build-and-critique with adversarial
 
 Build a candidate, have a judge critique, loop until the judge accepts or `max_rounds` runs out. See [`examples/adversarial_build.ts`](../examples/adversarial_build.ts).
 
 ```ts
-import { adversarial, model_call, pipe } from 'fascicle';
+import { adversarial, model_step, sequence, step } from 'fascicle';
+import type { AdversarialBuildInput } from 'fascicle';
 import { z } from 'zod';
 
 const critique_schema = z.object({
@@ -113,27 +113,26 @@ const critique_schema = z.object({
   notes: z.string(),
 });
 
-const build = pipe(
-  model_call({ engine, model: 'sonnet', id: 'build',
-    system: 'Draft a 2-sentence explainer. Use the critique if provided.' }),
-  (r) => r.content,
-);
+const build = sequence([
+  step('build_prompt', (b: AdversarialBuildInput<string, string>) =>
+    b.critique === undefined ? b.input : `${b.input}\n\nRevise per: ${b.critique}`),
+  model_step({ engine, model: 'sonnet', id: 'build',
+    system: 'Draft a 2-sentence explainer.' }),
+]);
 
-const critique = pipe(
-  model_call({ engine, model: 'haiku', id: 'critique', schema: critique_schema,
-    system: 'Return {verdict:"pass"|"fail", notes:""}. Be strict.' }),
-  (r) => r.content,
-);
+const critique = model_step({ engine, model: 'haiku', id: 'critique', schema: critique_schema,
+  system: 'Return {verdict:"pass"|"fail", notes:""}. Be strict.' });
 
 const explain = adversarial({
   build,
   critique,
-  accept: (c) => c.verdict === 'pass',
+  accept: (c) => c['verdict'] === 'pass',
   max_rounds: 3,
+  project: (r) => r.candidate,
 });
 ```
 
-The build step's `ModelCallInput` receives `{ input, prior, critique }` on rounds 2+ so it can react to the judge.
+The build step's input carries `{ input, prior, critique }`, where `critique` is the judge's notes on rounds 2+, so the prompt step can fold the feedback in. `project` unwraps the accepted candidate at the source; omit it to get the `{ candidate, converged, rounds }` envelope.
 
 ## Consensus of N runs
 
@@ -142,7 +141,7 @@ over the per-member results holds (here, a strict majority):
 
 <!-- snippet: check -->
 ```ts
-import { consensus, create_engine, model_call, pipe } from 'fascicle';
+import { consensus, create_engine, model_step, pipe } from 'fascicle';
 
 const engine = create_engine({
   providers: { anthropic: { api_key: process.env.ANTHROPIC_API_KEY! } },
@@ -150,8 +149,8 @@ const engine = create_engine({
 
 const classify = (id: string, model: string) =>
   pipe(
-    model_call({ engine, model, id, system: 'Reply with one word: ship or hold.' }),
-    (r) => r.content.trim().toLowerCase(),
+    model_step({ engine, model, id, system: 'Reply with one word: ship or hold.' }),
+    (r) => r.trim().toLowerCase(),
   );
 
 const flow = consensus({
@@ -173,22 +172,27 @@ const flow = consensus({
 });
 ```
 
-## Tournament of candidates
+The step's output is the `{ result, converged }` envelope; when downstream steps should see a domain value instead of the wrapper, add `project` to map it at the source (`project: (r) => r.converged`, or pick the agreed verdict out of `r.result`).
+
+## Tournament of candidates (advanced)
 
 Single-elimination bracket, comparing pairs until a winner remains. `compare(a, b)`
 is a plain function over two member *results* that returns `'a'` or `'b'` — the
-result that advances:
+result that advances. Reach for this only when quality is pairwise-comparable
+and no absolute score exists; when a judge can score candidates,
+`ensemble_step` is the primary pick-best
+([advanced-composition.md](./advanced-composition.md#ensemble-and-tournament-the-other-pick-bests)).
 
 <!-- snippet: check -->
 ```ts
-import { create_engine, model_call, tournament } from 'fascicle';
+import { create_engine, model_step, tournament } from 'fascicle';
 
 const engine = create_engine({
   providers: { anthropic: { api_key: process.env.ANTHROPIC_API_KEY! } },
 });
 
 const draft = (id: string, system: string) =>
-  model_call({ engine, id, model: 'sonnet', system });
+  model_step({ engine, id, model: 'sonnet', system });
 
 const bracket = tournament({
   members: {
@@ -200,15 +204,18 @@ const bracket = tournament({
   compare: async (a, b) => {
     const r = await engine.generate({
       model: 'sonnet',
-      prompt: `Which tagline is better?\nA: ${a.content}\nB: ${b.content}\nReply only "A" or "B".`,
+      prompt: `Which tagline is better?\nA: ${a}\nB: ${b}\nReply only "A" or "B".`,
     });
     return r.content.trim().toUpperCase().startsWith('A') ? 'a' : 'b';
   },
+  project: (r) => r.winner,
 });
 ```
 
 Each member is a `Step` producing a candidate; the tournament feeds them the
 shared input, then runs the pairwise `compare`s until one result remains.
+`project` unwraps the winner at the source; omit it to get the
+`{ winner, bracket }` envelope with every match recorded.
 
 ## Checkpointing an expensive step
 
@@ -232,10 +239,10 @@ Always prefix your key with a flow name or content hash — the store is shared 
 
 ## Human-in-the-loop approval
 
-`suspend(...)` pauses the flow. The harness catches `suspended_error`, collects input out-of-band, then resumes.
+`suspend(...)` pauses the flow. Drive it with `run.until_suspended`, which returns the pause as a typed outcome with a `resume` closure instead of throwing.
 
 ```ts
-import { run, suspend, suspended_error } from 'fascicle';
+import { run, suspend } from 'fascicle';
 import { z } from 'zod';
 import { filesystem_store } from 'fascicle/adapters';
 
@@ -249,19 +256,15 @@ const approve = suspend({
 
 const store = filesystem_store({ root_dir: '.checkpoints' });
 
-try {
-  await run(approve, { plan: 'deploy v2' }, { checkpoint_store: store });
-} catch (err) {
-  if (!(err instanceof suspended_error)) throw err;
-  // Return control to your surrounding program.
+const outcome = await run.until_suspended(approve, { plan: 'deploy v2' }, { checkpoint_store: store });
+if (outcome.kind === 'suspended') {
+  // Return control to your surrounding program; once the operator replies:
+  const resumed = await outcome.resume({ approved: true });
+  // resumed.kind === 'done', resumed.output === 'ship:deploy v2'
 }
-
-// later, once the operator replies:
-const final = await run(approve, { plan: 'deploy v2' }, {
-  checkpoint_store: store,
-  resume_data: { approve: { approved: true } },
-});
 ```
+
+The resume closure re-runs the flow from the original input with the decision merged into `resume_data`; a closure cannot outlive the process, so a durable harness persists the input and rebuilds the outcome after a restart.
 
 See [`examples/suspend_resume.ts`](../examples/suspend_resume.ts) for the
 mechanical version, [`examples/hitl_http.ts`](../examples/hitl_http.ts) for an
@@ -274,7 +277,7 @@ end-to-end suspend/confirm/resume server, and
 Give the model tools; it calls them; the engine runs the `execute` closures and feeds the output back until the model stops asking or `max_steps` is hit.
 
 ```ts
-import { model_call, run } from 'fascicle';
+import { model_step, run } from 'fascicle';
 import { z } from 'zod';
 
 const get_weather = {
@@ -290,7 +293,7 @@ const get_weather = {
   },
 };
 
-const ask = model_call({
+const ask = model_step({
   engine,
   model: 'sonnet',
   tools: [get_weather],
@@ -301,7 +304,7 @@ const ask = model_call({
 const out = await run(ask, 'What is the temperature in Vancouver right now?');
 ```
 
-`ctx` inside `execute` is a `ToolExecContext` — it carries `abort`, `trajectory`, `tool_call_id`, and `step_index`. Pass `ctx.abort` to `fetch` so the tool respects run cancellation.
+`ctx` inside `execute` is a `ToolExecContext` — it carries `abort`, `trajectory`, `tool_call_id`, and `step_index`. Pass `ctx.abort` to `fetch` so the tool respects run cancellation. `out` is the model's final answer; when the harness wants the `ToolCallRecord`s, per-step usage, or finish reason, swap in `model_call` and read the envelope.
 
 Tools can require approval:
 
@@ -337,7 +340,7 @@ The call runs its `execute` first (so the summary lands in the `ToolCallRecord` 
 Pass a schema; the engine validates, repairs (up to `schema_repair_attempts`, default 1), or throws.
 
 ```ts
-import { model_call, run } from 'fascicle';
+import { model_step, run } from 'fascicle';
 import { z } from 'zod';
 
 const plan_schema = z.object({
@@ -346,7 +349,7 @@ const plan_schema = z.object({
   risk: z.enum(['low', 'med', 'high']),
 });
 
-const plan = model_call({
+const plan = model_step({
   engine,
   model: 'sonnet',
   schema: plan_schema,
@@ -354,7 +357,7 @@ const plan = model_call({
 });
 
 const out = await run(plan, 'migrate the payments service to pg17');
-// out.content is typed as z.infer<typeof plan_schema>
+// out is typed as z.infer<typeof plan_schema>
 ```
 
 `schema_validation_error` carries `.schema_issues` and `.raw_text` so your harness can surface both to a human. A call that never got far enough to validate — blocked by a content filter, truncated by the token limit, ended by the step cap — throws `incomplete_generation_error` instead, carrying `.finish_reason`, `.raw_text`, and `.provider_reported`.
@@ -364,9 +367,9 @@ const out = await run(plan, 'migrate the payments service to pg17');
 Plain `run` drops streaming events. `run.stream` delivers them:
 
 ```ts
-import { model_call, run } from 'fascicle';
+import { model_step, run } from 'fascicle';
 
-const ask = model_call({ engine, model: 'sonnet' });
+const ask = model_step({ engine, model: 'sonnet' });
 
 const handle = run.stream(ask, 'summarize Rust ownership');
 
@@ -412,31 +415,31 @@ const console_logger: TrajectoryLogger = {
 };
 ```
 
-## Threading state with scope
+## Threading state with chain
 
-When a downstream step needs a value produced upstream but the chain does not naturally carry it:
+When a downstream step needs a value that is not its immediate predecessor's output, `chain` carries it as a named binding in a growing typed record:
 
 ```ts
-import { scope, stash, use, step } from 'fascicle';
+import { chain } from 'fascicle';
 
-const flow = scope([
-  stash('user', step('lookup', async (email: string) => find_user(email))),
-  step('tokenize', (_input, _ctx) => generate_token()),
-  use(['user'], async ({ user }, token) => publish({ user, token })),
-]);
+const flow = chain<string, 'email'>('email')
+  .step('user', ({ email }) => find_user(email))
+  .step('token', () => generate_token())
+  .step('published', ({ user, token }) => publish({ user, token }))
+  .output(({ published }) => published);
 ```
 
-`stash` binds, `use` reads. State is scoped per `scope([...])` block — siblings cannot see each other.
+Each `.step` merges its result under its name; later bindings destructure whatever earlier names they need, checked at compile time. `.stage(name, project?)` concludes a phase (with `project`, it narrows the record so earlier bindings go out of scope). The raw string-keyed tier underneath (`scope` / `stash` / `use`) remains for shapes bindings cannot express — see [advanced-composition.md](./advanced-composition.md#scope-stash-use-named-state-without-types).
 
 ## Multi-provider fallback
 
 Prefer Anthropic; fall back to OpenAI if it fails:
 
 ```ts
-import { fallback, model_call } from 'fascicle';
+import { fallback, model_step } from 'fascicle';
 
-const primary  = model_call({ engine, model: 'sonnet',  id: 'primary'  });
-const backup   = model_call({ engine, model: 'gpt-4o',  id: 'backup'   });
+const primary  = model_step({ engine, model: 'sonnet',  id: 'primary'  });
+const backup   = model_step({ engine, model: 'gpt-4o',  id: 'backup'   });
 
 const ask = fallback(primary, backup);
 ```
@@ -479,7 +482,7 @@ Three mechanics carry the pattern:
    escalate. This is `fallback` around the judge.
 
 ```ts
-import { branch, fallback, model_call, pipe, scope, sequence, stash, step, use } from 'fascicle';
+import { branch, chain, fallback, model_step, sequence, step } from 'fascicle';
 import { z } from 'zod';
 
 const verdict_schema = z.object({
@@ -493,21 +496,12 @@ type Turn = {
   verdict: z.infer<typeof verdict_schema>;
 };
 
-const weak_draft = pipe(
-  model_call({ engine, model: 'haiku', id: 'weak_draft' }),
-  (r) => r.content,
-);
+const weak_draft = model_step({ engine, model: 'haiku', id: 'weak_draft' });
 
-const strong_answer = pipe(
-  model_call({ engine, model: 'opus', id: 'strong_answer' }),
-  (r) => r.content,
-);
+const strong_answer = model_step({ engine, model: 'opus', id: 'strong_answer' });
 
-const judge = pipe(
-  model_call({ engine, model: 'sonnet', id: 'judge', schema: verdict_schema,
-    system: 'Judge the draft against the request. Escalate only on real trouble.' }),
-  (r) => r.content,
-);
+const judge = model_step({ engine, model: 'sonnet', id: 'judge', schema: verdict_schema,
+  system: 'Judge the draft against the request. Escalate only on real trouble.' });
 
 // A judge that dies must not escalate: fail open to "serve the draft".
 const safe_judge = fallback(
@@ -527,15 +521,14 @@ const escalate_or_serve = branch({
   otherwise: step('serve_draft', (t: Turn) => t.draft),
 });
 
-const answer = scope([
-  stash('prompt', step('accept', (prompt: string) => prompt)),
-  stash('draft', weak_draft),
-  use(['prompt', 'draft'], ({ prompt, draft }) =>
-    `Request:\n${String(prompt)}\n\nDraft answer:\n${String(draft)}`),
-  stash('verdict', safe_judge),
-  use(['prompt', 'draft', 'verdict'], (t) => t as Turn),
-  escalate_or_serve,
-]);
+// The spine: prompt, draft, and verdict are fan-in, so this is chain territory.
+const answer = chain<string, 'prompt'>('prompt')
+  .step('draft', ({ prompt }, ctx) => ctx.call(weak_draft, prompt), { arm: weak_draft })
+  .step('verdict', ({ prompt, draft }, ctx) =>
+    ctx.call(safe_judge, `Request:\n${prompt}\n\nDraft answer:\n${draft}`), { arm: safe_judge })
+  .step('served', ({ prompt, draft, verdict }, ctx) =>
+    ctx.call(escalate_or_serve, { prompt, draft, verdict }), { arm: escalate_or_serve })
+  .output(({ served }) => served);
 ```
 
 `run(answer, prompt)` serves the weak draft unless the judge escalates; the
@@ -607,7 +600,7 @@ drifting as prompts and models change.
 One engine, both providers:
 
 ```ts
-import { create_engine, model_call } from 'fascicle';
+import { create_engine, model_step, sequence } from 'fascicle';
 
 const engine = create_engine({
   providers: {
@@ -617,7 +610,7 @@ const engine = create_engine({
 });
 
 // The CLI has built-in tools — use it when you want them.
-const do_research = model_call({
+const do_research = model_step({
   engine,
   model: 'sonnet',
   provider: 'claude_cli',   // engine has two providers; name the transport explicitly
@@ -628,7 +621,7 @@ const do_research = model_call({
 });
 
 // Direct API for deterministic critique.
-const judge = model_call({
+const judge = model_step({
   engine,
   model: 'haiku',
   id: 'judge',
@@ -638,4 +631,4 @@ const judge = model_call({
 const flow = sequence([do_research, judge]);
 ```
 
-More CLI patterns — schema-constrained output, sub-agents, session resume, sandboxing — in [cli.md](./cli.md). For how to organize a whole app around these recipes — one composition layer, stage factories, markdown prompts — see [blueprint.md](./blueprint.md).
+More CLI patterns — schema-constrained output, sub-agents, session resume, sandboxing — in [cli.md](./cli.md). For which layer of a flow each recipe belongs to (leaves, arms, spine), see [leaf-arm-spine.md](./leaf-arm-spine.md); for how to organize a whole app around these recipes — one composition layer, stage factories, markdown prompts — see [blueprint.md](./blueprint.md).

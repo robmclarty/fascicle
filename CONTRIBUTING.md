@@ -10,11 +10,12 @@ change as the project matures.
 
 ## Running tests
 
-`pnpm check` runs the full suite against mocked providers, so it never touches
-the network. A separate opt-in smoke suite under `src/engine/__tests__/live/`
-exercises the real provider SDKs to catch wire-format regressions the mocks
-cannot see. It is skipped unless `LIVE_TESTS=1` and the matching API key are
-set:
+`pnpm check` runs the default fast set against mocked providers, so it never
+touches the network; `pnpm check:all` adds mutation testing and the packaging
+gate and is the final gate. A separate opt-in smoke suite under
+`src/engine/__tests__/live/` exercises the real provider SDKs to catch
+wire-format regressions the mocks cannot see. It is skipped unless
+`LIVE_TESTS=1` and the matching API key are set:
 
 ```bash
 LIVE_TESTS=1 ANTHROPIC_API_KEY=... pnpm exec vitest run src/engine/__tests__/live

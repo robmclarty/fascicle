@@ -4,7 +4,7 @@ Instructions for any coding agent (Claude Code, Codex, Cursor, Windsurf, Amp) op
 
 ## Building an app *on* fascicle?
 
-If your task is to construct a new agent that *consumes* the published `fascicle` package (rather than to modify this repo), stop here and follow **[docs/blueprint.md](./docs/blueprint.md)** — the recommended architecture for fascicle apps: one composition layer, three adoption tiers, markdown prompts, normalized module contracts, stub-engine testing, and ast-grep rules that enforce the boundaries. The canonical worked example is [examples/pr-improve/](./examples/pr-improve/) (rationale in its `docs/architecture.md`); copy its `rules/` directory to enforce the blueprint in your own app. The rest of this file is about developing fascicle itself.
+If your task is to construct a new agent that *consumes* the published `fascicle` package (rather than to modify this repo), stop here and follow **[docs/blueprint.md](./docs/blueprint.md)** — the recommended architecture for fascicle apps: one composition layer, three adoption tiers, markdown prompts, normalized module contracts, stub-engine testing, and ast-grep rules that enforce the boundaries. [docs/leaf-arm-spine.md](./docs/leaf-arm-spine.md) is the layering decision guide and [examples/newsroom.ts](./examples/newsroom.ts) the vocabulary tour. The canonical worked example is [examples/pr-improve/](./examples/pr-improve/) (rationale in its `docs/architecture.md`); copy its `rules/` directory to enforce the blueprint in your own app. The rest of this file is about developing fascicle itself.
 
 ## The contract
 
@@ -58,7 +58,7 @@ pnpm exec tsc --noEmit         # just types
 
 ## Source layout
 
-This is a **single package**. All source lives under `src/`, organized as deep modules: `src/<module>/` (core, engine, composites, agents, adapters, mcp, viewer), each with a barrel `index.ts` that is its only public face. The umbrella surface sits at the `src/` root (`index.ts`, `model_call.ts`, `forward_standard_env.ts`); that is what bundles to npm as `fascicle`, and the `adapters`, `agents`, `mcp`, `otel`, `stdio`, and `ui` modules are additionally published as `fascicle/<module>` subpaths. The 7 apps under `examples/*/` are the only other workspace members; they depend on the library via `fascicle: workspace:*`.
+This is a **single package**. All source lives under `src/`, organized as deep modules: `src/<module>/` (core, engine, composites, agents, adapters, mcp, stdio, ui, otel, policy, schema, testing, viewer), each with a barrel `index.ts` that is its only public face. The umbrella surface sits at the `src/` root (`index.ts`, `model_call.ts`, `forward_standard_env.ts`); that is what bundles to npm as `fascicle`, and the `adapters`, `agents`, `mcp`, `otel`, `stdio`, `testing`, and `ui` modules are additionally published as `fascicle/<module>` subpaths. The 7 apps under `examples/*/` are the only other workspace members; they depend on the library via `fascicle: workspace:*`.
 
 **Barrels are import/export only.** An `index.ts` contains only `import`, `export … from`, `export { … }`, and `export type` statements (bare side-effect imports are fine). No runtime logic: module logic lives in a named sibling file (e.g. `create_engine` in `create_engine.ts`, `start_viewer` in `start_viewer.ts`) that the barrel re-exports. Enforced by `rules/no-logic-in-barrel.yml`.
 

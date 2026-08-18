@@ -2,7 +2,7 @@
 
 Multi-agent deliberation is not a framework feature. It is composition.
 
-By "deliberation" we mean the patterns that run several attempts at the same task and adjudicate between them: keep the best of N, run a bracket, loop until the attempts agree, build-then-critique until a judge accepts. Other frameworks ship these as bespoke orchestrators with their own lifecycle, their own state, and their own way of being configured. fascicle ships them as four ordinary `Step<i, o>` values assembled from the [21 primitives](./composition.md). There is nothing in `ensemble`, `tournament`, `consensus`, or `adversarial` that you could not have written yourself with `parallel`, `loop`, `scope`, and `compose`.
+By "deliberation" we mean the patterns that run several attempts at the same task and adjudicate between them: keep the best of N, run a bracket, loop until the attempts agree, build-then-critique until a judge accepts. Other frameworks ship these as bespoke orchestrators with their own lifecycle, their own state, and their own way of being configured. fascicle ships them as ordinary `Step<i, o>` values assembled from the [22 primitives](./composition.md). There is nothing in `ensemble_step`, `ensemble`, `tournament`, `consensus`, or `adversarial` that you could not have written yourself with `parallel`, `loop`, `scope`, and `compose`. (Which of them to reach for first is a separate question: [leaf-arm-spine.md](./leaf-arm-spine.md) names `ensemble_step`, `consensus`, and `adversarial` as the primary arms, and [advanced-composition.md](./advanced-composition.md) covers when plain `ensemble` and `tournament` earn their keep. This page is about how all of them decompose.)
 
 That is the whole claim, and it has consequences. Read [concepts.md](./concepts.md) first if "everything is a `Step<i, o>`" is not yet reflexive; the rest of this page assumes it.
 
@@ -11,7 +11,7 @@ That is the whole claim, and it has consequences. Read [concepts.md](./concepts.
 Every composer takes one or more `Step<i, o>` values and returns a single `Step`. A deliberation composite is a composer like any other. So:
 
 - **It substitutes anywhere a plain step does.** `ensemble(...)` is a `Step`. You can wrap it in `retry`, drop it into a `sequence`, feed it to `map`, or hand it to `run`. Nothing about it being "multi-agent" changes its surface.
-- **It carries no hidden state.** The state a deliberation needs (the prior candidate, the critique notes, the round's results) is threaded explicitly through `scope` / `stash` / `use`, not parked in a closure or an instance field. Two unrelated runs of the same composite share nothing.
+- **It carries no hidden state.** The state a deliberation needs (the prior candidate, the critique notes, the round's results) is threaded explicitly through `scope` / `stash` / `use` inside the composite's own implementation, not parked in a closure or an instance field. Two unrelated runs of the same composite share nothing. (That raw state tier is internal plumbing here; in your own flows, `chain` is the typed front door over the same idea.)
 - **It is introspectable.** A composite is a tree of plain objects. `describe(step)` walks it. Its trajectory shows the `parallel` fan-out and the `loop` rounds it is actually made of, because that is what it is actually made of.
 
 Here is the substitutability point as code. An `ensemble` is a `Step`, so `retry` wraps it with no special casing:
@@ -36,13 +36,13 @@ const robust = retry(guess, { max_attempts: 3 });
 await run(robust, 4); // { winner: 'xxxxxxxx', scores: { short: 4, long: 8 } }
 ```
 
-Note the output type. `ensemble` does not return the member output `o`; it returns a small result envelope, `EnsembleResult<o>`, carrying the winner and the score map. That envelope is the only difference between a deliberation composite and a plain step, and it changes nothing structural: the result is still a `Step`, so every composer still accepts it. We will lean on that fact when we nest these.
+Note the output type. `ensemble` does not return the member output `o` by default; it returns a small result envelope, `EnsembleResult<o>`, carrying the winner and the score map. That envelope is the only difference between a deliberation composite and a plain step, and it changes nothing structural: the result is still a `Step`, so every composer still accepts it. When a flow wants the domain value instead of the wrapper, every deliberation composite takes a `project` option that unwraps at the source (`project: (r) => r.winner`); the un-projected form is what we will lean on below, because it makes the nesting visible.
 
-## The four shipped composites
+## The shipped composites
 
-All four live in [`src/composites/`](../src/composites/) and are re-exported from `fascicle`. They are not in `core` because they are conveniences, not architectural primitives. Their source is meant to be read; it is the canonical record of how a deliberation pattern decomposes.
+All of them live in [`src/composites/`](../src/composites/) and are re-exported from `fascicle`. They are not in `core` because they are conveniences, not architectural primitives. Their source is meant to be read; it is the canonical record of how a deliberation pattern decomposes.
 
-Two of them are a fan-out plus a reducer. Two of them are a bounded loop. None of them is more than that.
+The four dissected below split evenly: two are a fan-out plus a reducer, two are a bounded loop. None of them is more than that. `ensemble_step`, the primary pick-best, is `ensemble`'s shape with one substitution — the scorer is itself a `Step` (a model judge with its own span) instead of a plain function — so everything said about `ensemble` below reads across to it.
 
 ### `ensemble`: fan out, then pick
 
@@ -110,7 +110,7 @@ compose(name, loop({
 
 `build` is a `Step<{ input, prior?, critique? }, candidate>`. `critique` is a `Step<candidate, { notes, ... }>`. Both are yours. The composite supplies only the plumbing that loops them and threads state between rounds, and that plumbing is the same `scope` / `stash` / `use` you would reach for in your own code. If you wanted a fifth pattern, you would write it the same way, and it would substitute in the same places.
 
-For runnable versions of all four against real models, see the recipes in [cookbook.md](./cookbook.md): ensemble of judges, build-and-critique, consensus of N runs, tournament of candidates.
+For runnable versions against real models, see the recipes in [cookbook.md](./cookbook.md): pick the best of N with a model judge, build-and-critique, consensus of N runs, tournament of candidates.
 
 ## Nesting is free
 
@@ -118,14 +118,14 @@ Because each composite returns a `Step`, a composite can be a member of another 
 
 <!-- snippet: check -->
 ```typescript
-import { create_engine, ensemble, model_call, pipe, tournament } from 'fascicle';
+import { create_engine, ensemble, model_step, tournament } from 'fascicle';
 
 const engine = create_engine({
   providers: { anthropic: { api_key: process.env.ANTHROPIC_API_KEY! } },
 });
 
 const draft = (id: string, system: string) =>
-  pipe(model_call({ engine, id, model: 'sonnet', system }), (r) => r.content);
+  model_step({ engine, id, model: 'sonnet', system });
 
 // An ensemble is a Step. Score its members, keep the winner.
 const panel = (prefix: string) =>
@@ -146,19 +146,21 @@ const bracket = tournament({
 });
 ```
 
-`bracket` is a `Step<string, TournamentResult<EnsembleResult<string>>>`. The types stack mechanically because each composite is just a step that wraps its members' output in one more envelope. You can keep going: an ensemble of tournaments, a consensus over adversarial loops. The surface never widens, which is the same property [concepts.md](./concepts.md) claims for the primitives, now extended to deliberation.
+`bracket` is a `Step<string, TournamentResult<EnsembleResult<string>>>`. The types stack mechanically because each composite is just a step that wraps its members' output in one more envelope. You can keep going: an ensemble of tournaments, a consensus over adversarial loops. The surface never widens, which is the same property [concepts.md](./concepts.md) claims for the primitives, now extended to deliberation. (In an app you would usually flatten each layer with `project` — `panel` projecting `r.winner` gives the tournament plain strings to compare — but the un-projected stack is the honest picture of what nesting composes.)
 
 ## One honest limit: cancellation granularity
 
 There is an open design question here, and overclaiming would undercut the rest.
 
-`ensemble`, `tournament`, and `consensus` inherit `parallel`'s abort semantics: when the run's abort signal fires, every in-flight child is cancelled. That is the right default for "score all of them" and "run until they agree." It is not obviously right for every deliberation. A pattern that only needs the first acceptable answer would want the opposite: let the first resolver win and preemptively cancel its siblings. That is `race` semantics, and fascicle does not ship it yet (see the roadmap's [open design questions](./roadmap.md), and the `race` entry in [`src/core/BACKLOG.md`](../src/core/BACKLOG.md)). The promotion bar is deliberately high: a composer earns a place only when its pattern recurs across unrelated flows and is awkward to express today.
+`ensemble`, `ensemble_step`, `tournament`, and `consensus` inherit `parallel`'s abort semantics: when the run's abort signal fires, every in-flight child is cancelled. That is the right default for "score all of them" and "run until they agree." It is not obviously right for every deliberation. A pattern that only needs the first acceptable answer would want the opposite: let the first resolver win and preemptively cancel its siblings. That is `race` semantics, and fascicle does not ship it yet (see the roadmap's [open design questions](./roadmap.md), and the `race` entry in [`src/core/BACKLOG.md`](../src/core/BACKLOG.md)). The promotion bar is deliberately high: a composer earns a place only when its pattern recurs across unrelated flows and is awkward to express today.
 
 So the claim is bounded. Today's composites cancel all-or-nothing on abort, and the finer-grained "first wins, cancel the rest" control is a parked decision, not a shipped feature. That bound does not touch the thesis. Whatever cancellation granularity eventually lands will land as another composer built from the same primitives, returning the same `Step<i, o>`, substitutable in the same places. Deliberation was composition before that decision, and it will be composition after.
 
 ## Further reading
 
 - [concepts.md](./concepts.md) — step-as-value, run context, trajectories, cancellation.
+- [leaf-arm-spine.md](./leaf-arm-spine.md) — where each deliberation composite sits in a flow (they are arms).
+- [advanced-composition.md](./advanced-composition.md) — when plain `ensemble` and `tournament` beat `ensemble_step`.
 - [composition.md](./composition.md) — the full composition surface and every primitive's signature.
 - [cookbook.md](./cookbook.md) — runnable deliberation recipes against real models.
 - [api-reference.md](./api-reference.md) — the public surface at a glance.

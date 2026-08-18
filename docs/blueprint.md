@@ -280,6 +280,7 @@ Match the reader's parameter type to how the state arrives, which differs by cal
 ## main.ts: the shell
 
 - Parses input, resolves config, builds the engine, calls `run(flow, input, options)` once, and turns the result into artifacts, side effects, and an exit code. All external side effects (posting comments, pushing branches) happen *after* `run` returns, keyed off the typed result, so the flow stays replayable.
+- Suspend-bearing apps drive the run with `run.until_suspended` and persist what they need to resume after a restart (the original input, the suspend id); the `resume` closure on the outcome cannot outlive the process.
 - Adapters are injected here and only here: `trajectory: filesystem_logger(...)`, `checkpoint_store: filesystem_store(...)`. Steps never construct their own logging.
 - Pass `install_signal_handlers: false` everywhere except the one top-level run that should own Ctrl-C.
 - Map fascicle's typed errors to exit codes in one small module, discriminating on error kind, and default the unknown case explicitly.
@@ -306,7 +307,7 @@ Three details that make this pattern pay:
 
 1. **Route canned responses by the prompt's stable first line** (or the `model_call` id). No mocking framework, and the routing key is the same one humans use to orient in trajectories.
 2. **Validate canned content through the caller's own schema** (`make_stub_engine` runs every canned response through the call's schema). Fixtures then cannot drift from the contracts; a schema change breaks the test that ships stale data.
-3. Because stages keep the `Step<In, GenerateResult<Out>>` contract, integration tests of `flow.ts` cover the topology (branching, looping, convergence) end to end, while stage internals (provider dispatch, tool surfaces) get their own focused tests with a capture engine.
+3. Because stages keep the `Step<In, Out>` contract from `model_step` (the `GenerateResult` envelope appears only where `model_call` is deliberate), integration tests of `flow.ts` cover the topology (branching, looping, convergence) end to end, while stage internals (provider dispatch, tool surfaces) get their own focused tests with a capture engine.
 
 Gate live tests on key presence (`describe.skipIf(!process.env.ANTHROPIC_API_KEY)`) and keep them few: one smoke per provider path.
 
@@ -339,6 +340,8 @@ Each of these was observed in the wild; the fix is in parentheses.
 8. **Capability built ahead of adoption**: exported atoms, adapters, and retry policies that no production path calls. Dead abstraction reads as load-bearing and taxes every refactor (build the layer when the second caller arrives).
 9. **Anonymous steps in checkpointed or observed flows.** `checkpoint` rejects them at construction, and unnamed spans make trajectories unreadable (name every step you might resume or watch).
 10. **Version-coupled workarounds without an exit condition.** When you must work around a substrate bug, write the workaround where it lives, cite the version, and state what change lets you delete it.
+11. **Envelope leakage.** An arm that returns `{ winner, scores }` or another result envelope, so every downstream caller unwraps it again (move the unwrap into the composite with `project`).
+12. **Ambient state where bindings would do.** Reaching for `scope`/`stash`/`use` string keys for shapes `chain` bindings express (use `chain`; the raw trio is the advanced tier, see [advanced-composition.md](./advanced-composition.md)).
 
 ## Enforce it with rules
 
@@ -377,7 +380,7 @@ rule:
     - kind: do_statement
 ```
 
-Rule 3 — [`fascicle-value-imports-confined.yml`](../examples/pr-improve/rules/fascicle-value-imports-confined.yml): value imports from `fascicle` are allowed only in `engine.ts` (`create_engine`), `flow.ts` (composition), `main.ts` (`run`), and `stages/**` (`model_call`); everywhere else, `import type` stays free. The brace/default/namespace patterns match value imports without matching `import type { ... }`, so business logic files that need only fascicle types are untouched. If your app uses subpath imports (`fascicle/adapters`, `fascicle/mcp`), widen the `$PATH` regex to `^fascicle(/|$)` and add `main.ts` / `tools/**` to the ignore list as appropriate.
+Rule 3 — [`fascicle-value-imports-confined.yml`](../examples/pr-improve/rules/fascicle-value-imports-confined.yml): value imports from `fascicle` are allowed only in `engine.ts` (`create_engine`), `flow.ts` (composition), `main.ts` (`run`), and `stages/**` (`model_step` / `model_call`); everywhere else, `import type` stays free. The brace/default/namespace patterns match value imports without matching `import type { ... }`, so business logic files that need only fascicle types are untouched. If your app uses subpath imports (`fascicle/adapters`, `fascicle/mcp`), widen the `$PATH` regex to `^fascicle(/|$)` and add `main.ts` / `tools/**` to the ignore list as appropriate.
 
 ```yaml
 id: fascicle-value-imports-confined

@@ -20,7 +20,7 @@ It does **not** replace the `anthropic` AI SDK adapter. Use `anthropic` for dire
 ## Minimal setup
 
 ```ts
-import { create_engine, model_call, run } from 'fascicle';
+import { create_engine, model_step, run } from 'fascicle';
 
 const engine = create_engine({
   providers: { claude_cli: { auth_mode: 'oauth' } },
@@ -31,11 +31,11 @@ const engine = create_engine({
   },
 });
 
-const ask = model_call({ engine });
+const ask = model_step({ engine });
 
 try {
   const out = await run(ask, 'say hi');
-  console.log(out.content);
+  console.log(out);
 } finally {
   await engine.dispose();
 }

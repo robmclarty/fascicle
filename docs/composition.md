@@ -10,6 +10,7 @@ no ambient state.
 | --- | --- | --- |
 | `run(flow, input, options?)` | function | execute a flow to completion |
 | `run.stream(flow, input, options?)` | function | execute a flow and observe events |
+| `run.until_suspended(flow, input, options?)` | function | execute a flow; a `suspend` gate returns a typed outcome with a `resume` closure |
 | `describe(step)` | function | render the composition as a text tree |
 | `flow_schema` | JSON value | JSON Schema for the YAML flow representation |
 | `step` | factory | atomic or anonymous step |
@@ -25,10 +26,14 @@ no ambient state.
 | `compose` | composer | label a composite step for trajectory output |
 | `adversarial` | composer | build-and-critique loop |
 | `ensemble` | composer | N-of-M pick best by score |
+| `ensemble_step` | composer | pick best where the scorer is itself a `Step` |
 | `tournament` | composer | single-elimination bracket |
 | `consensus` | composer | multi-round concurrent agreement |
+| `improve` | composer | bounded online propose → score → accept/reject loop |
+| `learn` | function | offline reflection over recorded trajectories |
 | `checkpoint` | composer | memoize an inner step by key |
 | `suspend` | composer | pause awaiting external input |
+| `chain` | builder | named steps over a growing typed record; the spine |
 | `scope` / `stash` / `use` | composers | named state across non-adjacent steps |
 | `timeout_error` | class | thrown by `timeout` |
 | `suspended_error` | class | thrown by `suspend` on first pass |
@@ -39,6 +44,7 @@ no ambient state.
 | `TrajectoryEvent` | type | one structured event |
 | `CheckpointStore` | type | persistent key-value store |
 | `Step` | type | alias for the `step<i, o>` shape |
+| `AnyStep` | type | the erased supertype (`Step<never, unknown>`) held by `children` |
 
 ## The step-as-value thesis
 
@@ -128,6 +134,13 @@ from English specifications:
   detection; `project` maps the result envelope (e.g. `(r) => r.best.content`).
 - `learn({ flow, source, analyzer })` — offline reflection over recorded
   trajectories; returns the analyzer's proposals plus summary metadata.
+
+Not all 22 are peers. The primary vocabulary and the decision rules for
+choosing at each layer live in [leaf-arm-spine.md](./leaf-arm-spine.md);
+the advanced tier (`scope`/`stash`/`use`, plain `ensemble`, `tournament`,
+`improve`/`learn`) is covered in
+[advanced-composition.md](./advanced-composition.md), each entry paired
+with the primary primitive to try first.
 
 ## Two ways to write a flow
 
@@ -255,6 +268,8 @@ Runnable references live at the repo root in [`examples/`](../examples/).
 They import from `fascicle` (the umbrella) and exercise the primitives
 exported by this package:
 
+- [`newsroom.ts`](../examples/newsroom.ts) — the vocabulary tour: every
+  primary primitive once, each in its suggested role
 - [`adversarial_build.ts`](../examples/adversarial_build.ts) — build-and-critique
   with an ensemble of judges
 - [`ensemble_judge.ts`](../examples/ensemble_judge.ts) — N-of-M pick best

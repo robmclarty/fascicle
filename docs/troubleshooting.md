@@ -178,6 +178,26 @@ You called `generate` after `engine.dispose()`. `dispose()` is terminal and
 idempotent; construct a fresh engine if you need to keep going. Subprocess
 providers (`claude_cli`) abort in-flight children on dispose.
 
+## My run threw `suspended_error`
+
+A `suspend` gate fired during a plain `run(...)`, which has no way to represent
+a pause and so signals it as a throw. Drive suspend-bearing flows with
+`run.until_suspended` instead: a pause resolves as
+`{ kind: 'suspended', id, resume }`, and calling the returned `resume(data)`
+closure re-runs the flow with the decision. Completion is
+`{ kind: 'done', output }`; real errors still throw. See
+[human-in-the-loop.md](./human-in-the-loop.md).
+
+## A `sequence` type error disappeared after a refactor
+
+Literal `sequence` tuples are joint-checked at compile time: each child must
+accept its predecessor's output, and a mismatch errors on the offending
+element. Arrays built at runtime (a `.map(...)`, a spread, a variable of plain
+array type) cannot be joint-checked and degrade to unknown boundaries. So a
+flow that stopped type-erroring after a refactor to a runtime-built array did
+not become correct; it became unchecked. Annotate the outer `Step<In, Out>` to
+restore the check at the flow's boundary.
+
 ## `TypeError: pipe is not variadic`
 
 `pipe(inner, fn)` takes exactly one Step and one plain mapping function. Passing

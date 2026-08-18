@@ -2,7 +2,8 @@
 
 A one-page map of the public surface. This is a precursor to a generated
 reference; for full option shapes and behavior, follow the links into
-[configuration.md](./configuration.md), [providers.md](./providers.md), and
+[configuration.md](./configuration.md), [providers.md](./providers.md),
+[leaf-arm-spine.md](./leaf-arm-spine.md), and
 [cookbook.md](./cookbook.md).
 
 Everything is exported from the umbrella entry point and its subpaths:
@@ -14,6 +15,7 @@ import { /* define_agent */ } from 'fascicle/agents';
 import { /* MCP bridge */ } from 'fascicle/mcp';
 import { /* stdio child contract */ } from 'fascicle/stdio';
 import { /* OpenTelemetry bridge */ } from 'fascicle/otel';
+import { /* stub + capture engines */ } from 'fascicle/testing';
 import { /* useChat stream adapters */ } from 'fascicle/ui';
 ```
 
@@ -82,7 +84,7 @@ fan-in, phases, or named per-joint types.
 | `tournament({ members, compare, project? })` | single-elimination bracket |
 | `consensus({ members, agree, max_rounds, project? })` | run all members each round, accept when the `agree` predicate holds |
 
-Each of these returns a result envelope (`{ candidate, converged, rounds }`, `{ winner, scores }`, ...). The optional `project` maps that envelope into the step's output at the source (`project: (r) => r.candidate`), so downstream steps see the value instead of the wrapper; omitted, the envelope itself is the output.
+Each of these returns a result envelope (`{ candidate, converged, rounds }`, `{ winner, scores }`, ...). The optional `project` maps that envelope into the step's output at the source (`project: (r) => r.candidate`), so downstream steps see the value instead of the wrapper; omitted, the envelope itself is the output. `ensemble_step` is the primary pick-best; plain `ensemble` and `tournament` are covered in [advanced-composition.md](./advanced-composition.md), as are `improve` / `learn` and the raw state trio.
 
 **Self-improvement**
 
@@ -91,12 +93,26 @@ Each of these returns a result envelope (`{ candidate, converged, rounds }`, `{ 
 | `improve({ seed, propose, score, budget, project? })` | bounded online propose → score → accept/reject loop with plateau detection; `project` maps the result envelope (e.g. `(r) => r.best.content`) |
 | `learn({ flow, source, analyzer })` | offline reflection over recorded trajectories; returns the analyzer's proposals |
 
+**Benchmarking**
+
+| Export | Purpose |
+| --- | --- |
+| `bench(flow, cases, judges, options?)` | run a flow once per fixture case, score every output with every judge, return a `BenchReport` |
+| `judge_equals()` | score 1/0 against `meta.expected`; abstains when no expected value is present |
+| `judge_llm({ model, rubric, scale? })` | prompt a model with a rubric and parse the numeric score from the reply; abstains when the reply does not parse |
+| `judge_with(fn)` | wrap your own scoring function; bare numbers normalize to `{ score }` |
+| `normalize_score(raw)` | coerce a raw judge return into a `Score`, or `undefined` for an abstain |
+| `read_baseline(path)` / `write_baseline(path, report)` / `regression_compare(current, baseline, options?)` | persist a report as plain JSON, load one back, and diff a fresh report against it; `ok: false` flags a regression |
+
+The full loop is walked in
+[regression-testing-model-behavior.md](./regression-testing-model-behavior.md).
+
 **State and durability**
 
 | Primitive | Shape |
 | --- | --- |
-| `scope` / `stash` / `use` | named state across non-adjacent steps |
-| `chain()` → `.step` / `.stage` / `.output` | named steps over a typed record: `.step(name, fn, { arm? })` merges a binding (`arm` records a `ctx.call`ed Step as describe-only child metadata), `.stage(name, project?)` concludes a phase (with `project`, narrows the record), `.output(fn)` projects the result into a `Step` |
+| `chain(input_name?)` → `.step` / `.stage` / `.output` | named steps over a typed record: `.step(name, fn, { arm? })` merges a binding (`arm` records a `ctx.call`ed Step as describe-only child metadata), `.stage(name, project?)` concludes a phase (with `project`, narrows the record), `.output(fn)` projects the result into a `Step` |
+| `scope` / `stash` / `use` | named state at the string-key level; the advanced tier under `chain` (see [advanced-composition.md](./advanced-composition.md)) |
 | `checkpoint(inner, { key })` | memoize an inner step by key in a `CheckpointStore` |
 | `suspend({ id, on, resume_schema, combine })` | pause for external input; resume later with `resume_data` (throws `suspended_error` to signal the pause; `run.until_suspended` surfaces it as a typed outcome instead) |
 
@@ -229,6 +245,20 @@ line a newer producer emits. The guards are how you narrow one.
 | `is_emit_event(value)` | guard | a `ctx.emit` event; the payload is the caller's |
 | `is_custom_trajectory_event(value)` | guard | the fallback shape: any string `kind`, well-known ones included |
 
+## Testing doubles (`fascicle/testing`)
+
+The two engine doubles an app's tests need, so the real flow runs through the
+real `run()` with zero network. The pattern is worked through in
+[blueprint.md](./blueprint.md#testing-stub-the-engine-not-the-flow).
+
+| Export | Kind | Notes |
+| --- | --- | --- |
+| `make_stub_engine(canned, options?)` | fn | routes canned responses by system-prompt prefix; validates canned content through the call's schema; throws on an unmatched system |
+| `make_capture_engine(options?)` | fn | records every call's `GenerateOptions` into a live `calls` array, answers with a canned result |
+
+Types: `StubEngineOptions`, `StubResponse`, `CaptureEngine`,
+`CaptureEngineOptions`.
+
 ## MCP bridge (`fascicle/mcp`)
 
 Connects flows to the Model Context Protocol both ways. Pure adapter glue over
@@ -275,7 +305,8 @@ All are `Error` subclasses. Catch by class.
 **Composition (core).** `aborted_error` (abort signal fired), `suspended_error`
 (a `suspend` paused the run), `timeout_error` (a `timeout` elapsed),
 `resume_validation_error` (bad `resume_data`), `describe_cycle_error` (a cycle in
-`describe`).
+`describe`), `bench_suspend_error` (a benched flow suspended; `bench` has no
+resume path).
 
 **Engine.** `provider_not_configured_error`, `model_required_error`,
 `engine_config_error`, `engine_disposed_error`, `provider_auth_error`,
@@ -292,8 +323,9 @@ For full field-level detail, read the source `.d.ts` (a generated reference is o
 the roadmap). The public type exports:
 
 **Composition.** `Step`, `AnyStep`, `StepMetadata`, `StepKind`, `RunContext`,
-`TrajectoryLogger`, `TrajectoryEvent`, `CheckpointStore`, `DescribeOptions`,
-`FlowNode`, `FlowValue`, `LoopConfig`, `LoopOutcome`, `LoopGuardResult`, plus the
+`RunOutcome`, `Chain`, `ChainStepOptions`, `TrajectoryLogger`,
+`TrajectoryEvent`, `CheckpointStore`, `DescribeOptions`, `FlowNode`,
+`FlowValue`, `LoopConfig`, `LoopOutcome`, `LoopGuardResult`, plus the
 trajectory event shapes (`SpanStartEvent`, `SpanEndEvent`, `EmitEvent`,
 `CustomTrajectoryEvent`, `ParsedTrajectoryEvent`, `TrajectoryParseResult`).
 
@@ -306,3 +338,7 @@ trajectory event shapes (`SpanStartEvent`, `SpanEndEvent`, `EmitEvent`,
 
 **Bridge and viewer.** `ModelCallConfig`, `ModelCallInput`, `StartViewerOptions`,
 `ViewerHandle`.
+
+The provider-authoring types (`ProviderAdapter`, `ProviderFactory`,
+`NativeProviderAdapter`, `TurnRequest`, `TurnResult`, ...) are enumerated in
+[providers.md](./providers.md).

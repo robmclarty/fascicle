@@ -6,7 +6,7 @@ The mental model behind fascicle. Read this once — the rest of the docs assume
 
 fascicle ships two independently useful layers, re-exported from one package.
 
-- **Composition layer** (the `core` + `composites` modules, surfaced via `fascicle`). 21 primitives for composing work out of plain values. No network, no LLM calls, no ambient state.
+- **Composition layer** (the `core` + `composites` modules, surfaced via `fascicle`). 22 primitives for composing work out of plain values. No network, no LLM calls, no ambient state.
 - **Engine layer** (the `engine` module, surfaced via `fascicle`). `create_engine(config)` returns a unified `generate` surface over eight provider adapters. No composition, no step plumbing.
 
 They are glued by exactly one value: `model_call` (at the umbrella `src/` root). That is the only file allowed to import values from both layers — an ast-grep rule in `rules/` enforces it. Everything else either composes or generates, never both.
@@ -66,12 +66,13 @@ tournament  single-elimination bracket
 consensus   run all members each round; accept once agree(results) holds
 checkpoint  memoize a named inner step by key
 suspend     pause for external input; resume with resume_data
+chain       named steps over a growing typed record; one per flow, the spine
 scope       stash named values and use them later without rewiring
 improve     bounded online propose → score → accept/reject loop
 learn       offline reflection over recorded trajectories
 ```
 
-Each primitive is described in full with signatures at [`docs/composition.md`](./composition.md).
+Each primitive is described in full with signatures at [`docs/composition.md`](./composition.md). They are not all peers: [leaf-arm-spine.md](./leaf-arm-spine.md) names the primary vocabulary and the decision rules for choosing at each layer, and [advanced-composition.md](./advanced-composition.md) covers the tier you should reach for last (`scope`/`stash`/`use`, plain `ensemble`, `tournament`, `improve`/`learn`).
 
 ## Running a flow
 
@@ -84,6 +85,8 @@ const output = await run(flow, input);
 ```
 
 `run.stream(flow, input, options?)` is the streaming variant. It returns `{ events, result }`; consumers iterate the event stream while awaiting the final result. The underlying step graph is identical to `run(...)` — streaming is purely observational.
+
+`run.until_suspended(flow, input, options?)` is the third entry point, for flows that contain a `suspend` gate; it surfaces suspension as a typed outcome instead of a thrown error (see [Suspend and resume](#suspend-and-resume)).
 
 ```ts
 const handle = run.stream(flow, input);
@@ -204,20 +207,20 @@ Abandoned work is not free. A `model_call` step that outlives its `timeout` keep
 
 The fix is on the step author: thread `ctx.abort` into every long-running operation a step performs, not just the outermost one. Pass it to `fetch`'s `signal` option, to `child_process` spawn options, and check `ctx.abort.aborted` between iterations of any loop that does not otherwise await an abortable call. A step that never touches `ctx.abort` is not wrong, but it is not cancellable — treat that as a property to design for, not an edge case to patch later. See [troubleshooting.md](./troubleshooting.md#a-cancelled-run-keeps-consuming-tokens-or-holding-resources) for how to spot this in practice.
 
-## Scope, stash, and use
+## Named state: chain first
 
-Most chains thread values implicitly via `sequence` and `parallel`. When that is not enough — two non-adjacent steps need to agree on a value, or a child step needs a configuration value its parent produced — use `scope`:
+`sequence` and `parallel` thread values implicitly. The moment a step needs a value that is not its immediate predecessor's output — the brief three steps back, two arms' results combined — reach for `chain`: each `.step(name, fn)` merges its result into a growing typed record, later bindings destructure whatever earlier names they need (checked at compile time), `.stage` marks phase barriers, and `.output` projects the final result into an ordinary `Step`.
 
 ```ts
-import { scope, stash, use, step } from 'fascicle';
+import { chain } from 'fascicle';
 
-const flow = scope([
-  stash('user_id', step('lookup', async (email: string) => find_user(email))),
-  use(['user_id'], async ({ user_id }) => publish_event(user_id)),
-]);
+const flow = chain<string, 'email'>('email')
+  .step('user_id', ({ email }) => find_user(email))
+  .step('published', ({ user_id }) => publish_event(user_id))
+  .output(({ published }) => published);
 ```
 
-`stash(key, source)` runs `source` and binds its output under `key` in `ctx.state`. `use(keys, fn)` reads those keys and runs `fn` with them. Keys are scoped — two sibling `scope([])` blocks cannot see each other's state.
+Underneath sits the raw state tier: `scope` / `stash` / `use` bind values by string key in `ctx.state`, untyped. `chain` is the typed front door over the same idea; the raw trio remains for shapes bindings cannot express (writes from deep inside a subtree, state shared across sibling compositions). See [advanced-composition.md](./advanced-composition.md#scope-stash-use-named-state-without-types) before reaching for it.
 
 ## Checkpointing
 
@@ -243,10 +246,10 @@ Key rules:
 
 ## Suspend and resume
 
-`suspend(...)` pauses a flow until external input arrives. The first run throws `suspended_error`; the caller stores the suspended state, collects input out-of-band, then calls `run(...)` again with `resume_data` to continue.
+`suspend(...)` pauses a flow until external input arrives. Drive a suspend-bearing flow with `run.until_suspended`, which returns a discriminated union: `{ kind: 'done', output }` on completion, or `{ kind: 'suspended', id, resume }` when a gate fires. Calling `resume(data)` re-runs the flow from the original input with the decision merged into `resume_data` and resolves to the next outcome, so multi-gate flows are driven by resuming repeatedly.
 
 ```ts
-import { run, suspend, suspended_error } from 'fascicle';
+import { run, suspend } from 'fascicle';
 import { z } from 'zod';
 
 const flow = suspend({
@@ -257,20 +260,15 @@ const flow = suspend({
     resume.approved ? `ship:${input.brief}` : `hold:${input.brief}`,
 });
 
-try {
-  await run(flow, { brief: 'beta' }, { checkpoint_store });
-} catch (err) {
-  if (!(err instanceof suspended_error)) throw err;
+const outcome = await run.until_suspended(flow, { brief: 'beta' }, { checkpoint_store });
+if (outcome.kind === 'suspended') {
+  // collect the decision out-of-band, then:
+  const resumed = await outcome.resume({ approved: true });
+  // resumed.kind === 'done', resumed.output === 'ship:beta'
 }
-
-// later:
-const out = await run(flow, { brief: 'beta' }, {
-  checkpoint_store,
-  resume_data: { approve: { approved: true } },
-});
 ```
 
-`resume_data` is keyed by `suspend.id` so multiple suspends in the same flow can resume independently. Mismatched shapes throw `resume_validation_error`.
+Underneath, the mechanism is unchanged: a gate signals by throwing `suspended_error`, and a plain `run(...)` surfaces that throw directly; the caller can also re-run with `resume_data` by hand (`resume_data` is keyed by `suspend.id` so multiple suspends in the same flow resume independently). Mismatched resume shapes throw `resume_validation_error`. The resume closure cannot outlive the process — for durable approval flows, persist the original input and rebuild the outcome after a restart ([human-in-the-loop.md](./human-in-the-loop.md)).
 
 ## Errors
 

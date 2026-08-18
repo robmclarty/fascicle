@@ -9,10 +9,11 @@ ergonomics fit is to try it.
 ## The reframe: it is not fascicle versus the AI SDK
 
 The most common framing of this decision is a false one. fascicle is *built on*
-the Vercel AI SDK for its default path: `ai` is a required peer, and seven of its
-eight providers are AI-SDK-backed out of the box. You are not choosing between
-fascicle and the AI SDK. You are choosing *at which layer* a vendor owns your
-code.
+the Vercel AI SDK for its default path: seven of its eight providers are
+AI-SDK-backed out of the box (`ai`, like every provider SDK, is an optional
+peer; fascicle has zero mandatory ones, and the native transports and
+`claude_cli` need no AI SDK at all). You are not choosing between fascicle and
+the AI SDK. You are choosing *at which layer* a vendor owns your code.
 
 On the default `ai_sdk` transport the AI SDK owns everything below a single model
 call: message translation, tool-schema mapping, streaming, usage normalization.
@@ -29,10 +30,10 @@ argument below. Providers plug in at one of three depths, and five of the eight
 the path. Only `google` and `bedrock` are AI-SDK-only; `claude_cli` is a
 subprocess and never was. The same
 tool loop, retry, salvage, cost, and trajectory sit above both depth-1 kinds, so
-the transport swaps without the loop changing. The honest residual: `ai` itself is
-still a required peer, because the `ai_sdk` transport module is statically imported
-by `generate.ts`. Native means "no provider SDK and no AI SDK on the wire," not yet
-"uninstall `ai`."
+the transport swaps without the loop changing. And the swap goes all the way
+down: `generate.ts` imports the `ai_sdk` transport module dynamically, on the
+first `ai_sdk` call, so `ai` stays off the dependency graph of a native-only
+install entirely. "Uninstall `ai`" is real today, not aspirational.
 
 ## What you are actually buying
 
@@ -83,11 +84,13 @@ quickly:
    local runtime can be driven over raw HTTP with neither the AI SDK nor a provider
    package in the dependency tree.
 2. **A composition algebra of substitutable values.** The AI SDK gives you one
-   agent loop. fascicle gives you 21 primitives, each a `Step` that nests inside
-   any other: the control-flow set (`sequence`, `parallel`, `branch`, `map`,
-   `pipe`, `retry`, `fallback`, `timeout`, `loop`, `compose`), the durability set
-   (`checkpoint`, `suspend`, `scope`/`stash`/`use`), the deliberation set
-   (`ensemble`, `ensemble_step`, `tournament`, `consensus`, `adversarial`), and the
+   agent loop. fascicle gives you 22 primitives, each a `Step` that nests inside
+   any other: `chain`, the spine that threads a typed record through a flow, the
+   control-flow set (`sequence`, `parallel`, `branch`, `map`, `pipe`, `retry`,
+   `fallback`, `timeout`, `loop`, `compose`), the durability set (`checkpoint`,
+   `suspend`, with the raw state trio `scope`/`stash`/`use` as the advanced tier
+   under `chain`), the deliberation set (`ensemble_step`, `ensemble`,
+   `tournament`, `consensus`, `adversarial`), and the
    self-improvement pair (`improve` for an online propose-score-accept loop,
    `learn` for offline reflection over recorded trajectories). "Fan this across an
    ensemble, pipe it into an adversarial judge loop with a different model, wrap
@@ -112,9 +115,10 @@ quickly:
    least visible benefit in a demo and often the most valuable in production (see
    the note on the AI SDK's release cadence below).
 6. **Supply-chain posture.** One package, no direct runtime dependencies, no
-   install scripts, every provider SDK an optional peer (`ai` and `zod` are the
-   only required ones), and releases published from CI via npm Trusted Publishing
-   with a signed provenance attestation you can verify with `npm audit signatures`.
+   install scripts, every peer optional (`ai` and `zod` included; fascicle has
+   zero mandatory peers), and releases published from CI via npm Trusted
+   Publishing with a signed provenance attestation you can verify with
+   `npm audit signatures`.
    A deliberately small surface, which in 2026 is itself a differentiated property
    (see [SECURITY.md](../SECURITY.md)).
 
@@ -129,7 +133,7 @@ and how they decompose:
 | Bug fixer pairing a builder with an independent reviewer | a builder step behind a reviewer `loop`, or `sequence` plus `adversarial` |
 | Knowledge-base concierge (retrieval, memory, external tools, chat) | tool loops over `mcp_client` tools, retrieval as plain steps, wired with `sequence`/`branch` |
 | Long-horizon overnight builder (runs for hours, survives restarts) | `loop` plus `checkpoint`, with `suspend`/`resume` for durability opted in per step |
-| A fleet of simulator variations, then adjudicated | `ensemble` or `consensus` over `parallel`, with a scoring reducer |
+| A fleet of simulator variations, then adjudicated | `ensemble_step` or `consensus` over `parallel`, with a scoring reducer |
 | A one-prompt classifier or extractor (markdown prompt, zod output) | `define_agent` from `fascicle/agents`, which folds a prompt file plus a schema into a `Step` |
 | A stage that tunes itself against a scored fixture set | `improve` online, or `learn` offline over recorded trajectories |
 | A behavior-regression suite in CI | `bench` over fixtures with `Judge` steps, diffed against a baseline by `regression_compare` |
@@ -138,8 +142,9 @@ Each is an ordinary composition of the same primitives, and each returns a `Step
 so it can be wrapped, retried, or nested without special-casing. If you want the
 whole app shape rather than a single agent, [blueprint.md](./blueprint.md)
 standardizes it (one composition layer, `create_engine` confined to one file,
-prompts as markdown, stub-engine tests) and `examples/` carries worked apps built
-that way.
+prompts as markdown, stub-engine tests via `fascicle/testing`'s
+`make_stub_engine` and `make_capture_engine`) and `examples/` carries worked
+apps built that way.
 
 ## When to use something else
 
@@ -181,7 +186,7 @@ its design quality, and a serious evaluation names them:
 What makes these survivable is the shape of the thing:
 
 - It is Apache-2.0 and public, so a fork is always available as an escape hatch.
-- It is small and readable (one package, roughly 18k lines of source with tests
+- It is small and readable (one package, roughly 21k lines of source with tests
   excluded, and a mutation-tested core), and a *library*, not a framework: because
   every unit is a substitutable `Step`, you can excise it one piece at a time
   instead of being locked into a lifecycle.
@@ -229,5 +234,7 @@ bet that containment is cheaper than absorption over time.
   switch, and the per-provider capability matrix.
 - [blueprint.md](./blueprint.md) - the standard app architecture, once you decide
   to adopt.
+- [leaf-arm-spine.md](./leaf-arm-spine.md) - the three-layer shape well-factored
+  flows converge on, and the decision rules for each layer.
 - [SECURITY.md](../SECURITY.md) - the supply-chain posture and its honest residual
   risks.

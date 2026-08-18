@@ -25,7 +25,7 @@ pnpm check
 
 ## Your first flow
 
-A flow is a value. Build one with `step(...)` and compose with `sequence`, `parallel`, `branch`, and friends.
+A flow is a value. Build one with `step(...)` and compose with `sequence`, `parallel`, `branch`, `chain`, and friends.
 
 ```ts
 import { run, sequence, step } from 'fascicle';
@@ -41,7 +41,7 @@ console.log(result); // 4
 
 That's all of it. Every composable unit is a `Step<i, o>`. Every composer returns a `Step<i, o>`. You can nest arbitrarily.
 
-## The 21 primitives
+## The 22 primitives
 
 The composition layer is small on purpose:
 
@@ -59,17 +59,20 @@ The composition layer is small on purpose:
 | `loop`                | Bounded iteration with carry-state and an optional guard.   |
 | `compose`             | Label a composite step for trajectory output.               |
 | `adversarial`         | Build, critique, repeat until accept or `max_rounds`.       |
-| `ensemble`            | Run N members, pick the highest-scoring result.             |
-| `ensemble_step`       | Pick-best where the scorer is itself a `Step`.              |
-| `tournament`          | Pairwise compare members, pick the bracket winner.          |
+| `ensemble_step`       | Pick-best where the scorer is itself a `Step` (a model judge). |
 | `consensus`           | Run N, accept once your `agree(results)` predicate holds.   |
 | `checkpoint`          | Memoize a step's output in a `CheckpointStore`.             |
-| `suspend`             | Pause the flow; resume later with `resume_data`.            |
-| `scope`/`stash`/`use` | Pass values through a subtree without rewiring signatures.  |
-| `improve`             | Bounded online propose → score → accept/reject loop.        |
-| `learn`               | Offline reflection over recorded trajectories.              |
+| `suspend`             | Pause the flow; drive with `run.until_suspended` and resume. |
+| `chain`               | Named steps over a growing typed record; one per flow, the spine. |
+| `ensemble`            | Pick-best scored by a plain function (advanced).            |
+| `tournament`          | Pairwise compare members, pick the bracket winner (advanced). |
+| `scope`/`stash`/`use` | Raw named state by string key (advanced; `chain` supersedes). |
+| `improve`             | Bounded online propose → score → accept/reject loop (advanced). |
+| `learn`               | Offline reflection over recorded trajectories (advanced).   |
 
-Full surface and signatures: [`docs/composition.md`](./composition.md). Runnable references: [`examples/`](../examples/).
+The primitives are not all peers: [leaf-arm-spine.md](./leaf-arm-spine.md) is the decision guide for which to reach for at each layer of a flow, and the rows marked advanced are covered in [advanced-composition.md](./advanced-composition.md), each paired with the primary primitive to try first.
+
+Full surface and signatures: [`docs/composition.md`](./composition.md). Runnable references: [`examples/`](../examples/), starting with [`examples/newsroom.ts`](../examples/newsroom.ts), the vocabulary tour.
 
 ## Running
 
@@ -106,29 +109,28 @@ Adapters are plain objects that conform to `TrajectoryLogger` and `CheckpointSto
 
 ## Calling a model
 
-The engine layer handles provider routing. Bridge it into a flow with `model_call`:
+The engine layer handles provider routing. Bridge it into a flow with `model_step`:
 
 ```ts
-import { create_engine, model_call, sequence, run } from 'fascicle';
+import { create_engine, model_step, run } from 'fascicle';
 
 const engine = create_engine({
   providers: { anthropic: { api_key: process.env.ANTHROPIC_API_KEY! } },
 });
 
-const flow = sequence([
-  model_call({ engine, model: 'sonnet', system: 'Be terse.' }),
-]);
+const summarize = model_step({ engine, model: 'sonnet', system: 'Be terse.' });
 
-const result = await run(flow, 'Summarise Rust ownership in one sentence.');
-console.log(result.content);
+const result = await run(summarize, 'Summarise Rust ownership in one sentence.');
+console.log(result);
 
 await engine.dispose();
 ```
 
-`model_call` is the only sanctioned bridge between the composition and engine layers. It auto-threads `ctx.abort`, `ctx.trajectory`, and streaming chunks.
+`model_step` is the default model boundary: it returns the answer itself (a `string`, or the schema-validated value when `schema` is set) and auto-threads `ctx.abort`, `ctx.trajectory`, and streaming chunks. When the caller wants what surrounds the answer (usage, cost, tool calls, finish reason), `model_call` takes the same config and returns the full `GenerateResult` envelope. Note there is no wrapper around `summarize` above: one call is a leaf, and a leaf runs as-is.
 
 ## Where to go next
 
+- [docs/leaf-arm-spine.md](./leaf-arm-spine.md) — the three-layer shape of a flow and which primitive belongs at each layer.
 - [docs/writing-a-harness.md](./writing-a-harness.md) — build a runner around fascicle.
 - [docs/blueprint.md](./blueprint.md) — the standard app architecture for a real fascicle app.
 - [docs/embedding-under-a-harness.md](./embedding-under-a-harness.md) — run a fascicle agent as somebody's child process.

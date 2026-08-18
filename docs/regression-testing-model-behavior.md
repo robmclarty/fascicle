@@ -23,7 +23,7 @@ Three stock judges ship in [`src/composites/judges.ts`](../src/composites/judges
 
 - `judge_equals<O>()` scores `1` when the output deep-equals `meta.expected` and `0` otherwise. It abstains when no `meta.expected` is present, so it is safe to include on a mixed fixture set.
 - `judge_with<I, O>(fn)` wraps a scoring function of your own. The function receives the `{ input, output, meta }` triple and returns a number, a `Score`, or `undefined`. Bare numbers are normalized to `{ score }`.
-- `judge_llm<I, O>({ model, rubric, scale? })` prompts a model with your rubric and parses the numeric score out of the reply. It is engine-agnostic on purpose: you pass an already-configured `model_call` step (`Step<string, string>`), so the judge stays decoupled from the engine. If the reply does not parse, the judge abstains rather than guessing.
+- `judge_llm<I, O>({ model, rubric, scale? })` prompts a model with your rubric and parses the numeric score out of the reply. It is engine-agnostic on purpose: you pass an already-configured `model_step` (`Step<string, string>`), so the judge stays decoupled from the engine. If the reply does not parse, the judge abstains rather than guessing.
 
 A pair of judges, one exact and one stylistic:
 
@@ -54,7 +54,7 @@ A full bench over a model flow:
 
 <!-- snippet: check -->
 ```typescript
-import { bench, create_engine, judge_equals, model_call, pipe } from 'fascicle';
+import { bench, create_engine, judge_equals, model_step, pipe } from 'fascicle';
 import type { BenchCase } from 'fascicle';
 
 const engine = create_engine({
@@ -63,8 +63,8 @@ const engine = create_engine({
 
 // The flow under test: classify a sentence as "ship" or "hold".
 const classify = pipe(
-  model_call({ engine, model: 'sonnet', system: 'Reply with one word: ship or hold.' }),
-  (r) => r.content.trim().toLowerCase(),
+  model_step({ engine, model: 'sonnet', system: 'Reply with one word: ship or hold.' }),
+  (word) => word.trim().toLowerCase(),
 );
 
 const cases: ReadonlyArray<BenchCase<string>> = [
@@ -79,7 +79,7 @@ const report = await bench(classify, cases, { exact: judge_equals<string>() }, {
 console.log(report.summary.pass_rate, report.summary.mean_scores.exact);
 ```
 
-`bench` runs cases concurrently (cap it with `options.concurrency`), tracks cost per case by intercepting `cost` events on the trajectory pipeline, and writes each case's trajectory under `trajectory_dir` when set. It never throws on a failed case; a case whose flow throws is recorded with `ok: false` and drags down `pass_rate`. Control-flow signals are the exception, because they are not case results: pass `options.abort` and a cancelled bench rejects rather than reporting on cases it never ran, and a flow that pauses on a human-approval gate rejects with `bench_suspend_error` rather than scoring the paused case as a zero. See the per-case observability options in [`src/composites/bench.ts`](../src/composites/bench.ts).
+`bench` runs cases concurrently (cap it with `options.concurrency`), tracks cost per case by intercepting `cost` events on the trajectory pipeline, and writes each case's trajectory under `trajectory_dir` when set. It never throws on a failed case; a case whose flow throws is recorded with `ok: false` and drags down `pass_rate`. Control-flow signals are the exception, because they are not case results: pass `options.abort` and a cancelled bench rejects rather than reporting on cases it never ran, and a flow that pauses on a human-approval gate rejects with `bench_suspend_error` rather than scoring the paused case as a zero. See the per-case observability options in [`src/composites/bench.ts`](../src/composites/bench.ts). To run a bench deterministically with no network, build the flow against `make_stub_engine` from `fascicle/testing`; the canned responses still validate through each call's schema.
 
 ## `regression_compare` diffs two reports
 
