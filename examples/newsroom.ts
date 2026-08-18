@@ -19,7 +19,7 @@
  *     ├ checked   ← consensus of three fact checkers
  *     ├ headline  ← model_call (the envelope carries usage for the cost line)
  *     ├ stage 'editorial'
- *     ├ signed    ← suspend (editor sign-off; resumed with resume_data)
+ *     ├ signed    ← suspend (editor sign-off; resumed via run.until_suspended)
  *     └ output: render the article markdown
  *
  * Demoted vocabulary, deliberately absent: `scope`/`stash`/`use` (the
@@ -58,7 +58,6 @@ import {
   sequence,
   step,
   suspend,
-  suspended_error,
   timeout,
 } from 'fascicle'
 import { make_stub_engine } from 'fascicle/testing'
@@ -243,16 +242,11 @@ export async function run_newsroom(): Promise<string> {
   const flow = build_flow(engine)
   const brief: Brief = { kind: 'fresh', topic: 'legible agent composition' }
   try {
-    await run(flow, brief, { install_signal_handlers: false })
-    throw new Error('expected the editor gate to suspend')
-  } catch (err) {
-    if (!(err instanceof suspended_error)) throw err
-  }
-  try {
-    return await run(flow, brief, {
-      install_signal_handlers: false,
-      resume_data: { editor_signoff: { approved: true, notes: 'ship it' } },
-    })
+    const outcome = await run.until_suspended(flow, brief, { install_signal_handlers: false })
+    if (outcome.kind !== 'suspended') throw new Error('expected the editor gate to suspend')
+    const resumed = await outcome.resume({ approved: true, notes: 'ship it' })
+    if (resumed.kind !== 'done') throw new Error('expected the resumed run to finish')
+    return resumed.output
   } finally {
     await engine.dispose()
   }

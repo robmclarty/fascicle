@@ -1,7 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { z } from 'zod'
 import { aborted_error } from '../errors.js'
 import { run } from '../runner.js'
+import { sequence } from '../sequence.js'
 import { step } from '../step.js'
+import { suspend } from '../suspend.js'
 import { remove_signal_listeners } from '../../../test/fixtures/signal_listeners.js'
 
 async function wait(ms: number): Promise<void> {
@@ -150,5 +153,105 @@ describe('run() caller-supplied abort', () => {
     // Firing the signal after the run settled is inert: the run already
     // resolved and the listener is gone.
     controller.abort(new Error('late'))
+  })
+})
+
+const approval_gate = (id: string) =>
+  suspend({
+    id,
+    on: () => {},
+    resume_schema: z.object({ approved: z.boolean() }),
+    combine: (input: string, resume) => `${input}:${resume.approved ? 'yes' : 'no'}`,
+  })
+
+describe('run.until_suspended', () => {
+  afterEach(remove_signal_listeners)
+
+  it('resolves { kind: "done", output } when the flow never suspends', async () => {
+    const flow = step('double', (n: number) => n * 2)
+    const outcome = await run.until_suspended(flow, 21, { install_signal_handlers: false })
+    expect(outcome).toEqual({ kind: 'done', output: 42 })
+  })
+
+  it('reports suspension as data carrying the gate id, and resume re-runs from the top', async () => {
+    let prefix_runs = 0
+    const flow = sequence([
+      step('prefix', (s: string) => {
+        prefix_runs += 1
+        return s.toUpperCase()
+      }),
+      approval_gate('editor'),
+    ])
+
+    const outcome = await run.until_suspended(flow, 'draft', { install_signal_handlers: false })
+    expect(outcome.kind).toBe('suspended')
+    if (outcome.kind !== 'suspended') throw new Error('unreachable')
+    expect(outcome.id).toBe('editor')
+    expect(prefix_runs).toBe(1)
+
+    const resumed = await outcome.resume({ approved: true })
+    expect(resumed).toEqual({ kind: 'done', output: 'DRAFT:yes' })
+    // Resume replays from the original input: the prefix step ran again.
+    expect(prefix_runs).toBe(2)
+  })
+
+  it('drives a flow with two gates by resuming twice, accumulating resume_data', async () => {
+    const flow = sequence([approval_gate('first'), approval_gate('second')])
+
+    const at_first = await run.until_suspended(flow, 'go', { install_signal_handlers: false })
+    if (at_first.kind !== 'suspended') throw new Error('expected the first gate to suspend')
+    expect(at_first.id).toBe('first')
+
+    const at_second = await at_first.resume({ approved: true })
+    if (at_second.kind !== 'suspended') throw new Error('expected the second gate to suspend')
+    expect(at_second.id).toBe('second')
+
+    const done = await at_second.resume({ approved: false })
+    expect(done).toEqual({ kind: 'done', output: 'go:yes:no' })
+  })
+
+  it('threads the caller options through resume', async () => {
+    const events: string[] = []
+    const logger = {
+      record: () => {},
+      start_span: (name: string) => {
+        events.push(name)
+        return `${name}:span`
+      },
+      end_span: () => {},
+    }
+    const flow = approval_gate('gate')
+    const outcome = await run.until_suspended(flow, 'x', {
+      install_signal_handlers: false,
+      trajectory: logger,
+    })
+    if (outcome.kind !== 'suspended') throw new Error('expected a suspension')
+    const spans_before_resume = events.length
+    await outcome.resume({ approved: true })
+    expect(spans_before_resume).toBeGreaterThan(0)
+    expect(events.length).toBeGreaterThan(spans_before_resume)
+  })
+
+  it('rethrows real errors from the initial run and from resume', async () => {
+    const boom = step('boom', () => {
+      throw new Error('real failure')
+    })
+    await expect(
+      run.until_suspended(boom, 'x', { install_signal_handlers: false }),
+    ).rejects.toThrow('real failure')
+
+    const failing_combine = suspend({
+      id: 'gate',
+      on: () => {},
+      resume_schema: z.object({ approved: z.boolean() }),
+      combine: () => {
+        throw new Error('combine failure')
+      },
+    })
+    const outcome = await run.until_suspended(failing_combine, 'x', {
+      install_signal_handlers: false,
+    })
+    if (outcome.kind !== 'suspended') throw new Error('expected a suspension')
+    await expect(outcome.resume({ approved: true })).rejects.toThrow('combine failure')
   })
 })

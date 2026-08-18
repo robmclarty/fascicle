@@ -1,8 +1,9 @@
 /**
  * suspend_resume: human-in-the-loop pause and resume.
  *
- * First invocation pauses at `suspend`; second invocation supplies the
- * decision via `resume_data` and the flow continues into `combine`.
+ * `run.until_suspended` reports the pause as a typed outcome; calling the
+ * outcome's `resume(data)` re-runs the flow with the decision and the flow
+ * continues into `combine`.
  *
  * Deterministic stub `fn` bodies — no engine layer, no network, no LLM calls.
  *
@@ -11,7 +12,7 @@
  */
 
 import { z } from 'zod'
-import { run, suspend, suspended_error } from 'fascicle'
+import { run, suspend } from 'fascicle'
 
 const flow = suspend({
   id: 'approve',
@@ -27,20 +28,17 @@ export async function run_suspend_resume(): Promise<{
   readonly suspended: boolean
   readonly resumed: string
 }> {
-  let suspended = false
-  try {
-    await run(flow, { brief: 'beta feature' }, { install_signal_handlers: false })
-  } catch (err) {
-    if (err instanceof suspended_error) suspended = true
-    else throw err
-  }
+  const outcome = await run.until_suspended(
+    flow,
+    { brief: 'beta feature' },
+    { install_signal_handlers: false },
+  )
+  if (outcome.kind !== 'suspended') throw new Error('expected the approval gate to suspend')
 
-  const resumed = await run(flow, { brief: 'beta feature' }, {
-    install_signal_handlers: false,
-    resume_data: { approve: { approved: true } },
-  })
+  const resumed = await outcome.resume({ approved: true })
+  if (resumed.kind !== 'done') throw new Error('expected the resumed run to finish')
 
-  return { suspended, resumed }
+  return { suspended: true, resumed: resumed.output }
 }
 
 if (import.meta.url === `file://${process.argv[1] ?? ''}`) {

@@ -17,7 +17,7 @@
 
 import { randomUUID } from 'node:crypto'
 import { create_cleanup_registry } from './cleanup.js'
-import { aborted_error } from './errors.js'
+import { aborted_error, suspended_error } from './errors.js'
 import { create_streaming_channel, STREAMING_HIGH_WATER_MARK } from './streaming.js'
 import type {
   CheckpointStore,
@@ -442,14 +442,63 @@ function run_stream<i, o>(
   return { events, result }
 }
 
+export type RunOutcome<o> =
+  | { readonly kind: 'done'; readonly output: o }
+  | {
+      readonly kind: 'suspended'
+      readonly id: string
+      readonly resume: (data: unknown) => Promise<RunOutcome<o>>
+    }
+
+/**
+ * Execute a flow, reporting suspension as a typed outcome instead of a
+ * thrown `suspended_error`.
+ *
+ * Resolves `{ kind: 'done', output }` on completion. When a `suspend` gate
+ * fires, resolves `{ kind: 'suspended', id, resume }` where `id` is the
+ * gate's suspend id and `resume(data)` re-runs the flow from the original
+ * input with `resume_data[id] = data` merged over the caller's options: the
+ * same full re-run semantics as calling `run` again yourself, so pure
+ * prefixes replay and `checkpoint`ed steps are served from the store. The
+ * returned promise resolves to the next outcome, so a flow with several
+ * gates is driven by awaiting `resume` repeatedly. Real errors still throw,
+ * from the initial call and from `resume` alike.
+ */
+async function run_until_suspended<i, o>(
+  flow: Step<i, o>,
+  input: i,
+  options: RunOptions = {},
+): Promise<RunOutcome<o>> {
+  try {
+    return { kind: 'done', output: await run_impl(flow, input, options) }
+  } catch (err) {
+    if (!(err instanceof suspended_error)) throw err
+    const id = err.suspend_id
+    return {
+      kind: 'suspended',
+      id,
+      resume: (data) =>
+        run_until_suspended(flow, input, {
+          ...options,
+          resume_data: { ...options.resume_data, [id]: data },
+        }),
+    }
+  }
+}
+
 /**
  * The public entry point for executing a flow.
  *
- * Callable as `run(flow, input, options?)` for a plain result, or
- * `run.stream(flow, input, options?)` for `{ events, result }`. Both share
- * one implementation, so a streamed run and a plain run of the same flow
- * produce identical output.
+ * Callable as `run(flow, input, options?)` for a plain result,
+ * `run.stream(flow, input, options?)` for `{ events, result }`, or
+ * `run.until_suspended(flow, input, options?)` for a `RunOutcome` that
+ * carries suspension as data. All share one implementation, so every entry
+ * point runs the same graph identically.
  */
-export const run: typeof run_impl & { stream: typeof run_stream } = Object.assign(run_impl, {
+export const run: typeof run_impl & {
+  stream: typeof run_stream
+  until_suspended: typeof run_until_suspended
+} = Object.assign(run_impl, {
   stream: run_stream,
+  until_suspended: run_until_suspended,
 })

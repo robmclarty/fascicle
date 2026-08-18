@@ -12,15 +12,19 @@ different problems:
 
 ## Asynchronous: suspend and resume
 
-`suspend(...)` fires an `on(...)` side effect (notify a human), then throws
-`suspended_error` carrying the run state. Your caller catches it, persists the
-input, and returns. When the decision arrives, you re-run the same flow with
-`resume_data` keyed by the suspend id, and the flow continues into `combine`.
+`suspend(...)` fires an `on(...)` side effect (notify a human), then pauses
+the run. Drive the flow with `run.until_suspended`, which reports the pause
+as a typed outcome instead of an exception: `{ kind: 'done', output }` when
+the flow completes, or `{ kind: 'suspended', id, resume }` when a gate
+fires. When the decision arrives, call `resume(data)`; it re-runs the flow
+with the decision keyed under the gate's id, the flow continues into
+`combine`, and the promise resolves to the next outcome (so several gates
+are driven by resuming repeatedly). Real errors still throw.
 
 <!-- snippet: check -->
 
 ```ts
-import { run, sequence, step, suspend, suspended_error } from 'fascicle';
+import { run, sequence, step, suspend } from 'fascicle';
 import { z } from 'zod';
 
 const flow = sequence([
@@ -38,26 +42,32 @@ const flow = sequence([
 ]);
 
 export async function drive(input: { brief: string }): Promise<string> {
-  try {
-    return await run(flow, input);
-  } catch (err) {
-    if (!(err instanceof suspended_error)) throw err;
-    // Persist `input` keyed by an id, return control to your server, and wait.
-  }
-  // Later, when the human approves, re-run with the decision:
-  return run(flow, input, { resume_data: { approve: { approved: true } } });
+  const outcome = await run.until_suspended(flow, input);
+  if (outcome.kind === 'done') return outcome.output;
+  // Persist `input` keyed by an id, return control to your server, and wait.
+  // Later, when the human approves, resume with the decision:
+  const resumed = await outcome.resume({ approved: true });
+  if (resumed.kind !== 'done') throw new Error('a later gate suspended again');
+  return resumed.output;
 }
 ```
 
+The underlying signal is still a thrown `suspended_error`, so a plain
+`run(...)` caller can catch it and re-run with
+`{ resume_data: { [id]: data } }` itself; `run.until_suspended` packages
+exactly that dance.
+
 Two things to know before you ship this:
 
-- **Resume replays from the original input.** The second `run(...)` re-executes
-  every step before the suspend point. That is harmless for pure steps; wrap any
+- **Resume replays from the original input.** `resume(...)` re-executes every
+  step before the suspend point. That is harmless for pure steps; wrap any
   expensive or side-effecting prior step in `checkpoint(...)` against a
   `checkpoint_store` so it is memoized rather than repeated on resume.
-- **Persist the suspended input durably.** An in-memory map is fine for a demo,
-  but a process restart loses it. Use `filesystem_store` from `fascicle/adapters`,
-  a database, or a queue so a pending approval survives a redeploy.
+- **Persist the suspended input durably.** The outcome's `resume` is a
+  closure, so it cannot outlive the process. An in-memory map is fine for a
+  demo; a real deployment persists the original input (`filesystem_store`
+  from `fascicle/adapters`, a database, a queue) and calls
+  `run.until_suspended` again after a restart to rebuild the outcome.
 
 A complete server that runs this over HTTP (POST to start, GET the pending
 approval, POST the decision to resume) is in

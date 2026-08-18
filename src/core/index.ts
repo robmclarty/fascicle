@@ -11,6 +11,7 @@
 import flow_schema_data from './flow-schema.json' with { type: 'json' }
 
 export { run } from './runner.js'
+export type { RunOutcome } from './runner.js'
 export { step } from './step.js'
 export { describe } from './describe.js'
 export type { DescribeOptions, FlowNode, FlowValue } from './describe.js'
