@@ -93,7 +93,7 @@ Each of these returns a result envelope (`{ candidate, converged, rounds }`, `{ 
 | Primitive | Shape |
 | --- | --- |
 | `scope` / `stash` / `use` | named state across non-adjacent steps |
-| `chain()` → `.step` / `.stage` / `.output` | named steps over a typed record: `.step(name, fn)` merges a binding, `.stage(name, project?)` concludes a phase (with `project`, narrows the record), `.output(fn)` projects the result into a `Step` |
+| `chain()` → `.step` / `.stage` / `.output` | named steps over a typed record: `.step(name, fn, { arm? })` merges a binding (`arm` records a `ctx.call`ed Step as describe-only child metadata), `.stage(name, project?)` concludes a phase (with `project`, narrows the record), `.output(fn)` projects the result into a `Step` |
 | `checkpoint(inner, { key })` | memoize an inner step by key in a `CheckpointStore` |
 | `suspend({ id, on, resume_schema, combine })` | pause for external input; resume later with `resume_data` (throws `suspended_error` to signal the pause; `run.until_suspended` surfaces it as a typed outcome instead) |
 

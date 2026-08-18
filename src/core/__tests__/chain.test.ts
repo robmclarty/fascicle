@@ -175,6 +175,35 @@ vdescribe('chain', () => {
     })
   })
 
+  it('an arm renders as the binding step child in describe without being dispatched', async () => {
+    let arm_runs = 0
+    const arm = step('inner_flow', (n: number) => {
+      arm_runs += 1
+      return n * 10
+    })
+    const flow = chain<number>()
+      .step('a', async ({ input }, ctx) => ctx.call(arm, input), { arm })
+      .step('b', ({ a }) => a + 1)
+      .output(({ b }) => b)
+
+    const node = describe.json(flow)
+    const binding = node.children?.find((c) => c.id === 'a')
+    expect(binding?.children?.map((c) => c.id)).toEqual(['inner_flow'])
+    const plain = node.children?.find((c) => c.id === 'b')
+    expect(plain?.children).toBeUndefined()
+    // The text tree nests the arm one level deeper than its binding.
+    const lines = describe(flow).split('\n')
+    const binding_line = lines.findIndex((l) => l.includes('step(a)'))
+    expect(lines[binding_line + 1]).toMatch(/^\s+step\(inner_flow\)/)
+
+    // The arm is metadata: describing runs nothing.
+    expect(arm_runs).toBe(0)
+    // Dispatch runs the body (which calls the arm once), not the child list.
+    const result = await run(flow, 4, { install_signal_handlers: false })
+    expect(result).toBe(41)
+    expect(arm_runs).toBe(1)
+  })
+
   it('type-checks binding names and shapes at compile time', () => {
     // @ts-expect-error unknown binding name in the view
     chain<number>().step('a', ({ nope }) => nope)

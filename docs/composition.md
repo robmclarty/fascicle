@@ -108,12 +108,16 @@ from English specifications:
 - `suspend({ id, on, resume_schema, combine })` — pause for external input.
 - `scope([...])` / `stash(key, source)` / `use(keys, fn)` — named state at
   the key-value level; `chain` is the typed front door over the same idea.
-- `chain(input_name?)` with `.step(name, fn)` / `.stage(name, project?)` /
-  `.output(fn)` — named steps over a growing typed record: `.step` runs
-  `fn(record, ctx)` and merges its output under `name`; `.stage` concludes a
-  phase (a grouping span in the trajectory; with `project`, it replaces the
-  record so earlier bindings go out of scope); `.output` projects the final
-  result and returns an ordinary `Step`.
+- `chain(input_name?)` with `.step(name, fn, options?)` /
+  `.stage(name, project?)` / `.output(fn)` — named steps over a growing typed
+  record: `.step` runs `fn(record, ctx)` and merges its output under `name`;
+  `.stage` concludes a phase (a grouping span in the trajectory; with
+  `project`, it replaces the record so earlier bindings go out of scope);
+  `.output` projects the final result and returns an ordinary `Step`. When a
+  binding invokes a composed Step via `ctx.call`, pass it as
+  `options.arm` too: the arm is metadata only (dispatch ignores it), but
+  `describe` renders its subtree as the binding's child, so the static tree
+  shows what the binding runs.
 - `improve({ seed, propose, score, budget, project? })` — bounded online
   self-improvement loop: propose → score → accept/reject with plateau
   detection; `project` maps the result envelope (e.g. `(r) => r.best.content`).

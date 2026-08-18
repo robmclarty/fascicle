@@ -13,7 +13,10 @@
  * the record, so anything true of steps (spans, error paths, abort checks
  * between entries) is true of chain entries, and the binding name doubles as
  * the entry's id in trajectories. Invoking another Step from inside a
- * binding is `ctx.call`, exactly as in a hand-written step body.
+ * binding is `ctx.call`, exactly as in a hand-written step body; passing
+ * that Step as `.step(name, fn, { arm })` additionally records it as the
+ * binding's child so `describe` renders the arm's subtree. The arm is
+ * metadata only: dispatch runs `fn` and ignores it.
  *
  * Builder values are immutable: every method returns a new chain, so a
  * prefix can be shared and extended in different directions safely.
@@ -35,10 +38,15 @@ function next_chain_id(): string {
 
 type merge<a, b> = { readonly [k in keyof (a & b)]: (a & b)[k] }
 
+export type ChainStepOptions = {
+  readonly arm?: Step<unknown, unknown>
+}
+
 export type Chain<i, acc> = {
   readonly step: <k extends string, o>(
     name: k,
     fn: (s: acc, ctx: RunContext) => Promise<o> | o,
+    options?: ChainStepOptions,
   ) => Chain<i, merge<acc, { readonly [p in k]: o }>>
   readonly stage: {
     (name: string): Chain<i, acc>
@@ -57,7 +65,7 @@ type ChainEntry =
   | { readonly kind: 'stage'; readonly name: string; readonly project?: LooseFn }
 
 type LooseChain = {
-  readonly step: (name: string, fn: LooseFn) => LooseChain
+  readonly step: (name: string, fn: LooseFn, options?: ChainStepOptions) => LooseChain
   readonly stage: (name: string, project?: LooseFn) => LooseChain
   readonly output: (fn: LooseFn) => Step<unknown, unknown>
 }
@@ -155,13 +163,16 @@ function make_chain(
   bound: ReadonlySet<string>,
 ): LooseChain {
   return {
-    step: (name, fn) => {
+    step: (name, fn, options) => {
       if (bound.has(name)) {
         throw new TypeError(
           `chain.step: binding '${name}' is already defined in this stage; names are single-assignment`,
         )
       }
-      const node = step(name, fn)
+      const base = step(name, fn)
+      // The arm is describe metadata only: recorded as the binding's child so
+      // the subtree renders, never dispatched (the body's ctx.call runs it).
+      const node = options?.arm === undefined ? base : { ...base, children: [options.arm] }
       return make_chain(
         input_name,
         [...entries, { kind: 'step', name, node }],

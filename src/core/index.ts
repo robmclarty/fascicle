@@ -30,7 +30,7 @@ export { checkpoint } from './checkpoint.js'
 export { suspend } from './suspend.js'
 export { scope, stash, use } from './scope.js'
 export { chain } from './chain.js'
-export type { Chain } from './chain.js'
+export type { Chain, ChainStepOptions } from './chain.js'
 
 export {
   aborted_error,

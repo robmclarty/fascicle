@@ -7,7 +7,8 @@
  * The shape is three layers: model boundaries as leaves (`model_step`, one
  * `model_call` where the shell wants the usage envelope), named arms
  * composed from primitives (hardening, selection, verification), and a
- * `chain` spine that sequences the arms with `ctx.call`.
+ * `chain` spine that sequences the arms with `ctx.call`, declaring each as
+ * `arm` metadata so `describe` renders the full tree.
  *
  *   chain 'brief'
  *     ├ inputs    ← parallel { corpus: branch(update? prior : research), style }
@@ -168,22 +169,22 @@ export function build_flow(engine: Engine): Step<Brief, string> {
     combine: (draft: Draft, resume) => ({ ...draft, editor_notes: resume.notes }),
   })
 
-  // the spine
+  // the spine; each binding that invokes an arm also declares it as `arm`
+  // metadata, so `describe` renders the arm's subtree under the binding
+  const gather = parallel_inputs(research, widen)
   return chain<Brief, 'brief'>('brief')
-    .step('inputs', ({ brief }, ctx) =>
-      ctx.call(
-        parallel_inputs(research, widen),
-        brief,
-      ))
+    .step('inputs', ({ brief }, ctx) => ctx.call(gather, brief), { arm: gather })
     .stage('gathered', ({ brief, inputs }) => ({ brief, corpus: inputs.corpus, style: inputs.style }))
     .step('outline', ({ brief, corpus }, ctx) =>
-      ctx.call(outliner, `Topic: ${brief.topic}\nSources:\n${corpus.map((c) => c.summary).join('\n')}`))
+      ctx.call(outliner, `Topic: ${brief.topic}\nSources:\n${corpus.map((c) => c.summary).join('\n')}`),
+      { arm: outliner })
     .step('article', ({ outline, style }, ctx) =>
-      ctx.call(polish, `Angle: ${outline.angle}\nSections: ${outline.sections.join(', ')}\nStyle: ${style}`))
-    .step('verified', ({ article }, ctx) => ctx.call(fact_gate, article.body))
-    .step('headline', ({ outline }, ctx) => ctx.call(headliner, outline.angle))
+      ctx.call(polish, `Angle: ${outline.angle}\nSections: ${outline.sections.join(', ')}\nStyle: ${style}`),
+      { arm: polish })
+    .step('verified', ({ article }, ctx) => ctx.call(fact_gate, article.body), { arm: fact_gate })
+    .step('headline', ({ outline }, ctx) => ctx.call(headliner, outline.angle), { arm: headliner })
     .stage('editorial')
-    .step('signed', ({ article }, ctx) => ctx.call(editor_gate, article))
+    .step('signed', ({ article }, ctx) => ctx.call(editor_gate, article), { arm: editor_gate })
     .output(({ signed, headline, verified }) => {
       const tokens = headline.usage.input_tokens + headline.usage.output_tokens
       const check = verified ? 'fact-checked' : 'UNVERIFIED'
