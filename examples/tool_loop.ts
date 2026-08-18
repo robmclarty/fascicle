@@ -21,9 +21,8 @@ import { z } from 'zod'
 
 import {
   create_engine,
-  model_call,
+  model_step,
   run,
-  type GenerateResult,
   type Tool,
 } from 'fascicle'
 
@@ -67,7 +66,10 @@ const get_weather: Tool = {
   },
 }
 
-const ask = model_call({
+// `model_step`: the engine runs the whole tool loop internally, so the step's
+// output is the model's final text. Reach for `model_call` when the caller
+// needs the envelope around it (which tools ran, usage, finish reason).
+const ask = model_step({
   engine,
   tools: [get_weather],
   max_steps: 4,
@@ -76,11 +78,7 @@ const ask = model_call({
 export async function run_tool_loop(
   input = 'What is the current temperature in Vancouver?',
 ): Promise<{ readonly input: string; readonly output: string }> {
-  const result: GenerateResult<unknown> = await run(ask, input, {
-    install_signal_handlers: false,
-  })
-  const output =
-    typeof result.content === 'string' ? result.content : JSON.stringify(result.content)
+  const output = await run(ask, input, { install_signal_handlers: false })
   return { input, output }
 }
 

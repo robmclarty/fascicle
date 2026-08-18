@@ -9,7 +9,7 @@ Automated PR improvement pipeline. Triggered (eventually) by a `fascicle-improve
 
 ## Status
 
-**Phase C, PR B** (current): single-command demo against a real GitHub PR with full provider portability. The builder dispatches by provider — `claude_cli` uses the CLI's built-in Read/Write/Edit, while API providers (`anthropic`, `openrouter`) get explicit worktree-scoped tools. Same `flow.ts`, same `Step<string, GenerateResult<Handoff>>` contract, no code changes between runs.
+**Phase C, PR B** (current): single-command demo against a real GitHub PR with full provider portability. The builder dispatches by provider — `claude_cli` uses the CLI's built-in Read/Write/Edit, while API providers (`anthropic`, `openrouter`) get explicit worktree-scoped tools. Same `flow.ts`, same `Step<string, Handoff>` contract, no code changes between runs.
 
 ```sh
 pr-improve <pr-number>                       # default: --provider claude_cli
@@ -54,7 +54,7 @@ If you're running this against a third-party repo where you don't want the workt
 
 ## Provider portability proof
 
-Every stage routes through the fascicle engine via `model_call`. Provider is selected by `--provider <name>` (CLI flag) or `FASCICLE_PROVIDER` env var. Three providers coexist:
+Every stage routes through the fascicle engine via `model_step`. Provider is selected by `--provider <name>` (CLI flag) or `FASCICLE_PROVIDER` env var. Three providers coexist:
 
 - `claude_cli` — default; uses the developer's logged-in Claude (no API key). The CLI's built-in Read/Write/Edit tools handle file edits in the worktree's cwd.
 - `anthropic` — requires `ANTHROPIC_API_KEY`. The builder gets explicit worktree-scoped tools (`read_file`, `write_file`, `edit_file`, `list_dir`, `run_shell`) wired by `make_builder_tools(worktree_root)`.

@@ -3,7 +3,7 @@
  *
  * The schemas are the contract between stages — each stage emits or consumes
  * a value that conforms to one of these. Schemas also drive the engine's
- * structured-output validation (`model_call({ schema })`), so the same shape
+ * structured-output validation (`model_step({ schema })`), so the same shape
  * is enforced at the type level and at runtime.
  *
  * Field-level output rules live here in `.describe()`, not in the prompts:

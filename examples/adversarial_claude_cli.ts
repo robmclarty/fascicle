@@ -10,10 +10,10 @@
  *
  * Two layers worth pointing out:
  *
- *   - `model_call` accepts `string | Message[]`. The `adversarial`
+ *   - `model_step` accepts `string | Message[]`. The `adversarial`
  *     primitive feeds the build step `{ input, prior?, critique? }`
  *     instead, so we sequence a `compose_build_prompt` step in front
- *     of `model_call` to flatten that record into a prompt string.
+ *     of `model_step` to flatten that record into a prompt string.
  *   - The critic returns structured output via `--json-schema`. The
  *     CLI provider compiles `critique_schema` to JSON Schema, forwards
  *     it, and parses the reply. One repair round is automatic; a second
@@ -32,12 +32,12 @@ import { z } from 'zod'
 import {
   adversarial,
   create_engine,
-  model_call,
+  model_step,
   run,
   schema_validation_error,
   sequence,
   step,
-  type GenerateResult,
+  type Step,
 } from 'fascicle'
 
 const engine = create_engine({
@@ -84,47 +84,34 @@ const compose_build_prompt = step(
   },
 )
 
-const extract_text = step(
-  'extract_text',
-  (r: GenerateResult<unknown>): string =>
-    typeof r.content === 'string' ? r.content : JSON.stringify(r.content),
-)
+// `model_step` is generic over its schema type and accepts `string |
+// Message[]` as input, so annotating the leaf to the concrete
+// `Step<string, string>` is what lets `sequence` infer its own boundary.
+const build_call: Step<string, string> = model_step({
+  engine,
+  model: 'sonnet',
+  id: 'build',
+  system:
+    'You are a staff engineer. Given a PRD, produce a concrete, ordered ' +
+    'implementation plan. If a previous draft and critique are supplied, ' +
+    'revise the plan to address every point raised by the critic. Output ' +
+    'plain markdown only.',
+})
 
-const build = sequence([
-  compose_build_prompt,
-  model_call({
-    engine,
-    model: 'sonnet',
-    id: 'build',
-    system:
-      'You are a staff engineer. Given a PRD, produce a concrete, ordered ' +
-      'implementation plan. If a previous draft and critique are supplied, ' +
-      'revise the plan to address every point raised by the critic. Output ' +
-      'plain markdown only.',
-  }),
-  extract_text,
-])
+const build = sequence([compose_build_prompt, build_call])
 
-const extract_critique = step(
-  'extract_critique',
-  (r: GenerateResult<Critique>): Critique => r.content,
-)
-
-const critique = sequence([
-  model_call<Critique>({
-    engine,
-    model: 'haiku',
-    id: 'critic',
-    schema: critique_schema,
-    system:
-      'You are a strict reviewer. Inspect the implementation plan. Reply ' +
-      'with JSON {verdict, notes}. Use "pass" only when the plan is ' +
-      'concrete, ordered, and free of hand-waving; use "fail" otherwise. ' +
-      'Notes must be specific, actionable, and cite every weakness you ' +
-      'found so the builder can address it on the next round.',
-  }),
-  extract_critique,
-])
+const critique = model_step<Critique>({
+  engine,
+  model: 'haiku',
+  id: 'critic',
+  schema: critique_schema,
+  system:
+    'You are a strict reviewer. Inspect the implementation plan. Reply ' +
+    'with JSON {verdict, notes}. Use "pass" only when the plan is ' +
+    'concrete, ordered, and free of hand-waving; use "fail" otherwise. ' +
+    'Notes must be specific, actionable, and cite every weakness you ' +
+    'found so the builder can address it on the next round.',
+})
 
 const flow = adversarial<string, string>({
   build,

@@ -18,7 +18,7 @@ import { z } from 'zod'
 
 import {
   create_engine,
-  model_call,
+  model_step,
   run,
   schema_validation_error,
 } from 'fascicle'
@@ -47,7 +47,9 @@ const plan_schema = z.object({
 
 export type Plan = z.infer<typeof plan_schema>
 
-const plan = model_call({
+// `model_step`, so the step's output is the schema-validated Plan itself;
+// `model_call` is the variant to reach for when you also want usage or cost.
+const plan = model_step({
   engine,
   schema: plan_schema,
   schema_repair_attempts: 2,
@@ -57,7 +59,7 @@ export async function run_structured_output(
   input = 'cut a minimal release candidate for the billing service',
 ): Promise<{ readonly input: string; readonly plan: Plan }> {
   const result = await run(plan, input, { install_signal_handlers: false })
-  return { input, plan: result.content }
+  return { input, plan: result }
 }
 
 if (is_main) {
