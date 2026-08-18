@@ -14,7 +14,7 @@
  */
 
 import { createHash } from 'node:crypto'
-import { aborted_error, pipe, step } from '#core'
+import { aborted_error, step } from '#core'
 import type { RunContext, Step, TrajectoryLogger } from '#core'
 import type {
   EffortLevel,
@@ -30,7 +30,7 @@ import type { ToolSchema } from '#schema'
 
 export type ModelCallInput = string | ReadonlyArray<Message>
 
-export type ModelCallConfig<T = string> = {
+export type ModelCallConfig<T = string, projected = GenerateResult<T>> = {
   readonly engine: Engine
   /**
    * Model or alias string. Optional: if omitted, the engine's
@@ -56,6 +56,13 @@ export type ModelCallConfig<T = string> = {
   readonly tool_call_repair_attempts?: number
   readonly max_tool_calls_per_step?: number
   readonly on_tool_approval?: ToolApprovalHandler
+  /**
+   * Map the `GenerateResult` envelope into the step's output at the source.
+   * The projection runs inside the model_call step itself, so `describe` and
+   * the trajectory gain no wrapper node. Omitted, the envelope is the output.
+   * `model_step` is this option preset to `(r) => r.content`.
+   */
+  readonly project?: (r: GenerateResult<T>) => projected
 }
 
 /**
@@ -129,8 +136,8 @@ function assign_if_present<T, K extends keyof T>(target: T, key: K, value: T[K])
  * `retry_policy` (renamed to `retry`) are the two fields that do not copy
  * straight across and stay explicit; the rest map name-for-name.
  */
-function build_generate_options<T>(
-  cfg: ModelCallConfig<T>,
+function build_generate_options<T, projected>(
+  cfg: ModelCallConfig<T, projected>,
   prompt: Message[],
   ctx: RunContext,
 ): GenerateOptions<T> {
@@ -162,13 +169,19 @@ function build_generate_options<T>(
  *
  * Threads `ctx.abort` and `ctx.trajectory` (nested under the model_call
  * step's own span) into every call, and, when `run.stream` is driving,
- * records each chunk as a `model_chunk` trajectory event.
+ * records each chunk as a `model_chunk` trajectory event. `cfg.project`
+ * maps the `GenerateResult` envelope into the step's output inside the same
+ * step; omitted, the envelope is the output.
  */
-export function model_call<T = string>(
-  cfg: ModelCallConfig<T>,
-): Step<ModelCallInput, GenerateResult<T>> {
+export function model_call<T = string, projected = GenerateResult<T>>(
+  cfg: ModelCallConfig<T, projected>,
+): Step<ModelCallInput, projected> {
   const has_tools = Boolean(cfg.tools && cfg.tools.length > 0)
   const has_schema = cfg.schema !== undefined
+  // When `project` is omitted, `projected` defaults to the envelope type, which
+  // is what the identity fallback's cast records.
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+  const project = cfg.project ?? ((r: GenerateResult<T>) => r as unknown as projected)
   const step_id =
     cfg.id ??
     `model_call:${stable_signature({
@@ -184,18 +197,20 @@ export function model_call<T = string>(
     provider?: string
     has_tools: boolean
     has_schema: boolean
+    has_project: boolean
     system?: string
     effort?: EffortLevel
   } = {
     has_tools,
     has_schema,
+    has_project: cfg.project !== undefined,
   }
   if (cfg.model !== undefined) describe_config.model = cfg.model
   if (cfg.provider !== undefined) describe_config.provider = cfg.provider
   if (cfg.system !== undefined) describe_config.system = cfg.system
   if (cfg.effort !== undefined) describe_config.effort = cfg.effort
 
-  const inner = step<ModelCallInput, GenerateResult<T>>(step_id, async (input, ctx) => {
+  const inner = step<ModelCallInput, projected>(step_id, async (input, ctx) => {
     if (ctx.abort.aborted) {
       throw new aborted_error('aborted before model_call', {
         reason: { signal: 'abort' },
@@ -208,7 +223,7 @@ export function model_call<T = string>(
         ? [{ role: 'user', content: [{ type: 'text', text: input }] }]
         : [...input]
 
-    const opts = build_generate_options<T>(cfg, prompt, ctx)
+    const opts = build_generate_options(cfg, prompt, ctx)
 
     if (ctx.streaming) {
       opts.on_chunk = (chunk) => {
@@ -220,7 +235,7 @@ export function model_call<T = string>(
       }
     }
 
-    return cfg.engine.generate(opts)
+    return project(await cfg.engine.generate(opts))
   })
 
   return {
@@ -239,11 +254,16 @@ export function model_call<T = string>(
  * `GenerateResult` envelope. Use `model_step` when the flow only wants the
  * answer, keeping compositions at the `step, step, model_step, step` cadence;
  * drop to `model_call` when the caller needs usage, cost, tool calls, or
- * finish reason.
+ * finish reason (or its `project` option, when the flow wants a slice of the
+ * envelope mapped at the source).
  *
- * The body is one `pipe` over `model_call`: the reference pattern for
- * wrapping fascicle primitives into app-shaped helpers of your own.
+ * Implemented as `model_call` with `project` preset to `(r) => r.content`,
+ * so the leaf is a single node in `describe` and the trajectory. Wrapping a
+ * primitive into an app-shaped helper of your own is still the extension
+ * pattern; this is its smallest instance.
  */
-export function model_step<T = string>(cfg: ModelCallConfig<T>): Step<ModelCallInput, T> {
-  return pipe(model_call(cfg), (r) => r.content)
+export function model_step<T = string>(
+  cfg: Omit<ModelCallConfig<T>, 'project'>,
+): Step<ModelCallInput, T> {
+  return model_call<T, T>({ ...cfg, project: (r) => r.content })
 }

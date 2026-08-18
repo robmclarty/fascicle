@@ -168,10 +168,10 @@ choosing between `sequence` and `chain` and between `model_step` and
 
 `model_step(cfg)` is the shipped example: `model_call` projected to its
 content (a `string`, or the schema-validated value when `cfg.schema` is
-set), implemented as one `pipe` in [src/model_call.ts](../src/model_call.ts).
+set), one preset `project` in [src/model_call.ts](../src/model_call.ts).
 When a pattern in your flows repeats, wrap it the same way: a function from
-config to `Step<i, o>`, composed from the primitives, with no runner
-internals involved. The change-triage example's assessor stage
+config to `Step<i, o>`, composed from the primitives (a `pipe` over an
+existing step is the usual shape), with no runner internals involved. The change-triage example's assessor stage
 ([examples/change-triage/src/stages/assessor.ts](../examples/change-triage/src/stages/assessor.ts))
 is that pattern at app scale, and its flow
 ([examples/change-triage/src/flow.ts](../examples/change-triage/src/flow.ts))

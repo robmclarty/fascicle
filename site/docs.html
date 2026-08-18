@@ -470,7 +470,7 @@ class Component extends DCLogic {
     const primDef = [
       ['step', 'LEAF', 'Lift a plain function into a Step<i, o>.', "step('double', (n) => n * 2)"],
       ['model_step', 'LEAF', 'The default model boundary: returns the answer itself, schema-validated when schema is set.', "model_step({\n  engine,\n  system: 'app/reviewer',\n  schema: review_schema,\n  id: 'review',\n})"],
-      ['model_call', 'LEAF', 'The envelope variant: same config, returns the full GenerateResult (usage, cost, tool calls, finish reason).', "model_call({ engine, model: 'claude-sonnet-4-6' })"],
+      ['model_call', 'LEAF', 'The envelope variant: returns the full GenerateResult (usage, cost, tool calls), or a slice of it via project.', "model_call({\n  engine,\n  model: 'claude-sonnet-4-6',\n  project: (r) => ({ text: r.content, cost: r.cost }),\n})"],
       ['sequence', 'ARM', 'Run A then B then C, threading each output into the next; literal tuples are joint-checked at compile time.', "sequence([\n  step('add', (n) => n + 1),\n  step('double', (n) => n * 2),\n])"],
       ['parallel', 'ARM', 'Run a named map of steps concurrently.', "parallel({\n  title: write_title,\n  body:  write_body,\n})"],
       ['map', 'ARM', 'Run do per item of items(input), with an optional concurrency cap.', "map({\n  items: (files) => files,\n  do: summarize,\n  concurrency: 4,\n})"],

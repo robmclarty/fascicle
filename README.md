@@ -50,7 +50,7 @@ try {
 }
 ```
 
-`model_step` returns the model's answer (a `string`, or the schema-validated value when `schema` is set), keeping flows at the `step, step, model_step, step` cadence. Underneath sits `model_call`, the only sanctioned bridge between composition and the engine: same config, but it returns the full `GenerateResult` envelope (usage, cost, tool calls, finish reason). Both thread `ctx.abort`, `ctx.trajectory`, and streaming chunks for you.
+`model_step` returns the model's answer (a `string`, or the schema-validated value when `schema` is set), keeping flows at the `step, step, model_step, step` cadence. Underneath sits `model_call`, the only sanctioned bridge between composition and the engine: same config, but it returns the full `GenerateResult` envelope (usage, cost, tool calls, finish reason), with an optional `project` to map a slice of it at the source. Both thread `ctx.abort`, `ctx.trajectory`, and streaming chunks for you.
 
 ## What's in the box
 

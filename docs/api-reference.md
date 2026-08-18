@@ -165,7 +165,12 @@ const ask = model_call({ engine, model: 'sonnet', system: 'Be terse.' });
 
 `model_call(config)` returns a `Step`, the only sanctioned bridge between the
 composition and engine layers. It threads `ctx.abort`, `ctx.trajectory`, and
-streaming chunks. Types: `ModelCallConfig`, `ModelCallInput`.
+streaming chunks. Like the envelope composites, the config takes an optional
+`project` mapping the `GenerateResult` into the step's output at the source
+(`project: (r) => ({ text: r.content, cost: r.cost })`); the projection runs
+inside the step, so `describe` and the trajectory gain no wrapper node.
+Omitted, the envelope is the output. Types: `ModelCallConfig`,
+`ModelCallInput`.
 
 ### `model_step`: the answer, not the envelope
 
@@ -175,12 +180,14 @@ import { model_step } from 'fascicle';
 const ask = model_step({ engine, model: 'sonnet', system: 'Be terse.' });
 ```
 
-`model_step(config)` takes the same config as `model_call` and returns a
-`Step` whose output is the content alone: a `string`, or the schema-validated
-value when `config.schema` is set. Use it when the flow only wants the
-answer; use `model_call` when the caller needs the `GenerateResult` envelope
-(usage, cost, tool calls, finish reason). Implemented as one `pipe` over
-`model_call`, and worth reading as the pattern for helpers of your own.
+`model_step(config)` takes the same config as `model_call` (minus `project`)
+and returns a `Step` whose output is the content alone: a `string`, or the
+schema-validated value when `config.schema` is set. Use it when the flow only
+wants the answer; use `model_call` when the caller needs the `GenerateResult`
+envelope (usage, cost, tool calls, finish reason), or its `project` option
+for a slice of it. Implemented as `model_call` with `project` preset to
+`(r) => r.content`, so the leaf is a single node in `describe` and the
+trajectory.
 
 ### `define_agent` — markdown-driven agents
 

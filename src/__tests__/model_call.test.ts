@@ -594,4 +594,44 @@ vdescribe('model_step', () => {
       { role: 'user', content: [{ type: 'text', text: 'ping' }] },
     ])
   })
+
+  it('describes as a single node with no pipe wrapper', () => {
+    const { engine } = make_mock_engine()
+    const s = model_step({ engine, model: 'x', id: 'review' })
+    const text = describe(s)
+    expect(text).not.toContain('pipe')
+    expect(text).toContain('review')
+    const cfg = describe.json(s).config as Record<string, unknown>
+    expect(cfg['has_project']).toBe(true)
+  })
+})
+
+vdescribe('model_call project', () => {
+  it('maps the envelope into the step output at the source', async () => {
+    const { engine } = make_mock_engine({ result: make_result('the answer') })
+    const s = model_call({
+      engine,
+      model: 'x',
+      project: (r) => `${r.content}:${r.finish_reason}:${String(r.usage.output_tokens)}`,
+    })
+    const output = await run(s, 'hi', { install_signal_handlers: false })
+    expect(output).toBe('the answer:stop:1')
+  })
+
+  it('omitted, the full envelope is the output', async () => {
+    const result = make_result('ok')
+    const { engine } = make_mock_engine({ result })
+    const s = model_call({ engine, model: 'x' })
+    const output = await run(s, 'hi', { install_signal_handlers: false })
+    expect(output).toEqual(result)
+  })
+
+  it('describe records has_project on projected and bare calls alike', () => {
+    const { engine } = make_mock_engine()
+    const bare = model_call({ engine, model: 'x' })
+    const projected = model_call({ engine, model: 'x', project: (r) => r.content })
+    expect(config_of(bare)['has_project']).toBe(false)
+    expect((describe.json(projected).config as Record<string, unknown>)['has_project']).toBe(true)
+    expect(describe(projected)).not.toContain('pipe')
+  })
 })

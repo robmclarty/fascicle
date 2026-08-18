@@ -505,7 +505,7 @@ class Component extends DCLogic {
       case 'map': flowLines = ["const flow = map({", "  items: (xs) => xs,", "  do: " + inner + ",", "  concurrency: 4,", "})"]; input = "['a', 'b', 'c']"; break;
       case 'pipe': flowLines = ["const flow = pipe(" + inner + ", (s) => s.slice(0, 280))"]; break;
       case 'model_step': flowLines = ["const flow = " + inner]; break;
-      case 'model_call': flowLines = ["const flow = pipe(", "  model_call({ engine" + providerArg + ", model: '" + MODEL[effProv] + "' }),", "  (r) => `${r.content} (${r.usage.output_tokens} tokens)`,", ")"]; break;
+      case 'model_call': flowLines = ["const flow = model_call({", "  engine" + providerArg + ",", "  model: '" + MODEL[effProv] + "',", "  project: (r) => `${r.content} (${r.usage.output_tokens} tokens)`,", "})"]; break;
       case 'chain': flowLines = ["const polish = " + inner, "", "const flow = chain('topic')", "  .step('outline', ({ topic }) => `Outline: ${topic}`)", "  .step('draft', ({ outline }, ctx) => ctx.call(polish, outline), { arm: polish })", "  .output(({ topic, draft }) => `# ${topic}\\n\\n${draft}`)"]; break;
       case 'retry': flowLines = ["const flow = retry(" + inner + ", { max_attempts: 3 })"]; break;
       case 'fallback': flowLines = ["const flow = fallback(", "  " + inner + ",", "  step('cached', () => CACHED),", ")"]; break;
