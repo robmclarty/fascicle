@@ -33,6 +33,7 @@ missing `ai` fails at module resolution rather than with a fascicle error.
 | `run(flow, input, options?)` | `Promise<output>` | Execute a step. `options`: `{ trajectory?, checkpoint_store?, abort?, resume_data? }`. |
 | `run.stream(flow, input, options?)` | `{ events, result }` | Same graph as `run`; `events` is an async iterable of `TrajectoryEvent`, `result` resolves to the output. |
 | `describe(step, options?)` | `string` | Static text-tree description of a step tree. No execution, no model calls. `describe.json(step)` returns the structured `FlowNode` tree instead. |
+| `ctx.call(step, input)` | `Promise<output>` | On `RunContext`, inside any step body: run another Step with spans, abort, and error paths intact. The direct-style counterpart to composing. |
 
 ```ts
 import { run, sequence, step } from 'fascicle';
@@ -89,6 +90,7 @@ fits a step fits any composition of steps.
 | Primitive | Shape |
 | --- | --- |
 | `scope` / `stash` / `use` | named state across non-adjacent steps |
+| `chain()` → `.step` / `.stage` / `.output` | named steps over a typed record: `.step(name, fn)` merges a binding, `.stage(name, project?)` concludes a phase (with `project`, narrows the record), `.output(fn)` projects the result into a `Step` |
 | `checkpoint(inner, { key })` | memoize an inner step by key in a `CheckpointStore` |
 | `suspend({ id, on, resume_schema, combine })` | pause for external input; resume later with `resume_data` (throws `suspended_error` to signal the pause) |
 
@@ -142,6 +144,21 @@ const ask = model_call({ engine, model: 'sonnet', system: 'Be terse.' });
 `model_call(config)` returns a `Step`, the only sanctioned bridge between the
 composition and engine layers. It threads `ctx.abort`, `ctx.trajectory`, and
 streaming chunks. Types: `ModelCallConfig`, `ModelCallInput`.
+
+### `model_step`: the answer, not the envelope
+
+```ts
+import { model_step } from 'fascicle';
+
+const ask = model_step({ engine, model: 'sonnet', system: 'Be terse.' });
+```
+
+`model_step(config)` takes the same config as `model_call` and returns a
+`Step` whose output is the content alone: a `string`, or the schema-validated
+value when `config.schema` is set. Use it when the flow only wants the
+answer; use `model_call` when the caller needs the `GenerateResult` envelope
+(usage, cost, tool calls, finish reason). Implemented as one `pipe` over
+`model_call`, and worth reading as the pattern for helpers of your own.
 
 ### `define_agent` — markdown-driven agents
 

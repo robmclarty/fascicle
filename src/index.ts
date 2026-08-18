@@ -81,7 +81,7 @@ export type {
 
 export { default_normalize_usage } from '#engine'
 
-export { model_call } from './model_call.js'
+export { model_call, model_step } from './model_call.js'
 export type { ModelCallConfig, ModelCallInput } from './model_call.js'
 
 export { forward_standard_env } from './forward_standard_env.js'

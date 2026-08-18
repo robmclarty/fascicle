@@ -14,7 +14,7 @@
  */
 
 import { createHash } from 'node:crypto'
-import { aborted_error, step } from '#core'
+import { aborted_error, pipe, step } from '#core'
 import type { RunContext, Step, TrajectoryLogger } from '#core'
 import type {
   EffortLevel,
@@ -229,4 +229,21 @@ export function model_call<T = string>(
     run: (input, ctx) => inner.run(input, ctx),
     config: Object.freeze({ ...describe_config }),
   }
+}
+
+/**
+ * model_step: `model_call` projected to its content.
+ *
+ * Returns a Step whose output is the model's final content (a `string`, or
+ * the schema-validated value when `cfg.schema` is set) instead of the full
+ * `GenerateResult` envelope. Use `model_step` when the flow only wants the
+ * answer, keeping compositions at the `step, step, model_step, step` cadence;
+ * drop to `model_call` when the caller needs usage, cost, tool calls, or
+ * finish reason.
+ *
+ * The body is one `pipe` over `model_call`: the reference pattern for
+ * wrapping fascicle primitives into app-shaped helpers of your own.
+ */
+export function model_step<T = string>(cfg: ModelCallConfig<T>): Step<ModelCallInput, T> {
+  return pipe(model_call(cfg), (r) => r.content)
 }

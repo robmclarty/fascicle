@@ -29,6 +29,7 @@ export const STEP_KINDS = [
   'scope',
   'stash',
   'use',
+  'chain',
 ] as const
 
 export type StepKind = (typeof STEP_KINDS)[number]

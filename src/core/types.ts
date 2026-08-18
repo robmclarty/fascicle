@@ -43,6 +43,12 @@ export type RunContext = {
   readonly abort: AbortSignal
   readonly emit: (event: Record<string, unknown>) => void
   readonly on_cleanup: (fn: CleanupFn) => void
+  // Invoke another Step from inside a step body with spans, error paths, and
+  // abort checks intact. Declared with a `this` parameter so the method
+  // resolves against whichever derived context it is invoked on (contexts are
+  // spread-copied per span level), and so a destructured bare `call` is a
+  // compile error instead of a silently detached dispatch.
+  readonly call: <ci, co>(this: RunContext, s: Step<ci, co>, input: ci) => Promise<co>
   readonly checkpoint_store?: CheckpointStore | undefined
   readonly resume_data?: Readonly<Record<string, unknown>> | undefined
   readonly streaming: boolean

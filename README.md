@@ -2,7 +2,7 @@
 
 ![A substrate for agents — three mushrooms (model_call, step, tool) fruit from a shared mycelium network; every mushroom is a Step<i, o>, every thread is a composition](./mycelium.svg)
 
-Compose agents out of LLM calls, tool calls, and plain functions. Everything is a `Step<i, o>`. Wire steps together with 21 primitives (`sequence`, `parallel`, `branch`, `retry`, `loop`, `ensemble`, `checkpoint`, …) and run them as plain values. One `generate` surface fronts eight provider adapters: Anthropic, OpenAI, Google, OpenRouter, AWS Bedrock, Ollama, LM Studio, and a `claude_cli` subprocess that drives the Claude Code CLI.
+Compose agents out of LLM calls, tool calls, and plain functions. Everything is a `Step<i, o>`. Wire steps together with 22 primitives (`sequence`, `parallel`, `chain`, `branch`, `retry`, `loop`, `ensemble`, `checkpoint`, …) and run them as plain values. One `generate` surface fronts eight provider adapters: Anthropic, OpenAI, Google, OpenRouter, AWS Bedrock, Ollama, LM Studio, and a `claude_cli` subprocess that drives the Claude Code CLI.
 
 No framework lifecycle. No ambient state. No decorators. Adapters are passed in per run.
 
@@ -32,7 +32,7 @@ Add a model call:
 
 <!-- snippet: check -->
 ```typescript
-import { create_engine, model_call, pipe, run, sequence, step } from 'fascicle';
+import { create_engine, model_step, run, sequence, step } from 'fascicle';
 
 const engine = create_engine({
   providers: { anthropic: { api_key: process.env.ANTHROPIC_API_KEY! } },
@@ -40,10 +40,7 @@ const engine = create_engine({
 
 const flow = sequence([
   step('brief', (topic: string) => `Write a 2-sentence brief on: ${topic}`),
-  pipe(
-    model_call({ engine, model: 'sonnet', system: 'No preamble.' }),
-    (r) => r.content,
-  ),
+  model_step({ engine, model: 'sonnet', system: 'No preamble.' }),
 ]);
 
 try {
@@ -53,11 +50,11 @@ try {
 }
 ```
 
-`model_call` is the only sanctioned bridge between composition and the engine. It threads `ctx.abort`, `ctx.trajectory`, and streaming chunks for you.
+`model_step` returns the model's answer (a `string`, or the schema-validated value when `schema` is set), keeping flows at the `step, step, model_step, step` cadence. Underneath sits `model_call`, the only sanctioned bridge between composition and the engine: same config, but it returns the full `GenerateResult` envelope (usage, cost, tool calls, finish reason). Both thread `ctx.abort`, `ctx.trajectory`, and streaming chunks for you.
 
 ## What's in the box
 
-**Composition primitives (21).** Every composer takes `Step<i, o>` and returns `Step<i, o>`. Anything that fits a step fits any composition of steps.
+**Composition primitives.** Every composer takes `Step<i, o>` and returns `Step<i, o>`. Anything that fits a step fits any composition of steps. The everyday surface is small; most flows are built entirely from these nine:
 
 | Primitive | Shape |
 | --- | --- |
@@ -68,22 +65,12 @@ try {
 | `map` | run a step per array element, optional concurrency cap |
 | `pipe` | post-process an inner step's output with a plain function |
 | `retry` | re-run on failure with exponential backoff |
-| `fallback` | run a backup if the primary throws |
-| `timeout` | cancel an inner step after N ms |
-| `loop` | bounded iteration with carry-state and an optional convergence guard |
-| `compose` | label a composite so it shows up by intent in trajectories |
-| `adversarial` | build, critique, repeat until accept or `max_rounds` |
-| `ensemble` | run N members, pick the highest-scoring result |
-| `ensemble_step` | pick-best where the scorer is itself a `Step` (a model judge with its own span) |
-| `tournament` | single-elimination bracket |
-| `consensus` | run N concurrently, accept when an `agree` predicate holds |
-| `checkpoint` | memoize an inner step by key in a `CheckpointStore` |
-| `suspend` | pause for external input; resume later with `resume_data` |
-| `scope` / `stash` / `use` | named state across non-adjacent steps |
-| `improve` | bounded online propose → score → accept/reject self-improvement loop |
-| `learn` | offline reflection over recorded trajectories |
+| `model_step` | the model's answer as a step (`model_call` projected to its content) |
+| `chain` | named steps over a typed record: `.step` binds, `.stage` concludes a phase, `.output` projects |
 
-Plus `run`, `run.stream`, and `describe`.
+The remaining primitives are specialized composers with the same contract, so they drop into any flow when the task calls for them: control flow (`loop`, `fallback`, `timeout`, `compose`), multi-model orchestration (`adversarial`, `ensemble`, `ensemble_step`, `tournament`, `consensus`), durability (`checkpoint`, `suspend`), self-improvement (`improve`, `learn`), and the named-state primitives `scope` / `stash` / `use` underlying `chain`. One-liners for all of them live in [docs/composition.md](./docs/composition.md), full shapes in [docs/api-reference.md](./docs/api-reference.md).
+
+Plus `run`, `run.stream`, and `describe`. And inside any step body, `ctx.call(step, input)` runs another Step with spans, abort, and error paths intact: the direct-style counterpart to composing, for control flow too dynamic to declare.
 
 **AI engine.** `create_engine(config)` returns one `generate` surface across eight providers. Two axes: `model` is an opaque id sent to the provider verbatim (`claude-opus-4-8`, `gpt-4o`, `us.anthropic.claude-sonnet-4-20250514-v1:0`), and `provider` names the transport (`anthropic`, `bedrock`, `openrouter`, `claude_cli`, …) — swap `provider` to move a call between transports. Reasoning effort (`'none'` through `'max'`) is translated per provider. Cost estimation uses a pricing table with per-engine overrides.
 

@@ -820,6 +820,9 @@ describe('define_agent', () => {
           abort: controller.signal,
           emit: () => {},
           on_cleanup: () => {},
+          call: () => {
+            throw new Error('bare ctx does not dispatch')
+          },
           streaming: false,
         }
         const pending = Promise.resolve(agent.run({}, ctx))

@@ -60,7 +60,7 @@ This one invariant buys the rest:
 - **No coupling.** Steps are values, not registered entities. Two
   unrelated flows never share state unless the caller injects it.
 
-## The 21 primitives
+## The 22 primitives
 
 Copy these one-liners into an LLM's system prompt and it can write flows
 from English specifications:
@@ -103,12 +103,43 @@ from English specifications:
   agreement.
 - `checkpoint(inner, { key })` — memoize `inner` by key.
 - `suspend({ id, on, resume_schema, combine })` — pause for external input.
-- `scope([...])` / `stash(key, source)` / `use(keys, fn)` — named state when
-  chaining is not enough.
+- `scope([...])` / `stash(key, source)` / `use(keys, fn)` — named state at
+  the key-value level; `chain` is the typed front door over the same idea.
+- `chain(input_name?)` with `.step(name, fn)` / `.stage(name, project?)` /
+  `.output(fn)` — named steps over a growing typed record: `.step` runs
+  `fn(record, ctx)` and merges its output under `name`; `.stage` concludes a
+  phase (a grouping span in the trajectory; with `project`, it replaces the
+  record so earlier bindings go out of scope); `.output` projects the final
+  result and returns an ordinary `Step`.
 - `improve({ seed, propose, score, budget })` — bounded online self-improvement
   loop: propose → score → accept/reject with plateau detection.
 - `learn({ flow, source, analyzer })` — offline reflection over recorded
   trajectories; returns the analyzer's proposals plus summary metadata.
+
+## Two ways to write a flow
+
+The primitives above are the declarative style: the program is a visible
+tree, describable before it runs, with binding and stage names as span
+labels. The direct style is its mirror: a plain `step` body using ordinary
+`const` / `if` / `for`, with `ctx.call(step, input)` as the one bridge for
+invoking another Step (spans, abort, and error paths stay intact). Choose
+per flow: `chain` when you want the topology visible as data; a plain body
+when the control flow is genuinely dynamic. The two compose freely in both
+directions, and the trajectory invariant is identical under each because it
+is enforced below both, at the model boundary.
+
+## The helper tier: wrapping primitives is the extension model
+
+`model_step(cfg)` is the shipped example: `model_call` projected to its
+content (a `string`, or the schema-validated value when `cfg.schema` is
+set), implemented as one `pipe` in [src/model_call.ts](../src/model_call.ts).
+When a pattern in your flows repeats, wrap it the same way: a function from
+config to `Step<i, o>`, composed from the primitives, with no runner
+internals involved. The change-triage example's assessor stage
+([examples/change-triage/src/stages/assessor.ts](../examples/change-triage/src/stages/assessor.ts))
+is that pattern at app scale, and its flow
+([examples/change-triage/src/flow.ts](../examples/change-triage/src/flow.ts))
+carries a whole agent with `chain`, `model_step`, and `ctx.call` alone.
 
 ## Running a flow
 

@@ -11,7 +11,7 @@ import type {
   Tool,
   ToolApprovalHandler,
 } from '#engine'
-import { model_call } from '../model_call.js'
+import { model_call, model_step } from '../model_call.js'
 
 const sample_tool: Tool = {
   name: 'noop',
@@ -36,6 +36,9 @@ function bare_ctx(overrides: Partial<RunContext> = {}): RunContext {
     abort: new AbortController().signal,
     emit: () => {},
     on_cleanup: () => {},
+    call: () => {
+      throw new Error('bare_ctx does not dispatch')
+    },
     streaming: false,
     ...overrides,
   }
@@ -192,6 +195,9 @@ vdescribe('model_call', () => {
       abort: controller.signal,
       emit: () => {},
       on_cleanup: () => {},
+      call: () => {
+        throw new Error('bare ctx does not dispatch')
+      },
       streaming: false,
     }
     await expect(s.run('hi', ctx)).rejects.toBeInstanceOf(aborted_error)
@@ -230,6 +236,9 @@ vdescribe('model_call', () => {
       abort: controller.signal,
       emit: () => {},
       on_cleanup: () => {},
+      call: () => {
+        throw new Error('bare ctx does not dispatch')
+      },
       streaming: false,
     }
     const pending = s.run('hi', ctx)
@@ -554,5 +563,35 @@ vdescribe('model_call', () => {
     await run(s, 'hi', { trajectory: logger, install_signal_handlers: false })
     expect(parent_of['B']).toBe(id_of['A'])
     expect(parent_of['C']).toBe(id_of['step'])
+  })
+})
+
+vdescribe('model_step', () => {
+  it('returns the content string instead of the GenerateResult envelope', async () => {
+    const { engine } = make_mock_engine({ result: make_result('the answer') })
+    const s = model_step({ engine, model: 'x' })
+    const output = await run(s, 'hi', { install_signal_handlers: false })
+    expect(output).toBe('the answer')
+  })
+
+  it('returns the schema-validated value when a schema is set', async () => {
+    const parsed = { ...make_result(''), content: { answer: 'yes' } } as unknown as GenerateResult
+    const { engine } = make_mock_engine({ result: parsed })
+    const s = model_step({ engine, model: 'x', schema: sample_schema })
+    const output = await run(s, 'hi', { install_signal_handlers: false })
+    expect(output).toEqual({ answer: 'yes' })
+  })
+
+  it('delegates the call unchanged: config and prompt reach the engine', async () => {
+    const { engine, calls } = make_mock_engine()
+    const s = model_step({ engine, model: 'mx', system: 'sys', effort: 'low' })
+    await run(s, 'ping', { install_signal_handlers: false })
+    expect(calls).toHaveLength(1)
+    expect(calls[0]?.opts.model).toBe('mx')
+    expect(calls[0]?.opts.system).toBe('sys')
+    expect(calls[0]?.opts.effort).toBe('low')
+    expect(calls[0]?.opts.prompt).toEqual([
+      { role: 'user', content: [{ type: 'text', text: 'ping' }] },
+    ])
   })
 })

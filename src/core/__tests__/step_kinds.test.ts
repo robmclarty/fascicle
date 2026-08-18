@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
 import { branch } from '../branch.js'
+import { chain } from '../chain.js'
 import { checkpoint } from '../checkpoint.js'
 import { compose } from '../compose.js'
 import { fallback } from '../fallback.js'
@@ -29,6 +30,7 @@ describe('STEP_KINDS registry', () => {
       [
         'adversarial',
         'branch',
+        'chain',
         'checkpoint',
         'compose',
         'consensus',
@@ -79,6 +81,9 @@ describe('STEP_KINDS registry', () => {
       scope([dummy]),
       stash('k', dummy),
       use(['k'], () => undefined),
+      chain<number>()
+        .step('n', ({ input }) => input)
+        .output(({ n }) => n),
     ]
   
     for (const built of constructed) {

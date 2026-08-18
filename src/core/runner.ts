@@ -359,6 +359,10 @@ function start_run<i, o>(
     on_cleanup: (fn) => {
       cleanup.register(fn)
     },
+    call<ci, co>(this: RunContext, s: Step<ci, co>, child_input: ci): Promise<co> {
+      throw_if_aborted(this)
+      return dispatch_step(s, child_input, this)
+    },
     checkpoint_store: options.checkpoint_store,
     resume_data: options.resume_data,
     streaming,

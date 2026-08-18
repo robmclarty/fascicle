@@ -35,6 +35,7 @@
         { "required": ["checkpoint"] },
         { "required": ["suspend"] },
         { "required": ["scope"] },
+        { "required": ["chain"] },
         { "required": ["ref"] }
       ],
       "properties": {
@@ -56,6 +57,7 @@
         "checkpoint": { "$ref": "#/$defs/checkpoint_config" },
         "suspend": { "$ref": "#/$defs/suspend_config" },
         "scope": { "$ref": "#/$defs/scope_config" },
+        "chain": { "$ref": "#/$defs/chain_config" },
         "ref": { "type": "string" }
       }
     },
@@ -233,6 +235,39 @@
               "items": { "type": "string" }
             },
             "do": { "$ref": "#/$defs/node" }
+          }
+        }
+      ]
+    },
+    "chain_config": {
+      "type": "object",
+      "required": ["steps", "output"],
+      "properties": {
+        "input": { "type": "string" },
+        "steps": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/chain_entry" }
+        },
+        "output": { "type": "string" }
+      }
+    },
+    "chain_entry": {
+      "type": "object",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["step", "fn"],
+          "properties": {
+            "step": { "type": "string" },
+            "fn": { "type": "string" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["stage"],
+          "properties": {
+            "stage": { "type": "string" },
+            "project": { "type": "string" }
           }
         }
       ]
