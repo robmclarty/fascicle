@@ -126,7 +126,11 @@ invoking another Step (spans, abort, and error paths stay intact). Choose
 per flow: `chain` when you want the topology visible as data; a plain body
 when the control flow is genuinely dynamic. The two compose freely in both
 directions, and the trajectory invariant is identical under each because it
-is enforced below both, at the model boundary.
+is enforced below both, at the model boundary. The same agent is written
+once in each style in
+[examples/release_notes.ts](../examples/release_notes.ts) (chain) and
+[examples/release_notes_direct.ts](../examples/release_notes_direct.ts)
+(direct, with a conditional model boundary as the reason to be direct).
 
 ## The helper tier: wrapping primitives is the extension model
 

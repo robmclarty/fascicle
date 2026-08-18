@@ -12,7 +12,7 @@ So the whole blueprint reduces to one rule and a set of module shapes that suppo
 
 ## The one rule
 
-> **Give the agent exactly one composition layer.** One file the reader opens to see the entire topology, written in fascicle vocabulary only: `sequence`, `parallel`, `branch`, `loop`, `scope`, `stash`, `use`, `step`, `model_call`. Everything that is not shape (string formatting, IO, state transitions, extraction) lives in sibling modules and is plugged in as plain functions.
+> **Give the agent exactly one composition layer.** One file the reader opens to see the entire topology, written in fascicle vocabulary only: `chain`, `step`, `model_step`, `sequence`, `parallel`, `branch`, `loop`. Everything that is not shape (string formatting, IO, state transitions) lives in sibling modules and is plugged in as plain functions.
 
 Call it `flow.ts`. A reader should be able to say "first the reviewer runs, then if there are suggestions the pragmatist runs, then a build-review loop bounded at three rounds" by reading top to bottom, without opening any other file. The canonical worked example is [`examples/pr-improve/src/flow.ts`](../examples/pr-improve/src/flow.ts) and its design rationale in [`examples/pr-improve/docs/architecture.md`](../examples/pr-improve/docs/architecture.md).
 
@@ -39,10 +39,9 @@ export type Complete = <T>(req: CompleteRequest<T>) => Promise<T>
 
 export const fascicle_complete = (engine: Engine): Complete =>
   async <T>(req: CompleteRequest<T>): Promise<T> => {
-    const call = model_call<T>({ engine, id: req.label, schema: req.schema,
+    const call = model_step<T>({ engine, id: req.label, schema: req.schema,
       ...(req.system ? { system: req.system } : {}) })
-    const result = await run(call, req.prompt)
-    return result.content
+    return run(call, req.prompt)
   }
 ```
 
@@ -65,6 +64,8 @@ Each of `build`, `check`, `critique`, `record` is a thin `step` that delegates t
 
 **Tier 3** is the full pattern this doc describes. The rest of the blueprint assumes it; at lower tiers, drop the files you do not need.
 
+**Tier 3 does not imply the full layout.** Composition-first is about where the topology lives, not how many files surround it. A single-role agent can be composition-first in one file: prompt as an inline string, schema beside it, the whole flow one `chain` ([`examples/release_notes.ts`](../examples/release_notes.ts) is exactly this, about a hundred lines). The layered layout below earns its keep when roles multiply, when prompts deserve their own review surface, or when a second developer needs to change one boundary without reading the rest. Grow into it; do not start from it.
+
 Two signals you have over-composed:
 
 - A "flow" that is a single `step` wrapping an imperative function, existing only to produce a named span. That is composition theater; a plain function with a `compose` label, or nothing, is honest.
@@ -80,11 +81,11 @@ src/
   flow.ts            THE composition layer
   engine.ts          the only create_engine call site
   types.ts           zod schemas = the contracts between stages
-  state.ts           scope keys and readers (only when using scope/stash/use)
+  state.ts           scope keys and readers (only for raw scope/stash/use; chain needs none)
   messages.ts        format_* user-message builders, pure string assembly
   render.ts          render_* builders for output artifacts
   prompts/           *.md system prompts, one file per role
-  stages/            make_*_call factories, one file per model role
+  stages/            make_*_step factories, one file per model role
   tools/             make_* Tool factories, limits.ts, index.ts
   services/          plain IO modules (git, db, http) that steps wrap
 ```
@@ -95,11 +96,11 @@ Each module has one reason to exist and a strict import contract:
 | --- | --- | --- |
 | `flow.ts` | topology, in fascicle vocabulary | string building, IO, business logic, `as` casts |
 | `engine.ts` | env to `create_engine`, provider selection | anything about the flow |
-| `stages/` | one `model_call` factory per role, prompt loading | message formatting, result extraction |
+| `stages/` | one `model_step` factory per role, prompt loading | message formatting, result extraction |
 | `prompts/` | static role instruction as markdown | code, dynamic content |
 | `messages.ts` | user-message assembly from typed inputs | fascicle imports |
 | `types.ts` | zod schemas plus inferred types | logic |
-| `state.ts` | stash key constants, typed readers | anything except keys and readers |
+| `state.ts` | stash key constants, typed readers (raw scope/stash/use only) | anything except keys and readers |
 | `tools/` | `Tool` factories, shared safety, limits | prompt text, flow knowledge |
 | `render.ts` | output artifacts (markdown, JSON reports) | model calls |
 | `services/` | side-effecting domain IO | fascicle imports |
@@ -114,20 +115,17 @@ Rules, in order of importance:
 1. **Only fascicle vocabulary and plugged-in names.** Every import is a stage factory, a `format_*` / `render_*` / `read_*` function, or a type. If you find yourself writing a template literal or an `await fetch` here, it belongs in a sibling.
 2. **Export one builder**: `build_flow(engine, models, env): Step<In, Out>`. The engine and model choices arrive as arguments so the flow never touches `process.env` and tests can hand it a stub engine.
 3. **Put the topology diagram in the file header.** An ASCII tree that mirrors the code below it is the cheapest architecture doc you will ever write, and drift is caught in review because they sit in the same diff.
-4. **Recurring stage idiom**: a stage is a three-step sequence, and readers learn to see it as one unit.
+4. **Recurring stage idiom**: a stage is one `chain` binding, and readers learn to see it as one unit.
 
 ```ts
-const reviewer_subflow: Step<unknown, ReadonlyArray<Suggestion>> = sequence([
-  use([K.PR], (s) => format_reviewer_message(read_pr(s))),
-  reviewer_call,
-  step('extract_suggestions', (r: GenerateResult<ReviewerOutput>) => r.content.suggestions),
-])
+.step('suggestions', (s, ctx) =>
+  ctx.call(reviewer, format_reviewer_message(s.pr)))
 ```
 
-Format from named state, call the model, extract the typed payload. Nothing else.
+Format from named bindings, call the model step, bind the typed payload. Nothing else. (Under raw `scope`/`stash`/`use` the same idiom is a three-step sequence: `use` to format, the model step, `stash` the result; `chain` collapses it.)
 
 5. **Annotate the outer type of every named subflow** (`Step<In, Out>`). Heterogeneous `sequence` chains do not always infer end to end; explicit annotations catch mismatches at the boundary where they are introduced. If you are tempted to write `sequence([...]) as Step<In, Out>`, a step in the chain has the wrong type; fix that instead.
-6. **The escape hatch, used honestly.** Occasionally wiring is data-dependent: a `map`'s inner step needs a value that only exists at runtime (a sandbox handle, a per-file root). Then a named `step` body may build and `await inner.run(input, ctx)` a sub-composition. This costs you structural spans for the inner nesting, so: give the step a name, keep the sub-composition small, and leave a comment saying why it could not be expressed statically. Unexplained buried control flow is the anti-pattern; the documented exception is fine.
+6. **The direct style, used honestly.** Occasionally wiring is data-dependent: a `map`'s inner step needs a value that only exists at runtime (a sandbox handle, a per-file root), or the control flow is genuinely dynamic. Then a named `step` body builds the sub-composition and invokes it with `ctx.call(inner, input)`, which keeps spans, abort, and error paths intact (never `inner.run(input, ctx)` directly, which bypasses the dispatcher and loses the span). The remaining cost is static describability only, so: give the step a name, keep the body small, and leave a comment saying why it could not be expressed statically. Unexplained buried control flow is the anti-pattern; the documented direct-style step is a first-class citizen.
 
 ## engine.ts
 
@@ -187,15 +185,15 @@ const reviewer = define_agent({
 })
 ```
 
-**Stage factories: load the body as `system`.** When you need the full `GenerateResult` envelope (usage, cost, tool calls) or `model_call` options like `schema_repair_attempts` and `tools`, keep the stage factory and load the markdown at factory time. A minimal loader is about a dozen lines (split on the closing `---`, parse `key: value` pairs); write it once in `prompts/load.ts`.
+**Stage factories: load the body as `system`.** When the role needs options `define_agent` does not expose (`tools`, `provider_options`, `effort`, `max_steps`), keep the stage factory and load the markdown at factory time. A minimal loader is about a dozen lines (split on the closing `---`, parse `key: value` pairs); write it once in `prompts/load.ts`. Return `model_step` so the stage's output is the validated payload itself; drop to `model_call` only when the caller needs the `GenerateResult` envelope (usage, cost, tool calls, finish reason).
 
 ```ts
-export function make_reviewer_call(
+export function make_reviewer_step(
   engine: Engine,
   model: string,
-): Step<string, GenerateResult<ReviewerOutput>> {
+): Step<string, ReviewerOutput> {
   const prompt = load_prompt(new URL('../prompts/reviewer.md', import.meta.url))
-  return model_call({
+  return model_step({
     engine,
     model,
     system: prompt.body,
@@ -219,32 +217,35 @@ Rules that keep this honest:
 A stage file is exactly two things: the prompt wiring and a factory.
 
 ```ts
-export function make_builder_call(
+export function make_builder_step(
   engine: Engine,
   model: string,
   worktree_root: string,
   provider: Provider,
-): Step<string, GenerateResult<Handoff>> { ... }
+): Step<string, Handoff> { ... }
 ```
 
-The returned type, `Step<string, GenerateResult<Handoff>>`, is the integration contract, and it is the whole point of the layer. Behind that signature you can swap, without touching `flow.ts` or any other stage:
+The returned type, `Step<string, Handoff>`, is the integration contract, and it is the whole point of the layer. (Return `Step<string, GenerateResult<Handoff>>` from `model_call` instead when the flow needs usage, cost, or tool calls.) Behind that signature you can swap, without touching `flow.ts` or any other stage:
 
-- a one-shot `model_call({ schema })` for a tool loop with `tools: make_builder_tools(root)` and `max_steps`
+- a one-shot `model_step({ schema })` for a tool loop with `tools: make_builder_tools(root)` and `max_steps`
 - provider dispatch: under `claude_cli` pass no tools and set `provider_options.claude_cli.allowed_tools` (the CLI brings its own); under API providers pass explicit worktree-scoped `Tool`s
 - a different model, a retry wrapper, a `fallback` to a second provider
+- the mechanism itself: `model_step` for `define_agent`, or the reverse
 
 No formatting, no extraction, no flow knowledge. If a stage file imports `messages.ts`, the layering has broken.
 
 ## types.ts: schemas are the contracts
 
-- **One zod schema per model boundary**, with `export type X = z.infer<typeof x_schema>` beside it. Pass the schema to `model_call({ schema })` and let the engine validate and repair; downstream code reads `r.content` fully typed and never parses model output itself.
+- **One zod schema per model boundary**, with `export type X = z.infer<typeof x_schema>` beside it. Pass the schema to `model_step({ schema })` and let the engine validate and repair; downstream code receives the validated value fully typed (or reads `r.content` when a `model_call` envelope is in play) and never parses model output itself.
 - **Discriminated unions for verdicts and results** (`z.discriminatedUnion('kind', [...])` for model output, hand-written unions for app results that never cross a model boundary). Degraded outcomes are data (`{ kind: 'did_not_converge' }`), not exceptions; the shell maps them to messages and exit codes.
 - **Keep prompt and schema from drifting apart.** The failure mode observed everywhere: output rules stated in the system prompt, restated in `.describe()` on schema fields, restated again in an auditor prompt, and now three copies to keep in sync. Pick one home per rule. Field-level constraints (length caps, enums, "empty when approved") belong in `.describe()` on the schema, which travels with the JSON schema the model sees. The prompt states the role and the one-line output contract ("respond with only the JSON object") and does not enumerate fields.
 - Zod is for boundaries the model or the outside world crosses: model output, tool inputs, env/config, stdin. Internal row and record types do not need runtime validation.
 
-## state.ts: quarantine the casts
+## state.ts: quarantine the casts (raw scope state only)
 
-Scope state (`scope` / `stash` / `use`) is keyed by string and holds `unknown`; something has to cast. Concentrate all of it here:
+`chain` threads a typed record and needs none of this file: binding names and view types are inferred, so most apps should not have a `state.ts` at all. It exists for flows that use raw `scope` / `stash` / `use` directly, for state shapes `chain` does not express (writes from deep inside a subtree, state shared across sibling compositions).
+
+Raw scope state is keyed by string and holds `unknown`; something has to cast. Concentrate all of it here:
 
 ```ts
 export const K = { PR: 'pr', SUGGESTIONS: 'suggestions', SPEC: 'spec' } as const
@@ -309,7 +310,7 @@ Match fascicle's own surface: `snake_case` for values and functions, `PascalCase
 
 | Prefix / shape | Meaning |
 | --- | --- |
-| `make_<x>` | factory returning a leaf value: a `model_call` step, a `Tool`, a stub engine |
+| `make_<x>` | factory returning a leaf value: a `model_step`, a `Tool`, a stub engine |
 | `build_<x>` | factory returning a composition: `build_flow`, `build_review_loop` |
 | `format_<x>` | pure user-message builder in `messages.ts` |
 | `render_<x>` | pure output-artifact builder in `render.ts` |
@@ -323,7 +324,7 @@ Match fascicle's own surface: `snake_case` for values and functions, `PascalCase
 Each of these was observed in the wild; the fix is in parentheses.
 
 1. **Fascicle calls scattered through business logic.** The topology becomes unreadable and unswappable (gather into one composition layer, or drop to tier 1 and hide fascicle behind a port).
-2. **Control flow buried in step bodies.** An `if` / `for` / try-fallback inside a `step` is invisible to trajectories and to `describe` (lift to `branch` / `loop` / `fallback`; the test: would another pipeline want to compose around this decision?).
+2. **Control flow smuggled through step bodies.** An undocumented `if` / `for` / try-fallback inside an anonymous `step`, with children invoked by bare `.run()`, is invisible to trajectories and to `describe`. The test: would another pipeline want to compose around this decision? If yes, lift it to `branch` / `loop` / `fallback`. If the control flow is genuinely dynamic, the direct style is legitimate: a named step body with `ctx.call` keeps the trajectory honest (see flow.ts rule 6); what stays an anti-pattern is doing it namelessly, bypassing `ctx.call`, or leaving no comment on why it could not be static.
 3. **Composition theater.** Single-step "flows" whose only contribution is a span name, or combinator chains around a linear two-call sequence that force unions and mutable closures through the data channel (collapse to a step, or to plain code behind a port).
 4. **Two sources of truth for model defaults**, and env overrides that are parsed but never reach the flow (one role-to-model table, resolved once, passed as data).
 5. **Output rules stated in three places**: system prompt, `.describe()`, auditor prompt (one home per rule; schema for field constraints, prompt for the role).
@@ -405,9 +406,9 @@ Before calling an agent app done:
 
 - [ ] One composition layer exists and contains only fascicle vocabulary; the header diagram matches the code.
 - [ ] `create_engine` appears in exactly one file; provider swap is one env var; disposal is in `finally`.
-- [ ] Every model boundary has a zod schema in `types.ts`; stages return `Step<In, GenerateResult<Out>>`.
+- [ ] Every model boundary has a zod schema in `types.ts`; stages return `Step<In, Out>` from `model_step` (or the `GenerateResult` envelope from `model_call` where the flow needs usage or tool calls).
 - [ ] System prompts are markdown files with frontmatter; dynamic content is assembled in `messages.ts`.
-- [ ] Scope-state casts live only in `state.ts` readers.
+- [ ] Named state goes through `chain`; any raw scope-state casts live only in `state.ts` readers.
 - [ ] Tools re-parse inputs, share one confinement helper, and centralize limits.
 - [ ] The flow runs end to end against a stub engine that validates fixtures through the real schemas.
 - [ ] Adapters are injected only at `run(...)`; side effects happen after `run` returns.
