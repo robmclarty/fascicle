@@ -66,7 +66,7 @@ fan-in, phases, or named per-joint types.
 | --- | --- |
 | `branch({ when, then, otherwise })` | route on `when(input)` |
 | `map({ items, do, concurrency? })` | run `do` per item of `items(input)`, optional in-flight cap |
-| `parallel({ a, b })` | run a named map of steps concurrently |
+| `parallel({ a, b })` | run a named map of steps concurrently; the step's input is the intersection of the members' inputs |
 | `loop({ init, body, guard?, finish, max_rounds })` | bounded iteration with carry-state and optional convergence guard; returns `finish(state, { converged, rounds })` |
 | `retry(step, policy)` | re-run on failure with exponential backoff |
 | `fallback(primary, backup, { handoff? })` | run a backup if the primary throws; `handoff(input, err)` maps the backup's input |
@@ -291,7 +291,7 @@ and fixes.
 For full field-level detail, read the source `.d.ts` (a generated reference is on
 the roadmap). The public type exports:
 
-**Composition.** `Step`, `StepMetadata`, `StepKind`, `RunContext`,
+**Composition.** `Step`, `AnyStep`, `StepMetadata`, `StepKind`, `RunContext`,
 `TrajectoryLogger`, `TrajectoryEvent`, `CheckpointStore`, `DescribeOptions`,
 `FlowNode`, `FlowValue`, `LoopConfig`, `LoopOutcome`, `LoopGuardResult`, plus the
 trajectory event shapes (`SpanStartEvent`, `SpanEndEvent`, `EmitEvent`,

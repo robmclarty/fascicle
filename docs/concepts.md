@@ -19,13 +19,21 @@ Every composable unit is a `Step<i, o>`:
 type Step<i, o> = {
   readonly id: string;
   readonly kind: string;
-  run(input: i, ctx: RunContext): Promise<o> | o;
+  readonly run: (input: i, ctx: RunContext) => Promise<o> | o;
   readonly config?: Readonly<Record<string, unknown>>;
-  readonly children?: ReadonlyArray<Step<unknown, unknown>>;
+  readonly children?: ReadonlyArray<AnyStep>;
   readonly anonymous?: boolean;
   readonly meta?: StepMetadata;
 };
 ```
+
+`run` is a function property rather than a method, which makes a step's input
+contravariant: wiring a step to an input its `run` cannot accept is a compile
+error, and `sequence` builds its per-joint checking on exactly that. The
+supertype of every step is `AnyStep` (`Step<never, unknown>`, exported next to
+`Step`); it is what type-erased collections like `children` hold, and it cannot
+be run directly, because pairing an erased step with an input it accepts is the
+runner's job.
 
 Every composer — `sequence`, `parallel`, `retry`, `adversarial`, and so on — takes one or more `Step<i, o>` values and returns a single `Step<i, o>`. The return type is identical to the input type.
 
