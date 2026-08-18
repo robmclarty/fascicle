@@ -7,7 +7,7 @@
  * construction time.
  */
 
-import type { Step } from './types.js'
+import type { AnyStep } from './types.js'
 
 /**
  * Check whether a value is structurally a `Step`.
@@ -15,7 +15,7 @@ import type { Step } from './types.js'
  * True when the value has a string `id`, a string `kind`, and a callable
  * `run`.
  */
-export function is_step(value: unknown): value is Step<unknown, unknown> {
+export function is_step(value: unknown): value is AnyStep {
   if (typeof value !== 'object' || value === null) return false
   if (!('id' in value) || !('kind' in value) || !('run' in value)) return false
   const { id, kind, run } = value

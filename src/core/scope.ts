@@ -13,13 +13,11 @@
  */
 
 import { dispatch_step, register_traced_kind, throw_if_aborted } from './runner.js'
-import type { RunContext, Step } from './types.js'
+import type { AnyStep, RunContext, Step } from './types.js'
 
-type AnyStep = Step<unknown, unknown>
-
-type LastOutput<children> = children extends readonly [...unknown[], Step<unknown, infer o>]
+type LastOutput<children> = children extends readonly [...unknown[], Step<never, infer o>]
   ? o
-  : children extends readonly [Step<unknown, infer o>]
+  : children extends readonly [Step<never, infer o>]
     ? o
     : unknown
 
@@ -97,7 +95,10 @@ export function scope<const children extends readonly AnyStep[]>(
     let acc: unknown = input
     for (const child of children_ref) {
       throw_if_aborted(scope_ctx)
-      acc = await dispatch_step(child, acc, scope_ctx)
+      // The children list erases step types; the chaining contract pairs each
+      // child with its predecessor's output, so the dispatch re-asserts it.
+      // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+      acc = await dispatch_step(child, acc as never, scope_ctx)
     }
     return acc
   }

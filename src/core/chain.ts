@@ -24,7 +24,7 @@
 
 import { dispatch_step, register_traced_kind, throw_if_aborted } from './runner.js'
 import { step } from './step.js'
-import type { RunContext, Step } from './types.js'
+import type { AnyStep, RunContext, Step } from './types.js'
 
 let chain_counter = 0
 
@@ -39,7 +39,7 @@ function next_chain_id(): string {
 type merge<a, b> = { readonly [k in keyof (a & b)]: (a & b)[k] }
 
 export type ChainStepOptions = {
-  readonly arm?: Step<unknown, unknown>
+  readonly arm?: AnyStep
 }
 
 export type Chain<i, acc> = {
@@ -79,6 +79,10 @@ type LooseChain = {
  * entries nest under, and, when projecting, replace the record. The output
  * node runs last and its value is the chain's output. `config.plan` lists
  * the entry names in order so `describe` shows the topology without running.
+ *
+ * The `Step<unknown, unknown>` return is the concrete type, not an erased
+ * top type: the run function genuinely accepts any input, seeding the record
+ * with whatever arrives. The typed `chain` surface narrows it at the cast.
  */
 function build_chain(
   input_name: string,

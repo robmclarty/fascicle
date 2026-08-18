@@ -35,7 +35,7 @@ import {
   step,
   use,
 } from '#core'
-import type { RunContext, Step, TrajectoryEvent } from '#core'
+import type { AnyStep, RunContext, Step, TrajectoryEvent } from '#core'
 
 export type TrajectorySource =
   | { readonly kind: 'events'; readonly events: ReadonlyArray<TrajectoryEvent> }
@@ -57,7 +57,7 @@ export type Improvement = {
 
 export type LearnConfig<i extends LearnInput, o> = {
   readonly name?: string
-  readonly flow: Step<unknown, unknown>
+  readonly flow: AnyStep
   readonly source: TrajectorySource
   readonly analyzer: Step<i, o>
   readonly filter?: (event: TrajectoryEvent) => boolean
@@ -251,8 +251,7 @@ export function learn<i extends LearnInput, o>(
   const inner = scope([
     stash(META_KEY, compute_meta),
     build_input,
-    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-    analyzer as unknown as Step<unknown, unknown>,
+    analyzer,
     wrap_result,
   ])
 

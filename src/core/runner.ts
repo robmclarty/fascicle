@@ -20,6 +20,7 @@ import { create_cleanup_registry } from './cleanup.js'
 import { aborted_error, suspended_error } from './errors.js'
 import { create_streaming_channel, STREAMING_HIGH_WATER_MARK } from './streaming.js'
 import type {
+  AnyStep,
   CheckpointStore,
   RunContext,
   Step,
@@ -28,7 +29,7 @@ import type {
 } from './types.js'
 
 type Dispatcher = (
-  flow: Step<unknown, unknown>,
+  flow: AnyStep,
   input: unknown,
   ctx: RunContext,
 ) => Promise<unknown>
@@ -55,7 +56,7 @@ function register_kind(kind: string, fn: Dispatcher): void {
  * composers retain their kind-based label.
  */
 function resolve_span_label(
-  flow: Step<unknown, unknown>,
+  flow: AnyStep,
   fallback: string,
 ): string {
   const display = flow.config?.['display_name']
@@ -82,7 +83,11 @@ export function register_traced_kind(kind: string): void {
     const span_id = ctx.trajectory.start_span(label, span_meta)
     const child_ctx: RunContext = { ...ctx, parent_span_id: span_id }
     try {
-      const out = await flow.run(input, child_ctx)
+      // The dispatch table is the type-erasure boundary: `dispatch_step`
+      // pairs each step with the input its parent produced for it, a pairing
+      // `AnyStep` (input `never`) cannot carry, so the call re-asserts it.
+      // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+      const out = await flow.run(input as never, child_ctx)
       ctx.trajectory.end_span(span_id, { id: flow.id })
       return out
     } catch (err) {

@@ -22,7 +22,7 @@
  */
 
 import { dispatch_step, register_traced_kind, throw_if_aborted } from './runner.js'
-import type { RunContext, Step } from './types.js'
+import type { AnyStep, RunContext, Step } from './types.js'
 
 export type LoopGuardResult<state> = {
   readonly stop: boolean
@@ -92,7 +92,7 @@ export function loop<i, state, o>(config: LoopConfig<i, state, o>): Step<i, o> {
 
   const config_meta: Record<string, unknown> = { max_rounds: rounds_limit }
   if (name !== undefined) config_meta['display_name'] = name
-  const children: ReadonlyArray<Step<unknown, unknown>> = guard
+  const children: ReadonlyArray<AnyStep> = guard
     ? [body, guard]
     : [body]
 

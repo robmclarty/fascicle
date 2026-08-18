@@ -8,17 +8,15 @@
 
 import { is_step } from './is_step.js'
 import { dispatch_step, register_traced_kind, throw_if_aborted } from './runner.js'
-import type { RunContext, Step } from './types.js'
-
-type AnyStep = Step<unknown, unknown>
+import type { AnyStep, RunContext, Step } from './types.js'
 
 type FirstInput<children> = children extends readonly [Step<infer i, unknown>, ...unknown[]]
   ? i
   : unknown
 
-type LastOutput<children> = children extends readonly [...unknown[], Step<unknown, infer o>]
+type LastOutput<children> = children extends readonly [...unknown[], Step<never, infer o>]
   ? o
-  : children extends readonly [Step<unknown, infer o>]
+  : children extends readonly [Step<never, infer o>]
     ? o
     : unknown
 

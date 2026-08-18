@@ -17,7 +17,7 @@
 
 import { describe_cycle_error } from './errors.js'
 import { is_step } from './is_step.js'
-import type { Step, StepMetadata } from './types.js'
+import type { AnyStep, Step, StepMetadata } from './types.js'
 
 const INDENT = '  '
 
@@ -44,7 +44,7 @@ export type DescribeOptions = {
   readonly strict?: boolean
 }
 
-type Path = Set<Step<unknown, unknown>>
+type Path = Set<AnyStep>
 
 /**
  * Render a step tree as an indented multi-line string.
@@ -81,7 +81,7 @@ export const describe: {
  * so shared (diamond) references are not misreported as cycles.
  */
 function render_text(
-  node: Step<unknown, unknown>,
+  node: AnyStep,
   depth: number,
   lines: string[],
   path: Path,
@@ -144,7 +144,7 @@ function render_value_text(value: unknown, path: Path, strict: boolean): string 
  * Render a Step reference for the text tree: a back-reference on the current
  * path becomes `<cycle>(id)` (or throws under strict mode); otherwise `kind(id)`.
  */
-function render_step_text(value: Step<unknown, unknown>, path: Path, strict: boolean): string {
+function render_step_text(value: AnyStep, path: Path, strict: boolean): string {
   if (path.has(value)) {
     if (strict) throw new describe_cycle_error(value.id)
     return `<cycle>(${value.id})`
@@ -188,7 +188,7 @@ function render_primitive_text(value: unknown): string {
  * become `{ kind: '<cycle>', id }` in loose mode and throw in strict mode.
  */
 function render_json(
-  node: Step<unknown, unknown>,
+  node: AnyStep,
   path: Path,
   strict: boolean,
 ): FlowNode {
@@ -254,7 +254,7 @@ function render_value_json(value: unknown, path: Path, strict: boolean): FlowVal
  * Serialize a Step reference: a back-reference on the current path becomes
  * `{ kind: '<cycle>', id }` (or throws under strict mode); otherwise `{ kind, id }`.
  */
-function render_step_json(value: Step<unknown, unknown>, path: Path, strict: boolean): FlowValue {
+function render_step_json(value: AnyStep, path: Path, strict: boolean): FlowValue {
   if (path.has(value)) {
     if (strict) throw new describe_cycle_error(value.id)
     return { kind: '<cycle>', id: value.id }

@@ -18,11 +18,23 @@
 
 import { suspended_error } from './errors.js'
 import { dispatch_step, install_abort_fan_out, register_traced_kind, throw_if_aborted } from './runner.js'
-import type { RunContext, Step } from './types.js'
+import type { AnyStep, RunContext, Step } from './types.js'
 
-type AnyStep = Step<unknown, unknown>
+type OutputOf<s> = s extends Step<never, infer o> ? o : unknown
 
-type OutputOf<s> = s extends Step<unknown, infer o> ? o : unknown
+type InputOf<s> = s extends Step<infer i, unknown> ? i : never
+
+// Distributes the union of member inputs into an intersection: the parallel
+// step's input must satisfy every child, since each receives it verbatim.
+type UnionToIntersection<u> = (u extends unknown ? (x: u) => void : never) extends (
+  x: infer i,
+) => void
+  ? i
+  : never
+
+type ParallelInput<children extends Record<string, AnyStep>> = UnionToIntersection<
+  InputOf<children[keyof children]>
+>
 
 type ParallelOutputs<children extends Record<string, AnyStep>> = {
   [k in keyof children]: OutputOf<children[k]>
@@ -58,7 +70,10 @@ async function run_child(
   const composed = AbortSignal.any([ctx.abort, local.signal])
   const child_ctx: RunContext = { ...ctx, abort: composed }
   try {
-    const value = await dispatch_step(child, input, child_ctx)
+    // The entry list erases child types; the public signature guarantees the
+    // input satisfies every child, so the erased dispatch re-asserts it.
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+    const value = await dispatch_step(child, input as never, child_ctx)
     return { status: 'ok', key, value }
   } catch (err) {
     return { status: 'err', key, err }
@@ -101,21 +116,25 @@ export type ParallelOptions = {
 /**
  * Build a step that runs named children concurrently on the same input.
  *
- * Returns an object keyed by child name. All children settle before any
- * error propagates; a `suspended_error` wins over application errors so a
- * human-approval gate stays resumable instead of being masked by a sibling's
- * failure.
+ * The step's input type is the intersection of the children's inputs, since
+ * every child receives the input verbatim. Returns an object keyed by child
+ * name. All children settle before any error propagates; a `suspended_error`
+ * wins over application errors so a human-approval gate stays resumable
+ * instead of being masked by a sibling's failure.
  */
-export function parallel<i, children extends Record<string, Step<i, unknown>>>(
+export function parallel<children extends Record<string, AnyStep>>(
   members: children,
   options?: ParallelOptions,
-): Step<i, ParallelOutputs<children>> {
+): Step<ParallelInput<children>, ParallelOutputs<children>> {
   const id = next_id()
   const entries: ReadonlyArray<readonly [string, AnyStep]> = Object.entries(members)
   const child_list: ReadonlyArray<AnyStep> = entries.map(([, s]) => s)
   const keys: ReadonlyArray<string> = entries.map(([k]) => k)
 
-  const run_fn = async (input: i, ctx: RunContext): Promise<ParallelOutputs<children>> => {
+  const run_fn = async (
+    input: ParallelInput<children>,
+    ctx: RunContext,
+  ): Promise<ParallelOutputs<children>> => {
     const controllers = entries.map(() => new AbortController())
     const on_parent_abort = install_abort_fan_out(ctx, controllers)
 

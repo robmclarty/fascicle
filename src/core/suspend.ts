@@ -26,7 +26,7 @@ export type SuspendConfig<i, o, resume> = {
     input: i,
     resume: resume,
     ctx: RunContext,
-  ) => Promise<o> | o | Step<unknown, o>
+  ) => Promise<o> | o | Step<i, o>
 }
 
 /**

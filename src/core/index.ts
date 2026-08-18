@@ -41,6 +41,7 @@ export {
 } from './errors.js'
 
 export type {
+  AnyStep,
   CheckpointStore,
   RunContext,
   Step,

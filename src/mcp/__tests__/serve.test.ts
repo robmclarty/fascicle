@@ -28,7 +28,7 @@ function fake_server(): { server: McpServer; registrations: Map<string, Registra
 
 // serve_flow only forwards `flow` to run(), which is mocked, so the step body
 // never executes here.
-const flow = { name: 'noop' } as unknown as Step<unknown, unknown>
+const flow = { name: 'noop' } as unknown as Step<{ x: number }, unknown>
 const input_schema = z.object({ x: z.number() })
 
 beforeEach(() => {

@@ -68,9 +68,21 @@ export type StepMetadata = {
 export type Step<i, o> = {
   readonly id: string
   readonly kind: string
-  run(input: i, ctx: RunContext): Promise<o> | o
+  // Declared as a function property, not a method: strictFunctionTypes checks
+  // properties contravariantly in `i`, so a step wired to an input its `run`
+  // cannot accept is a compile error rather than leaning on method bivariance.
+  readonly run: StepFn<i, o>
   readonly config?: Readonly<Record<string, unknown>>
-  readonly children?: ReadonlyArray<Step<unknown, unknown>>
+  readonly children?: ReadonlyArray<AnyStep>
   readonly anonymous?: boolean
   readonly meta?: StepMetadata
 }
+
+/**
+ * The supertype of every Step: `never` input (contravariant, so any concrete
+ * input type is admitted) and `unknown` output (covariant). Use this for
+ * heterogeneous step collections and type-erased plumbing; `AnyStep` cannot
+ * be run directly, which is the point: pairing an erased step with an input
+ * it accepts is the runner's job, not the type system's.
+ */
+export type AnyStep = Step<never, unknown>
