@@ -175,7 +175,7 @@ export function researcher(
     async (input, ctx): Promise<ResearcherOutput> => {
       const depth: ResearchDepth = input.depth ?? 'standard'
       const flow = build_loop(depth)
-      return flow.run(input, ctx)
+      return ctx.call(flow, input)
     },
   )
 
