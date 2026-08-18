@@ -118,4 +118,22 @@ describe('adversarial (composite)', () => {
     expect(labels).toContain('critic-loop')
     expect(labels).not.toContain('adversarial')
   })
+
+  it('project receives the full envelope and its return is the step output', async () => {
+    const seen: Array<{ candidate: string; converged: boolean; rounds: number }> = []
+    const flow = adversarial<string, string, string>({
+      build: step('b', () => 'built'),
+      critique: step('c', () => ({ notes: 'ok', verdict: 'pass' })),
+      accept: (r) => r['verdict'] === 'pass',
+      max_rounds: 3,
+      project: (r) => {
+        seen.push(r)
+        return r.candidate.toUpperCase()
+      },
+    })
+
+    const result = await run(flow, 'input', { install_signal_handlers: false })
+    expect(result).toBe('BUILT')
+    expect(seen).toEqual([{ candidate: 'built', converged: true, rounds: 1 }])
+  })
 })

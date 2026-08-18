@@ -155,4 +155,19 @@ describe('ensemble_step (composite)', () => {
       'scorer failed',
     )
   })
+
+  it('project maps the winner envelope into the step output', async () => {
+    const flow = ensemble_step({
+      members: {
+        a: step('a', (x: number) => x + 1),
+        b: step('b', (x: number) => x + 5),
+      },
+      score: step('score', (value: number) => value),
+      rank_by: (s: number) => s,
+      project: (r) => `${r.winner_id}:${String(r.winner)}:${String(r.winner_scored)}`,
+    })
+
+    const result = await run(flow, 10, { install_signal_handlers: false })
+    expect(result).toBe('b:15:15')
+  })
 })

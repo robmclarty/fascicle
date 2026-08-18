@@ -449,4 +449,17 @@ describe('improve (composite)', () => {
     expect(labels).toContain('amplify_v2')
     expect(labels).not.toContain('improve')
   })
+
+  it('project maps the result envelope into the step output', async () => {
+    const flow = improve<unknown, number, string>({
+      seed: step('seed', () => ({ content: 3, score: 3 })),
+      propose: constant_propose(9),
+      score: value_score(),
+      budget: { max_rounds: 1, patience: 5 },
+      project: (r) => `${String(r.best.content)}@${String(r.rounds_used)}:${r.stopped_by}`,
+    })
+
+    const result = await run(flow, undefined, { install_signal_handlers: false })
+    expect(result).toBe('9@1:budget')
+  })
 })

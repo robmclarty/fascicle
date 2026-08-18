@@ -45,7 +45,7 @@ export type ImproveBudget = {
   readonly patience: number
 }
 
-export type ImproveConfig<i, c> = {
+export type ImproveConfig<i, c, projected = ImproveResult<c>> = {
   readonly name?: string
   readonly seed: Step<i, { readonly content: c; readonly score: number }>
   readonly propose: Step<ImproveRoundInput<c>, Candidate<c>>
@@ -54,6 +54,7 @@ export type ImproveConfig<i, c> = {
   readonly epsilon?: number
   readonly proposers_per_round?: number
   readonly lessons_capacity?: number
+  readonly project?: (r: ImproveResult<c>) => projected
 }
 
 export type HistoryEntry<c> = {
@@ -93,7 +94,9 @@ type ImproveState<c> = {
  * Rejected rounds with a `reason` feed a bounded lessons list back into the
  * next round's input. Plateau detection stops the loop early when no
  * progress has been made for `patience` rounds; an optional wall-clock
- * budget caps total runtime.
+ * budget caps total runtime. `project` maps the result envelope into the
+ * step's output (e.g. `(r) => r.best.content`); omitted, the envelope
+ * itself is the output.
  *
  * Implemented as a `compose`d `scope` of (seed) -> (init state) -> (loop) ->
  * (unwrap). The loop body is itself a small `scope` that snapshots prior
@@ -101,10 +104,14 @@ type ImproveState<c> = {
  * `ensemble_step`, and merges the outcome back into state via `use`.
  * State threading is the entire job.
  */
-export function improve<i, c>(
-  config: ImproveConfig<i, c>,
-): Step<i, ImproveResult<c>> {
+export function improve<i, c, projected = ImproveResult<c>>(
+  config: ImproveConfig<i, c, projected>,
+): Step<i, projected> {
   const { seed, propose, score, budget } = config
+  // When `project` is omitted, `projected` defaults to the envelope type, which is
+  // what the identity fallback's cast records.
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+  const project = config.project ?? ((r: ImproveResult<c>) => r as unknown as projected)
   const epsilon = config.epsilon ?? 0
   const proposers_per_round = Math.max(1, config.proposers_per_round ?? 1)
   const lessons_capacity = Math.max(0, config.lessons_capacity ?? 5)
@@ -273,14 +280,14 @@ export function improve<i, c>(
 
   const record_stop = step(
     'improve_stop',
-    (result: ImproveResult<c>, ctx): ImproveResult<c> => {
+    (result: ImproveResult<c>, ctx): projected => {
       ctx.trajectory.record({
         kind: 'improve.stop',
         stopped_by: result.stopped_by,
         rounds_used: result.rounds_used,
         final_score: result.best.score,
       })
-      return result
+      return project(result)
     },
   )
 
@@ -290,7 +297,7 @@ export function improve<i, c>(
     round_loop,
     record_stop,
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-  ]) as Step<i, ImproveResult<c>>
+  ]) as Step<i, projected>
 
   return compose(config.name ?? 'improve', inner)
 }

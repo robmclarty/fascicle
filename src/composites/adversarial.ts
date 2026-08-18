@@ -23,12 +23,13 @@ export type AdversarialResult<candidate> = {
   readonly rounds: number
 }
 
-export type AdversarialConfig<input, candidate> = {
+export type AdversarialConfig<input, candidate, projected = AdversarialResult<candidate>> = {
   readonly name?: string
   readonly build: Step<AdversarialBuildInput<input, candidate>, candidate>
   readonly critique: Step<candidate, AdversarialCritiqueResult>
   readonly accept: (critique_result: AdversarialCritiqueResult) => boolean
   readonly max_rounds: number
+  readonly project?: (r: AdversarialResult<candidate>) => projected
 }
 
 type AdversarialState<input, candidate> = {
@@ -59,17 +60,23 @@ function build_input_from_state<i, c>(
  * Each round builds a candidate (receiving the prior candidate and critique
  * notes when available), critiques it, then checks `accept(critique_result)`.
  * Returns `{ candidate, converged, rounds }`. Does not throw on
- * non-convergence; `converged: false` reports it instead.
+ * non-convergence; `converged: false` reports it instead. `project` maps
+ * that envelope into the step's output (e.g. `(r) => r.candidate`); omitted,
+ * the envelope itself is the output.
  *
  * Implemented as a `compose`d `loop` whose body builds a new candidate and
  * whose guard runs the critique step and checks `accept`. State is threaded
  * through `scope`/`stash`/`use` so the build and critique steps remain
  * unmodified user-supplied `Step` values.
  */
-export function adversarial<input, candidate>(
-  config: AdversarialConfig<input, candidate>,
-): Step<input, AdversarialResult<candidate>> {
+export function adversarial<input, candidate, projected = AdversarialResult<candidate>>(
+  config: AdversarialConfig<input, candidate, projected>,
+): Step<input, projected> {
   const { build, critique, accept, max_rounds } = config
+  // When `project` is omitted, `projected` defaults to the envelope type, which is
+  // what the identity fallback's cast records.
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+  const project = config.project ?? ((r: AdversarialResult<candidate>) => r as unknown as projected)
 
   type S = AdversarialState<input, candidate>
 
@@ -107,7 +114,7 @@ export function adversarial<input, candidate>(
     }),
   ])
 
-  const inner = loop<input, S, AdversarialResult<candidate>>({
+  const inner = loop<input, S, projected>({
     init: (input) => ({ input }),
     body,
     guard,
@@ -115,7 +122,7 @@ export function adversarial<input, candidate>(
       if (s.candidate === undefined) {
         throw new Error('adversarial: finished without a candidate')
       }
-      return { candidate: s.candidate, converged, rounds }
+      return project({ candidate: s.candidate, converged, rounds })
     },
     max_rounds,
   })

@@ -5,11 +5,12 @@
 import { compose, loop, parallel, scope, stash, step, use } from '#core'
 import type { Step } from '#core'
 
-export type ConsensusConfig<i, o> = {
+export type ConsensusConfig<i, o, projected = ConsensusResult<o>> = {
   readonly name?: string
   readonly members: Record<string, Step<i, o>>
   readonly agree: (results: Record<string, o>) => boolean
   readonly max_rounds: number
+  readonly project?: (r: ConsensusResult<o>) => projected
 }
 
 export type ConsensusResult<o> = {
@@ -29,15 +30,21 @@ type ConsensusState<i, o> = {
  * On agreement, returns the round's results with `converged: true`.
  * Otherwise re-runs all members up to `max_rounds` times and returns the
  * last results with `converged: false` if no agreement is reached.
+ * `project` maps the `{ result, converged }` envelope into the step's output
+ * (e.g. `(r) => r.converged`); omitted, the envelope itself is the output.
  *
  * Implemented as a `compose`d `loop` whose body runs `parallel(members)` and
  * whose guard evaluates `agree`. State carries the original input alongside
  * the most recent results so each round receives the same input.
  */
-export function consensus<i, o>(
-  config: ConsensusConfig<i, o>,
-): Step<i, ConsensusResult<o>> {
+export function consensus<i, o, projected = ConsensusResult<o>>(
+  config: ConsensusConfig<i, o, projected>,
+): Step<i, projected> {
   const { members, agree, max_rounds } = config
+  // When `project` is omitted, `projected` defaults to the envelope type, which is
+  // what the identity fallback's cast records.
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+  const project = config.project ?? ((r: ConsensusResult<o>) => r as unknown as projected)
 
   type S = ConsensusState<i, o>
 
@@ -60,11 +67,11 @@ export function consensus<i, o>(
     state: s,
   }))
 
-  const inner = loop<i, S, ConsensusResult<o>>({
+  const inner = loop<i, S, projected>({
     init: (input) => ({ input, results: {} }),
     body,
     guard,
-    finish: (s, { converged }) => ({ result: s.results, converged }),
+    finish: (s, { converged }) => project({ result: s.results, converged }),
     max_rounds,
   })
 

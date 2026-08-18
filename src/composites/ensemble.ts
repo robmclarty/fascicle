@@ -5,11 +5,12 @@
 import { compose, parallel, sequence, step } from '#core'
 import type { Step } from '#core'
 
-export type EnsembleConfig<i, o> = {
+export type EnsembleConfig<i, o, projected = EnsembleResult<o>> = {
   readonly name?: string
   readonly members: Record<string, Step<i, o>>
   readonly score: (result: o, member_id: string) => number | Promise<number>
   readonly select?: 'max' | 'min'
+  readonly project?: (r: EnsembleResult<o>) => projected
 }
 
 export type EnsembleResult<o> = {
@@ -23,18 +24,24 @@ export type EnsembleResult<o> = {
  *
  * `select` picks the highest (`'max'`, the default) or lowest (`'min'`)
  * score. Tie-breaking is "any tied result is acceptable": the first member
- * (in `members` key order) holding the best score wins.
+ * (in `members` key order) holding the best score wins. `project` maps the
+ * `{ winner, scores }` envelope into the step's output (e.g. `(r) =>
+ * r.winner`); omitted, the envelope itself is the output.
  *
  * Implemented as a `compose`d `sequence` of `parallel(members)` followed by
  * a single picking step. Cancellation, fan-out, and abort propagation come
  * from `parallel`'s own contract.
  */
-export function ensemble<i, o>(
-  config: EnsembleConfig<i, o>,
-): Step<i, EnsembleResult<o>> {
+export function ensemble<i, o, projected = EnsembleResult<o>>(
+  config: EnsembleConfig<i, o, projected>,
+): Step<i, projected> {
   const select: 'max' | 'min' = config.select ?? 'max'
   const score_fn = config.score
   const keys = Object.keys(config.members)
+  // When `project` is omitted, `projected` defaults to the envelope type, which is
+  // what the identity fallback's cast records.
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+  const project = config.project ?? ((r: EnsembleResult<o>) => r as unknown as projected)
 
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion
   const fan_out = parallel(config.members) as Step<i, Record<string, o>>
@@ -71,11 +78,10 @@ export function ensemble<i, o>(
     if (winner === undefined) {
       throw new Error('ensemble: winner missing from results')
     }
-    return { winner, scores }
+    return project({ winner, scores })
   })
 
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-  const inner = sequence([fan_out, pick]) as Step<i, EnsembleResult<o>>
+  const inner = sequence([fan_out, pick])
 
   return compose(config.name ?? 'ensemble', inner)
 }

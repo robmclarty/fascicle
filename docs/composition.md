@@ -92,15 +92,18 @@ from English specifications:
   `finish: (s, outcome) => ({ value: s, ...outcome })` for the whole thing).
 - `compose(name, inner)` — label a composite step so it shows up by intent
   in trajectories and `describe` output.
-- `adversarial({ build, critique, accept, max_rounds })` — propose, critique,
-  loop.
-- `ensemble({ members, score, select? })` — pick the best of several.
-- `ensemble_step({ members, score, rank_by, select? })` — pick-best where
-  scoring is itself a `Step` (a model judge with its own span); returns the
-  winner plus its structured score.
-- `tournament({ members, compare })` — single-elimination bracket.
-- `consensus({ members, agree, max_rounds })` — multi-round concurrent
-  agreement.
+- `adversarial({ build, critique, accept, max_rounds, project? })` — propose,
+  critique, loop.
+- `ensemble({ members, score, select?, project? })` — pick the best of several.
+- `ensemble_step({ members, score, rank_by, select?, project? })` — pick-best
+  where scoring is itself a `Step` (a model judge with its own span); returns
+  the winner plus its structured score.
+- `tournament({ members, compare, project? })` — single-elimination bracket.
+- `consensus({ members, agree, max_rounds, project? })` — multi-round
+  concurrent agreement.
+  Each of these five returns a result envelope; the optional `project` maps
+  it into the step's output at the source (`project: (r) => r.winner`), so
+  no downstream unwrap step is needed.
 - `checkpoint(inner, { key })` — memoize `inner` by key.
 - `suspend({ id, on, resume_schema, combine })` — pause for external input.
 - `scope([...])` / `stash(key, source)` / `use(keys, fn)` — named state at
@@ -111,8 +114,9 @@ from English specifications:
   phase (a grouping span in the trajectory; with `project`, it replaces the
   record so earlier bindings go out of scope); `.output` projects the final
   result and returns an ordinary `Step`.
-- `improve({ seed, propose, score, budget })` — bounded online self-improvement
-  loop: propose → score → accept/reject with plateau detection.
+- `improve({ seed, propose, score, budget, project? })` — bounded online
+  self-improvement loop: propose → score → accept/reject with plateau
+  detection; `project` maps the result envelope (e.g. `(r) => r.best.content`).
 - `learn({ flow, source, analyzer })` — offline reflection over recorded
   trajectories; returns the analyzer's proposals plus summary metadata.
 

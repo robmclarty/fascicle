@@ -121,4 +121,18 @@ describe('tournament (composite)', () => {
     expect(labels).toContain('bracket-runoff')
     expect(labels).not.toContain('tournament')
   })
+
+  it('project maps the { winner, bracket } envelope into the step output', async () => {
+    const flow = tournament({
+      members: {
+        a: step('a', () => 1),
+        b: step('b', () => 2),
+      },
+      compare: (x, y) => (x > y ? 'a' : 'b'),
+      project: (r) => ({ top: r.winner, matches: r.bracket.length }),
+    })
+
+    const result = await run(flow, 'x', { install_signal_handlers: false })
+    expect(result).toEqual({ top: 2, matches: 1 })
+  })
 })

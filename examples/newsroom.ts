@@ -140,33 +140,26 @@ export function build_flow(engine: Engine): Step<Brief, string> {
   })
 
   // drafting arm: pick the best voice with a model judge, then critique-revise
-  const draft_best = pipe(
-    ensemble_step_of_drafts(draft_as, style_judge),
-    (e) => e.winner,
-  )
-  const polish = pipe(
-    adversarial({
-      build: sequence([
-        step('draft_prompt', (b: AdversarialBuildInput<string, Draft>) =>
-          b.critique === undefined ? b.input : `${b.input}\n\nRevise per: ${b.critique}`),
-        draft_best,
-      ]),
-      critique: sequence([step('critique_prompt', (d: Draft) => d.body), critic]),
-      accept: (c) => c['verdict'] === 'ship',
-      max_rounds: 3,
-    }),
-    (r) => r.candidate,
-  )
+  const draft_best = ensemble_step_of_drafts(draft_as, style_judge)
+  const polish = adversarial({
+    build: sequence([
+      step('draft_prompt', (b: AdversarialBuildInput<string, Draft>) =>
+        b.critique === undefined ? b.input : `${b.input}\n\nRevise per: ${b.critique}`),
+      draft_best,
+    ]),
+    critique: sequence([step('critique_prompt', (d: Draft) => d.body), critic]),
+    accept: (c) => c['verdict'] === 'ship',
+    max_rounds: 3,
+    project: (r) => r.candidate,
+  })
 
   // verification arm: three independent checkers must agree
-  const fact_gate = pipe(
-    consensus({
-      members: { first: checker(1), second: checker(2), third: checker(3) },
-      agree: (verdicts) => Object.values(verdicts).every((v) => v.ok),
-      max_rounds: 2,
-    }),
-    (v) => v.converged,
-  )
+  const fact_gate = consensus({
+    members: { first: checker(1), second: checker(2), third: checker(3) },
+    agree: (verdicts) => Object.values(verdicts).every((v) => v.ok),
+    max_rounds: 2,
+    project: (v) => v.converged,
+  })
 
   // the human gate: suspend until the editor resumes with a decision
   const editor_gate = suspend({
@@ -201,15 +194,18 @@ export function build_flow(engine: Engine): Step<Brief, string> {
 
 /**
  * The pick-best drafting step: two voices, scored by a model judge.
+ * `project` unwraps the winner at the source, so the arm's type is the
+ * draft itself rather than the pick-best envelope.
  */
 function ensemble_step_of_drafts(
   draft_as: (voice: string) => Step<string, Draft>,
   style_judge: Step<string, { score: number }>,
-) {
+): Step<string, Draft> {
   return ensemble_step({
     members: { formal: draft_as('formal'), breezy: draft_as('breezy') },
     score: sequence([step('to_text', (d: Draft) => d.body), style_judge]),
     rank_by: (s) => s.score,
+    project: (e) => e.winner,
   })
 }
 

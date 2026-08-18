@@ -72,17 +72,19 @@ fits a step fits any composition of steps.
 
 | Primitive | Shape |
 | --- | --- |
-| `adversarial({ build, critique, accept, max_rounds })` | build, critique, repeat until accept or `max_rounds` |
-| `ensemble({ members, score, select? })` | run named members, pick the highest-scoring result |
-| `ensemble_step({ members, score, rank_by, select? })` | pick-best where the scorer is itself a `Step`; returns the winner plus its structured score |
-| `tournament({ members, compare })` | single-elimination bracket |
-| `consensus({ members, agree, max_rounds })` | run all members each round, accept when the `agree` predicate holds |
+| `adversarial({ build, critique, accept, max_rounds, project? })` | build, critique, repeat until accept or `max_rounds` |
+| `ensemble({ members, score, select?, project? })` | run named members, pick the highest-scoring result |
+| `ensemble_step({ members, score, rank_by, select?, project? })` | pick-best where the scorer is itself a `Step`; returns the winner plus its structured score |
+| `tournament({ members, compare, project? })` | single-elimination bracket |
+| `consensus({ members, agree, max_rounds, project? })` | run all members each round, accept when the `agree` predicate holds |
+
+Each of these returns a result envelope (`{ candidate, converged, rounds }`, `{ winner, scores }`, ...). The optional `project` maps that envelope into the step's output at the source (`project: (r) => r.candidate`), so downstream steps see the value instead of the wrapper; omitted, the envelope itself is the output.
 
 **Self-improvement**
 
 | Primitive | Shape |
 | --- | --- |
-| `improve({ seed, propose, score, budget })` | bounded online propose → score → accept/reject loop with plateau detection |
+| `improve({ seed, propose, score, budget, project? })` | bounded online propose → score → accept/reject loop with plateau detection; `project` maps the result envelope (e.g. `(r) => r.best.content`) |
 | `learn({ flow, source, analyzer })` | offline reflection over recorded trajectories; returns the analyzer's proposals |
 
 **State and durability**

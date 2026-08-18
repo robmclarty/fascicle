@@ -5,12 +5,13 @@
 import { compose, map, parallel, scope, stash, step, use } from '#core'
 import type { Step } from '#core'
 
-export type EnsembleStepConfig<i, o, ranked> = {
+export type EnsembleStepConfig<i, o, ranked, projected = EnsembleStepResult<o, ranked>> = {
   readonly name?: string
   readonly members: Record<string, Step<i, o>>
   readonly score: Step<o, ranked>
   readonly rank_by: (r: ranked) => number
   readonly select?: 'max' | 'min'
+  readonly project?: (r: EnsembleStepResult<o, ranked>) => projected
 }
 
 export type EnsembleStepResult<o, ranked> = {
@@ -40,19 +41,25 @@ type ScoredPair<ranked> = { readonly id: string; readonly scored: ranked }
  *
  * The result carries `winner_scored`, the structured output from the round's
  * scoring run preserved verbatim, so callers never pay to re-score the
- * winner. `scored` holds the structured score for every member.
+ * winner. `scored` holds the structured score for every member. `project`
+ * maps that envelope into the step's output (e.g. `(r) => r.winner`);
+ * omitted, the envelope itself is the output.
  *
  * Implemented as a `compose`d `scope` over (`stash(parallel(members))` ->
  * `to_pairs` -> `map(score per result, threading id)` -> `use` to pick the
  * winner). Cancellation, fan-out, and abort propagation come from the
  * underlying `parallel` and `map` contracts.
  */
-export function ensemble_step<i, o, ranked>(
-  config: EnsembleStepConfig<i, o, ranked>,
-): Step<i, EnsembleStepResult<o, ranked>> {
+export function ensemble_step<i, o, ranked, projected = EnsembleStepResult<o, ranked>>(
+  config: EnsembleStepConfig<i, o, ranked, projected>,
+): Step<i, projected> {
   const { members, score, rank_by } = config
   const select: 'max' | 'min' = config.select ?? 'max'
   const keys = Object.keys(members)
+  // When `project` is omitted, `projected` defaults to the envelope type, which is
+  // what the identity fallback's cast records.
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+  const project = config.project ?? ((r: EnsembleStepResult<o, ranked>) => r as unknown as projected)
 
   if (keys.length === 0) {
     throw new Error('ensemble_step: at least one member required')
@@ -93,7 +100,7 @@ export function ensemble_step<i, o, ranked>(
 
   const pick = use(
     [RESULTS_KEY],
-    (vars, scored_pairs: ReadonlyArray<ScoredPair<ranked>>): EnsembleStepResult<o, ranked> => {
+    (vars, scored_pairs: ReadonlyArray<ScoredPair<ranked>>): projected => {
       // oxlint-disable-next-line typescript/no-unsafe-type-assertion
       const results = vars[RESULTS_KEY] as Record<string, o>
       const scored: Record<string, ranked> = {}
@@ -122,7 +129,7 @@ export function ensemble_step<i, o, ranked>(
       if (winner === undefined) {
         throw new Error('ensemble_step: winner missing from results')
       }
-      return { winner_id, winner, winner_scored, scored }
+      return project({ winner_id, winner, winner_scored, scored })
     },
   )
 
@@ -132,7 +139,7 @@ export function ensemble_step<i, o, ranked>(
     score_each,
     pick,
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-  ]) as Step<i, EnsembleStepResult<o, ranked>>
+  ]) as Step<i, projected>
 
   return compose(config.name ?? 'ensemble_step', inner)
 }

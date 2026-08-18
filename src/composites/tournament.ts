@@ -22,10 +22,11 @@ export type BracketRecord = {
   readonly winner_id: string
 }
 
-export type TournamentConfig<i, o> = {
+export type TournamentConfig<i, o, projected = TournamentResult<o>> = {
   readonly name?: string
   readonly members: Record<string, Step<i, o>>
   readonly compare: (a: o, b: o) => Promise<'a' | 'b'> | 'a' | 'b'
+  readonly project?: (r: TournamentResult<o>) => projected
 }
 
 export type TournamentResult<o> = {
@@ -38,13 +39,19 @@ export type TournamentResult<o> = {
  *
  * All members run concurrently via `parallel`; the bracket step then reduces
  * survivors round by round with `compare`, recording every match. Requires at
- * least one member so a winner always exists.
+ * least one member so a winner always exists. `project` maps the `{ winner,
+ * bracket }` envelope into the step's output (e.g. `(r) => r.winner`);
+ * omitted, the envelope itself is the output.
  */
-export function tournament<i, o>(
-  config: TournamentConfig<i, o>,
-): Step<i, TournamentResult<o>> {
+export function tournament<i, o, projected = TournamentResult<o>>(
+  config: TournamentConfig<i, o, projected>,
+): Step<i, projected> {
   const compare_fn = config.compare
   const keys = Object.keys(config.members)
+  // When `project` is omitted, `projected` defaults to the envelope type, which is
+  // what the identity fallback's cast records.
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+  const project = config.project ?? ((r: TournamentResult<o>) => r as unknown as projected)
 
   if (keys.length === 0) {
     throw new Error('tournament: at least one member required')
@@ -63,11 +70,10 @@ export function tournament<i, o>(
       current = await play_round(current, results, compare_fn, round, bracket)
     }
 
-    return { winner: winner_of(current, results), bracket }
+    return project({ winner: winner_of(current, results), bracket })
   })
 
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-  const inner = sequence([fan_out, bracket_step]) as Step<i, TournamentResult<o>>
+  const inner = sequence([fan_out, bracket_step])
 
   return compose(config.name ?? 'tournament', inner)
 }

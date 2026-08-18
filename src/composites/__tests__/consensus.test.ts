@@ -142,4 +142,19 @@ describe('consensus (composite)', () => {
     expect(labels).toContain('agreement-loop')
     expect(labels).not.toContain('consensus')
   })
+
+  it('project maps the { result, converged } envelope into the step output', async () => {
+    const flow = consensus({
+      members: {
+        a: step('a', () => 'x'),
+        b: step('b', () => 'x'),
+      },
+      agree: (r) => r['a'] === r['b'],
+      max_rounds: 2,
+      project: (r) => ({ flag: r.converged, ids: Object.keys(r.result).toSorted() }),
+    })
+
+    const result = await run(flow, 'input', { install_signal_handlers: false })
+    expect(result).toEqual({ flag: true, ids: ['a', 'b'] })
+  })
 })

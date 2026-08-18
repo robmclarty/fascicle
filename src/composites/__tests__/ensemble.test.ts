@@ -146,4 +146,18 @@ describe('ensemble (composite)', () => {
     expect(labels).toContain('judge-pool')
     expect(labels).not.toContain('ensemble')
   })
+
+  it('project maps the { winner, scores } envelope into the step output', async () => {
+    const flow = ensemble({
+      members: {
+        a: step('a', () => ({ n: 1 })),
+        b: step('b', () => ({ n: 5 })),
+      },
+      score: (r) => r.n,
+      project: (r) => ({ picked: r.winner.n, all: r.scores }),
+    })
+
+    const result = await run(flow, 'input', { install_signal_handlers: false })
+    expect(result).toEqual({ picked: 5, all: { a: 1, b: 5 } })
+  })
 })
