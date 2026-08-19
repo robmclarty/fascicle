@@ -1,10 +1,10 @@
 # Deciding Whether to Adopt Fascicle
 
 You're weighing Fascicle against using the Vercel AI SDK directly, or Mastra, or
-Strands. So this page carries a section on when the answer is "use something
-else," and a section on the risks of depending on an early-stage library. It's my
-design view, and the only way to know whether the ergonomics fit you is to try
-it.
+Strands. So this page has a section on when the answer is "use something
+else," and another on the risks of depending on an early-stage library. It's my
+design view, and the only way to find out whether the ergonomics suit you is to
+try it.
 
 ## The Reframe: It Is Not Fascicle Versus the AI SDK
 
@@ -19,8 +19,8 @@ On the default `ai_sdk` transport the AI SDK owns everything below a single mode
 call, so message translation, tool-schema mapping, streaming, and usage
 normalization are its problem. Fascicle owns everything above that seam, which
 means the multi-step tool loop, tool-call salvage, approval gating, deterministic
-turn-ending, cost, the trajectory, and the composition layer. What you have to
-decide is whether that upper layer earns its place, or whether the AI SDK's own
+turn-ending, cost, the trajectory, and the composition layer. You have to decide
+whether that upper layer earns its place, or whether the AI SDK's own
 agent layer (`ToolLoopAgent`, `WorkflowAgent`, `HarnessAgent`) is enough on its
 own.
 
@@ -38,8 +38,8 @@ install entirely. "Uninstall `ai`" is real today, not aspirational.
 
 ## What You Are Actually Buying
 
-Four goals tend to drive you toward a layer like this, so here is what Fascicle
-does about each of them:
+Four goals tend to drive you toward a layer like this. Here is what Fascicle does
+about each:
 
 - **Portability.** One `generate` surface fronts eight providers, plus
   `custom_providers` for an adapter Fascicle knows nothing about. `provider` names
@@ -110,8 +110,8 @@ copy quickly:
 5. **Churn insulation.** The provider seam contains vendor breakage. This is no
    longer a hypothetical property. The seam already carries two independent
    depth-1 implementations (`ai_sdk` and `native`) plus a depth-2 external agent,
-   with the loop above unchanged across all three, which is the demonstration that
-   the abstraction is real and not a rename of one vendor's API. It's the
+   with the loop above unchanged across all three, which demonstrates that the
+   abstraction is real and not a rename of one vendor's API. It's the
    least visible benefit in a demo and often the most valuable in production (see
    the note on the AI SDK's release cadence below).
 6. **Supply-chain posture.** One package, no direct runtime dependencies, no
@@ -119,14 +119,13 @@ copy quickly:
    zero mandatory peers), and releases published from CI via npm Trusted
    Publishing with a signed provenance attestation you can verify with
    `npm audit signatures`.
-   A small surface, kept small on purpose, which in 2026 is itself a differentiated
-   property
-   (see [SECURITY.md](../SECURITY.md)).
+   A surface kept small on purpose, which in 2026 is itself a differentiated
+   property (see [SECURITY.md](../SECURITY.md)).
 
 ## What Real Agent Shapes Look Like in This Model
 
-The composition layer is easiest to judge against concrete agents, so here are
-the common shapes and how they decompose:
+The composition layer is easiest to judge against concrete agents. Here are the
+common shapes and how they decompose:
 
 | Agent shape | Fascicle expression |
 | --- | --- |
@@ -166,15 +165,16 @@ tool when:
 
 The decisive test for a given project is whether *you can name a concrete way
 Fascicle beats AI-SDK-direct for this specific workload*. If your honest answer is
-no, use the AI SDK for that project. If the project needs the seam anyway (provider
-portability, composed control flow, churn insulation, local models), then you'll
-build that seam regardless, and Fascicle is the disciplined, versioned, tested
-version of work you'd otherwise do worse and throw away.
+no, use the AI SDK for that project. If your project needs the seam anyway
+(provider portability, composed control flow, churn insulation, local models),
+you'll build one either way. Fascicle is that seam already written, versioned,
+and tested, instead of the rougher one you'd build yourself and throw away
+later.
 
 ## The Risks of Depending on an Early-Stage Library
 
 Choosing Fascicle for production work carries risks that have nothing to do with
-its design quality, and if you're evaluating it seriously you should name them:
+its design quality. If you're evaluating it seriously, name them:
 
 - **Key-person risk.** Fascicle is a single-maintainer project. Depending on it
   means depending on one person's availability. This is the first objection any
@@ -199,22 +199,21 @@ What makes these survivable is the shape of the thing:
 ## The Bottom Line
 
 Fascicle isn't a thin wrapper. Real, differentiated code sits above the provider
-seam, and below it now too for the five providers with a native
-transport. The honest caveat is that the AI SDK's v6/v7 agent layer narrowed some
-specific gaps (it now wraps CLI harnesses and standardizes reasoning), so the case
-rests on salvage, the composition algebra, no ambient state, and churn insulation,
-not on provider plumbing.
+seam, and now below it as well, for the five providers with a native transport. The
+honest caveat is that the AI SDK's v6/v7 agent layer narrowed some specific gaps
+(it now wraps CLI harnesses and standardizes reasoning), so the case rests on
+salvage, the composition algebra, no ambient state, and churn insulation, not on
+provider plumbing.
 
-As production infrastructure, adoption is conditionally justified. The
-justification isn't "better than the AI SDK", because it's built on the AI SDK.
-It's a thin, legible, provider-sovereign seam that lets agent logic outlive both
-provider churn and AI-SDK major churn (to the point where five providers can now
-bypass the AI SDK entirely without the loop above them noticing), makes local
-models actually work, and is adoptable as an ordinary Apache-2.0 dependency with a
-fork escape hatch. Adopt it
-for the projects that need those specific properties, and consume it as a
-published dependency. For projects that don't need the seam, use the AI SDK
-directly, and count that honesty as a feature.
+Adopting it as production infrastructure is a conditional yes. The justification
+isn't "better than the AI SDK", because it's built on the AI SDK. It's a thin,
+legible, provider-sovereign seam that keeps your agent logic alive through both
+provider churn and AI-SDK major churn, to the point where five providers now bypass
+the AI SDK entirely without the loop above them noticing. It makes local models
+actually work. And you adopt it as an ordinary Apache-2.0 dependency, with a fork
+as your escape hatch. Adopt it for the projects that need those specific
+properties, and consume it as a published dependency. For projects that don't need
+the seam, use the AI SDK directly, and count that honesty as a feature.
 
 ## A Note on the AI SDK's Release Cadence
 
@@ -228,14 +227,14 @@ is my bet that containment is cheaper than absorption over time.
 
 ## Further Reading
 
-- [comparison.md](./comparison.md) - the five axes, and where each neighbor
+- [comparison.md](./comparison.md) — the five axes, and where each neighbor
   (LangChain, Mastra, Strands, OpenAI Agents SDK, Inngest AgentKit) sits on them.
-- [concepts.md](./concepts.md) - step-as-value, run context, trajectories.
-- [providers.md](./providers.md) - the three integration depths, the `transport`
+- [concepts.md](./concepts.md) — step-as-value, run context, trajectories.
+- [providers.md](./providers.md) — the three integration depths, the `transport`
   switch, and the per-provider capability matrix.
-- [blueprint.md](./blueprint.md) - the standard app architecture, once you decide
+- [blueprint.md](./blueprint.md) — the standard app architecture, once you decide
   to adopt.
-- [leaf-arm-spine.md](./leaf-arm-spine.md) - the three-layer shape well-factored
+- [leaf-arm-spine.md](./leaf-arm-spine.md) — the three-layer shape well-factored
   flows converge on, and the decision rules for each layer.
-- [SECURITY.md](../SECURITY.md) - the supply-chain posture and its honest residual
+- [SECURITY.md](../SECURITY.md) — the supply-chain posture and its honest residual
   risks.
