@@ -140,13 +140,16 @@ function stable_signature(input: {
 let model_call_counter = 0
 
 /**
- * Build the default step id: `model_call:<hash>:<n>`. The instance counter
+ * Build the default step id: `model_call_<hash>_<n>`. The instance counter
  * keeps two leaves built from identical configs distinguishable in describe
  * and the trajectory; the hash still identifies the call's shape.
+ *
+ * Underscore-separated rather than colon-separated because every id in the
+ * system is identifier-shaped, generated ones included.
  */
 function next_auto_id(input: Parameters<typeof stable_signature>[0]): string {
   model_call_counter += 1
-  return `model_call:${stable_signature(input)}:${model_call_counter}`
+  return `model_call_${stable_signature(input)}_${model_call_counter}`
 }
 
 /**

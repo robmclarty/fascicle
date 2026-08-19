@@ -212,23 +212,37 @@ describe('loop', () => {
     expect(spans[0]).toBe('feedback-loop')
   })
 
-  it('id is prefixed with name when provided', () => {
+  it('keeps the display name out of the id', () => {
     const named = loop<number, number, number>({
-      name: 'fb',
+      name: 'feedback-loop',
       init: (n) => n,
       body: step('inc', (n: number) => n + 1),
       finish: (n) => n,
       max_rounds: 1,
     })
-    expect(named.id.startsWith('fb_')).toBe(true)
-  
+    expect(named.id).toMatch(/^loop_\d+$/)
+    expect(named.config?.['display_name']).toBe('feedback-loop')
+
     const anon = loop<number, number, number>({
       init: (n) => n,
       body: step('inc', (n: number) => n + 1),
       finish: (n) => n,
       max_rounds: 1,
     })
-    expect(anon.id.startsWith('loop_')).toBe(true)
+    expect(anon.id).toMatch(/^loop_\d+$/)
+  })
+
+  it('accepts free prose as the display name, since it never reaches an id', () => {
+    const flow = loop<number, number, number>({
+      name: 'refine until the reviewer is happy',
+      init: (n) => n,
+      body: step('inc', (n: number) => n + 1),
+      guard: (n: number) => n > 0,
+      finish: (n) => n,
+      max_rounds: 1,
+    })
+    expect(flow.id).toMatch(/^loop_\d+$/)
+    expect(flow.children?.[1]?.id).toMatch(/^loop_\d+_guard$/)
   })
 
   it('clamps max_rounds to a minimum of 1', async () => {

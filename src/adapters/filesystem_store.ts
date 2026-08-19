@@ -17,7 +17,7 @@ import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { CheckpointStore } from '#core'
 
-export type FilesystemStoreOptions = {
+export type FilesystemStoreConfig = {
   readonly root_dir: string
 }
 
@@ -35,10 +35,10 @@ function safe_filename(key: string): string {
 }
 
 /**
- * Create a `CheckpointStore` backed by JSON files under `options.root_dir`.
+ * Create a `CheckpointStore` backed by JSON files under `config.root_dir`.
  */
-export function filesystem_store(options: FilesystemStoreOptions): CheckpointStore {
-  const { root_dir } = options
+export function filesystem_store(config: FilesystemStoreConfig): CheckpointStore {
+  const { root_dir } = config
 
   const ensure_root = async (): Promise<void> => {
     await mkdir(root_dir, { recursive: true })

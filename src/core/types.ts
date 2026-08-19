@@ -56,8 +56,13 @@ export type RunContext = {
 
 export type StepFn<i, o> = (input: i, ctx: RunContext) => Promise<o> | o
 
+/**
+ * Descriptive metadata for a step. `name` is the display channel: it labels
+ * trajectory spans and `describe` output, and changing it is always safe
+ * because nothing keys off it. The step's `id` stays the identity channel.
+ */
 export type StepMetadata = {
-  readonly display_name?: string
+  readonly name?: string
   readonly description?: string
   readonly port_labels?: Readonly<{
     readonly in?: string

@@ -127,7 +127,7 @@ export function judge_llm<I, O>(config: JudgeLlmConfig): Judge<I, O> {
     parse_score(reply, scale),
   )
   const inner = sequence([build_prompt, config.model, parse])
-  return compose('judge_llm', inner)
+  return compose(inner, { name: 'judge_llm' })
 }
 
 /**

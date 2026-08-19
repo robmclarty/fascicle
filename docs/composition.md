@@ -27,7 +27,7 @@ You import everything below from `fascicle`. The primitives live in
 | `fallback` | composer | run a backup step on primary failure |
 | `timeout` | composer | cancel an inner step after a deadline |
 | `loop` | composer | bounded iteration with carry-state and optional guard (`LoopConfig`, `LoopGuardResult`, `LoopOutcome`) |
-| `compose` | composer | label a composite step for trajectory output |
+| `compose` | composer | label a composite step for trajectory output (`ComposeConfig`) |
 | `adversarial` | composer | build-and-critique loop |
 | `ensemble` | composer | N-of-M pick best by score |
 | `ensemble_step` | composer | pick best where the scorer is itself a `Step` |
@@ -41,7 +41,7 @@ You import everything below from `fascicle`. The primitives live in
 | `read_baseline` / `write_baseline` / `regression_compare` | functions | persist a report as JSON, load one back, diff a fresh report against it |
 | `checkpoint` | composer | memoize an inner step by key |
 | `suspend` | composer | pause awaiting external input |
-| `chain` | builder | named steps over a growing typed record (`Chain`, `ChainStepOptions`); the spine |
+| `chain` | builder | named steps over a growing typed record (`Chain`, `ChainStepOptions`); the spine. Binding names are record keys, so they follow the same identifier rule as step ids, with the prose in `{ name }` |
 | `scope` / `stash` / `use` | composers | named state across non-adjacent steps |
 | `STEP_KINDS` / `is_step_kind` | value / guard | the closed list of step kinds and its narrowing guard (type: `StepKind`) |
 | `parse_trajectory_event`, `is_span_start_event` / `is_span_end_event` / `is_emit_event` / `is_custom_trajectory_event` | fn / guards | parse a recorded trajectory line, then narrow it by shape |
@@ -50,6 +50,7 @@ You import everything below from `fascicle`. The primitives live in
 | `resume_validation_error` | error | thrown by `suspend` on invalid resume data |
 | `aborted_error` | error | thrown on SIGINT/SIGTERM or user abort |
 | `describe_cycle_error` | error | thrown when `describe` meets a cycle in the tree |
+| `resolve_display_name` | function | the label a step renders under, resolving `config.display_name`, then `meta.name`, then a caller fallback |
 | `bench_suspend_error` | error | thrown when a benched flow suspends (`bench` has no resume path) |
 | `RunContext` | type | per-run execution context |
 | `RunOutcome` | type | the `done` / `suspended` result of `run.until_suspended` |
@@ -58,7 +59,8 @@ You import everything below from `fascicle`. The primitives live in
 | `CheckpointStore` | type | persistent key-value store |
 | `Step<i, o>` | type | the step contract, so `id`, `kind`, and a `run(input, ctx)` function property, plus optional `config`, `children`, `anonymous`, and `meta`. `run` is a function property rather than a method, so strict mode checks `i` contravariantly and a step wired to an input it can't accept is a compile error |
 | `AnyStep` | type | the erased supertype (`Step<never, unknown>`) held by `children` |
-| `StepMetadata` | type | display name, description, and port labels surfaced by `describe` |
+| `StepMetadata` | type | the third argument to `step`: `name` (display label for spans and `describe`), `description`, and port labels |
+| `is_valid_step_id` / `suggest_step_id` / `assert_valid_step_id` | functions | the identifier rule every id is held to, the spelling it suggests on failure, and the guard the factories call |
 | `DescribeOptions` / `FlowNode` / `FlowValue` | types | `describe` options and the structured tree `describe.json` returns |
 
 The composites also export their config, result, and judge types (`Judge`,
@@ -91,8 +93,9 @@ That one invariant buys you the rest:
 Copy these one-liners into an LLM's system prompt and it will write you flows
 from English specifications:
 
-- `step(id, fn)` / `step(fn)` — atomic unit. Anonymous form can't be
-  checkpointed.
+- `step(id, fn)` / `step(id, fn, { name })` / `step(fn)` — atomic unit. The id
+  is identity and must be identifier-shaped, `meta.name` is the free-prose
+  display label, and the anonymous form can't be checkpointed.
 - `sequence([a, b, c])` — run in order, thread output into input. Literal
   tuples are joint-checked at compile time, so each child must accept its
   predecessor's output, and a mismatch errors on the offending element
@@ -123,8 +126,9 @@ from English specifications:
   projection folds in as much or as little of the outcome as it needs
   (`finish: (s) => s` to carry the state straight out,
   `finish: (s, outcome) => ({ value: s, ...outcome })` for the whole thing).
-- `compose(name, inner)` — label a composite step so it shows up by intent
-  in trajectories and `describe` output.
+- `compose(inner, { name })` — label a composite step so it shows up by
+  intent in trajectories and `describe` output. The label is free prose and
+  stays out of the id, which is `compose_<n>`.
 - `adversarial({ build, critique, accept, max_rounds, project? })` — propose,
   critique, loop.
 - `ensemble({ members, score, select?, project? })` — pick the best of several.

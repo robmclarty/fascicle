@@ -8,7 +8,7 @@
 
 import { mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
-import { aborted_error, run, suspended_error } from '#core'
+import { aborted_error, resolve_display_name, run, suspended_error } from '#core'
 import type { Step, TrajectoryEvent, TrajectoryLogger } from '#core'
 import { filesystem_logger, http_logger, tee_logger } from '#adapters'
 import { bench_suspend_error } from './errors.js'
@@ -445,13 +445,11 @@ function resolve_concurrency(value: number | undefined, n_cases: number): number
 }
 
 /**
- * Picks a human-readable name for the report: the flow's `display_name`
- * config when set, else its step id or kind.
+ * Picks a human-readable name for the report, resolving the display channels
+ * the same way spans and `describe` do, then falling back to identity.
  */
 function describe_flow_name<I, O>(flow: Step<I, O>): string {
-  const display = flow.config?.['display_name']
-  if (typeof display === 'string' && display.length > 0) return display
-  return flow.id ?? flow.kind ?? 'flow'
+  return resolve_display_name(flow, flow.id ?? flow.kind ?? 'flow')
 }
 
 /**

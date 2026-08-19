@@ -121,5 +121,5 @@ export function gate<i, o>(inner: Step<i, o>, config: GateConfig<o>): Step<i, o>
     approval,
   ])
 
-  return compose(config.name ?? 'gate', body)
+  return compose(body, { name: config.name ?? 'gate' })
 }

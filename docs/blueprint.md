@@ -324,7 +324,7 @@ Match Fascicle's own surface: `snake_case` for values and functions, `PascalCase
 | `read_<x>` | scope-state reader in `state.ts` |
 | `<x>_schema` | zod schema; inferred type `X` beside it |
 | `K` | the stash-key const object |
-| step ids | `snake_case` verbs (`extract_suggestions`), or `<flow>.<leaf>` in larger apps; ids are trajectory labels, name them for the reader of the span tree |
+| step ids | `snake_case` verbs (`extract_suggestions`), or `<flow>_<leaf>` in larger apps. An id is identity and has to be a valid identifier, so a reader-facing label goes in `meta.name` beside it |
 
 ## Anti-Patterns
 

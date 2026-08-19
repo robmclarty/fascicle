@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { recording_logger } from '../../../test/fixtures/trajectory.js'
 import { run } from '../runner.js'
 import { step } from '../step.js'
 
@@ -41,18 +42,40 @@ describe('step', () => {
     await expect(run(named, 41)).resolves.toBe(42)
   })
 
+  it('rejects an id that is not identifier-shaped', () => {
+    expect(() => step('this is my id', (x: number) => x)).toThrow(
+      'step id "this is my id" is not a valid identifier: ids are read back as property names, so use this_is_my_id and put the label in meta.name',
+    )
+  })
+
+  it('rejects an empty id', () => {
+    expect(() => step('', (x: number) => x)).toThrow(TypeError)
+  })
+
+  it('accepts the prose spelling in meta.name instead', () => {
+    const s = step('this_is_my_id', (x: number) => x, { name: 'this is my id' })
+    expect(s.id).toBe('this_is_my_id')
+    expect(s.meta?.name).toBe('this is my id')
+  })
+
+  it('checks the fn before the id, so the worse mistake reports first', () => {
+    expect(() => step('bad id', undefined as unknown as (x: number) => number)).toThrow(
+      'step(id, fn): fn must be a function',
+    )
+  })
+
   it('throws when a non-function is passed as the step fn', () => {
     expect(() => step('bad', undefined as unknown as (x: number) => number)).toThrow(TypeError)
   })
 
   it('attaches optional metadata when supplied as the third argument', () => {
     const labelled = step('inc', (x: number) => x + 1, {
-      display_name: 'Increment',
+      name: 'Increment',
       description: 'Adds one to its input',
       port_labels: { in: 'count', out: 'count + 1' },
     })
     expect(labelled.meta).toEqual({
-      display_name: 'Increment',
+      name: 'Increment',
       description: 'Adds one to its input',
       port_labels: { in: 'count', out: 'count + 1' },
     })
@@ -61,5 +84,27 @@ describe('step', () => {
   it('omits meta when not supplied', () => {
     const plain = step('p', (x: number) => x)
     expect(plain.meta).toBeUndefined()
+  })
+
+  it('labels its trajectory span with meta.name when supplied', async () => {
+    const { logger, events } = recording_logger()
+    const flow = step('inc', (x: number) => x + 1, { name: 'Increment' })
+
+    await run(flow, 1, { trajectory: logger, install_signal_handlers: false })
+
+    const start = events.find((e) => e.kind === 'span_start')
+    expect(start?.['name']).toBe('Increment')
+    expect(start?.['id']).toBe('inc')
+  })
+
+  it('labels its trajectory span with the kind when meta carries no name', async () => {
+    const { logger, events } = recording_logger()
+    const flow = step('inc', (x: number) => x + 1, { description: 'Adds one' })
+
+    await run(flow, 1, { trajectory: logger, install_signal_handlers: false })
+
+    const start = events.find((e) => e.kind === 'span_start')
+    expect(start?.['name']).toBe('step')
+    expect(start?.['id']).toBe('inc')
   })
 })

@@ -24,7 +24,7 @@ const SSE_HEARTBEAT_MS = 15_000
 const HERE = dirname(fileURLToPath(import.meta.url))
 const STATIC_HTML = resolve(HERE, 'static', 'viewer.html')
 
-export type ServerOptions = {
+export type ServerConfig = {
   readonly broadcaster: Broadcaster
   readonly host: string
   readonly port: number
@@ -43,8 +43,8 @@ export type ViewerServer = {
  * single request handler and resolves with the bound URL and a `close`
  * that shuts the socket down.
  */
-export function start_server(options: ServerOptions): Promise<ViewerServer> {
-  const { broadcaster, host, port, on_parse_error } = options
+export function start_server(config: ServerConfig): Promise<ViewerServer> {
+  const { broadcaster, host, port, on_parse_error } = config
 
   const handler = (req: IncomingMessage, res: ServerResponse): void => {
     const route = resolve_route(req, host, port)

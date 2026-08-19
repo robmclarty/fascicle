@@ -222,6 +222,73 @@ describe('define_agent', () => {
     )
   })
 
+  it('rejects a prose frontmatter name when no id is given, and names the fix', async () => {
+    await with_tmp_md(
+      ['---', 'name: Change Triage', '---', '', 'body'].join('\n'),
+      async (path) => {
+        const { engine } = make_mock_engine({ ok: true })
+        expect(() =>
+          define_agent({ md_path: path, schema: z.object({ ok: z.boolean() }), engine }),
+        ).toThrow(
+          'define_agent: agent id "Change Triage" is not a valid identifier: ids are read back as property names, so use Change_Triage and pass config.id and leave the prose spelling in config.name',
+        )
+      },
+    )
+  })
+
+  it('takes a prose name once config.id carries the identity', async () => {
+    await with_tmp_md(
+      ['---', 'name: Change Triage', '---', '', 'body'].join('\n'),
+      async (path) => {
+        const { engine } = make_mock_engine({ ok: true })
+        const agent = define_agent({
+          md_path: path,
+          schema: z.object({ ok: z.boolean() }),
+          engine,
+          id: 'change_triage',
+        })
+        expect(agent.id).toBe('change_triage')
+        expect(agent.meta?.name).toBe('Change Triage')
+      },
+    )
+  })
+
+  it('leaves meta absent when the id and the display name agree', async () => {
+    await with_tmp_md(['---', 'name: plain', '---', '', 'body'].join('\n'), async (path) => {
+      const { engine } = make_mock_engine({ ok: true })
+      const agent = define_agent({
+        md_path: path,
+        schema: z.object({ ok: z.boolean() }),
+        engine,
+      })
+      expect(agent.id).toBe('plain')
+      expect(agent.meta).toBeUndefined()
+    })
+  })
+
+  it('records both the id and the display name on agent.call', async () => {
+    await with_tmp_md(
+      ['---', 'name: Change Triage', '---', '', 'body'].join('\n'),
+      async (path) => {
+        const { engine } = make_mock_engine({ ok: true }, 'anthropic', 'sonnet')
+        const agent = define_agent({
+          md_path: path,
+          schema: z.object({ ok: z.boolean() }),
+          engine,
+          id: 'change_triage',
+        })
+        const { logger, events } = recording_logger()
+        await run(agent, { ignored: true }, {
+          trajectory: logger,
+          install_signal_handlers: false,
+        })
+        const call = events.find((e) => e.kind === 'agent.call')
+        expect(call?.['id']).toBe('change_triage')
+        expect(call?.['name']).toBe('Change Triage')
+      },
+    )
+  })
+
   it('records an agent.call trajectory event with name, model, and usage', async () => {
     await with_tmp_md(
       [

@@ -23,7 +23,7 @@ export type Broadcaster = {
   readonly size: () => number
 }
 
-export type BroadcasterOptions = {
+export type BroadcasterConfig = {
   readonly buffer: number
   readonly on_subscriber_error?: (err: unknown) => void
 }
@@ -37,10 +37,10 @@ export type BroadcasterOptions = {
  * that throws is unsubscribed, and the `on_subscriber_error` callback fires
  * once with the captured error so the server can log it.
  */
-export function create_broadcaster(options: BroadcasterOptions): Broadcaster {
+export function create_broadcaster(config: BroadcasterConfig): Broadcaster {
   // `| 0` truncates fractional sizes; clamp so the ring keeps at least one
   // event.
-  const max = Math.max(1, options.buffer | 0)
+  const max = Math.max(1, config.buffer | 0)
   const ring: BroadcastEvent[] = []
   const subscribers = new Set<Subscriber>()
   let next_id = 1
@@ -56,7 +56,7 @@ export function create_broadcaster(options: BroadcasterOptions): Broadcaster {
         fn(entry)
       } catch (err) {
         subscribers.delete(fn)
-        if (options.on_subscriber_error) options.on_subscriber_error(err)
+        if (config.on_subscriber_error) config.on_subscriber_error(err)
       }
     }
     return entry

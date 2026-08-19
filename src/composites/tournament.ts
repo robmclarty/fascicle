@@ -75,7 +75,7 @@ export function tournament<i, o, projected = TournamentResult<o>>(
 
   const inner = sequence([fan_out, bracket_step])
 
-  return compose(config.name ?? 'tournament', inner)
+  return compose(inner, { name: config.name ?? 'tournament' })
 }
 
 /**

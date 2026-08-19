@@ -50,10 +50,10 @@ function config_of(step: ReturnType<typeof model_call>): Record<string, unknown>
   return describe.json(step).config as Record<string, unknown>
 }
 
-// Auto ids are `model_call:<hash>:<counter>`; hash assertions must compare the
+// Auto ids are `model_call_<hash>_<counter>`; hash assertions must compare the
 // middle segment so the per-instance counter cannot mask a hash regression.
 function hash_of(id: string): string {
-  return id.split(':')[1] ?? ''
+  return id.split('_')[2] ?? ''
 }
 
 function make_result(content: string): GenerateResult {
@@ -432,9 +432,9 @@ vdescribe('model_call', () => {
     )
   })
 
-  it('default id is "model_call:", an 8-char hex hash, and a counter', () => {
+  it('default id is "model_call_", an 8-char hex hash, and a counter', () => {
     const { engine } = make_mock_engine()
-    expect(model_call({ engine, model: 'x' }).id).toMatch(/^model_call:[0-9a-f]{8}:\d+$/)
+    expect(model_call({ engine, model: 'x' }).id).toMatch(/^model_call_[0-9a-f]{8}_\d+$/)
   })
 
   it('reports has_tools and has_schema in describe config', () => {

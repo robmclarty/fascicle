@@ -30,7 +30,8 @@
 import { is_step } from './is_step.js'
 import { dispatch_step, register_traced_kind, throw_if_aborted } from './runner.js'
 import { step } from './step.js'
-import type { AnyStep, RunContext, Step } from './types.js'
+import { assert_valid_step_id } from './step_id.js'
+import type { AnyStep, RunContext, Step, StepMetadata } from './types.js'
 
 let chain_counter = 0
 
@@ -46,6 +47,12 @@ type merge<a, b> = { readonly [k in keyof (a & b)]: (a & b)[k] }
 
 export type ChainStepOptions = {
   readonly arm?: AnyStep
+  /**
+   * Display label for the binding's span and `describe` line. The binding
+   * name is a record key and so must be identifier-shaped; this is where the
+   * free prose goes, exactly as `meta.name` does for a plain `step`.
+   */
+  readonly name?: string
 }
 
 export type Chain<i, acc> = {
@@ -59,6 +66,7 @@ export type Chain<i, acc> = {
       name: k,
       arm: Step<a, o>,
       select: (s: acc) => a,
+      options?: ChainStepOptions,
     ): Chain<i, merge<acc, { readonly [p in k]: o }>>
   }
   readonly stage: {
@@ -95,6 +103,7 @@ type LooseChain = {
     name: string,
     fn_or_arm: LooseFn | AnyStep,
     options_or_select?: ChainStepOptions | LooseSelect,
+    options?: ChainStepOptions,
   ) => LooseChain
   readonly stage: (name: string, project?: LooseFn) => LooseChain
   readonly output: (fn: LooseFn) => Step<unknown, unknown>
@@ -184,6 +193,17 @@ function build_chain(
 }
 
 /**
+ * Project a binding's options onto `step`'s trailing metadata argument.
+ *
+ * Returned as a spreadable tuple so a binding with no label calls `step`
+ * with two arguments, leaving `meta` genuinely absent rather than set to an
+ * empty object that `describe` would then echo.
+ */
+function binding_meta(options: ChainStepOptions | undefined): [] | [StepMetadata] {
+  return options?.name === undefined ? [] : [{ name: options.name }]
+}
+
+/**
  * Build the binding node for the arm-first `.step(name, arm, select)` form.
  *
  * The chain owns the dispatch: the synthesized body projects the record
@@ -195,15 +215,19 @@ function arm_node(
   name: string,
   arm: AnyStep,
   select: ChainStepOptions | LooseSelect | undefined,
+  options: ChainStepOptions | undefined,
 ): Step<Record<string, unknown>, unknown> {
   if (typeof select !== 'function') {
     throw new TypeError('chain.step(name, arm, select): select must be a function')
   }
-  const base = step(name, (s: Record<string, unknown>, ctx: RunContext) =>
-    // The typed surface pairs select's projection with the arm's input, a
-    // pairing the erased AnyStep cannot carry, so the call re-asserts it.
-    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-    ctx.call(arm, select(s) as never),
+  const base = step(
+    name,
+    (s: Record<string, unknown>, ctx: RunContext) =>
+      // The typed surface pairs select's projection with the arm's input, a
+      // pairing the erased AnyStep cannot carry, so the call re-asserts it.
+      // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+      ctx.call(arm, select(s) as never),
+    ...binding_meta(options),
   )
   return { ...base, children: [arm] }
 }
@@ -216,8 +240,9 @@ function body_node(
   fn: LooseFn,
   options: ChainStepOptions | LooseSelect | undefined,
 ): Step<Record<string, unknown>, unknown> {
-  const base = step(name, fn)
-  const arm = typeof options === 'function' ? undefined : options?.arm
+  const settings = typeof options === 'function' ? undefined : options
+  const base = step(name, fn, ...binding_meta(settings))
+  const arm = settings?.arm
   // The arm is describe metadata only: recorded as the binding's child so
   // the subtree renders, never dispatched (the body's ctx.call runs it).
   return arm === undefined ? base : { ...base, children: [arm] }
@@ -237,14 +262,19 @@ function make_chain(
   bound: ReadonlySet<string>,
 ): LooseChain {
   return {
-    step: (name, fn_or_arm, options_or_select) => {
+    step: (name, fn_or_arm, options_or_select, arm_options) => {
+      assert_valid_step_id(
+        name,
+        'chain.step: binding name',
+        'put the label in the options object as { name }',
+      )
       if (bound.has(name)) {
         throw new TypeError(
           `chain.step: binding '${name}' is already defined in this stage; names are single-assignment`,
         )
       }
       const node = is_step(fn_or_arm)
-        ? arm_node(name, fn_or_arm, options_or_select)
+        ? arm_node(name, fn_or_arm, options_or_select, arm_options)
         : body_node(name, fn_or_arm, options_or_select)
       return make_chain(
         input_name,
@@ -281,6 +311,7 @@ export function chain<i = never, k extends string = 'input'>(
   input_name?: k,
 ): ChainOpen<i, k, { readonly [p in k]: i }> {
   const name = input_name ?? 'input'
+  assert_valid_step_id(name, 'chain: input name', 'rename the binding')
   const open = make_chain(name, [], new Set([name]))
   // `.input` is compile-time refinement over the same empty builder, so
   // returning it unchanged is the whole implementation.

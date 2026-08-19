@@ -249,6 +249,37 @@ a Step where `fn` belongs (for example, `pipe(a, b, c)`) throws this `TypeError`
 at flow construction. To chain Steps, use `sequence([a, b, c])`. `sequence` likewise
 rejects non-Step children at construction — wrap plain functions with `step(fn)`.
 
+## `TypeError: ... is not a valid identifier`
+
+Every id in a flow has to be readable back as a property name, because ids are
+keys: a `chain` binding merges its result into the growing record under its
+name, and a name you cannot destructure is a name the record cannot offer. So
+`step`, `chain.step`, `chain`'s input name, and `define_agent` all hold ids to
+the same rule, and all four throw at construction when it is broken.
+
+```text
+step id "fetch the manifest" is not a valid identifier: ids are read back as
+property names, so use fetch_the_manifest and put the label in meta.name
+```
+
+Nothing rewrites the id for you. Normalizing would quietly map `my-id`, `my.id`,
+and `my id` onto one key, so the failure names the spelling it would have picked
+and leaves the choice with you.
+
+The prose has its own home, and it is unconstrained:
+
+```ts
+step('fetch_manifest', fetch_it, { name: 'Fetch the package manifest' })
+
+chain('email').input<string>()
+  .step('user_id', ({ email }) => find_user(email), { name: 'Look up the user' })
+
+define_agent({ md_path, schema, engine, id: 'change_triage', name: 'Change Triage' })
+```
+
+Display labels on composers (`sequence`, `loop`, `compose`, and the rest) were
+never ids and stay free-form.
+
 ## Locating a Failure: Reading `.path`
 
 Errors thrown from inside a run carry a `path` array that names the chain of
@@ -270,10 +301,10 @@ declare `path`, so after an `instanceof` check `err.path` typechecks with no
 cast.
 
 The last element is the failing leaf. Auto-derived ids (a `model_call` without
-an explicit id gets one like `model_call:a1b2c3:2`) make a path hard to read
+an explicit id gets one like `model_call_a1b2c3_2`) make a path hard to read
 when a flow holds several model calls; set `id:` on each `model_call` /
 `model_step` so the path names the role (`['review', 'critic']` instead of
-`['review', 'model_call:a1b2c3:2']`).
+`['review', 'model_call_a1b2c3_2']`).
 
 ## Still Stuck
 

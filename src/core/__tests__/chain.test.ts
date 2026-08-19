@@ -324,3 +324,61 @@ vdescribe('chain', () => {
     expect(true).toBe(true)
   })
 })
+
+vdescribe('chain binding names', () => {
+  it('rejects a binding name that is not identifier-shaped', () => {
+    expect(() => chain<string>().step('user id', ({ input }) => input)).toThrow(
+      'chain.step: binding name "user id" is not a valid identifier: ids are read back as property names, so use user_id and put the label in the options object as { name }',
+    )
+  })
+
+  it('rejects an input name that is not identifier-shaped', () => {
+    expect(() => chain('my input')).toThrow(
+      'chain: input name "my input" is not a valid identifier: ids are read back as property names, so use my_input and rename the binding',
+    )
+  })
+
+  it('still rejects a duplicate binding, and reports it as a duplicate', () => {
+    expect(() =>
+      chain<string>()
+        .step('a', ({ input }) => input)
+        .step('a', ({ input }) => input),
+    ).toThrow('already defined in this stage')
+  })
+
+  it('labels a body binding from options.name without touching the key', async () => {
+    const flow = chain<string>()
+      .step('user_id', ({ input }) => `user:${input}`, { name: 'Look up the user' })
+      .output((s) => s.user_id)
+
+    expect(describe(flow)).toContain('Look up the user(user_id)')
+    await expect(run(flow, 'a@b.c', { install_signal_handlers: false })).resolves.toBe('user:a@b.c')
+  })
+
+  it('labels an arm binding from the trailing options object', () => {
+    const arm = step('inner', (n: number) => n + 1)
+    const flow = chain<number>()
+      .step('bumped', arm, (s) => s.input, { name: 'Bump the number' })
+      .output((s) => s.bumped)
+
+    expect(describe(flow)).toContain('Bump the number(bumped)')
+  })
+
+  it('leaves meta absent when no label is given', () => {
+    const flow = chain<string>()
+      .step('plain', ({ input }) => input)
+      .output((s) => s.plain)
+    const binding = flow.children?.[0]
+    expect(binding?.meta).toBeUndefined()
+    expect(describe(flow)).toContain('step(plain)')
+  })
+
+  it('keeps the arm option working alongside the label', () => {
+    const arm = step('inner', (n: number) => n + 1)
+    const flow = chain<number>()
+      .step('bumped', ({ input }) => input + 1, { arm, name: 'Bump it' })
+      .output((s) => s.bumped)
+    expect(flow.children?.[0]?.children?.[0]).toBe(arm)
+    expect(describe(flow)).toContain('Bump it(bumped)')
+  })
+})

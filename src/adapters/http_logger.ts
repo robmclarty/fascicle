@@ -23,7 +23,7 @@ export type HttpLoggerFetch = (
   init: { method: 'POST'; headers: Record<string, string>; body: string },
 ) => Promise<{ ok: boolean; status: number }>
 
-export type HttpLoggerOptions = {
+export type HttpLoggerConfig = {
   readonly url: string
   readonly fetch?: HttpLoggerFetch
   readonly on_error?: (err: unknown) => void
@@ -39,15 +39,15 @@ const default_fetch: HttpLoggerFetch = async (url, init) => {
 
 /**
  * Create a `TrajectoryLogger` that POSTs each event as NDJSON to
- * `options.url`.
+ * `config.url`.
  *
  * Never throws: a transport failure is dropped and reported through the
  * optional `on_error` callback, so a dev viewer being unreachable never
  * blocks the flow.
  */
-export function http_logger(options: HttpLoggerOptions): TrajectoryLogger {
-  const { url, on_error } = options
-  const send = options.fetch ?? default_fetch
+export function http_logger(config: HttpLoggerConfig): TrajectoryLogger {
+  const { url, on_error } = config
+  const send = config.fetch ?? default_fetch
 
   const post = (event: Record<string, unknown>): void => {
     const body = `${JSON.stringify(event)}\n`

@@ -23,8 +23,11 @@
  *
  * The factory keeps no engine state. Each call delegates to `engine.generate`
  * with the resolved prompts, the schema, and `ctx.abort` / `ctx.trajectory`
- * threaded through. An `agent.call` trajectory event carries the agent name,
- * resolved model id, and engine-reported usage. No retry or fallback is baked
+ * threaded through. An `agent.call` trajectory event carries the agent id and
+ * display name, resolved model id, and engine-reported usage. Identity and
+ * display stay separate: `config.id` is the step id and must be
+ * identifier-shaped, while `config.name` is free prose that labels the span.
+ * No retry or fallback is baked
  * in; wrap with `retry()` from core if you need it.
  *
  * Frontmatter parser is intentionally tiny (no gray-matter): bare `key: value`
@@ -35,7 +38,7 @@
 
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { aborted_error, step } from '#core'
+import { aborted_error, assert_valid_step_id, step } from '#core'
 import type { RunContext, Step } from '#core'
 import type { EffortLevel, Engine, GenerateOptions } from '#engine'
 import type { ToolSchema } from '#schema'
@@ -48,7 +51,17 @@ export type DefineAgentConfig<i, o> = {
   readonly md_path: string | URL
   readonly schema: ToolSchema<o>
   readonly engine: Engine
+  /**
+   * Display label for the agent's span, `describe` line, and `agent.call`
+   * event. Free prose. Defaults to the frontmatter `name`.
+   */
   readonly name?: string
+  /**
+   * Step id for the agent, which must be identifier-shaped. Defaults to the
+   * resolved display name, so an agent whose label is already a plain
+   * identifier needs nothing here; set it explicitly when the label is prose.
+   */
+  readonly id?: string
   readonly build_prompt?: (input: i) => AgentBuiltPrompt
   /**
    * Model for this agent's calls, typically threaded from the app's resolved
@@ -291,8 +304,14 @@ export function define_agent<i, o>(config: DefineAgentConfig<i, o>): Step<i, o> 
   const { frontmatter, body } = parse_frontmatter(text)
 
   const display_name = config.name ?? frontmatter.name ?? 'agent'
+  const id = config.id ?? display_name
+  assert_valid_step_id(
+    id,
+    'define_agent: agent id',
+    'pass config.id and leave the prose spelling in config.name',
+  )
 
-  return step<i, o>(display_name, async (input, ctx: RunContext): Promise<o> => {
+  const run_agent = async (input: i, ctx: RunContext): Promise<o> => {
     if (ctx.abort.aborted) {
       throw new aborted_error('aborted before agent call')
     }
@@ -332,11 +351,16 @@ export function define_agent<i, o>(config: DefineAgentConfig<i, o>): Step<i, o> 
     const resolved_model = `${result.model_resolved.provider}:${result.model_resolved.model_id}`
     ctx.trajectory.record({
       kind: 'agent.call',
+      id,
       name: display_name,
       model: resolved_model,
       usage: result.usage,
     })
   
     return result.content
-  })
+  }
+
+  return id === display_name
+    ? step<i, o>(id, run_agent)
+    : step<i, o>(id, run_agent, { name: display_name })
 }

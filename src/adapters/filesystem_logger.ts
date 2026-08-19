@@ -15,7 +15,7 @@ import { dirname } from 'node:path'
 import type { TrajectoryLogger } from '#core'
 import { line_logger } from './line_logger.js'
 
-export type FilesystemLoggerOptions = {
+export type FilesystemLoggerConfig = {
   readonly output_path: string
 }
 
@@ -23,8 +23,8 @@ export type FilesystemLoggerOptions = {
  * Create a `TrajectoryLogger` that appends one JSON object per line to
  * `output_path`, creating the parent directory if needed.
  */
-export function filesystem_logger(options: FilesystemLoggerOptions): TrajectoryLogger {
-  const { output_path } = options
+export function filesystem_logger(config: FilesystemLoggerConfig): TrajectoryLogger {
+  const { output_path } = config
   mkdirSync(dirname(output_path), { recursive: true })
 
   return line_logger((event) => {

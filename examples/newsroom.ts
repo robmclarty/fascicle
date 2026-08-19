@@ -120,11 +120,11 @@ export function build_flow(engine: Engine): Step<Brief, string> {
     { key: (url) => `research:${url}` },
   )
   const research = compose(
-    'research',
     sequence([
       step('urls', (b: Brief) => Object.keys(WEB).filter(() => b.kind === 'fresh')),
       map({ items: (urls: ReadonlyArray<string>) => urls, do: research_one, concurrency: 2 }),
     ]),
+    { name: 'research' },
   )
 
   // widen until coverage suffices; the loop body is itself a small chain

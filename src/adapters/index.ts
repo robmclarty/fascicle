@@ -20,13 +20,13 @@
  */
 
 export { filesystem_logger } from './filesystem_logger.js'
-export type { FilesystemLoggerOptions } from './filesystem_logger.js'
+export type { FilesystemLoggerConfig } from './filesystem_logger.js'
 export { http_logger } from './http_logger.js'
-export type { HttpLoggerFetch, HttpLoggerOptions } from './http_logger.js'
+export type { HttpLoggerConfig, HttpLoggerFetch } from './http_logger.js'
 export { noop_logger } from './noop_logger.js'
 export { stderr_logger } from './stderr_logger.js'
 export type { StderrLoggerOptions } from './stderr_logger.js'
 export { tee_logger } from './tee_logger.js'
 
 export { filesystem_store } from './filesystem_store.js'
-export type { FilesystemStoreOptions } from './filesystem_store.js'
+export type { FilesystemStoreConfig } from './filesystem_store.js'

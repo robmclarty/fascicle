@@ -17,6 +17,7 @@
 
 import { describe_cycle_error } from './errors.js'
 import { is_step } from './is_step.js'
+import { resolve_display_name } from './display_name.js'
 import type { AnyStep, Step, StepMetadata } from './types.js'
 
 const INDENT = '  '
@@ -95,9 +96,7 @@ function render_text(
   }
   path.add(node)
   try {
-    const display = node.config?.['display_name']
-    const label = typeof display === 'string' && display.length > 0 ? display : node.kind
-    lines.push(`${prefix}${label}(${node.id})`)
+    lines.push(`${prefix}${resolve_display_name(node, node.kind)}(${node.id})`)
     if (node.config) {
       for (const [key, value] of Object.entries(node.config)) {
         if (key === 'display_name') continue

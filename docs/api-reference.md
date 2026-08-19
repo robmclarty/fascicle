@@ -55,10 +55,10 @@ that fits a step fits any composition of steps you build.
 
 | Primitive | Shape |
 | --- | --- |
-| `step(id?, fn, meta?)` | lift a plain function into `Step<i, o>` |
+| `step(id?, fn, meta?)` | lift a plain function into `Step<i, o>`; `id` is identity and must be a valid identifier, `meta.name` is the free-prose display label |
 | `sequence([a, b, c])` | run in order, threading the value; literal tuples are joint-checked at compile time (each child must accept its predecessor's output) |
 | `pipe(inner, fn)` | post-process an inner step's output |
-| `compose(label, inner)` | label a composite so it shows up by intent in trajectories |
+| `compose(inner, { name })` | label a composite so it shows up by intent in trajectories; the label is display only and the id is `compose_<n>` |
 
 A straight pipe belongs in `sequence`, and you reach for `chain` when a step
 needs fan-in, phases, or named per-joint types.
@@ -112,7 +112,7 @@ You can walk the full loop in
 
 | Primitive | Shape |
 | --- | --- |
-| `chain<i>(input_name?)` → `.input` / `.step` / `.stage` / `.output` | named steps over a typed record; state the input type via `chain<i>()` or `chain('name').input<i>()` (unannotated chains default to `never` and fail at `run`): `.step(name, arm, select)` dispatches a composed arm on the selected slice and records it as the binding's child, `.step(name, fn, { arm? })` is the body form (`arm` records a describe-only child), `.stage(name, project?)` concludes a phase (with `project`, narrows the record), `.output(fn)` projects the result into a `Step` |
+| `chain<i>(input_name?)` → `.input` / `.step` / `.stage` / `.output` | named steps over a typed record; state the input type via `chain<i>()` or `chain('name').input<i>()` (unannotated chains default to `never` and fail at `run`): `.step(name, arm, select, options?)` dispatches a composed arm on the selected slice and records it as the binding's child, `.step(name, fn, { arm?, name? })` is the body form (`arm` records a describe-only child), `.stage(name, project?)` concludes a phase (with `project`, narrows the record), `.output(fn)` projects the result into a `Step`. Every binding name is a record key, so it follows the same identifier rule as a step id; `options.name` carries the free-prose label |
 | `scope` / `stash` / `use` | named state at the string-key level; the advanced tier under `chain` (see [advanced-composition.md](./advanced-composition.md)) |
 | `checkpoint(inner, { key })` | memoize an inner step by key in a `CheckpointStore` |
 | `suspend({ id, on, resume_schema, combine })` | pause for external input, then resume later with `resume_data` (throws `suspended_error` to signal the pause; `run.until_suspended` surfaces it as a typed outcome instead) |
@@ -208,7 +208,10 @@ const reviewer = define_agent({ md_path, schema, engine, build_prompt });
 / `model` / `provider` / `effort` / `temperature` / `max_tokens` / `top_p`,
 body as the prompt) and an output schema into a `Step<i, o>`. Every knob is
 also accepted on the config; code wins over frontmatter, frontmatter over
-engine defaults. Types: `DefineAgentConfig`, `AgentBuiltPrompt`. See
+engine defaults. `name` is the display label and defaults to the frontmatter
+name; `config.id` is the step id, defaults to that same label, and has to be a
+valid identifier, so an agent labelled in prose needs one set explicitly.
+Types: `DefineAgentConfig`, `AgentBuiltPrompt`. See
 [blueprint.md](./blueprint.md#prompts-markdown-not-string-literals).
 
 ## Providers
@@ -343,8 +346,8 @@ import { start_viewer } from 'fascicle/viewer';
 | `start_tail(options)` | follow a trajectory JSONL file as it grows |
 
 Types: `StartViewerOptions`, `ViewerHandle`, `Broadcaster`,
-`BroadcasterOptions`, `BroadcastEvent`, `Subscriber`, `ServerOptions`,
-`ViewerServer`, `Tail`, `TailOptions`. The `fascicle-viewer` bin ships with
+`BroadcasterConfig`, `BroadcastEvent`, `Subscriber`, `ServerConfig`,
+`ViewerServer`, `Tail`, `TailConfig`. The `fascicle-viewer` bin ships with
 the package and needs no peer. See [docs/viewer.md](./viewer.md).
 
 ## Errors

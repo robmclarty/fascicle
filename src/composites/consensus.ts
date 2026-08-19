@@ -75,5 +75,5 @@ export function consensus<i, o, projected = ConsensusResult<o>>(
     max_rounds,
   })
 
-  return compose(config.name ?? 'consensus', inner)
+  return compose(inner, { name: config.name ?? 'consensus' })
 }

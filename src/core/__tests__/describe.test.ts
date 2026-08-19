@@ -24,13 +24,13 @@ vdescribe('describe (text)', () => {
 
   it('echoes step meta on describe.json output when present', () => {
     const labelled = step('inc', (x: number) => x + 1, {
-      display_name: 'Increment',
+      name: 'Increment',
       description: 'Adds one',
       port_labels: { in: 'count', out: 'count + 1' },
     })
     const tree = describe.json(labelled)
     expect(tree.meta).toEqual({
-      display_name: 'Increment',
+      name: 'Increment',
       description: 'Adds one',
       port_labels: { in: 'count', out: 'count + 1' },
     })
@@ -442,6 +442,27 @@ vdescribe('describe display_name labelling (text)', () => {
 
   it('falls back to the kind when display_name is absent', () => {
     const node = { id: 'n', kind: 'k', run: (x: unknown) => x, config: { other: 1 } }
+    expect(describe(as_step(node)).split('\n')[0]).toBe('k(n)')
+  })
+
+  it('uses meta.name as the label when no config display_name is set', () => {
+    const labelled = step('inc', (x: number) => x + 1, { name: 'Increment' })
+    expect(describe(labelled).split('\n')[0]).toBe('Increment(inc)')
+  })
+
+  it('prefers config display_name over meta.name', () => {
+    const node = {
+      id: 'n',
+      kind: 'k',
+      run: (x: unknown) => x,
+      config: { display_name: 'Pretty' },
+      meta: { name: 'Plain' },
+    }
+    expect(describe(as_step(node)).split('\n')[0]).toBe('Pretty(n)')
+  })
+
+  it('falls back to the kind when meta.name is an empty string', () => {
+    const node = { id: 'n', kind: 'k', run: (x: unknown) => x, meta: { name: '' } }
     expect(describe(as_step(node)).split('\n')[0]).toBe('k(n)')
   })
 })

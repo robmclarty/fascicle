@@ -52,10 +52,10 @@ The assembly, in essence:
 
 ```typescript
 // src/composites/ensemble.ts, distilled
-compose(name, sequence([parallel(members), pick_winner]));
+compose(sequence([parallel(members), pick_winner]), { name });
 ```
 
-`parallel(members)` is the fan-out, and it runs the named map of steps concurrently and returns their results keyed by name. `pick_winner` is a single `step` that scores each result and selects. `compose(name, ...)` labels the whole thing so it shows up by intent in a trajectory rather than as an anonymous `sequence`. Cancellation, concurrency, and abort propagation aren't re-implemented; they're inherited from `parallel`'s contract.
+`parallel(members)` is the fan-out, and it runs the named map of steps concurrently and returns their results keyed by name. `pick_winner` is a single `step` that scores each result and selects. `compose(..., { name })` labels the whole thing so it shows up by intent in a trajectory rather than as an anonymous `sequence`. Cancellation, concurrency, and abort propagation aren't re-implemented; they're inherited from `parallel`'s contract.
 
 It returns `Step<i, EnsembleResult<o>>` where `EnsembleResult<o>` is `{ winner: o, scores: Record<string, number> }`.
 
@@ -65,7 +65,7 @@ It returns `Step<i, EnsembleResult<o>>` where `EnsembleResult<o>` is `{ winner: 
 
 ```typescript
 // src/composites/tournament.ts, distilled
-compose(name, sequence([parallel(members), run_bracket]));
+compose(sequence([parallel(members), run_bracket]), { name });
 ```
 
 Here is the detail worth internalizing. The bracket doesn't re-run members. The members produce their candidates once, concurrently, and the `compare` calls operate on those already-computed values. A tournament is a fan-out followed by a reduction over fixed data, not a sequence of fresh matches.
@@ -78,13 +78,13 @@ This is the first one built on `loop` rather than `parallel` alone:
 
 ```typescript
 // src/composites/consensus.ts, distilled
-compose(name, loop({
+compose(loop({
   init: (input) => ({ input, results: {} }),
   body: /* scope: run parallel(members) on the carried input */,
   guard: /* step: { stop: agree(results), state } */,
   finish: (state, { converged }) => ({ result: state.results, converged }),
   max_rounds,
-}));
+}), { name });
 ```
 
 `finish` is where the result shape is decided, so `loop` returns exactly what it projects, and its second argument carries the iteration's outcome, which is how `converged` reaches the caller without a second envelope around it.
@@ -99,13 +99,13 @@ Its source file carries a note in the header that tells you to read it as docume
 
 ```typescript
 // src/composites/adversarial.ts, distilled
-compose(name, loop({
+compose(loop({
   init: (input) => ({ input }),
   body: /* scope: build a candidate from { input, prior?, critique? } */,
   guard: /* scope: critique the candidate, stop when accept(notes) */,
   finish: (state, { converged, rounds }) => ({ candidate: state.candidate, converged, rounds }),
   max_rounds,
-}));
+}), { name });
 ```
 
 `build` is a `Step<{ input, prior?, critique? }, candidate>`. `critique` is a `Step<candidate, { notes, ... }>`. Both are yours. The composite supplies only the plumbing that loops them and threads state between rounds, and that plumbing is the same `scope` / `stash` / `use` you'd reach for in your own code. If you wanted a fifth pattern, you'd write it the same way, and it would substitute in the same places.

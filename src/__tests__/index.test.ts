@@ -88,9 +88,9 @@ describe('fascicle umbrella re-export', () => {
 
   it('echoes step meta through the umbrella step() and describe.json()', () => {
     const labelled = umbrella.step('inc', (n: number) => n + 1, {
-      display_name: 'Increment',
+      name: 'Increment',
     })
-    expect(labelled.meta?.display_name).toBe('Increment')
-    expect(umbrella.describe.json(labelled).meta?.display_name).toBe('Increment')
+    expect(labelled.meta?.name).toBe('Increment')
+    expect(umbrella.describe.json(labelled).meta?.name).toBe('Increment')
   })
 })

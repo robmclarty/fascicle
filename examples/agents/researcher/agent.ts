@@ -179,5 +179,5 @@ export function researcher(
     },
   )
 
-  return compose(config.name ?? 'researcher', dispatcher)
+  return compose(dispatcher, { name: config.name ?? 'researcher' })
 }

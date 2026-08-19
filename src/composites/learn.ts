@@ -255,5 +255,5 @@ export function learn<i extends LearnInput, o>(
     wrap_result,
   ])
 
-  return compose(config.name ?? 'learn', inner)
+  return compose(inner, { name: config.name ?? 'learn' })
 }

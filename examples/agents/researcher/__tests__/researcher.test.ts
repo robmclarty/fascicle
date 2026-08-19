@@ -333,7 +333,7 @@ describe('researcher', () => {
       search: harness.search,
       fetch: harness.fetch,
     })
-    expect(agent.id.startsWith('researcher_')).toBe(true)
+    expect(agent.id).toMatch(/^compose_\d+$/)
   
     const { logger, events } = recording_logger()
     await run(agent, { query: 'q', depth: 'shallow' }, {

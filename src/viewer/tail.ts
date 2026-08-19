@@ -23,7 +23,7 @@ import { type FSWatcher, watch as fs_watch } from 'node:fs'
 import { open, stat } from 'node:fs/promises'
 import { parse_trajectory_event, type ParsedTrajectoryEvent } from '#core'
 
-export type TailOptions = {
+export type TailConfig = {
   readonly path: string
   readonly on_event: (event: ParsedTrajectoryEvent) => void
   readonly on_parse_error?: (err: unknown, line: string) => void
@@ -44,8 +44,8 @@ export type Tail = {
  * flight absorbs any events that fire while it runs instead of starting a
  * second concurrent read.
  */
-export function start_tail(options: TailOptions): Tail {
-  const { path, on_event, on_parse_error, on_io_error } = options
+export function start_tail(config: TailConfig): Tail {
+  const { path, on_event, on_parse_error, on_io_error } = config
   let offset = 0
   let buffer = ''
   let busy = false

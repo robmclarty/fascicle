@@ -17,6 +17,7 @@
 
 import { randomUUID } from 'node:crypto'
 import { create_cleanup_registry } from './cleanup.js'
+import { resolve_display_name } from './display_name.js'
 import { aborted_error, suspended_error } from './errors.js'
 import { create_streaming_channel, STREAMING_HIGH_WATER_MARK } from './streaming.js'
 import type {
@@ -47,23 +48,6 @@ function register_kind(kind: string, fn: Dispatcher): void {
 }
 
 /**
- * Resolve the trajectory span label for a step. Prefers a non-empty
- * `display_name` from `flow.config`; otherwise falls back to the supplied
- * default (typically the step's `kind`).
- *
- * Dispatch handlers use this so that any composer carrying a user-supplied
- * `name` surfaces under that label in the trajectory, while unconfigured
- * composers retain their kind-based label.
- */
-function resolve_span_label(
-  flow: AnyStep,
-  fallback: string,
-): string {
-  const display = flow.config?.['display_name']
-  return typeof display === 'string' && display.length > 0 ? display : fallback
-}
-
-/**
  * Register the standard span-wrapping dispatch handler for a composer kind.
  *
  * Every composer wraps `flow.run` in a span identically; this centralizes that
@@ -75,7 +59,7 @@ function resolve_span_label(
  */
 export function register_traced_kind(kind: string): void {
   register_kind(kind, async (flow, input, ctx) => {
-    const label = resolve_span_label(flow, kind)
+    const label = resolve_display_name(flow, kind)
     const span_meta: Record<string, unknown> = { id: flow.id }
     if (ctx.parent_span_id !== undefined) {
       span_meta['parent_span_id'] = ctx.parent_span_id

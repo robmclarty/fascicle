@@ -51,11 +51,15 @@ export type LoopConfig<i, state, o> = {
 let loop_counter = 0
 
 /**
- * Generate a unique step id, prefixed with the display name when one is set.
+ * Generate a unique step id of the form `loop_<n>`.
+ *
+ * The display `name` deliberately stays out of the id. It is free prose, so
+ * folding it in would both make a cosmetic rename move a trajectory id and
+ * put an arbitrary string where an identifier is required.
  */
-function next_id(name: string | undefined): string {
+function next_id(): string {
   loop_counter += 1
-  return `${name ?? 'loop'}_${loop_counter}`
+  return `loop_${loop_counter}`
 }
 
 /**
@@ -90,7 +94,7 @@ function wrap_guard<state>(
 export function loop<i, state, o>(config: LoopConfig<i, state, o>): Step<i, o> {
   const { init, body, finish, name } = config
   const rounds_limit = Math.max(1, Math.floor(config.max_rounds))
-  const id = next_id(name)
+  const id = next_id()
   const guard = wrap_guard(config.guard, id)
 
   const run_fn = async (input: i, ctx: RunContext): Promise<o> => {

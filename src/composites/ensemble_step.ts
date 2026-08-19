@@ -141,5 +141,5 @@ export function ensemble_step<i, o, ranked, projected = EnsembleStepResult<o, ra
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion
   ]) as Step<i, projected>
 
-  return compose(config.name ?? 'ensemble_step', inner)
+  return compose(inner, { name: config.name ?? 'ensemble_step' })
 }

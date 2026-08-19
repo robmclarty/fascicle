@@ -83,5 +83,5 @@ export function ensemble<i, o, projected = EnsembleResult<o>>(
 
   const inner = sequence([fan_out, pick])
 
-  return compose(config.name ?? 'ensemble', inner)
+  return compose(inner, { name: config.name ?? 'ensemble' })
 }

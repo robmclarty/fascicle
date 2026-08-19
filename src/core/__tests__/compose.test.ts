@@ -12,7 +12,7 @@ describe('compose', () => {
       step('add1', (n: number) => n + 1),
       step('double', (n: number) => n * 2),
     ])
-    const flow = compose('my-flow', inner)
+    const flow = compose(inner, { name: 'my-flow' })
   
     const result = await run(flow, 1)
     expect(result).toBe(4)
@@ -21,11 +21,11 @@ describe('compose', () => {
   it('opens a span labeled with the user-supplied name', async () => {
     const { logger, events } = recording_logger()
     const flow = compose(
-      'ensemble',
       sequence([
         step('a', (x: number) => x + 1),
         step('b', (x: number) => x * 2),
       ]),
+      { name: 'ensemble' },
     )
   
     await run(flow, 1, { trajectory: logger, install_signal_handlers: false })
@@ -41,7 +41,7 @@ describe('compose', () => {
     const inner = step('boom', () => {
       throw new Error('inner failure')
     })
-    const flow = compose('outer', inner)
+    const flow = compose(inner, { name: 'outer' })
   
     await expect(
       run(flow, undefined, { trajectory: logger, install_signal_handlers: false }),
@@ -54,27 +54,35 @@ describe('compose', () => {
     expect(compose_end).toBeDefined()
   })
 
-  it('id starts with the user-supplied name', () => {
-    const flow = compose('my-pattern', step('inner', (x: number) => x))
-    expect(flow.id.startsWith('my-pattern_')).toBe(true)
+  it('keeps the display name out of the id', () => {
+    const flow = compose(step('inner', (x: number) => x), { name: 'my pattern' })
+    expect(flow.id).toMatch(/^compose_\d+$/)
+    expect(flow.config?.['display_name']).toBe('my pattern')
   })
 
   it('exposes the inner step in children for describe()', () => {
     const inner = parallel({ a: step('a', (x: number) => x), b: step('b', (x: number) => x) })
-    const flow = compose('ensemble', inner)
+    const flow = compose(inner, { name: 'ensemble' })
     expect(flow.children).toEqual([inner])
     expect(flow.kind).toBe('compose')
   })
 
   it('rejects empty name at construction time', () => {
-    expect(() => compose('', step('x', (n: number) => n))).toThrow(/non-empty string/)
+    expect(() => compose(step('x', (n: number) => n), { name: '' })).toThrow(
+      'compose(inner, { name }): name must be a non-empty string',
+    )
+  })
+
+  it('rejects a missing options object at construction time', () => {
+    const missing = undefined as unknown as { name: string }
+    expect(() => compose(step('x', (n: number) => n), missing)).toThrow(/non-empty string/)
   })
 
   it('preserves children spans nested inside the compose span', async () => {
     const { logger, events } = recording_logger()
     const flow = compose(
-      'pattern',
       parallel({ left: step('l', (x: number) => x + 1), right: step('r', (x: number) => x - 1) }),
+      { name: 'pattern' },
     )
   
     await run(flow, 10, { trajectory: logger, install_signal_handlers: false })

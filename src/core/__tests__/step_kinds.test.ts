@@ -70,7 +70,7 @@ describe('STEP_KINDS registry', () => {
         finish: (n) => n,
         max_rounds: 1,
       }),
-      compose('named', dummy),
+      compose(dummy, { name: 'named' }),
       checkpoint(dummy, { key: () => 'k' }),
       suspend({
         id: 'pause',
