@@ -2,9 +2,9 @@
 
 The primitives on this page are fully supported and aren't going anywhere, but
 they're not the vocabulary you should reach for first. Each one is the low-level
-or specialized variant of a primary primitive named in
-[leaf-arm-spine.md](./leaf-arm-spine.md), and if your flow uses one you should
-be able to say why the primary form doesn't fit. The canonical tour,
+or specialized variant of a primary primitive that
+[leaf-arm-spine.md](./leaf-arm-spine.md) names, and if your flow uses one you
+should be able to say why the primary form doesn't fit. The canonical tour,
 [examples/newsroom.ts](../examples/newsroom.ts), leaves all of them out on
 purpose.
 
@@ -19,13 +19,13 @@ purpose.
 ## `scope`, `stash`, `use`: Named State without Types
 
 The raw state tier. `scope([...children])` runs its children in order like
-`sequence`, threading each output into the next input, while introducing a
-scope-local state map. `stash(key, source)` runs `source`, writes its output
-to the state under `key`, and passes the value through unchanged.
-`use(keys, fn)` reads the named values and runs `fn` with a plain-object
-projection of just those keys. Inner scopes inherit outer state, and writes stay
-in the inner map. If you call `stash` or `use` outside a `scope` you get a
-runtime error.
+`sequence`, and it threads each output into the next input while introducing a
+state map that only this scope can see. `stash(key, source)` runs `source`,
+writes its output to the state under `key`, and passes the value through
+unchanged. `use(keys, fn)` reads the named values and runs `fn` with a
+plain-object projection of just those keys. Inner scopes inherit outer state,
+and writes stay in the inner map. If you call `stash` or `use` outside a
+`scope` you get a runtime error.
 
 <!-- snippet: check -->
 
@@ -49,8 +49,9 @@ exists to contain exactly that.
 What bindings can't express, the trio still can:
 
 - **Writes from deep inside a subtree.** A chain merges state only at its
-  own bindings. A `stash` can run anywhere, so a leaf nested three composers
-  down can publish a value without every layer above threading it.
+  own bindings. A `stash` can run anywhere, so a leaf that sits three composers
+  down can publish a value without every layer above it having to thread it
+  through.
 - **State shared across sibling compositions** whose common parent doesn't
   want the value in its own type.
 - **Keys computed at runtime**, where the set of names is data.
@@ -158,7 +159,7 @@ behavior.
 For something runnable, read [examples/improve.ts](../examples/improve.ts),
 [examples/learn.ts](../examples/learn.ts), and
 [examples/learn_reviewer.ts](../examples/learn_reviewer.ts) (a model
-analyzer mining a reviewer's trajectories).
+analyzer that mines a reviewer's trajectories).
 
 ## See Also
 

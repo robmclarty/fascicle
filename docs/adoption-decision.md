@@ -42,21 +42,22 @@ Four goals tend to drive you toward a layer like this. Here is what Fascicle doe
 about each:
 
 - **Portability.** One `generate` surface fronts eight providers, plus
-  `custom_providers` for an adapter Fascicle knows nothing about. `provider` names
-  the transport and `model` is an opaque id sent verbatim, so moving a call between
-  Anthropic, OpenAI, Bedrock, OpenRouter, or a local runtime is a config change,
-  not a rewrite. Portability now goes one level deeper than the provider name,
-  because `transport: 'native'` swaps the wire implementation underneath a provider
-  without changing the pricing key, the usage fields, the effort mapping, or a line
-  of your flow. And because the native OpenAI-compatible core is
-  dialect-parameterized, any gateway that speaks Chat Completions (vLLM, LiteLLM,
-  Ollama's `/v1`) is reachable by pointing `base_url` at it, with no new adapter
-  and no peer to install. Crucially, local models are first-class. Tool-call
-  *salvage* recovers a tool call a model emitted as plain prose with zero
-  structured calls, which is the dominant failure mode of quantized local models
-  and the thing that makes tool loops actually work on Ollama or LM Studio. This is
-  real code, not glue. Salvage is a few hundred mutation-tested lines that the AI
-  SDK's structured-only tool-repair can't substitute for.
+  `custom_providers` for an adapter that Fascicle knows nothing about.
+  `provider` names the transport and `model` is an opaque id sent verbatim, so
+  moving a call between Anthropic, OpenAI, Bedrock, OpenRouter, or a local
+  runtime is a config change, not a rewrite. Portability now goes one level
+  deeper than the provider name, because `transport: 'native'` swaps the wire
+  implementation underneath a provider without changing the pricing key, the
+  usage fields, the effort mapping, or a line of your flow. And because the
+  native OpenAI-compatible core is dialect-parameterized, any gateway that
+  speaks Chat Completions (vLLM, LiteLLM, Ollama's `/v1`) is reachable by
+  pointing `base_url` at it, with no new adapter and no peer to install.
+  Crucially, local models are first-class. Tool-call *salvage* recovers a tool
+  call that a model emitted as plain prose with zero structured calls, which is
+  the dominant failure mode of quantized local models and the thing that makes
+  tool loops actually work on Ollama or LM Studio. This is real code, not glue.
+  Salvage is a few hundred mutation-tested lines that the AI SDK's
+  structured-only tool-repair can't substitute for.
 - **Flexibility.** Agent logic is composed from small values, so changing a
   harness is editing a data structure instead of fighting a vendor's built-in
   loop. You aren't beholden to one agent implementation. You assemble the control
@@ -110,17 +111,17 @@ copy quickly:
 5. **Churn insulation.** The provider seam contains vendor breakage. This is no
    longer a hypothetical property. The seam already carries two independent
    depth-1 implementations (`ai_sdk` and `native`) plus a depth-2 external agent,
-   with the loop above unchanged across all three, which demonstrates that the
-   abstraction is real and not a rename of one vendor's API. It's the
+   and the loop above them is unchanged across all three. That demonstrates an
+   abstraction that is real rather than a rename of one vendor's API. It's the
    least visible benefit in a demo and often the most valuable in production (see
    the note on the AI SDK's release cadence below).
 6. **Supply-chain posture.** One package, no direct runtime dependencies, no
    install scripts, every peer optional (`ai` and `zod` included; Fascicle has
    zero mandatory peers), and releases published from CI via npm Trusted
-   Publishing with a signed provenance attestation you can verify with
+   Publishing with a signed provenance attestation that you can verify with
    `npm audit signatures`.
-   A surface kept small on purpose, which in 2026 is itself a differentiated
-   property (see [SECURITY.md](../SECURITY.md)).
+   A surface that's kept small on purpose, which in 2026 is itself a
+   differentiated property (see [SECURITY.md](../SECURITY.md)).
 
 ## What Real Agent Shapes Look Like in This Model
 
@@ -144,7 +145,7 @@ whole app shape rather than a single agent, [blueprint.md](./blueprint.md)
 standardizes it (one composition layer, `create_engine` confined to one file,
 prompts as markdown, stub-engine tests via `fascicle/testing`'s
 `make_stub_engine` and `make_capture_engine`) and `examples/` carries worked
-apps built that way.
+apps that are built that way.
 
 ## When to Use Something Else
 
@@ -193,17 +194,18 @@ What makes these survivable is the shape of the thing:
   instead of being locked into a lifecycle.
 - **Consume it as an ordinary published dependency.** Pin a reviewed version from
   the registry and keep anything organization-specific in your own repository,
-  built on Fascicle's public contracts instead of vendored into the library. That
-  keeps the dependency at arm's length and your upgrades boring.
+  where it builds on Fascicle's public contracts instead of being vendored into
+  the library. That keeps the dependency at arm's length and your upgrades
+  boring.
 
 ## The Bottom Line
 
 Fascicle isn't a thin wrapper. Real, differentiated code sits above the provider
-seam, and now below it as well, for the five providers with a native transport. The
-honest caveat is that the AI SDK's v6/v7 agent layer narrowed some specific gaps
-(it now wraps CLI harnesses and standardizes reasoning), so the case rests on
-salvage, the composition algebra, no ambient state, and churn insulation, not on
-provider plumbing.
+seam, and now below it as well, for the five providers that have a native
+transport. The honest caveat is that the AI SDK's v6/v7 agent layer narrowed
+some specific gaps (it now wraps CLI harnesses and standardizes reasoning), so
+the case rests on salvage, the composition algebra, no ambient state, and churn
+insulation, not on provider plumbing.
 
 Adopting it as production infrastructure is a conditional yes. The justification
 isn't "better than the AI SDK", because it's built on the AI SDK. It's a thin,
@@ -234,7 +236,7 @@ is my bet that containment is cheaper than absorption over time.
   switch, and the per-provider capability matrix.
 - [blueprint.md](./blueprint.md) — the standard app architecture, once you decide
   to adopt.
-- [leaf-arm-spine.md](./leaf-arm-spine.md) — the three-layer shape well-factored
-  flows converge on, and the decision rules for each layer.
+- [leaf-arm-spine.md](./leaf-arm-spine.md) — the three-layer shape that
+  well-factored flows converge on, and the decision rules for each layer.
 - [SECURITY.md](../SECURITY.md) — the supply-chain posture and its honest residual
   risks.

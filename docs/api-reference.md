@@ -265,7 +265,7 @@ newer producer emits. The guards are how you narrow one.
 
 ## Testing Doubles (`fascicle/testing`)
 
-The engine doubles an app's tests need, so the real flow runs through the
+The engine doubles that an app's tests need, so the real flow runs through the
 real `run()` with zero network. The full guide is [testing.md](./testing.md);
 the pattern is worked through in
 [blueprint.md](./blueprint.md#testing-stub-the-engine-not-the-flow).
@@ -390,7 +390,7 @@ signature names is exported too: `SequenceOptions`, `ParallelOptions`,
 `StreamingRunHandle`, `StepFn`, `CleanupFn`, the extractors `StepInput<s>` /
 `StepOutput<s>`, and the schema vocabulary (`ToolSchema`, `AnySchema`,
 `SchemaIssue`). At runtime `is_step` narrows a value to a `Step`, and
-`error_path(err)` reads the `path` a run attached to a thrown error.
+`error_path(err)` reads the `path` that a run attached to a thrown error.
 
 **Composites.** Every deliberation composite carries a config and a result
 envelope: `AdversarialConfig` / `AdversarialResult` plus

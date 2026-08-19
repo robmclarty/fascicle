@@ -37,11 +37,11 @@ type ProviderConfigMap = {
 };
 ```
 
-A provider absent from `providers` throws `provider_not_configured_error` at call time — constructing an engine without a provider doesn't fail; the failure is deferred to the first `generate` against it.
+A provider that's absent from `providers` throws `provider_not_configured_error` at call time — constructing an engine without a provider doesn't fail; the failure is deferred to the first `generate` against it.
 
 Five providers take an optional `transport` selector. `'ai_sdk'` (the default) wraps that provider's AI SDK peer, and `'native'` talks to the provider's own API directly over `fetch` with no peer to install. `anthropic` native targets the Messages API. `openai`, `openrouter`, and `lmstudio` native ride a shared OpenAI Chat Completions core, and `ollama` native targets its own `/api/chat` endpoint. The provider name, pricing keys, and effort mapping are identical across transports. See [providers.md](./providers.md#transport-picking-a-depth-1-backend).
 
-Every provider's SDK is an optional peer dependency, loaded on first `generate`, and so is the shared `ai` package that the `ai_sdk` adapters wrap. Install `ai` alongside the per-provider package rather than the per-provider package alone: the official `@ai-sdk/*` packages peer-depend on `zod`, not on `ai`, so nothing pulls it in for you. Install only the providers you use.
+Every provider's SDK is an optional peer dependency that loads on the first `generate`, and so is the shared `ai` package that the `ai_sdk` adapters wrap. Install `ai` alongside the per-provider package rather than the per-provider package alone: the official `@ai-sdk/*` packages peer-depend on `zod`, not on `ai`, so nothing pulls it in for you. Install only the providers you use.
 
 ```bash
 # install peers as needed
@@ -333,13 +333,13 @@ await engine.generate({
 ```
 
 - **Scope is one turn, not the whole call.** A multi-step tool loop resets the budget for each turn; the option bounds any single model round-trip, not the aggregate run. Wrap the whole call in your own `AbortSignal` (or the `timeout` composer) if you need a call-level ceiling.
-- **Expiry is a typed, retryable timeout.** Before any chunk streams, expiry throws a timeout the shared classifier treats as retryable, so the retry policy re-attempts it exactly like a 5xx.
-- **Mid-stream expiry doesn't retry.** Once chunks have flowed, a timeout becomes a non-retryable stream interruption, matching the same first-chunk boundary the retry policy enforces.
+- **Expiry is a typed, retryable timeout.** Before any chunk streams, expiry throws a timeout that the shared classifier treats as retryable, so the retry policy re-attempts it exactly like a 5xx.
+- **Mid-stream expiry doesn't retry.** Once chunks have flowed, a timeout becomes a non-retryable stream interruption, matching the same first-chunk boundary that the retry policy enforces.
 - **Must be `> 0`.** `undefined` (the default) leaves turns unbounded; `defaults.turn_timeout_ms` sets the baseline and the per-call value wins via nullish coalesce.
 
 ## Reshaping Each Turn: `prepare_step`
 
-`prepare_step` is a per-turn hook the tool loop calls before each model turn, on both depth-1 transports. It receives the step index and the would-be request messages (the full accumulated transcript at that point) and may return replacement messages to prune, summarize, or window what's sent to the model for that turn only:
+`prepare_step` is a per-turn hook that the tool loop calls before each model turn, on both depth-1 transports. It receives the step index and the would-be request messages (the full accumulated transcript at that point) and may return replacement messages to prune, summarize, or window what's sent to the model for that turn only:
 
 ```ts
 await engine.generate({
@@ -354,7 +354,7 @@ await engine.generate({
 });
 ```
 
-- **The canonical transcript is untouched.** Returned messages reshape only what that one turn sends to the model; the history the loop appends to (and the trajectory) keeps the real transcript, so salvage, approval, `Tool.ends_turn`, and schema-repair keep operating on the true history.
+- **The canonical transcript is untouched.** Returned messages reshape only what that one turn sends to the model; the history that the loop appends to (and the trajectory) keeps the real transcript, so salvage, approval, `Tool.ends_turn`, and schema-repair keep operating on the true history.
 - **Return `undefined` for a no-op.** Returning `undefined`, or an object without `messages`, leaves the turn's request unchanged.
 - **Every replaced turn is legible.** A `step_prepared` trajectory event records each turn the hook modified, so mid-loop pruning stays visible in the trajectory.
 - **Sync or async.** The hook may return a promise; the loop awaits it before dispatching the turn.
@@ -431,7 +431,7 @@ Fascicle exposes OpenTelemetry in two independent layers with a clean seam betwe
 
 ### Layer 1: The `fascicle/otel` Trajectory Bridge (Transport-Neutral)
 
-`fascicle/otel` turns the engine's own trajectory (spans + events) into OpenTelemetry spans. Because it rides the events the engine already emits, it produces traces for **every** transport (`ai_sdk`, `native`, and `external` alike) with no AI SDK involvement. It takes `@opentelemetry/api` as an optional peer, and it lives on its own subpath so importing `fascicle` pulls in zero OTel packages; only `import 'fascicle/otel'` does.
+`fascicle/otel` turns the engine's own trajectory (spans + events) into OpenTelemetry spans. Because it rides the events that the engine already emits, it produces traces for **every** transport (`ai_sdk`, `native`, and `external` alike) with no AI SDK involvement. It takes `@opentelemetry/api` as an optional peer, and it lives on its own subpath so importing `fascicle` pulls in zero OTel packages; only `import 'fascicle/otel'` does.
 
 ```bash
 pnpm add @opentelemetry/api

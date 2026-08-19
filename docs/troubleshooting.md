@@ -6,7 +6,7 @@ error name usually points you straight at the cause.
 
 ## `Cannot find package '@ai-sdk/...'` — Peer Not Installed
 
-Provider SDKs are optional peers, loaded on the first `generate` against that
+Provider SDKs are optional peers that load on the first `generate` against that
 provider. The error is descriptive and arrives at call time, not construction:
 
 ```text
@@ -26,7 +26,7 @@ Two triggers share this error name; the timing tells them apart.
   build an adapter for that name at all. Fix the spelling, or register the
   custom provider factory under `custom_providers`.
 - **At call time**, the resolved `provider` for a `generate` call names an
-  adapter the engine wasn't configured with. Constructing an engine never
+  adapter that the engine wasn't configured with. Constructing an engine never
   fails for a *missing* provider; that failure is deferred to the first call
   against it. Add the provider to the config, or point `defaults.provider`
   (or the per-call `provider`) at one you did configure.
@@ -132,7 +132,7 @@ tokens for a response nothing will read.
 
 No fix exists on Fascicle's side, because JavaScript has no way to preempt a promise it
 does not control. The fix is in the step, so pass `ctx.abort` to every `fetch`, `child_process`,
-or other abortable call the step makes, and check `ctx.abort.aborted` between iterations
+or other abortable call that the step makes, and check `ctx.abort.aborted` between iterations
 of any loop that doesn't otherwise await something abortable. See
 [concepts.md](./concepts.md#cancellation-is-cooperative).
 
@@ -144,9 +144,10 @@ of any loop that doesn't otherwise await something abortable. See
 - The bundled `filesystem_logger` writes synchronously, so it's meant for dev
   tools and short runs; roll your own `TrajectoryLogger` for a long-running
   server. Span parentage is threaded by the runner (`parent_span_id`), so span
-  trees are correct under `parallel`/`map` concurrency; only spans emitted
-  without a parent (a logger driven directly, outside a run) fall back to a
-  best-effort in-memory stack. See [concepts.md](./concepts.md#adapter-limits).
+  trees are correct under `parallel`/`map` concurrency; only the spans that are
+  emitted without a parent (a logger driven directly, outside a run) fall back
+  to a best-effort in-memory stack. See
+  [concepts.md](./concepts.md#adapter-limits).
 
 ## `GenerateResult.cost` Is Missing
 
@@ -250,8 +251,8 @@ rejects non-Step children at construction — wrap plain functions with `step(fn
 
 ## Locating a Failure: Reading `.path`
 
-Errors thrown from inside a run carry a `path` array naming the chain of step
-ids that led to the failure, outermost first:
+Errors thrown from inside a run carry a `path` array that names the chain of
+step ids that led to the failure, outermost first:
 
 ```ts
 import { error_path } from 'fascicle';

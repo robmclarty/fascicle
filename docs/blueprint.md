@@ -2,11 +2,11 @@
 
 A standard architecture for the apps you build on Fascicle. [writing-a-harness.md](./writing-a-harness.md) covers the mechanics of wrapping a flow in a runnable program; this doc covers the *shape* of the codebase around it, meaning where your composition lives, where your prompts live, and how to slice the modules so your agent stays legible and easy to change.
 
-I distilled the blueprint from the reference apps in [`examples/`](../examples/) and from several production apps built on the published package. Every rule here earned its place, either because the pattern showed up in the codebases that stayed easy to work on, or because its absence hurt in the ones that didn't.
+I distilled the blueprint from the reference apps in [`examples/`](../examples/) and from several production apps that were built on the published package. Every rule here earned its place, either because the pattern showed up in the codebases that stayed easy to work on, or because its absence hurt in the ones that didn't.
 
 ## Why Shape Matters
 
-Fascicle's power is that steps are plain values, so anything with the same `Step<i, o>` type swaps for anything else, including whole compositions. That plug-and-play property is only worth something if your app has a place where the blocks are *visible*. When `model_call`, `sequence`, and `branch` are sprinkled through business logic, the topology of the agent exists only in the reader's head, and swapping a block means archaeology. When they're gathered into one composition layer, the topology is the file, and swapping a block is editing one line of it.
+Fascicle's power is that steps are plain values, so anything that has the same `Step<i, o>` type swaps for anything else, including whole compositions. That plug-and-play property is only worth something if your app has a place where the blocks are *visible*. When `model_call`, `sequence`, and `branch` are sprinkled through business logic, the topology of the agent exists only in the reader's head, and swapping a block means archaeology. When they're gathered into one composition layer, the topology is the file, and swapping a block is editing one line of it.
 
 So the whole blueprint reduces to one rule and a set of module shapes that support it.
 
@@ -68,7 +68,7 @@ Each of `build`, `check`, `critique`, `record` is a thin `step` that delegates t
 
 Two signals you've over-composed:
 
-- A "flow" that's a single `step` wrapping an imperative function, existing only to produce a named span. That's composition theater; a plain function with a `compose` label, or nothing, is honest.
+- A "flow" that's a single `step` wrapping an imperative function, and that exists only to produce a named span. That's composition theater; a plain function with a `compose` label, or nothing, is honest.
 - A linear two-node chain dressed in `sequence` / `pipe` / `branch` where a short-circuit forces you to thread a `{ result } | { next_input }` union or a mutable closure through the graph. Collapse it to one step. One consumer shipped both dialects side by side and the collapsed version won on every axis.
 
 Two signals you've under-composed. An `if`/`for` inside a step body that another pipeline might want to compose around (lift it to `branch` / `loop` and get spans, retry composability, and describability for free), and a hand-rolled fan-out with `Promise.all` that wants `map`'s concurrency cap.
@@ -106,7 +106,7 @@ Each module has one reason to exist and a strict import contract:
 | `services/` | side-effecting domain IO | Fascicle imports |
 | `main.ts` | argv/HTTP in, `run(...)`, adapters, disposal | composition |
 
-The names matter less than the contracts. What kills legibility isn't calling the file `pipeline.ts` instead of `flow.ts`; it's a `format_reviewer_message` implemented inline in the flow, or a `model_call` hidden in a service.
+The names matter less than the contracts. What kills legibility isn't calling the file `pipeline.ts` instead of `flow.ts`; it's a `format_reviewer_message` that's implemented inline in the flow, or a `model_call` that's hidden in a service.
 
 ## `flow.ts`
 
@@ -191,7 +191,7 @@ const reviewer = define_agent({
 });
 ```
 
-**Stage factories: load the body as `system`.** When the role needs options `define_agent` does not expose (`tools`, `provider_options`, `max_steps`), keep the stage factory and load the markdown at factory time. A minimal loader is about a dozen lines (split on the closing `---`, parse `key: value` pairs); write it once in `prompts/load.ts`. Return `model_step` so the stage's output is the validated payload itself; drop to `model_call` only when the caller needs the `GenerateResult` envelope (usage, cost, tool calls, finish reason).
+**Stage factories: load the body as `system`.** When the role needs options that `define_agent` does not expose (`tools`, `provider_options`, `max_steps`), keep the stage factory and load the markdown at factory time. A minimal loader is about a dozen lines (split on the closing `---`, parse `key: value` pairs); write it once in `prompts/load.ts`. Return `model_step` so the stage's output is the validated payload itself; drop to `model_call` only when the caller needs the `GenerateResult` envelope (usage, cost, tool calls, finish reason).
 
 ```ts
 export function make_reviewer_step(
@@ -244,12 +244,12 @@ No formatting, no extraction, no flow knowledge. If a stage file imports `messag
 
 - **One zod schema per model boundary**, with `export type X = z.infer<typeof x_schema>` beside it. Pass the schema to `model_step({ schema })` and let the engine validate and repair; downstream code receives the validated value fully typed (or reads `r.content` when a `model_call` envelope is in play) and never parses model output itself.
 - **Discriminated unions for verdicts and results** (`z.discriminatedUnion('kind', [...])` for model output, hand-written unions for app results that never cross a model boundary). Degraded outcomes are data (`{ kind: 'did_not_converge' }`), not exceptions; the shell maps them to messages and exit codes.
-- **Keep prompt and schema from drifting apart.** The failure mode observed everywhere: output rules stated in the system prompt, restated in `.describe()` on schema fields, restated again in an auditor prompt, and now three copies to keep in sync. Pick one home per rule. Field-level constraints (length caps, enums, "empty when approved") belong in `.describe()` on the schema, which travels with the JSON schema the model sees. The prompt states the role and the one-line output contract ("respond with only the JSON object") and does not enumerate fields.
-- Zod is for boundaries the model or the outside world crosses: model output, tool inputs, env/config, stdin. Internal row and record types do not need runtime validation.
+- **Keep prompt and schema from drifting apart.** The failure mode that turns up everywhere: output rules stated in the system prompt, restated in `.describe()` on schema fields, restated again in an auditor prompt, and now three copies to keep in sync. Pick one home per rule. Field-level constraints (length caps, enums, "empty when approved") belong in `.describe()` on the schema, which travels with the JSON schema the model sees. The prompt states the role and the one-line output contract ("respond with only the JSON object") and does not enumerate fields.
+- Zod is for the boundaries that the model or the outside world crosses: model output, tool inputs, env/config, stdin. Internal row and record types do not need runtime validation.
 
 ## `state.ts`: Quarantine the Casts (Raw Scope State Only)
 
-`chain` threads a typed record and needs none of this file: binding names and view types are inferred, so most apps should not have a `state.ts` at all. It exists for flows that use raw `scope` / `stash` / `use` directly, for state shapes `chain` does not express (writes from deep inside a subtree, state shared across sibling compositions).
+`chain` threads a typed record and needs none of this file: binding names and view types are inferred, so most apps should not have a `state.ts` at all. It exists for flows that use raw `scope` / `stash` / `use` directly, for the state shapes that `chain` does not express (writes from deep inside a subtree, state shared across sibling compositions).
 
 Raw scope state is keyed by string and holds `unknown`; something has to cast. Concentrate all of it here:
 
@@ -265,7 +265,7 @@ The `read_*` helpers are the only place `as` appears on scope state. `flow.ts` w
 
 Match your reader's parameter type to how the state arrives, which differs by call site:
 
-- **`use([...], fn)`** hands `fn` a plain object projection of just the requested keys, so readers take `{ [k: string]: unknown }` and index it. Keys absent from state project as `undefined`, so a reader for an optional value should return `T | undefined` rather than assert.
+- **`use([...], fn)`** hands `fn` a plain object projection of just the requested keys, so readers take `{ [k: string]: unknown }` and index it. Keys that are absent from state project as `undefined`, so a reader for an optional value should return `T | undefined` rather than assert.
 - **`ctx.state` inside a `step` body** is the live `ReadonlyMap<string, unknown>`, so a reader for that call site takes `ReadonlyMap<string, unknown>` and uses `.get(key)`. Prefer `use` where you can: the projection is what makes the flow's data dependencies visible in `flow.ts` instead of buried in a step body.
 
 ## `tools/`: Capability Factories
@@ -274,7 +274,7 @@ Match your reader's parameter type to how the state arrives, which differs by ca
 - Declare a zod `input_schema` and **re-parse inside `execute`**: `const input = read_file_input.parse(raw)`. Fascicle's `Tool` is invariant on input, so the parse keeps the wiring cast-free while the declared schema still drives what the model sees.
 - Centralize limits (`MAX_FILE_BYTES`, timeouts, output caps) in `limits.ts` and interpolate them into tool descriptions, so the prompt text cannot drift from the enforcement.
 - Shared safety in one place: a `resolve_within(root, path)` confinement check that every path-taking tool calls, symlink refusal, argv-array-only shell with an allowlist.
-- **Error doctrine.** Mistakes the model can correct (a failed edit match, a nonzero exit, a blocked URL) are *returned* as results for the model to read, pairing with `tool_error_policy: 'feed_back'`. Tools `throw` only on harness faults (containment violation, cap breach). Tools that must terminate a loop deterministically use `ends_turn: true`.
+- **Error doctrine.** Mistakes that the model can correct (a failed edit match, a nonzero exit, a blocked URL) are *returned* as results for the model to read, pairing with `tool_error_policy: 'feed_back'`. Tools `throw` only on harness faults (containment violation, cap breach). Tools that must terminate a loop deterministically use `ends_turn: true`.
 - An aggregator, `make_builder_tools(root): ReadonlyArray<Tool>`, is what stages import, and role-scoped surfaces (builder gets write tools, reviewer read-only) live here, not in the flow.
 
 ## `main.ts`: The Shell
@@ -287,7 +287,7 @@ Match your reader's parameter type to how the state arrives, which differs by ca
 
 ## Testing: Stub the Engine, Not the Flow
 
-The `Engine` type is a small interface, and `fascicle/testing` ships the two doubles an app needs, so a test runs the *real* flow through the *real* `run()` with zero network and no mocking framework:
+The `Engine` type is a small interface, and `fascicle/testing` ships the two doubles that an app needs, so a test runs the *real* flow through the *real* `run()` with zero network and no mocking framework:
 
 ```ts
 import { make_stub_engine, make_capture_engine } from 'fascicle/testing';
@@ -331,7 +331,7 @@ Match Fascicle's own surface: `snake_case` for values and functions, `PascalCase
 Each of these was observed in the wild; the fix is in parentheses.
 
 1. **Fascicle calls scattered through business logic.** The topology becomes unreadable and unswappable (gather into one composition layer, or drop to tier 1 and hide Fascicle behind a port).
-2. **Control flow smuggled through step bodies.** An undocumented `if` / `for` / try-fallback inside an anonymous `step`, with children invoked by bare `.run()`, is invisible to trajectories and to `describe`. The test: would another pipeline want to compose around this decision? If yes, lift it to `branch` / `loop` / `fallback`. If the control flow is genuinely dynamic, the direct style is legitimate: a named step body with `ctx.call` keeps the trajectory honest (see flow.ts rule 6); what stays an anti-pattern is doing it namelessly, bypassing `ctx.call`, or leaving no comment on why it could not be static.
+2. **Control flow smuggled through step bodies.** An undocumented `if` / `for` / try-fallback inside an anonymous `step`, whose children are invoked by a bare `.run()`, is invisible to trajectories and to `describe`. The test: would another pipeline want to compose around this decision? If yes, lift it to `branch` / `loop` / `fallback`. If the control flow is genuinely dynamic, the direct style is legitimate: a named step body with `ctx.call` keeps the trajectory honest (see flow.ts rule 6); what stays an anti-pattern is doing it namelessly, bypassing `ctx.call`, or leaving no comment on why it could not be static.
 3. **Composition theater.** Single-step "flows" whose only contribution is a span name, or combinator chains around a linear two-call sequence that force unions and mutable closures through the data channel (collapse to a step, or to plain code behind a port).
 4. **Two sources of truth for model defaults**, and env overrides that are parsed but never reach the flow (one role-to-model table, resolved once, passed as data).
 5. **Output rules stated in three places**: system prompt, `.describe()`, auditor prompt (one home per rule; schema for field constraints, prompt for the role).
@@ -341,7 +341,7 @@ Each of these was observed in the wild; the fix is in parentheses.
 9. **Anonymous steps in checkpointed or observed flows.** `checkpoint` rejects them at construction, and unnamed spans make trajectories unreadable (name every step you might resume or watch).
 10. **Version-coupled workarounds without an exit condition.** When you must work around a substrate bug, write the workaround where it lives, cite the version, and state what change lets you delete it.
 11. **Envelope leakage.** An arm that returns `{ winner, scores }` or another result envelope, so every downstream caller unwraps it again (move the unwrap into the composite with `project`).
-12. **Ambient state where bindings would do.** Reaching for `scope`/`stash`/`use` string keys for shapes `chain` bindings express (use `chain`; the raw trio is the advanced tier, see [advanced-composition.md](./advanced-composition.md)).
+12. **Ambient state where bindings would do.** Reaching for `scope`/`stash`/`use` string keys for shapes that `chain` bindings already express (use `chain`; the raw trio is the advanced tier, see [advanced-composition.md](./advanced-composition.md)).
 
 ## Enforce It with Rules
 

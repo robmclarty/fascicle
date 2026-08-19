@@ -67,8 +67,8 @@ enumeration is in [api-reference.md](./api-reference.md#exported-types).
 
 ## The Step-as-Value Thesis
 
-Every composable unit you write is a `Step<i, o>`, a plain object with an `id`,
-a `kind`, and an async `run`. Every composer is a function that accepts one or
+Every composable unit you write is a `Step<i, o>`, a plain object that has an
+`id`, a `kind`, and an async `run`. Every composer is a function that accepts one or
 more `Step<i, o>` values and returns a single `Step<i, o>` value. No separate
 `Workflow`, `Agent`, or `Graph` type exists, and nothing needs to be registered,
 constructed, or initialized. Anywhere a step fits, any
@@ -162,20 +162,20 @@ from English specifications:
 - `learn({ flow, source, analyzer })` — offline reflection over recorded
   trajectories; returns the analyzer's proposals plus summary metadata.
 
-Not all 22 are peers. The primary vocabulary, and the decision rules for
+Not all 22 are peers. The primary vocabulary and the decision rules for
 choosing at each layer live in [leaf-arm-spine.md](./leaf-arm-spine.md);
 the advanced tier (`scope`/`stash`/`use`, plain `ensemble`, `tournament`,
 `improve`/`learn`) is covered in
-[advanced-composition.md](./advanced-composition.md), each entry paired
-with the primary primitive to try first.
+[advanced-composition.md](./advanced-composition.md), where each entry is
+paired with the primary primitive that you should try first.
 
 ## Two Ways to Write a Flow
 
 The primitives above are the declarative style, where the program is a visible
-tree, describable before it runs, with binding and stage names as span
-labels. The direct style is its mirror, a plain `step` body using ordinary
-`const` / `if` / `for`, with `ctx.call(step, input)` as the one bridge for
-invoking another Step (spans, abort, and error paths stay intact). Choose
+tree that you can describe before it runs, and where binding and stage names
+become span labels. The direct style is its mirror, a plain `step` body that
+uses ordinary `const` / `if` / `for`, and `ctx.call(step, input)` is the one
+bridge for invoking another Step (spans, abort, and error paths stay intact). Choose
 per flow. Use `chain` when you want the topology visible as data, and a plain body
 when the control flow is genuinely dynamic. The two compose freely in both
 directions, and the trajectory invariant is identical under each because it
@@ -193,7 +193,7 @@ choosing between `sequence` and `chain` and between `model_step` and
 
 ## The Helper Tier: Wrapping Primitives Is the Extension Model
 
-`model_step(cfg)` is the shipped example, being `model_call` projected to its
+`model_step(cfg)` is the shipped example. It's `model_call` projected to its
 content (a `string`, or the schema-validated value when `cfg.schema` is
 set), one preset `project` in [src/model_call.ts](../src/model_call.ts).
 When a pattern in your own flows repeats, wrap it the same way, as a function from

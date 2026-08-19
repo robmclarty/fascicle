@@ -215,8 +215,8 @@ const bracket = tournament({
 });
 ```
 
-Each member is a `Step` producing a candidate, and the tournament feeds them the
-shared input, then runs the pairwise `compare`s until one result remains.
+Each member is a `Step` that produces a candidate, and the tournament feeds them
+the shared input, then runs the pairwise `compare`s until one result remains.
 `project` unwraps the winner at the source, and if you omit it you get the
 `{ winner, bracket }` envelope with every match recorded.
 
@@ -307,7 +307,7 @@ const ask = model_step({
 const out = await run(ask, 'What is the temperature in Vancouver right now?');
 ```
 
-`ctx` inside `execute` is a `ToolExecContext`, carrying `abort`, `trajectory`, `tool_call_id`, and `step_index`. Pass `ctx.abort` to `fetch` so the tool respects run cancellation. `out` is the model's final answer; when the harness wants the `ToolCallRecord`s, per-step usage, or finish reason, swap in `model_call` and read the envelope.
+`ctx` inside `execute` is a `ToolExecContext` that carries `abort`, `trajectory`, `tool_call_id`, and `step_index`. Pass `ctx.abort` to `fetch` so the tool respects run cancellation. `out` is the model's final answer; when the harness wants the `ToolCallRecord`s, per-step usage, or finish reason, swap in `model_call` and read the envelope.
 
 Your tools can require approval:
 
@@ -324,7 +324,7 @@ on_tool_approval: async (req) => {
 
 A denied approval throws `tool_approval_denied_error`.
 
-Your tools can also end the loop. By default it runs until the model emits a turn with no tool call, or until `max_steps` is hit, and a weak local model often does better with an explicit `finish` tool it can call to signal it's done. Flag that tool `ends_turn: true` and a successful call ends the loop immediately, with no extra model turn:
+Your tools can also end the loop. By default it runs until the model emits a turn with no tool call, or until `max_steps` is hit, and a weak local model often does better with an explicit `finish` tool that it can call to signal it's done. Flag that tool `ends_turn: true` and a successful call ends the loop immediately, with no extra model turn:
 
 ```ts
 const finish = {
@@ -364,7 +364,7 @@ const out = await run(plan, 'migrate the payments service to pg17');
 // out is typed as z.infer<typeof plan_schema>
 ```
 
-`schema_validation_error` carries `.schema_issues` and `.raw_text`, so your harness can put both in front of a human. A call that never got far enough to validate (blocked by a content filter, truncated by the token limit, ended by the step cap) throws `incomplete_generation_error` instead, carrying `.finish_reason`, `.raw_text`, and `.provider_reported`.
+`schema_validation_error` carries `.schema_issues` and `.raw_text`, so your harness can put both in front of a human. A call that never got far enough to validate (blocked by a content filter, truncated by the token limit, ended by the step cap) throws `incomplete_generation_error` instead, and that error carries `.finish_reason`, `.raw_text`, and `.provider_reported`.
 
 ## Streaming Tokens to a Consumer
 
@@ -434,7 +434,7 @@ const flow = chain<string, 'email'>('email')
   .output(({ published }) => published);
 ```
 
-Each `.step` merges its result under its name, and later bindings destructure whatever earlier names they need, checked at compile time. `.stage(name, project?)` concludes a phase (with `project`, it narrows the record so earlier bindings go out of scope). The raw string-keyed tier underneath (`scope` / `stash` / `use`) remains for shapes bindings can't express — see [advanced-composition.md](./advanced-composition.md#scope-stash-use-named-state-without-types).
+Each `.step` merges its result under its name, and later bindings destructure whatever earlier names they need, checked at compile time. `.stage(name, project?)` concludes a phase (with `project`, it narrows the record so earlier bindings go out of scope). The raw string-keyed tier underneath (`scope` / `stash` / `use`) remains for the shapes that bindings can't express — see [advanced-composition.md](./advanced-composition.md#scope-stash-use-named-state-without-types).
 
 ## Multi-Provider Fallback
 
@@ -471,8 +471,9 @@ backup, and `handoff` is never called for them.
 ## Escalation Tiering with a Judge
 
 `fallback` escalates on a *throw*. This pattern escalates on *mediocrity*. It runs
-a cheap model first, have a judge read the answer it actually produced, and
-only pay for the strong model when the judge says the cheap one is in trouble.
+a cheap model first, has a judge read the answer that the cheap model actually
+produced, and pays for the strong model only when the judge says the cheap one
+is in trouble.
 Gateway-level routers (NVIDIA's Switchyard, for one) apply the same idea at
 the wire; in a Fascicle app you own the call site, so it's plain composition
 with the verdict visible in the trajectory.

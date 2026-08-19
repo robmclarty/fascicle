@@ -91,8 +91,8 @@ try {
 
 ## `make_script_engine`
 
-A queue of responses consumed strictly in call order, so call 1 gets the first
-entry, call 2 the next. Use it when order matters and prefixes can't see a
+A queue of responses that are consumed strictly in call order, so call 1 gets
+the first entry, call 2 the next. Use it when order matters and prefixes can't see a
 difference, like loops that must converge, retry paths, and markdown-only agents. A
 call past the end throws and names how many responses you scripted versus how
 many arrived, so an unexpected extra model call fails loudly.
@@ -107,7 +107,7 @@ const engine = make_script_engine([
 ]);
 ```
 
-Each entry is either plain content, or a `ScriptResponse` object supporting
+Each entry is either plain content, or a `ScriptResponse` object that supports
 `{ content?, tool_calls?, finish_reason?, usage?, throw? }`. Only an object
 whose keys all belong to that shape counts as scripted, and anything else
 (including `{ verdict: 'ship' }` above) becomes content as-is. If your literal
@@ -164,7 +164,7 @@ options.
 
 ## `engine_from_generate`
 
-The 12-line shell every factory builds on, for when you roll your own double.
+The 12-line shell that every factory builds on, for when you roll your own double.
 Your double only has to implement `generate`, which accepts `GenerateOptions`
 and resolves a complete `GenerateResult` (`content`, `tool_calls`, `steps`,
 `usage`, `finish_reason`, `model_resolved`). Honoring `opts.abort`,

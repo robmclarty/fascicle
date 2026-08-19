@@ -21,7 +21,7 @@ pnpm check
 
 `pnpm check` is the single source of truth for "is the repo healthy". Exit 0 means the workspace is in shape.
 
-> **One package, deep modules for enforcement.** You install **one** thing, `fascicle`. Inside this repo the code is organized as deep modules under `src/` (`src/core`, `src/engine`, `src/adapters`, plus the umbrella at the `src/` root), each reachable only through its barrel via a `#<module>` alias. The ast-grep rules in `rules/` and a directory-level boundary DAG in `fallow.toml` police architectural boundaries directly (for example, core can't import adapters; `process.env` is confined to audited exceptions).
+> **One package, deep modules for enforcement.** You install **one** thing, `fascicle`. Inside this repo the code is organized as deep modules under `src/` (`src/core`, `src/engine`, `src/adapters`, plus the umbrella at the `src/` root), each of which you reach only through its barrel, via a `#<module>` alias. The ast-grep rules in `rules/` and a directory-level boundary DAG in `fallow.toml` police architectural boundaries directly (for example, core can't import adapters; `process.env` is confined to audited exceptions).
 
 ## Your First Flow
 
@@ -91,7 +91,7 @@ The composition layer is small on purpose, and here is all of it:
 | `improve`             | Bounded online propose → score → accept/reject loop (advanced). |
 | `learn`               | Offline reflection over recorded trajectories (advanced).   |
 
-The primitives aren't all peers. [leaf-arm-spine.md](./leaf-arm-spine.md) is the guide that tells you which to reach for at each layer of a flow, and the rows marked advanced are covered in [advanced-composition.md](./advanced-composition.md), each paired with the primary primitive to try first.
+The primitives aren't all peers. [leaf-arm-spine.md](./leaf-arm-spine.md) is the guide that tells you which to reach for at each layer of a flow, and the rows marked advanced are covered in [advanced-composition.md](./advanced-composition.md), where each one is paired with the primary primitive that you should try first.
 
 For the full surface and signatures, read [`docs/composition.md`](./composition.md). For something runnable, start with [`examples/`](../examples/), and in particular [`examples/newsroom.ts`](../examples/newsroom.ts), which is the vocabulary tour.
 

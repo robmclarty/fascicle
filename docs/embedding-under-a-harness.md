@@ -49,7 +49,7 @@ It runs in a fixed order: read stdin to EOF, `JSON.parse`, validate against `inp
 Options:
 
 - `input_schema` / `output_schema` (optional zod): a mismatch in either direction is a contract violation, exit 2. Schema transforms apply, so the flow receives the parsed input and the parent receives the validated output.
-- `engine` (optional, anything with `dispose(): Promise<void>`): disposed on every path before the process exits, success or failure.
+- `engine` (optional, anything that has a `dispose(): Promise<void>`): disposed on every path before the process exits, success or failure.
 - `trajectory` (optional): defaults to `stderr_logger()`.
 - `abort` (optional `AbortSignal`): composes with the signal handlers, same as `RunOptions.abort`.
 
@@ -105,7 +105,7 @@ const trajectory = tee_logger(stderr_logger(), filesystem_logger({ output_path: 
 
 ## Sessions vs Single-Shot
 
-`serve_flow` (from `fascicle/mcp`) over a stdio transport gives you a *session*, with JSON-RPC framing, an initialize handshake, tool-shaped calls, a long-lived process. Right when the parent is an MCP host. `run_stdio` is for the other parent, the one that wants a Unix-shaped `exec → result → exit` with no protocol state. Both belong, so pick by whatever spawns you.
+`serve_flow` (from `fascicle/mcp`) over a stdio transport gives you a *session*, and it brings JSON-RPC framing, an initialize handshake, tool-shaped calls, and a long-lived process. Right when the parent is an MCP host. `run_stdio` is for the other parent, the one that wants a Unix-shaped `exec → result → exit` with no protocol state. Both belong, so pick by whatever spawns you.
 
 ## Checklist
 

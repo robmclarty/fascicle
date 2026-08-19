@@ -27,7 +27,7 @@ Every provider plugs into `generate` at one of three depths. The engine dispatch
 | `native`   | 1     | `invoke_turn(TurnRequest) -> TurnResult`        | request/response mapping over raw HTTP | retry, error classification, abort, plus everything below |
 | `external` | 2     | `generate(opts, resolved) -> GenerateResult`    | the entire loop                  | nothing below the call                              |
 
-- **Depth 1, `ai_sdk` kind.** The adapter builds an AI SDK model object and translates Fascicle parameters, and the actual `generateText` / `streamText` call lives in one engine-internal module (`src/engine/providers/ai_sdk/invoke.ts`), the only place in the tree allowed to import from `ai` (rule-enforced). `generate.ts` itself is SDK-agnostic.
+- **Depth 1, `ai_sdk` kind.** The adapter builds an AI SDK model object and translates Fascicle parameters, and the actual `generateText` / `streamText` call lives in one engine-internal module (`src/engine/providers/ai_sdk/invoke.ts`), the only place in the tree that's allowed to import from `ai` (rule-enforced). `generate.ts` itself is SDK-agnostic.
 - **Depth 1, `native` kind.** The adapter implements a single model turn against the provider's own API using global `fetch` and hand-rolled streaming, with zero `ai` / `@ai-sdk/*` imports (also rule-enforced). The engine wraps `invoke_turn` in retry, shared error classification, and abort; a native adapter must never retry internally. It may override classification via an optional `classify_error`, and may define `dispose` for connection teardown.
 - **Depth 2, `external` kind.** The adapter owns the whole generate call, including any looping. This is for backends that are themselves agents (the `claude_cli` subprocess today; an HTTP/A2A agent is the same shape). The engine's shared tool loop doesn't run, so loop-level options like `tool_call_repair_attempts` are ignored and recorded as `option_ignored`.
 
@@ -172,7 +172,7 @@ Everything call-facing carries over, with the same provider name, the same prici
 - **No image input.** `image_input` is unsupported on the native transport in v1.
 - **Schema always rides the repair loop.** The native adapter doesn't claim `structured_output`, so your `schema` requests are satisfied by the engine's prompt + parse + repair path, which is provider-neutral and usually sufficient.
 - **`max_tokens` defaults to 4096.** The Messages API requires `max_tokens` on every request. When extended thinking is enabled, the default rides on top of the thinking budget rather than being swallowed by it; pass `max_tokens` explicitly to override.
-- **`provider_options.anthropic` is raw wire format.** On the native transport, keys under `provider_options.anthropic` are Messages-API fields as Anthropic documents them (snake_case: `thinking`, `max_tokens`, `top_k`, `stop_sequences`, ...), shallow-merged last over the engine-computed request body. An explicit key beats every derived field, including the effort-derived `thinking` block and the `max_tokens` default. Keys don't port verbatim from the `ai_sdk` transport, which uses `@ai-sdk/anthropic`'s camelCase spellings — `budgetTokens` there is `thinking: { type: 'enabled', budget_tokens: n }` here. The merge is shallow and unreconciled: pass a whole `thinking` object, not a fragment, and combinations the API rejects (say, `temperature` alongside thinking) are rejected by the API, not repaired by Fascicle.
+- **`provider_options.anthropic` is raw wire format.** On the native transport, keys under `provider_options.anthropic` are Messages-API fields as Anthropic documents them (snake_case: `thinking`, `max_tokens`, `top_k`, `stop_sequences`, ...), shallow-merged last over the engine-computed request body. An explicit key beats every derived field, including the effort-derived `thinking` block and the `max_tokens` default. Keys don't port verbatim from the `ai_sdk` transport, which uses `@ai-sdk/anthropic`'s camelCase spellings — `budgetTokens` there is `thinking: { type: 'enabled', budget_tokens: n }` here. The merge is shallow and unreconciled: pass a whole `thinking` object, not a fragment, and combinations that the API rejects (say, `temperature` alongside thinking) are rejected by the API, not repaired by Fascicle.
 - **Auth headers are `x-api-key` plus `anthropic-version`.** OAuth isn't supported here, and that's `claude_cli` territory.
 - **Retry belongs to the engine.** 429 (honoring `retry-after`), 5xx, and network failures are classified by the shared classifier and retried by the engine's retry policy, exactly as on the `ai_sdk` transport.
 
@@ -221,7 +221,7 @@ Everything call-facing carries over, with the same provider name, the same prici
 
 - **No image input.** `image_input` is unsupported on the native transport in v1.
 - **Schema always rides the repair loop.** The native adapter doesn't claim `structured_output`, so your `schema` requests are satisfied by the engine's prompt + parse + repair path.
-- **`provider_options.openai` is raw wire format (D9).** On the native transport, keys under `provider_options.openai` are Chat Completions fields exactly as OpenAI documents them (**snake_case**: `reasoning_effort`, `max_completion_tokens`, `top_p`, `stop`, `logprobs`, `response_format`, ...), shallow-merged last over the engine-computed body, so an explicit key beats every derived field (the effort-derived `reasoning_effort`, the token limit, sampling params). Keys do **not** port from the `ai_sdk` transport, which uses `@ai-sdk/openai`'s camelCase spellings — `reasoningEffort` there is `reasoning_effort` here, and the SDK's `maxOutputTokens` is `max_completion_tokens` on the wire. The merge is shallow and unreconciled: pass whole objects, and combinations the API rejects are rejected by the API, not repaired by Fascicle.
+- **`provider_options.openai` is raw wire format (D9).** On the native transport, keys under `provider_options.openai` are Chat Completions fields exactly as OpenAI documents them (**snake_case**: `reasoning_effort`, `max_completion_tokens`, `top_p`, `stop`, `logprobs`, `response_format`, ...), shallow-merged last over the engine-computed body, so an explicit key beats every derived field (the effort-derived `reasoning_effort`, the token limit, sampling params). Keys do **not** port from the `ai_sdk` transport, which uses `@ai-sdk/openai`'s camelCase spellings — `reasoningEffort` there is `reasoning_effort` here, and the SDK's `maxOutputTokens` is `max_completion_tokens` on the wire. The merge is shallow and unreconciled: pass whole objects, and combinations that the API rejects are rejected by the API, not repaired by Fascicle.
 - **Retry belongs to the engine.** 401, 429 (honoring `Retry-After`), 5xx, and network failures are classified by the shared classifier and retried by the engine's policy, exactly as on `ai_sdk`.
 
 The same core powers any OpenAI-compatible server via `base_url` — see [the compat recipe](#openai-compatible-servers-the-compat-recipe).
@@ -369,7 +369,7 @@ const engine = create_engine({
 });
 ```
 
-A guardrail intervention surfaces as `finish_reason: 'content_filter'`, so treat that as its own outcome rather than a normal completion. With `trace: 'enabled'`, the assessment AWS returns alongside the response lands on `provider_reported.bedrock.trace` (and under the peer's own `amazonBedrock` alias); see [Provider-reported detail](#provider-reported-detail):
+A guardrail intervention surfaces as `finish_reason: 'content_filter'`, so treat that as its own outcome rather than a normal completion. With `trace: 'enabled'`, the assessment that AWS returns alongside the response lands on `provider_reported.bedrock.trace` (and under the peer's own `amazonBedrock` alias); see [Provider-reported detail](#provider-reported-detail):
 
 ```ts
 type GuardrailReport = { trace?: unknown };
@@ -526,7 +526,7 @@ Every peer is loaded lazily on first `generate` against that provider. Missing p
 missing peer dependency '@ai-sdk/anthropic'. Install it with: pnpm add @ai-sdk/anthropic. Cause: …
 ```
 
-This means constructing an engine with all eight providers doesn't force you to install their seven SDKs — only the ones you actually call. `ai`, the package the `ai_sdk` kind calls `generateText` / `streamText` on, is itself an optional peer for the same reason: it's only imported from the one `ai_sdk` turn seam, so a `transport: 'native'` or `claude_cli` call never loads it. Missing it reports the same way:
+This means constructing an engine with all eight providers doesn't force you to install their seven SDKs — only the ones you actually call. `ai`, the package that the `ai_sdk` kind calls `generateText` / `streamText` on, is itself an optional peer for the same reason: it's only imported from the one `ai_sdk` turn seam, so a `transport: 'native'` or `claude_cli` call never loads it. Missing it reports the same way:
 
 ```text
 missing peer dependency 'ai'. Install it with: pnpm add ai. Cause: …
@@ -619,7 +619,7 @@ const engine = create_engine({
 
 Rules of the road for native adapters:
 
-- **Never retry internally.** Throw failures in classifiable shapes (`status` and `responseHeaders` for HTTP errors) and let the engine's retry policy own attempts; hidden retries are exactly the illegibility the engine refuses. An optional `classify_error(err)` overrides the shared classifier when your provider's error shapes need it.
+- **Never retry internally.** Throw failures in classifiable shapes (`status` and `responseHeaders` for HTTP errors) and let the engine's retry policy own attempts; hidden retries are exactly the illegibility that the engine refuses. An optional `classify_error(err)` overrides the shared classifier when your provider's error shapes need it.
 - **Streaming means both.** When `req.stream` is true, push chunks through `req.dispatch_chunk` and still return the aggregated `TurnResult`; streamed and non-streamed results for the same input must be equal.
 - **Skip `structured_output` unless you truly constrain decoding.** Claiming `schema` is enough; the engine's repair loop does the rest.
 - `NativeProviderAdapter`, `TurnRequest`, and `TurnResult` are exported from `fascicle`, so you can type the adapter and its mapping helpers explicitly instead of relying on `ProviderFactory`'s contextual check.

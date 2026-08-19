@@ -57,8 +57,8 @@ The published surface as of v0.12.0:
   approval gating, and `resources` subscriptions were all deferred out of the
   first bridge.
 - **Live trajectory visualization.** A picture of a flow firing is the
-  demonstration that sells step-as-value, with active spans, cost rollup, and
-  error scars overlaid on the structural canvas.
+  demonstration that sells step-as-value, and it would overlay active spans,
+  cost rollup, and error scars on the structural canvas.
 - **`claude_cli` on the Agent SDK.** Rebasing the subprocess adapter onto
   Anthropic's Agent SDK, slotted in wherever provider metering forces it.
 
@@ -101,7 +101,7 @@ appears.
 ## Not Planned
 
 These are the exclusions I've chosen. Each one trades surface correctness for
-interior work you can't see, or adds scope Fascicle doesn't need:
+interior work you can't see, or adds scope that Fascicle doesn't need:
 
 - **Feature parity with the broad frameworks**, so no memory modules, no `Agent`
   class, no multi-agent handoffs. [comparison.md](./comparison.md) names the tools

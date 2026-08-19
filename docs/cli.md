@@ -179,7 +179,7 @@ Use `allowlist_only` when you want the CLI to use its built-in tools and you dec
 
 Pass any Standard Schema (zod, ArkType, Valibot, ...) as `schema` to `generate({ schema })` and the adapter compiles it to JSON Schema, forwards `--json-schema`, and parses the final CLI text against the schema.
 
-If the CLI returns text that fails schema validation, the adapter makes one repair attempt, resuming the same session (using the `session_id` captured from the first response) and sends a repair prompt. The second failure throws `schema_validation_error` with the schema issues and raw text.
+If the CLI returns text that fails schema validation, the adapter makes one repair attempt. It resumes the same session, using the `session_id` that it captured from the first response, and sends a repair prompt. The second failure throws `schema_validation_error` with the schema issues and raw text.
 
 ## Streaming
 

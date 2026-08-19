@@ -74,7 +74,7 @@ try {
 Key rules:
 
 - Construct the engine **once** per process, or once per request in a server harness, and dispose of it when you're done.
-- `model_step` returns the content alone, so a `string`, or the schema-validated value when `schema` is set. When your harness needs what surrounds the answer (`usage`, `cost`, `tool_calls`, `finish_reason`), swap in `model_call`, the envelope variant with the same config, and read the `GenerateResult<T>` downstream. Underneath, `model_call` is the single sanctioned bridge between the composition and engine layers.
+- `model_step` returns the content alone, so a `string`, or the schema-validated value when `schema` is set. When your harness needs what surrounds the answer (`usage`, `cost`, `tool_calls`, `finish_reason`), swap in `model_call`, the envelope variant that takes the same config, and read the `GenerateResult<T>` downstream. Underneath, `model_call` is the single sanctioned bridge between the composition and engine layers.
 - You inject the engine into the step at construction time, and the step itself stays a plain `Step`.
 
 ## Wire in Adapters
@@ -174,7 +174,7 @@ pnpm exec tsx examples/hello.ts
 pnpm exec tsx examples/hello.ts "your custom input here"
 ```
 
-> **Layout note.** This repo is a single installable package (`fascicle`). All source lives under `src/` as deep modules (`core`, `engine`, `composites`, `agents`, `adapters`, `mcp`, `stdio`, `ui`, `otel`, `policy`, `schema`, `testing`, `viewer`), each with a barrel `index.ts` reached only through its `#<module>` import alias. The aliases enforce architectural boundaries (for example, core can't import from adapters, engine can't reach into providers). The umbrella surface at the `src/` root is what bundles to npm — the published surface is the only public face.
+> **Layout note.** This repo is a single installable package (`fascicle`). All source lives under `src/` as deep modules (`core`, `engine`, `composites`, `agents`, `adapters`, `mcp`, `stdio`, `ui`, `otel`, `policy`, `schema`, `testing`, `viewer`), each with a barrel `index.ts` that you reach only through its `#<module>` import alias. The aliases enforce architectural boundaries (for example, core can't import from adapters, engine can't reach into providers). The umbrella surface at the `src/` root is what bundles to npm — the published surface is the only public face.
 
 ## Checklist
 

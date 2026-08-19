@@ -9,7 +9,7 @@ Fascicle ships two independently useful layers, re-exported from one package.
 - **Composition layer** (the `core` + `composites` modules, surfaced via `fascicle`). 22 primitives for composing work out of plain values. No network, no LLM calls, no ambient state.
 - **Engine layer** (the `engine` module, surfaced via `fascicle`). `create_engine(config)` returns a unified `generate` surface over eight provider adapters. No composition, no step plumbing.
 
-They are glued by exactly one value, `model_call`, at the umbrella `src/` root. That's the only file allowed to import values from both layers — an ast-grep rule in `rules/` enforces it. Everything else either composes or generates, never both.
+They are glued by exactly one value, `model_call`, at the umbrella `src/` root. That's the only file that's allowed to import values from both layers — an ast-grep rule in `rules/` enforces it. Everything else either composes or generates, never both.
 
 ## Step-as-Value
 
@@ -174,7 +174,7 @@ Once you outgrow the defaults, writing your own is the expected path, whether yo
 The bundled loggers have two limits you should know about before you wire them into anything long-running:
 
 - **`filesystem_logger` writes synchronously.** It calls `appendFileSync` on every `record`, `start_span`, and `end_span`. That keeps the implementation a dozen lines and makes failures easy to reason about, but it blocks the event loop on each write. That's fine for dev tools, CLIs, and short batch runs, and not what you want on a hot request path. If that matters to you, swap in a custom logger that buffers and flushes asynchronously.
-- **The in-memory span stack is a fallback only.** `filesystem_logger`, `stderr_logger`, and `http_logger` record the `parent_span_id` the runner threads through `RunContext`, so span trees are correct even for concurrent siblings under `parallel`/`map`. The in-memory open-span stack exists only for spans emitted without a parent (an external caller driving a logger directly, outside a run), and that fallback remains best-effort under concurrency.
+- **The in-memory span stack is a fallback only.** `filesystem_logger`, `stderr_logger`, and `http_logger` record the `parent_span_id` the runner threads through `RunContext`, so span trees are correct even for concurrent siblings under `parallel`/`map`. The in-memory open-span stack exists only for spans that are emitted without a parent (an external caller driving a logger directly, outside a run), and that fallback remains best-effort under concurrency.
 
 `http_logger` also swallows transport errors by default, so pass `on_error` if you want to see them. Trajectory writes are never load-bearing, and a logger that throws doesn't fail your run.
 
@@ -201,15 +201,15 @@ For embedded runtimes (tests, Lambda, worker threads, anything that owns its own
 
 **Abort reasons take one of two shapes, by layer.** Composition (`retry`, `timeout`, `parallel`, `map`, `bench`) propagates an `Error` abort reason verbatim and wraps anything else in `aborted_error`, so the cause you aborted with is the error you catch. A SIGINT surfaces as the runner's own `aborted_error('received SIGINT')`, and a `timeout` firing inside a retry still surfaces as `timeout_error`. The engine (`generate` and everything under it) always wraps, so a cancelled model call throws `aborted_error` with your reason on `.reason` and the engine's `step_index` attached. The split is deliberate: `abort()` with no reason sets `signal.reason` to a `DOMException`, and the engine's contract is that only Fascicle errors cross its boundary.
 
-`timeout(inner, ms)` builds on the same mechanism, aborting the inner step's signal after the deadline and throwing `timeout_error`.
+`timeout(inner, ms)` builds on the same mechanism. It aborts the inner step's signal after the deadline and throws `timeout_error`.
 
 ### Cancellation Is Cooperative
 
 `timeout` and abort only *signal* intent — they can't kill work that ignores `ctx.abort`. `timeout(inner, ms)` races the inner step against a deadline: when the deadline wins, `timeout_error` throws and `run(...)` returns control to the caller, but the inner step's promise isn't cancelled. If that step never checks `ctx.abort` (a tight CPU-bound loop, a `fetch` call that wasn't given the signal, a tool's `execute` that awaits an unrelated promise), it keeps running in the background after Fascicle has already moved on. The same is true of a SIGINT/SIGTERM abort, and of a `ctx.on_cleanup` handler that outlives its own timeout — it's abandoned, not killed, and the remaining handlers run without waiting for it.
 
-Abandoned work isn't free. A `model_call` step that outlives its `timeout` keeps the underlying HTTP request open and the provider keeps generating (and billing) tokens for a response nothing will read; a subprocess or socket that was never wired to `ctx.abort` keeps holding its resource. Fascicle has no scheduler that can preempt a promise it doesn't control — that would require language-level cancellation Node/JS doesn't offer.
+Abandoned work isn't free. A `model_call` step that outlives its `timeout` keeps the underlying HTTP request open and the provider keeps generating (and billing) tokens for a response nothing will read; a subprocess or socket that was never wired to `ctx.abort` keeps holding its resource. Fascicle has no scheduler that can preempt a promise it doesn't control — that would require the language-level cancellation that Node/JS doesn't offer.
 
-The fix is yours as the step author. Thread `ctx.abort` into every long-running operation a step performs, not just the outermost one. Pass it to `fetch`'s `signal` option, to `child_process` spawn options, and check `ctx.abort.aborted` between iterations of any loop that doesn't otherwise await an abortable call. A step that never touches `ctx.abort` isn't wrong, but it isn't cancellable — treat that as a property to design for, not an edge case to patch later. See [troubleshooting.md](./troubleshooting.md#a-cancelled-run-keeps-consuming-tokens-or-holding-resources) for how to spot this in practice.
+The fix is yours as the step author. Thread `ctx.abort` into every long-running operation that a step performs, not just the outermost one. Pass it to `fetch`'s `signal` option, to `child_process` spawn options, and check `ctx.abort.aborted` between iterations of any loop that doesn't otherwise await an abortable call. A step that never touches `ctx.abort` isn't wrong, but it isn't cancellable — treat that as a property to design for, not an edge case to patch later. See [troubleshooting.md](./troubleshooting.md#a-cancelled-run-keeps-consuming-tokens-or-holding-resources) for how to spot this in practice.
 
 ## Named State: Chain First
 
@@ -224,7 +224,7 @@ const flow = chain<string, 'email'>('email')
   .output(({ published }) => published);
 ```
 
-Underneath sits the raw state tier, where `scope` / `stash` / `use` bind values by string key in `ctx.state`, untyped. `chain` is the typed front door over the same idea; the raw trio remains for shapes bindings can't express (writes from deep inside a subtree, state shared across sibling compositions). See [advanced-composition.md](./advanced-composition.md#scope-stash-use-named-state-without-types) before reaching for it.
+Underneath sits the raw state tier, where `scope` / `stash` / `use` bind values by string key in `ctx.state`, untyped. `chain` is the typed front door over the same idea; the raw trio remains for the shapes that bindings can't express (writes from deep inside a subtree, state shared across sibling compositions). See [advanced-composition.md](./advanced-composition.md#scope-stash-use-named-state-without-types) before reaching for it.
 
 ## Checkpointing
 
@@ -301,7 +301,7 @@ Typed errors live in `fascicle`:
 | `on_chunk_error`                 | a caller's `on_chunk` handler threw                   |
 | `claude_cli_error`               | subprocess failure in the `claude_cli` provider       |
 
-Every error bubbles out of `run(...)` as a normal promise rejection. Composition-layer errors carry a `.path` array containing the step ids that led to the failure — surface it in logs to make failures locatable.
+Every error bubbles out of `run(...)` as a normal promise rejection. Composition-layer errors carry a `.path` array of the step ids that led to the failure — surface it in logs to make failures locatable.
 
 ## The Check Contract
 

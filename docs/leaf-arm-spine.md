@@ -32,8 +32,9 @@ function. The choices at this layer:
 - **`step(name, fn)` wraps pure functions and port calls.** Parsing,
   formatting, a call on an injected service. Name every step you might resume
   or watch, because the id is the trajectory label.
-- **`define_agent`** (from `fascicle/agents`) is the markdown-prompt leaf, with
-  role and constraints in a `.md` file and schema-validated output.
+- **`define_agent`** (from `fascicle/agents`) is the markdown-prompt leaf. Its
+  role and its constraints live in a `.md` file, and its output is validated
+  against a schema.
 
 Give each model leaf a stable role id as the first line of its system prompt
 (`myapp/reviewer`). Stub engines from `fascicle/testing` route canned
@@ -77,11 +78,11 @@ The spine is a single `chain` that sequences the arms and holds the flow's
 state as a typed record. Each `.step` binding merges its result under a name,
 and later bindings destructure whatever earlier names they need, checked at
 compile time. `.stage` marks phase barriers (a grouping span in the trajectory,
-and with a projection, earlier bindings go out of scope).
+and if you give it a projection, the earlier bindings go out of scope).
 
 The default way to bind an arm is to hand it to the step directly:
-`.step(name, arm, select)` takes the composed `Step` and a selector from the
-record to the arm's input. The chain dispatches `ctx.call(arm, select(record))`
+`.step(name, arm, select)` takes the composed `Step` and a selector that maps
+the record to the arm's input. The chain dispatches `ctx.call(arm, select(record))`
 itself and records the arm as the binding's child, so dispatch and the
 described tree can't diverge:
 
@@ -151,13 +152,13 @@ export function build_flow(engine: Engine): Step<string, string> {
 }
 ```
 
-`describe(build_flow(engine))` prints this same structure as a tree, where the
-chain with its plan, each binding with its arm's subtree nested beneath it,
-down to the leaves with their role ids. The full-size version of this shape
-is newsroom's brief-to-article flow; the app-scale versions are
-change-triage (minimal spine, one leaf), pr-improve (branching between
-chains), amplify (a loop whose carry-state rides the spine's bindings), and
-red-green-refactor (stage barriers as phases).
+`describe(build_flow(engine))` prints this same structure as a tree. The chain
+comes first with its plan, then each binding with its arm's subtree nested
+beneath it, down to the leaves that carry their role ids. The full-size
+version of this shape is newsroom's brief-to-article flow; the app-scale
+versions are change-triage (minimal spine, one leaf), pr-improve (branching
+between chains), amplify (a loop whose carry-state rides the spine's
+bindings), and red-green-refactor (stage barriers as phases).
 
 ## What the Layering Buys
 
@@ -181,15 +182,15 @@ anti-patterns:
 
 - **Composition theater.** Single-leaf arms, spans for the sake of spans.
   Collapse it to the leaf.
-- **Buried control flow.** An `if`/`for`/try-fallback hidden in a step body
+- **Buried control flow.** An `if`/`for`/try-fallback that hides in a step body
   where `branch`/`loop`/`fallback` would show in the trajectory. Lift it, or
   if your wiring is genuinely dynamic, keep the body named, use `ctx.call`,
   and say why.
-- **Envelope leakage.** An arm returning `{ winner, scores }`, so every caller
-  unwraps it downstream. Move the unwrap into the arm with `project`.
+- **Envelope leakage.** An arm that returns `{ winner, scores }`, so every
+  caller unwraps it downstream. Move the unwrap into the arm with `project`.
 - **Ambient state.** Reaching for `scope`/`stash`/`use` string keys where chain
-  bindings would be typed. The raw state primitives are still there for shapes
-  bindings can't express, but they aren't your default.
+  bindings would be typed. The raw state primitives are still there for the
+  shapes that bindings can't express, but they aren't your default.
 
 ## See Also
 
