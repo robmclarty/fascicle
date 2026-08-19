@@ -59,15 +59,31 @@ pnpm exec tsc --noEmit         # just types
 
 ### Prose voice
 
-Before writing or editing prose (markdown, doc comments), read the exemplars in
-`.vale/exemplars` and imitate their voice — sentence rhythm, word choice, register.
-They are hand-written and human-owned: never edit, rewrite, or add to them, and
-never generate new ones. When your draft and an exemplar disagree about how a
-sentence should sound, the exemplar wins.
+Two directories back the prose, and they answer different questions.
 
-The directory sits outside the `prose` walk on purpose. Vale checks mechanics and
-would flag a human sentence it has no business overruling; the exemplars answer a
-question no rule can, which is what the prose should sound like.
+`.vale/exemplars/` holds the voice: how a sentence should sound. Every file is the
+author's own published writing, verbatim. Read all of them before writing or editing
+prose (markdown, doc comments); together they run about 4.2k tokens. They are
+hand-written and human-owned: never edit, rewrite, or add to them, and never
+generate new ones. When your draft and an exemplar disagree about how a sentence
+should sound, the exemplar wins.
+
+`.vale/references/` holds the form: what a doc comment covers, what sections a
+design proposal has, how a changelog entry is shaped. Every file is excerpted from
+another project and listed with its license in `NOTICE.md`. Read only the one
+matching what you are writing, never the whole directory.
+
+| Writing this | Read this |
+| --- | --- |
+| a `/** */` block | `doc-comment.md` |
+| a `docs/` page | `guide-prose.md` |
+| a `CHANGELOG.md` entry | `changelog-entry.md` |
+| a design proposal | `rfc.md` |
+| a troubleshooting entry | `troubleshooting.md` |
+
+Neither directory is linted, and neither ships to npm. Vale checks mechanics, and a
+sentence in the author's own voice is not something a mechanical rule should
+overrule; the references are other people's prose and not ours to correct.
 
 ## Source layout
 

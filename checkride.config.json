@@ -5,7 +5,7 @@
     "struct": { "use": "ast-grep", "order": 1 },
     "links": {
       "use": "links",
-      "exclude": [".ridgeline", ".plumbbob", ".fascicle"],
+      "exclude": [".ridgeline", ".plumbbob", ".fascicle", ".vale"],
       "order": 1
     },
     "deps": {

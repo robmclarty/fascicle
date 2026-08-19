@@ -9,6 +9,11 @@
   },
   "globs": ["**/*.md"],
   "ignores": [
+    // Voice exemplars are pasted verbatim from elsewhere and are human-owned:
+    // AGENTS.md tells writing sessions never to edit them, so lint findings
+    // there would be unfixable by contract. They sit outside the prose walk
+    // for the same reason.
+    ".vale/**",
     "**/node_modules/**",
     "dist/**",
     ".check/**",
