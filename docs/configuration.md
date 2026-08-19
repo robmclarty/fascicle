@@ -1,6 +1,6 @@
 # Configuration
 
-Configuring the engine layer: `create_engine(config)`, pricing, defaults, retry policy, and how per-call options merge over engine defaults.
+Configuring the engine layer, so `create_engine(config)`, pricing, defaults, retry policy, and how per-call options merge over engine defaults.
 
 ## The Config Shape
 
@@ -18,11 +18,11 @@ type EngineConfig = {
 };
 ```
 
-Only `providers` is required.
+Only `providers` is required of you.
 
 ## Providers
 
-`providers` is a name-keyed map of provider inits. The eight built-in names:
+`providers` is a name-keyed map of provider inits, and these are the eight built-in names:
 
 ```ts
 type ProviderConfigMap = {
@@ -37,9 +37,9 @@ type ProviderConfigMap = {
 };
 ```
 
-A provider absent from `providers` throws `provider_not_configured_error` at call time — constructing an engine without a provider does not fail; the failure is deferred to the first `generate` against it.
+A provider absent from `providers` throws `provider_not_configured_error` at call time — constructing an engine without a provider doesn't fail; the failure is deferred to the first `generate` against it.
 
-Five providers take an optional `transport` selector: `'ai_sdk'` (the default) wraps that provider's AI SDK peer, `'native'` talks to the provider's own API directly over `fetch` with no peer to install. `anthropic` native targets the Messages API. `openai`, `openrouter`, and `lmstudio` native ride a shared OpenAI Chat Completions core, and `ollama` native targets its own `/api/chat` endpoint. The provider name, pricing keys, and effort mapping are identical across transports. See [providers.md](./providers.md#transport-picking-a-depth-1-backend).
+Five providers take an optional `transport` selector. `'ai_sdk'` (the default) wraps that provider's AI SDK peer, and `'native'` talks to the provider's own API directly over `fetch` with no peer to install. `anthropic` native targets the Messages API. `openai`, `openrouter`, and `lmstudio` native ride a shared OpenAI Chat Completions core, and `ollama` native targets its own `/api/chat` endpoint. The provider name, pricing keys, and effort mapping are identical across transports. See [providers.md](./providers.md#transport-picking-a-depth-1-backend).
 
 Every provider's SDK is an optional peer dependency, loaded on first `generate`, and so is the shared `ai` package that the `ai_sdk` adapters wrap. Install `ai` alongside the per-provider package rather than the per-provider package alone: the official `@ai-sdk/*` packages peer-depend on `zod`, not on `ai`, so nothing pulls it in for you. Install only the providers you use.
 
@@ -55,11 +55,11 @@ pnpm add ai @ai-sdk/amazon-bedrock        # bedrock
 # nothing to install for transport: 'native', or for claude_cli, which spawns the `claude` binary
 ```
 
-Full per-provider notes live in [providers.md](./providers.md). The `claude_cli` adapter has its own guide: [cli.md](./cli.md).
+Full per-provider notes live in [providers.md](./providers.md). The `claude_cli` adapter has its own guide in [cli.md](./cli.md).
 
 ## Custom Providers
 
-`custom_providers` registers provider factories beyond the built-in set at construction time. Keys are provider names; each factory receives the same-named entry from `providers` as its init and may return an adapter of any kind: `ai_sdk` (wrap an AI SDK provider), `native` (raw HTTP implementing one model turn), or `external` (a backend that runs its own loop). The kinds and their contracts are documented in [providers.md](./providers.md#three-integration-depths); the example below returns an `ai_sdk` adapter, with `native` and `external` sketches under [Writing your own](./providers.md#writing-your-own).
+`custom_providers` registers your own provider factories beyond the built-in set at construction time. Keys are provider names, and each factory receives the same-named entry from `providers` as its init and may return an adapter of any kind: `ai_sdk` (wrap an AI SDK provider), `native` (raw HTTP implementing one model turn), or `external` (a backend that runs its own loop). The kinds and their contracts are documented in [providers.md](./providers.md#three-integration-depths); the example below returns an `ai_sdk` adapter, with `native` and `external` sketches under [Writing your own](./providers.md#writing-your-own).
 
 ```ts
 import {
@@ -92,18 +92,18 @@ const engine = create_engine({
 });
 ```
 
-Rules:
+The rules:
 
 - **Custom-first resolution.** A `providers` key is resolved against `custom_providers` first, then the built-ins.
-- **Shadowing a built-in throws.** A `custom_providers` key that matches a built-in name (`anthropic`, `openai`, ...) throws `engine_config_error` at construction; there is no silent override.
-- **Construction-time only.** Nothing registers at runtime; the config object is the whole registry extension.
-- **Validated like built-ins.** Factories run synchronously at `create_engine`; throw from the factory on bad init. Defer SDK or resource loading to the first call (`build_model` for `ai_sdk`-kind, `invoke_turn` for `native`-kind, `generate` for `external`-kind).
+- **Shadowing a built-in throws.** A `custom_providers` key that matches a built-in name (`anthropic`, `openai`, ...) throws `engine_config_error` at construction; there's no silent override.
+- **Construction-time only.** Nothing registers at runtime, and your config object is the whole registry extension.
+- **Validated like built-ins.** Factories run synchronously at `create_engine`, so throw from your factory on a bad init. Defer SDK or resource loading to the first call (`build_model` for `ai_sdk`-kind, `invoke_turn` for `native`-kind, `generate` for `external`-kind).
 
 The factory and adapter types (`ProviderFactory`, `ProviderAdapter`, `AiSdkProviderAdapter`, `NativeProviderAdapter`, `ExternalAgentAdapter`, `ProviderCapability`, `ProviderTransport`) are exported from `fascicle`, alongside the neutral turn types (`TurnRequest`, `TurnResult`) and the `default_normalize_usage` helper, so a `kind: 'native'` adapter can be typed explicitly as `NativeProviderAdapter` rather than checked contextually through `ProviderFactory`. Because registration is plain config, a proprietary or workplace-private provider lives entirely in the consuming repo and never needs to enter the fascicle tree.
 
 ## Registering a Provider after Construction: `with_providers`
 
-No mutable runtime registry exists. When a provider only becomes known *after* the engine is built — a plugin that loads late, a tenant-supplied backend, a credential resolved by an async bootstrap — derive a new engine instead of mutating the old one:
+No mutable runtime registry exists. When a provider only becomes known to you *after* the engine is built — a plugin that loads late, a tenant-supplied backend, a credential resolved by an async bootstrap — derive a new engine instead of mutating the old one:
 
 ```ts
 const base = create_engine({
@@ -119,14 +119,14 @@ const extended = base.with_providers(
 
 `with_providers(providers, custom_providers?)` returns a **new** engine whose config is the base engine's config with `providers` and `custom_providers` shallow-merged by name over the originals (a same-named entry overrides). This keeps engines value-like: a mutable registry would make an engine's behavior depend on *when* you call it and blur which engine owns which adapters, so derivation is the answer instead.
 
-- **The original engine is untouched.** `base` keeps exactly the providers, adapters, and pricing it had; only `extended` sees the additions.
+- **The original engine is untouched.** `base` keeps exactly the providers, adapters, and pricing it had, and only `extended` sees the additions.
 - **Everything else carries forward.** Construction-time pricing, `defaults`, and retry policy are inherited unchanged. (Runtime `register_price` mutations are *not* — derivation is a pure function of the construction config, so re-register on the derived engine if you need them.)
 - **Same rules re-run.** The merged config is re-validated with the same custom-first resolution and the same built-in shadow-throw; adding `{ openai: … }` to `custom_providers` still throws `engine_config_error`.
 - **Fresh adapters, independent disposal.** Every adapter in the derived engine is constructed fresh from the merged config, including the ones the base already had. `extended.dispose()` tears down only the derived engine's adapters; `base` stays live, and vice versa. Dispose each engine you build.
 
 ## Reading Credentials from Env
 
-The engine does not read `process.env`. Reading credentials from the environment is the harness's job, done once at its boundary and passed in as an explicit config object. The idiomatic pattern is a plain read of `process.env`:
+The engine doesn't read `process.env`. Reading credentials from the environment is your harness's job, done once at its boundary and passed in as an explicit config object. The idiomatic pattern is a plain read of `process.env`:
 
 ```ts
 import { create_engine } from 'fascicle';
@@ -152,24 +152,24 @@ The published library stays free of ambient env reads (the `no-process-env-in-co
 
 ## Model and Provider: Two Axes
 
-A model call has two orthogonal inputs, and they are the *only* inputs — there is no name resolution, alias table, or family catalog in between:
+A model call has two orthogonal inputs, and they're the *only* inputs — there's no name resolution, alias table, or family catalog in between:
 
-- **`model`** — *which* model, as an **opaque string** passed verbatim to the provider as its `model_id`. Use whatever id the provider expects (`claude-opus-4-8`, `gpt-4o`, `us.anthropic.claude-sonnet-4-20250514-v1:0`, `qwen3-coder:30b`). fascicle does not interpret, rewrite, or maintain model names; a bad id surfaces as the provider's own "not found" error.
-- **`provider`** — *how* to reach it (the transport): `anthropic`, `openai`, `google`, `ollama`, `lmstudio`, `openrouter`, `bedrock`, `claude_cli`.
+- **`model`** — *which* model, as an **opaque string** passed verbatim to the provider as its `model_id`. Use whatever id the provider expects (`claude-opus-4-8`, `gpt-4o`, `us.anthropic.claude-sonnet-4-20250514-v1:0`, `qwen3-coder:30b`). fascicle doesn't interpret, rewrite, or maintain model names; a bad id surfaces as the provider's own "not found" error.
+- **`provider`** — *how* to reach it (the transport), so `anthropic`, `openai`, `google`, `ollama`, `lmstudio`, `openrouter`, `bedrock`, `claude_cli`.
 
 Both are accepted per-call on `generate(opts)` / `model_call({ ... })` and as engine defaults (`defaults.model`, `defaults.provider`). The remaining caller-shaped generation knobs (`temperature`, `max_tokens`, `top_p`, `turn_timeout_ms`, `prepare_step`) also ride per-call on both; all but `prepare_step` can be set as engine defaults too, with the per-call value winning.
 
 ### Resolution
 
-No resolution step runs. `model` is sent straight through as the provider's `model_id`; `provider` selects the adapter. The provider axis is resolved first: per-call `provider`, else `defaults.provider`, else the sole configured provider. With several providers configured and neither a per-call `provider` nor a default, nothing falls back. `generate` throws `provider_required_error` ("no provider specified: pass `provider` to generate() or set `defaults.provider`", naming the configured providers). If `model` is omitted and no `defaults.model` is set, `generate` throws `model_required_error`. A `provider` with no adapter configured on the engine throws `provider_not_configured_error`.
+No resolution step runs. `model` is sent straight through as the provider's `model_id`, and `provider` selects the adapter. The provider axis is resolved first, in the order per-call `provider`, else `defaults.provider`, else the sole configured provider. With several providers configured and neither a per-call `provider` nor a default, nothing falls back. `generate` throws `provider_required_error` ("no provider specified: pass `provider` to generate() or set `defaults.provider`", naming the configured providers). If `model` is omitted and no `defaults.model` is set, `generate` throws `model_required_error`. A `provider` with no adapter configured on the engine throws `provider_not_configured_error`.
 
 Neither a `provider:model` colon shorthand nor an `opus`/`sonnet` family shorthand exists — pass the provider's real id (look it up in the provider's own docs). One exception: the `claude_cli` transport forwards the bare token to the CLI, which resolves `opus`/`sonnet`/`haiku` to the latest itself, so those still work for that provider.
 
-If you want short names of your own, keep a plain map in your harness and look the id up before calling `generate` — fascicle deliberately owns no such table.
+If you want short names of your own, keep a plain map in your harness and look the id up before you call `generate` — fascicle deliberately owns no such table.
 
 ## Pricing
 
-Cost accounting is estimated per-call using a `PricingTable` keyed by `provider:model_id`:
+Cost accounting is estimated per call from a `PricingTable` keyed by `provider:model_id`:
 
 ```ts
 type Pricing = {
@@ -181,7 +181,7 @@ type Pricing = {
 };
 ```
 
-Default pricing ships for a set of common concrete ids (current Claude, GPT, and Gemini models). Override and extend:
+Default pricing ships for a set of common concrete ids (current Claude, GPT, and Gemini models), and you override or extend it:
 
 ```ts
 const engine = create_engine({
@@ -202,7 +202,7 @@ engine.register_price('openai', 'gpt-4o', {
 });
 ```
 
-Unpriced models return usage without cost. The `is_estimate: true` flag is always set — pricing tables drift; your accounting is the source of truth.
+Unpriced models hand you usage without cost. The `is_estimate: true` flag is always set, because pricing tables drift and your accounting is the source of truth.
 
 ## Engine Defaults
 
@@ -257,7 +257,7 @@ const result = await engine.generate({ prompt: 'hello' });
 | `provider`                                                                         | per-call wins, else default, else sole provider, else throws `provider_required_error` |
 | `system`, `effort`, `temperature`, `max_tokens`, `top_p`, `max_steps`, `turn_timeout_ms`, `tool_error_policy`, `schema_repair_attempts`, `tool_call_repair_attempts`, `max_tool_calls_per_step` | per-call wins via nullish coalesce |
 | `retry`                                                                            | per-call replaces wholesale                     |
-| `provider_options`                                                                 | two-level: per-provider key, shallow-merged     |
+| `provider_options`                                                                 | two-level, so a per-provider key, shallow-merged     |
 | `prepare_step`, `prompt`, `tools`, `schema`, `abort`, `trajectory`, `on_chunk`     | not defaultable; always call-supplied           |
 
 Two-level merge for `provider_options` means the outer key is the provider name and each inner record is shallow-merged. Deeper structures replace wholesale.
@@ -273,7 +273,7 @@ Two-level merge for `provider_options` means the outer key is the provider name 
 // effective:   { anthropic: { thinking: { type: 'enabled', budget_tokens: 20000 } } }  // wholesale replace of `thinking`
 ```
 
-The legacy top-level `default_retry`, `default_effort`, and `default_max_steps` still work. Prefer `defaults: { ... }` for new code.
+The legacy top-level `default_retry`, `default_effort`, and `default_max_steps` still work, but prefer `defaults: { ... }` for new code.
 
 ## Retry Policy
 
@@ -288,7 +288,7 @@ const DEFAULT_RETRY: RetryPolicy = {
 };
 ```
 
-Override per-engine or per-call:
+Override it per engine or per call:
 
 ```ts
 const engine = create_engine({
@@ -309,7 +309,7 @@ await engine.generate({
 });
 ```
 
-Rules:
+The rules:
 
 - Backoff is exponential with jitter (`initial_delay_ms * 2^attempt + jitter`), capped at `max_delay_ms` — except when the server returns `Retry-After`, which always wins.
 - Abort interrupts backoff waits and throws `aborted_error`.
@@ -334,12 +334,12 @@ await engine.generate({
 
 - **Scope is one turn, not the whole call.** A multi-step tool loop resets the budget for each turn; the option bounds any single model round-trip, not the aggregate run. Wrap the whole call in your own `AbortSignal` (or the `timeout` composer) if you need a call-level ceiling.
 - **Expiry is a typed, retryable timeout.** Before any chunk streams, expiry throws a timeout the shared classifier treats as retryable, so the retry policy re-attempts it exactly like a 5xx.
-- **Mid-stream expiry does not retry.** Once chunks have flowed, a timeout becomes a non-retryable stream interruption, matching the same first-chunk boundary the retry policy enforces.
+- **Mid-stream expiry doesn't retry.** Once chunks have flowed, a timeout becomes a non-retryable stream interruption, matching the same first-chunk boundary the retry policy enforces.
 - **Must be `> 0`.** `undefined` (the default) leaves turns unbounded; `defaults.turn_timeout_ms` sets the baseline and the per-call value wins via nullish coalesce.
 
 ## Reshaping Each Turn: `prepare_step`
 
-`prepare_step` is a per-turn hook the tool loop calls before each model turn, on both depth-1 transports. It receives the step index and the would-be request messages (the full accumulated transcript at that point) and may return replacement messages to prune, summarize, or window what is sent to the model for that turn only:
+`prepare_step` is a per-turn hook the tool loop calls before each model turn, on both depth-1 transports. It receives the step index and the would-be request messages (the full accumulated transcript at that point) and may return replacement messages to prune, summarize, or window what's sent to the model for that turn only:
 
 ```ts
 await engine.generate({
@@ -358,7 +358,7 @@ await engine.generate({
 - **Return `undefined` for a no-op.** Returning `undefined`, or an object without `messages`, leaves the turn's request unchanged.
 - **Every replaced turn is legible.** A `step_prepared` trajectory event records each turn the hook modified, so mid-loop pruning stays visible in the trajectory.
 - **Sync or async.** The hook may return a promise; the loop awaits it before dispatching the turn.
-- **Not defaultable.** `prepare_step` is call-supplied only (it is not on `EngineDefaults`). Per-step model/effort switching is deliberately out of scope for now.
+- **Not defaultable.** `prepare_step` is call-supplied only (it isn't on `EngineDefaults`). Per-step model/effort switching is deliberately out of scope for now.
 
 ## `generate` Options
 
@@ -396,7 +396,7 @@ type GenerateOptions<t = string> = {
 
 A few highlights:
 
-- `effort: 'none' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'` is translated per-provider. See [providers.md](./providers.md) for the per-provider mapping. Providers that do not support reasoning effort (for example, Ollama) silently drop it and record `effort_ignored` on the trajectory.
+- `effort: 'none' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'` is translated per-provider. See [providers.md](./providers.md) for the per-provider mapping. Providers that don't support reasoning effort (for example, Ollama) silently drop it and record `effort_ignored` on the trajectory.
 - `schema` is any [Standard Schema](https://standardschema.dev) that also carries a JSON Schema (zod, ArkType, Valibot, ...): the printed `ToolSchema<t>` is `StandardSchemaV1<unknown, t> & StandardJSONSchemaV1`. On failure, the engine attempts `schema_repair_attempts` repair passes (default 1) before throwing `schema_validation_error`. If the call instead finishes on a non-`stop` reason (content filter, token limit, step cap) no valid value can exist, so it throws `incomplete_generation_error` without attempting repair.
 - `tools` is the agentic tool-use surface; tools have a Standard Schema `input_schema` and an `execute` closure. See the cookbook for tool loops.
 - `turn_timeout_ms` bounds each model turn's wall-clock; expiry throws a retryable timeout. See [Turn timeout budgets](#turn-timeout-budgets).
@@ -410,7 +410,7 @@ Local runtimes (Ollama's native API, LM Studio's `/v1`) frequently mis-serialize
 - `tool_call_repair_attempts` (default `0`) budgets salvage passes. When a step returns text but no structured calls, the engine scans the text for a call in Hermes (`<tool_call>{...}</tool_call>`), bare/`json`-fenced (`{"name":..., "arguments":{...}}`), or Qwen3-Coder XML form. A candidate runs only if its name resolves in that call's tools **and** its arguments validate against the tool's `input_schema`, so an ordinary answer that merely contains JSON never triggers it. A salvaged call runs the normal execute path and is marked `salvaged` on its `ToolCallRecord` (with `salvaged_format`) and via a `tool_call_salvaged` trajectory event. The budget is shared across the whole `generate` call, including schema-repair passes.
 - `max_tool_calls_per_step` (default unlimited, must be `>= 1`) executes only the first N calls of a step and drops the rest for that turn; the model can re-issue them next turn. Dropped calls surface as `ToolCallRecord`s with `error.message: 'dropped_max_tool_calls_per_step'` and a `tool_calls_dropped` event. Set it to `1` for runtimes that mishandle parallel tool calls.
 
-A third lever lives on the tool itself rather than in `generate` options: flag a designated `finish` tool `ends_turn: true` and a successful call to it ends the loop deterministically instead of feeding the result back for another model turn. This turns a soft `finish` convention into a hard stop, which matters most for weak local models that otherwise waste a turn (or fail to stop). A denied, invalid, dropped, or throwing terminal call does not end the loop; only a successful one does, and it wins over a coincident `max_steps` cap. See the [cookbook](./cookbook.md#tool-loops).
+A third lever lives on the tool itself instead of in `generate` options. Flag a designated `finish` tool `ends_turn: true` and a successful call to it ends the loop deterministically instead of feeding the result back for another model turn. This turns a soft `finish` convention into a hard stop, which matters most for weak local models that otherwise waste a turn (or fail to stop). A denied, invalid, dropped, or throwing terminal call doesn't end the loop; only a successful one does, and it wins over a coincident `max_steps` cap. See the [cookbook](./cookbook.md#tool-loops).
 
 Recommended local preset:
 
@@ -423,11 +423,11 @@ await engine.generate({
 });
 ```
 
-External-kind providers (`claude_cli`) do not run the shared tool loop, so they ignore both options and record `option_ignored` for each.
+External-kind providers (`claude_cli`) don't run the shared tool loop, so they ignore both options and record `option_ignored` for each.
 
 ## OpenTelemetry
 
-fascicle exposes OpenTelemetry in two independent layers with a clean seam between them. Both are opt-in and neither pulls an OTel package into a program that does not use it.
+fascicle exposes OpenTelemetry in two independent layers with a clean seam between them. Both are opt-in and neither pulls an OTel package into a program that doesn't use it.
 
 ### Layer 1: The `fascicle/otel` Trajectory Bridge (Transport-Neutral)
 
@@ -449,7 +449,7 @@ const trajectory = create_otel_trajectory_logger();
 await engine.generate({ prompt: '...', trajectory });
 ```
 
-The bridge maps the `engine.generate` span to an OTel root span, each step to a child span, and every recorded event (tool_call, tool_result, cost, ...) to a span event on the open span. `dispose()` is not required; spans end as the trajectory closes them.
+The bridge maps the `engine.generate` span to an OTel root span, each step to a child span, and every recorded event (tool_call, tool_result, cost, ...) to a span event on the open span. `dispose()` isn't required; spans end as the trajectory closes them.
 
 ### Layer 2: `ai_sdk` Transport Telemetry (Turn-Internal)
 
@@ -473,7 +473,7 @@ const engine = create_engine({
 });
 ```
 
-The two layers compose: run Layer 1 for a transport-neutral trace of the whole loop, and enable Layer 2 for extra spans inside `ai_sdk` turns. `AiSdkTelemetrySettings` is exported from `fascicle` for typing the settings object; `create_otel_trajectory_logger` and `OtelTrajectoryLoggerOptions` are exported from `fascicle/otel`. `@ai-sdk/otel` is adopted only below the seam, for the reasons in [the agent-layer boundary](./providers.md#the-agent-layer-boundary).
+The two layers compose, so run Layer 1 for a transport-neutral trace of the whole loop and enable Layer 2 for extra spans inside `ai_sdk` turns. `AiSdkTelemetrySettings` is exported from `fascicle` for typing the settings object; `create_otel_trajectory_logger` and `OtelTrajectoryLoggerOptions` are exported from `fascicle/otel`. `@ai-sdk/otel` is adopted only below the seam, for the reasons in [the agent-layer boundary](./providers.md#the-agent-layer-boundary).
 
 ## Lifecycle
 
@@ -489,7 +489,7 @@ try {
 - Construct once per process (or per HTTP request for server harnesses with per-request providers).
 - `dispose()` is idempotent; calling it twice returns the same promise.
 - After `dispose()`, every `generate` throws `engine_disposed_error`.
-- `dispose()` is awaited on every adapter that defines one: `claude_cli` aborts its in-flight subprocesses; a custom native adapter can tear down connection pools the same way. Adapters without a `dispose` need no extra teardown.
+- `dispose()` is awaited on every adapter that defines one. `claude_cli` aborts its in-flight subprocesses, and a custom native adapter can tear down connection pools the same way. Adapters without a `dispose` need no extra teardown.
 
 ## Examples
 
@@ -503,7 +503,7 @@ const engine = create_engine({
 });
 ```
 
-Multi-provider with defaults. With several providers configured, set `defaults.provider` (or pass `provider` per call); there is no fallback, and a call that names neither throws `provider_required_error`:
+Multi-provider with defaults. With several providers configured, set `defaults.provider` (or pass `provider` per call); there's no fallback, and a call that names neither throws `provider_required_error`:
 
 ```ts
 const engine = create_engine({

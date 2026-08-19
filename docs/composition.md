@@ -1,12 +1,12 @@
 # Composition
 
-The composition layer of `fascicle`. A thin, owned set of primitives for
-composing agentic workflows out of plain values: no framework, no classes,
-no ambient state.
+The composition layer of `fascicle`. A thin set of primitives you own, for
+composing agentic workflows out of plain values, with no framework, no classes,
+and no ambient state.
 
 ## Public Surface
 
-Everything below is exported from `fascicle`. The primitives live in
+You import everything below from `fascicle`. The primitives live in
 [`src/core/`](../src/core/) and the built-in composites in
 [`src/composites/`](../src/composites/); the umbrella re-exports both.
 
@@ -56,7 +56,7 @@ Everything below is exported from `fascicle`. The primitives live in
 | `TrajectoryLogger` | type | structured-event observer |
 | `TrajectoryEvent` | type | one structured event |
 | `CheckpointStore` | type | persistent key-value store |
-| `Step<i, o>` | type | the step contract: `id`, `kind`, and a `run(input, ctx)` function property, plus optional `config`, `children`, `anonymous`, and `meta`. `run` is a function property rather than a method, so strict mode checks `i` contravariantly and a step wired to an input it cannot accept is a compile error |
+| `Step<i, o>` | type | the step contract, so `id`, `kind`, and a `run(input, ctx)` function property, plus optional `config`, `children`, `anonymous`, and `meta`. `run` is a function property rather than a method, so strict mode checks `i` contravariantly and a step wired to an input it can't accept is a compile error |
 | `AnyStep` | type | the erased supertype (`Step<never, unknown>`) held by `children` |
 | `StepMetadata` | type | display name, description, and port labels surfaced by `describe` |
 | `DescribeOptions` / `FlowNode` / `FlowValue` | types | `describe` options and the structured tree `describe.json` returns |
@@ -67,15 +67,15 @@ enumeration is in [api-reference.md](./api-reference.md#exported-types).
 
 ## The Step-as-Value Thesis
 
-Every composable unit is a `Step<i, o>` — a plain object with an `id`, a
-`kind`, and an async `run`. Every composer is a function that accepts one or
+Every composable unit you write is a `Step<i, o>`, a plain object with an `id`,
+a `kind`, and an async `run`. Every composer is a function that accepts one or
 more `Step<i, o>` values and returns a single `Step<i, o>` value. No separate
 `Workflow`, `Agent`, or `Graph` type exists, and nothing needs to be registered,
 constructed, or initialized. Anywhere a step fits, any
 composition of steps fits (including arbitrarily deep nestings) because
 everything shares the same shape.
 
-This one invariant buys the rest:
+That one invariant buys you the rest:
 
 - **Substitutability.** Any step can be swapped with any composition of
   steps having the same I/O type. `retry(adversarial(ensemble(...)))` works
@@ -83,17 +83,17 @@ This one invariant buys the rest:
 - **Introspectability.** The full flow is a tree of plain objects, walkable
   by `describe(step)` or by application code that wants to render it.
 - **No coupling.** Steps are values, not registered entities. Two
-  unrelated flows never share state unless the caller injects it.
+  unrelated flows share no state unless you inject it.
 
 ## The 22 Primitives
 
-Copy these one-liners into an LLM's system prompt and it can write flows
+Copy these one-liners into an LLM's system prompt and it will write you flows
 from English specifications:
 
-- `step(id, fn)` / `step(fn)` — atomic unit. Anonymous form cannot be
+- `step(id, fn)` / `step(fn)` — atomic unit. Anonymous form can't be
   checkpointed.
 - `sequence([a, b, c])` — run in order, thread output into input. Literal
-  tuples are joint-checked at compile time: each child must accept its
+  tuples are joint-checked at compile time, so each child must accept its
   predecessor's output, and a mismatch errors on the offending element
   (arrays built at runtime degrade to `unknown` boundaries). A straight
   pipe belongs in `sequence`; reach for `chain` when a step needs fan-in,
@@ -101,7 +101,7 @@ from English specifications:
 - `parallel({ a, b, c })` — run concurrently, return `{ a, b, c }`.
 - `branch({ when, then, otherwise })` — route on `when(input)`.
 - `map({ items, do, concurrency? })` — run `do` per item; cap in-flight.
-- `pipe(inner, fn)` — post-process `inner`'s output. Strictly binary: one
+- `pipe(inner, fn)` — post-process `inner`'s output. Strictly binary, so one
   Step, one plain mapping function. To chain Steps use `sequence([...])`;
   passing a Step as `fn` throws at construction.
 - `retry(inner, { max_attempts, backoff_ms?, max_delay_ms?, jitter?, on_error? })`
@@ -118,7 +118,7 @@ from English specifications:
 - `timeout(inner, ms)` — cancel `inner` after `ms`.
 - `loop({ init, body, guard?, finish, max_rounds })` — bounded iteration
   with carry-state, returning whatever `finish` projects. Non-convergence is
-  data, not error: `finish(state, { converged, rounds })` receives it, so a
+  data, not error, and `finish(state, { converged, rounds })` receives it, so a
   projection folds in as much or as little of the outcome as it needs
   (`finish: (s) => s` to carry the state straight out,
   `finish: (s, outcome) => ({ value: s, ...outcome })` for the whole thing).
@@ -155,13 +155,13 @@ from English specifications:
   wrap the call itself uses `ctx.call` and passes the same value as
   `options.arm` so `describe` still renders the subtree.
 - `improve({ seed, propose, score, budget, project? })` — bounded online
-  self-improvement loop: propose → score → accept/reject with plateau
+  self-improvement loop of propose → score → accept/reject with plateau
   detection; `project` maps the result envelope (for example,
   `(r) => r.best.content`).
 - `learn({ flow, source, analyzer })` — offline reflection over recorded
   trajectories; returns the analyzer's proposals plus summary metadata.
 
-Not all 22 are peers. The primary vocabulary and the decision rules for
+Not all 22 are peers. The primary vocabulary, and the decision rules for
 choosing at each layer live in [leaf-arm-spine.md](./leaf-arm-spine.md);
 the advanced tier (`scope`/`stash`/`use`, plain `ensemble`, `tournament`,
 `improve`/`learn`) is covered in
@@ -170,12 +170,12 @@ with the primary primitive to try first.
 
 ## Two Ways to Write a Flow
 
-The primitives above are the declarative style: the program is a visible
+The primitives above are the declarative style, where the program is a visible
 tree, describable before it runs, with binding and stage names as span
-labels. The direct style is its mirror: a plain `step` body using ordinary
+labels. The direct style is its mirror, a plain `step` body using ordinary
 `const` / `if` / `for`, with `ctx.call(step, input)` as the one bridge for
 invoking another Step (spans, abort, and error paths stay intact). Choose
-per flow: `chain` when you want the topology visible as data; a plain body
+per flow. Use `chain` when you want the topology visible as data, and a plain body
 when the control flow is genuinely dynamic. The two compose freely in both
 directions, and the trajectory invariant is identical under each because it
 is enforced below both, at the model boundary. The same agent is written
@@ -192,10 +192,10 @@ choosing between `sequence` and `chain` and between `model_step` and
 
 ## The Helper Tier: Wrapping Primitives Is the Extension Model
 
-`model_step(cfg)` is the shipped example: `model_call` projected to its
+`model_step(cfg)` is the shipped example, being `model_call` projected to its
 content (a `string`, or the schema-validated value when `cfg.schema` is
 set), one preset `project` in [src/model_call.ts](../src/model_call.ts).
-When a pattern in your flows repeats, wrap it the same way: a function from
+When a pattern in your own flows repeats, wrap it the same way, as a function from
 config to `Step<i, o>`, composed from the primitives (a `pipe` over an
 existing step is the usual shape), with no runner internals involved. The change-triage example's assessor stage
 ([examples/change-triage/src/stages/assessor.ts](../examples/change-triage/src/stages/assessor.ts))
@@ -217,14 +217,14 @@ const result = await run(flow, 1);
 // result === 4
 ```
 
-Opt out of process-level signal handling when embedding into a host that
+Opt out of process-level signal handling when you're embedding into a host that
 owns its own signal stack:
 
 ```typescript
 await run(flow, 1, { install_signal_handlers: false });
 ```
 
-Inject adapters on a per-run basis:
+You inject adapters per run:
 
 ```typescript
 import { filesystem_logger, filesystem_store } from 'fascicle/adapters';
@@ -238,23 +238,23 @@ await run(flow, input, {
 ## Streaming
 
 `run.stream(flow, input)` returns `{ events, result }`. Steps call
-`ctx.emit(event)` to surface progress; consumers iterate the event stream
+`ctx.emit(event)` to surface progress, and you iterate the event stream
 and await the final result. The underlying graph is identical to
-`run(flow, input)`: streaming is purely observational.
+`run(flow, input)`, because streaming is purely observational.
 
 ## Checkpoint Key Namespacing (F2)
 
-`checkpoint` keys share a single namespace across every flow that reuses
+Your `checkpoint` keys share a single namespace across every flow that reuses
 the same `checkpoint_store`. Two unrelated flows that both write
 `{ key: 'build' }` will collide — the second one reads the first's value.
-This is intentional (keys are data; namespacing is the caller's call), but
+That's on purpose, because keys are data and namespacing is your call, but
 it means you should prefix keys with a flow name or a content hash:
 
 ```typescript
 checkpoint(adversarial(...), { key: (i) => `build:${flow_name}:${i.spec_hash}` });
 ```
 
-Use a content hash when the goal is "if the input is the same, reuse the
+Use a content hash when what you want is "if the input is the same, reuse the
 result." Use a scoped prefix when two flows share a store but should never
 collide.
 
@@ -267,19 +267,19 @@ wrapped by `checkpoint`:
 Error: checkpoint requires a named step; got anonymous
 ```
 
-The fix is to give the inner step an id.
+Give the inner step an id and it goes away.
 
 ## No Circular Compositions (F7)
 
 Composers build trees, not graphs. A composer that references itself (or a
 flow variable that appears inside its own definition) causes infinite
-recursion during `describe` or execution. The framework does not guard
+recursion during `describe` or execution. The framework doesn't guard
 against this; keep compositions acyclic.
 
 ## YAML Representation
 
 A YAML shape of the composition tree exists for documentation and for
-LLM-writable specs. It is **not parsed at runtime**; a loader stays out of
+LLM-writable specs. It's **not parsed at runtime**, and a loader stays out of
 the surface until downstream demand appears. The shape is validated by a
 JSON Schema, exported as `flow_schema`:
 
@@ -292,31 +292,31 @@ import { flow_schema } from 'fascicle';
 ## Examples
 
 Runnable references live at the repo root in [`examples/`](../examples/),
-in two kinds: single-file examples (each one
-`pnpm exec tsx examples/<name>.ts` away) and seven full example apps in
+in two kinds. Single-file examples (each one
+`pnpm exec tsx examples/<name>.ts` away) sit beside seven full example apps in
 subdirectories. All of them import the published `fascicle` surface, so
 everything there is copy-pasteable into an npm consumer. Highlights among
 the single files:
 
-- [`hello.ts`](../examples/hello.ts): the smallest viable harness
-- [`newsroom.ts`](../examples/newsroom.ts): the vocabulary tour, every
+- [`hello.ts`](../examples/hello.ts), the smallest viable harness
+- [`newsroom.ts`](../examples/newsroom.ts), the vocabulary tour, every
   primary primitive once, each in its suggested role
 - [`release_notes.ts`](../examples/release_notes.ts) /
-  [`release_notes_direct.ts`](../examples/release_notes_direct.ts): the same
+  [`release_notes_direct.ts`](../examples/release_notes_direct.ts), the same
   agent in the chain and direct styles
-- [`adversarial_build.ts`](../examples/adversarial_build.ts): build-and-critique
+- [`adversarial_build.ts`](../examples/adversarial_build.ts), build-and-critique
   with an ensemble of judges
-- [`ensemble_judge.ts`](../examples/ensemble_judge.ts): N-of-M pick best
+- [`ensemble_judge.ts`](../examples/ensemble_judge.ts), N-of-M pick best
 - [`improve.ts`](../examples/improve.ts) / [`learn.ts`](../examples/learn.ts):
   the self-improvement tier
-- [`bench_reviewer.ts`](../examples/bench_reviewer.ts): bench and regression
+- [`bench_reviewer.ts`](../examples/bench_reviewer.ts), bench and regression
   over a `define_agent` reviewer
-- [`streaming_chat.ts`](../examples/streaming_chat.ts): observe emitted tokens
+- [`streaming_chat.ts`](../examples/streaming_chat.ts), observe emitted tokens
 - [`checkpoint_resume.ts`](../examples/checkpoint_resume.ts) /
-  [`suspend_resume.ts`](../examples/suspend_resume.ts): durability, pause,
+  [`suspend_resume.ts`](../examples/suspend_resume.ts), durability, pause,
   and resume
-- [`hitl_http.ts`](../examples/hitl_http.ts): suspend/confirm/resume over HTTP
-- [`ollama_chat.ts`](../examples/ollama_chat.ts): drive a local Ollama model
+- [`hitl_http.ts`](../examples/hitl_http.ts), suspend/confirm/resume over HTTP
+- [`ollama_chat.ts`](../examples/ollama_chat.ts), drive a local Ollama model
   through a composed sequence
 
 The seven apps are separate workspace members consuming the published

@@ -1,6 +1,6 @@
 # Cookbook
 
-Short, worked patterns you can copy into a harness. Each pattern assumes the context in [getting-started.md](./getting-started.md) and [concepts.md](./concepts.md).
+Short, worked patterns you can copy straight into your harness. Each one assumes you've read [getting-started.md](./getting-started.md) and [concepts.md](./concepts.md).
 
 - [Retries on flaky work](#retries-on-flaky-work)
 - [Timeout then fall back](#timeout-then-fall-back)
@@ -39,7 +39,7 @@ const fetch_manifest = retry(
 
 ## Timeout Then Fall Back
 
-Compose `timeout(...)` with `fallback(...)` when the primary must respond within a deadline or the flow must degrade gracefully.
+Compose `timeout(...)` with `fallback(...)` when your primary has to answer inside a deadline or your flow has to degrade gracefully.
 
 ```ts
 import { fallback, timeout, step } from 'fascicle';
@@ -50,7 +50,7 @@ const backup  = step('model-2', async (q: string) => ask_model_b(q));
 const ask = fallback(timeout(primary, 10_000), backup);
 ```
 
-If `primary` blows past 10s it throws `timeout_error`, `fallback` catches, and `backup` runs.
+If `primary` blows past 10s it throws `timeout_error`, `fallback` catches it, and `backup` runs.
 
 ## Fan-Out with `map` and Concurrency Cap
 
@@ -70,7 +70,7 @@ const summarise_all = map({
 
 ## Pick the Best of N with a Model Judge
 
-Run N drafters concurrently, score each result with a model judge, keep the winner. `ensemble_step` is the primary pick-best: its scorer is itself a `Step`, so the judge gets its own span in the trajectory and returns a structured score. `project` unwraps the winner at the source, so the composite's output is the draft itself, not the pick-best envelope.
+Run N drafters concurrently, score each result with a model judge, and keep the winner. `ensemble_step` is the primary pick-best, because its scorer is itself a `Step`, so the judge gets its own span in the trajectory and returns a structured score. `project` unwraps the winner at the source, so the composite's output is the draft itself, not the pick-best envelope.
 
 ```ts
 import { ensemble_step, model_step } from 'fascicle';
@@ -97,11 +97,11 @@ const best_draft = ensemble_step({
 });
 ```
 
-`run(best_draft, brief)` returns the winning draft; omit `project` to get the full `{ winner_id, winner, winner_scored, scored }` envelope. [`examples/ensemble_judge.ts`](../examples/ensemble_judge.ts) is the runnable version. When quality is computable by a plain function (length, pass rate, a heuristic) rather than a model, plain `ensemble` does the same with less machinery — see [advanced-composition.md](./advanced-composition.md#ensemble-and-tournament-the-other-pick-bests).
+`run(best_draft, brief)` hands you the winning draft, and if you omit `project` you get the full `{ winner_id, winner, winner_scored, scored }` envelope. [`examples/ensemble_judge.ts`](../examples/ensemble_judge.ts) is the runnable version. When quality is computable by a plain function (length, pass rate, a heuristic) rather than a model, plain `ensemble` does the same with less machinery — see [advanced-composition.md](./advanced-composition.md#ensemble-and-tournament-the-other-pick-bests).
 
 ## Build-and-Critique with `adversarial`
 
-Build a candidate, have a judge critique, loop until the judge accepts or `max_rounds` runs out. See [`examples/adversarial_build.ts`](../examples/adversarial_build.ts).
+Build a candidate, have a judge critique it, and loop until the judge accepts or `max_rounds` runs out. See [`examples/adversarial_build.ts`](../examples/adversarial_build.ts).
 
 ```ts
 import { adversarial, model_step, sequence, step } from 'fascicle';
@@ -136,7 +136,7 @@ The build step's input carries `{ input, prior, critique }`, where `critique` is
 
 ## Consensus of N Runs
 
-Run the same (or different) steps concurrently; accept once an `agree` predicate
+Run the same steps concurrently, or different ones, and accept once an `agree` predicate
 over the per-member results holds (here, a strict majority):
 
 <!-- snippet: check -->
@@ -172,7 +172,7 @@ const flow = consensus({
 });
 ```
 
-The step's output is the `{ result, converged }` envelope; when downstream steps should see a domain value instead of the wrapper, add `project` to map it at the source (`project: (r) => r.converged`, or pick the agreed verdict out of `r.result`).
+The step's output is the `{ result, converged }` envelope, and when you want downstream steps to see a domain value instead of the wrapper, add `project` to map it at the source (`project: (r) => r.converged`, or pick the agreed verdict out of `r.result`).
 
 ## Tournament of Candidates (Advanced)
 
@@ -215,14 +215,14 @@ const bracket = tournament({
 });
 ```
 
-Each member is a `Step` producing a candidate; the tournament feeds them the
+Each member is a `Step` producing a candidate, and the tournament feeds them the
 shared input, then runs the pairwise `compare`s until one result remains.
-`project` unwraps the winner at the source; omit it to get the
+`project` unwraps the winner at the source, and if you omit it you get the
 `{ winner, bracket }` envelope with every match recorded.
 
 ## Checkpointing an Expensive Step
 
-`checkpoint` memoizes by key. The store is injected via `RunOptions`.
+`checkpoint` memoizes by key, and you inject the store through `RunOptions`.
 
 ```ts
 import { checkpoint, step } from 'fascicle';
@@ -238,7 +238,7 @@ await run(build_index, spec, {
 });
 ```
 
-Always prefix your key with a flow name or content hash — the store is shared across every flow that uses it.
+Always prefix your key with a flow name or a content hash, because the store is shared across every flow that uses it.
 
 ## Human-in-the-Loop Approval
 
@@ -267,7 +267,7 @@ if (outcome.kind === 'suspended') {
 }
 ```
 
-The resume closure re-runs the flow from the original input with the decision merged into `resume_data`; a closure cannot outlive the process, so a durable harness persists the input and rebuilds the outcome after a restart.
+The resume closure re-runs your flow from the original input with the decision merged into `resume_data`. A closure can't outlive the process, so a durable harness persists the input and rebuilds the outcome after a restart.
 
 See [`examples/suspend_resume.ts`](../examples/suspend_resume.ts) for the
 mechanical version, [`examples/hitl_http.ts`](../examples/hitl_http.ts) for an
@@ -307,9 +307,9 @@ const ask = model_step({
 const out = await run(ask, 'What is the temperature in Vancouver right now?');
 ```
 
-`ctx` inside `execute` is a `ToolExecContext` — it carries `abort`, `trajectory`, `tool_call_id`, and `step_index`. Pass `ctx.abort` to `fetch` so the tool respects run cancellation. `out` is the model's final answer; when the harness wants the `ToolCallRecord`s, per-step usage, or finish reason, swap in `model_call` and read the envelope.
+`ctx` inside `execute` is a `ToolExecContext`, carrying `abort`, `trajectory`, `tool_call_id`, and `step_index`. Pass `ctx.abort` to `fetch` so the tool respects run cancellation. `out` is the model's final answer; when the harness wants the `ToolCallRecord`s, per-step usage, or finish reason, swap in `model_call` and read the envelope.
 
-Tools can require approval:
+Your tools can require approval:
 
 ```ts
 tools: [{
@@ -324,7 +324,7 @@ on_tool_approval: async (req) => {
 
 A denied approval throws `tool_approval_denied_error`.
 
-Tools can also end the loop. By default the loop runs until the model emits a turn with no tool call or `max_steps` is hit; a weak local model often does better with an explicit `finish` tool it can call to signal it is done. Flag that tool `ends_turn: true` and a successful call ends the loop immediately, with no extra model turn:
+Your tools can also end the loop. By default it runs until the model emits a turn with no tool call, or until `max_steps` is hit, and a weak local model often does better with an explicit `finish` tool it can call to signal it's done. Flag that tool `ends_turn: true` and a successful call ends the loop immediately, with no extra model turn:
 
 ```ts
 const finish = {
@@ -340,7 +340,7 @@ The call runs its `execute` first (so the summary lands in the `ToolCallRecord` 
 
 ## Structured Output with Zod
 
-Pass a schema; the engine validates, repairs (up to `schema_repair_attempts`, default 1), or throws.
+Pass a schema and the engine validates it, repairs it (up to `schema_repair_attempts`, default 1), or throws.
 
 ```ts
 import { model_step, run } from 'fascicle';
@@ -364,11 +364,11 @@ const out = await run(plan, 'migrate the payments service to pg17');
 // out is typed as z.infer<typeof plan_schema>
 ```
 
-`schema_validation_error` carries `.schema_issues` and `.raw_text` so your harness can surface both to a human. A call that never got far enough to validate (blocked by a content filter, truncated by the token limit, ended by the step cap) throws `incomplete_generation_error` instead, carrying `.finish_reason`, `.raw_text`, and `.provider_reported`.
+`schema_validation_error` carries `.schema_issues` and `.raw_text`, so your harness can put both in front of a human. A call that never got far enough to validate (blocked by a content filter, truncated by the token limit, ended by the step cap) throws `incomplete_generation_error` instead, carrying `.finish_reason`, `.raw_text`, and `.provider_reported`.
 
 ## Streaming Tokens to a Consumer
 
-Plain `run` drops streaming events. `run.stream` delivers them:
+Plain `run` drops streaming events, and `run.stream` hands them to you:
 
 ```ts
 import { model_step, run } from 'fascicle';
@@ -388,7 +388,7 @@ const final = await handle.result;
 process.stdout.write('\n');
 ```
 
-`model_chunk` events wrap `StreamChunk` values from the engine. Other interesting chunk kinds: `reasoning`, `tool_call_start`, `tool_call_end`, `tool_result`, `step_finish`, `finish`.
+`model_chunk` events wrap `StreamChunk` values from the engine. Other chunk kinds worth watching are `reasoning`, `tool_call_start`, `tool_call_end`, `tool_result`, `step_finish`, `finish`.
 
 ## Observing a Run with a Filesystem Logger
 
@@ -400,9 +400,9 @@ await run(flow, input, {
 });
 ```
 
-One JSON object per line. Use `jq` or anything else to inspect. Note `filesystem_logger` writes synchronously on every event: fine for dev tools and short runs, not for a hot request path (see [concepts.md](./concepts.md#adapter-limits)).
+One JSON object per line, so read it with `jq` or whatever else you like. Note `filesystem_logger` writes synchronously on every event, which is fine for dev tools and short runs, not for a hot request path (see [concepts.md](./concepts.md#adapter-limits)).
 
-For custom sinks, write an object that satisfies `TrajectoryLogger`:
+For your own sink, write an object that satisfies `TrajectoryLogger`:
 
 ```ts
 import type { TrajectoryLogger } from 'fascicle';
@@ -422,7 +422,7 @@ const console_logger: TrajectoryLogger = {
 
 ## Threading State with `chain`
 
-When a downstream step needs a value that is not its immediate predecessor's output, `chain` carries it as a named binding in a growing typed record:
+When one of your downstream steps needs a value that isn't its immediate predecessor's output, `chain` carries it as a named binding in a growing typed record:
 
 ```ts
 import { chain } from 'fascicle';
@@ -434,11 +434,11 @@ const flow = chain<string, 'email'>('email')
   .output(({ published }) => published);
 ```
 
-Each `.step` merges its result under its name; later bindings destructure whatever earlier names they need, checked at compile time. `.stage(name, project?)` concludes a phase (with `project`, it narrows the record so earlier bindings go out of scope). The raw string-keyed tier underneath (`scope` / `stash` / `use`) remains for shapes bindings cannot express — see [advanced-composition.md](./advanced-composition.md#scope-stash-use-named-state-without-types).
+Each `.step` merges its result under its name, and later bindings destructure whatever earlier names they need, checked at compile time. `.stage(name, project?)` concludes a phase (with `project`, it narrows the record so earlier bindings go out of scope). The raw string-keyed tier underneath (`scope` / `stash` / `use`) remains for shapes bindings can't express — see [advanced-composition.md](./advanced-composition.md#scope-stash-use-named-state-without-types).
 
 ## Multi-Provider Fallback
 
-Prefer Anthropic; fall back to OpenAI if it fails. With more than one provider configured, every call must name its `provider`: there is no implicit default, and a call that names none throws `provider_required_error`.
+Prefer Anthropic, and fall back to OpenAI if it fails. With more than one provider configured, every call must name its `provider`, since there's no implicit default, and a call that names none throws `provider_required_error`.
 
 ```ts
 import { fallback, model_step } from 'fascicle';
@@ -449,14 +449,14 @@ const backup   = model_step({ engine, provider: 'openai',    model: 'gpt-4o',   
 const ask = fallback(primary, backup);
 ```
 
-Pair with `retry` if you want retries on the primary before falling back:
+Pair it with `retry` if you want the primary retried before you fall back:
 
 ```ts
 const ask = fallback(retry(primary, { max_attempts: 2, backoff_ms: 500 }), backup);
 ```
 
 The `handoff` option builds the backup's input from the original input and the
-error, so the backup knows why it is running instead of retrying blind:
+error, so the backup knows why it's running instead of retrying blind:
 
 ```ts
 const ask = fallback(primary, backup, {
@@ -470,18 +470,18 @@ backup, and `handoff` is never called for them.
 
 ## Escalation Tiering with a Judge
 
-`fallback` escalates on a *throw*. This pattern escalates on *mediocrity*: run
+`fallback` escalates on a *throw*. This pattern escalates on *mediocrity*. It runs
 a cheap model first, have a judge read the answer it actually produced, and
 only pay for the strong model when the judge says the cheap one is in trouble.
 Gateway-level routers (NVIDIA's Switchyard, for one) apply the same idea at
-the wire; in a fascicle app you own the call site, so it is plain composition
+the wire; in a fascicle app you own the call site, so it's plain composition
 with the verdict visible in the trajectory.
 
-Three mechanics carry the pattern:
+Three mechanics carry the pattern for you:
 
 1. **Judge completed work, not predicted difficulty.** The judge rates the
    weak draft, not the request.
-2. **Buffer the weak answer.** A verdict that does not escalate costs one weak
+2. **Buffer the weak answer.** A verdict that doesn't escalate costs one weak
    call plus one judge call; the draft is served as-is.
 3. **Fail open.** A judge that errors must serve the buffered draft, never
    escalate. This is `fallback` around the judge.
@@ -544,7 +544,7 @@ exactly which requests paid for the strong tier and why.
 
 ### Latching over Many Turns
 
-For a long run over many work items, one escalate verdict is weak evidence:
+Over a long run of many work items, one escalate verdict is weak evidence:
 require consecutive confirmations, then latch. Hold the streak in a `loop`'s
 carry-state:
 
@@ -583,12 +583,12 @@ streak rules that make it stable:
 
 ### Calibrating When the Weak Tier Is Enough
 
-Whether the judge should escalate eagerly or reluctantly is an empirical
+Whether your judge should escalate eagerly or reluctantly is an empirical
 question, and trajectory logs make it measurable. The minimum-data path:
 
 1. **Run the task set on the strong tier alone** (~40–75 representative
    tasks). This is the quality baseline, and its trajectories record cost.
-2. **Probe the weak tier** on ~20 of those tasks, stratified: easy and clean,
+2. **Probe the weak tier** on ~20 of those tasks, stratified into easy and clean,
    easy but subtle, hard and structural, hard but localized. Don't
    over-represent one project or task shape.
 3. **Quadrant the overlap.** RESCUE = strong-fail ∩ weak-pass (tiering wins
@@ -604,7 +604,7 @@ drifting as prompts and models change.
 
 ## Using the `claude_cli` Provider for One Task and `anthropic` for Another
 
-One engine, both providers:
+One engine, both providers, and you pick per call:
 
 ```ts
 import { create_engine, model_step, sequence } from 'fascicle';

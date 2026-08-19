@@ -1,6 +1,6 @@
 # Writing a Harness
 
-A **harness** is the runnable program that wraps fascicle for a specific use case. fascicle itself is a library — not an app, not a framework, not a CLI. Your harness is where you decide:
+A **harness** is the runnable program you write to wrap fascicle for one specific use case. fascicle itself is a library, and not an app, not a framework, not a CLI. Your harness is where you decide:
 
 - what the flow looks like
 - how input gets in (CLI args, HTTP, queue, IDE extension, cron)
@@ -74,7 +74,7 @@ try {
 Key rules:
 
 - Construct the engine **once** per process (or once per request for server harnesses), then dispose when done.
-- `model_step` returns the content alone: a `string`, or the schema-validated value when `schema` is set. When the harness needs what surrounds the answer (`usage`, `cost`, `tool_calls`, `finish_reason`), swap in `model_call`, the envelope variant with the same config, and read the `GenerateResult<T>` downstream. Underneath, `model_call` is the single sanctioned bridge between the composition and engine layers.
+- `model_step` returns the content alone, so a `string`, or the schema-validated value when `schema` is set. When the harness needs what surrounds the answer (`usage`, `cost`, `tool_calls`, `finish_reason`), swap in `model_call`, the envelope variant with the same config, and read the `GenerateResult<T>` downstream. Underneath, `model_call` is the single sanctioned bridge between the composition and engine layers.
 - The engine is injected into the step at construction time; the step itself stays a plain `Step`.
 
 ## Wire in Adapters
@@ -112,7 +112,7 @@ const final = await handle.result;
 await pump;
 ```
 
-`run.stream` is observational: the underlying step graph is identical to `run(...)`. Turning streaming on flips `ctx.streaming` inside the run so `model_call` starts forwarding provider chunks into `ctx.emit`.
+`run.stream` is observational, and the underlying step graph is identical to `run(...)`. Turning streaming on flips `ctx.streaming` inside the run so `model_call` starts forwarding provider chunks into `ctx.emit`.
 
 ## Pause and Resume
 
@@ -149,7 +149,7 @@ A harness that runs indefinitely (server, long CLI) must handle cancellation cle
 - Passing `ctx.abort` to `fetch`, `child_process`, or any other abortable API.
 - Registering teardown with `ctx.on_cleanup(() => ...)`. Cleanup runs in LIFO order on success, failure, and abort.
 
-For embedded runtimes (tests, Lambda, worker threads), pass `install_signal_handlers: false` so fascicle does not fight the host process for the signal.
+For embedded runtimes (tests, Lambda, worker threads), pass `install_signal_handlers: false` so fascicle doesn't fight the host process for the signal.
 
 ## Error Handling
 
@@ -158,7 +158,7 @@ All failures inside a run bubble out of `run(...)` as normal promise rejections.
 - `aborted_error` — the run was cancelled (SIGINT, timeout, parent abort).
 - `timeout_error` — a `timeout(...)` step tripped.
 - `suspended_error` — a `suspend(...)` step paused the flow under plain `run(...)`; drive suspend-bearing flows with `run.until_suspended` to get a typed outcome instead.
-- `resume_validation_error` — `resume_data` did not match the suspend's `resume_schema`.
+- `resume_validation_error` — `resume_data` didn't match the suspend's `resume_schema`.
 - `provider_error`, `rate_limit_error`, `tool_error`, `schema_validation_error`, `incomplete_generation_error`, `engine_config_error` — originate in the engine layer.
 
 The error path carries a `.path` array with the step ids that led to the failure, so surfacing it to stdout or a log line is usually enough.
@@ -174,7 +174,7 @@ pnpm exec tsx examples/hello.ts
 pnpm exec tsx examples/hello.ts "your custom input here"
 ```
 
-> **Layout note.** This repo is a single installable package (`fascicle`). All source lives under `src/` as deep modules (`core`, `engine`, `composites`, `agents`, `adapters`, `mcp`, `stdio`, `ui`, `otel`, `policy`, `schema`, `testing`, `viewer`), each with a barrel `index.ts` reached only through its `#<module>` import alias. The aliases enforce architectural boundaries (for example, core cannot import from adapters, engine cannot reach into providers). The umbrella surface at the `src/` root is what bundles to npm — the published surface is the only public face.
+> **Layout note.** This repo is a single installable package (`fascicle`). All source lives under `src/` as deep modules (`core`, `engine`, `composites`, `agents`, `adapters`, `mcp`, `stdio`, `ui`, `otel`, `policy`, `schema`, `testing`, `viewer`), each with a barrel `index.ts` reached only through its `#<module>` import alias. The aliases enforce architectural boundaries (for example, core can't import from adapters, engine can't reach into providers). The umbrella surface at the `src/` root is what bundles to npm — the published surface is the only public face.
 
 ## Checklist
 

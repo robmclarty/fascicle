@@ -1,12 +1,12 @@
 # API Reference
 
-A one-page map of the public surface. This is a precursor to a generated
-reference; for full option shapes and behavior, follow the links into
+A one-page map of the public surface. It's a precursor to a generated
+reference, so for full option shapes and behavior follow the links into
 [configuration.md](./configuration.md), [providers.md](./providers.md),
 [leaf-arm-spine.md](./leaf-arm-spine.md), and
 [cookbook.md](./cookbook.md).
 
-Everything is exported from the umbrella entry point and its subpaths:
+You import everything from the umbrella entry point and its subpaths:
 
 ```ts
 import { /* composition + engine */ } from 'fascicle';
@@ -19,8 +19,8 @@ import { /* stub + capture engines */ } from 'fascicle/testing';
 import { /* useChat stream adapters */ } from 'fascicle/ui';
 ```
 
-fascicle is ESM-only and requires Node >= 24. It has no default exports and no
-classes other than `Error` subclasses.
+fascicle is ESM-only and needs Node >= 24. It gives you no default exports and
+no classes other than `Error` subclasses.
 
 `fascicle` itself has no mandatory peers. Three subpaths need one to do their
 work. `fascicle/mcp` needs `@modelcontextprotocol/sdk`, which it loads
@@ -37,7 +37,7 @@ so a missing `ai` fails at module resolution rather than with a fascicle error.
 | `run.stream(flow, input, options?)` | `{ events, result }` | Same graph as `run`; `events` is an async iterable of `TrajectoryEvent`, `result` resolves to the output. |
 | `run.until_suspended(flow, input, options?)` | `Promise<RunOutcome<output>>` | Same graph as `run`, but a `suspend` gate resolves `{ kind: 'suspended', id, payload, resume }` instead of throwing; `payload` is the value the gate surfaced, and `resume(data)` re-runs with the decision and resolves to the next outcome. Completion is `{ kind: 'done', output }`; real errors still throw. |
 | `describe(step, options?)` | `string` | Static text-tree description of a step tree. No execution, no model calls. `describe.json(step)` returns the structured `FlowNode` tree instead. |
-| `ctx.call(step, input)` | `Promise<output>` | On `RunContext`, inside any step body: run another Step with spans, abort, and error paths intact. The direct-style counterpart to composing. |
+| `ctx.call(step, input)` | `Promise<output>` | On `RunContext`, inside any step body, runs another Step with spans, abort, and error paths intact. The direct-style counterpart to composing. |
 
 ```ts
 import { run, sequence, step } from 'fascicle';
@@ -48,8 +48,8 @@ await run(flow, 1); // 4
 
 ## Composition Primitives
 
-Every composer takes `Step<i, o>` values and returns a `Step<i, o>`. Anything that
-fits a step fits any composition of steps.
+Every composer takes `Step<i, o>` values and returns a `Step<i, o>`, so anything
+that fits a step fits any composition of steps you build.
 
 ### Lift and Sequence
 
@@ -60,8 +60,8 @@ fits a step fits any composition of steps.
 | `pipe(inner, fn)` | post-process an inner step's output |
 | `compose(label, inner)` | label a composite so it shows up by intent in trajectories |
 
-A straight pipe belongs in `sequence`; reach for `chain` when a step needs
-fan-in, phases, or named per-joint types.
+A straight pipe belongs in `sequence`, and you reach for `chain` when a step
+needs fan-in, phases, or named per-joint types.
 
 ### Control Flow
 
@@ -100,12 +100,12 @@ Each of these returns a result envelope (`{ candidate, converged, rounds }`, `{ 
 | --- | --- |
 | `bench(flow, cases, judges, options?)` | run a flow once per fixture case, score every output with every judge, return a `BenchReport` |
 | `judge_equals()` | score 1/0 against `meta.expected`; abstains when no expected value is present |
-| `judge_llm({ model, rubric, scale? })` | prompt a model with a rubric and parse the numeric score from the reply; abstains when the reply does not parse |
+| `judge_llm({ model, rubric, scale? })` | prompt a model with a rubric and parse the numeric score from the reply; abstains when the reply doesn't parse |
 | `judge_with(fn)` | wrap your own scoring function; bare numbers normalize to `{ score }` |
 | `normalize_score(raw)` | coerce a raw judge return into a `Score`, or `undefined` for an abstain |
 | `read_baseline(path)` / `write_baseline(path, report)` / `regression_compare(current, baseline, options?)` | persist a report as plain JSON, load one back, and diff a fresh report against it; `ok: false` flags a regression |
 
-The full loop is walked in
+You can walk the full loop in
 [regression-testing-model-behavior.md](./regression-testing-model-behavior.md).
 
 ### State and Durability
@@ -142,7 +142,7 @@ const engine = create_engine(config); // EngineConfig -> Engine
 
 ### `generate` Options (Highlights)
 
-`model` and `provider` are the only routing inputs: `model` is an opaque id sent
+`model` and `provider` are the only routing inputs, where `model` is an opaque id sent
 verbatim, `provider` names the transport. `provider` resolves per call, then from
 `defaults.provider`, then to the sole configured provider; an engine with several
 providers and no default throws `provider_required_error` when a call names none.
@@ -188,9 +188,9 @@ const ask = model_step({ engine, model: 'claude-sonnet-4-6', system: 'Be terse.'
 ```
 
 `model_step(config)` takes the same config as `model_call` (minus `project`)
-and returns a `Step` whose output is the content alone: a `string`, or the
+and returns a `Step` whose output is the content alone, so a `string`, or the
 schema-validated value when `config.schema` is set. Use it when the flow only
-wants the answer; use `model_call` when the caller needs the `GenerateResult`
+wants the answer, and use `model_call` when you need the `GenerateResult`
 envelope (usage, cost, tool calls, finish reason), or its `project` option
 for a slice of it. Implemented as `model_call` with `project` preset to
 `(r) => r.content`, so the leaf is a single node in `describe` and the
@@ -227,7 +227,7 @@ lazily on first use. Full notes in [providers.md](./providers.md).
 | `lmstudio` | `@ai-sdk/openai-compatible` | local `base_url` |
 | `claude_cli` | none (spawns `claude`) | OAuth session or API key |
 
-Helper: `forward_standard_env()` returns a minimal env (`PATH`, `HOME`, `SHELL`,
+As a helper, `forward_standard_env()` returns a minimal env (`PATH`, `HOME`, `SHELL`,
 `USER`, `LOGNAME`, `LANG`, `TMPDIR`) for sandboxed `claude_cli` runs. See
 [cli.md](./cli.md).
 
@@ -249,9 +249,9 @@ roll your own to target any sink.
 ### Reading a Trajectory Back
 
 Exported from `fascicle` for anything consuming a recorded JSONL stream (the
-viewer, `learn`, your own studio). The gate is permissive on purpose: any
-non-array object with a string `kind` is an event, so a consumer never drops a
-line a newer producer emits. The guards are how you narrow one.
+viewer, `learn`, your own studio). The gate is permissive on purpose. Any
+non-array object with a string `kind` is an event, so you don't drop a line a
+newer producer emits. The guards are how you narrow one.
 
 | Export | Kind | Notes |
 | --- | --- | --- |
@@ -259,9 +259,9 @@ line a newer producer emits. The guards are how you narrow one.
 | `is_span_start_event(value)` | guard | `span_start` with a string `span_id` and `name` |
 | `is_span_end_event(value)` | guard | `span_end` with a string `span_id` |
 | `is_emit_event(value)` | guard | a `ctx.emit` event; the payload is the caller's |
-| `is_run_end_event(value)` | guard | the terminal `run_end` event, emitted once per run: `status` is `'done' \| 'failed' \| 'aborted' \| 'suspended'`; failures carry `error` plus `error_name` / `error_kind` / `error_path` when known |
-| `is_checkpoint_event(value)` | guard | a `checkpoint` store lookup: `status` is `'hit' \| 'miss' \| 'read_error'`, with the step `id` and store `key` |
-| `is_custom_trajectory_event(value)` | guard | the fallback shape: any string `kind`, well-known ones included |
+| `is_run_end_event(value)` | guard | the terminal `run_end` event, emitted once per run, where `status` is `'done' \| 'failed' \| 'aborted' \| 'suspended'`; failures carry `error` plus `error_name` / `error_kind` / `error_path` when known |
+| `is_checkpoint_event(value)` | guard | a `checkpoint` store lookup, where `status` is `'hit' \| 'miss' \| 'read_error'`, with the step `id` and store `key` |
+| `is_custom_trajectory_event(value)` | guard | the fallback shape, meaning any string `kind`, well-known ones included |
 
 ## Testing Doubles (`fascicle/testing`)
 
@@ -300,7 +300,7 @@ single-shot child under a plain JSON-over-stdio parent, use `run_stdio` below.
 
 ## Stdio Agent Contract (`fascicle/stdio`)
 
-Run a flow as a single-shot child process: JSON on stdin, one JSON result on
+Run a flow as a single-shot child process, with JSON on stdin, one JSON result on
 stdout, trajectory on stderr, exit code as the verdict (0 = result on stdout is
 authoritative, 1 = flow failure, 2 = contract violation). See
 [embedding-under-a-harness.md](./embedding-under-a-harness.md).
@@ -381,7 +381,7 @@ the roadmap). The public type exports:
 `SpanEndEvent`, `EmitEvent`, `RunEndEvent`, `RunEndStatus`,
 `CheckpointEvent`, `CheckpointStatus`, `CustomTrajectoryEvent`,
 `ParsedTrajectoryEvent`, `TrajectoryParseResult`).
-The step-kind vocabulary also ships at runtime: `STEP_KINDS` is the closed
+The step-kind vocabulary also ships at runtime, where `STEP_KINDS` is the closed
 list and `is_step_kind` its narrowing guard. Every config a composer
 signature names is exported too: `SequenceOptions`, `ParallelOptions`,
 `BranchConfig`, `MapConfig`, `PipeOptions`, `RetryConfig`, `FallbackOptions`,

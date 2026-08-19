@@ -1,10 +1,10 @@
 # The `claude_cli` Provider
 
-A subprocess provider that spawns the `claude` binary and parses its streaming JSON output. Lets you use fascicle against an existing authenticated `claude` session (no API key required) or against an Anthropic API key while still getting the CLI's agentic features (sub-agents, `--allowedTools`, `--setting-sources`, plugin directories).
+A subprocess provider that spawns the `claude` binary and parses its streaming JSON output. It lets you run fascicle against a `claude` session you're already authenticated into (no API key required), or against an Anthropic API key while you still get the CLI's agentic features (sub-agents, `--allowedTools`, `--setting-sources`, plugin directories).
 
 ## Why It Exists
 
-Three good reasons:
+Three good reasons, and they're all about what you already have:
 
 1. **Piggyback on your CLI login.** Run `claude login` once; every fascicle harness uses that session.
 2. **Use CLI-only features.** Sub-agents via `--agents`, per-invocation tool allowlisting, setting source control, plugin dirs, schema-constrained output via `--json-schema`.
@@ -162,11 +162,11 @@ The prompt is written to stdin — either the first user message's text, or the 
 
 The CLI is a one-shot invocation. Multi-turn chat is represented by `session_id`, not by a `Message[]` history. Calling `generate({ prompt: [...] })` with two or more user messages throws `provider_capability_error('multi_turn_history', 'use provider_options.claude_cli.session_id instead')`.
 
-The idiomatic pattern: capture `result.provider_reported.claude_cli.session_id` on the first call, then pass it as `session_id` on follow-ups. `provider_reported` is keyed by provider name (see [Provider-reported detail](./providers.md#provider-reported-detail)), and this adapter reports `session_id` and `duration_ms` under `claude_cli`.
+The idiomatic pattern is to capture `result.provider_reported.claude_cli.session_id` on the first call, then pass it as `session_id` on follow-ups. `provider_reported` is keyed by provider name (see [Provider-reported detail](./providers.md#provider-reported-detail)), and this adapter reports `session_id` and `duration_ms` under `claude_cli`.
 
 ## Tool Bridging
 
-fascicle tools (`Tool<i, o>` with a zod `input_schema` and an `execute` closure) cannot run under the CLI subprocess — there is no RPC for invoking your in-process executor from inside the child's tool loop. Two modes handle this:
+fascicle tools (`Tool<i, o>` with a zod `input_schema` and an `execute` closure) can't run under the CLI subprocess — there's no RPC for invoking your in-process executor from inside the child's tool loop. Two modes handle this:
 
 | `tool_bridge`       | Behaviour                                                                                                       |
 | ------------------- | --------------------------------------------------------------------------------------------------------------- |
@@ -179,7 +179,7 @@ Use `allowlist_only` when you want the CLI to use its built-in tools and you dec
 
 Pass any Standard Schema (zod, ArkType, Valibot, ...) as `schema` to `generate({ schema })` and the adapter compiles it to JSON Schema, forwards `--json-schema`, and parses the final CLI text against the schema.
 
-If the CLI returns text that fails schema validation, the adapter makes one repair attempt: it resumes the same session (using the `session_id` captured from the first response) and sends a repair prompt. The second failure throws `schema_validation_error` with the schema issues and raw text.
+If the CLI returns text that fails schema validation, the adapter makes one repair attempt, resuming the same session (using the `session_id` captured from the first response) and sends a repair prompt. The second failure throws `schema_validation_error` with the schema issues and raw text.
 
 ## Streaming
 
@@ -223,7 +223,7 @@ A missing sandbox binary triggers `claude_cli_error` with `reason: 'sandbox_unav
 | ------------------------ | --------------------------------------------------------------------------- |
 | `engine_config_error`    | `api_key` missing under `auth_mode: 'api_key'`.                             |
 | `provider_auth_error`    | Stderr matched an auth-failure pattern; surface `refresh_command` to the user. |
-| `claude_cli_error`       | Subprocess failure. Check `.reason`: `binary_not_found`, `startup_timeout`, `stall_timeout`, `no_result_event`, `result_error`, `subprocess_exit`, `sandbox_unavailable`, `parse_error`, `auth_missing`, `auth_expired`, `api_key_missing`, `engine_disposed`. |
+| `claude_cli_error`       | Subprocess failure. Check `.reason` for `binary_not_found`, `startup_timeout`, `stall_timeout`, `no_result_event`, `result_error`, `subprocess_exit`, `sandbox_unavailable`, `parse_error`, `auth_missing`, `auth_expired`, `api_key_missing`, `engine_disposed`. |
 | `provider_capability_error` | Multi-turn `prompt: Message[]` with two or more user messages, or `tool_bridge: 'forbid'` with a tool that has an `execute` closure. |
 | `schema_validation_error` | Zod parse failed after one repair attempt.                                 |
 

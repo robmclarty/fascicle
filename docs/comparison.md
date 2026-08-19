@@ -18,7 +18,7 @@ ergonomics fit your taste is to try it — start with
    look them up by name, or are they just values you import? This maps directly to
    how hard testing and refactoring will be.
 3. **Framework vs. library.** Does it own your process lifecycle (init, start,
-   stop), or is it something you call? Frameworks are not the default good choice;
+   stop), or is it something you call? Frameworks aren't the default good choice;
    they amortize cost across many apps, libraries across calls within one.
 4. **Breadth vs. depth.** Does it try to cover every adjacent concern (retrievers,
    vector stores, memory, evals, hosted dashboards), or do one thing well? Breadth
@@ -48,7 +48,7 @@ the `fascicle/mcp` subpath bridges MCP both ways.
 
 ### LangChain + LangGraph
 
-The reference point: a batteries-included framework, with LangGraph adding a
+The reference point. A batteries-included framework, with LangGraph adding a
 state-graph layer for stateful agents with checkpoints and cycles. LCEL
 (`prompt | model | parser`) is genuinely similar in spirit to `sequence`, and
 LangGraph's checkpointer maps to fascicle's `CheckpointStore`.
@@ -74,14 +74,14 @@ step fits any composition" invariant doesn't hold.
 
 **Choose it when** you want RAG, memory, and a hosted eval/observability product
 batteries-included in one TypeScript framework. The eval overlap is narrower than
-it looks: fascicle ships scoring as composition (`bench` over fixtures, `Judge`
+it looks, because fascicle ships scoring as composition (`bench` over fixtures, `Judge`
 steps, and `regression_compare` against a committed baseline), so the batteries
 Mastra adds are the retrieval and memory abstractions and the dashboard, not the
 ability to score a run.
 
 ### Inngest AgentKit
 
-The nearest philosophical neighbor: small, TS-first, library-shaped, step-ish,
+The nearest philosophical neighbor. Small, TS-first, library-shaped, step-ish,
 with `Agent`, `Network`, and a router. Durability is baked in via Inngest's runtime
 (retries, queueing, scheduling, scaling), so you buy into Inngest as
 infrastructure. fascicle is in-process with no infrastructure requirement;
@@ -94,8 +94,8 @@ infrastructure rather than a per-step choice.
 ### OpenAI Agents SDK
 
 A small, opinionated agent framework (`Agent`, `Runner`, `Tool`, `Handoff`,
-`Guardrail`) with strong ideas about multi-agent handoffs and tool loops. It is
-agent-centric: the unit is an `Agent`, and `Runner.run(agent, input)` drives the
+`Guardrail`) with strong ideas about multi-agent handoffs and tool loops. It's
+agent-centric, so the unit is an `Agent` and `Runner.run(agent, input)` drives the
 loop. fascicle's unit is a `Step` that *might* contain an LLM call and tool loop,
 or be a plain function, or a composition of both.
 
@@ -105,36 +105,36 @@ simpler path until you want to wrap that agent in retry, fan it across an
 
 ### Strands Agents
 
-AWS's open-source agent SDK (Apache-2.0). Its core bet is *model-driven*: you give
+AWS's open-source agent SDK (Apache-2.0). Its core bet is *model-driven*. You give
 an `Agent` a model, a system prompt, and tools, and the model drives its own loop
 (planning, choosing tools, and adapting at run time) instead of you wiring the
 control flow. Python is the mature line; TypeScript shipped in preview in December
-2025 and reached GA (v1.0) in April 2026. It is broad and production-oriented: multi-agent orchestration (swarms,
+2025 and reached GA (v1.0) in April 2026. It's broad and production-oriented, with multi-agent orchestration (swarms,
 graphs, agents-as-tools), the agent-to-agent (A2A) protocol, MCP tools,
 sessions/persistence, structured output, and OpenTelemetry observability are built
 in. Model-agnostic across Bedrock, Anthropic, Ollama, LiteLLM, and more.
 
 It diverges from fascicle on exactly that core bet. Strands trusts the *model* to
 orchestrate; fascicle has *you* compose the control flow explicitly out of `Step`
-values, with a model call as one component among plain functions. It is also
+values, with a model call as one component among plain functions. It's also
 agent-centric (the unit is an `Agent`, not a substitutable `Step`), broader in
 scope, and Python-first (its TypeScript reached GA only in April 2026), where
-fascicle is TS-native from the start and narrow. The two are reconcilable: a model-driven Strands agent is the
+fascicle is TS-native from the start and narrow. You can reconcile the two, since a model-driven Strands agent is the
 kind of thing fascicle would treat as a single step inside an author-composed flow.
 
 **Choose it when** you want the model to drive the agent loop with minimal
 control-flow code, you need production multi-agent orchestration (swarms / graphs /
-A2A) batteries-included, or you are in the AWS / Bedrock ecosystem.
+A2A) batteries-included, or you're in the AWS / Bedrock ecosystem.
 
 ## Different Layer, Not Competition
 
 - **Vercel AI SDK** is the provider abstraction fascicle's engine sits *on* by
-  default (seven of eight providers out of the box): `generateText`/`streamText` are
+  default (seven of eight providers out of the box), and `generateText`/`streamText` are
   the single-turn driver below fascicle's loop, not
-  `sequence`/`parallel`/`checkpoint`. At *that* layer it is ancestry, not overlap.
-  The dependency is per-transport rather than structural: five providers can run
+  `sequence`/`parallel`/`checkpoint`. At *that* layer it's ancestry, not overlap.
+  The dependency is per-transport and not structural, so five providers can run
   `transport: 'native'` on raw HTTP with no `@ai-sdk/*` package in the path, and the
-  loop above them does not change. Note, though, that since v6/v7 the SDK also ships an agent
+  loop above them doesn't change. Note, though, that since v6/v7 the SDK also ships an agent
   layer of its own (`ToolLoopAgent`, `WorkflowAgent`, and `HarnessAgent`, the last
   of which wraps CLI harnesses like Claude Code), and *that* layer is a genuine
   competing implementation of what fascicle owns rather than a substrate for it.
@@ -154,15 +154,15 @@ A2A) batteries-included, or you are in the AWS / Bedrock ecosystem.
   call back to you, the same separation as fascicle's adapters passed in per
   run), and routing policy lives outside the model surface (the reason
   fascicle's engine resolves models verbatim instead of aliasing). It differs on
-  where routing belongs. Switchyard rewrites traffic for clients you cannot
-  modify: Claude Code or Codex speaking their native APIs to vLLM, NIM, or
+  where routing belongs. Switchyard rewrites traffic for clients you can't
+  modify, so Claude Code or Codex speaking their native APIs to vLLM, NIM, or
   Ollama. In a fascicle app you own the call site, so tier routing is better
   written as explicit composition (`branch`, `fallback`, a `Judge` step) where
   the decision and its cost are visible in the trajectory rather than buried in
-  a proxy. The two compose rather than compete: a Switchyard server is one more
+  a proxy. The two compose instead of competing, since a Switchyard server is one more
   OpenAI-compatible gateway reachable through
   [the compat recipe](./providers.md#openai-compatible-servers-the-compat-recipe).
-  As of mid-2026 it is pre-alpha and explicitly not for production use.
+  As of mid-2026 it's pre-alpha and explicitly not for production use.
 - **BAML** is a schema/prompt DSL for describing one call at a time; BAML functions
   wrap trivially as fascicle steps (`step('extract', boundary.Extract)`).
 - **LlamaIndex / DSPy / CrewAI / AutoGen / Pydantic AI / Genkit** solve adjacent or
@@ -170,7 +170,7 @@ A2A) batteries-included, or you are in the AWS / Bedrock ecosystem.
   Python-first, ecosystem-coupled). Adjacent, not the same bet. (LlamaIndex.TS was
   archived in April 2026; the Python line continues.)
 - **Langfuse, LangSmith, Phoenix, Helicone, Braintrust** are tracing/eval products
-  — consumers of the event stream a composition library emits. fascicle's
+  — they consume the event stream a composition library emits. fascicle's
   `TrajectoryLogger` is designed so any of them can be implemented as an adapter.
 
 ## What Fascicle Optimizes For
@@ -182,20 +182,20 @@ None of these is unprecedented alone; the concentration is the point.
    holds.
 2. **Adapters per run, not per process.** `run(flow, input, { trajectory,
    checkpoint_store, abort })`. No global config, no `configure()`, no singleton —
-   two concurrent runs in one process don't interfere. The library never reads
-   `process.env`.
+   two concurrent runs in one process don't interfere. The library leaves
+   `process.env` alone.
 3. **Streaming as observation, not a second vocabulary.** `run` and `run.stream`
-   execute the same graph; steps don't know which runner drives them.
+   execute the same graph, and steps don't know which runner drives them.
 4. **Every transport is first-class under one loop.** An AI SDK model, a raw-HTTP
-   native turn, and a subprocess agent are three depths behind the same seam: the
+   native turn, and a subprocess agent are three depths behind the same seam, and the
    `claude_cli` adapter drives the Claude CLI with full process-group lifecycle,
    `transport: 'native'` talks to five providers' own wire formats with no SDK in
-   the path, and `custom_providers` accepts an adapter fascicle has never heard of.
+   the path, and `custom_providers` accepts an adapter fascicle knows nothing about.
    The tool loop, salvage, approval, retry, cost, and trajectory above them are
    identical.
 5. **A small, hand-picked surface.** 22 composition primitives and one `generate`
    function, shipped as a single npm package — no "pick four packages and align
-   their versions" tax. The primitives are layered rather than flat:
+   their versions" tax. The primitives are layered instead of flat, and
    [leaf-arm-spine.md](./leaf-arm-spine.md) names the leaf / arm / spine roles
    and the decision rules for choosing at each one.
 

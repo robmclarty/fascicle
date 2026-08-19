@@ -1,6 +1,6 @@
 # Embedding under a Harness
 
-[Writing a harness](./writing-a-harness.md) covers fascicle as the *parent*: your program owns argv, wiring, and the run. This guide is the mirror image, fascicle as the *child*: some other program spawns your agent as a single-shot subprocess, writes JSON to its stdin, and reads one JSON result from its stdout. Deterministic parent CLIs, plugin seams, CI steps, and anything else that speaks JSON-over-stdio all have this shape.
+[Writing a harness](./writing-a-harness.md) covers fascicle as the *parent*, where your program owns argv, wiring, and the run. This guide is the mirror image, fascicle as the *child*: some other program spawns your agent as a single-shot subprocess, writes JSON to its stdin, and reads one JSON result from its stdout. Deterministic parent CLIs, plugin seams, CI steps, and anything else that speaks JSON-over-stdio all have this shape.
 
 The whole contract is one call, `run_stdio` from `fascicle/stdio`.
 
@@ -20,8 +20,8 @@ A stray `console.log` inside a step silently corrupts the parent's parse. Route 
 Key rules:
 
 - Never `console.log` from flow code. Use `ctx.emit` for observable progress and let the trajectory logger carry it to stderr.
-- Trajectory defaults to `stderr_logger()` under `run_stdio`; you do not have to wire anything to be stream-clean.
-- If a dependency prints to stdout, that is a bug in this context. Wrap or silence it.
+- Trajectory defaults to `stderr_logger()` under `run_stdio`; you don't have to wire anything to be stream-clean.
+- If a dependency prints to stdout, that's a bug in this context. Wrap or silence it.
 
 ## `run_stdio`
 
@@ -44,7 +44,7 @@ const flow = step('headline', ({ topic }: { topic: string }) => ({
 void run_stdio(flow, { input_schema, output_schema })
 ```
 
-Behavior, in order: read stdin to EOF, `JSON.parse`, validate against `input_schema` when given, `run(flow, input, ...)`, validate the result against `output_schema` when given, dispose the engine, write the serialized result as the only bytes on stdout, exit.
+It behaves in this order. Read stdin to EOF, `JSON.parse`, validate against `input_schema` when given, `run(flow, input, ...)`, validate the result against `output_schema` when given, dispose the engine, write the serialized result as the only bytes on stdout, exit.
 
 Options:
 
@@ -53,12 +53,12 @@ Options:
 - `trajectory` (optional): defaults to `stderr_logger()`.
 - `abort` (optional `AbortSignal`): composes with the signal handlers, same as `RunOptions.abort`.
 
-Signal handlers stay installed (the runner's default): a single-shot child must die when the parent forwards SIGINT.
+Signal handlers stay installed, which is the runner's default, because a single-shot child has to die when the parent forwards SIGINT.
 
 Key rules:
 
-- Do not set `install_signal_handlers: false` here; the parent forwards signals and expects the child to exit.
-- The engine is disposed before stdout is written. If teardown fails, the process exits 1 with no stdout rather than handing the parent a result it might trust from a process that could not clean up.
+- Don't set `install_signal_handlers: false` here; the parent forwards signals and expects the child to exit.
+- The engine is disposed before stdout is written. If teardown fails, the process exits 1 with no stdout rather than handing the parent a result it might trust from a process that couldn't clean up.
 - Need the outcome as a value instead of an exit (tests, embedding one level deeper)? `execute_stdio` is the same contract over injected io.
 
 ## Exit Codes
@@ -66,10 +66,10 @@ Key rules:
 | Code | Meaning |
 | --- | --- |
 | 0 | the result on stdout is authoritative |
-| 1 | flow failure: a step threw, the run was aborted (forwarded SIGINT/SIGTERM), teardown or delivery failed |
-| 2 | contract violation: unparseable stdin, schema mismatch in either direction, unserializable result |
+| 1 | flow failure, so a step threw, the run was aborted (forwarded SIGINT/SIGTERM), or teardown or delivery failed |
+| 2 | contract violation, so unparseable stdin, a schema mismatch in either direction, or an unserializable result |
 
-The invariant a parent can build on: **exit 0 if and only if stdout carries an authoritative result.** The 0/1/2 split matches the `fascicle-viewer` CLI convention, one scheme across the toolchain.
+The invariant you can build a parent on is that **exit 0 if and only if stdout carries an authoritative result.** The 0/1/2 split matches the `fascicle-viewer` CLI convention, one scheme across the toolchain.
 
 ## Machine-Readable Failure
 
@@ -84,7 +84,7 @@ type StdioFailure = {
 }
 ```
 
-Parents that want detail take the tail line (`tail -n 1` on captured stderr); humans watching the stream just see it as the final log line. Consuming it is optional; the exit code alone is a complete verdict.
+Parents that want detail take the tail line (`tail -n 1` on captured stderr); humans watching the stream just see it as the final log line. Consuming it's optional; the exit code alone is a complete verdict.
 
 ## Trajectory on Stderr
 
@@ -105,7 +105,7 @@ const trajectory = tee_logger(stderr_logger(), filesystem_logger({ output_path: 
 
 ## Sessions vs Single-Shot
 
-`serve_flow` (from `fascicle/mcp`) over a stdio transport gives a *session*: JSON-RPC framing, an initialize handshake, tool-shaped calls, a long-lived process. Right when the parent is an MCP host. `run_stdio` is for the other parent, the one that wants Unix-shaped `exec → result → exit` with no protocol state. Both belong; pick by what spawns you.
+`serve_flow` (from `fascicle/mcp`) over a stdio transport gives you a *session*, with JSON-RPC framing, an initialize handshake, tool-shaped calls, a long-lived process. Right when the parent is an MCP host. `run_stdio` is for the other parent, the one that wants Unix-shaped `exec → result → exit` with no protocol state. Both belong; pick by what spawns you.
 
 ## Checklist
 
@@ -113,7 +113,7 @@ Everything in the [writing-a-harness checklist](./writing-a-harness.md#checklist
 
 - [ ] Nothing writes to stdout except `run_stdio` itself.
 - [ ] The flow's input and output have zod schemas, passed as `input_schema` / `output_schema`.
-- [ ] The engine (if any) is passed to `run_stdio` so it is disposed before exit.
+- [ ] The engine (if any) is passed to `run_stdio` so it's disposed before exit.
 - [ ] The parent's retry logic distinguishes exit 1 (retryable flow failure) from exit 2 (fix the caller or the flow first).
 
-The reference agent is [`examples/stdio_agent.ts`](../examples/stdio_agent.ts): schema in, two candidates in parallel plus a synthesize step, schema out, ~30 lines.
+The reference agent is [`examples/stdio_agent.ts`](../examples/stdio_agent.ts), with schema in, two candidates in parallel plus a synthesize step, schema out, ~30 lines.

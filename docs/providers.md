@@ -1,8 +1,8 @@
 # Providers
 
-Per-provider adapter notes: installation, capabilities, credentials, effort mapping, and gotchas.
+Per-provider adapter notes, covering installation, capabilities, credentials, effort mapping, and gotchas.
 
-Eight adapters ship with the engine layer:
+Eight adapters ship with the engine layer, and you install a peer only for the ones you use:
 
 | Name          | Kind                 | Peer dep                      | Credentials required     |
 | ------------- | -------------------- | ----------------------------- | ------------------------ |
@@ -15,11 +15,11 @@ Eight adapters ship with the engine layer:
 | `lmstudio`    | `ai_sdk` or `native` | `ai` + `@ai-sdk/openai-compatible` (ai_sdk only) | none, `base_url` only |
 | `claude_cli`  | `external`           | none (spawns `claude`)        | `oauth` session or key   |
 
-The `ai_sdk` adapters wrap Vercel's AI SDK, so they need both the shared `ai` package and their own per-provider `@ai-sdk/*` (or equivalent) package — `pnpm add ai @ai-sdk/anthropic`, not `@ai-sdk/anthropic` alone. Six providers are entirely **SDK-free**, pulling in neither `ai` nor any `@ai-sdk/*` package: five via `transport: 'native'` — `anthropic` targets the Messages API, `openai` / `openrouter` / `lmstudio` share one OpenAI Chat Completions core, and `ollama` targets its own `/api/chat` endpoint (see [`transport`](#transport-picking-a-depth-1-backend)) — and `claude_cli`, which spawns the `claude` binary and parses its `--output-format stream-json` stream instead of calling any SDK; see [cli.md](./cli.md) for the full guide. `google` and `bedrock` remain `ai_sdk`-only, so they always need `ai`.
+The `ai_sdk` adapters wrap Vercel's AI SDK, so you install both the shared `ai` package and their own per-provider `@ai-sdk/*` (or equivalent) package — `pnpm add ai @ai-sdk/anthropic`, not `@ai-sdk/anthropic` alone. Six providers are entirely **SDK-free**, pulling in neither `ai` nor any `@ai-sdk/*` package: five via `transport: 'native'` — `anthropic` targets the Messages API, `openai` / `openrouter` / `lmstudio` share one OpenAI Chat Completions core, and `ollama` targets its own `/api/chat` endpoint (see [`transport`](#transport-picking-a-depth-1-backend)) — and `claude_cli`, which spawns the `claude` binary and parses its `--output-format stream-json` stream instead of calling any SDK; see [cli.md](./cli.md) for the full guide. `google` and `bedrock` remain `ai_sdk`-only, so they always need `ai`.
 
 ## Three Integration Depths
 
-Every provider plugs into `generate` at one of three depths. The engine dispatches on the adapter's `kind`; everything above the seam (multi-step tool loop, approval, salvage, `Tool.ends_turn`, retry, cost, trajectory) is shared and identical across kinds, so a provider inherits the whole fascicle loop by implementing only its depth's contract.
+Every provider plugs into `generate` at one of three depths. The engine dispatches on the adapter's `kind`, and everything above the seam (multi-step tool loop, approval, salvage, `Tool.ends_turn`, retry, cost, trajectory) is shared and identical across kinds, so a provider inherits the whole fascicle loop by implementing only its depth's contract.
 
 | Kind       | Depth | Contract                                        | You own                          | The engine owns                                    |
 | ---------- | ----- | ----------------------------------------------- | -------------------------------- | -------------------------------------------------- |
@@ -27,15 +27,15 @@ Every provider plugs into `generate` at one of three depths. The engine dispatch
 | `native`   | 1     | `invoke_turn(TurnRequest) -> TurnResult`        | request/response mapping over raw HTTP | retry, error classification, abort, plus everything below |
 | `external` | 2     | `generate(opts, resolved) -> GenerateResult`    | the entire loop                  | nothing below the call                              |
 
-- **Depth 1, `ai_sdk` kind.** The adapter builds an AI SDK model object and translates fascicle parameters; the actual `generateText` / `streamText` call lives in one engine-internal module (`src/engine/providers/ai_sdk/invoke.ts`), the only place in the tree allowed to import from `ai` (rule-enforced). `generate.ts` itself is SDK-agnostic.
+- **Depth 1, `ai_sdk` kind.** The adapter builds an AI SDK model object and translates fascicle parameters, and the actual `generateText` / `streamText` call lives in one engine-internal module (`src/engine/providers/ai_sdk/invoke.ts`), the only place in the tree allowed to import from `ai` (rule-enforced). `generate.ts` itself is SDK-agnostic.
 - **Depth 1, `native` kind.** The adapter implements a single model turn against the provider's own API using global `fetch` and hand-rolled streaming, with zero `ai` / `@ai-sdk/*` imports (also rule-enforced). The engine wraps `invoke_turn` in retry, shared error classification, and abort; a native adapter must never retry internally. It may override classification via an optional `classify_error`, and may define `dispose` for connection teardown.
-- **Depth 2, `external` kind.** The adapter owns the whole generate call, including any looping. This is for backends that are themselves agents (the `claude_cli` subprocess today; an HTTP/A2A agent is the same shape). The engine's shared tool loop does not run, so loop-level options like `tool_call_repair_attempts` are ignored and recorded as `option_ignored`.
+- **Depth 2, `external` kind.** The adapter owns the whole generate call, including any looping. This is for backends that are themselves agents (the `claude_cli` subprocess today; an HTTP/A2A agent is the same shape). The engine's shared tool loop doesn't run, so loop-level options like `tool_call_repair_attempts` are ignored and recorded as `option_ignored`.
 
 Both depth-1 kinds produce the same neutral `TurnResult`, which is what lets one loop serve every transport.
 
 ## `transport`: Picking a Depth-1 Backend
 
-Providers that implement more than one depth-1 backend expose a `transport` field on their init. Five do today: `anthropic`, `openai`, `openrouter`, `lmstudio`, and `ollama`.
+Providers that implement more than one depth-1 backend expose a `transport` field on their init. Five do today, and they are `anthropic`, `openai`, `openrouter`, `lmstudio`, and `ollama`.
 
 ```ts
 const engine = create_engine({
@@ -48,13 +48,13 @@ const engine = create_engine({
 });
 ```
 
-The provider name stays stable across transports, so pricing keys (`<provider>:<model-id>`), usage fields, and effort mapping carry over unchanged; only the wire implementation swaps. The default is `'ai_sdk'` and any other value throws `engine_config_error` at construction. Per-provider differences on the native transport (and the raw `provider_options.<provider>` wire-format passthrough each one accepts) are listed in that provider's section below.
+The provider name stays stable across transports, so your pricing keys (`<provider>:<model-id>`), usage fields, and effort mapping carry over unchanged; only the wire implementation swaps. The default is `'ai_sdk'` and any other value throws `engine_config_error` at construction. Per-provider differences on the native transport (and the raw `provider_options.<provider>` wire-format passthrough each one accepts) are listed in that provider's section below.
 
 `openai`, `openrouter`, and `lmstudio` native all ride one shared OpenAI Chat Completions core, parameterized per dialect (auth, attribution headers, token-limit field, usage tolerance); `ollama` native is a separate adapter on its own `/api/chat` wire. `google` and `bedrock` remain `ai_sdk`-only (SigV4 and low leverage, respectively).
 
 ## OpenAI-Compatible Servers (the Compat Recipe)
 
-Any server that speaks the OpenAI Chat Completions wire is reachable by pointing the `openai` provider's `base_url` at it and running `transport: 'native'` — no new adapter, no peer to install. This is the supported path for Ollama's built-in `/v1` compatibility endpoint:
+You reach any server that speaks the OpenAI Chat Completions wire by pointing the `openai` provider's `base_url` at it and running `transport: 'native'` — no new adapter, no peer to install. This is the supported path for Ollama's built-in `/v1` compatibility endpoint:
 
 ```ts
 const engine = create_engine({
@@ -74,11 +74,11 @@ await engine.generate({
 });
 ```
 
-The same recipe reaches vLLM, LiteLLM, or any other OpenAI-compatible gateway — swap the `base_url`. It rides the shared OpenAI-compatible core: the openai dialect's Bearer auth (hence the placeholder key), the streaming aggregator, and the usage math, all identical to the hosted `openai` transport. Ollama's compat endpoint reports token usage, so cost accounting works out of the box. For local backends that report approximate or no usage, the `lmstudio` provider (tolerant usage, no auth) is the better fit.
+The same recipe reaches vLLM, LiteLLM, or any other OpenAI-compatible gateway, and all you swap is the `base_url`. It rides the shared OpenAI-compatible core: the openai dialect's Bearer auth (hence the placeholder key), the streaming aggregator, and the usage math, all identical to the hosted `openai` transport. Ollama's compat endpoint reports token usage, so cost accounting works out of the box. For local backends that report approximate or no usage, the `lmstudio` provider (tolerant usage, no auth) is the better fit.
 
 ## The Agent-Layer Boundary
 
-fascicle uses the AI SDK strictly as a single-turn provider layer: every AI SDK call is `generateText` / `streamText` pinned to one step, issued from the one `ai_sdk` transport module, and the loop above it (multi-step execution, tool approval, salvage, `ends_turn`, cost, retry, trajectory) is fascicle's own. The SDK's agent layer (`ToolLoopAgent`, `WorkflowAgent`, `HarnessAgent`, `toolApproval`, scoped tool context, `@ai-sdk/otel`) is declined by design; the litmus test is that a framework must let you call one turn below its own loop. Anything the agent layer would own belongs above the seam, in fascicle's composition surface, so that swapping a provider never means swapping a loop.
+fascicle uses the AI SDK strictly as a single-turn provider layer, so every AI SDK call is `generateText` / `streamText` pinned to one step, issued from the one `ai_sdk` transport module, and the loop above it (multi-step execution, tool approval, salvage, `ends_turn`, cost, retry, trajectory) is fascicle's own. The SDK's agent layer (`ToolLoopAgent`, `WorkflowAgent`, `HarnessAgent`, `toolApproval`, scoped tool context, `@ai-sdk/otel`) is declined by design; the litmus test is that a framework must let you call one turn below its own loop. Anything the agent layer would own belongs above the seam, in fascicle's composition surface, so that swapping a provider never means swapping a loop.
 
 ## Capability Matrix
 
@@ -98,11 +98,11 @@ fascicle uses the AI SDK strictly as a single-turn provider layer: every AI SDK 
 | lmstudio (native)   | ✅   | ✅    | ✅     | ✅        | —           | ✅        |
 | claude_cli          | ✅   | ✅    | ✅     | ✅        | —           | ✅        |
 
-`supports(capability)` on any adapter reflects this table. Two things to read off the native rows: **no native transport claims `image_input`** (image parts throw `provider_capability_error`; use `transport: 'ai_sdk'` for vision in v1), and the OpenAI-compatible core (openai / openrouter / lmstudio native) always forwards `reasoning_effort`, so those three report `reasoning` on native even where their `ai_sdk` row does not — non-reasoning and local models simply drop the field server-side. `ollama` native ignores effort entirely (D2). The table omits one more capability: `structured_output`, meaning the provider constrains decoding to the schema natively. Every provider satisfies `schema` (via the engine's prompt + parse + repair loop when the provider cannot constrain the decode); no native transport claims `structured_output`, so schema requests there always ride the repair loop.
+Call `supports(capability)` on any adapter and you get this table back. Two things to read off the native rows. **No native transport claims `image_input`** (image parts throw `provider_capability_error`; use `transport: 'ai_sdk'` for vision in v1), and the OpenAI-compatible core (openai / openrouter / lmstudio native) always forwards `reasoning_effort`, so those three report `reasoning` on native even where their `ai_sdk` row doesn't — non-reasoning and local models simply drop the field server-side. `ollama` native ignores effort entirely (D2). The table omits one more capability: `structured_output`, meaning the provider constrains decoding to the schema natively. Every provider satisfies `schema` (via the engine's prompt + parse + repair loop when the provider can't constrain the decode); no native transport claims `structured_output`, so schema requests there always ride the repair loop.
 
 ## Effort Translation
 
-`effort: 'none' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'` is a provider-neutral knob for reasoning depth. The table shows `low`/`medium`/`high`; `xhigh` and `max` extend the same axis (see the note below). The engine translates it per provider:
+`effort: 'none' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'` is your provider-neutral knob for reasoning depth. The table shows `low`/`medium`/`high`; `xhigh` and `max` extend the same axis (see the note below). The engine translates it per provider:
 
 | Provider     | `low`     | `medium`  | `high`    | When unsupported                     |
 | ------------ | --------- | --------- | --------- | ------------------------------------ |
@@ -115,11 +115,11 @@ fascicle uses the AI SDK strictly as a single-turn provider layer: every AI SDK 
 | lmstudio     | dropped   | dropped   | dropped   | records `effort_ignored` on trajectory |
 | claude_cli   | `CLAUDE_CODE_EFFORT_LEVEL=low` | `CLAUDE_CODE_EFFORT_LEVEL=medium` | `CLAUDE_CODE_EFFORT_LEVEL=high` | `'none'` sets no env var |
 
-`xhigh` and `max` raise the ceiling: anthropic and bedrock use `budgetTokens: 32000` and `64000`, google maps both to `thinkingBudget: 32768` (the Gemini 2.5 Pro ceiling), and openai clamps both to `reasoningEffort: high`; openrouter forwards the level verbatim, and so does `claude_cli` (the env var takes `xhigh` / `max` as-is). The anthropic budgets are shared by both transports; on `native` they are sent as the API's `thinking.budget_tokens` directly.
+`xhigh` and `max` raise the ceiling: anthropic and bedrock use `budgetTokens: 32000` and `64000`, google maps both to `thinkingBudget: 32768` (the Gemini 2.5 Pro ceiling), and openai clamps both to `reasoningEffort: high`; openrouter forwards the level verbatim, and so does `claude_cli` (the env var takes `xhigh` / `max` as-is). The anthropic budgets are shared by both transports; on `native` they're sent as the API's `thinking.budget_tokens` directly.
 
 The table above is the `ai_sdk` mapping. On `transport: 'native'`, the OpenAI-compatible core maps effort to the wire's flat `reasoning_effort` string (`low`/`medium`/`high`, with `xhigh`/`max` clamped to `high`) for **all three** dialects — so `openai`, `openrouter`, **and** `lmstudio` native forward `reasoning_effort` rather than dropping it (`lmstudio` diverges from its `ai_sdk` row here); non-reasoning and local models ignore the field server-side. `ollama` native ignores effort entirely (D2) and records `effort_ignored`.
 
-`effort: 'none'` forwards nothing: anthropic emits no thinking block and google omits `thinkingConfig` entirely. On the OpenAI-compatible native core, `none` omits `reasoning_effort`.
+`effort: 'none'` forwards nothing, so anthropic emits no thinking block and google omits `thinkingConfig` entirely. On the OpenAI-compatible native core, `none` omits `reasoning_effort`.
 
 ## `anthropic`
 
@@ -149,7 +149,7 @@ await engine.generate({
 
 Effort maps to extended-thinking `budgetTokens` (the `@ai-sdk/anthropic` option name, which the SDK forwards to the API's `budget_tokens`). `none →` no thinking block, `low → 1024`, `medium → 5000`, `high → 20000`, `xhigh → 32000`, `max → 64000`.
 
-Pass a concrete model id (`claude-opus-4-8`, `claude-sonnet-4-6`, `claude-haiku-4-5`, …). fascicle does not expand `opus`/`sonnet` shorthands on this transport — the `model` string is sent to the API verbatim.
+Pass a concrete model id of your own (`claude-opus-4-8`, `claude-sonnet-4-6`, `claude-haiku-4-5`, …). fascicle doesn't expand `opus`/`sonnet` shorthands on this transport — the `model` string is sent to the API verbatim.
 
 ### `transport: 'native'`
 
@@ -167,16 +167,16 @@ const engine = create_engine({
 });
 ```
 
-Everything call-facing carries over: same provider name, same pricing keys, same effort-to-budget mapping, same usage fields, and streamed results equal non-streamed results for the same input. Differences to know about:
+Everything call-facing carries over, with the same provider name, the same pricing keys, the same effort-to-budget mapping, the same usage fields, and streamed results equal non-streamed results for the same input. Differences to know about:
 
 - **No image input.** `image_input` is unsupported on the native transport in v1.
-- **Schema always rides the repair loop.** The native adapter does not claim `structured_output`; `schema` requests are satisfied by the engine's prompt + parse + repair path, which is provider-neutral and usually sufficient.
+- **Schema always rides the repair loop.** The native adapter doesn't claim `structured_output`, so your `schema` requests are satisfied by the engine's prompt + parse + repair path, which is provider-neutral and usually sufficient.
 - **`max_tokens` defaults to 4096.** The Messages API requires `max_tokens` on every request. When extended thinking is enabled, the default rides on top of the thinking budget rather than being swallowed by it; pass `max_tokens` explicitly to override.
-- **`provider_options.anthropic` is raw wire format.** On the native transport, keys under `provider_options.anthropic` are Messages-API fields as Anthropic documents them (snake_case: `thinking`, `max_tokens`, `top_k`, `stop_sequences`, ...), shallow-merged last over the engine-computed request body. An explicit key beats every derived field, including the effort-derived `thinking` block and the `max_tokens` default. Keys do not port verbatim from the `ai_sdk` transport, which uses `@ai-sdk/anthropic`'s camelCase spellings — `budgetTokens` there is `thinking: { type: 'enabled', budget_tokens: n }` here. The merge is shallow and unreconciled: pass a whole `thinking` object, not a fragment, and combinations the API rejects (say, `temperature` alongside thinking) are rejected by the API, not repaired by fascicle.
-- **Auth headers are `x-api-key` plus `anthropic-version`.** OAuth is not supported here; that is `claude_cli` territory.
+- **`provider_options.anthropic` is raw wire format.** On the native transport, keys under `provider_options.anthropic` are Messages-API fields as Anthropic documents them (snake_case: `thinking`, `max_tokens`, `top_k`, `stop_sequences`, ...), shallow-merged last over the engine-computed request body. An explicit key beats every derived field, including the effort-derived `thinking` block and the `max_tokens` default. Keys don't port verbatim from the `ai_sdk` transport, which uses `@ai-sdk/anthropic`'s camelCase spellings — `budgetTokens` there is `thinking: { type: 'enabled', budget_tokens: n }` here. The merge is shallow and unreconciled: pass a whole `thinking` object, not a fragment, and combinations the API rejects (say, `temperature` alongside thinking) are rejected by the API, not repaired by fascicle.
+- **Auth headers are `x-api-key` plus `anthropic-version`.** OAuth isn't supported here, and that's `claude_cli` territory.
 - **Retry belongs to the engine.** 429 (honoring `retry-after`), 5xx, and network failures are classified by the shared classifier and retried by the engine's retry policy, exactly as on the `ai_sdk` transport.
 
-The default transport stays `'ai_sdk'` until the native path has accumulated production mileage.
+The default transport stays `'ai_sdk'` until the native path has more production mileage behind it.
 
 ## `openai`
 
@@ -196,9 +196,9 @@ const engine = create_engine({
 });
 ```
 
-Effort maps to OpenAI's `reasoningEffort: 'low' | 'medium' | 'high'`. Non-reasoning models silently drop it.
+Effort maps to OpenAI's `reasoningEffort: 'low' | 'medium' | 'high'`, and non-reasoning models drop it silently on you.
 
-Pass a concrete model id like `gpt-4o` or `gpt-4o-mini`. The `model` string is sent to the API verbatim.
+Pass a concrete model id like `gpt-4o` or `gpt-4o-mini`, and your `model` string reaches the API verbatim.
 
 ### `transport: 'native'`
 
@@ -217,10 +217,10 @@ const engine = create_engine({
 });
 ```
 
-Everything call-facing carries over: same provider name, same pricing keys, same effort levels, same usage fields, and streamed results equal non-streamed results. Differences and knobs:
+Everything call-facing carries over, with the same provider name, the same pricing keys, the same effort levels, the same usage fields, and streamed results equal non-streamed results. Differences and knobs:
 
 - **No image input.** `image_input` is unsupported on the native transport in v1.
-- **Schema always rides the repair loop.** The native adapter does not claim `structured_output`; `schema` requests are satisfied by the engine's prompt + parse + repair path.
+- **Schema always rides the repair loop.** The native adapter doesn't claim `structured_output`, so your `schema` requests are satisfied by the engine's prompt + parse + repair path.
 - **`provider_options.openai` is raw wire format (D9).** On the native transport, keys under `provider_options.openai` are Chat Completions fields exactly as OpenAI documents them (**snake_case**: `reasoning_effort`, `max_completion_tokens`, `top_p`, `stop`, `logprobs`, `response_format`, ...), shallow-merged last over the engine-computed body, so an explicit key beats every derived field (the effort-derived `reasoning_effort`, the token limit, sampling params). Keys do **not** port from the `ai_sdk` transport, which uses `@ai-sdk/openai`'s camelCase spellings — `reasoningEffort` there is `reasoning_effort` here, and the SDK's `maxOutputTokens` is `max_completion_tokens` on the wire. The merge is shallow and unreconciled: pass whole objects, and combinations the API rejects are rejected by the API, not repaired by fascicle.
 - **Retry belongs to the engine.** 401, 429 (honoring `Retry-After`), 5xx, and network failures are classified by the shared classifier and retried by the engine's policy, exactly as on `ai_sdk`.
 
@@ -243,9 +243,9 @@ const engine = create_engine({
 });
 ```
 
-Effort maps to Gemini's `thinkingConfig.thinkingBudget`, a token count: `low → 1024`, `medium → 8192`, `high → 24576`, `xhigh`/`max → 32768`. Google does not report cache-write tokens; the adapter strips `cache_write_tokens` when absent.
+Effort maps to Gemini's `thinkingConfig.thinkingBudget`, a token count, so `low → 1024`, `medium → 8192`, `high → 24576`, `xhigh`/`max → 32768`. Google doesn't report cache-write tokens; the adapter strips `cache_write_tokens` when absent.
 
-Pass a concrete model id like `gemini-2.5-pro` or `gemini-2.5-flash`. The `model` string is sent to the API verbatim.
+Pass a concrete model id like `gemini-2.5-pro` or `gemini-2.5-flash`, and your `model` string reaches the API verbatim.
 
 ## `openrouter`
 
@@ -272,7 +272,7 @@ await engine.generate({
 });
 ```
 
-Model ids use the `provider/model` slug OpenRouter expects (for example, `anthropic/claude-sonnet-4.5`); pass it as `model` with `provider: 'openrouter'`. Effort maps to the OpenRouter `reasoning.effort` field; whether the upstream honours it depends on the model.
+Model ids use the `provider/model` slug OpenRouter expects (for example, `anthropic/claude-sonnet-4.5`), and you pass it as `model` with `provider: 'openrouter'`. Effort maps to the OpenRouter `reasoning.effort` field; whether the upstream honours it depends on the model.
 
 Pass the full OpenRouter slug as `model` with `provider: 'openrouter'` — for example, `{ provider: 'openrouter', model: 'meta-llama/llama-3.3-70b-instruct' }`.
 
@@ -335,18 +335,18 @@ await engine.generate({
 | Config | Credential source |
 | --- | --- |
 | `api_key` | Bedrock bearer token. Replaces SigV4 entirely, so it wins over everything below. |
-| `access_key_id` / `secret_access_key` / `session_token` | Explicit SigV4 keys. Any one of them present means you are driving credentials, so no dynamic source is attached. |
+| `access_key_id` / `secret_access_key` / `session_token` | Explicit SigV4 keys. Any one of them present means you're driving credentials, so no dynamic source is attached. |
 | `use_credential_chain: true` | The AWS credential chain — env vars, `~/.aws/credentials` and `~/.aws/config` profiles, SSO, ECS/EC2 instance roles. Requires the `@aws-sdk/credential-providers` optional peer. |
 | `credential_provider` | A function you supply, called once per request, returning `{ accessKeyId, secretAccessKey, sessionToken? }`. The escape hatch for assume-role flows that already hold a provider. |
-| none of the above | `@ai-sdk/amazon-bedrock` reads `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` **from the environment only**, and throws if they are unset. |
+| none of the above | `@ai-sdk/amazon-bedrock` reads `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` **from the environment only**, and throws if they're unset. |
 
-> **Omitting credentials is not the credential chain.** `@ai-sdk/amazon-bedrock` reads the two AWS env vars and nothing else — it never opens `~/.aws/credentials`. A profile that works with `aws` CLI commands will still fail here unless you set `use_credential_chain: true` or export the keys into the environment first. The failure surfaces as a SigV4 credentials error that reads like a missing IAM grant.
+> **Omitting credentials isn't the credential chain.** `@ai-sdk/amazon-bedrock` reads the two AWS env vars and nothing else — it never opens `~/.aws/credentials`. A profile that works with `aws` CLI commands will still fail here unless you set `use_credential_chain: true` or export the keys into the environment first. The failure surfaces as a SigV4 credentials error that reads like a missing IAM grant.
 
 ```bash
 pnpm add @aws-sdk/credential-providers   # only needed for use_credential_chain
 ```
 
-`use_credential_chain` is a fallback rather than an override, so it is safe to set unconditionally: on a laptop it picks up your profile, and in Lambda the execution role's env-var credentials take precedence if you forward them. Setting both `use_credential_chain` and `credential_provider` is an `engine_config_error` — they are two answers to the same question, not a fallback pair.
+`use_credential_chain` is a fallback rather than an override, so it's safe to set unconditionally, and on a laptop it picks up your profile, and in Lambda the execution role's env-var credentials take precedence if you forward them. Setting both `use_credential_chain` and `credential_provider` is an `engine_config_error` — they're two answers to the same question, not a fallback pair.
 
 Model ids are AWS Bedrock ids passed verbatim — on-demand ids like `anthropic.claude-3-5-sonnet-20241022-v2:0` or cross-region inference profiles like `us.anthropic.claude-sonnet-4-20250514-v1:0`. The trailing `:0` version suffix rides through untouched. Effort maps to the Bedrock `reasoningConfig.budgetTokens` field for Claude models (the same budgets as the `anthropic` adapter); models without reasoning drop it.
 
@@ -383,7 +383,7 @@ if (res.finish_reason === 'content_filter') {
 }
 ```
 
-Set a `schema` and the same intervention arrives as a throw instead: a blocked call produces no schema-valid value, so the engine raises `incomplete_generation_error` rather than handing back the block message typed as your schema. The trace stays reachable, on the error:
+Set a `schema` and the same intervention arrives as a throw instead, because a blocked call produces no schema-valid value, so the engine raises `incomplete_generation_error` rather than handing back the block message typed as your schema. The trace stays reachable, on the error:
 
 ```ts
 import { incomplete_generation_error } from 'fascicle';
@@ -398,7 +398,7 @@ try {
 }
 ```
 
-The trace is worth reading on ordinary completions too, not just interventions. It is the only in-process signal for a PII action of `NONE`, which detects and reports **without** rewriting: the model output is byte-identical whether such a guardrail is attached and detecting or absent entirely, so a caller reading only `content` and `finish_reason` cannot tell the two apart. If a guardrail looks ignored, [troubleshooting.md](./troubleshooting.md#a-bedrock-guardrail-seems-ignored-and-the-output-is-unchanged) separates that case from a genuinely dropped config.
+The trace is worth reading on ordinary completions too, not just interventions. It's the only in-process signal for a PII action of `NONE`, which detects and reports **without** rewriting: the model output is byte-identical whether such a guardrail is attached and detecting or absent entirely, so a caller reading only `content` and `finish_reason` can't tell the two apart. If a guardrail looks ignored, [troubleshooting.md](./troubleshooting.md#a-bedrock-guardrail-seems-ignored-and-the-output-is-unchanged) separates that case from a genuinely dropped config.
 
 The pass-through relies on `@ai-sdk/amazon-bedrock` spreading unknown provider-option keys into the Converse command (its documented options schema omits `guardrailConfig`); a wire contract test pins that seam in this repo, but pin your own peer version and verify with `trace: 'enabled'` on first deploy.
 
@@ -426,7 +426,7 @@ await engine.generate({
 });
 ```
 
-No API key; `base_url` is required (the adapter throws `engine_config_error` otherwise). No reasoning support — `effort` is silently dropped and the trajectory records `effort_ignored`. No image input in v1. Cache tokens are stripped from usage — local models do not report them.
+No API key; `base_url` is required (the adapter throws `engine_config_error` otherwise). No reasoning support — `effort` is silently dropped and the trajectory records `effort_ignored`. No image input in v1. Cache tokens are stripped from usage — local models don't report them.
 
 ### `transport: 'native'`
 
@@ -446,7 +446,7 @@ const engine = create_engine({
 - **No auth, `base_url` still required, no image input.** Same local-runtime constraints as the `ai_sdk` transport.
 - **Effort is ignored entirely (D2).** No effort-to-wire mapping exists; reasoning is opt-in purely through `provider_options.ollama.think`.
 - **Usage degrades gracefully (D10).** `prompt_eval_count` / `eval_count` map to input/output tokens; when the runtime omits them the totals are zeroed rather than throwing.
-- **`provider_options.ollama` is raw `/api/chat` wire format (D9).** Keys are Ollama's own native fields — `think`, `keep_alive`, `format`, and the nested `options` bag (`num_predict`, `temperature`, `top_p`, `num_ctx`, ...) — shallow-merged last over the engine-computed body. These are **not** OpenAI-compatible keys: there is no `max_tokens` or `reasoning_effort` here (the engine writes the token limit into `options.num_predict`); pass a whole `options` object, since the shallow merge replaces it wholesale rather than deep-merging derived sampling params.
+- **`provider_options.ollama` is raw `/api/chat` wire format (D9).** Keys are Ollama's own native fields — `think`, `keep_alive`, `format`, and the nested `options` bag (`num_predict`, `temperature`, `top_p`, `num_ctx`, ...) — shallow-merged last over the engine-computed body. These are **not** OpenAI-compatible keys: there's no `max_tokens` or `reasoning_effort` here (the engine writes the token limit into `options.num_predict`); pass a whole `options` object, since the shallow merge replaces it wholesale rather than deep-merging derived sampling params.
 
 ## `lmstudio`
 
@@ -470,7 +470,7 @@ await engine.generate({
 });
 ```
 
-Same constraints as Ollama: no API key, `base_url` required, no reasoning, no image input, cache tokens stripped.
+Same constraints as Ollama, so no API key, `base_url` required, no reasoning, no image input, and cache tokens stripped.
 
 ### `transport: 'native'`
 
@@ -485,8 +485,8 @@ const engine = create_engine({
 ```
 
 - **No image input**, and **schema always rides the repair loop** (no `structured_output`).
-- **Reasoning is forwarded, not dropped.** Unlike the `ai_sdk` transport, the native core maps `effort` to `reasoning_effort` for every dialect, so it is sent on the wire; a model that does not reason simply ignores it server-side.
-- **`provider_options.lmstudio` is raw OpenAI-compatible wire format (D9).** Keys are Chat Completions fields (**snake_case**: `max_tokens`, `reasoning_effort`, `top_p`, `stop`, ...), shallow-merged last over the engine-computed body. As with `openai` native, these do not port from the camelCase `ai_sdk` spellings.
+- **Reasoning is forwarded, not dropped.** Unlike the `ai_sdk` transport, the native core maps `effort` to `reasoning_effort` for every dialect, so it's sent on the wire; a model that doesn't reason simply ignores it server-side.
+- **`provider_options.lmstudio` is raw OpenAI-compatible wire format (D9).** Keys are Chat Completions fields (**snake_case**: `max_tokens`, `reasoning_effort`, `top_p`, `stop`, ...), shallow-merged last over the engine-computed body. As with `openai` native, these don't port from the camelCase `ai_sdk` spellings.
 
 ## `claude_cli`
 
@@ -503,7 +503,7 @@ const engine = create_engine({
 await engine.generate({ prompt: 'say hi' });
 ```
 
-Full guide: [cli.md](./cli.md).
+The full guide is [cli.md](./cli.md).
 
 The CLI resolves the bare tokens `opus`/`sonnet`/`haiku` to the latest itself, so passing one as `model` works for this transport — the single place a short name is honored. Concrete ids pass through too.
 
@@ -511,8 +511,8 @@ The CLI resolves the bare tokens `opus`/`sonnet`/`haiku` to the latest itself, s
 
 `model` is an opaque string sent to the provider verbatim as its `model_id`; `provider` names the transport. Both can be set per call and as engine `defaults`. No resolution step runs — no colon shorthand, no family expansion, no alias table:
 
-- `provider` resolves to: per-call `provider`, else `defaults.provider`, else the sole configured provider. Nothing falls back beyond that. With several providers configured and neither a per-call `provider` nor a default, `generate` throws `provider_required_error` ("no provider specified: pass `provider` to generate() or set `defaults.provider`", naming the configured providers).
-- `model` resolves to: per-call `model`, else `defaults.model`, else a thrown `model_required_error`.
+- `provider` resolves in this order, per-call `provider`, else `defaults.provider`, else the sole configured provider. Nothing falls back beyond that. With several providers configured and neither a per-call `provider` nor a default, `generate` throws `provider_required_error` ("no provider specified: pass `provider` to generate() or set `defaults.provider`", naming the configured providers).
+- `model` resolves in this order, per-call `model`, else `defaults.model`, else a thrown `model_required_error`.
 
 The provider receives `model` as-is and rejects an unknown id itself (a 404 or validation error). A `provider` with no adapter registered on the engine throws `provider_not_configured_error`. (Exception: the `claude_cli` transport forwards `opus`/`sonnet`/`haiku` to the CLI, which resolves them to the latest.)
 
@@ -526,7 +526,7 @@ Every peer is loaded lazily on first `generate` against that provider. Missing p
 missing peer dependency '@ai-sdk/anthropic'. Install it with: pnpm add @ai-sdk/anthropic. Cause: …
 ```
 
-This means constructing an engine with all eight providers does not force you to install their seven SDKs — only the ones you actually call. `ai`, the package the `ai_sdk` kind calls `generateText` / `streamText` on, is itself an optional peer for the same reason: it is only imported from the one `ai_sdk` turn seam, so a `transport: 'native'` or `claude_cli` call never loads it. Missing it reports the same way:
+This means constructing an engine with all eight providers doesn't force you to install their seven SDKs — only the ones you actually call. `ai`, the package the `ai_sdk` kind calls `generateText` / `streamText` on, is itself an optional peer for the same reason: it's only imported from the one `ai_sdk` turn seam, so a `transport: 'native'` or `claude_cli` call never loads it. Missing it reports the same way:
 
 ```text
 missing peer dependency 'ai'. Install it with: pnpm add ai. Cause: …
@@ -548,11 +548,11 @@ type UsageTotals = {
 };
 ```
 
-Fields that a provider cannot report are absent from the result (not zero). `GenerateResult.usage` is the sum across all steps; per-step totals live in `steps[i].usage`.
+Fields that a provider can't report are absent from the result (not zero). `GenerateResult.usage` is the sum across all steps; per-step totals live in `steps[i].usage`.
 
 ## Provider-Reported Detail
 
-Providers volunteer detail beyond text, usage, and finish reason: Bedrock's guardrail trace, Anthropic's cache breakdown, OpenAI's service tier. All of it arrives on `GenerateResult.provider_reported`, keyed by provider name and otherwise untranslated:
+Providers volunteer detail beyond text, usage, and finish reason, like Bedrock's guardrail trace, Anthropic's cache breakdown, OpenAI's service tier. All of it arrives on `GenerateResult.provider_reported`, keyed by provider name and otherwise untranslated:
 
 ```ts
 const res = await engine.generate({ prompt: 'hi', max_tokens: 64 });
@@ -563,20 +563,20 @@ The keys are the provider's own and the payloads are opaque, so the engine model
 
 Two properties are worth knowing:
 
-- **Per turn and per call.** Every step keeps its own payload in `steps[i].provider_reported`. The call-level field carries the payload of the last step that reported one, the same way `content` and `finish_reason` reflect the final turn. Opaque payloads cannot be summed the way usage and cost are, and a provider reports the same keys on every turn, so merging them would overwrite rather than combine.
+- **Per turn and per call.** Every step keeps its own payload in `steps[i].provider_reported`. The call-level field carries the payload of the last step that reported one, the same way `content` and `finish_reason` reflect the final turn. Opaque payloads can't be summed the way usage and cost are, and a provider reports the same keys on every turn, so merging them would overwrite rather than combine.
 - **The same under streaming.** A streamed run and a plain run of the same call report the same payload, because the AI SDK carries it on the streamed step-finish as well as on the plain result.
 
 For an `ai_sdk` provider this is the SDK's `providerMetadata` passed through, so it works for every provider on that transport, including custom ones, with no per-provider code. A `native` adapter fills the same field by setting `provider_reported` on the `TurnResult` it returns. The `claude_cli` provider, which owns its whole loop, reports `session_id` and `duration_ms` under a `claude_cli` key (see [cli.md](./cli.md#multi-turn-is-via-session_id)).
 
-One gap: when the AI SDK rejects a structured-output response before fascicle's own schema repair sees it, the recovered turn has no payload to report, because the SDK's error does not carry one. The repair turn that follows reports normally. This affects only the providers that declare the `structured_output` capability (`ollama`, `lmstudio`); everywhere else the schema rides the prompt and the turn reports as usual. On those two, if the recovered turn also carries a non-`stop` finish reason there is no repair turn at all — the call throws `incomplete_generation_error` with `provider_reported` undefined for the same reason.
+One gap is worth naming. When the AI SDK rejects a structured-output response before fascicle's own schema repair sees it, the recovered turn has no payload to report, because the SDK's error doesn't carry one. The repair turn that follows reports normally. This affects only the providers that declare the `structured_output` capability (`ollama`, `lmstudio`); everywhere else the schema rides the prompt and the turn reports as usual. On those two, if the recovered turn also carries a non-`stop` finish reason there's no repair turn at all — the call throws `incomplete_generation_error` with `provider_reported` undefined for the same reason.
 
 ## Cost Estimation
 
-`GenerateResult.cost` is populated when the resolved `provider:model_id` has a pricing row in the engine's `PricingTable`. Missing rows simply omit `cost` — the run does not fail. `is_estimate: true` is always set; pricing tables drift, treat the number as a budget signal, not an invoice.
+`GenerateResult.cost` is populated when the resolved `provider:model_id` has a pricing row in the engine's `PricingTable`. Missing rows simply omit `cost` — the run doesn't fail. `is_estimate: true` is always set; pricing tables drift, treat the number as a budget signal, not an invoice.
 
 ## Writing Your Own
 
-A custom provider is a `ProviderFactory`: a synchronous function that takes the init object from `providers` and returns an adapter of any kind. Register it under `custom_providers` at construction; no fork or upstream change is needed, and a private provider lives entirely in your own repo. The registration mechanics (custom-first resolution, shadow-throws, construction-time only) are documented in [configuration.md](./configuration.md#custom-providers).
+A custom provider is a `ProviderFactory`, a synchronous function that takes the init object from `providers` and returns an adapter of any kind. Register it under `custom_providers` at construction; no fork or upstream change is needed, and a private provider lives entirely in your own repo. The registration mechanics (custom-first resolution, shadow-throws, construction-time only) are documented in [configuration.md](./configuration.md#custom-providers).
 
 Pick the kind by how much of the loop you want to inherit (see [Three integration depths](#three-integration-depths)); whichever you pick, the adapter plugs into the same `generate`, tool loop, cost accounting, and trajectory.
 
@@ -626,6 +626,6 @@ Rules of the road for native adapters:
 
 ### `kind: 'external'`: Delegate to Something That Is Already an Agent
 
-Implement `generate(opts, resolved)` returning a full `GenerateResult`, plus `dispose` and `supports` (see the exported `ExternalAgentAdapter` type). The engine hands over the entire call: your adapter owns any looping, and loop-level options like `tool_call_repair_attempts` do not apply. The in-tree reference is the `claude_cli` adapter.
+Implement `generate(opts, resolved)` returning a full `GenerateResult`, plus `dispose` and `supports` (see the exported `ExternalAgentAdapter` type). The engine hands over the entire call: your adapter owns any looping, and loop-level options like `tool_call_repair_attempts` don't apply. The in-tree reference is the `claude_cli` adapter.
 
-No *mutable* runtime registry exists, but a provider that only becomes known after construction is still first-class: `engine.with_providers(providers, custom_providers?)` returns a new engine with the extra providers merged in, leaving the original untouched. See [configuration.md](./configuration.md#registering-a-provider-after-construction-with_providers).
+No *mutable* runtime registry exists, but a provider that only becomes known after construction is still first-class, because `engine.with_providers(providers, custom_providers?)` returns a new engine with the extra providers merged in, leaving the original untouched. See [configuration.md](./configuration.md#registering-a-provider-after-construction-with_providers).
