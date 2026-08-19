@@ -1,4 +1,4 @@
-# @repo/core — Backlog
+# Core — Backlog
 
 Deferred composition primitives tracked here. Nothing on this list is scoped
 into v1. This file is the library-design parking lot for composers only; the

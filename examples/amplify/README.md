@@ -50,7 +50,6 @@ examples/amplify/
 │   ├── main.ts                        the shell: argv, engine, adapters, exit
 │   ├── flow.ts                        THE composition layer: scope + loop + branch
 │   ├── engine.ts                      the only create_engine call site
-│   ├── state.ts                       scope keys + typed readers
 │   ├── round.ts                       pure round arithmetic (seed, decide, summarize)
 │   ├── budget.ts                      iters / wall-clock / patience rules (pure)
 │   ├── lessons.ts                     bounded ring buffer of failure summaries (pure)

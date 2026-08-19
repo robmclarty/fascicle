@@ -1,6 +1,6 @@
 # claude_cli test suite
 
-Automated tests for `@repo/engine`'s `claude_cli` subprocess provider
+Automated tests for the engine's `claude_cli` subprocess provider
 adapter. None of these tests invoke a real `claude` binary; they drive a
 Node-script mock (`fixtures/mock_claude.mjs`) configured per test.
 
@@ -8,15 +8,20 @@ Node-script mock (`fixtures/mock_claude.mjs`) configured per test.
 
 | file | scope | real subprocess? |
 | --- | --- | --- |
+| `adapter_generate.test.ts` | `generate` orchestration over a fake spawn runtime: argv assembly, `option_ignored` records, tool bridge, span lifecycle, error classification | no |
+| `adapter_helpers.test.ts` | `extract_call_opts`, `extract_prompt_text`, `extract_system_text`, `count_user_messages`, `compile_schema`, `classify_close_error` | no |
 | `argv.test.ts` | pure argv construction, sandbox plan, argv-injection audit | no |
 | `auth.test.ts` | `build_env`, `validate_auth_config`, `stderr_is_auth_failure`, frozen constants | no |
 | `cancellation.test.ts` | abort, startup/stall timeouts, `dispose`, post-dispose throw, multi-adapter independence | yes (mock) |
 | `cost.test.ts` | `decompose_total_cost`, `allocate_cost_across_turns` | no |
+| `effort.test.ts` | `effort_env_for_claude_cli` level mapping and the adapter's advertised capabilities | no |
 | `failure_modes.test.ts` | F23 retry_policy, F25 allowlist_only trajectory record, F26 forbid pre-spawn throw, F27 multi-turn without session_id, F30 sandbox binary missing | yes (mock) |
 | `hermeticity.test.ts` | N≥5 concurrent `engine.generate` → abort subset → `engine.dispose()` → every child reaped | yes (mock) |
-| `integration.test.ts` | `@repo/core.run` + `claude_cli` sonnet step + trajectory span tree + SIGINT propagation | yes (mock + child harness) |
+| `integration.test.ts` | `run` from core + `claude_cli` sonnet step + trajectory span tree + SIGINT propagation | yes (mock + child harness) |
+| `schema_repair.test.ts` | the four repair branches: first-attempt pass, no `session_id`, `--resume` retry, budget exhausted | yes (mock) |
 | `spawn.test.ts` | `create_spawn_runtime` lifecycle, live-set membership, exit reap, SIGTERM→SIGKILL escalator | yes (mock) |
 | `stream_parse.test.ts` | NDJSON line buffering, step/tool event mapping, unknown-event tolerance | no |
+| `stream_result.test.ts` | `build_generate_result`: usage summing, cost aggregation, the synthetic-turn path, error-result mapping | no |
 
 ## Fixtures
 
@@ -32,10 +37,11 @@ Node-script mock (`fixtures/mock_claude.mjs`) configured per test.
 
 ## Spec §12 coverage map
 
-Each numbered item below comes from spec §12 "Automated tests". Tags of the
-form `§12 #N` appear verbatim in test names or comments so
-`grep -R '§12 #' src/engine/__tests__/providers/claude_cli` returns every
-item.
+Each numbered item below comes from spec §12 "Automated tests". This table is
+the map. Most of the tests also carry a verbatim `§12 #N` tag in a name or a
+comment, so `grep -R '§12 #' src/engine/__tests__/providers/claude_cli` finds
+them directly; nine items are covered by a test that carries no tag, so reach
+for the table rather than the grep when an item does not turn up.
 
 | # | test |
 | ---: | --- |
@@ -91,6 +97,11 @@ item.
 
 ## Running a real `claude` binary
 
-Real-binary end-to-end tests are gated behind `RUN_E2E=1` and intentionally
-live outside this directory. Everything under `__tests__/providers/claude_cli`
-runs against the mock fixtures and is safe for CI.
+Nothing here does. Every test in this directory drives the mock fixtures, which
+is what makes the whole directory safe for CI. No suite in this repo shells out
+to a real `claude` binary, so a change to how the CLI itself behaves shows up
+only when someone runs the provider by hand.
+
+The opt-in suite that does reach the network is `src/engine/__tests__/live`,
+gated on `LIVE_TESTS=1` plus the matching API key. It covers provider HTTP
+wire formats rather than the CLI; see CONTRIBUTING.md.
