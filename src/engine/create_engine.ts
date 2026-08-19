@@ -144,8 +144,8 @@ function assign_if_present<T, K extends keyof T>(target: T, key: K, value: T[K])
  * plus whichever optional `defaults.*` knobs were supplied.
  *
  * The optional defaults form a fixed source-to-target table (`defaults.model` ->
- * `default_model`, and so on); each is folded in only when present, matching the
- * conditional-spread shape this replaced.
+ * `default_model`, and so on), and each is folded in only when present, so an
+ * omitted knob leaves its key off the object rather than present-as-undefined.
  */
 function build_internals(
   base: Pick<

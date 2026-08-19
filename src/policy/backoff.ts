@@ -1,10 +1,10 @@
 /**
  * The backoff algebra shared by the composition layer and the engine.
  *
- * Both retry layers schedule delays between attempts, and each used to carry
- * its own exponential arithmetic plus its own timer/abort-listener dance. The
- * two drifted: one jittered and capped, the other did neither. This module is
- * the single algebra both express their delays through.
+ * Both retry layers schedule delays between attempts, and this module is the
+ * single algebra they express those delays through. Holding the exponential
+ * arithmetic and the timer/abort-listener dance in one place is what keeps the
+ * two from disagreeing about whether a delay jitters or caps.
  *
  * The zone sits at the bottom of the dependency DAG and imports nothing, which
  * is why `wait_with_abort` is handed the abort-error factory rather than
@@ -27,8 +27,8 @@ export type BackoffPolicy = {
  * The two callers pass genuinely different factories, and that is settled, not
  * pending: core propagates an `Error` reason verbatim so an upstream cause
  * survives, while the engine always wraps so its boundary can only ever throw
- * `aborted_error`. Both were weighed once both layers rode this algebra; see
- * the factories in `core/retry.ts` and `engine/retry.ts` for what each protects.
+ * `aborted_error`. See the factories in `core/retry.ts` and `engine/retry.ts`
+ * for what each one protects.
  * Collapsing them to one rule breaks one layer or the other.
  */
 export type AbortErrorFactory = (reason: unknown) => Error

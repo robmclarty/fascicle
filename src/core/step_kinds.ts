@@ -3,9 +3,10 @@
  *
  * Studio (and any other consumer that needs to enumerate primitives: palette,
  * docs, code generation) can rely on this being the exhaustive set. New
- * primitives must add their kind here. The `step_kinds_cover_runner` contract
- * test in `step_kinds.test.ts` asserts every dispatch handler corresponds to a
- * kind listed here.
+ * primitives must add their kind here. `step_kinds.test.ts` pins the list
+ * against the kinds core actually constructs, and
+ * `composites/__tests__/coverage.test.ts` covers the four composite kinds
+ * whose factories live outside core.
  */
 
 export const STEP_KINDS = [

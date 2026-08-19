@@ -113,8 +113,8 @@ function rethrow_network_failure(err: unknown, abort: AbortSignal, provider: str
  * Run one native turn over HTTP: POST the dialect's body, map a non-2xx to
  * the retry stack's shapes, and hand the response to the dialect's stream or
  * JSON consumer. `build_body` is called inside the network try/catch on
- * purpose: that is where each adapter historically built its body, so a
- * mapper throw keeps surfacing through the same path it always did.
+ * purpose, so a mapper that throws surfaces as a retryable network failure
+ * rather than escaping the turn unclassified.
  */
 export async function invoke_http_turn(
   req: TurnRequest,

@@ -20,7 +20,7 @@ import { timeout } from '../timeout.js'
 const dummy = step('dummy', (n: number) => n)
 
 // Kinds whose factories live outside core (in composites).
-// Their constructor coverage is asserted in packages/composites/src/coverage.test.ts;
+// Their constructor coverage is asserted in src/composites/__tests__/coverage.test.ts;
 // here we only verify they are still listed in STEP_KINDS.
 const COMPOSITE_KINDS = new Set<string>(['adversarial', 'ensemble', 'tournament', 'consensus'])
 
@@ -91,7 +91,7 @@ describe('STEP_KINDS registry', () => {
     }
   
     // Every kind in STEP_KINDS that's NOT a composite must be constructable from core.
-    // Composite kinds are covered by packages/composites/src/coverage.test.ts.
+    // Composite kinds are covered by src/composites/__tests__/coverage.test.ts.
     const constructed_kinds = new Set(constructed.map((s) => s.kind))
     for (const kind of STEP_KINDS) {
       if (COMPOSITE_KINDS.has(kind)) continue

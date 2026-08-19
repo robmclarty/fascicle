@@ -190,7 +190,7 @@ function describe_error(err: unknown): string {
 // consumer's own entry script happened to be named cli.js, see
 // https://nodejs.org/api/esm.html#importmetaurl. Compare the resolved path of
 // this module against argv[1] so the auto-execute only fires when the file is
-// run directly (for example, `tsx packages/viewer/src/cli.ts`), not when imported.
+// run directly (for example, `tsx src/viewer/cli.ts`), not when imported.
 const invoked_directly =
   process.argv[1] !== undefined &&
   process.argv[1] === fileURLToPath(import.meta.url)

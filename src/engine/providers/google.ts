@@ -2,7 +2,7 @@
  * Google Gemini provider adapter.
  *
  * Wraps @ai-sdk/google as an optional peer. Effort maps to the
- * `thinking_budget` provider option.
+ * `thinkingConfig.thinkingBudget` provider option.
  */
 
 import type { EffortLevel, ProviderInit, UsageTotals } from '../types.js'
