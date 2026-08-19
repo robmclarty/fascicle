@@ -1,5 +1,27 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- **Error messages name the remedy and carry the value.** Nineteen runtime messages were rewritten against the one already in the tree that got it right, `no provider specified: pass ... (configured: anthropic, ollama)`, which states the symptom, the fix, and the state the caller needs. Six numeric-bound errors stated a constraint and swallowed the input, so `turn_timeout_ms must be > 0` now reports what it got, matching the `retry: max_attempts ... got X` shape that already existed. `engine_disposed_error`, the `checkpoint` and `gate` anonymous-step guards, tool approval with no handler, and the `claude_cli` execute-closure rejection each name what to do next. Nothing about the errors' types, `kind` discriminants, or thrown classes moved; code that matches on an error's message text rather than its `kind` will need updating, which is the reason `kind` exists.
+
+- **`provider_not_configured_error` reports what the engine can route to.** The error meaning "you named a provider this engine has no adapter for" withheld the list you would check the name against. It now takes the configured names as an optional second constructor argument, exposes them as a readonly `configured` array, and prints them, exactly as its sibling `provider_required_error` already did.
+
+- **`fascicle-viewer` prefixes every line it writes.** Five of its eight stderr lines carried a `fascicle-viewer:` prefix and three did not, so `watching <path>` and `viewer at <url>` were anonymous in a terminal running more than one thing, while `shutting down` beside them was labelled. All of them carry it now, and a bad `--port` or `--buffer` says what a valid value looks like instead of only echoing the rejected one.
+
+### Added
+
+- **Two prose rules that reach string literals.** Vale maps `ts = js`, which lints doc comments and leaves the code alone, so no user-facing message in this package had ever been checked against a house rule. `rules/no-latin-abbrev-in-strings.yml` and `rules/no-em-dash-pair-in-strings.yml` mirror the vale rules of the same name into ast-grep, run in the `struct` slot, and cover `src`, `test`, and `examples`. Message *shape* stays a matter of judgment and gets no rule, because "does this name a remedy" is not something a matcher can decide.
+
+### Fixed
+
+- **The docs printed a peer-dependency error the package does not emit.** `providers.md` twice and `troubleshooting.md` once showed `missing peer dependency 'X'. Install it with: pnpm add X`, while the code has long said `Install it with your package manager, e.g., ... or npm install X`. The docs now quote the message as thrown.
+
+- **The `fascicle-viewer` help and the doc that documents it disagreed.** `--buffer <n>` sat one space short of the four flags beside it, and `docs/viewer.md` had the same block correctly aligned. The usage example in the CLI's own header comment was misaligned in the other direction.
+
+- **Comments and markdown that describe a layout this repo left behind.** Four doc comments narrated design history rather than present behavior, three named a contract test, a provider option, and source paths that do not exist, and `src/core/BACKLOG.md` still carried the `@repo/core` package name from the workspace v0.8.0 collapsed into one. The `claude_cli` test README listed 9 of its 14 test files, promised a `grep` that finds all 31 spec items when it finds 22, and documented a `RUN_E2E=1` gate that appears nowhere else in the repo. The amplify example's layout tree advertised a `src/state.ts` that the app deliberately does not have, its flow being built on `chain` bindings.
+
 ## v0.12.1 — 2026-08-18
 
 ### Added
