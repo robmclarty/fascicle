@@ -69,7 +69,7 @@
       <div style="flex:1; min-width:0; padding-top:6px;">
         <div style="font-family:'JetBrains Mono',monospace; font-size:13px; letter-spacing:3px; text-transform:uppercase; color:#C0521F; margin-bottom:26px;">The agent blueprint</div>
         <h1 style="font-family:'DM Serif Display',serif; font-weight:400; font-size:76px; line-height:0.98; margin:0; letter-spacing:-0.5px;">A standard architecture for <span style="font-style:italic; color:#15706A;">fascicle apps.</span></h1>
-        <p style="font-size:19px; line-height:1.6; color:#3a342e; margin:28px 0 0; max-width:560px;">Fascicle never dictates your app's shape — but the apps that stay easy to change all converge on the same one. The blueprint is that shape, distilled from the reference apps and from production consumers: one composition layer, markdown prompts, normalized module contracts, and boundaries enforced by lint rules instead of memory.</p>
+        <p style="font-size:19px; line-height:1.6; color:#3a342e; margin:28px 0 0; max-width:560px;">Fascicle never dictates your app's shape — but the apps that stay easy to change all converge on the same one. The blueprint is that shape, distilled from the reference apps and from production consumers: one composition layer, markdown prompts, normalized module contracts, and boundaries that lint rules enforce instead of memory.</p>
         <p style="font-size:16px; line-height:1.6; color:#5a5249; margin:16px 0 0; max-width:560px;">Building an agent on fascicle — or pointing a coding agent at the task? Start here. This page is the summary; the full spec lives in <a href="https://github.com/robmclarty/fascicle/blob/main/docs/blueprint.md" style="color:#C0521F; font-weight:700; border-bottom:2px solid #C0521F;">docs/blueprint.md</a>.</p>
         <div style="display:flex; gap:16px; margin-top:38px; flex-wrap:wrap;">
           <a href="https://github.com/robmclarty/fascicle/blob/main/docs/blueprint.md" style="background:#C0521F; color:#F4EBDB; font-weight:700; font-size:15px; padding:15px 28px; border:3px solid #211C17;" class="fc-btn"><span class="fc-btn-label">Read the full blueprint →</span></a>
@@ -100,7 +100,7 @@
     <div style="max-width:1320px; margin:0 auto;">
       <div style="font-family:'JetBrains Mono',monospace; font-size:13px; letter-spacing:3px; color:#D6982A; margin-bottom:18px;">01 · THE ONE RULE</div>
       <h2 style="font-family:'DM Serif Display',serif; font-weight:400; font-size:54px; line-height:1.02; margin:0; max-width:900px;">Give the agent exactly <span style="font-style:italic; color:#D6982A;">one composition layer.</span></h2>
-      <p style="font-size:18px; line-height:1.6; color:#C9C0AE; max-width:720px; margin:22px 0 0;">One file — call it <span style="font-family:'JetBrains Mono',monospace; font-size:15px; color:#F4EBDB;">flow.ts</span> — that the reader opens to see the entire topology, written in fascicle vocabulary only: <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">chain</span>, <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">step</span>, <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">model_step</span>, <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">sequence</span>, <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">parallel</span>, <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">branch</span>, <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">loop</span>. Everything that is not shape — string formatting, IO, state transitions — lives in sibling modules and is plugged in as plain functions.</p>
+      <p style="font-size:18px; line-height:1.6; color:#C9C0AE; max-width:720px; margin:22px 0 0;">One file (call it <span style="font-family:'JetBrains Mono',monospace; font-size:15px; color:#F4EBDB;">flow.ts</span>) shows the reader the entire topology, written in fascicle vocabulary only: <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">chain</span>, <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">step</span>, <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">model_step</span>, <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">sequence</span>, <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">parallel</span>, <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">branch</span>, <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">loop</span>. Everything that isn't shape (string formatting, IO, state transitions) lives in sibling modules and plugs in as plain functions.</p>
       <p style="font-size:18px; line-height:1.6; color:#C9C0AE; max-width:720px; margin:16px 0 0;">Steps are plain values: anything with the same <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">Step&lt;i, o&gt;</span> type swaps for anything else. That plug-and-play property is only worth something if your app has a place where the blocks are <em>visible</em>. Scattered through business logic, the topology exists only in the reader's head. Gathered into one layer, the topology <em>is</em> the file — and swapping a block is editing one line of it.</p>
 
       <div style="margin-top:48px; border:3px solid #F4EBDB;">
@@ -129,25 +129,25 @@
       <div style="background:#EFE3CE; border:3px solid #211C17; box-shadow:1px 1px 0 #211C17, 2px 2px 0 #211C17, 3px 3px 0 #211C17, 4px 4px 0 #211C17, 5px 5px 0 #211C17, 6px 6px 0 #211C17; padding:28px;">
         <div style="font-family:'JetBrains Mono',monospace; font-size:12px; letter-spacing:2px; color:#C0521F; margin-bottom:10px;">TIER 1</div>
         <div style="font-family:'DM Serif Display',serif; font-size:30px; color:#C0521F; line-height:1.05;">Engine only</div>
-        <p style="font-size:14.5px; line-height:1.55; color:#3a342e; margin:14px 0 0;">A plain async pipeline; model calls are leaf functions behind a small app-owned port. Fascicle owns provider portability, schema enforcement, retries, and cost — you never adopt the composition algebra.</p>
+        <p style="font-size:14.5px; line-height:1.55; color:#3a342e; margin:14px 0 0;">A plain async pipeline, where model calls are leaf functions behind a small app-owned port. Fascicle owns provider portability, schema enforcement, retries, and cost — you never adopt the composition algebra.</p>
         <div style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#7A5230; margin-top:16px; line-height:1.6;">REACH FOR IT WHEN → the pipeline is deterministic code and the model is a subroutine.</div>
       </div>
       <div style="background:#EFE3CE; border:3px solid #211C17; box-shadow:1px 1px 0 #211C17, 2px 2px 0 #211C17, 3px 3px 0 #211C17, 4px 4px 0 #211C17, 5px 5px 0 #211C17, 6px 6px 0 #211C17; padding:28px;">
         <div style="font-family:'JetBrains Mono',monospace; font-size:12px; letter-spacing:2px; color:#15706A; margin-bottom:10px;">TIER 2</div>
         <div style="font-family:'DM Serif Display',serif; font-size:30px; color:#15706A; line-height:1.05;">Orchestrated loop</div>
-        <p style="font-size:14.5px; line-height:1.55; color:#3a342e; margin:14px 0 0;">Fascicle's <span style="font-family:'JetBrains Mono',monospace; font-size:13px;">loop</span> / <span style="font-family:'JetBrains Mono',monospace; font-size:13px;">sequence</span> at the top and nothing else; each step delegates to a phase module. Trajectory, resume, abort, and cost caps fall out for free.</p>
+        <p style="font-size:14.5px; line-height:1.55; color:#3a342e; margin:14px 0 0;">Fascicle's <span style="font-family:'JetBrains Mono',monospace; font-size:13px;">loop</span> / <span style="font-family:'JetBrains Mono',monospace; font-size:13px;">sequence</span> sits at the top, and nothing else does; each step delegates to a phase module. Trajectory, resume, abort, and cost caps fall out for free.</p>
         <div style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#7A5230; margin-top:16px; line-height:1.6;">REACH FOR IT WHEN → an iterative build / check / critique loop wants resume and observability.</div>
       </div>
       <div style="background:#EFE3CE; border:3px solid #211C17; box-shadow:1px 1px 0 #211C17, 2px 2px 0 #211C17, 3px 3px 0 #211C17, 4px 4px 0 #211C17, 5px 5px 0 #211C17, 6px 6px 0 #211C17; padding:28px;">
         <div style="font-family:'JetBrains Mono',monospace; font-size:12px; letter-spacing:2px; color:#A8336A; margin-bottom:10px;">TIER 3</div>
         <div style="font-family:'DM Serif Display',serif; font-size:30px; color:#A8336A; line-height:1.05;">Composition-first</div>
-        <p style="font-size:14.5px; line-height:1.55; color:#3a342e; margin:14px 0 0;">Fascicle owns the whole topology; you write leaf functions only. The full blueprint — the standard layout, stage factories, state readers — assumes this tier.</p>
+        <p style="font-size:14.5px; line-height:1.55; color:#3a342e; margin:14px 0 0;">Fascicle owns the whole topology; you write leaf functions only. The full blueprint (the standard layout, stage factories, state readers) assumes this tier.</p>
         <div style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#7A5230; margin-top:16px; line-height:1.6;">REACH FOR IT WHEN → a multi-stage model pipeline has branches, fan-out, or convergence, and stages should be swappable.</div>
       </div>
     </div>
 
     <div style="margin-top:40px; border-left:6px solid #C0521F; padding:6px 0 6px 24px;">
-      <div style="font-family:'DM Serif Display',serif; font-size:26px; line-height:1.25; color:#211C17; max-width:900px;">Over-composing is as real a failure as under-composing. A single-step "flow" that exists only to produce a span name is <span style="font-style:italic; color:#C0521F;">composition theater</span> — a plain function is honest. An <span style="font-family:'JetBrains Mono',monospace; font-size:19px;">if</span> buried in a step body that another pipeline wants to compose around should be a <span style="font-family:'JetBrains Mono',monospace; font-size:19px;">branch</span>.</div>
+      <div style="font-family:'DM Serif Display',serif; font-size:26px; line-height:1.25; color:#211C17; max-width:900px;">Over-composing is as real a failure as under-composing. A single-step "flow" that exists only to produce a span name is <span style="font-style:italic; color:#C0521F;">composition theater</span> — a plain function is honest. Bury an <span style="font-family:'JetBrains Mono',monospace; font-size:19px;">if</span> in a step body that another pipeline wants to compose around, and it should have been a <span style="font-family:'JetBrains Mono',monospace; font-size:19px;">branch</span>.</div>
     </div>
   </div>
 
@@ -156,7 +156,7 @@
     <div style="max-width:1320px; margin:0 auto;">
       <div style="font-family:'JetBrains Mono',monospace; font-size:13px; letter-spacing:3px; color:#C0521F; margin-bottom:18px;">03 · MODULE CONTRACTS</div>
       <h2 style="font-family:'DM Serif Display',serif; font-weight:400; font-size:54px; line-height:1; margin:0;">Each module has <span style="font-style:italic; color:#15706A;">one reason to exist.</span></h2>
-      <p style="font-size:18px; line-height:1.6; color:#3a342e; max-width:700px; margin:18px 0 44px;">The names matter less than the contracts. What kills legibility is not calling the file <span style="font-family:'JetBrains Mono',monospace; font-size:15px;">pipeline.ts</span> instead of <span style="font-family:'JetBrains Mono',monospace; font-size:15px;">flow.ts</span> — it is a message builder implemented inline in the flow, or a <span style="font-family:'JetBrains Mono',monospace; font-size:15px;">model_call</span> hidden in a service.</p>
+      <p style="font-size:18px; line-height:1.6; color:#3a342e; max-width:700px; margin:18px 0 44px;">The names matter less than the contracts. What kills legibility isn't calling the file <span style="font-family:'JetBrains Mono',monospace; font-size:15px;">pipeline.ts</span> instead of <span style="font-family:'JetBrains Mono',monospace; font-size:15px;">flow.ts</span> — it's a message builder that's implemented inline in the flow, or a <span style="font-family:'JetBrains Mono',monospace; font-size:15px;">model_call</span> that's hidden in a service.</p>
 
       <div style="border:3px solid #211C17; box-shadow:1px 1px 0 #211C17, 2px 2px 0 #211C17, 3px 3px 0 #211C17, 4px 4px 0 #211C17, 5px 5px 0 #211C17, 6px 6px 0 #211C17, 7px 7px 0 #211C17, 8px 8px 0 #211C17; overflow:hidden; background:#F4EBDB;">
         <table style="width:100%; border-collapse:collapse; font-size:14px;">
@@ -194,7 +194,7 @@
         </div>
         <div style="border-left:3px solid #7A5230; padding:4px 0 4px 18px;">
           <div style="font-weight:700; font-size:16px;">Test with a stub engine, not a mocked flow</div>
-          <div style="font-size:14.5px; line-height:1.55; color:#5a5249; margin-top:6px;"><span style="font-family:'JetBrains Mono',monospace; font-size:13px;">fascicle/testing</span> ships the doubles — <span style="font-family:'JetBrains Mono',monospace; font-size:13px;">make_stub_engine</span> and <span style="font-family:'JetBrains Mono',monospace; font-size:13px;">make_capture_engine</span> — so tests run the <em>real</em> flow through the <em>real</em> <span style="font-family:'JetBrains Mono',monospace; font-size:13px;">run()</span> with zero network. Canned responses route by the prompt's stable first line and validate through the caller's own schema, so fixtures can never drift.</div>
+          <div style="font-size:14.5px; line-height:1.55; color:#5a5249; margin-top:6px;"><span style="font-family:'JetBrains Mono',monospace; font-size:13px;">fascicle/testing</span> ships the doubles (<span style="font-family:'JetBrains Mono',monospace; font-size:13px;">make_stub_engine</span> and <span style="font-family:'JetBrains Mono',monospace; font-size:13px;">make_capture_engine</span>) so tests run the <em>real</em> flow through the <em>real</em> <span style="font-family:'JetBrains Mono',monospace; font-size:13px;">run()</span> with zero network. Canned responses route by the prompt's stable first line and validate through the caller's own schema, so fixtures can never drift.</div>
         </div>
       </div>
     </div>
@@ -204,7 +204,7 @@
   <div id="antipatterns" style="position:relative; padding:96px 40px; max-width:1320px; margin:0 auto;">
     <div style="font-family:'JetBrains Mono',monospace; font-size:13px; letter-spacing:3px; color:#C0521F; margin-bottom:18px;">04 · ANTI-PATTERNS</div>
     <h2 style="font-family:'DM Serif Display',serif; font-weight:400; font-size:54px; line-height:1; margin:0;">Observed <span style="font-style:italic; color:#A8336A;">in the wild.</span></h2>
-    <p style="font-size:18px; line-height:1.6; color:#3a342e; max-width:660px; margin:18px 0 48px;">Every one of these earned its place in the blueprint by the pain of its presence in a real codebase. The fix is in each card.</p>
+    <p style="font-size:18px; line-height:1.6; color:#3a342e; max-width:660px; margin:18px 0 48px;">Every one of these earned its place in the blueprint by hurting in a real codebase. The fix is in each card.</p>
 
     <div style="display:grid; grid-template-columns:1fr 1fr; gap:18px;">
       <sc-for list="{{ antipatterns }}" as="a" hint-placeholder-count="10">
@@ -357,10 +357,10 @@ class Component extends DCLogic {
     }));
 
     const adef = [
-      ['Scattered fascicle calls', 'model_call and combinators sprinkled through business logic. The topology becomes unreadable and unswappable.', 'gather into one composition layer, or drop to tier 1 behind a port'],
+      ['Scattered fascicle calls', 'model_call and combinators are sprinkled through business logic, so the topology becomes unreadable and unswappable.', 'gather into one composition layer, or drop to tier 1 behind a port'],
       ['Control flow buried in step bodies', 'An if / for / try-fallback inside a step is invisible to trajectories and to describe().', 'lift to branch / loop / fallback'],
       ['Composition theater', 'Single-step flows whose only contribution is a span name; combinator chains around a linear two-call sequence.', 'collapse to a step, or to plain code behind a port'],
-      ['Two sources of truth for model defaults', 'Defaults in engine.ts, redefined in main.ts, env overrides parsed but never reaching the flow.', 'one role-to-model table, resolved once, passed as data'],
+      ['Two sources of truth for model defaults', 'Defaults live in engine.ts, get redefined in main.ts, and env overrides are parsed but never reach the flow.', 'one role-to-model table, resolved once, passed as data'],
       ['Output rules stated in three places', 'System prompt, .describe(), and an auditor prompt — three copies to keep in sync.', 'one home per rule: schema for field constraints, prompt for the role'],
       ['Mutable closures smuggled through the graph', 'let stopped = false captured by three steps.', 'loop carry-state and accretion result types'],
       ['Stringly-typed cross-module contracts', "Matching on err.message === 'Retries exhausted'; duck-typing provider blobs.", 'typed error kinds and typed accessors'],

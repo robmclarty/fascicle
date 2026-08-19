@@ -132,11 +132,11 @@
     <div style="display:grid; grid-template-columns:repeat(2,1fr); gap:24px;">
       <div style="background:#EFE3CE; border:3px solid #211C17; box-shadow:1px 1px 0 #211C17, 2px 2px 0 #211C17, 3px 3px 0 #211C17, 4px 4px 0 #211C17, 5px 5px 0 #211C17, 6px 6px 0 #211C17; padding:28px;">
         <div style="font-family:'DM Serif Display',serif; font-size:34px; color:#C0521F; line-height:1.02;">No vendor lock-in</div>
-        <p style="font-size:15px; line-height:1.55; color:#3a342e; margin:16px 0 0;">Develop against a free local model on your laptop; ship the same flow on Bedrock, Anthropic, or OpenAI by changing a string, not your code. Eight transports behind one <span style="font-family:'JetBrains Mono',monospace; font-size:13px;">generate</span> — the local-to-hosted path is proven in production.</p>
+        <p style="font-size:15px; line-height:1.55; color:#3a342e; margin:16px 0 0;">Develop against a free local model on your laptop; ship the same flow on Bedrock, Anthropic, or OpenAI by changing a string, not your code. Eight transports sit behind one <span style="font-family:'JetBrains Mono',monospace; font-size:13px;">generate</span>, and the local-to-hosted path is proven in production.</p>
       </div>
       <div style="background:#EFE3CE; border:3px solid #211C17; box-shadow:1px 1px 0 #211C17, 2px 2px 0 #211C17, 3px 3px 0 #211C17, 4px 4px 0 #211C17, 5px 5px 0 #211C17, 6px 6px 0 #211C17; padding:28px;">
         <div style="font-family:'DM Serif Display',serif; font-size:34px; color:#15706A; line-height:1.02;">No magic</div>
-        <p style="font-size:15px; line-height:1.55; color:#3a342e; margin:16px 0 0;">No decorators, no dependency injection, no framework lifecycle, no ambient scheduler deciding when your code runs. A flow is plain functions you can read top to bottom, set a breakpoint in, and unit-test.</p>
+        <p style="font-size:15px; line-height:1.55; color:#3a342e; margin:16px 0 0;">No decorators, no dependency injection, no framework lifecycle, no ambient scheduler that decides when your code runs. A flow is plain functions you can read top to bottom, set a breakpoint in, and unit-test.</p>
       </div>
       <div style="background:#EFE3CE; border:3px solid #211C17; box-shadow:1px 1px 0 #211C17, 2px 2px 0 #211C17, 3px 3px 0 #211C17, 4px 4px 0 #211C17, 5px 5px 0 #211C17, 6px 6px 0 #211C17; padding:28px;">
         <div style="font-family:'DM Serif Display',serif; font-size:34px; color:#A8336A; line-height:1.02;">Sovereign by default</div>
@@ -175,7 +175,7 @@
           </div>
           <div style="display:flex; flex-direction:column; gap:12px; font-size:14.5px; line-height:1.5; color:#3a342e;">
             <div style="display:flex; gap:10px;"><span style="color:#A8336A; font-weight:700;">—</span><span>A model decides every next move at runtime.</span></div>
-            <div style="display:flex; gap:10px;"><span style="color:#A8336A; font-weight:700;">—</span><span>Every hop spends tokens — latency and cost you can't predict.</span></div>
+            <div style="display:flex; gap:10px;"><span style="color:#A8336A; font-weight:700;">—</span><span>Every hop spends tokens, so latency and cost stay unpredictable.</span></div>
             <div style="display:flex; gap:10px;"><span style="color:#A8336A; font-weight:700;">—</span><span>Nondeterministic. Hard to test, replay, or debug.</span></div>
           </div>
         </div>
@@ -206,7 +206,7 @@
       </div>
 
       <div style="margin-top:40px; border-left:6px solid #C0521F; padding:6px 0 6px 24px;">
-        <div style="font-family:'DM Serif Display',serif; font-size:30px; line-height:1.2; color:#211C17; max-width:900px;">This shape is the future: boring, predictable code that calls models <span style="font-style:italic; color:#C0521F;">sparingly</span> — not models burning tokens to orchestrate other models.</div>
+        <div style="font-family:'DM Serif Display',serif; font-size:30px; line-height:1.2; color:#211C17; max-width:900px;">This shape is the future: boring, predictable code that calls models <span style="font-style:italic; color:#C0521F;">sparingly</span> — not models that burn tokens to orchestrate other models.</div>
       </div>
     </div>
   </div>
@@ -217,8 +217,8 @@
       <div style="flex:none; width:420px;">
         <div style="font-family:'JetBrains Mono',monospace; font-size:13px; letter-spacing:3px; color:#D6982A; margin-bottom:18px;">03 · ADD A MODEL STEP</div>
         <h2 style="font-family:'DM Serif Display',serif; font-weight:400; font-size:50px; line-height:1.02; margin:0; color:#F4EBDB;">A model is <span style="font-style:italic; color:#D6982A;">just another step.</span></h2>
-        <p style="font-size:17px; line-height:1.6; color:#C9C0AE; margin:24px 0 0;"><span style="font-family:'JetBrains Mono',monospace; font-size:14px; color:#D6982A;">model_step</span> turns a model role into a <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">Step&lt;i, o&gt;</span> that returns the answer itself: a string, or the schema-validated value. Every primitive you've already seen applies to it. Wrap it in <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">retry</span>, fan it out with <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">map</span>, race it with <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">fallback</span>. There's no second API for “calling a model carefully.” When the caller wants the envelope (usage, cost, tool calls), <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">model_call</span> takes the same config and returns the full <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">GenerateResult</span>.</p>
-        <p style="font-size:17px; line-height:1.6; color:#C9C0AE; margin:18px 0 0;">It also threads the tedious parts for you — cancellation through <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">ctx.abort</span>, tracing through <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">ctx.trajectory</span>, and streaming chunks — so your flow stays pure composition and never imports a provider SDK.</p>
+        <p style="font-size:17px; line-height:1.6; color:#C9C0AE; margin:24px 0 0;"><span style="font-family:'JetBrains Mono',monospace; font-size:14px; color:#D6982A;">model_step</span> turns a model role into a <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">Step&lt;i, o&gt;</span> that returns the answer itself: a string, or the schema-validated value. Every primitive you've already seen applies to it. Wrap it in <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">retry</span>, fan it out with <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">map</span>, race it with <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">fallback</span>. Fascicle doesn't offer a second API for “calling a model carefully.” When the caller wants the envelope (usage, cost, tool calls), <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">model_call</span> takes the same config and returns the full <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">GenerateResult</span>.</p>
+        <p style="font-size:17px; line-height:1.6; color:#C9C0AE; margin:18px 0 0;">It also threads the tedious parts for you (cancellation through <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">ctx.abort</span>, tracing through <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">ctx.trajectory</span>, and streaming chunks), so your flow stays pure composition and never imports a provider SDK.</p>
         <a href="docs.html" style="display:inline-block; margin-top:28px; background:#C0521F; color:#F4EBDB; font-weight:700; font-size:14px; padding:13px 24px; border:3px solid #F4EBDB; box-shadow:1px 1px 0 #C0521F, 2px 2px 0 #C0521F, 3px 3px 0 #C0521F, 4px 4px 0 #C0521F, 5px 5px 0 #C0521F;">Read the concepts →</a>
       </div>
 
@@ -255,7 +255,7 @@ try {
       <div style="flex:none; width:430px;">
         <div style="font-family:'JetBrains Mono',monospace; font-size:13px; letter-spacing:3px; color:#C0521F; margin-bottom:18px;">04 · COMPOSITION</div>
         <h2 style="font-family:'DM Serif Display',serif; font-weight:400; font-size:50px; line-height:1.02; margin:0;">Add capability by <span style="font-style:italic; color:#C0521F;">wrapping</span> — never by rewriting.</h2>
-        <p style="font-size:17px; line-height:1.6; color:#3a342e; margin:24px 0 0;">Because every composer takes a <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">Step</span> and returns a <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">Step</span>, a composition is just another <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">Step</span>. There's no privileged “top level,” no interface that widens as a flow grows — a thousand nested layers still type as <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">Step&lt;i, o&gt;</span>.</p>
+        <p style="font-size:17px; line-height:1.6; color:#3a342e; margin:24px 0 0;">Because every composer takes a <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">Step</span> and returns a <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">Step</span>, a composition is just another <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">Step</span>. No layer is privileged as a “top level,” and no interface widens as a flow grows — a thousand nested layers still type as <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">Step&lt;i, o&gt;</span>.</p>
         <p style="font-size:17px; line-height:1.6; color:#3a342e; margin:18px 0 0;">So you harden a flow the way you'd wrap a function. Need retries, a fallback, or three-model voting? Wrap the step you already have. What's inside doesn't change; what calls it doesn't change. No refactor, no bespoke glue for every feature — just one more layer.</p>
         <div style="margin-top:24px; font-family:'JetBrains Mono',monospace; font-size:15px; background:#211C17; color:#E8DFCD; padding:14px 18px; border:3px solid #211C17; box-shadow:1px 1px 0 #C0521F, 2px 2px 0 #C0521F, 3px 3px 0 #C0521F, 4px 4px 0 #C0521F, 5px 5px 0 #C0521F;">Step&lt;i, o&gt; → Step&lt;i, o&gt;</div>
       </div>
@@ -316,7 +316,7 @@ try {
             </div>
             <div style="padding:20px 22px; font-family:'JetBrains Mono',monospace; font-size:13px; line-height:1.9; color:#E8DFCD; white-space:pre; overflow-x:auto;"><span style="color:#C0521F;">const</span> flow = <span style="color:#15a39a;">chain</span>&lt;<span style="color:#15a39a;">Repo</span>, <span style="color:#D6982A;">'repo'</span>&gt;(<span style="color:#D6982A;">'repo'</span>)<br>  .<span style="color:#15a39a;">step</span>(<span style="color:#D6982A;">'commits'</span>, ({ repo }) =&gt; <span style="color:#15a39a;">list_commits</span>(repo))<br>  .<span style="color:#15a39a;">step</span>(<span style="color:#D6982A;">'draft'</span>, ({ commits }, ctx) =&gt;<br>    ctx.<span style="color:#15a39a;">call</span>(writer, <span style="color:#15a39a;">format_prompt</span>(commits)), { arm: writer })<br>  .<span style="color:#15a39a;">step</span>(<span style="color:#D6982A;">'checked'</span>, ({ draft }, ctx) =&gt;<br>    ctx.<span style="color:#15a39a;">call</span>(fact_gate, draft), { arm: fact_gate })<br>  .<span style="color:#15a39a;">output</span>(({ checked, draft }) =&gt; (checked ? draft : <span style="color:#D6982A;">'needs review'</span>))</div>
           </div>
-          <div style="margin-top:12px; font-family:'JetBrains Mono',monospace; font-size:12px; color:#8a8278; line-height:1.6;">Bindings are typed, arms are declared, and describe prints the whole tree — spine, arms, leaves — before anything runs.</div>
+          <div style="margin-top:12px; font-family:'JetBrains Mono',monospace; font-size:12px; color:#8a8278; line-height:1.6;">Bindings are typed, arms are declared, and describe prints the whole tree (spine, arms, leaves) before anything runs.</div>
         </div>
         <div>
           <div style="font-family:'JetBrains Mono',monospace; font-size:12px; letter-spacing:2px; color:#D6982A; margin-bottom:12px;">DIRECT · A PLAIN BODY, WHEN WIRING IS DYNAMIC</div>
@@ -345,7 +345,7 @@ try {
   <div id="providers" style="position:relative; padding:96px 40px; max-width:1320px; margin:0 auto;">
     <div style="font-family:'JetBrains Mono',monospace; font-size:13px; letter-spacing:3px; color:#C0521F; margin-bottom:18px;">06 · PROVIDERS</div>
     <h2 style="font-family:'DM Serif Display',serif; font-weight:400; font-size:54px; line-height:1; margin:0;">One <span style="font-style:italic; color:#15706A;">generate</span> surface, eight providers.</h2>
-    <p style="font-size:18px; line-height:1.6; color:#3a342e; max-width:680px; margin:18px 0 24px;">Your logic shouldn't care who serves the tokens. Write a flow once and point it at Anthropic, Bedrock, or a model running on your laptop — by changing a string. Develop against free local models, ship on a compliant cloud, fall back to another vendor mid-outage; the code never moves.</p>
+    <p style="font-size:18px; line-height:1.6; color:#3a342e; max-width:680px; margin:18px 0 24px;">Your logic shouldn't care who serves the tokens. Write a flow once and point it at Anthropic, Bedrock, or a model that runs on your laptop — by changing a string. Develop against free local models, ship on a compliant cloud, fall back to another vendor mid-outage; the code never moves.</p>
     <p style="font-size:16px; line-height:1.6; color:#5a5249; max-width:680px; margin:0 0 40px;">Aliases resolve, a provider-neutral <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">effort</span> knob translates per vendor, and <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">supports(capability)</span> lets you degrade gracefully instead of failing at runtime. Every SDK is an optional peer — install only the ones you call.</p>
 
     <div style="border:3px solid #211C17; box-shadow:1px 1px 0 #211C17, 2px 2px 0 #211C17, 3px 3px 0 #211C17, 4px 4px 0 #211C17, 5px 5px 0 #211C17, 6px 6px 0 #211C17, 7px 7px 0 #211C17, 8px 8px 0 #211C17; overflow:hidden;">
@@ -622,7 +622,7 @@ class Component extends DCLogic {
 
     const providerHint = prov ? ('tap ' + prov + ' again to clear') : 'adds a model_call';
     let selectionNote;
-    if (!prim && !prov) selectionNote = 'Showing the 60-second tour. Click a primitive — and optionally a provider — to build a live example.';
+    if (!prim && !prov) selectionNote = 'Showing the 60-second tour. Click a primitive (and optionally a provider) to build a live example.';
     else selectionNote = 'Composing ' + (prim || 'model_call') + (prov ? ' with ' + prov : '') + '. Tap the highlighted chips again to reset.';
 
     return { codeLines, rawCode, fileName, providerChips, primGroups, providerHint, selectionNote, matrix, copy: (e) => this.copy(e) };
