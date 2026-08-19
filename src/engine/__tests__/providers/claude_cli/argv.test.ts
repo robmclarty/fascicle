@@ -1,5 +1,5 @@
 /**
- * Argv construction tests (spec §6.1, §12 #2, #10, #11, #30).
+ * Argv construction tests (spec §6.1, §12 #2, #10, #11, #16, #30).
  *
  * These tests are pure and exercise build_cli_argv / merge_allowed_tools /
  * merge_system / build_sandbox_plan. They also run the argv-injection audit
@@ -323,7 +323,7 @@ describe('build_sandbox_plan', () => {
   })
 })
 
-describe('argv-injection audit (architectural validation #16)', () => {
+describe('argv-injection audit (§12 #16, architectural validation #16)', () => {
   it('argv.ts contains no template-literal option construction of --flag=${value}', async () => {
     const source = await readFile(
       join(here, '../../../providers/claude_cli/argv.ts'),

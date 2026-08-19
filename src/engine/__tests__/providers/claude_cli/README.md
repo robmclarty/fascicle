@@ -37,11 +37,11 @@ Node-script mock (`fixtures/mock_claude.mjs`) configured per test.
 
 ## Spec §12 coverage map
 
-Each numbered item below comes from spec §12 "Automated tests". This table is
-the map. Most of the tests also carry a verbatim `§12 #N` tag in a name or a
-comment, so `grep -R '§12 #' src/engine/__tests__/providers/claude_cli` finds
-them directly; nine items are covered by a test that carries no tag, so reach
-for the table rather than the grep when an item does not turn up.
+Each numbered item below comes from spec §12 "Automated tests". Tags of the
+form `§12 #N` appear verbatim in test names or comments so
+`grep -R '§12 #' src/engine/__tests__/providers/claude_cli` returns every
+item. Two tests also carry a number from the separate architectural-validation
+list, which is why `#16` and `#31` each show two.
 
 | # | test |
 | ---: | --- |

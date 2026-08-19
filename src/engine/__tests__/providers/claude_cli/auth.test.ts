@@ -1,5 +1,5 @@
 /**
- * Auth tests (spec §4, §6.1, §12 #20, #21; F19, F20).
+ * Auth tests (spec §4, §6.1, §12 #20, #21, #31; F19, F20).
  *
  * Covers build_env semantics for every AuthMode, the synchronous validator for
  * auth_mode: 'api_key' missing api_key, stderr pattern matching against
@@ -376,7 +376,7 @@ describe('end-to-end auth-scrub through adapter spawn (§12 #20, F20, criterion 
   })
 })
 
-describe('frozen constants (architectural validation #15)', () => {
+describe('frozen constants (§12 #31, architectural validation #15)', () => {
   it('CLI_AUTH_ERROR_PATTERNS is frozen; push throws in strict mode', () => {
     expect(Object.isFrozen(CLI_AUTH_ERROR_PATTERNS)).toBe(true)
     expect(() => {

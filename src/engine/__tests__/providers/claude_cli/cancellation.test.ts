@@ -1,6 +1,6 @@
 /**
  * Cancellation, timeouts, dispose, and post-dispose semantics (spec §6, §8,
- * §11, §12 #14, #18, #19, #25).
+ * §11, §12 #7, #14, #18, #19, #25, #29).
  *
  * Exercises the full adapter surface under:
  *   - opts.abort fired mid-stream (SIGTERM → SIGKILL if child ignores it)
@@ -253,7 +253,7 @@ describe('classify_close_error path (§12 #17, F21)', () => {
     ).rejects.toThrow(claude_cli_error)
   })
 
-  it('no_result_event error when CLI exits 0 without emitting a result', async () => {
+  it('§12 #7 — no_result_event error when CLI exits 0 without emitting a result', async () => {
     // init only, then exit 0.
     const handle = await track(
       await write_mock_script([
@@ -276,7 +276,7 @@ describe('classify_close_error path (§12 #17, F21)', () => {
   })
 })
 
-describe('trajectory captured on cancellation', () => {
+describe('trajectory captured on cancellation (§12 #29)', () => {
   it('aborted generate still records chunks produced up to the cancel point', async () => {
     const handle = await track(
       await write_mock_script([
