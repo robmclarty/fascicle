@@ -27,6 +27,14 @@
       "order": 1
     },
 
+    "prose-health": {
+      "command": "node",
+      "args": ["scripts/prose-health.mjs"],
+      "description": "prose shape and register ratchet against .prose-health.json (AGENTS.md § Prose voice)",
+      "note": "vale checks a sentence, the exemplars carry the voice, and this catches the thing neither can see: a whole file drifting compressed. Ratchets per file against its own past, never against a target, so reference material is free to score a tenth of what an essay scores. Re-baseline only in a deliberate commit; see .claude/skills/prose/SKILL.md.",
+      "order": 3
+    },
+
     "dead": { "use": "fallow", "order": 2 },
     "dupes": { "use": "fallow", "order": 2 },
 

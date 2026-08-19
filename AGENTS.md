@@ -79,6 +79,26 @@ the 928 blocks under `src/`, a release note follows `CHANGELOG.md`, a troublesho
 entry follows `docs/troubleshooting.md`, and a design proposal follows
 [examples/pr-improve/SPEC.md](./examples/pr-improve/SPEC.md).
 
+### Prose shape
+
+Vale checks one sentence and the exemplars carry the voice. Neither can see the way
+a whole file goes wrong, which is prose that passes every rule while every clause
+gets packed into a modifier until the reader has to reconstruct the verb. The
+`prose-health` check measures that directly, over `docs/` and the top-level
+markdown, and `node scripts/prose-health.mjs --report` prints the table.
+
+It ratchets each file against `.prose-health.json` instead of against a target,
+which is what lets a table of exports score a tenth of what an essay scores and
+stay green forever, as long as it doesn't get worse. Re-baselining is a deliberate
+act with the same weight as `checkride baseline`, so it belongs in its own commit
+with the reason stated.
+
+The number is not the goal, and you raise it honestly by rewriting a compressed
+sentence into a finite clause. Inserting the word the metric counts also raises it,
+and makes the prose worse. The method, the traps that break markdown structure, and
+the reason there's no regex for the constructions this can't count are in
+[.claude/skills/prose/SKILL.md](./.claude/skills/prose/SKILL.md).
+
 ## Source layout
 
 This is a **single package**. All source lives under `src/`, organized as deep modules: `src/<module>/` (core, engine, composites, agents, adapters, mcp, stdio, ui, otel, policy, schema, testing, viewer), each with a barrel `index.ts` that is its only public face. The umbrella surface sits at the `src/` root (`index.ts`, `model_call.ts`, `forward_standard_env.ts`); that is what bundles to npm as `fascicle`, and the `adapters`, `agents`, `mcp`, `otel`, `stdio`, `testing`, and `ui` modules are additionally published as `fascicle/<module>` subpaths. The 7 apps under `examples/*/` are the only other workspace members; they depend on the library via `fascicle: workspace:*`.
