@@ -93,7 +93,7 @@
         </div>
         <div style="margin-top:40px;">
           <div style="margin-bottom:12px;">
-            <div style="font-family:'JetBrains Mono',monospace; font-size:12px; letter-spacing:2px; color:#7A5230;">ONE GENERATE SURFACE · 8 PROVIDERS</div>
+            <div style="font-family:'JetBrains Mono',monospace; font-size:12px; letter-spacing:2px; color:#7A5230;">ONE GENERATE SURFACE · EIGHT PROVIDERS</div>
           </div>
           <div style="display:flex; flex-wrap:wrap; gap:8px; font-family:'JetBrains Mono',monospace; font-size:13px;">
             <sc-for list="{{ providerChips }}" as="c" hint-placeholder-count="8">
@@ -598,9 +598,9 @@ class Component extends DCLogic {
       return { name, select: () => this.selectProv(name), bg: on ? '#C0521F' : '#F4EBDB', fg: on ? '#F4EBDB' : '#211C17' };
     });
     const groupDef = [
-      { label: '1 · LEAVES · ONE BOUNDARY EACH', labelColor: '#7A5230', muted: false, names: ['step', 'model_step', 'model_call'] },
-      { label: '2 · ARMS · COMPOSED AROUND LEAVES', labelColor: '#7A5230', muted: false, names: ['sequence', 'parallel', 'map', 'pipe', 'retry', 'fallback', 'timeout', 'checkpoint', 'adversarial', 'ensemble_step', 'consensus', 'suspend', 'compose'] },
-      { label: '3 · SPINE · ONE CHAIN PER FLOW', labelColor: '#7A5230', muted: false, names: ['chain', 'branch', 'loop'] },
+      { label: '1 · LEAVES', labelColor: '#7A5230', muted: false, names: ['step', 'model_step', 'model_call'] },
+      { label: '2 · ARMS', labelColor: '#7A5230', muted: false, names: ['sequence', 'parallel', 'map', 'pipe', 'retry', 'fallback', 'timeout', 'checkpoint', 'adversarial', 'ensemble_step', 'consensus', 'suspend', 'compose'] },
+      { label: '3 · SPINE', labelColor: '#7A5230', muted: false, names: ['chain', 'branch', 'loop'] },
       { label: 'ADVANCED · REACH FOR LAST', labelColor: '#a89f92', muted: true, names: ['ensemble', 'tournament', 'scope', 'improve', 'learn'] },
     ];
     const primGroups = groupDef.map(g => ({
