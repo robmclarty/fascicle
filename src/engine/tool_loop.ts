@@ -858,8 +858,8 @@ async function record_execute_failure(
 }
 
 /**
- * Run one raw tool call through the guard chain — final-turn skip, tool
- * lookup, input validation, approval — then execute it. Each guard either
+ * Run one raw tool call through the guard chain (final-turn skip, tool
+ * lookup, input validation, approval), then execute it. Each guard either
  * records the failure (feed-back policy) and stops, or throws (throw
  * policy / abort).
  */
@@ -948,8 +948,8 @@ function resolve_turn_finish_reason(
 }
 
 /**
- * Build one StepRecord — cost derived and recorded, provider_reported
- * passed through — push it, notify on_finish_step, and close the step span.
+ * Build one StepRecord (cost derived and recorded, provider_reported
+ * passed through), push it, notify on_finish_step, and close the step span.
  */
 function push_step_record(
   config: ToolLoopConfig,

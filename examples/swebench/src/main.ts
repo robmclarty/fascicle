@@ -3,9 +3,9 @@
  *
  * Builds the engine config, the per-case sandbox factory, and the solve
  * flow, then drives `bench` over the vendored 5-instance fixture. Emits:
- *   - `.runs/swebench/<run_id>/predictions.jsonl` — the input to sb-cli
- *   - `.runs/swebench/<run_id>/trajectories/*.jsonl` — one per case
- *   - `.runs/swebench/<run_id>/report.json` — the bench report
+ *   - `.runs/swebench/<run_id>/predictions.jsonl`: the input to sb-cli
+ *   - `.runs/swebench/<run_id>/trajectories/*.jsonl`: one per case
+ *   - `.runs/swebench/<run_id>/report.json`: the bench report
  *
  * Providers (set with `SWEBENCH_PROVIDER`):
  *   - `claude_cli` (default): OAuth via the local `claude` binary, no API

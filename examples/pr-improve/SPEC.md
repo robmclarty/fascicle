@@ -7,7 +7,7 @@
 When a developer opens a PR, an opt-in trigger should kick off an automated agent pipeline that:
 
 1. Reviews the PR's diff and surfaces suggested changes.
-2. Distills those suggestions into a *pragmatic* subset — ruthlessly biased toward fewer changes — and emits a concrete spec.
+2. Distills those suggestions into a *pragmatic* subset (ruthlessly biased toward fewer changes) and emits a concrete spec.
 3. Builds those changes in a new branch, with a handoff file describing what it did.
 4. Reviews the build against the spec, looping back to the builder with feedback until the review verdict is `pass`.
 5. Pushes the branch, opens an *improvement PR* targeting the original PR's head branch, and comments on the original with a 2-sentence summary linking to it.
@@ -83,7 +83,7 @@ type Suggestion = {
 **Prompt anchor (load-bearing):**
 > Default verdict on every suggestion is REJECT. Only ACCEPT when the change clearly reduces complexity, fixes a real bug, or removes hazard. Style, naming, or "could be cleaner" are not enough on their own. Cap accepted changes at **N=3**. Fewer is better. If nothing meets the bar, output an empty spec and the pipeline halts cleanly.
 
-**Output:** `IMPROVEMENT_SPEC.md` shape:
+**Output:** `IMPROVEMENT_SPEC.md`, in the shape below.
 
 ```markdown
 # Improvement Spec for PR #{number}
@@ -105,7 +105,7 @@ Stashed under key `improvement_spec`. If accepted list is empty → exit cleanly
 
 **Model:** `sonnet` via the fascicle engine (API). No `claude_cli` subprocess — that path needs OAuth/interactive login and doesn't fit a Fargate container. The portability proof requires every stage go through the engine.
 
-**Mechanism:** Fascicle `tool_loop` agent equipped with a small, locked-down toolset scoped to the worktree:
+**Mechanism:** Fascicle `tool_loop` agent equipped with a small, locked-down toolset scoped to the worktree.
 
 ```ts
 const builder_tools = [
@@ -298,10 +298,10 @@ For subprocess calls (`gh`, `git`) the worker still follows the safe-spawn patte
 
 | Stage | Failure mode | Behavior |
 |---|---|---|
-| 1 Reviewer | model error / empty output | Abort run; trajectory captures the error; container exits non-zero, ECS task marked failed |
+| 1 Reviewer | model error / empty output | Abort run; the trajectory captures the error and the container exits non-zero, so ECS marks the task failed |
 | 2 Pragmatist | empty accept list | Halt cleanly; comment on original: "Reviewed — no pragmatic improvements proposed." |
 | 3 Builder | builder agent returns malformed handoff / fails to commit | Retry once; on second fail, abort run |
-| 4 Reviewer | needs-changes loop exceeds 3 rounds | Abort; do not push; do not comment |
+| 4 Reviewer | needs-changes loop exceeds 3 rounds | Abort without pushing or commenting |
 | any | network / GH API failure | Exponential retry (3x, jittered); then abort |
 | any | exception | Trajectory captures it; container exits non-zero so ECS marks the task failed |
 
@@ -485,4 +485,4 @@ After Phase C proves the API path matches the local demo on real PRs.
 - **Provider portability check (the proof):** the same fixture from Phase A run with `FASCICLE_PROVIDER=openrouter FASCICLE_MODEL_REVIEWER=anthropic/claude-sonnet-4.6 …` (or equivalent OpenRouter aliases) produces an end-to-end run with no code changes. Ship the spec only after this passes.
 - **Pipeline-level checks:** `pnpm check:all` is green. New stage prompts have schema tests under `__tests__/` mirroring `examples/reviewer.ts`'s test pattern.
 - **Negative tests:** A PR with nothing worth changing produces an empty pragmatist spec and a single "no improvements proposed" comment on the original PR; no improvement PR is opened.
-- **Builder safety tests:** unit tests for the worktree-scoped tools — path traversal attempts (`../../etc/passwd`) reject; shell allowlist rejects unauthorized commands; oversized writes reject.
+- **Builder safety tests:** unit tests for the worktree-scoped tools — path traversal attempts (`../../etc/passwd`) reject, the shell allowlist rejects unauthorized commands, and oversized writes reject.

@@ -148,7 +148,7 @@ const bracket = tournament({
 });
 ```
 
-`bracket` is a `Step<string, TournamentResult<EnsembleResult<string>>>`. The types stack mechanically because each composite is just a step that wraps its members' output in one more envelope. You can keep going: an ensemble of tournaments, a consensus over adversarial loops. The surface never widens, which is the same property [concepts.md](./concepts.md) claims for the primitives, now extended to deliberation. (In an app you would usually flatten each layer with `project` — `panel` projecting `r.winner` gives the tournament plain strings to compare — but the un-projected stack is the honest picture of what nesting composes.)
+`bracket` is a `Step<string, TournamentResult<EnsembleResult<string>>>`. The types stack mechanically because each composite is just a step that wraps its members' output in one more envelope. You can keep going: an ensemble of tournaments, a consensus over adversarial loops. The surface never widens, which is the same property [concepts.md](./concepts.md) claims for the primitives, now extended to deliberation. (In an app you would usually flatten each layer with `project`. `panel` projecting `r.winner` gives the tournament plain strings to compare, but the un-projected stack is the honest picture of what nesting composes.)
 
 ## One honest limit: cancellation granularity
 

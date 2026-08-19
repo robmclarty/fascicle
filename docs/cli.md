@@ -1,6 +1,6 @@
 # The `claude_cli` provider
 
-A subprocess provider that spawns the `claude` binary and parses its streaming JSON output. Lets you use fascicle against an existing authenticated `claude` session — no API key required — or against an Anthropic API key while still getting the CLI's agentic features (sub-agents, `--allowedTools`, `--setting-sources`, plugin directories).
+A subprocess provider that spawns the `claude` binary and parses its streaming JSON output. Lets you use fascicle against an existing authenticated `claude` session (no API key required) or against an Anthropic API key while still getting the CLI's agentic features (sub-agents, `--allowedTools`, `--setting-sources`, plugin directories).
 
 ## Why it exists
 

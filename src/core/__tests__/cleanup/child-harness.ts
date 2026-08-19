@@ -8,16 +8,16 @@
  *
  * The wait uses `setTimeout` bound to the run's `AbortSignal` rather than a
  * network fetch because the environment this harness runs in may block
- * localhost connections. For the contract under test — cleanup fires, the
+ * localhost connections. For the contract under test (cleanup fires, the
  * in-flight operation observes `aborted_error` as its AbortSignal.reason, and
- * the process exits non-zero — an abort-aware Promise is equivalent I/O.
+ * the process exits non-zero), an abort-aware Promise is equivalent I/O.
  *
  * Environment inputs:
- *   - MARKER_DIR — directory where marker files are written.
+ *   - MARKER_DIR: directory where marker files are written.
  *
  * Exit codes:
- *   - 0 — unexpected: the flow completed without aborting.
- *   - non-zero — expected: the flow was aborted (a real SIGINT arrived).
+ *   - 0: unexpected, the flow completed without aborting.
+ *   - non-zero: expected, the flow was aborted (a real SIGINT arrived).
  */
 
 import { writeFile } from 'node:fs/promises'

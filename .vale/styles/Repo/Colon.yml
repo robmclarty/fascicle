@@ -2,14 +2,10 @@
 # the list, the consequence, the restatement. Two in a sentence means the second
 # is introducing something the first already promised.
 #
-# The voice exemplars carry a colon in 12 sentences and never two in one. docs/
-# does it 251 times, which is where the piled-up feel comes from more than any
-# single mark does.
-#
-# Warning rather than error, until the docs sweep lands.
+# The voice exemplars carry a colon in 12 sentences and never two in one.
 extends: occurrence
 message: "More than one colon in a sentence. Split it, or use brackets."
-level: warning
+level: error
 scope: sentence
 max: 1
 token: ':'

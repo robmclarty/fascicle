@@ -72,7 +72,7 @@ Every composable unit is a `Step<i, o>` — a plain object with an `id`, a
 more `Step<i, o>` values and returns a single `Step<i, o>` value. No separate
 `Workflow`, `Agent`, or `Graph` type exists, and nothing needs to be registered,
 constructed, or initialized. Anywhere a step fits, any
-composition of steps fits — including arbitrarily deep nestings — because
+composition of steps fits (including arbitrarily deep nestings) because
 everything shares the same shape.
 
 This one invariant buys the rest:
@@ -144,13 +144,13 @@ from English specifications:
   the key-value level; `chain` is the typed front door over the same idea.
 - `chain<i>(input_name?)` with `.step(name, arm, select)` /
   `.step(name, fn, options?)` / `.stage(name, project?)` / `.output(fn)` —
-  named steps over a growing typed record; the input type is stated as
+  named steps over a growing typed record. State the input type as
   `chain<i>()` or `chain('name').input<i>()` (unannotated chains default to
-  `never` and fail at `run`): `.step` merges its output under `name`; the
+  `never` and fail at `run`). `.step` merges its output under `name`, and the
   arm form dispatches a composed `Step` on the selected slice of the record
-  and records it as the binding's describe child in one statement; `.stage`
+  and records it as the binding's describe child in one statement. `.stage`
   concludes a phase (a grouping span in the trajectory; with `project`, it
-  replaces the record so earlier bindings go out of scope); `.output`
+  replaces the record so earlier bindings go out of scope), and `.output`
   projects the final result and returns an ordinary `Step`. A body that must
   wrap the call itself uses `ctx.call` and passes the same value as
   `options.arm` so `describe` still renders the subtree.
@@ -271,8 +271,8 @@ The fix is to give the inner step an id.
 
 ## No circular compositions (F7)
 
-Composers build trees, not graphs. A composer that references itself — or a
-flow variable that appears inside its own definition — causes infinite
+Composers build trees, not graphs. A composer that references itself (or a
+flow variable that appears inside its own definition) causes infinite
 recursion during `describe` or execution. The framework does not guard
 against this; keep compositions acyclic.
 

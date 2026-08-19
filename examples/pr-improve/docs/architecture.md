@@ -6,7 +6,7 @@ This doc captures **why** the codebase is shaped this way, so the next person te
 
 ## The principle: think at the fascicle level
 
-When you open `flow.ts`, you should see only fascicle vocabulary: `chain`, `branch`, `loop`, `step`, `model_step`, `ctx.call`. The shape of the agent system should be visible as the shape of the file. Anything that isn't part of that shape — string formatting, markdown rendering, state transitions, reading scope state — belongs in a sibling module.
+When you open `flow.ts`, you should see only fascicle vocabulary: `chain`, `branch`, `loop`, `step`, `model_step`, `ctx.call`. The shape of the agent system should be visible as the shape of the file. Anything that isn't part of that shape (string formatting, markdown rendering, state transitions, reading scope state) belongs in a sibling module.
 
 ## What this means in code
 
@@ -98,4 +98,4 @@ The exception: a step body might do small bookkeeping arithmetic (`round + 1`, p
 
 The composition-first style has a cost: a small amount of indirection (a named binding and a `ctx.call`) where a less-disciplined codebase would just close over a variable. That cost is worth it as long as the pipeline benefits from being introspectable, swappable, and observable.
 
-If a future stage genuinely needs imperative control flow that doesn't map to any primitive — three nested loops with shared mutable state, say — that's the signal to either (a) propose a new fascicle primitive in `src/core`, or (b) document why this stage is the exception. Hiding it inside a `step()` body without comment is not the answer.
+If a future stage genuinely needs imperative control flow that doesn't map to any primitive (three nested loops with shared mutable state, say), that's the signal to either (a) propose a new fascicle primitive in `src/core`, or (b) document why this stage is the exception. Hiding it inside a `step()` body without comment is not the answer.

@@ -50,7 +50,7 @@ item.
 | §12 #9 | `stream_parse.test.ts` — malformed JSON line tolerance |
 | §12 #10 | `argv.test.ts` — `--agents` serialized |
 | §12 #11 | `argv.test.ts` — `--plugin-dir` per entry |
-| §12 #12 | `argv.test.ts` — bwrap plan ordering; `spawn.test.ts` — spawn detached + explicit env |
+| §12 #12 | `argv.test.ts` (bwrap plan ordering), `spawn.test.ts` (spawn detached + explicit env) |
 | §12 #13 | `spawn.test.ts` — SIGTERM → SIGKILL escalator timing |
 | §12 #14 | `cancellation.test.ts` — abort mid-stream |
 | §12 #15 | `spawn.test.ts` — process.on('exit') synchronous reap + single handler |
@@ -85,9 +85,9 @@ item.
 | F25 | `failure_modes.test.ts` — `tool_bridge='allowlist_only'` drops execute closures and records `cli_tool_bridge_allowlist_only` |
 | F26 | `failure_modes.test.ts` — `tool_bridge='forbid'` rejects pre-spawn with `provider_capability_error` |
 | F27 | `failure_modes.test.ts` — multi-user-message prompt without `session_id` throws `provider_capability_error('multi_turn_history')` |
-| F28 | `cancellation.test.ts` — abort mid-stream; `cancellation.test.ts` — no_result_event |
-| F29 | `cancellation.test.ts` — dispose cancels in-flight; `hermeticity.test.ts` — N≥5 dispose reaps all children |
-| F30 | `failure_modes.test.ts` — sandbox binary missing identifies the sandbox binary, not claude; `integration.test.ts` — SIGINT propagation subprocess harness |
+| F28 | `cancellation.test.ts` (abort mid-stream, no_result_event) |
+| F29 | `cancellation.test.ts` (dispose cancels in-flight), `hermeticity.test.ts` (N≥5 dispose reaps all children) |
+| F30 | `failure_modes.test.ts` (sandbox binary missing identifies the sandbox binary, not claude), `integration.test.ts` (SIGINT propagation subprocess harness) |
 
 ## Running a real `claude` binary
 

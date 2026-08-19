@@ -162,7 +162,7 @@ red-green-refactor (stage barriers as phases).
 ## What the layering buys
 
 - **The topology is the file.** The spine reads top to bottom as the agent
-  diagram; arms are named; leaves are role ids.
+  diagram, arms are named, and leaves are role ids.
 - **`describe` renders everything.** Because arms are declared on their
   bindings, the static tree matches the runtime span tree.
 - **Trajectories nest**: spine binding spans wrap arm spans wrap leaf spans,

@@ -6,15 +6,15 @@
  * conforming to it. This file defines the *narrower* shapes that the studio
  * (and any other downstream consumer) can recognize in the wire stream:
  *
- *   span_start  — composer span open
- *   span_end    — composer span close
- *   emit        — user-emitted event from inside a step (ctx.emit)
- *   run_end     — terminal run event carrying the run's status, so a consumer
- *                 distinguishes done / failed / aborted / suspended without
- *                 inferring from silence
- *   checkpoint  — checkpoint store lookup outcome (hit / miss / read_error)
- *   <other>     — anything else, recognized by `is_custom_trajectory_event`,
- *                 which only requires a string `kind`
+ *   span_start:  composer span open
+ *   span_end:    composer span close
+ *   emit:        user-emitted event from inside a step (ctx.emit)
+ *   run_end:     terminal run event carrying the run's status, so a consumer
+ *                distinguishes done / failed / aborted / suspended without
+ *                inferring from silence
+ *   checkpoint:  checkpoint store lookup outcome (hit / miss / read_error)
+ *   <other>:     anything else, recognized by `is_custom_trajectory_event`,
+ *                which only requires a string `kind`
  *
  * `parse_trajectory_event` is the wire gate, and it is deliberately permissive:
  * a value is a trajectory event iff it is a non-array object carrying a string

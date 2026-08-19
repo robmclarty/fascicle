@@ -22,8 +22,8 @@
  *     @ai-sdk/openai's default model is the Responses API. To drive ONE recorded
  *     chat/completions request through both legs, the ai_sdk leg is pinned to
  *     the SDK's wire-compatible chat model (`createOpenAI(...).chat`). The
- *     normalization under test — normalize_openai_usage over the SDK's canonical
- *     usage shape — is identical regardless of which OpenAI endpoint produced it.
+ *     normalization under test (normalize_openai_usage over the SDK's canonical
+ *     usage shape) is identical regardless of which OpenAI endpoint produced it.
  *
  * No live network (C5): fetch is stubbed with recorded fixtures. Tests are
  * exempt from the native-import rules, so importing `ai` / `@ai-sdk/*` here is

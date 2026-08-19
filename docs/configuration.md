@@ -39,7 +39,7 @@ type ProviderConfigMap = {
 
 A provider absent from `providers` throws `provider_not_configured_error` at call time — constructing an engine without a provider does not fail; the failure is deferred to the first `generate` against it.
 
-Five providers take an optional `transport` selector: `'ai_sdk'` (the default) wraps that provider's AI SDK peer, `'native'` talks to the provider's own API directly over `fetch` with no peer to install. `anthropic` native targets the Messages API; `openai`, `openrouter`, and `lmstudio` native ride a shared OpenAI Chat Completions core; `ollama` native targets its own `/api/chat` endpoint. The provider name, pricing keys, and effort mapping are identical across transports. See [providers.md](./providers.md#transport-picking-a-depth-1-backend).
+Five providers take an optional `transport` selector: `'ai_sdk'` (the default) wraps that provider's AI SDK peer, `'native'` talks to the provider's own API directly over `fetch` with no peer to install. `anthropic` native targets the Messages API. `openai`, `openrouter`, and `lmstudio` native ride a shared OpenAI Chat Completions core, and `ollama` native targets its own `/api/chat` endpoint. The provider name, pricing keys, and effort mapping are identical across transports. See [providers.md](./providers.md#transport-picking-a-depth-1-backend).
 
 Every provider's SDK is an optional peer dependency, loaded on first `generate`, and so is the shared `ai` package that the `ai_sdk` adapters wrap. Install `ai` alongside the per-provider package rather than the per-provider package alone: the official `@ai-sdk/*` packages peer-depend on `zod`, not on `ai`, so nothing pulls it in for you. Install only the providers you use.
 
@@ -161,7 +161,7 @@ Both are accepted per-call on `generate(opts)` / `model_call({ ... })` and as en
 
 ### Resolution
 
-No resolution step runs. `model` is sent straight through as the provider's `model_id`; `provider` selects the adapter. The provider axis is resolved first: per-call `provider`, else `defaults.provider`, else the sole configured provider. With several providers configured and neither a per-call `provider` nor a default, there is no fallback: `generate` throws `provider_required_error` ("no provider specified: pass `provider` to generate() or set `defaults.provider`", naming the configured providers). If `model` is omitted and no `defaults.model` is set, `generate` throws `model_required_error`. A `provider` with no adapter configured on the engine throws `provider_not_configured_error`.
+No resolution step runs. `model` is sent straight through as the provider's `model_id`; `provider` selects the adapter. The provider axis is resolved first: per-call `provider`, else `defaults.provider`, else the sole configured provider. With several providers configured and neither a per-call `provider` nor a default, nothing falls back. `generate` throws `provider_required_error` ("no provider specified: pass `provider` to generate() or set `defaults.provider`", naming the configured providers). If `model` is omitted and no `defaults.model` is set, `generate` throws `model_required_error`. A `provider` with no adapter configured on the engine throws `provider_not_configured_error`.
 
 Neither a `provider:model` colon shorthand nor an `opus`/`sonnet` family shorthand exists — pass the provider's real id (look it up in the provider's own docs). One exception: the `claude_cli` transport forwards the bare token to the CLI, which resolves `opus`/`sonnet`/`haiku` to the latest itself, so those still work for that provider.
 
@@ -253,8 +253,8 @@ const result = await engine.generate({ prompt: 'hello' });
 
 | Field                                                                              | Rule                                            |
 | ---------------------------------------------------------------------------------- | ----------------------------------------------- |
-| `model`                                                                            | per-call wins; else default; else throws `model_required_error` |
-| `provider`                                                                         | per-call wins; else default; else sole provider; else throws `provider_required_error` |
+| `model`                                                                            | per-call wins, else default, else throws `model_required_error` |
+| `provider`                                                                         | per-call wins, else default, else sole provider, else throws `provider_required_error` |
 | `system`, `effort`, `temperature`, `max_tokens`, `top_p`, `max_steps`, `turn_timeout_ms`, `tool_error_policy`, `schema_repair_attempts`, `tool_call_repair_attempts`, `max_tool_calls_per_step` | per-call wins via nullish coalesce |
 | `retry`                                                                            | per-call replaces wholesale                     |
 | `provider_options`                                                                 | two-level: per-provider key, shallow-merged     |
@@ -431,7 +431,7 @@ fascicle exposes OpenTelemetry in two independent layers with a clean seam betwe
 
 ### Layer 1: the `fascicle/otel` trajectory bridge (transport-neutral)
 
-`fascicle/otel` turns the engine's own trajectory (spans + events) into OpenTelemetry spans. Because it rides the events the engine already emits, it produces traces for **every** transport — `ai_sdk`, `native`, and `external` alike — with no AI SDK involvement. It takes `@opentelemetry/api` as an optional peer, and it lives on its own subpath so importing `fascicle` pulls in zero OTel packages; only `import 'fascicle/otel'` does.
+`fascicle/otel` turns the engine's own trajectory (spans + events) into OpenTelemetry spans. Because it rides the events the engine already emits, it produces traces for **every** transport (`ai_sdk`, `native`, and `external` alike) with no AI SDK involvement. It takes `@opentelemetry/api` as an optional peer, and it lives on its own subpath so importing `fascicle` pulls in zero OTel packages; only `import 'fascicle/otel'` does.
 
 ```bash
 pnpm add @opentelemetry/api

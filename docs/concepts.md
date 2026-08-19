@@ -35,7 +35,7 @@ supertype of every step is `AnyStep` (`Step<never, unknown>`, exported next to
 be run directly, because pairing an erased step with an input it accepts is the
 runner's job.
 
-Every composer — `sequence`, `parallel`, `retry`, `adversarial`, and so on — takes one or more `Step<i, o>` values and returns a single `Step<i, o>`. The return type is identical to the input type.
+Every composer (`sequence`, `parallel`, `retry`, `adversarial`, and so on) takes one or more `Step<i, o>` values and returns a single `Step<i, o>`. The return type is identical to the input type.
 
 That one invariant buys:
 
@@ -181,7 +181,7 @@ The bundled loggers have two known limits worth understanding before you wire th
 ### What gets recorded
 
 - Every composer records entry and exit spans around its children.
-- `model_call` records generate spans, step spans, cost events, and — under `run.stream` — a `model_chunk` event per provider chunk.
+- `model_call` records generate spans, step spans, cost events, and (under `run.stream`) a `model_chunk` event per provider chunk.
 - The `claude_cli` provider records `cli_tool_bridge_allowlist_only` events when it drops tools whose `execute` closures cannot cross the subprocess boundary.
 - `ctx.emit(event)` records an event with `kind: 'emit'`.
 
@@ -197,7 +197,7 @@ Steps cooperate by:
 - Passing `ctx.abort` to `fetch`, child processes, and other abortable APIs.
 - Registering teardown with `ctx.on_cleanup(fn)`.
 
-For embedded runtimes — tests, Lambda, worker threads, anything that owns its own signal stack — opt out with `install_signal_handlers: false` and forward cancellation yourself.
+For embedded runtimes (tests, Lambda, worker threads, anything that owns its own signal stack), opt out with `install_signal_handlers: false` and forward cancellation yourself.
 
 **Abort reasons take one of two shapes, by layer.** Composition (`retry`, `timeout`, `parallel`, `map`, `bench`) propagates an `Error` abort reason verbatim and wraps anything else in `aborted_error`, so the cause you aborted with is the error you catch. A SIGINT surfaces as the runner's own `aborted_error('received SIGINT')`, and a `timeout` firing inside a retry still surfaces as `timeout_error`. The engine (`generate` and everything under it) always wraps, so a cancelled model call throws `aborted_error` with your reason on `.reason` and the engine's `step_index` attached. The split is deliberate: `abort()` with no reason sets `signal.reason` to a `DOMException`, and the engine's contract is that only fascicle errors cross its boundary.
 
@@ -213,7 +213,7 @@ The fix is on the step author: thread `ctx.abort` into every long-running operat
 
 ## Named state: chain first
 
-`sequence` and `parallel` thread values implicitly. The moment a step needs a value that is not its immediate predecessor's output — the brief three steps back, two arms' results combined — reach for `chain`: each `.step(name, fn)` merges its result into a growing typed record, later bindings destructure whatever earlier names they need (checked at compile time), `.stage` marks phase barriers, and `.output` projects the final result into an ordinary `Step`.
+`sequence` and `parallel` thread values implicitly. The moment a step needs a value that is not its immediate predecessor's output (the brief three steps back, two arms' results combined), reach for `chain`: each `.step(name, fn)` merges its result into a growing typed record, later bindings destructure whatever earlier names they need (checked at compile time), `.stage` marks phase barriers, and `.output` projects the final result into an ordinary `Step`.
 
 ```ts
 import { chain } from 'fascicle';

@@ -4,8 +4,8 @@
  * fixtures (fetch stubbed, no live network per C5). Registered via
  * custom_providers because the built-in factories grow their `transport:
  * 'native'` branches in later steps; the loop behavior pinned here is what
- * those branches inherit. Pins the loop features the adapter inherits —
- * approval, salvage, Tool.ends_turn, cost — plus the wire shapes fed back to
+ * those branches inherit. Pins the loop features the adapter inherits
+ * (approval, salvage, Tool.ends_turn, cost) plus the wire shapes fed back to
  * the API mid-loop, and streamed == non-streamed parity across a full tool
  * loop (C4). Zero `ai` in this file's module graph, enforced by
  * rules/no-ai-sdk-in-native-providers.yml (the *native* glob covers it).

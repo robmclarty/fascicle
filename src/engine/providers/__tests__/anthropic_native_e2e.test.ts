@@ -2,8 +2,8 @@
  * Native Anthropic end-to-end (S-P3.7): the real adapter selected via
  * `transport: 'native'` and driven through create_engine -> generate ->
  * run_tool_loop on recorded Messages-API fixtures (fetch stubbed, no live
- * network per C5). Pins the loop features the adapter inherits — approval,
- * salvage, Tool.ends_turn, cost — plus the wire shapes fed back to the API
+ * network per C5). Pins the loop features the adapter inherits (approval,
+ * salvage, Tool.ends_turn, cost) plus the wire shapes fed back to the API
  * mid-loop, and streamed == non-streamed parity across a full tool loop
  * (C4). Zero `ai` in this file's module graph, enforced by
  * rules/no-ai-sdk-in-native-providers.yml (the *native* glob covers it).

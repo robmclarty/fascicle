@@ -115,7 +115,7 @@ fascicle uses the AI SDK strictly as a single-turn provider layer: every AI SDK 
 | lmstudio     | dropped   | dropped   | dropped   | records `effort_ignored` on trajectory |
 | claude_cli   | `CLAUDE_CODE_EFFORT_LEVEL=low` | `CLAUDE_CODE_EFFORT_LEVEL=medium` | `CLAUDE_CODE_EFFORT_LEVEL=high` | `'none'` sets no env var |
 
-`xhigh` and `max` raise the ceiling: anthropic and bedrock use `budgetTokens: 32000` and `64000`; google maps both to `thinkingBudget: 32768` (the Gemini 2.5 Pro ceiling); openai clamps both to `reasoningEffort: high`; openrouter forwards the level verbatim, and so does `claude_cli` (the env var takes `xhigh` / `max` as-is). The anthropic budgets are shared by both transports; on `native` they are sent as the API's `thinking.budget_tokens` directly.
+`xhigh` and `max` raise the ceiling: anthropic and bedrock use `budgetTokens: 32000` and `64000`, google maps both to `thinkingBudget: 32768` (the Gemini 2.5 Pro ceiling), and openai clamps both to `reasoningEffort: high`; openrouter forwards the level verbatim, and so does `claude_cli` (the env var takes `xhigh` / `max` as-is). The anthropic budgets are shared by both transports; on `native` they are sent as the API's `thinking.budget_tokens` directly.
 
 The table above is the `ai_sdk` mapping. On `transport: 'native'`, the OpenAI-compatible core maps effort to the wire's flat `reasoning_effort` string (`low`/`medium`/`high`, with `xhigh`/`max` clamped to `high`) for **all three** dialects — so `openai`, `openrouter`, **and** `lmstudio` native forward `reasoning_effort` rather than dropping it (`lmstudio` diverges from its `ai_sdk` row here); non-reasoning and local models ignore the field server-side. `ollama` native ignores effort entirely (D2) and records `effort_ignored`.
 
@@ -511,7 +511,7 @@ The CLI resolves the bare tokens `opus`/`sonnet`/`haiku` to the latest itself, s
 
 `model` is an opaque string sent to the provider verbatim as its `model_id`; `provider` names the transport. Both can be set per call and as engine `defaults`. No resolution step runs — no colon shorthand, no family expansion, no alias table:
 
-- `provider` resolves to: per-call `provider`, else `defaults.provider`, else the sole configured provider. Nothing falls back beyond that: with several providers configured and neither a per-call `provider` nor a default, `generate` throws `provider_required_error` ("no provider specified: pass `provider` to generate() or set `defaults.provider`", naming the configured providers).
+- `provider` resolves to: per-call `provider`, else `defaults.provider`, else the sole configured provider. Nothing falls back beyond that. With several providers configured and neither a per-call `provider` nor a default, `generate` throws `provider_required_error` ("no provider specified: pass `provider` to generate() or set `defaults.provider`", naming the configured providers).
 - `model` resolves to: per-call `model`, else `defaults.model`, else a thrown `model_required_error`.
 
 The provider receives `model` as-is and rejects an unknown id itself (a 404 or validation error). A `provider` with no adapter registered on the engine throws `provider_not_configured_error`. (Exception: the `claude_cli` transport forwards `opus`/`sonnet`/`haiku` to the CLI, which resolves them to the latest.)

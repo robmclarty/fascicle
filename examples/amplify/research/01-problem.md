@@ -20,7 +20,7 @@ Anthropic's "Building Effective Agents" calls this the **evaluator-optimizer pat
 
 Three reasons it's worth building, not just reading about:
 
-**1. It collapses a class of human work.** Performance optimization, code golfing, prompt tuning, SQL plan rewriting, regex tightening — anything where "I know it can be better but I don't know exactly how" — is a search problem. A loop with a real eval signal can crawl that space *while you sleep*. The output isn't novel science; it's the third or fourth-pass refinement that humans rarely do because the marginal hour-per-percent-improvement is too expensive for a person and roughly free for a process.
+**1. It collapses a class of human work.** Performance optimization, code golfing, prompt tuning, SQL plan rewriting, regex tightening (anything where "I know it can be better but I don't know exactly how") is a search problem. A loop with a real eval signal can crawl that space *while you sleep*. The output isn't novel science; it's the third or fourth-pass refinement that humans rarely do because the marginal hour-per-percent-improvement is too expensive for a person and roughly free for a process.
 
 **2. It exposes the load-bearing abstraction.** "What does better mean?" is the actual hard question. Most demos hide it by hardcoding the metric. A reusable loop forces the answer into a single explicit interface — what we call the [`Metric` protocol](./04-metric-protocol.md). Once that's named, you start seeing how every prompt-eng / RLHF / fine-tuning pitch is or isn't honest about its eval signal.
 
@@ -28,7 +28,7 @@ Three reasons it's worth building, not just reading about:
 
 ## What "improvement" actually means here
 
-Improvement is not novelty. The agent isn't going to invent a new sort algorithm. It's going to find the local-optimum for *this* code in *this* shape against *this* metric. AlphaEvolve's most-quoted result — beating Strassen on 4×4 complex matmul — happened because the eval signal was a bit-exact correctness oracle plus a counting metric. Where it works:
+Improvement is not novelty. The agent isn't going to invent a new sort algorithm. It's going to find the local-optimum for *this* code in *this* shape against *this* metric. AlphaEvolve's most-quoted result (beating Strassen on 4×4 complex matmul) happened because the eval signal was a bit-exact correctness oracle plus a counting metric. Where it works:
 
 - **Compute kernels** (loop fusion, vectorization, cache locality)
 - **Algorithmic constants** (smaller hidden constants, better branch prediction)
@@ -47,9 +47,9 @@ Where it doesn't:
 Amplify's contribution isn't the loop. The loop is well-known. The contribution is making the **metric pluggable** in a way that's:
 
 - **One file** — a metric is a `.ts` exporting `make_metric(target_dir)`. No framework, no inheritance.
-- **Two parts** — a gate (boolean: did regression tests survive?) and a score (number: how good?).
+- **Two parts** — a boolean gate (did regression tests survive?) and a numeric score (how good?).
 - **Adversarially honest** — the gate is shell-spawned and its exit code is the only signal trusted; the agent cannot lie its way past it.
 
-That shape happens to coincide with what GEPA / DSPy and Inspect AI converged on independently — `Prediction(score, feedback)` and `Scorer` respectively — which is a strong signal it's the right factoring.
+That shape happens to coincide with what GEPA / DSPy and Inspect AI converged on independently (`Prediction(score, feedback)` and `Scorer` respectively), which is a strong signal it's the right factoring.
 
 The cost of building this is the cost of writing the `Metric` once. Subsequent improvement loops on completely different targets (your slow database query, your verbose prompt, your CPU-bound endpoint) reuse the entire harness. That's the value.

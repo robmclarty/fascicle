@@ -3,16 +3,11 @@
 # aside goes in round brackets here, without exception, and the paired em dash
 # that wraps one is the construction this rule exists to catch.
 #
-# The tree currently holds 44 of them across docs/ and 12 across src/, against
-# none in any voice exemplar. A single em dash between two clauses is left
+# No voice exemplar contains one. A single em dash between two clauses is left
 # alone, which is why the token needs a partner to match.
-#
-# Warning rather than error, until the docs sweep lands. Vale exits non-zero on
-# error-severity alerts alone, so this reports into .check/prose.json without
-# failing a run. Raise it to `error` once the tree is clear.
 extends: existence
 message: "'%s': an aside takes round brackets, not a pair of em dashes."
-level: warning
+level: error
 # The token spans punctuation and needs to match across a wrapped line, so word
 # boundaries would cut it in half.
 nonword: true

@@ -3,13 +3,13 @@
  *
  * Exercises the four branches inside the `opts.schema !== undefined` block of
  * `create_claude_cli_adapter.generate`:
- *   1. first attempt parses — no repair spawn
- *   2. first attempt fails, no session_id — throws schema_validation_error,
- *      no repair spawn
- *   3. first attempt fails, session_id present, repair succeeds — two spawns,
- *      second argv contains `--resume <id>`
- *   4. first attempt fails, repair also fails — throws after exactly one
- *      repair spawn
+ *   1. first attempt parses, so no repair spawns
+ *   2. first attempt fails with no session_id, so it throws
+ *      schema_validation_error and no repair spawns
+ *   3. first attempt fails with a session_id present and repair succeeds,
+ *      over two spawns whose second argv contains `--resume <id>`
+ *   4. first attempt fails and repair also fails, so it throws after exactly
+ *      one repair spawn
  *
  * The mock binary switches between `MOCK_CLAUDE_SCRIPT` and
  * `MOCK_CLAUDE_RESUME_SCRIPT` based on whether `--resume` appears in argv.

@@ -4,7 +4,7 @@ A fascicle example that drives Claude Opus 4.7 in a **propose → cascade-eval �
 
 The point of the example is the **`Metric` protocol**: the user supplies "what better means" as a regression gate (a shell command) and a `score` function (a thunk returning a number). The harness is metric-agnostic. Speed, code quality, output match — anything you can compute is a metric.
 
-For the full design rationale — the academic landscape, the OSS prior art, the failure modes we're avoiding, the sources — see [`research/`](./research/README.md).
+For the full design rationale (the academic landscape, the OSS prior art, the failure modes we're avoiding, the sources), see [`research/`](./research/README.md).
 
 ## How it works
 

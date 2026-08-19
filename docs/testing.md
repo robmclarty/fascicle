@@ -215,8 +215,8 @@ expect(await run(resilient, 'hello')).toBe('recovered');
 
 ### Testing a loop that converges
 
-The script's order sensitivity is exactly what a convergence test needs:
-round 1 gets the unconverged draft, round 2 the final one, and a loop that
+The script's order sensitivity is exactly what a convergence test needs.
+Round 1 gets the unconverged draft, round 2 the final one, and a loop that
 fails to converge in the scripted number of rounds exhausts the queue and
 fails with the call count in the message:
 

@@ -11,7 +11,7 @@ All citations referenced from the other documents in this directory. Grouped by 
 - [How we built our multi-agent research system](https://www.anthropic.com/engineering/multi-agent-research-system) — subagent isolation, summary-only outputs.
 - [How Claude Code works](https://code.claude.com/docs/en/how-claude-code-works)
 - [How the agent loop works (Claude Agent SDK)](https://platform.claude.com/docs/en/agent-sdk/agent-loop)
-- [Common workflows — Use extended thinking](https://code.claude.com/docs/en/common-workflows) — `/effort`, `CLAUDE_CODE_EFFORT_LEVEL`, adaptive reasoning on Opus 4.7.
+- [Use extended thinking (Common workflows)](https://code.claude.com/docs/en/common-workflows) — `/effort`, `CLAUDE_CODE_EFFORT_LEVEL`, adaptive reasoning on Opus 4.7.
 - [Environment variables](https://code.claude.com/docs/en/env-vars) — `CLAUDE_CODE_EFFORT_LEVEL`, `MAX_THINKING_TOKENS`, and adaptive-reasoning notes per model.
 
 ## Academic — iterative self-improvement

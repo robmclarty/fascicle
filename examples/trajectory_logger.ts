@@ -4,7 +4,7 @@
  * Two loggers are wired into the same run: the packaged `filesystem_logger`
  * writes one JSON object per line to a file, and an in-memory `TrajectoryLogger`
  * captures events so the harness can assert on them. Composing loggers is a
- * matter of forwarding each call to both sinks — the `TrajectoryLogger` type
+ * matter of forwarding each call to both sinks; the `TrajectoryLogger` type
  * is a plain object.
  *
  * Deterministic stub — no engine layer, no network, no LLM calls.

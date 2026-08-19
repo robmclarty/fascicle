@@ -11,7 +11,7 @@ Each load-bearing decision below is traced to a finding in [`02-landscape.md`](.
 
 ## D1. Deterministic gate is primary fitness; LLM judge is at most a tiebreak
 
-**Why.** Reward hacking against an LLM judge is the most-documented and most-undertreated failure mode in the LLM-self-improvement literature (Meta-Rewarding 2407.19594; RLSR 2505.08827; "Are We on the Right Way" 2512.16041; LLM-as-Judge IRT 2602.00521). When the same model proposes and judges, the actor learns the judge's quirks. AlphaEvolve and FunSearch sidestep this by construction: their fitness is a deterministic numerical scorer, not a model rating.
+**Why.** Reward hacking against an LLM judge is the most-documented and most-undertreated failure mode in the LLM-self-improvement literature (Meta-Rewarding 2407.19594, RLSR 2505.08827, "Are We on the Right Way" 2512.16041, LLM-as-Judge IRT 2602.00521). When the same model proposes and judges, the actor learns the judge's quirks. AlphaEvolve and FunSearch sidestep this by construction: their fitness is a deterministic numerical scorer, not a model rating.
 
 **Rejected.** "Pure LLM-judge" mode (`--judge-only`) was on the table for a one-knob demo. Cut: a self-improvement loop with no programmatic gate is sophistry — there's nothing the loop is grounded against, so the model "improves" by drifting toward whatever the judge tolerates. We don't ship the foot-gun.
 
@@ -23,7 +23,7 @@ Each load-bearing decision below is traced to a finding in [`02-landscape.md`](.
 
 **Why.** OpenEvolve, FunSearch, and AlphaEvolve all show that population-based search dominates greedy chains at the same compute. Diversity inside a round is what bridges plateaus; with one greedy chain you tend to local-min lock. Anecdotally, DSPy/GEPA reports the same on small budgets.
 
-**Rejected.** Single-track hill climbing (Karpathy autoresearch's literal pattern). Cleaner, but it gives up the plateau-bridging that's most of the point. Karpathy's defense — "git is your population" via branching — is real but requires manual curation. We replicate that idea automatically inside one round.
+**Rejected.** Single-track hill climbing (Karpathy autoresearch's literal pattern). Cleaner, but it gives up the plateau-bridging that's most of the point. Karpathy's defense ("git is your population" via branching) is real but requires manual curation. We replicate that idea automatically inside one round.
 
 **Rejected.** MAP-Elites islands. Too much complexity for a demo. Worth trying if a user finds the v1 plateau is sticky.
 
@@ -45,7 +45,7 @@ Each load-bearing decision below is traced to a finding in [`02-landscape.md`](.
 
 ## D4. The metric is `(gate, score, optional judge)` — no further structure
 
-**Why.** GEPA's `Prediction(score, feedback)` and Inspect AI's `Scorer` are the two most-used external shapes for "what does better mean," and both decompose cleanly into a Boolean and a number. A regression gate is the Boolean; the score function is the number; both are pluggable.
+**Why.** GEPA's `Prediction(score, feedback)` and Inspect AI's `Scorer` are the two most-used external shapes for "what does better mean," and both decompose cleanly into a Boolean and a number. A regression gate is the Boolean, the score function is the number, and both are pluggable.
 
 **Rejected.** A richer Metric type with phases (`pre_gate`, `mid_gate`, `post_gate`, ...). Premature; nobody we surveyed needed more than two stages plus optional judge.
 

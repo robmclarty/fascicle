@@ -23,11 +23,11 @@ fascicle is ESM-only and requires Node >= 24. It has no default exports and no
 classes other than `Error` subclasses.
 
 `fascicle` itself has no mandatory peers. Three subpaths need one to do their
-work: `fascicle/mcp` needs `@modelcontextprotocol/sdk`, which it loads
-dynamically and reports as `mcp_sdk_missing_error` when absent; `fascicle/otel`
-needs `@opentelemetry/api`; and `fascicle/ui` needs `ai`, which it imports
-statically because it speaks the AI SDK's UI message-stream protocol, so a
-missing `ai` fails at module resolution rather than with a fascicle error.
+work. `fascicle/mcp` needs `@modelcontextprotocol/sdk`, which it loads
+dynamically and reports as `mcp_sdk_missing_error` when absent, and
+`fascicle/otel` needs `@opentelemetry/api`. `fascicle/ui` needs `ai`, which it
+imports statically because it speaks the AI SDK's UI message-stream protocol,
+so a missing `ai` fails at module resolution rather than with a fascicle error.
 
 ## Running a flow
 
@@ -115,7 +115,7 @@ The full loop is walked in
 | `chain<i>(input_name?)` → `.input` / `.step` / `.stage` / `.output` | named steps over a typed record; state the input type via `chain<i>()` or `chain('name').input<i>()` (unannotated chains default to `never` and fail at `run`): `.step(name, arm, select)` dispatches a composed arm on the selected slice and records it as the binding's child, `.step(name, fn, { arm? })` is the body form (`arm` records a describe-only child), `.stage(name, project?)` concludes a phase (with `project`, narrows the record), `.output(fn)` projects the result into a `Step` |
 | `scope` / `stash` / `use` | named state at the string-key level; the advanced tier under `chain` (see [advanced-composition.md](./advanced-composition.md)) |
 | `checkpoint(inner, { key })` | memoize an inner step by key in a `CheckpointStore` |
-| `suspend({ id, on, resume_schema, combine })` | pause for external input; resume later with `resume_data` (throws `suspended_error` to signal the pause; `run.until_suspended` surfaces it as a typed outcome instead) |
+| `suspend({ id, on, resume_schema, combine })` | pause for external input, then resume later with `resume_data` (throws `suspended_error` to signal the pause; `run.until_suspended` surfaces it as a typed outcome instead) |
 | `gate(inner, { id, store?, format?, name? })` | run `inner`, checkpoint its result at `gate:<id>`, then suspend with it as the payload; resume passes the result through, and a restart with the same store replays from the checkpoint instead of re-running `inner` |
 
 ## The engine
@@ -272,8 +272,8 @@ the pattern is worked through in
 
 | Export | Kind | Notes |
 | --- | --- | --- |
-| `make_stub_engine(canned, options?)` | fn | routes canned responses by system-prompt prefix; `content` may be a function `(opts, call_index) => value`; validates canned content through the call's schema; throws on an unmatched system |
-| `make_script_engine(responses, options?)` | fn | a strict call-order queue; entries are plain content values or `{ content?, tool_calls?, finish_reason?, usage?, throw? }`; exhaustion throws with the scripted vs received counts |
+| `make_stub_engine(canned, options?)` | fn | routes canned responses by system-prompt prefix, validates canned content through the call's schema, and throws on an unmatched system; `content` may be a function `(opts, call_index) => value` |
+| `make_script_engine(responses, options?)` | fn | a strict call-order queue whose entries are plain content values or `{ content?, tool_calls?, finish_reason?, usage?, throw? }`; exhaustion throws with the scripted vs received counts |
 | `make_capture_engine(options?)` | fn | records every call's `GenerateOptions` into a live `calls` array, answers with a canned result |
 | `text_of(opts)` | fn | the user-visible prompt text of a captured `GenerateOptions`, whatever the prompt shape |
 | `engine_from_generate(generate)` | fn | wrap a bare `generate` into a full `Engine`; the shell the factories build on, for rolling your own double |

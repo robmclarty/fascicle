@@ -277,7 +277,7 @@ end-to-end suspend/confirm/resume server, and
 
 ## Tool loops
 
-Give the model tools; it calls them; the engine runs the `execute` closures and feeds the output back until the model stops asking or `max_steps` is hit.
+Give the model tools and it calls them; the engine runs the `execute` closures and feeds the output back until the model stops asking or `max_steps` is hit.
 
 ```ts
 import { model_step, run } from 'fascicle';
@@ -364,7 +364,7 @@ const out = await run(plan, 'migrate the payments service to pg17');
 // out is typed as z.infer<typeof plan_schema>
 ```
 
-`schema_validation_error` carries `.schema_issues` and `.raw_text` so your harness can surface both to a human. A call that never got far enough to validate — blocked by a content filter, truncated by the token limit, ended by the step cap — throws `incomplete_generation_error` instead, carrying `.finish_reason`, `.raw_text`, and `.provider_reported`.
+`schema_validation_error` carries `.schema_issues` and `.raw_text` so your harness can surface both to a human. A call that never got far enough to validate (blocked by a content filter, truncated by the token limit, ended by the step cap) throws `incomplete_generation_error` instead, carrying `.finish_reason`, `.raw_text`, and `.provider_reported`.
 
 ## Streaming tokens to a consumer
 
@@ -574,7 +574,7 @@ const tiered_run = loop({
 `judged_turn` pops the next task and runs the weak-draft-then-judge flow. The
 streak rules that make it stable:
 
-- an escalate verdict increments `streak`; a decline resets it to zero;
+- an escalate verdict increments `streak`, and a decline resets it to zero;
 - a fail-open judge *holds* the streak (neither increments nor resets), so a
   flaky judge can neither force nor block a latch;
 - when the streak reaches two, the current task is redone on the strong tier
@@ -639,4 +639,4 @@ const judge = model_step({
 const flow = sequence([do_research, judge]);
 ```
 
-More CLI patterns — schema-constrained output, sub-agents, session resume, sandboxing — in [cli.md](./cli.md). For which layer of a flow each recipe belongs to (leaves, arms, spine), see [leaf-arm-spine.md](./leaf-arm-spine.md); for how to organize a whole app around these recipes — one composition layer, stage factories, markdown prompts — see [blueprint.md](./blueprint.md).
+More CLI patterns (schema-constrained output, sub-agents, session resume, sandboxing) are in [cli.md](./cli.md). For which layer of a flow each recipe belongs to (leaves, arms, spine), see [leaf-arm-spine.md](./leaf-arm-spine.md); for how to organize a whole app around these recipes (one composition layer, stage factories, markdown prompts), see [blueprint.md](./blueprint.md).

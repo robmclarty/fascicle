@@ -136,10 +136,10 @@ Resources in `main.tf`:
 2. **Webhook Lambda** (`aws_lambda_function`) — Node 22 runtime, code from `data.archive_file.webhook_lambda_zip` pointing at `../dist/webhook_lambda.js`. Env: `WEBHOOK_SECRET_ARN`, `QUEUE_URL`, `ALLOWED_REPOS`. IAM: read the secret, `sqs:SendMessage` on the queue.
 3. **SQS FIFO queue** (`aws_sqs_queue`) with `fifo_queue = true`, `content_based_deduplication = false` (Lambda sets `MessageDeduplicationId` explicitly), `visibility_timeout_seconds = 1800` (30 min — covers worst-case build runtime), redrive policy → DLQ.
 4. **SQS DLQ** (`aws_sqs_queue`) — also FIFO. CloudWatch alarm on `ApproximateNumberOfMessagesVisible >= 1` (so a single failed message gets attention).
-5. **EventBridge Pipes** (`aws_pipes_pipe`) — source: SQS; target: ECS RunTask; transformer: pass the SQS message body through as the container's command override. This is the SQS→ECS bridge — no Lambda in the middle.
+5. **EventBridge Pipes** (`aws_pipes_pipe`) — source SQS, target ECS RunTask, and a transformer that passes the SQS message body through as the container's command override. This is the SQS→ECS bridge — no Lambda in the middle.
 6. **ECS cluster** (`aws_ecs_cluster`, Fargate-only).
 7. **ECS task definition** (`aws_ecs_task_definition`) — image from `aws_ecr_repository.worker.repository_url:${var.image_tag}`, `requires_compatibilities = ["FARGATE"]`, `cpu = 1024`, `memory = 2048`, ephemeral storage 21 GiB (room for shallow clones + worktrees + node_modules if any), task role with the IAM in (8), execution role for ECR pull + log group write.
-8. **Task IAM role** — read `GH_TOKEN`, `ANTHROPIC_API_KEY` from Secrets Manager; `s3:PutObject` to the trajectory bucket prefix; `logs:CreateLogStream` + `logs:PutLogEvents` (provided by `awslogs` driver setup).
+8. **Task IAM role** — read `GH_TOKEN` and `ANTHROPIC_API_KEY` from Secrets Manager, `s3:PutObject` to the trajectory bucket prefix, `logs:CreateLogStream` + `logs:PutLogEvents` (provided by `awslogs` driver setup).
 9. **Secrets Manager secrets** (3) — `pr-improve/gh_token`, `pr-improve/anthropic_api_key`, `pr-improve/webhook_secret`. Created empty by Terraform (`ignore_changes = [secret_string]`); operator populates via the AWS console or `aws secretsmanager put-secret-value` after the first apply. Plan must not destroy these on subsequent applies.
 10. **S3 bucket** (`aws_s3_bucket`) — versioned, private, lifecycle rule transitions to Glacier after 30 days and expires after 365. Bucket policy denies non-task-role principals.
 11. **ECR repository** (`aws_ecr_repository`) — for the worker image. Lifecycle policy: keep 10 most recent tagged images, expire untagged after 1 day.
@@ -193,7 +193,7 @@ Per-PR singleton via SQS FIFO `MessageGroupId = ${repo}/${pr_number}`. A second 
 | Webhook Lambda | repo not in allowlist | 403, no SQS enqueue |
 | Worker | secrets missing | log + exit 1 + DLQ on retry |
 | Worker | engine error | log + exit 1; SQS retries up to `maxReceiveCount = 2`, then DLQ |
-| Worker | cost cap exceeded | log + abort + exit 1; trajectory uploaded; **no DLQ** (deterministic, retry won't help — set `_failure_kind: 'cost_cap'` on the message and have the redrive policy skip these via filter) |
+| Worker | cost cap exceeded | log + abort + exit 1, trajectory uploaded, **no DLQ** (deterministic, retry won't help — set `_failure_kind: 'cost_cap'` on the message and have the redrive policy skip these via filter) |
 | Worker | uncaught exception | trajectory captures it, exit 1, DLQ on second failure |
 | Pipes | RunTask throttled by ECS | Pipes auto-retries with backoff (built-in) |
 
@@ -243,7 +243,7 @@ PR D-2 ships when: the Lambda is unit-tested, `terraform validate` passes, and t
 ### PR D-3 — Production rollout (operational PR, not a code PR)
 
 1. `terraform apply` against the chosen account/region. Operator populates the three secrets.
-2. ECR push of the first worker image; `image_tag` in `tfvars` updated; `terraform apply` again.
+2. ECR push of the first worker image. Update `image_tag` in `tfvars`, then `terraform apply` again.
 3. Configure the GitHub webhook on the fascicle repo (operator pastes `webhook_url` from `terraform output`, sets the same secret as `pr-improve/webhook_secret`, scopes to `pull_request` events only).
 4. Enable on the fascicle repo: add the `fascicle-improve` label to a low-stakes PR. Watch CloudWatch + the SQS depth metric. Verify the improvement PR appears.
 5. If anything blocks for >15 min: pause by removing the label or scaling the ECS service to 0 (which prevents new task launches; in-flight runs complete).

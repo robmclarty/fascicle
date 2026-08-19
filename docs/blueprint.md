@@ -414,7 +414,7 @@ Add a rule per boundary you care about; each is a few lines and turns an archite
 Before calling an agent app done:
 
 - [ ] One composition layer exists and contains only fascicle vocabulary; the header diagram matches the code.
-- [ ] `create_engine` appears in exactly one file; provider swap is one env var; disposal is in `finally`.
+- [ ] `create_engine` appears in exactly one file, provider swap is one env var, and disposal is in `finally`.
 - [ ] Every model boundary has a zod schema in `types.ts`; stages return `Step<In, Out>` from `model_step` (or the `GenerateResult` envelope from `model_call` where the flow needs usage or tool calls).
 - [ ] System prompts are markdown files with frontmatter; dynamic content is assembled in `messages.ts`.
 - [ ] Named state goes through `chain`; any raw scope-state casts live only in `state.ts` readers.

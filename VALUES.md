@@ -14,8 +14,8 @@ not hand you an opinion about what you are building.
 ## Freedom
 
 fascicle exists to give you control, not to take it. You compose behavior from
-primitives instead of picking from a menu of pre-built agents; you can see every step
-and override every default; and you drive the agent rather than letting a vendor's
+primitives instead of picking from a menu of pre-built agents, you can see every step
+and override every default, and you drive the agent rather than letting a vendor's
 built-in loop drive you. Freedom here has three faces that are really one: freedom to
 build any shape from small parts, freedom to inspect and change what runs, and freedom
 from anyone else deciding those things for you. Convenience is welcome when it does not
@@ -78,11 +78,11 @@ discovering them the hard way later.
 ## Sovereignty
 
 Your agent should outlive any one vendor's decisions. Model ids are opaque and passed
-verbatim; providers are swappable by config; local models are first-class rather than an
-afterthought. fascicle sits on top of vendor SDKs but keeps the load-bearing logic (the
-loop, tool handling, cost, the audit trail) on your side of a thin seam, so a breaking
-change, a price change, or a strategy change from a commercial provider is a contained
-edit instead of a rewrite. You keep the right to change direction.
+verbatim, providers are swappable by config, and local models are first-class rather
+than an afterthought. fascicle sits on top of vendor SDKs but keeps the load-bearing
+logic (the loop, tool handling, cost, the audit trail) on your side of a thin seam, so
+a breaking change, a price change, or a strategy change from a commercial provider is a
+contained edit instead of a rewrite. You keep the right to change direction.
 
 ## Security and privacy
 
@@ -97,10 +97,10 @@ and therefore a vector, lives in [SECURITY.md](./SECURITY.md).
 ## Interoperability
 
 Inputs and outputs are plain values in standard shapes, so fascicle plays well with
-code it did not write. Tools are plain functions; the Model Context Protocol is bridged
-both ways; the trajectory is an event stream any tracing tool can consume. A substrate
-you plant an app into has to connect cleanly to whatever is already growing in your
-stack, not demand that the rest of the stack be rewritten in its terms.
+code it did not write. Tools are plain functions, the Model Context Protocol is bridged
+both ways, and the trajectory is an event stream any tracing tool can consume. A
+substrate you plant an app into has to connect cleanly to whatever is already growing
+in your stack, not demand that the rest of the stack be rewritten in its terms.
 
 ## No commercial capture
 

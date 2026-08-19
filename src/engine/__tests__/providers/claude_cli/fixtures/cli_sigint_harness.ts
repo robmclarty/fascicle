@@ -9,9 +9,9 @@
  * parent test can assert behaviour.
  *
  * Env inputs:
- *   - MARKER_DIR       — directory where marker files are written
- *   - MOCK_CLAUDE_BIN  — absolute path to mock_claude.mjs
- *   - MOCK_SCRIPT      — path to the mock ops JSON (script with {op:'hang'})
+ *   - MARKER_DIR:       directory where marker files are written
+ *   - MOCK_CLAUDE_BIN:  absolute path to mock_claude.mjs
+ *   - MOCK_SCRIPT:      path to the mock ops JSON (script with {op:'hang'})
  */
 
 import { writeFile } from 'node:fs/promises'

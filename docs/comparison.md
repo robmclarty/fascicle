@@ -26,9 +26,9 @@ ergonomics fit your taste is to try it — start with
 5. **Transport awareness.** Does it know more than one way to reach a model (HTTPS
    SDKs, raw HTTP, subprocess CLIs, MCP), or assume everything is an SDK call?
 
-**Fascicle's answers:** (1) `Step<i, o>` values, (2) pure values — no registry,
-(3) a library you call, (4) narrow — composition plus a model engine, (5) yes —
-providers plug in at one of three depths (an AI SDK model, a raw-HTTP
+**Fascicle's answers:** (1) `Step<i, o>` values, (2) pure values (no registry),
+(3) a library you call, (4) narrow (composition plus a model engine), (5) yes.
+Providers plug in at one of three depths (an AI SDK model, a raw-HTTP
 `transport: 'native'` turn, or an external agent process), all under one loop, and
 the `fascicle/mcp` subpath bridges MCP both ways.
 
@@ -106,8 +106,8 @@ simpler path until you want to wrap that agent in retry, fan it across an
 ### Strands Agents
 
 AWS's open-source agent SDK (Apache-2.0). Its core bet is *model-driven*: you give
-an `Agent` a model, a system prompt, and tools, and the model drives its own loop —
-planning, choosing tools, and adapting at run time — instead of you wiring the
+an `Agent` a model, a system prompt, and tools, and the model drives its own loop
+(planning, choosing tools, and adapting at run time) instead of you wiring the
 control flow. Python is the mature line; TypeScript shipped in preview in December
 2025 and reached GA (v1.0) in April 2026. It is broad and production-oriented: multi-agent orchestration (swarms,
 graphs, agents-as-tools), the agent-to-agent (A2A) protocol, MCP tools,
@@ -147,9 +147,9 @@ A2A) batteries-included, or you are in the AWS / Bedrock ecosystem.
 - **Switchyard** (NVIDIA NeMo) is a wire-level proxy, not a composition layer: a
   Rust server (plus `libsy`, its embeddable routing library) that translates
   between the OpenAI Chat, Anthropic Messages, and OpenAI Responses formats and
-  routes traffic across backends with weak/strong tiering algorithms: an
+  routes traffic across backends with weak/strong tiering algorithms (an
   up-front LLM classifier, signal-driven stage routing, judge-confirmed
-  escalation, and random A/B splits. Two of its calls align with fascicle's:
+  escalation, and random A/B splits). Two of its calls align with fascicle's:
   `libsy` never calls a model itself (an algorithm picks a target and hands the
   call back to you, the same separation as fascicle's adapters passed in per
   run), and routing policy lives outside the model surface (the reason

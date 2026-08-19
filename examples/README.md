@@ -37,4 +37,4 @@ Most single-file examples are keyless: they run with zero API keys, against dete
 | Nothing (keyless: no engine, or a stub engine) | `hello.ts`, `newsroom.ts`, `release_notes.ts`, `release_notes_direct.ts`, `adversarial_build.ts`, `ensemble_judge.ts`, `improve.ts`, `learn.ts`, `streaming_chat.ts`, `suspend_resume.ts`, `checkpoint_resume.ts`, `trajectory_logger.ts`, `viewer_demo.ts`, `hitl_http.ts`, `stdio_agent.ts`, `reviewer.ts`, `documenter.ts`, `researcher.ts`, `learn_reviewer.ts`, `bench_reviewer.ts` |
 | Local Ollama (no key: a running daemon plus a pulled model) | `ollama_chat.ts` |
 | Local `claude` session (no key: Claude Code installed and `claude login` run) | `hello_claude_cli.ts`, `hello_claude_cli_lisp.ts`, `adversarial_claude_cli.ts` |
-| Provider API key | `structured_output.ts` and `tool_loop.ts` (`ANTHROPIC_API_KEY`); `live_smoke.ts` (`OPENROUTER_API_KEY`, plus optional local Ollama / LM Studio; missing legs are skipped) |
+| Provider API key | `structured_output.ts` and `tool_loop.ts` (`ANTHROPIC_API_KEY`), `live_smoke.ts` (`OPENROUTER_API_KEY`, plus optional local Ollama / LM Studio; missing legs are skipped) |

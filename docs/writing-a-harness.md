@@ -165,7 +165,7 @@ The error path carries a `.path` array with the step ids that led to the failure
 
 ## Where to put the harness
 
-In this repo, reference harnesses live at the root under [`examples/`](../examples/). Your own harness lives in your own project — fascicle is a library, not an app scaffold. Import from `fascicle` (the published package name, which the root `examples/` use too; inside the library, cross-module imports use the internal `#<module>` aliases) and write the harness wherever your program belongs. For the standard shape of the app *around* the harness — one composition layer, module contracts, markdown prompts — follow [blueprint.md](./blueprint.md).
+In this repo, reference harnesses live at the root under [`examples/`](../examples/). Your own harness lives in your own project — fascicle is a library, not an app scaffold. Import from `fascicle` (the published package name, which the root `examples/` use too; inside the library, cross-module imports use the internal `#<module>` aliases) and write the harness wherever your program belongs. For the standard shape of the app *around* the harness (one composition layer, module contracts, markdown prompts), follow [blueprint.md](./blueprint.md).
 
 The canonical starting point is [`examples/hello.ts`](../examples/hello.ts); the full vocabulary at app scale is [`examples/newsroom.ts`](../examples/newsroom.ts), with [leaf-arm-spine.md](./leaf-arm-spine.md) as the guide to its shape. Run the starter:
 

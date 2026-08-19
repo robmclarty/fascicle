@@ -80,7 +80,7 @@ Plus `run`, `run.stream`, and `describe`. And inside any step body, `ctx.call(st
 
 **AI engine.** `create_engine(config)` returns one `generate` surface across eight providers. Two axes: `model` is an opaque id sent to the provider verbatim (`claude-opus-4-8`, `gpt-4o`, `us.anthropic.claude-sonnet-4-20250514-v1:0`), and `provider` names the transport (`anthropic`, `bedrock`, `openrouter`, `claude_cli`, …) — swap `provider` to move a call between transports. Reasoning effort (`'none'` through `'max'`) is translated per provider. Cost estimation uses a pricing table with per-engine overrides.
 
-The engine core is SDK-agnostic: providers plug in behind a neutral single-turn seam, as one of three kinds. Most built-ins wrap Vercel's AI SDK (`ai_sdk`); five providers can instead run `transport: 'native'` (raw HTTP, no AI SDK in the path, no peer to install) — `anthropic` on the Messages API, `openai`/`openrouter`/`lmstudio` on a shared OpenAI Chat Completions core, and `ollama` on its own `/api/chat` endpoint; and `claude_cli` delegates to an external agent. All inherit the same tool loop, retry, cost, and trajectory, and `custom_providers` registers your own adapter of any kind without touching fascicle. See [docs/providers.md](./docs/providers.md).
+The engine core is SDK-agnostic: providers plug in behind a neutral single-turn seam, as one of three kinds. Most built-ins wrap Vercel's AI SDK (`ai_sdk`). Five providers can instead run `transport: 'native'` (raw HTTP, no AI SDK in the path, no peer to install) — `anthropic` on the Messages API, `openai`/`openrouter`/`lmstudio` on a shared OpenAI Chat Completions core, and `ollama` on its own `/api/chat` endpoint. The third kind is `claude_cli`, which delegates to an external agent. All inherit the same tool loop, retry, cost, and trajectory, and `custom_providers` registers your own adapter of any kind without touching fascicle. See [docs/providers.md](./docs/providers.md).
 
 **Adapters injected per run.** Trajectory loggers and checkpoint stores ship under the `fascicle/adapters` subpath:
 
@@ -107,7 +107,7 @@ const engine = make_stub_engine([
 ]);
 ```
 
-**Markdown-defined agents.** When an agent is just a prompt plus an output schema, `define_agent` (the `fascicle/agents` subpath) folds a markdown file — frontmatter `name` / `model` / `temperature`, body as the prompt — and a zod schema into a `Step<i, o>`:
+**Markdown-defined agents.** When an agent is just a prompt plus an output schema, `define_agent` (the `fascicle/agents` subpath) folds a markdown file (frontmatter `name` / `model` / `temperature`, with the body as the prompt) and a zod schema into a `Step<i, o>`:
 
 <!-- snippet: check -->
 ```typescript
@@ -230,7 +230,7 @@ Fascicle is early and not accepting outside pull requests yet. Bug reports and f
 
 ## Development
 
-This repo is a **single package**. The code is organized as deep modules under `src/` (`core`, `engine`, `composites`, `agents`, `adapters`, `mcp`, `stdio`, `ui`, `otel`, `policy`, `schema`, `testing`, `viewer`), each reachable only through its barrel via the `#<module>` import alias. The umbrella surface at the `src/` root is what publishes to npm as `fascicle`. Architectural boundaries (for example, core cannot import adapters; engine imports core type-only; no `process.env` outside the audited exceptions) are enforced by the ast-grep rules in `rules/` and a directory-level boundary DAG in `fallow.toml`. The 7 apps under `examples/*/` are separate workspace members that consume the library via `fascicle: workspace:*`.
+This repo is a **single package**. The code is organized as deep modules under `src/` (`core`, `engine`, `composites`, `agents`, `adapters`, `mcp`, `stdio`, `ui`, `otel`, `policy`, `schema`, `testing`, `viewer`), each reachable only through its barrel via the `#<module>` import alias. The umbrella surface at the `src/` root is what publishes to npm as `fascicle`. Architectural boundaries (for example, core cannot import adapters, engine imports core type-only, and no `process.env` outside the audited exceptions) are enforced by the ast-grep rules in `rules/` and a directory-level boundary DAG in `fallow.toml`. The 7 apps under `examples/*/` are separate workspace members that consume the library via `fascicle: workspace:*`.
 
 ```bash
 pnpm install

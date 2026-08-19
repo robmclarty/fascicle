@@ -1,6 +1,6 @@
 # 04 — The metric protocol: one abstraction, many shapes
 
-The `Metric` is the only abstraction in amplify that you, the user, are expected to write per project. Everything else — the loop, the cascade, the budget, the lessons buffer — is generic. This document explains *why* the shape is what it is, and works through three concrete metric examples for very different problems.
+The `Metric` is the only abstraction in amplify that you, the user, are expected to write per project. Everything else (the loop, the cascade, the budget, the lessons buffer) is generic. This document explains *why* the shape is what it is, and works through three concrete metric examples for very different problems.
 
 ## The shape
 
