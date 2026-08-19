@@ -4,7 +4,7 @@
  * Satisfies `CheckpointStore` from `core`. Each key is stored as
  * a JSON file under the configured root directory. Writes are all-or-nothing:
  * values are written to a temporary sibling file and then atomically renamed
- * into place, so an interrupted write never leaves a partially-written file
+ * into place, so an interrupted write never leaves a partially written file
  * at the target key. On `get`, a missing file, a partial temp file that was
  * never atomically renamed, or a JSON parse failure each read as a cache
  * miss (returning `null`) rather than an error.

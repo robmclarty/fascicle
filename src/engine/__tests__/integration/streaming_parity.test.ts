@@ -1,7 +1,7 @@
 /**
  * Streaming parity (spec §5.6, §10 / criterion 8).
  *
- * For the same mocked provider response, `generate` must return a deeply-equal
+ * For the same mocked provider response, `generate` must return a deeply equal
  * GenerateResult whether `on_chunk` is supplied (streaming) or omitted
  * (non-streaming). This is the invariant that lets composers stay unaware of
  * streaming — they read the result, streaming is a pure observation seam.

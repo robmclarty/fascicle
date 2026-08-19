@@ -77,7 +77,7 @@ export function start_server(options: ServerOptions): Promise<ViewerServer> {
   const http_server = createServer(handler)
 
   return new Promise((res_ok, res_err) => {
-    // `listen` can fail (e.g. port already in use); reject instead of
+    // `listen` can fail (for example, port already in use); reject instead of
     // leaving the returned promise pending forever.
     http_server.once('error', res_err)
     http_server.listen(port, host, () => {

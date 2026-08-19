@@ -61,9 +61,9 @@ fascicle does:
   loop. You are not beholden to one agent implementation; you assemble the control
   flow you want and iterate on it fast and deliberately.
 - **Composition over inheritance.** Every unit is a `Step<i, o>` and every
-  composer takes steps and returns a step. There is no class hierarchy, no central
-  registry, and no ambient state: adapters are passed per run, so two runs in one
-  process share nothing. Substitution always holds, which is what makes the
+  composer takes steps and returns a step. The model has no class hierarchy, no
+  central registry, and no ambient state: adapters are passed per run, so two runs
+  in one process share nothing. Substitution always holds, which is what makes the
   surface testable and replaceable one piece at a time.
 - **Sovereignty.** The seam is the point. A breaking change in the provider layer,
   or in the AI SDK itself, is contained to one file behind a stable interface

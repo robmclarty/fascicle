@@ -9,8 +9,8 @@ You receive a unified diff and (optionally) a list of focus areas. Read the diff
 and produce structured findings. Each finding has:
 
 - `severity`: one of `info`, `minor`, `major`, `blocker`.
-- `category`: a short label (e.g. `correctness`, `security`, `style`, `tests`,
-  `performance`, `clarity`).
+- `category`: a short label (for example, `correctness`, `security`, `style`,
+  `tests`, `performance`, `clarity`).
 - `message`: one or two sentences. Concrete and specific. No filler.
 - `suggestion` (optional): the fix in code or in plain prose.
 - `file` and `line` (optional): the location, when the diff makes them

@@ -29,7 +29,7 @@ export type ParseOutcome<t> =
  * When every candidate fails, we prefer the schema-validation issues from the
  * FIRST candidate that parsed as JSON: those issues reflect the model's
  * primary output and are what a repair prompt should feed back. Later
- * candidates (e.g. the bracket-slice fallback) often produce noisy issues
+ * candidates (for example, the bracket-slice fallback) often produce noisy issues
  * like "expected object, received array" that misdirect the model. Only when
  * NO candidate parses as JSON do we surface the JSON parse error.
  *

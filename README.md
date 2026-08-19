@@ -93,7 +93,7 @@ await run(flow, input, {
 });
 ```
 
-`filesystem_logger` writes synchronously (each event blocks the event loop briefly), which is fine for dev tools and short-lived runs; see [docs/concepts.md](./docs/concepts.md#adapter-limits) before wiring it into a long-running server. Span parentage is threaded through the runner, so span trees stay correct under `parallel`/`map` concurrency. The `TrajectoryLogger` and `CheckpointStore` contracts (exported from `fascicle`) are tiny — roll your own to push events to Honeycomb, S3, etc.
+`filesystem_logger` writes synchronously (each event blocks the event loop briefly), which is fine for dev tools and short-lived runs; see [docs/concepts.md](./docs/concepts.md#adapter-limits) before wiring it into a long-running server. Span parentage is threaded through the runner, so span trees stay correct under `parallel`/`map` concurrency. The `TrajectoryLogger` and `CheckpointStore` contracts (exported from `fascicle`) are tiny — roll your own to push events to Honeycomb, S3, and so on.
 
 `run.stream(flow, input)` returns `{ events, result }` for incremental observation, and `run.until_suspended(flow, input)` drives human-in-the-loop flows: a `suspend` gate resolves to a typed outcome with a `resume` closure instead of throwing.
 
@@ -230,7 +230,7 @@ Fascicle is early and not accepting outside pull requests yet. Bug reports and f
 
 ## Development
 
-This repo is a **single package**. The code is organized as deep modules under `src/` (`core`, `engine`, `composites`, `agents`, `adapters`, `mcp`, `stdio`, `ui`, `otel`, `policy`, `schema`, `testing`, `viewer`), each reachable only through its barrel via the `#<module>` import alias. The umbrella surface at the `src/` root is what publishes to npm as `fascicle`. Architectural boundaries (e.g. core cannot import adapters; engine imports core type-only; no `process.env` outside the audited exceptions) are enforced by the ast-grep rules in `rules/` and a directory-level boundary DAG in `fallow.toml`. The 7 apps under `examples/*/` are separate workspace members that consume the library via `fascicle: workspace:*`.
+This repo is a **single package**. The code is organized as deep modules under `src/` (`core`, `engine`, `composites`, `agents`, `adapters`, `mcp`, `stdio`, `ui`, `otel`, `policy`, `schema`, `testing`, `viewer`), each reachable only through its barrel via the `#<module>` import alias. The umbrella surface at the `src/` root is what publishes to npm as `fascicle`. Architectural boundaries (for example, core cannot import adapters; engine imports core type-only; no `process.env` outside the audited exceptions) are enforced by the ast-grep rules in `rules/` and a directory-level boundary DAG in `fallow.toml`. The 7 apps under `examples/*/` are separate workspace members that consume the library via `fascicle: workspace:*`.
 
 ```bash
 pnpm install

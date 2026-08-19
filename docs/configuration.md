@@ -96,14 +96,14 @@ Rules:
 
 - **Custom-first resolution.** A `providers` key is resolved against `custom_providers` first, then the built-ins.
 - **Shadowing a built-in throws.** A `custom_providers` key that matches a built-in name (`anthropic`, `openai`, ...) throws `engine_config_error` at construction; there is no silent override.
-- **Construction-time only.** There is no runtime registration; the config object is the whole registry extension.
+- **Construction-time only.** Nothing registers at runtime; the config object is the whole registry extension.
 - **Validated like built-ins.** Factories run synchronously at `create_engine`; throw from the factory on bad init. Defer SDK or resource loading to the first call (`build_model` for `ai_sdk`-kind, `invoke_turn` for `native`-kind, `generate` for `external`-kind).
 
 The factory and adapter types (`ProviderFactory`, `ProviderAdapter`, `AiSdkProviderAdapter`, `NativeProviderAdapter`, `ExternalAgentAdapter`, `ProviderCapability`, `ProviderTransport`) are exported from `fascicle`, alongside the neutral turn types (`TurnRequest`, `TurnResult`) and the `default_normalize_usage` helper, so a `kind: 'native'` adapter can be typed explicitly as `NativeProviderAdapter` rather than checked contextually through `ProviderFactory`. Because registration is plain config, a proprietary or workplace-private provider lives entirely in the consuming repo and never needs to enter the fascicle tree.
 
 ## Registering a provider after construction: `with_providers`
 
-There is no mutable runtime registry. When a provider only becomes known *after* the engine is built — a plugin that loads late, a tenant-supplied backend, a credential resolved by an async bootstrap — derive a new engine instead of mutating the old one:
+No mutable runtime registry exists. When a provider only becomes known *after* the engine is built — a plugin that loads late, a tenant-supplied backend, a credential resolved by an async bootstrap — derive a new engine instead of mutating the old one:
 
 ```ts
 const base = create_engine({
@@ -161,9 +161,9 @@ Both are accepted per-call on `generate(opts)` / `model_call({ ... })` and as en
 
 ### Resolution
 
-There is no resolution step. `model` is sent straight through as the provider's `model_id`; `provider` selects the adapter. The provider axis is resolved first: per-call `provider`, else `defaults.provider`, else the sole configured provider. With several providers configured and neither a per-call `provider` nor a default, there is no fallback: `generate` throws `provider_required_error` ("no provider specified: pass `provider` to generate() or set `defaults.provider`", naming the configured providers). If `model` is omitted and no `defaults.model` is set, `generate` throws `model_required_error`. A `provider` with no adapter configured on the engine throws `provider_not_configured_error`.
+No resolution step runs. `model` is sent straight through as the provider's `model_id`; `provider` selects the adapter. The provider axis is resolved first: per-call `provider`, else `defaults.provider`, else the sole configured provider. With several providers configured and neither a per-call `provider` nor a default, there is no fallback: `generate` throws `provider_required_error` ("no provider specified: pass `provider` to generate() or set `defaults.provider`", naming the configured providers). If `model` is omitted and no `defaults.model` is set, `generate` throws `model_required_error`. A `provider` with no adapter configured on the engine throws `provider_not_configured_error`.
 
-There is no `provider:model` colon shorthand and no `opus`/`sonnet` family shorthand — pass the provider's real id (look it up in the provider's own docs). One exception: the `claude_cli` transport forwards the bare token to the CLI, which resolves `opus`/`sonnet`/`haiku` to the latest itself, so those still work for that provider.
+Neither a `provider:model` colon shorthand nor an `opus`/`sonnet` family shorthand exists — pass the provider's real id (look it up in the provider's own docs). One exception: the `claude_cli` transport forwards the bare token to the CLI, which resolves `opus`/`sonnet`/`haiku` to the latest itself, so those still work for that provider.
 
 If you want short names of your own, keep a plain map in your harness and look the id up before calling `generate` — fascicle deliberately owns no such table.
 
@@ -396,7 +396,7 @@ type GenerateOptions<t = string> = {
 
 A few highlights:
 
-- `effort: 'none' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'` is translated per-provider. See [providers.md](./providers.md) for the per-provider mapping. Providers that do not support reasoning effort (e.g. Ollama) silently drop it and record `effort_ignored` on the trajectory.
+- `effort: 'none' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'` is translated per-provider. See [providers.md](./providers.md) for the per-provider mapping. Providers that do not support reasoning effort (for example, Ollama) silently drop it and record `effort_ignored` on the trajectory.
 - `schema` is any [Standard Schema](https://standardschema.dev) that also carries a JSON Schema (zod, ArkType, Valibot, ...): the printed `ToolSchema<t>` is `StandardSchemaV1<unknown, t> & StandardJSONSchemaV1`. On failure, the engine attempts `schema_repair_attempts` repair passes (default 1) before throwing `schema_validation_error`. If the call instead finishes on a non-`stop` reason (content filter, token limit, step cap) no valid value can exist, so it throws `incomplete_generation_error` without attempting repair.
 - `tools` is the agentic tool-use surface; tools have a Standard Schema `input_schema` and an `execute` closure. See the cookbook for tool loops.
 - `turn_timeout_ms` bounds each model turn's wall-clock; expiry throws a retryable timeout. See [Turn timeout budgets](#turn-timeout-budgets).

@@ -19,7 +19,7 @@ import { /* stub + capture engines */ } from 'fascicle/testing';
 import { /* useChat stream adapters */ } from 'fascicle/ui';
 ```
 
-fascicle is ESM-only and requires Node >= 24. There are no default exports and no
+fascicle is ESM-only and requires Node >= 24. It has no default exports and no
 classes other than `Error` subclasses.
 
 `fascicle` itself has no mandatory peers. Three subpaths need one to do their
@@ -91,7 +91,7 @@ Each of these returns a result envelope (`{ candidate, converged, rounds }`, `{ 
 
 | Primitive | Shape |
 | --- | --- |
-| `improve({ seed, propose, score, budget, project? })` | bounded online propose → score → accept/reject loop with plateau detection; `project` maps the result envelope (e.g. `(r) => r.best.content`) |
+| `improve({ seed, propose, score, budget, project? })` | bounded online propose → score → accept/reject loop with plateau detection; `project` maps the result envelope (for example, `(r) => r.best.content`) |
 | `learn({ flow, source, analyzer })` | offline reflection over recorded trajectories; returns the analyzer's proposals |
 
 ### Benchmarking

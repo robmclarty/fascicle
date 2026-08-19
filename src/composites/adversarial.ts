@@ -61,7 +61,7 @@ function build_input_from_state<i, c>(
  * notes when available), critiques it, then checks `accept(critique_result)`.
  * Returns `{ candidate, converged, rounds }`. Does not throw on
  * non-convergence; `converged: false` reports it instead. `project` maps
- * that envelope into the step's output (e.g. `(r) => r.candidate`); omitted,
+ * that envelope into the step's output (for example, `(r) => r.candidate`); omitted,
  * the envelope itself is the output.
  *
  * Implemented as a `compose`d `loop` whose body builds a new candidate and

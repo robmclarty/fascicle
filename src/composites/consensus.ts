@@ -31,7 +31,7 @@ type ConsensusState<i, o> = {
  * Otherwise re-runs all members up to `max_rounds` times and returns the
  * last results with `converged: false` if no agreement is reached.
  * `project` maps the `{ result, converged }` envelope into the step's output
- * (e.g. `(r) => r.converged`); omitted, the envelope itself is the output.
+ * (for example, `(r) => r.converged`); omitted, the envelope itself is the output.
  *
  * Implemented as a `compose`d `loop` whose body runs `parallel(members)` and
  * whose guard evaluates `agree`. State carries the original input alongside

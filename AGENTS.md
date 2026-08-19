@@ -52,15 +52,28 @@ pnpm exec tsc --noEmit         # just types
 - **Naming:** `snake_case` for variables and functions, `PascalCase` for types and interfaces, `SCREAMING_SNAKE_CASE` for constants. Exports are enforced by `rules/snake-case-exports.yml`.
 - **Function docs.** Every module-level function carries a `/** ... */` block directly above it: one line saying what it is, then optional paragraphs on why it behaves the way it does. Comments inside function bodies use `//`. Comments state what the code does now, in the present tense, with no design-history references. Enforced by `rules/function-comment-required.yml`.
 - **File extensions:** import with `.js` even from `.ts` files (NodeNext resolution).
-- **Tests colocated in `__tests__/`:** unit tests for `foo.ts` live at `__tests__/foo.test.ts` next to it (e.g. `src/core/branch.ts` ↔ `src/core/__tests__/branch.test.ts`). Cross-cutting tests (integration, signal handling, fixtures) live under `src/<module>/test/` instead, which is outside the source-semantics rules and spell-check.
+- **Prose style.** Markdown and TypeScript doc comments are linted by vale as the `prose` slot; the config is `.vale.ini` and the rules are plain YAML in `.vale/styles/Repo/`. No Latin abbreviations (write "for example", "that is", "and so on"), no sentence opening on "there is"/"there are" (name the subject that acts instead), no hyphen after an `-ly` adverb, and none of the generated-prose fingerprints in `Drift.yml`. The rules belong to this repo: disagree with one and edit or delete it rather than suppressing it line by line. The rules police mechanics; the exemplars below carry the voice.
+- **Tests colocated in `__tests__/`:** unit tests for `foo.ts` live at `__tests__/foo.test.ts` next to it (for example, `src/core/branch.ts` ↔ `src/core/__tests__/branch.test.ts`). Cross-cutting tests (integration, signal handling, fixtures) live under `src/<module>/test/` instead, which is outside the source-semantics rules and spell-check.
 - **Coverage floor:** 70% lines/functions/branches/statements. Raise it as the codebase matures.
-- **Architectural boundaries are enforced.** The rest of `rules/` uses ast-grep to police layer separation between `core`, `engine`, adapters, and the `claude_cli` provider — e.g. no adapter imports in `core`, no cross-composer imports, no `process.env` reads outside the audited exceptions, no provider SDKs outside `src/engine/providers/`, no `child_process` outside `claude_cli`. `fallow.toml` adds a directory-level default-deny boundary DAG on top. Read `rules/` and the `fallow.toml` boundaries before adding a cross-module import.
+- **Architectural boundaries are enforced.** The rest of `rules/` uses ast-grep to police layer separation between `core`, `engine`, adapters, and the `claude_cli` provider — for example, no adapter imports in `core`, no cross-composer imports, no `process.env` reads outside the audited exceptions, no provider SDKs outside `src/engine/providers/`, no `child_process` outside `claude_cli`. `fallow.toml` adds a directory-level default-deny boundary DAG on top. Read `rules/` and the `fallow.toml` boundaries before adding a cross-module import.
+
+### Prose voice
+
+Before writing or editing prose (markdown, doc comments), read the exemplars in
+`.vale/exemplars` and imitate their voice — sentence rhythm, word choice, register.
+They are hand-written and human-owned: never edit, rewrite, or add to them, and
+never generate new ones. When your draft and an exemplar disagree about how a
+sentence should sound, the exemplar wins.
+
+The directory sits outside the `prose` walk on purpose. Vale checks mechanics and
+would flag a human sentence it has no business overruling; the exemplars answer a
+question no rule can, which is what the prose should sound like.
 
 ## Source layout
 
 This is a **single package**. All source lives under `src/`, organized as deep modules: `src/<module>/` (core, engine, composites, agents, adapters, mcp, stdio, ui, otel, policy, schema, testing, viewer), each with a barrel `index.ts` that is its only public face. The umbrella surface sits at the `src/` root (`index.ts`, `model_call.ts`, `forward_standard_env.ts`); that is what bundles to npm as `fascicle`, and the `adapters`, `agents`, `mcp`, `otel`, `stdio`, `testing`, and `ui` modules are additionally published as `fascicle/<module>` subpaths. The 7 apps under `examples/*/` are the only other workspace members; they depend on the library via `fascicle: workspace:*`.
 
-**Barrels are import/export only.** An `index.ts` contains only `import`, `export … from`, `export { … }`, and `export type` statements (bare side-effect imports are fine). No runtime logic: module logic lives in a named sibling file (e.g. `create_engine` in `create_engine.ts`, `start_viewer` in `start_viewer.ts`) that the barrel re-exports. Enforced by `rules/no-logic-in-barrel.yml`.
+**Barrels are import/export only.** An `index.ts` contains only `import`, `export … from`, `export { … }`, and `export type` statements (bare side-effect imports are fine). No runtime logic: module logic lives in a named sibling file (for example, `create_engine` in `create_engine.ts`, `start_viewer` in `start_viewer.ts`) that the barrel re-exports. Enforced by `rules/no-logic-in-barrel.yml`.
 
 **Cross-module access is sealed two ways.** Every module is reachable only through its barrel:
 

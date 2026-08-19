@@ -5,7 +5,7 @@
  * the engine's own span + event stream into OpenTelemetry spans: the
  * `engine.generate` span becomes an OTel root span, each `engine.generate.step`
  * a child span, and every `record`ed event (tool_call, tool_result, cost, ...)
- * an OTel span event on the currently-open span. It is transport-neutral: the
+ * an OTel span event on the currently open span. It is transport-neutral: the
  * spans come from events the engine already emits, so native and external
  * transports get traces without any AI-SDK involvement.
  *
@@ -16,7 +16,7 @@
  *
  * Nesting is resolved two ways, in order: an explicit `parent_span_id` on the
  * start meta (how the composition runner threads composer-span parenthood) wins;
- * otherwise the currently-open span (top of the open stack) is the parent. This
+ * otherwise the currently open span (top of the open stack) is the parent. This
  * is exact for the sequential engine flow (generate → step → step) and for
  * runner-nested spans; genuinely interleaved sibling spans that carry no
  * `parent_span_id` (concurrent branches sharing one logger) fall back to stack
@@ -53,7 +53,7 @@ const INTERNAL_KEYS: ReadonlySet<string> = new Set(['kind', 'span_id', 'parent_s
 
 /**
  * JSON-stringify `value`, falling back to `String(value)` when `stringify`
- * throws or returns `undefined` (e.g. for functions or symbols).
+ * throws or returns `undefined`, as it does for functions and symbols.
  */
 function safe_json(value: unknown): string {
   try {

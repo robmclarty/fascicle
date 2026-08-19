@@ -318,7 +318,7 @@ describe('retry', () => {
     const controller = new AbortController()
     const inner = step('x', (_: number) => {
       calls += 1
-      // Abort a few ms in, i.e. after the backoff timer + abort listener are
+      // Abort a few ms in, after the backoff timer + abort listener are
       // installed, so the listener (not the entry guard) is what fires.
       setTimeout(() => {
         controller.abort('cancelled')

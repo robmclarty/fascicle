@@ -9,9 +9,9 @@
  * `provider_options` needs a two-level merge: outer keys are provider names
  * (`claude_cli`, `anthropic`, ...) and inner records hold per-provider
  * settings. Per-call inner keys override the matching default's inner keys;
- * provider keys unique to either side fall through unchanged. There is no
- * recursion past that second level, so deeper structures replace wholesale
- * rather than merging further.
+ * provider keys unique to either side fall through unchanged. Recursion stops
+ * at that second level, so deeper structures replace wholesale rather than
+ * merging further.
  */
 export function merge_provider_options(
   defaults: Readonly<Record<string, Readonly<Record<string, unknown>>>> | undefined,

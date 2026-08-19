@@ -40,7 +40,7 @@ export type TournamentResult<o> = {
  * All members run concurrently via `parallel`; the bracket step then reduces
  * survivors round by round with `compare`, recording every match. Requires at
  * least one member so a winner always exists. `project` maps the `{ winner,
- * bracket }` envelope into the step's output (e.g. `(r) => r.winner`);
+ * bracket }` envelope into the step's output (for example, `(r) => r.winner`);
  * omitted, the envelope itself is the output.
  */
 export function tournament<i, o, projected = TournamentResult<o>>(

@@ -95,7 +95,7 @@ type ImproveState<c> = {
  * next round's input. Plateau detection stops the loop early when no
  * progress has been made for `patience` rounds; an optional wall-clock
  * budget caps total runtime. `project` maps the result envelope into the
- * step's output (e.g. `(r) => r.best.content`); omitted, the envelope
+ * step's output (for example, `(r) => r.best.content`); omitted, the envelope
  * itself is the output.
  *
  * Implemented as a `compose`d `scope` of (seed) -> (init state) -> (loop) ->

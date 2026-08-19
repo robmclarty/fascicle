@@ -25,7 +25,7 @@ export type EnsembleResult<o> = {
  * `select` picks the highest (`'max'`, the default) or lowest (`'min'`)
  * score. Tie-breaking is "any tied result is acceptable": the first member
  * (in `members` key order) holding the best score wins. `project` maps the
- * `{ winner, scores }` envelope into the step's output (e.g. `(r) =>
+ * `{ winner, scores }` envelope into the step's output (for example, `(r) =>
  * r.winner`); omitted, the envelope itself is the output.
  *
  * Implemented as a `compose`d `sequence` of `parallel(members)` followed by

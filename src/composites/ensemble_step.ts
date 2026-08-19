@@ -33,16 +33,16 @@ type ScoredPair<ranked> = { readonly id: string; readonly scored: ranked }
  * Builds a Step that runs every member concurrently, scores each result via
  * a scoring `Step`, and returns the best-ranking winner.
  *
- * Sibling of `ensemble` for the case where scoring is itself a `Step` (e.g.
- * a separate model call, a sub-flow, anything that wants its own trajectory
- * span and abort routing). The `score` step is dispatched once per member
- * result; `rank_by` projects a number out of the structured scored output;
+ * Sibling of `ensemble` for the case where scoring is itself a `Step` (for
+ * example, a separate model call, a sub-flow, anything that wants its own
+ * trajectory span and abort routing). The `score` step is dispatched once per
+ * member result; `rank_by` projects a number out of the structured scored output;
  * `select` picks the highest (`'max'`, default) or lowest (`'min'`) rank.
  *
  * The result carries `winner_scored`, the structured output from the round's
  * scoring run preserved verbatim, so callers never pay to re-score the
  * winner. `scored` holds the structured score for every member. `project`
- * maps that envelope into the step's output (e.g. `(r) => r.winner`);
+ * maps that envelope into the step's output (for example, `(r) => r.winner`);
  * omitted, the envelope itself is the output.
  *
  * Implemented as a `compose`d `scope` over (`stash(parallel(members))` ->

@@ -237,7 +237,7 @@ work is in the docs surface, the example apps, and the check suite.
 ### Fixed
 
 - **`docs/blueprint.md`'s `state.ts` snippet did not compile.** It declared its scope-state readers over `ReadonlyMap` and called `.get()`, but `use(keys, fn)` hands `fn` a plain object projection of the requested keys. The snippet now shows the real shape, with the `ReadonlyMap` variant documented for readers that go through `ctx.state` inside a step body instead.
-- **`examples/pr-improve` could not run on its own default provider.** It defaulted every role to `'sonnet'`/`'opus'` and claimed in comments that the engine expands those per provider. It does not — `model` is passed to the provider verbatim — so the documented default path (`FASCICLE_PROVIDER=anthropic`) sent a literal `"sonnet"` and got a not-found error. There is now one per-provider model table, resolved once and threaded as data, which also removes a second copy of that table and makes the `FASCICLE_MODEL_*` overrides reach the flow; they were previously parsed and discarded.
+- **`examples/pr-improve` could not run on its own default provider.** It defaulted every role to `'sonnet'`/`'opus'` and claimed in comments that the engine expands those per provider. It does not — `model` is passed to the provider verbatim — so the documented default path (`FASCICLE_PROVIDER=anthropic`) sent a literal `"sonnet"` and got a not-found error. One per-provider model table now resolves once and threads through as data, which also removes a second copy of that table and makes the `FASCICLE_MODEL_*` overrides reach the flow; they were previously parsed and discarded.
 
 ### Internal
 
@@ -403,7 +403,7 @@ work is in the docs surface, the example apps, and the check suite.
 
 ### Added
 
-- Native constrained decoding for schema-constrained `model_call` on local providers (Ollama and LM Studio), exposed as a new `structured_output` provider capability: the schema now constrains the provider's decode (e.g. Ollama's `format`) instead of prompting for JSON and scraping it, so local-model structured output no longer fails validation on the first call. The prompt-based path remains the fallback, and hosted providers are unchanged.
+- Native constrained decoding for schema-constrained `model_call` on local providers (Ollama and LM Studio), exposed as a new `structured_output` provider capability: the schema now constrains the provider's decode (for example, Ollama's `format`) instead of prompting for JSON and scraping it, so local-model structured output no longer fails validation on the first call. The prompt-based path remains the fallback, and hosted providers are unchanged.
 - Live GitHub star count on the marketing site's nav button.
 
 ### Internal
@@ -517,7 +517,7 @@ work is in the docs surface, the example apps, and the check suite.
 
 ### Changed
 
-- **Breaking: model resolution is now a verbatim pass-through.** `model` is an opaque string sent to the provider unchanged; `provider` selects the transport. There is one canonical input shape — separate `provider` + `model` params — and no interpretation in between.
+- **Breaking: model resolution is now a verbatim pass-through.** `model` is an opaque string sent to the provider unchanged; `provider` selects the transport. One canonical input shape remains — separate `provider` + `model` params — with no interpretation in between.
   - Removed the `provider:model` colon shorthand. Pass `{ provider: 'openrouter', model: 'anthropic/claude-sonnet-4.5' }` instead of `model: 'openrouter:anthropic/claude-sonnet-4.5'`. Model ids that contain colons (Ollama tags like `qwen3-coder:30b`, Bedrock `...-v1:0`) now ride through untouched.
   - Removed the built-in `MODEL_FAMILIES` catalog and the `families` engine-config field. Family tokens (`opus`, `sonnet`, `gpt`, `gemini`) no longer expand — pass the provider's concrete id. (The `claude_cli` transport still resolves `opus`/`sonnet`/`haiku` itself, via the CLI.)
   - Removed the user alias table: `Engine.register_alias` / `unregister_alias` / `resolve_alias` / `list_aliases` and `EngineConfig.aliases`. Keep your own name→id map in your harness if you want shortcuts.
@@ -566,11 +566,11 @@ work is in the docs surface, the example apps, and the check suite.
 - `examples/swebench`: `claude_cli` provider option, selectable via `SWEBENCH_PROVIDER`.
 
 ### Changed
-- **Breaking.** `create_engine` no longer ships default aliases — the alias table starts empty and is reserved for your own named pins. The built-in `cli-*`, `or:*`, `gemini-pro`/`gemini-flash`, and `gpt-4o*` aliases are gone; use `{ model, provider }` pairs (e.g. `{ model: 'sonnet', provider: 'claude_cli' }`) or the colon form (`openrouter:meta-llama/llama-3.3-70b-instruct`).
+- **Breaking.** `create_engine` no longer ships default aliases — the alias table starts empty and is reserved for your own named pins. The built-in `cli-*`, `or:*`, `gemini-pro`/`gemini-flash`, and `gpt-4o*` aliases are gone; use `{ model, provider }` pairs (for example, `{ model: 'sonnet', provider: 'claude_cli' }`) or the colon form (`openrouter:meta-llama/llama-3.3-70b-instruct`).
 - **Breaking.** `resolve_model` signature is now `resolve_model(model, provider, { families, aliases })`. Resolution order: colon-form `provider:id` → user alias → family lookup → pass-through specific id. When `model`/`provider` are omitted, `model` defaults to `sonnet` and `provider` resolves to per-call → `defaults.provider` → the sole configured provider → `anthropic`.
 
 ### Fixed
-- A family with no entry for the chosen provider (e.g. `opus` on `openai`) now throws the descriptive `model_family_unavailable_error` instead of the generic not-found path.
+- A family with no entry for the chosen provider (for example, `opus` on `openai`) now throws the descriptive `model_family_unavailable_error` instead of the generic not-found path.
 
 ## v0.4.3 — 2026-05-10
 
@@ -693,7 +693,7 @@ work is in the docs surface, the example apps, and the check suite.
 ## v0.3.1 — 2026-04-29
 
 ### Internal
-- Colocated unit tests under `__tests__/` subfolders (e.g. `packages/core/src/branch.ts` ↔ `packages/core/src/__tests__/branch.test.ts`); cross-cutting tests under `packages/<name>/test/` are unchanged.
+- Colocated unit tests under `__tests__/` subfolders (for example, `packages/core/src/branch.ts` ↔ `packages/core/src/__tests__/branch.test.ts`); cross-cutting tests under `packages/<name>/test/` are unchanged.
 
 ## v0.3.0 — 2026-04-29
 

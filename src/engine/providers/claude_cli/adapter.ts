@@ -632,7 +632,7 @@ function record_provider_costs(
 }
 
 /**
- * Close the eagerly-opened first step span against the steps the CLI
+ * Close the eagerly opened first step span against the steps the CLI
  * reported, then emit paired open/close spans for steps 1..n; those arrive
  * all at once on process close, so their spans carry usage, not timing.
  * Clears `spans.first_step` so the error path cannot close it twice.
@@ -684,7 +684,7 @@ async function dispatch_finish<T>(
 
 /**
  * Close whatever spans are still open with the failure message. A failure
- * after the step spans already closed (e.g. in the finish-chunk dispatch)
+ * after the step spans already closed (for example, in the finish-chunk dispatch)
  * closes only the generate span.
  */
 function close_spans_on_error(

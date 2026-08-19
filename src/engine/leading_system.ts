@@ -32,7 +32,7 @@ export function split_leading_system_run<T extends { readonly role: string }>(
 }
 
 /**
- * Narrow a possibly-undefined message to the system member of its union.
+ * Narrow a possibly undefined message to the system member of its union.
  *
  * A cast-free type guard so `split_leading_system_run` can hand the narrowed
  * message straight to `system_text` without a `T`-eroding assertion; the

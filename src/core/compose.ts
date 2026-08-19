@@ -2,7 +2,7 @@
  * compose: name a composite step.
  *
  * `compose(name, inner)` wraps any step and labels its trajectory span with
- * `name`. The inner step's own span (e.g. a `sequence`) appears as a child of
+ * `name`. The inner step's own span (for example, a `sequence`) appears as a child of
  * the compose span: the implementation tree is preserved while the user's
  * intent ("this whole thing is an ensemble") is surfaced in observability.
  *

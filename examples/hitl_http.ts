@@ -11,7 +11,7 @@
  * socket while waiting for the human.
  *
  * The store is an in-memory Map for brevity, and a closure cannot outlive
- * the process: a real deployment persists the original input (e.g.
+ * the process: a real deployment persists the original input (for example,
  * `filesystem_store` from `fascicle/adapters`, a DB, or a queue) and calls
  * `run.until_suspended` again after a restart to rebuild the outcome.
  *

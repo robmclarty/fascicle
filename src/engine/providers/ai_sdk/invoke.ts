@@ -552,7 +552,7 @@ export function create_ai_sdk_turn(cfg: AiSdkTurnConfig): AiSdkTurn {
   // Native structured output: when a schema is requested and the provider
   // constrains decoding to it (the 'structured_output' capability), route
   // through the AI SDK's Output.object seam so the schema becomes the
-  // provider's responseFormat (e.g. Ollama's `format`) instead of a
+  // provider's responseFormat (for example, Ollama's `format`) instead of a
   // prompt-for-JSON-then-scrape. Gated on no tools: forcing a JSON
   // responseFormat alongside tool calls breaks tool dispatch on most
   // providers, so tool runs keep the prompt-based schema path. The engine's

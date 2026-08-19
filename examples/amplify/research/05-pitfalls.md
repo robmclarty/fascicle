@@ -27,17 +27,17 @@ Self-improvement loops have five canonical failure modes. They are well-document
 - **No judge in the v1 metric kits.** `metrics/speed.ts`, `metrics/golden.ts`, and `metrics/quality.ts` all use programmatic scores. If you write a metric with a `judge`, the harness treats it as tiebreak-only.
 - **Judge documentation makes the trap explicit** (this file, `04-metric-protocol.md`).
 
-**Residual risk.** A user who writes a metric where `score` itself uses an LLM (e.g., a regex-via-prompt rubric) reintroduces the risk. The harness can't detect that — it just runs whatever `score` returns. The discipline is the user's.
+**Residual risk.** A user who writes a metric where `score` itself uses an LLM (for example, a regex-via-prompt rubric) reintroduces the risk. The harness can't detect that — it just runs whatever `score` returns. The discipline is the user's.
 
 ---
 
 ## Pitfall 3 — Plateau and stuck local minima
 
-**The failure.** The loop accepts a slightly-better candidate, then can't find anything better, then keeps proposing minor variations of the same theme. Without an escape mechanism, you burn budget on noise. Common in greedy hill-climbing; expected for our population approach but still happens once the population converges.
+**The failure.** The loop accepts a slightly better candidate, then can't find anything better, then keeps proposing minor variations of the same theme. Without an escape mechanism, you burn budget on noise. Common in greedy hill-climbing; expected for our population approach but still happens once the population converges.
 
 **Defense in `src/`.**
 
-- **`patience` parameter** in `src/budget.ts`. After N rounds without strictly-better progress, `plateau()` returns true and the loop exits.
+- **`patience` parameter** in `src/budget.ts`. After N rounds without strictly better progress, `plateau()` returns true and the loop exits.
 - **Lessons buffer** (`src/lessons.ts`). Each plateau-round's failed candidates' rationales are summarized into the next round's prompt. The model sees what didn't work and is nudged toward a different direction.
 - **Population diversity** (`src/loop.ts:run_one_round`). Three independent proposers per round have different temperature/seed (implicitly via independent calls); at least one tends to take a different angle.
 
@@ -82,7 +82,7 @@ Self-improvement loops have five canonical failure modes. They are well-document
 
 **Cost explosion.** OpenEvolve docs cite $0.01–$0.60 per iteration on direct-API providers. Amplify uses `claude_cli` (OAuth via `claude login`) which bills against your Claude subscription instead of metered tokens, so the failure mode under amplify is "you hit subscription rate limits," not "you accidentally spend $200." We still enforce the triple-OR stop and reserve `effort: 'xhigh'` for proposes (not judge / research) — those mitigations carry forward to a metered-API future. A `--max-cost-usd` flag would only matter if a user swapped back to a direct-API provider.
 
-**Catastrophic tool use.** Replit's July 2025 production-DB-deletion incident is the cautionary tale. Amplify's only file-system effect is `metric.mutable_path` (the swap-in/restore) and `metric.gate.cwd` (where the gate command runs). Neither is shared infra; both are inside the example dir. There is no path by which a candidate can scribble outside its sandbox unless the metric author writes a `gate.command` that does so — which would be obvious in code review.
+**Catastrophic tool use.** Replit's July 2025 production-DB-deletion incident is the cautionary tale. Amplify's only file-system effect is `metric.mutable_path` (the swap-in/restore) and `metric.gate.cwd` (where the gate command runs). Neither is shared infra; both are inside the example dir. No path lets a candidate scribble outside its sandbox unless the metric author writes a `gate.command` that does so — which would be obvious in code review.
 
 **Recursive / hyperactive loops.** Arize's analysis: agents call the same tool with identical args because tool feedback is ambiguous. Our mitigation is the *loop*, not per-candidate: the budget is round-counted, not call-counted, so even an over-eager candidate cannot inflate beyond the round's single propose call.
 

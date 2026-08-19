@@ -416,7 +416,8 @@ describe('turn_timeout_ms: a generous budget never diverts a real failure', () =
       })
       expect(result.content).toBe('done')
       // dispose() (via retry_turn's finally) cleared the setTimeout. The empty
-      // dispose body and the finally-skips-dispose mutants both leave it armed.
+      // dispose body and the mutant that drops dispose from the finally both
+      // leave it armed.
       expect(vi.getTimerCount()).toBe(0)
     } finally {
       vi.useRealTimers()

@@ -10,7 +10,7 @@
  * marker; runtime is capped at SHELL_TIMEOUT_MS via AbortController.
  *
  * The pnpm allowlist entry intentionally accepts any subcommand to match
- * the original SPEC; tightening (e.g. limit to test/check/exec) is a
+ * the original SPEC; tightening (for example, limit to test/check/exec) is a
  * follow-up tracked in SPEC.md.
  */
 

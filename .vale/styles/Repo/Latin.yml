@@ -1,0 +1,14 @@
+# Latin abbreviations read as shorthand and land as a stumble: `i.e.` and `e.g.`
+# are confused for each other often enough that the plain English is simply
+# clearer. Mechanical, not a matter of voice — the substitution is always
+# available and always says the same thing.
+extends: substitution
+message: "Use '%s' instead of '%s'."
+level: error
+ignorecase: false
+# The tokens carry periods, so word boundaries cannot wrap them.
+nonword: true
+swap:
+  '\b(?:eg|e\.g\.)[\s,]': for example
+  '\b(?:ie|i\.e\.)[\s,]': that is
+  '\betc\.': and so on

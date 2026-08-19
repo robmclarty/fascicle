@@ -90,7 +90,7 @@ A single report is a snapshot. Regression testing is the diff between two of the
 
 - `pass_rate` dropping at all is a regression (the default `score_threshold` is `0`).
 - any per-judge `mean_scores.<name>` dropping is a regression.
-- `total_cost_usd` rising by more than `cost_threshold` (default `0.1`, i.e. 10%) is a regression.
+- `total_cost_usd` rising by more than `cost_threshold` (default `0.1`, or 10%) is a regression.
 
 It does not short-circuit on the first failure. Every metric and every per-case delta is computed, so you can print the whole picture rather than the first thing that broke. The result is plain data: `deltas` for the summary metrics and `per_case` for the case-by-case story.
 

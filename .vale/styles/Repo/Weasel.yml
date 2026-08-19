@@ -1,0 +1,26 @@
+# Weasel words claim an intensity the sentence never earns: `very fast` is not
+# a measurement, and `simply call the function` is a claim about the reader.
+# Cutting one almost never costs meaning.
+#
+# This is the one rule in the set that is taste rather than mechanics, so the
+# scaffolded .vale.ini ships it OFF (`Repo.Weasel = NO`). Careful prose uses
+# some of these deliberately — `just` as "only", `clearly` as a genuine signal —
+# and a rule the author disagrees with becomes a wall of suppressions. Read the
+# list, cut what you would defend, then turn it on.
+extends: existence
+message: "'%s' is a weasel word — cut it, or say the specific thing."
+level: error
+ignorecase: true
+tokens:
+  - actually
+  - basically
+  - clearly
+  - fairly
+  - just
+  - obviously
+  - quite
+  - rather
+  - really
+  - simply
+  - somewhat
+  - very

@@ -26,6 +26,32 @@
 
     "docs": { "use": "markdownlint-cli2", "order": 3 },
     "spell": { "use": "cspell", "order": 3 },
+    "prose": {
+      "use": "vale",
+      "args": [
+        "exec",
+        "vale",
+        "--no-global",
+        "--output=JSON",
+        "--glob=!**/{node_modules,dist,.runs,.trajectory,.ridgeline,.plumbbob,.check,.stryker-tmp}/**",
+        "src",
+        "docs",
+        "test",
+        "examples",
+        "AGENTS.md",
+        "CHANGELOG.md",
+        "CLAUDE.md",
+        "CONTRIBUTING.md",
+        "README.md",
+        "SECURITY.md",
+        "VALUES.md"
+      ],
+      "exemplars": ".vale/exemplars",
+      "description": "Vale: wording and copy style over markdown and TypeScript doc comments",
+      "note": "vale reads no .gitignore and skips no hidden directory, so the walk is named explicitly rather than left at the adapter default of `.`. research/ is gitignored working notes and stays out, matching cspell and markdownlint.",
+      "optIn": false,
+      "order": 3
+    },
     "test": { "use": "vitest", "order": 3 },
 
     "health": { "use": "fallow", "order": 4 },

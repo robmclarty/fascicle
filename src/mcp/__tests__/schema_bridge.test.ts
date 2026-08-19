@@ -214,7 +214,7 @@ describe('json_schema_to_standard validation', () => {
   })
 
   it('does not enforce a required name that has no declared property', async () => {
-    // There is nothing to check it against, and rejecting an arg the server
+    // Nothing exists to check it against, and rejecting an arg the server
     // would accept is the one failure mode this bridge must not have.
     expect(await accepts({ type: 'object', required: ['a'] }, {})).toBe(true)
   })

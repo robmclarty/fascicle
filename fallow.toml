@@ -49,6 +49,7 @@ ignoreDependencies = [
   "publint",
   "fascicle",
   "@arethetypeswrong/cli",
+  "@vvago/vale",
 ]
 
 # `aborted_error` is defined in core and deliberately re-exported by engine so

@@ -1,0 +1,33 @@
+# An adverb ending in `-ly` cannot modify anything but the word that follows
+# it, so the hyphen adds nothing: `newly created`, not `newly-created`. This is
+# a rule about punctuation, not about how the sentence should read.
+#
+# The exceptions are words that end in `-ly` without being adverbs — `supply
+# chain`, `family friendly`, `early return`. They are the rule's whole
+# false-positive surface, and the list below is a starting point: add to it
+# rather than reaching for a suppression. Exception matching is case-sensitive
+# even though the rule is not, so a word that also opens a sentence or a
+# heading (`Supply-chain posture`) needs both forms listed.
+extends: existence
+message: "'%s': an adverb ending in '-ly' takes no hyphen."
+level: error
+ignorecase: true
+# The token spans a hyphen, which word boundaries would cut in half.
+nonword: true
+tokens:
+  - '\b[^\s-]+ly-\w+\b'
+exceptions:
+  - anomaly
+  - apply
+  - assembly
+  - comply
+  - early
+  - family
+  - imply
+  - multiply
+  - only
+  - reply
+  - stringly
+  - Stringly
+  - supply
+  - Supply

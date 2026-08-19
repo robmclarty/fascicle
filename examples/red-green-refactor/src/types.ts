@@ -1,7 +1,7 @@
 /**
  * Shared types for the RGR harness.
  *
- * There is no model-output schema here: the coder role replies in prose and
+ * No model-output schema appears here: the coder role replies in prose and
  * every claim it makes is checked by the test oracle and the structural
  * backstop instead. What crosses module boundaries is the behavior list, the
  * oracle's verdict, and the test-file snapshots the backstop compares.

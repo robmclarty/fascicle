@@ -69,9 +69,9 @@ enumeration is in [api-reference.md](./api-reference.md#exported-types).
 
 Every composable unit is a `Step<i, o>` — a plain object with an `id`, a
 `kind`, and an async `run`. Every composer is a function that accepts one or
-more `Step<i, o>` values and returns a single `Step<i, o>` value. There is
-no separate `Workflow`, `Agent`, or `Graph` type, and nothing needs to be
-registered, constructed, or initialized. Anywhere a step fits, any
+more `Step<i, o>` values and returns a single `Step<i, o>` value. No separate
+`Workflow`, `Agent`, or `Graph` type exists, and nothing needs to be registered,
+constructed, or initialized. Anywhere a step fits, any
 composition of steps fits — including arbitrarily deep nestings — because
 everything shares the same shape.
 
@@ -156,7 +156,8 @@ from English specifications:
   `options.arm` so `describe` still renders the subtree.
 - `improve({ seed, propose, score, budget, project? })` — bounded online
   self-improvement loop: propose → score → accept/reject with plateau
-  detection; `project` maps the result envelope (e.g. `(r) => r.best.content`).
+  detection; `project` maps the result envelope (for example,
+  `(r) => r.best.content`).
 - `learn({ flow, source, analyzer })` — offline reflection over recorded
   trajectories; returns the analyzer's proposals plus summary metadata.
 

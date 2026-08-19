@@ -23,7 +23,7 @@ Module split per [docs/blueprint.md](../../docs/blueprint.md).
 | Layer              | File                  | Role                                                    |
 | ------------------ | --------------------- | ------------------------------------------------------- |
 | Instance fixtures  | `src/instances.ts`    | 5 vendored cases; swap for HF loader at scale.          |
-| Types              | `src/types.ts`        | Wire shapes (`SweBenchInstance`, `Prediction`, etc.).   |
+| Types              | `src/types.ts`        | Wire shapes (`SweBenchInstance`, `Prediction`, and so on). |
 | Engine             | `src/engine.ts`       | The only `create_engine` site; provider + model defaults.|
 | Sandbox seam       | `src/sandbox.ts`      | `Sandbox` interface + `local`/`docker`/`noop` impls.    |
 | Tools              | `src/tools/`          | One file per tool, all closing over the sandbox; caps in `limits.ts`. |

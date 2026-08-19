@@ -1,0 +1,16 @@
+# `There is a flag that controls X` spends its subject position on a word that
+# names nothing, then makes the reader wait for the real subject. Naming the
+# thing first is shorter every time: `A flag controls X`.
+#
+# Deliberately case-sensitive: only the sentence-initial pattern is the
+# stumble. A mid-clause existential — `when there is nothing to fix` — is
+# idiomatic English with no cleaner rewrite, and flagging it turns careful
+# prose into a wall of contortions. Sentence-initial `There` is always
+# capitalized, so the capital T is the whole test.
+extends: existence
+message: "'%s' postpones the subject — name the thing that acts, then act."
+level: error
+ignorecase: false
+tokens:
+  - 'There (is|are|was|were)'
+  - "There'?s"

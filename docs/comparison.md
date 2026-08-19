@@ -60,8 +60,8 @@ TypeScript as a port of the Python line. Observability is a separate product
 (LangSmith) you send traces to.
 
 **Choose it when** you want the biggest integration bin and someone else
-maintaining it — e.g. a bot wired to a managed vector index, a memory store, and
-several SaaS integrations.
+maintaining it — for example, a bot wired to a managed vector index, a memory
+store, and several SaaS integrations.
 
 ### Mastra
 

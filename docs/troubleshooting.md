@@ -41,7 +41,7 @@ there is no sole candidate. The message is:
 no provider specified: pass `provider` to generate() or set `defaults.provider` (configured: anthropic, ollama)
 ```
 
-There is no fallback provider. Pass `provider` on the call, or set
+No fallback provider exists. Pass `provider` on the call, or set
 `defaults: { provider: '...' }` on the engine. An engine with exactly one
 configured provider never throws this; the sole provider is used. The error
 carries the configured provider names on `.configured`.
@@ -130,7 +130,7 @@ that never checks `ctx.abort.aborted`, a subprocess started without it — keeps
 the background. For a model call this means the provider keeps generating, and billing,
 tokens for a response nothing will read.
 
-There is no fix on fascicle's side: JavaScript has no way to preempt a promise it does
+No fix exists on fascicle's side: JavaScript has no way to preempt a promise it does
 not control. The fix is in the step: pass `ctx.abort` to every `fetch`, `child_process`,
 or other abortable call the step makes, and check `ctx.abort.aborted` between iterations
 of any loop that does not otherwise await something abortable. See
@@ -244,8 +244,8 @@ restore the check at the flow's boundary.
 ## `TypeError: pipe is not variadic`
 
 `pipe(inner, fn)` takes exactly one Step and one plain mapping function. Passing
-a Step where `fn` belongs (e.g. `pipe(a, b, c)`) throws this `TypeError` at flow
-construction. To chain Steps, use `sequence([a, b, c])`. `sequence` likewise
+a Step where `fn` belongs (for example, `pipe(a, b, c)`) throws this `TypeError`
+at flow construction. To chain Steps, use `sequence([a, b, c])`. `sequence` likewise
 rejects non-Step children at construction — wrap plain functions with `step(fn)`.
 
 ## Locating a failure: reading `.path`

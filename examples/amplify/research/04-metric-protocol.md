@@ -43,7 +43,7 @@ We surveyed how five mature ecosystems represent "what makes a generated artifac
 
 Five independent designs converged on Boolean + scalar. We did the same. The Boolean is named `gate` because that's its job: it's a literal gate the candidate must pass. The scalar is named `score` because that's its job: a number to maximize or minimize.
 
-The two-part shape has a third virtue: it makes the **rejection of LLM-as-primary-judge** structural. There is no field where you put "an LLM rates this 1-5 and that's the fitness." The LLM judge field is named `judge`, exists only as a tiebreak, and is wired through a different code path. Reward-hacking the judge requires routing around the gate, which the harness never lets you do.
+The two-part shape has a third virtue: it makes the **rejection of LLM-as-primary-judge** structural. No field exists where you put "an LLM rates this 1-5 and that's the fitness." The LLM judge field is named `judge`, exists only as a tiebreak, and is wired through a different code path. Reward-hacking the judge requires routing around the gate, which the harness never lets you do.
 
 ## Worked example 1 — "Make this Python function faster"
 
@@ -150,7 +150,7 @@ Notes:
 
 - **Gate runs the new SQL against a fixture DB** and diffs the result rows against a captured baseline. Same pattern as `golden.ts`. If row order matters, sort first or compare as multi-set.
 - **Score is the planner's cost.** Imperfect (planner is a heuristic), but a real signal that correlates well with actual cost on the planner's home turf.
-- **The agent might still cheat.** It could find SQL that produces equivalent rows but a degenerate plan — e.g., over-using indexed paths the planner under-counts. The locked-baseline check catches the first; the planner trusts itself for the second. That residual reward-hacking risk is real and named in [`05-pitfalls.md`](./05-pitfalls.md).
+- **The agent might still cheat.** It could find SQL that produces equivalent rows but a degenerate plan — for example, over-using indexed paths the planner under-counts. The locked-baseline check catches the first; the planner trusts itself for the second. That residual reward-hacking risk is real and named in [`05-pitfalls.md`](./05-pitfalls.md).
 
 ## What's *not* in the shape
 

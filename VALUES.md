@@ -24,12 +24,12 @@ convenience.
 
 ## Composition over inheritance
 
-Everything is a small value that snaps together with everything else. There is no
-class hierarchy to extend, no base type to inherit from, and no central object to
-register into: a step is a plain value, and every composer takes steps and returns a
-step. This is the substrate idea made concrete. The primitives are deliberately few and
-deliberately general, because a small set of parts that combine freely covers more
-ground than a large set of parts that each do one thing. Functional and procedural, not
+Everything is a small value that snaps together with everything else. Nothing waits
+to be extended: no class hierarchy, no base type to inherit from, and no central
+object to register into. A step is a plain value, and every composer takes steps and
+returns a step. This is the substrate idea made concrete. The primitives are
+deliberately few and deliberately general, because a small set of parts that combine
+freely covers more ground than a large set of parts that each do one thing. Functional and procedural, not
 object-oriented, because substitution should always hold: anywhere one block fits, any
 combination of blocks fits.
 
@@ -104,7 +104,7 @@ stack, not demand that the rest of the stack be rewritten in its terms.
 
 ## No commercial capture
 
-fascicle will not become the thing it protects you from. There is no hosted service, no
+fascicle will not become the thing it protects you from. It has no hosted service, no
 dashboard, no account, and no plan to add one, because the moment a library has a
 product to sell, its design starts optimizing for the product instead of for you. It is
 Apache-2.0 and forkable, which makes even trust in the maintainer optional: if the

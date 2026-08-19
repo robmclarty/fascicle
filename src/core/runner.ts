@@ -285,7 +285,7 @@ export function throw_if_aborted(ctx: RunContext): void {
  * Concurrent composers (`map`, `parallel`) use this to propagate a parent
  * abort into each in-flight child's composed signal. `controllers` is read by
  * reference, so a caller that appends to the array after installing (as
- * `map` does per newly-started item) is still covered by later aborts.
+ * `map` does per newly started item) is still covered by later aborts.
  * Returns the listener so the caller can remove it once its children settle.
  */
 export function install_abort_fan_out(

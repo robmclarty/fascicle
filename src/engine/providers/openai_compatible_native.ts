@@ -256,7 +256,7 @@ function read_number(source: object, key: string): number | undefined {
  * Map the Chat Completions usage object to UsageTotals. prompt_tokens is
  * already INCLUSIVE of cached tokens on this API, unlike Anthropic's
  * exclusive accounting, so a straight copy is correct; compute_cost
- * subtracts the cached portion back out. There is no cache-write concept on
+ * subtracts the cached portion back out. No cache-write concept exists on
  * this wire. A missing usage object throws under a strict dialect (a hosted
  * API omitting usage is a broken response) and zeroes under a tolerant one.
  */

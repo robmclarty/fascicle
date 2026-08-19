@@ -1,0 +1,33 @@
+# The minted dialect: verbs pressed into service as nouns (`the ask`), nouns
+# conscripted as verbs (`to action`), and the corporate register's syllable
+# inflations (`utilize`, three syllables where one does the work). Generated
+# prose leans into this dialect and then copies its own lean, so each swap here
+# is one the next pass never gets to imitate. Mechanical, not a matter of
+# voice — the plain word is always available and always says the same thing.
+#
+# Only unambiguous forms are listed. The noun `leverage` (mechanical advantage,
+# `open-source leverage`) is legitimate English, so only the verb forms match;
+# `the build` stays off the list entirely because in a repository it names the
+# compiled artifact far more often than it apes the dialect.
+extends: substitution
+message: "Use '%s' instead of '%s'."
+level: error
+ignorecase: false
+# The patterns carry their own case classes and boundaries.
+nonword: true
+swap:
+  '\b[Tt]he ask\b': the request
+  '\b[Ll]earnings\b': lessons
+  '\b[Aa]ctioned\b': handled
+  '\b[Aa]ctioning\b': handling
+  '\b[Ss]olutioning\b': designing
+  '\b[Tt]o leverage\b': to use
+  '\b[Ll]everages\b': uses
+  '\b[Ll]everaged\b': used
+  '\b[Ll]everaging\b': using
+  '\b[Uu]tilize\b': use
+  '\b[Uu]tilizes\b': uses
+  '\b[Uu]tilized\b': used
+  '\b[Uu]tilizing\b': using
+  '\b[Uu]tilization\b': use
+  '\b[Tt]he lift\b': the effort

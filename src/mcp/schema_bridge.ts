@@ -185,8 +185,9 @@ function check_enum(
 /**
  * Checks an `anyOf` or `oneOf`, which passes when any branch passes.
  *
- * `oneOf`'s exactly-one semantics are deliberately relaxed to at-least-one: the
- * distinction only ever rejects a value the server would accept.
+ * `oneOf` demands one match and only one; the bridge deliberately relaxes that
+ * to at least one, since the distinction only ever rejects a value the server
+ * would accept.
  *
  * A single-branch union reports that branch's own issues rather than a generic
  * "no variant matched", since with one variant there is no ambiguity about

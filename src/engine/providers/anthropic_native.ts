@@ -246,7 +246,7 @@ export function build_messages_body(req: TurnRequest): Record<string, unknown> {
   // shallow-merged last so an explicit user key beats every derived field:
   // the effort-derived thinking block, the max_tokens default, sampling
   // params. The adapter does not reconcile interactions the API rejects
-  // (e.g. a passthrough temperature alongside thinking); wire keys are the
+  // (for example, a passthrough temperature alongside thinking); wire keys are the
   // user asserting they know the wire.
   const passthrough = req.provider_options?.['anthropic']
   // Stryker disable next-line ConditionalExpression: spreading an undefined

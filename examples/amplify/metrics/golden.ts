@@ -7,7 +7,7 @@
  * candidate's output to that baseline character-by-character.
  *
  * Useful when "improvement" means "structurally better while preserving
- * exact output" — e.g., refactoring a stable function for clarity.
+ * exact output" — for example, refactoring a stable function for clarity.
  */
 
 import { readFile, writeFile } from 'node:fs/promises'

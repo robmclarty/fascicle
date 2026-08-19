@@ -9,7 +9,7 @@
  *   - every surviving (non-aborted) call rejects with aborted_error whose
  *     reason === 'engine_disposed' (dispose path);
  *   - every spawned child is dead after dispose resolves (process.kill(pid, 0)
- *     throws ESRCH) — i.e., the live registry is empty at the OS level;
+ *     throws ESRCH) — that is, the live registry is empty at the OS level;
  *   - post-dispose engine.generate(...) throws engine_disposed_error
  *     synchronously (still catchable via .rejects).
  *

@@ -1,0 +1,41 @@
+# The lexical fingerprints of model-generated prose: vocabulary that runs at
+# many times its human base rate in machine-written text (`delve` is the
+# canonical case), and the stock frames readers have learned to skim past.
+# Model output feeds the next session's context, so every fingerprint that
+# lands becomes the example the next generation copies — this rule breaks that
+# loop while the copy count is still one.
+#
+# The list is deliberately short and high-precision: words a careful writer
+# almost never reaches for, so a hit is close to proof of provenance. Words
+# that are merely overused (`robust`, `crucial`, `comprehensive`) stay off it —
+# flagging those turns the rule into noise. Add your own repo's tells as they
+# emerge; cut anything you would defend in your own voice.
+#
+# Case classes instead of `ignorecase`, because the last token — the
+# `It's not just X — it's Y` frame — is anchored to its sentence-initial
+# capital, and one flag governs every token in the rule.
+extends: existence
+message: "'%s' is a fingerprint of generated prose — say the plain thing instead."
+level: error
+ignorecase: false
+# The tokens are full regexes with their own anchors, so word boundaries must
+# not be wrapped around them.
+nonword: true
+tokens:
+  - '\b[Dd]elv(?:e[sd]?|ing)\b'
+  - '\b[Cc]ommendable\b'
+  - '\b[Mm]eticulous(?:ly)?\b'
+  - '\b[Ii]ntricate(?:ly)?\b'
+  - '\b[Ii]ntricac(?:y|ies)\b'
+  - '\b[Tt]estament to\b'
+  - '\b[Tt]apestry\b'
+  - '\b[Gg]ame-chang(?:er|ers|ing)\b'
+  - '\b[Ee]ver-evolving\b'
+  - "\\b[Ii]n today['’]s\\b"
+  - '\b[Ss]eamless(?:ly)?\b'
+  - '\b[Ss]upercharg(?:e[sd]?|ing)\b'
+  - '\b[Uu]nlock(?:s|ed|ing)? the (?:full )?(?:power|potential)\b'
+  - "\\b[Ii]t(?: is|['’]s) (?:important to note|worth noting)\\b"
+  - '\b[Ii]n conclusion\b'
+  - '\b[Bb]oasts\b'
+  - "It(?:['’]s| is) not just (?:about )?[^.,;:—–]{1,60}[—–,;] ?it(?:['’]s| is)\\b"

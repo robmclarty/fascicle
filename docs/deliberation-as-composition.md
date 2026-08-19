@@ -2,7 +2,7 @@
 
 Multi-agent deliberation is not a framework feature. It is composition.
 
-By "deliberation" we mean the patterns that run several attempts at the same task and adjudicate between them: keep the best of N, run a bracket, loop until the attempts agree, build-then-critique until a judge accepts. Other frameworks ship these as bespoke orchestrators with their own lifecycle, their own state, and their own way of being configured. fascicle ships them as ordinary `Step<i, o>` values assembled from the [22 primitives](./composition.md). There is nothing in `ensemble_step`, `ensemble`, `tournament`, `consensus`, or `adversarial` that you could not have written yourself with `parallel`, `loop`, `scope`, and `compose`. (Which of them to reach for first is a separate question: [leaf-arm-spine.md](./leaf-arm-spine.md) names `ensemble_step`, `consensus`, and `adversarial` as the primary arms, and [advanced-composition.md](./advanced-composition.md) covers when plain `ensemble` and `tournament` earn their keep. This page is about how all of them decompose.)
+By "deliberation" we mean the patterns that run several attempts at the same task and adjudicate between them: keep the best of N, run a bracket, loop until the attempts agree, build-then-critique until a judge accepts. Other frameworks ship these as bespoke orchestrators with their own lifecycle, their own state, and their own way of being configured. fascicle ships them as ordinary `Step<i, o>` values assembled from the [22 primitives](./composition.md). Nothing in `ensemble_step`, `ensemble`, `tournament`, `consensus`, or `adversarial` is beyond what you could have written yourself with `parallel`, `loop`, `scope`, and `compose`. (Which of them to reach for first is a separate question: [leaf-arm-spine.md](./leaf-arm-spine.md) names `ensemble_step`, `consensus`, and `adversarial` as the primary arms, and [advanced-composition.md](./advanced-composition.md) covers when plain `ensemble` and `tournament` earn their keep. This page is about how all of them decompose.)
 
 That is the whole claim, and it has consequences. Read [concepts.md](./concepts.md) first if "everything is a `Step<i, o>`" is not yet reflexive; the rest of this page assumes it.
 
@@ -114,7 +114,7 @@ For runnable versions against real models, see the recipes in [cookbook.md](./co
 
 ## Nesting is free
 
-Because each composite returns a `Step`, a composite can be a member of another composite. There is no integration to write. A tournament of ensembles is a tournament whose members happen to be ensembles, and whose result type is therefore the ensemble's result envelope:
+Because each composite returns a `Step`, a composite can be a member of another composite. No integration is needed. A tournament of ensembles is a tournament whose members happen to be ensembles, and whose result type is therefore the ensemble's result envelope:
 
 <!-- snippet: check -->
 ```typescript
@@ -152,7 +152,7 @@ const bracket = tournament({
 
 ## One honest limit: cancellation granularity
 
-There is an open design question here, and overclaiming would undercut the rest.
+One open design question remains here, and overclaiming would undercut the rest.
 
 `ensemble`, `ensemble_step`, `tournament`, and `consensus` inherit `parallel`'s abort semantics: when the run's abort signal fires, every in-flight child is cancelled. That is the right default for "score all of them" and "run until they agree." It is not obviously right for every deliberation. A pattern that only needs the first acceptable answer would want the opposite: let the first resolver win and preemptively cancel its siblings. That is `race` semantics, and fascicle does not ship it yet (see the roadmap's [open design questions](./roadmap.md), and the `race` entry in [`src/core/BACKLOG.md`](../src/core/BACKLOG.md)). The promotion bar is deliberately high: a composer earns a place only when its pattern recurs across unrelated flows and is awkward to express today.
 

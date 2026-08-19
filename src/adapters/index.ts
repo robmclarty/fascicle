@@ -15,7 +15,7 @@
  *   `parent_span_id` the runner
  *   threads through `RunContext`, so span trees are correct even for concurrent
  *   children under `parallel`/`map`. The in-memory open-span stack is only a
- *   fallback for spans emitted without a parent (e.g. an external caller using
+ *   fallback for spans emitted without a parent (for example, an external caller using
  *   a logger directly), and that fallback remains best-effort under concurrency.
  */
 

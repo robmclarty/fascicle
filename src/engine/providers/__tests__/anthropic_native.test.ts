@@ -1611,7 +1611,7 @@ describe('response_error status classification (raw shapes)', () => {
   })
 })
 
-/** A 200 streaming Response with a literally-null body. */
+/** A 200 streaming Response with a literally null body. */
 function null_body_stream_response(): Response {
   return new Response(null, { status: 200, headers: { 'content-type': 'text/event-stream' } })
 }

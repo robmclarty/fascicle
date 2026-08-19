@@ -98,7 +98,7 @@ fascicle uses the AI SDK strictly as a single-turn provider layer: every AI SDK 
 | lmstudio (native)   | ✅   | ✅    | ✅     | ✅        | —           | ✅        |
 | claude_cli          | ✅   | ✅    | ✅     | ✅        | —           | ✅        |
 
-`supports(capability)` on any adapter reflects this table. Two things to read off the native rows: **no native transport claims `image_input`** (image parts throw `provider_capability_error`; use `transport: 'ai_sdk'` for vision in v1), and the OpenAI-compatible core (openai / openrouter / lmstudio native) always forwards `reasoning_effort`, so those three report `reasoning` on native even where their `ai_sdk` row does not — non-reasoning and local models simply drop the field server-side. `ollama` native ignores effort entirely (D2). There is one more capability the table omits: `structured_output`, meaning the provider constrains decoding to the schema natively. Every provider satisfies `schema` (via the engine's prompt + parse + repair loop when the provider cannot constrain the decode); no native transport claims `structured_output`, so schema requests there always ride the repair loop.
+`supports(capability)` on any adapter reflects this table. Two things to read off the native rows: **no native transport claims `image_input`** (image parts throw `provider_capability_error`; use `transport: 'ai_sdk'` for vision in v1), and the OpenAI-compatible core (openai / openrouter / lmstudio native) always forwards `reasoning_effort`, so those three report `reasoning` on native even where their `ai_sdk` row does not — non-reasoning and local models simply drop the field server-side. `ollama` native ignores effort entirely (D2). The table omits one more capability: `structured_output`, meaning the provider constrains decoding to the schema natively. Every provider satisfies `schema` (via the engine's prompt + parse + repair loop when the provider cannot constrain the decode); no native transport claims `structured_output`, so schema requests there always ride the repair loop.
 
 ## Effort translation
 
@@ -272,9 +272,9 @@ await engine.generate({
 });
 ```
 
-Model ids use the `provider/model` slug OpenRouter expects (e.g. `anthropic/claude-sonnet-4.5`); pass it as `model` with `provider: 'openrouter'`. Effort maps to the OpenRouter `reasoning.effort` field; whether the upstream honours it depends on the model.
+Model ids use the `provider/model` slug OpenRouter expects (for example, `anthropic/claude-sonnet-4.5`); pass it as `model` with `provider: 'openrouter'`. Effort maps to the OpenRouter `reasoning.effort` field; whether the upstream honours it depends on the model.
 
-Pass the full OpenRouter slug as `model` with `provider: 'openrouter'` — e.g. `{ provider: 'openrouter', model: 'meta-llama/llama-3.3-70b-instruct' }`.
+Pass the full OpenRouter slug as `model` with `provider: 'openrouter'` — for example, `{ provider: 'openrouter', model: 'meta-llama/llama-3.3-70b-instruct' }`.
 
 ### `transport: 'native'`
 
@@ -444,7 +444,7 @@ const engine = create_engine({
 ```
 
 - **No auth, `base_url` still required, no image input.** Same local-runtime constraints as the `ai_sdk` transport.
-- **Effort is ignored entirely (D2).** There is no effort-to-wire mapping; reasoning is opt-in purely through `provider_options.ollama.think`.
+- **Effort is ignored entirely (D2).** No effort-to-wire mapping exists; reasoning is opt-in purely through `provider_options.ollama.think`.
 - **Usage degrades gracefully (D10).** `prompt_eval_count` / `eval_count` map to input/output tokens; when the runtime omits them the totals are zeroed rather than throwing.
 - **`provider_options.ollama` is raw `/api/chat` wire format (D9).** Keys are Ollama's own native fields — `think`, `keep_alive`, `format`, and the nested `options` bag (`num_predict`, `temperature`, `top_p`, `num_ctx`, ...) — shallow-merged last over the engine-computed body. These are **not** OpenAI-compatible keys: there is no `max_tokens` or `reasoning_effort` here (the engine writes the token limit into `options.num_predict`); pass a whole `options` object, since the shallow merge replaces it wholesale rather than deep-merging derived sampling params.
 
@@ -509,9 +509,9 @@ The CLI resolves the bare tokens `opus`/`sonnet`/`haiku` to the latest itself, s
 
 ## Model and provider resolution
 
-`model` is an opaque string sent to the provider verbatim as its `model_id`; `provider` names the transport. Both can be set per call and as engine `defaults`. There is no resolution step — no colon shorthand, no family expansion, no alias table:
+`model` is an opaque string sent to the provider verbatim as its `model_id`; `provider` names the transport. Both can be set per call and as engine `defaults`. No resolution step runs — no colon shorthand, no family expansion, no alias table:
 
-- `provider` resolves to: per-call `provider`, else `defaults.provider`, else the sole configured provider. There is no fallback beyond that: with several providers configured and neither a per-call `provider` nor a default, `generate` throws `provider_required_error` ("no provider specified: pass `provider` to generate() or set `defaults.provider`", naming the configured providers).
+- `provider` resolves to: per-call `provider`, else `defaults.provider`, else the sole configured provider. Nothing falls back beyond that: with several providers configured and neither a per-call `provider` nor a default, `generate` throws `provider_required_error` ("no provider specified: pass `provider` to generate() or set `defaults.provider`", naming the configured providers).
 - `model` resolves to: per-call `model`, else `defaults.model`, else a thrown `model_required_error`.
 
 The provider receives `model` as-is and rejects an unknown id itself (a 404 or validation error). A `provider` with no adapter registered on the engine throws `provider_not_configured_error`. (Exception: the `claude_cli` transport forwards `opus`/`sonnet`/`haiku` to the CLI, which resolves them to the latest.)
@@ -628,4 +628,4 @@ Rules of the road for native adapters:
 
 Implement `generate(opts, resolved)` returning a full `GenerateResult`, plus `dispose` and `supports` (see the exported `ExternalAgentAdapter` type). The engine hands over the entire call: your adapter owns any looping, and loop-level options like `tool_call_repair_attempts` do not apply. The in-tree reference is the `claude_cli` adapter.
 
-There is no *mutable* runtime registry, but a provider that only becomes known after construction is still first-class: `engine.with_providers(providers, custom_providers?)` returns a new engine with the extra providers merged in, leaving the original untouched. See [configuration.md](./configuration.md#registering-a-provider-after-construction-with_providers).
+No *mutable* runtime registry exists, but a provider that only becomes known after construction is still first-class: `engine.with_providers(providers, custom_providers?)` returns a new engine with the extra providers merged in, leaving the original untouched. See [configuration.md](./configuration.md#registering-a-provider-after-construction-with_providers).

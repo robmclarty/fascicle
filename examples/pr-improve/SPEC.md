@@ -213,7 +213,7 @@ Container is a single Node image (Dockerfile in `examples/pr-improve/`) with `gh
 ### Not recommended
 
 - **Plain Lambda** — 15-min hard limit cuts the p90+ tail of the build↔review loop. The tail is also the most valuable runs (harder PRs → bigger wins).
-- **Step Functions + Lambda fan-out** — works, but state-threading between separately-invoked Lambdas adds plumbing the rest of the spec stays clear of. Not worth the complexity over one Fargate task.
+- **Step Functions + Lambda fan-out** — works, but state-threading between separately invoked Lambdas adds plumbing the rest of the spec stays clear of. Not worth the complexity over one Fargate task.
 - **n8n as the executor** — fine as a webhook router if we already have it in the path, wrong fit for the agent work itself.
 
 ---
@@ -330,7 +330,7 @@ Same events end up in `.trajectory.jsonl` (for fascicle-viewer replay locally an
 
 **Concurrency:** Per-PR singleton via SQS FIFO `MessageGroupId = repo+pr_number`. A second webhook for the same PR queues behind the in-flight run rather than racing it. Use `MessageDeduplicationId` to drop duplicate label events within the 5-minute window.
 
-**Cost guardrail:** Hard cap on total tokens per run (e.g. $1 USD via the engine's cost tracking). Abort if exceeded.
+**Cost guardrail:** Hard cap on total tokens per run (for example, $1 USD via the engine's cost tracking). Abort if exceeded.
 
 ---
 
@@ -430,7 +430,7 @@ const ALLOWLIST = new Map<string, ReadonlyArray<string> | 'any'>([
 ])
 ```
 
-`argv: string[]` is the only input shape (never a free-form `command: string`). `shell: false` always. The `pnpm` entry is intentionally permissive in v0 to match the original spec; tightening (e.g. allow only `pnpm test`, `pnpm check`, `pnpm exec tsc`) is a follow-up if we ever see the model misuse it.
+`argv: string[]` is the only input shape (never a free-form `command: string`). `shell: false` always. The `pnpm` entry is intentionally permissive in v0 to match the original spec; tightening (for example, allow only `pnpm test`, `pnpm check`, `pnpm exec tsc`) is a follow-up if we ever see the model misuse it.
 
 Errors are thrown (idiomatic for `Tool.execute`); the engine's `tool_loop` with `tool_error_policy: 'feed_back'` (the default) sends the message back to the model. No success/failure envelope.
 
