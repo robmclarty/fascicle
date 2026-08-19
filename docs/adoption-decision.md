@@ -10,9 +10,9 @@ try it.
 
 The most common framing of this decision is a false one. Fascicle is *built on*
 the Vercel AI SDK for its default path, and seven of its eight providers are
-AI-SDK-backed out of the box (`ai`, like every provider SDK, is an optional
-peer; Fascicle has zero mandatory ones, and the native transports and
-`claude_cli` need no AI SDK at all). You aren't choosing between Fascicle and
+AI-SDK-backed out of the box. Even so, `ai` is an optional peer like every
+provider SDK, Fascicle has zero mandatory ones, and the native transports and
+`claude_cli` need no AI SDK at all. You aren't choosing between Fascicle and
 the AI SDK. You're choosing *at which layer* a vendor owns your code.
 
 On the default `ai_sdk` transport the AI SDK owns everything below a single model
@@ -86,14 +86,14 @@ copy quickly:
    package in the dependency tree.
 2. **A composition algebra of substitutable values.** The AI SDK gives you one
    agent loop. Fascicle gives you 22 primitives, each a `Step` that nests inside
-   any other. You get `chain`, the spine that threads a typed record through a
-   flow, the control-flow set (`sequence`, `parallel`, `branch`, `map`, `pipe`,
-   `retry`, `fallback`, `timeout`, `loop`, `compose`), the durability set
+   any other. The spine is `chain`, which threads a typed record through a flow.
+   Around it sit four sets: control flow (`sequence`, `parallel`, `branch`, `map`,
+   `pipe`, `retry`, `fallback`, `timeout`, `loop`, `compose`), durability
    (`checkpoint`, `suspend`, with the raw state trio `scope`/`stash`/`use` as the
-   advanced tier under `chain`), the deliberation set (`ensemble_step`, `ensemble`,
-   `tournament`, `consensus`, `adversarial`), and the self-improvement pair
-   (`improve` for an online propose-score-accept loop, `learn` for offline
-   reflection over recorded trajectories). "Fan this across an ensemble, pipe it
+   advanced tier under `chain`), deliberation (`ensemble_step`, `ensemble`,
+   `tournament`, `consensus`, `adversarial`), and self-improvement (`improve` for
+   an online propose-score-accept loop, `learn` for offline reflection over
+   recorded trajectories). "Fan this across an ensemble, pipe it
    into an adversarial judge loop with a different model, wrap the whole thing in
    retry" is a different product from a single model-driven agent.
 3. **No ambient state, trajectory as audit trail.** Matters exactly when a

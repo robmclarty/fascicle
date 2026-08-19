@@ -392,19 +392,22 @@ signature names is exported too: `SequenceOptions`, `ParallelOptions`,
 `SchemaIssue`). At runtime `is_step` narrows a value to a `Step`, and
 `error_path(err)` reads the `path` a run attached to a thrown error.
 
-**Composites.** The config and result envelope of each deliberation composite
-(`AdversarialConfig` / `AdversarialResult` plus `AdversarialBuildInput` and
-`AdversarialCritiqueResult`, `ConsensusConfig` / `ConsensusResult`,
-`EnsembleConfig` / `EnsembleResult`, `EnsembleStepConfig` /
-`EnsembleStepResult`, `TournamentConfig` / `TournamentResult` /
-`BracketRecord`), the self-improvement tier (`ImproveConfig`,
-`ImproveResult`, `ImproveBudget`, `ImproveRoundInput`, `Candidate`,
-`ScoredCandidate`, `HistoryEntry`, `Lesson`, `LearnConfig`, `LearnResult`,
-`LearnInput`, `Improvement`, `TrajectorySource`), and the bench tier
-(`BenchCase`, `BenchOptions`, `BenchReport`, `BenchSummary`, `CaseResult`,
-`Judge`, `JudgeArgs`, `Score`, `JudgeLlmConfig`, `JudgeWithFn`,
-`RegressionCompareOptions`, `RegressionReport`, `RegressionDelta`,
-`PerCaseDelta`).
+**Composites.** Every deliberation composite carries a config and a result
+envelope: `AdversarialConfig` / `AdversarialResult` plus
+`AdversarialBuildInput` and `AdversarialCritiqueResult`, `ConsensusConfig` /
+`ConsensusResult`, `EnsembleConfig` / `EnsembleResult`, `EnsembleStepConfig` /
+`EnsembleStepResult`, and `TournamentConfig` / `TournamentResult` /
+`BracketRecord`.
+
+The self-improvement tier adds `ImproveConfig`, `ImproveResult`,
+`ImproveBudget`, `ImproveRoundInput`, `Candidate`, `ScoredCandidate`,
+`HistoryEntry`, `Lesson`, `LearnConfig`, `LearnResult`, `LearnInput`,
+`Improvement`, and `TrajectorySource`.
+
+The bench tier adds `BenchCase`, `BenchOptions`, `BenchReport`, `BenchSummary`,
+`CaseResult`, `Judge`, `JudgeArgs`, `Score`, `JudgeLlmConfig`, `JudgeWithFn`,
+`RegressionCompareOptions`, `RegressionReport`, `RegressionDelta`, and
+`PerCaseDelta`.
 
 **Engine.** `Engine`, `EngineConfig`, `EngineDefaults`, `GenerateOptions`,
 `GenerateResult`, `Message`, `UserContentPart`, `AssistantContentPart`,

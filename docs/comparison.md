@@ -142,12 +142,12 @@ A2A) batteries-included, or you're in the AWS / Bedrock ecosystem.
   on Claude Code's tool loop. Fascicle's `claude_cli` provider sits on the same
   territory but presents it as one more provider behind `generate`. A Fascicle step
   could drop down to the Agent SDK.
-- **Switchyard** (NVIDIA NeMo) is a wire-level proxy, not a composition layer: a
-  Rust server (plus `libsy`, its embeddable routing library) that translates
-  between the OpenAI Chat, Anthropic Messages, and OpenAI Responses formats and
-  routes traffic across backends with weak/strong tiering algorithms (an
-  up-front LLM classifier, signal-driven stage routing, judge-confirmed
-  escalation, and random A/B splits). Two of its calls align with Fascicle's:
+- **Switchyard** (NVIDIA NeMo) is a wire-level proxy, not a composition layer.
+  It's a Rust server, plus `libsy`, its embeddable routing library, that
+  translates between the OpenAI Chat, Anthropic Messages, and OpenAI Responses
+  formats. It routes traffic across backends with weak/strong tiering
+  algorithms: an up-front LLM classifier, signal-driven stage routing,
+  judge-confirmed escalation, and random A/B splits. Two of its calls align with Fascicle's:
   `libsy` never calls a model itself (an algorithm picks a target and hands the
   call back to you, the same separation as Fascicle's adapters passed in per
   run), and routing policy lives outside the model surface (the reason
@@ -185,7 +185,7 @@ None of these is unprecedented alone; the concentration is the point.
 3. **Streaming as observation, not a second vocabulary.** `run` and `run.stream`
    execute the same graph, and steps don't know which runner drives them.
 4. **Every transport is first-class under one loop.** An AI SDK model, a raw-HTTP
-   native turn, and a subprocess agent are three depths behind the same seam, and the
+   native turn, and a subprocess agent are three depths behind the same seam. The
    `claude_cli` adapter drives the Claude CLI with full process-group lifecycle,
    `transport: 'native'` talks to five providers' own wire formats with no SDK in
    the path, and `custom_providers` accepts an adapter Fascicle knows nothing about.
