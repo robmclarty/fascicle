@@ -19,7 +19,7 @@ import { /* stub + capture engines */ } from 'fascicle/testing';
 import { /* useChat stream adapters */ } from 'fascicle/ui';
 ```
 
-fascicle is ESM-only and needs Node >= 24. It has no default exports, and no
+Fascicle is ESM-only and needs Node >= 24. It has no default exports, and no
 classes other than `Error` subclasses.
 
 `fascicle` itself has no mandatory peers. Three subpaths need one to do their
@@ -27,7 +27,7 @@ work. `fascicle/mcp` needs `@modelcontextprotocol/sdk`, which it loads
 dynamically and reports as `mcp_sdk_missing_error` when absent, and
 `fascicle/otel` needs `@opentelemetry/api`. `fascicle/ui` needs `ai`, which it
 imports statically because it speaks the AI SDK's UI message-stream protocol,
-so a missing `ai` fails at module resolution rather than with a fascicle error.
+so a missing `ai` fails at module resolution rather than with a Fascicle error.
 
 ## Running a Flow
 
@@ -314,7 +314,7 @@ authoritative, 1 = flow failure, 2 = contract violation). See
 ## UI Message Streams (`fascicle/ui`)
 
 Bridges a `run.stream(...)` handle onto the AI SDK UI message-stream protocol,
-so a fascicle flow can back a `useChat` endpoint rendered by AI Elements or
+so a Fascicle flow can back a `useChat` endpoint rendered by AI Elements or
 Streamdown. Imports `ai` statically (see the peer note at the top).
 
 | Export | Kind | Notes |

@@ -145,7 +145,7 @@ function to_assistant_message(content: string | AssistantContentPart[]): ChatMes
 }
 
 /**
- * Map fascicle Message[] to Chat Completions shape. Unlike the Messages API
+ * Map Fascicle Message[] to Chat Completions shape. Unlike the Messages API
  * there is no top-level system field or role-alternation constraint: system
  * messages map in place at any position, and tool results are first-class
  * `tool` role messages keyed by tool_call_id.
@@ -167,7 +167,7 @@ export function to_chat_messages(
 }
 
 /**
- * Map fascicle Tool[] to the Chat Completions function-tool shape,
+ * Map Fascicle Tool[] to the Chat Completions function-tool shape,
  * converting each input schema to JSON Schema.
  */
 export function to_chat_tools(tools: ReadonlyArray<Tool>): Array<{

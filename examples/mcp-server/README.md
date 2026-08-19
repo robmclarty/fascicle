@@ -2,7 +2,7 @@
 
 A minimal [Model Context Protocol](https://modelcontextprotocol.io) server over
 stdio, plus a tiny client that smoke-tests it. Standalone: it does not import
-fascicle, and needs no API key, Docker, or Ollama.
+Fascicle, and needs no API key, Docker, or Ollama.
 
 ## What it exposes
 

@@ -19,7 +19,7 @@ The `ai_sdk` adapters wrap Vercel's AI SDK, so you install both the shared `ai` 
 
 ## Three Integration Depths
 
-Every provider plugs into `generate` at one of three depths. The engine dispatches on the adapter's `kind`, and everything above the seam (multi-step tool loop, approval, salvage, `Tool.ends_turn`, retry, cost, trajectory) is shared and identical across kinds, so a provider inherits the whole fascicle loop by implementing only its depth's contract.
+Every provider plugs into `generate` at one of three depths. The engine dispatches on the adapter's `kind`, and everything above the seam (multi-step tool loop, approval, salvage, `Tool.ends_turn`, retry, cost, trajectory) is shared and identical across kinds, so a provider inherits the whole Fascicle loop by implementing only its depth's contract.
 
 | Kind       | Depth | Contract                                        | You own                          | The engine owns                                    |
 | ---------- | ----- | ----------------------------------------------- | -------------------------------- | -------------------------------------------------- |
@@ -27,7 +27,7 @@ Every provider plugs into `generate` at one of three depths. The engine dispatch
 | `native`   | 1     | `invoke_turn(TurnRequest) -> TurnResult`        | request/response mapping over raw HTTP | retry, error classification, abort, plus everything below |
 | `external` | 2     | `generate(opts, resolved) -> GenerateResult`    | the entire loop                  | nothing below the call                              |
 
-- **Depth 1, `ai_sdk` kind.** The adapter builds an AI SDK model object and translates fascicle parameters, and the actual `generateText` / `streamText` call lives in one engine-internal module (`src/engine/providers/ai_sdk/invoke.ts`), the only place in the tree allowed to import from `ai` (rule-enforced). `generate.ts` itself is SDK-agnostic.
+- **Depth 1, `ai_sdk` kind.** The adapter builds an AI SDK model object and translates Fascicle parameters, and the actual `generateText` / `streamText` call lives in one engine-internal module (`src/engine/providers/ai_sdk/invoke.ts`), the only place in the tree allowed to import from `ai` (rule-enforced). `generate.ts` itself is SDK-agnostic.
 - **Depth 1, `native` kind.** The adapter implements a single model turn against the provider's own API using global `fetch` and hand-rolled streaming, with zero `ai` / `@ai-sdk/*` imports (also rule-enforced). The engine wraps `invoke_turn` in retry, shared error classification, and abort; a native adapter must never retry internally. It may override classification via an optional `classify_error`, and may define `dispose` for connection teardown.
 - **Depth 2, `external` kind.** The adapter owns the whole generate call, including any looping. This is for backends that are themselves agents (the `claude_cli` subprocess today; an HTTP/A2A agent is the same shape). The engine's shared tool loop doesn't run, so loop-level options like `tool_call_repair_attempts` are ignored and recorded as `option_ignored`.
 
@@ -78,7 +78,7 @@ The same recipe reaches vLLM, LiteLLM, or any other OpenAI-compatible gateway, a
 
 ## The Agent-Layer Boundary
 
-fascicle uses the AI SDK strictly as a single-turn provider layer, so every AI SDK call is `generateText` / `streamText` pinned to one step, issued from the one `ai_sdk` transport module, and the loop above it (multi-step execution, tool approval, salvage, `ends_turn`, cost, retry, trajectory) is fascicle's own. The SDK's agent layer (`ToolLoopAgent`, `WorkflowAgent`, `HarnessAgent`, `toolApproval`, scoped tool context, `@ai-sdk/otel`) is declined by design; the litmus test is that a framework must let you call one turn below its own loop. Anything the agent layer would own belongs above the seam, in fascicle's composition surface, so that swapping a provider never means swapping a loop.
+Fascicle uses the AI SDK strictly as a single-turn provider layer, so every AI SDK call is `generateText` / `streamText` pinned to one step, issued from the one `ai_sdk` transport module, and the loop above it (multi-step execution, tool approval, salvage, `ends_turn`, cost, retry, trajectory) is Fascicle's own. The SDK's agent layer (`ToolLoopAgent`, `WorkflowAgent`, `HarnessAgent`, `toolApproval`, scoped tool context, `@ai-sdk/otel`) is declined by design; the litmus test is that a framework must let you call one turn below its own loop. Anything the agent layer would own belongs above the seam, in Fascicle's composition surface, so that swapping a provider never means swapping a loop.
 
 ## Capability Matrix
 
@@ -149,7 +149,7 @@ await engine.generate({
 
 Effort maps to extended-thinking `budgetTokens` (the `@ai-sdk/anthropic` option name, which the SDK forwards to the API's `budget_tokens`). `none →` no thinking block, `low → 1024`, `medium → 5000`, `high → 20000`, `xhigh → 32000`, `max → 64000`.
 
-Pass a concrete model id of your own (`claude-opus-4-8`, `claude-sonnet-4-6`, `claude-haiku-4-5`, …). fascicle doesn't expand `opus`/`sonnet` shorthands on this transport — the `model` string is sent to the API verbatim.
+Pass a concrete model id of your own (`claude-opus-4-8`, `claude-sonnet-4-6`, `claude-haiku-4-5`, …). Fascicle doesn't expand `opus`/`sonnet` shorthands on this transport — the `model` string is sent to the API verbatim.
 
 ### `transport: 'native'`
 
@@ -172,7 +172,7 @@ Everything call-facing carries over, with the same provider name, the same prici
 - **No image input.** `image_input` is unsupported on the native transport in v1.
 - **Schema always rides the repair loop.** The native adapter doesn't claim `structured_output`, so your `schema` requests are satisfied by the engine's prompt + parse + repair path, which is provider-neutral and usually sufficient.
 - **`max_tokens` defaults to 4096.** The Messages API requires `max_tokens` on every request. When extended thinking is enabled, the default rides on top of the thinking budget rather than being swallowed by it; pass `max_tokens` explicitly to override.
-- **`provider_options.anthropic` is raw wire format.** On the native transport, keys under `provider_options.anthropic` are Messages-API fields as Anthropic documents them (snake_case: `thinking`, `max_tokens`, `top_k`, `stop_sequences`, ...), shallow-merged last over the engine-computed request body. An explicit key beats every derived field, including the effort-derived `thinking` block and the `max_tokens` default. Keys don't port verbatim from the `ai_sdk` transport, which uses `@ai-sdk/anthropic`'s camelCase spellings — `budgetTokens` there is `thinking: { type: 'enabled', budget_tokens: n }` here. The merge is shallow and unreconciled: pass a whole `thinking` object, not a fragment, and combinations the API rejects (say, `temperature` alongside thinking) are rejected by the API, not repaired by fascicle.
+- **`provider_options.anthropic` is raw wire format.** On the native transport, keys under `provider_options.anthropic` are Messages-API fields as Anthropic documents them (snake_case: `thinking`, `max_tokens`, `top_k`, `stop_sequences`, ...), shallow-merged last over the engine-computed request body. An explicit key beats every derived field, including the effort-derived `thinking` block and the `max_tokens` default. Keys don't port verbatim from the `ai_sdk` transport, which uses `@ai-sdk/anthropic`'s camelCase spellings — `budgetTokens` there is `thinking: { type: 'enabled', budget_tokens: n }` here. The merge is shallow and unreconciled: pass a whole `thinking` object, not a fragment, and combinations the API rejects (say, `temperature` alongside thinking) are rejected by the API, not repaired by Fascicle.
 - **Auth headers are `x-api-key` plus `anthropic-version`.** OAuth isn't supported here, and that's `claude_cli` territory.
 - **Retry belongs to the engine.** 429 (honoring `retry-after`), 5xx, and network failures are classified by the shared classifier and retried by the engine's retry policy, exactly as on the `ai_sdk` transport.
 
@@ -221,7 +221,7 @@ Everything call-facing carries over, with the same provider name, the same prici
 
 - **No image input.** `image_input` is unsupported on the native transport in v1.
 - **Schema always rides the repair loop.** The native adapter doesn't claim `structured_output`, so your `schema` requests are satisfied by the engine's prompt + parse + repair path.
-- **`provider_options.openai` is raw wire format (D9).** On the native transport, keys under `provider_options.openai` are Chat Completions fields exactly as OpenAI documents them (**snake_case**: `reasoning_effort`, `max_completion_tokens`, `top_p`, `stop`, `logprobs`, `response_format`, ...), shallow-merged last over the engine-computed body, so an explicit key beats every derived field (the effort-derived `reasoning_effort`, the token limit, sampling params). Keys do **not** port from the `ai_sdk` transport, which uses `@ai-sdk/openai`'s camelCase spellings — `reasoningEffort` there is `reasoning_effort` here, and the SDK's `maxOutputTokens` is `max_completion_tokens` on the wire. The merge is shallow and unreconciled: pass whole objects, and combinations the API rejects are rejected by the API, not repaired by fascicle.
+- **`provider_options.openai` is raw wire format (D9).** On the native transport, keys under `provider_options.openai` are Chat Completions fields exactly as OpenAI documents them (**snake_case**: `reasoning_effort`, `max_completion_tokens`, `top_p`, `stop`, `logprobs`, `response_format`, ...), shallow-merged last over the engine-computed body, so an explicit key beats every derived field (the effort-derived `reasoning_effort`, the token limit, sampling params). Keys do **not** port from the `ai_sdk` transport, which uses `@ai-sdk/openai`'s camelCase spellings — `reasoningEffort` there is `reasoning_effort` here, and the SDK's `maxOutputTokens` is `max_completion_tokens` on the wire. The merge is shallow and unreconciled: pass whole objects, and combinations the API rejects are rejected by the API, not repaired by Fascicle.
 - **Retry belongs to the engine.** 401, 429 (honoring `Retry-After`), 5xx, and network failures are classified by the shared classifier and retried by the engine's policy, exactly as on `ai_sdk`.
 
 The same core powers any OpenAI-compatible server via `base_url` — see [the compat recipe](#openai-compatible-servers-the-compat-recipe).
@@ -516,7 +516,7 @@ The CLI resolves the bare tokens `opus`/`sonnet`/`haiku` to the latest itself, s
 
 The provider receives `model` as-is and rejects an unknown id itself (a 404 or validation error). A `provider` with no adapter registered on the engine throws `provider_not_configured_error`. (Exception: the `claude_cli` transport forwards `opus`/`sonnet`/`haiku` to the CLI, which resolves them to the latest.)
 
-Need short names? Keep a plain `Record<string, string>` in your own code and resolve it before calling `generate` — fascicle owns no model-name catalog.
+Need short names? Keep a plain `Record<string, string>` in your own code and resolve it before calling `generate` — Fascicle owns no model-name catalog.
 
 ## Optional Peer Loading
 
@@ -568,7 +568,7 @@ Two properties are worth knowing:
 
 For an `ai_sdk` provider this is the SDK's `providerMetadata` passed through, so it works for every provider on that transport, including custom ones, with no per-provider code. A `native` adapter fills the same field by setting `provider_reported` on the `TurnResult` it returns. The `claude_cli` provider, which owns its whole loop, reports `session_id` and `duration_ms` under a `claude_cli` key (see [cli.md](./cli.md#multi-turn-is-via-session_id)).
 
-One gap is worth naming. When the AI SDK rejects a structured-output response before fascicle's own schema repair sees it, the recovered turn has no payload to report, because the SDK's error doesn't carry one. The repair turn that follows reports normally. This affects only the providers that declare the `structured_output` capability (`ollama`, `lmstudio`); everywhere else the schema rides the prompt and the turn reports as usual. On those two, if the recovered turn also carries a non-`stop` finish reason there's no repair turn at all — the call throws `incomplete_generation_error` with `provider_reported` undefined for the same reason.
+One gap is worth naming. When the AI SDK rejects a structured-output response before Fascicle's own schema repair sees it, the recovered turn has no payload to report, because the SDK's error doesn't carry one. The repair turn that follows reports normally. This affects only the providers that declare the `structured_output` capability (`ollama`, `lmstudio`); everywhere else the schema rides the prompt and the turn reports as usual. On those two, if the recovered turn also carries a non-`stop` finish reason there's no repair turn at all — the call throws `incomplete_generation_error` with `provider_reported` undefined for the same reason.
 
 ## Cost Estimation
 

@@ -2,7 +2,7 @@
  * Public surface for the claude_cli provider adapter.
  *
  * `create_claude_cli_adapter(init)` (in `./adapter.ts`) returns a
- * `ExternalAgentAdapter`; `effort_env_for_claude_cli` maps fascicle's
+ * `ExternalAgentAdapter`; `effort_env_for_claude_cli` maps Fascicle's
  * `EffortLevel` to the CLI's `CLAUDE_CODE_EFFORT_LEVEL` env var.
  */
 

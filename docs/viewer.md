@@ -1,6 +1,6 @@
 # Viewer
 
-A minimal in-repo dashboard that shows you a fascicle run as it executes, or
+A minimal in-repo dashboard that shows you a Fascicle run as it executes, or
 after the fact. One static HTML page, two transports (file-tail and HTTP
 push), no build step, no auth.
 

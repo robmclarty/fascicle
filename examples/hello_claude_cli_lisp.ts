@@ -28,7 +28,7 @@
  *          '((install-signal-handlers . #f))))
  *
  *   (define (main argv)
- *     (let ((input (if (null? argv) "say hello to fascicle" (join " " argv))))
+ *     (let ((input (if (null? argv) "say hello to Fascicle" (join " " argv))))
  *       (dynamic-wind
  *         (lambda () '())
  *         (lambda () (display-pair input (hello input)))

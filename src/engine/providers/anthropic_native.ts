@@ -132,7 +132,7 @@ function to_assistant_blocks(
 }
 
 /**
- * Map fascicle Message[] to Messages-API shape: leading system messages hoist
+ * Map Fascicle Message[] to Messages-API shape: leading system messages hoist
  * to the top-level `system` string, tool messages become `tool_result` blocks
  * on a user turn, and empty text blocks are dropped (the API rejects them).
  * generate.ts already hoists leading system into TurnRequest.system, so the
@@ -195,7 +195,7 @@ export function to_anthropic_messages(messages: ReadonlyArray<Message>): {
 }
 
 /**
- * Map fascicle tool definitions to the Messages-API tool shape, converting
+ * Map Fascicle tool definitions to the Messages-API tool shape, converting
  * each input schema to JSON Schema.
  */
 export function to_anthropic_tools(

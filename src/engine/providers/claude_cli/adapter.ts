@@ -92,9 +92,9 @@ const SUPPORTED: ReadonlySet<ProviderCapability> = new Set<ProviderCapability>([
 
 const PROVIDER_NAME = 'claude_cli'
 
-// Map fascicle's EffortLevel to Claude Code's CLAUDE_CODE_EFFORT_LEVEL env var.
+// Map Fascicle's EffortLevel to Claude Code's CLAUDE_CODE_EFFORT_LEVEL env var.
 // The CLI supports `low | medium | high | xhigh | max | auto`; we expose all
-// non-`none` levels of fascicle's EffortLevel and let the user opt out via
+// non-`none` levels of Fascicle's EffortLevel and let the user opt out via
 // `effort: 'none'` (which results in no env var being set, deferring to whatever
 // is already in the inherited environment).
 const CLAUDE_CLI_EFFORT_VALUES: Record<Exclude<EffortLevel, 'none'>, string> = {

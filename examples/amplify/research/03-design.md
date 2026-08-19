@@ -109,7 +109,7 @@ Each load-bearing decision below is traced to a finding in [`02-landscape.md`](.
 
 **Why `xhigh` as default.** It's the most reasoning Opus 4.7 will allocate without saturating the wall-clock; `max` is also exposed via `--effort max`. The proposer is the cognitively hardest call — it reasons about parent code + metric + lessons + research and emits a complete file rewrite — so allocating the highest available effort is the right default. Aider's architect/editor split makes the same argument: the reasoner is expensive, the executor doesn't need to be.
 
-**How it flows through fascicle.** Amplify passes `defaults.effort = cli.effort` to `create_engine`. The `claude_cli` provider's `effort_env_for_claude_cli()` (`src/engine/providers/claude_cli/index.ts`) translates that value to the `CLAUDE_CODE_EFFORT_LEVEL` env var injected into the spawn args. Settings precedence: `--effort` flag → `AMPLIFY_EFFORT` env → `'xhigh'` default.
+**How it flows through Fascicle.** Amplify passes `defaults.effort = cli.effort` to `create_engine`. The `claude_cli` provider's `effort_env_for_claude_cli()` (`src/engine/providers/claude_cli/index.ts`) translates that value to the `CLAUDE_CODE_EFFORT_LEVEL` env var injected into the spawn args. Settings precedence: `--effort` flag → `AMPLIFY_EFFORT` env → `'xhigh'` default.
 
 **Rejected.** Sonnet for proposals. The point of the demo is using the most capable reasoning we can afford.
 
@@ -145,6 +145,6 @@ Each load-bearing decision below is traced to a finding in [`02-landscape.md`](.
 
 ## D12. Trajectory logging per round to a single JSONL
 
-**Why.** Replay is the single most useful debugging affordance. One JSONL per run, one line per fascicle event (including our `amplify.*` custom events), is the same shape the rest of the repo uses. Mirrors red-green-refactor. Plays nicely with Inspect AI / Braintrust later.
+**Why.** Replay is the single most useful debugging affordance. One JSONL per run, one line per Fascicle event (including our `amplify.*` custom events), is the same shape the rest of the repo uses. Mirrors red-green-refactor. Plays nicely with Inspect AI / Braintrust later.
 
 **Where.** `src/main.ts` wires `filesystem_logger` to `<run_dir>/trajectory.jsonl`; events are recorded from named steps in `src/flow.ts` via `ctx.trajectory.record(...)`.

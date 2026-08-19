@@ -1,5 +1,5 @@
 /**
- * hello_claude_cli: your first fascicle harness that calls a real model.
+ * hello_claude_cli: your first Fascicle harness that calls a real model.
  *
  * Uses the `claude_cli` subprocess provider, which spawns the `claude` binary
  * and piggybacks on your existing authenticated session. No API key required

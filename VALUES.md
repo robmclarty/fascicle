@@ -1,11 +1,11 @@
-# What fascicle stands for
+# What Fascicle stands for
 
-This is the canonical statement of fascicle's values. It says what fascicle is
+This is the canonical statement of Fascicle's values. It says what Fascicle is
 about, what it is deliberately not about, and why. Everything here is a choice made
 on purpose, with real costs paid on purpose, not an accident and not a gap waiting to
 be filled.
 
-The one idea underneath all of them: fascicle is a **substrate, not a scaffold**. It
+The one idea underneath all of them: Fascicle is a **substrate, not a scaffold**. It
 is a material you plant your agent in and shape as you like, the way voxels build into
 any shape in Minecraft, rather than a mold that decides in advance what your agent is
 allowed to be. It hands you building blocks and the freedom to combine them; it does
@@ -13,13 +13,13 @@ not hand you an opinion about what you are building.
 
 ## Freedom
 
-fascicle exists to give you control, not to take it. You compose behavior from
+Fascicle exists to give you control, not to take it. You compose behavior from
 primitives instead of picking from a menu of pre-built agents, you can see every step
 and override every default, and you drive the agent rather than letting a vendor's
 built-in loop drive you. Freedom here has three faces that are really one: freedom to
 build any shape from small parts, freedom to inspect and change what runs, and freedom
 from anyone else deciding those things for you. Convenience is welcome when it does not
-cost control. When the two conflict, fascicle keeps the control and pays the
+cost control. When the two conflict, Fascicle keeps the control and pays the
 convenience.
 
 ## Composition over inheritance
@@ -37,7 +37,7 @@ combination of blocks fits.
 
 The orchestrator is a deterministic script, not another model. In a model-driven
 harness the thing coordinating the work is itself an agent: a model deciding what to
-call and when. fascicle is intentionally the opposite. The outer layer is ordinary,
+call and when. Fascicle is intentionally the opposite. The outer layer is ordinary,
 deterministic code that runs steps in a known order and threads each output into the
 next input; a model call is one step among many, not the thing in charge. The instinct
 is the same as a Big-O optimization: just as you minimize recursion and needless loops,
@@ -64,11 +64,11 @@ You should be able to read a flow and predict what it does, and read a trajector
 know what it did. No hidden retries, no ambient state, no magic that changes behavior
 based on the environment. The trajectory is the truth of a run: what executed, in what
 order, at what cost. A system you cannot see is a system you cannot trust in
-production, so fascicle keeps the whole shape walkable and the whole run observable.
+production, so Fascicle keeps the whole shape walkable and the whole run observable.
 
 ## Honesty
 
-fascicle is opinionated about what it is and, just as importantly, about what it is
+Fascicle is opinionated about what it is and, just as importantly, about what it is
 not. The refusals (no registry, no hidden caching, no framework lifecycle, no batteries
 you did not ask for) are deliberate, with real costs, not features that are merely
 missing. This document is part of that honesty. The point is to keep your eyes open
@@ -79,24 +79,24 @@ discovering them the hard way later.
 
 Your agent should outlive any one vendor's decisions. Model ids are opaque and passed
 verbatim, providers are swappable by config, and local models are first-class rather
-than an afterthought. fascicle sits on top of vendor SDKs but keeps the load-bearing
+than an afterthought. Fascicle sits on top of vendor SDKs but keeps the load-bearing
 logic (the loop, tool handling, cost, the audit trail) on your side of a thin seam, so
 a breaking change, a price change, or a strategy change from a commercial provider is a
 contained edit instead of a rewrite. You keep the right to change direction.
 
 ## Security and privacy
 
-The smallest surface is the safest one. fascicle has no direct runtime dependencies and
+The smallest surface is the safest one. Fascicle has no direct runtime dependencies and
 zero mandatory peer dependencies — `ai`, `zod`, and every provider SDK are optional,
 loaded only when you call them — so it adds little to your attack surface and nothing
 you did not choose. Local models are
 first-class precisely so your data and your prompts can stay on machines you control.
-The full posture, including the honest admission that fascicle is itself a dependency
+The full posture, including the honest admission that Fascicle is itself a dependency
 and therefore a vector, lives in [SECURITY.md](./SECURITY.md).
 
 ## Interoperability
 
-Inputs and outputs are plain values in standard shapes, so fascicle plays well with
+Inputs and outputs are plain values in standard shapes, so Fascicle plays well with
 code it did not write. Tools are plain functions, the Model Context Protocol is bridged
 both ways, and the trajectory is an event stream any tracing tool can consume. A
 substrate you plant an app into has to connect cleanly to whatever is already growing
@@ -104,7 +104,7 @@ in your stack, not demand that the rest of the stack be rewritten in its terms.
 
 ## No commercial capture
 
-fascicle will not become the thing it protects you from. It has no hosted service, no
+Fascicle will not become the thing it protects you from. It has no hosted service, no
 dashboard, no account, and no plan to add one, because the moment a library has a
 product to sell, its design starts optimizing for the product instead of for you. It is
 Apache-2.0 and forkable, which makes even trust in the maintainer optional: if the
@@ -118,7 +118,7 @@ None of these values is free. Here are the strongest objections and the honest a
 
 True, and for some projects that is the right call. If your whole product is one agent
 with a few tools and a chat box, a batteries-included framework will get you there
-faster and fascicle is overhead. fascicle is for the case where you want control and
+faster and Fascicle is overhead. Fascicle is for the case where you want control and
 will use it: composing non-trivial flows, swapping providers, running locally, keeping a
 system legible a year later. Defaults exist so the common path is short; they are just
 never locked. The rope is the point, for the people who want to tie their own knots.
@@ -126,7 +126,7 @@ never locked. The rope is the point, for the people who want to tie their own kn
 ### "Narrow means missing batteries: no RAG, no memory, no evals."
 
 On purpose. Those are applications you build on the substrate, or separate tools you
-compose in, not things baked into the material. Baking them in would make fascicle
+compose in, not things baked into the material. Baking them in would make Fascicle
 heavier, more opinionated, and coupled to one way of doing retrieval or memory, which is
 exactly the lock-in it exists to avoid. The bet is that a good substrate plus the tool
 you actually want beats a big framework plus the three tools it chose for you.
@@ -142,10 +142,10 @@ the price, and it is paid in clarity.
 ### "Author-composed control flow makes you do work the model could do."
 
 A real philosophical fork. Some tools trust the model to plan and orchestrate its own
-loop; fascicle lets you compose the control flow explicitly, with a model call as one
+loop; Fascicle lets you compose the control flow explicitly, with a model call as one
 part among plain functions. This is a bet about where reliability comes from: legible,
 testable structure over pure model autonomy. It is not a rejection of model-driven
-agents. A model-driven agent is exactly the kind of thing fascicle wraps as a single
+agents. A model-driven agent is exactly the kind of thing Fascicle wraps as a single
 step, so you can choose autonomy where you want it and structure where you need it.
 
 ### "Minimizing model calls is premature optimization. Let the model handle it."
@@ -169,27 +169,27 @@ exit cheap.
 
 ### "You are reinventing libraries that already exist."
 
-fascicle does not replace the vendor SDKs; it is built on them. It owns the layer above
+Fascicle does not replace the vendor SDKs; it is built on them. It owns the layer above
 the single model call: the loop, tool handling, composition, cost, and the trajectory.
 That layer is where the values live, and it is a different layer from the provider
 plumbing underneath. Where an existing tool already gives you what you need, use it.
-fascicle is for when you want that seam to be yours.
+Fascicle is for when you want that seam to be yours.
 
 ## The through-line
 
 These are choices, made on purpose, with costs paid on purpose. The single idea under
-all of them is that fascicle is a substrate, not a scaffold: a material you plant your
+all of them is that Fascicle is a substrate, not a scaffold: a material you plant your
 agent in and shape as you like, not a mold that shapes your agent for you. It hands you
 building blocks and the freedom to combine them, keeps the result legible and portable,
 and refuses to grow into the kind of thing that would take that freedom back.
 
-If those are your values too, fascicle will feel like it is on your side. If they are
+If those are your values too, Fascicle will feel like it is on your side. If they are
 not, it will feel like too much rope, and one of the friendlier frameworks it declines
 to become will serve you better. Both outcomes are honest, and both are by design.
 
 ## See also
 
 - [SECURITY.md](./SECURITY.md) - the supply-chain posture and its residual risks.
-- [docs/comparison.md](./docs/comparison.md) - where fascicle sits among its neighbors.
+- [docs/comparison.md](./docs/comparison.md) - where Fascicle sits among its neighbors.
 - [docs/adoption-decision.md](./docs/adoption-decision.md) - a go/no-go framing for
-  adopting fascicle, including when to reach for something else.
+  adopting Fascicle, including when to reach for something else.

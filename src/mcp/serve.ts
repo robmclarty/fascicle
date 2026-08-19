@@ -1,5 +1,5 @@
 /**
- * Outbound MCP: expose a composed fascicle flow as an MCP tool.
+ * Outbound MCP: expose a composed Fascicle flow as an MCP tool.
  *
  * `serve_flow` registers onto a caller-constructed `McpServer` (the caller owns
  * the transport, identity, and lifecycle, and can host many flows on one
@@ -35,7 +35,7 @@ export type ServeFlowOptions<i, o> = {
 }
 
 /**
- * Registers a fascicle flow as a tool on a caller-owned MCP server.
+ * Registers a Fascicle flow as a tool on a caller-owned MCP server.
  *
  * Drives the flow with `run`, threading the per-request abort signal so an
  * MCP client cancellation aborts the in-flight flow, and maps the result

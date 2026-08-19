@@ -1,7 +1,7 @@
 /**
- * The schema vocabulary fascicle speaks at its public surface.
+ * The schema vocabulary Fascicle speaks at its public surface.
  *
- * fascicle validates values and emits JSON Schema, but it has no business
+ * Fascicle validates values and emits JSON Schema, but it has no business
  * dictating which validation library a user brings. Standard Schema is the
  * vendor-neutral interface every major validator now implements, and
  * `@standard-schema/spec` is pure types: its ESM entry is a zero-byte file, so
@@ -14,10 +14,10 @@
 import type { StandardJSONSchemaV1, StandardSchemaV1 } from '@standard-schema/spec'
 
 /**
- * Any Standard Schema implementation, used where fascicle only ever validates.
+ * Any Standard Schema implementation, used where Fascicle only ever validates.
  *
  * `t` is the validated output type, which is what callers care about; the input
- * side stays `unknown` because fascicle validates values arriving from a model,
+ * side stays `unknown` because Fascicle validates values arriving from a model,
  * a resume payload, or stdin, none of which are typed at the boundary.
  */
 export type AnySchema<t = unknown> = StandardSchemaV1<unknown, t>
@@ -56,7 +56,7 @@ export type SchemaIssue = {
  * The result of validating a value: the typed value, or the issues explaining
  * why it was rejected.
  *
- * A tagged union rather than a throw, because every fascicle call site treats a
+ * A tagged union rather than a throw, because every Fascicle call site treats a
  * validation failure as data (a repair prompt, a tool-result error message)
  * rather than an exception.
  */
@@ -68,7 +68,7 @@ export type ValidateOutcome<t> =
  * How to emit JSON Schema for a `ToolSchema`.
  *
  * `strip_meta` drops the top-level `$schema` and `$id` keys. It is off by
- * default because the providers fascicle speaks to today receive those keys and
+ * default because the providers Fascicle speaks to today receive those keys and
  * tolerate them; only `claude --json-schema` rejects them, so only that adapter
  * asks.
  */

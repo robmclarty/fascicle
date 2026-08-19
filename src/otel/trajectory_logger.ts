@@ -1,5 +1,5 @@
 /**
- * OpenTelemetry bridge for fascicle trajectory events.
+ * OpenTelemetry bridge for Fascicle trajectory events.
  *
  * `create_otel_trajectory_logger` returns a plain TrajectoryLogger that turns
  * the engine's own span + event stream into OpenTelemetry spans: the

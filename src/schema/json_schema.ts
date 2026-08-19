@@ -2,7 +2,7 @@
  * JSON Schema emission for schemas that reach a model.
  *
  * Standard JSON Schema exposes two directions, `input` and `output`. A tool
- * definition describes what the model should *produce*, so fascicle emits the
+ * definition describes what the model should *produce*, so Fascicle emits the
  * input direction: a field with a default is one the model may omit, and
  * saying otherwise asks it to supply a value the schema already supplies.
  *
@@ -12,7 +12,7 @@
  * schema stops a model inventing one. `close_objects` supplies that guard,
  * which is also what the strict and constrained-decode modes require. The AI
  * SDK composes the same two halves for every `kind: 'ai_sdk'` provider, so
- * this is what the majority of fascicle's transports already send.
+ * this is what the majority of Fascicle's transports already send.
  */
 
 import { schema_not_convertible_error } from './errors.js'

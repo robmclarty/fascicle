@@ -99,7 +99,7 @@ The rules:
 - **Construction-time only.** Nothing registers at runtime, and your config object is the whole registry extension.
 - **Validated like built-ins.** Factories run synchronously at `create_engine`, so throw from your factory on a bad init. Defer SDK or resource loading to the first call (`build_model` for `ai_sdk`-kind, `invoke_turn` for `native`-kind, `generate` for `external`-kind).
 
-The factory and adapter types (`ProviderFactory`, `ProviderAdapter`, `AiSdkProviderAdapter`, `NativeProviderAdapter`, `ExternalAgentAdapter`, `ProviderCapability`, `ProviderTransport`) are exported from `fascicle`, alongside the neutral turn types (`TurnRequest`, `TurnResult`) and the `default_normalize_usage` helper, so a `kind: 'native'` adapter can be typed explicitly as `NativeProviderAdapter` rather than checked contextually through `ProviderFactory`. Because registration is plain config, a proprietary or workplace-private provider lives entirely in the consuming repo and never needs to enter the fascicle tree.
+The factory and adapter types (`ProviderFactory`, `ProviderAdapter`, `AiSdkProviderAdapter`, `NativeProviderAdapter`, `ExternalAgentAdapter`, `ProviderCapability`, `ProviderTransport`) are exported from `fascicle`, alongside the neutral turn types (`TurnRequest`, `TurnResult`) and the `default_normalize_usage` helper, so a `kind: 'native'` adapter can be typed explicitly as `NativeProviderAdapter` rather than checked contextually through `ProviderFactory`. Because registration is plain config, a proprietary or workplace-private provider lives entirely in the consuming repo and never needs to enter the Fascicle tree.
 
 ## Registering a Provider after Construction: `with_providers`
 
@@ -154,7 +154,7 @@ The published library stays free of ambient env reads (the `no-process-env-in-co
 
 A model call has two orthogonal inputs, and they're the *only* inputs — there's no name resolution, alias table, or family catalog in between:
 
-- **`model`** — *which* model, as an **opaque string** passed verbatim to the provider as its `model_id`. Use whatever id the provider expects (`claude-opus-4-8`, `gpt-4o`, `us.anthropic.claude-sonnet-4-20250514-v1:0`, `qwen3-coder:30b`). fascicle doesn't interpret, rewrite, or maintain model names; a bad id surfaces as the provider's own "not found" error.
+- **`model`** — *which* model, as an **opaque string** passed verbatim to the provider as its `model_id`. Use whatever id the provider expects (`claude-opus-4-8`, `gpt-4o`, `us.anthropic.claude-sonnet-4-20250514-v1:0`, `qwen3-coder:30b`). Fascicle doesn't interpret, rewrite, or maintain model names; a bad id surfaces as the provider's own "not found" error.
 - **`provider`** — *how* to reach it (the transport), so `anthropic`, `openai`, `google`, `ollama`, `lmstudio`, `openrouter`, `bedrock`, `claude_cli`.
 
 Both are accepted per-call on `generate(opts)` / `model_call({ ... })` and as engine defaults (`defaults.model`, `defaults.provider`). The remaining caller-shaped generation knobs (`temperature`, `max_tokens`, `top_p`, `turn_timeout_ms`, `prepare_step`) also ride per-call on both; all but `prepare_step` can be set as engine defaults too, with the per-call value winning.
@@ -165,7 +165,7 @@ No resolution step runs. `model` is sent straight through as the provider's `mod
 
 Neither a `provider:model` colon shorthand nor an `opus`/`sonnet` family shorthand exists — pass the provider's real id (look it up in the provider's own docs). One exception: the `claude_cli` transport forwards the bare token to the CLI, which resolves `opus`/`sonnet`/`haiku` to the latest itself, so those still work for that provider.
 
-If you want short names of your own, keep a plain map in your harness and look the id up before you call `generate` — fascicle owns no such table on purpose.
+If you want short names of your own, keep a plain map in your harness and look the id up before you call `generate` — Fascicle owns no such table on purpose.
 
 ## Pricing
 
@@ -427,7 +427,7 @@ External-kind providers (`claude_cli`) don't run the shared tool loop, so they i
 
 ## OpenTelemetry
 
-fascicle exposes OpenTelemetry in two independent layers with a clean seam between them. Both are opt-in and neither pulls an OTel package into a program that doesn't use it.
+Fascicle exposes OpenTelemetry in two independent layers with a clean seam between them. Both are opt-in and neither pulls an OTel package into a program that doesn't use it.
 
 ### Layer 1: The `fascicle/otel` Trajectory Bridge (Transport-Neutral)
 

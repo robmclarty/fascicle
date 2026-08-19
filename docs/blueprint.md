@@ -1,6 +1,6 @@
 # The Agent Blueprint
 
-A standard architecture for the apps you build on fascicle. [writing-a-harness.md](./writing-a-harness.md) covers the mechanics of wrapping a flow in a runnable program; this doc covers the *shape* of the codebase around it, meaning where your composition lives, where your prompts live, and how to slice the modules so your agent stays legible and easy to change.
+A standard architecture for the apps you build on Fascicle. [writing-a-harness.md](./writing-a-harness.md) covers the mechanics of wrapping a flow in a runnable program; this doc covers the *shape* of the codebase around it, meaning where your composition lives, where your prompts live, and how to slice the modules so your agent stays legible and easy to change.
 
 I distilled the blueprint from the reference apps in [`examples/`](../examples/) and from several production apps built on the published package. Every rule here earned its place, either because the pattern showed up in the codebases that stayed easy to work on, or because its absence hurt in the ones that didn't.
 
@@ -12,7 +12,7 @@ So the whole blueprint reduces to one rule and a set of module shapes that suppo
 
 ## The One Rule
 
-> **Give the agent exactly one composition layer.** One file you open to see the entire topology, written in fascicle vocabulary only: `chain`, `step`, `model_step`, `sequence`, `parallel`, `branch`, `loop`. Everything that isn't shape (string formatting, IO, state transitions) lives in sibling modules and is plugged in as plain functions.
+> **Give the agent exactly one composition layer.** One file you open to see the entire topology, written in Fascicle vocabulary only: `chain`, `step`, `model_step`, `sequence`, `parallel`, `branch`, `loop`. Everything that isn't shape (string formatting, IO, state transitions) lives in sibling modules and is plugged in as plain functions.
 
 Call it `flow.ts`. A reader should be able to say "first the reviewer runs, then if there are suggestions the pragmatist runs, then a build-review loop bounded at three rounds" by reading top to bottom, without opening any other file. The canonical worked example is [`examples/pr-improve/src/flow.ts`](../examples/pr-improve/src/flow.ts) and its design rationale in [`examples/pr-improve/docs/architecture.md`](../examples/pr-improve/docs/architecture.md).
 
@@ -26,7 +26,7 @@ Not every app should be a full composition. Fascicle has three useful adoption t
 | **2. Orchestrated loop** | the control-flow skeleton, one `loop` / `sequence` at the top | phase modules the steps delegate to | an iterative build / check / critique loop that wants trajectory, resume, abort, and cost caps |
 | **3. Composition-first** | the whole topology | leaf functions only | a multi-stage model pipeline with branches, fan-out, or convergence, where stages should be swappable |
 
-**Tier 1** looks like a port, a single app-owned function type that the rest of the codebase depends on, with fascicle behind it.
+**Tier 1** looks like a port, a single app-owned function type that the rest of the codebase depends on, with Fascicle behind it.
 
 ```ts
 export type CompleteRequest<T> = {
@@ -45,9 +45,9 @@ export const fascicle_complete = (engine: Engine): Complete =>
   };
 ```
 
-Business logic takes `Complete` as a dependency and leaves fascicle alone. You keep provider swap as a one-env-var change, structured output, retry, and cost accounting, without adopting the composition algebra. This tier is underrated: if your flow is a straight line of two calls, a port plus ordinary code reads better than `sequence([step, pipe(model_call, extract)])`.
+Business logic takes `Complete` as a dependency and leaves Fascicle alone. You keep provider swap as a one-env-var change, structured output, retry, and cost accounting, without adopting the composition algebra. This tier is underrated: if your flow is a straight line of two calls, a port plus ordinary code reads better than `sequence([step, pipe(model_call, extract)])`.
 
-**Tier 2** puts fascicle's `loop` at the top and nothing else:
+**Tier 2** puts Fascicle's `loop` at the top and nothing else:
 
 ```ts
 const flow = loop<RunInput, LoopState, LoopState>({
@@ -94,16 +94,16 @@ Each module has one reason to exist and a strict import contract:
 
 | Module | Owns | Must not contain |
 | --- | --- | --- |
-| `flow.ts` | topology, in fascicle vocabulary | string building, IO, business logic, `as` casts |
+| `flow.ts` | topology, in Fascicle vocabulary | string building, IO, business logic, `as` casts |
 | `engine.ts` | env to `create_engine`, provider selection | anything about the flow |
 | `stages/` | one `model_step` factory per role, prompt loading | message formatting, result extraction |
 | `prompts/` | static role instruction as markdown | code, dynamic content |
-| `messages.ts` | user-message assembly from typed inputs | fascicle imports |
+| `messages.ts` | user-message assembly from typed inputs | Fascicle imports |
 | `types.ts` | zod schemas plus inferred types | logic |
 | `state.ts` | stash key constants, typed readers (raw scope/stash/use only) | anything except keys and readers |
 | `tools/` | `Tool` factories, shared safety, limits | prompt text, flow knowledge |
 | `render.ts` | output artifacts (markdown, JSON reports) | model calls |
-| `services/` | side-effecting domain IO | fascicle imports |
+| `services/` | side-effecting domain IO | Fascicle imports |
 | `main.ts` | argv/HTTP in, `run(...)`, adapters, disposal | composition |
 
 The names matter less than the contracts. What kills legibility isn't calling the file `pipeline.ts` instead of `flow.ts`; it's a `format_reviewer_message` implemented inline in the flow, or a `model_call` hidden in a service.
@@ -118,7 +118,7 @@ worked example.
 
 Rules, in order of importance:
 
-1. **Only fascicle vocabulary and plugged-in names.** Every import is a stage factory, a `format_*` / `render_*` / `read_*` function, or a type. If you find yourself writing a template literal or an `await fetch` here, it belongs in a sibling.
+1. **Only Fascicle vocabulary and plugged-in names.** Every import is a stage factory, a `format_*` / `render_*` / `read_*` function, or a type. If you find yourself writing a template literal or an `await fetch` here, it belongs in a sibling.
 2. **Export one builder**, `build_flow(engine, models, env): Step<In, Out>`. The engine and model choices arrive as arguments so the flow keeps its hands off `process.env` and tests can hand it a stub engine.
 3. **Put the topology diagram in the file header.** An ASCII tree that mirrors the code below it is the cheapest architecture doc you'll ever write, and drift is caught in review because they sit in the same diff.
 4. **Recurring stage idiom**, where a stage is one `chain` binding and readers learn to see it as one unit.
@@ -176,7 +176,7 @@ Why files instead of `const REVIEWER_SYSTEM = \`...\``:
 
 Two loading mechanisms, by weight:
 
-**Simple agents: `define_agent`.** When an agent is a prompt plus an output schema, fascicle already does the whole job. The markdown body becomes the prompt (with `{{key}}` substitution against string fields of the input), or the system prompt when you supply `build_prompt`. Thread the role's model and repair budget as config; frontmatter `model` / `temperature` are the role defaults when the app threads nothing:
+**Simple agents: `define_agent`.** When an agent is a prompt plus an output schema, Fascicle already does the whole job. The markdown body becomes the prompt (with `{{key}}` substitution against string fields of the input), or the system prompt when you supply `build_prompt`. Thread the role's model and repair budget as config; frontmatter `model` / `temperature` are the role defaults when the app threads nothing:
 
 ```ts
 import { define_agent } from 'fascicle/agents';
@@ -283,7 +283,7 @@ Match your reader's parameter type to how the state arrives, which differs by ca
 - Suspend-bearing apps drive the run with `run.until_suspended` and persist what they need to resume after a restart (the original input, the suspend id); the `resume` closure on the outcome cannot outlive the process.
 - Adapters are injected here and only here, as `trajectory: filesystem_logger(...)` and `checkpoint_store: filesystem_store(...)`. Steps don't construct their own logging.
 - Pass `install_signal_handlers: false` everywhere except the one top-level run that should own Ctrl-C.
-- Map fascicle's typed errors to exit codes in one small module, discriminating on error kind, and default the unknown case explicitly.
+- Map Fascicle's typed errors to exit codes in one small module, discriminating on error kind, and default the unknown case explicitly.
 
 ## Testing: Stub the Engine, Not the Flow
 
@@ -313,7 +313,7 @@ Gate live tests on key presence (`describe.skipIf(!process.env.ANTHROPIC_API_KEY
 
 ## Naming Conventions
 
-Match fascicle's own surface: `snake_case` for values and functions, `PascalCase` for types only. The uniform seam matters; half camelCase apps end up writing translation shims at every fascicle boundary.
+Match Fascicle's own surface: `snake_case` for values and functions, `PascalCase` for types only. The uniform seam matters; half camelCase apps end up writing translation shims at every Fascicle boundary.
 
 | Prefix / shape | Meaning |
 | --- | --- |
@@ -330,13 +330,13 @@ Match fascicle's own surface: `snake_case` for values and functions, `PascalCase
 
 Each of these was observed in the wild; the fix is in parentheses.
 
-1. **Fascicle calls scattered through business logic.** The topology becomes unreadable and unswappable (gather into one composition layer, or drop to tier 1 and hide fascicle behind a port).
+1. **Fascicle calls scattered through business logic.** The topology becomes unreadable and unswappable (gather into one composition layer, or drop to tier 1 and hide Fascicle behind a port).
 2. **Control flow smuggled through step bodies.** An undocumented `if` / `for` / try-fallback inside an anonymous `step`, with children invoked by bare `.run()`, is invisible to trajectories and to `describe`. The test: would another pipeline want to compose around this decision? If yes, lift it to `branch` / `loop` / `fallback`. If the control flow is genuinely dynamic, the direct style is legitimate: a named step body with `ctx.call` keeps the trajectory honest (see flow.ts rule 6); what stays an anti-pattern is doing it namelessly, bypassing `ctx.call`, or leaving no comment on why it could not be static.
 3. **Composition theater.** Single-step "flows" whose only contribution is a span name, or combinator chains around a linear two-call sequence that force unions and mutable closures through the data channel (collapse to a step, or to plain code behind a port).
 4. **Two sources of truth for model defaults**, and env overrides that are parsed but never reach the flow (one role-to-model table, resolved once, passed as data).
 5. **Output rules stated in three places**: system prompt, `.describe()`, auditor prompt (one home per rule; schema for field constraints, prompt for the role).
 6. **Mutable closures smuggled through the graph** (`let stopped = false` captured by three steps). Loop carry-state and accretion result types (`ViewsResult = ClusterResult & {...}`) express the same thing inside the type system.
-7. **Stringly-typed cross-module contracts**: matching on `err.message === 'Retries exhausted'`, duck-typing a provider-reported blob (typed error kinds and typed accessors; if fascicle does not export the shape you need, request the export rather than mirroring internals that will drift).
+7. **Stringly-typed cross-module contracts**: matching on `err.message === 'Retries exhausted'`, duck-typing a provider-reported blob (typed error kinds and typed accessors; if Fascicle does not export the shape you need, request the export rather than mirroring internals that will drift).
 8. **Capability built ahead of adoption**: exported atoms, adapters, and retry policies that no production path calls. Dead abstraction reads as load-bearing and taxes every refactor (build the layer when the second caller arrives).
 9. **Anonymous steps in checkpointed or observed flows.** `checkpoint` rejects them at construction, and unnamed spans make trajectories unreadable (name every step you might resume or watch).
 10. **Version-coupled workarounds without an exit condition.** When you must work around a substrate bug, write the workaround where it lives, cite the version, and state what change lets you delete it.
@@ -380,7 +380,7 @@ rule:
     - kind: do_statement
 ```
 
-Rule 3 — [`fascicle-value-imports-confined.yml`](../examples/pr-improve/rules/fascicle-value-imports-confined.yml): value imports from `fascicle` are allowed only in `engine.ts` (`create_engine`), `flow.ts` (composition), `main.ts` (`run`), and `stages/**` (`model_step` / `model_call`); everywhere else, `import type` stays free. The brace/default/namespace patterns match value imports without matching `import type { ... }`, so business logic files that need only fascicle types are untouched. If your app uses subpath imports (`fascicle/adapters`, `fascicle/mcp`), widen the `$PATH` regex to `^fascicle(/|$)` and add `main.ts` / `tools/**` to the ignore list as appropriate.
+Rule 3 — [`fascicle-value-imports-confined.yml`](../examples/pr-improve/rules/fascicle-value-imports-confined.yml): value imports from `fascicle` are allowed only in `engine.ts` (`create_engine`), `flow.ts` (composition), `main.ts` (`run`), and `stages/**` (`model_step` / `model_call`); everywhere else, `import type` stays free. The brace/default/namespace patterns match value imports without matching `import type { ... }`, so business logic files that need only Fascicle types are untouched. If your app uses subpath imports (`fascicle/adapters`, `fascicle/mcp`), widen the `$PATH` regex to `^fascicle(/|$)` and add `main.ts` / `tools/**` to the ignore list as appropriate.
 
 ```yaml
 id: fascicle-value-imports-confined
@@ -413,7 +413,7 @@ Add a rule per boundary you care about; each is a few lines and turns an archite
 
 Before calling an agent app done:
 
-- [ ] One composition layer exists and contains only fascicle vocabulary; the header diagram matches the code.
+- [ ] One composition layer exists and contains only Fascicle vocabulary; the header diagram matches the code.
 - [ ] `create_engine` appears in exactly one file, provider swap is one env var, and disposal is in `finally`.
 - [ ] Every model boundary has a zod schema in `types.ts`; stages return `Step<In, Out>` from `model_step` (or the `GenerateResult` envelope from `model_call` where the flow needs usage or tool calls).
 - [ ] System prompts are markdown files with frontmatter; dynamic content is assembled in `messages.ts`.

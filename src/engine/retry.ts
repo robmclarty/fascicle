@@ -64,7 +64,7 @@ function is_retryable(kind: RetryFailureKind, policy: RetryPolicy): boolean {
  * The engine's convention, and the opposite of core's propagate-verbatim rule.
  * Two things depend on the wrap. A bare `controller.abort()` sets
  * `signal.reason` to a `DOMException`, which is an `Error` on Node, so
- * propagating would leak a non-fascicle error out of a boundary documented as
+ * propagating would leak a non-Fascicle error out of a boundary documented as
  * throwing `aborted_error`. And the engine's other abort sites (`generate`,
  * `tool_loop`, the adapters) wrap in order to attach `step_index` and
  * `tool_call_in_flight`, which only the construction site knows; propagating

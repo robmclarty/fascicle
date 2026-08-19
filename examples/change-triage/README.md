@@ -20,7 +20,7 @@ call second, and a floor the model cannot undercut**.
   never reaches the model; detectors already scored it, and the report
   discloses every withheld path ([`screen.ts`](./src/screen.ts)).
 - **Blueprint layout end to end**: one composition layer
-  ([`flow.ts`](./src/flow.ts)) in fascicle vocabulary only, a markdown system
+  ([`flow.ts`](./src/flow.ts)) in Fascicle vocabulary only, a markdown system
   prompt with frontmatter ([`src/prompts/assessor.md`](./src/prompts/assessor.md)),
   one `create_engine` site, state threaded as a typed record by `chain` (no
   declared state shape, no key constants, no reader casts), stub-engine tests

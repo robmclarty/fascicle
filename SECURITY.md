@@ -39,7 +39,7 @@ Pin a version you have reviewed and upgrade deliberately.
   environment is the harness's job, done at its own boundary. An internal rule
   (`no-process-env-in-core`) enforces this across `src/`. See
   [docs/configuration.md](./docs/configuration.md).
-- **Credentials are not persisted or logged by fascicle.** They live only in the
+- **Credentials are not persisted or logged by Fascicle.** They live only in the
   engine config you construct and are handed to the underlying provider SDK.
 - **Trajectory and checkpoint files are sensitive.** They capture prompts, model
   output, and tool inputs/outputs in plain text. The bundled `filesystem_logger`
@@ -56,7 +56,7 @@ output. That is a real trust boundary:
   child environment so a stored session is used instead of leaking a key into the
   subprocess. Under `api_key`/`auto` the child starts from an empty environment
   and only caller-supplied values pass through.
-- fascicle tools that carry an `execute` closure cannot run inside the
+- Fascicle tools that carry an `execute` closure cannot run inside the
   subprocess. The default `tool_bridge: 'allowlist_only'` only adds tool *names*
   to the CLI's own allowlist and silently drops the closures; use
   `tool_bridge: 'forbid'` when you need a hard guarantee that no `execute` closure
@@ -66,7 +66,7 @@ output. That is a real trust boundary:
   `network_allowlist` means network-off. Full details in [docs/cli.md](./docs/cli.md).
 
 Tools you pass to a model call run **in your process**, with whatever privileges
-your process holds. Validate their inputs and scope their side effects; fascicle
+your process holds. Validate their inputs and scope their side effects; Fascicle
 does not sandbox in-process tool execution.
 
 ## Supply-chain posture
@@ -76,22 +76,22 @@ credentials and can spawn a subprocess is a high-value target. The npm ecosystem
 has seen the whole range of the threat: compromised maintainer accounts that
 publish a malicious version, malicious `postinstall` or `preinstall` scripts that
 run automatically on `npm install`, and typosquatted transitive dependencies.
-fascicle's architecture is deliberately shaped to keep both its own footprint and
+Fascicle's architecture is deliberately shaped to keep both its own footprint and
 yours small.
 
 ### What keeps the surface small
 
-- **No direct runtime dependencies, and zero mandatory peers.** fascicle's
+- **No direct runtime dependencies, and zero mandatory peers.** Fascicle's
   `package.json` has an empty `dependencies` field, and `ai`, `zod`, and every
   provider SDK are *optional peer* dependencies you install explicitly, so
   `pnpm add fascicle` alone pulls in no transitive tree of its own. You choose
   and audit what actually gets added.
 - **Provider SDKs and the schema library are optional peers, loaded lazily.**
-  Installing fascicle does not drag in eight LLM SDKs or a schema library; you
+  Installing Fascicle does not drag in eight LLM SDKs or a schema library; you
   install only what you call, and each is imported on first use rather than at
   load time. Schemas accept any Standard Schema implementation, so the one you
-  already use works without fascicle naming it.
-- **No install scripts.** fascicle ships no `preinstall`, `install`, or
+  already use works without Fascicle naming it.
+- **No install scripts.** Fascicle ships no `preinstall`, `install`, or
   `postinstall` hook, so the most common npm malware-execution path (code that runs
   automatically at install time) does not exist in this package.
 - **A small, published artifact you can read.** The package publishes only `dist`,
@@ -114,12 +114,12 @@ yours small.
   arms race, no hosted service: fewer moving parts, and fewer packages that can be
   independently compromised.
 
-### Honest residual risk: fascicle is itself a dependency
+### Honest residual risk: Fascicle is itself a dependency
 
-fascicle is a dependency like any other, so it is also a vector. The risks worth
+Fascicle is a dependency like any other, so it is also a vector. The risks worth
 naming plainly:
 
-- **Single-maintainer key risk.** fascicle is published by one maintainer, so a
+- **Single-maintainer key risk.** Fascicle is published by one maintainer, so a
   compromise of that account is the sharpest supply-chain risk to consumers, the
   same class of attack that has hit other agent frameworks. MFA reduces this risk;
   it does not remove it.
@@ -131,9 +131,9 @@ naming plainly:
   versions you have reviewed. Releases published through the documented
   break-glass path (manual, when CI is unavailable) lack an attestation and are
   noted as such in the release.
-- **fascicle does not vouch for your other dependencies.** Vulnerabilities in `ai`,
+- **Fascicle does not vouch for your other dependencies.** Vulnerabilities in `ai`,
   `zod` or another schema library, a provider SDK, or their transitive
-  dependencies remain your audit surface. fascicle avoids adding its own tree,
+  dependencies remain your audit surface. Fascicle avoids adding its own tree,
   but it cannot vet the peers you install
   alongside it.
 - **Pre-1.0 support window.** Only the latest published minor receives security
@@ -141,15 +141,15 @@ naming plainly:
 
 For the subprocess trust boundary (`claude_cli` spawning the `claude` binary), see
 the Subprocess and sandbox model section above; a compromise of the `claude` binary
-itself is outside fascicle's control.
+itself is outside Fascicle's control.
 
 ## Out of scope
 
-The following are not fascicle vulnerabilities, though reports that show fascicle
+The following are not Fascicle vulnerabilities, though reports that show Fascicle
 mishandling them are welcome:
 
 - Vulnerabilities in a provider SDK, the `claude` binary, or a model endpoint
   itself.
 - Secrets leaked by your own harness reading `process.env` and logging it.
-- Prompt-injection of a model you call. fascicle gives you the trajectory as an
+- Prompt-injection of a model you call. Fascicle gives you the trajectory as an
   audit trail; deciding what a tool is allowed to do is your harness's job.

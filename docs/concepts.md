@@ -1,10 +1,10 @@
 # Concepts
 
-The mental model behind fascicle. Read it once, because the rest of the docs assume you have.
+The mental model behind Fascicle. Read it once, because the rest of the docs assume you have.
 
 ## Two Layers
 
-fascicle ships two independently useful layers, re-exported from one package.
+Fascicle ships two independently useful layers, re-exported from one package.
 
 - **Composition layer** (the `core` + `composites` modules, surfaced via `fascicle`). 22 primitives for composing work out of plain values. No network, no LLM calls, no ambient state.
 - **Engine layer** (the `engine` module, surfaced via `fascicle`). `create_engine(config)` returns a unified `generate` surface over eight provider adapters. No composition, no step plumbing.
@@ -189,7 +189,7 @@ Trajectory writes are never load-bearing, and a logger that throws doesn't fail 
 
 ## Cancellation
 
-fascicle installs SIGINT/SIGTERM handlers the first time you call `run(...)` and removes them after your last run finishes. When a signal arrives, every active run's abort signal fires with an `aborted_error`.
+Fascicle installs SIGINT/SIGTERM handlers the first time you call `run(...)` and removes them after your last run finishes. When a signal arrives, every active run's abort signal fires with an `aborted_error`.
 
 Your steps cooperate by:
 
@@ -199,15 +199,15 @@ Your steps cooperate by:
 
 For embedded runtimes (tests, Lambda, worker threads, anything that owns its own signal stack), opt out with `install_signal_handlers: false` and forward cancellation yourself.
 
-**Abort reasons take one of two shapes, by layer.** Composition (`retry`, `timeout`, `parallel`, `map`, `bench`) propagates an `Error` abort reason verbatim and wraps anything else in `aborted_error`, so the cause you aborted with is the error you catch. A SIGINT surfaces as the runner's own `aborted_error('received SIGINT')`, and a `timeout` firing inside a retry still surfaces as `timeout_error`. The engine (`generate` and everything under it) always wraps, so a cancelled model call throws `aborted_error` with your reason on `.reason` and the engine's `step_index` attached. The split is deliberate: `abort()` with no reason sets `signal.reason` to a `DOMException`, and the engine's contract is that only fascicle errors cross its boundary.
+**Abort reasons take one of two shapes, by layer.** Composition (`retry`, `timeout`, `parallel`, `map`, `bench`) propagates an `Error` abort reason verbatim and wraps anything else in `aborted_error`, so the cause you aborted with is the error you catch. A SIGINT surfaces as the runner's own `aborted_error('received SIGINT')`, and a `timeout` firing inside a retry still surfaces as `timeout_error`. The engine (`generate` and everything under it) always wraps, so a cancelled model call throws `aborted_error` with your reason on `.reason` and the engine's `step_index` attached. The split is deliberate: `abort()` with no reason sets `signal.reason` to a `DOMException`, and the engine's contract is that only Fascicle errors cross its boundary.
 
 `timeout(inner, ms)` builds on the same mechanism, aborting the inner step's signal after the deadline and throwing `timeout_error`.
 
 ### Cancellation Is Cooperative
 
-`timeout` and abort only *signal* intent — they can't kill work that ignores `ctx.abort`. `timeout(inner, ms)` races the inner step against a deadline: when the deadline wins, `timeout_error` throws and `run(...)` returns control to the caller, but the inner step's promise isn't cancelled. If that step never checks `ctx.abort` (a tight CPU-bound loop, a `fetch` call that wasn't given the signal, a tool's `execute` that awaits an unrelated promise), it keeps running in the background after fascicle has already moved on. The same is true of a SIGINT/SIGTERM abort, and of a `ctx.on_cleanup` handler that outlives its own timeout — it's abandoned, not killed, and the remaining handlers run without waiting for it.
+`timeout` and abort only *signal* intent — they can't kill work that ignores `ctx.abort`. `timeout(inner, ms)` races the inner step against a deadline: when the deadline wins, `timeout_error` throws and `run(...)` returns control to the caller, but the inner step's promise isn't cancelled. If that step never checks `ctx.abort` (a tight CPU-bound loop, a `fetch` call that wasn't given the signal, a tool's `execute` that awaits an unrelated promise), it keeps running in the background after Fascicle has already moved on. The same is true of a SIGINT/SIGTERM abort, and of a `ctx.on_cleanup` handler that outlives its own timeout — it's abandoned, not killed, and the remaining handlers run without waiting for it.
 
-Abandoned work isn't free. A `model_call` step that outlives its `timeout` keeps the underlying HTTP request open and the provider keeps generating (and billing) tokens for a response nothing will read; a subprocess or socket that was never wired to `ctx.abort` keeps holding its resource. fascicle has no scheduler that can preempt a promise it doesn't control — that would require language-level cancellation Node/JS doesn't offer.
+Abandoned work isn't free. A `model_call` step that outlives its `timeout` keeps the underlying HTTP request open and the provider keeps generating (and billing) tokens for a response nothing will read; a subprocess or socket that was never wired to `ctx.abort` keeps holding its resource. Fascicle has no scheduler that can preempt a promise it doesn't control — that would require language-level cancellation Node/JS doesn't offer.
 
 The fix is yours as the step author. Thread `ctx.abort` into every long-running operation a step performs, not just the outermost one. Pass it to `fetch`'s `signal` option, to `child_process` spawn options, and check `ctx.abort.aborted` between iterations of any loop that doesn't otherwise await an abortable call. A step that never touches `ctx.abort` isn't wrong, but it isn't cancellable — treat that as a property to design for, not an edge case to patch later. See [troubleshooting.md](./troubleshooting.md#a-cancelled-run-keeps-consuming-tokens-or-holding-resources) for how to spot this in practice.
 
@@ -312,9 +312,9 @@ Not a runtime concept, but a project one. `pnpm check:all` is the single source 
 ## Further Reading
 
 - [getting-started.md](./getting-started.md) — install and run your first flow.
-- [writing-a-harness.md](./writing-a-harness.md) — build a runner around fascicle.
-- [blueprint.md](./blueprint.md) — the standard app architecture for building on fascicle.
-- [embedding-under-a-harness.md](./embedding-under-a-harness.md) — run a fascicle agent as somebody's child process.
+- [writing-a-harness.md](./writing-a-harness.md) — build a runner around Fascicle.
+- [blueprint.md](./blueprint.md) — the standard app architecture for building on Fascicle.
+- [embedding-under-a-harness.md](./embedding-under-a-harness.md) — run a Fascicle agent as somebody's child process.
 - [configuration.md](./configuration.md) — engine config, provider setup, defaults.
 - [providers.md](./providers.md) — per-provider adapter notes.
 - [cli.md](./cli.md) — the `claude_cli` subprocess provider.

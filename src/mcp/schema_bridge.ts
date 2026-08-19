@@ -1,7 +1,7 @@
 /**
  * A Standard Schema over an inbound MCP tool's advertised JSON Schema.
  *
- * An MCP tool advertises its input as JSON Schema, and a fascicle `Tool` carries
+ * An MCP tool advertises its input as JSON Schema, and a Fascicle `Tool` carries
  * a `ToolSchema` that the tool loop validates before `execute` and the engine
  * emits back to the provider as JSON Schema. Those are two faces of one object,
  * so this bridge builds both directly over the schema the server sent: emission

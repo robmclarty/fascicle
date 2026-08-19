@@ -1,5 +1,5 @@
 /**
- * amplify flow: pure fascicle composition.
+ * amplify flow: pure Fascicle composition.
  *
  * Read top-to-bottom and you see the agent topology:
  *

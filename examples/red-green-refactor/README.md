@@ -1,6 +1,6 @@
 # Red-Green-Refactor harness
 
-A fascicle example that codifies Kent Beck's TDD loop as a runnable agent harness. It drives Claude Code (via the `claude_cli` provider) through one full **Red → Green → Refactor** cycle per behavior, with structural backstops that prevent the model from splatting tests or "fixing" failures by editing the test.
+A Fascicle example that codifies Kent Beck's TDD loop as a runnable agent harness. It drives Claude Code (via the `claude_cli` provider) through one full **Red → Green → Refactor** cycle per behavior, with structural backstops that prevent the model from splatting tests or "fixing" failures by editing the test.
 
 ## Why
 
@@ -58,7 +58,7 @@ chain<Behavior, 'behavior'>('behavior')
   .output(() => undefined);
 ```
 
-GREEN uses fascicle's `adversarial` composer:
+GREEN uses Fascicle's `adversarial` composer:
 
 ```ts
 adversarial<Behavior, TestVerdict>({

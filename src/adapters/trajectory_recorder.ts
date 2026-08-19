@@ -1,7 +1,7 @@
 /**
  * Shared span/record core for trajectory loggers.
  *
- * Every fascicle trajectory logger emits the same wire format (one JSON object
+ * Every Fascicle trajectory logger emits the same wire format (one JSON object
  * per event) and differs only in where each event goes: `line_logger` writes a
  * line, `http_logger` POSTs NDJSON. This module holds the span bookkeeping they
  * share, parameterized by a single `emit` sink.

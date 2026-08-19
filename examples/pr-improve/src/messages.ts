@@ -2,7 +2,7 @@
  * User-message builders for each stage.
  *
  * Each function takes the data it needs and returns a string suitable for
- * `model_call` input. No fascicle imports here — these are pure formatters
+ * `model_call` input. No Fascicle imports here — these are pure formatters
  * that flow.ts plugs in via `use(...)` projections.
  */
 

@@ -1,5 +1,5 @@
 /**
- * docs-concierge flow: pure fascicle composition.
+ * docs-concierge flow: pure Fascicle composition.
  *
  * Read top-to-bottom and you see the agent topology:
  *

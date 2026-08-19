@@ -1,6 +1,6 @@
 # Embedding under a Harness
 
-[Writing a harness](./writing-a-harness.md) covers fascicle as the *parent*, where your program owns argv, wiring, and the run. This guide is the mirror image, fascicle as the *child*: some other program spawns your agent as a single-shot subprocess, writes JSON to its stdin, and reads one JSON result from its stdout. Deterministic parent CLIs, plugin seams, CI steps, and anything else that speaks JSON-over-stdio all have this shape.
+[Writing a harness](./writing-a-harness.md) covers Fascicle as the *parent*, where your program owns argv, wiring, and the run. This guide is the mirror image, Fascicle as the *child*: some other program spawns your agent as a single-shot subprocess, writes JSON to its stdin, and reads one JSON result from its stdout. Deterministic parent CLIs, plugin seams, CI steps, and anything else that speaks JSON-over-stdio all have this shape.
 
 The whole contract is one call, `run_stdio` from `fascicle/stdio`.
 
@@ -25,7 +25,7 @@ Key rules:
 
 ## `run_stdio`
 
-Your entry point stays yours, and fascicle still ships no generic runner CLI. You call `run_stdio` from your own file:
+Your entry point stays yours, and Fascicle still ships no generic runner CLI. You call `run_stdio` from your own file:
 
 <!-- snippet: check -->
 

@@ -1,6 +1,6 @@
 /**
  * Inbound MCP: connect to an external MCP server and surface its tools as plain
- * fascicle `Tool[]`.
+ * Fascicle `Tool[]`.
  */
 
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js'
@@ -42,7 +42,7 @@ export type McpClientConfig =
   | McpExistingClientConfig
 
 export type McpClientOptions = {
-  // Identity sent in the MCP handshake; defaults to fascicle.
+  // Identity sent in the MCP handshake; defaults to Fascicle.
   client_info?: { name: string; version: string }
   // When set, only tools whose name is listed are surfaced.
   include?: ReadonlyArray<string>
@@ -56,7 +56,7 @@ export type McpClientHandle = {
 }
 
 /**
- * Connects to an MCP server and surfaces its advertised tools as fascicle
+ * Connects to an MCP server and surfaces its advertised tools as Fascicle
  * `Tool[]`, plus a `close` handle for the connection.
  *
  * Owns the connection lifecycle (config in, `{ tools, close }` out) so callers
@@ -129,7 +129,7 @@ function build_transport(
 }
 
 /**
- * Wraps one advertised MCP tool as a fascicle `Tool` whose `execute` forwards
+ * Wraps one advertised MCP tool as a Fascicle `Tool` whose `execute` forwards
  * to `callTool` on the shared client.
  *
  * An already-aborted signal short-circuits before the wire call; otherwise the

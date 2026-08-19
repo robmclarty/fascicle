@@ -1,5 +1,5 @@
 /**
- * pr-improve flow — pure fascicle composition.
+ * pr-improve flow — pure Fascicle composition.
  *
  * Read top-to-bottom and you see the agent topology:
  *

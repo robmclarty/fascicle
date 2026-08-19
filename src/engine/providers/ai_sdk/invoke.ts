@@ -158,7 +158,7 @@ export function to_provider_reported(metadata: unknown): Record<string, unknown>
 }
 
 /**
- * Map fascicle's Message[] to the AI SDK's ModelMessage[] shape.
+ * Map Fascicle's Message[] to the AI SDK's ModelMessage[] shape.
  */
 export function to_sdk_messages(messages: ReadonlyArray<Message>): ModelMessage[] {
   const out: ModelMessage[] = []
@@ -226,13 +226,13 @@ export function to_sdk_messages(messages: ReadonlyArray<Message>): ModelMessage[
  *
  * Passing a `role: 'system'` entry inside `messages` makes the AI SDK treat it
  * as potentially attacker-controlled: it warns on every call (and newer `ai`
- * versions throw unless `allowSystemInMessages` is set). fascicle's system
+ * versions throw unless `allowSystemInMessages` is set). Fascicle's system
  * content is the developer's own prompt, and the SDK's own recommendation is to
  * deliver it through the top-level `instructions` option (v7's rename of the
  * former `system` option), which removes the warning at its source rather than
  * suppressing it.
  *
- * Only the *leading* run is hoisted (fascicle's only shape: one or more system
+ * Only the *leading* run is hoisted (Fascicle's only shape: one or more system
  * messages, then the conversation). A system message that appears after a
  * non-system message keeps its position rather than being silently reordered to
  * the top, and the original list is returned untouched when hoisting would leave
@@ -246,7 +246,7 @@ export function split_leading_system(messages: ReadonlyArray<ModelMessage>): {
 }
 
 /**
- * Map fascicle's Tool[] to the AI SDK's ToolSet.
+ * Map Fascicle's Tool[] to the AI SDK's ToolSet.
  *
  * Returns undefined for an empty tool list so the caller can omit `tools`
  * from the call params entirely instead of passing an empty object.
@@ -462,7 +462,7 @@ async function collect_non_stream(
 /**
  * When `output` (structured output) is in play, `generateText` eagerly parses the
  * model's text against the schema and throws `NoObjectGeneratedError` if it
- * does not conform. That parse is the SDK's, not fascicle's: turning it into a
+ * does not conform. That parse is the SDK's, not Fascicle's: turning it into a
  * thrown error would skip the engine's own schema-parse + repair loop (and the
  * error is not a retryable transient, so it would surface raw). Instead we
  * recover the model's raw text from the error and hand it back as a normal

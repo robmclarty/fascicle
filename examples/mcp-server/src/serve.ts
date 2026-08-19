@@ -1,5 +1,5 @@
 /**
- * Expose a composed fascicle flow as an MCP tool over stdio using the published
+ * Expose a composed Fascicle flow as an MCP tool over stdio using the published
  * `serve_flow` from `fascicle/mcp`. Run:
  *
  *   pnpm --filter @repo/example-mcp-server serve

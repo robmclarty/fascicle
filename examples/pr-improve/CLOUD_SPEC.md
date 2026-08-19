@@ -244,11 +244,11 @@ PR D-2 ships when: the Lambda is unit-tested, `terraform validate` passes, and t
 
 1. `terraform apply` against the chosen account/region. Operator populates the three secrets.
 2. ECR push of the first worker image. Update `image_tag` in `tfvars`, then `terraform apply` again.
-3. Configure the GitHub webhook on the fascicle repo (operator pastes `webhook_url` from `terraform output`, sets the same secret as `pr-improve/webhook_secret`, scopes to `pull_request` events only).
-4. Enable on the fascicle repo: add the `fascicle-improve` label to a low-stakes PR. Watch CloudWatch + the SQS depth metric. Verify the improvement PR appears.
+3. Configure the GitHub webhook on the Fascicle repo (operator pastes `webhook_url` from `terraform output`, sets the same secret as `pr-improve/webhook_secret`, scopes to `pull_request` events only).
+4. Enable on the Fascicle repo: add the `fascicle-improve` label to a low-stakes PR. Watch CloudWatch + the SQS depth metric. Verify the improvement PR appears.
 5. If anything blocks for >15 min: pause by removing the label or scaling the ECS service to 0 (which prevents new task launches; in-flight runs complete).
 
-PR D-3 isn't a code change — it's a checklist + the recorded outcome. Closed when the first auto-improvement PR lands on the fascicle repo.
+PR D-3 isn't a code change — it's a checklist + the recorded outcome. Closed when the first auto-improvement PR lands on the Fascicle repo.
 
 ## Verification
 
@@ -262,7 +262,7 @@ PR D-3 isn't a code change — it's a checklist + the recorded outcome. Closed w
 | Build | Terraform | `terraform fmt -check && terraform validate` |
 | Acceptance (staging) | Webhook → SQS | curl with a recorded GitHub `pull_request.labeled` payload; verify SQS message lands |
 | Acceptance (staging) | SQS → Fargate task | manually `aws sqs send-message` a hand-built payload; verify ECS task launches and completes |
-| Acceptance (production) | End-to-end | label a PR on the fascicle repo; improvement PR appears within ~5 min |
+| Acceptance (production) | End-to-end | label a PR on the Fascicle repo; improvement PR appears within ~5 min |
 | Pipeline-level | All other checks | `pnpm check:all` green at every PR boundary |
 
 ## Open questions

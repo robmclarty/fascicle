@@ -369,7 +369,7 @@ export function create_parser_state(): ParserState {
 }
 
 /**
- * Convert the CLI's raw usage fields to fascicle's `UsageTotals` shape.
+ * Convert the CLI's raw usage fields to Fascicle's `UsageTotals` shape.
  *
  * `cache_read_input_tokens` maps to `cached_input_tokens` and
  * `cache_creation_input_tokens` maps to `cache_write_tokens`; both are

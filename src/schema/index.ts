@@ -1,7 +1,7 @@
 /**
  * Public surface for schema.
  *
- * The vendor-neutral schema seam: the types fascicle accepts from users, the
+ * The vendor-neutral schema seam: the types Fascicle accepts from users, the
  * validator it runs them through, and the JSON Schema it hands to providers.
  * Internal to the package: `#schema` has no published subpath, because the
  * types travel out through the surfaces that use them rather than on their own.

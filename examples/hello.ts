@@ -1,5 +1,5 @@
 /**
- * hello: your first fascicle harness.
+ * hello: your first Fascicle harness.
  *
  * Composes three steps into a flow and runs it. No engine, no network,
  * no API keys required. This is the smallest viable shape of a harness:

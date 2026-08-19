@@ -6,7 +6,7 @@ All of them import the published surface (`fascicle`, `fascicle/adapters`, `fasc
 
 ## The architecture these examples embody
 
-[docs/blueprint.md](../docs/blueprint.md) is the standard app architecture for building on fascicle — one composition layer, markdown prompts, normalized module contracts, stub-engine testing — distilled from these reference apps and from production consumers. If you (or your coding agent) are constructing a new fascicle app, start there.
+[docs/blueprint.md](../docs/blueprint.md) is the standard app architecture for building on Fascicle — one composition layer, markdown prompts, normalized module contracts, stub-engine testing — distilled from these reference apps and from production consumers. If you (or your coding agent) are constructing a new Fascicle app, start there.
 
 ## Example apps
 

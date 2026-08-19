@@ -69,7 +69,7 @@ What fails in practice:
 - **Inspect AI** — Dataset / Solver / Scorer. Their `Scorer` is morally identical to our `Metric.score`. We mirror the trace shape so a user can plug in Braintrust/Langfuse later for free.
 - **DSPy / GEPA** — `Prediction(score, feedback)`. Shape-equivalent to our `(score, tail)` pair flowing into the lessons buffer.
 - **Stryker / mutmut mutation testing** — "did the change matter?" by kill-rate. Our cascade is morally a mutant-survival pipeline: candidates survive cheap stages first.
-- **Claude Agent SDK / Claude Code** — `model_call` is fascicle's bridge to that pattern; `effort: 'high'` is the SDK's reasoning-budget control.
+- **Claude Agent SDK / Claude Code** — `model_call` is Fascicle's bridge to that pattern; `effort: 'high'` is the SDK's reasoning-budget control.
 
 The credible OSS substrates today are **OpenEvolve** (AlphaEvolve-shaped, real users) and **gepa-ai/gepa** (textual-gradient optimization). Several "AlphaEvolve clones" are shells. AlphaEvolve itself is *not* open source — only the result tables are.
 

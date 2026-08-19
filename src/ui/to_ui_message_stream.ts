@@ -4,7 +4,7 @@
  * `run.stream(flow, input)` yields `TrajectoryEvent`s; under streaming,
  * `model_call` records `model_chunk` events carrying an engine `StreamChunk`.
  * This module maps those chunks onto the AI SDK `UIMessageChunk` protocol so a
- * fascicle flow can back a `useChat` endpoint rendered by AI Elements /
+ * Fascicle flow can back a `useChat` endpoint rendered by AI Elements /
  * Streamdown, with zero bespoke glue.
  *
  * It is the outbound inverse of the engine's inbound provider->StreamChunk

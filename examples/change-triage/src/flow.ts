@@ -1,5 +1,5 @@
 /**
- * change-triage flow: pure fascicle composition.
+ * change-triage flow: pure Fascicle composition.
  *
  * Read top-to-bottom and you see the agent topology:
  *

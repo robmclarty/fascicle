@@ -1,5 +1,5 @@
 /**
- * red-green-refactor flow: pure fascicle composition.
+ * red-green-refactor flow: pure Fascicle composition.
  *
  * Read top-to-bottom and you see the agent topology:
  *

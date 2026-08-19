@@ -1,8 +1,8 @@
 /**
- * Adapter subpath for fascicle.
+ * Adapter subpath for Fascicle.
  *
  * Re-exports the trajectory logger and checkpoint store adapters that ship
- * with fascicle. Adapters are the swappable I/O layer of a run — the
+ * with Fascicle. Adapters are the swappable I/O layer of a run — the
  * `TrajectoryLogger` and `CheckpointStore` contracts they conform to live at
  * the root of `fascicle`, so users can replace any of these with their own
  * implementation without touching the rest of the public surface.

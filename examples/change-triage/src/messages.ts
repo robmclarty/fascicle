@@ -2,7 +2,7 @@
  * Pure user-message assembly for the assessor call. Static instruction lives
  * in `prompts/assessor.md`; everything computed per run (the file list, the
  * detector signals, the screened diff) is formatted here and sent as the user
- * message. No fascicle imports, no IO.
+ * message. No Fascicle imports, no IO.
  */
 
 import type { DiffFile, ScreenResult, Signal, TriageInput } from './types.js'

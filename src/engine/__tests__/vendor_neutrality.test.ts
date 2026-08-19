@@ -2,10 +2,10 @@
  * Vendor neutrality: a tool defined with ArkType works end to end (Q4).
  *
  * Every other test in this repo defines schemas with zod, which is the one
- * vendor fascicle is developed against — so they cannot tell a neutral seam
+ * vendor Fascicle is developed against — so they cannot tell a neutral seam
  * from a zod-shaped one. This file imports ArkType and never zod, covering
  * both directions a user's schema travels: out to a provider as JSON Schema,
- * and back in as a value to validate. If fascicle regains a zod assumption on
+ * and back in as a value to validate. If Fascicle regains a zod assumption on
  * either path, this file fails while the zod-based suites stay green.
  *
  * ArkType over Valibot because it emits Standard JSON Schema from the one

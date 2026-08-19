@@ -1,6 +1,6 @@
 # Human-in-the-Loop
 
-fascicle gives you two shapes for putting a person in the loop, and they solve
+Fascicle gives you two shapes for putting a person in the loop, and they solve
 different problems. Pick by whether you can afford to hold the process open:
 
 - **Asynchronous approval (`suspend` / resume).** The flow pauses, unwinds, and

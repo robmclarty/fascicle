@@ -1,7 +1,7 @@
 # Troubleshooting
 
 The errors you're most likely to hit on your first run, and what each one means.
-fascicle fails loudly with named error types instead of silent fallbacks, so the
+Fascicle fails loudly with named error types instead of silent fallbacks, so the
 error name usually points you straight at the cause.
 
 ## `Cannot find package '@ai-sdk/...'` — Peer Not Installed
@@ -57,7 +57,7 @@ bare tokens `opus`/`sonnet`/`haiku` are resolved by the CLI itself. See
 
 ## `ERR_PACKAGE_PATH_NOT_EXPORTED` — `require()` from CommonJS
 
-fascicle ships ESM only, but its `exports` map carries a `default` condition,
+Fascicle ships ESM only, but its `exports` map carries a `default` condition,
 so a CommonJS consumer on Node >= 24 (the supported floor) can
 `require('fascicle')` directly, since Node loads the ESM build through native
 `require(esm)`. No CJS artifacts exist; the same files serve both.
@@ -68,12 +68,12 @@ Seeing this error:
 Error [ERR_PACKAGE_PATH_NOT_EXPORTED]: No "exports" main defined in .../node_modules/fascicle/package.json
 ```
 
-means an older fascicle (<= 0.12), whose exports map was import-only. Upgrade,
+means an older Fascicle (<= 0.12), whose exports map was import-only. Upgrade,
 or import it (`import { run } from 'fascicle'`) from an ES module.
 
-- Check `node -v`. fascicle requires Node >= 24; on an older Node you'll
+- Check `node -v`. Fascicle requires Node >= 24; on an older Node you'll
   see syntax errors from modern language features long before anything
-  fascicle-specific.
+  Fascicle-specific.
 
 ## `not assignable to parameter of type 'never'` at `run()`
 
@@ -130,7 +130,7 @@ that never checks `ctx.abort.aborted`, a subprocess started without it — keeps
 the background. For a model call this means the provider keeps generating, and billing,
 tokens for a response nothing will read.
 
-No fix exists on fascicle's side, because JavaScript has no way to preempt a promise it
+No fix exists on Fascicle's side, because JavaScript has no way to preempt a promise it
 does not control. The fix is in the step, so pass `ctx.abort` to every `fetch`, `child_process`,
 or other abortable call the step makes, and check `ctx.abort.aborted` between iterations
 of any loop that doesn't otherwise await something abortable. See
@@ -264,7 +264,7 @@ try {
 }
 ```
 
-`error_path` narrows any thrown value; the fascicle error classes also
+`error_path` narrows any thrown value; the Fascicle error classes also
 declare `path`, so after an `instanceof` check `err.path` typechecks with no
 cast.
 
@@ -278,4 +278,4 @@ when a flow holds several model calls; set `id:` on each `model_call` /
 
 Attach a `trajectory` logger and re-run — the event stream usually shows exactly
 where a flow diverged. Then open a bug report with the trajectory excerpt and your
-Node and fascicle versions.
+Node and Fascicle versions.

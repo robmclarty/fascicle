@@ -3,7 +3,7 @@
  *
  * Conforms to `TrajectoryLogger`. POSTs each event as a single line of
  * newline-delimited JSON to a configured URL. Pairs naturally with the
- * fascicle viewer's `/api/ingest` endpoint, but is a generic adapter: the
+ * Fascicle viewer's `/api/ingest` endpoint, but is a generic adapter: the
  * receiver can be anything that accepts NDJSON over HTTP.
  *
  * Failure policy: drop on transport error and invoke the optional `on_error`

@@ -1,5 +1,5 @@
 /**
- * Umbrella entry point for fascicle.
+ * Umbrella entry point for Fascicle.
  *
  * Re-exports the full public surface of `core` (composition
  * layer) plus `engine` (AI engine layer) so downstream apps

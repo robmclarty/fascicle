@@ -108,7 +108,7 @@ function to_assistant_message(content: string | AssistantContentPart[]): OllamaC
 }
 
 /**
- * Map fascicle Message[] to the /api/chat shape. System messages map in place
+ * Map Fascicle Message[] to the /api/chat shape. System messages map in place
  * (no top-level system field); tool results are `tool` role messages keyed by
  * `tool_name`, since this wire has no tool_call_id to round-trip.
  */

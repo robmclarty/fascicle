@@ -1,13 +1,13 @@
 ---
 name: Feature idea
-about: Suggest a capability or change for fascicle
+about: Suggest a capability or change for Fascicle
 title: ''
 labels: enhancement
 ---
 
 ## The problem
 
-What are you trying to do that fascicle makes hard or impossible today? Describe
+What are you trying to do that Fascicle makes hard or impossible today? Describe
 the use case, not just the proposed solution.
 
 ## Proposed direction

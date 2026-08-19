@@ -9,7 +9,7 @@
  * 2. Explicit SigV4 fields — `access_key_id` / `secret_access_key` /
  *    `session_token`. Any one of them present means the caller is driving
  *    credentials, so no dynamic source is attached.
- * 3. A dynamic source — `use_credential_chain: true` (fascicle loads
+ * 3. A dynamic source — `use_credential_chain: true` (Fascicle loads
  *    @aws-sdk/credential-providers and attaches `fromNodeProviderChain()`) or a
  *    caller-supplied `credential_provider` function. Supplying both is an
  *    `engine_config_error`: they are two answers to one question, not a

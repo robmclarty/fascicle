@@ -1,6 +1,6 @@
 ---
 name: Bug report
-about: Something in fascicle behaves incorrectly
+about: Something in Fascicle behaves incorrectly
 title: ''
 labels: bug
 ---
@@ -26,7 +26,7 @@ beats a description.
 
 ## Environment
 
-- fascicle version:
+- Fascicle version:
 - Node version (`node -v`):
 - Provider(s) involved:
 - Installed provider SDK version(s):

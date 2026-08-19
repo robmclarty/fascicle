@@ -474,7 +474,7 @@ backup, and `handoff` is never called for them.
 a cheap model first, have a judge read the answer it actually produced, and
 only pay for the strong model when the judge says the cheap one is in trouble.
 Gateway-level routers (NVIDIA's Switchyard, for one) apply the same idea at
-the wire; in a fascicle app you own the call site, so it's plain composition
+the wire; in a Fascicle app you own the call site, so it's plain composition
 with the verdict visible in the trajectory.
 
 Three mechanics carry the pattern for you:

@@ -1,12 +1,12 @@
 # Architecture: composition-first design
 
-This app is structured so that a developer can read `src/flow.ts` and see the agent topology directly — no imperative goo, no buried control flow. Everything that isn't fascicle composition lives in adjacent modules and is invoked from named chain bindings.
+This app is structured so that a developer can read `src/flow.ts` and see the agent topology directly — no imperative goo, no buried control flow. Everything that isn't Fascicle composition lives in adjacent modules and is invoked from named chain bindings.
 
 This doc captures **why** the codebase is shaped this way, so the next person tempted to inline a `for` loop or an `if` inside a `step('...')` body will have a reason to pause. The generalized, app-agnostic version of this architecture is [docs/blueprint.md](../../../docs/blueprint.md) at the repo root — this app is its canonical worked example.
 
-## The principle: think at the fascicle level
+## The principle: think at the Fascicle level
 
-When you open `flow.ts`, you should see only fascicle vocabulary: `chain`, `branch`, `loop`, `step`, `model_step`, `ctx.call`. The shape of the agent system should be visible as the shape of the file. Anything that isn't part of that shape (string formatting, markdown rendering, state transitions, reading scope state) belongs in a sibling module.
+When you open `flow.ts`, you should see only Fascicle vocabulary: `chain`, `branch`, `loop`, `step`, `model_step`, `ctx.call`. The shape of the agent system should be visible as the shape of the file. Anything that isn't part of that shape (string formatting, markdown rendering, state transitions, reading scope state) belongs in a sibling module.
 
 ## What this means in code
 
@@ -26,13 +26,13 @@ chain 'pr'
      otherwise ─ no_changes_proposed
 ```
 
-Every node in that diagram is a fascicle primitive in `flow.ts`. Each binding that invokes a composed arm declares it as `arm` metadata, so `describe` renders this same tree statically.
+Every node in that diagram is a Fascicle primitive in `flow.ts`. Each binding that invokes a composed arm declares it as `arm` metadata, so `describe` renders this same tree statically.
 
 ## Module split
 
-Each module has one reason to exist; together they keep `flow.ts` at the fascicle level.
+Each module has one reason to exist; together they keep `flow.ts` at the Fascicle level.
 
-- `flow.ts` — pure fascicle composition. The agent topology.
+- `flow.ts` — pure Fascicle composition. The agent topology.
 - `stages/*.ts` — each stage loads its markdown prompt and returns a `make_*_step(engine, model, ...)` factory producing a `model_step`. No formatting, no extraction: the factory returns the schema-validated output type directly. `make_builder_step` additionally takes `worktree_root` and `provider` and dispatches: `claude_cli` uses the CLI's built-in tools, API providers get explicit worktree-scoped tools. The `Step<string, Handoff>` contract stays stable so `flow.ts` doesn't notice.
 - `prompts/*.md` — one markdown file per model role, with frontmatter, loaded by `prompts/load.ts`. The file holds the role and its judgment criteria; per-call content is assembled in `messages.ts`, and field-level output rules live in `.describe()` on the schemas. A prompt change is a prompt diff, reviewable on its own.
 - `messages.ts` — `format_*` user-message builders. Pure string assembly.
@@ -86,7 +86,7 @@ The sanctioned form is `ctx.call(the_step, input)` from a named chain binding, w
 
 ### Don't put control flow inside `step()` bodies
 
-A `for` loop, an `if`/`else`, a try/catch with a fallback — all of these have a fascicle primitive: `loop`, `branch`, `fallback`. Using the primitive gets you trajectory spans, retry composability, and (with Weft) a visual representation. Hiding the same logic inside a step body gets none of those things.
+A `for` loop, an `if`/`else`, a try/catch with a fallback — all of these have a Fascicle primitive: `loop`, `branch`, `fallback`. Using the primitive gets you trajectory spans, retry composability, and (with Weft) a visual representation. Hiding the same logic inside a step body gets none of those things.
 
 The exception: a step body might do small bookkeeping arithmetic (`round + 1`, picking a field off an object). That's fine. The line is "would another agent pipeline want to compose around this decision?" If yes, lift it to a primitive.
 
@@ -98,4 +98,4 @@ The exception: a step body might do small bookkeeping arithmetic (`round + 1`, p
 
 The composition-first style has a cost: a small amount of indirection (a named binding and a `ctx.call`) where a less-disciplined codebase would just close over a variable. That cost is worth it as long as the pipeline benefits from being introspectable, swappable, and observable.
 
-If a future stage genuinely needs imperative control flow that doesn't map to any primitive (three nested loops with shared mutable state, say), that's the signal to either (a) propose a new fascicle primitive in `src/core`, or (b) document why this stage is the exception. Hiding it inside a `step()` body without comment is not the answer.
+If a future stage genuinely needs imperative control flow that doesn't map to any primitive (three nested loops with shared mutable state, say), that's the signal to either (a) propose a new Fascicle primitive in `src/core`, or (b) document why this stage is the exception. Hiding it inside a `step()` body without comment is not the answer.

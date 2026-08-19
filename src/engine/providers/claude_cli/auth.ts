@@ -16,7 +16,7 @@ import { CLI_AUTH_ERROR_PATTERNS } from './constants.js'
  * (greywall/bwrap on PATH, then `claude`) can be resolved and run.
  *
  * Mirrors `STANDARD_KEYS` in `src/forward_standard_env.ts`. Keep the two
- * lists in sync; engine cannot import from fascicle (the umbrella depends
+ * lists in sync; engine cannot import from Fascicle (the umbrella depends
  * on engine, not the other way).
  */
 const STANDARD_ENV_KEYS = [

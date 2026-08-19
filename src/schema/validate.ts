@@ -11,7 +11,7 @@ import type { AnySchema, SchemaIssue, ValidateOutcome } from './types.js'
  *
  * Always async, even for a validator that answers synchronously: the spec
  * permits `validate` to return either a result or a promise of one, and
- * fascicle cannot know which a given vendor does. Awaiting a non-promise is
+ * Fascicle cannot know which a given vendor does. Awaiting a non-promise is
  * cheap; guessing wrong is a silent bug.
  */
 export async function validate_schema<t>(
@@ -24,7 +24,7 @@ export async function validate_schema<t>(
 }
 
 /**
- * Flatten one vendor issue into fascicle's shape.
+ * Flatten one vendor issue into Fascicle's shape.
  *
  * The spec allows a path segment to be a bare key or a `{ key }` wrapper, and
  * allows the path to be absent entirely. Normalizing here means no consumer has

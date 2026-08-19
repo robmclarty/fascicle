@@ -12,7 +12,7 @@ When a developer opens a PR, an opt-in trigger should kick off an automated agen
 4. Reviews the build against the spec, looping back to the builder with feedback until the review verdict is `pass`.
 5. Pushes the branch, opens an *improvement PR* targeting the original PR's head branch, and comments on the original with a 2-sentence summary linking to it.
 
-**Why now.** We have the building blocks (fascicle composition + multi-provider engine, AWS infra + SRE, Claude API access) but no end-to-end product loop that *uses our own developer-loop work to improve our own PRs*. This is dogfooding the toolkit and a recurring source of taste-aligned suggestions for every dev who opts in.
+**Why now.** We have the building blocks (Fascicle composition + multi-provider engine, AWS infra + SRE, Claude API access) but no end-to-end product loop that *uses our own developer-loop work to improve our own PRs*. This is dogfooding the toolkit and a recurring source of taste-aligned suggestions for every dev who opts in.
 
 **Proof point: provider portability.** Fascicle's reason to exist is that the same composition runs against any provider — Anthropic, OpenRouter, Google, Ollama. This app is a forcing function for that claim. Every stage uses the API engine (no `claude_cli` subprocess, no OAuth), the model is configured via alias (`'sonnet'`, `'opus'`), and the provider is selected by env. **Acceptance criterion: changing `FASCICLE_PROVIDER=anthropic` to `FASCICLE_PROVIDER=openrouter` runs the entire pipeline end-to-end with no code changes.**
 
@@ -43,7 +43,7 @@ All four stages go through the fascicle engine via `model_call`. Provider is a s
                                           └─ gh pr comment on original (link + 2-sentence summary)
 ```
 
-One process, four agents, in-memory state passing via fascicle's `scope` / `stash` / `use`. Trajectory written to disk for replay and observability via the fascicle viewer.
+One process, four agents, in-memory state passing via Fascicle's `scope` / `stash` / `use`. Trajectory written to disk for replay and observability via the Fascicle viewer.
 
 ---
 
@@ -103,7 +103,7 @@ Stashed under key `improvement_spec`. If accepted list is empty → exit cleanly
 
 **Input:** `improvement_spec`, the worktree path, the original PR diff for context.
 
-**Model:** `sonnet` via the fascicle engine (API). No `claude_cli` subprocess — that path needs OAuth/interactive login and doesn't fit a Fargate container. The portability proof requires every stage go through the engine.
+**Model:** `sonnet` via the Fascicle engine (API). No `claude_cli` subprocess — that path needs OAuth/interactive login and doesn't fit a Fargate container. The portability proof requires every stage go through the engine.
 
 **Mechanism:** Fascicle `tool_loop` agent equipped with a small, locked-down toolset scoped to the worktree.
 
@@ -140,7 +140,7 @@ type BuildVerdict =
   | { kind: 'needs-changes'; feedback: string };
 ```
 
-**Loop primitive:** fascicle's `adversarial` (or a hand-rolled `loop` with bounded iterations). Max **3** build↔review rounds. On `needs-changes`, write `FEEDBACK.md` in the worktree and re-invoke the builder. After 3 rounds with no pass, abort the run (no push, no comment) — failure surfaces in CloudWatch.
+**Loop primitive:** Fascicle's `adversarial` (or a hand-rolled `loop` with bounded iterations). Max **3** build↔review rounds. On `needs-changes`, write `FEEDBACK.md` in the worktree and re-invoke the builder. After 3 rounds with no pass, abort the run (no push, no comment) — failure surfaces in CloudWatch.
 
 **Why not ridgeline here.** Ridgeline is the right tool when the work is *plan → multi-phase build → eval over a greenfield spec*. It also currently leans on `claude_cli`, which we're explicitly avoiding for the portability proof. This pipeline is single-phase, short-horizon, with the spec already produced. Revisit if the typical build grows past a couple of files *and* ridgeline gains an API-backed builder path.
 
@@ -152,7 +152,7 @@ Two modes, same `flow.ts`, two engine paths. **Demo mode ships first; cloud mode
 
 ### Demo mode: local CLI via `claude_cli` (Phase B)
 
-The whole reason we picked fascicle is multi-provider portability. The cheapest way to validate the pipeline is to run it locally against a real PR using the `claude_cli` provider — no API key, no infra, no CI. If this works end-to-end the cloud path is a one-line engine swap, not a leap.
+The whole reason we picked Fascicle is multi-provider portability. The cheapest way to validate the pipeline is to run it locally against a real PR using the `claude_cli` provider — no API key, no infra, no CI. If this works end-to-end the cloud path is a one-line engine swap, not a leap.
 
 Surface — invoked from any local git repo with a GitHub remote:
 
@@ -198,9 +198,9 @@ Plays to existing strengths: terraform + IaC + SRE team. Three terraform-managed
 
 1. **API Gateway → tiny webhook Lambda** (~2s, validates GitHub HMAC, enqueues to SQS). Lambda is the right shape here — short, sync, scales free.
 2. **SQS queue** with FIFO + `MessageGroupId = repo+pr_number` for the per-PR concurrency invariant.
-3. **ECS Fargate task** running the fascicle worker. Triggered by EventBridge Pipes (SQS → ECS RunTask), one task per message. No time limit. Container scales out horizontally as queue depth grows; scales to zero when idle (no minimum task count).
+3. **ECS Fargate task** running the Fascicle worker. Triggered by EventBridge Pipes (SQS → ECS RunTask), one task per message. No time limit. Container scales out horizontally as queue depth grows; scales to zero when idle (no minimum task count).
 
-Container is a single Node image (Dockerfile in `examples/pr-improve/`) with `gh` CLI + `git` baked in. No `claude` CLI — every model call goes through the fascicle engine via API. SRE owns the terraform module; the app team owns the Dockerfile and the worker code.
+Container is a single Node image (Dockerfile in `examples/pr-improve/`) with `gh` CLI + `git` baked in. No `claude` CLI — every model call goes through the Fascicle engine via API. SRE owns the terraform module; the app team owns the Dockerfile and the worker code.
 
 **Why this fits the timing math.** Pipeline p99 is ~18–25 min and Lambda's 15-min cap kills the tail. Fargate has no such cap — pathological runs complete instead of silently dying mid-build.
 
@@ -307,7 +307,7 @@ For subprocess calls (`gh`, `git`) the worker still follows the safe-spawn patte
 
 Failures are visible in CloudWatch (ECS task logs) and in the per-run trajectory file (uploaded to S3 on container exit). SQS dead-letter queue catches messages whose tasks failed repeatedly. No out-of-band alert channel — if a run fails, it shows up in CloudWatch and the DLQ.
 
-### CloudWatch via fascicle events (no new IAM)
+### CloudWatch via Fascicle events (no new IAM)
 
 Fascicle's `tee_logger` (`@repo/observability`) fans one stream of trajectory events out to multiple sinks. We compose:
 
@@ -342,9 +342,9 @@ These are the points where I picked a default to keep the spec concrete; flag an
 2. **Opt-in mechanism**: Phase B = manual CLI invocation (`pr-improve <n>`) is the opt-in. Phase D = PR label `fascicle-improve` for the cloud trigger. The label only exists because webhooks need a filter; the local CLI does not.
 3. **Pragmatist cap N=3 accepted changes** (smaller is more aligned with the "fewer changes" anchor).
 4. **Build↔review loop max 3 rounds** before abort.
-5. **Models:** Reviewer=sonnet, Pragmatist=**opus**, Builder=sonnet (API + tool_loop), Build-Reviewer=**opus**. All four through the fascicle engine via `model_call`. Three providers supported via the same flow: `anthropic`, `openrouter`, `claude_cli`. Local mode uses `claude_cli` (no API key); cloud mode uses `anthropic` or `openrouter` (one env-var swap). That's the portability proof point.
-6. **Single-repo scope first** (the fascicle repo). Multi-repo opens auth/permission scope work; defer.
-7. **Pure fascicle for stages 3–4** (no ridgeline). Revisit if builds grow multi-phase.
+5. **Models:** Reviewer=sonnet, Pragmatist=**opus**, Builder=sonnet (API + tool_loop), Build-Reviewer=**opus**. All four through the Fascicle engine via `model_call`. Three providers supported via the same flow: `anthropic`, `openrouter`, `claude_cli`. Local mode uses `claude_cli` (no API key); cloud mode uses `anthropic` or `openrouter` (one env-var swap). That's the portability proof point.
+6. **Single-repo scope first** (the Fascicle repo). Multi-repo opens auth/permission scope work; defer.
+7. **Pure Fascicle for stages 3–4** (no ridgeline). Revisit if builds grow multi-phase.
 
 If any of these is wrong I want to know before writing code — they each shift the module layout meaningfully.
 
@@ -369,7 +369,7 @@ Goal: stand up the whole pipeline working end-to-end on a real PR, locally, befo
 3. Add `src/github/pr.ts` (gh CLI wrappers — view, diff, create, comment, push) and `src/github/workspace.ts` (`git worktree add` + `gh pr checkout` helpers). Use the safe-spawn pattern from `src/engine/providers/claude_cli/spawn.ts` as a hygiene reference.
 4. Add `bin/pr-improve` — a thin shell wrapper around `tsx src/main.ts` so the user can `ln -s` it into `~/.local/bin/`. No build step.
 5. Verify the builder works under `claude_cli`. The engine uses the CLI's built-in file tools instead of our explicit `tool_loop` toolset. `make_builder_call`'s factory signature stays the same; `flow.ts` does not change.
-6. Demo: from inside a checkout of the fascicle repo (or any GitHub project), run `pr-improve <n>` against a real open PR → review comment lands → improvement PR (if pragmatist accepts) appears on GitHub with a linking comment on the original.
+6. Demo: from inside a checkout of the Fascicle repo (or any GitHub project), run `pr-improve <n>` against a real open PR → review comment lands → improvement PR (if pragmatist accepts) appears on GitHub with a linking comment on the original.
 
 #### Robustness fixes shipped after first end-to-end run
 
@@ -473,7 +473,7 @@ After Phase C proves the API path matches the local demo on real PRs.
 2. Pair with SRE on the terraform module: API Gateway + webhook Lambda + SQS FIFO + ECS task definition + IAM + Secrets Manager (`GH_TOKEN`, `ANTHROPIC_API_KEY`). Add CloudWatch log group + DLQ.
 3. Configure GitHub webhook to fire on `pull_request.labeled` (filter: `fascicle-improve`) and POST to API Gateway. The label is the opt-in for the cloud trigger; manual `pr-improve <n>` invocation still works for one-off / debug runs.
 4. Add concurrency invariant via SQS `MessageGroupId` and the cost guardrail in `worker.ts`.
-5. Roll out as opt-in for one repo (the fascicle repo). Tag a PR. Verify the loop end-to-end (improvement PR opens, comment lands on original).
+5. Roll out as opt-in for one repo (the Fascicle repo). Tag a PR. Verify the loop end-to-end (improvement PR opens, comment lands on original).
 
 ---
 

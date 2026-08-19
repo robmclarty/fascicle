@@ -1,7 +1,7 @@
 /**
  * Pure user-message assembly for the answerer. Passages are numbered so the
  * model can cite by index; the static role instruction lives in
- * `prompts/answerer.md`. No fascicle imports, no IO.
+ * `prompts/answerer.md`. No Fascicle imports, no IO.
  */
 
 import type { AnswererInput } from './types.js'

@@ -1,6 +1,6 @@
-# amplify — a self-improvement loop on fascicle
+# amplify — a self-improvement loop on Fascicle
 
-A fascicle example that drives Claude Opus 4.7 in a **propose → cascade-eval → keep-best** loop on a single starter file. Each round generates N candidates in parallel, runs them through a syntax-check → regression-gate → measure cascade, accepts the best survivor (if it strictly beats the parent), and stops on iterations / wall-clock / plateau.
+A Fascicle example that drives Claude Opus 4.7 in a **propose → cascade-eval → keep-best** loop on a single starter file. Each round generates N candidates in parallel, runs them through a syntax-check → regression-gate → measure cascade, accepts the best survivor (if it strictly beats the parent), and stops on iterations / wall-clock / plateau.
 
 The point of the example is the **`Metric` protocol**: the user supplies "what better means" as a regression gate (a shell command) and a `score` function (a thunk returning a number). The harness is metric-agnostic. Speed, code quality, output match — anything you can compute is a metric.
 
@@ -27,7 +27,7 @@ For the full design rationale (the academic landscape, the OSS prior art, the fa
 └────────────────────────────────────────────────────────────┘
 ```
 
-The harness uses five fascicle primitives heavily:
+The harness uses five Fascicle primitives heavily:
 
 - `chain` — the spine: named, typed bindings for the brief, baseline, research, and seeded round state
 - `loop` — the round loop, with the stop rule as a `guard` and progress as immutable carry-state rather than mutable closure variables

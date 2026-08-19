@@ -4,7 +4,7 @@ Automated PR improvement pipeline. Triggered (eventually) by a `fascicle-improve
 
 - [CLOUD_SPEC.md](./CLOUD_SPEC.md) — **active spec** for the remaining cloud-deployment work (Fargate worker, webhook Lambda, Terraform module under `infra/`).
 - [SPEC.md](./SPEC.md) — original end-to-end design, preserved as historical context for the shipped phases. Superseded by `CLOUD_SPEC.md` for everything still to build.
-- [docs/architecture.md](./docs/architecture.md) — why `flow.ts` is pure fascicle composition, and the module split that keeps it that way.
+- [docs/architecture.md](./docs/architecture.md) — why `flow.ts` is pure Fascicle composition, and the module split that keeps it that way.
 - [../../docs/blueprint.md](../../docs/blueprint.md) — the generalized app architecture distilled from this example (and others); this app's [`rules/`](./rules/) are its canonical machine-checked copy.
 
 ## Status
@@ -54,7 +54,7 @@ If you're running this against a third-party repo where you don't want the workt
 
 ## Provider portability proof
 
-Every stage routes through the fascicle engine via `model_step`. Provider is selected by `--provider <name>` (CLI flag) or `FASCICLE_PROVIDER` env var. Three providers coexist:
+Every stage routes through the Fascicle engine via `model_step`. Provider is selected by `--provider <name>` (CLI flag) or `FASCICLE_PROVIDER` env var. Three providers coexist:
 
 - `claude_cli` — default; uses the developer's logged-in Claude (no API key). The CLI's built-in Read/Write/Edit tools handle file edits in the worktree's cwd.
 - `anthropic` — requires `ANTHROPIC_API_KEY`. The builder gets explicit worktree-scoped tools (`read_file`, `write_file`, `edit_file`, `list_dir`, `run_shell`) wired by `make_builder_tools(worktree_root)`.

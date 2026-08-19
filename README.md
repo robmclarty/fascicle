@@ -12,7 +12,7 @@ No framework lifecycle. No ambient state. No decorators. Adapters are passed in 
 pnpm add fascicle
 ```
 
-fascicle is ESM-only and requires Node >= 24. `ai`, `zod`, and every provider SDK are optional peers — install only the ones you use. `pnpm add fascicle` alone builds and runs a flow against `transport: 'native'` or `claude_cli`, with no AI SDK package and no schema library installed at all; schemas accept any [Standard Schema](https://standardschema.dev) — zod, ArkType, Valibot, whichever you already use. See [docs/providers.md](./docs/providers.md).
+Fascicle is ESM-only and requires Node >= 24. `ai`, `zod`, and every provider SDK are optional peers — install only the ones you use. `pnpm add fascicle` alone builds and runs a flow against `transport: 'native'` or `claude_cli`, with no AI SDK package and no schema library installed at all; schemas accept any [Standard Schema](https://standardschema.dev) — zod, ArkType, Valibot, whichever you already use. See [docs/providers.md](./docs/providers.md).
 
 No API key on hand? Several runnable examples need zero keys: [examples/hello.ts](./examples/hello.ts), [examples/suspend_resume.ts](./examples/suspend_resume.ts), and [examples/viewer_demo.ts](./examples/viewer_demo.ts) use no engine at all, and [examples/newsroom.ts](./examples/newsroom.ts) runs the full vocabulary against the bundled stub engine from `fascicle/testing`.
 
@@ -80,7 +80,7 @@ Plus `run`, `run.stream`, and `describe`. And inside any step body, `ctx.call(st
 
 **AI engine.** `create_engine(config)` returns one `generate` surface across eight providers. Two axes: `model` is an opaque id sent to the provider verbatim (`claude-opus-4-8`, `gpt-4o`, `us.anthropic.claude-sonnet-4-20250514-v1:0`), and `provider` names the transport (`anthropic`, `bedrock`, `openrouter`, `claude_cli`, …) — swap `provider` to move a call between transports. Reasoning effort (`'none'` through `'max'`) is translated per provider. Cost estimation uses a pricing table with per-engine overrides.
 
-The engine core is SDK-agnostic: providers plug in behind a neutral single-turn seam, as one of three kinds. Most built-ins wrap Vercel's AI SDK (`ai_sdk`). Five providers can instead run `transport: 'native'` (raw HTTP, no AI SDK in the path, no peer to install) — `anthropic` on the Messages API, `openai`/`openrouter`/`lmstudio` on a shared OpenAI Chat Completions core, and `ollama` on its own `/api/chat` endpoint. The third kind is `claude_cli`, which delegates to an external agent. All inherit the same tool loop, retry, cost, and trajectory, and `custom_providers` registers your own adapter of any kind without touching fascicle. See [docs/providers.md](./docs/providers.md).
+The engine core is SDK-agnostic: providers plug in behind a neutral single-turn seam, as one of three kinds. Most built-ins wrap Vercel's AI SDK (`ai_sdk`). Five providers can instead run `transport: 'native'` (raw HTTP, no AI SDK in the path, no peer to install) — `anthropic` on the Messages API, `openai`/`openrouter`/`lmstudio` on a shared OpenAI Chat Completions core, and `ollama` on its own `/api/chat` endpoint. The third kind is `claude_cli`, which delegates to an external agent. All inherit the same tool loop, retry, cost, and trajectory, and `custom_providers` registers your own adapter of any kind without touching Fascicle. See [docs/providers.md](./docs/providers.md).
 
 **Adapters injected per run.** Trajectory loggers and checkpoint stores ship under the `fascicle/adapters` subpath:
 
@@ -192,9 +192,9 @@ await handle.close();
 
 For zero-latency streaming from inside a long-running flow, pair it with `http_logger` from `fascicle/adapters`. See [docs/viewer.md](./docs/viewer.md) for the full transport story.
 
-## Building an app on fascicle
+## Building an app on Fascicle
 
-**[docs/blueprint.md](./docs/blueprint.md) is the recommended architecture for apps built on fascicle** — distilled from the reference apps and production consumers. One composition layer (`flow.ts`) that holds the whole topology, `create_engine` confined to one file, prompts as markdown with frontmatter, zod schemas as the stage contracts, stub-engine testing, and [ast-grep rules](./examples/pr-improve/rules/) that turn each boundary into a build failure. If you are a coding agent scaffolding a new fascicle app, follow the blueprint and its checklist.
+**[docs/blueprint.md](./docs/blueprint.md) is the recommended architecture for apps built on Fascicle** — distilled from the reference apps and production consumers. One composition layer (`flow.ts`) that holds the whole topology, `create_engine` confined to one file, prompts as markdown with frontmatter, zod schemas as the stage contracts, stub-engine testing, and [ast-grep rules](./examples/pr-improve/rules/) that turn each boundary into a build failure. If you are a coding agent scaffolding a new Fascicle app, follow the blueprint and its checklist.
 
 The canonical worked example is [examples/pr-improve/](./examples/pr-improve/), with its design rationale in [examples/pr-improve/docs/architecture.md](./examples/pr-improve/docs/architecture.md).
 
@@ -204,7 +204,7 @@ The canonical worked example is [examples/pr-improve/](./examples/pr-improve/), 
 - [docs/getting-started.md](./docs/getting-started.md) — install and run your first flow
 - [docs/concepts.md](./docs/concepts.md) — step-as-value, trajectories, cancellation
 - [docs/composition.md](./docs/composition.md) — full composition surface: the 22 primitives, run/stream, checkpointing
-- [docs/leaf-arm-spine.md](./docs/leaf-arm-spine.md) — the three-layer shape of a fascicle flow and how to choose the right primitive at each layer
+- [docs/leaf-arm-spine.md](./docs/leaf-arm-spine.md) — the three-layer shape of a Fascicle flow and how to choose the right primitive at each layer
 - [docs/advanced-composition.md](./docs/advanced-composition.md) — the primitives to reach for last (`scope`/`stash`/`use`, `ensemble`, `tournament`, `improve`/`learn`) and when they earn their keep
 - [docs/api-reference.md](./docs/api-reference.md) — the public surface at a glance
 - [docs/configuration.md](./docs/configuration.md) — engine config, defaults, pricing, retries
@@ -215,12 +215,12 @@ The canonical worked example is [examples/pr-improve/](./examples/pr-improve/), 
 - [docs/testing.md](./docs/testing.md) — testing flows with stub, script, and capture engines
 - [docs/regression-testing-model-behavior.md](./docs/regression-testing-model-behavior.md) — regression-testing model behavior with mutation-tested judges and a committed score baseline
 - [docs/human-in-the-loop.md](./docs/human-in-the-loop.md) — suspend/resume approval over HTTP and streaming to a `useChat` UI via `fascicle/ui`
-- [docs/writing-a-harness.md](./docs/writing-a-harness.md) — building a runner around fascicle
-- [docs/embedding-under-a-harness.md](./docs/embedding-under-a-harness.md) — running a fascicle agent as somebody's child process
+- [docs/writing-a-harness.md](./docs/writing-a-harness.md) — building a runner around Fascicle
+- [docs/embedding-under-a-harness.md](./docs/embedding-under-a-harness.md) — running a Fascicle agent as somebody's child process
 - [docs/troubleshooting.md](./docs/troubleshooting.md) — first-run errors and what they mean
-- [docs/comparison.md](./docs/comparison.md) — how fascicle compares to LangChain, Mastra, and others
-- [docs/adoption-decision.md](./docs/adoption-decision.md) weighs whether to adopt fascicle: the honest case, the risks, and when to reach for something else
-- [docs/roadmap.md](./docs/roadmap.md) — what has shipped, what is being considered, and what fascicle deliberately will not do
+- [docs/comparison.md](./docs/comparison.md) — how Fascicle compares to LangChain, Mastra, and others
+- [docs/adoption-decision.md](./docs/adoption-decision.md) weighs whether to adopt Fascicle: the honest case, the risks, and when to reach for something else
+- [docs/roadmap.md](./docs/roadmap.md) — what has shipped, what is being considered, and what Fascicle deliberately will not do
 - [examples/](./examples/) — runnable reference flows; start with [examples/newsroom.ts](./examples/newsroom.ts), the vocabulary tour
 - [docs/viewer.md](./docs/viewer.md) — viewer details and transport options
 

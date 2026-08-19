@@ -43,7 +43,7 @@ That's all of it. Every composable unit is a `Step<i, o>`. Every composer return
 
 ### Run It
 
-Save that snippet as `index.ts` in a fresh directory of your own. fascicle is ESM-only and needs Node >= 24, so your `package.json` needs `"type": "module"`:
+Save that snippet as `index.ts` in a fresh directory of your own. Fascicle is ESM-only and needs Node >= 24, so your `package.json` needs `"type": "module"`:
 
 ```json
 {
@@ -168,9 +168,9 @@ The [examples index](../examples/README.md) tells you which examples are keyless
 ## Where to Go Next
 
 - [docs/leaf-arm-spine.md](./leaf-arm-spine.md) — the three-layer shape of a flow and which primitive belongs at each layer.
-- [docs/writing-a-harness.md](./writing-a-harness.md) — build a runner around fascicle.
-- [docs/blueprint.md](./blueprint.md) — the standard app architecture for a real fascicle app.
-- [docs/embedding-under-a-harness.md](./embedding-under-a-harness.md) — run a fascicle agent as somebody's child process.
+- [docs/writing-a-harness.md](./writing-a-harness.md) — build a runner around Fascicle.
+- [docs/blueprint.md](./blueprint.md) — the standard app architecture for a real Fascicle app.
+- [docs/embedding-under-a-harness.md](./embedding-under-a-harness.md) — run a Fascicle agent as somebody's child process.
 - [docs/concepts.md](./concepts.md) — step-as-value, trajectories, cancellation.
 - [docs/configuration.md](./configuration.md) — engine config, defaults, provider setup.
 - [docs/providers.md](./providers.md) — per-provider adapter notes.

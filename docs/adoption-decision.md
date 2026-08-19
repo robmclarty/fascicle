@@ -1,6 +1,6 @@
 # Deciding Whether to Adopt Fascicle
 
-You're weighing fascicle against using the Vercel AI SDK directly, or Mastra, or
+You're weighing Fascicle against using the Vercel AI SDK directly, or Mastra, or
 Strands. So this page carries a section on when the answer is "use something
 else," and a section on the risks of depending on an early-stage library. It's my
 design view, and the only way to know whether the ergonomics fit you is to try
@@ -8,16 +8,16 @@ it.
 
 ## The Reframe: It Is Not Fascicle Versus the AI SDK
 
-The most common framing of this decision is a false one. fascicle is *built on*
+The most common framing of this decision is a false one. Fascicle is *built on*
 the Vercel AI SDK for its default path, and seven of its eight providers are
 AI-SDK-backed out of the box (`ai`, like every provider SDK, is an optional
-peer; fascicle has zero mandatory ones, and the native transports and
-`claude_cli` need no AI SDK at all). You aren't choosing between fascicle and
+peer; Fascicle has zero mandatory ones, and the native transports and
+`claude_cli` need no AI SDK at all). You aren't choosing between Fascicle and
 the AI SDK. You're choosing *at which layer* a vendor owns your code.
 
 On the default `ai_sdk` transport the AI SDK owns everything below a single model
 call, so message translation, tool-schema mapping, streaming, and usage
-normalization are its problem. fascicle owns everything above that seam, which
+normalization are its problem. Fascicle owns everything above that seam, which
 means the multi-step tool loop, tool-call salvage, approval gating, deterministic
 turn-ending, cost, the trajectory, and the composition layer. What you have to
 decide is whether that upper layer earns its place, or whether the AI SDK's own
@@ -38,11 +38,11 @@ install entirely. "Uninstall `ai`" is real today, not aspirational.
 
 ## What You Are Actually Buying
 
-Four goals tend to drive you toward a layer like this, so here is what fascicle
+Four goals tend to drive you toward a layer like this, so here is what Fascicle
 does about each of them:
 
 - **Portability.** One `generate` surface fronts eight providers, plus
-  `custom_providers` for an adapter fascicle knows nothing about. `provider` names
+  `custom_providers` for an adapter Fascicle knows nothing about. `provider` names
   the transport and `model` is an opaque id sent verbatim, so moving a call between
   Anthropic, OpenAI, Bedrock, OpenRouter, or a local runtime is a config change,
   not a rewrite. Portability now goes one level deeper than the provider name,
@@ -75,7 +75,7 @@ does about each of them:
 
 By mid-2026 a long list of capabilities is *table stakes*. Essentially every
 serious framework ships a tool loop, streaming, provider abstraction, MCP support,
-and structured output. None of those is a reason to pick fascicle, and I'd be
+and structured output. None of those is a reason to pick Fascicle, and I'd be
 lying to you if I pretended otherwise. What's still differentiated, and hard to
 copy quickly:
 
@@ -85,7 +85,7 @@ copy quickly:
    local runtime can be driven over raw HTTP with neither the AI SDK nor a provider
    package in the dependency tree.
 2. **A composition algebra of substitutable values.** The AI SDK gives you one
-   agent loop. fascicle gives you 22 primitives, each a `Step` that nests inside
+   agent loop. Fascicle gives you 22 primitives, each a `Step` that nests inside
    any other. You get `chain`, the spine that threads a typed record through a
    flow, the control-flow set (`sequence`, `parallel`, `branch`, `map`, `pipe`,
    `retry`, `fallback`, `timeout`, `loop`, `compose`), the durability set
@@ -115,7 +115,7 @@ copy quickly:
    least visible benefit in a demo and often the most valuable in production (see
    the note on the AI SDK's release cadence below).
 6. **Supply-chain posture.** One package, no direct runtime dependencies, no
-   install scripts, every peer optional (`ai` and `zod` included; fascicle has
+   install scripts, every peer optional (`ai` and `zod` included; Fascicle has
    zero mandatory peers), and releases published from CI via npm Trusted
    Publishing with a signed provenance attestation you can verify with
    `npm audit signatures`.
@@ -128,7 +128,7 @@ copy quickly:
 The composition layer is easiest to judge against concrete agents, so here are
 the common shapes and how they decompose:
 
-| Agent shape | fascicle expression |
+| Agent shape | Fascicle expression |
 | --- | --- |
 | Adversarial code reviewer (propose, critique, revise until a judge accepts) | `adversarial({ build, critique, accept })` |
 | Bug fixer pairing a builder with an independent reviewer | a builder step behind a reviewer `loop`, or `sequence` plus `adversarial` |
@@ -153,9 +153,9 @@ This is the honest part, and it's what makes the rest credible. Reach for anothe
 tool when:
 
 - The whole product is a single agent with tools and a chat UI. Use the **AI SDK
-  directly**; fascicle is overhead you won't use.
+  directly**; Fascicle is overhead you won't use.
 - You want retrieval, memory, and a hosted eval/observability product
-  batteries-included in one framework. Use **Mastra**. (fascicle does ship the eval
+  batteries-included in one framework. Use **Mastra**. (Fascicle does ship the eval
   half as composition: `bench`, judges, and baseline diffing. What it doesn't ship
   is vector stores, retrievers, a memory abstraction, or a dashboard product.)
 - You want the model to drive the loop with multi-agent orchestration built in, and
@@ -165,18 +165,18 @@ tool when:
   **`WorkflowAgent`** or an engine like Inngest.
 
 The decisive test for a given project is whether *you can name a concrete way
-fascicle beats AI-SDK-direct for this specific workload*. If your honest answer is
+Fascicle beats AI-SDK-direct for this specific workload*. If your honest answer is
 no, use the AI SDK for that project. If the project needs the seam anyway (provider
 portability, composed control flow, churn insulation, local models), then you'll
-build that seam regardless, and fascicle is the disciplined, versioned, tested
+build that seam regardless, and Fascicle is the disciplined, versioned, tested
 version of work you'd otherwise do worse and throw away.
 
 ## The Risks of Depending on an Early-Stage Library
 
-Choosing fascicle for production work carries risks that have nothing to do with
+Choosing Fascicle for production work carries risks that have nothing to do with
 its design quality, and if you're evaluating it seriously you should name them:
 
-- **Key-person risk.** fascicle is a single-maintainer project. Depending on it
+- **Key-person risk.** Fascicle is a single-maintainer project. Depending on it
   means depending on one person's availability. This is the first objection any
   engineering organization should raise.
 - **Pre-1.0.** It ships breaking changes on minor releases, so pin an exact
@@ -193,12 +193,12 @@ What makes these survivable is the shape of the thing:
   instead of being locked into a lifecycle.
 - **Consume it as an ordinary published dependency.** Pin a reviewed version from
   the registry and keep anything organization-specific in your own repository,
-  built on fascicle's public contracts instead of vendored into the library. That
+  built on Fascicle's public contracts instead of vendored into the library. That
   keeps the dependency at arm's length and your upgrades boring.
 
 ## The Bottom Line
 
-fascicle isn't a thin wrapper. Real, differentiated code sits above the provider
+Fascicle isn't a thin wrapper. Real, differentiated code sits above the provider
 seam, and below it now too for the five providers with a native
 transport. The honest caveat is that the AI SDK's v6/v7 agent layer narrowed some
 specific gaps (it now wraps CLI harnesses and standardizes reasoning), so the case
@@ -223,7 +223,7 @@ shipped three large breaking majors in twelve months (v5 in July 2025, v6 in
 December 2025, v7 in June 2026), including a provider-spec change, a streaming
 wire-format change, and a silent `useChat` behavior change. A product built
 directly on the SDK's agent layer absorbs each of those. A product built behind
-fascicle's seam contains them to a per-file change. Neither is free, and the seam
+Fascicle's seam contains them to a per-file change. Neither is free, and the seam
 is my bet that containment is cheaper than absorption over time.
 
 ## Further Reading

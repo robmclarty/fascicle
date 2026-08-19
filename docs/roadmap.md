@@ -1,7 +1,7 @@
 # Roadmap
 
-What has shipped, what I'm considering, and what fascicle won't do. Read this as
-a direction and not a commitment. fascicle is pre-1.0, and the sequence changes as
+What has shipped, what I'm considering, and what Fascicle won't do. Read this as
+a direction and not a commitment. Fascicle is pre-1.0, and the sequence changes as
 real usage lands, so pin an exact version and upgrade on purpose.
 
 ## Shipped
@@ -22,13 +22,13 @@ The published surface as of v0.12.0:
   (raw HTTP, no SDK in the path). Those five are `anthropic` on the Messages API,
   `openai` / `openrouter` / `lmstudio` on a shared OpenAI-compatible core, and
   `ollama` on `/api/chat`. `claude_cli` delegates to an external agent process, and
-  `custom_providers` registers your own adapter without touching fascicle.
+  `custom_providers` registers your own adapter without touching Fascicle.
   Model ids are opaque and sent verbatim.
 - **Loop control.** Multi-step tool loops with tool-call salvage for models that
   emit calls as prose, approval gating, deterministic turn-ending, per-turn
   timeout budgets, a `prepare_step` hook, and cost accounting.
 - **MCP, both directions** (`fascicle/mcp`). `mcp_client()` turns an MCP
-  server's tools into plain fascicle `Tool[]` over stdio or streamable HTTP, and
+  server's tools into plain Fascicle `Tool[]` over stdio or streamable HTTP, and
   `serve_flow()` exposes your composed flows as MCP tools to external hosts.
   `@modelcontextprotocol/sdk` rides as an optional peer.
 - **Observability.** A trajectory event stream with correct span trees under
@@ -101,7 +101,7 @@ appears.
 ## Not Planned
 
 These are the exclusions I've chosen. Each one trades surface correctness for
-interior work you can't see, or adds scope fascicle doesn't need:
+interior work you can't see, or adds scope Fascicle doesn't need:
 
 - **Feature parity with the broad frameworks**, so no memory modules, no `Agent`
   class, no multi-agent handoffs. [comparison.md](./comparison.md) names the tools
@@ -110,4 +110,4 @@ interior work you can't see, or adds scope fascicle doesn't need:
 - **New convenience composers** that an existing primitive already expresses. A
   `quorum` helper is the usual example, and the `agree` predicate is strictly more
   expressive than one.
-- **A Python port.** fascicle is TypeScript-only by design.
+- **A Python port.** Fascicle is TypeScript-only by design.

@@ -1,5 +1,5 @@
 /**
- * Mapping between MCP `CallToolResult` payloads and fascicle tool values, in
+ * Mapping between MCP `CallToolResult` payloads and Fascicle tool values, in
  * both directions: inbound results from `mcp_client` tools, outbound results
  * for `serve_flow`.
  */
@@ -13,7 +13,7 @@ export type McpToolResult = {
 }
 
 /**
- * Converts a remote tool's `CallToolResult` into the value a fascicle
+ * Converts a remote tool's `CallToolResult` into the value a Fascicle
  * `Tool.execute` returns.
  *
  * `isError: true` marks a tool-level failure, so it throws `mcp_error` rather
@@ -38,7 +38,7 @@ export function call_result_to_output(result: unknown, tool_name?: string): unkn
 }
 
 /**
- * Converts a fascicle flow's output into a `CallToolResult` for `serve_flow`.
+ * Converts a Fascicle flow's output into a `CallToolResult` for `serve_flow`.
  *
  * A `to_result` override takes precedence over the default mapping. By
  * default, objects are emitted as both a JSON text part (every MCP host can

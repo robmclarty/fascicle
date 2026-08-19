@@ -1,6 +1,6 @@
 # Writing a Harness
 
-A **harness** is the runnable program you write to wrap fascicle for one specific use case. fascicle itself is a library, and not an app, not a framework, not a CLI. Your harness is where you decide:
+A **harness** is the runnable program you write to wrap Fascicle for one specific use case. Fascicle itself is a library, and not an app, not a framework, not a CLI. Your harness is where you decide:
 
 - what the flow looks like
 - how input gets in (CLI args, HTTP, queue, IDE extension, cron)
@@ -143,13 +143,13 @@ The resume closure re-runs the flow from the original input with the decision me
 
 ## Cancellation and Cleanup
 
-A harness that runs indefinitely, like a server or a long CLI, has to handle cancellation cleanly. fascicle installs SIGINT/SIGTERM handlers by default and aborts every active run through `ctx.abort`. Your steps cooperate by:
+A harness that runs indefinitely, like a server or a long CLI, has to handle cancellation cleanly. Fascicle installs SIGINT/SIGTERM handlers by default and aborts every active run through `ctx.abort`. Your steps cooperate by:
 
 - Checking `ctx.abort.aborted` at loop boundaries.
 - Passing `ctx.abort` to `fetch`, `child_process`, or any other abortable API.
 - Registering teardown with `ctx.on_cleanup(() => ...)`. Cleanup runs in LIFO order on success, failure, and abort.
 
-For embedded runtimes (tests, Lambda, worker threads), pass `install_signal_handlers: false` so fascicle doesn't fight the host process for the signal.
+For embedded runtimes (tests, Lambda, worker threads), pass `install_signal_handlers: false` so Fascicle doesn't fight the host process for the signal.
 
 ## Error Handling
 
@@ -165,7 +165,7 @@ The error carries a `.path` array with the step ids that led to the failure, so 
 
 ## Where to Put the Harness
 
-In this repo, reference harnesses live at the root under [`examples/`](../examples/). Your own harness lives in your own project, because fascicle is a library and not an app scaffold. Import from `fascicle` (the published package name, which the root `examples/` use too; inside the library, cross-module imports use the internal `#<module>` aliases) and write the harness wherever your program belongs. For the standard shape of the app *around* the harness (one composition layer, module contracts, markdown prompts), follow [blueprint.md](./blueprint.md).
+In this repo, reference harnesses live at the root under [`examples/`](../examples/). Your own harness lives in your own project, because Fascicle is a library and not an app scaffold. Import from `fascicle` (the published package name, which the root `examples/` use too; inside the library, cross-module imports use the internal `#<module>` aliases) and write the harness wherever your program belongs. For the standard shape of the app *around* the harness (one composition layer, module contracts, markdown prompts), follow [blueprint.md](./blueprint.md).
 
 The canonical starting point is [`examples/hello.ts`](../examples/hello.ts), and the full vocabulary at app scale is [`examples/newsroom.ts`](../examples/newsroom.ts), with [leaf-arm-spine.md](./leaf-arm-spine.md) as the guide to its shape. Run the starter:
 
