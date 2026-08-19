@@ -6,11 +6,11 @@ A subprocess provider that spawns the `claude` binary and parses its streaming J
 
 Three good reasons, and they're all about what you already have:
 
-1. **Piggyback on your CLI login.** Run `claude login` once; every fascicle harness uses that session.
+1. **Piggyback on your CLI login.** Run `claude login` once, and every fascicle harness you write uses that session.
 2. **Use CLI-only features.** Sub-agents via `--agents`, per-invocation tool allowlisting, setting source control, plugin dirs, schema-constrained output via `--json-schema`.
 3. **Sandboxable.** `bwrap` and `greywall` wrappers let you confine the subprocess to an allowlist.
 
-It does **not** replace the `anthropic` AI SDK adapter. Use `anthropic` for direct API traffic; use `claude_cli` when the CLI's features or your existing CLI login is the reason.
+It does **not** replace the `anthropic` AI SDK adapter. Use `anthropic` for direct API traffic, and reach for `claude_cli` when the CLI's features or your existing CLI login is the reason.
 
 ## Prerequisites
 
@@ -94,7 +94,7 @@ await engine.generate({
 
 ### Auth Failures
 
-If stderr matches any of the frozen `CLI_AUTH_ERROR_PATTERNS` (`authentication`, `unauthorized`, `forbidden`, `oauth token has expired`, `invalid_api_key`), the adapter throws `provider_auth_error` with `refresh_command: 'claude login'` so the calling harness can tell the operator what to do.
+If stderr matches any of the frozen `CLI_AUTH_ERROR_PATTERNS` (`authentication`, `unauthorized`, `forbidden`, `oauth token has expired`, `invalid_api_key`), the adapter throws `provider_auth_error` with `refresh_command: 'claude login'` so your harness can tell the operator what to do.
 
 ## Per-Call Options
 
@@ -135,7 +135,7 @@ await engine.generate({
 
 ## What Gets Forwarded
 
-`claude` is invoked with at minimum:
+fascicle invokes `claude` with at minimum:
 
 ```text
 claude -p \
@@ -156,7 +156,7 @@ Plus, conditionally:
 - Any `extra_args` appended verbatim to the tail.
 - `CLAUDE_CODE_EFFORT_LEVEL=<level>` — set in the subprocess env when `opts.effort` is anything but `'none'`; the level (`low` … `max`) is forwarded verbatim.
 
-The prompt is written to stdin — either the first user message's text, or the whole string if `opts.prompt` is a string.
+The prompt goes to stdin, either as the first user message's text or as the whole string when `opts.prompt` is a string.
 
 ## Multi-Turn Is via `session_id`
 
@@ -166,14 +166,14 @@ The idiomatic pattern is to capture `result.provider_reported.claude_cli.session
 
 ## Tool Bridging
 
-fascicle tools (`Tool<i, o>` with a zod `input_schema` and an `execute` closure) can't run under the CLI subprocess — there's no RPC for invoking your in-process executor from inside the child's tool loop. Two modes handle this:
+fascicle tools (`Tool<i, o>` with a zod `input_schema` and an `execute` closure) can't run under the CLI subprocess — there's no RPC for invoking your in-process executor from inside the child's tool loop. Two modes handle that for you:
 
 | `tool_bridge`       | Behaviour                                                                                                       |
 | ------------------- | --------------------------------------------------------------------------------------------------------------- |
 | `allowlist_only`    | Default. Adds each tool's `name` to `--allowedTools` so the CLI may use its own built-in tools of that name. Tools with an `execute` closure are silently dropped; a `cli_tool_bridge_allowlist_only` trajectory event lists them. |
 | `forbid`            | Reject at call time — if any tool has an `execute` closure, throws `provider_capability_error('tool_execute')`. |
 
-Use `allowlist_only` when you want the CLI to use its built-in tools and you declared them in `tools` for documentation. Use `forbid` when you want a hard guarantee that no `execute` closure silently becomes a no-op.
+Use `allowlist_only` when you want the CLI to use its built-in tools and you declared them in `tools` for documentation. Use `forbid` when you want a hard guarantee that no `execute` closure of yours silently becomes a no-op.
 
 ## Schema-Constrained Output
 
@@ -183,7 +183,7 @@ If the CLI returns text that fails schema validation, the adapter makes one repa
 
 ## Streaming
 
-Under `run.stream` (or any call with `on_chunk`), the adapter parses the CLI's `stream-json` output line by line and forwards `StreamChunk` events. No differentiation from SDK providers from the caller's point of view.
+Under `run.stream` (or any call with `on_chunk`), the adapter parses the CLI's `stream-json` output line by line and forwards `StreamChunk` events. From where you sit, nothing distinguishes it from an SDK provider.
 
 ## Timeouts
 
@@ -192,7 +192,7 @@ Two deadlines, both reset on forward progress:
 - `startup_timeout_ms` (default 120s) — time from spawn to the first parseable chunk.
 - `stall_timeout_ms` (default 300s) — time between chunks.
 
-Either one firing kills the subprocess and throws `claude_cli_error` with `reason: 'startup_timeout' | 'stall_timeout'`.
+Whichever one fires kills the subprocess and throws `claude_cli_error` with `reason: 'startup_timeout' | 'stall_timeout'`.
 
 ## Sandboxing
 
@@ -213,7 +213,7 @@ const engine = create_engine({
 });
 ```
 
-The `bwrap` wrapper read-only binds `/usr`, `/bin`, `/lib`, `/lib64`, `/etc/resolv.conf`, mounts `/proc`, `/dev`, and a tmpfs at `/tmp`, unshares user/pid/ipc/uts/cgroup namespaces, and dies with the parent. `greywall` uses host allowlisting and `--rw` paths. Either way, `network_allowlist` drops you to only those hosts; empty array means network-off.
+The `bwrap` wrapper read-only binds `/usr`, `/bin`, `/lib`, `/lib64`, `/etc/resolv.conf`, mounts `/proc`, `/dev`, and a tmpfs at `/tmp`, unshares user/pid/ipc/uts/cgroup namespaces, and dies with the parent. `greywall` uses host allowlisting and `--rw` paths. Either way, `network_allowlist` drops you to only those hosts, and an empty array means the network is off.
 
 A missing sandbox binary triggers `claude_cli_error` with `reason: 'sandbox_unavailable'`.
 
@@ -222,18 +222,18 @@ A missing sandbox binary triggers `claude_cli_error` with `reason: 'sandbox_unav
 | Error                    | Cause                                                                       |
 | ------------------------ | --------------------------------------------------------------------------- |
 | `engine_config_error`    | `api_key` missing under `auth_mode: 'api_key'`.                             |
-| `provider_auth_error`    | Stderr matched an auth-failure pattern; surface `refresh_command` to the user. |
+| `provider_auth_error`    | Stderr matched an auth-failure pattern, so surface `refresh_command` to whoever is running this. |
 | `claude_cli_error`       | Subprocess failure. Check `.reason` for `binary_not_found`, `startup_timeout`, `stall_timeout`, `no_result_event`, `result_error`, `subprocess_exit`, `sandbox_unavailable`, `parse_error`, `auth_missing`, `auth_expired`, `api_key_missing`, `engine_disposed`. |
 | `provider_capability_error` | Multi-turn `prompt: Message[]` with two or more user messages, or `tool_bridge: 'forbid'` with a tool that has an `execute` closure. |
 | `schema_validation_error` | Zod parse failed after one repair attempt.                                 |
 
 ## Dispose Behaviour
 
-`engine.dispose()` aborts every in-flight subprocess with SIGTERM (escalating to SIGKILL after 2s) and rejects any outstanding `generate` promises with `engine_disposed_error`. Call dispose in a `finally` or on process exit.
+`engine.dispose()` aborts every in-flight subprocess with SIGTERM (escalating to SIGKILL after 2s) and rejects any outstanding `generate` promises with `engine_disposed_error`. Call it in a `finally`, or on process exit.
 
 ## Debugging
 
 - Set `trajectory` and watch for `cli_tool_bridge_allowlist_only` events — those list every tool that got dropped.
-- Read the `stderr_snippet` field on any `claude_cli_error` — the adapter captures the first 512 bytes of stderr for you.
+- Read the `stderr_snippet` field on any `claude_cli_error`, because the adapter captures the first 512 bytes of stderr for you.
 - Turn on `skip_probe: true` to bypass the binary existence check if you have a custom PATH situation.
 - `--verbose` is always on in the CLI invocation; combine with a filesystem trajectory logger to see the full back-and-forth.

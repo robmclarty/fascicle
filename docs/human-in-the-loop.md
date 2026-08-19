@@ -16,7 +16,7 @@ different problems. Pick by whether you can afford to hold the process open:
 the run. Drive the flow with `run.until_suspended`, which reports the pause
 as a typed outcome instead of an exception. You get `{ kind: 'done', output }`
 when the flow completes, or `{ kind: 'suspended', id, payload, resume }` when a
-gate fires. `payload` carries the value the suspend gate surfaced (the draft
+gate fires. `payload` carries the value that the suspend gate surfaced (the draft
 awaiting approval, say), so the harness can render what's being decided
 without re-deriving it. When the decision arrives, call `resume(data)`. That
 re-runs the flow with the decision keyed under the gate's id, the flow continues

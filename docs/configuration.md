@@ -18,7 +18,7 @@ type EngineConfig = {
 };
 ```
 
-Only `providers` is required of you.
+Only `providers` is required.
 
 ## Providers
 
@@ -161,11 +161,11 @@ Both are accepted per-call on `generate(opts)` / `model_call({ ... })` and as en
 
 ### Resolution
 
-No resolution step runs. `model` is sent straight through as the provider's `model_id`, and `provider` selects the adapter. The provider axis is resolved first, in the order per-call `provider`, else `defaults.provider`, else the sole configured provider. With several providers configured and neither a per-call `provider` nor a default, nothing falls back. `generate` throws `provider_required_error` ("no provider specified: pass `provider` to generate() or set `defaults.provider`", naming the configured providers). If `model` is omitted and no `defaults.model` is set, `generate` throws `model_required_error`. A `provider` with no adapter configured on the engine throws `provider_not_configured_error`.
+No resolution step runs. `model` is sent straight through as the provider's `model_id`, and `provider` selects the adapter. The provider axis is resolved first, in this order: per-call `provider`, else `defaults.provider`, else the sole configured provider. With several providers configured and neither a per-call `provider` nor a default, nothing falls back. `generate` throws `provider_required_error` ("no provider specified: pass `provider` to generate() or set `defaults.provider`", naming the configured providers). If `model` is omitted and no `defaults.model` is set, `generate` throws `model_required_error`. A `provider` with no adapter configured on the engine throws `provider_not_configured_error`.
 
 Neither a `provider:model` colon shorthand nor an `opus`/`sonnet` family shorthand exists — pass the provider's real id (look it up in the provider's own docs). One exception: the `claude_cli` transport forwards the bare token to the CLI, which resolves `opus`/`sonnet`/`haiku` to the latest itself, so those still work for that provider.
 
-If you want short names of your own, keep a plain map in your harness and look the id up before you call `generate` — fascicle deliberately owns no such table.
+If you want short names of your own, keep a plain map in your harness and look the id up before you call `generate` — fascicle owns no such table on purpose.
 
 ## Pricing
 
@@ -358,7 +358,7 @@ await engine.generate({
 - **Return `undefined` for a no-op.** Returning `undefined`, or an object without `messages`, leaves the turn's request unchanged.
 - **Every replaced turn is legible.** A `step_prepared` trajectory event records each turn the hook modified, so mid-loop pruning stays visible in the trajectory.
 - **Sync or async.** The hook may return a promise; the loop awaits it before dispatching the turn.
-- **Not defaultable.** `prepare_step` is call-supplied only (it isn't on `EngineDefaults`). Per-step model/effort switching is deliberately out of scope for now.
+- **Not defaultable.** `prepare_step` is call-supplied only (it isn't on `EngineDefaults`). Per-step model and effort switching is out of scope for now, on purpose.
 
 ## `generate` Options
 

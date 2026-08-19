@@ -108,6 +108,6 @@ interior work you can't see, or adds scope fascicle doesn't need:
   that do these well.
 - **A rename or camelCase conversion.**
 - **New convenience composers** that an existing primitive already expresses. A
-  `quorum` helper is the example I keep being asked for, and the `agree` predicate
-  is strictly more expressive than one.
+  `quorum` helper is the usual example, and the `agree` predicate is strictly more
+  expressive than one.
 - **A Python port.** fascicle is TypeScript-only by design.

@@ -2,7 +2,7 @@
 
 Multi-agent deliberation isn't a framework feature. It's composition, and you already have the pieces.
 
-By "deliberation" we mean the patterns that run several attempts at the same task and adjudicate between them, so keep the best of N, run a bracket, loop until the attempts agree, build-then-critique until a judge accepts. Other frameworks ship these as bespoke orchestrators with their own lifecycle, their own state, and their own way of being configured. fascicle ships them as ordinary `Step<i, o>` values assembled from the [22 primitives](./composition.md). Nothing in `ensemble_step`, `ensemble`, `tournament`, `consensus`, or `adversarial` is beyond what you could have written yourself with `parallel`, `loop`, `scope`, and `compose`. (Which of them to reach for first is a separate question: [leaf-arm-spine.md](./leaf-arm-spine.md) names `ensemble_step`, `consensus`, and `adversarial` as the primary arms, and [advanced-composition.md](./advanced-composition.md) covers when plain `ensemble` and `tournament` earn their keep. This page is about how all of them decompose.)
+By "deliberation" we mean the patterns that run several attempts at the same task and adjudicate between them, whether that means keeping the best of N, running a bracket, looping until the attempts agree, or building and critiquing until a judge accepts. Other frameworks ship these as bespoke orchestrators with their own lifecycle, their own state, and their own way of being configured. fascicle ships them as ordinary `Step<i, o>` values assembled from the [22 primitives](./composition.md). Nothing in `ensemble_step`, `ensemble`, `tournament`, `consensus`, or `adversarial` is beyond what you could have written yourself with `parallel`, `loop`, `scope`, and `compose`. (Which of them to reach for first is a separate question: [leaf-arm-spine.md](./leaf-arm-spine.md) names `ensemble_step`, `consensus`, and `adversarial` as the primary arms, and [advanced-composition.md](./advanced-composition.md) covers when plain `ensemble` and `tournament` earn their keep. This page is about how all of them decompose.)
 
 That's the whole claim, and it has consequences. Read [concepts.md](./concepts.md) first if "everything is a `Step<i, o>`" isn't yet reflexive; the rest of this page assumes it.
 
@@ -12,7 +12,7 @@ Every composer takes one or more `Step<i, o>` values and returns a single `Step`
 
 - **It substitutes anywhere a plain step does.** `ensemble(...)` is a `Step`. You can wrap it in `retry`, drop it into a `sequence`, feed it to `map`, or hand it to `run`. Nothing about it being "multi-agent" changes its surface.
 - **It carries no hidden state.** The state a deliberation needs (the prior candidate, the critique notes, the round's results) is threaded explicitly through `scope` / `stash` / `use` inside the composite's own implementation, not parked in a closure or an instance field. Two unrelated runs of the same composite share nothing. (That raw state tier is internal plumbing here; in your own flows, `chain` is the typed front door over the same idea.)
-- **It's introspectable.** A composite is a tree of plain objects. `describe(step)` walks it. Its trajectory shows the `parallel` fan-out and the `loop` rounds it's actually made of, because that's what it's actually made of.
+- **It's introspectable.** A composite is a tree of plain objects. `describe(step)` walks it. Its trajectory shows the `parallel` fan-out and the `loop` rounds it is actually made of, because that is what it is actually made of.
 
 Here's the substitutability point as code. An `ensemble` is a `Step`, so `retry` wraps it with no special casing:
 
@@ -93,7 +93,7 @@ The `body` is itself a `scope([...])` block that stashes the round's state, extr
 
 ### `adversarial`: Build, Critique, Repeat
 
-`adversarial({ build, critique, accept, max_rounds })` runs up to `max_rounds` of: build a candidate (handed the prior candidate and critique notes once they exist), critique it, check `accept`. It returns `{ candidate, converged, rounds }`.
+`adversarial({ build, critique, accept, max_rounds })` runs up to `max_rounds` rounds, and each one builds a candidate (handed the prior candidate and critique notes once they exist), critiques it, and checks `accept`. It returns `{ candidate, converged, rounds }`.
 
 Its source file carries a note in the header telling you to read it as documentation. It's the canonical example of a composite you could have built yourself, because nothing about it is privileged. The entire implementation is a `loop` whose `body` is the `build` step wrapped in `scope` (to thread the prior candidate forward) and whose `guard` runs the `critique` step and evaluates `accept`:
 
@@ -154,7 +154,7 @@ const bracket = tournament({
 
 One open design question remains here, and overclaiming would undercut the rest.
 
-`ensemble`, `ensemble_step`, `tournament`, and `consensus` inherit `parallel`'s abort semantics, so when the run's abort signal fires, every in-flight child is cancelled. That's the right default for "score all of them" and "run until they agree." It isn't obviously right for every deliberation. A pattern that only needs the first acceptable answer would want the opposite: let the first resolver win and preemptively cancel its siblings. That's `race` semantics, and fascicle doesn't ship it yet (see the roadmap's [open design questions](./roadmap.md), and the `race` entry in [`src/core/BACKLOG.md`](../src/core/BACKLOG.md)). The promotion bar is deliberately high: a composer earns a place only when its pattern recurs across unrelated flows and is awkward to express today.
+`ensemble`, `ensemble_step`, `tournament`, and `consensus` inherit `parallel`'s abort semantics, so when the run's abort signal fires, every in-flight child is cancelled. That's the right default for "score all of them" and "run until they agree." It isn't obviously right for every deliberation. A pattern that only needs the first acceptable answer would want the opposite, which is to let the first resolver win and preemptively cancel its siblings. That's `race` semantics, and fascicle doesn't ship it yet (see the roadmap's [open design questions](./roadmap.md), and the `race` entry in [`src/core/BACKLOG.md`](../src/core/BACKLOG.md)). The promotion bar is high on purpose, and a composer earns a place only when its pattern recurs across unrelated flows and is awkward to express today.
 
 So the claim is bounded. Today's composites cancel all-or-nothing on abort, and the finer-grained "first wins, cancel the rest" control is a parked decision, not a shipped feature. That bound doesn't touch the thesis. Whatever cancellation granularity eventually lands will land as another composer built from the same primitives, returning the same `Step<i, o>`, substitutable in the same places. Deliberation was composition before that decision, and it will be composition after.
 

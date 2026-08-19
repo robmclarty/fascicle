@@ -1,7 +1,7 @@
 # Testing
 
-How to unit-test flows with `fascicle/testing`, which gives you engine doubles that drive the
-real `run()` through real composition with zero network and zero API keys.
+How to unit-test flows with `fascicle/testing`, which gives you engine doubles that drive
+the real `run()` through real composition with zero network and zero API keys.
 
 The doubles exist because the seam that's worth stubbing is the engine and not
 the flow. A flow is plain composition, and what makes it untestable is the
@@ -62,22 +62,20 @@ and `model_resolved.model_id` (default `'stub'`).
 
 ### The `define_agent` Caveat
 
-A markdown-only agent (no `build_prompt`) sends its body as the user prompt
-and **no system prompt at all**. To a stub, every such call looks identical:
-they all hit the `''` prefix route. You can't route two agents defined this way apart. Either give the agent a
-`build_prompt` (the markdown body then becomes the system prompt, so a prefix
-can match it), or reach for `make_script_engine`, which tells calls apart by
-order instead of by prefix.
+A markdown-only agent (no `build_prompt`) sends its body as the user prompt and **no system
+prompt at all**. To a stub, every such call looks identical, because they all hit the `''`
+prefix route, and you can't tell two agents defined this way apart. Either give the agent a
+`build_prompt` (the markdown body then becomes the system prompt, so a prefix can match it),
+or reach for `make_script_engine`, which tells calls apart by order instead of by prefix.
 
 ### Schema Validation
 
-Canned content is validated through your own schema
-(`opts.schema['~standard'].validate`), so your fixtures can't drift from the
-contracts they stand in for, and a schema change breaks the test that ships stale
-data. A failure throws the engine's real `schema_validation_error`, with
-`schema_issues` holding the normalized issues and `raw_text` holding the
-canned content (strings verbatim, other values JSON-serialized). So code of yours that branches on `instanceof schema_validation_error` is
-testable against the stub:
+Canned content is validated through your own schema (`opts.schema['~standard'].validate`),
+so your fixtures can't drift from the contracts they stand in for, and a schema change
+breaks the test that ships stale data. A failure throws the engine's real
+`schema_validation_error`, with `schema_issues` holding the normalized issues and `raw_text`
+holding the canned content (strings verbatim, other values JSON-serialized). So your own
+code that branches on `instanceof schema_validation_error` is testable against the stub:
 
 ```ts
 import { schema_validation_error } from 'fascicle';
@@ -129,9 +127,10 @@ const engine = make_script_engine([
 ]);
 ```
 
-`throw` raises the given error for that call instead of answering, which is how
-you script provider failures and rate limits. See the retry recipe below. Options mirror `make_stub_engine`'s, so `{ usage, model_id }`, with
-`model_id` defaulting to `'script'`. Per-entry `usage` wins over the option.
+`throw` raises the given error for that call instead of answering, which is how you script
+provider failures and rate limits. See the retry recipe below. The options mirror
+`make_stub_engine`'s `{ usage, model_id }`, with `model_id` defaulting to `'script'`.
+Per-entry `usage` wins over the option.
 
 ## `make_capture_engine`
 
@@ -188,7 +187,8 @@ const flaky = engine_from_generate(async (opts) => ({
 
 ## Recipes
 
-All four run keyless and network-free in the default test suite, so you can paste any of them straight into yours.
+All four run keyless and network-free in the default test suite, so you can paste any of
+them straight into yours.
 
 ### Testing a Retry Path
 

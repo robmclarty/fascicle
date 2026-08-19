@@ -94,7 +94,7 @@ A single report is a snapshot. Regression testing is the diff between two of the
 
 It doesn't short-circuit on the first failure. Every metric and every per-case delta is computed, so you can print the whole picture rather than the first thing that broke. The result is plain data: `deltas` for the summary metrics and `per_case` for the case-by-case story.
 
-Baselines are plain JSON. `write_baseline(path, report)` serializes a report; `read_baseline(path)` loads and validates one. They live wherever you decide, typically checked into git at `bench/<flow>/baseline.json`, so the baseline travels with the code that produced it and a regression shows up as a diff in review.
+Baselines are plain JSON. `write_baseline(path, report)` serializes a report, and `read_baseline(path)` loads and validates one. They live wherever you decide, typically checked into git at `bench/<flow>/baseline.json`, so the baseline travels with the code that produced it and a regression shows up as a diff in review.
 
 <!-- snippet: check -->
 ```typescript
@@ -123,7 +123,7 @@ if (!diff.ok) {
 Putting it together, model regression testing is five steps, and only the middle three run on every commit:
 
 1. **Write fixtures.** A `BenchCase[]` of representative inputs, with `meta.expected` where a known-good answer exists.
-2. **Pick or compose judges.** Stock ones for equality and rubric scoring, `judge_with` for anything domain-specific. Judges are steps, so compose freely.
+2. **Pick or compose judges.** Stock ones for equality and rubric scoring, `judge_with` for anything domain-specific. Judges are steps, so compose them freely.
 3. **Bench.** `bench(flow, cases, judges)` produces the report. The per-case trajectories are your audit trail when a score moves and you need to know why.
 4. **Write the baseline, once.** `write_baseline(path, report)`, then commit the JSON.
 5. **Bench again, then compare.** On later runs, `regression_compare(fresh, baseline)`. If `ok` is `false`, fail the build, exactly as a unit test would.
@@ -149,7 +149,7 @@ thresholds: {
 },
 ```
 
-The `break` floor is a ratchet. It only moves up. The config's own comment records that the current score reflects, among other work, a deliberate mutation-hardening pass on the judges, and that the floor must never be lowered to make a failing run pass. That's the mechanism by which a judge earns trust: not by passing a few hand-picked examples, but by having tests strong enough that corrupting the judge's logic breaks at least one of them. A judge with weak tests is a judge you can't trust, because a weak test suite can't tell a working judge from a broken one. Mutation testing is what makes the difference observable, and the ratchet is what keeps it from eroding.
+The `break` floor is a ratchet. It only moves up. The config's own comment records that the current score reflects, among other work, a mutation-hardening pass on the judges, and that the floor must never be lowered to make a failing run pass. That's the mechanism by which a judge earns trust: not by passing a few hand-picked examples, but by having tests strong enough that corrupting the judge's logic breaks at least one of them. A judge with weak tests is a judge you can't trust, because a weak test suite can't tell a working judge from a broken one. Mutation testing is what makes the difference observable, and the ratchet is what keeps it from eroding.
 
 So the meta-point is structural, not rhetorical. `bench` and `regression_compare` let you regression-test the model. The mutation gate regression-tests the judges that make that possible. The thing that tests your model also gets tested, by the same `pnpm check:all` that gates everything else. See [concepts.md](./concepts.md#the-check-contract) for the check contract that ties it together.
 

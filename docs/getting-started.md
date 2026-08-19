@@ -1,6 +1,6 @@
 # Getting Started
 
-A 10-minute tour. You install it, compose your first flow, run it, and watch what happened.
+A 10-minute tour. You install it, compose your first flow, run it, and see what happened.
 
 ## Install
 
@@ -10,7 +10,7 @@ From npm (as a consumer):
 pnpm add fascicle
 ```
 
-`ai`, `zod`, and every provider SDK are optional peers — install only the ones you use. Schemas accept any [Standard Schema](https://standardschema.dev) (zod, ArkType, Valibot, …), so nothing beyond `fascicle` itself is required to build and run a flow. (One flag on that promise: the [Calling a model](#calling-a-model) section below drives a hosted provider through its AI SDK adapter, which adds two peer packages and an API key.)
+`ai`, `zod`, and every provider SDK are optional peers — install only the ones you use. Schemas accept any [Standard Schema](https://standardschema.dev) (zod, ArkType, Valibot, …), so you need nothing beyond `fascicle` itself to build and run a flow. (One flag on that promise: the [Calling a model](#calling-a-model) section below drives a hosted provider through its AI SDK adapter, which adds two peer packages and an API key.)
 
 From this repo (as a contributor):
 
@@ -21,7 +21,7 @@ pnpm check
 
 `pnpm check` is the single source of truth for "is the repo healthy". Exit 0 means the workspace is in shape.
 
-> **One package, deep modules for enforcement.** Consumers install **one** thing: `fascicle`. Inside this repo the code is organized as deep modules under `src/` (`src/core`, `src/engine`, `src/adapters`, plus the umbrella at the `src/` root), each reachable only through its barrel via a `#<module>` alias. The ast-grep rules in `rules/` and a directory-level boundary DAG in `fallow.toml` police architectural boundaries directly (for example, core can't import adapters; `process.env` is confined to audited exceptions).
+> **One package, deep modules for enforcement.** You install **one** thing, `fascicle`. Inside this repo the code is organized as deep modules under `src/` (`src/core`, `src/engine`, `src/adapters`, plus the umbrella at the `src/` root), each reachable only through its barrel via a `#<module>` alias. The ast-grep rules in `rules/` and a directory-level boundary DAG in `fallow.toml` police architectural boundaries directly (for example, core can't import adapters; `process.env` is confined to audited exceptions).
 
 ## Your First Flow
 
@@ -43,7 +43,7 @@ That's all of it. Every composable unit is a `Step<i, o>`. Every composer return
 
 ### Run It
 
-Save that snippet as `index.ts` in a fresh directory of your own. fascicle is ESM-only and requires Node >= 24, so the `package.json` needs `"type": "module"`:
+Save that snippet as `index.ts` in a fresh directory of your own. fascicle is ESM-only and needs Node >= 24, so your `package.json` needs `"type": "module"`:
 
 ```json
 {
@@ -60,7 +60,7 @@ pnpm exec tsx index.ts
 node --experimental-strip-types index.ts
 ```
 
-`pnpm exec tsx` is what every example in this repo uses; plain `node` works too because Node >= 24 strips TypeScript types natively.
+`pnpm exec tsx` is what every example in this repo uses, and plain `node` works too, because Node >= 24 strips TypeScript types natively.
 
 ## The 22 Primitives
 
@@ -91,7 +91,7 @@ The composition layer is small on purpose, and here is all of it:
 | `improve`             | Bounded online propose → score → accept/reject loop (advanced). |
 | `learn`               | Offline reflection over recorded trajectories (advanced).   |
 
-The primitives aren't all peers. [leaf-arm-spine.md](./leaf-arm-spine.md) is the decision guide for which to reach for at each layer of a flow, and the rows marked advanced are covered in [advanced-composition.md](./advanced-composition.md), each paired with the primary primitive to try first.
+The primitives aren't all peers. [leaf-arm-spine.md](./leaf-arm-spine.md) is the guide that tells you which to reach for at each layer of a flow, and the rows marked advanced are covered in [advanced-composition.md](./advanced-composition.md), each paired with the primary primitive to try first.
 
 For the full surface and signatures, read [`docs/composition.md`](./composition.md). For something runnable, start with [`examples/`](../examples/), and in particular [`examples/newsroom.ts`](../examples/newsroom.ts), which is the vocabulary tour.
 
@@ -126,7 +126,7 @@ await run(flow, input, {
 });
 ```
 
-Adapters are plain objects that conform to `TrajectoryLogger` and `CheckpointStore` (both exported from `fascicle`). Writing your own is the expected path once you outgrow the defaults — the bundled `filesystem_logger` writes synchronously, so for long-running servers you'll want a custom logger that buffers and flushes asynchronously. (Span parentage is threaded by the runner, so span trees stay correct even under `parallel`/`map` concurrency.) See [docs/concepts.md](./concepts.md#adapter-limits).
+An adapter is a plain object that conforms to `TrajectoryLogger` or `CheckpointStore`, both of which `fascicle` exports. Writing your own is the expected path once you outgrow the defaults, and the bundled `filesystem_logger` writes synchronously, so for long-running servers you'll want a custom logger that buffers and flushes asynchronously. (Span parentage is threaded by the runner, so span trees stay correct even under `parallel`/`map` concurrency.) See [docs/concepts.md](./concepts.md#adapter-limits).
 
 ## Calling a Model
 
@@ -153,7 +153,7 @@ await engine.dispose();
 
 `model_step` is the default model boundary. It returns the answer itself (a `string`, or the schema-validated value when `schema` is set) and auto-threads `ctx.abort`, `ctx.trajectory`, and streaming chunks. When you want what surrounds the answer (usage, cost, tool calls, finish reason), `model_call` takes the same config and returns the full `GenerateResult` envelope. Notice there's no wrapper around `summarize` above, because one call is a leaf and a leaf runs as-is.
 
-Model ids are opaque and sent to the provider verbatim, so use the provider's real id (`claude-sonnet-4-6`, `gpt-4o`, an Ollama tag). Family shorthands like `'sonnet'` work only on the `claude_cli` transport, where the CLI itself resolves them. See [docs/providers.md](./providers.md).
+Model ids are opaque and reach the provider verbatim, so use the real id that the provider publishes (`claude-sonnet-4-6`, `gpt-4o`, an Ollama tag). Family shorthands like `'sonnet'` work only on the `claude_cli` transport, where the CLI itself resolves them. See [docs/providers.md](./providers.md).
 
 ## Try It without a Key
 
@@ -163,7 +163,7 @@ You don't need a provider account to explore. [examples/hello.ts](../examples/he
 pnpm exec tsx examples/newsroom.ts
 ```
 
-The [examples index](../examples/README.md) flags which examples are keyless and which need a provider.
+The [examples index](../examples/README.md) tells you which examples are keyless and which ones need a provider.
 
 ## Where to Go Next
 

@@ -196,7 +196,7 @@ const engine = create_engine({
 });
 ```
 
-Effort maps to OpenAI's `reasoningEffort: 'low' | 'medium' | 'high'`, and non-reasoning models drop it silently on you.
+Effort maps to OpenAI's `reasoningEffort: 'low' | 'medium' | 'high'`, and non-reasoning models drop it silently.
 
 Pass a concrete model id like `gpt-4o` or `gpt-4o-mini`, and your `model` string reaches the API verbatim.
 
@@ -340,13 +340,13 @@ await engine.generate({
 | `credential_provider` | A function you supply, called once per request, returning `{ accessKeyId, secretAccessKey, sessionToken? }`. The escape hatch for assume-role flows that already hold a provider. |
 | none of the above | `@ai-sdk/amazon-bedrock` reads `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` **from the environment only**, and throws if they're unset. |
 
-> **Omitting credentials isn't the credential chain.** `@ai-sdk/amazon-bedrock` reads the two AWS env vars and nothing else — it never opens `~/.aws/credentials`. A profile that works with `aws` CLI commands will still fail here unless you set `use_credential_chain: true` or export the keys into the environment first. The failure surfaces as a SigV4 credentials error that reads like a missing IAM grant.
+> **Omitting credentials is not the credential chain.** `@ai-sdk/amazon-bedrock` reads the two AWS env vars and nothing else — it never opens `~/.aws/credentials`. A profile that works with `aws` CLI commands will still fail here unless you set `use_credential_chain: true` or export the keys into the environment first. The failure surfaces as a SigV4 credentials error that reads like a missing IAM grant.
 
 ```bash
 pnpm add @aws-sdk/credential-providers   # only needed for use_credential_chain
 ```
 
-`use_credential_chain` is a fallback rather than an override, so it's safe to set unconditionally, and on a laptop it picks up your profile, and in Lambda the execution role's env-var credentials take precedence if you forward them. Setting both `use_credential_chain` and `credential_provider` is an `engine_config_error` — they're two answers to the same question, not a fallback pair.
+`use_credential_chain` is a fallback rather than an override, so it's safe to set unconditionally. On a laptop it picks up your profile, and in Lambda the execution role's env-var credentials take precedence if you forward them. Setting both `use_credential_chain` and `credential_provider` is an `engine_config_error` — they're two answers to the same question, not a fallback pair.
 
 Model ids are AWS Bedrock ids passed verbatim — on-demand ids like `anthropic.claude-3-5-sonnet-20241022-v2:0` or cross-region inference profiles like `us.anthropic.claude-sonnet-4-20250514-v1:0`. The trailing `:0` version suffix rides through untouched. Effort maps to the Bedrock `reasoningConfig.budgetTokens` field for Claude models (the same budgets as the `anthropic` adapter); models without reasoning drop it.
 
@@ -511,8 +511,8 @@ The CLI resolves the bare tokens `opus`/`sonnet`/`haiku` to the latest itself, s
 
 `model` is an opaque string sent to the provider verbatim as its `model_id`; `provider` names the transport. Both can be set per call and as engine `defaults`. No resolution step runs — no colon shorthand, no family expansion, no alias table:
 
-- `provider` resolves in this order, per-call `provider`, else `defaults.provider`, else the sole configured provider. Nothing falls back beyond that. With several providers configured and neither a per-call `provider` nor a default, `generate` throws `provider_required_error` ("no provider specified: pass `provider` to generate() or set `defaults.provider`", naming the configured providers).
-- `model` resolves in this order, per-call `model`, else `defaults.model`, else a thrown `model_required_error`.
+- `provider` resolves in this order: per-call `provider`, else `defaults.provider`, else the sole configured provider. Nothing falls back beyond that. With several providers configured and neither a per-call `provider` nor a default, `generate` throws `provider_required_error` ("no provider specified: pass `provider` to generate() or set `defaults.provider`", naming the configured providers).
+- `model` resolves in this order: per-call `model`, else `defaults.model`, else a thrown `model_required_error`.
 
 The provider receives `model` as-is and rejects an unknown id itself (a 404 or validation error). A `provider` with no adapter registered on the engine throws `provider_not_configured_error`. (Exception: the `claude_cli` transport forwards `opus`/`sonnet`/`haiku` to the CLI, which resolves them to the latest.)
 

@@ -105,22 +105,20 @@ simpler path until you want to wrap that agent in retry, fan it across an
 
 ### Strands Agents
 
-AWS's open-source agent SDK (Apache-2.0). Its core bet is *model-driven*. You give
-an `Agent` a model, a system prompt, and tools, and the model drives its own loop
-(planning, choosing tools, and adapting at run time) instead of you wiring the
-control flow. Python is the mature line; TypeScript shipped in preview in December
-2025 and reached GA (v1.0) in April 2026. It's broad and production-oriented, with multi-agent orchestration (swarms,
-graphs, agents-as-tools), the agent-to-agent (A2A) protocol, MCP tools,
-sessions/persistence, structured output, and OpenTelemetry observability are built
-in. Model-agnostic across Bedrock, Anthropic, Ollama, LiteLLM, and more.
+AWS's open-source agent SDK (Apache-2.0). Its core bet is *model-driven*. You give an `Agent` a model, a system
+prompt, and tools, and the model drives its own loop (planning, choosing tools, and adapting at run time) instead
+of you wiring the control flow. Python is the mature line; TypeScript shipped in preview in December 2025 and
+reached GA (v1.0) in April 2026. It's broad and production-oriented. Multi-agent orchestration (swarms,
+graphs, agents-as-tools), the agent-to-agent (A2A) protocol, MCP tools, sessions/persistence, structured output,
+and OpenTelemetry observability are all built in, and it stays model-agnostic across Bedrock, Anthropic, Ollama,
+LiteLLM, and more.
 
-It diverges from fascicle on exactly that core bet. Strands trusts the *model* to
-orchestrate; fascicle has *you* compose the control flow explicitly out of `Step`
-values, with a model call as one component among plain functions. It's also
-agent-centric (the unit is an `Agent`, not a substitutable `Step`), broader in
-scope, and Python-first (its TypeScript reached GA only in April 2026), where
-fascicle is TS-native from the start and narrow. You can reconcile the two, since a model-driven Strands agent is the
-kind of thing fascicle would treat as a single step inside an author-composed flow.
+It diverges from fascicle on exactly that core bet. Strands trusts the *model* to orchestrate; fascicle has *you*
+compose the control flow explicitly out of `Step` values, with a model call as one component among plain
+functions. It's also agent-centric (the unit is an `Agent`, not a substitutable `Step`), broader in scope, and
+Python-first (its TypeScript reached GA only in April 2026), where fascicle is TS-native from the start and
+narrow. You can reconcile the two, since a model-driven Strands agent is the kind of thing fascicle would treat
+as a single step inside an author-composed flow.
 
 **Choose it when** you want the model to drive the agent loop with minimal
 control-flow code, you need production multi-agent orchestration (swarms / graphs /

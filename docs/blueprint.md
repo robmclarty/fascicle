@@ -120,7 +120,7 @@ Rules, in order of importance:
 
 1. **Only fascicle vocabulary and plugged-in names.** Every import is a stage factory, a `format_*` / `render_*` / `read_*` function, or a type. If you find yourself writing a template literal or an `await fetch` here, it belongs in a sibling.
 2. **Export one builder**, `build_flow(engine, models, env): Step<In, Out>`. The engine and model choices arrive as arguments so the flow keeps its hands off `process.env` and tests can hand it a stub engine.
-3. **Put the topology diagram in the file header.** An ASCII tree that mirrors the code below it's the cheapest architecture doc you'll ever write, and drift is caught in review because they sit in the same diff.
+3. **Put the topology diagram in the file header.** An ASCII tree that mirrors the code below it is the cheapest architecture doc you'll ever write, and drift is caught in review because they sit in the same diff.
 4. **Recurring stage idiom**, where a stage is one `chain` binding and readers learn to see it as one unit.
 
    ```ts
@@ -137,7 +137,7 @@ Rules, in order of importance:
 
 - **`create_engine` appears in exactly one file.** Everything else takes a ready-made `Engine`. This is the seam that makes provider swap a one-env-var change and tests trivial.
 - Provider comes from one env var (`FASCICLE_PROVIDER` or your own name), validated through a zod enum. Models are threaded as data (a `FlowModels` record of role to model id), not read from env at call sites.
-- **One source of truth for model defaults.** This is the bug I see most often. Defaults defined in `engine.ts`, redefined in `main.ts`, and env overrides that are parsed but never reach the flow. Define the role-to-model table once, resolve env overrides once, and pass the resolved record down.
+- **One source of truth for model defaults.** This bug keeps recurring. Defaults defined in `engine.ts`, redefined in `main.ts`, and env overrides that are parsed but never reach the flow. Define the role-to-model table once, resolve env overrides once, and pass the resolved record down.
 - Dispose in `finally`, always: `try { await run(flow, input, opts) } finally { await engine.dispose() }`.
 
 ```ts

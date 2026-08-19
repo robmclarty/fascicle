@@ -20,8 +20,9 @@ call, so message translation, tool-schema mapping, streaming, and usage
 normalization are its problem. fascicle owns everything above that seam, which
 means the multi-step tool loop, tool-call salvage, approval gating, deterministic
 turn-ending, cost, the trajectory, and the composition layer. What you have to
-decide is whether that upper layer earns its place, or whether the AI SDK's own agent layer (`ToolLoopAgent`,
-`WorkflowAgent`, `HarnessAgent`) is enough on its own.
+decide is whether that upper layer earns its place, or whether the AI SDK's own
+agent layer (`ToolLoopAgent`, `WorkflowAgent`, `HarnessAgent`) is enough on its
+own.
 
 That default is no longer the only path, and the difference matters for the
 argument below. Providers plug in at one of three depths, and five of the eight
@@ -45,17 +46,17 @@ does about each of them:
   the transport and `model` is an opaque id sent verbatim, so moving a call between
   Anthropic, OpenAI, Bedrock, OpenRouter, or a local runtime is a config change,
   not a rewrite. Portability now goes one level deeper than the provider name,
-  because `transport: 'native'` swaps the wire implementation underneath a provider without
-  changing the pricing key, the usage fields, the effort mapping, or a line of your
-  flow. And because the native OpenAI-compatible core is dialect-parameterized, any
-  gateway that speaks Chat Completions (vLLM, LiteLLM, Ollama's `/v1`) is reachable
-  by pointing `base_url` at it, with no new adapter and no peer to install.
-  Crucially, local models are first-class. Tool-call *salvage* recovers a tool call
-  a model emitted as plain prose with zero structured calls, which is the dominant
-  failure mode of quantized local models and the thing that makes tool loops
-  actually work on Ollama or LM Studio. This is real code, not glue. Salvage is a
-  few hundred mutation-tested lines that the AI SDK's structured-only tool-repair
-  can't substitute for.
+  because `transport: 'native'` swaps the wire implementation underneath a provider
+  without changing the pricing key, the usage fields, the effort mapping, or a line
+  of your flow. And because the native OpenAI-compatible core is
+  dialect-parameterized, any gateway that speaks Chat Completions (vLLM, LiteLLM,
+  Ollama's `/v1`) is reachable by pointing `base_url` at it, with no new adapter
+  and no peer to install. Crucially, local models are first-class. Tool-call
+  *salvage* recovers a tool call a model emitted as plain prose with zero
+  structured calls, which is the dominant failure mode of quantized local models
+  and the thing that makes tool loops actually work on Ollama or LM Studio. This is
+  real code, not glue. Salvage is a few hundred mutation-tested lines that the AI
+  SDK's structured-only tool-repair can't substitute for.
 - **Flexibility.** Agent logic is composed from small values, so changing a
   harness is editing a data structure instead of fighting a vendor's built-in
   loop. You aren't beholden to one agent implementation. You assemble the control
@@ -85,23 +86,22 @@ copy quickly:
    package in the dependency tree.
 2. **A composition algebra of substitutable values.** The AI SDK gives you one
    agent loop. fascicle gives you 22 primitives, each a `Step` that nests inside
-   any other. You get `chain`, the spine that threads a typed record through a flow, the
-   control-flow set (`sequence`, `parallel`, `branch`, `map`, `pipe`, `retry`,
-   `fallback`, `timeout`, `loop`, `compose`), the durability set (`checkpoint`,
-   `suspend`, with the raw state trio `scope`/`stash`/`use` as the advanced tier
-   under `chain`), the deliberation set (`ensemble_step`, `ensemble`,
-   `tournament`, `consensus`, `adversarial`), and the
-   self-improvement pair (`improve` for an online propose-score-accept loop,
-   `learn` for offline reflection over recorded trajectories). "Fan this across an
-   ensemble, pipe it into an adversarial judge loop with a different model, wrap
-   the whole thing in retry" is a different product from a single model-driven
-   agent.
+   any other. You get `chain`, the spine that threads a typed record through a
+   flow, the control-flow set (`sequence`, `parallel`, `branch`, `map`, `pipe`,
+   `retry`, `fallback`, `timeout`, `loop`, `compose`), the durability set
+   (`checkpoint`, `suspend`, with the raw state trio `scope`/`stash`/`use` as the
+   advanced tier under `chain`), the deliberation set (`ensemble_step`, `ensemble`,
+   `tournament`, `consensus`, `adversarial`), and the self-improvement pair
+   (`improve` for an online propose-score-accept loop, `learn` for offline
+   reflection over recorded trajectories). "Fan this across an ensemble, pipe it
+   into an adversarial judge loop with a different model, wrap the whole thing in
+   retry" is a different product from a single model-driven agent.
 3. **No ambient state, trajectory as audit trail.** Matters exactly when a
    production system must be legible and auditable a month later. The trajectory
    isn't just a log format. `fascicle-viewer` ships in the same package and renders
-   a live span tree with cost rollup, and `fascicle/otel` bridges the same events to
-   any OTel backend.
-4. **Behavior regression testing that's itself tested.** `bench` scores a fixture
+   a live span tree with cost rollup, and `fascicle/otel` bridges the same events
+   to any OTel backend.
+4. **Behavior regression testing that is itself tested.** `bench` scores a fixture
    set with `Judge` steps, `regression_compare` diffs the report against a
    committed baseline, and the stock judges are held to the library's own mutation
    bar. That turns "did the prompt change make it worse" into a gate, without a
@@ -166,10 +166,10 @@ tool when:
 
 The decisive test for a given project is whether *you can name a concrete way
 fascicle beats AI-SDK-direct for this specific workload*. If your honest answer is
-no, use the AI SDK for that project. If the project needs the seam anyway (provider portability,
-composed control flow, churn insulation, local models), then you'll build that
-seam regardless, and fascicle is the disciplined, versioned, tested version of work
-you'd otherwise do worse and throw away.
+no, use the AI SDK for that project. If the project needs the seam anyway (provider
+portability, composed control flow, churn insulation, local models), then you'll
+build that seam regardless, and fascicle is the disciplined, versioned, tested
+version of work you'd otherwise do worse and throw away.
 
 ## The Risks of Depending on an Early-Stage Library
 
@@ -179,10 +179,10 @@ its design quality, and if you're evaluating it seriously you should name them:
 - **Key-person risk.** fascicle is a single-maintainer project. Depending on it
   means depending on one person's availability. This is the first objection any
   engineering organization should raise.
-- **Pre-1.0.** It ships breaking changes on minor releases. Pin an exact version
-  and upgrade deliberately.
-- **It isn't accepting outside pull requests yet.** If you hit a bug you can't
-  upstream a fix easily; you fork or you wait.
+- **Pre-1.0.** It ships breaking changes on minor releases, so pin an exact
+  version and upgrade on purpose.
+- **It isn't accepting outside pull requests yet.** If you hit a bug, you can't
+  upstream a fix easily, so you fork or you wait.
 
 What makes these survivable is the shape of the thing:
 

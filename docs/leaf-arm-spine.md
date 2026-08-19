@@ -1,11 +1,11 @@
 # Leaves, Arms, Spine
 
-Every well-factored fascicle app you write converges on the same three-layer
-shape, whatever its domain. This doc names the layers and gives you the
-decision rules for picking the right primitive at each one. The canonical worked example is
-[examples/newsroom.ts](../examples/newsroom.ts), which uses every primary
-primitive once, each in its suggested role; the app-scale versions are the
-reference apps under [examples/](../examples/).
+Every well-factored fascicle app you write converges on the same three-layer shape,
+whatever its domain. This doc names the layers and gives you the decision rules for
+picking the right primitive at each one. The canonical worked example is
+[examples/newsroom.ts](../examples/newsroom.ts), which uses every primary primitive
+once, each in its suggested role; the app-scale versions are the reference apps under
+[examples/](../examples/).
 
 | Layer | What it is | Built from |
 | --- | --- | --- |
@@ -109,8 +109,8 @@ step needs a value that isn't its immediate predecessor's output (the brief
 three steps back, two arms' results combined), you're at spine level and
 `chain` is the tool. A linear pipe where each step consumes exactly the
 previous output is an arm-level `sequence`, and forcing it into a chain is
-ceremony. In practice, a step needing only step N-1 keeps you in `sequence`, and
-the first step needing N-2 moves you to `chain`.
+ceremony. In practice, a step that needs only step N-1 keeps you in `sequence`, and
+the first step that needs N-2 moves you to `chain`.
 
 ## The Shape, End to End
 

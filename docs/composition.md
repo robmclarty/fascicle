@@ -77,11 +77,12 @@ everything shares the same shape.
 
 That one invariant buys you the rest:
 
-- **Substitutability.** Any step can be swapped with any composition of
-  steps having the same I/O type. `retry(adversarial(ensemble(...)))` works
+- **Substitutability.** You can swap any step for any composition of steps
+  that has the same I/O type. `retry(adversarial(ensemble(...)))` works
   because each composer treats its children as opaque `step` values.
-- **Introspectability.** The full flow is a tree of plain objects, walkable
-  by `describe(step)` or by application code that wants to render it.
+- **Introspectability.** The full flow is a tree of plain objects that
+  `describe(step)` can walk, and so can any code of yours that wants to
+  render it.
 - **No coupling.** Steps are values, not registered entities. Two
   unrelated flows share no state unless you inject it.
 
