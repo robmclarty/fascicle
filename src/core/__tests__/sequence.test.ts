@@ -98,7 +98,7 @@ describe('sequence', () => {
     const a = step('a', (x: number) => x + 1)
     expect(() => sequence(a as never)).toThrow(
       new TypeError(
-        'sequence(children): children must be an array of Steps, got object — sequence takes a single array, e.g. sequence([a, b, c])',
+        'sequence(children): children must be an array of Steps, got object — sequence takes a single array, e.g., sequence([a, b, c])',
       ),
     )
   })

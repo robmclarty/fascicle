@@ -9,7 +9,7 @@
  * `status: 'hit' | 'miss' | 'read_error'`.
  *
  * Wrapping an anonymous inner step throws synchronously at construction time
- * with the message `checkpoint requires a named step; got anonymous`, because
+ * with the message `checkpoint requires a named step, got anonymous`, because
  * a cached result must map back to a stable, identifiable step.
  */
 
@@ -42,7 +42,9 @@ function next_id(): string {
  */
 export function checkpoint<i, o>(inner: Step<i, o>, config: CheckpointConfig<i>): Step<i, o> {
   if (inner.anonymous === true) {
-    throw new Error('checkpoint requires a named step; got anonymous')
+    throw new Error(
+      "checkpoint requires a named step, got anonymous — give the inner step an id with step('id', fn)",
+    )
   }
 
   const id = next_id()

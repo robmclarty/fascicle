@@ -221,7 +221,7 @@ async function request_approval(
       tool_call_id,
     })
     throw new tool_approval_denied_error(
-      `tool approval required for '${tool.name}' but no on_tool_approval handler was provided`,
+      `tool approval required for '${tool.name}': pass an on_tool_approval handler to generate(), or clear needs_approval on the tool`,
       { tool_name: tool.name, step_index, tool_call_id },
     )
   }

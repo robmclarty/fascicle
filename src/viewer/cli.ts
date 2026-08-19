@@ -2,7 +2,7 @@
 /**
  * fascicle-viewer CLI.
  *
- *   fascicle-viewer <path>           # tail a JSONL file (primary)
+ *   fascicle-viewer <path>            # tail a JSONL file (primary)
  *   fascicle-viewer --listen          # accept HTTP push only
  *   fascicle-viewer <path> --listen   # both producers feed the same broadcaster
  *
@@ -39,7 +39,7 @@ Usage:
 Options:
   --port <n>      port (default 4242)
   --host <h>      bind host (default 127.0.0.1; --host 0.0.0.0 warns)
-  --buffer <n>   ring-buffer size (default 1000)
+  --buffer <n>    ring-buffer size (default 1000)
   --no-open       do not open the browser
   --help          show this message
 `
@@ -73,11 +73,15 @@ export function parse(argv: readonly string[]): CliArgs {
   const port = Number.parseInt(port_raw, 10)
   const buffer = Number.parseInt(buffer_raw, 10)
   if (!Number.isFinite(port) || port <= 0) {
-    process.stderr.write(`invalid --port: ${port_raw}\n`)
+    process.stderr.write(
+      `fascicle-viewer: invalid --port '${port_raw}': expected a positive integer\n`,
+    )
     process.exit(2)
   }
   if (!Number.isFinite(buffer) || buffer <= 0) {
-    process.stderr.write(`invalid --buffer: ${buffer_raw}\n`)
+    process.stderr.write(
+      `fascicle-viewer: invalid --buffer '${buffer_raw}': expected a positive integer\n`,
+    )
     process.exit(2)
   }
   const path = positionals[0]
@@ -154,9 +158,9 @@ export async function run_viewer_cli(argv: readonly string[]): Promise<void> {
     },
   })
 
-  if (args.path !== undefined) process.stderr.write(`watching ${args.path}\n`)
-  if (args.listen || args.path === undefined) process.stderr.write(`listening for HTTP push on ${handle.url}/api/ingest\n`)
-  process.stderr.write(`viewer at ${handle.url}\n`)
+  if (args.path !== undefined) process.stderr.write(`fascicle-viewer: watching ${args.path}\n`)
+  if (args.listen || args.path === undefined) process.stderr.write(`fascicle-viewer: listening for HTTP push on ${handle.url}/api/ingest\n`)
+  process.stderr.write(`fascicle-viewer: viewer at ${handle.url}\n`)
 
   if (args.open) open_browser(handle.url)
 

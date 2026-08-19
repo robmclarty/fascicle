@@ -136,8 +136,11 @@ describe('typed errors', () => {
   })
 
   it('provider_not_configured_error message names the provider', () => {
+    expect(new provider_not_configured_error('mysterious', ['anthropic']).message).toBe(
+      "provider 'mysterious' is not configured on this engine: pass it to create_engine({ providers }) (configured: anthropic)",
+    )
     expect(new provider_not_configured_error('mysterious').message).toBe(
-      "provider 'mysterious' is not configured on this engine",
+      "provider 'mysterious' is not configured on this engine: pass it to create_engine({ providers }) (configured: none)",
     )
   })
 

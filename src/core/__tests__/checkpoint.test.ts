@@ -77,7 +77,7 @@ describe('checkpoint', () => {
   it('throws synchronously when wrapping an anonymous step (F6)', () => {
     const anon = step((x: number) => x + 1)
     expect(() => checkpoint(anon, { key: 'k' })).toThrow(
-      'checkpoint requires a named step; got anonymous',
+      "checkpoint requires a named step, got anonymous — give the inner step an id with step('id', fn)",
     )
   })
 

@@ -273,7 +273,7 @@ describe('gate (composite)', () => {
 
   it('throws at construction when the inner step is anonymous', () => {
     expect(() => gate(step((n: number) => n), { id: 'x' })).toThrow(
-      'gate requires a named inner step; got anonymous',
+      "gate requires a named inner step, got anonymous — give the inner step an id with step('id', fn)",
     )
   })
 })

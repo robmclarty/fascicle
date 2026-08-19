@@ -265,7 +265,7 @@ Anonymous steps (`step(fn)` with no id) throw at construction time when
 wrapped by `checkpoint`:
 
 ```text
-Error: checkpoint requires a named step; got anonymous
+Error: checkpoint requires a named step, got anonymous — give the inner step an id with step('id', fn)
 ```
 
 Give the inner step an id and it goes away.

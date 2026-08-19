@@ -137,17 +137,17 @@ describe('parse', () => {
   })
 
   it.each([
-    ['non-numeric', ['--port', 'abc'], 'invalid --port: abc'],
-    ['zero', ['--port', '0'], 'invalid --port: 0'],
-    ['negative', ['--port=-3'], 'invalid --port: -3'],
+    ['non-numeric', ['--port', 'abc'], "fascicle-viewer: invalid --port 'abc': expected a positive integer"],
+    ['zero', ['--port', '0'], "fascicle-viewer: invalid --port '0': expected a positive integer"],
+    ['negative', ['--port=-3'], "fascicle-viewer: invalid --port '-3': expected a positive integer"],
   ])('rejects a %s --port', (_label, argv, message) => {
     expect(parse_exit(argv)).toBe(2)
     expect(stderr_text).toContain(message)
   })
 
   it.each([
-    ['non-numeric', ['events.jsonl', '--buffer', 'xyz'], 'invalid --buffer: xyz'],
-    ['zero', ['events.jsonl', '--buffer', '0'], 'invalid --buffer: 0'],
+    ['non-numeric', ['events.jsonl', '--buffer', 'xyz'], "fascicle-viewer: invalid --buffer 'xyz': expected a positive integer"],
+    ['zero', ['events.jsonl', '--buffer', '0'], "fascicle-viewer: invalid --buffer '0': expected a positive integer"],
   ])('rejects a %s --buffer', (_label, argv, message) => {
     expect(parse_exit(argv)).toBe(2)
     expect(stderr_text).toContain(message)
@@ -226,9 +226,9 @@ describe('run_viewer_cli', () => {
     if (!opts) throw new Error('expected start_viewer to be called')
     expect(opts).toMatchObject({ path: existing_file, host: '127.0.0.1', port: 4242, buffer: 1000 })
 
-    expect(stderr_text).toContain(`watching ${existing_file}`)
-    expect(stderr_text).toContain(`viewer at ${VIEWER_URL}`)
-    expect(stderr_text).not.toContain('listening for HTTP push')
+    expect(stderr_text).toContain(`fascicle-viewer: watching ${existing_file}`)
+    expect(stderr_text).toContain(`fascicle-viewer: viewer at ${VIEWER_URL}`)
+    expect(stderr_text).not.toContain('fascicle-viewer: listening for HTTP push')
 
     expect(spawn_mock).toHaveBeenCalledTimes(1)
     expect(spawn_mock.mock.calls[0]?.[1]).toContain(VIEWER_URL)
@@ -257,7 +257,7 @@ describe('run_viewer_cli', () => {
     const opts = start_viewer_mock.mock.calls[0]?.[0]
     if (!opts) throw new Error('expected start_viewer to be called')
     expect(opts.path).toBeUndefined()
-    expect(stderr_text).toContain(`listening for HTTP push on ${VIEWER_URL}/api/ingest`)
+    expect(stderr_text).toContain(`fascicle-viewer: listening for HTTP push on ${VIEWER_URL}/api/ingest`)
     expect(stderr_text).not.toContain('watching')
   })
 

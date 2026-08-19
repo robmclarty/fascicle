@@ -871,7 +871,7 @@ describe('run_tool_loop detail', () => {
     }
     expect(err).toBeInstanceOf(tool_approval_denied_error)
     expect((err as tool_approval_denied_error).message).toBe(
-      "tool approval required for 'echo' but no on_tool_approval handler was provided",
+      "tool approval required for 'echo': pass an on_tool_approval handler to generate(), or clear needs_approval on the tool",
     )
     expect((err as tool_approval_denied_error).tool_name).toBe('echo')
     expect(events.find((e) => e['kind'] === 'tool_approval_denied')).toBeDefined()

@@ -581,7 +581,7 @@ function resolve_turn_config<T>(
   if (turn_timeout_ms !== undefined && turn_timeout_ms <= 0) {
     // A zero/negative budget would fire the deadline before the request even
     // starts; reject rather than silently disable or hang.
-    throw new engine_config_error('turn_timeout_ms must be > 0')
+    throw new engine_config_error(`turn_timeout_ms must be > 0, got ${String(turn_timeout_ms)}`)
   }
   return { effort, retry_policy, turn_timeout_ms }
 }
@@ -606,7 +606,9 @@ function resolve_salvage_budget<T>(
   const tool_call_repair_attempts =
     opts.tool_call_repair_attempts ?? engine.default_tool_call_repair_attempts ?? 0
   if (tool_call_repair_attempts < 0) {
-    throw new engine_config_error('tool_call_repair_attempts must be >= 0')
+    throw new engine_config_error(
+      `tool_call_repair_attempts must be >= 0, got ${String(tool_call_repair_attempts)}`,
+    )
   }
   return tool_call_repair_attempts > 0
     ? { remaining: tool_call_repair_attempts }
@@ -633,7 +635,9 @@ function resolve_loop_limits<T>(
   if (max_tool_calls_per_step !== undefined && max_tool_calls_per_step < 1) {
     // A cap of 0 would drop every call and strand the loop in its stop
     // branch with orphaned records; reject rather than guess.
-    throw new engine_config_error('max_tool_calls_per_step must be >= 1')
+    throw new engine_config_error(
+      `max_tool_calls_per_step must be >= 1, got ${String(max_tool_calls_per_step)}`,
+    )
   }
   return {
     max_steps,
@@ -1003,7 +1007,7 @@ export async function generate<T = string>(
 
   const adapter = engine.adapters.get(target.provider)
   if (adapter === undefined) {
-    throw new provider_not_configured_error(target.provider)
+    throw new provider_not_configured_error(target.provider, [...engine.adapters.keys()])
   }
 
   if (adapter.kind === 'external') {

@@ -523,13 +523,13 @@ Need short names? Keep a plain `Record<string, string>` in your own code and res
 Every peer is loaded lazily on first `generate` against that provider. Missing peers throw a descriptive error at call time, not at construction:
 
 ```text
-missing peer dependency '@ai-sdk/anthropic'. Install it with: pnpm add @ai-sdk/anthropic. Cause: …
+missing peer dependency '@ai-sdk/anthropic'. Install it with your package manager, e.g., `pnpm add @ai-sdk/anthropic` or `npm install @ai-sdk/anthropic`. Cause: …
 ```
 
 This means constructing an engine with all eight providers doesn't force you to install their seven SDKs — only the ones you actually call. `ai`, the package that the `ai_sdk` kind calls `generateText` / `streamText` on, is itself an optional peer for the same reason: it's only imported from the one `ai_sdk` turn seam, so a `transport: 'native'` or `claude_cli` call never loads it. Missing it reports the same way:
 
 ```text
-missing peer dependency 'ai'. Install it with: pnpm add ai. Cause: …
+missing peer dependency 'ai'. Install it with your package manager, e.g., `pnpm add ai` or `npm install ai`. Cause: …
 ```
 
 `pnpm add fascicle` alone, with no AI SDK peer of any kind installed, builds and runs a flow against `anthropic`/`openai`/`openrouter`/`lmstudio`/`ollama` on `transport: 'native'` or against `claude_cli`.

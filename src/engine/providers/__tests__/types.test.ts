@@ -60,7 +60,7 @@ describe('missing_peer_error', () => {
     const cause = new Error('Cannot find module')
     const err = missing_peer_error('ai', cause)
     expect(err.message).toBe(
-      "missing peer dependency 'ai'. Install it with your package manager, e.g. `pnpm add ai` or `npm install ai`. Cause: Cannot find module",
+      "missing peer dependency 'ai'. Install it with your package manager, e.g., `pnpm add ai` or `npm install ai`. Cause: Cannot find module",
     )
     expect(err.cause).toBe(cause)
   })
@@ -68,7 +68,7 @@ describe('missing_peer_error', () => {
   it('stringifies a non-Error cause into the message', () => {
     const err = missing_peer_error('ai', { code: 'ERR_MODULE_NOT_FOUND' })
     expect(err.message).toBe(
-      'missing peer dependency \'ai\'. Install it with your package manager, e.g. `pnpm add ai` or `npm install ai`. Cause: {"code":"ERR_MODULE_NOT_FOUND"}',
+      'missing peer dependency \'ai\'. Install it with your package manager, e.g., `pnpm add ai` or `npm install ai`. Cause: {"code":"ERR_MODULE_NOT_FOUND"}',
     )
   })
 })

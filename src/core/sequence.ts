@@ -234,7 +234,7 @@ export function sequence<t>(
 export function sequence(children: readonly unknown[], options?: SequenceOptions): AnyStep {
   if (!Array.isArray(children)) {
     throw new TypeError(
-      `sequence(children): children must be an array of Steps, got ${typeof children} — sequence takes a single array, e.g. sequence([a, b, c])`,
+      `sequence(children): children must be an array of Steps, got ${typeof children} — sequence takes a single array, e.g., sequence([a, b, c])`,
     )
   }
   children.forEach((child: unknown, index: number) => {

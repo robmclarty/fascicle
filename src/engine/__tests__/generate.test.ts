@@ -332,7 +332,7 @@ describe('generate: dispatch gating (step 2)', () => {
       err = e
     }
     expect(err).toBeInstanceOf(engine_config_error)
-    expect((err as engine_config_error).message).toBe('turn_timeout_ms must be > 0')
+    expect((err as engine_config_error).message).toBe('turn_timeout_ms must be > 0, got 0')
   })
 
   it('accepts a positive turn_timeout_ms and completes normally', async () => {
@@ -1060,7 +1060,7 @@ describe('generate: body B hardening (step 3)', () => {
       err = e
     }
     expect(err).toBeInstanceOf(engine_config_error)
-    expect((err as engine_config_error).message).toBe('tool_call_repair_attempts must be >= 0')
+    expect((err as engine_config_error).message).toBe('tool_call_repair_attempts must be >= 0, got -1')
   })
 
   it('rejects a max_tool_calls_per_step below 1 with the exact message', async () => {
@@ -1075,7 +1075,7 @@ describe('generate: body B hardening (step 3)', () => {
       err = e
     }
     expect(err).toBeInstanceOf(engine_config_error)
-    expect((err as engine_config_error).message).toBe('max_tool_calls_per_step must be >= 1')
+    expect((err as engine_config_error).message).toBe('max_tool_calls_per_step must be >= 1, got 0')
   })
 
   it('records schema-repair failures with initial then repair attempt labels', async () => {

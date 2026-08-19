@@ -92,7 +92,9 @@ function bind_store<i, o>(persisted: Step<i, o>, store: CheckpointStore): Step<i
  */
 export function gate<i, o>(inner: Step<i, o>, config: GateConfig<o>): Step<i, o> {
   if (inner.anonymous === true) {
-    throw new Error('gate requires a named inner step; got anonymous')
+    throw new Error(
+      "gate requires a named inner step, got anonymous — give the inner step an id with step('id', fn)",
+    )
   }
   const { id, store, format } = config
 

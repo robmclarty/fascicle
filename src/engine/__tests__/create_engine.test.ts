@@ -72,7 +72,9 @@ describe('create_engine', () => {
     const engine = create_engine({ providers: { anthropic: { api_key: 'k' } } })
     await expect(
       engine.generate({ model: 'gpt-4o', provider: 'openai', prompt: 'hi' }),
-    ).rejects.toThrow("provider 'openai' is not configured on this engine")
+    ).rejects.toThrow(
+      "provider 'openai' is not configured on this engine: pass it to create_engine({ providers }) (configured: anthropic)",
+    )
   })
 
   it('throws engine_config_error at construction for a misspelled provider name', () => {
@@ -186,19 +188,19 @@ describe('create_engine', () => {
           providers: { anthropic: { api_key: 'k' } },
           defaults: { tool_call_repair_attempts: -1 },
         }),
-      ).toThrow('defaults.tool_call_repair_attempts must be >= 0')
+      ).toThrow('defaults.tool_call_repair_attempts must be >= 0, got -1')
       expect(() =>
         create_engine({
           providers: { anthropic: { api_key: 'k' } },
           defaults: { max_tool_calls_per_step: 0 },
         }),
-      ).toThrow('defaults.max_tool_calls_per_step must be >= 1')
+      ).toThrow('defaults.max_tool_calls_per_step must be >= 1, got 0')
       expect(() =>
         create_engine({
           providers: { anthropic: { api_key: 'k' } },
           defaults: { turn_timeout_ms: 0 },
         }),
-      ).toThrow('defaults.turn_timeout_ms must be > 0')
+      ).toThrow('defaults.turn_timeout_ms must be > 0, got 0')
     })
 
     it('defaults.retry_policy layers as the fallback over legacy default_retry', () => {

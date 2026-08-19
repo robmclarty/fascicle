@@ -152,14 +152,24 @@ export class model_required_error extends Error {
   }
 }
 
+/**
+ * A generate call named a provider the engine has no adapter for. Carries the
+ * configured names, and the message repeats them, so a typo is visible from
+ * the message alone rather than needing the engine config alongside it.
+ */
 export class provider_not_configured_error extends Error {
   readonly kind = 'provider_not_configured_error' as const;
   declare readonly path?: ReadonlyArray<string>;
   readonly provider: string;
-  constructor(provider: string) {
-    super(`provider '${provider}' is not configured on this engine`)
+  readonly configured: ReadonlyArray<string>;
+  constructor(provider: string, configured: ReadonlyArray<string> = []) {
+    const state = configured.length > 0 ? configured.join(', ') : 'none'
+    super(
+      `provider '${provider}' is not configured on this engine: pass it to create_engine({ providers }) (configured: ${state})`,
+    )
     this.name = 'provider_not_configured_error'
     this.provider = provider
+    this.configured = configured
   }
 }
 
@@ -221,7 +231,7 @@ export class provider_capability_error extends Error {
 export class engine_disposed_error extends Error {
   readonly kind = 'engine_disposed_error' as const;
   declare readonly path?: ReadonlyArray<string>;
-  constructor(message = 'engine has been disposed; further calls are not permitted') {
+  constructor(message = 'engine has been disposed: build a new one with create_engine()') {
     super(message)
     this.name = 'engine_disposed_error'
   }

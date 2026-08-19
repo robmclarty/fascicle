@@ -10,7 +10,7 @@ Provider SDKs are optional peers that load on the first `generate` against that
 provider. The error is descriptive and arrives at call time, not construction:
 
 ```text
-missing peer dependency '@ai-sdk/anthropic'. Install it with: pnpm add @ai-sdk/anthropic. Cause: …
+missing peer dependency '@ai-sdk/anthropic'. Install it with your package manager, e.g., `pnpm add @ai-sdk/anthropic` or `npm install @ai-sdk/anthropic`. Cause: …
 ```
 
 Install the peer for the provider you actually call, or drop that provider from

@@ -117,13 +117,17 @@ function validate_numeric_defaults(defaults: EngineDefaults | undefined): void {
   if (defaults === undefined) return
   const { tool_call_repair_attempts, max_tool_calls_per_step, turn_timeout_ms } = defaults
   if (tool_call_repair_attempts !== undefined && tool_call_repair_attempts < 0) {
-    throw new engine_config_error('defaults.tool_call_repair_attempts must be >= 0')
+    throw new engine_config_error(
+      `defaults.tool_call_repair_attempts must be >= 0, got ${String(tool_call_repair_attempts)}`,
+    )
   }
   if (max_tool_calls_per_step !== undefined && max_tool_calls_per_step < 1) {
-    throw new engine_config_error('defaults.max_tool_calls_per_step must be >= 1')
+    throw new engine_config_error(
+      `defaults.max_tool_calls_per_step must be >= 1, got ${String(max_tool_calls_per_step)}`,
+    )
   }
   if (turn_timeout_ms !== undefined && turn_timeout_ms <= 0) {
-    throw new engine_config_error('defaults.turn_timeout_ms must be > 0')
+    throw new engine_config_error(`defaults.turn_timeout_ms must be > 0, got ${String(turn_timeout_ms)}`)
   }
 }
 

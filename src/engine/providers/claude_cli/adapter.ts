@@ -389,7 +389,7 @@ function validate_request(
       throw new provider_capability_error(
         PROVIDER_NAME,
         'tool_execute',
-        'tool_bridge is forbid; tools with execute closures cannot run under claude_cli',
+        "tool_bridge is 'forbid' and this tool has an execute closure — set tool_bridge: 'allowlist_only' or drop the closure",
       )
     }
   }
