@@ -12,6 +12,8 @@
 
 ### Added
 
+- **The `security` slot gates the check suite.** `pnpm audit --audit-level=high` had sat outside the loop since the checkride config landed, as a `check:security` script nothing ran, so a new high advisory reached a release without failing anything. The slot is now in the default set, which is what CI runs, and clearing it took one devDependency bump (`markdownlint-cli2` 0.23.2, whose pinned `js-yaml` is patched), a `vite ^8.0.16` override for the `server.fs.deny` bypass under vitest, and a lockfile re-resolution that carried the other twelve advisories across. `check:security` is now `checkride --only security`, so the gate has one implementation rather than two that can disagree. Nothing in the published package changed: every advisory was dev-tree only, and `dependencies` is still empty.
+
 - **Two prose rules that reach string literals.** Vale maps `ts = js`, which lints doc comments and leaves the code alone, so no user-facing message in this package had ever been checked against a house rule. `rules/no-latin-abbrev-in-strings.yml` and `rules/no-em-dash-pair-in-strings.yml` mirror the vale rules of the same name into ast-grep, run in the `struct` slot, and cover `src`, `test`, and `examples`. Message *shape* stays a matter of judgment and gets no rule, because "does this name a remedy" is not something a matcher can decide.
 
 ### Fixed

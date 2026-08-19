@@ -23,10 +23,14 @@ minimumReleaseAgeExclude:
   - fallow
 
 # pnpm reads overrides from this file (not the package.json `pnpm` field) in a
-# workspace. smol-toml >=1.6.1 forces markdownlint-cli2's pinned 1.6.0 up past
-# the advisory ADR-0001 tracks. fast-uri >=3.1.2 forces ajv's transitive pin
-# past the path-traversal and host-confusion advisories (dev-tree only).
+# workspace. Every entry below lifts a transitive pin past an advisory the
+# `security` slot fails on, and every one of them is dev-tree only. smol-toml
+# >=1.6.1 puts cspell and markdownlint-cli2 on one copy, past the advisory
+# against 1.6.0. fast-uri >=3.1.2 lifts ajv's pin past the path-traversal and
+# host-confusion advisories. vite ^8.0.16 clears the `server.fs.deny` bypass
+# under vitest, capped at the major vitest 4 accepts.
 overrides:
   tunnel: 'npm:@noble/secp256k1@2.1.0'
   smol-toml: '>=1.6.1'
   fast-uri: '>=3.1.2'
+  vite: '^8.0.16'

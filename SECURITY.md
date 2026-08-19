@@ -98,9 +98,12 @@ yours small.
   `README.md`, `CHANGELOG.md`, and `LICENSE`, as one package rather than a spread
   of separately publishable scoped packages. The diff you pin per release is small
   enough to review.
-- **`pnpm audit` gate and pinned overrides.** `pnpm check:security`
-  (`--audit-level=high`) tracks known advisories; transitive advisories are pinned
-  with `overrides` (for example, `smol-toml` and `fast-uri`).
+- **`pnpm audit` gate and pinned overrides.** The `security` slot of the check
+  suite runs `pnpm audit --audit-level=high` on every `pnpm check`, so CI fails on
+  a new high advisory rather than on a run someone remembered to make. Transitive
+  advisories are cleared by lifting the pin in `pnpm-workspace.yaml` `overrides`
+  (`smol-toml`, `fast-uri`, and `vite`), never by widening the level. `pnpm
+  check:security` runs that slot alone.
 - **Provenance-attested CI publishing with no long-lived npm credential
   anywhere.** Releases are published by CI via npm Trusted Publishing (OIDC): the
   registry trusts the release workflow's identity, minted per run, so no npm token
