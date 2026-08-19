@@ -1,0 +1,28 @@
+# Headings in docs/ are Title Case. The author's published article titles are
+# Title Case ("Machine Learning Is Not Learning", "Write Self-Documenting Code",
+# "Don't Use HPKP by Default"), and docs/ was sentence case at 299 of 301
+# headings before this rule landed.
+#
+# The evidence is thinner than the rest of this directory's. A blog title is not
+# an in-document heading, and the exemplars carry no h2 of their own, so this is
+# a house decision the rule enforces rather than a measurement off the voice set.
+#
+# Scoped to docs/ in .vale.ini, and it cannot move to the global section:
+# CHANGELOG.md's version headings ("v0.9.11 — 2026-08-05") fail title case
+# outright, and README, AGENTS, VALUES, and examples/ stay sentence case.
+#
+# Chicago rather than AP, on behaviour rather than taste. AP accepts "Where to
+# Put the Harness" and rejects "Where to Go Next", which is not a distinction
+# any style guide draws and not one a writer can predict. Chicago lowercases
+# every preposition ("with", "from", "into", "over", "under", "via") and every
+# article and coordinating conjunction, capitalizes the first and last word, and
+# says the same thing twice in a row.
+#
+# Vale masks a code span before the check runs, so an identifier heading is
+# backticked (`anthropic`) rather than capitalized (Anthropic).
+extends: capitalization
+message: "Heading '%s' should be in Title Case."
+level: error
+scope: heading
+match: $title
+style: Chicago

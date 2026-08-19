@@ -1,4 +1,4 @@
-# API reference
+# API Reference
 
 A one-page map of the public surface. This is a precursor to a generated
 reference; for full option shapes and behavior, follow the links into
@@ -29,7 +29,7 @@ dynamically and reports as `mcp_sdk_missing_error` when absent, and
 imports statically because it speaks the AI SDK's UI message-stream protocol,
 so a missing `ai` fails at module resolution rather than with a fascicle error.
 
-## Running a flow
+## Running a Flow
 
 | Export | Shape | Notes |
 | --- | --- | --- |
@@ -46,12 +46,12 @@ const flow = sequence([step('inc', (n: number) => n + 1), step('double', (n) => 
 await run(flow, 1); // 4
 ```
 
-## Composition primitives
+## Composition Primitives
 
 Every composer takes `Step<i, o>` values and returns a `Step<i, o>`. Anything that
 fits a step fits any composition of steps.
 
-### Lift and sequence
+### Lift and Sequence
 
 | Primitive | Shape |
 | --- | --- |
@@ -63,7 +63,7 @@ fits a step fits any composition of steps.
 A straight pipe belongs in `sequence`; reach for `chain` when a step needs
 fan-in, phases, or named per-joint types.
 
-### Control flow
+### Control Flow
 
 | Primitive | Shape |
 | --- | --- |
@@ -75,7 +75,7 @@ fan-in, phases, or named per-joint types.
 | `fallback(primary, backup, { handoff? })` | run a backup if the primary throws; `handoff(input, err)` maps the backup's input |
 | `timeout(step, ms)` | cancel an inner step after N ms (throws `timeout_error`) |
 
-### Multi-model
+### Multi-Model
 
 | Primitive | Shape |
 | --- | --- |
@@ -87,7 +87,7 @@ fan-in, phases, or named per-joint types.
 
 Each of these returns a result envelope (`{ candidate, converged, rounds }`, `{ winner, scores }`, ...). The optional `project` maps that envelope into the step's output at the source (`project: (r) => r.candidate`), so downstream steps see the value instead of the wrapper; omitted, the envelope itself is the output. `ensemble_step` is the primary pick-best; plain `ensemble` and `tournament` are covered in [advanced-composition.md](./advanced-composition.md), as are `improve` / `learn` and the raw state trio.
 
-### Self-improvement
+### Self-Improvement
 
 | Primitive | Shape |
 | --- | --- |
@@ -108,7 +108,7 @@ Each of these returns a result envelope (`{ candidate, converged, rounds }`, `{ 
 The full loop is walked in
 [regression-testing-model-behavior.md](./regression-testing-model-behavior.md).
 
-### State and durability
+### State and Durability
 
 | Primitive | Shape |
 | --- | --- |
@@ -118,7 +118,7 @@ The full loop is walked in
 | `suspend({ id, on, resume_schema, combine })` | pause for external input, then resume later with `resume_data` (throws `suspended_error` to signal the pause; `run.until_suspended` surfaces it as a typed outcome instead) |
 | `gate(inner, { id, store?, format?, name? })` | run `inner`, checkpoint its result at `gate:<id>`, then suspend with it as the payload; resume passes the result through, and a restart with the same store replays from the checkpoint instead of re-running `inner` |
 
-## The engine
+## The Engine
 
 ```ts
 import { create_engine } from 'fascicle';
@@ -140,7 +140,7 @@ const engine = create_engine(config); // EngineConfig -> Engine
 | `engine.with_providers(providers, custom_providers?)` | derive a new engine with added/overridden providers; this engine is untouched, the derived one disposes independently |
 | `engine.dispose()` | terminal and idempotent; aborts in-flight `claude_cli` subprocesses |
 
-### `generate` options (highlights)
+### `generate` Options (Highlights)
 
 `model` and `provider` are the only routing inputs: `model` is an opaque id sent
 verbatim, `provider` names the transport. `provider` resolves per call, then from
@@ -159,7 +159,7 @@ Full shape in [configuration.md](./configuration.md#generate-options).
 | `abort`, `trajectory`, `on_chunk` | cancellation, observation, streaming |
 | `retry` | per-call `RetryPolicy` |
 
-### `model_call` — the bridge into a flow
+### `model_call` — The Bridge into a Flow
 
 ```ts
 import { model_call } from 'fascicle';
@@ -179,7 +179,7 @@ generation knobs (`temperature`, `max_tokens`, `top_p`, `turn_timeout_ms`,
 / `effort` / `retry`; `abort`, `trajectory`, and `on_chunk` stay runner-owned
 and are threaded automatically. Types: `ModelCallConfig`, `ModelCallInput`.
 
-### `model_step`: the answer, not the envelope
+### `model_step`: The Answer, Not the Envelope
 
 ```ts
 import { model_step } from 'fascicle';
@@ -196,7 +196,7 @@ for a slice of it. Implemented as `model_call` with `project` preset to
 `(r) => r.content`, so the leaf is a single node in `describe` and the
 trajectory.
 
-### `define_agent` — markdown-driven agents
+### `define_agent` — Markdown-Driven Agents
 
 ```ts
 import { define_agent } from 'fascicle/agents';
@@ -246,7 +246,7 @@ roll your own to target any sink.
 | `tee_logger(...loggers)` | logger | fan one event stream out to several loggers |
 | `filesystem_store(options)` | store | filesystem-backed `CheckpointStore` |
 
-### Reading a trajectory back
+### Reading a Trajectory Back
 
 Exported from `fascicle` for anything consuming a recorded JSONL stream (the
 viewer, `learn`, your own studio). The gate is permissive on purpose: any
@@ -263,7 +263,7 @@ line a newer producer emits. The guards are how you narrow one.
 | `is_checkpoint_event(value)` | guard | a `checkpoint` store lookup: `status` is `'hit' \| 'miss' \| 'read_error'`, with the step `id` and store `key` |
 | `is_custom_trajectory_event(value)` | guard | the fallback shape: any string `kind`, well-known ones included |
 
-## Testing doubles (`fascicle/testing`)
+## Testing Doubles (`fascicle/testing`)
 
 The engine doubles an app's tests need, so the real flow runs through the
 real `run()` with zero network. The full guide is [testing.md](./testing.md);
@@ -282,7 +282,7 @@ Types: `StubEngineOptions`, `StubResponse`, `StubContentFn`,
 `ScriptResponse`, `ScriptEngineOptions`, `CaptureEngine`,
 `CaptureEngineOptions`.
 
-## MCP bridge (`fascicle/mcp`)
+## MCP Bridge (`fascicle/mcp`)
 
 Connects flows to the Model Context Protocol both ways. Pure adapter glue over
 the existing `Tool` and `run` contracts; `@modelcontextprotocol/sdk` is an
@@ -298,7 +298,7 @@ optional peer dependency, installed only when this subpath is used.
 `serve_flow` over a stdio transport is a stateful session for MCP hosts. For a
 single-shot child under a plain JSON-over-stdio parent, use `run_stdio` below.
 
-## Stdio agent contract (`fascicle/stdio`)
+## Stdio Agent Contract (`fascicle/stdio`)
 
 Run a flow as a single-shot child process: JSON on stdin, one JSON result on
 stdout, trajectory on stderr, exit code as the verdict (0 = result on stdout is
@@ -311,7 +311,7 @@ authoritative, 1 = flow failure, 2 = contract violation). See
 | `execute_stdio(flow, options, io)` | fn | the same contract over injected io; returns a `StdioOutcome` instead of exiting |
 | `RunStdioOptions`, `StdioFailure`, `StdioOutcome`, `StdioIo` | type | options and the machine-readable failure envelope |
 
-## UI message streams (`fascicle/ui`)
+## UI Message Streams (`fascicle/ui`)
 
 Bridges a `run.stream(...)` handle onto the AI SDK UI message-stream protocol,
 so a fascicle flow can back a `useChat` endpoint rendered by AI Elements or
@@ -328,7 +328,7 @@ Streamdown. Imports `ai` statically (see the peer note at the top).
 Types: `RunStreamLike` (the structural shape of a `run.stream(...)` handle, so
 no core import is needed to satisfy it), `ToUiStreamOptions`, `UiMapperState`.
 
-## Observability viewer (`fascicle/viewer`)
+## Observability Viewer (`fascicle/viewer`)
 
 ```ts
 import { start_viewer } from 'fascicle/viewer';
@@ -368,7 +368,7 @@ by the call or `defaults.provider`), `provider_not_configured_error`,
 The [troubleshooting guide](./troubleshooting.md) maps the common ones to causes
 and fixes.
 
-## Exported types
+## Exported Types
 
 For full field-level detail, read the source `.d.ts` (a generated reference is on
 the roadmap). The public type exports:

@@ -1,4 +1,4 @@
-# Regression-testing model behavior with mutation-tested judges
+# Regression-Testing Model Behavior with Mutation-Tested Judges
 
 You cannot diff a model's output against a golden string. The same prompt yields different words every run, so the equality assertion that anchors ordinary regression testing does not apply. But you can regression-test model behavior the same way you regression-test code: score the output with judges, summarize the scores into a report, and diff that report against a committed baseline. A drop in the scores is a regression, exactly as a failing assertion is.
 
@@ -6,7 +6,7 @@ This works only if the judges are trustworthy, and a judge is just code. So the 
 
 It builds on [concepts.md](./concepts.md) (step-as-value, trajectories) and the deliberation composites in [deliberation-as-composition.md](./deliberation-as-composition.md). The three pieces here, `judges`, `bench`, and `regression`, live in [`src/composites/`](../src/composites/) and are re-exported from `fascicle`.
 
-## A judge is a step that scores
+## A Judge Is a Step That Scores
 
 The whole judge abstraction is one type:
 
@@ -41,7 +41,7 @@ const terse: Judge<string, string> = judge_with<string, string>(({ output }) =>
 );
 ```
 
-## `bench` runs a flow over fixtures and scores it
+## `bench` Runs a Flow over Fixtures and Scores It
 
 `bench(flow, cases, judges, options?)` is the online evaluator. It runs the flow once per fixture, scores each output with every judge, and returns a `BenchReport`. Where `learn` reflects on past trajectories after the fact, `bench` runs the flow live against fresh cases.
 
@@ -84,7 +84,7 @@ console.log(report.summary.pass_rate, report.summary.mean_scores.exact);
 
 `bench` runs cases concurrently (cap it with `options.concurrency`), tracks cost per case by intercepting `cost` events on the trajectory pipeline, and writes each case's trajectory under `trajectory_dir` when set. It never throws on a failed case; a case whose flow throws is recorded with `ok: false` and drags down `pass_rate`. Control-flow signals are the exception, because they are not case results: pass `options.abort` and a cancelled bench rejects rather than reporting on cases it never ran, and a flow that pauses on a human-approval gate rejects with `bench_suspend_error` rather than scoring the paused case as a zero. See the per-case observability options in [`src/composites/bench.ts`](../src/composites/bench.ts). To run a bench deterministically with no network, build the flow against `make_stub_engine` from `fascicle/testing`; the canned responses still validate through each call's schema.
 
-## `regression_compare` diffs two reports
+## `regression_compare` Diffs Two Reports
 
 A single report is a snapshot. Regression testing is the diff between two of them. `regression_compare(current, baseline, options?)` produces a `RegressionReport` whose `ok` flag is `false` when any tracked metric got worse beyond a threshold:
 
@@ -118,7 +118,7 @@ if (!diff.ok) {
 }
 ```
 
-## The loop
+## The Loop
 
 Putting it together, model regression testing is five steps, and only the middle three run on every commit:
 
@@ -130,7 +130,7 @@ Putting it together, model regression testing is five steps, and only the middle
 
 The shape is deliberately the shape of code regression testing: a fixture set, a deterministic scoring of non-deterministic output, a committed expectation, a diff. The only new idea is that the assertion is a learned-or-rubric score instead of `assertEquals`.
 
-## The judges themselves are mutation-tested
+## The Judges Themselves Are Mutation-Tested
 
 Here is the part that closes the loop. Steps 3 through 5 only mean something if the judges are correct. A judge that always returns `1`, or that compares against the wrong field, or whose threshold is off by one, will happily greenlight a regressed model. The baseline diff would be green and the model would be worse. The tool that tests your model would have lied.
 
@@ -153,7 +153,7 @@ The `break` floor is a ratchet. It only moves up. The config's own comment recor
 
 So the meta-point is structural, not rhetorical. `bench` and `regression_compare` let you regression-test the model. The mutation gate regression-tests the judges that make that possible. The thing that tests your model also gets tested, by the same `pnpm check:all` that gates everything else. See [concepts.md](./concepts.md#the-check-contract) for the check contract that ties it together.
 
-## Further reading
+## Further Reading
 
 - [concepts.md](./concepts.md) — step-as-value, trajectories, the check contract.
 - [composition.md](./composition.md) — the composition surface judges and benches are built from.

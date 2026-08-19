@@ -60,7 +60,7 @@ Options: `make_stub_engine(canned, { usage, model_id })` sets the usage totals
 reported on every result (default `{ input_tokens: 40, output_tokens: 20 }`)
 and `model_resolved.model_id` (default `'stub'`).
 
-### The `define_agent` caveat
+### The `define_agent` Caveat
 
 A markdown-only agent (no `build_prompt`) sends its body as the user prompt
 and **no system prompt at all**. To a stub, every such call looks identical:
@@ -70,7 +70,7 @@ becomes the system prompt, so a prefix can match it), or use
 `make_script_engine`, which distinguishes calls by order instead of by
 prefix.
 
-### Schema validation
+### Schema Validation
 
 Canned content is validated through the caller's own schema
 (`opts.schema['~standard'].validate`), so fixtures cannot drift from the
@@ -192,7 +192,7 @@ const flaky = engine_from_generate(async (opts) => ({
 
 All four run keyless, network-free, in the default test suite.
 
-### Testing a retry path
+### Testing a Retry Path
 
 Script the failure, then the recovery. `retry` treats the scripted
 `rate_limit_error` as an application failure and re-runs the step, which
@@ -213,7 +213,7 @@ const resilient = retry(ask, { max_attempts: 2, backoff_ms: 1 });
 expect(await run(resilient, 'hello')).toBe('recovered');
 ```
 
-### Testing a loop that converges
+### Testing a Loop That Converges
 
 The script's order sensitivity is exactly what a convergence test needs.
 Round 1 gets the unconverged draft, round 2 the final one, and a loop that
@@ -238,7 +238,7 @@ const converge = loop({
 expect(await run(converge, 'write the brief')).toBe('final draft');
 ```
 
-### Testing suspend/resume flows keyless
+### Testing Suspend/Resume Flows Keyless
 
 `suspend` gates are pure composition: `run.until_suspended` reports the pause
 as a typed outcome and `outcome.resume(data)` re-runs with the decision, no
@@ -253,7 +253,7 @@ if (outcome.kind !== 'suspended') throw new Error('expected the gate to suspend'
 const resumed = await outcome.resume({ approved: true });
 ```
 
-### Testing timeout behavior
+### Testing Timeout Behavior
 
 Fake a hung provider with `engine_from_generate`: a `generate` that never
 resolves but rejects when `opts.abort` fires. `timeout` cancels the inner

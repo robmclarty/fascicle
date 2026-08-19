@@ -52,7 +52,7 @@ The published surface as of v0.12.0:
   (OIDC) and a signed provenance attestation; verify one with
   `npm audit signatures`. See [SECURITY.md](../SECURITY.md).
 
-## Near-term
+## Near-Term
 
 - **MCP hardening.** Auth on the HTTP transport, MCP `sampling`, per-tool
   approval gating, and `resources` subscriptions were all deferred out of the
@@ -63,7 +63,7 @@ The published surface as of v0.12.0:
 - **`claude_cli` on the Agent SDK.** Rebasing the subprocess adapter onto
   Anthropic's Agent SDK, slotted in wherever provider metering forces it.
 
-## Under consideration
+## Under Consideration
 
 Scoped but not sequenced. Each is a leverage bet, not a promise.
 
@@ -83,7 +83,7 @@ Scoped but not sequenced. Each is a leverage bet, not a promise.
 - **Viewer and bench papercuts.** Run-id truncation, log pagination,
   deterministic bench baselines, `judge_llm` wiring.
 
-## Open design questions
+## Open Design Questions
 
 Two calls are deferred pending a real use case, not rejected:
 
@@ -99,7 +99,7 @@ Two calls are deferred pending a real use case, not rejected:
 Runtime `.flow.yaml` parsing stays documentation-only until downstream demand
 appears.
 
-## Not planned
+## Not Planned
 
 Deliberate exclusions. Each trades surface correctness for interior work users
 cannot see, or adds scope fascicle does not need:

@@ -4,7 +4,7 @@ The errors you are most likely to hit on the first run, and what each one means.
 fascicle fails loudly with named error types rather than silent fallbacks, so the
 error name usually points straight at the cause.
 
-## `Cannot find package '@ai-sdk/...'` — peer not installed
+## `Cannot find package '@ai-sdk/...'` — Peer Not Installed
 
 Provider SDKs are optional peers, loaded on the first `generate` against that
 provider. The error is descriptive and arrives at call time, not construction:
@@ -83,7 +83,7 @@ assignable to parameter of type 'never'`. State the input type when opening
 the chain: `chain<Input>()`, or `chain('name').input<Input>()` when the
 input binding is renamed.
 
-## Provider auth failures (401 / 403)
+## Provider Auth Failures (401 / 403)
 
 A configured provider rejected the credentials. Check the right environment
 variable is set and passed into the config:
@@ -107,7 +107,7 @@ credentials error that looks like a missing IAM grant. Set
 `use_credential_chain: true` (and install `@aws-sdk/credential-providers`) to
 use the profile. Per-provider notes: [providers.md](./providers.md).
 
-## `claude_cli` problems
+## `claude_cli` Problems
 
 | Symptom                                            | Cause and fix                                                                 |
 | -------------------------------------------------- | ----------------------------------------------------------------------------- |
@@ -120,7 +120,7 @@ use the profile. Per-provider notes: [providers.md](./providers.md).
 Every `claude_cli_error` carries a `stderr_snippet` (first 512 bytes of stderr).
 Full guide: [cli.md](./cli.md).
 
-## A cancelled run keeps consuming tokens or holding resources
+## A Cancelled Run Keeps Consuming Tokens or Holding Resources
 
 Cancellation is cooperative, not preemptive: `timeout(inner, ms)` and a SIGINT/SIGTERM
 abort both signal `ctx.abort`, but neither can force a step that ignores that signal to
@@ -136,7 +136,7 @@ or other abortable call the step makes, and check `ctx.abort.aborted` between it
 of any loop that does not otherwise await something abortable. See
 [concepts.md](./concepts.md#cancellation-is-cooperative).
 
-## Streaming stops retrying / logs look out of order
+## Streaming Stops Retrying / Logs Look out of Order
 
 - Retries do not resume past the first delivered chunk. Once a stream has started,
   a mid-stream failure is not retried; the orchestrator enforces that boundary.
@@ -148,7 +148,7 @@ of any loop that does not otherwise await something abortable. See
   without a parent (a logger driven directly, outside a run) fall back to a
   best-effort in-memory stack. See [concepts.md](./concepts.md#adapter-limits).
 
-## `GenerateResult.cost` is missing
+## `GenerateResult.cost` Is Missing
 
 Cost is populated only when the resolved `provider:model_id` has a row in the
 pricing table. Unpriced models return usage without cost — not an error. Add a row
@@ -156,7 +156,7 @@ with `engine.register_price(provider, model_id, { ... })` or the `pricing` confi
 key. `is_estimate` is always `true`; treat the number as a budget signal. See
 [configuration.md](./configuration.md#pricing).
 
-## `GenerateResult.provider_reported` is missing
+## `GenerateResult.provider_reported` Is Missing
 
 The field is present only when the provider volunteered detail on that call, and
 it is keyed by provider name: read `provider_reported.bedrock`, not
@@ -167,7 +167,7 @@ PII action is `NONE` rewrites nothing, so the trace is the only in-process
 evidence it ran. See
 [providers.md](./providers.md#provider-reported-detail).
 
-## A Bedrock guardrail seems ignored and the output is unchanged
+## A Bedrock Guardrail Seems Ignored and the Output Is Unchanged
 
 Check what the guardrail is configured to *do* before suspecting the wiring. A
 PII action of `NONE` detects and reports without rewriting, so unchanged output
@@ -221,7 +221,7 @@ You called `generate` after `engine.dispose()`. `dispose()` is terminal and
 idempotent; construct a fresh engine if you need to keep going. Subprocess
 providers (`claude_cli`) abort in-flight children on dispose.
 
-## My run threw `suspended_error`
+## My Run Threw `suspended_error`
 
 A `suspend` gate fired during a plain `run(...)`, which has no way to represent
 a pause and so signals it as a throw. Drive suspend-bearing flows with
@@ -231,7 +231,7 @@ closure re-runs the flow with the decision. Completion is
 `{ kind: 'done', output }`; real errors still throw. See
 [human-in-the-loop.md](./human-in-the-loop.md).
 
-## A `sequence` type error disappeared after a refactor
+## A `sequence` Type Error Disappeared after a Refactor
 
 Literal `sequence` tuples are joint-checked at compile time: each child must
 accept its predecessor's output, and a mismatch errors on the offending
@@ -248,7 +248,7 @@ a Step where `fn` belongs (for example, `pipe(a, b, c)`) throws this `TypeError`
 at flow construction. To chain Steps, use `sequence([a, b, c])`. `sequence` likewise
 rejects non-Step children at construction — wrap plain functions with `step(fn)`.
 
-## Locating a failure: reading `.path`
+## Locating a Failure: Reading `.path`
 
 Errors thrown from inside a run carry a `path` array naming the chain of step
 ids that led to the failure, outermost first:
@@ -274,7 +274,7 @@ when a flow holds several model calls; set `id:` on each `model_call` /
 `model_step` so the path names the role (`['review', 'critic']` instead of
 `['review', 'model_call:a1b2c3:2']`).
 
-## Still stuck
+## Still Stuck
 
 Attach a `trajectory` logger and re-run — the event stream usually shows exactly
 where a flow diverged. Then open a bug report with the trajectory excerpt and your

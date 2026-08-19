@@ -1,4 +1,4 @@
-# viewer
+# Viewer
 
 Minimal in-repo dev dashboard for visualizing a fascicle run as it executes
 (or after the fact). Single static HTML page, two transports
@@ -9,7 +9,7 @@ source code: you keep using `filesystem_logger` (or, opt-in,
 `http_logger`) exactly as you do today, and the viewer is a separate process
 that reads what you already write.
 
-## Quickstart — file tail
+## Quickstart — File Tail
 
 ```bash
 # terminal 1: generate a demo trajectory (no engine, no API key)
@@ -30,7 +30,7 @@ The viewer tails the file with `fs.watch`, parses each new line through
 events to the browser via SSE. Works on a finished run too: point it at
 any old `.jsonl` for a static replay.
 
-## Quickstart — HTTP push (low-latency, opt-in)
+## Quickstart — HTTP Push (Low-Latency, Opt-In)
 
 For zero-latency live attach, remote dev where the file isn't accessible,
 or long-running flows in a container:
@@ -66,7 +66,7 @@ fascicle-viewer <path> --listen    both producers feed the same broadcaster
   --help          show this message
 ```
 
-## HTTP surface
+## HTTP Surface
 
 | Route           | Method | Purpose                                         |
 | --------------- | ------ | ----------------------------------------------- |
@@ -79,7 +79,7 @@ fascicle-viewer <path> --listen    both producers feed the same broadcaster
 SSE clients reconnect with `Last-Event-ID` and the server replays anything
 past their cursor that is still in the ring buffer.
 
-## Programmatic embed
+## Programmatic Embed
 
 ```ts
 import { start_viewer } from 'fascicle/viewer'

@@ -1,4 +1,4 @@
-# Writing a harness
+# Writing a Harness
 
 A **harness** is the runnable program that wraps fascicle for a specific use case. fascicle itself is a library — not an app, not a framework, not a CLI. Your harness is where you decide:
 
@@ -39,7 +39,7 @@ if (import.meta.url === `file://${process.argv[1] ?? ''}`) {
 
 Save that as `hello.ts`, run with `pnpm exec tsx hello.ts hello world from agent kit`, and you have a harness. Everything else this guide covers is additive.
 
-## Add a model step
+## Add a Model Step
 
 When you want the flow to talk to an LLM, use `model_step`, the default model boundary. It returns the answer itself, so the flow stays at the `step, model_step, step` cadence with no extraction step.
 
@@ -77,7 +77,7 @@ Key rules:
 - `model_step` returns the content alone: a `string`, or the schema-validated value when `schema` is set. When the harness needs what surrounds the answer (`usage`, `cost`, `tool_calls`, `finish_reason`), swap in `model_call`, the envelope variant with the same config, and read the `GenerateResult<T>` downstream. Underneath, `model_call` is the single sanctioned bridge between the composition and engine layers.
 - The engine is injected into the step at construction time; the step itself stays a plain `Step`.
 
-## Wire in adapters
+## Wire in Adapters
 
 Two seams on `RunOptions` let you observe and persist without touching flow code:
 
@@ -93,7 +93,7 @@ await run(flow, input, {
 
 Both adapter slots accept anything that conforms to `TrajectoryLogger` / `CheckpointStore` (both exported from `fascicle`). Roll your own to push events to Honeycomb, DynamoDB, a tmpfs, whatever fits your deployment. The bundled `filesystem_logger` writes synchronously, which is fine for dev tools and short runs; see [concepts.md](./concepts.md#adapter-limits) before using it in long-running servers. (Span parentage is threaded by the runner, so span trees stay correct under concurrency.)
 
-## Stream to a consumer
+## Stream to a Consumer
 
 When your harness is behind an HTTP endpoint or a TUI, use `run.stream` and forward events incrementally:
 
@@ -114,7 +114,7 @@ await pump;
 
 `run.stream` is observational: the underlying step graph is identical to `run(...)`. Turning streaming on flips `ctx.streaming` inside the run so `model_call` starts forwarding provider chunks into `ctx.emit`.
 
-## Pause and resume
+## Pause and Resume
 
 For human-in-the-loop flows, use `suspend` and drive the run with `run.until_suspended`, which surfaces the pause as a typed outcome instead of a thrown error:
 
@@ -141,7 +141,7 @@ if (outcome.kind === 'suspended') {
 
 The resume closure re-runs the flow from the original input with the decision merged into `resume_data`, so a harness that must survive a restart persists the input and rebuilds the outcome instead of holding the closure. [human-in-the-loop.md](./human-in-the-loop.md) walks the full HTTP version.
 
-## Cancellation and cleanup
+## Cancellation and Cleanup
 
 A harness that runs indefinitely (server, long CLI) must handle cancellation cleanly. fascicle installs SIGINT/SIGTERM handlers by default and aborts every active run through `ctx.abort`. Steps cooperate by:
 
@@ -151,7 +151,7 @@ A harness that runs indefinitely (server, long CLI) must handle cancellation cle
 
 For embedded runtimes (tests, Lambda, worker threads), pass `install_signal_handlers: false` so fascicle does not fight the host process for the signal.
 
-## Error handling
+## Error Handling
 
 All failures inside a run bubble out of `run(...)` as normal promise rejections. Typed errors from fascicle that your harness may want to special-case:
 
@@ -163,7 +163,7 @@ All failures inside a run bubble out of `run(...)` as normal promise rejections.
 
 The error path carries a `.path` array with the step ids that led to the failure, so surfacing it to stdout or a log line is usually enough.
 
-## Where to put the harness
+## Where to Put the Harness
 
 In this repo, reference harnesses live at the root under [`examples/`](../examples/). Your own harness lives in your own project — fascicle is a library, not an app scaffold. Import from `fascicle` (the published package name, which the root `examples/` use too; inside the library, cross-module imports use the internal `#<module>` aliases) and write the harness wherever your program belongs. For the standard shape of the app *around* the harness (one composition layer, module contracts, markdown prompts), follow [blueprint.md](./blueprint.md).
 

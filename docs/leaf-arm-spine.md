@@ -1,4 +1,4 @@
-# Leaves, arms, spine
+# Leaves, Arms, Spine
 
 Every well-factored fascicle app converges on the same three-layer shape,
 whatever its domain. This doc names the layers and gives the decision rules
@@ -17,7 +17,7 @@ The layering is a convention, not a mechanism: nothing in the API forces it.
 It is the shape that keeps a flow readable top to bottom, renders fully under
 `describe`, and leaves every piece swappable behind a `Step` type.
 
-## Leaves: one boundary each
+## Leaves: One Boundary Each
 
 A leaf is a single call: one model role, one tool invocation, one pure
 function. The choices at this layer:
@@ -43,7 +43,7 @@ The rule: if it is one call, keep it a leaf. Wrapping a single leaf in
 `compose` or `sequence` just to give it a span name is composition theater
 (blueprint anti-pattern 3).
 
-## Arms: composition that earns its keep
+## Arms: Composition That Earns Its Keep
 
 An arm is a named sub-flow built by composing primitives around leaves. This
 is where judgment and resilience live:
@@ -71,7 +71,7 @@ Two rules keep arms honest:
    presents a domain value (`Step<string, Draft>`) instead of leaking its
    internal machinery downstream.
 
-## The spine: one chain per flow
+## The Spine: One Chain per Flow
 
 The spine is a single `chain` that sequences the arms and holds the flow's
 state as a typed record. Each `.step` binding merges its result under a
@@ -112,7 +112,7 @@ previous output is an arm-level `sequence`, and forcing it into a chain is
 ceremony. In practice: a step needing only step N-1 keeps you in `sequence`;
 the first step needing N-2 moves you to `chain`.
 
-## The shape, end to end
+## The Shape, End to End
 
 <!-- snippet: check -->
 
@@ -159,7 +159,7 @@ change-triage (minimal spine, one leaf), pr-improve (branching between
 chains), amplify (a loop whose carry-state rides the spine's bindings), and
 red-green-refactor (stage barriers as phases).
 
-## What the layering buys
+## What the Layering Buys
 
 - **The topology is the file.** The spine reads top to bottom as the agent
   diagram, arms are named, and leaves are role ids.
@@ -174,7 +174,7 @@ red-green-refactor (stage barriers as phases).
   routes canned responses by leaf role ids, so the real spine and arms run
   through the real `run()` with zero network.
 
-## Common failure modes
+## Common Failure Modes
 
 Each of these has a longer treatment in [blueprint.md](./blueprint.md)'s
 anti-patterns:
@@ -191,7 +191,7 @@ anti-patterns:
   chain bindings would be typed. The raw state primitives remain for shapes
   bindings cannot express; they are not the default.
 
-## See also
+## See Also
 
 - [composition.md](./composition.md): the full primitive-by-primitive surface
 - [blueprint.md](./blueprint.md): the app architecture around the flow

@@ -17,7 +17,7 @@ Eight adapters ship with the engine layer:
 
 The `ai_sdk` adapters wrap Vercel's AI SDK, so they need both the shared `ai` package and their own per-provider `@ai-sdk/*` (or equivalent) package — `pnpm add ai @ai-sdk/anthropic`, not `@ai-sdk/anthropic` alone. Six providers are entirely **SDK-free**, pulling in neither `ai` nor any `@ai-sdk/*` package: five via `transport: 'native'` — `anthropic` targets the Messages API, `openai` / `openrouter` / `lmstudio` share one OpenAI Chat Completions core, and `ollama` targets its own `/api/chat` endpoint (see [`transport`](#transport-picking-a-depth-1-backend)) — and `claude_cli`, which spawns the `claude` binary and parses its `--output-format stream-json` stream instead of calling any SDK; see [cli.md](./cli.md) for the full guide. `google` and `bedrock` remain `ai_sdk`-only, so they always need `ai`.
 
-## Three integration depths
+## Three Integration Depths
 
 Every provider plugs into `generate` at one of three depths. The engine dispatches on the adapter's `kind`; everything above the seam (multi-step tool loop, approval, salvage, `Tool.ends_turn`, retry, cost, trajectory) is shared and identical across kinds, so a provider inherits the whole fascicle loop by implementing only its depth's contract.
 
@@ -33,7 +33,7 @@ Every provider plugs into `generate` at one of three depths. The engine dispatch
 
 Both depth-1 kinds produce the same neutral `TurnResult`, which is what lets one loop serve every transport.
 
-## `transport`: picking a depth-1 backend
+## `transport`: Picking a Depth-1 Backend
 
 Providers that implement more than one depth-1 backend expose a `transport` field on their init. Five do today: `anthropic`, `openai`, `openrouter`, `lmstudio`, and `ollama`.
 
@@ -52,7 +52,7 @@ The provider name stays stable across transports, so pricing keys (`<provider>:<
 
 `openai`, `openrouter`, and `lmstudio` native all ride one shared OpenAI Chat Completions core, parameterized per dialect (auth, attribution headers, token-limit field, usage tolerance); `ollama` native is a separate adapter on its own `/api/chat` wire. `google` and `bedrock` remain `ai_sdk`-only (SigV4 and low leverage, respectively).
 
-## OpenAI-compatible servers (the compat recipe)
+## OpenAI-Compatible Servers (the Compat Recipe)
 
 Any server that speaks the OpenAI Chat Completions wire is reachable by pointing the `openai` provider's `base_url` at it and running `transport: 'native'` — no new adapter, no peer to install. This is the supported path for Ollama's built-in `/v1` compatibility endpoint:
 
@@ -76,11 +76,11 @@ await engine.generate({
 
 The same recipe reaches vLLM, LiteLLM, or any other OpenAI-compatible gateway — swap the `base_url`. It rides the shared OpenAI-compatible core: the openai dialect's Bearer auth (hence the placeholder key), the streaming aggregator, and the usage math, all identical to the hosted `openai` transport. Ollama's compat endpoint reports token usage, so cost accounting works out of the box. For local backends that report approximate or no usage, the `lmstudio` provider (tolerant usage, no auth) is the better fit.
 
-## The agent-layer boundary
+## The Agent-Layer Boundary
 
 fascicle uses the AI SDK strictly as a single-turn provider layer: every AI SDK call is `generateText` / `streamText` pinned to one step, issued from the one `ai_sdk` transport module, and the loop above it (multi-step execution, tool approval, salvage, `ends_turn`, cost, retry, trajectory) is fascicle's own. The SDK's agent layer (`ToolLoopAgent`, `WorkflowAgent`, `HarnessAgent`, `toolApproval`, scoped tool context, `@ai-sdk/otel`) is declined by design; the litmus test is that a framework must let you call one turn below its own loop. Anything the agent layer would own belongs above the seam, in fascicle's composition surface, so that swapping a provider never means swapping a loop.
 
-## Capability matrix
+## Capability Matrix
 
 | Provider            | text | tools | schema | streaming | image_input | reasoning |
 | ------------------- | ---- | ----- | ------ | --------- | ----------- | --------- |
@@ -100,7 +100,7 @@ fascicle uses the AI SDK strictly as a single-turn provider layer: every AI SDK 
 
 `supports(capability)` on any adapter reflects this table. Two things to read off the native rows: **no native transport claims `image_input`** (image parts throw `provider_capability_error`; use `transport: 'ai_sdk'` for vision in v1), and the OpenAI-compatible core (openai / openrouter / lmstudio native) always forwards `reasoning_effort`, so those three report `reasoning` on native even where their `ai_sdk` row does not — non-reasoning and local models simply drop the field server-side. `ollama` native ignores effort entirely (D2). The table omits one more capability: `structured_output`, meaning the provider constrains decoding to the schema natively. Every provider satisfies `schema` (via the engine's prompt + parse + repair loop when the provider cannot constrain the decode); no native transport claims `structured_output`, so schema requests there always ride the repair loop.
 
-## Effort translation
+## Effort Translation
 
 `effort: 'none' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'` is a provider-neutral knob for reasoning depth. The table shows `low`/`medium`/`high`; `xhigh` and `max` extend the same axis (see the note below). The engine translates it per provider:
 
@@ -121,7 +121,7 @@ The table above is the `ai_sdk` mapping. On `transport: 'native'`, the OpenAI-co
 
 `effort: 'none'` forwards nothing: anthropic emits no thinking block and google omits `thinkingConfig` entirely. On the OpenAI-compatible native core, `none` omits `reasoning_effort`.
 
-## anthropic
+## `anthropic`
 
 ```bash
 pnpm add ai @ai-sdk/anthropic
@@ -178,7 +178,7 @@ Everything call-facing carries over: same provider name, same pricing keys, same
 
 The default transport stays `'ai_sdk'` until the native path has accumulated production mileage.
 
-## openai
+## `openai`
 
 ```bash
 pnpm add ai @ai-sdk/openai
@@ -226,7 +226,7 @@ Everything call-facing carries over: same provider name, same pricing keys, same
 
 The same core powers any OpenAI-compatible server via `base_url` — see [the compat recipe](#openai-compatible-servers-the-compat-recipe).
 
-## google
+## `google`
 
 ```bash
 pnpm add ai @ai-sdk/google
@@ -247,7 +247,7 @@ Effort maps to Gemini's `thinkingConfig.thinkingBudget`, a token count: `low →
 
 Pass a concrete model id like `gemini-2.5-pro` or `gemini-2.5-flash`. The `model` string is sent to the API verbatim.
 
-## openrouter
+## `openrouter`
 
 ```bash
 pnpm add ai @openrouter/ai-sdk-provider
@@ -299,7 +299,7 @@ Same provider name, pricing keys, usage fields, and streamed-equals-non-streamed
 - **`provider_options.openrouter` is raw wire format (D9).** Keys are OpenRouter Chat Completions fields exactly as documented (**snake_case**: `reasoning_effort`, `max_tokens`, `top_p`, `provider`, `models`, `transforms`, ...), shallow-merged last over the engine-computed body. Mind the reasoning shape: the `ai_sdk` transport translates effort to the **nested** `reasoning: { effort: 'high' }` object, but the native core sends the **flat** `reasoning_effort: 'high'` string — to override reasoning on native, set `reasoning_effort`, not `reasoning`.
 - **Retry belongs to the engine** (401 / 429 / 5xx / network), identical to `ai_sdk`.
 
-## bedrock
+## `bedrock`
 
 ```bash
 pnpm add ai @ai-sdk/amazon-bedrock
@@ -404,7 +404,7 @@ The pass-through relies on `@ai-sdk/amazon-bedrock` spreading unknown provider-o
 
 No default pricing ships for Bedrock (ids are region- and profile-specific). Add your own with `engine.register_price('bedrock', '<model-id>', { ... })`; until then cost is omitted, not an error.
 
-## ollama
+## `ollama`
 
 ```bash
 pnpm add ai ai-sdk-ollama
@@ -448,7 +448,7 @@ const engine = create_engine({
 - **Usage degrades gracefully (D10).** `prompt_eval_count` / `eval_count` map to input/output tokens; when the runtime omits them the totals are zeroed rather than throwing.
 - **`provider_options.ollama` is raw `/api/chat` wire format (D9).** Keys are Ollama's own native fields — `think`, `keep_alive`, `format`, and the nested `options` bag (`num_predict`, `temperature`, `top_p`, `num_ctx`, ...) — shallow-merged last over the engine-computed body. These are **not** OpenAI-compatible keys: there is no `max_tokens` or `reasoning_effort` here (the engine writes the token limit into `options.num_predict`); pass a whole `options` object, since the shallow merge replaces it wholesale rather than deep-merging derived sampling params.
 
-## lmstudio
+## `lmstudio`
 
 ```bash
 pnpm add ai @ai-sdk/openai-compatible
@@ -488,7 +488,7 @@ const engine = create_engine({
 - **Reasoning is forwarded, not dropped.** Unlike the `ai_sdk` transport, the native core maps `effort` to `reasoning_effort` for every dialect, so it is sent on the wire; a model that does not reason simply ignores it server-side.
 - **`provider_options.lmstudio` is raw OpenAI-compatible wire format (D9).** Keys are Chat Completions fields (**snake_case**: `max_tokens`, `reasoning_effort`, `top_p`, `stop`, ...), shallow-merged last over the engine-computed body. As with `openai` native, these do not port from the camelCase `ai_sdk` spellings.
 
-## claude_cli
+## `claude_cli`
 
 Spawns the `claude` binary and piggybacks on your local authenticated session.
 
@@ -507,7 +507,7 @@ Full guide: [cli.md](./cli.md).
 
 The CLI resolves the bare tokens `opus`/`sonnet`/`haiku` to the latest itself, so passing one as `model` works for this transport — the single place a short name is honored. Concrete ids pass through too.
 
-## Model and provider resolution
+## Model and Provider Resolution
 
 `model` is an opaque string sent to the provider verbatim as its `model_id`; `provider` names the transport. Both can be set per call and as engine `defaults`. No resolution step runs — no colon shorthand, no family expansion, no alias table:
 
@@ -518,7 +518,7 @@ The provider receives `model` as-is and rejects an unknown id itself (a 404 or v
 
 Need short names? Keep a plain `Record<string, string>` in your own code and resolve it before calling `generate` — fascicle owns no model-name catalog.
 
-## Optional peer loading
+## Optional Peer Loading
 
 Every peer is loaded lazily on first `generate` against that provider. Missing peers throw a descriptive error at call time, not at construction:
 
@@ -534,7 +534,7 @@ missing peer dependency 'ai'. Install it with: pnpm add ai. Cause: …
 
 `pnpm add fascicle` alone, with no AI SDK peer of any kind installed, builds and runs a flow against `anthropic`/`openai`/`openrouter`/`lmstudio`/`ollama` on `transport: 'native'` or against `claude_cli`.
 
-## Usage normalization
+## Usage Normalization
 
 Every adapter normalizes its provider's raw usage into a consistent `UsageTotals`:
 
@@ -550,7 +550,7 @@ type UsageTotals = {
 
 Fields that a provider cannot report are absent from the result (not zero). `GenerateResult.usage` is the sum across all steps; per-step totals live in `steps[i].usage`.
 
-## Provider-reported detail
+## Provider-Reported Detail
 
 Providers volunteer detail beyond text, usage, and finish reason: Bedrock's guardrail trace, Anthropic's cache breakdown, OpenAI's service tier. All of it arrives on `GenerateResult.provider_reported`, keyed by provider name and otherwise untranslated:
 
@@ -570,21 +570,21 @@ For an `ai_sdk` provider this is the SDK's `providerMetadata` passed through, so
 
 One gap: when the AI SDK rejects a structured-output response before fascicle's own schema repair sees it, the recovered turn has no payload to report, because the SDK's error does not carry one. The repair turn that follows reports normally. This affects only the providers that declare the `structured_output` capability (`ollama`, `lmstudio`); everywhere else the schema rides the prompt and the turn reports as usual. On those two, if the recovered turn also carries a non-`stop` finish reason there is no repair turn at all — the call throws `incomplete_generation_error` with `provider_reported` undefined for the same reason.
 
-## Cost estimation
+## Cost Estimation
 
 `GenerateResult.cost` is populated when the resolved `provider:model_id` has a pricing row in the engine's `PricingTable`. Missing rows simply omit `cost` — the run does not fail. `is_estimate: true` is always set; pricing tables drift, treat the number as a budget signal, not an invoice.
 
-## Writing your own
+## Writing Your Own
 
 A custom provider is a `ProviderFactory`: a synchronous function that takes the init object from `providers` and returns an adapter of any kind. Register it under `custom_providers` at construction; no fork or upstream change is needed, and a private provider lives entirely in your own repo. The registration mechanics (custom-first resolution, shadow-throws, construction-time only) are documented in [configuration.md](./configuration.md#custom-providers).
 
 Pick the kind by how much of the loop you want to inherit (see [Three integration depths](#three-integration-depths)); whichever you pick, the adapter plugs into the same `generate`, tool loop, cost accounting, and trajectory.
 
-### `kind: 'ai_sdk'`: wrap an AI SDK community provider
+### `kind: 'ai_sdk'`: Wrap an AI SDK Community Provider
 
 Implement `build_model` (return the SDK's model object, loading the SDK lazily inside it), `translate_effort`, `normalize_usage` (the exported `default_normalize_usage` covers the standard v7 usage shape), and `supports`. A complete worked example lives in [configuration.md](./configuration.md#custom-providers).
 
-### `kind: 'native'`: raw HTTP against a provider's own API
+### `kind: 'native'`: Raw HTTP against a Provider's Own API
 
 Implement a single model turn; the engine supplies retry, error classification, abort, streaming dispatch, and the whole tool loop above it.
 
@@ -624,7 +624,7 @@ Rules of the road for native adapters:
 - **Skip `structured_output` unless you truly constrain decoding.** Claiming `schema` is enough; the engine's repair loop does the rest.
 - `NativeProviderAdapter`, `TurnRequest`, and `TurnResult` are exported from `fascicle`, so you can type the adapter and its mapping helpers explicitly instead of relying on `ProviderFactory`'s contextual check.
 
-### `kind: 'external'`: delegate to something that is already an agent
+### `kind: 'external'`: Delegate to Something That Is Already an Agent
 
 Implement `generate(opts, resolved)` returning a full `GenerateResult`, plus `dispose` and `supports` (see the exported `ExternalAgentAdapter` type). The engine hands over the entire call: your adapter owns any looping, and loop-level options like `tool_call_repair_attempts` do not apply. The in-tree reference is the `claude_cli` adapter.
 

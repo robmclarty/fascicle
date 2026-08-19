@@ -1,4 +1,4 @@
-# Getting started
+# Getting Started
 
 A 10-minute tour: install, compose your first flow, run it, observe what happened.
 
@@ -23,7 +23,7 @@ pnpm check
 
 > **One package, deep modules for enforcement.** Consumers install **one** thing: `fascicle`. Inside this repo the code is organized as deep modules under `src/` (`src/core`, `src/engine`, `src/adapters`, plus the umbrella at the `src/` root), each reachable only through its barrel via a `#<module>` alias. The ast-grep rules in `rules/` and a directory-level boundary DAG in `fallow.toml` police architectural boundaries directly (for example, core cannot import adapters; `process.env` is confined to audited exceptions).
 
-## Your first flow
+## Your First Flow
 
 A flow is a value. Build one with `step(...)` and compose with `sequence`, `parallel`, `branch`, `chain`, and friends.
 
@@ -41,7 +41,7 @@ console.log(result); // 4
 
 That's all of it. Every composable unit is a `Step<i, o>`. Every composer returns a `Step<i, o>`. You can nest arbitrarily.
 
-### Run it
+### Run It
 
 Save the snippet as `index.ts` in a fresh directory. fascicle is ESM-only and requires Node >= 24, so the `package.json` needs `"type": "module"`:
 
@@ -62,7 +62,7 @@ node --experimental-strip-types index.ts
 
 `pnpm exec tsx` is what every example in this repo uses; plain `node` works too because Node >= 24 strips TypeScript types natively.
 
-## The 22 primitives
+## The 22 Primitives
 
 The composition layer is small on purpose:
 
@@ -128,7 +128,7 @@ await run(flow, input, {
 
 Adapters are plain objects that conform to `TrajectoryLogger` and `CheckpointStore` (both exported from `fascicle`). Writing your own is the expected path once you outgrow the defaults — the bundled `filesystem_logger` writes synchronously, so for long-running servers you'll want a custom logger that buffers and flushes asynchronously. (Span parentage is threaded by the runner, so span trees stay correct even under `parallel`/`map` concurrency.) See [docs/concepts.md](./concepts.md#adapter-limits).
 
-## Calling a model
+## Calling a Model
 
 The engine layer handles provider routing. Bridge it into a flow with `model_step`. This example uses the `anthropic` provider on its default `ai_sdk` transport, which needs two peer packages and an `ANTHROPIC_API_KEY`:
 
@@ -155,7 +155,7 @@ await engine.dispose();
 
 Model ids are opaque and sent to the provider verbatim, so use the provider's real id (`claude-sonnet-4-6`, `gpt-4o`, an Ollama tag). Family shorthands like `'sonnet'` work only on the `claude_cli` transport, where the CLI itself resolves them. See [docs/providers.md](./providers.md).
 
-## Try it without a key
+## Try It without a Key
 
 No provider account needed to explore. [examples/hello.ts](../examples/hello.ts), [examples/suspend_resume.ts](../examples/suspend_resume.ts), and [examples/viewer_demo.ts](../examples/viewer_demo.ts) use no engine at all, and [examples/newsroom.ts](../examples/newsroom.ts) runs the whole primitive vocabulary against the stub engine from `fascicle/testing` (canned responses routed by system-prompt prefix, zero network). From a clone of this repo:
 
@@ -165,7 +165,7 @@ pnpm exec tsx examples/newsroom.ts
 
 The [examples index](../examples/README.md) flags which examples are keyless and which need a provider.
 
-## Where to go next
+## Where to Go Next
 
 - [docs/leaf-arm-spine.md](./leaf-arm-spine.md) — the three-layer shape of a flow and which primitive belongs at each layer.
 - [docs/writing-a-harness.md](./writing-a-harness.md) — build a runner around fascicle.

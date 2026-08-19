@@ -2,7 +2,7 @@
 
 Configuring the engine layer: `create_engine(config)`, pricing, defaults, retry policy, and how per-call options merge over engine defaults.
 
-## The config shape
+## The Config Shape
 
 ```ts
 type EngineConfig = {
@@ -57,7 +57,7 @@ pnpm add ai @ai-sdk/amazon-bedrock        # bedrock
 
 Full per-provider notes live in [providers.md](./providers.md). The `claude_cli` adapter has its own guide: [cli.md](./cli.md).
 
-## Custom providers
+## Custom Providers
 
 `custom_providers` registers provider factories beyond the built-in set at construction time. Keys are provider names; each factory receives the same-named entry from `providers` as its init and may return an adapter of any kind: `ai_sdk` (wrap an AI SDK provider), `native` (raw HTTP implementing one model turn), or `external` (a backend that runs its own loop). The kinds and their contracts are documented in [providers.md](./providers.md#three-integration-depths); the example below returns an `ai_sdk` adapter, with `native` and `external` sketches under [Writing your own](./providers.md#writing-your-own).
 
@@ -101,7 +101,7 @@ Rules:
 
 The factory and adapter types (`ProviderFactory`, `ProviderAdapter`, `AiSdkProviderAdapter`, `NativeProviderAdapter`, `ExternalAgentAdapter`, `ProviderCapability`, `ProviderTransport`) are exported from `fascicle`, alongside the neutral turn types (`TurnRequest`, `TurnResult`) and the `default_normalize_usage` helper, so a `kind: 'native'` adapter can be typed explicitly as `NativeProviderAdapter` rather than checked contextually through `ProviderFactory`. Because registration is plain config, a proprietary or workplace-private provider lives entirely in the consuming repo and never needs to enter the fascicle tree.
 
-## Registering a provider after construction: `with_providers`
+## Registering a Provider after Construction: `with_providers`
 
 No mutable runtime registry exists. When a provider only becomes known *after* the engine is built — a plugin that loads late, a tenant-supplied backend, a credential resolved by an async bootstrap — derive a new engine instead of mutating the old one:
 
@@ -124,7 +124,7 @@ const extended = base.with_providers(
 - **Same rules re-run.** The merged config is re-validated with the same custom-first resolution and the same built-in shadow-throw; adding `{ openai: … }` to `custom_providers` still throws `engine_config_error`.
 - **Fresh adapters, independent disposal.** Every adapter in the derived engine is constructed fresh from the merged config, including the ones the base already had. `extended.dispose()` tears down only the derived engine's adapters; `base` stays live, and vice versa. Dispose each engine you build.
 
-## Reading credentials from env
+## Reading Credentials from Env
 
 The engine does not read `process.env`. Reading credentials from the environment is the harness's job, done once at its boundary and passed in as an explicit config object. The idiomatic pattern is a plain read of `process.env`:
 
@@ -150,7 +150,7 @@ const engine = create_engine({
 
 The published library stays free of ambient env reads (the `no-process-env-in-core` rule enforces that inside `src/`), but your own harness is under no such constraint. The rule exists to keep `fascicle` itself env-free, not to dictate how you wire your program.
 
-## Model and provider: two axes
+## Model and Provider: Two Axes
 
 A model call has two orthogonal inputs, and they are the *only* inputs — there is no name resolution, alias table, or family catalog in between:
 
@@ -204,7 +204,7 @@ engine.register_price('openai', 'gpt-4o', {
 
 Unpriced models return usage without cost. The `is_estimate: true` flag is always set — pricing tables drift; your accounting is the source of truth.
 
-## Engine defaults
+## Engine Defaults
 
 `defaults` pre-fills per-call options so your `generate(...)` sites stay terse:
 
@@ -249,7 +249,7 @@ const engine = create_engine({
 const result = await engine.generate({ prompt: 'hello' });
 ```
 
-### How per-call options win over defaults
+### How Per-Call Options Win over Defaults
 
 | Field                                                                              | Rule                                            |
 | ---------------------------------------------------------------------------------- | ----------------------------------------------- |
@@ -275,7 +275,7 @@ Two-level merge for `provider_options` means the outer key is the provider name 
 
 The legacy top-level `default_retry`, `default_effort`, and `default_max_steps` still work. Prefer `defaults: { ... }` for new code.
 
-## Retry policy
+## Retry Policy
 
 Retries apply only to provider-side failures — 429 rate limits, 5xx errors, network failures, and turn-timeout expiry. The default:
 
@@ -316,7 +316,7 @@ Rules:
 - Streaming calls do **not** retry past the first delivered chunk. The orchestrator enforces that boundary.
 - Exhaustion throws `rate_limit_error` (for 429s) or `provider_error` (for 5xx / network). Both include `.attempts`.
 
-## Turn timeout budgets
+## Turn Timeout Budgets
 
 `turn_timeout_ms` puts a per-turn wall-clock budget on every depth-1 model turn. The engine composes a timeout signal with your `abort` around each `invoke_turn`, so it protects both the `ai_sdk` and `native` transports (and local runtimes that hang), without any adapter owning the deadline:
 
@@ -337,7 +337,7 @@ await engine.generate({
 - **Mid-stream expiry does not retry.** Once chunks have flowed, a timeout becomes a non-retryable stream interruption, matching the same first-chunk boundary the retry policy enforces.
 - **Must be `> 0`.** `undefined` (the default) leaves turns unbounded; `defaults.turn_timeout_ms` sets the baseline and the per-call value wins via nullish coalesce.
 
-## Reshaping each turn: `prepare_step`
+## Reshaping Each Turn: `prepare_step`
 
 `prepare_step` is a per-turn hook the tool loop calls before each model turn, on both depth-1 transports. It receives the step index and the would-be request messages (the full accumulated transcript at that point) and may return replacement messages to prune, summarize, or window what is sent to the model for that turn only:
 
@@ -360,7 +360,7 @@ await engine.generate({
 - **Sync or async.** The hook may return a promise; the loop awaits it before dispatching the turn.
 - **Not defaultable.** `prepare_step` is call-supplied only (it is not on `EngineDefaults`). Per-step model/effort switching is deliberately out of scope for now.
 
-## `generate` options
+## `generate` Options
 
 The full per-call surface:
 
@@ -403,7 +403,7 @@ A few highlights:
 - `prepare_step` reshapes the messages sent to the model before each turn without mutating the transcript. See [Reshaping each turn: `prepare_step`](#reshaping-each-turn-prepare_step).
 - `provider_options` is a two-level record keyed by provider name, merged over `defaults.provider_options`.
 
-### Local-runtime tool reliability
+### Local-Runtime Tool Reliability
 
 Local runtimes (Ollama's native API, LM Studio's `/v1`) frequently mis-serialize tool definitions, so the model writes its tool call into the assistant text instead of the structured `tool_calls` array. Two opt-in options make agentic tool loops survivable there. Both are provider-agnostic and default to off, so they never change behavior unless you set them.
 
@@ -429,7 +429,7 @@ External-kind providers (`claude_cli`) do not run the shared tool loop, so they 
 
 fascicle exposes OpenTelemetry in two independent layers with a clean seam between them. Both are opt-in and neither pulls an OTel package into a program that does not use it.
 
-### Layer 1: the `fascicle/otel` trajectory bridge (transport-neutral)
+### Layer 1: The `fascicle/otel` Trajectory Bridge (Transport-Neutral)
 
 `fascicle/otel` turns the engine's own trajectory (spans + events) into OpenTelemetry spans. Because it rides the events the engine already emits, it produces traces for **every** transport (`ai_sdk`, `native`, and `external` alike) with no AI SDK involvement. It takes `@opentelemetry/api` as an optional peer, and it lives on its own subpath so importing `fascicle` pulls in zero OTel packages; only `import 'fascicle/otel'` does.
 
@@ -451,7 +451,7 @@ await engine.generate({ prompt: '...', trajectory });
 
 The bridge maps the `engine.generate` span to an OTel root span, each step to a child span, and every recorded event (tool_call, tool_result, cost, ...) to a span event on the open span. `dispose()` is not required; spans end as the trajectory closes them.
 
-### Layer 2: `ai_sdk` transport telemetry (turn-internal)
+### Layer 2: `ai_sdk` Transport Telemetry (Turn-Internal)
 
 For turn-internal detail on the `ai_sdk` transport only, opt into `@ai-sdk/otel` via `defaults.ai_sdk_telemetry`. This instruments the single `generateText` / `streamText` call below the turn seam; native transports ignore it (their loop-level story is Layer 1).
 

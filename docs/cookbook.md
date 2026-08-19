@@ -20,7 +20,7 @@ Short, worked patterns you can copy into a harness. Each pattern assumes the con
 - [Escalation tiering with a judge](#escalation-tiering-with-a-judge)
 - [Using the `claude_cli` provider for one task and `anthropic` for another](#using-the-claude_cli-provider-for-one-task-and-anthropic-for-another)
 
-## Retries on flaky work
+## Retries on Flaky Work
 
 `retry(inner, policy)` re-runs on failure with exponential backoff. Use it for composition-level transients (a downstream service being unhealthy, not a 429 — the engine handles 429s itself via its own `RetryPolicy`).
 
@@ -37,7 +37,7 @@ const fetch_manifest = retry(
 );
 ```
 
-## Timeout then fall back
+## Timeout Then Fall Back
 
 Compose `timeout(...)` with `fallback(...)` when the primary must respond within a deadline or the flow must degrade gracefully.
 
@@ -52,7 +52,7 @@ const ask = fallback(timeout(primary, 10_000), backup);
 
 If `primary` blows past 10s it throws `timeout_error`, `fallback` catches, and `backup` runs.
 
-## Fan-out with map and concurrency cap
+## Fan-Out with `map` and Concurrency Cap
 
 `map` runs a step per array element, optionally capped so you don't melt a downstream:
 
@@ -68,7 +68,7 @@ const summarise_all = map({
 });
 ```
 
-## Pick the best of N with a model judge
+## Pick the Best of N with a Model Judge
 
 Run N drafters concurrently, score each result with a model judge, keep the winner. `ensemble_step` is the primary pick-best: its scorer is itself a `Step`, so the judge gets its own span in the trajectory and returns a structured score. `project` unwraps the winner at the source, so the composite's output is the draft itself, not the pick-best envelope.
 
@@ -99,7 +99,7 @@ const best_draft = ensemble_step({
 
 `run(best_draft, brief)` returns the winning draft; omit `project` to get the full `{ winner_id, winner, winner_scored, scored }` envelope. [`examples/ensemble_judge.ts`](../examples/ensemble_judge.ts) is the runnable version. When quality is computable by a plain function (length, pass rate, a heuristic) rather than a model, plain `ensemble` does the same with less machinery — see [advanced-composition.md](./advanced-composition.md#ensemble-and-tournament-the-other-pick-bests).
 
-## Build-and-critique with adversarial
+## Build-and-Critique with `adversarial`
 
 Build a candidate, have a judge critique, loop until the judge accepts or `max_rounds` runs out. See [`examples/adversarial_build.ts`](../examples/adversarial_build.ts).
 
@@ -134,7 +134,7 @@ const explain = adversarial({
 
 The build step's input carries `{ input, prior, critique }`, where `critique` is the judge's notes on rounds 2+, so the prompt step can fold the feedback in. `project` unwraps the accepted candidate at the source; omit it to get the `{ candidate, converged, rounds }` envelope.
 
-## Consensus of N runs
+## Consensus of N Runs
 
 Run the same (or different) steps concurrently; accept once an `agree` predicate
 over the per-member results holds (here, a strict majority):
@@ -174,7 +174,7 @@ const flow = consensus({
 
 The step's output is the `{ result, converged }` envelope; when downstream steps should see a domain value instead of the wrapper, add `project` to map it at the source (`project: (r) => r.converged`, or pick the agreed verdict out of `r.result`).
 
-## Tournament of candidates (advanced)
+## Tournament of Candidates (Advanced)
 
 Single-elimination bracket, comparing pairs until a winner remains. `compare(a, b)`
 is a plain function over two member *results* that returns `'a'` or `'b'` — the
@@ -220,7 +220,7 @@ shared input, then runs the pairwise `compare`s until one result remains.
 `project` unwraps the winner at the source; omit it to get the
 `{ winner, bracket }` envelope with every match recorded.
 
-## Checkpointing an expensive step
+## Checkpointing an Expensive Step
 
 `checkpoint` memoizes by key. The store is injected via `RunOptions`.
 
@@ -240,7 +240,7 @@ await run(build_index, spec, {
 
 Always prefix your key with a flow name or content hash — the store is shared across every flow that uses it.
 
-## Human-in-the-loop approval
+## Human-in-the-Loop Approval
 
 `suspend(...)` pauses the flow. Drive it with `run.until_suspended`, which returns the pause as a typed outcome with a `resume` closure instead of throwing.
 
@@ -275,7 +275,7 @@ end-to-end suspend/confirm/resume server, and
 [docs/human-in-the-loop.md](./human-in-the-loop.md) for the full narrative
 (including streaming the outcome to a `useChat` UI with `fascicle/ui`).
 
-## Tool loops
+## Tool Loops
 
 Give the model tools and it calls them; the engine runs the `execute` closures and feeds the output back until the model stops asking or `max_steps` is hit.
 
@@ -338,7 +338,7 @@ const finish = {
 
 The call runs its `execute` first (so the summary lands in the `ToolCallRecord` output and the trajectory), then the loop stops with `finish_reason: 'stop'`. Only a successful call ends the loop: a denied, invalid, dropped, or throwing terminal call is fed back like any other tool error and the loop keeps going. A terminal call also wins over a coincident `max_steps` cap, so a `finish` on the last allowed step is a clean stop, not a cutoff. `ends_turn` composes with `tool_call_repair_attempts` (a salvaged `finish` ends the loop too) and `max_tool_calls_per_step`.
 
-## Structured output with zod
+## Structured Output with Zod
 
 Pass a schema; the engine validates, repairs (up to `schema_repair_attempts`, default 1), or throws.
 
@@ -366,7 +366,7 @@ const out = await run(plan, 'migrate the payments service to pg17');
 
 `schema_validation_error` carries `.schema_issues` and `.raw_text` so your harness can surface both to a human. A call that never got far enough to validate (blocked by a content filter, truncated by the token limit, ended by the step cap) throws `incomplete_generation_error` instead, carrying `.finish_reason`, `.raw_text`, and `.provider_reported`.
 
-## Streaming tokens to a consumer
+## Streaming Tokens to a Consumer
 
 Plain `run` drops streaming events. `run.stream` delivers them:
 
@@ -390,7 +390,7 @@ process.stdout.write('\n');
 
 `model_chunk` events wrap `StreamChunk` values from the engine. Other interesting chunk kinds: `reasoning`, `tool_call_start`, `tool_call_end`, `tool_result`, `step_finish`, `finish`.
 
-## Observing a run with a filesystem logger
+## Observing a Run with a Filesystem Logger
 
 ```ts
 import { filesystem_logger } from 'fascicle/adapters';
@@ -420,7 +420,7 @@ const console_logger: TrajectoryLogger = {
 };
 ```
 
-## Threading state with chain
+## Threading State with `chain`
 
 When a downstream step needs a value that is not its immediate predecessor's output, `chain` carries it as a named binding in a growing typed record:
 
@@ -436,7 +436,7 @@ const flow = chain<string, 'email'>('email')
 
 Each `.step` merges its result under its name; later bindings destructure whatever earlier names they need, checked at compile time. `.stage(name, project?)` concludes a phase (with `project`, it narrows the record so earlier bindings go out of scope). The raw string-keyed tier underneath (`scope` / `stash` / `use`) remains for shapes bindings cannot express — see [advanced-composition.md](./advanced-composition.md#scope-stash-use-named-state-without-types).
 
-## Multi-provider fallback
+## Multi-Provider Fallback
 
 Prefer Anthropic; fall back to OpenAI if it fails. With more than one provider configured, every call must name its `provider`: there is no implicit default, and a call that names none throws `provider_required_error`.
 
@@ -468,7 +468,7 @@ const ask = fallback(primary, backup, {
 Control-flow signals (suspend, abort) still propagate without triggering the
 backup, and `handoff` is never called for them.
 
-## Escalation tiering with a judge
+## Escalation Tiering with a Judge
 
 `fallback` escalates on a *throw*. This pattern escalates on *mediocrity*: run
 a cheap model first, have a judge read the answer it actually produced, and
@@ -542,7 +542,7 @@ const answer = chain<string, 'prompt'>('prompt')
 `escalated` emit and the per-span costs land in the trajectory, so you can see
 exactly which requests paid for the strong tier and why.
 
-### Latching over many turns
+### Latching over Many Turns
 
 For a long run over many work items, one escalate verdict is weak evidence:
 require consecutive confirmations, then latch. Hold the streak in a `loop`'s
@@ -581,7 +581,7 @@ streak rules that make it stable:
   (that turn pays for all three calls) and `latched` flips, so every later
   round takes the `then` arm with no judge overhead.
 
-### Calibrating when the weak tier is enough
+### Calibrating When the Weak Tier Is Enough
 
 Whether the judge should escalate eagerly or reluctantly is an empirical
 question, and trajectory logs make it measurable. The minimum-data path:
@@ -602,7 +602,7 @@ question, and trajectory logs make it measurable. The minimum-data path:
 `regression_compare` against a committed baseline keeps the calibration from
 drifting as prompts and models change.
 
-## Using the `claude_cli` provider for one task and `anthropic` for another
+## Using the `claude_cli` Provider for One Task and `anthropic` for Another
 
 One engine, both providers:
 

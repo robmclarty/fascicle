@@ -1,4 +1,4 @@
-# Advanced composition
+# Advanced Composition
 
 The primitives on this page are fully supported and are not going anywhere.
 They are also not the vocabulary to reach for first. Each one is the
@@ -16,7 +16,7 @@ purpose.
 | `improve` | `adversarial` | quality is a number to climb, not a critic's verdict |
 | `learn` | none (offline) | mining recorded trajectories for proposals |
 
-## scope, stash, use: named state without types
+## `scope`, `stash`, `use`: Named State without Types
 
 The raw state tier. `scope([...children])` runs its children in order like
 `sequence`, threading each output into the next input, while introducing a
@@ -59,7 +59,7 @@ If none of those apply, use `chain`. If one does, keep the keys and their
 typed readers together in one file so the casts stay visible
 ([blueprint.md](./blueprint.md#statets-quarantine-the-casts-raw-scope-state-only)).
 
-## ensemble and tournament: the other pick-bests
+## `ensemble` and `tournament`: The Other Pick-Bests
 
 `ensemble_step` is the primary selection arm because a judge is usually a
 model: its scorer is itself a `Step`, so the judge gets its own span in the
@@ -105,7 +105,7 @@ export const preferred = tournament({
 [examples/ensemble_judge.ts](../examples/ensemble_judge.ts) keeps both
 variants runnable side by side.
 
-## improve and learn: the self-improvement pair
+## `improve` and `learn`: The Self-Improvement Pair
 
 Neither belongs in an everyday flow; both are specialized enough that
 reaching for them should be a deliberate act.
@@ -159,7 +159,7 @@ Runnable references: [examples/improve.ts](../examples/improve.ts),
 [examples/learn_reviewer.ts](../examples/learn_reviewer.ts) (a model
 analyzer mining a reviewer's trajectories).
 
-## See also
+## See Also
 
 - [leaf-arm-spine.md](./leaf-arm-spine.md): the primary vocabulary and the
   decision rules this page defers to

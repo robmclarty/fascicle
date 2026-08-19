@@ -1,4 +1,4 @@
-# Deciding whether to adopt fascicle
+# Deciding Whether to Adopt Fascicle
 
 This page is for a team weighing fascicle against using the Vercel AI SDK
 directly (or Mastra, or Strands). It includes a section on when the answer is
@@ -6,7 +6,7 @@ directly (or Mastra, or Strands). It includes a section on when the answer is
 library. It reflects fascicle's design view; the only way to confirm the
 ergonomics fit is to try it.
 
-## The reframe: it is not fascicle versus the AI SDK
+## The Reframe: It Is Not Fascicle Versus the AI SDK
 
 The most common framing of this decision is a false one. fascicle is *built on*
 the Vercel AI SDK for its default path: seven of its eight providers are
@@ -35,7 +35,7 @@ down: `generate.ts` imports the `ai_sdk` transport module dynamically, on the
 first `ai_sdk` call, so `ai` stays off the dependency graph of a native-only
 install entirely. "Uninstall `ai`" is real today, not aspirational.
 
-## What you are actually buying
+## What You Are Actually Buying
 
 Four goals tend to drive a team toward a layer like this. Map each to what
 fascicle does:
@@ -70,7 +70,7 @@ fascicle does:
   instead of rippling through your agent code. In a fast-moving environment this is
   the ability to change direction cheaply.
 
-## Where fascicle is genuinely differentiated
+## Where Fascicle Is Genuinely Differentiated
 
 By mid-2026 a long list of capabilities is *table stakes*: essentially every
 serious framework ships a tool loop, streaming, provider abstraction, MCP support,
@@ -122,7 +122,7 @@ quickly:
    A deliberately small surface, which in 2026 is itself a differentiated property
    (see [SECURITY.md](../SECURITY.md)).
 
-## What real agent shapes look like in this model
+## What Real Agent Shapes Look Like in This Model
 
 The composition layer is easiest to judge against concrete agents. Common shapes
 and how they decompose:
@@ -146,7 +146,7 @@ prompts as markdown, stub-engine tests via `fascicle/testing`'s
 `make_stub_engine` and `make_capture_engine`) and `examples/` carries worked
 apps built that way.
 
-## When to use something else
+## When to Use Something Else
 
 This is the honest part, and it is what makes the rest credible. Reach for another
 tool when:
@@ -170,7 +170,7 @@ composed control flow, churn insulation, local models), then you will build that
 seam regardless, and fascicle is the disciplined, versioned, tested version of work
 you would otherwise do worse and throw away.
 
-## The risks of depending on an early-stage library
+## The Risks of Depending on an Early-Stage Library
 
 Choosing fascicle for production work carries risks that have nothing to do with
 its design quality, and a serious evaluation names them:
@@ -195,7 +195,7 @@ What makes these survivable is the shape of the thing:
   built on fascicle's public contracts rather than vendored into the library. That
   keeps the dependency at arm's length and your upgrades boring.
 
-## The bottom line
+## The Bottom Line
 
 fascicle is not a thin wrapper: there is real, differentiated code above the
 provider seam, and below it now too for the five providers with a native
@@ -215,7 +215,7 @@ for the projects that need those specific properties, and consume it as a
 published dependency. For projects that do not need the seam, use the AI SDK
 directly, and count that honesty as a feature.
 
-## A note on the AI SDK's release cadence
+## A Note on the AI SDK's Release Cadence
 
 The churn-insulation argument rests on a fact worth stating plainly: the AI SDK
 shipped three large breaking majors in twelve months (v5 in July 2025, v6 in
@@ -225,7 +225,7 @@ directly on the SDK's agent layer absorbs each of those. A product built behind
 fascicle's seam contains them to a per-file change. Neither is free; the seam is a
 bet that containment is cheaper than absorption over time.
 
-## Further reading
+## Further Reading
 
 - [comparison.md](./comparison.md) - the five axes, and where each neighbor
   (LangChain, Mastra, Strands, OpenAI Agents SDK, Inngest AgentKit) sits on them.

@@ -1,8 +1,8 @@
-# The `claude_cli` provider
+# The `claude_cli` Provider
 
 A subprocess provider that spawns the `claude` binary and parses its streaming JSON output. Lets you use fascicle against an existing authenticated `claude` session (no API key required) or against an Anthropic API key while still getting the CLI's agentic features (sub-agents, `--allowedTools`, `--setting-sources`, plugin directories).
 
-## Why it exists
+## Why It Exists
 
 Three good reasons:
 
@@ -17,7 +17,7 @@ It does **not** replace the `anthropic` AI SDK adapter. Use `anthropic` for dire
 - `claude` on PATH. Install from [claude.com/claude-code](https://claude.com/claude-code).
 - A session (`claude login`) or an `ANTHROPIC_API_KEY`.
 
-## Minimal setup
+## Minimal Setup
 
 ```ts
 import { create_engine, model_step, run } from 'fascicle';
@@ -43,7 +43,7 @@ try {
 
 See [`examples/hello_claude_cli.ts`](../examples/hello_claude_cli.ts) and [`examples/hello_claude_cli_lisp.ts`](../examples/hello_claude_cli_lisp.ts) for full harnesses.
 
-## Provider config
+## Provider Config
 
 ```ts
 type ClaudeCliProviderConfig = {
@@ -61,7 +61,7 @@ type ClaudeCliProviderConfig = {
 };
 ```
 
-### Auth modes
+### Auth Modes
 
 | Mode       | Behaviour                                                                          |
 | ---------- | ---------------------------------------------------------------------------------- |
@@ -69,7 +69,7 @@ type ClaudeCliProviderConfig = {
 | `oauth`    | Use the CLI's stored session. `ANTHROPIC_API_KEY` is scrubbed from the subprocess env.  |
 | `api_key`  | Use the provided `api_key`. Throws `engine_config_error` synchronously if missing. |
 
-### Env inheritance
+### Env Inheritance
 
 Under `oauth`, the subprocess env seeds from the full `process.env` so the `claude` binary can reach `HOME`, `PATH`, and other things it needs to find its session files. Under `api_key` and `auto`, it seeds only the 7 standard keys (`PATH`, `HOME`, `SHELL`, `USER`, `LOGNAME`, `LANG`, `TMPDIR`) from `process.env`, plus caller-supplied keys. Set `inherit_env: false` under any mode to start from an empty env.
 
@@ -92,11 +92,11 @@ await engine.generate({
 });
 ```
 
-### Auth failures
+### Auth Failures
 
 If stderr matches any of the frozen `CLI_AUTH_ERROR_PATTERNS` (`authentication`, `unauthorized`, `forbidden`, `oauth token has expired`, `invalid_api_key`), the adapter throws `provider_auth_error` with `refresh_command: 'claude login'` so the calling harness can tell the operator what to do.
 
-## Per-call options
+## Per-Call Options
 
 ```ts
 type ClaudeCliCallOptions = {
@@ -133,7 +133,7 @@ await engine.generate({
 });
 ```
 
-## What gets forwarded
+## What Gets Forwarded
 
 `claude` is invoked with at minimum:
 
@@ -158,13 +158,13 @@ Plus, conditionally:
 
 The prompt is written to stdin — either the first user message's text, or the whole string if `opts.prompt` is a string.
 
-## Multi-turn is via `session_id`
+## Multi-Turn Is via `session_id`
 
 The CLI is a one-shot invocation. Multi-turn chat is represented by `session_id`, not by a `Message[]` history. Calling `generate({ prompt: [...] })` with two or more user messages throws `provider_capability_error('multi_turn_history', 'use provider_options.claude_cli.session_id instead')`.
 
 The idiomatic pattern: capture `result.provider_reported.claude_cli.session_id` on the first call, then pass it as `session_id` on follow-ups. `provider_reported` is keyed by provider name (see [Provider-reported detail](./providers.md#provider-reported-detail)), and this adapter reports `session_id` and `duration_ms` under `claude_cli`.
 
-## Tool bridging
+## Tool Bridging
 
 fascicle tools (`Tool<i, o>` with a zod `input_schema` and an `execute` closure) cannot run under the CLI subprocess — there is no RPC for invoking your in-process executor from inside the child's tool loop. Two modes handle this:
 
@@ -175,7 +175,7 @@ fascicle tools (`Tool<i, o>` with a zod `input_schema` and an `execute` closure)
 
 Use `allowlist_only` when you want the CLI to use its built-in tools and you declared them in `tools` for documentation. Use `forbid` when you want a hard guarantee that no `execute` closure silently becomes a no-op.
 
-## Schema-constrained output
+## Schema-Constrained Output
 
 Pass any Standard Schema (zod, ArkType, Valibot, ...) as `schema` to `generate({ schema })` and the adapter compiles it to JSON Schema, forwards `--json-schema`, and parses the final CLI text against the schema.
 
@@ -217,7 +217,7 @@ The `bwrap` wrapper read-only binds `/usr`, `/bin`, `/lib`, `/lib64`, `/etc/reso
 
 A missing sandbox binary triggers `claude_cli_error` with `reason: 'sandbox_unavailable'`.
 
-## Errors you may hit
+## Errors You May Hit
 
 | Error                    | Cause                                                                       |
 | ------------------------ | --------------------------------------------------------------------------- |
@@ -227,7 +227,7 @@ A missing sandbox binary triggers `claude_cli_error` with `reason: 'sandbox_unav
 | `provider_capability_error` | Multi-turn `prompt: Message[]` with two or more user messages, or `tool_bridge: 'forbid'` with a tool that has an `execute` closure. |
 | `schema_validation_error` | Zod parse failed after one repair attempt.                                 |
 
-## Dispose behaviour
+## Dispose Behaviour
 
 `engine.dispose()` aborts every in-flight subprocess with SIGTERM (escalating to SIGKILL after 2s) and rejects any outstanding `generate` promises with `engine_disposed_error`. Call dispose in a `finally` or on process exit.
 

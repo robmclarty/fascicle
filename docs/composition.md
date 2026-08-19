@@ -4,7 +4,7 @@ The composition layer of `fascicle`. A thin, owned set of primitives for
 composing agentic workflows out of plain values: no framework, no classes,
 no ambient state.
 
-## Public surface
+## Public Surface
 
 Everything below is exported from `fascicle`. The primitives live in
 [`src/core/`](../src/core/) and the built-in composites in
@@ -65,7 +65,7 @@ The composites also export their config, result, and judge types (`Judge`,
 `Score`, `BenchCase`, `EnsembleResult`, `AdversarialConfig`, ...); the full
 enumeration is in [api-reference.md](./api-reference.md#exported-types).
 
-## The step-as-value thesis
+## The Step-as-Value Thesis
 
 Every composable unit is a `Step<i, o>` — a plain object with an `id`, a
 `kind`, and an async `run`. Every composer is a function that accepts one or
@@ -85,7 +85,7 @@ This one invariant buys the rest:
 - **No coupling.** Steps are values, not registered entities. Two
   unrelated flows never share state unless the caller injects it.
 
-## The 22 primitives
+## The 22 Primitives
 
 Copy these one-liners into an LLM's system prompt and it can write flows
 from English specifications:
@@ -168,7 +168,7 @@ the advanced tier (`scope`/`stash`/`use`, plain `ensemble`, `tournament`,
 [advanced-composition.md](./advanced-composition.md), each entry paired
 with the primary primitive to try first.
 
-## Two ways to write a flow
+## Two Ways to Write a Flow
 
 The primitives above are the declarative style: the program is a visible
 tree, describable before it runs, with binding and stage names as span
@@ -190,7 +190,7 @@ named arms composed around them, one `chain` spine) is the subject of
 choosing between `sequence` and `chain` and between `model_step` and
 `model_call`.
 
-## The helper tier: wrapping primitives is the extension model
+## The Helper Tier: Wrapping Primitives Is the Extension Model
 
 `model_step(cfg)` is the shipped example: `model_call` projected to its
 content (a `string`, or the schema-validated value when `cfg.schema` is
@@ -203,7 +203,7 @@ is that pattern at app scale, and its flow
 ([examples/change-triage/src/flow.ts](../examples/change-triage/src/flow.ts))
 carries a whole agent with `chain`, `model_step`, and `ctx.call` alone.
 
-## Running a flow
+## Running a Flow
 
 ```typescript
 import { run, sequence, step } from 'fascicle';
@@ -242,7 +242,7 @@ await run(flow, input, {
 and await the final result. The underlying graph is identical to
 `run(flow, input)`: streaming is purely observational.
 
-## Checkpoint key namespacing (F2)
+## Checkpoint Key Namespacing (F2)
 
 `checkpoint` keys share a single namespace across every flow that reuses
 the same `checkpoint_store`. Two unrelated flows that both write
@@ -258,7 +258,7 @@ Use a content hash when the goal is "if the input is the same, reuse the
 result." Use a scoped prefix when two flows share a store but should never
 collide.
 
-## Anonymous steps cannot be checkpointed (F6)
+## Anonymous Steps Cannot Be Checkpointed (F6)
 
 Anonymous steps (`step(fn)` with no id) throw at construction time when
 wrapped by `checkpoint`:
@@ -269,14 +269,14 @@ Error: checkpoint requires a named step; got anonymous
 
 The fix is to give the inner step an id.
 
-## No circular compositions (F7)
+## No Circular Compositions (F7)
 
 Composers build trees, not graphs. A composer that references itself (or a
 flow variable that appears inside its own definition) causes infinite
 recursion during `describe` or execution. The framework does not guard
 against this; keep compositions acyclic.
 
-## YAML representation
+## YAML Representation
 
 A YAML shape of the composition tree exists for documentation and for
 LLM-writable specs. It is **not parsed at runtime**; a loader stays out of
@@ -330,7 +330,7 @@ package: [`pr-improve/`](../examples/pr-improve/) (the canonical
 [`mcp-server/`](../examples/mcp-server/). The full index, with what each
 example shows, is [`examples/README.md`](../examples/README.md).
 
-## Check command
+## Check Command
 
 From the repo root:
 
@@ -340,7 +340,7 @@ pnpm check
 
 This is the single source of truth. If it exits 0, your work is complete.
 
-## Further reading
+## Further Reading
 
 - [concepts.md](./concepts.md) — the mental model behind these primitives.
 - [getting-started.md](./getting-started.md) — install and run your first flow.

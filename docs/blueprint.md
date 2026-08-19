@@ -1,22 +1,22 @@
-# The agent blueprint
+# The Agent Blueprint
 
 A standard architecture for apps built on fascicle. [writing-a-harness.md](./writing-a-harness.md) covers the mechanics of wrapping a flow in a runnable program; this doc covers the *shape* of the codebase around it: where composition lives, where prompts live, and how to slice the modules so an agent stays legible and easy to change.
 
 The blueprint is distilled from the reference apps in [`examples/`](../examples/) and from several production consumers of the published package. Every rule here earned its place by the presence of the pattern in codebases that stayed easy to work on, or by the pain of its absence in ones that did not.
 
-## Why shape matters
+## Why Shape Matters
 
 Fascicle's power is that steps are plain values: anything with the same `Step<i, o>` type swaps for anything else, including whole compositions. That plug-and-play property is only worth something if your app has a place where the blocks are *visible*. When `model_call`, `sequence`, and `branch` are sprinkled through business logic, the topology of the agent exists only in the reader's head, and swapping a block means archaeology. When they are gathered into one composition layer, the topology is the file, and swapping a block is editing one line of it.
 
 So the whole blueprint reduces to one rule and a set of module shapes that support it.
 
-## The one rule
+## The One Rule
 
 > **Give the agent exactly one composition layer.** One file the reader opens to see the entire topology, written in fascicle vocabulary only: `chain`, `step`, `model_step`, `sequence`, `parallel`, `branch`, `loop`. Everything that is not shape (string formatting, IO, state transitions) lives in sibling modules and is plugged in as plain functions.
 
 Call it `flow.ts`. A reader should be able to say "first the reviewer runs, then if there are suggestions the pragmatist runs, then a build-review loop bounded at three rounds" by reading top to bottom, without opening any other file. The canonical worked example is [`examples/pr-improve/src/flow.ts`](../examples/pr-improve/src/flow.ts) and its design rationale in [`examples/pr-improve/docs/architecture.md`](../examples/pr-improve/docs/architecture.md).
 
-## Pick the right tier first
+## Pick the Right Tier First
 
 Not every app should be a full composition. Fascicle has three useful adoption tiers; pick the smallest one that keeps your topology legible, and pick it *per subsystem*, not per project (a deterministic CLI can be tier 0 while its eval harness is tier 1).
 
@@ -73,7 +73,7 @@ Two signals you have over-composed:
 
 Two signals you have under-composed: an `if`/`for` inside a step body that another pipeline might want to compose around (lift it to `branch` / `loop` and get spans, retry composability, and describability for free), and a hand-rolled fan-out with `Promise.all` that wants `map`'s concurrency cap.
 
-## The standard layout
+## The Standard Layout
 
 ```text
 src/
@@ -108,7 +108,7 @@ Each module has one reason to exist and a strict import contract:
 
 The names matter less than the contracts. What kills legibility is not calling the file `pipeline.ts` instead of `flow.ts`; it is a `format_reviewer_message` implemented inline in the flow, or a `model_call` hidden in a service.
 
-## flow.ts
+## `flow.ts`
 
 The shape to aim for inside this file is the three-layer one:
 model boundaries as leaves, named arms composed around them, one `chain`
@@ -133,7 +133,7 @@ Rules, in order of importance:
 5. **Annotate the outer type of every named subflow** (`Step<In, Out>`). Heterogeneous `sequence` chains do not always infer end to end; explicit annotations catch mismatches at the boundary where they are introduced. If you are tempted to write `sequence([...]) as Step<In, Out>`, a step in the chain has the wrong type; fix that instead.
 6. **The direct style, used honestly.** Occasionally wiring is data-dependent: a `map`'s inner step needs a value that only exists at runtime (a sandbox handle, a per-file root), or the control flow is genuinely dynamic. Then a named `step` body builds the sub-composition and invokes it with `ctx.call(inner, input)`, which keeps spans, abort, and error paths intact (never `inner.run(input, ctx)` directly, which bypasses the dispatcher and loses the span). The remaining cost is static describability only, so: give the step a name, keep the body small, and leave a comment saying why it could not be expressed statically. Unexplained buried control flow is the anti-pattern; the documented direct-style step is a first-class citizen.
 
-## engine.ts
+## `engine.ts`
 
 - **`create_engine` appears in exactly one file.** Everything else takes a ready-made `Engine`. This is the seam that makes provider swap a one-env-var change and tests trivial.
 - Provider comes from one env var (`FASCICLE_PROVIDER` or your own name), validated through a zod enum. Models are threaded as data (a `FlowModels` record of role to model id), not read from env at call sites.
@@ -152,7 +152,7 @@ export function create_app_engine(cfg: AppEngineConfig): Engine {
 }
 ```
 
-## prompts/: markdown, not string literals
+## `prompts/`: Markdown, Not String Literals
 
 System prompts are contract artifacts, not incidental strings. Keep them as markdown files, one per role, with frontmatter:
 
@@ -218,7 +218,7 @@ Rules that keep this honest:
 - **Resolve paths with `new URL('...', import.meta.url)`**, never by walking parent directories. It works identically from `src/` under tsx and from `dist/` after build, provided your build copies `prompts/` alongside the output (add it to the package `files` list).
 - **Give the first line of each prompt a stable role id** (`myapp/reviewer` or the frontmatter `name`). Stub engines route canned responses on it (see Testing), and trajectory readers orient by it.
 
-## stages/: one factory per model role
+## `stages/`: One Factory per Model Role
 
 A stage file is exactly two things: the prompt wiring and a factory.
 
@@ -240,14 +240,14 @@ The returned type, `Step<string, Handoff>`, is the integration contract, and it 
 
 No formatting, no extraction, no flow knowledge. If a stage file imports `messages.ts`, the layering has broken.
 
-## types.ts: schemas are the contracts
+## `types.ts`: Schemas Are the Contracts
 
 - **One zod schema per model boundary**, with `export type X = z.infer<typeof x_schema>` beside it. Pass the schema to `model_step({ schema })` and let the engine validate and repair; downstream code receives the validated value fully typed (or reads `r.content` when a `model_call` envelope is in play) and never parses model output itself.
 - **Discriminated unions for verdicts and results** (`z.discriminatedUnion('kind', [...])` for model output, hand-written unions for app results that never cross a model boundary). Degraded outcomes are data (`{ kind: 'did_not_converge' }`), not exceptions; the shell maps them to messages and exit codes.
 - **Keep prompt and schema from drifting apart.** The failure mode observed everywhere: output rules stated in the system prompt, restated in `.describe()` on schema fields, restated again in an auditor prompt, and now three copies to keep in sync. Pick one home per rule. Field-level constraints (length caps, enums, "empty when approved") belong in `.describe()` on the schema, which travels with the JSON schema the model sees. The prompt states the role and the one-line output contract ("respond with only the JSON object") and does not enumerate fields.
 - Zod is for boundaries the model or the outside world crosses: model output, tool inputs, env/config, stdin. Internal row and record types do not need runtime validation.
 
-## state.ts: quarantine the casts (raw scope state only)
+## `state.ts`: Quarantine the Casts (Raw Scope State Only)
 
 `chain` threads a typed record and needs none of this file: binding names and view types are inferred, so most apps should not have a `state.ts` at all. It exists for flows that use raw `scope` / `stash` / `use` directly, for state shapes `chain` does not express (writes from deep inside a subtree, state shared across sibling compositions).
 
@@ -268,7 +268,7 @@ Match the reader's parameter type to how the state arrives, which differs by cal
 - **`use([...], fn)`** hands `fn` a plain object projection of just the requested keys, so readers take `{ [k: string]: unknown }` and index it. Keys absent from state project as `undefined`, so a reader for an optional value should return `T | undefined` rather than assert.
 - **`ctx.state` inside a `step` body** is the live `ReadonlyMap<string, unknown>`, so a reader for that call site takes `ReadonlyMap<string, unknown>` and uses `.get(key)`. Prefer `use` where you can: the projection is what makes the flow's data dependencies visible in `flow.ts` instead of buried in a step body.
 
-## tools/: capability factories
+## `tools/`: Capability Factories
 
 - One file per tool, exporting `make_<name>(root: string): Tool` (or a context object) so every tool closes over its confinement root rather than trusting the model's paths.
 - Declare a zod `input_schema` and **re-parse inside `execute`**: `const input = read_file_input.parse(raw)`. Fascicle's `Tool` is invariant on input, so the parse keeps the wiring cast-free while the declared schema still drives what the model sees.
@@ -277,7 +277,7 @@ Match the reader's parameter type to how the state arrives, which differs by cal
 - **Error doctrine**: mistakes the model can correct (a failed edit match, a nonzero exit, a blocked URL) are *returned* as results for the model to read, pairing with `tool_error_policy: 'feed_back'`. Tools `throw` only on harness faults (containment violation, cap breach). Tools that must terminate a loop deterministically use `ends_turn: true`.
 - An aggregator, `make_builder_tools(root): ReadonlyArray<Tool>`, is what stages import; role-scoped surfaces (builder gets write tools, reviewer read-only) live here, not in the flow.
 
-## main.ts: the shell
+## `main.ts`: The Shell
 
 - Parses input, resolves config, builds the engine, calls `run(flow, input, options)` once, and turns the result into artifacts, side effects, and an exit code. All external side effects (posting comments, pushing branches) happen *after* `run` returns, keyed off the typed result, so the flow stays replayable.
 - Suspend-bearing apps drive the run with `run.until_suspended` and persist what they need to resume after a restart (the original input, the suspend id); the `resume` closure on the outcome cannot outlive the process.
@@ -285,7 +285,7 @@ Match the reader's parameter type to how the state arrives, which differs by cal
 - Pass `install_signal_handlers: false` everywhere except the one top-level run that should own Ctrl-C.
 - Map fascicle's typed errors to exit codes in one small module, discriminating on error kind, and default the unknown case explicitly.
 
-## Testing: stub the engine, not the flow
+## Testing: Stub the Engine, Not the Flow
 
 The `Engine` type is a small interface, and `fascicle/testing` ships the two doubles an app needs, so a test runs the *real* flow through the *real* `run()` with zero network and no mocking framework:
 
@@ -311,7 +311,7 @@ Three details that make this pattern pay:
 
 Gate live tests on key presence (`describe.skipIf(!process.env.ANTHROPIC_API_KEY)`) and keep them few: one smoke per provider path.
 
-## Naming conventions
+## Naming Conventions
 
 Match fascicle's own surface: `snake_case` for values and functions, `PascalCase` for types only. The uniform seam matters; half camelCase apps end up writing translation shims at every fascicle boundary.
 
@@ -326,7 +326,7 @@ Match fascicle's own surface: `snake_case` for values and functions, `PascalCase
 | `K` | the stash-key const object |
 | step ids | `snake_case` verbs (`extract_suggestions`), or `<flow>.<leaf>` in larger apps; ids are trajectory labels, name them for the reader of the span tree |
 
-## Anti-patterns
+## Anti-Patterns
 
 Each of these was observed in the wild; the fix is in parentheses.
 
@@ -343,7 +343,7 @@ Each of these was observed in the wild; the fix is in parentheses.
 11. **Envelope leakage.** An arm that returns `{ winner, scores }` or another result envelope, so every downstream caller unwraps it again (move the unwrap into the composite with `project`).
 12. **Ambient state where bindings would do.** Reaching for `scope`/`stash`/`use` string keys for shapes `chain` bindings express (use `chain`; the raw trio is the advanced tier, see [advanced-composition.md](./advanced-composition.md)).
 
-## Enforce it with rules
+## Enforce It with Rules
 
 Conventions decay; machine-checked conventions do not. The consumers that stayed clean all enforce the blueprint with [ast-grep](https://ast-grep.github.io/) rules in CI. Working, tested copies of the three rules below live in [`examples/pr-improve/rules/`](../examples/pr-improve/rules/), wired through [`examples/pr-improve/sgconfig.yml`](../examples/pr-improve/sgconfig.yml) and runnable with `pnpm --filter ./examples/pr-improve check:rules`. Copy that directory into your own app as a starting point.
 
@@ -423,7 +423,7 @@ Before calling an agent app done:
 - [ ] Adapters are injected only at `run(...)`; side effects happen after `run` returns.
 - [ ] The boundaries are enforced by lint rules, not memory.
 
-## Further reading
+## Further Reading
 
 - [writing-a-harness.md](./writing-a-harness.md) for the runnable-program mechanics around the flow
 - [composition.md](./composition.md) for the full primitive surface

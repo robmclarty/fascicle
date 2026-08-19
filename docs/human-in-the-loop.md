@@ -1,4 +1,4 @@
-# Human-in-the-loop
+# Human-in-the-Loop
 
 fascicle gives you two shapes for putting a person in the loop, and they solve
 different problems:
@@ -10,7 +10,7 @@ different problems:
   single run until a handler returns yes or no. Right when the decision is fast
   and in-band (a confirm dialog on a request already in flight).
 
-## Asynchronous: suspend and resume
+## Asynchronous: Suspend and Resume
 
 `suspend(...)` fires an `on(...)` side effect (notify a human), then pauses
 the run. Drive the flow with `run.until_suspended`, which reports the pause
@@ -98,7 +98,7 @@ approval, POST the decision to resume) is in
 [`examples/hitl_http.ts`](../examples/hitl_http.ts). The minimal mechanical
 version is [`examples/suspend_resume.ts`](../examples/suspend_resume.ts).
 
-## Streaming the outcome to a UI
+## Streaming the Outcome to a UI
 
 Once a run is resumed, stream its model output straight to a `useChat` endpoint
 (rendered by AI Elements or Streamdown) with `fascicle/ui`. It maps the run's
@@ -131,7 +131,7 @@ For a `node:http` server that holds a `ServerResponse` rather than returning a
 web `Response`, use `pipe_ui_message_stream_to_response(handle, res)` from the
 same module.
 
-## Synchronous: tool approval
+## Synchronous: Tool Approval
 
 When the decision is in-band and immediate, gate a tool instead of suspending.
 Flag the tool with `needs_approval` and pass an `on_tool_approval` handler to

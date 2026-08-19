@@ -1,4 +1,4 @@
-# How fascicle compares
+# How Fascicle Compares
 
 "Compose LLM calls into something agent-shaped" is a crowded category, and the
 same project can look identical or completely different depending on which axis
@@ -9,7 +9,7 @@ It reflects fascicle's own design view. The only way to know whether the
 ergonomics fit your taste is to try it — start with
 [getting-started.md](./getting-started.md).
 
-## Five axes that matter
+## Five Axes That Matter
 
 1. **Unit of composition.** Is the base type a function-like value (`Step`,
    `Runnable`, `Flow`), a class instance (`Agent`, `Workflow`, `Chain`), or a DSL
@@ -32,7 +32,7 @@ Providers plug in at one of three depths (an AI SDK model, a raw-HTTP
 `transport: 'native'` turn, or an external agent process), all under one loop, and
 the `fascicle/mcp` subpath bridges MCP both ways.
 
-## At a glance
+## At a Glance
 
 | | Unit | Registry | Shape | Scope | TS-native |
 | --- | --- | --- | --- | --- | --- |
@@ -44,7 +44,7 @@ the `fascicle/mcp` subpath bridges MCP both ways.
 | Strands Agents | model-driven `Agent` | none | library | broad | GA (Python-first; TS GA Apr 2026) |
 | Vercel AI SDK | (provider calls) | n/a | library | provider layer | yes |
 
-## The honest overlap
+## The Honest Overlap
 
 ### LangChain + LangGraph
 
@@ -126,7 +126,7 @@ kind of thing fascicle would treat as a single step inside an author-composed fl
 control-flow code, you need production multi-agent orchestration (swarms / graphs /
 A2A) batteries-included, or you are in the AWS / Bedrock ecosystem.
 
-## Different layer, not competition
+## Different Layer, Not Competition
 
 - **Vercel AI SDK** is the provider abstraction fascicle's engine sits *on* by
   default (seven of eight providers out of the box): `generateText`/`streamText` are
@@ -173,7 +173,7 @@ A2A) batteries-included, or you are in the AWS / Bedrock ecosystem.
   — consumers of the event stream a composition library emits. fascicle's
   `TrajectoryLogger` is designed so any of them can be implemented as an adapter.
 
-## What fascicle optimizes for
+## What Fascicle Optimizes For
 
 None of these is unprecedented alone; the concentration is the point.
 
@@ -199,7 +199,7 @@ None of these is unprecedented alone; the concentration is the point.
    [leaf-arm-spine.md](./leaf-arm-spine.md) names the leaf / arm / spine roles
    and the decision rules for choosing at each one.
 
-## When to choose something else
+## When to Choose Something Else
 
 - You want the largest library of pre-built integrations → **LangChain**.
 - You want RAG, memory, and a hosted eval product batteries-included → **Mastra**.

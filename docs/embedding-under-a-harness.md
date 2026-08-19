@@ -1,10 +1,10 @@
-# Embedding under a harness
+# Embedding under a Harness
 
 [Writing a harness](./writing-a-harness.md) covers fascicle as the *parent*: your program owns argv, wiring, and the run. This guide is the mirror image, fascicle as the *child*: some other program spawns your agent as a single-shot subprocess, writes JSON to its stdin, and reads one JSON result from its stdout. Deterministic parent CLIs, plugin seams, CI steps, and anything else that speaks JSON-over-stdio all have this shape.
 
 The whole contract is one call, `run_stdio` from `fascicle/stdio`.
 
-## Stdout belongs to your caller
+## Stdout Belongs to Your Caller
 
 When your process is somebody's child, the streams have fixed jobs:
 
@@ -23,7 +23,7 @@ Key rules:
 - Trajectory defaults to `stderr_logger()` under `run_stdio`; you do not have to wire anything to be stream-clean.
 - If a dependency prints to stdout, that is a bug in this context. Wrap or silence it.
 
-## run_stdio
+## `run_stdio`
 
 Your entry point stays yours; fascicle still ships no generic runner CLI. The author calls `run_stdio` from their own file:
 
@@ -61,7 +61,7 @@ Key rules:
 - The engine is disposed before stdout is written. If teardown fails, the process exits 1 with no stdout rather than handing the parent a result it might trust from a process that could not clean up.
 - Need the outcome as a value instead of an exit (tests, embedding one level deeper)? `execute_stdio` is the same contract over injected io.
 
-## Exit codes
+## Exit Codes
 
 | Code | Meaning |
 | --- | --- |
@@ -71,7 +71,7 @@ Key rules:
 
 The invariant a parent can build on: **exit 0 if and only if stdout carries an authoritative result.** The 0/1/2 split matches the `fascicle-viewer` CLI convention, one scheme across the toolchain.
 
-## Machine-readable failure
+## Machine-Readable Failure
 
 On exit 1 or 2, stdout carries nothing and the *last* stderr line is a single JSON object:
 
@@ -86,7 +86,7 @@ type StdioFailure = {
 
 Parents that want detail take the tail line (`tail -n 1` on captured stderr); humans watching the stream just see it as the final log line. Consuming it is optional; the exit code alone is a complete verdict.
 
-## Trajectory on stderr
+## Trajectory on Stderr
 
 `stderr_logger` (from `fascicle/adapters`) writes the same JSONL wire format as `filesystem_logger`, so captured stderr *is* a trajectory file:
 
@@ -103,7 +103,7 @@ import { filesystem_logger, stderr_logger, tee_logger } from 'fascicle/adapters'
 const trajectory = tee_logger(stderr_logger(), filesystem_logger({ output_path: 'run.jsonl' }))
 ```
 
-## Sessions vs single-shot
+## Sessions vs Single-Shot
 
 `serve_flow` (from `fascicle/mcp`) over a stdio transport gives a *session*: JSON-RPC framing, an initialize handshake, tool-shaped calls, a long-lived process. Right when the parent is an MCP host. `run_stdio` is for the other parent, the one that wants Unix-shaped `exec → result → exit` with no protocol state. Both belong; pick by what spawns you.
 
