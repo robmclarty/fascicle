@@ -65,7 +65,7 @@
       <div style="flex:1; min-width:0; padding-top:6px;">
         <div style="font-family:'JetBrains Mono',monospace; font-size:13px; letter-spacing:3px; text-transform:uppercase; color:#C0521F; margin-bottom:26px;">Composable agentic toolkit</div>
         <h1 style="font-family:'DM Serif Display',serif; font-weight:400; font-size:84px; line-height:0.98; margin:0; letter-spacing:-0.5px;">Compose agents like <span style="font-style:italic; color:#15706A;">plain values.</span></h1>
-        <p style="font-size:20px; line-height:1.55; color:#3a342e; margin:30px 0 0; max-width:480px;">Compose LLM calls, tools, and plain functions into a <span style="font-family:'JetBrains Mono',monospace; font-size:16px; background:#211C17; color:#F4EBDB; padding:2px 8px;">Step&lt;i, o&gt;</span>. Three layers make an agent: <strong>1.</strong> leaves (the model calls), <strong>2.</strong> arms (hardening and judgment around them), <strong>3.</strong> spine (one typed chain). No magic. Just logic.</p>
+        <p style="font-size:20px; line-height:1.55; color:#3a342e; margin:30px 0 0; max-width:480px;">An agent is just a program that calls a model. Fascicle hands you the pieces to write that program yourself: every LLM call, tool, and plain function is a <span style="font-family:'JetBrains Mono',monospace; font-size:16px; background:#211C17; color:#F4EBDB; padding:2px 8px;">Step&lt;i, o&gt;</span>, and steps snap together into whatever shape your problem actually has. No magic. Just logic.</p>
 
         <div style="display:flex; gap:16px; margin-top:38px;">
           <a href="docs.html" style="background:#C0521F; color:#F4EBDB; font-weight:700; font-size:15px; padding:15px 28px; border:3px solid #211C17;" class="fc-btn"><span class="fc-btn-label">Get started →</span></a>
@@ -106,8 +106,8 @@
             <div style="font-family:'JetBrains Mono',monospace; font-size:12px; letter-spacing:2px; color:#7A5230;">ONE STEP TYPE · THREE LAYERS</div>
           </div>
           <sc-for list="{{ primGroups }}" as="g" hint-placeholder-count="4">
-            <div style="margin-bottom:10px;">
-              <div style="font-family:'JetBrains Mono',monospace; font-size:10.5px; letter-spacing:2px; color:{{ g.labelColor }}; margin-bottom:6px;">{{ g.label }}</div>
+            <div style="margin-bottom:10px; margin-top:{{ g.marginTop }};">
+              <div style="font-family:'JetBrains Mono',monospace; font-size:10.5px; letter-spacing:2px; color:{{ g.labelColor }}; margin-bottom:8px; padding-bottom:5px; border-bottom:1px solid {{ g.ruleColor }};">{{ g.label }}</div>
               <div style="display:flex; flex-wrap:wrap; gap:8px; font-family:'JetBrains Mono',monospace;">
                 <sc-for list="{{ g.cells }}" as="p" hint-placeholder-count="6">
                   <div onClick="{{ p.select }}" style="cursor:pointer; padding:{{ p.pad }}; border:2px solid {{ p.border }}; background:{{ p.bg }}; color:{{ p.fg }}; font-size:{{ p.fs }}; transition:transform .06s;" style-active="transform:translateY(2px);">{{ p.name }}</div>
@@ -603,9 +603,11 @@ class Component extends DCLogic {
       { label: '3 · SPINE', labelColor: '#7A5230', muted: false, names: ['chain', 'branch', 'loop'] },
       { label: 'ADVANCED · REACH FOR LAST', labelColor: '#a89f92', muted: true, names: ['ensemble', 'tournament', 'scope', 'improve', 'learn'] },
     ];
-    const primGroups = groupDef.map(g => ({
+    const primGroups = groupDef.map((g, i) => ({
       label: g.label,
       labelColor: g.labelColor,
+      ruleColor: g.muted ? '#E0D6C2' : '#C9C0AE',
+      marginTop: i === 0 ? '0' : '22px',
       cells: g.names.map(name => {
         const on = name === prim;
         return {
