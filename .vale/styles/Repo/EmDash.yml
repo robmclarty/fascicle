@@ -1,17 +1,20 @@
-# The em dash is the loudest single tell in this repo's generated prose: 229
-# across docs/, and not one across the whole voice exemplar set. CLAUDE.md has
-# forbidden it in code comments and docs since before this slot existed, with
-# nothing enforcing that. A comma, a colon, or a full stop carries the same
-# break, and the exemplars reach for all three.
+# An em dash is a pause, and pauses are fine: comma, em dash, semicolon, full
+# stop, each longer than the last. What the em dash is not is a bracket. An
+# aside goes in round brackets here, without exception, and the paired em dash
+# that wraps one is the construction this rule exists to catch.
+#
+# The tree currently holds 44 of them across docs/ and 12 across src/, against
+# none in any voice exemplar. A single em dash between two clauses is left
+# alone, which is why the token needs a partner to match.
 #
 # Warning rather than error, until the docs sweep lands. Vale exits non-zero on
-# error-severity alerts alone, so this stays visible in .check/prose.json and in
-# the terminal without failing a run. Raise it to `error` once docs/ and src/
-# are clear, which is the point at which the rule starts holding the line.
+# error-severity alerts alone, so this reports into .check/prose.json without
+# failing a run. Raise it to `error` once the tree is clear.
 extends: existence
-message: "'%s': no em dash. Use a comma, a colon, or two sentences."
+message: "'%s': an aside takes round brackets, not a pair of em dashes."
 level: warning
-# The token is a bare character, and word boundaries cannot wrap punctuation.
+# The token spans punctuation and needs to match across a wrapped line, so word
+# boundaries would cut it in half.
 nonword: true
 tokens:
-  - '—'
+  - '—[^—]{1,90}—'

@@ -14,6 +14,12 @@
       "description": "core/engine production deps + engine optional peers invariant (constraints.md §7.2)",
       "order": 1
     },
+    "exemplars": {
+      "command": "node",
+      "args": ["scripts/check-exemplars.mjs"],
+      "description": "voice exemplars are unchanged against HEAD (AGENTS.md \u00a7 Prose voice)",
+      "order": 1
+    },
     "examples": {
       "command": "node",
       "args": ["scripts/check-example-rules.mjs"],

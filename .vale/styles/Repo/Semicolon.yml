@@ -1,0 +1,14 @@
+# Semicolons are welcome; stacking them is not. One per sentence is the line the
+# voice exemplars hold without exception: five semicolons across the set, never
+# two in the same sentence. docs/ breaks it 144 times.
+#
+# The rule counts rather than forbids, so a sentence that earns its semicolon
+# keeps it and only the pile-ups report.
+#
+# Warning rather than error, until the docs sweep lands.
+extends: occurrence
+message: "More than one semicolon in a sentence. Split it, or use brackets."
+level: warning
+scope: sentence
+max: 1
+token: ';'

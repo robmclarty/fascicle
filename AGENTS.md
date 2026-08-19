@@ -52,38 +52,32 @@ pnpm exec tsc --noEmit         # just types
 - **Naming:** `snake_case` for variables and functions, `PascalCase` for types and interfaces, `SCREAMING_SNAKE_CASE` for constants. Exports are enforced by `rules/snake-case-exports.yml`.
 - **Function docs.** Every module-level function carries a `/** ... */` block directly above it: one line saying what it is, then optional paragraphs on why it behaves the way it does. Comments inside function bodies use `//`. Comments state what the code does now, in the present tense, with no design-history references. Enforced by `rules/function-comment-required.yml`.
 - **File extensions:** import with `.js` even from `.ts` files (NodeNext resolution).
-- **Prose style.** Markdown and TypeScript doc comments are linted by vale as the `prose` slot; the config is `.vale.ini` and the rules are plain YAML in `.vale/styles/Repo/`. `e.g.,` and `i.e.,` are house style and want both periods and the comma; no sentence opening on "there is"/"there are" (name the subject that acts instead); no hyphen after an `-ly` adverb; no em dash, since a comma, a colon, or two sentences carry the same break; and none of the generated-prose fingerprints in `Drift.yml`. `EmDash` runs at warning level until the docs sweep clears the 739 already in the tree, so it reports into `.check/prose.json` without gating a run. The rules belong to this repo: disagree with one and edit or delete it rather than suppressing it line by line. The rules police mechanics; the exemplars carry the voice.
+- **Prose style.** Markdown and TypeScript doc comments are linted by vale as the `prose` slot; the config is `.vale.ini` and the rules are plain YAML in `.vale/styles/Repo/`. `e.g.,` and `i.e.,` are house style and want both periods and the comma. No sentence opening on "there is"/"there are" (name the subject that acts instead). No hyphen after an `-ly` adverb. An aside takes round brackets, never a pair of em dashes (a single em dash between clauses is a pause, and pauses are fine). One semicolon to a sentence. None of the generated-prose fingerprints in `Drift.yml`. `EmDash` and `Semicolon` run at warning level until the docs sweep clears the backlog already in the tree, so they report into `.check/prose.json` without gating a run. The rules belong to this repo: disagree with one and edit or delete it rather than suppressing it line by line. The rules police mechanics; the exemplars carry the voice.
 - **Tests colocated in `__tests__/`:** unit tests for `foo.ts` live at `__tests__/foo.test.ts` next to it (for example, `src/core/branch.ts` ↔ `src/core/__tests__/branch.test.ts`). Cross-cutting tests (integration, signal handling, fixtures) live under `src/<module>/test/` instead, which is outside the source-semantics rules and spell-check.
 - **Coverage floor:** 70% lines/functions/branches/statements. Raise it as the codebase matures.
 - **Architectural boundaries are enforced.** The rest of `rules/` uses ast-grep to police layer separation between `core`, `engine`, adapters, and the `claude_cli` provider — for example, no adapter imports in `core`, no cross-composer imports, no `process.env` reads outside the audited exceptions, no provider SDKs outside `src/engine/providers/`, no `child_process` outside `claude_cli`. `fallow.toml` adds a directory-level default-deny boundary DAG on top. Read `rules/` and the `fallow.toml` boundaries before adding a cross-module import.
 
 ### Prose voice
 
-Two directories back the prose, and they answer different questions.
-
 `.vale/exemplars/` holds the voice: how a sentence should sound. Every file is the
-author's own published writing, verbatim. Read all of them before writing or editing
-prose (markdown, doc comments); together they run about 4.2k tokens. They are
-hand-written and human-owned: never edit, rewrite, or add to them, and never
-generate new ones. When your draft and an exemplar disagree about how a sentence
+author's own published writing, verbatim, and none of it is later than 2022. Read
+all of them before writing or editing prose (markdown, doc comments); together they
+run about 4.2k tokens. When your draft and an exemplar disagree about how a sentence
 should sound, the exemplar wins.
 
-`.vale/references/` holds the form: what a doc comment covers, what sections a
-design proposal has, how a changelog entry is shaped. Every file is excerpted from
-another project and listed with its license in `NOTICE.md`. Read only the one
-matching what you are writing, never the whole directory.
+They are hand-written and human-owned. Never edit, rewrite, add to, or generate one.
+The `exemplars` check (`scripts/check-exemplars.mjs`) fails on any difference against
+HEAD, whitespace included, so a stray formatting pass trips it the same way a rewrite
+would. A human adding one deliberately runs `EXEMPLARS_UNLOCKED=1 pnpm check`.
 
-| Writing this | Read this |
-| --- | --- |
-| a `/** */` block | `doc-comment.md` |
-| a `docs/` page | `guide-prose.md` |
-| a `CHANGELOG.md` entry | `changelog-entry.md` |
-| a design proposal | `rfc.md` |
-| a troubleshooting entry | `troubleshooting.md` |
-
-Neither directory is linted, and neither ships to npm. Vale checks mechanics, and a
+The directory is not linted and does not ship to npm. Vale checks mechanics, and a
 sentence in the author's own voice is not something a mechanical rule should
-overrule; the references are other people's prose and not ours to correct.
+overrule.
+
+For form rather than voice, read what this repo already does. A doc comment follows
+the 928 blocks under `src/`, a release note follows `CHANGELOG.md`, a troubleshooting
+entry follows `docs/troubleshooting.md`, and a design proposal follows
+[examples/pr-improve/SPEC.md](./examples/pr-improve/SPEC.md).
 
 ## Source layout
 
