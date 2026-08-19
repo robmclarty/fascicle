@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.12.3 — 2026-08-19
 
 ### Changed
 
@@ -26,6 +26,8 @@
 
 - **The `security` slot gates the check suite.** `pnpm audit --audit-level=high` had sat outside the loop since the checkride config landed, as a `check:security` script nothing ran, so a new high advisory reached a release without failing anything. The slot is now in the default set, which is what CI runs, and clearing it took one devDependency bump (`markdownlint-cli2` 0.23.2, whose pinned `js-yaml` is patched), a `vite ^8.0.16` override for the `server.fs.deny` bypass under vitest, and a lockfile re-resolution that carried the other twelve advisories across. `check:security` is now `checkride --only security`, so the gate has one implementation rather than two that can disagree. Nothing in the published package changed: every advisory was dev-tree only, and `dependencies` is still empty.
 
+- **The `prose` slot: how the words read is checked now.** The gate covered types, structure, dead code, spelling, and markdown lint, and nothing looked at the writing. Vale runs over markdown and TypeScript doc comments with rules the repo owns outright, copied in rather than installed, so disagreeing with one means editing it. `.vale/exemplars/` holds seven excerpts of the author's own published writing, verbatim and nothing later than 2022, so no sample can have been shaped by a model, and an `exemplars` check fails on any diff to them. `scripts/prose-health.mjs` measures the thing vale cannot see, which is a whole file drifting compressed, and ratchets each file against its own past rather than against a target.
+
 - **Two prose rules that reach string literals.** Vale maps `ts = js`, which lints doc comments and leaves the code alone, so no user-facing message in this package had ever been checked against a house rule. `rules/no-latin-abbrev-in-strings.yml` and `rules/no-em-dash-pair-in-strings.yml` mirror the vale rules of the same name into ast-grep, run in the `struct` slot, and cover `src`, `test`, and `examples`. Message *shape* stays a matter of judgment and gets no rule, because "does this name a remedy" is not something a matcher can decide.
 
 ### Fixed
@@ -35,6 +37,14 @@
 - **The `fascicle-viewer` help and the doc that documents it disagreed.** `--buffer <n>` sat one space short of the four flags beside it, and `docs/viewer.md` had the same block correctly aligned. The usage example in the CLI's own header comment was misaligned in the other direction.
 
 - **Comments and markdown that describe a layout this repo left behind.** Four doc comments narrated design history rather than present behavior, three named a contract test, a provider option, and source paths that do not exist, and `src/core/BACKLOG.md` still carried the `@repo/core` package name from the workspace v0.8.0 collapsed into one. The `claude_cli` test README listed 9 of its 14 test files, promised a `grep` that finds all 31 spec items when it finds 22, and documented a `RUN_E2E=1` gate that appears nowhere else in the repo. The amplify example's layout tree advertised a `src/state.ts` that the app deliberately does not have, its flow being built on `chain` bindings.
+
+### Internal
+
+- **`docs/` was moved toward the voice in the exemplars.** A sweep across every page restored the relative clauses a compression pass had eaten, split the sentences doing too much, and put the doc comments back in the present tense. Headings went to Chicago Title Case, 232 of them, chosen over AP because AP accepts "Where to Put the Harness" and rejects "Where to Go Next", a distinction no writer can predict. A `HeadingCase` rule holds the line.
+
+- **The three site pages were rewritten.** `site/*.html` is the one body of hand-written prose here that nothing gates, because vale is scoped to markdown and TypeScript and the prose-health corpus is `docs/` plus the top-level markdown. Extracting the text nodes and running both tools over them turned up eleven error-level violations that would have failed the `prose` slot anywhere else. The hero pitch leads with the claim rather than the mechanism now, and the primitive groups are separated.
+
+- **The `claude_cli` spec items are all tagged.** The README promised that `grep -R '§12 #'` finds every one of the 31 items and it found 22. Tagging the missing nine restored the claim, and turned up two existing tags that pointed at the wrong item.
 
 ## v0.12.1 — 2026-08-18
 
