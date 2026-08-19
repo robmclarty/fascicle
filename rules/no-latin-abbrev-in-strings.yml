@@ -1,0 +1,17 @@
+id: no-latin-abbrev-in-strings
+message: "Write `e.g.,` and `i.e.,` with both periods and the comma."
+severity: error
+language: typescript
+files:
+  - "src/**/*.ts"
+  - "test/**/*.ts"
+  - "examples/**/*.ts"
+ignores:
+  - "**/*.d.ts"
+  - "**/dist/**"
+  - "**/node_modules/**"
+rule:
+  any:
+    - kind: string
+    - kind: template_string
+  regex: '\b(?:eg|ie)[,.]?\s|\b(?:e\.g\.|i\.e\.)([^,]|$)'

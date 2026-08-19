@@ -15,7 +15,7 @@
 import { z } from 'zod'
 
 const suggestion_schema = z.object({
-  id: z.string().min(1).describe('Stable id for this suggestion, e.g. "RS-01".'),
+  id: z.string().min(1).describe('Stable id for this suggestion, e.g., "RS-01".'),
   file: z.string().min(1).describe('Path of the file the suggestion targets.'),
   line_range: z
     .tuple([z.number().int().nonnegative(), z.number().int().nonnegative()])
@@ -63,7 +63,7 @@ export const pragmatist_output_schema = z.object({
     .describe('Every suggestion not accepted, each with its reason.'),
   constraints: z
     .array(z.string())
-    .describe('Extra rules the builder must honor, e.g. "do not change the public API of foo()".'),
+    .describe('Extra rules the builder must honor, e.g., "do not change the public API of foo()".'),
 })
 export type PragmatistOutput = z.infer<typeof pragmatist_output_schema>
 

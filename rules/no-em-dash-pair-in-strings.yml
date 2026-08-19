@@ -1,0 +1,17 @@
+id: no-em-dash-pair-in-strings
+message: "An aside takes round brackets, not a pair of em dashes."
+severity: error
+language: typescript
+files:
+  - "src/**/*.ts"
+  - "test/**/*.ts"
+  - "examples/**/*.ts"
+ignores:
+  - "**/*.d.ts"
+  - "**/dist/**"
+  - "**/node_modules/**"
+rule:
+  any:
+    - kind: string
+    - kind: template_string
+  regex: '—[^—]{1,90}—'

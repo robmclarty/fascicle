@@ -14,7 +14,7 @@ export function render_improvement_spec(pr: PRContext, spec: PragmatistOutput): 
     spec.accepted.length === 0
       ? '_No changes accepted._'
       : spec.accepted
-          .map((c) => `- [${c.suggestion_id}] ${c.one_liner} — ${c.file} — ${c.why_worth_it}`)
+          .map((c) => `- [${c.suggestion_id}] ${c.one_liner} (${c.file}) — ${c.why_worth_it}`)
           .join('\n')
   const rejected_lines =
     spec.rejected.length === 0
