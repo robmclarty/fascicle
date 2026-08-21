@@ -17,6 +17,7 @@ import {
   create_ndjson_decoder,
   create_ollama_native_adapter,
   map_ollama_finish_reason,
+  map_ollama_reported,
   map_ollama_usage,
   parse_ollama_chat,
   to_ollama_messages,
@@ -522,6 +523,53 @@ describe('parse_ollama_chat', () => {
   it('throws provider_error when the payload is not an object or has no message', () => {
     expect(() => parse_ollama_chat('nope', 0)).toThrow(provider_error)
     expect(() => parse_ollama_chat({ done: true }, 0)).toThrow(provider_error)
+  })
+})
+
+describe('duration passthrough (provider_reported.ollama)', () => {
+  // The daemon reports nanoseconds; passthrough is verbatim (names and units).
+  const DURATIONS = {
+    total_duration: 5_589_157_167,
+    load_duration: 3_013_701_500,
+    prompt_eval_duration: 1_160_282_000,
+    eval_duration: 1_325_948_000,
+  }
+
+  it('map_ollama_reported picks the numeric duration fields verbatim', () => {
+    expect(map_ollama_reported({ ...DURATIONS, eval_count: 6, done: true })).toEqual(DURATIONS)
+  })
+
+  it('map_ollama_reported skips non-numeric values and returns undefined when none remain', () => {
+    expect(map_ollama_reported({ total_duration: '5589157167' })).toBeUndefined()
+    expect(map_ollama_reported({ done: true, eval_count: 6 })).toBeUndefined()
+    expect(map_ollama_reported({ eval_duration: 1_325_948_000, load_duration: null })).toEqual({
+      eval_duration: 1_325_948_000,
+    })
+  })
+
+  it('parse_ollama_chat reports the daemon durations, keyed under ollama', () => {
+    expect(parse_ollama_chat({ ...TEXT_FIXTURE, ...DURATIONS }, 0)).toEqual({
+      text: 'Hello there',
+      tool_calls: [],
+      finish_reason: 'stop',
+      usage: { input_tokens: 12, output_tokens: 6 },
+      provider_reported: { ollama: DURATIONS },
+    })
+  })
+
+  it('omits provider_reported entirely when the payload carries no durations', () => {
+    expect(parse_ollama_chat(TEXT_FIXTURE, 0)).not.toHaveProperty('provider_reported')
+  })
+
+  it('streamed result carries the done frame durations, equal to the non-streamed parse (C4)', async () => {
+    const fixture = { ...TEXT_FIXTURE, ...DURATIONS }
+    const stream = [
+      ...TEXT_STREAM.slice(0, -1),
+      { ...TEXT_STREAM[TEXT_STREAM.length - 1], ...DURATIONS },
+    ]
+    const { result: streamed } = await invoke_streamed(stream)
+    expect(streamed.provider_reported).toEqual({ ollama: DURATIONS })
+    expect(streamed).toEqual(parse_ollama_chat(fixture, 0))
   })
 })
 

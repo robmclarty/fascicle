@@ -159,6 +159,32 @@ Full shape in [configuration.md](./configuration.md#generate-options).
 | `abort`, `trajectory`, `on_chunk` | cancellation, observation, streaming |
 | `retry` | per-call `RetryPolicy` |
 
+### Timing and Tokens per Second
+
+Every step that the engine loop produces carries a `timing` block
+(`StepTiming`). `started_at` and `duration_ms` bracket the successful
+provider attempt alone, so failed attempts, retry backoff, and tool
+execution never inflate the number, and a streamed turn adds
+`first_chunk_ms` (time to first token). `throughput()` derives the rate
+that people actually ask about, from a `GenerateResult`, a step array, or
+a single step:
+
+```ts
+import { throughput } from 'fascicle';
+
+const rate = throughput(result);
+// { tokens_per_second: 42.7, basis: 'decode', output_tokens: 512, measured_ms: 11987 }
+```
+
+`basis` names what the number means. A streamed turn measures `'decode'`
+(output tokens over the window that excludes time to first chunk, the
+benchmark-style rate), while a non-streamed turn can only measure
+`'blended'` (the whole round trip, network and prefill included), which
+understates the model on a long prompt with a short answer. The helper
+returns `undefined` when no step carries timing, which is the case for
+external adapters (`claude_cli`) and test doubles, or when the measured
+window is zero.
+
 ### `model_call` — The Bridge into a Flow
 
 ```ts
@@ -415,7 +441,8 @@ The bench tier adds `BenchCase`, `BenchOptions`, `BenchReport`, `BenchSummary`,
 **Engine.** `Engine`, `EngineConfig`, `EngineDefaults`, `GenerateOptions`,
 `GenerateResult`, `Message`, `UserContentPart`, `AssistantContentPart`,
 `StreamChunk`, `FinishReason`, `Tool`, `ToolExecContext`, `ToolCallRecord`,
-`ToolApprovalHandler`, `ToolApprovalRequest`, `StepRecord`, `UsageTotals`,
+`ToolApprovalHandler`, `ToolApprovalRequest`, `StepRecord`, `StepTiming`,
+`Throughput`, `UsageTotals`,
 `CostBreakdown`, `Pricing`, `PricingTable`, `EffortLevel`,
 `EffortTranslation`, `RawProviderUsage`, `PrepareStepContext`,
 `PrepareStepResult`, `RetryPolicy`, `RetryFailureKind`, `ProviderConfigMap`,

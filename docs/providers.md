@@ -446,6 +446,7 @@ const engine = create_engine({
 - **No auth, `base_url` still required, no image input.** Same local-runtime constraints as the `ai_sdk` transport.
 - **Effort is ignored entirely (D2).** No effort-to-wire mapping exists; reasoning is opt-in purely through `provider_options.ollama.think`.
 - **Usage degrades gracefully (D10).** `prompt_eval_count` / `eval_count` map to input/output tokens; when the runtime omits them the totals are zeroed rather than throwing.
+- **The daemon's own timings pass through.** The nanosecond duration fields that `/api/chat` reports (`total_duration`, `load_duration`, `prompt_eval_duration`, `eval_duration`) land verbatim on `provider_reported.ollama`, so `eval_count` over `eval_duration` gives you the daemon's own decode rate, alongside the engine's transport-neutral [`timing` / `throughput()`](./api-reference.md#timing-and-tokens-per-second) view.
 - **`provider_options.ollama` is raw `/api/chat` wire format (D9).** Keys are Ollama's own native fields — `think`, `keep_alive`, `format`, and the nested `options` bag (`num_predict`, `temperature`, `top_p`, `num_ctx`, ...) — shallow-merged last over the engine-computed body. These are **not** OpenAI-compatible keys: there's no `max_tokens` or `reasoning_effort` here (the engine writes the token limit into `options.num_predict`); pass a whole `options` object, since the shallow merge replaces it wholesale rather than deep-merging derived sampling params.
 
 ## `lmstudio`

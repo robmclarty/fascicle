@@ -175,7 +175,8 @@ function without_timing(result: GenerateResult): unknown {
   return {
     ...result,
     tool_calls: strip_timing(result.tool_calls),
-    steps: result.steps.map((step) => ({
+    // StepTiming is wall-clock too (and only streamed runs get first_chunk_ms).
+    steps: result.steps.map(({ timing: _t, ...step }) => ({
       ...step,
       tool_calls: strip_timing(step.tool_calls),
     })),

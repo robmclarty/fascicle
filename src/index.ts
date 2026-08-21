@@ -69,7 +69,9 @@ export type {
   RetryFailureKind,
   RetryPolicy,
   StepRecord,
+  StepTiming,
   StreamChunk,
+  Throughput,
   Tool,
   ToolApprovalHandler,
   ToolApprovalRequest,
@@ -81,7 +83,7 @@ export type {
   UserContentPart,
 } from '#engine'
 
-export { default_normalize_usage } from '#engine'
+export { default_normalize_usage, throughput } from '#engine'
 
 export { model_call, model_step } from './model_call.js'
 export type { ModelCallConfig, ModelCallInput } from './model_call.js'

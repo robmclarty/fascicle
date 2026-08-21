@@ -77,6 +77,24 @@ export type CostBreakdown = {
 
 export type SalvageFormat = 'hermes' | 'json' | 'qwen_xml'
 
+/**
+ * Wall-clock timing of one step's provider round-trip, measured by the engine
+ * around the successful turn attempt: failed attempts and retry backoff are
+ * excluded, as is tool execution (that is ToolCallRecord.duration_ms).
+ * `first_chunk_ms` is present only on streamed turns: milliseconds from the
+ * attempt start to the first chunk, so `duration_ms - first_chunk_ms` is the
+ * window the model spent emitting output. See `throughput()` for the derived
+ * tokens-per-second view.
+ */
+export type StepTiming = {
+  /** Epoch ms when the successful provider attempt started. */
+  started_at: number
+  /** Wall-clock ms from attempt start to the turn result. */
+  duration_ms: number
+  /** Streamed turns only: ms from attempt start to the first chunk. */
+  first_chunk_ms?: number
+}
+
 export type ToolCallRecord = {
   id: string
   name: string
@@ -99,6 +117,12 @@ export type StepRecord = {
   tool_calls: ToolCallRecord[]
   usage: UsageTotals
   cost?: CostBreakdown
+  /**
+   * Present on every step the engine's tool loop produced (both transports),
+   * absent on steps built by external adapters (claude_cli) and injected test
+   * seams that return a TurnResult without one.
+   */
+  timing?: StepTiming
   finish_reason: FinishReason
   /**
    * This turn's provider-reported detail, keyed by provider name. See
@@ -193,6 +217,12 @@ export type TurnResult = {
   }>
   readonly finish_reason: FinishReason
   readonly usage: UsageTotals
+  /**
+   * Stamped by the engine's retry wrapper around the successful attempt, not
+   * by adapters: an adapter-returned TurnResult never carries one, and the
+   * wrapper's value would overwrite it if it did. See StepTiming.
+   */
+  readonly timing?: StepTiming
   /**
    * Opaque detail the provider reported about this turn, keyed by provider
    * name: Bedrock's guardrail trace, Anthropic's cache breakdown, whatever a

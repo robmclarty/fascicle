@@ -189,6 +189,30 @@ export function map_ollama_usage(payload: unknown): UsageTotals {
   }
 }
 
+const REPORTED_DURATION_FIELDS = [
+  'total_duration',
+  'load_duration',
+  'prompt_eval_duration',
+  'eval_duration',
+] as const
+
+/**
+ * Collect the daemon's nanosecond duration fields for verbatim passthrough
+ * under `provider_reported.ollama`: the daemon's own decode/prefill timing,
+ * which is what an honest local tokens-per-second number derives from
+ * (eval_count over eval_duration). Units and names stay the wire's own, per
+ * the provider_reported contract; returns undefined when none are present
+ * (mid-proxy shapes that strip them), never an empty object.
+ */
+export function map_ollama_reported(payload: object): Record<string, number> | undefined {
+  const out: Record<string, number> = {}
+  for (const key of REPORTED_DURATION_FIELDS) {
+    const value: unknown = Reflect.get(payload, key)
+    if (typeof value === 'number') out[key] = value
+  }
+  return Object.keys(out).length > 0 ? out : undefined
+}
+
 /**
  * This wire sends no tool-call id, so one is synthesized from the step index
  * and the call's ordinal within the turn: deterministic, so the streamed and
@@ -244,6 +268,7 @@ export function parse_ollama_chat(payload: unknown, step_index: number): TurnRes
   const tool_calls = Array.isArray(raw_tool_calls)
     ? raw_tool_calls.map((entry, ordinal) => parse_ollama_tool_call(entry, ordinal, step_index))
     : []
+  const reported = map_ollama_reported(payload)
   return {
     text: typeof content === 'string' ? content : '',
     tool_calls,
@@ -252,6 +277,7 @@ export function parse_ollama_chat(payload: unknown, step_index: number): TurnRes
       tool_calls.length > 0,
     ),
     usage: map_ollama_usage(payload),
+    ...(reported !== undefined ? { provider_reported: { ollama: reported } } : {}),
   }
 }
 
@@ -295,6 +321,7 @@ function create_ollama_stream_aggregator(
   let done = false
   let done_reason: unknown
   let usage: UsageTotals = { input_tokens: 0, output_tokens: 0 }
+  let reported: Record<string, number> | undefined
 
   const on_message = async (message: object): Promise<void> => {
     const content: unknown = Reflect.get(message, 'content')
@@ -332,6 +359,7 @@ function create_ollama_stream_aggregator(
         done = true
         done_reason = Reflect.get(frame, 'done_reason')
         usage = map_ollama_usage(frame)
+        reported = map_ollama_reported(frame)
         await dispatch({
           kind: 'step_finish',
           step_index,
@@ -355,6 +383,8 @@ function create_ollama_stream_aggregator(
           function: { name: call.name, arguments: call.input },
         }))
       }
+      // The done frame's duration fields rebuild into the synthetic payload
+      // so the streamed parse reports them exactly as the non-streamed one.
       return parse_ollama_chat(
         {
           message,
@@ -362,6 +392,7 @@ function create_ollama_stream_aggregator(
           done_reason: done_reason ?? null,
           prompt_eval_count: usage.input_tokens,
           eval_count: usage.output_tokens,
+          ...reported,
         },
         step_index,
       )

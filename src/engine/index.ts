@@ -34,6 +34,7 @@ export type {
   RetryFailureKind,
   RetryPolicy,
   StepRecord,
+  StepTiming,
   StreamChunk,
   Tool,
   ToolApprovalHandler,
@@ -59,6 +60,9 @@ export type {
 } from './providers/types.js'
 
 export { default_normalize_usage } from './providers/types.js'
+
+export { throughput } from './throughput.js'
+export type { Throughput } from './throughput.js'
 
 export type {
   AgentDef,

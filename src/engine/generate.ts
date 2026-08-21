@@ -27,6 +27,7 @@ import type {
   PricingTable,
   ResolvedModel,
   RetryPolicy,
+  StepTiming,
   StreamChunk,
   Tool,
   TurnRequest,
@@ -304,20 +305,30 @@ function arm_turn_timeout(
  * actually cancels the in-flight request. Adapters may swap `classify`, but
  * never the ladder itself: the engine owns retry, so a hidden adapter-level
  * retry would be invisible to anything relying on this ladder.
+ *
+ * The wrapper also stamps StepTiming here, and only here, because this is the
+ * one place that can see attempt boundaries: started_at re-stamps at every
+ * attempt entry, so failed attempts and backoff waits never inflate
+ * duration_ms. `first_chunk_at` (the builder's Date.now() from its first
+ * dispatched chunk) can only belong to the returning attempt, since any
+ * failure after a chunk has flowed is non-retryable by the ladder below.
  */
 function retry_turn(
   call_once: (turn_abort: AbortSignal) => Promise<TurnResult>,
   args: InvokeOnceArgs,
-  has_streamed: () => boolean,
+  first_chunk_at: () => number | undefined,
   retry_policy: RetryPolicy,
   classify: (err: unknown) => unknown,
   turn_timeout_ms: number | undefined,
 ): Promise<TurnResult> {
+  const has_streamed = (): boolean => first_chunk_at() !== undefined
   return retry_with_policy(
     async () => {
+      const started_at = Date.now()
       const deadline = arm_turn_timeout(args.abort, turn_timeout_ms)
       try {
-        return await call_once(deadline.signal)
+        const turn = await call_once(deadline.signal)
+        return { ...turn, timing: build_step_timing(started_at, first_chunk_at()) }
       } catch (err: unknown) {
         if (err instanceof on_chunk_error) throw err
         // A genuine user abort wins over everything below it, including a
@@ -360,15 +371,29 @@ function retry_turn(
 }
 
 /**
+ * Assemble one turn's StepTiming from the attempt's start stamp and the
+ * builder's first-chunk stamp (undefined on non-streamed turns).
+ */
+function build_step_timing(
+  started_at: number,
+  first_chunk: number | undefined,
+): StepTiming {
+  const timing: StepTiming = { started_at, duration_ms: Date.now() - started_at }
+  if (first_chunk !== undefined) timing.first_chunk_ms = first_chunk - started_at
+  return timing
+}
+
+/**
  * Build the ai_sdk-transport InvokeOnce: the SDK turn built by
  * providers/ai_sdk/invoke.ts behind the same engine-owned retry_turn wrapper
  * the native path uses. The SDK call body lives behind the seam; this builder
  * owns only retry and the streamed-output tracking that makes a mid-stream
- * failure a non-retryable interruption.
+ * failure a non-retryable interruption (the same first-chunk stamp doubles as
+ * StepTiming.first_chunk_ms).
  */
 function build_ai_sdk_invoke(cfg: AiSdkInvokeConfig): InvokeOnce {
   return async (args: InvokeOnceArgs): Promise<InvokeOnceResult> => {
-    let chunks_started = false
+    let first_chunk_at: number | undefined
     const call_once = (turn_abort: AbortSignal): Promise<TurnResult> =>
       cfg.invoke_turn({
         step_index: args.step_index,
@@ -376,14 +401,14 @@ function build_ai_sdk_invoke(cfg: AiSdkInvokeConfig): InvokeOnce {
         abort: turn_abort,
         stream: args.stream,
         on_first_chunk: () => {
-          chunks_started = true
+          first_chunk_at ??= Date.now()
         },
       })
 
     return await retry_turn(
       call_once,
       args,
-      () => chunks_started,
+      () => first_chunk_at,
       cfg.retry_policy,
       classify_provider_error,
       cfg.turn_timeout_ms,
@@ -402,7 +427,7 @@ function build_ai_sdk_invoke(cfg: AiSdkInvokeConfig): InvokeOnce {
 function build_native_invoke(cfg: NativeInvokeConfig): InvokeOnce {
   const classify = cfg.adapter.classify_error ?? classify_provider_error
   return async (args: InvokeOnceArgs): Promise<TurnResult> => {
-    let chunks_started = false
+    let first_chunk_at: number | undefined
     const call_once = async (turn_abort: AbortSignal): Promise<TurnResult> => {
       // turn_abort is the composed user-abort + turn_timeout deadline; the
       // internal controller adds one more reason to cancel (a throwing chunk
@@ -419,7 +444,7 @@ function build_native_invoke(cfg: NativeInvokeConfig): InvokeOnce {
         turn_abort.addEventListener('abort', cancel_on_turn_abort, { once: true })
       }
       const dispatch_chunk = async (chunk: StreamChunk): Promise<void> => {
-        chunks_started = true
+        first_chunk_at ??= Date.now()
         try {
           await cfg.dispatcher.dispatch(chunk)
         } catch (err: unknown) {
@@ -461,7 +486,7 @@ function build_native_invoke(cfg: NativeInvokeConfig): InvokeOnce {
     return await retry_turn(
       call_once,
       args,
-      () => chunks_started,
+      () => first_chunk_at,
       cfg.retry_policy,
       classify,
       cfg.turn_timeout_ms,

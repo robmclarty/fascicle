@@ -469,6 +469,7 @@ async function invoke_turn(
       step_index,
       output_tokens: turn.usage.output_tokens,
       finish_reason: turn.finish_reason,
+      ...(turn.timing !== undefined ? { duration_ms: turn.timing.duration_ms } : {}),
     })
     return turn
   } catch (err: unknown) {
@@ -948,8 +949,9 @@ function resolve_turn_finish_reason(
 }
 
 /**
- * Build one StepRecord (cost derived and recorded, provider_reported
- * passed through), push it, notify on_finish_step, and close the step span.
+ * Build one StepRecord (cost derived and recorded, timing and
+ * provider_reported passed through), push it, notify on_finish_step, and
+ * close the step span.
  */
 function push_step_record(
   config: ToolLoopConfig,
@@ -969,6 +971,7 @@ function push_step_record(
   }
   const breakdown = compute_and_record_cost(config, step_index, turn.usage)
   if (breakdown !== undefined) record.cost = breakdown
+  if (turn.timing !== undefined) record.timing = turn.timing
   if (turn.provider_reported !== undefined) {
     record.provider_reported = turn.provider_reported
   }
