@@ -14,7 +14,7 @@ pnpm add fascicle
 
 Fascicle is ESM-only and requires Node >= 24. `ai`, `zod`, and every provider SDK are optional peers — install only the ones you use. `pnpm add fascicle` alone builds and runs a flow against `transport: 'native'` or `claude_cli`, with no AI SDK package and no schema library installed at all; schemas accept any [Standard Schema](https://standardschema.dev) — zod, ArkType, Valibot, whichever you already use. See [docs/providers.md](./docs/providers.md).
 
-No API key on hand? Several runnable examples need zero keys: [examples/hello.ts](./examples/hello.ts), [examples/suspend_resume.ts](./examples/suspend_resume.ts), and [examples/viewer_demo.ts](./examples/viewer_demo.ts) use no engine at all, and [examples/newsroom.ts](./examples/newsroom.ts) runs the full vocabulary against the bundled stub engine from `fascicle/testing`.
+No API key on hand? Several runnable examples need zero keys: [examples/hello/main.ts](./examples/hello/main.ts), [examples/suspend-resume/main.ts](./examples/suspend-resume/main.ts), and [examples/viewer-demo/main.ts](./examples/viewer-demo/main.ts) use no engine at all, and [examples/newsroom/main.ts](./examples/newsroom/main.ts) runs the full vocabulary against the bundled stub engine from `fascicle/testing`.
 
 ## A 60-second tour
 
@@ -221,7 +221,7 @@ The canonical worked example is [examples/pr-improve/](./examples/pr-improve/), 
 - [docs/comparison.md](./docs/comparison.md) — how Fascicle compares to LangChain, Mastra, and others
 - [docs/adoption-decision.md](./docs/adoption-decision.md) weighs whether to adopt Fascicle: the honest case, the risks, and when to reach for something else
 - [docs/roadmap.md](./docs/roadmap.md) — what has shipped, what is being considered, and what Fascicle deliberately will not do
-- [examples/](./examples/) — runnable reference flows; start with [examples/newsroom.ts](./examples/newsroom.ts), the vocabulary tour
+- [examples/](./examples/) — runnable reference flows; start with [examples/newsroom/main.ts](./examples/newsroom/main.ts), the vocabulary tour
 - [docs/viewer.md](./docs/viewer.md) — viewer details and transport options
 - [docs/grafana.md](./docs/grafana.md) — shipping a run's traces and metrics to a Grafana dashboard over OpenTelemetry
 

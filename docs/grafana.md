@@ -40,7 +40,7 @@ Node.js service.
 ## Try It in Three Steps
 
 The runnable version of this guide is
-[`examples/otel_grafana.ts`](../examples/otel_grafana.ts). Its model is a
+[`examples/otel-grafana/main.ts`](../examples/otel-grafana/main.ts). Its model is a
 canned in-process provider with pretend latency, token counts, one tool
 call per run, and an occasional simulated rate limit, so the whole demo
 runs with no API key and no network beyond your own machine.
@@ -56,12 +56,12 @@ Second, run the example. It runs a small trip-planning agent twenty times
 and ships every run's traces and metrics to the container:
 
 ```bash
-pnpm exec tsx examples/otel_grafana.ts
+pnpm exec tsx examples/otel-grafana/main.ts
 ```
 
 Third, open <http://localhost:3000>, go to Dashboards > New > Import, and
 upload
-[`examples/otel_grafana_dashboard.json`](../examples/otel_grafana_dashboard.json).
+[`examples/otel-grafana/dashboard.json`](../examples/otel-grafana/dashboard.json).
 You get a dashboard with the totals across the top (model turns, tokens,
 estimated cost, retries absorbed), timing and throughput charts below, and
 a table of recent runs at the bottom. Click any trace ID in that table and

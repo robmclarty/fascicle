@@ -91,7 +91,7 @@ A parent that wants the detail takes the tail line (`tail -n 1` on captured stde
 `stderr_logger` (from `fascicle/adapters`) writes the same JSONL wire format as `filesystem_logger`, so captured stderr *is* a trajectory file:
 
 ```bash
-echo '{"topic":"flaky tests"}' | pnpm exec tsx examples/stdio_agent.ts 2> events.jsonl
+echo '{"topic":"flaky tests"}' | pnpm exec tsx examples/stdio-agent/main.ts 2> events.jsonl
 pnpm exec fascicle-viewer events.jsonl
 ```
 
@@ -116,4 +116,4 @@ Everything in the [writing-a-harness checklist](./writing-a-harness.md#checklist
 - [ ] The engine (if any) is passed to `run_stdio` so it's disposed before exit.
 - [ ] The parent's retry logic distinguishes exit 1 (retryable flow failure) from exit 2 (fix the caller or the flow first).
 
-The reference agent is [`examples/stdio_agent.ts`](../examples/stdio_agent.ts), with schema in, two candidates in parallel plus a synthesize step, schema out, ~30 lines.
+The reference agent is [`examples/stdio-agent/main.ts`](../examples/stdio-agent/main.ts), with schema in, two candidates in parallel plus a synthesize step, schema out, ~30 lines.

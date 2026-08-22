@@ -13,14 +13,14 @@ write.
 
 ```bash
 # terminal 1: generate a demo trajectory (no engine, no API key)
-pnpm exec tsx examples/viewer_demo.ts
+pnpm exec tsx examples/viewer-demo/main.ts
 
 # terminal 2: point the viewer at the JSONL file
 pnpm exec fascicle-viewer .trajectory.jsonl
 # → http://127.0.0.1:4242
 ```
 
-[`examples/viewer_demo.ts`](../examples/viewer_demo.ts) writes
+[`examples/viewer-demo/main.ts`](../examples/viewer-demo/main.ts) writes
 `.trajectory.jsonl` through `filesystem_logger`, and any flow of your own
 that logs to a file works the same way. If you'd rather not install
 anything, `pnpm dlx --package=fascicle fascicle-viewer .trajectory.jsonl`

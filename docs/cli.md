@@ -41,7 +41,7 @@ try {
 }
 ```
 
-See [`examples/hello_claude_cli.ts`](../examples/hello_claude_cli.ts) and [`examples/hello_claude_cli_lisp.ts`](../examples/hello_claude_cli_lisp.ts) for full harnesses.
+See [`examples/hello-claude-cli/main.ts`](../examples/hello-claude-cli/main.ts) and [`examples/hello-claude-cli-lisp/main.ts`](../examples/hello-claude-cli-lisp/main.ts) for full harnesses.
 
 ## Provider Config
 

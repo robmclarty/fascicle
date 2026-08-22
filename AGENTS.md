@@ -4,7 +4,7 @@ Instructions for any coding agent (Claude Code, Codex, Cursor, Windsurf, Amp) op
 
 ## Building an app *on* Fascicle?
 
-If your task is to construct a new agent that *consumes* the published `fascicle` package (rather than to modify this repo), stop here and follow **[docs/blueprint.md](./docs/blueprint.md)** — the recommended architecture for Fascicle apps: one composition layer, three adoption tiers, markdown prompts, normalized module contracts, stub-engine testing, and ast-grep rules that enforce the boundaries. [docs/leaf-arm-spine.md](./docs/leaf-arm-spine.md) is the layering decision guide and [examples/newsroom.ts](./examples/newsroom.ts) the vocabulary tour. The canonical worked example is [examples/pr-improve/](./examples/pr-improve/) (rationale in its `docs/architecture.md`); copy its `rules/` directory to enforce the blueprint in your own app. The rest of this file is about developing Fascicle itself.
+If your task is to construct a new agent that *consumes* the published `fascicle` package (rather than to modify this repo), stop here and follow **[docs/blueprint.md](./docs/blueprint.md)** — the recommended architecture for Fascicle apps: one composition layer, three adoption tiers, markdown prompts, normalized module contracts, stub-engine testing, and ast-grep rules that enforce the boundaries. [docs/leaf-arm-spine.md](./docs/leaf-arm-spine.md) is the layering decision guide and [examples/newsroom/main.ts](./examples/newsroom/main.ts) the vocabulary tour. The canonical worked example is [examples/pr-improve/](./examples/pr-improve/) (rationale in its `docs/architecture.md`); copy its `rules/` directory to enforce the blueprint in your own app. The rest of this file is about developing Fascicle itself.
 
 ## The contract
 

@@ -4,6 +4,8 @@ A minimal [Model Context Protocol](https://modelcontextprotocol.io) server over
 stdio, plus a tiny client that smoke-tests it. Standalone: it does not import
 Fascicle, and needs no API key, Docker, or Ollama.
 
+![terminal output of the smoke client: every tool called and checked, all checks passed](./screenshot.png)
+
 ## What it exposes
 
 Three tools and one resource template, registered on an `McpServer`:

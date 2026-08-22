@@ -185,8 +185,8 @@ when the control flow is genuinely dynamic. The two compose freely in both
 directions, and the trajectory invariant is identical under each because it
 is enforced below both, at the model boundary. The same agent is written
 once in each style in
-[examples/release_notes.ts](../examples/release_notes.ts) (chain) and
-[examples/release_notes_direct.ts](../examples/release_notes_direct.ts)
+[examples/release-notes/main.ts](../examples/release-notes/main.ts) (chain) and
+[examples/release-notes-direct/main.ts](../examples/release-notes-direct/main.ts)
 (direct, with a conditional model boundary as the reason to be direct).
 
 How these primitives layer into a whole app (model boundaries as leaves,
@@ -303,25 +303,25 @@ subdirectories. All of them import the published `fascicle` surface, so
 everything there is copy-pasteable into an npm consumer. Highlights among
 the single files:
 
-- [`hello.ts`](../examples/hello.ts), the smallest viable harness
-- [`newsroom.ts`](../examples/newsroom.ts), the vocabulary tour, every
+- [`hello`](../examples/hello/main.ts), the smallest viable harness
+- [`newsroom`](../examples/newsroom/main.ts), the vocabulary tour, every
   primary primitive once, each in its suggested role
-- [`release_notes.ts`](../examples/release_notes.ts) /
-  [`release_notes_direct.ts`](../examples/release_notes_direct.ts), the same
+- [`release-notes`](../examples/release-notes/main.ts) /
+  [`release-notes-direct`](../examples/release-notes-direct/main.ts), the same
   agent in the chain and direct styles
-- [`adversarial_build.ts`](../examples/adversarial_build.ts), build-and-critique
+- [`adversarial-build`](../examples/adversarial-build/main.ts), build-and-critique
   with an ensemble of judges
-- [`ensemble_judge.ts`](../examples/ensemble_judge.ts), N-of-M pick best
-- [`improve.ts`](../examples/improve.ts) / [`learn.ts`](../examples/learn.ts):
+- [`ensemble-judge`](../examples/ensemble-judge/main.ts), N-of-M pick best
+- [`improve`](../examples/improve/main.ts) / [`learn`](../examples/learn/main.ts):
   the self-improvement tier
-- [`bench_reviewer.ts`](../examples/bench_reviewer.ts), bench and regression
+- [`bench-reviewer`](../examples/bench-reviewer/main.ts), bench and regression
   over a `define_agent` reviewer
-- [`streaming_chat.ts`](../examples/streaming_chat.ts), observe emitted tokens
-- [`checkpoint_resume.ts`](../examples/checkpoint_resume.ts) /
-  [`suspend_resume.ts`](../examples/suspend_resume.ts), durability, pause,
+- [`streaming-chat`](../examples/streaming-chat/main.ts), observe emitted tokens
+- [`checkpoint-resume`](../examples/checkpoint-resume/main.ts) /
+  [`suspend-resume`](../examples/suspend-resume/main.ts), durability, pause,
   and resume
-- [`hitl_http.ts`](../examples/hitl_http.ts), suspend/confirm/resume over HTTP
-- [`ollama_chat.ts`](../examples/ollama_chat.ts), drive a local Ollama model
+- [`hitl-http`](../examples/hitl-http/main.ts), suspend/confirm/resume over HTTP
+- [`ollama-chat`](../examples/ollama-chat/main.ts), drive a local Ollama model
   through a composed sequence
 
 The seven apps are separate workspace members consuming the published

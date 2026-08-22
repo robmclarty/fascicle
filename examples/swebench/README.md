@@ -4,6 +4,8 @@ A 5-instance smoke harness against SWE-bench Verified. Exercises the sandbox
 and judge seams so the full 500-instance benchmark is a scale change, not a
 shape change.
 
+![terminal output of a single-instance smoke run: flow completion, patch-shape score, and total cost](./screenshot.png)
+
 ## What it does
 
 1. Loads 5 vendored instances from `src/instances.ts` (real `instance_id`s

@@ -6,6 +6,8 @@ banded risk report. A worked example of the
 production consumer: **deterministic detectors first, one schema-mode model
 call second, and a floor the model cannot undercut**.
 
+![terminal output of the stub run: a banded risk report with detector factors and the paths withheld from the model](./screenshot.png)
+
 ## What it shows
 
 - **Deterministic + model hybrid.** Seven regex detectors run over every file

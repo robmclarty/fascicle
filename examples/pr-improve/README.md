@@ -2,6 +2,8 @@
 
 Automated PR improvement pipeline. Triggered (eventually) by a `fascicle-improve` label on a GitHub PR; runs a 4-stage agent pipeline that reviews the diff, distills a pragmatic subset of changes, builds them in a new branch, and reviews the build before opening an improvement PR.
 
+![terminal output of the stub run: trajectory events from the four-stage pipeline, ending in improvement_ready](./screenshot.png)
+
 - [CLOUD_SPEC.md](./CLOUD_SPEC.md) — **active spec** for the remaining cloud-deployment work (Fargate worker, webhook Lambda, Terraform module under `infra/`).
 - [SPEC.md](./SPEC.md) — original end-to-end design, preserved as historical context for the shipped phases. Superseded by `CLOUD_SPEC.md` for everything still to build.
 - [docs/architecture.md](./docs/architecture.md) — why `flow.ts` is pure Fascicle composition, and the module split that keeps it that way.

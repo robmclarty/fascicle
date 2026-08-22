@@ -97,11 +97,11 @@ const best_draft = ensemble_step({
 });
 ```
 
-`run(best_draft, brief)` hands you the winning draft, and if you omit `project` you get the full `{ winner_id, winner, winner_scored, scored }` envelope. [`examples/ensemble_judge.ts`](../examples/ensemble_judge.ts) is the runnable version. When quality is computable by a plain function (length, pass rate, a heuristic) rather than a model, plain `ensemble` does the same with less machinery — see [advanced-composition.md](./advanced-composition.md#ensemble-and-tournament-the-other-pick-bests).
+`run(best_draft, brief)` hands you the winning draft, and if you omit `project` you get the full `{ winner_id, winner, winner_scored, scored }` envelope. [`examples/ensemble-judge/main.ts`](../examples/ensemble-judge/main.ts) is the runnable version. When quality is computable by a plain function (length, pass rate, a heuristic) rather than a model, plain `ensemble` does the same with less machinery — see [advanced-composition.md](./advanced-composition.md#ensemble-and-tournament-the-other-pick-bests).
 
 ## Build-and-Critique with `adversarial`
 
-Build a candidate, have a judge critique it, and loop until the judge accepts or `max_rounds` runs out. See [`examples/adversarial_build.ts`](../examples/adversarial_build.ts).
+Build a candidate, have a judge critique it, and loop until the judge accepts or `max_rounds` runs out. See [`examples/adversarial-build/main.ts`](../examples/adversarial-build/main.ts).
 
 ```ts
 import { adversarial, model_step, sequence, step } from 'fascicle';
@@ -269,8 +269,8 @@ if (outcome.kind === 'suspended') {
 
 The resume closure re-runs your flow from the original input with the decision merged into `resume_data`. A closure can't outlive the process, so a durable harness persists the input and rebuilds the outcome after a restart.
 
-See [`examples/suspend_resume.ts`](../examples/suspend_resume.ts) for the
-mechanical version, [`examples/hitl_http.ts`](../examples/hitl_http.ts) for an
+See [`examples/suspend-resume/main.ts`](../examples/suspend-resume/main.ts) for the
+mechanical version, [`examples/hitl-http/main.ts`](../examples/hitl-http/main.ts) for an
 end-to-end suspend/confirm/resume server, and
 [docs/human-in-the-loop.md](./human-in-the-loop.md) for the full narrative
 (including streaming the outcome to a `useChat` UI with `fascicle/ui`).

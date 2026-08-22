@@ -167,11 +167,11 @@ The error carries a `.path` array with the step ids that led to the failure, so 
 
 In this repo, reference harnesses live at the root under [`examples/`](../examples/). Your own harness lives in your own project, because Fascicle is a library and not an app scaffold. Import from `fascicle` (the published package name, which the root `examples/` use too; inside the library, cross-module imports use the internal `#<module>` aliases) and write the harness wherever your program belongs. For the standard shape of the app *around* the harness (one composition layer, module contracts, markdown prompts), follow [blueprint.md](./blueprint.md).
 
-The canonical starting point is [`examples/hello.ts`](../examples/hello.ts), and the full vocabulary at app scale is [`examples/newsroom.ts`](../examples/newsroom.ts), with [leaf-arm-spine.md](./leaf-arm-spine.md) as the guide to its shape. Run the starter:
+The canonical starting point is [`examples/hello/main.ts`](../examples/hello/main.ts), and the full vocabulary at app scale is [`examples/newsroom/main.ts`](../examples/newsroom/main.ts), with [leaf-arm-spine.md](./leaf-arm-spine.md) as the guide to its shape. Run the starter:
 
 ```bash
-pnpm exec tsx examples/hello.ts
-pnpm exec tsx examples/hello.ts "your custom input here"
+pnpm exec tsx examples/hello/main.ts
+pnpm exec tsx examples/hello/main.ts "your custom input here"
 ```
 
 > **Layout note.** This repo is a single installable package (`fascicle`). All source lives under `src/` as deep modules (`core`, `engine`, `composites`, `agents`, `adapters`, `mcp`, `stdio`, `ui`, `otel`, `policy`, `schema`, `testing`, `viewer`), each with a barrel `index.ts` that you reach only through its `#<module>` import alias. The aliases enforce architectural boundaries (for example, core can't import from adapters, engine can't reach into providers). The umbrella surface at the `src/` root is what bundles to npm — the published surface is the only public face.

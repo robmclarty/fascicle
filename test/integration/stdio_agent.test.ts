@@ -1,6 +1,6 @@
 /**
- * Spawns examples/stdio_agent.ts exactly the way a user (or a parent harness)
- * would (`tsx examples/stdio_agent.ts` with JSON piped to stdin) and asserts
+ * Spawns examples/stdio-agent/main.ts exactly the way a user (or a parent harness)
+ * would (`tsx examples/stdio-agent/main.ts` with JSON piped to stdin) and asserts
  * the full envelope: exit code, single JSON document on stdout, machine-
  * readable failure as the last stderr line.
  */
@@ -12,7 +12,7 @@ import { describe, expect, it } from 'vitest'
 
 const repo_root = join(fileURLToPath(import.meta.url), '..', '..', '..')
 const tsx_bin = join(repo_root, 'node_modules', '.bin', 'tsx')
-const agent_script = join(repo_root, 'examples', 'stdio_agent.ts')
+const agent_script = join(repo_root, 'examples', 'stdio-agent', 'main.ts')
 
 type AgentResult = { code: number | null; stdout: string; stderr: string }
 

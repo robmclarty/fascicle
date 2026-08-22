@@ -40,7 +40,7 @@ The published surface as of v0.12.0:
   consumer-app shape, [`docs/leaf-arm-spine.md`](./leaf-arm-spine.md) names the
   layering (with [`docs/advanced-composition.md`](./advanced-composition.md)
   covering the demoted tier), and the worked examples are the vocabulary tour
-  in [`examples/newsroom.ts`](../examples/newsroom.ts), reference agents in
+  in [`examples/newsroom/main.ts`](../examples/newsroom/main.ts), reference agents in
   [`examples/agents/`](../examples/agents/), and the app-scale
   [`examples/pr-improve/`](../examples/pr-improve/).
 - **Testing doubles** (`fascicle/testing`). `make_stub_engine` routes canned

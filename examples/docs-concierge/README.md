@@ -6,6 +6,8 @@ confidently wrong. A worked example of the
 [blueprint](../../docs/blueprint.md)'s **model-proposes, code-decides**
 pattern, distilled from a production consumer.
 
+![terminal output of the stub run: a grounded answer with its source citation and confidence](./screenshot.png)
+
 ## What it shows
 
 - **A one-way abstention gate.** The model proposes `{ abstain, confidence,

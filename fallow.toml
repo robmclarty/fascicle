@@ -14,10 +14,11 @@ entry = [
   # Build and check-suite entry points: run by checkride and CI as commands,
   # never imported, so nothing in the module graph reaches them.
   "scripts/*.mjs",
-  # Single-file example demos: each is run directly via `pnpm exec tsx
-  # examples/<name>.ts`, never imported. The subset that's stub-driven and
-  # network-free is also imported by test/examples.test.ts; this glob covers
-  # the rest (live CLI/HTTP/network demos that can't run in the default suite).
+  # Example demos: each examples/<name>/main.ts is run directly via `pnpm exec
+  # tsx`, never imported. The subset that's stub-driven and network-free is
+  # also imported by test/examples.test.ts; this glob (the `*` matches across
+  # directory separators) covers the rest (live CLI/HTTP/network demos that
+  # can't run in the default suite).
   "examples/*.ts",
   # amplify's chart renderer: invoked by scripts/demo.sh as a CLI, not imported.
   "examples/amplify/scripts/*.mjs",

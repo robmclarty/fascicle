@@ -93,7 +93,7 @@ The composition layer is small on purpose, and here is all of it:
 
 The primitives aren't all peers. [leaf-arm-spine.md](./leaf-arm-spine.md) is the guide that tells you which to reach for at each layer of a flow, and the rows marked advanced are covered in [advanced-composition.md](./advanced-composition.md), where each one is paired with the primary primitive that you should try first.
 
-For the full surface and signatures, read [`docs/composition.md`](./composition.md). For something runnable, start with [`examples/`](../examples/), and in particular [`examples/newsroom.ts`](../examples/newsroom.ts), which is the vocabulary tour.
+For the full surface and signatures, read [`docs/composition.md`](./composition.md). For something runnable, start with [`examples/`](../examples/), and in particular [`examples/newsroom/main.ts`](../examples/newsroom/main.ts), which is the vocabulary tour.
 
 ## Running
 
@@ -157,10 +157,10 @@ Model ids are opaque and reach the provider verbatim, so use the real id that th
 
 ## Try It without a Key
 
-You don't need a provider account to explore. [examples/hello.ts](../examples/hello.ts), [examples/suspend_resume.ts](../examples/suspend_resume.ts), and [examples/viewer_demo.ts](../examples/viewer_demo.ts) use no engine at all, and [examples/newsroom.ts](../examples/newsroom.ts) runs the whole primitive vocabulary against the stub engine from `fascicle/testing` (canned responses routed by system-prompt prefix, zero network). From a clone of this repo:
+You don't need a provider account to explore. [examples/hello/main.ts](../examples/hello/main.ts), [examples/suspend-resume/main.ts](../examples/suspend-resume/main.ts), and [examples/viewer-demo/main.ts](../examples/viewer-demo/main.ts) use no engine at all, and [examples/newsroom/main.ts](../examples/newsroom/main.ts) runs the whole primitive vocabulary against the stub engine from `fascicle/testing` (canned responses routed by system-prompt prefix, zero network). From a clone of this repo:
 
 ```bash
-pnpm exec tsx examples/newsroom.ts
+pnpm exec tsx examples/newsroom/main.ts
 ```
 
 The [examples index](../examples/README.md) tells you which examples are keyless and which ones need a provider.

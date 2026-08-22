@@ -5,7 +5,7 @@ they're not the vocabulary you should reach for first. Each one is the low-level
 or specialized variant of a primary primitive that
 [leaf-arm-spine.md](./leaf-arm-spine.md) names, and if your flow uses one you
 should be able to say why the primary form doesn't fit. The canonical tour,
-[examples/newsroom.ts](../examples/newsroom.ts), leaves all of them out on
+[examples/newsroom/main.ts](../examples/newsroom/main.ts), leaves all of them out on
 purpose.
 
 | Advanced | Primary counterpart | The advanced one earns its keep when |
@@ -103,7 +103,7 @@ export const preferred = tournament({
 });
 ```
 
-[examples/ensemble_judge.ts](../examples/ensemble_judge.ts) keeps both
+[examples/ensemble-judge/main.ts](../examples/ensemble-judge/main.ts) keeps both
 variants runnable side by side.
 
 ## `improve` and `learn`: The Self-Improvement Pair
@@ -156,9 +156,9 @@ analyzer's business, whether that's prompt edits, few-shot candidates, or flow
 changes. Wire its output into your review process, not into production
 behavior.
 
-For something runnable, read [examples/improve.ts](../examples/improve.ts),
-[examples/learn.ts](../examples/learn.ts), and
-[examples/learn_reviewer.ts](../examples/learn_reviewer.ts) (a model
+For something runnable, read [examples/improve/main.ts](../examples/improve/main.ts),
+[examples/learn/main.ts](../examples/learn/main.ts), and
+[examples/learn-reviewer/main.ts](../examples/learn-reviewer/main.ts) (a model
 analyzer that mines a reviewer's trajectories).
 
 ## See Also

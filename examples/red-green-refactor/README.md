@@ -2,6 +2,8 @@
 
 A Fascicle example that codifies Kent Beck's TDD loop as a runnable agent harness. It drives Claude Code (via the `claude_cli` provider) through one full **Red → Green → Refactor** cycle per behavior, with structural backstops that prevent the model from splatting tests or "fixing" failures by editing the test.
 
+![the stub-engine test suite: seven tests covering the RED, GREEN, and REFACTOR transitions, all passing](./screenshot.png)
+
 ## Why
 
 LLMs love to splat 90 tests in a single edit and one-shot an implementation that passes all of them. That produces a lot of weak tests. The fix is to force one test → implementation → next test, and to verify each transition with an oracle the model can't fake. This harness wires up exactly that:

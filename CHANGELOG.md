@@ -132,9 +132,9 @@
 
 - **Compile-time joint checking for literal `sequence` tuples.** Each child of a literal tuple must accept its predecessor's output, and a mismatch errors on the offending element. Arrays built at runtime still degrade to unknown boundaries; annotate the outer `Step<In, Out>` to keep the flow's boundary checked.
 
-- **Docs for the layering.** `docs/leaf-arm-spine.md` names the leaf / arm / spine shape and the decision rules at each layer, `docs/advanced-composition.md` covers the demoted tier (`scope`/`stash`/`use`, plain `ensemble`, `tournament`, `improve`/`learn`), and `examples/newsroom.ts` is the vocabulary tour that uses every primary primitive once.
+- **Docs for the layering.** `docs/leaf-arm-spine.md` names the leaf / arm / spine shape and the decision rules at each layer, `docs/advanced-composition.md` covers the demoted tier (`scope`/`stash`/`use`, plain `ensemble`, `tournament`, `improve`/`learn`), and `examples/newsroom/main.ts` is the vocabulary tour that uses every primary primitive once.
 
-- **A one-file style pair in the examples.** `examples/release_notes.ts` and `examples/release_notes_direct.ts` build the same release-notes flow two ways (composed through `chain` and arms, and written straight through as one function), so the cost and the benefit of composing are readable side by side rather than asserted. `docs/blueprint.md` is rebuilt around `chain` and points at the pair.
+- **A one-file style pair in the examples.** `examples/release-notes/main.ts` and `examples/release-notes-direct/main.ts` build the same release-notes flow two ways (composed through `chain` and arms, and written straight through as one function), so the cost and the benefit of composing are readable side by side rather than asserted. `docs/blueprint.md` is rebuilt around `chain` and points at the pair.
 
 ### Changed
 
@@ -392,14 +392,14 @@ work is in the docs surface, the example apps, and the check suite.
 
 - Releases are now published from CI with npm Trusted Publishing (OIDC) and a signed provenance attestation, gated by a required-reviewer GitHub Environment (`.github/workflows/publish.yaml`). No long-lived npm token exists anywhere; verify a release with `npm audit signatures`. This makes v0.9.0 the first provenance-attested Fascicle publish (see `research/provenance-publish-spec.md`).
 - Agent-layer boundary ADR: Fascicle stays on the single-turn seam (`generateText`/`streamText`) and declines the v7 agent layer (`ToolLoopAgent`, `WorkflowAgent`, `HarnessAgent`, `toolApproval`, `@ai-sdk/otel`), recorded in `research/explorations/2026-07-ai-sdk-agent-layer-boundary.md` and linked from `docs/providers.md`.
-- `examples/live_smoke.ts`: a manual release smoke gate that runs one tool-loop flow streamed and non-streamed against OpenRouter and an OpenAI-compatible backend, checking the tool round trip, stream/record text parity, and usage/cost accounting. Live network, so it stays out of the test suite by design.
+- `examples/live-smoke/main.ts`: a manual release smoke gate that runs one tool-loop flow streamed and non-streamed against OpenRouter and an OpenAI-compatible backend, checking the tool round trip, stream/record text parity, and usage/cost accounting. Live network, so it stays out of the test suite by design.
 - Dev toolchain sweep: vitest 4.1.10, oxlint 1.73, oxlint-tsgolint 0.24, tsdown 0.22.3, zod 4.4.3, `@types/node` 26, fallow 3, and friends.
 
 ## v0.8.16 — 2026-07-07
 
 ### Added
 
-- `fascicle/ui` subpath for streaming a run into an AI SDK `useChat` UI: `to_ui_message_response`, `pipe_ui_message_stream_to_response`, and `to_ui_message_chunks` translate trajectory `model_chunk` events onto the AI SDK UI message wire. Ships with `docs/human-in-the-loop.md` and `examples/hitl_http.ts` covering suspend/confirm/resume over HTTP.
+- `fascicle/ui` subpath for streaming a run into an AI SDK `useChat` UI: `to_ui_message_response`, `pipe_ui_message_stream_to_response`, and `to_ui_message_chunks` translate trajectory `model_chunk` events onto the AI SDK UI message wire. Ships with `docs/human-in-the-loop.md` and `examples/hitl-http/main.ts` covering suspend/confirm/resume over HTTP.
 
 ### Changed
 
@@ -691,7 +691,7 @@ work is in the docs surface, the example apps, and the check suite.
 - `judge_equals`, `judge_with`, `judge_llm` in `@repo/composites`: stock judges over `{ input, output, meta }`. `judge_llm` takes a `Step<string, string>` model so composites stays engine-free; users wire their own `model_call({...})` into the judge.
 - `regression_compare`, `read_baseline`, `write_baseline`: diff two `BenchReport`s against `pass_rate`, per-judge means, and a relative cost threshold (default 10%). Doesn't short-circuit; full delta + per-case report.
 - `tee_logger` adapter in `@repo/observability`: fan one `TrajectoryLogger` contract out to N sinks. First sink's `start_span` id is canonical, and per-sink ids are translated back on `end_span`. Sinks that throw don't derail the others.
-- `examples/bench_reviewer.ts` + `bench/reviewer/{cases.json,baseline.json}`: end-to-end driver against `@repo/agents`'s `reviewer`. `WRITE_BASELINE=1` records, subsequent runs compare and exit 1 on regression.
+- `examples/bench-reviewer/main.ts` + `bench/reviewer/{cases.json,baseline.json}`: end-to-end driver against `@repo/agents`'s `reviewer`. `WRITE_BASELINE=1` records, subsequent runs compare and exit 1 on regression.
 - Cost rendering in the viewer: per-span cost badges that roll up the tree, plus a header running total (`<n> events · <m> errors · $<total>`). Run filter narrows the total. Cost attribution uses an open-span stack per `run_id`; format is 4 decimals under $0.01, 2 decimals otherwise.
 - `examples/amplify` opt-in viewer push via `AMPLIFY_VIEWER_URL`: tees the on-disk trajectory with `http_logger` when set; standalone runs without the env var keep the existing single-sink behaviour.
 
@@ -724,7 +724,7 @@ work is in the docs surface, the example apps, and the check suite.
 ## v0.3.3 — 2026-04-29
 
 ### Added
-- `improve` composite in `@repo/composites`: bounded online self-improvement loop with parallel proposers, structured lessons accumulator, plateau detection, and configurable wall-clock + round budgets. Online counterpart to `learn`. Example at `examples/improve.ts`.
+- `improve` composite in `@repo/composites`: bounded online self-improvement loop with parallel proposers, structured lessons accumulator, plateau detection, and configurable wall-clock + round budgets. Online counterpart to `learn`. Example at `examples/improve/main.ts`.
 - `ensemble_step` composite: Step-based sibling of `ensemble` for cases where scoring is itself a `Step`. Returns `winner_id`, `winner`, structured `winner_scored`, and the full `scored` map.
 
 ## v0.3.2 — 2026-04-29

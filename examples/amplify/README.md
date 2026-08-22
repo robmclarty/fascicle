@@ -2,6 +2,8 @@
 
 A Fascicle example that drives Claude Opus 4.7 in a **propose → cascade-eval → keep-best** loop on a single starter file. Each round generates N candidates in parallel, runs them through a syntax-check → regression-gate → measure cascade, accepts the best survivor (if it strictly beats the parent), and stops on iterations / wall-clock / plateau.
 
+![fascicle-viewer running against an amplify trajectory: span tree on the left, event log on the right, $2.55 cost rolled up in the header](./screenshot.png)
+
 The point of the example is the **`Metric` protocol**: the user supplies "what better means" as a regression gate (a shell command) and a `score` function (a thunk returning a number). The harness is metric-agnostic. Speed, code quality, output match — anything you can compute is a metric.
 
 For the full design rationale (the academic landscape, the OSS prior art, the failure modes we're avoiding, the sources), see [`research/`](./research/README.md).

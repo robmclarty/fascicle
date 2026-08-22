@@ -305,7 +305,7 @@ try {
           <div style="font-family:'JetBrains Mono',monospace; font-size:12px; letter-spacing:2px; color:#D6982A; margin-bottom:12px;">DECLARATIVE · THE TOPOLOGY IS DATA</div>
           <div style="border:3px solid #F4EBDB;">
             <div style="display:flex; align-items:center; justify-content:space-between; padding:11px 14px; border-bottom:1px solid #4a443c; background:#26211b;">
-              <div style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#8a8278;">release_notes.ts</div>
+              <div style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#8a8278;">release-notes/main.ts</div>
               <button onClick="{{ copy }}" data-orig="COPY" data-copy="const flow = chain<Repo, 'repo'>('repo')
   .step('commits', ({ repo }) => list_commits(repo))
   .step('draft', ({ commits }, ctx) =>
@@ -322,7 +322,7 @@ try {
           <div style="font-family:'JetBrains Mono',monospace; font-size:12px; letter-spacing:2px; color:#D6982A; margin-bottom:12px;">DIRECT · A PLAIN BODY, WHEN WIRING IS DYNAMIC</div>
           <div style="border:3px solid #F4EBDB;">
             <div style="display:flex; align-items:center; justify-content:space-between; padding:11px 14px; border-bottom:1px solid #4a443c; background:#26211b;">
-              <div style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#8a8278;">release_notes_direct.ts</div>
+              <div style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#8a8278;">release-notes-direct/main.ts</div>
               <button onClick="{{ copy }}" data-orig="COPY" data-copy="const flow = step('release_notes', async (repo: Repo, ctx) => {
   const commits = list_commits(repo)
   const draft = await ctx.call(writer, format_prompt(commits))
@@ -337,7 +337,7 @@ try {
         </div>
       </div>
 
-      <div style="margin-top:36px; font-size:15px; line-height:1.6; color:#C9C0AE; max-width:760px;">Choose per flow; the two styles compose freely in both directions. The same agent is written once in each style in <a href="https://github.com/robmclarty/fascicle/blob/main/examples/release_notes.ts" style="color:#D6982A; border-bottom:1px solid #D6982A;">release_notes.ts</a> and <a href="https://github.com/robmclarty/fascicle/blob/main/examples/release_notes_direct.ts" style="color:#D6982A; border-bottom:1px solid #D6982A;">release_notes_direct.ts</a>.</div>
+      <div style="margin-top:36px; font-size:15px; line-height:1.6; color:#C9C0AE; max-width:760px;">Choose per flow; the two styles compose freely in both directions. The same agent is written once in each style in <a href="https://github.com/robmclarty/fascicle/blob/main/examples/release-notes/main.ts" style="color:#D6982A; border-bottom:1px solid #D6982A;">release-notes/main.ts</a> and <a href="https://github.com/robmclarty/fascicle/blob/main/examples/release-notes-direct/main.ts" style="color:#D6982A; border-bottom:1px solid #D6982A;">release-notes-direct/main.ts</a>.</div>
     </div>
   </div>
 

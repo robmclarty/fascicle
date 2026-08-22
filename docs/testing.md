@@ -242,7 +242,7 @@ expect(await run(converge, 'write the brief')).toBe('final draft');
 as a typed outcome and `outcome.resume(data)` re-runs with the decision, with no
 engine involved. Stub the model steps around the gate and your whole
 human-in-the-loop path runs in a unit test. The full worked example is
-[examples/suspend_resume.ts](../examples/suspend_resume.ts):
+[examples/suspend-resume/main.ts](../examples/suspend-resume/main.ts):
 
 ```ts
 const outcome = await run.until_suspended(flow, input, { install_signal_handlers: false });

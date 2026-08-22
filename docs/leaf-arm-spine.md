@@ -3,7 +3,7 @@
 Every well-factored Fascicle app you write converges on the same three-layer shape,
 whatever its domain. This doc names the layers and gives you the decision rules for
 picking the right primitive at each one. The canonical worked example is
-[examples/newsroom.ts](../examples/newsroom.ts), which uses every primary primitive
+[examples/newsroom/main.ts](../examples/newsroom/main.ts), which uses every primary primitive
 once, each in its suggested role; the app-scale versions are the reference apps under
 [examples/](../examples/).
 

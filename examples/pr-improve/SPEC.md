@@ -53,7 +53,7 @@ One process, four agents, in-memory state passing via Fascicle's `scope` / `stas
 
 **Input:** PR metadata + unified diff (from `gh pr diff <number> --patch`) + repo context (CLAUDE.md, AGENTS.md if present).
 
-**Agent:** Schema-driven reviewer (mirrors `examples/reviewer.ts` pattern). Outputs structured suggestions:
+**Agent:** Schema-driven reviewer (mirrors `examples/reviewer/main.ts` pattern). Outputs structured suggestions:
 
 ```ts
 type Suggestion = {
@@ -120,7 +120,7 @@ const builder_tools = [
 ];
 ```
 
-All file paths are joined against the worktree root and rejected if they escape it. Shell commands are an allowlist, not a free shell. Pattern mirrors `examples/tool_loop.ts` and `examples/adversarial_build.ts`.
+All file paths are joined against the worktree root and rejected if they escape it. Shell commands are an allowlist, not a free shell. Pattern mirrors `examples/tool-loop/main.ts` and `examples/adversarial-build/main.ts`.
 
 **Output:** Commits in the worktree on a new branch `fascicle/improve-{original-pr-number}`. The agent's terminal `finish` tool produces `HANDOFF.md` content (files touched, one line per change, deviations from spec and why) that the harness writes to disk.
 
@@ -167,7 +167,7 @@ Manual invocation IS the opt-in — no PR label, no webhook, no GitHub Action.
 Internals:
 
 - Engine: `create_engine({ providers: { claude_cli: { auth_mode: 'oauth' } } })`. Model names are provider-agnostic families (`sonnet` / `opus`); the sole configured provider (`claude_cli`) is the transport. Uses the developer's logged-in Claude Enterprise — no `ANTHROPIC_API_KEY` needed.
-- Builder under `claude_cli`: the CLI's built-in Read/Write/Edit tools handle file edits inside the worktree's `cwd`. The `make_builder_call` factory still returns `Step<string, GenerateResult<Handoff>>`; the engine translates tool surface per provider (per `examples/tool_loop.ts` notes). Same contract — Phase C swaps the inside without touching `flow.ts`.
+- Builder under `claude_cli`: the CLI's built-in Read/Write/Edit tools handle file edits inside the worktree's `cwd`. The `make_builder_call` factory still returns `Step<string, GenerateResult<Handoff>>`; the engine translates tool surface per provider (per `examples/tool-loop/main.ts` notes). Same contract — Phase C swaps the inside without touching `flow.ts`.
 - GitHub + git I/O — all via `gh` and `git` CLIs, picking up the cwd's repo + the developer's `gh auth login`:
   - `gh pr view <n> --json …` and `gh pr diff <n>` — pull the PR's metadata and diff
   - `git worktree add .fascicle/<run-id> <pr-head-branch>` — isolate the work
@@ -276,9 +276,9 @@ Single tsconfig, single package boundary, no monorepo gymnastics.
 ### Reuse — read these before writing anything new
 
 - `examples/red-green-refactor/src/flow.ts` — canonical multi-stage `scope` + `stash` + `use` flow. **Mirror this structure.**
-- `examples/reviewer.ts` — schema-driven reviewer with stub engine for tests.
-- `examples/adversarial_build.ts` — API-backed adversarial build↔critique loop. **This is the structural template for stages 3–4** (NOT `adversarial_claude_cli.ts`, which we're explicitly not using).
-- `examples/tool_loop.ts` — tool-equipped agent pattern. The builder is a tool_loop with file-editing tools.
+- `examples/reviewer/main.ts` — schema-driven reviewer with stub engine for tests.
+- `examples/adversarial-build/main.ts` — API-backed adversarial build↔critique loop. **This is the structural template for stages 3–4** (NOT `adversarial_claude_cli.ts`, which we're explicitly not using).
+- `examples/tool-loop/main.ts` — tool-equipped agent pattern. The builder is a tool_loop with file-editing tools.
 - `src/agents/define_agent.ts` — markdown-defined agent factory; stage prompts live as markdown files loaded through this so we can iterate on prompts without redeploying.
 - `src/engine/index.ts` — `create_engine` factory; multi-provider config is a single object.
 - `src/adapters/filesystem_logger.ts` — write trajectory to `.fascicle-pr-bot/<run-id>/trajectory.jsonl` for viewer replay (uploaded to S3 on container exit).
@@ -483,6 +483,6 @@ After Phase C proves the API path matches the local demo on real PRs.
 - **Phase B:** Running against a real open PR with `--dry-run` produces a local branch with commits and a printed preview of the comment that *would* land on the original PR. Nothing is pushed.
 - **Phase C:** Adding the `fascicle-improve` label to a PR causes a new improvement PR to appear within ~5 min, and a comment with a 2-sentence summary + link lands on the original PR.
 - **Provider portability check (the proof):** the same fixture from Phase A run with `FASCICLE_PROVIDER=openrouter FASCICLE_MODEL_REVIEWER=anthropic/claude-sonnet-4.6 …` (or equivalent OpenRouter aliases) produces an end-to-end run with no code changes. Ship the spec only after this passes.
-- **Pipeline-level checks:** `pnpm check:all` is green. New stage prompts have schema tests under `__tests__/` mirroring `examples/reviewer.ts`'s test pattern.
+- **Pipeline-level checks:** `pnpm check:all` is green. New stage prompts have schema tests under `__tests__/` mirroring `examples/reviewer/main.ts`'s test pattern.
 - **Negative tests:** A PR with nothing worth changing produces an empty pragmatist spec and a single "no improvements proposed" comment on the original PR; no improvement PR is opened.
 - **Builder safety tests:** unit tests for the worktree-scoped tools — path traversal attempts (`../../etc/passwd`) reject, the shell allowlist rejects unauthorized commands, and oversized writes reject.

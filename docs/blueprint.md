@@ -64,7 +64,7 @@ Each of `build`, `check`, `critique`, `record` is a thin `step` that delegates t
 
 **Tier 3** is the full pattern this doc describes. The rest of the blueprint assumes it; at lower tiers, drop the files you don't need.
 
-**Tier 3 doesn't imply the full layout.** Composition-first is about where the topology lives, not how many files surround it. A single-role agent can be composition-first in one file: prompt as an inline string, schema beside it, the whole flow one `chain` ([`examples/release_notes.ts`](../examples/release_notes.ts) is exactly this, about a hundred lines). The layered layout below earns its keep when roles multiply, when prompts deserve their own review surface, or when a second developer needs to change one boundary without reading the rest. Grow into it; don't start from it.
+**Tier 3 doesn't imply the full layout.** Composition-first is about where the topology lives, not how many files surround it. A single-role agent can be composition-first in one file: prompt as an inline string, schema beside it, the whole flow one `chain` ([`examples/release-notes/main.ts`](../examples/release-notes/main.ts) is exactly this, about a hundred lines). The layered layout below earns its keep when roles multiply, when prompts deserve their own review surface, or when a second developer needs to change one boundary without reading the rest. Grow into it; don't start from it.
 
 Two signals you've over-composed:
 
@@ -113,7 +113,7 @@ The names matter less than the contracts. What kills legibility isn't calling th
 The shape to aim for inside this file is the three-layer one:
 model boundaries as leaves, named arms composed around them, one `chain`
 spine. [leaf-arm-spine.md](./leaf-arm-spine.md) is the decision guide for
-that layering; [examples/newsroom.ts](../examples/newsroom.ts) is its
+that layering; [examples/newsroom/main.ts](../examples/newsroom/main.ts) is its
 worked example.
 
 Rules, in order of importance:

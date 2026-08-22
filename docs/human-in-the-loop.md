@@ -95,8 +95,8 @@ when the approval decision has to shape the output (`combine`).
 
 A complete server that runs this over HTTP (POST to start, GET the pending
 approval, POST the decision to resume) is in
-[`examples/hitl_http.ts`](../examples/hitl_http.ts). The minimal mechanical
-version is [`examples/suspend_resume.ts`](../examples/suspend_resume.ts).
+[`examples/hitl-http/main.ts`](../examples/hitl-http/main.ts). The minimal mechanical
+version is [`examples/suspend-resume/main.ts`](../examples/suspend-resume/main.ts).
 
 ## Streaming the Outcome to a UI
 
