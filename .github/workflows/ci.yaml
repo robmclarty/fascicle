@@ -31,6 +31,20 @@ jobs:
       # and the doc snippets typechecked against the built .d.ts.
       - name: Validate publish surface
         run: pnpm check:publish
+      # checkride prints a pass/fail line per slot and writes the actual tool
+      # output to .check/<slot>.stdout.txt, so a red run is unreadable from the
+      # log alone. coverage/ and mutation/ are browsable HTML nobody reads while
+      # triaging; everything a human needs is the text reports and summary.json.
+      - name: Upload check reports
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: check-reports
+          path: |
+            .check/
+            !.check/coverage/**
+            !.check/mutation/**
+          retention-days: 14
 
   mutation:
     # Stryker is the slowest check; run it only on main so PRs stay fast.
@@ -60,3 +74,15 @@ jobs:
             stryker-main-
       - name: Mutation testing
         run: pnpm check:mutation
+      # Surviving mutants are listed in mutation.stdout.txt; the HTML report
+      # under .check/mutation/ is the bulk of the directory and is excluded.
+      - name: Upload mutation reports
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: mutation-reports
+          path: |
+            .check/
+            !.check/coverage/**
+            !.check/mutation/**
+          retention-days: 14

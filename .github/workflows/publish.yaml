@@ -67,6 +67,19 @@ jobs:
       - name: Check publish surface
         run: pnpm check:publish
 
+      # A publish blocked by the gate is the worst place to be reading a bare
+      # pass/fail line, so keep the slot output from .check/ for the postmortem.
+      - name: Upload check reports
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: publish-check-reports
+          path: |
+            .check/
+            !.check/coverage/**
+            !.check/mutation/**
+          retention-days: 14
+
       # npm (not pnpm) publish: the OIDC token exchange is an npm CLI flow.
       # --provenance is redundant under trusted publishing but documents
       # intent and fails closed if the OIDC identity is ever absent.

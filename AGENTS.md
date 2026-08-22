@@ -22,6 +22,8 @@ Before declaring a task finished:
 4. Fix the root cause, not the symptom.
 5. Re-run `pnpm check:all`.
 
+The same reports exist for a red CI run. checkride prints one pass/fail line per slot and writes the tool's actual output to `.check/`, so the workflow log alone will tell you *that* `types` failed without telling you *why*. Every workflow that runs the suite uploads `.check/` as an artifact when it fails, so steps 2 and 3 work the same way against a remote run: download the artifact from the run page, open `summary.json`, then read the per-tool report it names. The `coverage/` and `mutation/` HTML trees are left out because they are the bulk of the directory and nobody reads them during triage.
+
 ### The baseline
 
 `checkride.baseline.json` grandfathers the diagnostics that predate the gate, so a slot reporting `N baselined (grandfathered)` is green. Only findings *absent* from the baseline fail a run, which is what makes the gate ratchet: existing debt is frozen, new debt is blocked.
