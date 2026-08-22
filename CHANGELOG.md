@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.12.5 — 2026-08-21
+
+Everything in v0.12.4 ships here for the first time: that version was tagged but never reached npm, because its publish run failed on the gate described below. Upgrading from v0.12.3 picks up both sections.
+
+### Fixed
+
+- **A type error only CI could see.** `examples/otel-grafana/main.ts` imports `fascicle/otel`, which had no `tsconfig` `paths` entry, so TypeScript fell through to the package `exports` map and resolved the subpath from `./dist/otel.d.ts`. That file is present on any machine that has built before, so the `types` slot passed locally and failed on CI's clean checkout, where `pnpm check` runs ahead of `pnpm build`. `fascicle/viewer` carried the same gap with no importer to expose it yet. Both point at source now, and the `deps` slot fails if a published `exports` subpath ever loses its mapping again.
+
+### Internal
+
+- **A failed check job keeps its evidence.** checkride prints one pass/fail line per slot and writes each tool's real output to `.check/`, so a red run named the failing slot without saying why. Every workflow that runs the suite now uploads that directory as an artifact on failure, minus the coverage and mutation report trees that account for most of its size.
+- **The `claude_cli` spawn tests no longer race their own mock.** Both SIGTERM escalator tests slept 150ms to let the mock install its handler before signalling it, which is a bet on how long a cold Node start takes: measured spawn to handler ran from 42ms idle to 127ms under a process spawn storm against that budget. The mock now signals readiness through a file and the tests wait for it.
+
 ## v0.12.4 — 2026-08-21
 
 ### Added
