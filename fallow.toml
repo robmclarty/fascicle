@@ -50,6 +50,16 @@ ignoreDependencies = [
   "fascicle",
   "@arethetypeswrong/cli",
   "@vvago/vale",
+  # OTel SDK + OTLP exporter packages: imported only by the otel_grafana demo
+  # (run directly via tsx, not part of the published package) and by the
+  # src/otel tests. The library's own OTel contract stays `@opentelemetry/api`
+  # as an optional peer; a consumer brings their own SDK, so these are
+  # deliberately dev-only despite appearing in example code.
+  "@opentelemetry/exporter-metrics-otlp-http",
+  "@opentelemetry/exporter-trace-otlp-http",
+  "@opentelemetry/resources",
+  "@opentelemetry/sdk-metrics",
+  "@opentelemetry/sdk-trace-base",
 ]
 
 # `aborted_error` is defined in core and deliberately re-exported by engine so

@@ -463,6 +463,8 @@ const trajectory = create_otel_trajectory_logger({ metrics: true });
 
 The instruments follow the GenAI semantic conventions where the conventions cover the data: `gen_ai.client.token.usage` (split by `gen_ai.token.type`), `gen_ai.client.operation.duration`, `gen_ai.client.operation.time_to_first_chunk`, and `gen_ai.execute_tool.duration`, each tagged with `gen_ai.provider.name` and `gen_ai.request.model` from the enclosing generate call. Two Fascicle-named instruments cover what the conventions do not yet: the `fascicle.client.operation.cost` histogram and the `fascicle.client.turn_retries` counter, tagged `error.type` with the failure kind. The conventions are still experimental, so a future revision may rename instruments; the bridge tracks the names as of mid-2026.
 
+[grafana.md](./grafana.md) is the end-to-end walkthrough for this layer: it wires the OpenTelemetry SDK, ships a keyless example's runs to a local Grafana stack, and builds the dashboard panels that read these instruments.
+
 ### Layer 2: `ai_sdk` Transport Telemetry (Turn-Internal)
 
 For turn-internal detail on the `ai_sdk` transport only, opt into `@ai-sdk/otel` via `defaults.ai_sdk_telemetry`. This instruments the single `generateText` / `streamText` call below the turn seam; native transports ignore it (their loop-level story is Layer 1).

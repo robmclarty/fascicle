@@ -223,6 +223,7 @@ The canonical worked example is [examples/pr-improve/](./examples/pr-improve/), 
 - [docs/roadmap.md](./docs/roadmap.md) — what has shipped, what is being considered, and what Fascicle deliberately will not do
 - [examples/](./examples/) — runnable reference flows; start with [examples/newsroom.ts](./examples/newsroom.ts), the vocabulary tour
 - [docs/viewer.md](./docs/viewer.md) — viewer details and transport options
+- [docs/grafana.md](./docs/grafana.md) — shipping a run's traces and metrics to a Grafana dashboard over OpenTelemetry
 
 ## Contributing
 
