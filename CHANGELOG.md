@@ -1,5 +1,21 @@
 # Changelog
 
+## v0.12.4 — 2026-08-21
+
+### Added
+
+- **Per-step model timing, and tokens per second derived from it.** Every step the tool loop produces carries a `StepTiming` block (`started_at`, `duration_ms`, and `first_chunk_ms` on streamed turns), stamped so only the successful attempt is measured: failed attempts, backoff waits, and tool execution never inflate the number. `throughput()` derives tokens per second from a `GenerateResult`, a step array, or a single step, and names its basis (`decode` when every turn streamed, `blended` when any window includes network and prefill). The ollama native adapter passes the daemon's own nanosecond durations through `provider_reported.ollama` verbatim.
+
+- **The trajectory stream is dashboard-ready: retry events and opt-in OTel metrics.** `response_received` carries the full flat per-turn record, every absorbed retry becomes a `turn_retry` event (attempt, classified failure kind, HTTP status, and the honored backoff delay), and the closing `engine.generate` span reports step and tool-call counts. On the `fascicle/otel` side, span meta flattens one level so a dashboard can query `fascicle.usage.input_tokens`, and a new opt-in `metrics` option records the GenAI semconv client histograms plus cost and retry instruments, tagged with provider and model.
+
+- **A Grafana walkthrough.** `docs/grafana.md` tells the end-to-end story for the `fascicle/otel` bridge: the mental model, a three-step keyless demo against the `grafana/otel-lgtm` container, wiring for a real app, what each metric means, and hand-built panel queries, with an importable dashboard JSON beside the example.
+
+### Changed
+
+- **Every example lives in its own folder now, with a README and a screenshot of a real run.** The 28 single-file demos moved to `examples/<name>/main.ts`, the seven app workspaces kept their layout and gained screenshots, and the shared agents library got a README. The screenshots are captures rather than mockups: keyless demos as terminal renders, local Ollama and `claude` sessions for the model-backed ones, the viewer UI, and Grafana dashboard and Tempo trace views fed by the demo. Every cross-reference in `docs/`, the README, and the site follows the new paths.
+
+- **`structured-output` and `tool-loop` run on the `openrouter` provider.** The pair used to require `ANTHROPIC_API_KEY`; they now read `OPENROUTER_API_KEY`, matching `live-smoke`, and their hand-rolled key guards are gone because `create_engine` already rejects an empty `api_key` with a message that names the fix.
+
 ## v0.12.3 — 2026-08-19
 
 ### Changed
