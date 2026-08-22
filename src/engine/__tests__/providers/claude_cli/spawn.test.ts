@@ -21,6 +21,7 @@ import {
   MOCK_CLAUDE_PATH,
   build_mock_env,
   success_ops,
+  wait_for_ready,
   write_mock_script,
   type MockScriptHandle,
 } from './fixtures/mock_helpers.js'
@@ -329,15 +330,15 @@ describe('SIGTERM → SIGKILL escalator (spec §6.3, §12 #13)', () => {
         env: build_mock_env({
           MOCK_CLAUDE_SCRIPT: handle.script_path,
           MOCK_CLAUDE_IGNORE_SIGTERM: '1',
+          MOCK_CLAUDE_READY: handle.ready_path,
         }),
         stdin: '',
         startup_timeout_ms: 0,
         stall_timeout_ms: 0,
       })
-  
-      // Give the child time to install its SIGTERM handler before we signal.
-      await new Promise((r) => setTimeout(r, 150))
-  
+
+      await wait_for_ready(handle)
+
       const start = Date.now()
       session.request_terminate('disposed')
 
@@ -473,14 +474,14 @@ describe('dispose_all (spec §6)', () => {
       env: build_mock_env({
         MOCK_CLAUDE_SCRIPT: handle.script_path,
         MOCK_CLAUDE_IGNORE_SIGTERM: '1',
+        MOCK_CLAUDE_READY: handle.ready_path,
       }),
       stdin: '',
       startup_timeout_ms: 0,
       stall_timeout_ms: 0,
     })
 
-    // Let the child install its SIGTERM handler before dispose signals it.
-    await new Promise((r) => setTimeout(r, 150))
+    await wait_for_ready(handle)
     await runtime.dispose_all()
 
     expect(is_alive(session.child)).toBe(false)

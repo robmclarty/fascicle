@@ -10,6 +10,7 @@
  *   MOCK_CLAUDE_RECORD          path where argv + env is written at startup
  *   MOCK_CLAUDE_RECORD_RESUME   optional record path used on --resume invocations
  *   MOCK_CLAUDE_IGNORE_SIGTERM  "1" installs a no-op SIGTERM handler
+ *   MOCK_CLAUDE_READY           path touched once the SIGTERM handler is live
  *
  * Supported ops (each object in the script array):
  *   { "op": "line",   "data": <any> }      JSON.stringify(data) + "\n" -> stdout
@@ -39,6 +40,14 @@ const ignore_sigterm = process.env.MOCK_CLAUDE_IGNORE_SIGTERM === '1';
 
 if (ignore_sigterm) {
   process.on('SIGTERM', () => {});
+}
+
+// Readiness handshake. This file appears only after the handler above is
+// installed, so a test that signals the child can wait for the real thing
+// instead of guessing how long a cold Node start takes.
+const ready_path = process.env.MOCK_CLAUDE_READY;
+if (typeof ready_path === 'string' && ready_path.length > 0) {
+  writeFileSync(ready_path, '1');
 }
 
 let stdin_data = '';

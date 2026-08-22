@@ -10,7 +10,7 @@
  */
 
 import { chmodSync } from 'node:fs'
-import { mkdtemp, writeFile, rm } from 'node:fs/promises'
+import { access, mkdtemp, writeFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -35,6 +35,7 @@ export type MockOp =
 export type MockScriptHandle = {
   readonly script_path: string
   readonly record_path: string
+  readonly ready_path: string
   readonly dir: string
   readonly cleanup: () => Promise<void>
 }
@@ -52,14 +53,40 @@ export async function write_mock_script(ops: ReadonlyArray<MockOp>): Promise<Moc
   const dir = await mkdtemp(join(tmpdir(), 'claude-cli-mock-'))
   const script_path = join(dir, 'script.json')
   const record_path = join(dir, 'record.json')
+  const ready_path = join(dir, 'ready')
   await writeFile(script_path, JSON.stringify(ops))
   return {
     script_path,
     record_path,
+    ready_path,
     dir,
     cleanup: async (): Promise<void> => {
       await rm(dir, { recursive: true, force: true })
     },
+  }
+}
+
+/**
+ * Resolves once the mock reports that its SIGTERM handler is installed, which
+ * requires the caller to pass `MOCK_CLAUDE_READY: handle.ready_path` in the
+ * child env. A fixed sleep cannot stand in for this: the mock is a real Node
+ * process, and a cold start under parallel load outruns any margin short
+ * enough to keep the suite fast. Signalling too early lands the SIGTERM on the
+ * default disposition, which kills the child instead of exercising the
+ * escalator.
+ */
+export async function wait_for_ready(handle: MockScriptHandle, timeout_ms = 5000): Promise<void> {
+  const deadline = Date.now() + timeout_ms
+  for (;;) {
+    try {
+      await access(handle.ready_path)
+      return
+    } catch {
+      if (Date.now() >= deadline) {
+        throw new Error(`mock did not signal readiness within ${timeout_ms}ms`)
+      }
+      await new Promise((resolve) => setTimeout(resolve, 5))
+    }
   }
 }
 

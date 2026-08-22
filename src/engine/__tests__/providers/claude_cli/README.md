@@ -28,10 +28,11 @@ Node-script mock (`fixtures/mock_claude.mjs`) configured per test.
 - `fixtures/mock_claude.mjs` — Node ESM mock `claude` binary. Reads a JSON
   ops script (`MOCK_CLAUDE_SCRIPT`) and optionally records argv+env to
   `MOCK_CLAUDE_RECORD`. Installs a no-op SIGTERM handler when
-  `MOCK_CLAUDE_IGNORE_SIGTERM=1`.
+  `MOCK_CLAUDE_IGNORE_SIGTERM=1`, then touches `MOCK_CLAUDE_READY` if set, so a
+  test can wait for that handler to exist rather than sleep and hope.
 - `fixtures/mock_helpers.ts` — helpers to write temp op scripts, produce a
-  canonical success sequence, build a mock env with `PATH`, and create an
-  in-memory trajectory capture logger.
+  canonical success sequence, build a mock env with `PATH`, wait for the
+  readiness signal, and create an in-memory trajectory capture logger.
 - `fixtures/cli_sigint_harness.ts` — subprocess harness used by
   `integration.test.ts` to observe end-to-end SIGINT propagation.
 
