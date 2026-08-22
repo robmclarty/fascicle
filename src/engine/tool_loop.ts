@@ -72,6 +72,7 @@ import {
 } from './errors.js'
 import {
   record_cost,
+  record_response_received,
   record_tool_approval,
   record_tool_call,
   record_tool_call_salvaged,
@@ -464,13 +465,7 @@ async function invoke_turn(
       abort: config.abort,
       stream: config.stream,
     })
-    config.trajectory?.record({
-      kind: 'response_received',
-      step_index,
-      output_tokens: turn.usage.output_tokens,
-      finish_reason: turn.finish_reason,
-      ...(turn.timing !== undefined ? { duration_ms: turn.timing.duration_ms } : {}),
-    })
+    record_response_received(config.trajectory, step_index, turn)
     return turn
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err)

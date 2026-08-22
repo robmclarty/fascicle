@@ -12,8 +12,10 @@ import type { TrajectoryLogger } from '#core'
 import type {
   CostBreakdown,
   FinishReason,
+  StepTiming,
   UsageTotals,
 } from './types.js'
+import type { RetryAttemptInfo } from './retry.js'
 
 export type GenerateSpanStartMeta = {
   model: string
@@ -37,7 +39,10 @@ export function start_generate_span(
 
 /**
  * Close the `engine.generate` span with usage, finish reason, resolved model,
- * or the error message on failure.
+ * or the error message on failure. `step_count` and `tool_call_count` are the
+ * call-level totals (model turns and tool executions in the call), the
+ * span-attribute analog of the GenAI semconv agent metrics
+ * `inference_calls` / `tool_calls`.
  */
 export function end_generate_span(
   trajectory: TrajectoryLogger | undefined,
@@ -46,6 +51,8 @@ export function end_generate_span(
     usage?: UsageTotals
     finish_reason?: FinishReason
     model_resolved?: { provider: string; model_id: string }
+    step_count?: number
+    tool_call_count?: number
     error?: string
   },
 ): void {
@@ -97,22 +104,73 @@ export function record_request_sent(
 }
 
 /**
- * Record a provider response with its finish reason and output token count.
+ * Record a provider response: finish reason, flat token counts, and the
+ * engine-measured turn timing when the turn carried one.
+ *
+ * Every field is a flat number or string on purpose. An OTel span event or a
+ * log pipeline can aggregate `input_tokens` / `duration_ms` /
+ * `first_chunk_ms` directly, where a nested usage object would arrive as an
+ * opaque JSON string. This is the one per-turn event a metrics dashboard
+ * needs: tokens by direction, the cache and reasoning splits when the
+ * provider reports them, and the model-only latency window.
  */
 export function record_response_received(
   trajectory: TrajectoryLogger | undefined,
   step_index: number,
-  output_tokens: number | undefined,
-  finish_reason: FinishReason,
+  turn: {
+    usage: UsageTotals
+    finish_reason: FinishReason
+    timing?: StepTiming | undefined
+  },
 ): void {
   if (trajectory === undefined) return
+  const { usage, timing } = turn
   const event: Record<string, unknown> = {
     kind: 'response_received',
     step_index,
-    finish_reason,
+    input_tokens: usage.input_tokens,
+    output_tokens: usage.output_tokens,
+    finish_reason: turn.finish_reason,
   }
-  if (output_tokens !== undefined) event['output_tokens'] = output_tokens
+  if (usage.reasoning_tokens !== undefined) event['reasoning_tokens'] = usage.reasoning_tokens
+  if (usage.cached_input_tokens !== undefined) {
+    event['cached_input_tokens'] = usage.cached_input_tokens
+  }
+  if (usage.cache_write_tokens !== undefined) {
+    event['cache_write_tokens'] = usage.cache_write_tokens
+  }
+  if (timing !== undefined) {
+    event['started_at'] = timing.started_at
+    event['duration_ms'] = timing.duration_ms
+    if (timing.first_chunk_ms !== undefined) event['first_chunk_ms'] = timing.first_chunk_ms
+  }
   trajectory.record({ kind: 'response_received', ...event })
+}
+
+/**
+ * Record one failed-then-retried provider attempt as a `turn_retry` event:
+ * the 1-based attempt count, the classified failure kind, the backoff this
+ * retry waits, and the HTTP status / `Retry-After` when the failure carried
+ * them. This is the event a rate-limit or error-budget dashboard counts;
+ * without it, only the final exhaustion is visible (as a span error), and
+ * every absorbed 429 or 5xx goes unrecorded.
+ */
+export function record_turn_retry(
+  trajectory: TrajectoryLogger | undefined,
+  step_index: number,
+  info: RetryAttemptInfo,
+): void {
+  if (trajectory === undefined) return
+  const event: Record<string, unknown> = {
+    kind: 'turn_retry',
+    step_index,
+    attempt: info.attempt,
+    failure_kind: info.failure_kind,
+    delay_ms: info.delay_ms,
+  }
+  if (info.status !== undefined) event['status'] = info.status
+  if (info.retry_after_ms !== undefined) event['retry_after_ms'] = info.retry_after_ms
+  trajectory.record({ kind: 'turn_retry', ...event })
 }
 
 export type ToolCallRecordEvent = {

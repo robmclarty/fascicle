@@ -9,10 +9,10 @@
  * spans come from events the engine already emits, so native and external
  * transports get traces without any AI-SDK involvement.
  *
- * This module is the ONLY place `@opentelemetry/api` is imported, and it lives
- * outside `src/engine/` on purpose: the engine's `ai + zod` npm-dep invariant
- * holds unmodified, and an app that never imports `fascicle/otel` pulls in
- * zero OTel packages at runtime.
+ * `@opentelemetry/api` is imported ONLY under `src/otel/` (this module and
+ * metrics.ts), outside `src/engine/` on purpose: the engine's `ai + zod`
+ * npm-dep invariant holds unmodified, and an app that never imports
+ * `fascicle/otel` pulls in zero OTel packages at runtime.
  *
  * Nesting is resolved two ways, in order: an explicit `parent_span_id` on the
  * start meta (how the composition runner threads composer-span parenthood) wins;
@@ -34,6 +34,7 @@ import {
   type Tracer,
 } from '@opentelemetry/api'
 import type { TrajectoryEvent, TrajectoryLogger } from '#core'
+import { create_metrics_recorder, type OtelMetricsOptions } from './metrics.js'
 
 export type OtelTrajectoryLoggerOptions = {
   /**
@@ -46,6 +47,14 @@ export type OtelTrajectoryLoggerOptions = {
    * them out of the OTel semantic-convention namespace. Defaults to `fascicle.`.
    */
   readonly attribute_prefix?: string
+  /**
+   * Opt-in metric instruments recorded from the same trajectory stream the
+   * spans mirror (GenAI semconv client histograms plus Fascicle's cost and
+   * retry instruments; see metrics.ts). `true` uses the global MeterProvider's
+   * `fascicle` meter; an object supplies a custom Meter. Off by default so the
+   * bridge stays a pure tracer for hosts without a metrics pipeline.
+   */
+  readonly metrics?: boolean | OtelMetricsOptions
 }
 
 // Event/meta keys that are bridge plumbing, not span attributes.
@@ -87,20 +96,59 @@ function to_attribute_value(value: unknown): AttributeValue | undefined {
 }
 
 /**
+ * True for a plain object value (not null, not an array): the shape span-meta
+ * flattening applies to.
+ */
+function is_plain_object(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
+
+/**
+ * Spread one object-valued span-meta field into dotted attribute keys
+ * (`usage` + `input_tokens` becomes `<prefix>usage.input_tokens`), with
+ * deeper nesting falling back to `to_attribute_value`'s JSON form.
+ */
+function flatten_into(
+  attrs: Attributes,
+  key: string,
+  value: Record<string, unknown>,
+  prefix: string,
+): void {
+  for (const [inner_key, inner_value] of Object.entries(value)) {
+    const attr = to_attribute_value(inner_value)
+    if (attr !== undefined) attrs[`${prefix}${key}.${inner_key}`] = attr
+  }
+}
+
+/**
  * Build an OTel `Attributes` object from event/meta fields.
  *
  * Skips the bridge's internal plumbing keys (`kind`, `span_id`,
  * `parent_span_id`) and prefixes the rest with `prefix` so they stay out of
  * OTel's semantic-convention namespace.
+ *
+ * With `flatten`, an object-valued field spreads one level into dotted keys
+ * (`usage: { input_tokens: 5 }` becomes `<prefix>usage.input_tokens = 5`), so
+ * span metadata like usage and model_resolved lands as numeric attributes a
+ * dashboard can aggregate rather than a JSON string it cannot query. Flattening
+ * applies to span meta only, never to `record`ed events: an event may carry
+ * arbitrary payloads (a tool call's input, a salvage blob) where
+ * attribute-per-key would explode cardinality and leak structure, so those
+ * keep the JSON-string fallback.
  */
 function to_attributes(
   meta: Readonly<Record<string, unknown>> | undefined,
   prefix: string,
+  flatten = false,
 ): Attributes {
   const attrs: Attributes = {}
   if (meta === undefined) return attrs
   for (const [key, value] of Object.entries(meta)) {
     if (INTERNAL_KEYS.has(key)) continue
+    if (flatten && is_plain_object(value)) {
+      flatten_into(attrs, key, value, prefix)
+      continue
+    }
     const attr = to_attribute_value(value)
     if (attr !== undefined) attrs[`${prefix}${key}`] = attr
   }
@@ -121,6 +169,10 @@ export function create_otel_trajectory_logger(
 ): TrajectoryLogger {
   const tracer = options.tracer ?? trace.getTracer('fascicle')
   const prefix = options.attribute_prefix ?? 'fascicle.'
+  const metrics_recorder =
+    options.metrics === undefined || options.metrics === false
+      ? undefined
+      : create_metrics_recorder(options.metrics === true ? {} : options.metrics)
   const open = new Map<string, OpenSpan>()
   const stack: string[] = []
   let counter = 0
@@ -152,18 +204,24 @@ export function create_otel_trajectory_logger(
   return {
     start_span(name, meta) {
       const parent = parent_context(meta)
-      const span = tracer.startSpan(name, { attributes: to_attributes(meta, prefix) }, parent)
+      const span = tracer.startSpan(
+        name,
+        { attributes: to_attributes(meta, prefix, true) },
+        parent,
+      )
       counter += 1
       const id = `fascicle-otel-${counter}`
       open.set(id, { span, context: trace.setSpan(parent, span) })
       stack.push(id)
+      metrics_recorder?.on_start_span(id, name, meta)
       return id
     },
     end_span(id, meta) {
+      metrics_recorder?.on_end_span(id)
       const entry = open.get(id)
       if (entry === undefined) return
       const { span } = entry
-      span.setAttributes(to_attributes(meta, prefix))
+      span.setAttributes(to_attributes(meta, prefix, true))
       const error = meta?.['error']
       if (typeof error === 'string' && error.length > 0) {
         span.setStatus({ code: SpanStatusCode.ERROR, message: error })
@@ -174,6 +232,7 @@ export function create_otel_trajectory_logger(
       if (idx !== -1) stack.splice(idx, 1)
     },
     record(event) {
+      metrics_recorder?.on_record(event)
       const span = target_for_event(event)
       if (span === undefined) return
       const name = typeof event.kind === 'string' ? event.kind : 'event'

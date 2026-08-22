@@ -7,3 +7,4 @@
 
 export { create_otel_trajectory_logger } from './trajectory_logger.js'
 export type { OtelTrajectoryLoggerOptions } from './trajectory_logger.js'
+export type { OtelMetricsOptions } from './metrics.js'

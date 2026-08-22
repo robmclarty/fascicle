@@ -55,7 +55,10 @@ describe('trajectory helpers', () => {
     expect(id).toBeUndefined()
     end_step_span(undefined, undefined, { finish_reason: 'stop' })
     record_request_sent(undefined, 0, 10)
-    record_response_received(undefined, 0, 5, 'stop')
+    record_response_received(undefined, 0, {
+      usage: { input_tokens: 2, output_tokens: 5 },
+      finish_reason: 'stop',
+    })
     record_tool_call(undefined, {
       step_index: 0,
       name: 'foo',
@@ -108,18 +111,55 @@ describe('trajectory helpers', () => {
   it('records request_sent / response_received with the right shape', () => {
     const { trajectory, events } = create_recorder()
     record_request_sent(trajectory, 0, 42)
-    record_response_received(trajectory, 0, 5, 'stop')
+    record_response_received(trajectory, 0, {
+      usage: { input_tokens: 12, output_tokens: 5 },
+      finish_reason: 'stop',
+    })
     const records = events.filter((e) => e.kind === 'record').map((e) => e.payload)
     expect(records[0]).toMatchObject({
       kind: 'request_sent',
       step_index: 0,
       prompt_tokens_estimated: 42,
     })
-    expect(records[1]).toMatchObject({
+    // Exact equality pins the optional usage splits and timing fields ABSENT
+    // when the turn carried none.
+    expect(records[1]).toEqual({
       kind: 'response_received',
       step_index: 0,
-      finish_reason: 'stop',
+      input_tokens: 12,
       output_tokens: 5,
+      finish_reason: 'stop',
+    })
+  })
+
+  it('response_received flattens usage splits and timing when present', () => {
+    const { trajectory, events } = create_recorder()
+    record_response_received(trajectory, 2, {
+      usage: {
+        input_tokens: 100,
+        output_tokens: 40,
+        reasoning_tokens: 8,
+        cached_input_tokens: 60,
+        cache_write_tokens: 30,
+      },
+      finish_reason: 'stop',
+      timing: { started_at: 1000, duration_ms: 250, first_chunk_ms: 90 },
+    })
+    const records = events.filter((e) => e.kind === 'record').map((e) => e.payload)
+    // Flat numerics, no nested usage/timing objects: the shape OTel span-event
+    // attributes and log pipelines can aggregate without parsing JSON.
+    expect(records[0]).toEqual({
+      kind: 'response_received',
+      step_index: 2,
+      input_tokens: 100,
+      output_tokens: 40,
+      reasoning_tokens: 8,
+      cached_input_tokens: 60,
+      cache_write_tokens: 30,
+      finish_reason: 'stop',
+      started_at: 1000,
+      duration_ms: 250,
+      first_chunk_ms: 90,
     })
   })
 

@@ -165,9 +165,9 @@ Every step that the engine loop produces carries a `timing` block
 (`StepTiming`). `started_at` and `duration_ms` bracket the successful
 provider attempt alone, so failed attempts, retry backoff, and tool
 execution never inflate the number, and a streamed turn adds
-`first_chunk_ms` (time to first token). `throughput()` derives the rate
-that people actually ask about, from a `GenerateResult`, a step array, or
-a single step:
+`first_chunk_ms` (time to first token). When someone asks you how many
+tokens per second your agent does, `throughput()` is the answer. Hand it
+a `GenerateResult`, a step array, or a single step:
 
 ```ts
 import { throughput } from 'fascicle';
@@ -180,10 +180,24 @@ const rate = throughput(result);
 (output tokens over the window that excludes time to first chunk, the
 benchmark-style rate), while a non-streamed turn can only measure
 `'blended'` (the whole round trip, network and prefill included), which
-understates the model on a long prompt with a short answer. The helper
-returns `undefined` when no step carries timing, which is the case for
+understates the model on a long prompt with a short answer. You get
+`undefined` back when no step carries timing, which is the case for
 external adapters (`claude_cli`) and test doubles, or when the measured
 window is zero.
+
+The same numbers reach observability consumers without touching the
+result envelope: every turn's `response_received` trajectory event
+carries flat numeric fields (`input_tokens`, `output_tokens`, the cache
+and reasoning splits when reported, `started_at`, `duration_ms`, and
+`first_chunk_ms` on streamed turns), so your own `TrajectoryLogger` or
+the `fascicle/otel` bridge can aggregate latency and token throughput
+directly, with no nested objects to parse. Absorbed retries surface the
+same way: each failed-then-retried attempt records a `turn_retry` event
+with the classified failure kind, HTTP status, and honored backoff
+delay, and the closing `engine.generate` span carries `step_count` and
+`tool_call_count` totals for the call. You can also have the bridge
+record OTel metric instruments from the same stream; see
+[configuration.md](./configuration.md#layer-1-the-fascicleotel-trajectory-bridge-transport-neutral).
 
 ### `model_call` — The Bridge into a Flow
 

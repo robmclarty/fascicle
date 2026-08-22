@@ -199,6 +199,7 @@
     "@arethetypeswrong/cli": "0.18.4",
     "@ast-grep/cli": "0.44.1",
     "@modelcontextprotocol/sdk": "1.30.0",
+    "@opentelemetry/sdk-metrics": "2.9.0",
     "@opentelemetry/sdk-trace-base": "2.9.0",
     "@standard-schema/spec": "1.1.0",
     "@stryker-mutator/core": "9.6.1",

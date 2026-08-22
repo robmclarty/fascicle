@@ -3,6 +3,7 @@ import {
   DEFAULT_RETRY,
   parse_retry_after,
   retry_with_policy,
+  type RetryAttemptInfo,
 } from '../retry.js'
 import { aborted_error, provider_error, rate_limit_error } from '../errors.js'
 import type { RetryPolicy } from '../types.js'
@@ -411,5 +412,118 @@ describe('retry_with_policy', () => {
       expect((err as { kind?: string }).kind).toBe('provider_5xx')
     }
     expect(attempts).toBe(1)
+  })
+})
+
+function collecting(): { infos: RetryAttemptInfo[]; on_retry: (i: RetryAttemptInfo) => void } {
+  const infos: RetryAttemptInfo[] = []
+  return { infos, on_retry: (i) => infos.push(i) }
+}
+
+describe('retry_with_policy on_retry reporting', () => {
+  const ZERO_DELAY: RetryPolicy = {
+    max_attempts: 3,
+    initial_delay_ms: 0,
+    max_delay_ms: 0,
+    retry_on: ['rate_limit', 'provider_5xx', 'network', 'timeout'],
+  }
+
+  it('reports a rate limit with status and the honored Retry-After as the delay', async () => {
+    const { infos, on_retry } = collecting()
+    let calls = 0
+    const result = await retry_with_policy(
+      async () => {
+        calls += 1
+        if (calls === 1) {
+          throw { kind: 'rate_limit', status: 429, retry_after_ms: 25, message: 'slow down' }
+        }
+        return 'ok'
+      },
+      ZERO_DELAY,
+      undefined,
+      on_retry,
+    )
+    expect(result).toBe('ok')
+    // Retry-After outranks the zero local backoff, so delay_ms is the header's.
+    expect(infos).toEqual([
+      {
+        attempt: 1,
+        failure_kind: 'rate_limit',
+        delay_ms: 25,
+        status: 429,
+        retry_after_ms: 25,
+      },
+    ])
+  })
+
+  it('reports a 5xx with its status and no retry_after_ms key', async () => {
+    const { infos, on_retry } = collecting()
+    let calls = 0
+    await retry_with_policy(
+      async () => {
+        calls += 1
+        if (calls === 1) throw { kind: 'provider_5xx', status: 503, message: 'unavailable' }
+        return 'ok'
+      },
+      ZERO_DELAY,
+      undefined,
+      on_retry,
+    )
+    expect(infos).toEqual([
+      { attempt: 1, failure_kind: 'provider_5xx', delay_ms: 0, status: 503 },
+    ])
+  })
+
+  it('reports network and timeout failures with the kind alone', async () => {
+    const { infos, on_retry } = collecting()
+    let calls = 0
+    await retry_with_policy(
+      async () => {
+        calls += 1
+        if (calls === 1) throw { kind: 'network', message: 'reset' }
+        if (calls === 2) throw { kind: 'timeout', message: 'deadline' }
+        return 'ok'
+      },
+      ZERO_DELAY,
+      undefined,
+      on_retry,
+    )
+    expect(infos).toEqual([
+      { attempt: 1, failure_kind: 'network', delay_ms: 0 },
+      { attempt: 2, failure_kind: 'timeout', delay_ms: 0 },
+    ])
+  })
+
+  it('never fires for a first-attempt success or a non-retryable failure', async () => {
+    const { infos, on_retry } = collecting()
+    await retry_with_policy(async () => 'fine', ZERO_DELAY, undefined, on_retry)
+    await expect(
+      retry_with_policy(
+        async () => {
+          throw new Error('permanent')
+        },
+        ZERO_DELAY,
+        undefined,
+        on_retry,
+      ),
+    ).rejects.toThrow('permanent')
+    expect(infos).toEqual([])
+  })
+
+  it('does not fire for the final failure that exhausts the policy', async () => {
+    const { infos, on_retry } = collecting()
+    const exhausting: RetryPolicy = { ...ZERO_DELAY, max_attempts: 2 }
+    await expect(
+      retry_with_policy(
+        async () => {
+          throw { kind: 'network', message: 'reset' }
+        },
+        exhausting,
+        undefined,
+        on_retry,
+      ),
+    ).rejects.toThrow(provider_error)
+    // Two attempts ran, but only the first failure retried; the second threw.
+    expect(infos).toEqual([{ attempt: 1, failure_kind: 'network', delay_ms: 0 }])
   })
 })

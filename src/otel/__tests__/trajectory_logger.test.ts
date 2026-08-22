@@ -332,6 +332,56 @@ describe('create_otel_trajectory_logger', () => {
     expect(gen.events).toHaveLength(0)
   })
 
+  it('flattens object-valued span meta one level into dotted numeric attributes', () => {
+    const { tracer, exporter } = harness()
+    const logger = create_otel_trajectory_logger({ tracer })
+
+    const g = logger.start_span('engine.generate', { model: 'm' })
+    logger.end_span(g, {
+      usage: { input_tokens: 120, output_tokens: 40 },
+      model_resolved: { provider: 'openai', model_id: 'gpt-x' },
+      finish_reason: 'stop',
+      step_count: 2,
+    })
+
+    const [span] = exporter.getFinishedSpans()
+    expect(span?.attributes['fascicle.usage.input_tokens']).toBe(120)
+    expect(span?.attributes['fascicle.usage.output_tokens']).toBe(40)
+    expect(span?.attributes['fascicle.model_resolved.provider']).toBe('openai')
+    expect(span?.attributes['fascicle.model_resolved.model_id']).toBe('gpt-x')
+    expect(span?.attributes['fascicle.finish_reason']).toBe('stop')
+    expect(span?.attributes['fascicle.step_count']).toBe(2)
+    // No JSON-string leftovers: the object became queryable attributes.
+    expect(span?.attributes['fascicle.usage']).toBeUndefined()
+    expect(span?.attributes['fascicle.model_resolved']).toBeUndefined()
+  })
+
+  it('JSON-stringifies a nested-nested span meta value during flattening', () => {
+    const { tracer, exporter } = harness()
+    const logger = create_otel_trajectory_logger({ tracer })
+
+    const g = logger.start_span('engine.generate', { usage: { nested: { a: 1 } } })
+    logger.end_span(g, {})
+
+    const [span] = exporter.getFinishedSpans()
+    expect(span?.attributes['fascicle.usage.nested']).toBe('{"a":1}')
+  })
+
+  it('never flattens event payloads: an object event field stays one JSON string', () => {
+    const { tracer, exporter } = harness()
+    const logger = create_otel_trajectory_logger({ tracer })
+
+    const g = logger.start_span('engine.generate', {})
+    logger.record({ kind: 'tool_call', step_index: 0, input: { q: 'hi' } })
+    logger.end_span(g, {})
+
+    const [span] = exporter.getFinishedSpans()
+    // A tool's input is an arbitrary payload; attribute-per-key would explode
+    // cardinality, so events keep the JSON-string form.
+    expect(span?.events[0]?.attributes?.['fascicle.input']).toBe('{"q":"hi"}')
+    expect(span?.events[0]?.attributes?.['fascicle.input.q']).toBeUndefined()
+  })
+
   it('names an event span "event" when the record carries no string kind', () => {
     const { tracer, exporter } = harness()
     const logger = create_otel_trajectory_logger({ tracer })

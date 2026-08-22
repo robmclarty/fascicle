@@ -153,6 +153,39 @@ function next_backoff(
 }
 
 /**
+ * One failed-then-retried attempt, as reported through `on_retry`. `attempt`
+ * is the 1-based count of failures so far, `delay_ms` the backoff this retry
+ * will wait (a rate-limit `Retry-After` already folded in), and `status` /
+ * `retry_after_ms` copy what the failure itself carried when it did.
+ */
+export type RetryAttemptInfo = {
+  attempt: number
+  failure_kind: RetryFailureKind
+  delay_ms: number
+  status?: number
+  retry_after_ms?: number
+}
+
+/**
+ * Assemble the `on_retry` payload from the classified failure and the backoff
+ * the retry will actually wait.
+ */
+function build_attempt_info(
+  retryable: RetryableError,
+  attempt: number,
+  delay_ms: number,
+): RetryAttemptInfo {
+  const info: RetryAttemptInfo = { attempt, failure_kind: retryable.kind, delay_ms }
+  if (retryable.kind === 'rate_limit' || retryable.kind === 'provider_5xx') {
+    if (retryable.status !== undefined) info.status = retryable.status
+  }
+  if (retryable.kind === 'rate_limit' && retryable.retry_after_ms !== undefined) {
+    info.retry_after_ms = retryable.retry_after_ms
+  }
+  return info
+}
+
+/**
  * Retry `fn` under `policy`. `fn` must throw a RetryableError-shaped object to
  * trigger retry; any other thrown value short-circuits as a permanent failure.
  *
@@ -160,11 +193,17 @@ function next_backoff(
  * `aborted_error`. Returns the value from the last successful `fn()` call. On
  * exhaustion, throws `rate_limit_error` (for 429s) or `provider_error` (for
  * 5xx/network/timeout).
+ *
+ * `on_retry` fires once per retried failure, just before its backoff wait.
+ * It does NOT fire for a first attempt that succeeds, a non-retryable
+ * failure, or the final failure that exhausts the policy (those two throw
+ * instead), so its call count is exactly the number of extra attempts made.
  */
 export async function retry_with_policy<t>(
   fn: (attempt: number) => Promise<t>,
   policy: RetryPolicy = DEFAULT_RETRY,
   abort?: AbortSignal,
+  on_retry?: (info: RetryAttemptInfo) => void,
 ): Promise<t> {
   const backoff_policy: BackoffPolicy = {
     initial_delay_ms: policy.initial_delay_ms,
@@ -189,6 +228,7 @@ export async function retry_with_policy<t>(
       }
       const backoff = next_backoff(retryable, backoff_policy, attempt)
       last_rate_limit_after = backoff.retry_after_ms ?? last_rate_limit_after
+      on_retry?.(build_attempt_info(retryable, attempt, backoff.delay))
       await wait_with_abort(backoff.delay, signal, to_abort_error)
     }
   }

@@ -65,6 +65,7 @@ import {
   end_generate_span,
   record_effort_ignored,
   record_schema_validation_failed,
+  record_turn_retry,
   start_generate_span,
   with_timestamps,
 } from './trajectory.js'
@@ -234,6 +235,7 @@ type AiSdkInvokeConfig = {
   readonly invoke_turn: AiSdkTurn
   readonly retry_policy: RetryPolicy
   readonly turn_timeout_ms: number | undefined
+  readonly trajectory: TrajectoryLogger | undefined
 }
 
 type NativeInvokeConfig = {
@@ -241,6 +243,7 @@ type NativeInvokeConfig = {
   readonly model_id: string
   readonly retry_policy: RetryPolicy
   readonly turn_timeout_ms: number | undefined
+  readonly trajectory: TrajectoryLogger | undefined
   readonly dispatcher: ChunkDispatcher
   readonly effort: EffortLevel
   readonly schema: TurnRequest['schema']
@@ -320,6 +323,7 @@ function retry_turn(
   retry_policy: RetryPolicy,
   classify: (err: unknown) => unknown,
   turn_timeout_ms: number | undefined,
+  trajectory: TrajectoryLogger | undefined,
 ): Promise<TurnResult> {
   const has_streamed = (): boolean => first_chunk_at() !== undefined
   return retry_with_policy(
@@ -367,6 +371,9 @@ function retry_turn(
     },
     retry_policy,
     args.abort,
+    (info) => {
+      record_turn_retry(trajectory, args.step_index, info)
+    },
   )
 }
 
@@ -412,6 +419,7 @@ function build_ai_sdk_invoke(cfg: AiSdkInvokeConfig): InvokeOnce {
       cfg.retry_policy,
       classify_provider_error,
       cfg.turn_timeout_ms,
+      cfg.trajectory,
     )
   }
 }
@@ -490,6 +498,7 @@ function build_native_invoke(cfg: NativeInvokeConfig): InvokeOnce {
       cfg.retry_policy,
       classify,
       cfg.turn_timeout_ms,
+      cfg.trajectory,
     )
   }
 }
@@ -751,6 +760,7 @@ async function build_ai_sdk_transport<T>(
     }),
     retry_policy: cfg.retry_policy,
     turn_timeout_ms: cfg.turn_timeout_ms,
+    trajectory: cfg.trajectory,
   })
 }
 
@@ -1074,6 +1084,7 @@ export async function generate<T = string>(
       model_id: target.model_id,
       retry_policy: turn.retry_policy,
       turn_timeout_ms: turn.turn_timeout_ms,
+      trajectory,
       dispatcher,
       effort: turn.effort,
       schema: opts.schema,
@@ -1132,6 +1143,8 @@ export async function generate<T = string>(
       usage: result.usage,
       finish_reason: outcome.finish_reason,
       model_resolved: result.model_resolved,
+      step_count: result.steps.length,
+      tool_call_count: result.tool_calls.length,
     })
     return result
   } catch (err: unknown) {

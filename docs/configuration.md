@@ -451,6 +451,18 @@ await engine.generate({ prompt: '...', trajectory });
 
 The bridge maps the `engine.generate` span to an OTel root span, each step to a child span, and every recorded event (tool_call, tool_result, cost, ...) to a span event on the open span. `dispose()` isn't required; spans end as the trajectory closes them.
 
+The span attributes stay flat on purpose. Object-valued span metadata (the per-step and per-call `usage`, `model_resolved`) spreads one level into dotted keys such as `fascicle.usage.input_tokens`, so a dashboard can aggregate the numbers directly; event payloads that carry arbitrary structure (a tool call's input) stay JSON strings, since attribute-per-key over user data would explode cardinality. Every turn lands a `response_received` span event that carries flat token counts and the engine-measured timing (`duration_ms`, plus `first_chunk_ms` when the turn streamed), every absorbed retry lands a `turn_retry` event with the classified failure kind, HTTP status, and honored backoff delay, and the closing `engine.generate` span reports `step_count` and `tool_call_count` for the call.
+
+Pass `metrics` to record OTel metric instruments from the same stream, which is what a Grafana or Prometheus pipeline reads without any spans-to-metrics processing:
+
+```ts
+const trajectory = create_otel_trajectory_logger({ metrics: true });
+// `true` resolves the global MeterProvider's `fascicle` meter;
+// pass { metrics: { meter } } to target a specific Meter.
+```
+
+The instruments follow the GenAI semantic conventions where the conventions cover the data: `gen_ai.client.token.usage` (split by `gen_ai.token.type`), `gen_ai.client.operation.duration`, `gen_ai.client.operation.time_to_first_chunk`, and `gen_ai.execute_tool.duration`, each tagged with `gen_ai.provider.name` and `gen_ai.request.model` from the enclosing generate call. Two Fascicle-named instruments cover what the conventions do not yet: the `fascicle.client.operation.cost` histogram and the `fascicle.client.turn_retries` counter, tagged `error.type` with the failure kind. The conventions are still experimental, so a future revision may rename instruments; the bridge tracks the names as of mid-2026.
+
 ### Layer 2: `ai_sdk` Transport Telemetry (Turn-Internal)
 
 For turn-internal detail on the `ai_sdk` transport only, opt into `@ai-sdk/otel` via `defaults.ai_sdk_telemetry`. This instruments the single `generateText` / `streamText` call below the turn seam; native transports ignore it (their loop-level story is Layer 1).
