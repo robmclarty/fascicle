@@ -13,14 +13,19 @@
  *
  *   Publishability
  *   - Root package.json must NOT carry "private": true.
+ *   - Every published `exports` subpath has a tsconfig `paths` entry aimed at
+ *     its source. `exports` resolves through dist/, which CI does not have when
+ *     the types slot runs, so a missing mapping type-checks locally off a stale
+ *     build and fails only in CI.
  */
 
-import { readFile } from 'node:fs/promises';
+import { access, readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const ROOT_PKG = join(REPO_ROOT, 'package.json');
+const ROOT_TSCONFIG = join(REPO_ROOT, 'tsconfig.json');
 const REQUIRED_OPTIONAL_PEERS = [
   '@ai-sdk/anthropic',
   '@ai-sdk/google',
@@ -68,9 +73,43 @@ async function check_publishability() {
   console.log(`check-deps: publish invariants ok (root ${root_pkg.version}, not private)`);
 }
 
+async function file_exists(path) {
+  try {
+    await access(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function check_subpath_type_paths() {
+  const pkg = await read_pkg(ROOT_PKG);
+  // tsconfig.json is kept comment-free so it stays parseable as plain JSON.
+  const tsconfig = await read_pkg(ROOT_TSCONFIG);
+  const paths = tsconfig.compilerOptions?.paths ?? {};
+  const subpaths = Object.keys(pkg.exports ?? {});
+
+  for (const subpath of subpaths) {
+    const specifier = subpath === '.' ? 'fascicle' : `fascicle/${subpath.slice(2)}`;
+    const target = paths[specifier]?.[0];
+    if (!target) {
+      fail(
+        `package.json exports "${subpath}" but tsconfig paths has no "${specifier}" entry; ` +
+          `it would resolve through dist/, which CI has not built when the types slot runs`,
+      );
+    }
+    if (!(await file_exists(join(REPO_ROOT, target)))) {
+      fail(`tsconfig paths "${specifier}" points at ${target}, which does not exist on disk`);
+    }
+  }
+
+  console.log(`check-deps: subpath type paths ok (${subpaths.length} exports mapped to source)`);
+}
+
 async function main() {
   await check_optional_peers();
   await check_publishability();
+  await check_subpath_type_paths();
 }
 
 main().catch((err) => {
