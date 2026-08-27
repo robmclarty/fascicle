@@ -12,6 +12,7 @@ import {
   record_schema_validation_failed,
   record_tool_approval,
   record_tool_call,
+  record_turn_retry,
   start_generate_span,
   start_step_span,
 } from '../trajectory.js'
@@ -224,6 +225,39 @@ describe('trajectory helpers', () => {
     const records = events.filter((e) => e.kind === 'record').map((e) => e.payload)
     expect(records[0]).toMatchObject({ kind: 'cost', step_index: 0, source: 'engine_derived' })
     expect(records[1]).toMatchObject({ kind: 'cost', step_index: 1, source: 'provider_reported' })
+  })
+
+  it('stamps span_id onto cost, response_received, and turn_retry when given, omits it otherwise', () => {
+    const { trajectory, events } = create_recorder()
+    const usage = { input_tokens: 1, output_tokens: 1 }
+    const cost = {
+      total_usd: 0,
+      input_usd: 0,
+      output_usd: 0,
+      currency: 'USD' as const,
+      is_estimate: true as const,
+    }
+    const retry = { attempt: 1, failure_kind: 'network' as const, delay_ms: 0 }
+
+    record_response_received(trajectory, 0, { usage, finish_reason: 'stop' }, 'step-span')
+    record_cost(trajectory, 0, cost, 'engine_derived', 'step-span')
+    record_turn_retry(trajectory, 0, retry, 'step-span')
+    record_response_received(trajectory, 1, { usage, finish_reason: 'stop' }, undefined)
+    record_cost(trajectory, 1, cost, 'engine_derived', undefined)
+    record_turn_retry(trajectory, 1, retry, undefined)
+
+    const records = events
+      .filter((e) => e.kind === 'record')
+      .map((e) => e.payload as Record<string, unknown>)
+    const [rr_span, cost_span, retry_span, rr_none, cost_none, retry_none] = records
+    expect(rr_span).toMatchObject({ kind: 'response_received', span_id: 'step-span' })
+    expect(cost_span).toMatchObject({ kind: 'cost', span_id: 'step-span' })
+    expect(retry_span).toMatchObject({ kind: 'turn_retry', span_id: 'step-span' })
+    // Omitted (not stamped as undefined) so a pre-E consumer sees no span_id key
+    // and falls back to the open-span-stack heuristic.
+    expect('span_id' in rr_none!).toBe(false)
+    expect('span_id' in cost_none!).toBe(false)
+    expect('span_id' in retry_none!).toBe(false)
   })
 
   it('deduplicates pricing_missing per unique provider/model within a generate call', () => {

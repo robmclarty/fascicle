@@ -122,6 +122,7 @@ export function record_response_received(
     finish_reason: FinishReason
     timing?: StepTiming | undefined
   },
+  span_id?: string,
 ): void {
   if (trajectory === undefined) return
   const { usage, timing } = turn
@@ -132,6 +133,7 @@ export function record_response_received(
     output_tokens: usage.output_tokens,
     finish_reason: turn.finish_reason,
   }
+  if (span_id !== undefined) event['span_id'] = span_id
   if (usage.reasoning_tokens !== undefined) event['reasoning_tokens'] = usage.reasoning_tokens
   if (usage.cached_input_tokens !== undefined) {
     event['cached_input_tokens'] = usage.cached_input_tokens
@@ -159,6 +161,7 @@ export function record_turn_retry(
   trajectory: TrajectoryLogger | undefined,
   step_index: number,
   info: RetryAttemptInfo,
+  span_id?: string,
 ): void {
   if (trajectory === undefined) return
   const event: Record<string, unknown> = {
@@ -168,6 +171,7 @@ export function record_turn_retry(
     failure_kind: info.failure_kind,
     delay_ms: info.delay_ms,
   }
+  if (span_id !== undefined) event['span_id'] = span_id
   if (info.status !== undefined) event['status'] = info.status
   if (info.retry_after_ms !== undefined) event['retry_after_ms'] = info.retry_after_ms
   trajectory.record({ kind: 'turn_retry', ...event })
@@ -272,12 +276,19 @@ export type CostEventSource = 'engine_derived' | 'provider_reported'
 /**
  * Record a per-step cost breakdown, tagged with whether the engine derived it
  * from pricing tables or the provider reported it directly.
+ *
+ * `span_id` is the enclosing `engine.generate.step` span when the tool loop
+ * emits, so a consumer attributes cost to its exact turn instead of guessing
+ * from an open-span stack (which mis-attributes under `parallel`). It stays
+ * optional so paths without that span in hand (a provider-reported CLI cost)
+ * emit unattributed and legibly so.
  */
 export function record_cost(
   trajectory: TrajectoryLogger | undefined,
   step_index: number,
   cost: CostBreakdown,
   source: CostEventSource,
+  span_id?: string,
 ): void {
   if (trajectory === undefined) return
   const event: Record<string, unknown> = {
@@ -288,6 +299,7 @@ export function record_cost(
     input_usd: cost.input_usd,
     output_usd: cost.output_usd,
   }
+  if (span_id !== undefined) event['span_id'] = span_id
   if (cost.cached_input_usd !== undefined) event['cached_input_usd'] = cost.cached_input_usd
   if (cost.cache_write_usd !== undefined) event['cache_write_usd'] = cost.cache_write_usd
   if (cost.reasoning_usd !== undefined) event['reasoning_usd'] = cost.reasoning_usd

@@ -90,6 +90,12 @@ export type InvokeOnceArgs = {
   readonly tools: ReadonlyArray<Tool>
   readonly abort: AbortSignal
   readonly stream: boolean
+  /**
+   * The enclosing `engine.generate.step` span id, threaded so the transport's
+   * retry wrapper can stamp it onto `turn_retry` (the one span-less engine
+   * event emitted below the loop, inside retry_turn).
+   */
+  readonly step_span: string | undefined
 }
 
 export type RawToolCall = {
@@ -339,6 +345,7 @@ function compute_and_record_cost(
   config: ToolLoopConfig,
   step_index: number,
   usage: UsageTotals,
+  step_span: string | undefined,
 ): CostBreakdown | undefined {
   const pricing = config.resolve_pricing()
   if (pricing === undefined && !FREE_PROVIDERS.has(config.provider)) {
@@ -347,7 +354,7 @@ function compute_and_record_cost(
   }
   const breakdown = compute_cost(usage, pricing, config.provider)
   if (breakdown !== undefined) {
-    record_cost(config.trajectory, step_index, breakdown, 'engine_derived')
+    record_cost(config.trajectory, step_index, breakdown, 'engine_derived', step_span)
   }
   return breakdown
 }
@@ -464,8 +471,9 @@ async function invoke_turn(
       tools: config.tools,
       abort: config.abort,
       stream: config.stream,
+      step_span,
     })
-    record_response_received(config.trajectory, step_index, turn)
+    record_response_received(config.trajectory, step_index, turn, step_span)
     return turn
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err)
@@ -964,7 +972,7 @@ function push_step_record(
     usage: turn.usage,
     finish_reason,
   }
-  const breakdown = compute_and_record_cost(config, step_index, turn.usage)
+  const breakdown = compute_and_record_cost(config, step_index, turn.usage, step_span)
   if (breakdown !== undefined) record.cost = breakdown
   if (turn.timing !== undefined) record.timing = turn.timing
   if (turn.provider_reported !== undefined) {

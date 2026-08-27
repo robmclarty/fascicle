@@ -372,7 +372,7 @@ function retry_turn(
     retry_policy,
     args.abort,
     (info) => {
-      record_turn_retry(trajectory, args.step_index, info)
+      record_turn_retry(trajectory, args.step_index, info, args.step_span)
     },
   )
 }

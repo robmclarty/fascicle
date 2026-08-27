@@ -129,6 +129,8 @@ describe('StepTiming on the engine loop', () => {
     // The full flat event any TrajectoryLogger (and the OTel bridge) receives;
     // `ts` comes from the engine's with_timestamps wrapper at emission.
     const received = records.find((e) => e.kind === 'response_received')
+    // span-2 is the enclosing engine.generate.step span (span-1 is
+    // engine.generate), so a consumer attributes the turn to its exact step.
     expect(received).toEqual({
       kind: 'response_received',
       step_index: 0,
@@ -137,6 +139,7 @@ describe('StepTiming on the engine loop', () => {
       finish_reason: 'stop',
       started_at: T0,
       duration_ms: 250,
+      span_id: 'span-2',
       ts: T0 + 250,
     })
   })
@@ -281,6 +284,10 @@ describe('turn_retry events', () => {
         delay_ms: 5,
         status: 429,
         retry_after_ms: 5,
+        // The absorbed retry attributes to the same engine.generate.step span
+        // (span-2) as its response_received, even though it emits below the
+        // loop inside retry_turn.
+        span_id: 'span-2',
         ts: T0 + 40,
       },
     ])

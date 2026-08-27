@@ -1875,6 +1875,24 @@ describe('run_tool_loop helpers (step 4)', () => {
     expect(cost_event).toBeDefined()
     expect(cost_event?.['source']).toBe('engine_derived')
   })
+
+  it('stamps the enclosing step span id onto response_received and cost', async () => {
+    const { trajectory, events } = recording_trajectory()
+    await run_tool_loop(
+      base_config({
+        invoke: [{ text: 'hi', finish_reason: 'stop', usage: { input_tokens: 1000, output_tokens: 500 } }],
+        trajectory,
+        resolve_pricing: () => ({ input_per_million: 3, output_per_million: 15 }),
+      }),
+    )
+    // recording_trajectory hands out span ids as s1, s2, ...; the loop opens
+    // exactly one span per step, so the step-0 span is s1. Both events carry it
+    // so a consumer attributes them to the exact turn, not an open-span guess.
+    const response = events.find((e) => e['kind'] === 'response_received')
+    const cost = events.find((e) => e['kind'] === 'cost')
+    expect(response?.['span_id']).toBe('s1')
+    expect(cost?.['span_id']).toBe('s1')
+  })
 })
 
 const span_error = (events: Array<Record<string, unknown>>): unknown =>
