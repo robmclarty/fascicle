@@ -82,19 +82,25 @@ export function start_server(config: ServerConfig): Promise<ViewerServer> {
     http_server.once('error', res_err)
     http_server.listen(port, host, () => {
       http_server.removeListener('error', res_err)
-      // `address().port` is the port actually bound. It only differs from
-      // the requested `port` when the caller passed 0 and asked the OS to
-      // pick a free port.
-      const addr = http_server.address()
-      const bound_port =
-        addr !== null && typeof addr === 'object' && 'port' in addr ? addr.port : port
-      const url = `http://${host}:${bound_port}`
+      const url = `http://${host}:${bound_port_of(http_server.address(), port)}`
       res_ok({
         url,
         close: () => close_server(http_server),
       })
     })
   })
+}
+
+/**
+ * Resolves the port a listening server actually bound to.
+ *
+ * `address()` is only an `AddressInfo` for a TCP listen; it is a path string
+ * for a unix socket and `null` before listening, so the fallback covers both.
+ * The bound port differs from the requested one only when the caller passed 0
+ * and asked the OS to pick a free port.
+ */
+export function bound_port_of(addr: ReturnType<Server['address']>, fallback: number): number {
+  return addr !== null && typeof addr === 'object' && 'port' in addr ? addr.port : fallback
 }
 
 /**
@@ -292,4 +298,10 @@ function handle_ingest(
   })
 }
 
-export const internals_for_test = { STATIC_HTML, SSE_HEARTBEAT_MS, parse_last_event_id }
+export const internals_for_test = {
+  STATIC_HTML,
+  SSE_HEARTBEAT_MS,
+  parse_last_event_id,
+  handle_sse,
+  handle_ingest,
+}

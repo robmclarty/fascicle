@@ -1,22 +1,160 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { EventEmitter } from 'node:events'
+import type { IncomingHttpHeaders, IncomingMessage, Server, ServerResponse } from 'node:http'
+import type { AddressInfo } from 'node:net'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { create_broadcaster, type Broadcaster } from '../broadcast.js'
-import { internals_for_test, resolve_route, start_server, type ViewerServer } from '../server.js'
+import {
+  bound_port_of,
+  internals_for_test,
+  resolve_route,
+  start_server,
+  type ViewerServer,
+} from '../server.js'
 
-const { parse_last_event_id } = internals_for_test
+/**
+ * Server tests in two registers. The routes, SSE fan-out, and ingest parsing
+ * are exercised end to end against a real socket, because that is the contract
+ * a browser sees. Three clusters cannot be reached that way and are unit-tested
+ * against fake `req`/`res` objects through `internals_for_test`:
+ *
+ *   - The heartbeat is a 15s interval. Fake timers make it exact; a real
+ *     socket would need a real 15-second wait.
+ *   - The `event: close` frame is written from `req.on('close')`, by which
+ *     point node has already torn the socket down (verified: a half-closed
+ *     client never receives it). It is observable only at the handler seam.
+ *   - `req.on('error')` during ingest answers 400 on a connection that has
+ *     just failed, so the body never reaches a real client either.
+ *
+ * A `node:fs` passthrough mock fails a single `statSync` to reach the
+ * missing-viewer.html 500, and a `node:http` passthrough mock hands back the
+ * created server so the bootstrap error listener can be checked for leaks.
+ * Both are transparent unless a test arms the shared `gate`.
+ *
+ * Equivalent-mutant ledger (survivors left after this suite, classified here
+ * rather than chased):
+ *   - `req.url ?? '/'` -> `''`: the base is always `http://host:port` with no
+ *     path, so `new URL('', base)` and `new URL('/', base)` both resolve to
+ *     pathname `/`.
+ *   - `req.headers.host ?? ...` -> `&&`: only separable by a present-but-
+ *     malformed Host header, where the real code throws inside `new URL` and
+ *     the mutant falls back. Pinning that would freeze a wart, not a contract
+ *     (parked: the docstring claims the fallback covers malformed headers,
+ *     but `??` only guards null/undefined).
+ *   - `server.closeAllConnections?.()` -> `.()`: the method has existed since
+ *     node 18.2 and `engines.node` is `>=24`, so the optional call can never
+ *     short-circuit.
+ *   - `n > 0` -> `n >= 0` in `parse_last_event_id`: the two differ only at
+ *     `n === 0`, which returns 0 down either branch.
+ *   - `req.setEncoding('utf8')` -> `('')`: node's `normalizeEncoding` maps an
+ *     empty encoding to utf8, so the stream decodes identically.
+ *   - `if (buf.length > 0) consume_line(buf)` -> `true` / `>= 0`: an empty
+ *     trailing buffer is dropped by `consume_line`'s own length guard.
+ */
+
+const { parse_last_event_id, handle_sse, handle_ingest, SSE_HEARTBEAT_MS } = internals_for_test
+
+const gate = vi.hoisted(() => ({
+  // Armed by the 500 test: the next stat of any path fails, standing in for a
+  // viewer.html that never shipped.
+  static_missing: false,
+  // The http.Server behind the most recent start_server call.
+  last_http_server: null as Server | null,
+}))
+
+vi.mock('node:fs', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs')>()
+  return {
+    ...actual,
+    statSync: (...args: Parameters<typeof actual.statSync>) => {
+      if (gate.static_missing) throw new Error('ENOENT: mock missing viewer.html')
+      return actual.statSync(...args)
+    },
+  }
+})
+
+vi.mock('node:http', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:http')>()
+  return {
+    ...actual,
+    createServer: (...args: Parameters<typeof actual.createServer>) => {
+      const server = actual.createServer(...args)
+      gate.last_http_server = server
+      return server
+    },
+  }
+})
+
+type FakeReq = EventEmitter & {
+  readonly headers: IncomingHttpHeaders
+  readonly setEncoding: (encoding: string) => void
+}
+
+const make_req = (headers: IncomingHttpHeaders = {}): FakeReq =>
+  Object.assign(new EventEmitter(), { headers, setEncoding: () => {} })
+
+const as_req = (req: FakeReq): IncomingMessage => req as unknown as IncomingMessage
+
+type FakeRes = {
+  statusCode: number
+  readonly headers: Map<string, string>
+  readonly writes_after_end: readonly string[]
+  readonly writableEnded: boolean
+  readonly setHeader: (name: string, value: string) => void
+  readonly write: (chunk: string) => boolean
+  readonly end: (body?: string) => void
+  readonly text: () => string
+}
+
+const make_res = (): FakeRes => {
+  const headers = new Map<string, string>()
+  const writes: string[] = []
+  const writes_after_end: string[] = []
+  let ended = false
+  return {
+    statusCode: 0,
+    headers,
+    writes_after_end,
+    get writableEnded() {
+      return ended
+    },
+    setHeader: (name, value) => {
+      headers.set(name, value)
+    },
+    write: (chunk) => {
+      // Node answers a write-after-end with an async ERR_STREAM_WRITE_AFTER_END
+      // rather than a throw. Recording it instead of throwing keeps a dropped
+      // `writableEnded` guard visible as an assertion, not a crash.
+      if (ended) writes_after_end.push(chunk)
+      writes.push(chunk)
+      return true
+    },
+    end: (body) => {
+      if (body !== undefined) writes.push(body)
+      ended = true
+    },
+    text: () => writes.join(''),
+  }
+}
+
+const as_res = (res: FakeRes): ServerResponse => res as unknown as ServerResponse
 
 let server: ViewerServer | null = null
 let broadcaster: Broadcaster | null = null
 
-beforeEach(async () => {
-  broadcaster = create_broadcaster({ buffer: 100 })
-  server = await start_server({ broadcaster, host: '127.0.0.1', port: 0 })
-})
+/** Registers hooks giving every test in the calling describe a live server. */
+function with_live_server(): void {
+  beforeEach(async () => {
+    broadcaster = create_broadcaster({ buffer: 100 })
+    server = await start_server({ broadcaster, host: '127.0.0.1', port: 0 })
+  })
 
-afterEach(async () => {
-  if (server) await server.close()
-  server = null
-  broadcaster = null
-})
+  afterEach(async () => {
+    gate.static_missing = false
+    if (server) await server.close()
+    server = null
+    broadcaster = null
+  })
+}
 
 function url(path: string): string {
   if (!server) throw new Error('server not started')
@@ -24,6 +162,8 @@ function url(path: string): string {
 }
 
 describe('viewer http server', () => {
+  with_live_server()
+
   it('GET /api/health returns ok with a json content-type', async () => {
     const res = await fetch(url('/api/health'))
     expect(res.status).toBe(200)
@@ -46,6 +186,14 @@ describe('viewer http server', () => {
     const res = await fetch(url('/index.html'))
     expect(res.status).toBe(200)
     expect(res.headers.get('content-type')).toMatch(/text\/html/)
+  })
+
+  it('answers a plain-text 500 when the bundled viewer.html is missing', async () => {
+    gate.static_missing = true
+    const res = await fetch(url('/'))
+    expect(res.status).toBe(500)
+    expect(res.headers.get('content-type')).toMatch(/text\/plain/)
+    expect(await res.text()).toBe('viewer.html missing')
   })
 
   it('GET /api/snapshot returns the ring buffer contents', async () => {
@@ -168,9 +316,31 @@ describe('resolve_route', () => {
     expect(resolve_route({ url: '/x', headers: { host: 'h:1' } }, 'x', 9)).toBe('GET /x')
   })
 
+  it('falls back to the root path when the url is absent', () => {
+    expect(resolve_route({ method: 'GET', headers: { host: 'h:1' } }, 'x', 9)).toBe('GET /')
+  })
+
   it('falls back to host:port for the URL base when the Host header is absent', () => {
     // The base host only affects URL parsing; the route still resolves by path.
     expect(resolve_route({ url: '/x', method: 'GET', headers: {} }, 'myhost', 1234)).toBe('GET /x')
+  })
+})
+
+describe('bound_port_of', () => {
+  it('takes the port from a TCP AddressInfo', () => {
+    expect(bound_port_of({ address: '127.0.0.1', family: 'IPv4', port: 4242 }, 0)).toBe(4242)
+  })
+
+  it('falls back when the server is not listening yet', () => {
+    expect(bound_port_of(null, 8080)).toBe(8080)
+  })
+
+  it('falls back for a unix-socket path address', () => {
+    expect(bound_port_of('/tmp/viewer.sock', 8080)).toBe(8080)
+  })
+
+  it('falls back for an address object carrying no port', () => {
+    expect(bound_port_of({} as unknown as AddressInfo, 8080)).toBe(8080)
   })
 })
 
@@ -193,8 +363,9 @@ describe('parse_last_event_id', () => {
 })
 
 describe('viewer ingest details', () => {
+  with_live_server()
+
   it('skips blank lines without counting them as rejected', async () => {
-    if (!broadcaster) throw new Error('not initialized')
     const body = ['{"kind":"emit"}', '', '{"kind":"emit"}', ''].join('\n')
     const res = await fetch(url('/api/ingest'), { method: 'POST', body })
     const out = (await res.json()) as { accepted: number; rejected: number }
@@ -203,7 +374,6 @@ describe('viewer ingest details', () => {
   })
 
   it('flushes a final line that has no trailing newline', async () => {
-    if (!broadcaster) throw new Error('not initialized')
     const body = '{"kind":"emit"}\n{"kind":"emit"}'
     const res = await fetch(url('/api/ingest'), { method: 'POST', body })
     const out = (await res.json()) as { accepted: number; rejected: number }
@@ -236,6 +406,101 @@ describe('viewer ingest details', () => {
   })
 })
 
+describe('ingest stream failure', () => {
+  it('answers a request stream error with a 400 and reports it', () => {
+    const bc = create_broadcaster({ buffer: 10 })
+    const seen: Array<{ err: unknown; line: string }> = []
+    const req = make_req()
+    const res = make_res()
+    handle_ingest(as_req(req), as_res(res), bc, (err, line) => seen.push({ err, line }))
+
+    const boom = new Error('ECONNRESET')
+    req.emit('error', boom)
+
+    expect(res.statusCode).toBe(400)
+    expect(res.headers.get('content-type')).toBe('application/json')
+    expect(JSON.parse(res.text())).toEqual({ error: 'bad_request' })
+    // The empty line marks "no line was in flight", distinguishing a transport
+    // failure from a malformed record.
+    expect(seen).toEqual([{ err: boom, line: '' }])
+  })
+
+  it('still answers 400 when no parse-error callback is wired', () => {
+    const bc = create_broadcaster({ buffer: 10 })
+    const req = make_req()
+    const res = make_res()
+    handle_ingest(as_req(req), as_res(res), bc)
+
+    req.emit('error', new Error('ECONNRESET'))
+
+    expect(res.statusCode).toBe(400)
+    expect(JSON.parse(res.text())).toEqual({ error: 'bad_request' })
+  })
+})
+
+describe('sse heartbeat and teardown', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  const open_stream = (): { req: FakeReq; res: FakeRes; bc: Broadcaster } => {
+    const bc = create_broadcaster({ buffer: 10 })
+    const req = make_req()
+    const res = make_res()
+    handle_sse(as_req(req), as_res(res), bc)
+    return { req, res, bc }
+  }
+
+  it('writes a comment frame every heartbeat interval and not a tick sooner', () => {
+    const { res } = open_stream()
+
+    vi.advanceTimersByTime(SSE_HEARTBEAT_MS - 1)
+    expect(res.text()).toBe('')
+
+    vi.advanceTimersByTime(1)
+    expect(res.text()).toBe(': heartbeat\n\n')
+
+    vi.advanceTimersByTime(SSE_HEARTBEAT_MS)
+    expect(res.text()).toBe(': heartbeat\n\n: heartbeat\n\n')
+  })
+
+  it('closes the stream, stops heartbeats, and unsubscribes when the request closes', () => {
+    const { req, res, bc } = open_stream()
+
+    req.emit('close')
+
+    expect(res.text()).toBe('event: close\ndata: {}\n\n')
+    expect(res.writableEnded).toBe(true)
+
+    vi.advanceTimersByTime(SSE_HEARTBEAT_MS * 3)
+    bc.emit({ kind: 'emit', text: 'after close' })
+    expect(res.text()).toBe('event: close\ndata: {}\n\n')
+  })
+
+  it('tears the stream down the same way on a request stream error', () => {
+    const { req, res } = open_stream()
+
+    req.emit('error', new Error('ECONNRESET'))
+
+    expect(res.text()).toBe('event: close\ndata: {}\n\n')
+    expect(res.writableEnded).toBe(true)
+  })
+
+  it('writes the close frame once when a close follows an error', () => {
+    const { req, res } = open_stream()
+
+    req.emit('error', new Error('ECONNRESET'))
+    req.emit('close')
+
+    expect(res.text()).toBe('event: close\ndata: {}\n\n')
+    expect(res.writes_after_end).toEqual([])
+  })
+})
+
 describe('viewer server lifecycle', () => {
   it('close() stops the server from accepting new connections', async () => {
     const bc = create_broadcaster({ buffer: 10 })
@@ -246,14 +511,31 @@ describe('viewer server lifecycle', () => {
     await expect(fetch(srv.url + '/api/health')).rejects.toThrow()
   })
 
+  it('close() rejects when the server is no longer running', async () => {
+    const bc = create_broadcaster({ buffer: 10 })
+    const srv = await start_server({ broadcaster: bc, host: '127.0.0.1', port: 0 })
+    await srv.close()
+    await expect(srv.close()).rejects.toThrow(/not running/i)
+  })
+
+  it('drops its bootstrap error listener once the socket is listening', async () => {
+    const bc = create_broadcaster({ buffer: 10 })
+    const srv = await start_server({ broadcaster: bc, host: '127.0.0.1', port: 0 })
+    try {
+      // Left attached, a late server error would settle an already-resolved
+      // promise instead of surfacing.
+      expect(gate.last_http_server?.listenerCount('error')).toBe(0)
+    } finally {
+      await srv.close()
+    }
+  })
+
   it('start_server rejects when the port is already in use', async () => {
     const bc = create_broadcaster({ buffer: 10 })
     const first = await start_server({ broadcaster: bc, host: '127.0.0.1', port: 0 })
     const port = Number(new URL(first.url).port)
     try {
-      await expect(
-        start_server({ broadcaster: bc, host: '127.0.0.1', port }),
-      ).rejects.toThrow()
+      await expect(start_server({ broadcaster: bc, host: '127.0.0.1', port })).rejects.toThrow()
     } finally {
       await first.close()
     }
