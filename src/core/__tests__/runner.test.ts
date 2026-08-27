@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
+import { describe as describe_flow } from '../describe.js'
 import { aborted_error, suspended_error, timeout_error } from '../errors.js'
 import { run } from '../runner.js'
 import { sequence } from '../sequence.js'
@@ -300,6 +301,42 @@ describe('failure-aware trajectory', () => {
     const last_span_end = events.map((e) => e.kind).lastIndexOf('span_end')
     const run_end_index = events.map((e) => e.kind).indexOf('run_end')
     expect(run_end_index).toBeGreaterThan(last_span_end)
+  })
+})
+
+describe('flow_structure', () => {
+  afterEach(remove_signal_listeners)
+
+  it('is the first event, with a structure equal to describe.json(flow)', async () => {
+    const { logger, events } = recording_logger()
+    const flow = sequence([step('a', (n: number) => n), step('b', (n: number) => n)])
+
+    await run(flow, 0, { trajectory: logger, install_signal_handlers: false })
+
+    expect(events[0]?.kind).toBe('flow_structure')
+    expect(events[0]?.['structure']).toEqual(describe_flow.json(flow))
+  })
+
+  it('is not computed for a plain run with no trajectory logger', async () => {
+    const spy = vi.spyOn(describe_flow, 'json')
+    try {
+      await run(step('noop', (n: number) => n), 1, { install_signal_handlers: false })
+      expect(spy).not.toHaveBeenCalled()
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
+  it('is the first event run.stream yields, even with no trajectory logger configured', async () => {
+    const handle = run.stream(step('noop', (n: number) => n), 1, {
+      install_signal_handlers: false,
+    })
+
+    const first = await handle.events[Symbol.asyncIterator]().next()
+    await handle.result
+
+    expect(first.done).toBe(false)
+    expect(first.value?.kind).toBe('flow_structure')
   })
 })
 

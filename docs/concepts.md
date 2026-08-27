@@ -180,6 +180,7 @@ The bundled loggers have two limits you should know about before you wire them i
 
 ### What Gets Recorded
 
+- The first event of an observed run is `flow_structure`, `{ kind: 'flow_structure', structure }`, where `structure` is `describe.json(flow)` verbatim in loose mode (cycles render as `<cycle>` nodes). Recorded once, before dispatch, only when a `trajectory` logger is configured or the run is observed via `run.stream`, so an unobserved run pays nothing for it.
 - Every composer records entry and exit spans around its children.
 - `model_call` records generate spans, step spans, cost events, and (under `run.stream`) a `model_chunk` event per provider chunk.
 - The `claude_cli` provider records `cli_tool_bridge_allowlist_only` events when it drops tools whose `execute` closures can't cross the subprocess boundary.

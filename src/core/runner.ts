@@ -17,6 +17,7 @@
 
 import { randomUUID } from 'node:crypto'
 import { create_cleanup_registry } from './cleanup.js'
+import { describe } from './describe.js'
 import { resolve_display_name } from './display_name.js'
 import { aborted_error, suspended_error } from './errors.js'
 import { create_streaming_channel, STREAMING_HIGH_WATER_MARK } from './streaming.js'
@@ -324,8 +325,9 @@ type StartResult<o> = {
  * Shared engine behind `run` and `run.stream`; `high_water_mark` selects the
  * mode (null means no streaming channel). Owns the full run lifecycle:
  * abort wiring, logger decoration, cleanup registration, signal handlers,
- * and the settle-time teardown ordering (cleanup handlers first, then
- * unlinking and stream close).
+ * the `flow_structure` event that opens an observed run, and the
+ * settle-time teardown ordering (cleanup handlers first, then unlinking and
+ * stream close).
  */
 function start_run<i, o>(
   flow: Step<i, o>,
@@ -356,6 +358,12 @@ function start_run<i, o>(
   }
 
   const logger: TrajectoryLogger = decorate_logger(inner, run_id)
+
+  // Structure is worth its one describe() walk only when something will see
+  // it: a real logger, or a run.stream() consumer reading the channel.
+  if (options.trajectory !== undefined || streaming) {
+    logger.record({ kind: 'flow_structure', structure: describe.json(flow) })
+  }
 
   const cleanup = create_cleanup_registry(logger)
 
