@@ -4,6 +4,7 @@ import { resume_validation_error, suspended_error } from '../errors.js'
 import { run } from '../runner.js'
 import { step } from '../step.js'
 import { suspend } from '../suspend.js'
+import type { TrajectoryEvent } from '../types.js'
 
 describe('suspend', () => {
   it('calls on(input, ctx) and throws suspended_error on first encounter (criterion 15)', async () => {
@@ -20,6 +21,56 @@ describe('suspend', () => {
       run(flow, { brief: 'hi' }, { install_signal_handlers: false }),
     ).rejects.toBeInstanceOf(suspended_error)
     expect(on_spy).toHaveBeenCalledTimes(1)
+  })
+
+  it('records suspended { suspend_id, step_id } on the wire before the span-end error (step 4)', async () => {
+    const flow = suspend({
+      id: 'approve',
+      on: async () => {},
+      resume_schema: z.object({ approved: z.boolean() }),
+      combine: (_: { brief: string }, resume) => (resume.approved ? 'shipped' : 'rejected'),
+    })
+
+    const { events, result } = run.stream(flow, { brief: 'hi' }, {
+      install_signal_handlers: false,
+    })
+    await expect(result).rejects.toBeInstanceOf(suspended_error)
+
+    const collected: TrajectoryEvent[] = []
+    for await (const event of events) collected.push(event)
+
+    const suspended_idx = collected.findIndex((e) => e.kind === 'suspended')
+    const span_end_idx = collected.findIndex((e) => e.kind === 'span_end')
+    expect(suspended_idx).toBeGreaterThanOrEqual(0)
+    expect(span_end_idx).toBeGreaterThanOrEqual(0)
+    expect(suspended_idx).toBeLessThan(span_end_idx)
+
+    expect(collected[suspended_idx]).toMatchObject({
+      kind: 'suspended',
+      suspend_id: 'approve',
+      step_id: 'approve',
+    })
+    // The event this must precede is genuinely the span-end carrying the error.
+    expect(collected[span_end_idx]).toMatchObject({ error_kind: 'suspended_error' })
+  })
+
+  it('does not record a suspended event on a resume that completes', async () => {
+    const flow = suspend({
+      id: 'approve',
+      on: async () => {},
+      resume_schema: z.object({ approved: z.boolean() }),
+      combine: (_: { brief: string }, resume) => (resume.approved ? 'shipped' : 'rejected'),
+    })
+
+    const { events, result } = run.stream(flow, { brief: 'hi' }, {
+      install_signal_handlers: false,
+      resume_data: { approve: { approved: true } },
+    })
+    await expect(result).resolves.toBe('shipped')
+
+    const collected: TrajectoryEvent[] = []
+    for await (const event of events) collected.push(event)
+    expect(collected.some((e) => e.kind === 'suspended')).toBe(false)
   })
 
   it('calls combine with valid resume data and returns the result', async () => {

@@ -185,6 +185,7 @@ The bundled loggers have two limits you should know about before you wire them i
 - `model_call` records generate spans, step spans, cost events, and (under `run.stream`) a `model_chunk` event per provider chunk.
 - The `claude_cli` provider records `cli_tool_bridge_allowlist_only` events when it drops tools whose `execute` closures can't cross the subprocess boundary.
 - `ctx.emit(event)` records an event with `kind: 'emit'`.
+- A `suspend(...)` gate that first fires records `{ kind: 'suspended', suspend_id, step_id }` on the wire before the span-end error the runner logs for the escaping `suspended_error`, so a consumer sees the pause as its own event. `step_id` is the join key back to the `flow_structure` node.
 
 Trajectory writes are never load-bearing, and a logger that throws doesn't fail the run. Keep your own loggers equally forgiving.
 

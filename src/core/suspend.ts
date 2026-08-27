@@ -3,8 +3,9 @@
  *
  * `suspend({ id, on, resume_schema, combine })` pauses a flow waiting on
  * external input (a notification, an approval, an uploaded file). On first
- * encounter with no resume data, it calls `on(input, ctx)` (side effect) and
- * throws `suspended_error` carrying the run state. On resume (re-invocation
+ * encounter with no resume data, it calls `on(input, ctx)` (side effect),
+ * records a `suspended` trajectory event, and throws `suspended_error`
+ * carrying the run state. On resume (re-invocation
  * with `run_options.resume_data[id]` populated), the provided value is
  * validated against `resume_schema` and passed to `combine(input, resume,
  * ctx)`; the result is returned. Invalid resume data throws
@@ -48,6 +49,12 @@ export function suspend<i, o, resume>(config: SuspendConfig<i, o, resume>): Step
   
     if (resume_value === undefined) {
       await on_fn(input, ctx)
+      // Mark the suspension on the wire before the throw, so a consumer sees
+      // the gate pause as its own event ahead of the span-end error the
+      // runner records for the escaping suspended_error. step_id is the
+      // suspend step's id (the suspend id), the join key back to the
+      // flow_structure node.
+      ctx.trajectory.record({ kind: 'suspended', suspend_id, step_id: suspend_id })
       throw new suspended_error(suspend_id, { input })
     }
   
