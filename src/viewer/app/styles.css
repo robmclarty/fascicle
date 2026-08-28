@@ -1,0 +1,185 @@
+/*
+ * The run canvas ground and its header chrome.
+ *
+ * Every value here is a token from artboard 05 (the system spec), so the
+ * numbers are the design, not arbitrary taste: warm near-black ground, a 28px
+ * dot grid at warm white 5%, an edge vignette, and a type ramp of Sora for
+ * names and Spline Sans Mono for meta. Geometry that responds to run state
+ * lives in the SVG the components draw; this file owns only what never moves.
+ */
+
+@font-face {
+  font-family: 'Sora';
+  font-style: normal;
+  font-weight: 500 600;
+  font-display: block;
+  src: url('/fonts/sora-latin.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Spline Sans Mono';
+  font-style: normal;
+  font-weight: 400 500;
+  font-display: block;
+  src: url('/fonts/spline-sans-mono-latin.woff2') format('woff2');
+}
+
+:root {
+  --ground: #14110c;
+  --ink: #f3f0e9;
+  --line-traversed: #8a8478;
+  --line-unbuilt: #514c43;
+  --puck-ring: #b7afa0;
+  --amber: #ffac33;
+  --ember: #e2503e;
+
+  --unit: 8px;
+  --margin: 72px;
+
+  --sans: Sora, 'Avenir Next', 'Segoe UI', system-ui, sans-serif;
+  --mono: 'Spline Sans Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: var(--ground);
+}
+
+#root {
+  height: 100%;
+}
+
+.canvas {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background-color: var(--ground);
+  background-image: radial-gradient(rgb(255 238 212 / 5%) 1px, transparent 1.2px);
+  background-size: 28px 28px;
+  background-position: 14px 14px;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizelegibility;
+}
+
+/* The vignette is decoration over the whole ground, so it must never eat a
+   click meant for the geometry underneath. */
+.canvas::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(120% 95% at 50% 44%, transparent 62%, rgb(5 3 1 / 42%) 100%);
+}
+
+.canvas-header {
+  position: absolute;
+  left: var(--margin);
+  right: var(--margin);
+  top: 50px;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  z-index: 2;
+}
+
+.run {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.run-key {
+  font: 400 12px var(--mono);
+  letter-spacing: 0.08em;
+  color: rgb(243 240 233 / 40%);
+}
+
+.run-id {
+  font: 600 17px var(--sans);
+  letter-spacing: 0.01em;
+  color: var(--ink);
+}
+
+.status {
+  display: inline-flex;
+  align-items: baseline;
+  margin-left: 26px;
+  font: 500 11px var(--mono);
+  letter-spacing: 0.24em;
+  color: rgb(246 243 234 / 88%);
+}
+
+/* The status dot is the only moving chrome at rest, and it is white, never
+   amber: amber is reserved for geometry the run is alive inside (C4). */
+.status-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #f6f3ea;
+  box-shadow: 0 0 10px 1.5px rgb(255 250 238 / 55%);
+  margin-right: 9px;
+  align-self: center;
+  transform: translateY(-1px);
+}
+
+.status-live .status-dot {
+  animation: status-pulse 2.4s ease-in-out infinite;
+}
+
+.status-offline {
+  color: rgb(246 243 234 / 38%);
+}
+
+.status-offline .status-dot {
+  background: rgb(246 243 234 / 38%);
+  box-shadow: none;
+  animation: none;
+}
+
+.stats {
+  font: 500 11px var(--mono);
+  letter-spacing: 0.14em;
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+.stats-value {
+  opacity: 0.78;
+}
+
+.stats-word {
+  opacity: 0.38;
+}
+
+.stage {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+}
+
+@keyframes status-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.45;
+  }
+}
+
+/* C9: every looping animation swaps to a static glow rather than stopping
+   mid-cycle, so a reduced-motion reader still sees the live state. */
+@media (prefers-reduced-motion: reduce) {
+  .status-live .status-dot {
+    animation: none;
+  }
+}

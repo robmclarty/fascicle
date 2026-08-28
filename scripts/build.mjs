@@ -6,6 +6,8 @@
  *   1. Delete ./dist/.
  *   2. Run `pnpm exec tsdown`; exit non-zero on any tsdown warning or failure.
  *   3. Verify ./dist/index.js and ./dist/index.d.ts exist and are non-empty.
+ *   3b. Compile the viewer canvas app with vite into ./dist/viewer-app/, and
+ *      hold it to the size budget and the no-external-hosts rule.
  *   4. Dynamic-import the built bundle and assert the 16 composition
  *      primitives plus `create_engine`, `model_call`, `describe`, and
  *      `describe.json` are exported.
@@ -17,7 +19,7 @@
  */
 
 import { spawn } from 'node:child_process';
-import { copyFile, mkdir, readFile, readdir, rm, stat } from 'node:fs/promises';
+import { mkdir, readFile, readdir, rm, stat } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
@@ -43,11 +45,28 @@ const DIST_UI_JS = join(DIST_DIR, 'ui.js');
 const DIST_UI_DTS = join(DIST_DIR, 'ui.d.ts');
 const DIST_VIEWER_JS = join(DIST_DIR, 'viewer.js');
 const DIST_VIEWER_DTS = join(DIST_DIR, 'viewer.d.ts');
-const DIST_STATIC_DIR = join(DIST_DIR, 'static');
-const DIST_STATIC_HTML = join(DIST_STATIC_DIR, 'viewer.html');
-const VIEWER_HTML_SRC = join(REPO_ROOT, 'src', 'viewer', 'static', 'viewer.html');
+const DIST_APP_DIR = join(DIST_DIR, 'viewer-app');
+const DIST_APP_HTML = join(DIST_APP_DIR, 'index.html');
 const DIST_BIN_DIR = join(DIST_DIR, 'bin');
 const DIST_BIN_VIEWER = join(DIST_BIN_DIR, 'fascicle-viewer.js');
+const VIEWER_APP_CONFIG = 'vite.viewer.config.ts';
+
+// D10: the compiled canvas rides every npm install, so its size is a gate and
+// not a hope. Source maps are already off in the vite config; the filter is
+// belt and braces for the day someone turns them back on.
+const APP_BUDGET_BYTES = 350 * 1024;
+
+// C3: a localhost dev tool fetches nothing at runtime. Anything that looks
+// like an absolute URL in a built asset is a font CDN, an analytics beacon, or
+// a source map host that slipped back in.
+const EXTERNAL_URL_RE = /(?:https?:)?\/\/(?!\/)[a-z0-9.-]+\.[a-z]{2,}[^\s"'`)]*/gi;
+
+// XML namespace URIs are identifiers, not addresses: no browser ever fetches
+// them, and the SVG spec requires the literal string. Solid's compiler emits
+// the SVG one for every `<svg>` element.
+const NAMESPACE_URL_RE = /\/\/www\.w3\.org\//;
+
+const APP_TEXT_EXT = ['.css', '.html', '.js'];
 
 const EXPECTED_NAMED = [
   // 16 composition primitives
@@ -256,14 +275,18 @@ async function main() {
     process.exit(1);
   }
 
-  process.stderr.write(`▸ build: copying viewer static assets\n`);
-  await mkdir(DIST_STATIC_DIR, { recursive: true });
-  await copyFile(VIEWER_HTML_SRC, DIST_STATIC_HTML);
-  const html_stat = await stat(DIST_STATIC_HTML);
-  if (html_stat.size === 0) {
-    console.error(`\nbuild: ${DIST_STATIC_HTML} copied as empty file`);
+  process.stderr.write(`▸ build: compiling the viewer canvas app\n`);
+  const app_res = await run_subprocess('pnpm', ['exec', 'vite', 'build', '--config', VIEWER_APP_CONFIG]);
+  if (app_res.code !== 0) {
+    console.error(`\nbuild: vite exited with code ${app_res.code}`);
     process.exit(1);
   }
+  if (!existsSync(DIST_APP_HTML)) {
+    console.error(`\nbuild: ${DIST_APP_HTML} was not produced`);
+    process.exit(1);
+  }
+  const app_files = await list_files(DIST_APP_DIR);
+  await verify_app_bundle(app_files);
 
   process.stderr.write(`▸ build: writing fascicle-viewer bin shim\n`);
   await mkdir(DIST_BIN_DIR, { recursive: true });
@@ -394,6 +417,56 @@ async function main() {
 
   process.stderr.write(
     `\n✔ build ok (${js_stat.size} bytes js, ${dts_stat.size} bytes d.ts, ${EXPECTED_NAMED.length} named exports + describe.json + ${EXPECTED_ADAPTERS.length} adapters + ${EXPECTED_AGENTS.length} agents + ${EXPECTED_MCP.length} mcp + ${EXPECTED_OTEL.length} otel + ${EXPECTED_STDIO.length} stdio + ${EXPECTED_TESTING.length} testing + ${EXPECTED_UI.length} ui + ${EXPECTED_VIEWER.length} viewer verified)\n`,
+  );
+}
+
+/** Every file under `dir`, recursively, as absolute paths. */
+async function list_files(dir) {
+  const entries = await readdir(dir, { withFileTypes: true });
+  const out = [];
+  for (const entry of entries) {
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) out.push(...(await list_files(full)));
+    else out.push(full);
+  }
+  return out;
+}
+
+/**
+ * Hold the compiled canvas to its two published promises: the D10 size budget
+ * and the C3 offline rule. Both are checked on the built bytes rather than the
+ * sources, because a bundler is exactly the thing that can reintroduce a
+ * remote font or inflate a chunk without any source changing.
+ */
+async function verify_app_bundle(files) {
+  const sized = files.filter((f) => !f.endsWith('.map'));
+  const sizes = await Promise.all(sized.map((f) => stat(f)));
+  const total = sizes.reduce((sum, s) => sum + s.size, 0);
+  if (total > APP_BUDGET_BYTES) {
+    console.error(
+      `\nbuild: dist/viewer-app is ${total} bytes, over the ${APP_BUDGET_BYTES}-byte budget`,
+    );
+    process.exit(1);
+  }
+
+  const offenders = [];
+  for (const file of files) {
+    if (!APP_TEXT_EXT.some((ext) => file.endsWith(ext))) continue;
+    const text = await readFile(file, 'utf8');
+    for (const hit of text.match(EXTERNAL_URL_RE) ?? []) {
+      if (NAMESPACE_URL_RE.test(hit)) continue;
+      offenders.push(`${file.slice(REPO_ROOT.length + 1)}: ${hit}`);
+    }
+  }
+  if (offenders.length > 0) {
+    console.error(
+      `\nbuild: the canvas must fetch nothing at runtime, but built assets name external hosts:\n  ${offenders.join('\n  ')}`,
+    );
+    process.exit(1);
+  }
+
+  process.stderr.write(
+    `▸ build: canvas app ${total} / ${APP_BUDGET_BYTES} bytes across ${files.length} files, no external hosts\n`,
   );
 }
 

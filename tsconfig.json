@@ -50,5 +50,11 @@
     "examples/**/*.ts",
     "test/**/*.ts"
   ],
-  "exclude": ["node_modules", "**/dist", ".check"]
+  "exclude": [
+    "node_modules",
+    "**/dist",
+    ".check",
+    "src/viewer/app",
+    "src/viewer/__tests__/e2e"
+  ]
 }

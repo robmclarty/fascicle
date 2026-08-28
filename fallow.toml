@@ -8,12 +8,21 @@ entry = [
   "src/**/__tests__/**/*.mjs",
   "src/**/*-harness.ts",
   "src/viewer/cli.ts",
+  # The compiled run canvas: `main.tsx` is vite's html entry and the Playwright
+  # specs are run by playwright, not imported. Neither is reachable from any
+  # module graph rooted in src/index.ts.
+  "src/viewer/app/main.tsx",
+  "src/**/*.e2e.ts",
   "test/**/*.test.ts",
   "test/**/*.mjs",
   "stryker.config.mjs",
   # Build and check-suite entry points: run by checkride and CI as commands,
   # never imported, so nothing in the module graph reaches them.
   "scripts/*.mjs",
+  # Root build configs, read by their tools rather than imported. `stryker.config.mjs`
+  # above is the same shape; these two are the vite app build and the Playwright runner.
+  "vite.viewer.config.ts",
+  "playwright.config.ts",
   # Example demos: each examples/<name>/main.ts is run directly via `pnpm exec
   # tsx`, never imported. The subset that's stub-driven and network-free is
   # also imported by test/examples.test.ts; this glob (the `*` matches across
@@ -61,6 +70,13 @@ ignoreDependencies = [
   "@opentelemetry/resources",
   "@opentelemetry/sdk-metrics",
   "@opentelemetry/sdk-trace-base",
+  # The one devDependency imported by runtime code on purpose. Vite compiles
+  # solid-js into dist/viewer-app/ at build time, so nothing a consumer
+  # installs ever resolves the package, and promoting it would break the very
+  # invariant it looks like it violates: the published `dependencies` stays
+  # empty (SECURITY.md). fallow's dev-dependencies-in-production rule is a
+  # package-level verdict, so a per-file override cannot reach it.
+  "solid-js",
 ]
 
 # `aborted_error` is defined in core and deliberately re-exported by engine so

@@ -164,6 +164,9 @@
     "covariant",
     "contravariance",
     "firecrawl",
-    "paydown"
+    "paydown",
+    "artboard",
+    "artboards",
+    "headerless"
   ]
 }

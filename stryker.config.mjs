@@ -23,6 +23,13 @@ export default {
     // CLI entry point: process glue (stdin/stdout/exit) exercised by the
     // spawn-based contract tests in src/stdio/__tests__/e2e/, not unit tests.
     '!src/stdio/run_stdio.ts',
+    // The viewer canvas app splits along D4: `app/lib/*.ts` and `app/sse.ts`
+    // hold every decision and are mutated like any other module, while the
+    // `.tsx` components are markup and fall outside `src/**/*.ts` by
+    // construction. Mutating DOM structure under jsdom would be slow noise
+    // that the Playwright screenshot suite covers better; the file extension
+    // is the exclusion, and this is the ledger entry for it. The Playwright
+    // specs themselves are already excluded as `src/**/__tests__/**`.
   ],
   coverageAnalysis: 'perTest',
   incremental: true,

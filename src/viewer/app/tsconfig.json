@@ -1,0 +1,19 @@
+{
+  // The browser half of src/viewer, excluded from the root program: it needs
+  // the DOM lib and solid's JSX, and adding those to the root config would
+  // hand every node module a `fetch` and a `setTimeout` that return the wrong
+  // types. Run by checkride's `types-app` slot. `vite/client` is what declares
+  // the `*.css` and asset modules vite resolves.
+  "extends": "../../../tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2024", "DOM", "DOM.Iterable"],
+    "types": ["vite/client"],
+    "module": "preserve",
+    "moduleResolution": "bundler",
+    "jsx": "preserve",
+    "jsxImportSource": "solid-js",
+    "noEmit": true
+  },
+  "include": ["**/*.ts", "**/*.tsx"],
+  "exclude": []
+}

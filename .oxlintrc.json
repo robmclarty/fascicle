@@ -1,6 +1,10 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["typescript", "unicorn", "import"],
+  "plugins": [
+    "typescript",
+    "unicorn",
+    "import"
+  ],
   "categories": {
     "correctness": "error",
     "suspicious": "error",
@@ -21,21 +25,40 @@
     "no-console": "warn",
     "no-await-in-loop": "off",
     "eqeqeq": "error",
-    "unicorn/no-thenable": "off"
+    "unicorn/no-thenable": "off",
+    "import/no-unassigned-import": [
+      "error",
+      {
+        "allow": [
+          "**/*.css"
+        ]
+      }
+    ]
   },
   "overrides": [
     {
-      "files": ["**/*.test.ts"],
+      "files": [
+        "**/*.test.ts"
+      ],
       "rules": {
         "typescript/no-unsafe-type-assertion": "off"
       }
     },
     {
-      "files": ["examples/**", "scripts/**"],
+      "files": [
+        "examples/**",
+        "scripts/**"
+      ],
       "rules": {
         "no-console": "off"
       }
     }
   ],
-  "ignorePatterns": ["dist/**", ".check/**", "node_modules/**", "scripts/**", "site/**"]
+  "ignorePatterns": [
+    "dist/**",
+    ".check/**",
+    "node_modules/**",
+    "scripts/**",
+    "site/**"
+  ]
 }

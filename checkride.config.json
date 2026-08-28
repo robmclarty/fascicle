@@ -1,6 +1,18 @@
 {
   "checks": {
     "types": { "use": "tsc", "order": 1 },
+    "types-app": {
+      "command": "pnpm",
+      "args": ["exec", "tsc", "--noEmit", "-p", "src/viewer/app/tsconfig.json"],
+      "description": "tsc over the viewer canvas app (DOM lib + solid JSX; excluded from the root program)",
+      "order": 1
+    },
+    "types-e2e": {
+      "command": "pnpm",
+      "args": ["exec", "tsc", "--noEmit", "-p", "src/viewer/__tests__/e2e/tsconfig.json"],
+      "description": "tsc over the Playwright specs (DOM lib for the page.evaluate half, node types for the rest)",
+      "order": 1
+    },
     "lint": { "use": "oxlint", "order": 1 },
     "struct": { "use": "ast-grep", "order": 1 },
     "links": {
@@ -79,6 +91,14 @@
     "mutation": { "use": "stryker", "optIn": true, "order": 4 },
 
     "build": { "use": "build", "optIn": true, "order": 10 },
+    "e2e": {
+      "command": "pnpm",
+      "args": ["exec", "playwright", "test"],
+      "description": "Playwright: the compiled canvas served by the real server in a real browser",
+      "note": "Opt-in rather than default because it needs two things `pnpm check` does not: a compiled app under dist/viewer-app (`pnpm viewer:app`) and a downloaded browser (`pnpm exec playwright install chromium`). It runs after the build slot so `check:all` compiles the canvas before photographing it.",
+      "optIn": true,
+      "order": 11
+    },
 
     "publint": { "use": "publint", "optIn": true, "order": 20 },
     "pack": { "use": "pack", "optIn": true, "order": 20 },

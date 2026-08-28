@@ -1,0 +1,14 @@
+{
+  // The Playwright specs run half their code inside the page, through
+  // `page.evaluate`, so they need the DOM lib on top of node's types. That mix
+  // belongs to neither the root program nor the app's, hence a third config
+  // and checkride's `types-e2e` slot.
+  "extends": "../../../../tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2024", "DOM", "DOM.Iterable"],
+    "types": ["node"],
+    "noEmit": true
+  },
+  "include": ["**/*.ts"],
+  "exclude": []
+}

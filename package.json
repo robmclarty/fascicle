@@ -131,13 +131,16 @@
     "check:changed": "checkride --changed",
     "check:fix": "pnpm exec oxlint --type-aware --fix && node scripts/strip-semicolons.mjs && pnpm exec fallow fix",
     "check:mutation": "stryker run",
+    "check:e2e": "playwright test",
     "check:publish": "checkride --only publint,attw,pack,smoke,snippets",
     "check:security": "checkride --only security",
     "prepublishOnly": "pnpm check && pnpm build && pnpm check:publish",
     "test": "vitest run",
     "test:watch": "vitest",
     "types": "tsc --noEmit",
-    "fascicle-viewer": "tsx src/viewer/cli.ts"
+    "fascicle-viewer": "tsx src/viewer/cli.ts",
+    "viewer:app": "vite build --config vite.viewer.config.ts",
+    "viewer:app:watch": "vite build --watch --config vite.viewer.config.ts"
   },
   "peerDependencies": {
     "@ai-sdk/amazon-bedrock": "^5.0.0",
@@ -204,6 +207,7 @@
     "@opentelemetry/resources": "^2.10.0",
     "@opentelemetry/sdk-metrics": "2.10.0",
     "@opentelemetry/sdk-trace-base": "2.10.0",
+    "@playwright/test": "1.62.1",
     "@standard-schema/spec": "1.1.0",
     "@stryker-mutator/core": "9.6.1",
     "@stryker-mutator/vitest-runner": "9.6.1",
@@ -219,9 +223,12 @@
     "oxlint": "1.73.0",
     "oxlint-tsgolint": "0.24.0",
     "publint": "0.3.21",
+    "solid-js": "1.9.15",
     "tsdown": "0.22.3",
     "tsx": "4.23.0",
     "typescript": "6.0.3",
+    "vite": "8.2.2",
+    "vite-plugin-solid": "2.11.14",
     "vitest": "4.1.10",
     "zod": "4.4.3"
   }

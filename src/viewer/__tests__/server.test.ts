@@ -1,7 +1,10 @@
 import { EventEmitter } from 'node:events'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import type { IncomingHttpHeaders, IncomingMessage, Server, ServerResponse } from 'node:http'
 import type { AddressInfo } from 'node:net'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { tmpdir } from 'node:os'
+import { join, resolve } from 'node:path'
+import { afterEach, beforeAll, afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { create_broadcaster, type Broadcaster } from '../broadcast.js'
 import {
   bound_port_of,
@@ -25,10 +28,13 @@ import {
  *   - `req.on('error')` during ingest answers 400 on a connection that has
  *     just failed, so the body never reaches a real client either.
  *
- * A `node:fs` passthrough mock fails a single `statSync` to reach the
- * missing-viewer.html 500, and a `node:http` passthrough mock hands back the
- * created server so the bootstrap error listener can be checked for leaks.
- * Both are transparent unless a test arms the shared `gate`.
+ * The compiled canvas is served from a real fixture directory built in a
+ * temp dir rather than from `dist/viewer-app`, so the suite passes on a clean
+ * checkout where nothing has been built, and the unbuilt-app 500 is reached by
+ * pointing `app_dir` at a directory that does not exist. A `node:http`
+ * passthrough mock hands back the created server so the bootstrap error
+ * listener can be checked for leaks; it is transparent unless a test arms the
+ * shared `gate`.
  *
  * Equivalent-mutant ledger (survivors left after this suite, classified here
  * rather than chased):
@@ -49,28 +55,24 @@ import {
  *     empty encoding to utf8, so the stream decodes identically.
  *   - `if (buf.length > 0) consume_line(buf)` -> `true` / `>= 0`: an empty
  *     trailing buffer is dropped by `consume_line`'s own length guard.
+ *   - `catch { return null }` -> `catch {}` in `stat_file`: an empty catch
+ *     returns `undefined`, and every caller compares against `null` with a
+ *     `=== null` that both values fail, or uses it in a boolean position.
+ *     Separating them would mean asserting on a value no caller can see.
+ *   - `file === null ? null : stat_file(file)` -> always `stat_file(file)`,
+ *     and the matching `file === null ||` in the guard below it: `statSync`
+ *     rejects a null path with a TypeError that `stat_file`'s own catch turns
+ *     back into `null`, so the mutant reaches the same 404 by a longer road.
+ *     The two null checks are what TypeScript needs to narrow `file` for
+ *     `extname`, not a branch a request can take.
  */
 
 const { parse_last_event_id, handle_sse, handle_ingest, SSE_HEARTBEAT_MS } = internals_for_test
 
 const gate = vi.hoisted(() => ({
-  // Armed by the 500 test: the next stat of any path fails, standing in for a
-  // viewer.html that never shipped.
-  static_missing: false,
   // The http.Server behind the most recent start_server call.
   last_http_server: null as Server | null,
 }))
-
-vi.mock('node:fs', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('node:fs')>()
-  return {
-    ...actual,
-    statSync: (...args: Parameters<typeof actual.statSync>) => {
-      if (gate.static_missing) throw new Error('ENOENT: mock missing viewer.html')
-      return actual.statSync(...args)
-    },
-  }
-})
 
 vi.mock('node:http', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:http')>()
@@ -140,16 +142,42 @@ const as_res = (res: FakeRes): ServerResponse => res as unknown as ServerRespons
 
 let server: ViewerServer | null = null
 let broadcaster: Broadcaster | null = null
+let app_dir = ''
+
+/**
+ * Lays down a stand-in for the compiled canvas: an index page, a hashed asset
+ * under `assets/`, a vendored font, and a nested file used to prove that a
+ * traversal out of the directory is refused.
+ */
+function with_fixture_app(): void {
+  beforeAll(() => {
+    app_dir = mkdtempSync(join(tmpdir(), 'fascicle-viewer-app-'))
+    mkdirSync(join(app_dir, 'assets'))
+    mkdirSync(join(app_dir, 'fonts'))
+    writeFileSync(join(app_dir, 'index.html'), '<title>fascicle viewer</title>')
+    writeFileSync(join(app_dir, 'assets', 'index-abc.js'), 'console.log(1)')
+    writeFileSync(join(app_dir, 'assets', 'index-abc.css'), '.canvas{}')
+    writeFileSync(join(app_dir, 'fonts', 'sora-latin.woff2'), 'wOF2')
+    writeFileSync(join(app_dir, 'fonts', 'sora-OFL.txt'), 'OFL')
+    writeFileSync(join(app_dir, 'assets', 'sprite.svg'), '<svg/>')
+    writeFileSync(join(app_dir, 'assets', 'shot.png'), 'PNG')
+    writeFileSync(join(app_dir, 'manifest.json'), '{}')
+    writeFileSync(join(app_dir, 'unmapped.bin'), 'bytes')
+  })
+
+  afterAll(() => {
+    rmSync(app_dir, { recursive: true, force: true })
+  })
+}
 
 /** Registers hooks giving every test in the calling describe a live server. */
 function with_live_server(): void {
   beforeEach(async () => {
     broadcaster = create_broadcaster({ buffer: 100 })
-    server = await start_server({ broadcaster, host: '127.0.0.1', port: 0 })
+    server = await start_server({ broadcaster, host: '127.0.0.1', port: 0, app_dir })
   })
 
   afterEach(async () => {
-    gate.static_missing = false
     if (server) await server.close()
     server = null
     broadcaster = null
@@ -162,6 +190,7 @@ function url(path: string): string {
 }
 
 describe('viewer http server', () => {
+  with_fixture_app()
   with_live_server()
 
   it('GET /api/health returns ok with a json content-type', async () => {
@@ -172,28 +201,61 @@ describe('viewer http server', () => {
     expect(body).toEqual({ ok: true })
   })
 
-  it('GET / serves the static viewer html with no-store cache headers', async () => {
+  it('GET / serves the compiled app index with no-store cache headers', async () => {
     const res = await fetch(url('/'))
     expect(res.status).toBe(200)
-    expect(res.headers.get('content-type')).toMatch(/text\/html/)
+    expect(res.headers.get('content-type')).toBe('text/html; charset=utf-8')
     expect(res.headers.get('cache-control')).toBe('no-store')
     expect(Number(res.headers.get('content-length'))).toBeGreaterThan(0)
     const text = await res.text()
     expect(text).toContain('<title>fascicle viewer</title>')
   })
 
-  it('GET /index.html serves the same static html', async () => {
+  it('GET /index.html serves the same index', async () => {
     const res = await fetch(url('/index.html'))
     expect(res.status).toBe(200)
-    expect(res.headers.get('content-type')).toMatch(/text\/html/)
+    expect(res.headers.get('content-type')).toBe('text/html; charset=utf-8')
+    expect(await res.text()).toContain('<title>fascicle viewer</title>')
   })
 
-  it('answers a plain-text 500 when the bundled viewer.html is missing', async () => {
-    gate.static_missing = true
-    const res = await fetch(url('/'))
-    expect(res.status).toBe(500)
-    expect(res.headers.get('content-type')).toMatch(/text\/plain/)
-    expect(await res.text()).toBe('viewer.html missing')
+  it.each([
+    ['/assets/index-abc.js', 'text/javascript; charset=utf-8', 'console.log(1)'],
+    ['/assets/index-abc.css', 'text/css; charset=utf-8', '.canvas{}'],
+    ['/fonts/sora-latin.woff2', 'font/woff2', 'wOF2'],
+    ['/fonts/sora-OFL.txt', 'text/plain; charset=utf-8', 'OFL'],
+    ['/assets/sprite.svg', 'image/svg+xml', '<svg/>'],
+    ['/assets/shot.png', 'image/png', 'PNG'],
+    ['/manifest.json', 'application/json; charset=utf-8', '{}'],
+    ['/unmapped.bin', 'application/octet-stream', 'bytes'],
+  ])('GET %s serves it as %s', async (path, content_type, body) => {
+    const res = await fetch(url(path))
+    expect(res.status).toBe(200)
+    expect(res.headers.get('content-type')).toBe(content_type)
+    expect(res.headers.get('cache-control')).toBe('no-store')
+    expect(await res.text()).toBe(body)
+  })
+
+  it('404s an asset the compiled app does not ship', async () => {
+    const res = await fetch(url('/assets/missing.js'))
+    expect(res.status).toBe(404)
+    expect(await res.json()).toEqual({ error: 'not_found', route: 'GET /assets/missing.js' })
+  })
+
+  it('refuses a path that climbs out of the app directory', async () => {
+    // `fetch` normalizes `..` away, so the traversal is asserted at the seam
+    // that would actually see it rather than through a client that cannot
+    // send it.
+    expect(internals_for_test.resolve_app_file(app_dir, '/../secret')).toBeNull()
+    expect(internals_for_test.resolve_app_file(app_dir, '/assets/index-abc.js')).toBe(
+      join(app_dir, 'assets', 'index-abc.js'),
+    )
+    expect(internals_for_test.resolve_app_file(app_dir, '/')).toBe(join(app_dir, 'index.html'))
+  })
+
+  it('rejects a POST to a path the api does not claim', async () => {
+    const res = await fetch(url('/index.html'), { method: 'POST' })
+    expect(res.status).toBe(404)
+    expect(await res.json()).toEqual({ error: 'not_found', route: 'POST /index.html' })
   })
 
   it('GET /api/snapshot returns the ring buffer contents', async () => {
@@ -299,6 +361,82 @@ describe('viewer http server', () => {
     expect(res.headers.get('content-type')).toMatch(/application\/json/)
     const body: unknown = await res.json()
     expect(body).toEqual({ error: 'not_found', route: 'GET /nope' })
+  })
+})
+
+describe('compiled app resolution', () => {
+  it('answers a plain-text 500 when the canvas has not been built', async () => {
+    const missing = join(tmpdir(), 'fascicle-viewer-app-never-built')
+    const live = await start_server({
+      broadcaster: create_broadcaster({ buffer: 10 }),
+      host: '127.0.0.1',
+      port: 0,
+      app_dir: missing,
+    })
+    try {
+      const res = await fetch(`${live.url}/`)
+      expect(res.status).toBe(500)
+      expect(res.headers.get('content-type')).toMatch(/text\/plain/)
+      expect(await res.text()).toBe('viewer app not built; run `pnpm build`')
+    } finally {
+      await live.close()
+    }
+  })
+
+  it('probes the published layout before the from-source one', () => {
+    const candidates = internals_for_test.app_dir_candidates('/pkg/dist')
+    expect(candidates).toEqual([resolve('/pkg/dist/viewer-app'), resolve('/pkg/dist/../../dist/viewer-app')])
+  })
+
+  it('resolves the from-source layout two levels above src/viewer', () => {
+    const [, from_source] = internals_for_test.app_dir_candidates('/repo/src/viewer')
+    expect(from_source).toBe(resolve('/repo/dist/viewer-app'))
+  })
+
+  it('takes an explicit app_dir over the bundled candidates', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'fascicle-viewer-override-'))
+    try {
+      writeFileSync(join(dir, 'index.html'), '<title>fascicle viewer</title>')
+      expect(internals_for_test.resolve_app_dir(dir)).toBe(dir)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('treats a directory without an index.html as unbuilt', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'fascicle-viewer-empty-'))
+    try {
+      expect(internals_for_test.resolve_app_dir(dir)).toBeNull()
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('falls back to the bundled candidates when no app_dir is given', () => {
+    // Whether dist/viewer-app exists depends on whether anything has been
+    // built, so the assertion is on the shape of the answer, not the answer.
+    const resolved = internals_for_test.resolve_app_dir(undefined)
+    expect(resolved === null || resolved.endsWith('viewer-app')).toBe(true)
+  })
+
+  it('serves a directory whose index.html is present', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'fascicle-viewer-built-'))
+    try {
+      writeFileSync(join(dir, 'index.html'), '<title>fascicle viewer</title>')
+      expect(internals_for_test.resolve_app_dir(dir)).toBe(dir)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('treats an index.html that is a directory as unbuilt', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'fascicle-viewer-dir-index-'))
+    try {
+      mkdirSync(join(dir, 'index.html'))
+      expect(internals_for_test.resolve_app_dir(dir)).toBeNull()
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 })
 
@@ -455,17 +593,24 @@ describe('sse heartbeat and teardown', () => {
     return { req, res, bc }
   }
 
+  it('flushes the response head with a comment frame as soon as it opens', () => {
+    const { res } = open_stream()
+
+    expect(res.text()).toBe(': connected\n\n')
+    expect(res.headers.get('content-type')).toBe('text/event-stream')
+  })
+
   it('writes a comment frame every heartbeat interval and not a tick sooner', () => {
     const { res } = open_stream()
 
     vi.advanceTimersByTime(SSE_HEARTBEAT_MS - 1)
-    expect(res.text()).toBe('')
+    expect(res.text()).toBe(': connected\n\n')
 
     vi.advanceTimersByTime(1)
-    expect(res.text()).toBe(': heartbeat\n\n')
+    expect(res.text()).toBe(': connected\n\n: heartbeat\n\n')
 
     vi.advanceTimersByTime(SSE_HEARTBEAT_MS)
-    expect(res.text()).toBe(': heartbeat\n\n: heartbeat\n\n')
+    expect(res.text()).toBe(': connected\n\n: heartbeat\n\n: heartbeat\n\n')
   })
 
   it('closes the stream, stops heartbeats, and unsubscribes when the request closes', () => {
@@ -473,12 +618,12 @@ describe('sse heartbeat and teardown', () => {
 
     req.emit('close')
 
-    expect(res.text()).toBe('event: close\ndata: {}\n\n')
+    expect(res.text()).toBe(': connected\n\nevent: close\ndata: {}\n\n')
     expect(res.writableEnded).toBe(true)
 
     vi.advanceTimersByTime(SSE_HEARTBEAT_MS * 3)
     bc.emit({ kind: 'emit', text: 'after close' })
-    expect(res.text()).toBe('event: close\ndata: {}\n\n')
+    expect(res.text()).toBe(': connected\n\nevent: close\ndata: {}\n\n')
   })
 
   it('tears the stream down the same way on a request stream error', () => {
@@ -486,7 +631,7 @@ describe('sse heartbeat and teardown', () => {
 
     req.emit('error', new Error('ECONNRESET'))
 
-    expect(res.text()).toBe('event: close\ndata: {}\n\n')
+    expect(res.text()).toBe(': connected\n\nevent: close\ndata: {}\n\n')
     expect(res.writableEnded).toBe(true)
   })
 
@@ -496,7 +641,7 @@ describe('sse heartbeat and teardown', () => {
     req.emit('error', new Error('ECONNRESET'))
     req.emit('close')
 
-    expect(res.text()).toBe('event: close\ndata: {}\n\n')
+    expect(res.text()).toBe(': connected\n\nevent: close\ndata: {}\n\n')
     expect(res.writes_after_end).toEqual([])
   })
 })

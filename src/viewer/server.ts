@@ -1,33 +1,57 @@
 /**
- * Tiny HTTP server: 5 routes, SSE fan-out, NDJSON ingest.
+ * Tiny HTTP server: 4 API routes, SSE fan-out, NDJSON ingest, plus the
+ * compiled run canvas served as static files.
  *
- *   GET  /              -> static viewer.html
  *   GET  /api/events    -> text/event-stream replaying the ring buffer
  *   GET  /api/snapshot  -> JSON dump of the ring buffer
  *   POST /api/ingest    -> newline-delimited trajectory events (http_logger)
  *   GET  /api/health    -> { ok: true }
+ *   GET  /<anything>    -> a file from the compiled app, `/` being index.html
  *
  * The server owns nothing but the socket. The broadcaster owns the event
- * history; the static html lives on disk. SSE clients reconnect with
+ * history; the canvas is a vite build on disk. SSE clients reconnect with
  * `Last-Event-ID` and the server replays anything past their cursor from
  * the ring buffer; older events are gone (bounded memory by design).
  */
 
-import { createReadStream, statSync } from 'node:fs'
+import { createReadStream, statSync, type Stats } from 'node:fs'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
-import { dirname, resolve } from 'node:path'
+import { dirname, extname, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parse_trajectory_event, type ParsedTrajectoryEvent } from '#core'
 import type { Broadcaster } from './broadcast.js'
 
 const SSE_HEARTBEAT_MS = 15_000
 const HERE = dirname(fileURLToPath(import.meta.url))
-const STATIC_HTML = resolve(HERE, 'static', 'viewer.html')
+
+/**
+ * Content types for everything the compiled app ships. Anything outside the
+ * map is served as an opaque download rather than guessed at, which keeps a
+ * stray file from being executed as script by a browser.
+ */
+const CONTENT_TYPES: Readonly<Record<string, string>> = {
+  '.css': 'text/css; charset=utf-8',
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.png': 'image/png',
+  '.svg': 'image/svg+xml',
+  '.txt': 'text/plain; charset=utf-8',
+  '.woff2': 'font/woff2',
+}
+
+const FALLBACK_CONTENT_TYPE = 'application/octet-stream'
 
 export type ServerConfig = {
   readonly broadcaster: Broadcaster
   readonly host: string
   readonly port: number
+  /**
+   * Where the compiled canvas lives, defaulting to the bundled
+   * `dist/viewer-app`. The tests point it at a fixture directory so the suite
+   * never depends on a build having run.
+   */
+  readonly app_dir?: string
   readonly on_parse_error?: (err: unknown, line: string) => void
 }
 
@@ -39,20 +63,17 @@ export type ViewerServer = {
 /**
  * Starts the HTTP server and resolves once it is listening.
  *
- * Wires the five routes (static HTML, health, snapshot, SSE, ingest) to a
- * single request handler and resolves with the bound URL and a `close`
- * that shuts the socket down.
+ * Wires the four API routes (health, snapshot, SSE, ingest) plus the compiled
+ * app's static files to a single request handler, and resolves with the bound
+ * URL and a `close` that shuts the socket down. The API routes are matched
+ * first and exactly, so no file the canvas ships can ever shadow one.
  */
 export function start_server(config: ServerConfig): Promise<ViewerServer> {
-  const { broadcaster, host, port, on_parse_error } = config
+  const { broadcaster, host, port, app_dir, on_parse_error } = config
 
   const handler = (req: IncomingMessage, res: ServerResponse): void => {
     const route = resolve_route(req, host, port)
 
-    if (route === 'GET /' || route === 'GET /index.html') {
-      serve_static_html(res)
-      return
-    }
     if (route === 'GET /api/health') {
       send_json(res, 200, { ok: true })
       return
@@ -69,9 +90,11 @@ export function start_server(config: ServerConfig): Promise<ViewerServer> {
       handle_ingest(req, res, broadcaster, on_parse_error)
       return
     }
-    res.statusCode = 404
-    res.setHeader('content-type', 'application/json')
-    res.end(JSON.stringify({ error: 'not_found', route }))
+    if (route.startsWith('GET /')) {
+      serve_app_asset(res, route, app_dir)
+      return
+    }
+    send_not_found(res, route)
   }
 
   const http_server = createServer(handler)
@@ -149,25 +172,100 @@ function send_json(res: ServerResponse, status: number, body: unknown): void {
 }
 
 /**
- * Streams the bundled `viewer.html` as the response body.
+ * Writes the JSON 404 that names the route that missed.
  */
-function serve_static_html(res: ServerResponse): void {
-  let size: number
+function send_not_found(res: ServerResponse, route: string): void {
+  send_json(res, 404, { error: 'not_found', route })
+}
+
+/**
+ * Where the compiled canvas can be, relative to this module.
+ *
+ * Published, `viewer.js` sits in `dist/` beside `dist/viewer-app/`. Running
+ * from source, this module is `src/viewer/server.ts` and the same build output
+ * is two levels up in the repo's `dist/`. The two candidates never both exist
+ * for the same install, so probing them in order is unambiguous.
+ */
+function app_dir_candidates(here: string): readonly string[] {
+  return [resolve(here, 'viewer-app'), resolve(here, '..', '..', 'dist', 'viewer-app')]
+}
+
+/**
+ * The compiled app directory, or `null` when the canvas has not been built.
+ *
+ * A directory only counts once its `index.html` is really there, so a
+ * half-written build reads as absent rather than as a directory that 404s
+ * every asset.
+ */
+function resolve_app_dir(override: string | undefined): string | null {
+  const candidates = override === undefined ? app_dir_candidates(HERE) : [override]
+  return candidates.find((dir) => stat_file(resolve(dir, 'index.html')) !== null) ?? null
+}
+
+/**
+ * The stats of an existing regular file, or `null` for anything else.
+ *
+ * One syscall answers both questions the asset route asks: whether to serve
+ * the path at all, and what `content-length` to declare. Reading the stats
+ * before the stream opens is what keeps a missing file a clean 404 rather
+ * than a stream error raised after the headers have gone out.
+ */
+function stat_file(path: string): Stats | null {
   try {
-    // Stat first so a missing file produces a clean 500 response instead
-    // of a stream error after headers have already been sent.
-    size = statSync(STATIC_HTML).size
+    const stats = statSync(path)
+    return stats.isFile() ? stats : null
   } catch {
+    return null
+  }
+}
+
+/**
+ * Resolves a URL path inside the compiled app directory, or `null` when it
+ * escapes it.
+ *
+ * The server is bound to localhost by default, but a browser will happily
+ * send `/../../etc/passwd`, so containment is checked on the resolved path
+ * rather than trusted from the URL text.
+ */
+function resolve_app_file(dir: string, url_path: string): string | null {
+  const file = resolve(dir, `.${url_path}`)
+  if (file !== dir && !file.startsWith(dir + sep)) return null
+  return file === dir ? resolve(dir, 'index.html') : file
+}
+
+/**
+ * Streams one file of the compiled canvas as the response body.
+ *
+ * A missing app directory is a 500 naming the build step, because the server
+ * is fine and the operator forgot to compile; a missing file inside a present
+ * app is an ordinary 404.
+ */
+function serve_app_asset(res: ServerResponse, route: string, override: string | undefined): void {
+  const dir = resolve_app_dir(override)
+  if (dir === null) {
     res.statusCode = 500
     res.setHeader('content-type', 'text/plain')
-    res.end('viewer.html missing')
+    res.end('viewer app not built; run `pnpm build`')
     return
   }
+
+  // The route key is `"<METHOD> <path>"`; splitting on the space keeps the
+  // path independent of which method got here, so the GET guard above stays
+  // the only thing deciding whether a non-GET reaches the filesystem.
+  const file = resolve_app_file(dir, route.slice(route.indexOf(' ') + 1))
+  const stats = file === null ? null : stat_file(file)
+  if (file === null || stats === null) {
+    send_not_found(res, route)
+    return
+  }
+
   res.statusCode = 200
-  res.setHeader('content-type', 'text/html; charset=utf-8')
+  res.setHeader('content-type', CONTENT_TYPES[extname(file)] ?? FALLBACK_CONTENT_TYPE)
+  // A localhost dev tool is rebuilt while its tab is open, so nothing it
+  // serves may be cached: a stale bundle would look like a broken canvas.
   res.setHeader('cache-control', 'no-store')
-  res.setHeader('content-length', String(size))
-  createReadStream(STATIC_HTML).pipe(res)
+  res.setHeader('content-length', String(stats.size))
+  createReadStream(file).pipe(res)
 }
 
 /**
@@ -185,6 +283,13 @@ function handle_sse(req: IncomingMessage, res: ServerResponse, broadcaster: Broa
   // Disables response buffering in nginx so SSE frames reach the client as
   // soon as they are written instead of sitting in a proxy buffer.
   res.setHeader('x-accel-buffering', 'no')
+
+  // Node holds the response head back until something is written, so a stream
+  // that opens on an empty ring buffer would sit headerless until the first
+  // heartbeat 15 seconds later, and `EventSource` would not raise `open` until
+  // then. One comment frame flushes the head immediately and is ignored by
+  // every SSE client.
+  res.write(': connected\n\n')
 
   // Replay everything after the client's cursor before subscribing. Both
   // calls run synchronously back to back, so there is no window in which
@@ -299,8 +404,10 @@ function handle_ingest(
 }
 
 export const internals_for_test = {
-  STATIC_HTML,
   SSE_HEARTBEAT_MS,
+  app_dir_candidates,
+  resolve_app_dir,
+  resolve_app_file,
   parse_last_event_id,
   handle_sse,
   handle_ingest,
