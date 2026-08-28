@@ -167,6 +167,8 @@
     "paydown",
     "artboard",
     "artboards",
-    "headerless"
+    "headerless",
+    "centiseconds",
+    "playhead"
   ]
 }
