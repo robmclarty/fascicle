@@ -287,6 +287,52 @@ body {
   stroke-linecap: round;
 }
 
+/* Map instance ticks (artboard 03): perpendicular marks on the outgoing line,
+   one per instance. Hierarchy is opacity and the amber discipline (C4): a done
+   instance is a line-family mark, the alive window the only amber, a failure a
+   small ember ✕ that keeps its slot, and the decade numerals a faint ruler. */
+.tick {
+  stroke-linecap: round;
+}
+
+.tick-done {
+  stroke: #a79f8f; /* the warm tick grey of artboard 03, between line and ring */
+  stroke-width: 2;
+  opacity: 0.9;
+}
+
+.tick-live-glow {
+  stroke: var(--amber);
+  stroke-width: 2.5;
+  opacity: 0.55;
+  filter: url('#glow-2');
+}
+
+.tick-live {
+  stroke: var(--amber);
+  stroke-width: 2.2;
+}
+
+.tick-fail {
+  stroke: var(--ember);
+  stroke-width: 1.7;
+  stroke-linecap: round;
+}
+
+.tick-decade {
+  font: 400 9px var(--mono);
+  letter-spacing: 0.1em;
+  fill: var(--ink);
+  opacity: 0.25;
+  text-anchor: middle;
+}
+
+/* The one place ember reaches a node meta: a map's permanent-failure count,
+   the ✕ tally read aloud beside its ticks (artboard 03, C4). */
+.meta-fail {
+  fill: var(--ember);
+}
+
 /* The scar (artboard 04): the ring never fills, it breaks. The mask hides the
    dead line under the puck, the ring is the same puck-ring stroke split into
    dashed arcs, and ember is only the small ✕ orbiting it, never the ring

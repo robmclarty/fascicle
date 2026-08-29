@@ -36,6 +36,7 @@
 
 import {
   TOKENS,
+  tick_marks,
   type FlowLayout,
   type GroupLabel,
   type JunctionGlyph,
@@ -49,6 +50,7 @@ import {
   initial_state,
   type CanvasState,
   type NodeStatus,
+  type OccurrenceStatus,
   type SpanOccurrence,
 } from './reduce.js'
 
@@ -201,6 +203,13 @@ export type ScarMark = {
 export type SceneNode = {
   readonly glyph: NodeGlyph
   readonly meta: string
+  /**
+   * A map child's failure tally, the ember clause the meta wears after its ink
+   * text (`3 ✕`), null for every node without a permanent-failure count. Kept
+   * apart from `meta` so the renderer can color it ember without splitting a
+   * string (C4).
+   */
+  readonly meta_fail: string | null
   readonly status: NodeStatus
   readonly scar: ScarMark | null
 }
@@ -229,12 +238,37 @@ export type FailMark = {
   readonly y: number
 }
 
+/** A map instance's treatment: alive amber, permanent-failure ember, else grey. */
+export type TickStatus = 'done' | 'live' | 'failed'
+
+/** One instance tick's seat on the lane and how the run left it. */
+export type InstanceTick = {
+  readonly x: number
+  readonly y: number
+  readonly status: TickStatus
+}
+
+/** A ruler numeral under the comb: which instance count it marks, and where. */
+export type DecadeTick = {
+  readonly x: number
+  readonly y: number
+  readonly value: number
+}
+
+/** One map's instance ticks and, at scale, the decade numerals of its comb. */
+export type SceneTickLane = {
+  readonly owner: string
+  readonly ticks: ReadonlyArray<InstanceTick>
+  readonly decades: ReadonlyArray<DecadeTick>
+}
+
 export type Scene = {
   readonly nodes: ReadonlyArray<SceneNode>
   readonly junctions: ReadonlyArray<SceneJunction>
   readonly group_labels: ReadonlyArray<SceneGroupLabel>
   readonly segments: ReadonlyArray<SceneSegment>
   readonly fail_marks: ReadonlyArray<FailMark>
+  readonly tick_lanes: ReadonlyArray<SceneTickLane>
 }
 
 /** The active-puck halo radius, from artboard 01. */
@@ -252,6 +286,9 @@ const MARK_ANGLE = Math.PI / 4
 /** The scar ✕'s seat off its broken puck: up and to the east (artboard 04). */
 const SCAR_MARK_DX = 14
 const SCAR_MARK_DY = -17
+
+/** A decade numeral hangs this far below the tick line (artboard 03). */
+const DECADE_DROP = 30
 
 /**
  * The structural lookups one scene build reads over and over: who owns each
@@ -283,12 +320,20 @@ export function build_scene(flow: FlowLayout, session: Session): Scene {
   const ctx = scene_context(flow, session)
   const captions = node_captions(session.structure)
   return {
-    nodes: flow.nodes.map((glyph) => ({
-      glyph,
-      meta: node_meta(ctx, glyph, captions),
-      status: view_status(ctx, glyph.id),
-      scar: node_scar(session.state, glyph),
-    })),
+    nodes: flow.nodes.map((glyph) => {
+      const meta = node_meta(ctx, glyph, captions)
+      return {
+        glyph,
+        meta: meta.text,
+        meta_fail: meta.fail,
+        status: view_status(ctx, glyph.id),
+        // A map child wears its failures as ✕ ticks in its lane, not as a
+        // broken ring: the puck is a collapsed stand-in for N instances, so
+        // scarring it would read as the whole node dying over one item that
+        // failed (artboard 03 keeps the puck whole).
+        scar: is_map_child(ctx, glyph.id) ? null : node_scar(session.state, glyph),
+      }
+    }),
     junctions: flow.junctions.map((glyph) => ({
       glyph,
       label: 'merge',
@@ -303,7 +348,48 @@ export function build_scene(flow: FlowLayout, session: Session): Scene {
       state: segment_state(ctx, segment),
     })),
     fail_marks: fail_marks(flow, session.state),
+    tick_lanes: scene_tick_lanes(flow, ctx),
   }
+}
+
+/**
+ * Each map's instance ticks, artboard 03. Cardinality is the collapsed child's
+ * occurrence count (D6), so ticks accrete as instances open and none exist at
+ * T+0. `tick_marks` fits the count into the lane the layout reserved: the
+ * canvas pitch up to a decade, the ruler comb beyond, squeezed proportionally
+ * when the run outgrows the lane. Each instance paints its own slot, a failure
+ * keeps that slot as an ember ✕, and only the still-open instances glow amber
+ * (C4). A lane whose map the session does not know draws nothing.
+ */
+function scene_tick_lanes(
+  flow: FlowLayout,
+  ctx: SceneContext,
+): ReadonlyArray<SceneTickLane> {
+  return flow.tick_lanes.map((lane) => {
+    const child = ctx.nodes_by_id.get(lane.owner)?.children?.[0]
+    const instances = child === undefined ? [] : occurrences_of(ctx.state, child.id)
+    const marks = tick_marks(instances.length, lane.x1 - lane.x0)
+    return {
+      owner: lane.owner,
+      ticks: instances.map((occurrence, index) => ({
+        x: lane.x0 + (marks.xs[index] ?? 0),
+        y: lane.y,
+        status: tick_status(occurrence.status),
+      })),
+      decades: marks.decades.map((decade) => ({
+        x: lane.x0 + decade.x,
+        y: lane.y + DECADE_DROP,
+        value: decade.value,
+      })),
+    }
+  })
+}
+
+/** An instance's tick treatment: alive amber, permanent-failure ember, else grey. */
+function tick_status(status: OccurrenceStatus): TickStatus {
+  if (status === 'active') return 'live'
+  if (status === 'failed') return 'failed'
+  return 'done'
 }
 
 /** Build the lookup bundle for one scene: structure walked once, flow scanned once. */
@@ -571,29 +657,73 @@ function attempt_parent(ctx: SceneContext, id: string): LayoutNode | null {
   return parent?.kind === 'retry' ? parent : null
 }
 
+/** A node's meta line as the renderer needs it: ink text, plus an ember clause. */
+type NodeMeta = {
+  readonly text: string
+  readonly fail: string | null
+}
+
 /**
  * A node's meta line: the structural caption, joined by what the run has
  * made true. Cardinality accretes as instances exist (D6), `RUNNING` while
  * any span is open, and the group's span once everything ended, so
  * `MAP` becomes `MAP ×3 · 31MS` and `STEP` becomes `STEP · 42MS`. A retry
- * child trades the caption for the attempt ledger instead.
+ * child trades the caption for the attempt ledger, and a map child for the
+ * instance tally that reads its ticks aloud.
  */
 function node_meta(
   ctx: SceneContext,
   glyph: NodeGlyph,
   captions: ReadonlyMap<string, string>,
-): string {
+): NodeMeta {
   const caption = glyph.terminus
     ? 'TERMINUS'
     : (captions.get(glyph.id) ?? glyph.kind.toUpperCase())
   const occurrences = occurrences_of(ctx.state, glyph.id)
-  if (occurrences.length === 0) return caption
+  if (occurrences.length === 0) return { text: caption, fail: null }
   const retry = glyph.terminus ? null : attempt_parent(ctx, glyph.id)
-  if (retry !== null) return attempt_meta(ctx.state, retry, occurrences)
+  if (retry !== null) return { text: attempt_meta(ctx.state, retry, occurrences), fail: null }
+  if (!glyph.terminus && is_map_child(ctx, glyph.id)) {
+    return map_instance_meta(caption, occurrences)
+  }
   const base =
     occurrences.length >= 2 ? `${caption} ×${occurrences.length}` : caption
-  if (is_running(occurrences)) return `${base} · RUNNING`
-  return with_span(base, occurrences)
+  if (is_running(occurrences)) return { text: `${base} · RUNNING`, fail: null }
+  return { text: with_span(base, occurrences), fail: null }
+}
+
+/** True when a node's structural parent is a map, so its spans are instances. */
+function is_map_child(ctx: SceneContext, id: string): boolean {
+  const parent_id = ctx.parents.get(id)
+  if (parent_id === undefined) return false
+  return ctx.nodes_by_id.get(parent_id)?.kind === 'map'
+}
+
+/**
+ * A map child's meta, artboard 03: the collapsed instance count joined by the
+ * alive window and the failure tally as the run makes them true. A failure
+ * always surfaces as its ember ✕ count, because a duration must never hide a
+ * dead instance; the live count replaces a bare `RUNNING` only at scale, where
+ * `8 of many` carries what `RUNNING` cannot. A clean cohort keeps the plain
+ * `×N · span` the artboard's small maps wear, so the fixture's ×3 maps read
+ * exactly as before.
+ */
+function map_instance_meta(
+  caption: string,
+  occurrences: ReadonlyArray<SpanOccurrence>,
+): NodeMeta {
+  const base = occurrences.length >= 2 ? `${caption} ×${occurrences.length}` : caption
+  const live = occurrences.filter((occurrence) => occurrence.status === 'active').length
+  const failed = occurrences.filter((occurrence) => occurrence.status === 'failed').length
+  const at_scale = occurrences.length > TOKENS.decade
+  if (failed > 0 || (live > 0 && at_scale)) {
+    return {
+      text: live > 0 ? `${base} · ${live} LIVE` : base,
+      fail: failed > 0 ? `${failed} ✕` : null,
+    }
+  }
+  if (live > 0) return { text: `${base} · RUNNING`, fail: null }
+  return { text: with_span(base, occurrences), fail: null }
 }
 
 /**

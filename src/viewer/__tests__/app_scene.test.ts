@@ -14,6 +14,11 @@
  *     `!Number.isInteger(attempts)` clause that follows already rejects
  *     every non-number without coercion, so the typeof guard changes no
  *     outcome; it exists for the type narrowing the template below needs.
+ *   - the `?.` in `is_map_child`'s `nodes_by_id.get(parent_id)?.kind`: a
+ *     `parent_id` only ever comes from the `parents` map, and `scene_context`
+ *     fills `parents` and `nodes_by_id` from the same walk, so the lookup is
+ *     never undefined here. The optional chain mirrors `attempt_parent` for
+ *     one reading of the tree; dropping it changes no reachable outcome.
  */
 
 import { readFileSync } from 'node:fs'
@@ -30,7 +35,9 @@ import {
   build_scene,
   node_captions,
   type Session,
+  type SceneTickLane,
 } from '../app/lib/scene.js'
+import { map_trajectory } from './fixtures/map-instances.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 
@@ -400,6 +407,7 @@ describe('build_scene', () => {
     expect(scene.group_labels).toEqual([])
     expect(scene.segments).toEqual([])
     expect(scene.fail_marks).toEqual([])
+    expect(scene.tick_lanes).toEqual([])
   })
 })
 
@@ -868,5 +876,169 @@ describe('the treatment radii', () => {
   it('carries the artboard halo and bloom sizes', () => {
     expect(HALO_RADIUS).toBe(40)
     expect(BLOOM_RADIUS).toBe(215)
+  })
+})
+
+/** Fold a whole trajectory (structure line first) into a session. */
+function fold_all(frames: ReadonlyArray<unknown>): Session {
+  let session = EMPTY_SESSION
+  for (const frame of frames) session = apply_frame(session, frame)
+  return session
+}
+
+/** The scene lane and its reserved geometry for one map owner. */
+function lane_of(
+  session: Session,
+  owner: string,
+): { readonly scene: SceneTickLane; readonly x0: number; readonly y: number; readonly length: number } {
+  const scene = scene_of(session).tick_lanes.find((lane) => lane.owner === owner)
+  const geom = layout(session.structure).tick_lanes.find((lane) => lane.owner === owner)
+  if (scene === undefined || geom === undefined) throw new Error(`no lane for ${owner}`)
+  return { scene, x0: geom.x0, y: geom.y, length: geom.x1 - geom.x0 }
+}
+
+/** The meta parts of one node id. */
+function meta_of(session: Session, id: string): { text: string; fail: string | null } {
+  const node = scene_of(session).nodes.find((entry) => entry.glyph.id === id)
+  if (node === undefined) throw new Error(`no node ${id}`)
+  return { text: node.meta, fail: node.meta_fail }
+}
+
+describe('map instance ticks (artboard 03)', () => {
+  it('draws no ticks before an instance opens, and the fixture maps at T+0', () => {
+    const scene = scene_of(fold_fixture(1))
+    expect(scene.tick_lanes.map((lane) => lane.owner)).toEqual(['map_1', 'map_2'])
+    for (const lane of scene.tick_lanes) {
+      expect(lane.ticks).toEqual([])
+      expect(lane.decades).toEqual([])
+    }
+  })
+
+  it('sits a small cohort at the canvas pitch, grey once every instance is done', () => {
+    const session = fold_all(map_trajectory({ count: 3 }))
+    const { scene, x0, y, length } = lane_of(session, 'map_1')
+    expect(scene.ticks.map((tick) => tick.status)).toEqual(['done', 'done', 'done'])
+    // The x3 idiom: pitch 30 off the lane start, on the lane line, no squeeze.
+    expect(length).toBe(88)
+    expect(scene.ticks.map((tick) => tick.x - x0)).toEqual([0, 30, 60])
+    expect(scene.ticks.every((tick) => tick.y === y)).toBe(true)
+    expect(scene.decades).toEqual([])
+    expect(meta_of(session, 'summarize').text).toMatch(/^MAP ×3 · \d+MS$/)
+    expect(meta_of(session, 'summarize').fail).toBeNull()
+  })
+
+  it('omits the ×count for a single instance', () => {
+    const session = fold_all(map_trajectory({ count: 1 }))
+    expect(lane_of(session, 'map_1').scene.ticks.map((tick) => tick.status)).toEqual(['done'])
+    expect(meta_of(session, 'summarize').text).toMatch(/^MAP · \d+MS$/)
+  })
+
+  it('marches the still-open instances amber as the fixture map opens', () => {
+    const map1 = scene_of(fold_fixture(11)).tick_lanes.find((lane) => lane.owner === 'map_1')
+    expect(map1?.ticks.map((tick) => tick.status)).toEqual(['live', 'live'])
+  })
+
+  it('switches to the ruler comb past a decade and keeps a failure as its ✕ slot', () => {
+    const session = fold_all(map_trajectory({ count: 12, failed: [4] }))
+    const { scene, x0, length } = lane_of(session, 'map_1')
+    expect(scene.ticks).toHaveLength(12)
+    expect(scene.ticks[4]?.status).toBe('failed')
+    expect(scene.ticks.filter((tick) => tick.status === 'failed')).toHaveLength(1)
+    expect(scene.ticks.filter((tick) => tick.status === 'done')).toHaveLength(11)
+    // One decade numeral, at value 10, squeezed with the comb into the lane.
+    expect(scene.decades.map((decade) => decade.value)).toEqual([10])
+    expect(scene.decades[0]?.x).toBeCloseTo(x0 + 175 * (length / 206))
+    expect(scene.decades[0]?.y).toBe(lane_of(session, 'map_1').y + 30)
+    // A failure surfaces as its ember ✕ tally, replacing the duration.
+    expect(meta_of(session, 'summarize')).toEqual({ text: 'MAP ×12', fail: '1 ✕' })
+  })
+
+  it('lights only the running window amber, keeps every failure slot, at x50', () => {
+    const session = fold_all(map_trajectory({ count: 50, failed: [8, 16, 27], live: 8 }))
+    const { scene } = lane_of(session, 'map_1')
+    expect(scene.ticks).toHaveLength(50)
+    const live = scene.ticks.flatMap((tick, index) => (tick.status === 'live' ? [index] : []))
+    const failed = scene.ticks.flatMap((tick, index) => (tick.status === 'failed' ? [index] : []))
+    expect(live).toEqual([42, 43, 44, 45, 46, 47, 48, 49])
+    expect(failed).toEqual([8, 16, 27])
+    expect(scene.ticks.filter((tick) => tick.status === 'done')).toHaveLength(39)
+    expect(scene.decades.map((decade) => decade.value)).toEqual([10, 20, 30, 40, 50])
+    expect(meta_of(session, 'summarize')).toEqual({ text: 'MAP ×50 · 8 LIVE', fail: '3 ✕' })
+  })
+
+  it('keeps a small running map on the plain RUNNING clause', () => {
+    const session = fold_all(map_trajectory({ count: 3, live: 2 }))
+    expect(lane_of(session, 'map_1').scene.ticks.map((tick) => tick.status)).toEqual([
+      'done',
+      'live',
+      'live',
+    ])
+    expect(meta_of(session, 'summarize')).toEqual({ text: 'MAP ×3 · RUNNING', fail: null })
+  })
+
+  it('surfaces a failure even on a small completed map, over the duration', () => {
+    const session = fold_all(map_trajectory({ count: 3, failed: [1] }))
+    expect(lane_of(session, 'map_1').scene.ticks.map((tick) => tick.status)).toEqual([
+      'done',
+      'failed',
+      'done',
+    ])
+    expect(meta_of(session, 'summarize')).toEqual({ text: 'MAP ×3', fail: '1 ✕' })
+  })
+
+  it('reads the live-window count once a clean map runs at scale', () => {
+    const session = fold_all(map_trajectory({ count: 12, live: 5 }))
+    expect(meta_of(session, 'summarize')).toEqual({ text: 'MAP ×12 · 5 LIVE', fail: null })
+  })
+
+  it('gives the finished fixture maps their x3 fan of grey ticks', () => {
+    const lanes = new Map(
+      scene_of(fold_fixture(events.length)).tick_lanes.map((lane) => [lane.owner, lane]),
+    )
+    expect(lanes.get('map_1')?.ticks.map((tick) => tick.status)).toEqual([
+      'done',
+      'done',
+      'done',
+    ])
+    expect(lanes.get('map_2')?.ticks.map((tick) => tick.status)).toEqual([
+      'done',
+      'done',
+      'done',
+    ])
+    expect(lanes.get('map_1')?.decades).toEqual([])
+  })
+
+  it('draws no ticks for a map lane the session does not know', () => {
+    const foreign = layout({ kind: 'map', id: 'm', children: [{ kind: 'step', id: 'x' }] })
+    const scene = build_scene(foreign, EMPTY_SESSION)
+    expect(scene.tick_lanes.find((lane) => lane.owner === 'm')?.ticks).toEqual([])
+  })
+
+  it('draws no ticks for a known map with no body, without crashing (C7)', () => {
+    const session = apply_frame(EMPTY_SESSION, {
+      kind: 'flow_structure',
+      structure: { kind: 'map', id: 'm' },
+    })
+    expect(scene_of(session).tick_lanes.find((lane) => lane.owner === 'm')?.ticks).toEqual([])
+  })
+
+  it('keeps a running map at the decade boundary on the plain clause', () => {
+    const session = fold_all(map_trajectory({ count: 10, live: 10 }))
+    // Ten is the last count at the canvas pitch (the comb is count > 10), so the
+    // meta stays RUNNING rather than the at-scale live window.
+    expect(meta_of(session, 'summarize')).toEqual({ text: 'MAP ×10 · RUNNING', fail: null })
+    const session_11 = fold_all(map_trajectory({ count: 11, live: 11 }))
+    expect(meta_of(session_11, 'summarize')).toEqual({ text: 'MAP ×11 · 11 LIVE', fail: null })
+  })
+
+  it('keeps a failed instance in the tick lane, off the collapsed map puck', () => {
+    const session = fold_all(map_trajectory({ count: 12, failed: [4] }))
+    // The fold still records the permanent failure and counts it in the header.
+    expect(session.state.nodes.get('summarize')?.scarred).toBe(true)
+    expect(session.state.scars).toBe(1)
+    // But the collapsed puck stays whole: the ✕ lives in the tick lane instead.
+    const summarize = scene_of(session).nodes.find((node) => node.glyph.id === 'summarize')
+    expect(summarize?.scar).toBeNull()
+    expect(lane_of(session, 'map_1').scene.ticks[4]?.status).toBe('failed')
   })
 })
