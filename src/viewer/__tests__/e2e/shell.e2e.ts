@@ -19,6 +19,13 @@ test.beforeAll(async () => {
   viewer = await start_viewer({ host: '127.0.0.1', port: 0 })
 })
 
+// The header clock counts real time between events while the run is live, so
+// a frozen page clock is what keeps the T+ assertions exact.
+test.beforeEach(async ({ page }) => {
+  await page.clock.install()
+  await page.clock.pauseAt(Date.now() + 1000)
+})
+
 test.afterAll(async () => {
   await viewer.close()
 })

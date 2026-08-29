@@ -33,6 +33,13 @@ test.beforeAll(async () => {
   if (res.status !== 200) throw new Error(`fixture ingest failed: ${res.status}`)
 })
 
+// The header clock counts real time between events while the run is live, so
+// a frozen page clock is what keeps T+0MS an exact assertion.
+test.beforeEach(async ({ page }) => {
+  await page.clock.install()
+  await page.clock.pauseAt(Date.now() + 1000)
+})
+
 test.afterAll(async () => {
   await viewer.close()
 })

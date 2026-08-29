@@ -27,11 +27,13 @@
 :root {
   --ground: #14110c;
   --ink: #f3f0e9;
+  --ink-bright: #faf7f0;
   --line-traversed: #8a8478;
   --line-unbuilt: #514c43;
   --puck-ring: #b7afa0;
   --puck-pending: #57524a;
   --amber: #ffac33;
+  --amber-core: #ffc876;
   --ember: #e2503e;
 
   --unit: 8px;
@@ -194,20 +196,109 @@ body {
   stroke-dasharray: 4 9;
 }
 
+.seg-traversed {
+  stroke: var(--line-traversed);
+  stroke-width: 3.5;
+}
+
+/* The live segment is three strokes of the same path (artboard 01): two
+   blurred amber washes for glow, then the marching dash carrying the light.
+   Amber appears only here and on the active puck (C4). */
+.seg-live-outer {
+  stroke: var(--amber);
+  stroke-width: 11;
+  opacity: 0.16;
+  filter: url('#glow-4');
+}
+
+.seg-live-inner {
+  stroke: var(--amber);
+  stroke-width: 6;
+  opacity: 0.32;
+  filter: url('#glow-2');
+}
+
+.seg-live-march {
+  stroke: var(--amber);
+  stroke-width: 3.5;
+  stroke-dasharray: 6.5 8;
+  animation: march 0.45s linear infinite;
+}
+
+/* One dash period per cycle, moving with the path's direction, so the light
+   always flows the way the run does. */
+@keyframes march {
+  to {
+    stroke-dashoffset: -14.5;
+  }
+}
+
+.bloom {
+  fill: url('#bloom');
+}
+
+.halo {
+  fill: url('#halo');
+  animation: halo-pulse 2.4s ease-in-out infinite;
+}
+
+@keyframes halo-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.62;
+  }
+}
+
 .puck {
   fill: var(--ground);
   stroke: var(--puck-pending);
   stroke-width: 3;
 }
 
+/* Traversed pucks lift to the lit ring; the active puck is the one amber
+   ring on the canvas, with the warm core dot only it carries. */
+.node[data-status='done'] .puck,
+.node[data-status='failed'] .puck {
+  stroke: var(--puck-ring);
+}
+
+.node[data-status='active'] .puck {
+  stroke: var(--amber);
+}
+
+.puck-core {
+  fill: var(--amber-core);
+}
+
+.fail-mark {
+  stroke: var(--ember);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
 .junction .puck {
   stroke-width: 2.5;
+}
+
+/* The merge puck lights when its fan completes; while the fan is merely
+   open the light is still out in the lanes, so it stays dim. */
+.junction[data-status='done'] .puck,
+.junction[data-status='failed'] .puck {
+  stroke: var(--puck-ring);
 }
 
 .terminus-ring {
   fill: none;
   stroke: var(--puck-pending);
   stroke-width: 1.5;
+}
+
+.node[data-status='done'] .terminus-ring {
+  stroke: var(--puck-ring);
 }
 
 /* Node typography. Hierarchy is opacity, never added color (C4): base
@@ -233,6 +324,15 @@ body {
 
 .node[data-status='pending'] .node-meta {
   opacity: 0.26;
+}
+
+.node[data-status='active'] .node-name {
+  opacity: 1;
+  fill: var(--ink-bright);
+}
+
+.node[data-status='active'] .node-meta {
+  opacity: 0.5;
 }
 
 .junction-label {
@@ -271,9 +371,13 @@ body {
 }
 
 /* C9: every looping animation swaps to a static glow rather than stopping
-   mid-cycle, so a reduced-motion reader still sees the live state. */
+   mid-cycle, so a reduced-motion reader still sees the live state. The
+   marquee keeps its amber dashes and washes, just parked; the halo holds
+   its full glow. */
 @media (prefers-reduced-motion: reduce) {
-  .status-live .status-dot {
+  .status-live .status-dot,
+  .seg-live-march,
+  .halo {
     animation: none;
   }
 }

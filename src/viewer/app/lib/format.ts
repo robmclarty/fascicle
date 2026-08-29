@@ -25,19 +25,26 @@ export function short_run_id(run_id: string): string {
 }
 
 /**
- * Elapsed run time in the header's mono register: milliseconds under a
- * second, truncated centiseconds under a minute, then minutes and whole
- * seconds so a ten-minute play-mode run stays readable. Truncation, never
- * rounding: elapsed time must not display a moment the run has not reached,
- * and a fractional playhead position should not flicker the label forward.
+ * A duration in the mono register: milliseconds under a second, truncated
+ * centiseconds under a minute, then minutes and whole seconds so a
+ * ten-minute run stays readable. Truncation, never rounding: elapsed time
+ * must not display a moment the run has not reached, and a fractional
+ * playhead position should not flicker the label forward. The header's T+
+ * and a node meta's `42MS` share this so the canvas never disagrees with
+ * itself about what a span of time is called.
  */
-export function format_t_plus(ms: number): string {
+export function format_duration(ms: number): string {
   const clamped = Math.max(0, Math.floor(ms))
-  if (clamped < 1000) return `T+${clamped}MS`
-  if (clamped < 60_000) return `T+${(Math.floor(clamped / 10) / 100).toFixed(2)}S`
+  if (clamped < 1000) return `${clamped}MS`
+  if (clamped < 60_000) return `${(Math.floor(clamped / 10) / 100).toFixed(2)}S`
   const minutes = Math.floor(clamped / 60_000)
   const seconds = Math.floor((clamped % 60_000) / 1000)
-  return `T+${minutes}M${String(seconds).padStart(2, '0')}S`
+  return `${minutes}M${String(seconds).padStart(2, '0')}S`
+}
+
+/** Elapsed run time as the header names it. */
+export function format_t_plus(ms: number): string {
+  return `T+${format_duration(ms)}`
 }
 
 /**

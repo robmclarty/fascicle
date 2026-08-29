@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   RUN_ID_PLACEHOLDER,
   format_cost,
+  format_duration,
   format_header_stats,
   format_t_plus,
   header_stat_parts,
@@ -92,6 +93,26 @@ describe('format_t_plus', () => {
   it('truncates fractions and clamps a negative offset to zero', () => {
     expect(format_t_plus(130.9)).toBe('T+130MS')
     expect(format_t_plus(-5)).toBe('T+0MS')
+  })
+})
+
+describe('format_duration', () => {
+  it('names the artboard-01 node spans the way the metas print them', () => {
+    expect(format_duration(42)).toBe('42MS')
+    expect(format_duration(0)).toBe('0MS')
+    expect(format_duration(31)).toBe('31MS')
+  })
+
+  it('changes units exactly where the header clock does', () => {
+    expect(format_duration(999)).toBe('999MS')
+    expect(format_duration(1000)).toBe('1.00S')
+    expect(format_duration(59_999)).toBe('59.99S')
+    expect(format_duration(60_000)).toBe('1M00S')
+  })
+
+  it('truncates fractions and clamps a negative span to zero', () => {
+    expect(format_duration(42.9)).toBe('42MS')
+    expect(format_duration(-1)).toBe('0MS')
   })
 })
 

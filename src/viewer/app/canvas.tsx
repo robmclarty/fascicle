@@ -1,4 +1,5 @@
 import { For, createMemo, type JSX } from 'solid-js'
+import { live_t_plus_ms } from './lib/clock'
 import { RUN_ID_PLACEHOLDER, header_stat_parts, short_run_id } from './lib/format'
 import { t_plus_ms } from './lib/reduce'
 import type { Session } from './lib/scene'
@@ -26,6 +27,10 @@ export type CanvasProps = {
   readonly session: Session
   readonly status: SseStatus
   readonly viewport: Viewport
+  /** When the newest frame arrived, on the same clock as `now_ms`. */
+  readonly received_at_ms: number | null
+  /** The shell's monotonic clock, advanced once per animation frame. */
+  readonly now_ms: number
 }
 
 /** The status chip: a white dot and a word, never amber (C4). */
@@ -45,7 +50,13 @@ function StatusChip(props: { readonly status: SseStatus }): JSX.Element {
 export function Canvas(props: CanvasProps): JSX.Element {
   const stats = createMemo(() =>
     header_stat_parts({
-      t_plus_ms: t_plus_ms(props.session.state),
+      t_plus_ms: live_t_plus_ms({
+        fold_t_plus_ms: t_plus_ms(props.session.state),
+        run_over: props.session.state.run_status !== null,
+        connected: props.status === 'live',
+        received_at_ms: props.received_at_ms,
+        now_ms: props.now_ms,
+      }),
       retries_absorbed: props.session.state.retries_absorbed,
       scars: props.session.state.scars,
       cost_usd: props.session.state.cost_usd,
