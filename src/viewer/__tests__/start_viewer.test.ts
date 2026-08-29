@@ -74,6 +74,39 @@ describe('start_viewer', () => {
     expect(events.map((e) => e.event.kind)).toEqual(['emit'])
   })
 
+  it('serves the tailed file as full history over /api/trajectory (D7)', async () => {
+    work_dir = mkdtempSync(join(tmpdir(), 'fascicle-viewer-start-'))
+    const path = join(work_dir, 'events.jsonl')
+    // The blank middle line is the tell: streaming the file returns it
+    // verbatim, while the ring fallback (which the tail feeds, dropping blanks)
+    // never could. So a green assertion proves the path threaded through as
+    // trajectory_path rather than the route quietly serving the ring.
+    const body = [
+      JSON.stringify({ kind: 'flow_structure', run_id: 'r1' }),
+      '',
+      JSON.stringify({ kind: 'emit', text: 'one' }),
+      '',
+    ].join('\n')
+    writeFileSync(path, body)
+
+    handle = await start_viewer({ path, port: 0, buffer: 50 })
+    const res = await fetch(`${handle.url}/api/trajectory`)
+    expect(res.status).toBe(200)
+    expect(res.headers.get('content-type')).toMatch(/application\/x-ndjson/)
+    expect(await res.text()).toBe(body)
+  })
+
+  it('serves the ring over /api/trajectory when no path is tailed', async () => {
+    handle = await start_viewer({ port: 0, buffer: 50 })
+    await fetch(`${handle.url}/api/ingest`, {
+      method: 'POST',
+      body: `${JSON.stringify({ kind: 'emit', text: 'pushed' })}\n`,
+    })
+    const res = await fetch(`${handle.url}/api/trajectory`)
+    const lines = (await res.text()).split('\n').filter((line) => line.length > 0)
+    expect(lines.map((line) => (JSON.parse(line) as { text: string }).text)).toEqual(['pushed'])
+  })
+
   it('routes malformed tail lines to on_parse_error', async () => {
     work_dir = mkdtempSync(join(tmpdir(), 'fascicle-viewer-start-'))
     const path = join(work_dir, 'events.jsonl')

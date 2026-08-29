@@ -1,17 +1,20 @@
 /**
- * Tiny HTTP server: 4 API routes, SSE fan-out, NDJSON ingest, plus the
+ * Tiny HTTP server: 5 API routes, SSE fan-out, NDJSON ingest, plus the
  * compiled run canvas served as static files.
  *
- *   GET  /api/events    -> text/event-stream replaying the ring buffer
- *   GET  /api/snapshot  -> JSON dump of the ring buffer
- *   POST /api/ingest    -> newline-delimited trajectory events (http_logger)
- *   GET  /api/health    -> { ok: true }
- *   GET  /<anything>    -> a file from the compiled app, `/` being index.html
+ *   GET  /api/events      -> text/event-stream, replaying past the client cursor
+ *   GET  /api/trajectory  -> the full run history as NDJSON (file, or ring)
+ *   GET  /api/snapshot    -> JSON dump of the ring buffer
+ *   POST /api/ingest      -> newline-delimited trajectory events (http_logger)
+ *   GET  /api/health      -> { ok: true }
+ *   GET  /<anything>      -> a file from the compiled app, `/` being index.html
  *
- * The server owns nothing but the socket. The broadcaster owns the event
- * history; the canvas is a vite build on disk. SSE clients reconnect with
- * `Last-Event-ID` and the server replays anything past their cursor from
- * the ring buffer; older events are gone (bounded memory by design).
+ * The server owns nothing but the socket. The broadcaster owns the recent
+ * event ring; the tailed file owns the full history; the canvas is a vite build
+ * on disk. A client folds `/api/trajectory` for the whole run and then follows
+ * `/api/events`, which replays anything past the cursor it names and streams
+ * new events live. The ring is bounded memory by design, so history older than
+ * it is served from the file the tail already reads (D7).
  */
 
 import { createReadStream, statSync, type Stats } from 'node:fs'
@@ -23,6 +26,14 @@ import type { Broadcaster } from './broadcast.js'
 
 const SSE_HEARTBEAT_MS = 15_000
 const HERE = dirname(fileURLToPath(import.meta.url))
+
+/**
+ * The header `/api/trajectory` stamps with the broadcaster's newest id: the
+ * seam the client resumes SSE from after folding the history dump. The client
+ * carries the same literal (`app/history.ts`); the two ends cannot share a
+ * module because the browser bundle must not pull in node builtins.
+ */
+const CURSOR_HEADER = 'x-fascicle-cursor'
 
 /**
  * Content types for everything the compiled app ships. Anything outside the
@@ -52,6 +63,12 @@ export type ServerConfig = {
    * never depends on a build having run.
    */
   readonly app_dir?: string
+  /**
+   * The trajectory file `/api/trajectory` streams as full history. Absent when
+   * the server is ingest-fed only, where that route falls back to the ring
+   * (D7). Threaded from the tailed `path` by `start_viewer`.
+   */
+  readonly trajectory_path?: string
   readonly on_parse_error?: (err: unknown, line: string) => void
 }
 
@@ -69,7 +86,7 @@ export type ViewerServer = {
  * first and exactly, so no file the canvas ships can ever shadow one.
  */
 export function start_server(config: ServerConfig): Promise<ViewerServer> {
-  const { broadcaster, host, port, app_dir, on_parse_error } = config
+  const { broadcaster, host, port, app_dir, trajectory_path, on_parse_error } = config
 
   const handler = (req: IncomingMessage, res: ServerResponse): void => {
     const route = resolve_route(req, host, port)
@@ -80,6 +97,10 @@ export function start_server(config: ServerConfig): Promise<ViewerServer> {
     }
     if (route === 'GET /api/snapshot') {
       send_json(res, 200, { events: broadcaster.snapshot() })
+      return
+    }
+    if (route === 'GET /api/trajectory') {
+      serve_trajectory(res, broadcaster, trajectory_path)
       return
     }
     if (route === 'GET /api/events') {
@@ -129,9 +150,12 @@ export function bound_port_of(addr: ReturnType<Server['address']>, fallback: num
 /**
  * Builds a `"METHOD /path"` route key from a request.
  *
- * Falls back to the server's own `host`/`port` when the request has no
- * `Host` header, so a malformed or missing header never throws inside
- * `new URL`.
+ * Resolves the path against the client's `Host` header when it parses, and
+ * against the server's own `host`/`port` otherwise. A header can be present yet
+ * malformed (`'in valid'`), which `??` cannot catch because it is neither null
+ * nor undefined; fed to `new URL` it throws. Trying the header inside a
+ * try/catch and falling back to the server's authority keeps route resolution
+ * total for any header a client sends.
  */
 export function resolve_route(
   req: {
@@ -142,8 +166,17 @@ export function resolve_route(
   host: string,
   port: number,
 ): string {
-  const url = new URL(req.url ?? '/', `http://${req.headers.host ?? `${host}:${port}`}`)
-  return `${req.method ?? 'GET'} ${url.pathname}`
+  const method = req.method ?? 'GET'
+  const path = req.url ?? '/'
+  const header = req.headers.host
+  if (header !== undefined) {
+    try {
+      return `${method} ${new URL(path, `http://${header}`).pathname}`
+    } catch {
+      // A malformed Host header falls through to the server's own authority.
+    }
+  }
+  return `${method} ${new URL(path, `http://${host}:${port}`).pathname}`
 }
 
 /**
@@ -158,7 +191,9 @@ function close_server(server: Server): Promise<void> {
     // `close` alone only stops new connections and waits for existing ones
     // (including open SSE streams) to end on their own, which can hang
     // indefinitely. Force them closed so shutdown actually completes.
-    server.closeAllConnections?.()
+    // `closeAllConnections` has existed since node 18.2 and `engines.node` is
+    // `>=24`, so the call is unconditional.
+    server.closeAllConnections()
   })
 }
 
@@ -176,6 +211,45 @@ function send_json(res: ServerResponse, status: number, body: unknown): void {
  */
 function send_not_found(res: ServerResponse, route: string): void {
   send_json(res, 404, { error: 'not_found', route })
+}
+
+/**
+ * Handles `GET /api/trajectory` by streaming the whole run history as NDJSON,
+ * one event per line, so the client folds the full run before it follows the
+ * live tail (D7).
+ *
+ * The tailed file is the source of truth: its bytes stream straight through,
+ * which keeps memory bounded no matter how long the run grew, and a finished
+ * `.jsonl` opened with no live producer becomes the same client path as live.
+ * An ingest-fed server has no file, so it falls back to the ring buffer, the
+ * only history it holds. Either way the response is stamped with the
+ * broadcaster's newest id, the seam the client resumes SSE from; the client
+ * still takes the larger of that and its own folded count, so a file that ran
+ * ahead of the broadcaster is not re-folded.
+ */
+function serve_trajectory(
+  res: ServerResponse,
+  broadcaster: Broadcaster,
+  trajectory_path: string | undefined,
+): void {
+  const ring = broadcaster.snapshot()
+  res.statusCode = 200
+  res.setHeader('content-type', 'application/x-ndjson; charset=utf-8')
+  res.setHeader('cache-control', 'no-store')
+  res.setHeader(CURSOR_HEADER, String(ring.at(-1)?.id ?? 0))
+
+  // The two guards are nested rather than joined with `&&` on purpose: only a
+  // present file reaches `createReadStream`, so a path that is undefined (ingest
+  // mode) or set-but-uncreated (a run not yet started) falls through to the
+  // ring, the only history such a server holds (D7). `stat_file` returns null
+  // for a missing path either way, which keeps the fallthrough total.
+  if (trajectory_path !== undefined) {
+    if (stat_file(trajectory_path) !== null) {
+      createReadStream(trajectory_path).pipe(res)
+      return
+    }
+  }
+  res.end(ring.map((entry) => `${JSON.stringify(entry.event)}\n`).join(''))
 }
 
 /**
@@ -271,9 +345,14 @@ function serve_app_asset(res: ServerResponse, route: string, override: string | 
 /**
  * Handles `GET /api/events` by turning the connection into an SSE stream.
  *
- * Replays whatever the client missed since its `Last-Event-ID` cursor,
- * subscribes it to the broadcaster for new events, and keeps the
- * connection alive with a periodic heartbeat comment.
+ * Replays whatever the client missed since its cursor, subscribes it to the
+ * broadcaster for new events, and keeps the connection alive with a periodic
+ * heartbeat comment. The cursor is the furthest the client can name: the
+ * `Last-Event-ID` a reconnecting browser sends, or the `?since=` a fresh load
+ * sets after folding `/api/trajectory`, because native `EventSource` cannot set
+ * the header on a first connect. That same cursor guards the live subscription,
+ * so an event the history dump already carried is never delivered twice when
+ * the file ran ahead of the broadcaster at dump time.
  */
 function handle_sse(req: IncomingMessage, res: ServerResponse, broadcaster: Broadcaster): void {
   res.statusCode = 200
@@ -294,8 +373,11 @@ function handle_sse(req: IncomingMessage, res: ServerResponse, broadcaster: Broa
   // Replay everything after the client's cursor before subscribing. Both
   // calls run synchronously back to back, so there is no window in which
   // an event could land between the replay and the live subscription.
-  const last_event_id = parse_last_event_id(req.headers['last-event-id'])
-  for (const entry of broadcaster.snapshot_after(last_event_id)) {
+  const cursor = Math.max(
+    parse_last_event_id(req.headers['last-event-id']),
+    parse_since(req.url),
+  )
+  for (const entry of broadcaster.snapshot_after(cursor)) {
     write_event(res, entry.id, entry.event)
   }
 
@@ -305,8 +387,11 @@ function handle_sse(req: IncomingMessage, res: ServerResponse, broadcaster: Broa
     res.write(': heartbeat\n\n')
   }, SSE_HEARTBEAT_MS)
 
+  // The live guard matters only when the cursor sits ahead of the ring: a fresh
+  // load that folded a file the broadcaster had not caught up to. In the common
+  // reconnect case every live id is already past the cursor, so nothing drops.
   const unsubscribe = broadcaster.subscribe((entry) => {
-    write_event(res, entry.id, entry.event)
+    if (entry.id > cursor) write_event(res, entry.id, entry.event)
   })
 
   const close = (): void => {
@@ -333,6 +418,21 @@ function parse_last_event_id(value: string | string[] | undefined): number {
   if (typeof value !== 'string') return 0
   const n = Number.parseInt(value, 10)
   return Number.isFinite(n) && n > 0 ? n : 0
+}
+
+/**
+ * Parses the `?since=` cursor off a request URL, defaulting to 0.
+ *
+ * A fresh load sets it after folding `/api/trajectory`, since native
+ * `EventSource` cannot send a `Last-Event-ID` header on a first connect. The
+ * value reuses `parse_last_event_id`'s number rule, so a missing, absent, or
+ * unusable `since` reads as "no cursor" exactly as the header does.
+ */
+function parse_since(url: string | undefined): number {
+  if (typeof url !== 'string') return 0
+  const query = url.indexOf('?')
+  if (query === -1) return 0
+  return parse_last_event_id(new URLSearchParams(url.slice(query + 1)).get('since') ?? undefined)
 }
 
 /**
@@ -405,10 +505,13 @@ function handle_ingest(
 
 export const internals_for_test = {
   SSE_HEARTBEAT_MS,
+  CURSOR_HEADER,
   app_dir_candidates,
   resolve_app_dir,
   resolve_app_file,
   parse_last_event_id,
+  parse_since,
+  serve_trajectory,
   handle_sse,
   handle_ingest,
 }

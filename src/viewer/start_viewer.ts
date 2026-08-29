@@ -46,6 +46,9 @@ export async function start_viewer(options: StartViewerOptions = {}): Promise<Vi
     broadcaster,
     host,
     port,
+    // The tailed file is `/api/trajectory`'s full-history source (D7); an
+    // ingest-only viewer leaves it unset and that route serves the ring.
+    ...(options.path !== undefined ? { trajectory_path: options.path } : {}),
     ...(options.on_parse_error ? { on_parse_error: options.on_parse_error } : {}),
   })
 

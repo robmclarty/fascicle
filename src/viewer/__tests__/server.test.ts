@@ -41,14 +41,20 @@ import {
  *   - `req.url ?? '/'` -> `''`: the base is always `http://host:port` with no
  *     path, so `new URL('', base)` and `new URL('/', base)` both resolve to
  *     pathname `/`.
- *   - `req.headers.host ?? ...` -> `&&`: only separable by a present-but-
- *     malformed Host header, where the real code throws inside `new URL` and
- *     the mutant falls back. Pinning that would freeze a wart, not a contract
- *     (parked: the docstring claims the fallback covers malformed headers,
- *     but `??` only guards null/undefined).
- *   - `server.closeAllConnections?.()` -> `.()`: the method has existed since
- *     node 18.2 and `engines.node` is `>=24`, so the optional call can never
- *     short-circuit.
+ *   - The `Host`-header branch in `resolve_route` (the `header !== undefined`
+ *     condition, its try block, and the ``http://${header}`` base): a URL's
+ *     pathname does not depend on the authority it is parsed against, so
+ *     preferring the header, skipping it, or emptying it all resolve the same
+ *     pathname, and a base the mutant breaks is caught and retried against the
+ *     server's own authority. The branch exists to keep resolution total on a
+ *     malformed header, which the malformed-host test pins; the route key it
+ *     produces is header-independent by construction.
+ *   - `trajectory_path !== undefined` -> `true` in `serve_trajectory`: entering
+ *     the file branch with no path calls `stat_file(undefined)`, which returns
+ *     null, so it falls through to the ring exactly as the guard would have.
+ *   - `if (query === -1) return 0` -> `false` in `parse_since`: a url with no
+ *     `?` slices from index 0, which is the whole url, and `URLSearchParams`
+ *     finds no `since` in it, so the fallback returns 0 down the longer road.
  *   - `n > 0` -> `n >= 0` in `parse_last_event_id`: the two differ only at
  *     `n === 0`, which returns 0 down either branch.
  *   - `req.setEncoding('utf8')` -> `('')`: node's `normalizeEncoding` maps an
@@ -67,7 +73,8 @@ import {
  *     `extname`, not a branch a request can take.
  */
 
-const { parse_last_event_id, handle_sse, handle_ingest, SSE_HEARTBEAT_MS } = internals_for_test
+const { parse_last_event_id, parse_since, handle_sse, handle_ingest, SSE_HEARTBEAT_MS } =
+  internals_for_test
 
 const gate = vi.hoisted(() => ({
   // The http.Server behind the most recent start_server call.
@@ -355,12 +362,114 @@ describe('viewer http server', () => {
     expect(buf).toContain('"text":"two"')
   })
 
+  it('GET /api/events?since=N replays only past the query cursor', async () => {
+    if (!broadcaster) throw new Error('not initialized')
+    broadcaster.emit({ kind: 'emit', text: 'one' })
+    broadcaster.emit({ kind: 'emit', text: 'two' })
+    const ctrl = new AbortController()
+    // A fresh load sets `?since` because native EventSource cannot send the
+    // Last-Event-ID header on a first connect; the route still resolves by path.
+    const res = await fetch(url('/api/events?since=1'), { signal: ctrl.signal })
+    if (!res.body) throw new Error('missing body')
+    const reader = res.body.getReader()
+    let buf = ''
+    const deadline = Date.now() + 1000
+    while (Date.now() < deadline) {
+      const { value, done } = await reader.read()
+      if (done) break
+      buf += new TextDecoder().decode(value)
+      if (buf.includes('"text":"two"')) break
+    }
+    ctrl.abort()
+    expect(buf).not.toContain('"text":"one"')
+    expect(buf).toContain('"text":"two"')
+  })
+
+  it('GET /api/trajectory serves the ring as NDJSON when there is no file', async () => {
+    if (!broadcaster) throw new Error('not initialized')
+    broadcaster.emit({ kind: 'emit', text: 'one' })
+    broadcaster.emit({ kind: 'span_start', span_id: 's1', name: 'step' })
+    const res = await fetch(url('/api/trajectory'))
+    expect(res.status).toBe(200)
+    expect(res.headers.get('content-type')).toMatch(/application\/x-ndjson/)
+    expect(res.headers.get('cache-control')).toBe('no-store')
+    // The cursor is the broadcaster head, the seam the client resumes SSE from.
+    expect(res.headers.get('x-fascicle-cursor')).toBe('2')
+    const lines = (await res.text()).split('\n').filter((line) => line.length > 0)
+    expect(lines.map((line) => (JSON.parse(line) as { kind: string }).kind)).toEqual([
+      'emit',
+      'span_start',
+    ])
+  })
+
+  it('GET /api/trajectory stamps a zero cursor and empty body on an empty ring', async () => {
+    const res = await fetch(url('/api/trajectory'))
+    expect(res.status).toBe(200)
+    expect(res.headers.get('x-fascicle-cursor')).toBe('0')
+    expect(await res.text()).toBe('')
+  })
+
   it('returns a json 404 naming the route for unknown routes', async () => {
     const res = await fetch(url('/nope'))
     expect(res.status).toBe(404)
     expect(res.headers.get('content-type')).toMatch(/application\/json/)
     const body: unknown = await res.json()
     expect(body).toEqual({ error: 'not_found', route: 'GET /nope' })
+  })
+})
+
+describe('GET /api/trajectory from a file', () => {
+  let dir = ''
+  let srv: ViewerServer | null = null
+
+  afterEach(async () => {
+    if (srv) await srv.close()
+    srv = null
+    if (dir) rmSync(dir, { recursive: true, force: true })
+    dir = ''
+  })
+
+  it('streams the tailed file verbatim, stamping the broadcaster head', async () => {
+    dir = mkdtempSync(join(tmpdir(), 'fascicle-viewer-traj-'))
+    const path = join(dir, 'run.jsonl')
+    const body = [
+      JSON.stringify({ kind: 'flow_structure', run_id: 'r1' }),
+      JSON.stringify({ kind: 'span_start', span_id: 's1', name: 'step' }),
+      '',
+    ].join('\n')
+    writeFileSync(path, body)
+
+    const bc = create_broadcaster({ buffer: 100 })
+    // The tail is what fills the broadcaster in production; here the head is
+    // stamped from what the broadcaster holds, proving it is read off the ring
+    // rather than counted from the file the client also folds.
+    bc.emit({ kind: 'emit' })
+    srv = await start_server({ broadcaster: bc, host: '127.0.0.1', port: 0, trajectory_path: path })
+
+    const res = await fetch(`${srv.url}/api/trajectory`)
+    expect(res.status).toBe(200)
+    expect(res.headers.get('content-type')).toMatch(/application\/x-ndjson/)
+    expect(res.headers.get('x-fascicle-cursor')).toBe('1')
+    expect(await res.text()).toBe(body)
+  })
+
+  it('falls back to the ring when the configured file is missing', async () => {
+    dir = mkdtempSync(join(tmpdir(), 'fascicle-viewer-traj-'))
+    const bc = create_broadcaster({ buffer: 100 })
+    bc.emit({ kind: 'emit', text: 'ring-only' })
+    srv = await start_server({
+      broadcaster: bc,
+      host: '127.0.0.1',
+      port: 0,
+      // A path set but never created reads as "no file", so the route serves
+      // the ring exactly as an ingest-only server would.
+      trajectory_path: join(dir, 'never-written.jsonl'),
+    })
+
+    const res = await fetch(`${srv.url}/api/trajectory`)
+    expect(res.status).toBe(200)
+    const lines = (await res.text()).split('\n').filter((line) => line.length > 0)
+    expect(lines.map((line) => (JSON.parse(line) as { text: string }).text)).toEqual(['ring-only'])
   })
 })
 
@@ -461,6 +570,35 @@ describe('resolve_route', () => {
   it('falls back to host:port for the URL base when the Host header is absent', () => {
     // The base host only affects URL parsing; the route still resolves by path.
     expect(resolve_route({ url: '/x', method: 'GET', headers: {} }, 'myhost', 1234)).toBe('GET /x')
+  })
+
+  it('falls back to the server authority when the Host header is malformed', () => {
+    // A present-but-malformed host is neither null nor undefined, so the old
+    // `??` let it reach `new URL` and throw. Resolution must stay total.
+    expect(resolve_route({ url: '/x', method: 'GET', headers: { host: 'in valid' } }, 'h', 9)).toBe(
+      'GET /x',
+    )
+  })
+})
+
+describe('parse_since', () => {
+  it('reads a positive integer from the since query', () => {
+    expect(parse_since('/api/events?since=5')).toBe(5)
+    expect(parse_since('/api/events?foo=1&since=42')).toBe(42)
+    // A `?` at index 1 pins that the split is on the first `?`, not a fixed slot.
+    expect(parse_since('/?since=9')).toBe(9)
+  })
+
+  it('returns 0 without a query, without since, or for an unusable value', () => {
+    expect(parse_since('/api/events')).toBe(0)
+    expect(parse_since('/api/events?foo=1')).toBe(0)
+    expect(parse_since('/api/events?since=0')).toBe(0)
+    expect(parse_since('/api/events?since=-3')).toBe(0)
+    expect(parse_since('/api/events?since=abc')).toBe(0)
+  })
+
+  it('returns 0 for an absent url', () => {
+    expect(parse_since(undefined)).toBe(0)
   })
 })
 
@@ -643,6 +781,73 @@ describe('sse heartbeat and teardown', () => {
 
     expect(res.text()).toBe(': connected\n\nevent: close\ndata: {}\n\n')
     expect(res.writes_after_end).toEqual([])
+  })
+})
+
+describe('sse cursor', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  /** Opens an SSE stream against `bc`, with an optional request url carrying `?since`. */
+  const open = (bc: Broadcaster, request_url?: string): { req: FakeReq; res: FakeRes } => {
+    const req = Object.assign(make_req(), { url: request_url })
+    const res = make_res()
+    handle_sse(as_req(req), as_res(res), bc)
+    return { req, res }
+  }
+
+  it('replays only past the ?since cursor a fresh load sets', () => {
+    const bc = create_broadcaster({ buffer: 10 })
+    bc.emit({ kind: 'emit', text: 'one' })
+    bc.emit({ kind: 'emit', text: 'two' })
+    bc.emit({ kind: 'emit', text: 'three' })
+
+    const { req, res } = open(bc, '/api/events?since=2')
+
+    expect(res.text()).not.toContain('"one"')
+    expect(res.text()).not.toContain('"two"')
+    expect(res.text()).toContain('"three"')
+    req.emit('close')
+  })
+
+  it('drops live events at or below a cursor that ran ahead of the ring', () => {
+    // The file the client folded held three events the broadcaster had not yet
+    // caught up to, so the cursor sits ahead of the empty ring.
+    const bc = create_broadcaster({ buffer: 10 })
+    const { req, res } = open(bc, '/api/events?since=3')
+
+    bc.emit({ kind: 'emit', text: 'one' })
+    bc.emit({ kind: 'emit', text: 'two' })
+    bc.emit({ kind: 'emit', text: 'three' })
+    bc.emit({ kind: 'emit', text: 'four' })
+
+    expect(res.text()).not.toContain('"one"')
+    expect(res.text()).not.toContain('"three"')
+    expect(res.text()).toContain('"four"')
+    req.emit('close')
+  })
+
+  it('resumes from the furthest of the header and the since query', () => {
+    const bc = create_broadcaster({ buffer: 10 })
+    bc.emit({ kind: 'emit', text: 'one' })
+    bc.emit({ kind: 'emit', text: 'two' })
+    bc.emit({ kind: 'emit', text: 'three' })
+
+    // The header names id 1, the query names id 2; the newer cursor wins, so id
+    // 2 is skipped along with id 1.
+    const req = Object.assign(make_req({ 'last-event-id': '1' }), { url: '/api/events?since=2' })
+    const res = make_res()
+    handle_sse(as_req(req), as_res(res), bc)
+
+    expect(res.text()).not.toContain('"one"')
+    expect(res.text()).not.toContain('"two"')
+    expect(res.text()).toContain('"three"')
+    req.emit('close')
   })
 })
 
