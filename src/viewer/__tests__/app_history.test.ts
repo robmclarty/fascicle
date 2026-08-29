@@ -54,6 +54,15 @@ describe('fold_history', () => {
     expect(history.count).toBe(2)
   })
 
+  it('hands back the frames it folded, in order, for the scrubber to replay', () => {
+    // The scrubber seeds its log from these frames, so they must be the exact
+    // parseable lines and no more: blanks and junk drop here as they do above.
+    const body = ['', '{"kind":"flow_structure"}', 'not json', '{"kind":"emit"}'].join('\n')
+    const history = fold_history(body, 0)
+    expect(history.frames).toEqual([{ kind: 'flow_structure' }, { kind: 'emit' }])
+    expect(history.frames).toHaveLength(history.count)
+  })
+
   it('takes the folded count as the cursor when it leads the stamped head', () => {
     // A file tail that lagged its own file: the dump carried events the
     // broadcaster had not, so the count is the true seam.

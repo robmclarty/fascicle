@@ -147,6 +147,36 @@ body {
   animation: none;
 }
 
+/* Scrubbed off the live edge: the chip reads REPLAY in the white family, never
+   amber (C4). The dot holds a static glow rather than the live pulse, because
+   nothing is arriving to pulse for. */
+.status-replay {
+  color: rgb(246 243 234 / 88%);
+}
+
+.status-replay .status-dot {
+  animation: none;
+}
+
+/* The return-to-live affordance: mono chrome in the meta register, no accent,
+   the one control that re-attaches a scrubbed canvas to the newest event. */
+.return-live {
+  margin-left: 16px;
+  padding: 3px 9px;
+  border: 1px solid rgb(246 243 234 / 22%);
+  border-radius: 3px;
+  background: transparent;
+  font: 500 10px var(--mono);
+  letter-spacing: 0.2em;
+  color: rgb(246 243 234 / 62%);
+  cursor: pointer;
+}
+
+.return-live:hover {
+  border-color: rgb(246 243 234 / 40%);
+  color: rgb(246 243 234 / 88%);
+}
+
 /* The gap approximates the artboard's non-breaking space between a numeral
    and its word; the separators pad themselves out to the 11px the spec pins. */
 .stats {
@@ -526,6 +556,52 @@ body {
   50% {
     opacity: 0.45;
   }
+}
+
+/* The time scrubber: the run laid along the bottom margin in the line grammar.
+   The spine borrows the canvas's own line tokens so time reads like geometry,
+   the run behind the playhead traversed grey and the run ahead the same dim
+   dashed scaffold the unbuilt wears. */
+.scrubber {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 44px;
+  width: 100%;
+  z-index: 2;
+}
+
+.scrub-spine-traversed {
+  stroke: var(--line-traversed);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.scrub-spine-ahead {
+  stroke: var(--line-unbuilt);
+  stroke-width: 2;
+  stroke-dasharray: 4 9;
+  stroke-linecap: round;
+}
+
+/* Error closes, always drawn (Q5): the same ember ✕ the canvas marks a failure
+   with, seated on the spine at the moment it happened. */
+.scrub-fail {
+  stroke: var(--ember);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+}
+
+/* The playhead: the single amber point the timeline strip ever carries, so
+   amber never lives in two timelines at once (Q2). */
+.scrub-playhead {
+  fill: var(--amber);
+}
+
+/* The drawn line is thin; the hit target is the padded band around it (Q5). */
+.scrub-band {
+  fill: transparent;
+  cursor: pointer;
 }
 
 /* C9: every looping animation swaps to a static glow rather than stopping

@@ -21,7 +21,7 @@
  */
 
 import { EMPTY_SESSION, apply_frame, type Session } from './lib/scene.js'
-import { parse_frame } from './sse.js'
+import { parse_frame, type ViewerFrame } from './sse.js'
 
 /**
  * The header `/api/trajectory` stamps with the broadcaster's newest id. The
@@ -33,6 +33,12 @@ export const CURSOR_HEADER = 'x-fascicle-cursor'
 /** The folded history plus the cursor SSE resumes the live tail from. */
 export type History = {
   readonly session: Session
+  /**
+   * The parsed frames the fold consumed, in order. The scrubber seeds its frame
+   * log from this list so a scrub of the loaded run refolds exactly the events
+   * history folded, and the live tail appends its own frames onto the same list.
+   */
+  readonly frames: ReadonlyArray<ViewerFrame>
   readonly count: number
   readonly cursor: number
 }
@@ -46,15 +52,15 @@ export type History = {
  */
 export function fold_history(body: string, head: number): History {
   let session = EMPTY_SESSION
-  let count = 0
+  const frames: ViewerFrame[] = []
   for (const line of body.split('\n')) {
     if (line.length === 0) continue
     const frame = parse_frame(line)
     if (frame === null) continue
     session = apply_frame(session, frame)
-    count += 1
+    frames.push(frame)
   }
-  return { session, count, cursor: Math.max(count, head) }
+  return { session, frames, count: frames.length, cursor: Math.max(frames.length, head) }
 }
 
 /**
