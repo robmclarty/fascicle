@@ -99,6 +99,8 @@ describe('initial_state and the T+0 fold', () => {
         suspended: false,
         turn_retries: 0,
         cost_usd: 0,
+        emits: 0,
+        checkpoint: null,
       })
     }
   })
@@ -660,6 +662,94 @@ describe('suspension', () => {
     const state = reduce(SEQ, resumed)
     expect(node_of(state, 'gate').suspended).toBe(false)
     expect(node_of(state, 'gate').status).toBe('active')
+  })
+})
+
+describe('emit marks', () => {
+  const SEQ: FlowNode = {
+    kind: 'sequence',
+    id: 'seq',
+    children: [{ kind: 'step', id: 'work' }],
+  }
+  const open_work = [
+    start('s0', 'sequence', { id: 'seq' }),
+    start('s1', 'step', { id: 'work', parent_span_id: 's0' }),
+  ]
+
+  it('lands a bare emit on the deepest open span, like a pre-E cost', () => {
+    const state = reduce(SEQ, stream([...open_work, { kind: 'emit', label: 'tick' }]))
+    expect(node_of(state, 'work').emits).toBe(1)
+    expect(node_of(state, 'seq').emits).toBe(0)
+  })
+
+  it('prefers a stamped span_id over the open stack', () => {
+    const state = reduce(
+      SEQ,
+      stream([
+        ...open_work,
+        start('e1', 'engine.generate', { parent_span_id: 's0' }),
+        { kind: 'emit', span_id: 's1' },
+      ]),
+    )
+    expect(node_of(state, 'work').emits).toBe(1)
+  })
+
+  it('accumulates one count per event', () => {
+    const state = reduce(
+      SEQ,
+      stream([...open_work, { kind: 'emit' }, { kind: 'emit' }, { kind: 'emit' }]),
+    )
+    expect(node_of(state, 'work').emits).toBe(3)
+  })
+
+  it('drops an emit it cannot place, without inventing a node', () => {
+    const nowhere = reduce(SEQ, stream([{ kind: 'emit', label: 'lost' }]))
+    expect(node_of(nowhere, 'work').emits).toBe(0)
+    expect(node_of(nowhere, 'seq').emits).toBe(0)
+    const ghost = reduce(SEQ, stream([...open_work, { kind: 'emit', span_id: 'ghost' }]))
+    expect(node_of(ghost, 'work').emits).toBe(0)
+    expect(ghost.nodes.size).toBe(2)
+  })
+})
+
+describe('checkpoint lookups', () => {
+  const SEQ: FlowNode = {
+    kind: 'sequence',
+    id: 'seq',
+    children: [{ kind: 'checkpoint', id: 'cp', children: [{ kind: 'step', id: 'work' }] }],
+  }
+
+  it('records each known outcome on the node the event names', () => {
+    for (const status of ['hit', 'miss', 'read_error'] as const) {
+      const state = reduce(SEQ, stream([{ kind: 'checkpoint', status, id: 'cp' }]))
+      expect(node_of(state, 'cp').checkpoint).toBe(status)
+      expect(node_of(state, 'work').checkpoint).toBeNull()
+    }
+  })
+
+  it('keeps the newest outcome when a resumed run looks the key up again', () => {
+    const state = reduce(
+      SEQ,
+      stream([
+        { kind: 'checkpoint', status: 'read_error', id: 'cp' },
+        { kind: 'checkpoint', status: 'hit', id: 'cp' },
+      ]),
+    )
+    expect(node_of(state, 'cp').checkpoint).toBe('hit')
+  })
+
+  it('stays inert on an unknown status or a missing id (C7)', () => {
+    const unknown = reduce(SEQ, stream([{ kind: 'checkpoint', status: 'warm', id: 'cp' }]))
+    expect(node_of(unknown, 'cp').checkpoint).toBeNull()
+    const nameless = reduce(SEQ, stream([{ kind: 'checkpoint', status: 'hit' }]))
+    expect(node_of(nameless, 'cp').checkpoint).toBeNull()
+    expect(nameless.nodes.size).toBe(3)
+  })
+
+  it('accretes a node for a checkpoint the structure does not know (C7)', () => {
+    const state = reduce(null, stream([{ kind: 'checkpoint', status: 'hit', id: 'lone' }]))
+    expect(node_of(state, 'lone').checkpoint).toBe('hit')
+    expect(node_of(state, 'lone').status).toBe('pending')
   })
 })
 

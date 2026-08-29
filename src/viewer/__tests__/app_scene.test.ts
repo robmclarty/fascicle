@@ -38,6 +38,10 @@ import {
   type SceneTickLane,
 } from '../app/lib/scene.js'
 import { map_trajectory } from './fixtures/map-instances.js'
+import {
+  TREATMENTS_EMIT_CUT,
+  treatments_trajectory,
+} from './fixtures/state-treatments.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 
@@ -408,6 +412,7 @@ describe('build_scene', () => {
     expect(scene.segments).toEqual([])
     expect(scene.fail_marks).toEqual([])
     expect(scene.tick_lanes).toEqual([])
+    expect(scene.cards).toEqual([])
   })
 })
 
@@ -1040,5 +1045,322 @@ describe('map instance ticks (artboard 03)', () => {
     const summarize = scene_of(session).nodes.find((node) => node.glyph.id === 'summarize')
     expect(summarize?.scar).toBeNull()
     expect(lane_of(session, 'map_1').scene.ticks[4]?.status).toBe('failed')
+  })
+})
+
+/** The scene node for one id, throwing when the glyph is missing. */
+function scene_node(session: Session, id: string): ReturnType<typeof build_scene>['nodes'][number] {
+  const node = scene_of(session).nodes.find((entry) => entry.glyph.id === id)
+  if (node === undefined) throw new Error(`no node ${id}`)
+  return node
+}
+
+describe('suspended treatment (Q1)', () => {
+  const GATED = {
+    kind: 'sequence',
+    id: 'seq',
+    children: [
+      { kind: 'suspend', id: 'gate' },
+      { kind: 'step', id: 'after' },
+    ],
+  }
+  const parked = [
+    { kind: 'span_start', span_id: 's0', name: 'sequence', id: 'seq', ts: 1 },
+    { kind: 'span_start', span_id: 'g1', name: 'suspend', id: 'gate', parent_span_id: 's0', ts: 2 },
+    { kind: 'suspended', suspend_id: 'gate', step_id: 'gate', ts: 3 },
+  ]
+  const settled = [
+    ...parked,
+    { kind: 'span_end', span_id: 'g1', id: 'gate', error: 'suspended: gate', ts: 4 },
+    { kind: 'span_end', span_id: 's0', id: 'seq', error: 'suspended: gate', ts: 5 },
+    { kind: 'run_end', status: 'suspended', ts: 5 },
+  ]
+
+  it('trades the whole meta line for SUSPENDED', () => {
+    const node = scene_node(fold_events(GATED, settled), 'gate')
+    expect(node.meta).toBe('SUSPENDED')
+    expect(node.status).toBe('suspended')
+  })
+
+  it('parks the light: the approach greys the moment the suspension lands', () => {
+    // The suspend span is still open here; without the parked rule the entry
+    // would march amber while the run is going nowhere.
+    const states = segment_states(fold_events(GATED, parked))
+    expect(states.get('entry:·>seq')).toBe('traversed')
+    expect(states.get('line:gate>after')).toBe('unbuilt')
+    const after = segment_states(fold_events(GATED, settled))
+    expect(after.get('entry:·>seq')).toBe('traversed')
+    expect(after.get('line:gate>after')).toBe('unbuilt')
+  })
+
+  it('returns to the ordinary grammar when the node resumes', () => {
+    const resumed = fold_events(GATED, [
+      ...settled,
+      { kind: 'span_start', span_id: 'g2', name: 'suspend', id: 'gate', ts: 100 },
+    ])
+    const node = scene_node(resumed, 'gate')
+    // ×2 is the ordinary repeat grammar being honest: the gate ran twice.
+    expect(node.meta).toBe('SUSPEND ×2 · RUNNING')
+    expect(node.status).toBe('active')
+    expect(scene_of(resumed).cards).toEqual([])
+  })
+})
+
+describe('the checkpoint tick', () => {
+  const CACHED = {
+    kind: 'sequence',
+    id: 'seq',
+    children: [
+      { kind: 'checkpoint', id: 'cp', children: [{ kind: 'step', id: 'inner' }] },
+      { kind: 'step', id: 'z' },
+    ],
+  }
+
+  it('marks the node a hit spared, and only a hit', () => {
+    const hit = fold_events(CACHED, [{ kind: 'checkpoint', status: 'hit', id: 'cp', ts: 1 }])
+    expect(scene_node(hit, 'inner').checkpoint).toBe(true)
+    expect(scene_node(hit, 'z').checkpoint).toBe(false)
+    const miss = fold_events(CACHED, [{ kind: 'checkpoint', status: 'miss', id: 'cp', ts: 1 }])
+    expect(scene_node(miss, 'inner').checkpoint).toBe(false)
+  })
+
+  it('seats the tick on the first leaf of a wide checkpoint body', () => {
+    const wide = {
+      kind: 'checkpoint',
+      id: 'cp',
+      children: [
+        {
+          kind: 'sequence',
+          id: 'body',
+          children: [
+            { kind: 'step', id: 'a' },
+            { kind: 'step', id: 'b' },
+          ],
+        },
+      ],
+    }
+    const session = fold_events(wide, [{ kind: 'checkpoint', status: 'hit', id: 'cp', ts: 1 }])
+    expect(scene_node(session, 'a').checkpoint).toBe(true)
+    expect(scene_node(session, 'b').checkpoint).toBe(false)
+  })
+
+  it('wears the tick on its own puck when the wrapper has no body (C7)', () => {
+    const bare = {
+      kind: 'sequence',
+      id: 'seq',
+      children: [
+        { kind: 'checkpoint', id: 'cp' },
+        { kind: 'step', id: 'z' },
+      ],
+    }
+    const session = fold_events(bare, [{ kind: 'checkpoint', status: 'hit', id: 'cp', ts: 1 }])
+    expect(scene_node(session, 'cp').checkpoint).toBe(true)
+  })
+})
+
+describe('annotation cards (Q4)', () => {
+  it('shows no card at T+0 or through a first attempt in flight', () => {
+    expect(scene_of(fold_fixture(1)).cards).toEqual([])
+    expect(scene_of(fold_fixture(28)).cards).toEqual([])
+  })
+
+  it('raises the artboard-01 card while attempt 2 is in flight', () => {
+    const cards = scene_of(fold_fixture(29)).cards
+    expect(cards).toHaveLength(1)
+    expect(cards[0]?.owner).toBe('flaky_enrich')
+    expect(
+      cards[0]?.lines.map((line) => [
+        line.role,
+        line.spans.map((span) => span.text).join(''),
+      ]),
+    ).toEqual([
+      ['title', 'ATTEMPT 2 OF 3'],
+      ['detail', 'ATT 1 ✕ TRANSIENT UPSTREAM ERROR'],
+      ['detail', 'BACKOFF 25MS HONORED'],
+    ])
+    // Ember wraps the ✕ alone, never the words around it (C4).
+    expect(cards[0]?.lines[1]?.spans).toEqual([
+      { text: 'ATT 1 ', ember: false },
+      { text: '✕', ember: true },
+      { text: ' TRANSIENT UPSTREAM ERROR', ember: false },
+    ])
+  })
+
+  it('keeps the card through the second attempt and dismisses it on resolve', () => {
+    expect(scene_of(fold_fixture(30)).cards).toHaveLength(1)
+    expect(scene_of(fold_fixture(31)).cards).toEqual([])
+  })
+
+  it('seats the block at the artboard offsets with the dot on the halo edge', () => {
+    const session = fold_fixture(29)
+    const card = scene_of(session).cards[0]
+    if (card === undefined) throw new Error('no card at the artboard-01 moment')
+    const glyph = layout(session.structure).nodes.find((node) => node.id === 'flaky_enrich')
+    const cx = glyph?.center.x ?? 0
+    const cy = glyph?.center.y ?? 0
+    expect(card.lines.map((line) => [line.x, line.y])).toEqual([
+      [cx - 156, cy - 279],
+      [cx - 156, cy - 257],
+      [cx - 156, cy - 235],
+    ])
+    // The leader leaves the block's bottom on the side facing the node...
+    expect(card.leader).toBe(
+      `M ${cx - 156 + 112} ${cy - 235 + 14} L ${card.dot.x} ${card.dot.y}`,
+    )
+    // ...and the dot sits exactly on the halo circle, above the puck.
+    expect(Math.hypot(card.dot.x - cx, card.dot.y - cy)).toBeCloseTo(HALO_RADIUS)
+    expect(card.dot.y).toBeLessThan(cy)
+  })
+
+  it('mirrors to the up-right seat when the puck sits too far west', () => {
+    const session = fold_events(
+      {
+        kind: 'sequence',
+        id: 'seq',
+        children: [
+          { kind: 'suspend', id: 'gate' },
+          { kind: 'step', id: 'after' },
+        ],
+      },
+      [
+        { kind: 'span_start', span_id: 's0', name: 'sequence', id: 'seq', ts: 1 },
+        { kind: 'span_start', span_id: 'g1', name: 'suspend', id: 'gate', parent_span_id: 's0', ts: 2 },
+        { kind: 'suspended', suspend_id: 'gate', step_id: 'gate', ts: 3 },
+      ],
+    )
+    const card = scene_of(session).cards[0]
+    const glyph = layout(session.structure).nodes.find((node) => node.id === 'gate')
+    const cx = glyph?.center.x ?? 0
+    expect(card?.lines[0]?.x).toBe(cx + 44)
+    expect(card?.leader.startsWith(`M ${cx + 44 + 12} `)).toBe(true)
+  })
+
+  it('persists the scar card and speaks its error, one card on the canvas', () => {
+    const cards = scene_of(fold_fixture(events.length)).cards
+    expect(cards).toHaveLength(1)
+    expect(cards[0]?.owner).toBe('always_throws')
+    expect(
+      cards[0]?.lines.map((line) => [
+        line.role,
+        line.spans.map((span) => span.text).join(''),
+      ]),
+    ).toEqual([
+      ['title', 'PERMANENT FAILURE'],
+      ['detail', '✕ PRIMARY PATH UNAVAILABLE'],
+    ])
+  })
+
+  it('switches an exhausted retry to the scar card once the loop dies', () => {
+    const session = fold_events(
+      {
+        kind: 'sequence',
+        id: 'seq',
+        children: [
+          {
+            kind: 'retry',
+            id: 'r',
+            config: { max_attempts: 2 },
+            children: [{ kind: 'step', id: 'a' }],
+          },
+          { kind: 'step', id: 'z' },
+        ],
+      },
+      [
+        { kind: 'span_start', span_id: 's0', name: 'sequence', id: 'seq', ts: 0 },
+        { kind: 'span_start', span_id: 'r1', name: 'retry', id: 'r', parent_span_id: 's0', ts: 1 },
+        { kind: 'span_start', span_id: 'a1', name: 'step', id: 'a', parent_span_id: 'r1', ts: 2 },
+        { kind: 'span_end', span_id: 'a1', id: 'a', error: 'boom', ts: 3 },
+        { kind: 'span_start', span_id: 'a2', name: 'step', id: 'a', parent_span_id: 'r1', ts: 4 },
+        { kind: 'span_end', span_id: 'a2', id: 'a', error: 'boom', ts: 5 },
+        { kind: 'span_end', span_id: 'r1', id: 'r', error: 'boom', ts: 6 },
+      ],
+    )
+    const cards = scene_of(session).cards
+    expect(cards).toHaveLength(1)
+    expect(cards[0]?.lines[0]?.spans[0]?.text).toBe('PERMANENT FAILURE')
+  })
+
+  it('keeps a map child in its tick lane: no card over the collapsed puck', () => {
+    const session = fold_all(map_trajectory({ count: 12, failed: [4] }))
+    expect(scene_of(session).cards).toEqual([])
+  })
+
+  it('caps a long error clause so a card stays a card', () => {
+    const session = fold_events(
+      {
+        kind: 'sequence',
+        id: 'seq',
+        children: [
+          { kind: 'step', id: 'a' },
+          { kind: 'step', id: 'z' },
+        ],
+      },
+      [
+        { kind: 'span_start', span_id: 's0', name: 'sequence', id: 'seq', ts: 0 },
+        { kind: 'span_start', span_id: 'a1', name: 'step', id: 'a', parent_span_id: 's0', ts: 1 },
+        { kind: 'span_end', span_id: 'a1', id: 'a', error: 'x'.repeat(40), ts: 2 },
+      ],
+    )
+    const detail = scene_of(session).cards[0]?.lines[1]?.spans
+    expect(detail?.[1]?.text).toBe(` ${'X'.repeat(23)}…`)
+  })
+
+  it('leaves a bare unbudgeted retry card to count without a slash', () => {
+    const session = fold_events(
+      {
+        kind: 'sequence',
+        id: 'seq',
+        children: [
+          { kind: 'retry', id: 'r', children: [{ kind: 'step', id: 'a' }] },
+          { kind: 'step', id: 'z' },
+        ],
+      },
+      [
+        { kind: 'span_start', span_id: 'r1', name: 'retry', id: 'r', ts: 0 },
+        { kind: 'span_start', span_id: 'a1', name: 'step', id: 'a', parent_span_id: 'r1', ts: 1 },
+        { kind: 'span_end', span_id: 'a1', id: 'a', error: 'nope', ts: 2 },
+      ],
+    )
+    const card = scene_of(session).cards[0]
+    expect(card?.lines.map((line) => line.spans.map((span) => span.text).join(''))).toEqual([
+      'ATTEMPT 2',
+      'ATT 1 ✕ NOPE',
+    ])
+  })
+})
+
+describe('the treatments fixture', () => {
+  it('folds to the suspended study the Playwright baseline pins', () => {
+    const session = fold_all(treatments_trajectory())
+    expect(scene_node(session, 'warm_up').meta).toBe('STEP · 12MS')
+    const spared = scene_node(session, 'expensive_brief')
+    expect(spared.meta).toBe('STEP')
+    expect(spared.status).toBe('pending')
+    expect(spared.checkpoint).toBe(true)
+    const emitter = scene_node(session, 'gather')
+    expect(emitter.emits).toBe(2)
+    expect(emitter.meta).toBe('STEP · 53MS')
+    const parked = scene_node(session, 'await_approval')
+    expect(parked.meta).toBe('SUSPENDED')
+    expect(parked.status).toBe('suspended')
+    expect(scene_node(session, 'publish').status).toBe('pending')
+
+    const cards = scene_of(session).cards
+    expect(cards).toHaveLength(1)
+    expect(cards[0]?.owner).toBe('await_approval')
+    expect(
+      cards[0]?.lines.map((line) => line.spans.map((span) => span.text).join('')),
+    ).toEqual(['SUSPENDED', 'AWAITING RESUME'])
+
+    const states = segment_states(session)
+    expect(states.get('line:gather>await_approval')).toBe('traversed')
+    expect(states.get('line:await_approval>publish')).toBe('unbuilt')
+  })
+
+  it('has one bloom just landed at the emit cut', () => {
+    const session = fold_all(treatments_trajectory().slice(0, TREATMENTS_EMIT_CUT))
+    const emitter = scene_node(session, 'gather')
+    expect(emitter.emits).toBe(1)
+    expect(emitter.status).toBe('active')
   })
 })

@@ -18,7 +18,9 @@ import {
  * treatment from CSS keyed off `data-status` and `data-state`. The scene
  * decides where the light is; this file only stacks the artboard's layers in
  * order: ambient bloom under everything, the line work, the halo, pucks and
- * their type, then the ember marks.
+ * their type, the ember marks, and the annotation cards over it all. The
+ * one-shot emit bloom is re-keyed off the fold's count so each increment
+ * re-creates the element and restarts its animation.
  */
 
 export type Viewport = {
@@ -46,6 +48,13 @@ const SCAR_MASK_RADIUS = 13
 
 /** Rotating the dashes off the cardinal axes reads as a shattered ring (04). */
 const SCAR_RING_ROTATE = -32
+
+/** The paused double-bar inside a suspended puck: seat, height, and gap. */
+const PAUSE_BAR_DX = 2.4
+const PAUSE_BAR_HALF = 3.2
+
+/** The emit bloom's reach: past the ring, well inside the halo. */
+const EMIT_BLOOM_RADIUS = 16
 
 /** The two-stroke ✕ the retry fail marks and the scar mark both draw. */
 function cross_path(x: number, y: number, arm: number): string {
@@ -271,6 +280,27 @@ export function Stage(props: StageProps): JSX.Element {
                   r={2.5}
                 />
               </Show>
+              <Show when={node.status === 'suspended'}>
+                <For each={[-PAUSE_BAR_DX, PAUSE_BAR_DX]}>
+                  {(dx) => (
+                    <line
+                      class="pause-bar"
+                      x1={node.glyph.center.x + dx}
+                      y1={node.glyph.center.y - PAUSE_BAR_HALF}
+                      x2={node.glyph.center.x + dx}
+                      y2={node.glyph.center.y + PAUSE_BAR_HALF}
+                    />
+                  )}
+                </For>
+              </Show>
+              <Show keyed when={node.emits > 0 ? node.emits : null}>
+                <circle
+                  class="emit-bloom"
+                  cx={node.glyph.center.x}
+                  cy={node.glyph.center.y}
+                  r={EMIT_BLOOM_RADIUS}
+                />
+              </Show>
               <Show when={node.glyph.terminus}>
                 <circle
                   class="terminus-ring"
@@ -291,6 +321,9 @@ export function Stage(props: StageProps): JSX.Element {
                       <tspan class="meta-fail">{fail()}</tspan>
                     </>
                   )}
+                </Show>
+                <Show when={node.checkpoint}>
+                  <tspan class="meta-check"> ✓</tspan>
                 </Show>
               </text>
             </g>
@@ -333,6 +366,31 @@ export function Stage(props: StageProps): JSX.Element {
               <text class="group-text" x={label.anchor.text_anchor.x} y={label.anchor.text_anchor.y}>
                 {label.text}
               </text>
+            </g>
+          )}
+        </For>
+        <For each={scene().cards}>
+          {(card) => (
+            <g class="card" data-owner={card.owner} data-testid="card">
+              <For each={card.lines}>
+                {(line) => (
+                  <text
+                    class={line.role === 'title' ? 'card-title' : 'card-detail'}
+                    x={line.x}
+                    y={line.y}
+                  >
+                    <For each={line.spans}>
+                      {(span) => (
+                        <tspan class={span.ember ? 'card-fail' : undefined}>
+                          {span.text}
+                        </tspan>
+                      )}
+                    </For>
+                  </text>
+                )}
+              </For>
+              <path class="card-leader" d={card.leader} />
+              <circle class="card-dot" cx={card.dot.x} cy={card.dot.y} r={2.5} />
             </g>
           )}
         </For>

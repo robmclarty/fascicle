@@ -281,6 +281,48 @@ body {
   fill: var(--amber-core);
 }
 
+/* Suspended (Q1): the light is parked, not moving, and never amber (C4). The
+   ring goes hollow (the dot grid shows through where the ground fill was) and
+   a small white double-bar parks inside it. */
+.node[data-status='suspended'] .puck {
+  fill: none;
+  stroke: var(--puck-ring);
+}
+
+.pause-bar {
+  stroke: var(--ink-bright);
+  stroke-width: 1.8;
+  stroke-linecap: round;
+}
+
+/* The emit bloom (Q1): one 200ms white brightness flash per emit event, no
+   persistent mark. Base opacity is zero so the element leaves nothing behind
+   once the flash ends; the renderer re-creates it per emit to restart the
+   animation. A one-shot fade is not a looping animation, so it stays under
+   reduced motion (C9 gates the loops). */
+.emit-bloom {
+  fill: var(--ink-bright);
+  opacity: 0;
+  filter: url('#glow-4');
+  animation: emit-bloom 200ms ease-out;
+}
+
+@keyframes emit-bloom {
+  0% {
+    opacity: 0.85;
+  }
+
+  100% {
+    opacity: 0;
+  }
+}
+
+/* The checkpoint tick (Q1): a small white mark in the meta line, the note
+   that the store's answer spared this node its run. */
+.meta-check {
+  fill: var(--ink-bright);
+}
+
 .fail-mark {
   stroke: var(--ember);
   stroke-width: 2;
@@ -363,6 +405,37 @@ body {
 
 .node[data-scar] .node-meta {
   opacity: 0.3;
+}
+
+/* Annotation cards, artboard 01's bare variant: mono text tied to a node by
+   a 1px leader ending in a 2.5px dot at the halo edge. Ember reaches a card
+   only as the ✕ naming a failure (C4). */
+.card-title {
+  font: 500 11.5px var(--mono);
+  letter-spacing: 0.1em;
+  fill: var(--ink);
+  opacity: 0.82;
+}
+
+.card-detail {
+  font: 400 11.5px var(--mono);
+  letter-spacing: 0.1em;
+  fill: #8f8b82;
+}
+
+.card-fail {
+  fill: var(--ember);
+}
+
+.card-leader {
+  stroke: var(--line-traversed);
+  stroke-width: 1;
+  opacity: 0.5;
+  fill: none;
+}
+
+.card-dot {
+  fill: var(--puck-ring);
 }
 
 .junction .puck {

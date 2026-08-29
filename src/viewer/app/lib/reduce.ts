@@ -66,11 +66,16 @@ export type SpanOccurrence = {
 
 export type NodeStatus = 'pending' | 'active' | 'done' | 'failed' | 'suspended'
 
+export type CheckpointStatus = 'hit' | 'miss' | 'read_error'
+
 /**
  * Everything the run has taught us about one structure node. `status` is the
  * puck-level rollup; `occurrences` carries the per-span detail (instance
  * slots, attempt history, failure timestamps) that ticks, loops, and the
- * scrubber's failure marks read directly.
+ * scrubber's failure marks read directly. `emits` counts `ctx.emit` events
+ * (the renderer blooms on each increment; the count is the pure record C5
+ * requires); `checkpoint` keeps the newest store-lookup outcome so a hit can
+ * explain a node the run never entered.
  */
 export type NodeRuntime = {
   readonly status: NodeStatus
@@ -79,6 +84,8 @@ export type NodeRuntime = {
   readonly suspended: boolean
   readonly turn_retries: number
   readonly cost_usd: number
+  readonly emits: number
+  readonly checkpoint: CheckpointStatus | null
 }
 
 /**
@@ -122,6 +129,8 @@ const EMPTY_NODE: NodeRuntime = {
   suspended: false,
   turn_retries: 0,
   cost_usd: 0,
+  emits: 0,
+  checkpoint: null,
 }
 
 /**
@@ -215,6 +224,10 @@ export function apply_event(state: CanvasState, value: unknown): CanvasState {
       return on_span_end(next, event, ts)
     case 'suspended':
       return on_suspended(next, event)
+    case 'emit':
+      return on_emit(next, event)
+    case 'checkpoint':
+      return on_checkpoint(next, event)
     case 'turn_retry':
       return on_turn_retry(next, event)
     case 'cost':
@@ -461,6 +474,43 @@ function on_suspended(state: CanvasState, event: EventRecord): CanvasState {
   const node = state.nodes.get(step_id) ?? EMPTY_NODE
   const nodes = new Map(state.nodes)
   nodes.set(step_id, with_status({ ...node, suspended: true }))
+  return { ...state, nodes }
+}
+
+/**
+ * A `ctx.emit` from inside a step: bump the count on the node it lands on,
+ * attributed like cost (the event's own `span_id` when a producer stamps
+ * one, else the open-stack heuristic, since core's emit rides bare). The
+ * count is the whole record; the 200ms bloom is the renderer reacting to it
+ * changing, so scrub and replay re-perform emits from pure state (C5).
+ */
+function on_emit(state: CanvasState, event: EventRecord): CanvasState {
+  const node_id = attributed_node(state, str(event, 'span_id'))
+  if (node_id === null) return state
+  const node = state.nodes.get(node_id) ?? EMPTY_NODE
+  const nodes = new Map(state.nodes)
+  nodes.set(node_id, { ...node, emits: node.emits + 1 })
+  return { ...state, nodes }
+}
+
+/** Narrow a wire status string to the known checkpoint lookup outcomes. */
+function is_checkpoint_status(value: string): value is CheckpointStatus {
+  return value === 'hit' || value === 'miss' || value === 'read_error'
+}
+
+/**
+ * A checkpoint store lookup: the event names its own structure node (`id` is
+ * stamped by the checkpoint step), so the join is direct like `suspended`'s.
+ * Newest outcome wins because a resumed run can look the same key up again.
+ * Unknown statuses stay inert (C7).
+ */
+function on_checkpoint(state: CanvasState, event: EventRecord): CanvasState {
+  const node_id = str(event, 'id')
+  const status = str(event, 'status')
+  if (node_id === null || status === null || !is_checkpoint_status(status)) return state
+  const node = state.nodes.get(node_id) ?? EMPTY_NODE
+  const nodes = new Map(state.nodes)
+  nodes.set(node_id, { ...node, checkpoint: status })
   return { ...state, nodes }
 }
 

@@ -32,6 +32,16 @@
  * 01: the upper arc is the live lane, amber while an attempt runs or a
  * re-attempt is owed, and the lower arc is the spent lane, grey with one
  * ember mark per failed attempt. Amber appears nowhere else (C4).
+ *
+ * Three states have no artboard and follow the Q1 settle, all in the white
+ * family (C4): a suspended node parks (hollow puck, paused double-bar, meta
+ * `SUSPENDED`, its approach traversed rather than marching, because the
+ * light is parked, not moving); an `emit` blooms the puck once per event
+ * (the fold's count is the record, the renderer reacts to it changing); a
+ * checkpoint hit is a small white tick in the meta line of the node the
+ * store spared. Annotation cards follow the Q4 lifecycle: retry attempt 2+
+ * while in flight (gone on resolve), scar and suspension while they hold,
+ * one card per node with the newest trigger speaking.
  */
 
 import {
@@ -42,6 +52,7 @@ import {
   type JunctionGlyph,
   type LayoutNode,
   type NodeGlyph,
+  type Point,
   type Segment,
 } from './layout.js'
 import { format_duration } from './format.js'
@@ -49,6 +60,7 @@ import {
   apply_event,
   initial_state,
   type CanvasState,
+  type NodeRuntime,
   type NodeStatus,
   type OccurrenceStatus,
   type SpanOccurrence,
@@ -212,6 +224,14 @@ export type SceneNode = {
   readonly meta_fail: string | null
   readonly status: NodeStatus
   readonly scar: ScarMark | null
+  /**
+   * The fold's emit count for this node. The renderer re-keys the one-shot
+   * white bloom off it, so each increment blooms once and a refold of the
+   * same prefix carries the same count (C5).
+   */
+  readonly emits: number
+  /** True when a checkpoint hit spared this node: the small white meta tick. */
+  readonly checkpoint: boolean
 }
 
 export type SceneJunction = {
@@ -262,6 +282,33 @@ export type SceneTickLane = {
   readonly decades: ReadonlyArray<DecadeTick>
 }
 
+/** One run of card text; ember only ever wraps the ✕ naming a failure (C4). */
+export type CardSpan = {
+  readonly text: string
+  readonly ember: boolean
+}
+
+export type CardRole = 'title' | 'detail'
+
+/** One card line with its baseline, ready to draw (D4). */
+export type CardLine = {
+  readonly x: number
+  readonly y: number
+  readonly role: CardRole
+  readonly spans: ReadonlyArray<CardSpan>
+}
+
+/**
+ * One annotation card, artboard 01's bare variant: mono text lines, a 1px
+ * leader, and a 2.5px dot seated on the halo edge of the node it explains.
+ */
+export type SceneCard = {
+  readonly owner: string
+  readonly lines: ReadonlyArray<CardLine>
+  readonly leader: string
+  readonly dot: Point
+}
+
 export type Scene = {
   readonly nodes: ReadonlyArray<SceneNode>
   readonly junctions: ReadonlyArray<SceneJunction>
@@ -269,6 +316,7 @@ export type Scene = {
   readonly segments: ReadonlyArray<SceneSegment>
   readonly fail_marks: ReadonlyArray<FailMark>
   readonly tick_lanes: ReadonlyArray<SceneTickLane>
+  readonly cards: ReadonlyArray<SceneCard>
 }
 
 /** The active-puck halo radius, from artboard 01. */
@@ -290,6 +338,22 @@ const SCAR_MARK_DY = -17
 /** A decade numeral hangs this far below the tick line (artboard 03). */
 const DECADE_DROP = 30
 
+/** The card block's seat off its puck, measured from artboard 01's card. */
+const CARD_DX = -156
+const CARD_RISE = 279
+const CARD_LINE_PITCH = 22
+
+/** The leader leaves the block's bottom edge on the side facing the node. */
+const CARD_LEADER_DROP = 14
+const CARD_LEADER_INSET = 112
+
+/** The mirrored seat when the artboard's up-left block would cross the west margin. */
+const CARD_DX_EAST = 44
+const CARD_LEADER_INSET_EAST = 12
+
+/** An error clause is capped so a card never sprawls into the geometry. */
+const CARD_ERROR_CHARS = 24
+
 /**
  * The structural lookups one scene build reads over and over: who owns each
  * junction, who is whose parent, which leaf a box's inbound segment actually
@@ -307,6 +371,7 @@ type SceneContext = {
   readonly junction_owners: ReadonlyMap<string, string>
   readonly loop_leaves: ReadonlySet<string>
   readonly fallback_primaries: ReadonlySet<string>
+  readonly checkpoint_hits: ReadonlySet<string>
 }
 
 /**
@@ -332,6 +397,8 @@ export function build_scene(flow: FlowLayout, session: Session): Scene {
         // scarring it would read as the whole node dying over one item that
         // failed (artboard 03 keeps the puck whole).
         scar: is_map_child(ctx, glyph.id) ? null : node_scar(session.state, glyph),
+        emits: session.state.nodes.get(glyph.id)?.emits ?? 0,
+        checkpoint: ctx.checkpoint_hits.has(glyph.id),
       }
     }),
     junctions: flow.junctions.map((glyph) => ({
@@ -349,6 +416,7 @@ export function build_scene(flow: FlowLayout, session: Session): Scene {
     })),
     fail_marks: fail_marks(flow, session.state),
     tick_lanes: scene_tick_lanes(flow, ctx),
+    cards: scene_cards(flow, ctx),
   }
 }
 
@@ -420,7 +488,29 @@ function scene_context(flow: FlowLayout, session: Session): SceneContext {
     junction_owners,
     loop_leaves,
     fallback_primaries,
+    checkpoint_hits: checkpoint_hit_leaves(session.state, nodes_by_id, first_leaves),
   }
+}
+
+/**
+ * The nodes wearing the checkpoint tick. A checkpoint wrapper draws no puck
+ * of its own, so a hit surfaces on the first leaf inside it: the node the
+ * store's answer spared. Only the hit earns the tick; a lookup that missed
+ * left an ordinary run to tell its own story.
+ */
+function checkpoint_hit_leaves(
+  state: CanvasState,
+  nodes_by_id: ReadonlyMap<string, LayoutNode>,
+  first_leaves: ReadonlyMap<string, string>,
+): ReadonlySet<string> {
+  const hits = new Set<string>()
+  for (const node of nodes_by_id.values()) {
+    if (node.kind !== 'checkpoint') continue
+    if (state.nodes.get(node.id)?.checkpoint === 'hit') {
+      hits.add(first_leaves.get(node.id) ?? node.id)
+    }
+  }
+  return hits
 }
 
 /**
@@ -507,11 +597,12 @@ function segment_state(ctx: SceneContext, segment: Segment): SegmentState {
 
 /**
  * A plain segment's state from the leaf it feeds: unbuilt until the leaf is
- * entered, live while it runs, traversed after. Two exceptions ride here: a
- * retry circle's anchor leaf settles its spine to grey at once because the
- * re-entries belong to the arcs, and a scarred fallback primary's through-line
+ * entered, live while it runs, traversed after. Three exceptions ride here:
+ * a retry circle's anchor leaf settles its spine to grey at once because the
+ * re-entries belong to the arcs, a scarred fallback primary's through-line
  * is the dead segment past the scar, so it stays unbuilt while the light
- * reroutes through the basin.
+ * reroutes through the basin, and a suspended leaf's approach greys rather
+ * than marching, because the light is parked on the puck, not moving (Q1).
  */
 function leaf_segment_state(ctx: SceneContext, segment: Segment): SegmentState {
   if (ctx.fallback_primaries.has(segment.to) && is_scarred(ctx.state, segment.to)) {
@@ -520,13 +611,24 @@ function leaf_segment_state(ctx: SceneContext, segment: Segment): SegmentState {
   const target = ctx.first_leaves.get(segment.to) ?? segment.to
   const occurrences = occurrences_of(ctx.state, target)
   if (occurrences.length === 0) return 'unbuilt'
-  if (is_running(occurrences) && !ctx.loop_leaves.has(target)) return 'live'
+  if (
+    is_running(occurrences) &&
+    !ctx.loop_leaves.has(target) &&
+    !is_suspended(ctx.state, target)
+  ) {
+    return 'live'
+  }
   return 'traversed'
 }
 
 /** True once the run has hung a permanent scar on a node (the fold's record). */
 function is_scarred(state: CanvasState, id: string): boolean {
   return state.nodes.get(id)?.scarred === true
+}
+
+/** True while a node is parked suspended (the fold lifts it on new activity). */
+function is_suspended(state: CanvasState, id: string): boolean {
+  return state.nodes.get(id)?.suspended === true
 }
 
 /**
@@ -669,13 +771,16 @@ type NodeMeta = {
  * any span is open, and the group's span once everything ended, so
  * `MAP` becomes `MAP ×3 · 31MS` and `STEP` becomes `STEP · 42MS`. A retry
  * child trades the caption for the attempt ledger, and a map child for the
- * instance tally that reads its ticks aloud.
+ * instance tally that reads its ticks aloud. A parked node trades its whole
+ * line for `SUSPENDED` (Q1): the caption is a suspend leaf's own kind, so
+ * joining the two would say the same word twice.
  */
 function node_meta(
   ctx: SceneContext,
   glyph: NodeGlyph,
   captions: ReadonlyMap<string, string>,
 ): NodeMeta {
+  if (is_suspended(ctx.state, glyph.id)) return { text: 'SUSPENDED', fail: null }
   const caption = glyph.terminus
     ? 'TERMINUS'
     : (captions.get(glyph.id) ?? glyph.kind.toUpperCase())
@@ -786,4 +891,164 @@ function group_text(ctx: SceneContext, owner: string): string {
   if (occurrences.length === 0 || is_running(occurrences)) return `${base}${armed}`
   const span = group_span(occurrences)
   return span === null ? `${base}${armed}` : `${base} · ${format_duration(span)}`
+}
+
+/** Card content before placement: the lines without their baselines. */
+type CardContent = ReadonlyArray<{
+  readonly role: CardRole
+  readonly spans: ReadonlyArray<CardSpan>
+}>
+
+/** A whole line in one register. */
+function card_line(role: CardRole, text: string): CardContent[number] {
+  return { role, spans: [{ text, ember: false }] }
+}
+
+/**
+ * The annotation cards, one per node the Q4 lifecycle names: suspension and
+ * scars while they hold, a retry from its second attempt until it resolves.
+ * The triggers are ranked, newest-news first, so a node never carries two
+ * cards: a suspension is the current event, a scar outlives the retry story
+ * that produced it.
+ */
+function scene_cards(flow: FlowLayout, ctx: SceneContext): ReadonlyArray<SceneCard> {
+  const cards: SceneCard[] = []
+  for (const glyph of flow.nodes) {
+    const content = card_content(ctx, glyph)
+    if (content !== null) cards.push(place_card(glyph, content))
+  }
+  return cards
+}
+
+/** The card a node carries right now, null for the quiet majority. */
+function card_content(ctx: SceneContext, glyph: NodeGlyph): CardContent | null {
+  const node = ctx.state.nodes.get(glyph.id)
+  if (node === undefined) return null
+  if (node.suspended) {
+    return [card_line('title', 'SUSPENDED'), card_line('detail', 'AWAITING RESUME')]
+  }
+  // A map child's failures live in its tick lane (artboard 03); a card on the
+  // collapsed puck would decorate, not explain.
+  if (node.scarred && !is_map_child(ctx, glyph.id)) return scar_content(node)
+  return retry_content(ctx, glyph.id, node.occurrences)
+}
+
+/** The scar's explanation: what permanently failed, in its own words. */
+function scar_content(node: NodeRuntime): CardContent {
+  const failure = last_failure(node.occurrences)
+  const clause = error_clause(failure?.occurrence.error ?? null)
+  return [
+    card_line('title', 'PERMANENT FAILURE'),
+    {
+      role: 'detail',
+      spans:
+        clause === null
+          ? [{ text: '✕', ember: true }]
+          : [
+              { text: '✕', ember: true },
+              { text: ` ${clause}`, ember: false },
+            ],
+    },
+  ]
+}
+
+/**
+ * Artboard 01's retry card, alive from the second attempt (the first is not
+ * yet a story) until the loop resolves: the attempt ledger as the title, the
+ * newest spent attempt with its error, and the configured backoff when the
+ * structure knows one.
+ */
+function retry_content(
+  ctx: SceneContext,
+  id: string,
+  attempts: ReadonlyArray<SpanOccurrence>,
+): CardContent | null {
+  const retry = attempt_parent(ctx, id)
+  if (retry === null || !is_running(occurrences_of(ctx.state, retry.id))) return null
+  const owed = attempts[attempts.length - 1]?.status === 'failed'
+  if (!owed && !is_running(attempts)) return null
+  const budget = whole_count(retry.config?.['max_attempts'])
+  const seen = attempts.length + (owed ? 1 : 0)
+  const current = budget === null ? seen : Math.min(seen, budget)
+  if (current < 2) return null
+
+  const lines: Array<CardContent[number]> = [
+    card_line('title', `ATTEMPT ${current}${budget === null ? '' : ` OF ${budget}`}`),
+  ]
+  const failure = last_failure(attempts)
+  if (failure !== null) {
+    const clause = error_clause(failure.occurrence.error)
+    lines.push({
+      role: 'detail',
+      spans: [
+        { text: `ATT ${failure.attempt} `, ember: false },
+        { text: '✕', ember: true },
+        ...(clause === null ? [] : [{ text: ` ${clause}`, ember: false }]),
+      ],
+    })
+  }
+  const backoff = whole_count(retry.config?.['backoff_ms'])
+  if (backoff !== null) {
+    lines.push(card_line('detail', `BACKOFF ${format_duration(backoff)} HONORED`))
+  }
+  return lines
+}
+
+/** The newest failed occurrence and its 1-based attempt number. */
+function last_failure(
+  occurrences: ReadonlyArray<SpanOccurrence>,
+): { readonly occurrence: SpanOccurrence; readonly attempt: number } | null {
+  for (let index = occurrences.length - 1; index >= 0; index -= 1) {
+    const occurrence = occurrences[index]
+    if (occurrence?.status === 'failed') return { occurrence, attempt: index + 1 }
+  }
+  return null
+}
+
+/** An error in the caption register, capped so a card stays a card. */
+function error_clause(error: string | null): string | null {
+  if (error === null || error.length === 0) return null
+  const upper = error.toUpperCase()
+  if (upper.length <= CARD_ERROR_CHARS) return upper
+  return `${upper.slice(0, CARD_ERROR_CHARS - 1)}…`
+}
+
+/**
+ * Seat a card at the artboard-01 offsets: the block up-left of its puck,
+ * baselines at the card pitch, the leader leaving the block's bottom on the
+ * side facing the node, and the dot on the halo circle facing the leader.
+ * A puck too far west for the block mirrors to the up-right seat.
+ */
+function place_card(glyph: NodeGlyph, content: CardContent): SceneCard {
+  const east = glyph.center.x + CARD_DX < TOKENS.margin
+  const block_x = glyph.center.x + (east ? CARD_DX_EAST : CARD_DX)
+  const top = glyph.center.y - CARD_RISE
+  const leader_from: Point = {
+    x: block_x + (east ? CARD_LEADER_INSET_EAST : CARD_LEADER_INSET),
+    y: top + (content.length - 1) * CARD_LINE_PITCH + CARD_LEADER_DROP,
+  }
+  const dot = halo_edge(glyph.center, leader_from)
+  return {
+    owner: glyph.id,
+    lines: content.map((line, index) => ({
+      x: block_x,
+      y: top + index * CARD_LINE_PITCH,
+      role: line.role,
+      spans: line.spans,
+    })),
+    leader: `M ${leader_from.x} ${leader_from.y} L ${dot.x} ${dot.y}`,
+    dot,
+  }
+}
+
+/** The dot's seat: on the halo circle, facing where the leader comes from. */
+function halo_edge(center: Point, toward: Point): Point {
+  const dx = toward.x - center.x
+  const dy = toward.y - center.y
+  const length = Math.hypot(dx, dy)
+  if (length === 0) return { x: center.x, y: center.y - HALO_RADIUS }
+  return {
+    x: center.x + (dx / length) * HALO_RADIUS,
+    y: center.y + (dy / length) * HALO_RADIUS,
+  }
 }

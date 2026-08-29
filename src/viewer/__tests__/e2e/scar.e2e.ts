@@ -54,10 +54,11 @@ test('the scar breaks the ring and orbits a single ember mark', async ({ page })
   await expect(scarred.locator('.scar-ring')).toHaveCount(1)
   await expect(scarred.locator('.scar-mark')).toHaveCount(1)
 
-  // Ember is only the mark: one on the scar, one on the retry's spent attempt,
-  // and nowhere else on the canvas.
+  // Ember is only ✕ glyphs: the scar's, the retry's spent attempt, and the
+  // scar card reading the wound aloud; never a fill or border (C4).
   await expect(page.locator('.scar-mark')).toHaveCount(1)
   await expect(page.locator('.fail-mark')).toHaveCount(1)
+  await expect(page.locator('.card-fail')).toHaveText('✕')
 
   // The name drops to 55% so the living path reads before the wound.
   const name_opacity = await scarred
