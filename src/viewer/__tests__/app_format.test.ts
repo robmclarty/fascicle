@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import {
   RUN_ID_PLACEHOLDER,
-  event_count_word,
   format_cost,
   format_header_stats,
   format_t_plus,
+  header_stat_parts,
   retry_word,
   short_run_id,
 } from '../app/lib/format.js'
@@ -32,12 +32,41 @@ describe('RUN_ID_PLACEHOLDER', () => {
   })
 })
 
-describe('event_count_word', () => {
-  it('is singular only at one', () => {
-    expect(event_count_word(1)).toBe('EVENT')
-    expect(event_count_word(0)).toBe('EVENTS')
-    expect(event_count_word(2)).toBe('EVENTS')
-    expect(event_count_word(41)).toBe('EVENTS')
+describe('header_stat_parts', () => {
+  it('tags the artboard-06 zero line with the roles the opacities key off', () => {
+    expect(
+      header_stat_parts({ t_plus_ms: 0, retries_absorbed: 0, scars: 0, cost_usd: 0 }),
+    ).toEqual([
+      { text: 'T+0MS', role: 'value' },
+      { text: '·', role: 'sep' },
+      { text: '0', role: 'value' },
+      { text: 'RETRIES ABSORBED', role: 'word' },
+      { text: '·', role: 'sep' },
+      { text: 'SCARS', role: 'word' },
+      { text: '0', role: 'value' },
+      { text: '·', role: 'sep' },
+      { text: '$0.0000', role: 'value' },
+    ])
+  })
+
+  it('carries the artboard-01 mid-run values through the same slots', () => {
+    const texts = header_stat_parts({
+      t_plus_ms: 130,
+      retries_absorbed: 1,
+      scars: 0,
+      cost_usd: 0,
+    }).map((part) => part.text)
+    expect(texts).toEqual([
+      'T+130MS',
+      '·',
+      '1',
+      'RETRY ABSORBED',
+      '·',
+      'SCARS',
+      '0',
+      '·',
+      '$0.0000',
+    ])
   })
 })
 

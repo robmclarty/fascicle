@@ -25,19 +25,6 @@ export function short_run_id(run_id: string): string {
 }
 
 /**
- * The pluralized word for an event tally, rendered beside the numeral.
- *
- * Value and word carry different opacities in the header (78% against 38%),
- * so they are two spans and this returns only the word. The count is the
- * scaffold's one honest stat: before the fold lands there is no elapsed time,
- * no cost, and no scar count, and inventing a zero for each would claim
- * knowledge the canvas does not have.
- */
-export function event_count_word(count: number): string {
-  return count === 1 ? 'EVENT' : 'EVENTS'
-}
-
-/**
  * Elapsed run time in the header's mono register: milliseconds under a
  * second, truncated centiseconds under a minute, then minutes and whole
  * seconds so a ten-minute play-mode run stays readable. Truncation, never
@@ -63,8 +50,8 @@ export function format_cost(usd: number): string {
 }
 
 /**
- * The pluralized word for the absorbed-retry stat, the same two-span split as
- * `event_count_word`: the numeral and the word carry different opacities.
+ * The pluralized word for the absorbed-retry stat. Numeral and word carry
+ * different opacities in the header, so they are separate parts.
  */
 export function retry_word(count: number): string {
   return count === 1 ? 'RETRY' : 'RETRIES'
@@ -78,15 +65,43 @@ export type HeaderStatsInput = {
 }
 
 /**
- * The header's right-aligned stat line, artboard-01 order and separators. The
- * caller chooses the T+ value (the fold's clock, or a scrub playhead) because
- * which moment the header names is a renderer decision, not a formatting one.
+ * One span of the header stat line. Values sit at 78%, words at 38%, and the
+ * dot separators at 20% (artboard 05), so the renderer needs the line as
+ * role-tagged parts rather than one string.
+ */
+export type HeaderStatPart = {
+  readonly text: string
+  readonly role: 'value' | 'word' | 'sep'
+}
+
+const STAT_SEP: HeaderStatPart = { text: '·', role: 'sep' }
+
+/**
+ * The header's right-aligned stat line, artboard-01 order and separators,
+ * as parts the component renders one span each. The caller chooses the T+
+ * value (the fold's clock, or a scrub playhead) because which moment the
+ * header names is a renderer decision, not a formatting one.
+ */
+export function header_stat_parts(stats: HeaderStatsInput): ReadonlyArray<HeaderStatPart> {
+  return [
+    { text: format_t_plus(stats.t_plus_ms), role: 'value' },
+    STAT_SEP,
+    { text: String(stats.retries_absorbed), role: 'value' },
+    { text: `${retry_word(stats.retries_absorbed)} ABSORBED`, role: 'word' },
+    STAT_SEP,
+    { text: 'SCARS', role: 'word' },
+    { text: String(stats.scars), role: 'value' },
+    STAT_SEP,
+    { text: format_cost(stats.cost_usd), role: 'value' },
+  ]
+}
+
+/**
+ * The stat line as one string: the parts joined the way the artboard reads
+ * aloud. Tests and logs want the sentence; the header wants the parts.
  */
 export function format_header_stats(stats: HeaderStatsInput): string {
-  return [
-    format_t_plus(stats.t_plus_ms),
-    `${stats.retries_absorbed} ${retry_word(stats.retries_absorbed)} ABSORBED`,
-    `SCARS ${stats.scars}`,
-    format_cost(stats.cost_usd),
-  ].join(' · ')
+  return header_stat_parts(stats)
+    .map((part) => part.text)
+    .join(' ')
 }

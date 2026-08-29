@@ -28,17 +28,18 @@ test('the shell mounts and connects to the event stream', async ({ page }) => {
 
   await expect(page.getByTestId('run-id')).toHaveText('········')
   await expect(page.getByTestId('status')).toHaveText('LIVE')
-  await expect(page.getByTestId('stats')).toHaveText('0 EVENTS')
+  const parts = await page.getByTestId('stats').locator('span').allTextContents()
+  expect(parts.join(' ')).toBe('T+0MS · 0 RETRIES ABSORBED · SCARS 0 · $0.0000')
   await expect(page.getByTestId('stage')).toBeVisible()
 })
 
-test('the header adopts the run id and counts events off the wire', async ({ page }) => {
+test('the header adopts the run id and folds the clock off the wire', async ({ page }) => {
   await page.goto(viewer.url)
   await expect(page.getByTestId('status')).toHaveText('LIVE')
 
   const lines = [
-    { kind: 'flow_structure', run_id: '42b20e54-41e6-47b2-8697-bda677867762' },
-    { kind: 'span_start', span_id: 'step:1', name: 'step', id: 'fetch_brief' },
+    { kind: 'flow_structure', run_id: '42b20e54-41e6-47b2-8697-bda677867762', ts: 1000 },
+    { kind: 'span_start', span_id: 'step:1', name: 'step', id: 'fetch_brief', ts: 1130 },
   ]
   const res = await fetch(`${viewer.url}/api/ingest`, {
     method: 'POST',
@@ -47,7 +48,8 @@ test('the header adopts the run id and counts events off the wire', async ({ pag
   expect(res.status).toBe(200)
 
   await expect(page.getByTestId('run-id')).toHaveText('42b20e54')
-  await expect(page.getByTestId('stats')).toHaveText('2 EVENTS')
+  // T+130MS proves the second frame folded, not just the first.
+  await expect(page.getByTestId('stats').locator('span').first()).toHaveText('T+130MS')
 })
 
 test('the page fetches nothing off its own origin (C3)', async ({ page }) => {

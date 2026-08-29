@@ -9,15 +9,14 @@
  */
 
 /**
- * The shape the scaffold reads off a trajectory frame.
+ * A decoded trajectory frame: the whole parsed event, verbatim.
  *
- * Only `kind` is guaranteed by the wire contract; `run_id` rides every event a
- * logger stamps, but a hand-fed ingest line may omit it. Later steps replace
- * this with the full parsed event once the reducer owns the wire types.
+ * Only `kind` is guaranteed by the wire contract. Everything else stays
+ * untyped surplus on purpose: the fold reads each field permissively at the
+ * point of use (C7), so narrowing here would only duplicate its guards.
  */
-export type ViewerFrame = {
+export type ViewerFrame = Readonly<Record<string, unknown>> & {
   readonly kind: string
-  readonly run_id?: string
 }
 
 /** The slice of `EventSource` this module uses, so a fake can stand in for it. */
@@ -54,13 +53,13 @@ export function parse_frame(data: string): ViewerFrame | null {
   } catch {
     return null
   }
-  if (typeof parsed !== 'object' || parsed === null) return null
-  if (!('kind' in parsed) || typeof parsed.kind !== 'string') return null
-  const kind = parsed.kind
-  if ('run_id' in parsed && typeof parsed.run_id === 'string') {
-    return { kind, run_id: parsed.run_id }
-  }
-  return { kind }
+  return is_frame(parsed) ? parsed : null
+}
+
+/** The wire gate: a non-array object carrying a string `kind`. */
+function is_frame(value: unknown): value is ViewerFrame {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
+  return typeof (value as { kind?: unknown }).kind === 'string'
 }
 
 /**

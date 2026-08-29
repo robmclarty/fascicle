@@ -1,10 +1,13 @@
-import type { JSX } from 'solid-js'
-import { RUN_ID_PLACEHOLDER, event_count_word, short_run_id } from './lib/format'
+import { For, createMemo, type JSX } from 'solid-js'
+import { RUN_ID_PLACEHOLDER, header_stat_parts, short_run_id } from './lib/format'
+import { t_plus_ms } from './lib/reduce'
+import type { Session } from './lib/scene'
 import type { SseStatus } from './sse'
+import { Stage, type Viewport } from './stage'
 
 /*
- * The run canvas shell: ground, header chrome, and the empty stage the metro
- * geometry will be drawn into.
+ * The run canvas shell: ground, header chrome, and the stage the metro
+ * geometry is drawn into.
  *
  * Components stay this thin on purpose (D4). Everything with a decision in it
  * lives in `lib/`, mutation-gated; what is left here is markup the Playwright
@@ -20,9 +23,9 @@ const STATUS_LABEL: Record<SseStatus, string> = {
 }
 
 export type CanvasProps = {
-  readonly run_id: string | null
+  readonly session: Session
   readonly status: SseStatus
-  readonly event_count: number
+  readonly viewport: Viewport
 }
 
 /** The status chip: a white dot and a word, never amber (C4). */
@@ -38,24 +41,35 @@ function StatusChip(props: { readonly status: SseStatus }): JSX.Element {
   )
 }
 
-/** The whole canvas: header chrome over an empty stage. */
+/** The whole canvas: header chrome over the scaffold stage. */
 export function Canvas(props: CanvasProps): JSX.Element {
+  const stats = createMemo(() =>
+    header_stat_parts({
+      t_plus_ms: t_plus_ms(props.session.state),
+      retries_absorbed: props.session.state.retries_absorbed,
+      scars: props.session.state.scars,
+      cost_usd: props.session.state.cost_usd,
+    }),
+  )
   return (
     <div class="canvas">
       <header class="canvas-header">
         <div class="run">
           <span class="run-key">run</span>
           <span class="run-id" data-testid="run-id">
-            {props.run_id === null ? RUN_ID_PLACEHOLDER : short_run_id(props.run_id)}
+            {props.session.state.run_id === null
+              ? RUN_ID_PLACEHOLDER
+              : short_run_id(props.session.state.run_id)}
           </span>
           <StatusChip status={props.status} />
         </div>
         <div class="stats" data-testid="stats">
-          <span class="stats-value">{props.event_count}</span>{' '}
-          <span class="stats-word">{event_count_word(props.event_count)}</span>
+          <For each={stats()}>
+            {(part) => <span class={`stats-${part.role}`}>{part.text}</span>}
+          </For>
         </div>
       </header>
-      <svg class="stage" data-testid="stage" fill="none" />
+      <Stage session={props.session} viewport={props.viewport} />
     </div>
   )
 }

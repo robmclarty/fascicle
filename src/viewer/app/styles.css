@@ -30,6 +30,7 @@
   --line-traversed: #8a8478;
   --line-unbuilt: #514c43;
   --puck-ring: #b7afa0;
+  --puck-pending: #57524a;
   --amber: #ffac33;
   --ember: #e2503e;
 
@@ -144,7 +145,12 @@ body {
   animation: none;
 }
 
+/* The gap approximates the artboard's non-breaking space between a numeral
+   and its word; the separators pad themselves out to the 11px the spec pins. */
 .stats {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
   font: 500 11px var(--mono);
   letter-spacing: 0.14em;
   color: var(--ink);
@@ -159,10 +165,98 @@ body {
   opacity: 0.38;
 }
 
+.stats-sep {
+  opacity: 0.2;
+  padding: 0 6px;
+}
+
+/* An svg is a replaced element: absolute positioning alone leaves it at its
+   300x150 intrinsic size and clips the geometry, so the size is explicit. */
 .stage {
   position: absolute;
   inset: 0;
+  width: 100%;
+  height: 100%;
   z-index: 1;
+}
+
+/* The scaffold: metro lines in their unbuilt state, dashed and dim. The
+   values are artboard tokens (line 3 dash 4 9, round caps), not taste. */
+.seg {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.seg-unbuilt {
+  stroke: var(--line-unbuilt);
+  stroke-width: 3;
+  stroke-dasharray: 4 9;
+}
+
+.puck {
+  fill: var(--ground);
+  stroke: var(--puck-pending);
+  stroke-width: 3;
+}
+
+.junction .puck {
+  stroke-width: 2.5;
+}
+
+.terminus-ring {
+  fill: none;
+  stroke: var(--puck-pending);
+  stroke-width: 1.5;
+}
+
+/* Node typography. Hierarchy is opacity, never added color (C4): base
+   opacities are the lit values and pending drops below them. */
+.node-name {
+  font: 600 15px var(--sans);
+  fill: var(--ink);
+  opacity: 0.92;
+  text-anchor: middle;
+}
+
+.node-meta {
+  font: 500 11px var(--mono);
+  letter-spacing: 0.14em;
+  fill: var(--ink);
+  opacity: 0.42;
+  text-anchor: middle;
+}
+
+.node[data-status='pending'] .node-name {
+  opacity: 0.45;
+}
+
+.node[data-status='pending'] .node-meta {
+  opacity: 0.26;
+}
+
+.junction-label {
+  font: 500 13px var(--sans);
+  fill: var(--ink);
+  opacity: 0.55;
+  text-anchor: middle;
+}
+
+.junction[data-status='pending'] .junction-label {
+  opacity: 0.35;
+}
+
+.group-tick {
+  stroke: var(--ink);
+  stroke-width: 1.5;
+  opacity: 0.3;
+}
+
+.group-text {
+  font: 500 11px var(--mono);
+  letter-spacing: 0.18em;
+  fill: var(--ink);
+  opacity: 0.35;
 }
 
 @keyframes status-pulse {

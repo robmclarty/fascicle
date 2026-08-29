@@ -17,6 +17,10 @@ import {
  *   - `catch { return null }` -> `catch {}` around `JSON.parse`: an empty
  *     catch leaves `parsed` as `undefined`, which the very next line rejects
  *     with the same `null`. The two paths differ only in how far they walk.
+ *   - `typeof value !== 'object'` -> `false` in `is_frame`: every JSON.parse
+ *     result that slips past it (numbers, strings, booleans) boxes on the
+ *     `.kind` property read and yields `undefined`, which the kind check
+ *     rejects the same way; the clause exists for type narrowing.
  */
 
 type FakeSource = EventSourceLike & {
@@ -71,16 +75,20 @@ function connect(url = '/api/events'): Harness {
 }
 
 describe('parse_frame', () => {
-  it('reads kind and run_id off a well-formed event', () => {
-    expect(parse_frame('{"kind":"span_start","run_id":"42b20e54"}')).toEqual({
+  it('hands the whole parsed event through, verbatim', () => {
+    expect(
+      parse_frame('{"kind":"span_start","run_id":"42b20e54","span_id":"step:1","ts":7}'),
+    ).toEqual({
       kind: 'span_start',
       run_id: '42b20e54',
+      span_id: 'step:1',
+      ts: 7,
     })
   })
 
-  it('omits run_id rather than inventing one', () => {
+  it('keeps a field of the wrong type for the fold to judge', () => {
     expect(parse_frame('{"kind":"emit"}')).toEqual({ kind: 'emit' })
-    expect(parse_frame('{"kind":"emit","run_id":7}')).toEqual({ kind: 'emit' })
+    expect(parse_frame('{"kind":"emit","run_id":7}')).toEqual({ kind: 'emit', run_id: 7 })
   })
 
   it('accepts a kind this build has never heard of (C7)', () => {
@@ -124,10 +132,10 @@ describe('connect_events', () => {
 
   it('forwards trajectory frames in order', () => {
     const h = connect()
-    h.source.fire('trajectory', '{"kind":"flow_structure","run_id":"42b20e54"}')
+    h.source.fire('trajectory', '{"kind":"flow_structure","structure":{"kind":"step","id":"a"}}')
     h.source.fire('trajectory', '{"kind":"span_start","run_id":"42b20e54"}')
     expect(h.frames).toEqual([
-      { kind: 'flow_structure', run_id: '42b20e54' },
+      { kind: 'flow_structure', structure: { kind: 'step', id: 'a' } },
       { kind: 'span_start', run_id: '42b20e54' },
     ])
   })
