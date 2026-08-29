@@ -133,8 +133,13 @@ test('the finished run settles: all grey, counts final, clock frozen', async ({
   expect(parts.join(' ')).toBe('T+196MS · 1 RETRY ABSORBED · SCARS 1 · $0.0000')
 
   await expect(page.locator('.seg-live')).toHaveCount(0)
-  await expect(page.locator('[data-state="unbuilt"]')).toHaveCount(0)
-  await expect(page.locator('.seg-traversed')).toHaveCount(18)
+  // The scarred primary's through-line is the one dead segment left; every
+  // other line has greyed.
+  await expect(page.locator('[data-state="unbuilt"]')).toHaveCount(1)
+  await expect(
+    page.locator('[data-role="line"][data-to="always_throws"]'),
+  ).toHaveAttribute('data-state', 'unbuilt')
+  await expect(page.locator('.seg-traversed')).toHaveCount(17)
   await expect(page.locator('.halo')).toHaveCount(0)
   await expect(page.locator('.fail-mark')).toHaveCount(1)
 })

@@ -4,6 +4,7 @@ import {
   BLOOM_RADIUS,
   HALO_RADIUS,
   build_scene,
+  type ScarMark,
   type SceneSegment,
   type Session,
 } from './lib/scene'
@@ -29,8 +30,53 @@ export type StageProps = {
   readonly viewport: Viewport
 }
 
-/** The half-length of a fail mark's ✕ arms, from artboard 01. */
+/** The half-length of an ember ✕'s arms, from artboards 01 and 04. */
 const MARK_ARM = 4.5
+
+/** The scar puck's broken ring radius and its ground mask, from artboard 04. */
+const SCAR_RING_RADIUS = 8.5
+const SCAR_MASK_RADIUS = 13
+
+/** Rotating the dashes off the cardinal axes reads as a shattered ring (04). */
+const SCAR_RING_ROTATE = -32
+
+/** The two-stroke ✕ the retry fail marks and the scar mark both draw. */
+function cross_path(x: number, y: number, arm: number): string {
+  return (
+    `M ${x - arm} ${y - arm} L ${x + arm} ${y + arm} ` +
+    `M ${x + arm} ${y - arm} L ${x - arm} ${y + arm}`
+  )
+}
+
+/**
+ * A scarred node's puck (artboard 04): a ground mask that hides the dead line
+ * beneath it, the broken ring in place of the whole one, and the ember ✕
+ * orbiting its seat. The mask sits first so the ring and mark draw over clean
+ * ground.
+ */
+function ScarPuck(props: {
+  readonly center: { readonly x: number; readonly y: number }
+  readonly mark: ScarMark
+}): JSX.Element {
+  return (
+    <>
+      <circle
+        class="scar-mask"
+        cx={props.center.x}
+        cy={props.center.y}
+        r={SCAR_MASK_RADIUS}
+      />
+      <circle
+        class="scar-ring"
+        cx={props.center.x}
+        cy={props.center.y}
+        r={SCAR_RING_RADIUS}
+        transform={`rotate(${SCAR_RING_ROTATE} ${props.center.x} ${props.center.y})`}
+      />
+      <path class="scar-mark" d={cross_path(props.mark.x, props.mark.y, MARK_ARM)} />
+    </>
+  )
+}
 
 /** A live segment is the artboard's amber trio: two glow washes, one march. */
 function LiveSegment(props: { readonly scene_segment: SceneSegment }): JSX.Element {
@@ -130,19 +176,27 @@ export function Stage(props: StageProps): JSX.Element {
             <g
               class="node"
               data-status={node.status}
+              data-scar={node.scar === null ? undefined : 'true'}
               data-node-id={node.glyph.id}
               data-testid="node"
             >
-              <circle
-                class="puck"
-                cx={node.glyph.center.x}
-                cy={node.glyph.center.y}
-                r={
-                  node.status === 'active'
-                    ? node.glyph.radius + 0.5
-                    : node.glyph.radius
+              <Show
+                when={node.scar}
+                fallback={
+                  <circle
+                    class="puck"
+                    cx={node.glyph.center.x}
+                    cy={node.glyph.center.y}
+                    r={
+                      node.status === 'active'
+                        ? node.glyph.radius + 0.5
+                        : node.glyph.radius
+                    }
+                  />
                 }
-              />
+              >
+                {(mark) => <ScarPuck center={node.glyph.center} mark={mark()} />}
+              </Show>
               <Show when={node.status === 'active'}>
                 <circle
                   class="puck-core"
@@ -170,13 +224,7 @@ export function Stage(props: StageProps): JSX.Element {
         </For>
         <For each={scene().fail_marks}>
           {(mark) => (
-            <path
-              class="fail-mark"
-              d={
-                `M ${mark.x - MARK_ARM} ${mark.y - MARK_ARM} L ${mark.x + MARK_ARM} ${mark.y + MARK_ARM} ` +
-                `M ${mark.x + MARK_ARM} ${mark.y - MARK_ARM} L ${mark.x - MARK_ARM} ${mark.y + MARK_ARM}`
-              }
-            />
+            <path class="fail-mark" d={cross_path(mark.x, mark.y, MARK_ARM)} />
           )}
         </For>
         <For each={scene().junctions}>

@@ -50,6 +50,26 @@ describe('header_stat_parts', () => {
     ])
   })
 
+  it('draws the scar numeral in ember once a scar exists (artboard 04)', () => {
+    const parts = header_stat_parts({
+      t_plus_ms: 412,
+      retries_absorbed: 1,
+      scars: 1,
+      cost_usd: 0.0018,
+    })
+    const scar = parts.find((part) => part.text === '1' && part.role === 'scar')
+    expect(scar).toEqual({ text: '1', role: 'scar' })
+    // The zero line keeps the plain value role, so ember never reaches a
+    // scar-free header.
+    const zero = header_stat_parts({
+      t_plus_ms: 0,
+      retries_absorbed: 0,
+      scars: 0,
+      cost_usd: 0,
+    })
+    expect(zero.some((part) => part.role === 'scar')).toBe(false)
+  })
+
   it('carries the artboard-01 mid-run values through the same slots', () => {
     const texts = header_stat_parts({
       t_plus_ms: 130,

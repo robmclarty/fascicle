@@ -189,10 +189,20 @@ function whole_count(value: unknown): number | null {
   return value
 }
 
+/**
+ * A scar's ember ✕: the seat the mark orbits its broken puck, from artboard
+ * 04. Null on `SceneNode.scar` for every node the run never scarred.
+ */
+export type ScarMark = {
+  readonly x: number
+  readonly y: number
+}
+
 export type SceneNode = {
   readonly glyph: NodeGlyph
   readonly meta: string
   readonly status: NodeStatus
+  readonly scar: ScarMark | null
 }
 
 export type SceneJunction = {
@@ -239,12 +249,18 @@ const MARK_ORBIT = 14
 /** Newest mark at the artboard's southeast seat; older ones step onward. */
 const MARK_ANGLE = Math.PI / 4
 
+/** The scar ✕'s seat off its broken puck: up and to the east (artboard 04). */
+const SCAR_MARK_DX = 14
+const SCAR_MARK_DY = -17
+
 /**
  * The structural lookups one scene build reads over and over: who owns each
  * junction, who is whose parent, which leaf a box's inbound segment actually
- * feeds, and which leaves anchor a retry circle (their re-entries belong to
- * the arcs, never to the spine). First id wins throughout, matching the
- * fold's join for `<cycle>` back-references and shared steps.
+ * feeds, which leaves anchor a retry circle (their re-entries belong to the
+ * arcs, never to the spine), and which leaves are a fallback's primary (their
+ * through-line dies when they scar, so the light reroutes through the basin).
+ * First id wins throughout, matching the fold's join for `<cycle>`
+ * back-references and shared steps.
  */
 type SceneContext = {
   readonly state: CanvasState
@@ -253,6 +269,7 @@ type SceneContext = {
   readonly first_leaves: ReadonlyMap<string, string>
   readonly junction_owners: ReadonlyMap<string, string>
   readonly loop_leaves: ReadonlySet<string>
+  readonly fallback_primaries: ReadonlySet<string>
 }
 
 /**
@@ -270,6 +287,7 @@ export function build_scene(flow: FlowLayout, session: Session): Scene {
       glyph,
       meta: node_meta(ctx, glyph, captions),
       status: view_status(ctx, glyph.id),
+      scar: node_scar(session.state, glyph),
     })),
     junctions: flow.junctions.map((glyph) => ({
       glyph,
@@ -302,6 +320,12 @@ function scene_context(flow: FlowLayout, session: Session): SceneContext {
   for (const segment of flow.segments) {
     if (segment.role === 'loop_upper') loop_leaves.add(segment.to)
   }
+  const fallback_primaries = new Set<string>()
+  for (const node of nodes_by_id.values()) {
+    if (node.kind !== 'fallback') continue
+    const primary = node.children?.[0]
+    if (primary !== undefined) fallback_primaries.add(primary.id)
+  }
   return {
     state: session.state,
     parents,
@@ -309,6 +333,7 @@ function scene_context(flow: FlowLayout, session: Session): SceneContext {
     first_leaves,
     junction_owners,
     loop_leaves,
+    fallback_primaries,
   }
 }
 
@@ -368,10 +393,10 @@ function completed(state: CanvasState, id: string): boolean {
  * themselves; a fan's join legs belong to the fan's completion (the light
  * pops out of the junction when the fan closes); a segment leaving its own
  * subtree earns grey only when that subtree's combinator closes; and every
- * other segment follows the leaf it feeds: unbuilt until the leaf is
- * entered, live while it runs, traversed after. A retry circle's anchor
- * leaf is the exception to `live`: its re-entries ride the arcs, so the
- * spine into the loop settles to grey the moment the first attempt starts.
+ * other segment defers to `leaf_segment_state`, which follows the leaf it
+ * feeds. The approach into a fallback greys through that path because it
+ * feeds the wrapper, not the scarred primary, so the light is shown reaching
+ * the scar before it reroutes through the basin.
  */
 function segment_state(ctx: SceneContext, segment: Segment): SegmentState {
   switch (segment.role) {
@@ -391,11 +416,31 @@ function segment_state(ctx: SceneContext, segment: Segment): SegmentState {
   if (segment.from !== null && inside(ctx.parents, segment.from, segment.to)) {
     return completed(ctx.state, segment.to) ? 'traversed' : 'unbuilt'
   }
+  return leaf_segment_state(ctx, segment)
+}
+
+/**
+ * A plain segment's state from the leaf it feeds: unbuilt until the leaf is
+ * entered, live while it runs, traversed after. Two exceptions ride here: a
+ * retry circle's anchor leaf settles its spine to grey at once because the
+ * re-entries belong to the arcs, and a scarred fallback primary's through-line
+ * is the dead segment past the scar, so it stays unbuilt while the light
+ * reroutes through the basin.
+ */
+function leaf_segment_state(ctx: SceneContext, segment: Segment): SegmentState {
+  if (ctx.fallback_primaries.has(segment.to) && is_scarred(ctx.state, segment.to)) {
+    return 'unbuilt'
+  }
   const target = ctx.first_leaves.get(segment.to) ?? segment.to
   const occurrences = occurrences_of(ctx.state, target)
   if (occurrences.length === 0) return 'unbuilt'
   if (is_running(occurrences) && !ctx.loop_leaves.has(target)) return 'live'
   return 'traversed'
+}
+
+/** True once the run has hung a permanent scar on a node (the fold's record). */
+function is_scarred(state: CanvasState, id: string): boolean {
+  return state.nodes.get(id)?.scarred === true
 }
 
 /**
@@ -490,6 +535,18 @@ function fail_marks(flow: FlowLayout, state: CanvasState): ReadonlyArray<FailMar
     }
   }
   return marks
+}
+
+/**
+ * A scarred node's ember ✕, seated off its broken puck (artboard 04), null
+ * for every node the run never scarred. The scar reads off the fold's
+ * permanent `scarred` record rather than the puck status, because a retry
+ * that eventually healed reads `done` while a fallback's dead primary keeps
+ * its scar; the two must not share a status.
+ */
+function node_scar(state: CanvasState, glyph: NodeGlyph): ScarMark | null {
+  if (state.nodes.get(glyph.id)?.scarred !== true) return null
+  return { x: glyph.center.x + SCAR_MARK_DX, y: glyph.center.y + SCAR_MARK_DY }
 }
 
 /**

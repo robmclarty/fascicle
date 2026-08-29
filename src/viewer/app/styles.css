@@ -172,6 +172,13 @@ body {
   padding: 0 6px;
 }
 
+/* The one place ember reaches the header: a scar count above zero, the numeral
+   at full strength so the wound is legible at a glance (artboard 04). */
+.stats-scar {
+  color: var(--ember);
+  opacity: 1;
+}
+
 /* An svg is a replaced element: absolute positioning alone leaves it at its
    300x150 intrinsic size and clips the geometry, so the size is explicit. */
 .stage {
@@ -278,6 +285,38 @@ body {
   stroke: var(--ember);
   stroke-width: 2;
   stroke-linecap: round;
+}
+
+/* The scar (artboard 04): the ring never fills, it breaks. The mask hides the
+   dead line under the puck, the ring is the same puck-ring stroke split into
+   dashed arcs, and ember is only the small ✕ orbiting it, never the ring
+   itself (C4). */
+.scar-mask {
+  fill: var(--ground);
+  stroke: none;
+}
+
+.scar-ring {
+  fill: var(--ground);
+  stroke: var(--puck-ring);
+  stroke-width: 3;
+  stroke-dasharray: 12 5 10 5 11 10.4;
+}
+
+.scar-mark {
+  stroke: var(--ember);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+/* A scar drops its name to 55% and dims its meta, so the eye reads the run's
+   living path first and the wound second (artboard 04). */
+.node[data-scar] .node-name {
+  opacity: 0.55;
+}
+
+.node[data-scar] .node-meta {
+  opacity: 0.3;
 }
 
 .junction .puck {

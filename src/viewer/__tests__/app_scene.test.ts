@@ -533,10 +533,27 @@ describe('segment states across the fixture run', () => {
     )
   })
 
-  it('leaves every line traversed once the run is done', () => {
+  it('kills the scarred primary through-line the moment the fallback fires', () => {
+    // Event 34 opens always_throws: its through-line is live, nothing scarred.
+    const running = segment_states(fold_fixture(34))
+    expect(running.get('line:fallback_1>always_throws')).toBe('live')
+    // Event 35 is the terminal throw: the primary path becomes the dead segment.
+    const scarred = segment_states(fold_fixture(35))
+    expect(scarred.get('line:fallback_1>always_throws')).toBe('unbuilt')
+    // The approach into the fallback still greys: it feeds the wrapper, not the
+    // primary, so the light is shown reaching the scar before it reroutes.
+    expect(scarred.get('line:retry_1>fallback_1')).toBe('traversed')
+  })
+
+  it('leaves the dead segment unbuilt while every other line greys at done', () => {
     const states = segment_states(fold_fixture(events.length))
     expect(states.size).toBe(18)
-    expect(new Set(states.values())).toEqual(new Set(['traversed']))
+    expect(states.get('line:fallback_1>always_throws')).toBe('unbuilt')
+    const rest = [...states.entries()].filter(
+      ([key]) => key !== 'line:fallback_1>always_throws',
+    )
+    expect(rest).toHaveLength(17)
+    expect(new Set(rest.map(([, state]) => state))).toEqual(new Set(['traversed']))
   })
 })
 
@@ -582,6 +599,36 @@ describe('fail marks on the retry circle', () => {
     expect(marks[0]?.x).toBeCloseTo(center_x)
     expect(marks[0]?.y).toBeCloseTo((glyph?.center.y ?? 0) + orbit)
     expect(marks[1]?.x).toBeCloseTo(center_x + Math.SQRT1_2 * orbit)
+  })
+})
+
+describe('scar mark on a fallback primary', () => {
+  it('wears no scar until the terminal failure lands', () => {
+    const before = scene_of(fold_fixture(34)).nodes.find(
+      (node) => node.glyph.id === 'always_throws',
+    )
+    expect(before?.status).toBe('active')
+    expect(before?.scar).toBeNull()
+  })
+
+  it('seats the ember ✕ off the broken puck once the primary scars', () => {
+    const session = fold_fixture(events.length)
+    const scene = scene_of(session)
+    const scarred = scene.nodes.find((node) => node.glyph.id === 'always_throws')
+    const glyph = layout(session.structure).nodes.find(
+      (node) => node.id === 'always_throws',
+    )
+    // The artboard-04 seat: up and to the east of the puck centre.
+    expect(scarred?.scar).toEqual({
+      x: (glyph?.center.x ?? 0) + 14,
+      y: (glyph?.center.y ?? 0) - 17,
+    })
+  })
+
+  it('scars the primary alone, never the backup that carried the run', () => {
+    const scene = scene_of(fold_fixture(events.length))
+    const scarred = scene.nodes.filter((node) => node.scar !== null)
+    expect(scarred.map((node) => node.glyph.id)).toEqual(['always_throws'])
   })
 })
 

@@ -74,11 +74,13 @@ export type HeaderStatsInput = {
 /**
  * One span of the header stat line. Values sit at 78%, words at 38%, and the
  * dot separators at 20% (artboard 05), so the renderer needs the line as
- * role-tagged parts rather than one string.
+ * role-tagged parts rather than one string. The `scar` role is the one place
+ * ember reaches the header: a scar count above zero is the numeral drawn in
+ * ember (artboard 04), while a zero stays an ordinary value (C4).
  */
 export type HeaderStatPart = {
   readonly text: string
-  readonly role: 'value' | 'word' | 'sep'
+  readonly role: 'value' | 'word' | 'sep' | 'scar'
 }
 
 const STAT_SEP: HeaderStatPart = { text: '·', role: 'sep' }
@@ -97,7 +99,7 @@ export function header_stat_parts(stats: HeaderStatsInput): ReadonlyArray<Header
     { text: `${retry_word(stats.retries_absorbed)} ABSORBED`, role: 'word' },
     STAT_SEP,
     { text: 'SCARS', role: 'word' },
-    { text: String(stats.scars), role: 'value' },
+    { text: String(stats.scars), role: stats.scars > 0 ? 'scar' : 'value' },
     STAT_SEP,
     { text: format_cost(stats.cost_usd), role: 'value' },
   ]
