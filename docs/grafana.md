@@ -232,6 +232,8 @@ meter, the attribute prefix, and the second, `ai_sdk`-only telemetry
 layer) are documented in
 [configuration.md](./configuration.md#opentelemetry). And if you want the
 raw stream instead of the OpenTelemetry view of it, the same trajectory
-feeds the bundled [viewer](./viewer.md) and the plain
+feeds the [viewer](./viewer.md)'s run canvas, a live picture of a single
+run, and the plain
 [`filesystem_logger`](./cookbook.md#observing-a-run-with-a-filesystem-logger), with no
-OpenTelemetry packages involved.
+OpenTelemetry packages involved. Grafana is the aggregate across many runs;
+the canvas is one run as it fires.

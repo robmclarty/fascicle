@@ -33,9 +33,9 @@ The published surface as of v0.12.0:
   `@modelcontextprotocol/sdk` rides as an optional peer.
 - **Observability.** A trajectory event stream with correct span trees under
   `parallel` and `map`, `TrajectoryLogger` / `CheckpointStore` contracts small
-  enough to implement yourself, a bundled viewer, and a transport-neutral
-  `fascicle/otel` bridge (see
-  [configuration.md](./configuration.md#opentelemetry)).
+  enough to implement yourself, the run canvas viewer that draws a live run and
+  replays a finished one over one pure fold, and a transport-neutral
+  `fascicle/otel` bridge (see [configuration.md](./configuration.md#opentelemetry)).
 - **An app architecture.** [`docs/blueprint.md`](./blueprint.md) standardizes the
   consumer-app shape, [`docs/leaf-arm-spine.md`](./leaf-arm-spine.md) names the
   layering (with [`docs/advanced-composition.md`](./advanced-composition.md)
@@ -56,9 +56,6 @@ The published surface as of v0.12.0:
 - **MCP hardening.** Auth on the HTTP transport, MCP `sampling`, per-tool
   approval gating, and `resources` subscriptions were all deferred out of the
   first bridge.
-- **Live trajectory visualization.** A picture of a flow firing is the
-  demonstration that sells step-as-value, and it would overlay active spans,
-  cost rollup, and error scars on the structural canvas.
 - **`claude_cli` on the Agent SDK.** Rebasing the subprocess adapter onto
   Anthropic's Agent SDK, slotted in wherever provider metering forces it.
 
@@ -79,8 +76,7 @@ Scoped but not sequenced. Each one is a bet on leverage, not a promise to you.
   [`src/core/BACKLOG.md`](../src/core/BACKLOG.md). A composer earns promotion only
   when its pattern recurs across two unrelated flows and is awkward to express
   today.
-- **Viewer and bench papercuts.** Run-id truncation, log pagination,
-  deterministic bench baselines, `judge_llm` wiring.
+- **Bench papercuts.** Deterministic bench baselines and `judge_llm` wiring.
 
 ## Open Design Questions
 

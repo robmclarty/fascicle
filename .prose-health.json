@@ -344,20 +344,20 @@
       "table_share": 0.07
     },
     "docs/viewer.md": {
-      "words": 293,
-      "sentences": 15,
-      "that_per_1k": 13.65,
-      "relativizers_per_1k": 13.65,
-      "contractions_per_1k": 23.89,
-      "second_person_per_1k": 51.19,
+      "words": 1501,
+      "sentences": 76,
+      "that_per_1k": 12.66,
+      "relativizers_per_1k": 15.32,
+      "contractions_per_1k": 13.99,
+      "second_person_per_1k": 15.99,
       "first_person_per_1k": 0,
       "prose_colons_per_1k": 0,
       "semicolons_per_1k": 0,
       "sentences_over_55": 0,
-      "mean_sentence_words": 16.5,
-      "p90_sentence_words": 25,
-      "code_share": 0.44,
-      "table_share": 0.1
+      "mean_sentence_words": 18.5,
+      "p90_sentence_words": 31,
+      "code_share": 0.17,
+      "table_share": 0.04
     },
     "docs/writing-a-harness.md": {
       "words": 1082,
