@@ -1,14 +1,27 @@
-import { createMemo, createSignal, type Setter } from 'solid-js'
+import { createEffect, createMemo, createSignal, type Setter } from 'solid-js'
 import { render } from 'solid-js/web'
 import { Canvas } from './canvas'
 import { CURSOR_HEADER, events_url, fold_history, read_cursor_header } from './history'
+import {
+  INITIAL_PLAYBACK,
+  chrome_hidden,
+  cycle_speed,
+  hold_at,
+  plan_for,
+  play_elapsed_ms,
+  position_at,
+  stop_playback,
+  toggle_compress,
+  toggle_loop,
+  toggle_play,
+  type Playback,
+} from './lib/playback'
 import {
   build_timeline,
   fraction_at,
   index_at_fraction,
   scrub_key,
   session_at,
-  type Timeline,
 } from './lib/timeline'
 import { EMPTY_SESSION, apply_frame, type Session } from './lib/scene'
 import { connect_events, type SseStatus, type ViewerFrame } from './sse'
@@ -34,6 +47,14 @@ import './styles.css'
  * mode is that fold pinned to the newest event, which is what a null held index
  * means (follow the edge). The header, the canvas, and the scrubber all read
  * the one selected session, so amber never lives in two timelines at once (Q2).
+ *
+ * Play mode is the same held index on a clock: while playing, each animation
+ * frame looks the elapsed wall time up in the schedule `lib/playback.ts`
+ * built and holds the index it lands on, so a performance is a scrub the
+ * clock drags. The fold stays pure; only the choice of prefix moves. The
+ * interpolated play T+ rides to the header so compressed gaps visibly
+ * accelerate, and pointer or key activity feeds the idle stamp the chrome
+ * fade reads.
  */
 
 type Feed = {
@@ -56,6 +77,8 @@ function main(): void {
   const [viewport, set_viewport] = createSignal(current_viewport())
   // A null held index follows the live edge; a number holds a past prefix.
   const [held, set_held] = createSignal<number | null>(null)
+  const [playback, set_playback] = createSignal<Playback>(INITIAL_PLAYBACK)
+  const [last_activity_ms, set_last_activity_ms] = createSignal(performance.now())
   window.addEventListener('resize', () => set_viewport(current_viewport()))
 
   const timeline = createMemo(() => build_timeline(frames()))
@@ -66,19 +89,75 @@ function main(): void {
   )
   const received_at_ms = createMemo(() => (held() === null ? feed().received_at_ms : null))
 
+  const plan = createMemo(() => plan_for(timeline().times, playback()))
+  const play_position = createMemo(() => {
+    const state = playback()
+    if (!state.playing) return null
+    return position_at(plan(), timeline().times, play_elapsed_ms(plan(), state, now_ms()))
+  })
+  const hidden = createMemo(() => chrome_hidden(playback(), last_activity_ms(), now_ms()))
+
+  const hold = (target: number): void => {
+    set_held(target)
+    set_playback((state) => hold_at(state, target, now_ms()))
+  }
   const seek = (fraction: number): void => {
-    set_held(index_at_fraction(timeline(), fraction))
+    hold(index_at_fraction(timeline(), fraction))
   }
   const return_to_live = (): void => {
+    set_playback(stop_playback)
     set_held(null)
   }
-  window.addEventListener('keydown', (event) => on_key(event, timeline(), index(), set_held))
+  const toggle = (): void => {
+    set_playback((state) => toggle_play(state, held(), timeline().count, now_ms()))
+  }
+
+  /*
+   * Route a keydown: Space toggles play (Q5); the rest goes to the scrub move
+   * `scrub_key` decides, where `'live'` re-attaches to the edge and a number
+   * holds that prefix (continuing a running performance from there). The
+   * default is prevented only for a key the canvas actually took, which also
+   * keeps Space from re-firing a focused control.
+   */
+  window.addEventListener('keydown', (event) => {
+    if (event.key === ' ') {
+      toggle()
+      event.preventDefault()
+      return
+    }
+    const move = scrub_key(timeline(), index(), event.key, event.shiftKey)
+    if (move === 'ignore') return
+    if (move === 'live') return_to_live()
+    else hold(move)
+    event.preventDefault()
+  })
+
+  const wake = (): void => {
+    set_last_activity_ms(performance.now())
+  }
+  window.addEventListener('pointermove', wake)
+  window.addEventListener('pointerdown', wake)
+  window.addEventListener('keydown', wake)
 
   const tick = (frame_ts: number): void => {
     set_now_ms(frame_ts)
     requestAnimationFrame(tick)
   }
   requestAnimationFrame(tick)
+
+  // The clock drags the scrub: each frame holds the index the schedule has
+  // reached, and a spent schedule either laps (loop) or leaves play mode.
+  createEffect(() => {
+    const position = play_position()
+    if (position === null) return
+    set_held(position.index)
+    if (!position.done) return
+    set_playback((state) =>
+      state.loop
+        ? { ...state, anchor_index: 0, anchor_now_ms: now_ms() }
+        : { ...state, playing: false },
+    )
+  })
 
   render(
     () => (
@@ -91,32 +170,23 @@ function main(): void {
         following={following()}
         timeline={timeline()}
         fraction={fraction_at(timeline(), index())}
+        playback={playback()}
+        play_t_plus_ms={play_position()?.t_plus_ms ?? null}
+        chrome_hidden={hidden()}
         on_seek={seek}
         on_return_to_live={return_to_live}
+        on_toggle_play={toggle}
+        on_cycle_speed={() => set_playback((state) => cycle_speed(state, index(), now_ms()))}
+        on_toggle_compress={() =>
+          set_playback((state) => toggle_compress(state, index(), now_ms()))
+        }
+        on_toggle_loop={() => set_playback(toggle_loop)}
       />
     ),
     root,
   )
 
   void follow_run(set_frames, set_feed, set_status)
-}
-
-/**
- * Route a keydown to the scrub move `scrub_key` decides (Q5), forwarding it to
- * the held index: `'live'` re-attaches to the edge, a number holds that prefix,
- * `'ignore'` leaves the page's own key handling alone. The default is prevented
- * only for a key the scrubber actually took.
- */
-function on_key(
-  event: KeyboardEvent,
-  timeline: Timeline,
-  index: number,
-  set_held: Setter<number | null>,
-): void {
-  const move = scrub_key(timeline, index, event.key, event.shiftKey)
-  if (move === 'ignore') return
-  set_held(move === 'live' ? null : move)
-  event.preventDefault()
 }
 
 /**

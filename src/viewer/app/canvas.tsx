@@ -1,6 +1,8 @@
 import { For, Show, createMemo, type JSX } from 'solid-js'
+import { Controls } from './controls'
 import { live_t_plus_ms } from './lib/clock'
 import { RUN_ID_PLACEHOLDER, header_stat_parts, short_run_id } from './lib/format'
+import type { Playback } from './lib/playback'
 import { t_plus_ms } from './lib/reduce'
 import type { Session } from './lib/scene'
 import type { Timeline } from './lib/timeline'
@@ -22,7 +24,10 @@ import { Stage, type Viewport } from './stage'
  * event the chip is the SSE status and the clock counts real time between
  * frames; scrubbed off that edge the chip reads REPLAY in the white family
  * (never amber, C4), the clock freezes at the folded prefix's own T+, and a
- * return-to-live control re-attaches to the edge.
+ * return-to-live control re-attaches to the edge. During a performance the
+ * play clock's interpolated T+ takes the stat line instead, and the
+ * `data-chrome` attribute lets the idle fade clear the interaction chrome
+ * for a recording.
  */
 
 const STATUS_LABEL: Record<SseStatus, string> = {
@@ -45,10 +50,20 @@ export type CanvasProps = {
   readonly timeline: Timeline
   /** The playhead position, 0 at T+0 and 1 at the live edge. */
   readonly fraction: number
+  /** Play mode's state, read by the controls cluster. */
+  readonly playback: Playback
+  /** The performance clock's interpolated T+; null unless playing. */
+  readonly play_t_plus_ms: number | null
+  /** True while a performance runs with the cursor idle: chrome fades out. */
+  readonly chrome_hidden: boolean
   /** A scrubber drag resolves to a fraction the app maps back to an event. */
   readonly on_seek: (fraction: number) => void
   /** Re-attach to the newest event from a scrubbed position. */
   readonly on_return_to_live: () => void
+  readonly on_toggle_play: () => void
+  readonly on_cycle_speed: () => void
+  readonly on_toggle_compress: () => void
+  readonly on_toggle_loop: () => void
 }
 
 /** The status chip: a white dot and a word, never amber (C4). */
@@ -68,20 +83,22 @@ function StatusChip(props: { readonly status: SseStatus }): JSX.Element {
 export function Canvas(props: CanvasProps): JSX.Element {
   const stats = createMemo(() =>
     header_stat_parts({
-      t_plus_ms: live_t_plus_ms({
-        fold_t_plus_ms: t_plus_ms(props.session.state),
-        run_over: props.session.state.run_status !== null,
-        connected: props.following && props.status === 'live',
-        received_at_ms: props.received_at_ms,
-        now_ms: props.now_ms,
-      }),
+      t_plus_ms:
+        props.play_t_plus_ms ??
+        live_t_plus_ms({
+          fold_t_plus_ms: t_plus_ms(props.session.state),
+          run_over: props.session.state.run_status !== null,
+          connected: props.following && props.status === 'live',
+          received_at_ms: props.received_at_ms,
+          now_ms: props.now_ms,
+        }),
       retries_absorbed: props.session.state.retries_absorbed,
       scars: props.session.state.scars,
       cost_usd: props.session.state.cost_usd,
     }),
   )
   return (
-    <div class="canvas">
+    <div class="canvas" data-chrome={props.chrome_hidden ? 'hidden' : 'visible'}>
       <header class="canvas-header">
         <div class="run">
           <span class="run-key">run</span>
@@ -125,6 +142,13 @@ export function Canvas(props: CanvasProps): JSX.Element {
           fraction={props.fraction}
           width={props.viewport.width}
           on_seek={props.on_seek}
+        />
+        <Controls
+          playback={props.playback}
+          on_toggle_play={props.on_toggle_play}
+          on_cycle_speed={props.on_cycle_speed}
+          on_toggle_compress={props.on_toggle_compress}
+          on_toggle_loop={props.on_toggle_loop}
         />
       </Show>
     </div>

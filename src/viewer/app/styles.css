@@ -158,10 +158,11 @@ body {
   animation: none;
 }
 
-/* The return-to-live affordance: mono chrome in the meta register, no accent,
-   the one control that re-attaches a scrubbed canvas to the newest event. */
-.return-live {
-  margin-left: 16px;
+/* The chrome chip: mono meta-register controls with no accent. One recipe
+   serves the return-to-live affordance and the playback dials, so the two
+   ends of the canvas cannot drift apart. */
+.return-live,
+.pb-button {
   padding: 3px 9px;
   border: 1px solid rgb(246 243 234 / 22%);
   border-radius: 3px;
@@ -172,7 +173,12 @@ body {
   cursor: pointer;
 }
 
-.return-live:hover {
+.return-live {
+  margin-left: 16px;
+}
+
+.return-live:hover,
+.pb-button:hover {
   border-color: rgb(246 243 234 / 40%);
   color: rgb(246 243 234 / 88%);
 }
@@ -602,6 +608,43 @@ body {
 .scrub-band {
   fill: transparent;
   cursor: pointer;
+}
+
+/* The playback cluster: play mode's dials in the shared chrome-chip recipe,
+   seated under the time spine. An engaged toggle brightens; hierarchy is
+   opacity, never added color (C4). */
+.playback {
+  position: absolute;
+  left: var(--margin);
+  bottom: 12px;
+  display: flex;
+  gap: 8px;
+  z-index: 2;
+}
+
+.pb-button[data-active] {
+  border-color: rgb(246 243 234 / 45%);
+  color: rgb(246 243 234 / 92%);
+}
+
+/* Recording polish: while the run performs and the cursor has gone idle, the
+   interaction chrome fades so a screen capture shows only the canvas and its
+   header story. A one-shot fade is not a looping animation (C9 gates the
+   loops), and pointer events die with it so nothing invisible stays
+   clickable; any pointer or key activity brings the chrome back. */
+.scrubber,
+.playback,
+.status,
+.return-live {
+  transition: opacity 0.5s ease;
+}
+
+.canvas[data-chrome='hidden'] .scrubber,
+.canvas[data-chrome='hidden'] .playback,
+.canvas[data-chrome='hidden'] .status,
+.canvas[data-chrome='hidden'] .return-live {
+  opacity: 0;
+  pointer-events: none;
 }
 
 /* C9: every looping animation swaps to a static glow rather than stopping
