@@ -590,6 +590,14 @@ body {
   stroke-linecap: round;
 }
 
+/* The density band (Q5 at scale): event count shaded in the white family
+   behind the spine and under the ✕ marks, brightest where the log is busiest.
+   Per-bin strength rides each rect's own opacity attribute, so hierarchy stays
+   opacity and the playhead stays the strip's only amber (C4). */
+.scrub-density {
+  fill: var(--ink);
+}
+
 /* Error closes, always drawn (Q5): the same ember ✕ the canvas marks a failure
    with, seated on the spine at the moment it happened. */
 .scrub-fail {

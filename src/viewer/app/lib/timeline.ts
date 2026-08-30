@@ -101,6 +101,26 @@ export function index_at_fraction(timeline: Timeline, fraction: number): number 
   return nearest_index(times, target * span_ms)
 }
 
+/**
+ * The spine's event density, bucketed for the shading band (Q5 at scale):
+ * every event lands in the bin its spine fraction falls in, and the counts
+ * normalize to the busiest bin so the band always peaks at full strength.
+ * Positions read through `fraction_at`, so the shading, the playhead, and the
+ * failure marks share one coordinate, degenerate domains included: a zero-span
+ * run spreads by event index exactly as the playhead walks it. An empty log
+ * keeps its bins at zero rather than normalizing an empty peak.
+ */
+export function density_bins(timeline: Timeline, bins: number): ReadonlyArray<number> {
+  const counts: number[] = Array.from({ length: bins }, () => 0)
+  if (timeline.count === 0) return counts
+  for (let i = 0; i < timeline.count; i += 1) {
+    const bin = Math.min(bins - 1, Math.floor(fraction_at(timeline, i) * bins))
+    counts[bin] = (counts[bin] ?? 0) + 1
+  }
+  const peak = Math.max(...counts)
+  return counts.map((count) => count / peak)
+}
+
 /** Step one event along the log (the arrow keys), clamped to the run's ends. */
 export function step_event(index: number, direction: number, count: number): number {
   return clamp(index + Math.sign(direction), 0, Math.max(0, count - 1))

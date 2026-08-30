@@ -1,6 +1,6 @@
 import { For, type JSX } from 'solid-js'
 import { TOKENS } from './lib/layout'
-import type { Timeline } from './lib/timeline'
+import { density_bins, type Timeline } from './lib/timeline'
 
 /*
  * The time scrubber: the run's spine of time along the bottom margin.
@@ -18,6 +18,11 @@ import type { Timeline } from './lib/timeline'
  * the pointer the padded reach Q5 asks for. Positions are in the canvas's own
  * pixel space (the strip spans the full width and shares the header's margins),
  * so a fraction reads straight off the pointer's x within the band.
+ *
+ * With the DENSITY dial on, `density_bins` shades the strip in the white
+ * family behind the spine and under the ✕ marks, brightest where the log is
+ * busiest, so map activity at scale reads off the timeline (Q5) while the
+ * playhead stays the strip's only amber (Q2, C4).
  */
 
 /** The strip's height; the visible spine sits on its centerline. */
@@ -33,12 +38,24 @@ const FAIL_ARM = 4
 /** The amber playhead's radius, the single lit point on the strip. */
 const PLAYHEAD_RADIUS = 3.5
 
+/**
+ * The shading band's resolution and weight. 48 bins put one bin near the dot
+ * grid's 28px pitch at the artboard width, coarse enough that a regular event
+ * comb reads as shading rather than stripes; the peak opacity keeps the band
+ * under the spine's own weight, hierarchy by opacity alone (C4).
+ */
+const DENSITY_BINS = 48
+const DENSITY_PEAK_OPACITY = 0.3
+const DENSITY_BAND_HEIGHT = 10
+
 export type ScrubberProps = {
   readonly timeline: Timeline
   /** The playhead position, 0 at T+0 and 1 at the live edge. */
   readonly fraction: number
   /** The canvas width, so the spine shares the header's pixel margins. */
   readonly width: number
+  /** The DENSITY dial: when on, shade the spine by event count per bin. */
+  readonly density: boolean
   /** A drag or click resolves to a fraction the app maps back to an event. */
   readonly on_seek: (fraction: number) => void
 }
@@ -56,8 +73,23 @@ export function Scrubber(props: ScrubberProps): JSX.Element {
     props.on_seek(clamp01(fraction))
   }
 
+  const bins = (): ReadonlyArray<number> =>
+    props.density ? density_bins(props.timeline, DENSITY_BINS) : []
+
   return (
     <svg class="scrubber" data-testid="scrubber" height={STRIP_HEIGHT} fill="none">
+      <For each={bins()}>
+        {(value, i) => (
+          <rect
+            class="scrub-density"
+            x={x_at(i() / DENSITY_BINS)}
+            y={SPINE_Y - DENSITY_BAND_HEIGHT / 2}
+            width={span() / DENSITY_BINS}
+            height={DENSITY_BAND_HEIGHT}
+            opacity={value * DENSITY_PEAK_OPACITY}
+          />
+        )}
+      </For>
       <line class="scrub-spine-ahead" x1={head_x()} y1={SPINE_Y} x2={right()} y2={SPINE_Y} />
       <line
         class="scrub-spine-traversed"

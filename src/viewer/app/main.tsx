@@ -55,7 +55,35 @@ import './styles.css'
  * interpolated play T+ rides to the header so compressed gaps visibly
  * accelerate, and pointer or key activity feeds the idle stamp the chrome
  * fade reads.
+ *
+ * The DENSITY dial's persistence lives here for the same D4 reason: storage is
+ * a browser global, so localStorage is read once at startup and written on
+ * toggle, and the lib stays clock-free and storage-free.
  */
+
+/** The density dial's home in storage, the one preference the viewer keeps. */
+const DENSITY_KEY = 'fascicle-viewer:density'
+
+/*
+ * Storage can be denied (private browsing, a locked-down profile), and a dial
+ * that cannot persist should still work for the session rather than take the
+ * canvas down at startup, so denial is absorbed on both sides.
+ */
+function read_density(): boolean {
+  try {
+    return localStorage.getItem(DENSITY_KEY) === 'on'
+  } catch {
+    return false
+  }
+}
+
+function store_density(on: boolean): void {
+  try {
+    localStorage.setItem(DENSITY_KEY, on ? 'on' : 'off')
+  } catch {
+    // Session-only: the dial still works, it just forgets on reload.
+  }
+}
 
 type Feed = {
   readonly session: Session
@@ -78,6 +106,7 @@ function main(): void {
   // A null held index follows the live edge; a number holds a past prefix.
   const [held, set_held] = createSignal<number | null>(null)
   const [playback, set_playback] = createSignal<Playback>(INITIAL_PLAYBACK)
+  const [density, set_density] = createSignal(read_density())
   const [last_activity_ms, set_last_activity_ms] = createSignal(performance.now())
   window.addEventListener('resize', () => set_viewport(current_viewport()))
 
@@ -110,6 +139,11 @@ function main(): void {
   }
   const toggle = (): void => {
     set_playback((state) => toggle_play(state, held(), timeline().count, now_ms()))
+  }
+  const toggle_density = (): void => {
+    const next = !density()
+    set_density(next)
+    store_density(next)
   }
 
   /*
@@ -173,6 +207,7 @@ function main(): void {
         playback={playback()}
         play_t_plus_ms={play_position()?.t_plus_ms ?? null}
         chrome_hidden={hidden()}
+        density={density()}
         on_seek={seek}
         on_return_to_live={return_to_live}
         on_toggle_play={toggle}
@@ -181,6 +216,7 @@ function main(): void {
           set_playback((state) => toggle_compress(state, index(), now_ms()))
         }
         on_toggle_loop={() => set_playback(toggle_loop)}
+        on_toggle_density={toggle_density}
       />
     ),
     root,

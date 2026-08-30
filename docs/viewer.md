@@ -131,6 +131,14 @@ gives your pointer the room it needs. The keys that move it are these:
 - **End** returns to the live edge.
 - **Space** toggles play.
 
+The spine can also shade itself by activity. A `DENSITY` dial in the playback
+cluster draws a white-family band behind the spine that brightens where the
+events crowd together, which is how map activity at scale reads on the
+timeline. The band sits under the failure marks, so every ✕ stays legible, and
+the playhead stays the strip's only amber. It's off by default, and the choice
+you make persists in `localStorage`, so the viewer remembers it across
+sessions.
+
 Opening a finished `.trajectory.jsonl` with no live producer is the same path.
 The client folds the whole file over `/api/trajectory`, renders the completed
 run, and then follows SSE, which has nothing left to add for a file that's

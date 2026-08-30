@@ -21,6 +21,7 @@ import { reduce, t_plus_ms } from '../app/lib/reduce.js'
 import { EMPTY_SESSION, apply_frame } from '../app/lib/scene.js'
 import {
   build_timeline,
+  density_bins,
   fraction_at,
   index_at_fraction,
   scrub_key,
@@ -155,6 +156,29 @@ describe('index_at_fraction', () => {
     const flat: Timeline = { count: 5, span_ms: 0, times: [0, 0, 0, 0, 0], failures: [] }
     expect(index_at_fraction(flat, 0.5)).toBe(2)
     expect(index_at_fraction({ count: 0, span_ms: 0, times: [], failures: [] }, 0.5)).toBe(0)
+  })
+})
+
+describe('density_bins', () => {
+  it('shades nothing for the empty log', () => {
+    const empty: Timeline = { count: 0, span_ms: 0, times: [], failures: [] }
+    expect(density_bins(empty, 4)).toEqual([0, 0, 0, 0])
+  })
+
+  it('lands a single event in the first bin at full strength', () => {
+    const single: Timeline = { count: 1, span_ms: 0, times: [0], failures: [] }
+    expect(density_bins(single, 4)).toEqual([1, 0, 0, 0])
+  })
+
+  it('spreads a zero-span run by event index, as the playhead walks it', () => {
+    const flat: Timeline = { count: 5, span_ms: 0, times: [0, 0, 0, 0, 0], failures: [] }
+    // Index fractions 0, .25, .5, .75, 1 land in bins 0, 1, 2, 3, 3.
+    expect(density_bins(flat, 4)).toEqual([0.5, 0.5, 0.5, 1])
+  })
+
+  it('normalizes the busiest bin to full strength and clamps the last event in', () => {
+    // Fractions 0, .04, .4, .44, 1 land in bins 0, 0, 2, 2, 4.
+    expect(density_bins(SPARSE, 5)).toEqual([1, 0, 1, 0, 0.5])
   })
 })
 

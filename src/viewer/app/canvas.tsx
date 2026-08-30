@@ -56,6 +56,8 @@ export type CanvasProps = {
   readonly play_t_plus_ms: number | null
   /** True while a performance runs with the cursor idle: chrome fades out. */
   readonly chrome_hidden: boolean
+  /** The DENSITY dial's state, read by the scrubber's shading band. */
+  readonly density: boolean
   /** A scrubber drag resolves to a fraction the app maps back to an event. */
   readonly on_seek: (fraction: number) => void
   /** Re-attach to the newest event from a scrubbed position. */
@@ -64,6 +66,7 @@ export type CanvasProps = {
   readonly on_cycle_speed: () => void
   readonly on_toggle_compress: () => void
   readonly on_toggle_loop: () => void
+  readonly on_toggle_density: () => void
 }
 
 /** The status chip: a white dot and a word, never amber (C4). */
@@ -141,14 +144,17 @@ export function Canvas(props: CanvasProps): JSX.Element {
           timeline={props.timeline}
           fraction={props.fraction}
           width={props.viewport.width}
+          density={props.density}
           on_seek={props.on_seek}
         />
         <Controls
           playback={props.playback}
+          density={props.density}
           on_toggle_play={props.on_toggle_play}
           on_cycle_speed={props.on_cycle_speed}
           on_toggle_compress={props.on_toggle_compress}
           on_toggle_loop={props.on_toggle_loop}
+          on_toggle_density={props.on_toggle_density}
         />
       </Show>
     </div>

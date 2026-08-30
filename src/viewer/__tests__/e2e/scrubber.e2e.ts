@@ -3,6 +3,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { expect, test } from '@playwright/test'
 import { start_viewer, type ViewerHandle } from '../../index.js'
+import { map_trajectory_ndjson } from '../fixtures/map-instances.js'
 
 /**
  * The time scrubber and replay mode, in a real browser.
@@ -18,6 +19,11 @@ import { start_viewer, type ViewerHandle } from '../../index.js'
  * The stepping math and the T+ equality are pinned in app_timeline.test.ts; the
  * fixture offsets here (T+0, the failure at T+113, the run's T+196) are the same
  * numbers those tests assert, reached the other way, through the DOM.
+ *
+ * The DENSITY dial's suite rides here too: the bin math is pinned in
+ * app_timeline.test.ts, and what only the browser can prove is the default-off
+ * state, the localStorage round trip across a reload, and the shading pixels
+ * themselves under the x50 map comb.
  *
  * Needs `pnpm build` (or `pnpm viewer:app`) to have compiled the canvas first.
  */
@@ -84,6 +90,52 @@ test.describe('scrubbing a finished run from a file', () => {
     await expect(page.getByTestId('stats').locator('span').first()).toHaveText('T+113MS')
     await page.evaluate(() => document.fonts.ready)
     await expect(page).toHaveScreenshot('scrub-mid-run.png')
+  })
+})
+
+test.describe('the density dial', () => {
+  test.beforeEach(async ({ page }) => {
+    viewer = await start_viewer({ host: '127.0.0.1', port: 0 })
+    await page.goto(viewer.url)
+    const res = await fetch(`${viewer.url}/api/ingest`, {
+      method: 'POST',
+      body: map_trajectory_ndjson({ count: 50, failed: [7, 23], run_id: 'dense-x50' }),
+    })
+    if (res.status !== 200) throw new Error(`fixture ingest failed: ${res.status}`)
+    await expect(page.getByTestId('scrubber')).toBeVisible()
+  })
+
+  test('defaults off, shades on toggle, and survives a reload', async ({ page }) => {
+    const dial = page.getByTestId('density-toggle')
+    await expect(page.locator('.scrub-density')).toHaveCount(0)
+    await expect(dial).not.toHaveAttribute('data-active', 'true')
+
+    await dial.click()
+    await expect(dial).toHaveAttribute('data-active', 'true')
+    await expect(page.locator('.scrub-density')).not.toHaveCount(0)
+
+    // The preference persists: a reload reads it back out of localStorage.
+    await page.reload()
+    await expect(page.getByTestId('density-toggle')).toHaveAttribute('data-active', 'true')
+    await expect(page.locator('.scrub-density')).not.toHaveCount(0)
+  })
+
+  test('the x50 comb shades a visible gradient under the failure marks', async ({
+    page,
+  }) => {
+    const dial = page.getByTestId('density-toggle')
+    await dial.click()
+    await expect(page.locator('.scrub-density')).not.toHaveCount(0)
+    // Blurred because the keypress below would otherwise upgrade the clicked
+    // dial to :focus-visible and put the UA's blue ring in the baseline.
+    await dial.blur()
+    // Home parks the run in REPLAY, the same still chrome the mid-run baseline
+    // freezes, with the band, both ember crosses, and the amber playhead in
+    // one strip.
+    await page.keyboard.press('Home')
+    await expect(page.getByTestId('status')).toHaveText('REPLAY')
+    await page.evaluate(() => document.fonts.ready)
+    await expect(page).toHaveScreenshot('density-x50.png')
   })
 })
 
