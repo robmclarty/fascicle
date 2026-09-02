@@ -1,5 +1,23 @@
 # Changelog
 
+## v0.12.6 — 2026-09-01
+
+### Changed
+
+- **The viewer draws a run canvas now.** The one static HTML page is replaced by a compiled Solid app that ships prebuilt inside the package, so running the viewer is still one command with nothing to build. The canvas is structure first: it computes a metro-line layout from the flow's `describe.json` tree and draws the whole composition dim and dashed before a single step runs, then the run moves through that geometry as amber light. Retry draws as a loop in the line, fallback as a bypass basin that reroutes when the primary fails, a terminal failure as a scarred puck, and map instances as perpendicular ticks that become a ruler comb at scale, with suspended, emitting, and annotation states carrying their own card treatments. Two properties are load-bearing and gated by `pnpm check:all`: the runtime dependency list stays empty, and the bundle is offline (vendored fonts, no CDN, no telemetry).
+
+### Added
+
+- **Every run scrubs.** Canvas state is a pure fold of events up to a time, and live mode is that fold pinned to the newest event, so replay is the same fold stopped earlier rather than a second render path. A time spine along the bottom margin carries the playhead; scrub off the live edge and the LIVE chip becomes REPLAY with a `RETURN TO LIVE` control; arrow keys step one event, shifted arrows step one second, and Home and End jump to T+0 and the live edge. The server grew `GET /api/trajectory`, which streams the full run history as NDJSON so the client folds the whole run on load and follows SSE from the cursor that route names, never double-counting. An off-by-default DENSITY dial shades the spine where events crowd together, and the choice persists across sessions.
+
+- **Play mode performs the run.** Press play at T+0 and the canvas replays the run on its real timestamp deltas: speeds of 1x, 2x, and 3x, a compression dial (on by default) that caps any single inter-event gap at about two seconds so a ten-minute run plays in a minute or two, a loop toggle for booth-style playback, and controls that fade while a performance runs with the cursor idle.
+
+- **The trajectory records what a canvas needs.** Every observed run now opens with a `flow_structure` event, the `describe.json` tree embedded verbatim, recorded only when a logger or stream consumer is present so an unobserved run pays nothing for the walk. `suspend`'s gate records a `suspended` event before it throws, carrying `suspend_id` plus the step id that joins it back to its `flow_structure` node, so a consumer sees the pause as its own event ahead of the span-end error. And `cost`, `turn_retry`, and `response_received` carry the enclosing step's `span_id`, so a consumer attributes them to the exact turn rather than an open-span-stack guess, which mis-attributes under parallel. The field is additive and optional, so fixtures without it keep the old fallback.
+
+### Internal
+
+- Rewrote `docs/viewer.md` around the run canvas, and pinned the viewer server's heartbeat, close, error, and 500 paths plus the tailer's io-error, drain, stop, and coalescing paths in tests.
+
 ## v0.12.5 — 2026-08-21
 
 Everything in v0.12.4 ships here for the first time: that version was tagged but never reached npm, because its publish run failed on the gate described below. Upgrading from v0.12.3 picks up both sections.
