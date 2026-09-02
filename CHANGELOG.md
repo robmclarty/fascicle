@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.12.7 — 2026-09-01
+
+Everything in v0.12.6 ships here for the first time: that version was tagged but never reached npm, because its publish run failed on the gate described below. Upgrading from v0.12.5 picks up both sections.
+
+### Internal
+
+- **The release gate reads the release notes now.** The v0.12.6 changelog entry carried a sentence with two semicolons, which the `prose` slot rejects (vale's `Repo.Semicolon` rule). The narrow check the release skill runs before tagging covered `docs`, `links`, and `spell` only, so the sentence passed locally and then failed inside `publish.yaml`, stranding the tag on a commit that could never pass. The sentence is split in two, and the pre-tag gate now runs `prose` and `prose-health` as well, because vale reads `CHANGELOG.md` like any other markdown.
+
 ## v0.12.6 — 2026-09-01
 
 ### Changed
