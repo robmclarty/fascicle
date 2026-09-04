@@ -23,16 +23,31 @@ minimumReleaseAgeExclude:
   - fallow
 
 # pnpm reads overrides from this file (not the package.json `pnpm` field) in a
-# workspace. Every entry below lifts a transitive pin past an advisory the
-# `security` slot fails on, and every one of them is dev-tree only. smol-toml
-# >=1.6.1 puts cspell and markdownlint-cli2 on one copy, past the advisory
-# against 1.6.0. fast-uri >=4.1.3 lifts ajv's pin past the path-traversal
-# advisory and the three high ones that landed against 4.1.2, among them host
-# confusion on scheme-relative references and request forgery via IPv6
-# normalization. vite ^8.0.16 clears the `server.fs.deny` bypass
-# under vitest, capped at the major vitest 4 accepts.
+# workspace. Every entry below lifts a transitive pin past an advisory, and
+# every one of them is dev-tree only. smol-toml >=1.6.1 puts cspell and
+# markdownlint-cli2 on one copy, past the advisory against 1.6.0. fast-uri
+# >=4.1.3 lifts ajv's pin past the path-traversal advisory and the three high
+# ones that landed against 4.1.2, among them host confusion on scheme-relative
+# references and request forgery via IPv6 normalization. vite ^8.0.16 clears
+# the `server.fs.deny` bypass under vitest, capped at the major vitest 4
+# accepts.
+#
+# qs >=6.16.0 is the one entry the `security` slot does not demand, because all
+# three of its advisories are moderate and the slot fails at high. They reach
+# the tree through Stryker and through the MCP SDK's express, the SDK being an
+# optional peer a consumer installs themselves, so nothing here ships. The
+# floor is set to the highest of the three patched versions, which clears the
+# comma-format stringify crash, the array-limit bypass, and the isBuffer
+# denial of service in one move.
+#
+# Note what these entries cannot do. A `>=` pin is a floor, not a ceiling, so
+# it clears today's advisory and says nothing about the next one inside the
+# same major: fast-uri `>=3.1.2` resolved happily onto the vulnerable 4.1.2
+# until the advisory landed. The `security` slot is the thing that actually
+# catches that, which is why it stays in the default set rather than opt-in.
 overrides:
   tunnel: 'npm:@noble/secp256k1@2.1.0'
   smol-toml: '>=1.6.1'
   fast-uri: '>=4.1.3'
+  qs: '>=6.16.0'
   vite: '^8.0.16'
