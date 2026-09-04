@@ -1,5 +1,27 @@
 # Changelog
 
+## v0.12.8 — 2026-09-04
+
+### Added
+
+- **Step mode walks a run one beat at a time.** Play mode performs a run on a clock, which is the wrong instrument for reading one. A `STEP` dial now parks the clock and lets you walk the run yourself: engaging it opens the walk at T+0 and relabels the leading chip from `PLAY` to `NEXT`, and every press of that chip or the space bar advances one beat and stops there. A beat is one moment of run time, meaning every event that shares a timestamp, and the walk lands on exactly the positions a performance passes through, so stepping and playing show the same canvas at the same place and a parallel fan-out lights its branches in a single press. Turning the dial back off leaves the playhead where the walk stopped, so you can step into an interesting moment and then play the rest.
+
+### Changed
+
+- **Play mode paces a fast run into beats you can read.** A run whose steps finish in tens of milliseconds used to flash past in well under a second, because the schedule played every gap at its real length divided by the speed and capped only the long ones. A floor now lifts every gap between two distinct moments to a second of wall time at 1x (500ms at 2x, 333ms at 3x), so a 200ms demo run performs over a dozen seconds instead of vanishing. Events sharing a timestamp still fire together, which is what keeps a parallel fan-out lighting at once, and inside a floored gap the header `T+` visibly slows, the mirror of the acceleration compression already shows in the other direction.
+
+- **The playback controls are big enough to hit.** The dials move from a 10px face with 3px padding to the 11px meta register with a 28px target, and the leading chip holds a fixed width, so relabeling between `PLAY`, `PAUSE`, and `NEXT` no longer shifts the cluster under your pointer. The header's `RETURN TO LIVE` control shares the one chip recipe and grows with it.
+
+### Fixed
+
+- **Two dependency pins lifted past fresh advisories, taking the audit to zero findings at every severity.** Three high advisories landed against `fast-uri` 4.1.2, among them host confusion on scheme-relative references and request forgery via malformed IPv6 normalization. The existing override pinned `>=3.1.2`, which 4.1.2 satisfies, so `ajv` resolved straight onto the vulnerable version. A second pin takes `qs` to 6.16.0, past three moderate advisories the `security` slot never demanded, because it fails at high. Neither package reaches anyone who installs this one: the published tarball has no runtime dependencies, and both paths run through the dev tree or through the optional MCP SDK peer.
+
+### Internal
+
+- The viewer quickstart writes `.trajectory.jsonl` at the repo root and nothing ignored it, so following the documented demo left the working tree dirty and this release's version bump refused to run. The file is ignored now, alongside the red-green-refactor example's trajectory output.
+
+- The comment above the overrides block now records what a `>=` pin cannot do. It is a floor, not a ceiling, so it clears the advisory in front of it and says nothing about the next one inside the same major, which is how the `fast-uri` pin above sat on a vulnerable version until the advisory landed.
+
 ## v0.12.7 — 2026-09-01
 
 Everything in v0.12.6 ships here for the first time: that version was tagged but never reached npm, because its publish run failed on the gate described below. Upgrading from v0.12.5 picks up both sections.
