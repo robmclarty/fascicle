@@ -121,6 +121,30 @@ export function density_bins(timeline: Timeline, bins: number): ReadonlyArray<nu
   return counts.map((count) => count / peak)
 }
 
+/**
+ * The next beat: the first moment boundary strictly past this index.
+ *
+ * A moment is a set of events sharing one timestamp, and its boundary is its
+ * last event, which is where play mode's clock lands too (`position_at`
+ * returns the last event at or behind the elapsed offset). Walking the run by
+ * hand therefore lands on exactly the positions a performance passes through,
+ * so a hand-walked canvas and a performed one are the same picture stopped at
+ * the same place. A playhead on the final boundary has nowhere forward and
+ * stays. A degenerate run with no span is one long moment, which would make a
+ * single press jump to the end, so it falls back to stepping one event, the
+ * same fallback the fraction coordinate makes.
+ */
+export function next_beat(timeline: Timeline, index: number): number {
+  const { times, count, span_ms } = timeline
+  if (count === 0) return 0
+  if (span_ms <= 0) return step_event(index, 1, count)
+  const i = clamp(index, 0, count - 1)
+  for (let j = i + 1; j < count; j += 1) {
+    if (j === count - 1 || (times[j + 1] ?? 0) > (times[j] ?? 0)) return j
+  }
+  return i
+}
+
 /** Step one event along the log (the arrow keys), clamped to the run's ends. */
 export function step_event(index: number, direction: number, count: number): number {
   return clamp(index + Math.sign(direction), 0, Math.max(0, count - 1))

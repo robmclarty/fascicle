@@ -21,6 +21,12 @@
  * alone would move it, and inside a floored gap it advances slower, the
  * header's honest signal in both directions that time is being reshaped.
  *
+ * Stepping is the clock's opposite and shares its playhead. The STEP dial
+ * parks the performance and hands the run to the hands: each press advances
+ * one beat and stops there, which is the same held prefix a scrub holds, so
+ * the canvas still cannot tell how the playhead got where it is. Only one of
+ * the two may drive at a time, which is why engaging STEP stops playing.
+ *
  * Transitions re-anchor rather than accumulate: the anchor is an event index
  * plus the wall moment playback (re)started there, so a speed change, a
  * compression toggle, or a mid-play scrub all continue from the playhead
@@ -37,10 +43,11 @@ export const GAP_CAP_MS = 2000
 
 /**
  * The least run-time a positive inter-event gap plays as, before the speed
- * division: 400ms of wall at 1x, a beat the eye can follow, and a third of
- * that at 3x. A zero gap is never lifted, so simultaneous events stay one beat.
+ * division: a full second of wall at 1x, long enough to read the node the
+ * beat lights rather than merely notice it, and a third of that at 3x. A zero
+ * gap is never lifted, so simultaneous events stay one beat.
  */
-export const GAP_FLOOR_MS = 400
+export const GAP_FLOOR_MS = 1000
 
 /** Cursor-idle delay before playing chrome fades for a clean recording. */
 export const CHROME_IDLE_MS = 2500
@@ -149,6 +156,8 @@ export function position_at(
  */
 export type Playback = {
   readonly playing: boolean
+  /** The STEP dial: the run is walked by hand, so the clock is parked. */
+  readonly stepping: boolean
   readonly speed: PlaySpeed
   readonly compress: boolean
   readonly loop: boolean
@@ -159,6 +168,7 @@ export type Playback = {
 /** At rest: paused at 1x, compression on (the watchable default), no loop. */
 export const INITIAL_PLAYBACK: Playback = {
   playing: false,
+  stepping: false,
   speed: 1,
   compress: true,
   loop: false,
@@ -198,6 +208,38 @@ export function cycle_speed(playback: Playback, index: number, now_ms: number): 
 /** Flip gap compression; a running clock continues from the playhead. */
 export function toggle_compress(playback: Playback, index: number, now_ms: number): Playback {
   return anchored({ ...playback, compress: !playback.compress }, index, now_ms)
+}
+
+/**
+ * The STEP dial: hand the run to the hands, or give it back to the clock.
+ *
+ * Engaging parks any performance, because the walkthrough and the clock move
+ * one playhead and only one of them may hold it. Leaving step mode does not
+ * move the playhead, the same way pausing leaves it where it stopped.
+ */
+export function toggle_step(playback: Playback): Playback {
+  return playback.stepping
+    ? { ...playback, stepping: false }
+    : { ...playback, stepping: true, playing: false }
+}
+
+/**
+ * Where a walkthrough opens from the current playhead. The live edge and the
+ * run's end both have nothing left to walk, so the walk restarts at T+0, the
+ * same place play restarts from; anywhere else it continues where it stands.
+ */
+export function step_entry_index(index: number | null, count: number): number {
+  return index === null || index >= count - 1 ? 0 : index
+}
+
+/**
+ * What the play chip reads. Stepping relabels it to the advance it performs,
+ * so one chip and one key (Space) always do whatever the current mode means
+ * by "forward".
+ */
+export function play_label(playback: Playback): 'NEXT' | 'PAUSE' | 'PLAY' {
+  if (playback.stepping) return 'NEXT'
+  return playback.playing ? 'PAUSE' : 'PLAY'
 }
 
 /** Flip the loop dial; it is only consulted when the schedule runs out. */

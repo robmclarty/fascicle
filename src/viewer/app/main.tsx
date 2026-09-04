@@ -10,16 +10,19 @@ import {
   plan_for,
   play_elapsed_ms,
   position_at,
+  step_entry_index,
   stop_playback,
   toggle_compress,
   toggle_loop,
   toggle_play,
+  toggle_step,
   type Playback,
 } from './lib/playback'
 import {
   build_timeline,
   fraction_at,
   index_at_fraction,
+  next_beat,
   scrub_key,
   session_at,
 } from './lib/timeline'
@@ -55,6 +58,11 @@ import './styles.css'
  * interpolated play T+ rides to the header so compressed gaps visibly
  * accelerate, and pointer or key activity feeds the idle stamp the chrome
  * fade reads.
+ *
+ * Step mode is that same held index moved by hand instead: the play chip and
+ * Space both route to whichever advance the current mode means, so one
+ * control and one key cover performing and walking without a second grammar
+ * to learn.
  *
  * The DENSITY dial's persistence lives here for the same D4 reason: storage is
  * a browser global, so localStorage is read once at startup and written on
@@ -140,6 +148,21 @@ function main(): void {
   const toggle = (): void => {
     set_playback((state) => toggle_play(state, held(), timeline().count, now_ms()))
   }
+  const advance = (): void => {
+    const spine = timeline()
+    if (spine.count === 0) return
+    set_held(next_beat(spine, index()))
+  }
+  // The play chip and Space are one control with two meanings, so the mode
+  // picks the meaning in the one place that knows it.
+  const forward = (): void => {
+    if (playback().stepping) advance()
+    else toggle()
+  }
+  const toggle_stepping = (): void => {
+    if (!playback().stepping) set_held(step_entry_index(held(), timeline().count))
+    set_playback(toggle_step)
+  }
   const toggle_density = (): void => {
     const next = !density()
     set_density(next)
@@ -147,7 +170,8 @@ function main(): void {
   }
 
   /*
-   * Route a keydown: Space toggles play (Q5); the rest goes to the scrub move
+   * Route a keydown: Space moves the run forward (Q5), which is play, pause,
+   * or one beat depending on the mode; the rest goes to the scrub move
    * `scrub_key` decides, where `'live'` re-attaches to the edge and a number
    * holds that prefix (continuing a running performance from there). The
    * default is prevented only for a key the canvas actually took, which also
@@ -155,7 +179,7 @@ function main(): void {
    */
   window.addEventListener('keydown', (event) => {
     if (event.key === ' ') {
-      toggle()
+      forward()
       event.preventDefault()
       return
     }
@@ -210,7 +234,8 @@ function main(): void {
         density={density()}
         on_seek={seek}
         on_return_to_live={return_to_live}
-        on_toggle_play={toggle}
+        on_play_chip={forward}
+        on_toggle_step={toggle_stepping}
         on_cycle_speed={() => set_playback((state) => cycle_speed(state, index(), now_ms()))}
         on_toggle_compress={() =>
           set_playback((state) => toggle_compress(state, index(), now_ms()))

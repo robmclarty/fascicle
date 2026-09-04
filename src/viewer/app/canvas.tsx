@@ -62,7 +62,9 @@ export type CanvasProps = {
   readonly on_seek: (fraction: number) => void
   /** Re-attach to the newest event from a scrubbed position. */
   readonly on_return_to_live: () => void
-  readonly on_toggle_play: () => void
+  /** The play chip: advance a beat while stepping, else start or stop the clock. */
+  readonly on_play_chip: () => void
+  readonly on_toggle_step: () => void
   readonly on_cycle_speed: () => void
   readonly on_toggle_compress: () => void
   readonly on_toggle_loop: () => void
@@ -150,7 +152,8 @@ export function Canvas(props: CanvasProps): JSX.Element {
         <Controls
           playback={props.playback}
           density={props.density}
-          on_toggle_play={props.on_toggle_play}
+          on_play_chip={props.on_play_chip}
+          on_toggle_step={props.on_toggle_step}
           on_cycle_speed={props.on_cycle_speed}
           on_toggle_compress={props.on_toggle_compress}
           on_toggle_loop={props.on_toggle_loop}

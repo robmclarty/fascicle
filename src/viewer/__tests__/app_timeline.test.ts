@@ -24,6 +24,7 @@ import {
   density_bins,
   fraction_at,
   index_at_fraction,
+  next_beat,
   scrub_key,
   session_at,
   step_event,
@@ -46,6 +47,9 @@ const structure = (events[0] as { structure: FlowNode }).structure
 const SPAN_MS = 196
 const FIRST_FAIL_MS = 113
 const SECOND_FAIL_MS = 185
+
+/** The fixture's own spine, for the beat walk that reads its real moments. */
+const FIXTURE: Timeline = build_timeline(frames)
 
 /** A sparse synthetic clock, for the position and stepping math in isolation. */
 const SPARSE: Timeline = {
@@ -179,6 +183,55 @@ describe('density_bins', () => {
   it('normalizes the busiest bin to full strength and clamps the last event in', () => {
     // Fractions 0, .04, .4, .44, 1 land in bins 0, 0, 2, 2, 4.
     expect(density_bins(SPARSE, 5)).toEqual([1, 0, 1, 0, 0.5])
+  })
+})
+
+describe('next_beat', () => {
+  it('lands on the end of each moment, folding simultaneous events as one', () => {
+    // The fixture's moments end at these indices; every event between two of
+    // them shares its timestamp with the boundary that follows it.
+    expect(next_beat(FIXTURE, 0)).toBe(2)
+    expect(next_beat(FIXTURE, 2)).toBe(6)
+    expect(next_beat(FIXTURE, 6)).toBe(12)
+    expect(next_beat(FIXTURE, 12)).toBe(13)
+  })
+
+  it('advances out of a mid-moment playhead to that moment end', () => {
+    expect(next_beat(FIXTURE, 1)).toBe(2)
+    expect(next_beat(FIXTURE, 4)).toBe(6)
+  })
+
+  it('walks the whole run in one beat per moment', () => {
+    const walk: number[] = []
+    let at = 0
+    for (let guard = 0; guard < FIXTURE.count; guard += 1) {
+      const next = next_beat(FIXTURE, at)
+      if (next === at) break
+      walk.push(next)
+      at = next
+    }
+    expect(at).toBe(FIXTURE.count - 1)
+    expect(walk).toEqual([2, 6, 12, 13, 16, 20, 27, 28, 29, 32, 33, 35, 40, 41])
+  })
+
+  it('stays put on the final boundary', () => {
+    expect(next_beat(FIXTURE, FIXTURE.count - 1)).toBe(FIXTURE.count - 1)
+  })
+
+  it('steps one event when the run has no span to divide into moments', () => {
+    const flat = build_timeline([
+      { kind: 'span_start', ts: 7 },
+      { kind: 'span_start', ts: 7 },
+      { kind: 'span_end', ts: 7 },
+    ] as ViewerFrame[])
+    expect(flat.span_ms).toBe(0)
+    expect(next_beat(flat, 0)).toBe(1)
+    expect(next_beat(flat, 1)).toBe(2)
+    expect(next_beat(flat, 2)).toBe(2)
+  })
+
+  it('has nowhere to go on an empty log', () => {
+    expect(next_beat({ count: 0, span_ms: 0, times: [], failures: [] }, 0)).toBe(0)
   })
 })
 

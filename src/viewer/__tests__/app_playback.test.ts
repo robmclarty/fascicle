@@ -6,7 +6,7 @@
  * the schedule IS the run's real ts deltas and each multiplier divides them;
  * under play mode's own pacing, the floor lifts the fixture's thirteen
  * distinct moments (tens of milliseconds apart) into a performance of about
- * five seconds, which is what makes a 196ms demo watchable at all. Synthetic
+ * thirteen seconds, which is what makes a 196ms demo watchable at all. Synthetic
  * domains pin what the fixture cannot exercise: the order-2s gap cap
  * collapsing dead air (the ten-minute run that must play in a minute or
  * two), the interpolated T+ accelerating inside a compressed gap and slowing
@@ -34,9 +34,12 @@ import {
   play_elapsed_ms,
   position_at,
   stop_playback,
+  play_label,
+  step_entry_index,
   toggle_compress,
   toggle_loop,
   toggle_play,
+  toggle_step,
   type Pacing,
   type PlaySpeed,
   type Playback,
@@ -72,9 +75,13 @@ const dials = (speed: PlaySpeed, compress: boolean): Pacing => ({
   cap_ms: compress ? GAP_CAP_MS : null,
 })
 
+/** The cap with no floor under it, so the compression suite pins one bound. */
+const capped = (speed: PlaySpeed): Pacing => ({ speed, floor_ms: 0, cap_ms: GAP_CAP_MS })
+
 /** A playing state anchored at an index, for the transition suite. */
 const PLAYING: Playback = {
   playing: true,
+  stepping: false,
   speed: 1,
   compress: true,
   loop: false,
@@ -131,25 +138,30 @@ describe('build_plan gap floor', () => {
     expect(plan.wall_times).toEqual([0, 2000])
   })
 
-  it('performs the fixture in about five seconds at 1x under play mode pacing', () => {
+  it('performs the fixture in about thirteen seconds at 1x under play mode pacing', () => {
     expect(FIXTURE_BEATS).toBe(13)
     const plan = plan_for(FIXTURE_TIMES, INITIAL_PLAYBACK)
     expect(plan.wall_total_ms).toBe(FIXTURE_BEATS * GAP_FLOOR_MS)
-    expect(plan.wall_total_ms).toBeGreaterThanOrEqual(4000)
-    expect(plan.wall_total_ms).toBeLessThanOrEqual(8000)
+    expect(plan.wall_total_ms).toBeGreaterThanOrEqual(10_000)
+    expect(plan.wall_total_ms).toBeLessThanOrEqual(20_000)
   })
 
   it('divides the floored performance by the speed', () => {
     const plan = plan_for(FIXTURE_TIMES, { ...INITIAL_PLAYBACK, speed: 3 })
     expect(plan.wall_total_ms).toBeCloseTo((FIXTURE_BEATS * GAP_FLOOR_MS) / 3, 6)
   })
+
+  it('lifts and caps in one schedule, each bound taking the gaps it owns', () => {
+    // GAPPY under both dials: the 1s gap is already a beat, the 20s silence
+    // collapses to the cap, and the 500ms tail is lifted to the floor.
+    expect(plan_for(GAPPY, INITIAL_PLAYBACK).wall_times).toEqual([0, 1000, 3000, 4000])
+  })
 })
 
 describe('build_plan gap compression', () => {
   it('caps each gap after the speed division, leaving short gaps real', () => {
-    // Every GAPPY gap clears the floor, so the cap is the only bound in play.
-    expect(build_plan(GAPPY, dials(1, true)).wall_times).toEqual([0, 1000, 3000, 3500])
-    expect(build_plan(GAPPY, dials(2, true)).wall_times).toEqual([0, 500, 2500, 2750])
+    expect(build_plan(GAPPY, capped(1)).wall_times).toEqual([0, 1000, 3000, 3500])
+    expect(build_plan(GAPPY, capped(2)).wall_times).toEqual([0, 500, 2500, 2750])
   })
 
   it('plays a ten-minute run in about a minute at 2x with the cap', () => {
@@ -171,7 +183,7 @@ describe('build_plan gap compression', () => {
 })
 
 describe('position_at', () => {
-  const plan = build_plan(GAPPY, dials(1, true))
+  const plan = plan_for(GAPPY, INITIAL_PLAYBACK)
 
   it('lands each scheduled moment exactly on its event', () => {
     for (const [i, wall] of plan.wall_times.entries()) {
@@ -193,10 +205,14 @@ describe('position_at', () => {
   })
 
   it('slows T+ through a floored gap (the honest slow-motion)', () => {
-    // Halfway through the floored 400ms of wall is halfway through 40ms of run.
+    // Halfway through the floored second of wall is halfway through 40ms of run.
     const beats = [0, 40, 80]
     const beat_plan = build_plan(beats, dials(1, false))
-    expect(position_at(beat_plan, beats, 200)).toEqual({ index: 0, t_plus_ms: 20, done: false })
+    expect(position_at(beat_plan, beats, GAP_FLOOR_MS / 2)).toEqual({
+      index: 0,
+      t_plus_ms: 20,
+      done: false,
+    })
   })
 
   it('is done at and past the schedule end, seated on the last event', () => {
@@ -305,7 +321,7 @@ describe('hold_at and stop_playback', () => {
 
 describe('play_elapsed_ms', () => {
   it('counts from the anchor event scheduled offset', () => {
-    const plan = build_plan(GAPPY, dials(1, true))
+    const plan = plan_for(GAPPY, INITIAL_PLAYBACK)
     const state = { ...PLAYING, anchor_index: 2, anchor_now_ms: 10_000 }
     expect(play_elapsed_ms(plan, state, 10_250)).toBe(3250)
   })
@@ -324,10 +340,38 @@ describe('chrome_hidden', () => {
   })
 })
 
+describe('the STEP dial', () => {
+  it('engaging parks the clock, because one playhead has one driver', () => {
+    expect(toggle_step(PLAYING)).toEqual({ ...PLAYING, stepping: true, playing: false })
+  })
+
+  it('leaving step mode moves nothing but the dial', () => {
+    const stepping = toggle_step(INITIAL_PLAYBACK)
+    expect(toggle_step(stepping)).toEqual(INITIAL_PLAYBACK)
+  })
+
+  it('opens the walk at T+0 from the live edge and from the run end', () => {
+    expect(step_entry_index(null, 42)).toBe(0)
+    expect(step_entry_index(41, 42)).toBe(0)
+  })
+
+  it('continues the walk from a playhead parked mid-run', () => {
+    expect(step_entry_index(17, 42)).toBe(17)
+  })
+
+  it('relabels the play chip to the advance it performs', () => {
+    expect(play_label(INITIAL_PLAYBACK)).toBe('PLAY')
+    expect(play_label(PLAYING)).toBe('PAUSE')
+    expect(play_label(toggle_step(INITIAL_PLAYBACK))).toBe('NEXT')
+    expect(play_label(toggle_step(PLAYING))).toBe('NEXT')
+  })
+})
+
 describe('INITIAL_PLAYBACK', () => {
-  it('rests paused at 1x with compression on and no loop', () => {
+  it('rests paused at 1x, not stepping, compression on and no loop', () => {
     expect(INITIAL_PLAYBACK).toEqual({
       playing: false,
+      stepping: false,
       speed: 1,
       compress: true,
       loop: false,

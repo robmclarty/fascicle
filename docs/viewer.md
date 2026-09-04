@@ -129,7 +129,7 @@ gives your pointer the room it needs. The keys that move it are these:
 - **Shift+←** and **Shift+→** step one second.
 - **Home** rewinds to T+0.
 - **End** returns to the live edge.
-- **Space** toggles play.
+- **Space** moves the run forward: play, pause, or one beat while stepping.
 
 The spine can also shade itself by activity. A `DENSITY` dial in the playback
 cluster draws a white-family band behind the spine that brightens where the
@@ -163,9 +163,9 @@ Two dials make a long run watchable:
   ten-minute run plays as a performance of a minute or two.
 
 Under both dials sits a floor. No gap between two distinct moments plays
-shorter than 400ms of wall time at 1x (200ms at 2x, 133ms at 3x), so a run
+shorter than a second of wall time at 1x (500ms at 2x, 333ms at 3x), so a run
 whose steps finish in tens of milliseconds, like the demo's 196ms, still
-performs as beats you can follow rather than a flash. Events that share a
+performs as beats you can read rather than a flash. Events that share a
 timestamp still land together, which is how a parallel fan-out keeps lighting
 at once. Inside a floored gap the header `T+` visibly slows, the mirror of
 compression's acceleration, so the slow-motion stays as honest as the
@@ -174,6 +174,25 @@ fast-forward.
 A loop toggle repeats the run for booth-style playback. While a performance
 runs with the cursor idle, the controls and the scrubber fade after a couple of
 seconds, so your screen recording shows only the canvas.
+
+## Step Mode
+
+When you want to read a run rather than watch it, the `STEP` dial hands it to
+your hands. Engaging it parks the clock and opens the walk at T+0, and the
+leading chip relabels from `PLAY` to `NEXT`. Every press of that chip, or of
+the space bar, advances the canvas by one beat and stops there. Nothing moves
+again until you ask it to, so you can talk over a run, or read a node's card,
+for as long as you like.
+
+A beat is one moment of run time, meaning every event sharing a timestamp. The
+walk lands on exactly the positions a performance passes through, so stepping
+and playing show the same canvas at the same place, and a parallel fan-out
+lights its branches in one press rather than dribbling them out. Two presses
+can both read the same `T+` when a burst of events shares a millisecond, which
+is the run being honest about how little time passed.
+
+Turning the dial back off leaves the playhead where the walk stopped, so you
+can step into an interesting moment and then press play to watch the rest.
 
 ## The Compiled App
 

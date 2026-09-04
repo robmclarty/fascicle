@@ -37,20 +37,23 @@ test.afterEach(async () => {
 })
 
 test('Space performs the run from the live edge to its end, then stops', async ({ page }) => {
+  // The gap floor spreads the fixture's 13 distinct moments into a
+  // performance of about thirteen seconds, so this spec waits out a real
+  // performance and needs a budget past Playwright's 30s default.
+  test.setTimeout(60_000)
   const play = page.getByTestId('play-toggle')
   const first_stat = page.getByTestId('stats').locator('span').first()
 
   // At the live edge the playhead has nowhere forward, so play restarts at
-  // T+0 and the chip flips to REPLAY. The gap floor spreads the fixture's 13
-  // distinct moments into a performance of about five seconds, long enough
-  // to catch the clock running, so the spec pins both halves: the
-  // performance is under way, then it walked the schedule to the run's true
-  // end on its own and handed back. The finish waits past the floored length
-  // on purpose, because that length is the thing being observed.
+  // T+0 and the chip flips to REPLAY. The floored length is long enough to
+  // catch the clock running, so the spec pins both halves: the performance
+  // is under way, then it walked the schedule to the run's true end on its
+  // own and handed back. The finish waits past that length on purpose,
+  // because the length is the thing being observed.
   await page.keyboard.press('Space')
   await expect(play).toHaveText('PAUSE')
   await expect(page.getByTestId('status')).toHaveText('REPLAY')
-  await expect(first_stat).toHaveText('T+196MS', { timeout: 15_000 })
+  await expect(first_stat).toHaveText('T+196MS', { timeout: 30_000 })
   await expect(play).toHaveText('PLAY')
   await expect(page.getByTestId('return-to-live')).toBeVisible()
 })
@@ -59,14 +62,63 @@ test('a fast run performs as beats, not a flash: a second in, it is still runnin
   page,
 }) => {
   // The fixture's whole run is 196ms of real time. Without the floor the
-  // performance would be over before this spec could look; with it, the run
-  // is still mid-performance a full second after Space.
+  // performance would be over before this spec could look; with it, one
+  // second after Space the run has only just cleared its first beat.
   const play = page.getByTestId('play-toggle')
   await page.keyboard.press('Space')
   await expect(play).toHaveText('PAUSE')
   await page.waitForTimeout(1000)
   await expect(play).toHaveText('PAUSE')
   await expect(page.getByTestId('stats').locator('span').first()).not.toHaveText('T+196MS')
+})
+
+test('STEP hands the run to the hands: the chip and Space each advance a beat', async ({
+  page,
+}) => {
+  const play = page.getByTestId('play-toggle')
+  const first_stat = page.getByTestId('stats').locator('span').first()
+
+  // Engaging opens the walk at T+0 and parks the clock, so the leading chip
+  // stops offering to play and starts offering the next beat.
+  await page.getByTestId('step-toggle').click()
+  await expect(page.getByTestId('step-toggle')).toHaveAttribute('data-active', 'true')
+  await expect(play).toHaveText('NEXT')
+  await expect(page.getByTestId('status')).toHaveText('REPLAY')
+  await expect(first_stat).toHaveText('T+0MS')
+
+  // The fixture opens three events deep at the same millisecond, so the first
+  // press folds that moment whole and the clock legitimately has not moved;
+  // the second reaches the run's next moment at T+42MS.
+  await page.keyboard.press('Space')
+  await expect(first_stat).toHaveText('T+0MS')
+  await page.keyboard.press('Space')
+  await expect(first_stat).toHaveText('T+42MS')
+
+  // The chip is the same advance as the key.
+  await play.click()
+  await expect(first_stat).toHaveText('T+43MS')
+
+  // Nothing ever started running: a walk stops after every beat it takes.
+  await expect(play).toHaveText('NEXT')
+  await expect(page.locator('.canvas')).toHaveAttribute('data-chrome', 'visible')
+})
+
+test('leaving STEP hands the playhead back to the clock where the walk stopped', async ({
+  page,
+}) => {
+  const play = page.getByTestId('play-toggle')
+  await page.getByTestId('step-toggle').click()
+  await page.keyboard.press('Space')
+  await page.keyboard.press('Space')
+  await expect(page.getByTestId('stats').locator('span').first()).toHaveText('T+42MS')
+
+  // The dial goes off without moving the playhead, and Space is the clock again.
+  await page.getByTestId('step-toggle').click()
+  await expect(page.getByTestId('step-toggle')).not.toHaveAttribute('data-active', 'true')
+  await expect(play).toHaveText('PLAY')
+  await expect(page.getByTestId('stats').locator('span').first()).toHaveText('T+42MS')
+  await page.keyboard.press('Space')
+  await expect(play).toHaveText('PAUSE')
 })
 
 test('Space is the play toggle: a looping performance pauses in place', async ({ page }) => {

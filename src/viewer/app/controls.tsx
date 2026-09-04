@@ -1,21 +1,25 @@
 import type { JSX } from 'solid-js'
-import type { Playback } from './lib/playback'
+import { play_label, type Playback } from './lib/playback'
 
 /*
- * The playback controls: play mode's four dials in the mono meta register,
- * seated under the time spine beside the scrubber, plus the spine's DENSITY
- * dial in the same register. The cluster is markup only (D4): every playback
+ * The playback controls: play mode's dials in the mono meta register, seated
+ * under the time spine beside the scrubber, plus the spine's DENSITY dial in
+ * the same register. The cluster is markup only (D4): every playback
  * transition a click can trigger is decided in `lib/playback.ts` and wired
- * through the app, and density is a view preference the app persists. An
- * engaged toggle brightens rather than colors, because hierarchy is opacity
- * and amber belongs to the canvas (C4).
+ * through the app, and density is a view preference the app persists. Even
+ * the leading chip's label is a decision the lib makes, because that chip
+ * plays, pauses, or advances depending on the mode. An engaged toggle
+ * brightens rather than colors, because hierarchy is opacity and amber
+ * belongs to the canvas (C4).
  */
 
 export type ControlsProps = {
   readonly playback: Playback
   /** The DENSITY dial's state: a view preference, not playback state. */
   readonly density: boolean
-  readonly on_toggle_play: () => void
+  /** The leading chip: advance a beat while stepping, else start or stop the clock. */
+  readonly on_play_chip: () => void
+  readonly on_toggle_step: () => void
   readonly on_cycle_speed: () => void
   readonly on_toggle_compress: () => void
   readonly on_toggle_loop: () => void
@@ -47,15 +51,21 @@ function Chip(props: ChipProps): JSX.Element {
   )
 }
 
-/** Play, the speed dial, gap compression, the loop toggle, and density. */
+/** Play, step, the speed dial, gap compression, the loop toggle, and density. */
 export function Controls(props: ControlsProps): JSX.Element {
   return (
     <div class="playback" data-testid="playback">
       <Chip
         testid="play-toggle"
-        label={props.playback.playing ? 'PAUSE' : 'PLAY'}
+        label={play_label(props.playback)}
         play
-        on_click={props.on_toggle_play}
+        on_click={props.on_play_chip}
+      />
+      <Chip
+        testid="step-toggle"
+        label="STEP"
+        active={props.playback.stepping}
+        on_click={props.on_toggle_step}
       />
       <Chip testid="speed" label={`${props.playback.speed}X`} on_click={props.on_cycle_speed} />
       <Chip
