@@ -22,6 +22,10 @@ tsconfig.tsbuildinfo
 # rgr example trajectory output
 examples/red-green-refactor/.trajectory/
 
+# viewer-demo trajectory output, written at the repo root by the viewer
+# quickstart in docs/viewer.md
+.trajectory.jsonl
+
 # pr-improve worktrees, created in the host repo when pr-improve runs
 # against a real PR. (Per-run artifacts under examples/pr-improve/.runs/
 # are ignored by examples/pr-improve/.gitignore.)
