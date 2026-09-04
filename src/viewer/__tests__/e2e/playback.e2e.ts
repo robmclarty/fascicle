@@ -41,14 +41,32 @@ test('Space performs the run from the live edge to its end, then stops', async (
   const first_stat = page.getByTestId('stats').locator('span').first()
 
   // At the live edge the playhead has nowhere forward, so play restarts at
-  // T+0 and the chip flips to REPLAY. The 196ms fixture can finish before a
-  // first poll lands, so the assertions pin the settled outcome: the clock
-  // walked the schedule to the run's true end on its own and handed back.
+  // T+0 and the chip flips to REPLAY. The gap floor spreads the fixture's 13
+  // distinct moments into a performance of about five seconds, long enough
+  // to catch the clock running, so the spec pins both halves: the
+  // performance is under way, then it walked the schedule to the run's true
+  // end on its own and handed back. The finish waits past the floored length
+  // on purpose, because that length is the thing being observed.
   await page.keyboard.press('Space')
+  await expect(play).toHaveText('PAUSE')
   await expect(page.getByTestId('status')).toHaveText('REPLAY')
-  await expect(first_stat).toHaveText('T+196MS')
+  await expect(first_stat).toHaveText('T+196MS', { timeout: 15_000 })
   await expect(play).toHaveText('PLAY')
   await expect(page.getByTestId('return-to-live')).toBeVisible()
+})
+
+test('a fast run performs as beats, not a flash: a second in, it is still running', async ({
+  page,
+}) => {
+  // The fixture's whole run is 196ms of real time. Without the floor the
+  // performance would be over before this spec could look; with it, the run
+  // is still mid-performance a full second after Space.
+  const play = page.getByTestId('play-toggle')
+  await page.keyboard.press('Space')
+  await expect(play).toHaveText('PAUSE')
+  await page.waitForTimeout(1000)
+  await expect(play).toHaveText('PAUSE')
+  await expect(page.getByTestId('stats').locator('span').first()).not.toHaveText('T+196MS')
 })
 
 test('Space is the play toggle: a looping performance pauses in place', async ({ page }) => {

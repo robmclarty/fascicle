@@ -2,15 +2,19 @@
  * Play mode's clock: the schedule that performs the run, and the transitions
  * that steer it.
  *
- * The design fixture pins the base claim: at 1x with no cap the schedule IS
- * the run's real ts deltas, and each multiplier divides them. Synthetic
- * domains pin what the fixture's 196ms span cannot exercise: the order-2s gap
- * cap collapsing dead air (the ten-minute run that must play in a minute or
- * two), the interpolated T+ accelerating inside a compressed gap while an
- * uncompressed gap advances at exactly the chosen speed, simultaneous events
- * firing together, and the run's ends. The transition suite holds the anchor
- * discipline: every dial change while playing re-anchors at the playhead so
- * wall time neither replays nor skips, and nothing moves while paused.
+ * The design fixture pins the base claims. With pacing off (no floor, no cap)
+ * the schedule IS the run's real ts deltas and each multiplier divides them;
+ * under play mode's own pacing, the floor lifts the fixture's thirteen
+ * distinct moments (tens of milliseconds apart) into a performance of about
+ * five seconds, which is what makes a 196ms demo watchable at all. Synthetic
+ * domains pin what the fixture cannot exercise: the order-2s gap cap
+ * collapsing dead air (the ten-minute run that must play in a minute or
+ * two), the interpolated T+ accelerating inside a compressed gap and slowing
+ * inside a floored one while an unpaced gap advances at exactly the chosen
+ * speed, simultaneous events firing together under the floor, and the run's
+ * ends. The transition suite holds the anchor discipline: every dial change
+ * while playing re-anchors at the playhead so wall time neither replays nor
+ * skips, and nothing moves while paused.
  */
 
 import { readFileSync } from 'node:fs'
@@ -20,6 +24,7 @@ import { describe, expect, it } from 'vitest'
 import {
   CHROME_IDLE_MS,
   GAP_CAP_MS,
+  GAP_FLOOR_MS,
   INITIAL_PLAYBACK,
   build_plan,
   chrome_hidden,
@@ -32,6 +37,8 @@ import {
   toggle_compress,
   toggle_loop,
   toggle_play,
+  type Pacing,
+  type PlaySpeed,
   type Playback,
 } from '../app/lib/playback.js'
 import { build_timeline } from '../app/lib/timeline.js'
@@ -47,8 +54,23 @@ const frames = readFileSync(join(HERE, 'fixtures', 'fixture.trajectory.jsonl'), 
 /** The fixture's fold clock: 42 events over a 196ms span. */
 const FIXTURE_TIMES = build_timeline(frames).times
 
+/** The fixture's distinct moments: the positive gaps the floor lifts into beats. */
+const FIXTURE_BEATS = FIXTURE_TIMES.filter(
+  (time, i) => i > 0 && time > (FIXTURE_TIMES[i - 1] ?? 0),
+).length
+
 /** A run with one dense burst and one 20s silence, for the cap semantics. */
 const GAPPY = [0, 1000, 21_000, 21_500]
+
+/** Pacing with nothing on: the schedule is the run's own deltas over the speed. */
+const real = (speed: PlaySpeed): Pacing => ({ speed, floor_ms: 0, cap_ms: null })
+
+/** Play mode's own pacing at a speed: the floor always, the cap while compressing. */
+const dials = (speed: PlaySpeed, compress: boolean): Pacing => ({
+  speed,
+  floor_ms: GAP_FLOOR_MS,
+  cap_ms: compress ? GAP_CAP_MS : null,
+})
 
 /** A playing state anchored at an index, for the transition suite. */
 const PLAYING: Playback = {
@@ -61,12 +83,12 @@ const PLAYING: Playback = {
 }
 
 describe('build_plan on the fixture (real ts deltas)', () => {
-  it('is the run itself at 1x with no cap', () => {
-    expect(build_plan(FIXTURE_TIMES, 1, null).wall_times).toEqual(FIXTURE_TIMES)
+  it('is the run itself at 1x with pacing off', () => {
+    expect(build_plan(FIXTURE_TIMES, real(1)).wall_times).toEqual(FIXTURE_TIMES)
   })
 
   it.each([2, 3] as const)('divides every delta at %dx', (speed) => {
-    const plan = build_plan(FIXTURE_TIMES, speed, null)
+    const plan = build_plan(FIXTURE_TIMES, real(speed))
     for (const [i, time] of FIXTURE_TIMES.entries()) {
       expect(plan.wall_times[i]).toBeCloseTo(time / speed, 6)
     }
@@ -74,23 +96,65 @@ describe('build_plan on the fixture (real ts deltas)', () => {
   })
 
   it('the fixture has no gap for the default cap to touch', () => {
-    expect(build_plan(FIXTURE_TIMES, 1, GAP_CAP_MS).wall_times).toEqual(FIXTURE_TIMES)
+    const plan = build_plan(FIXTURE_TIMES, { ...real(1), cap_ms: GAP_CAP_MS })
+    expect(plan.wall_times).toEqual(FIXTURE_TIMES)
   })
 
   it('schedules gaps, not absolute offsets, when the clock starts late', () => {
-    expect(build_plan([500, 1500], 2, null).wall_times).toEqual([0, 500])
+    expect(build_plan([500, 1500], real(2)).wall_times).toEqual([0, 500])
+  })
+})
+
+describe('build_plan gap floor', () => {
+  it('lifts every positive gap to the floor before the speed division', () => {
+    const beats = [0, 40, 70, 90]
+    expect(build_plan(beats, { speed: 1, floor_ms: 400, cap_ms: null }).wall_times).toEqual([
+      0, 400, 800, 1200,
+    ])
+    expect(build_plan(beats, { speed: 2, floor_ms: 400, cap_ms: null }).wall_times).toEqual([
+      0, 200, 400, 600,
+    ])
+  })
+
+  it('leaves a gap at or above the floor real', () => {
+    const plan = build_plan([0, 400, 1400], { speed: 1, floor_ms: 400, cap_ms: null })
+    expect(plan.wall_times).toEqual([0, 400, 1400])
+  })
+
+  it('never lifts a zero gap, so simultaneous events stay one beat', () => {
+    const plan = build_plan([0, 0, 0, 100], { speed: 1, floor_ms: 400, cap_ms: null })
+    expect(plan.wall_times).toEqual([0, 0, 0, 400])
+  })
+
+  it('applies the cap after the floor, so the cap always wins', () => {
+    const plan = build_plan([0, 100], { speed: 1, floor_ms: 3000, cap_ms: 2000 })
+    expect(plan.wall_times).toEqual([0, 2000])
+  })
+
+  it('performs the fixture in about five seconds at 1x under play mode pacing', () => {
+    expect(FIXTURE_BEATS).toBe(13)
+    const plan = plan_for(FIXTURE_TIMES, INITIAL_PLAYBACK)
+    expect(plan.wall_total_ms).toBe(FIXTURE_BEATS * GAP_FLOOR_MS)
+    expect(plan.wall_total_ms).toBeGreaterThanOrEqual(4000)
+    expect(plan.wall_total_ms).toBeLessThanOrEqual(8000)
+  })
+
+  it('divides the floored performance by the speed', () => {
+    const plan = plan_for(FIXTURE_TIMES, { ...INITIAL_PLAYBACK, speed: 3 })
+    expect(plan.wall_total_ms).toBeCloseTo((FIXTURE_BEATS * GAP_FLOOR_MS) / 3, 6)
   })
 })
 
 describe('build_plan gap compression', () => {
   it('caps each gap after the speed division, leaving short gaps real', () => {
-    expect(build_plan(GAPPY, 1, GAP_CAP_MS).wall_times).toEqual([0, 1000, 3000, 3500])
-    expect(build_plan(GAPPY, 2, GAP_CAP_MS).wall_times).toEqual([0, 500, 2500, 2750])
+    // Every GAPPY gap clears the floor, so the cap is the only bound in play.
+    expect(build_plan(GAPPY, dials(1, true)).wall_times).toEqual([0, 1000, 3000, 3500])
+    expect(build_plan(GAPPY, dials(2, true)).wall_times).toEqual([0, 500, 2500, 2750])
   })
 
   it('plays a ten-minute run in about a minute at 2x with the cap', () => {
     const times = Array.from({ length: 31 }, (_, i) => i * 20_000)
-    const plan = build_plan(times, 2, GAP_CAP_MS)
+    const plan = build_plan(times, dials(2, true))
     expect(times.at(-1)).toBe(600_000)
     expect(plan.wall_total_ms).toBeGreaterThanOrEqual(60_000)
     expect(plan.wall_total_ms).toBeLessThanOrEqual(120_000)
@@ -98,16 +162,16 @@ describe('build_plan gap compression', () => {
 
   it('plan_for reads the cap off the compress dial', () => {
     expect(plan_for(GAPPY, { ...INITIAL_PLAYBACK, compress: true })).toEqual(
-      build_plan(GAPPY, 1, GAP_CAP_MS),
+      build_plan(GAPPY, dials(1, true)),
     )
     expect(plan_for(GAPPY, { ...INITIAL_PLAYBACK, compress: false })).toEqual(
-      build_plan(GAPPY, 1, null),
+      build_plan(GAPPY, dials(1, false)),
     )
   })
 })
 
 describe('position_at', () => {
-  const plan = build_plan(GAPPY, 1, GAP_CAP_MS)
+  const plan = build_plan(GAPPY, dials(1, true))
 
   it('lands each scheduled moment exactly on its event', () => {
     for (const [i, wall] of plan.wall_times.entries()) {
@@ -117,7 +181,7 @@ describe('position_at', () => {
     }
   })
 
-  it('advances T+ at the chosen speed through an uncompressed gap', () => {
+  it('advances T+ at the chosen speed through an unpaced gap', () => {
     expect(position_at(plan, GAPPY, 500).t_plus_ms).toBe(500)
   })
 
@@ -126,6 +190,13 @@ describe('position_at', () => {
     const position = position_at(plan, GAPPY, 2000)
     expect(position.index).toBe(1)
     expect(position.t_plus_ms).toBe(11_000)
+  })
+
+  it('slows T+ through a floored gap (the honest slow-motion)', () => {
+    // Halfway through the floored 400ms of wall is halfway through 40ms of run.
+    const beats = [0, 40, 80]
+    const beat_plan = build_plan(beats, dials(1, false))
+    expect(position_at(beat_plan, beats, 200)).toEqual({ index: 0, t_plus_ms: 20, done: false })
   })
 
   it('is done at and past the schedule end, seated on the last event', () => {
@@ -141,14 +212,15 @@ describe('position_at', () => {
     expect(position_at(plan, GAPPY, -50)).toEqual({ index: 0, t_plus_ms: 0, done: false })
   })
 
-  it('fires simultaneous events together', () => {
+  it('fires simultaneous events together, floor and all', () => {
     const burst = [0, 0, 0, 100]
-    const burst_plan = build_plan(burst, 1, null)
+    const burst_plan = build_plan(burst, dials(1, false))
     expect(position_at(burst_plan, burst, 0)).toEqual({ index: 2, t_plus_ms: 0, done: false })
+    expect(position_at(burst_plan, burst, GAP_FLOOR_MS - 1).index).toBe(2)
   })
 
   it('is spent immediately on an empty schedule', () => {
-    expect(position_at(build_plan([], 1, null), [], 0)).toEqual({
+    expect(position_at(build_plan([], real(1)), [], 0)).toEqual({
       index: 0,
       t_plus_ms: 0,
       done: true,
@@ -233,7 +305,7 @@ describe('hold_at and stop_playback', () => {
 
 describe('play_elapsed_ms', () => {
   it('counts from the anchor event scheduled offset', () => {
-    const plan = build_plan(GAPPY, 1, GAP_CAP_MS)
+    const plan = build_plan(GAPPY, dials(1, true))
     const state = { ...PLAYING, anchor_index: 2, anchor_now_ms: 10_000 }
     expect(play_elapsed_ms(plan, state, 10_250)).toBe(3250)
   })

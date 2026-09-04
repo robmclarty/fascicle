@@ -163,11 +163,11 @@ body {
    ends of the canvas cannot drift apart. */
 .return-live,
 .pb-button {
-  padding: 3px 9px;
+  padding: 5px 12px;
   border: 1px solid rgb(246 243 234 / 22%);
   border-radius: 3px;
   background: transparent;
-  font: 500 10px var(--mono);
+  font: 500 11px var(--mono);
   letter-spacing: 0.2em;
   color: rgb(246 243 234 / 62%);
   cursor: pointer;
@@ -620,7 +620,9 @@ body {
 
 /* The playback cluster: play mode's dials in the shared chrome-chip recipe,
    seated under the time spine. An engaged toggle brightens; hierarchy is
-   opacity, never added color (C4). */
+   opacity, never added color (C4). The dials are the canvas's one set of
+   clicked-repeatedly controls, so they stand taller than the header's inline
+   chip: a 28px target, stopping 4px short of the spine's strip above. */
 .playback {
   position: absolute;
   left: var(--margin);
@@ -628,6 +630,17 @@ body {
   display: flex;
   gap: 8px;
   z-index: 2;
+}
+
+.pb-button {
+  min-height: 28px;
+  padding: 0 14px;
+}
+
+/* PLAY relabels to PAUSE mid-performance; a fixed width keeps the cluster
+   from shifting under the pointer on every toggle. */
+.pb-button-play {
+  min-width: 84px;
 }
 
 .pb-button[data-active] {

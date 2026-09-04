@@ -162,6 +162,15 @@ Two dials make a long run watchable:
   gap the header `T+` visibly accelerates, so the fast-forward stays honest. A
   ten-minute run plays as a performance of a minute or two.
 
+Under both dials sits a floor. No gap between two distinct moments plays
+shorter than 400ms of wall time at 1x (200ms at 2x, 133ms at 3x), so a run
+whose steps finish in tens of milliseconds, like the demo's 196ms, still
+performs as beats you can follow rather than a flash. Events that share a
+timestamp still land together, which is how a parallel fan-out keeps lighting
+at once. Inside a floored gap the header `T+` visibly slows, the mirror of
+compression's acceleration, so the slow-motion stays as honest as the
+fast-forward.
+
 A loop toggle repeats the run for booth-style playback. While a performance
 runs with the cursor idle, the controls and the scrubber fade after a couple of
 seconds, so your screen recording shows only the canvas.

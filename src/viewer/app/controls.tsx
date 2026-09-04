@@ -27,6 +27,8 @@ type ChipProps = {
   readonly label: string
   /** Only the three toggles carry an engaged state; play and speed relabel. */
   readonly active?: boolean
+  /** Play alone holds a fixed width, so relabeling to PAUSE moves nothing. */
+  readonly play?: boolean
   readonly on_click: () => void
 }
 
@@ -35,7 +37,7 @@ function Chip(props: ChipProps): JSX.Element {
   return (
     <button
       type="button"
-      class="pb-button"
+      class={props.play ? 'pb-button pb-button-play' : 'pb-button'}
       data-testid={props.testid}
       data-active={props.active ? 'true' : undefined}
       onClick={() => props.on_click()}
@@ -52,6 +54,7 @@ export function Controls(props: ControlsProps): JSX.Element {
       <Chip
         testid="play-toggle"
         label={props.playback.playing ? 'PAUSE' : 'PLAY'}
+        play
         on_click={props.on_toggle_play}
       />
       <Chip testid="speed" label={`${props.playback.speed}X`} on_click={props.on_cycle_speed} />

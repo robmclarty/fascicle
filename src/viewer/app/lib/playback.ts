@@ -9,13 +9,17 @@
  * would move, so the canvas cannot tell a performance from a live run and the
  * easing (marquee, halo, state transitions) is identical by construction.
  *
- * The schedule is the real ts deltas divided by the speed multiplier, with an
- * optional cap on the wall-clock cost of any single inter-event gap. The cap
- * is what makes a long run watchable: a model call's dead air collapses to
- * the cap while dense bursts keep their real pacing, which is how a
- * ten-minute run plays in a minute or two. Inside a capped gap the
- * interpolated T+ advances faster than the speed alone would move it, the
- * header's honest signal that time is being compressed.
+ * The schedule is the real ts deltas, paced by three bounds. A floor lifts
+ * any positive gap to a minimum before the speed multiplier divides it, so a
+ * run whose steps finish in tens of milliseconds still performs as distinct
+ * beats the eye can follow, while events that share a timestamp keep firing
+ * together. The speed divides what is left. An optional cap then bounds the
+ * wall-clock cost of any single gap, which is what makes a long run
+ * watchable: a model call's dead air collapses to the cap while dense bursts
+ * keep their real pacing, so a ten-minute run plays in a minute or two.
+ * Inside a capped gap the interpolated T+ advances faster than the speed
+ * alone would move it, and inside a floored gap it advances slower, the
+ * header's honest signal in both directions that time is being reshaped.
  *
  * Transitions re-anchor rather than accumulate: the anchor is an event index
  * plus the wall moment playback (re)started there, so a speed change, a
@@ -31,6 +35,13 @@ export type PlaySpeed = 1 | 2 | 3
 /** The spec's order-2s cap: the most wall-clock any inter-event gap may cost. */
 export const GAP_CAP_MS = 2000
 
+/**
+ * The least run-time a positive inter-event gap plays as, before the speed
+ * division: 400ms of wall at 1x, a beat the eye can follow, and a third of
+ * that at 3x. A zero gap is never lifted, so simultaneous events stay one beat.
+ */
+export const GAP_FLOOR_MS = 400
+
 /** Cursor-idle delay before playing chrome fades for a clean recording. */
 export const CHROME_IDLE_MS = 2500
 
@@ -45,23 +56,34 @@ export type PlaybackPlan = {
 }
 
 /**
- * Schedule the run's event times onto the wall clock: each gap plays at its
- * real length divided by the speed, and a non-null cap bounds what any single
- * gap may cost after that division, so compression collapses dead air without
- * touching the pacing of dense bursts.
+ * How the schedule paces the run's gaps: `floor_ms` is the least run-time a
+ * positive gap plays as before `speed` divides it (0 leaves short gaps real),
+ * and `cap_ms` is the most wall-clock any gap may cost after the division
+ * (null leaves long gaps real).
  */
-export function build_plan(
-  times: ReadonlyArray<number>,
-  speed: PlaySpeed,
-  gap_cap_ms: number | null,
-): PlaybackPlan {
+export type Pacing = {
+  readonly speed: PlaySpeed
+  readonly floor_ms: number
+  readonly cap_ms: number | null
+}
+
+/**
+ * Schedule the run's event times onto the wall clock. Each positive gap is
+ * lifted to the floor, divided by the speed, then bounded by the cap when one
+ * is set, so a fast burst spreads into beats, dead air collapses, and the
+ * pacing of everything in between stays real. A zero gap stays zero, which is
+ * what keeps events that share a timestamp firing together.
+ */
+export function build_plan(times: ReadonlyArray<number>, pacing: Pacing): PlaybackPlan {
+  const { speed, floor_ms, cap_ms } = pacing
   const wall_times: number[] = []
   let wall = 0
   let prev: number | null = null
   for (const time of times) {
     if (prev !== null) {
-      const gap = (time - prev) / speed
-      wall += gap_cap_ms === null ? gap : Math.min(gap, gap_cap_ms)
+      const gap = time - prev
+      const paced = (gap > 0 ? Math.max(gap, floor_ms) : 0) / speed
+      wall += cap_ms === null ? paced : Math.min(paced, cap_ms)
     }
     wall_times.push(wall)
     prev = time
@@ -69,9 +91,13 @@ export function build_plan(
   return { wall_times, wall_total_ms: wall }
 }
 
-/** The schedule a playback state asks for, compression turned into the cap. */
+/** The schedule a playback state asks for: the floor always, the cap while compressing. */
 export function plan_for(times: ReadonlyArray<number>, playback: Playback): PlaybackPlan {
-  return build_plan(times, playback.speed, playback.compress ? GAP_CAP_MS : null)
+  return build_plan(times, {
+    speed: playback.speed,
+    floor_ms: GAP_FLOOR_MS,
+    cap_ms: playback.compress ? GAP_CAP_MS : null,
+  })
 }
 
 /**
