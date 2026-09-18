@@ -41,3 +41,7 @@ examples/red-green-refactor/.trajectory/
 # plumbbob build artifacts (intents, build logs, reports); they absorb the
 # research notes above, so they stay local for the same reason
 /.plumbbob/
+
+# volley per-run state (.volley/), written into this main checkout by a
+# night-shift plan-draft run even under --worktree
+.volley/
