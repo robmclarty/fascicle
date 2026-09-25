@@ -29,12 +29,48 @@ on:
 
 permissions:
   contents: read # checkout only
-  id-token: write # OIDC identity for npm trusted publishing + provenance
+
+# GitHub has delivered one tag push twice (v0.12.11), starting two runs that
+# both paused at the approval gate. Approving the second would fail it, since
+# npm refuses a version that is already published. The group makes a
+# duplicate wait for the first run to finish, and its unpublished job then
+# finds the version on npm and skips the publish job before the gate.
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
+  unpublished:
+    runs-on: ubuntu-latest
+    outputs:
+      publish: ${{ steps.registry.outputs.publish }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      # Anything short of a version string back from the registry (a 404, or
+      # a network error) counts as unpublished, so a flaky lookup falls
+      # through to the publish job, where npm itself is the final word.
+      - name: Look up the version on npm
+        id: registry
+        run: |
+          VERSION="$(node -p "require('./package.json').version")"
+          if [ -n "$(npm view "fascicle@$VERSION" version 2> /dev/null)" ]; then
+            echo "fascicle@$VERSION is already on npm, so there is nothing to publish."
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          fi
+
   publish:
+    needs: unpublished
+    if: needs.unpublished.outputs.publish == 'true'
     runs-on: ubuntu-latest
     environment: npm-publish # required-reviewer gate: the human approval step
+    permissions:
+      contents: read # checkout only
+      id-token: write # OIDC identity for npm trusted publishing + provenance
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:

@@ -19,6 +19,13 @@ permissions:
   # Only the scope needed to create a GitHub Release; no id-token, no npm token.
   contents: write
 
+# GitHub has delivered one tag push twice (v0.12.11), starting two runs that
+# raced to create the same release. The group makes a duplicate wait for the
+# first run, and the create step below then finds the release and skips.
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
 jobs:
   release:
     runs-on: ubuntu-latest
@@ -56,6 +63,10 @@ jobs:
           HAS_NOTES: ${{ steps.notes.outputs.has_notes }}
           NOTES_FILE: ${{ steps.notes.outputs.notes_file }}
         run: |
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            echo "Release $TAG already exists, so there is nothing to create."
+            exit 0
+          fi
           if [ "$HAS_NOTES" = "true" ]; then
             gh release create "$TAG" --title "$TAG" \
               --notes-file "$NOTES_FILE" --verify-tag
