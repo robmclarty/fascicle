@@ -390,6 +390,23 @@ process.stdout.write('\n');
 
 `model_chunk` events wrap `StreamChunk` values from the engine. Other chunk kinds worth watching are `reasoning`, `tool_call_start`, `tool_call_end`, `tool_result`, `step_finish`, `finish`.
 
+`run.stream` streams the whole run, and everything it sees also goes to the run's trajectory logger, so a `filesystem_logger` would write every token chunk to disk. When all you want is to render one call live, give that call its own `on_chunk` instead. It streams under a plain `run`, it hands you the chunks of that call and no other, and the trajectory stays as lean as it was:
+
+```ts
+const ask = model_step({
+  engine,
+  provider: 'ollama',
+  model: 'llama3.2:3b',
+  on_chunk: (chunk) => {
+    if (chunk.kind === 'text') process.stdout.write(chunk.text);
+  },
+});
+
+const answer = await run(ask, 'summarize Rust ownership');
+```
+
+Under `run.stream` the call still records its `model_chunk` events as usual, and `on_chunk` runs beside that forwarding, not in place of it.
+
 ## Observing a Run with a Filesystem Logger
 
 ```ts
@@ -467,6 +484,52 @@ const ask = fallback(primary, backup, {
 
 Control-flow signals (suspend, abort) still propagate without triggering the
 backup, and `handoff` is never called for them.
+
+Not every failure deserves another try, though. A response that failed its
+schema will fail the same way on a second attempt, and a retry against a paid
+provider costs real money. `when` narrows both composers to the errors that you
+name, and anything that it rejects propagates untouched. When the answer has to
+say how it was reached (how many retries it took, or whether the backup
+produced it), `project` hands you the composer's own account of the run, so you
+don't have to keep a mutable closure or read the trajectory back:
+
+<!-- snippet: check -->
+```ts
+import { create_engine, fallback, model_step, pipe, provider_error, retry } from 'fascicle';
+
+const engine = create_engine({
+  providers: {
+    ollama: { base_url: 'http://localhost:11434' },
+    anthropic: { api_key: process.env.ANTHROPIC_API_KEY! },
+  },
+});
+
+type Answer = { readonly text: string; readonly retries: number; readonly degraded: boolean };
+
+const local = model_step({ engine, provider: 'ollama', model: 'qwen3:8b', id: 'local' });
+const cloud = model_step({ engine, provider: 'anthropic', model: 'claude-sonnet-4-6', id: 'cloud' });
+
+// A transport failure is worth another try; a schema failure or a bug is not.
+const is_transport_failure = (err: unknown): boolean => err instanceof provider_error;
+
+export const ask = fallback(
+  retry(local, {
+    max_attempts: 3,
+    backoff_ms: 500,
+    when: is_transport_failure,
+    project: ({ value, attempts }): Answer => ({ text: value, retries: attempts - 1, degraded: false }),
+  }),
+  pipe(cloud, (text): Answer => ({ text, retries: 0, degraded: false })),
+  {
+    when: is_transport_failure,
+    project: ({ value, source }) => (source === 'backup' ? { ...value, degraded: true } : value),
+  },
+);
+```
+
+`retry`'s envelope is `{ value, attempts, errors }` and `fallback`'s is
+`{ value, source, primary_error }`. Leave `project` off and either composer
+outputs the plain value, as it always has.
 
 ## Escalation Tiering with a Judge
 

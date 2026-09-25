@@ -103,22 +103,35 @@ from English specifications:
   pipe belongs in `sequence`; reach for `chain` when a step needs fan-in,
   phases, or named per-joint types.
 - `parallel({ a, b, c })` — run concurrently, return `{ a, b, c }`.
-- `branch({ when, then, otherwise })` — route on `when(input)`.
+- `branch({ when, then, otherwise })` — route on `when(input)`. If your
+  linter runs `unicorn/no-thenable`, it flags the `then` key, because an
+  object with a `then` method looks like a promise. You never await the
+  config, so the warning is a false positive here. Turn the rule off for
+  that line, or for your whole project the way Fascicle's own
+  `.oxlintrc.json` does.
 - `map({ items, do, concurrency? })` — run `do` per item; cap in-flight.
 - `pipe(inner, fn)` — post-process `inner`'s output. Strictly binary, so one
   Step, one plain mapping function. To chain Steps use `sequence([...])`;
   passing a Step as `fn` throws at construction.
-- `retry(inner, { max_attempts, backoff_ms?, max_delay_ms?, jitter?, on_error? })`
+- `retry(inner, { max_attempts, backoff_ms?, max_delay_ms?, jitter?, when?, on_error?, project? })`
   — re-run on failure with exponential backoff, jittered by up to one
   `backoff_ms` and clamped to `max_delay_ms` (default 30s). `jitter`
-  defaults on.
-- `fallback(primary, backup, { handoff? })` — run `backup` if `primary`
-  throws. `handoff(input, err)` builds the backup's input, so the backup can
-  be told why the primary failed; without it the backup gets the original
-  input. Control-flow signals (suspend, abort) propagate without triggering
-  the backup or the handoff. When the backup fails too, the backup's error is
-  thrown with the primary's error attached as `cause`, so neither failure is
-  lost.
+  defaults on. When only some errors deserve another attempt, pass
+  `when(err, attempt)`, and an error that it rejects propagates at once,
+  untouched, the same way a control-flow signal does. If you pass `project`,
+  it receives `{ value, attempts, errors }`, so your output can record how
+  many tries the value took. Without it you get the value itself.
+- `fallback(primary, backup, { when?, handoff?, project? })` — run `backup`
+  if `primary` throws. `handoff(input, err)` builds the backup's input, so
+  the backup can be told why the primary failed; without it the backup gets
+  the original input. Control-flow signals (suspend, abort) propagate
+  without triggering the backup or the handoff, and so does any primary
+  error that `when(err)` rejects. When the backup fails too, the backup's
+  error is thrown with the primary's error attached as `cause`, so neither
+  failure is lost. If you pass `project`, it receives
+  `{ value, source, primary_error }`, where `source` is `'primary'` or
+  `'backup'`, so you never have to let a backup's answer pass for the
+  primary's. Without it you get the value itself.
 - `timeout(inner, ms)` — cancel `inner` after `ms`.
 - `loop({ init, body, guard?, finish, max_rounds })` — bounded iteration
   with carry-state, returning whatever `finish` projects. Non-convergence is

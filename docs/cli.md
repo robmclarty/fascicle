@@ -162,7 +162,16 @@ The prompt goes to stdin, either as the first user message's text or as the whol
 
 The CLI is a one-shot invocation. Multi-turn chat is represented by `session_id`, not by a `Message[]` history. Calling `generate({ prompt: [...] })` with two or more user messages throws `provider_capability_error('multi_turn_history', 'use provider_options.claude_cli.session_id instead')`.
 
-The idiomatic pattern is to capture `result.provider_reported.claude_cli.session_id` on the first call, then pass it as `session_id` on follow-ups. `provider_reported` is keyed by provider name (see [Provider-reported detail](./providers.md#provider-reported-detail)), and this adapter reports `session_id` and `duration_ms` under `claude_cli`.
+The idiomatic pattern is to capture the `session_id` that the first call reports, then pass it as `session_id` on follow-ups. `provider_reported` is keyed by provider name (see [Provider-reported detail](./providers.md#provider-reported-detail)), and this adapter reports `session_id` and `duration_ms` under `claude_cli`, plus `duration_api_ms` when the CLI reports it. `claude_cli_reported(result)` reads that entry back as a typed `ClaudeCliProviderReported`, or `undefined` when the result didn't come from the CLI, so you don't have to declare the shape yourself:
+
+```ts
+import { claude_cli_reported } from 'fascicle';
+
+const first = await engine.generate({ provider: 'claude_cli', model: 'claude-sonnet-4-6', prompt: 'Start a plan.' });
+const session_id = claude_cli_reported(first)?.session_id;
+```
+
+The CLI's `duration_api_ms` also gives each step a blended `timing`, which is what lets `throughput()` report a rate for a `claude_cli` call (see [Timing and Tokens per Second](./api-reference.md#timing-and-tokens-per-second)).
 
 ## Tool Bridging
 

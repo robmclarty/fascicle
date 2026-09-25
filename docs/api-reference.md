@@ -71,8 +71,8 @@ needs fan-in, phases, or named per-joint types.
 | `map({ items, do, concurrency? })` | run `do` per item of `items(input)`, optional in-flight cap |
 | `parallel({ a, b })` | run a named map of steps concurrently; the step's input is the intersection of the members' inputs |
 | `loop({ init, body, guard?, finish, max_rounds })` | bounded iteration with carry-state and an optional convergence guard (a `Step` or a bare `(state) => boolean` predicate); returns `finish(state, { converged, rounds })` |
-| `retry(step, policy)` | re-run on failure with exponential backoff |
-| `fallback(primary, backup, { handoff? })` | run a backup if the primary throws; `handoff(input, err)` maps the backup's input |
+| `retry(step, { max_attempts, when?, project?, ... })` | re-run on failure with exponential backoff; `when(err, attempt)` picks the retryable errors, `project` maps `{ value, attempts, errors }` |
+| `fallback(primary, backup, { when?, handoff?, project? })` | run a backup if the primary throws; `when(err)` picks the errors that reach the backup, `handoff(input, err)` maps the backup's input, and `project` maps `{ value, source, primary_error }` |
 | `timeout(step, ms)` | cancel an inner step after N ms (throws `timeout_error`) |
 
 ### Multi-Model
@@ -182,8 +182,25 @@ benchmark-style rate), while a non-streamed turn can only measure
 `'blended'` (the whole round trip, network and prefill included), which
 understates the model on a long prompt with a short answer. You get
 `undefined` back when no step carries timing, which is the case for
-external adapters (`claude_cli`) and test doubles, or when the measured
-window is zero.
+test doubles and for external adapters other than `claude_cli`, or when
+the measured window is zero.
+
+`claude_cli` runs its own tool loop on the far side of a subprocess, so
+the engine never sees its turns start and stop. What the CLI does report
+is `duration_api_ms`, the time that the whole run spent in API requests.
+The adapter splits that figure across the run's steps by output tokens
+(the same split that it uses for cost), so `throughput()` gives a
+`'blended'` rate for a `claude_cli` call too, and a local model and
+Claude can be compared on the same terms.
+
+Step timing leaves out tool execution on purpose, which also makes it
+the wrong number for "how long did this call take?" The engine answers
+that one separately. Every `GenerateResult` it returns carries a
+call-level `timing` (`GenerateTiming`, holding `started_at` and
+`duration_ms`) that brackets the whole `generate` call: every turn, the
+tools that ran between them, and any retries that the engine absorbed.
+The engine stamps it for every adapter, external ones included, so it's
+the figure to archive as a phase's duration.
 
 The same numbers reach observability consumers without touching the
 result envelope: every turn's `response_received` trajectory event
@@ -216,8 +233,13 @@ inside the step, so `describe` and the trajectory gain no wrapper node.
 Omitted, the envelope is the output. The config also carries the caller-shaped
 generation knobs (`temperature`, `max_tokens`, `top_p`, `turn_timeout_ms`,
 `prepare_step`) alongside `model` / `provider` / `system` / `schema` / `tools`
-/ `effort` / `retry`; `abort`, `trajectory`, and `on_chunk` stay runner-owned
-and are threaded automatically. Types: `ModelCallConfig`, `ModelCallInput`.
+/ `effort` / `retry`; `abort` and `trajectory` stay runner-owned and are
+threaded automatically. An `on_chunk` in the config is an observer: it sees
+every chunk of the call as it streams, which suits a live terminal renderer,
+and it runs beside the `model_chunk` forwarding that `run.stream` sets up
+rather than replacing it. Setting it makes the call stream even under a plain
+`run`, without teeing every token into the trajectory. Types:
+`ModelCallConfig`, `ModelCallInput`.
 
 ### `model_step`: The Answer, Not the Envelope
 
@@ -430,6 +452,8 @@ signature names is exported too: `SequenceOptions`, `ParallelOptions`,
 `BranchConfig`, `MapConfig`, `PipeOptions`, `RetryConfig`, `FallbackOptions`,
 `TimeoutOptions`, `CheckpointConfig`, `SuspendConfig`, `ScopeOptions`,
 `StashOptions`, `UseOptions`, `GateConfig`, alongside `RunOptions`,
+the `project` envelopes and option shapes that `retry` and `fallback` take
+(`RetryOutcome`, `RetryProjection`, `FallbackOutcome`, `FallbackProjection`),
 `StreamingRunHandle`, `StepFn`, `CleanupFn`, the extractors `StepInput<s>` /
 `StepOutput<s>`, and the schema vocabulary (`ToolSchema`, `AnySchema`,
 `SchemaIssue`). At runtime `is_step` narrows a value to a `Step`, and
@@ -456,7 +480,7 @@ The bench tier adds `BenchCase`, `BenchOptions`, `BenchReport`, `BenchSummary`,
 `GenerateResult`, `Message`, `UserContentPart`, `AssistantContentPart`,
 `StreamChunk`, `FinishReason`, `Tool`, `ToolExecContext`, `ToolCallRecord`,
 `ToolApprovalHandler`, `ToolApprovalRequest`, `StepRecord`, `StepTiming`,
-`Throughput`, `UsageTotals`,
+`GenerateTiming`, `Throughput`, `UsageTotals`, `ClaudeCliProviderReported`,
 `CostBreakdown`, `Pricing`, `PricingTable`, `EffortLevel`,
 `EffortTranslation`, `RawProviderUsage`, `PrepareStepContext`,
 `PrepareStepResult`, `RetryPolicy`, `RetryFailureKind`, `ProviderConfigMap`,
