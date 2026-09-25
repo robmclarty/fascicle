@@ -9,9 +9,11 @@
  * error-result mapping.
  */
 
-import { describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ResolvedModel } from '../../../types.js'
 import { build_generate_result } from '../../../providers/claude_cli/stream_result.js'
+import { claude_cli_reported } from '../../../providers/claude_cli/reported.js'
+import { throughput } from '../../../throughput.js'
 import type { ParsedStream } from '../../../providers/claude_cli/stream_parse.js'
 import { claude_cli_error } from '../../../errors.js'
 
@@ -292,6 +294,90 @@ describe('step finish_reason assignment', () => {
       'tool_calls',
       'tool_calls',
       'stop',
+    ])
+  })
+})
+
+function turn(step_index: number, output_tokens: number): ParsedStream['turns'][number] {
+  return {
+    step_index,
+    text: `t${step_index}`,
+    tool_calls: [],
+    tool_results: [],
+    usage: { input_tokens: 1, output_tokens },
+  }
+}
+
+describe('blended step timing', () => {
+  const T0 = 1_700_000_000_000
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(T0)
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('splits duration_api_ms across steps by output tokens, laid end to end from the run start', () => {
+    const parsed = make_parsed({
+      session_id: 'sess',
+      duration_ms: 10_000,
+      duration_api_ms: 1_000,
+      turns: [turn(0, 1), turn(1, 2)],
+    })
+    const result = build_generate_result({ parsed, resolved })
+    expect(result.steps.map((s) => s.timing)).toEqual([
+      { started_at: T0 - 10_000, duration_ms: 333 },
+      { started_at: T0 - 10_000 + 333, duration_ms: 667 },
+    ])
+    expect(throughput(result)).toEqual({
+      tokens_per_second: 3,
+      basis: 'blended',
+      output_tokens: 3,
+      measured_ms: 1_000,
+    })
+  })
+
+  it('reports duration_api_ms beside duration_ms in provider_reported', () => {
+    const parsed = make_parsed({
+      session_id: 'sess',
+      duration_ms: 10_000,
+      duration_api_ms: 1_000,
+      turns: [turn(0, 1)],
+    })
+    const result = build_generate_result({ parsed, resolved })
+    expect(result.provider_reported).toEqual({
+      claude_cli: { session_id: 'sess', duration_ms: 10_000, duration_api_ms: 1_000 },
+    })
+    expect(claude_cli_reported(result)).toEqual({
+      session_id: 'sess',
+      duration_ms: 10_000,
+      duration_api_ms: 1_000,
+    })
+  })
+
+  it('leaves steps untimed and throughput undefined when the CLI omits duration_api_ms', () => {
+    const parsed = make_parsed({
+      session_id: 'sess',
+      duration_ms: 10_000,
+      turns: [turn(0, 1)],
+    })
+    const result = build_generate_result({ parsed, resolved })
+    expect(result.steps[0]?.timing).toBeUndefined()
+    expect(throughput(result)).toBeUndefined()
+    expect(result.provider_reported).toEqual({
+      claude_cli: { session_id: 'sess', duration_ms: 10_000 },
+    })
+  })
+
+  it('anchors the run start on duration_api_ms when the CLI omits duration_ms', () => {
+    const parsed = make_parsed({ duration_api_ms: 400, turns: [turn(0, 0), turn(1, 0)] })
+    const result = build_generate_result({ parsed, resolved })
+    expect(result.steps.map((s) => s.timing)).toEqual([
+      { started_at: T0 - 400, duration_ms: 200 },
+      { started_at: T0 - 200, duration_ms: 200 },
     ])
   })
 })

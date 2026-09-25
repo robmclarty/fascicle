@@ -17,6 +17,8 @@ import type { TrajectoryEvent, TrajectoryLogger } from '#core'
 import { create_engine } from '../create_engine.js'
 import type { ProviderFactory } from '../providers/types.js'
 import type {
+  GenerateOptions,
+  GenerateResult,
   RetryPolicy,
   Tool,
   TurnRequest,
@@ -242,6 +244,91 @@ describe('StepTiming on the engine loop', () => {
     // The generate span closes with the call-level rollups.
     const generate_end = span_ends.find((s) => s.name === 'engine.generate')
     expect(generate_end?.meta).toMatchObject({ step_count: 2, tool_call_count: 1 })
+  })
+})
+
+describe('GenerateResult.timing', () => {
+  it('spans the whole call, tool execution between turns included', async () => {
+    const tool: Tool = {
+      name: 'slow',
+      description: 'a slow tool',
+      input_schema: z.object({ value: z.string() }),
+      execute: () => {
+        advance(500)
+        return 'ok'
+      },
+    }
+    let calls = 0
+    const engine = make_engine(async () => {
+      calls += 1
+      if (calls === 1) {
+        advance(200)
+        return {
+          text: '',
+          tool_calls: [{ id: 'c1', name: 'slow', input: { value: 'x' } }],
+          finish_reason: 'tool_calls',
+          usage: { input_tokens: 4, output_tokens: 2 },
+        }
+      }
+      advance(300)
+      return text_turn('final')
+    })
+    const result = await engine.generate({
+      provider: PROVIDER,
+      model: MODEL,
+      prompt: 'hi',
+      retry: NO_RETRY,
+      tools: [tool],
+    })
+    expect(result.timing).toEqual({ started_at: T0, duration_ms: 1000 })
+  })
+
+  it('includes the failed attempts the engine absorbed', async () => {
+    let attempts = 0
+    const engine = make_engine(async () => {
+      attempts += 1
+      if (attempts === 1) {
+        advance(40)
+        throw Object.assign(new Error('socket reset'), { code: 'ECONNRESET' })
+      }
+      advance(250)
+      return text_turn('recovered')
+    })
+    const result = await engine.generate({
+      provider: PROVIDER,
+      model: MODEL,
+      prompt: 'hi',
+      retry: RETRY_NETWORK,
+    })
+    expect(result.timing).toEqual({ started_at: T0, duration_ms: 290 })
+  })
+
+  it("stamps an external adapter's result, replacing any timing it set", async () => {
+    const factory: ProviderFactory = () => ({
+      kind: 'external',
+      name: 'fake_external',
+      generate: async <t>(opts: GenerateOptions<t>): Promise<GenerateResult<t>> => {
+        advance(700)
+        return {
+          content: (typeof opts.prompt === 'string' ? opts.prompt : '') as t,
+          tool_calls: [],
+          steps: [],
+          usage: { input_tokens: 1, output_tokens: 1 },
+          finish_reason: 'stop',
+          model_resolved: { provider: 'fake_external', model_id: MODEL },
+          timing: { started_at: 0, duration_ms: 0 },
+        }
+      },
+      dispose: async () => {},
+      supports: () => true,
+    })
+    const engine = create_engine({
+      providers: { fake_external: {} },
+      custom_providers: { fake_external: factory },
+    })
+    const result = await engine.generate({ provider: 'fake_external', model: MODEL, prompt: 'hi' })
+    expect(result.content).toBe('hi')
+    expect(result.timing).toEqual({ started_at: T0, duration_ms: 700 })
   })
 })
 

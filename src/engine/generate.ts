@@ -22,6 +22,7 @@ import type {
   FinishReason,
   GenerateOptions,
   GenerateResult,
+  GenerateTiming,
   Message,
   Pricing,
   PricingTable,
@@ -1028,12 +1029,15 @@ function assemble_result<T>(
  * token limit, the step cap), no validated value can exist, so it throws
  * `incomplete_generation_error` carrying the finish reason, the raw text,
  * and the last `provider_reported` payload rather than returning unchecked
- * text. Without a schema those finish reasons return normally.
+ * text. Without a schema those finish reasons return normally. Every result,
+ * an external adapter's included, leaves with `timing` stamped over the
+ * whole call.
  */
 export async function generate<T = string>(
   opts_in: GenerateOptions<T>,
   engine: EngineInternals,
 ): Promise<GenerateResult<T>> {
+  const started_at = Date.now()
   if (opts_in.abort?.aborted === true) {
     throw new aborted_error('aborted', { reason: opts_in.abort.reason })
   }
@@ -1046,7 +1050,8 @@ export async function generate<T = string>(
   }
 
   if (adapter.kind === 'external') {
-    return adapter.generate<T>(opts, target)
+    const external = await adapter.generate<T>(opts, target)
+    return { ...external, timing: call_timing(started_at) }
   }
 
   // Stamp engine events with `ts` when generate is called directly with a
@@ -1146,12 +1151,20 @@ export async function generate<T = string>(
       step_count: result.steps.length,
       tool_call_count: result.tool_calls.length,
     })
+    result.timing = call_timing(started_at)
     return result
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err)
     end_generate_span(trajectory, generate_span, { error: message })
     throw err
   }
+}
+
+/**
+ * Close a generate call's wall-clock window opened at `started_at`.
+ */
+function call_timing(started_at: number): GenerateTiming {
+  return { started_at, duration_ms: Date.now() - started_at }
 }
 
 /**

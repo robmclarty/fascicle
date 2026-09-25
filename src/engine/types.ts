@@ -95,6 +95,20 @@ export type StepTiming = {
   first_chunk_ms?: number
 }
 
+/**
+ * Wall-clock timing of a whole generate call, stamped by the engine around
+ * every adapter, external ones included. The window covers everything the
+ * call did: every turn, tool execution between turns, turn retries the engine
+ * absorbed along with their backoff, and schema repair. StepTiming is the
+ * narrower view of one turn's provider round-trip.
+ */
+export type GenerateTiming = {
+  /** Epoch ms when the generate call started. */
+  started_at: number
+  /** Wall-clock ms from the call's start to its result. */
+  duration_ms: number
+}
+
 export type ToolCallRecord = {
   id: string
   name: string
@@ -118,8 +132,9 @@ export type StepRecord = {
   usage: UsageTotals
   cost?: CostBreakdown
   /**
-   * Present on every step the engine's tool loop produced (both transports),
-   * absent on steps built by external adapters (claude_cli) and injected test
+   * Present on every step the engine's tool loop produced (both transports)
+   * and on claude_cli steps, whose timing is blended (see ClaudeCliProviderReported).
+   * Absent on steps built by other external adapters and on injected test
    * seams that return a TurnResult without one.
    */
   timing?: StepTiming
@@ -358,6 +373,12 @@ export type GenerateResult<t = string> = {
    * turn; `steps[i].provider_reported` holds every turn's own payload.
    */
   provider_reported?: Record<string, unknown>
+  /**
+   * The whole call's wall clock, stamped by the engine for every adapter.
+   * Absent only on a result that never passed through an engine's
+   * `generate`, such as one a `fascicle/testing` stub engine returns.
+   */
+  timing?: GenerateTiming
 }
 
 export type ProviderInit = {

@@ -403,6 +403,19 @@ describe('§7.4 — tolerance', () => {
   })
 })
 
+describe('result event durations', () => {
+  it('carries duration_api_ms into the snapshot beside duration_ms', async () => {
+    const { parsed } = await feed([jline(init_event), jline(result_event({ duration_api_ms: 9 }))])
+    expect(parsed.duration_ms).toBe(12)
+    expect(parsed.duration_api_ms).toBe(9)
+  })
+
+  it('leaves duration_api_ms off the snapshot when the CLI omits it', async () => {
+    const { parsed } = await feed([jline(init_event), jline(result_event())])
+    expect('duration_api_ms' in parsed).toBe(false)
+  })
+})
+
 describe('§7.3 — event-level strictness (a mistyped field rejects the whole event)', () => {
   // Characterization: each malformed event must be recorded as one
   // cli_unknown_event, never partially accepted. A trailing valid result event
@@ -415,6 +428,7 @@ describe('§7.3 — event-level strictness (a mistyped field rejects the whole e
     ['result session_id non-string', { type: 'result', session_id: 1 }],
     ['result total_cost_usd non-number', { type: 'result', total_cost_usd: 'x' }],
     ['result duration_ms non-number', { type: 'result', duration_ms: 'x' }],
+    ['result duration_api_ms non-number', { type: 'result', duration_api_ms: 'x' }],
     ['result is_error non-boolean', { type: 'result', is_error: 'x' }],
     ['result result non-string', { type: 'result', result: 1 }],
     ['result usage null', { type: 'result', usage: null }],

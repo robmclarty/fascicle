@@ -41,6 +41,7 @@ export type {
   AiSdkTelemetrySettings,
   AssistantContentPart,
   ClaudeCliErrorReason,
+  ClaudeCliProviderReported,
   CostBreakdown,
   EffortLevel,
   EffortTranslation,
@@ -51,6 +52,7 @@ export type {
   FinishReason,
   GenerateOptions,
   GenerateResult,
+  GenerateTiming,
   Message,
   NativeProviderAdapter,
   PrepareStepContext,
@@ -83,7 +85,7 @@ export type {
   UserContentPart,
 } from '#engine'
 
-export { default_normalize_usage, throughput } from '#engine'
+export { claude_cli_reported, default_normalize_usage, throughput } from '#engine'
 
 export { model_call, model_step } from './model_call.js'
 export type { ModelCallConfig, ModelCallInput } from './model_call.js'

@@ -70,7 +70,19 @@ export type ClaudeCliCallOptions = {
   readonly env?: Record<string, string>
 }
 
+/**
+ * What the claude CLI's terminal `result` event reports about a run, found
+ * under `provider_reported['claude_cli']`. Read it with `claude_cli_reported`.
+ */
 export type ClaudeCliProviderReported = {
   readonly session_id: string
+  /** The CLI's own wall clock for the run, tool execution included. */
   readonly duration_ms: number
+  /**
+   * Time the run spent in API requests, summed across its turns. Present
+   * when the CLI reports it. The adapter splits it across the run's steps
+   * by output tokens (the split its cost uses) to give each step a blended
+   * `StepTiming`, laid end to end from the run's start.
+   */
+  readonly duration_api_ms?: number
 }

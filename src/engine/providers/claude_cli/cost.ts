@@ -76,26 +76,29 @@ export type TurnUsage = {
 }
 
 /**
- * Split `total_cost_usd` into a per-turn total for each turn, proportional to
- * its output tokens, falling back to an equal split when every turn reports
+ * Split a run-level `total` into a per-turn share for each turn, proportional
+ * to its output tokens, falling back to an equal split when every turn reports
  * zero output (the proportional weights would otherwise all be zero). The last
  * turn absorbs the floating-point rounding remainder so the shares sum exactly
- * to `total_cost_usd`. Caller guarantees a non-empty `turns`.
+ * to `total`. Caller guarantees a non-empty `turns`.
+ *
+ * The CLI reports cost and API time for the whole run only, and both go
+ * through this one split so a step's share of each stays consistent.
  */
-function split_total_across_turns(
-  total_cost_usd: number,
-  turns: ReadonlyArray<TurnUsage>,
+export function split_total_across_turns(
+  total: number,
+  turns: ReadonlyArray<Pick<TurnUsage, 'output_tokens'>>,
 ): number[] {
   const total_output = turns.reduce((sum, t) => sum + Math.max(0, t.output_tokens), 0)
   const per_turn = turns.map((t) =>
     total_output === 0
-      ? total_cost_usd / turns.length
-      : total_cost_usd * (Math.max(0, t.output_tokens) / total_output),
+      ? total / turns.length
+      : total * (Math.max(0, t.output_tokens) / total_output),
   )
 
   const assigned = per_turn.reduce((a, b) => a + b, 0)
   const last_index = turns.length - 1
-  per_turn[last_index] = (per_turn[last_index] ?? 0) + (total_cost_usd - assigned)
+  per_turn[last_index] = (per_turn[last_index] ?? 0) + (total - assigned)
   return per_turn
 }
 

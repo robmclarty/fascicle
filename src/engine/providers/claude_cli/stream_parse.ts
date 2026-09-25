@@ -74,6 +74,7 @@ type CliResultEvent = {
   session_id?: string
   total_cost_usd?: number
   duration_ms?: number
+  duration_api_ms?: number
   is_error?: boolean
   usage?: CliUsageRaw
   result?: string
@@ -235,6 +236,7 @@ function is_result_event(raw: Record<string, unknown>): raw is CliResultEvent {
     opt_string(raw, 'session_id') &&
     opt_number(raw, 'total_cost_usd') &&
     opt_number(raw, 'duration_ms') &&
+    opt_number(raw, 'duration_api_ms') &&
     opt_boolean(raw, 'is_error') &&
     is_valid_usage(raw['usage']) &&
     opt_string(raw, 'result')
@@ -319,6 +321,7 @@ export type ParsedStream = {
   readonly session_id?: string
   readonly total_cost_usd?: number
   readonly duration_ms?: number
+  readonly duration_api_ms?: number
   readonly final_text: string
   readonly final_usage: UsageTotals
   readonly turns: ReadonlyArray<TurnCollected>
@@ -333,6 +336,7 @@ type ParserState = {
   session_id?: string
   total_cost_usd?: number
   duration_ms?: number
+  duration_api_ms?: number
   final_text: string
   final_usage: UsageTotals
   turns: TurnCollected[]
@@ -565,8 +569,8 @@ async function handle_user(
 
 /**
  * Handle the terminal `result` event: capture the call's session id, cost,
- * duration, and final usage, flush the last in-progress turn, and emit the
- * closing `finish` chunk.
+ * wall-clock and API durations, and final usage, flush the last in-progress
+ * turn, and emit the closing `finish` chunk.
  *
  * Falls back to `event.result` for `final_text` only when no assistant
  * text was collected during the stream.
@@ -581,6 +585,7 @@ async function handle_result(
   if (typeof event.session_id === 'string') state.session_id = event.session_id
   if (typeof event.total_cost_usd === 'number') state.total_cost_usd = event.total_cost_usd
   if (typeof event.duration_ms === 'number') state.duration_ms = event.duration_ms
+  if (typeof event.duration_api_ms === 'number') state.duration_api_ms = event.duration_api_ms
   if (event.is_error === true) state.is_error = true
   const usage = map_usage(event.usage)
   state.final_usage = usage
@@ -719,6 +724,7 @@ export function snapshot(state: ParserState): ParsedStream {
     session_id?: string
     total_cost_usd?: number
     duration_ms?: number
+    duration_api_ms?: number
   } = {
     final_text: state.final_text,
     final_usage: { ...state.final_usage },
@@ -729,5 +735,6 @@ export function snapshot(state: ParserState): ParsedStream {
   if (state.session_id !== undefined) base.session_id = state.session_id
   if (state.total_cost_usd !== undefined) base.total_cost_usd = state.total_cost_usd
   if (state.duration_ms !== undefined) base.duration_ms = state.duration_ms
+  if (state.duration_api_ms !== undefined) base.duration_api_ms = state.duration_api_ms
   return base
 }

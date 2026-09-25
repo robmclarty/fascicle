@@ -142,11 +142,12 @@ function strip_timing(records: GenerateResult['tool_calls']): unknown {
   return records.map(({ duration_ms: _d, started_at: _s, ...rest }) => rest)
 }
 
-function without_timing(result: GenerateResult): unknown {
+function without_timing({ timing: _call, ...result }: GenerateResult): unknown {
   return {
     ...result,
     tool_calls: strip_timing(result.tool_calls),
-    // StepTiming is wall-clock too (and only streamed runs get first_chunk_ms).
+    // StepTiming and the call-level timing are wall-clock too (and only
+    // streamed runs get first_chunk_ms).
     steps: result.steps.map(({ timing: _t, ...step }) => ({
       ...step,
       tool_calls: strip_timing(step.tool_calls),

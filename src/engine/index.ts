@@ -5,8 +5,9 @@
  * error, plus the provider-authoring surface
  * (`ProviderFactory`, the adapter union, the neutral turn types
  * `TurnRequest`/`TurnResult`, and `default_normalize_usage`) for
- * `custom_providers`. Built-in adapters and internal orchestration helpers
- * are not re-exported.
+ * `custom_providers`, and `claude_cli_reported` for reading the claude CLI's
+ * `provider_reported` entry. Built-in adapters and internal orchestration
+ * helpers are not re-exported.
  */
 
 export { create_engine } from './create_engine.js'
@@ -22,6 +23,7 @@ export type {
   FinishReason,
   GenerateOptions,
   GenerateResult,
+  GenerateTiming,
   Message,
   PrepareStepContext,
   PrepareStepHook,
@@ -73,6 +75,8 @@ export type {
   SandboxProviderConfig,
   ToolBridgeMode,
 } from './providers/claude_cli/types.js'
+
+export { claude_cli_reported } from './providers/claude_cli/reported.js'
 
 export {
   aborted_error,

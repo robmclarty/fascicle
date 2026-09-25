@@ -5,7 +5,9 @@
  * synthesizes:
  *   - per-turn StepRecord entries with output-weighted cost
  *   - aggregate GenerateResult with CLI-reported total_cost_usd
- *   - provider_reported.claude_cli with session_id + duration_ms
+ *   - per-turn blended StepTiming from the CLI-reported duration_api_ms
+ *   - provider_reported.claude_cli with session_id + duration_ms (and
+ *     duration_api_ms when reported)
  *
  * When no turns were collected (a `result` event arrived without any
  * assistant messages), the adapter synthesizes a single step whose text
@@ -20,12 +22,13 @@ import type {
   FinishReason,
   GenerateResult,
   StepRecord,
+  StepTiming,
   ToolCallRecord,
   UsageTotals,
 } from '../../types.js'
 import type { ClaudeCliProviderReported } from './types.js'
 import type { ParsedStream, TurnCollected } from './stream_parse.js'
-import { allocate_cost_across_turns, type TurnUsage } from './cost.js'
+import { allocate_cost_across_turns, split_total_across_turns, type TurnUsage } from './cost.js'
 import { claude_cli_error } from '../../errors.js'
 
 /**
@@ -150,6 +153,38 @@ function tool_call_record(
   return rec
 }
 
+/**
+ * Build each step's blended StepTiming from the run's reported API time.
+ *
+ * The CLI reports how long the whole run spent in API requests, not how long
+ * each turn did, so each step gets its output-weighted share of
+ * `duration_api_ms` in whole milliseconds (the last step absorbs the
+ * remainder, so the windows sum to the reported figure), laid end to end
+ * from the run's start. That start is `now`, when the result arrived, less
+ * the CLI's own wall clock. No step carries `first_chunk_ms`, so
+ * `throughput()` reads every window as blended. Returns undefined when the
+ * CLI did not report `duration_api_ms`.
+ */
+function blended_step_timings(
+  parsed: ParsedStream,
+  turn_usages: ReadonlyArray<TurnUsage>,
+  now: number,
+): ReadonlyArray<StepTiming> | undefined {
+  const api_ms = parsed.duration_api_ms
+  if (api_ms === undefined) return undefined
+  const shares = split_total_across_turns(api_ms, turn_usages)
+  const last_index = shares.length - 1
+  let assigned = 0
+  let cursor = now - (parsed.duration_ms ?? api_ms)
+  return shares.map((share, i) => {
+    const duration_ms = i === last_index ? api_ms - assigned : Math.floor(share)
+    assigned += duration_ms
+    const timing: StepTiming = { started_at: cursor, duration_ms }
+    cursor += duration_ms
+    return timing
+  })
+}
+
 export type BuildResultInput<T> = {
   readonly parsed: ParsedStream
   readonly resolved: ResolvedModel
@@ -194,6 +229,8 @@ export function build_generate_result<T>(input: BuildResultInput<T>): GenerateRe
     ? allocate_cost_across_turns(total_cost_usd, turn_usages)
     : []
 
+  const step_timings = blended_step_timings(parsed, turn_usages, now)
+
   const finish_reason: FinishReason = 'stop'
 
   const steps: StepRecord[] = []
@@ -214,6 +251,8 @@ export function build_generate_result<T>(input: BuildResultInput<T>): GenerateRe
       const cost = cost_per_turn[i]
       if (cost !== undefined) record.cost = cost
     }
+    const timing = step_timings?.[i]
+    if (timing !== undefined) record.timing = timing
     steps.push(record)
   })
 
@@ -225,6 +264,7 @@ export function build_generate_result<T>(input: BuildResultInput<T>): GenerateRe
     const reported: ClaudeCliProviderReported = {
       session_id: parsed.session_id ?? '',
       duration_ms: parsed.duration_ms ?? 0,
+      ...(parsed.duration_api_ms !== undefined ? { duration_api_ms: parsed.duration_api_ms } : {}),
     }
     provider_reported['claude_cli'] = reported
   }
