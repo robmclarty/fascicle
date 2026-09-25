@@ -35,10 +35,14 @@ import type {
   CheckpointConfig,
   CleanupFn,
   FallbackOptions,
+  FallbackOutcome,
+  FallbackProjection,
   MapConfig,
   ParallelOptions,
   PipeOptions,
   RetryConfig,
+  RetryOutcome,
+  RetryProjection,
   RunOptions,
   SchemaIssue,
   ScopeOptions,
@@ -61,6 +65,8 @@ const double = step('double', (n: number) => n * 2)
 const inc: StepFn<number, number> = (n) => n + 1
 
 const noop_cleanup: CleanupFn = () => {}
+
+const is_retryable = (err: unknown): boolean => err instanceof Error && err.message === 'provider'
 
 describe('exported utility types', () => {
   it('StepInput/StepOutput extract the leaf types of a concrete step', () => {
@@ -139,6 +145,37 @@ describe('exported composer config and option types', () => {
       scope_options,
     )
     expect(scoped.kind).toBe('scope')
+  })
+
+  it('composes a retry-then-fallback ladder whose projections share one output type', async () => {
+    type Verdict = { readonly score: number; readonly retries: number; readonly degraded: boolean }
+    let calls = 0
+    const with_tools = step('with_tools', (_: number): Verdict => {
+      calls += 1
+      throw new Error('provider')
+    })
+    const toolless = step('toolless', (n: number): Verdict => ({
+      score: n,
+      retries: 0,
+      degraded: false,
+    }))
+    const retry_projection: RetryProjection<Verdict, Verdict> = {
+      project: ({ value, attempts }: RetryOutcome<Verdict>) => ({ ...value, retries: attempts - 1 }),
+    }
+    const fallback_projection: FallbackProjection<Verdict, Verdict> = {
+      project: ({ value, source }: FallbackOutcome<Verdict>) =>
+        source === 'backup' ? { ...value, degraded: true } : value,
+    }
+    const critic = fallback(
+      retry(with_tools, { max_attempts: 2, backoff_ms: 1, when: is_retryable, ...retry_projection }),
+      toolless,
+      { when: is_retryable, handoff: (n) => n + 1, ...fallback_projection },
+    )
+    const verdict: StepOutput<typeof critic> = await run(critic, 1, run_options)
+    // Both attempts failed, so the backup ran on the handoff's input and the
+    // retry projection never saw a value.
+    expect(verdict).toEqual({ score: 2, retries: 0, degraded: true })
+    expect(calls).toBe(2)
   })
 
   it('SuspendConfig and the schema vocabulary are nameable together', async () => {

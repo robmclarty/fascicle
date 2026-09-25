@@ -280,3 +280,136 @@ describe('fallback', () => {
     expect(result).toBe('approved')
   })
 })
+
+const always_true = (): boolean => true
+const value_of = (o: { value: number }): number => o.value
+
+describe('fallback when', () => {
+  it('propagates a primary error when rejects without running the handoff or the backup', async () => {
+    let backup_ran = false
+    let handoff_ran = false
+    const schema_failure = new Error('schema')
+    const primary = step('primary', (_: number): string => {
+      throw schema_failure
+    })
+    const backup = step('backup', (_: number) => {
+      backup_ran = true
+      return 'backup'
+    })
+    const flow = fallback(primary, backup, {
+      when: (err) => (err as Error).message === 'provider',
+      handoff: (input) => {
+        handoff_ran = true
+        return input
+      },
+    })
+
+    const caught = await run(flow, 1, { install_signal_handlers: false }).catch((e: unknown) => e)
+    expect(caught).toBe(schema_failure)
+    expect(backup_ran).toBe(false)
+    expect(handoff_ran).toBe(false)
+  })
+
+  it('runs the backup for a primary error when accepts', async () => {
+    const primary = step('primary', (_: number): string => {
+      throw new Error('provider')
+    })
+    const backup = step('backup', (x: number) => `backup:${x}`)
+    const flow = fallback(primary, backup, {
+      when: (err) => (err as Error).message === 'provider',
+    })
+    expect(await run(flow, 1, { install_signal_handlers: false })).toBe('backup:1')
+  })
+
+  it('never consults when for a control-flow signal', async () => {
+    let when_calls = 0
+    const primary = step('primary', (_: number): string => {
+      throw new suspended_error('gate', {})
+    })
+    const flow = fallback(primary, step('backup', () => 'backup'), {
+      when: () => {
+        when_calls += 1
+        return true
+      },
+    })
+    await expect(run(flow, 1, { install_signal_handlers: false })).rejects.toBeInstanceOf(
+      suspended_error,
+    )
+    expect(when_calls).toBe(0)
+  })
+})
+
+describe('fallback project', () => {
+  it('reports the primary as the source when it succeeds', async () => {
+    const flow = fallback(
+      step('primary', (x: number) => x * 2),
+      step('backup', (x: number) => x * 3),
+      { project: (outcome) => outcome },
+    )
+    expect(await run(flow, 5, { install_signal_handlers: false })).toEqual({
+      value: 10,
+      source: 'primary',
+    })
+  })
+
+  it('reports the backup as the source with the error that sent the run there', async () => {
+    const primary_failure = new Error('provider')
+    const flow = fallback(
+      step('primary', (_: number): number => {
+        throw primary_failure
+      }),
+      step('backup', (x: number) => x * 3),
+      {
+        project: ({ value, source, primary_error }) =>
+          source === 'backup' ? { degraded: value, primary_error } : { full: value },
+      },
+    )
+    expect(await run(flow, 5, { install_signal_handlers: false })).toEqual({
+      degraded: 15,
+      primary_error: primary_failure,
+    })
+  })
+
+  it('outputs the value itself when project is omitted', async () => {
+    const flow = fallback(
+      step('primary', (_: number): number => {
+        throw new Error('provider')
+      }),
+      step('backup', (x: number) => x * 3),
+    )
+    expect(await run(flow, 5, { install_signal_handlers: false })).toBe(15)
+  })
+
+  it('does not run the backup when project throws over the primary value', async () => {
+    let backup_ran = false
+    const flow = fallback(
+      step('primary', (x: number) => x),
+      step('backup', (x: number) => {
+        backup_ran = true
+        return x
+      }),
+      {
+        project: () => {
+          throw new Error('bad projection')
+        },
+      },
+    )
+    await expect(run(flow, 5, { install_signal_handlers: false })).rejects.toThrow(
+      'bad projection',
+    )
+    expect(backup_ran).toBe(false)
+  })
+
+  it('records when, project, and the name in the step metadata only when set', () => {
+    const double = step('d', (n: number) => n * 2)
+    const full = fallback(double, double, {
+      when: always_true,
+      project: value_of,
+      name: 'guarded',
+    }).config
+    expect(full?.['when']).toBe(always_true)
+    expect(full?.['project']).toBe(value_of)
+    expect(full?.['display_name']).toBe('guarded')
+    expect(fallback(double, double).config).toBeUndefined()
+  })
+})

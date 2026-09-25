@@ -400,3 +400,144 @@ describe('retry', () => {
     expect(calls).toBe(2)
   })
 })
+
+const always_true = (): boolean => true
+const value_of = (o: { value: number }): number => o.value
+
+describe('retry when', () => {
+  it('propagates an error when rejects at once, without on_error or another attempt', async () => {
+    let calls = 0
+    const on_error_calls: number[] = []
+    const seen: Array<[string, number]> = []
+    const schema_failure = new Error('schema')
+    const inner = step('x', (_: number) => {
+      calls += 1
+      throw schema_failure
+    })
+    const flow = retry(inner, {
+      max_attempts: 3,
+      backoff_ms: 1,
+      when: (err, attempt) => {
+        seen.push([(err as Error).message, attempt])
+        return false
+      },
+      on_error: (_err, attempt) => {
+        on_error_calls.push(attempt)
+      },
+    })
+
+    const caught = await run(flow, 0, { install_signal_handlers: false }).catch((e: unknown) => e)
+    expect(caught).toBe(schema_failure)
+    expect(calls).toBe(1)
+    expect(seen).toEqual([['schema', 1]])
+    expect(on_error_calls).toEqual([])
+  })
+
+  it('retries only the errors when accepts and stops at the first it rejects', async () => {
+    let calls = 0
+    const inner = step('x', (_: number) => {
+      calls += 1
+      throw new Error(calls < 3 ? 'provider' : 'schema')
+    })
+    const flow = retry(inner, {
+      max_attempts: 5,
+      backoff_ms: 1,
+      when: (err) => (err as Error).message === 'provider',
+    })
+
+    await expect(run(flow, 0, { install_signal_handlers: false })).rejects.toThrow('schema')
+    expect(calls).toBe(3)
+  })
+
+  it('never consults when for a control-flow signal', async () => {
+    let when_calls = 0
+    const inner = step('x', (_: number) => {
+      throw new aborted_error('stop')
+    })
+    const flow = retry(inner, {
+      max_attempts: 3,
+      backoff_ms: 1,
+      when: () => {
+        when_calls += 1
+        return true
+      },
+    })
+    await expect(run(flow, 0, { install_signal_handlers: false })).rejects.toBeInstanceOf(
+      aborted_error,
+    )
+    expect(when_calls).toBe(0)
+  })
+})
+
+describe('retry project', () => {
+  it('hands project the value, the attempt count, and every retried error', async () => {
+    let calls = 0
+    const first = new Error('one')
+    const second = new Error('two')
+    const inner = step('x', (n: number) => {
+      calls += 1
+      if (calls === 1) throw first
+      if (calls === 2) throw second
+      return n * 10
+    })
+    const flow = retry(inner, {
+      max_attempts: 3,
+      backoff_ms: 1,
+      project: ({ value, attempts, errors }) => ({ value, retries: attempts - 1, errors }),
+    })
+
+    const result = await run(flow, 4, { install_signal_handlers: false })
+    expect(result).toEqual({ value: 40, retries: 2, errors: [first, second] })
+  })
+
+  it('reports one attempt and no errors when the first attempt succeeds', async () => {
+    const flow = retry(step('x', (n: number) => n + 1), {
+      max_attempts: 3,
+      project: (outcome) => outcome,
+    })
+    expect(await run(flow, 1, { install_signal_handlers: false })).toEqual({
+      value: 2,
+      attempts: 1,
+      errors: [],
+    })
+  })
+
+  it('outputs the value itself when project is omitted', async () => {
+    const flow = retry(step('x', (n: number) => n + 1), { max_attempts: 2 })
+    expect(await run(flow, 1, { install_signal_handlers: false })).toBe(2)
+  })
+
+  it('does not spend an attempt on an error project throws', async () => {
+    let calls = 0
+    const flow = retry(
+      step('x', (n: number) => {
+        calls += 1
+        return n
+      }),
+      {
+        max_attempts: 3,
+        backoff_ms: 1,
+        project: () => {
+          throw new Error('bad projection')
+        },
+      },
+    )
+    await expect(run(flow, 1, { install_signal_handlers: false })).rejects.toThrow(
+      'bad projection',
+    )
+    expect(calls).toBe(1)
+  })
+
+  it('records when and project in the step metadata only when set', () => {
+    const full = retry(step('x', (n: number) => n), {
+      max_attempts: 2,
+      when: always_true,
+      project: value_of,
+    }).config
+    expect(full?.['when']).toBe(always_true)
+    expect(full?.['project']).toBe(value_of)
+    const bare = retry(step('x', (n: number) => n), { max_attempts: 2 }).config
+    expect('when' in (bare ?? {})).toBe(false)
+    expect('project' in (bare ?? {})).toBe(false)
+  })
+})
