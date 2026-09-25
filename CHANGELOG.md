@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.12.11 — 2026-09-25
+
+### Added
+
+- **A user content part can carry its own `provider_options`.** Text and image parts take an optional `provider_options` with the same two-level, provider-keyed shape as the call-level field, and the `ai_sdk` transport hands it to the AI SDK as that part's `providerOptions`. Before this, the adapter rebuilt every part from its text or image alone, so part-level provider features were out of reach. The one that prompted it is Bedrock's guard content. Mark a part with `{ bedrock: { guardContent: true } }` and a guardrail's input check reads only the marked parts, which lets a retrieval call check the question without its passages tripping the prompt-attack filter. It needs `@ai-sdk/amazon-bedrock` 5.0.65 or later. Native transports and `claude_cli` ignore the field, and parts without it convert exactly as before.
+
+### Internal
+
+- The Bedrock section of `docs/providers.md` covers guard content, its qualifiers, and the peer version floor.
+
 ## v0.12.10 — 2026-09-24
 
 ### Fixed
