@@ -15,6 +15,7 @@ import {
   enqueue_generate_text,
   enqueue_generate_text_fn,
   enqueue_stream,
+  enqueue_stream_script,
   make_no_object_generated_error,
   make_text_result,
   mock_state,
@@ -1276,6 +1277,79 @@ describe('generate: streaming', () => {
       }),
     ).rejects.toBeInstanceOf(provider_error)
     expect(mock_state.stream_text_call_count).toBe(1)
+  })
+})
+
+describe('generate: streamed first chunk (ai_sdk transport)', () => {
+  const T0 = 1_700_000_000_000
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(T0)
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('stamps first_chunk_ms on the first token, not the stream-open framing', async () => {
+    // The SDK opens the stream 5ms in, then prefill holds the first token
+    // back another 900ms. A stamp on `start` would report 5 and leave that
+    // prefill inside the decode window.
+    const advance_before = [5, 0, 900, 100, 50]
+    enqueue_stream_script({
+      parts: [
+        { type: 'start' },
+        { type: 'start-step' },
+        { type: 'text-delta', text: 'he' },
+        { type: 'text-delta', text: 'llo' },
+        {
+          type: 'finish-step',
+          finishReason: 'stop',
+          usage: { inputTokens: 2, outputTokens: 3 },
+        },
+      ],
+      beforePart: (index) => {
+        vi.setSystemTime(Date.now() + (advance_before[index] ?? 0))
+      },
+    })
+    const result = await basic_engine().generate({
+      model: 'claude-opus',
+      prompt: 'hi',
+      on_chunk: () => {},
+    })
+    expect(result.steps[0]?.timing).toEqual({
+      started_at: T0,
+      duration_ms: 1055,
+      first_chunk_ms: 905,
+    })
+  })
+
+  it('retries a failure after the stream opens but before the first token', async () => {
+    enqueue_stream([{ type: 'start' }, { type: 'start-step' }, { type: 'error', error: mk_5xx() }])
+    enqueue_stream([
+      { type: 'start' },
+      { type: 'start-step' },
+      { type: 'text-delta', text: 'ok' },
+      {
+        type: 'finish-step',
+        finishReason: 'stop',
+        usage: { inputTokens: 2, outputTokens: 1 },
+      },
+    ])
+    const result = await basic_engine().generate({
+      model: 'claude-opus',
+      prompt: 'hi',
+      retry: {
+        max_attempts: 2,
+        initial_delay_ms: 0,
+        max_delay_ms: 0,
+        retry_on: ['provider_5xx'],
+      },
+      on_chunk: () => {},
+    })
+    expect(result.content).toBe('ok')
+    expect(mock_state.stream_text_call_count).toBe(2)
   })
 })
 

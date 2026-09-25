@@ -7,6 +7,9 @@
  */
 
 export type FakeStreamPart =
+  // Framing the real SDK emits when the stream opens, before any token.
+  | { type: 'start' }
+  | { type: 'start-step' }
   | { type: 'text-delta'; text: string }
   | { type: 'reasoning-delta'; text: string }
   | { type: 'tool-input-start'; id: string; toolName: string }
@@ -32,6 +35,8 @@ export type FakeGenerateTextResult = {
 export type FakeStreamScript = {
   parts: FakeStreamPart[]
   delayMsPerPart?: number
+  /** Runs just before each part is yielded, so a test can move a faked clock. */
+  beforePart?: (index: number) => void
 }
 
 export type MockState = {
@@ -87,6 +92,10 @@ export function enqueue_stream(parts: FakeStreamPart[], delay_ms_per_part?: numb
     if (delay_ms_per_part !== undefined) script.delayMsPerPart = delay_ms_per_part
     return script
   })
+}
+
+export function enqueue_stream_script(script: FakeStreamScript): void {
+  mock_state.stream_text_scripts.push(() => script)
 }
 
 export function enqueue_stream_error(err: Error): void {
@@ -170,7 +179,7 @@ export async function build_mock_ai_module(): Promise<Record<string, unknown>> {
   
       async function* gen(): AsyncIterable<FakeStreamPart> {
         const abort_signal: AbortSignal | undefined = params.abortSignal
-        for (const part of script.parts) {
+        for (const [index, part] of script.parts.entries()) {
           if (script.delayMsPerPart !== undefined && script.delayMsPerPart > 0) {
             await new Promise<void>((resolve, reject) => {
               const t = setTimeout(() => resolve(), script.delayMsPerPart)
@@ -191,6 +200,7 @@ export async function build_mock_ai_module(): Promise<Record<string, unknown>> {
               }
             })
           }
+          script.beforePart?.(index)
           yield part
         }
       }

@@ -82,16 +82,17 @@ export type SalvageFormat = 'hermes' | 'json' | 'qwen_xml'
  * around the successful turn attempt: failed attempts and retry backoff are
  * excluded, as is tool execution (that is ToolCallRecord.duration_ms).
  * `first_chunk_ms` is present only on streamed turns: milliseconds from the
- * attempt start to the first chunk, so `duration_ms - first_chunk_ms` is the
- * window the model spent emitting output. See `throughput()` for the derived
- * tokens-per-second view.
+ * attempt start to the first StreamChunk the turn dispatched (a token, a
+ * reasoning delta, or a tool-call part, never the transport's stream-open
+ * framing), so `duration_ms - first_chunk_ms` is the window the model spent
+ * emitting output. See `throughput()` for the derived tokens-per-second view.
  */
 export type StepTiming = {
   /** Epoch ms when the successful provider attempt started. */
   started_at: number
   /** Wall-clock ms from attempt start to the turn result. */
   duration_ms: number
-  /** Streamed turns only: ms from attempt start to the first chunk. */
+  /** Streamed turns only: ms from attempt start to the first dispatched chunk. */
   first_chunk_ms?: number
 }
 

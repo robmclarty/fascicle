@@ -388,10 +388,6 @@ async function collect_stream(
   let first = true
 
   for await (const part of stream_result.stream) {
-    if (first) {
-      first = false
-      on_first_chunk()
-    }
     accumulate_stream_part(part, acc)
     if (part.type === 'error') {
       throw part.error
@@ -401,6 +397,16 @@ async function collect_stream(
     }
     const chunk = map_stream_part_to_chunk(part, step_index)
     if (chunk === undefined) continue
+    // Stamped on the first dispatched chunk, not the first stream part: the
+    // SDK opens every stream with `start` and `start-step` framing before the
+    // model has produced a token, and a stamp there would leave prefill inside
+    // the decode window throughput() measures. This is also the native
+    // transport's rule (build_native_invoke stamps in dispatch_chunk), so a
+    // failure before the first token stays retryable on both.
+    if (first) {
+      first = false
+      on_first_chunk()
+    }
     try {
       await dispatcher.dispatch(chunk)
     } catch (err: unknown) {
