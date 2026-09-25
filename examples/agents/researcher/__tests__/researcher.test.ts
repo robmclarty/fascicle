@@ -486,7 +486,7 @@ describe('researcher', () => {
     expect(call?.prompt).toContain('[2] <https://b/>\npage body beta')
   })
 
-  it('traces the dispatcher, round, and guard steps by id', async () => {
+  it('traces the dispatcher, round, summarizer, and guard steps by id', async () => {
     const harness = make_scripted_harness([
       {
         hits: [{ url: 'https://a/' }],
@@ -514,6 +514,7 @@ describe('researcher', () => {
     const ids = events.filter((e) => e.kind === 'span_start').map((e) => e['id'] as string)
     expect(ids).toContain('researcher_dispatcher')
     expect(ids).toContain('researcher_round')
+    expect(ids).toContain('researcher_summarizer')
     expect(ids).toContain('researcher_guard')
   })
 })

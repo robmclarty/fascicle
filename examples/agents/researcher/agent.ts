@@ -121,15 +121,12 @@ export function researcher(
           }),
         )
 
-        const summary = await summarizer.run(
-          {
-            original_query: state.original_query,
-            query: state.query,
-            notes_so_far: state.notes,
-            pages,
-          },
-          ctx,
-        )
+        const summary = await ctx.call(summarizer, {
+          original_query: state.original_query,
+          query: state.query,
+          notes_so_far: state.notes,
+          pages,
+        })
 
         const next_visited = new Set(state.visited)
         for (const p of picked) next_visited.add(p.url)
@@ -144,6 +141,7 @@ export function researcher(
           stop: summary.has_enough,
         }
       },
+      { arm: summarizer },
     )
   }
 
