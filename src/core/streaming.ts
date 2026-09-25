@@ -53,7 +53,6 @@ export function create_streaming_channel(
     if (buffer.length >= high_water_mark) {
       buffer.shift()
       dropped += 1
-      return
     }
     buffer.push(event)
   }

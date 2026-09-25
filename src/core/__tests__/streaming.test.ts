@@ -1,8 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import { run } from '../runner.js'
 import { step } from '../step.js'
-import { STREAMING_HIGH_WATER_MARK } from '../streaming.js'
-import type { TrajectoryEvent } from '../types.js'
+import { STREAMING_HIGH_WATER_MARK, create_streaming_channel } from '../streaming.js'
+import type { TrajectoryEvent, TrajectoryLogger } from '../types.js'
+
+const noop_logger: TrajectoryLogger = {
+  record: () => {},
+  start_span: () => 'span',
+  end_span: () => {},
+}
 
 describe('run.stream', () => {
   it('produces the same final result as run()', async () => {
@@ -102,5 +108,21 @@ describe('run.stream', () => {
     expect(dropped_marker).toBeDefined()
     expect(dropped_marker?.['count']).toBeGreaterThan(0)
     expect(collected.length).toBeLessThanOrEqual(STREAMING_HIGH_WATER_MARK + 1)
+  })
+
+  it('drops the oldest events past the high-water mark and keeps every newer one', async () => {
+    const channel = create_streaming_channel(noop_logger, 3)
+    for (let n = 1; n <= 7; n += 1) channel.logger.record({ kind: 'emit', n })
+    channel.close()
+
+    const collected: TrajectoryEvent[] = []
+    for await (const ev of channel.events) collected.push(ev)
+
+    expect(collected).toEqual([
+      { kind: 'emit', n: 5 },
+      { kind: 'emit', n: 6 },
+      { kind: 'emit', n: 7 },
+      { kind: 'events_dropped', count: 4 },
+    ])
   })
 })
