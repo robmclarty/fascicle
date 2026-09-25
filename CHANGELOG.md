@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.12.13 — 2026-09-25
+
+### Fixed
+
+- **The reference `researcher` agent traces its summarizer.** Each round called the summarizer's `run` directly, which bypasses the dispatcher, so the agent's only model call opened no span. It now goes through `ctx.call` and is declared as the round's `arm`, so the trajectory and `describe` both show the model boundary. The agent is demo code under `examples/agents/`, so this matters if you copied it into your own project.
+
+### Internal
+
+- Every example README now has a flow diagram drawn by `describe.diagram`, one row per step with a note beside it. The hand-drawn trees in `newsroom`, `release-notes`, and `amplify` gave way to rendered ones, and the few examples whose flow is a single step draw the program around it instead.
+- Example docs and header comments that had drifted from the code are corrected. `live-smoke` now says it also exits non-zero when no backend was available, the `pr-improve` and `newsroom` headers match their flows again, and the single-file examples' header comments lose their em dashes.
+
 ## v0.12.12 — 2026-09-25
 
 ### Added
