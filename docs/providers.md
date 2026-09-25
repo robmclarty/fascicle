@@ -402,6 +402,24 @@ The trace is worth reading on ordinary completions too, not just interventions. 
 
 The pass-through relies on `@ai-sdk/amazon-bedrock` spreading unknown provider-option keys into the Converse command (its documented options schema omits `guardrailConfig`); a wire contract test pins that seam in this repo, but pin your own peer version and verify with `trace: 'enabled'` on first deploy.
 
+A guardrail attached this way checks the whole user turn. That hurts a retrieval call, which puts the question and its retrieved passages in one turn: a passage that happens to quote an instruction can trip the prompt-attack filter on a question that's perfectly benign. Bedrock's answer is guard content. You mark the parts that the guardrail should check, and its input check reads only those. Every user content part can carry its own `provider_options`. It's keyed by provider name, the same as the call-level field, and the `ai_sdk` transport hands it to the peer as that part's `providerOptions`:
+
+```ts
+const res = await engine.generate({
+  prompt: [
+    {
+      role: 'user',
+      content: [
+        { type: 'text', text: passages },
+        { type: 'text', text: question, provider_options: { bedrock: { guardContent: true } } },
+      ],
+    },
+  ],
+});
+```
+
+Add `guardContentQualifiers` to say what a marked part is for. `'grounding_source'` and `'query'` feed the contextual grounding check, and `'guard_content'` is the plain mark. Image parts take `guardContent` too. Releases of `@ai-sdk/amazon-bedrock` before 5.0.65 ignore part-level options and send a marked part as ordinary text, so the guardrail goes back to checking the whole turn. An old peer errs toward the broader check, not a narrower one.
+
 No default pricing ships for Bedrock (ids are region- and profile-specific). Add your own with `engine.register_price('bedrock', '<model-id>', { ... })`; until then cost is omitted, not an error.
 
 ## `ollama`

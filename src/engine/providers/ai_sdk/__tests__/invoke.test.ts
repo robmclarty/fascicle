@@ -208,12 +208,36 @@ describe('to_sdk_messages', () => {
         ],
       },
     ]
-    expect(to_sdk_messages(messages)[0]).toEqual({
+    // Strict, so a part without provider_options gains no providerOptions key.
+    expect(to_sdk_messages(messages)[0]).toStrictEqual({
       role: 'user',
       content: [
         { type: 'text', text: 'look' },
         { type: 'image', image: 'data', mediaType: 'image/png' },
         { type: 'image', image: 'raw' },
+      ],
+    })
+  })
+
+  it('carries a user part provider_options through as providerOptions', () => {
+    const guard_query = { bedrock: { guardContent: true, guardContentQualifiers: ['query'] } }
+    const guard_image = { bedrock: { guardContent: true } }
+    const messages: Message[] = [
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: 'passages' },
+          { type: 'text', text: 'question', provider_options: guard_query },
+          { type: 'image', image: 'data', media_type: 'image/png', provider_options: guard_image },
+        ],
+      },
+    ]
+    expect(to_sdk_messages(messages)[0]).toStrictEqual({
+      role: 'user',
+      content: [
+        { type: 'text', text: 'passages' },
+        { type: 'text', text: 'question', providerOptions: guard_query },
+        { type: 'image', image: 'data', mediaType: 'image/png', providerOptions: guard_image },
       ],
     })
   })

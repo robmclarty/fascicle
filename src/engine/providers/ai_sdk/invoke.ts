@@ -18,8 +18,10 @@ import {
   isStepCount,
   streamText,
   tool as ai_tool,
+  type ImagePart,
   type LanguageModel,
   type ModelMessage,
+  type TextPart,
   type TextStreamPart,
   type ToolSet,
 } from 'ai'
@@ -171,17 +173,22 @@ export function to_sdk_messages(messages: ReadonlyArray<Message>): ModelMessage[
       if (typeof m.content === 'string') {
         out.push({ role: 'user', content: m.content })
       } else {
-        const parts: Array<
-          | { type: 'text'; text: string }
-          | { type: 'image'; image: string | Uint8Array; mediaType?: string }
-        > = m.content.map((p) => {
-          if (p.type === 'text') return { type: 'text', text: p.text }
-          const image_part: { type: 'image'; image: string | Uint8Array; mediaType?: string } = {
-            type: 'image',
-            image: p.image,
+        const parts: Array<TextPart | ImagePart> = m.content.map((p) => {
+          let part: TextPart | ImagePart
+          if (p.type === 'text') {
+            part = { type: 'text', text: p.text }
+          } else {
+            const image_part: ImagePart = { type: 'image', image: p.image }
+            if (p.media_type !== undefined) image_part.mediaType = p.media_type
+            part = image_part
           }
-          if (p.media_type !== undefined) image_part.mediaType = p.media_type
-          return image_part
+          if (p.provider_options !== undefined) {
+            // Same structural cast as the call-level provider_options in
+            // create_ai_sdk_turn.
+            // eslint-disable-next-line typescript-eslint/no-unsafe-type-assertion
+            part.providerOptions = p.provider_options as NonNullable<TextPart['providerOptions']>
+          }
+          return part
         })
         out.push({ role: 'user', content: parts })
       }

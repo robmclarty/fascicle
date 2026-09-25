@@ -148,9 +148,26 @@ export type StepRecord = {
   provider_reported?: Record<string, unknown>
 }
 
+/**
+ * A part's `provider_options` reaches the AI SDK as that part's
+ * `providerOptions`, keyed by provider name like the call-level field. It is
+ * the only way to reach per-part provider features such as Bedrock's guard
+ * content (`{ bedrock: { guardContent: true } }`), which scopes a guardrail's
+ * input check to the marked part. Only the ai_sdk transport reads it; native
+ * transports and claude_cli ignore it.
+ */
 export type UserContentPart =
-  | { type: 'text'; text: string }
-  | { type: 'image'; image: Uint8Array | string; media_type?: string }
+  | {
+      type: 'text'
+      text: string
+      provider_options?: Readonly<Record<string, Readonly<Record<string, unknown>>>>
+    }
+  | {
+      type: 'image'
+      image: Uint8Array | string
+      media_type?: string
+      provider_options?: Readonly<Record<string, Readonly<Record<string, unknown>>>>
+    }
 
 export type AssistantContentPart =
   | { type: 'text'; text: string }
