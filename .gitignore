@@ -43,5 +43,7 @@ examples/red-green-refactor/.trajectory/
 /.plumbbob/
 
 # volley per-run state (.volley/), written into this main checkout by a
-# night-shift plan-draft run even under --worktree
+# night-shift plan-draft run even under --worktree, and the timestamped
+# backups volley takes of it before a fresh run
 .volley/
+.volley.bak.*/
