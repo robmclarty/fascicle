@@ -1,6 +1,6 @@
 import { describe as vdescribe, expect, it } from 'vitest'
 import { z } from 'zod'
-import { aborted_error, describe, run } from '#core'
+import { aborted_error, checkpoint, describe, run } from '#core'
 import type { RunContext } from '#core'
 import type {
   Engine,
@@ -300,6 +300,26 @@ vdescribe('model_call', () => {
         typeof e === 'object' && e !== null && 'kind' in e && e.kind === 'model_chunk',
     )
     expect(emitted.length).toBeGreaterThan(0)
+  })
+
+  it('is anonymous without an id, so checkpoint rejects it, and named with one', () => {
+    const { engine } = make_mock_engine()
+    const unnamed = model_call({ engine, model: 'sonnet' })
+    const named = model_call({ engine, model: 'sonnet', id: 'reviewer' })
+    expect(unnamed.anonymous).toBe(true)
+    expect(named.anonymous).toBeUndefined()
+    expect(() => checkpoint(unnamed, { key: 'k' })).toThrow('checkpoint requires a named step')
+    expect(() => checkpoint(named, { key: 'k' })).not.toThrow()
+    expect(describe.diagram(unnamed)).toBe('step')
+    expect(describe.diagram(named)).toBe('reviewer  step')
+  })
+
+  it('carries a description into meta, and no meta without one', () => {
+    const { engine } = make_mock_engine()
+    const described = model_call({ engine, id: 'critic', description: 'judges the change' })
+    expect(described.meta).toEqual({ description: 'judges the change' })
+    expect(model_call({ engine, id: 'plain' }).meta).toBeUndefined()
+    expect(describe.diagram(described)).toBe('critic  judges the change')
   })
 
   it('describe surfaces model config and omits the raw engine object', () => {

@@ -12,6 +12,7 @@
  * message.
  */
 
+import { description_meta } from './display_name.js'
 import { dispatch_step, register_traced_kind, throw_if_aborted } from './runner.js'
 import type { AnyStep, RunContext, Step } from './types.js'
 
@@ -63,14 +64,17 @@ function next_use_id(): string {
 
 export type ScopeOptions = {
   readonly name?: string
+  readonly description?: string
 }
 
 export type StashOptions = {
   readonly name?: string
+  readonly description?: string
 }
 
 export type UseOptions = {
   readonly name?: string
+  readonly description?: string
 }
 
 /**
@@ -112,6 +116,7 @@ export function scope<const children extends readonly AnyStep[]>(
     kind: 'scope',
     children,
     ...(config_meta ? { config: config_meta } : {}),
+    ...description_meta(options?.description),
     run: run_fn,
   } as Step<unknown, LastOutput<children>>
 }
@@ -148,6 +153,7 @@ export function stash<i, v>(
     kind: 'stash',
     children: [source],
     config: config_meta,
+    ...description_meta(options?.description),
     run: run_fn,
   }
 }
@@ -188,6 +194,7 @@ export function use<const keys extends readonly string[], i, o>(
     id,
     kind: 'use',
     config: config_meta,
+    ...description_meta(options?.description),
     run: run_fn,
   }
 }

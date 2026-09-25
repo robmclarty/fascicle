@@ -120,7 +120,28 @@ Rules, in order of importance:
 
 1. **Only Fascicle vocabulary and plugged-in names.** Every import is a stage factory, a `format_*` / `render_*` / `read_*` function, or a type. If you find yourself writing a template literal or an `await fetch` here, it belongs in a sibling.
 2. **Export one builder**, `build_flow(engine, models, env): Step<In, Out>`. The engine and model choices arrive as arguments so the flow keeps its hands off `process.env` and tests can hand it a stub engine.
-3. **Put the topology diagram in the file header.** An ASCII tree that mirrors the code below it is the cheapest architecture doc you'll ever write, and drift is caught in review because they sit in the same diff.
+3. **Put the topology diagram in the file header, and let the flow draw it.** An ASCII tree that mirrors the code below it is the cheapest architecture doc you'll ever write, as long as it stays true. `describe.diagram` draws that tree from the flow itself, so the notes on each row belong in the code, as a `description` on the step or composer that they describe, and a test holds the header to the output. Adding a step without updating the header then fails the gate, where a hand-drawn diagram would have waited for a reviewer to notice.
+
+   Build the flow for drawing in one small module, wired to stubs so that drawing it needs no credentials:
+
+   ```ts
+   // src/diagram.ts
+   import { make_stub_engine } from 'fascicle/testing';
+   import { build_flow } from './flow.js';
+   import { STUB_ENV, STUB_MODELS } from './stubs.js';
+
+   export const flow = () => build_flow(make_stub_engine([]), STUB_MODELS, STUB_ENV);
+   ```
+
+   The header test holds the header to that module's output, and `read_header_diagram` is yours to write, since only your app knows where its header starts and stops.
+
+   ```ts
+   it('the header diagram in flow.ts matches the flow', () => {
+     expect(read_header_diagram('src/flow.ts')).toBe(describe.diagram(flow(), { prefix: ' * ' }));
+   });
+   ```
+
+   The same module is what the `fascicle-diagram` command reads, and that command ships with the package. Add `"diagram": "fascicle-diagram src/diagram.ts"` to your scripts, and `pnpm diagram` prints what the code builds today whenever someone wants to look. `pnpm diagram --prefix ' * '` prints it ready to paste over a header that has gone stale.
 4. **Recurring stage idiom**, where a stage is one `chain` binding and readers learn to see it as one unit.
 
    ```ts
@@ -131,7 +152,7 @@ Rules, in order of importance:
    Format from named bindings, call the model step, bind the typed payload. Nothing else. (Under raw `scope`/`stash`/`use` the same idiom is a three-step sequence: `use` to format, the model step, `stash` the result; `chain` collapses it.)
 
 5. **Annotate the outer type of every named subflow** (`Step<In, Out>`). Heterogeneous `sequence` chains do not always infer end to end; explicit annotations catch mismatches at the boundary where they are introduced. If you are tempted to write `sequence([...]) as Step<In, Out>`, a step in the chain has the wrong type; fix that instead.
-6. **The direct style, used honestly.** Occasionally wiring is data-dependent: a `map`'s inner step needs a value that only exists at runtime (a sandbox handle, a per-file root), or the control flow is genuinely dynamic. Then a named `step` body builds the sub-composition and invokes it with `ctx.call(inner, input)`, which keeps spans, abort, and error paths intact (never `inner.run(input, ctx)` directly, which bypasses the dispatcher and loses the span). The remaining cost is static describability only, so: give the step a name, keep the body small, and leave a comment saying why it could not be expressed statically. Unexplained buried control flow is the anti-pattern; the documented direct-style step is a first-class citizen.
+6. **The direct style, used honestly.** Occasionally wiring is data-dependent: a `map`'s inner step needs a value that only exists at runtime (a sandbox handle, a per-file root), or the control flow is genuinely dynamic. Then a named `step` body builds the sub-composition and invokes it with `ctx.call(inner, input)`, which keeps spans, abort, and error paths intact (never `inner.run(input, ctx)` directly, which bypasses the dispatcher and loses the span). When the arm that the body calls already exists before the body runs, declare it with `step(name, fn, { arm })`, the same describe-only arm that a chain binding takes, and `describe`, the diagram, and the trajectory's flow structure show the model boundary behind the body. An arm that the body builds at runtime can't be declared, and that's the remaining cost of the style. So give the step a name, keep the body small, and leave a comment saying why it could not be expressed statically. Unexplained buried control flow is the anti-pattern; the documented direct-style step is a first-class citizen.
 
 ## `engine.ts`
 

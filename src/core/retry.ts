@@ -26,6 +26,7 @@
  * attempts; a pending abort short-circuits the backoff and propagates.
  */
 
+import { description_meta } from './display_name.js'
 import { aborted_error, is_control_flow_error } from './errors.js'
 import { dispatch_step, register_traced_kind } from './runner.js'
 import type { RunContext, Step } from './types.js'
@@ -48,6 +49,7 @@ export type RetryOutcome<o> = {
 
 export type RetryConfig = {
   readonly name?: string
+  readonly description?: string
   readonly max_attempts: number
   readonly backoff_ms?: number
   readonly max_delay_ms?: number
@@ -186,6 +188,7 @@ export function retry<i, o, projected = o>(
     kind: 'retry',
     children: [inner],
     config: config_meta,
+    ...description_meta(config.description),
     run: run_fn,
   }
 }

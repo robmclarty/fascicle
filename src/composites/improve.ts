@@ -47,6 +47,7 @@ export type ImproveBudget = {
 
 export type ImproveConfig<i, c, projected = ImproveResult<c>> = {
   readonly name?: string
+  readonly description?: string
   readonly seed: Step<i, { readonly content: c; readonly score: number }>
   readonly propose: Step<ImproveRoundInput<c>, Candidate<c>>
   readonly score: Step<Candidate<c>, ScoredCandidate<c>>
@@ -299,5 +300,5 @@ export function improve<i, c, projected = ImproveResult<c>>(
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion
   ]) as Step<i, projected>
 
-  return compose(inner, { name: config.name ?? 'improve' })
+  return compose(inner, { name: config.name ?? 'improve', description: config.description })
 }

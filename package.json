@@ -103,7 +103,8 @@
     "#testing": "./src/testing/index.ts"
   },
   "bin": {
-    "fascicle-viewer": "./dist/bin/fascicle-viewer.js"
+    "fascicle-viewer": "./dist/bin/fascicle-viewer.js",
+    "fascicle-diagram": "./dist/bin/fascicle-diagram.js"
   },
   "files": [
     "dist",
@@ -139,6 +140,7 @@
     "test:watch": "vitest",
     "types": "tsc --noEmit",
     "fascicle-viewer": "tsx src/viewer/cli.ts",
+    "fascicle-diagram": "tsx src/diagram_bin.ts",
     "viewer:app": "vite build --config vite.viewer.config.ts",
     "viewer:app:watch": "vite build --watch --config vite.viewer.config.ts"
   },

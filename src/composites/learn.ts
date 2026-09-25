@@ -57,6 +57,7 @@ export type Improvement = {
 
 export type LearnConfig<i extends LearnInput, o> = {
   readonly name?: string
+  readonly description?: string
   readonly flow: AnyStep
   readonly source: TrajectorySource
   readonly analyzer: Step<i, o>
@@ -255,5 +256,5 @@ export function learn<i extends LearnInput, o>(
     wrap_result,
   ])
 
-  return compose(inner, { name: config.name ?? 'learn' })
+  return compose(inner, { name: config.name ?? 'learn', description: config.description })
 }

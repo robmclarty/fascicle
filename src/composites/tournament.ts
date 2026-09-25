@@ -24,6 +24,7 @@ export type BracketRecord = {
 
 export type TournamentConfig<i, o, projected = TournamentResult<o>> = {
   readonly name?: string
+  readonly description?: string
   readonly members: Record<string, Step<i, o>>
   readonly compare: (a: o, b: o) => Promise<'a' | 'b'> | 'a' | 'b'
   readonly project?: (r: TournamentResult<o>) => projected
@@ -75,7 +76,7 @@ export function tournament<i, o, projected = TournamentResult<o>>(
 
   const inner = sequence([fan_out, bracket_step])
 
-  return compose(inner, { name: config.name ?? 'tournament' })
+  return compose(inner, { name: config.name ?? 'tournament', description: config.description })
 }
 
 /**

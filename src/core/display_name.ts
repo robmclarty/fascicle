@@ -13,16 +13,33 @@
  * trajectory id.
  */
 
-import type { AnyStep } from './types.js'
+import type { AnyStep, StepMetadata } from './types.js'
 
 /**
  * Resolve the human-readable label for `node`, falling back to `fallback`
  * (typically the step's kind) when neither display channel is populated.
+ * It reads only `config` and `meta`, so a `describe.json` node resolves the
+ * same way as the step it was drawn from.
  */
-export function resolve_display_name(node: AnyStep, fallback: string): string {
+export function resolve_display_name(
+  node: Pick<AnyStep, 'config' | 'meta'>,
+  fallback: string,
+): string {
   const display = node.config?.['display_name']
   if (typeof display === 'string' && display.length > 0) return display
   const name = node.meta?.name
   if (typeof name === 'string' && name.length > 0) return name
   return fallback
+}
+
+/**
+ * The `meta` a composer spreads into the step it returns for its
+ * `description` option: `meta.description` when one is given, and nothing
+ * otherwise, so a composer without a description carries no empty `meta`
+ * for `describe` to echo.
+ */
+export function description_meta(description: string | undefined): {
+  readonly meta?: StepMetadata
+} {
+  return description === undefined ? {} : { meta: { description } }
 }

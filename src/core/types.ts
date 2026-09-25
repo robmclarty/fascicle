@@ -70,6 +70,17 @@ export type StepMetadata = {
   }>
 }
 
+/**
+ * The trailing argument of `step(id, fn, options)`: the step's metadata, plus
+ * the arms its body invokes through `ctx.call`. An arm is recorded as a child
+ * for `describe` and the trajectory's flow structure, and is never dispatched
+ * by the step itself, so declaring one changes what the tree shows and
+ * nothing about what runs.
+ */
+export type StepOptions = StepMetadata & {
+  readonly arm?: AnyStep | ReadonlyArray<AnyStep>
+}
+
 export type Step<i, o> = {
   readonly id: string
   readonly kind: string
@@ -81,6 +92,36 @@ export type Step<i, o> = {
   readonly children?: ReadonlyArray<AnyStep>
   readonly anonymous?: boolean
   readonly meta?: StepMetadata
+}
+
+/**
+ * A serializable config value in a `FlowNode`: functions reduce to
+ * `{ kind: '<fn>', name? }`, zod schemas to `{ kind: '<schema>' }`, and Step
+ * references to `{ kind, id }`.
+ */
+export type FlowValue =
+  | string
+  | number
+  | boolean
+  | null
+  | ReadonlyArray<FlowValue>
+  | Readonly<{ [key: string]: FlowValue }>
+  | { readonly kind: '<fn>'; readonly name?: string }
+  | { readonly kind: '<schema>' }
+  | { readonly kind: string; readonly id: string }
+
+/**
+ * The serializable form of a Step tree that `describe.json` returns and the
+ * trajectory's `flow_structure` event carries. `anonymous` is present, and
+ * true, only on a step whose id was generated rather than chosen.
+ */
+export type FlowNode = {
+  readonly kind: string
+  readonly id: string
+  readonly config?: Readonly<{ [key: string]: FlowValue }>
+  readonly children?: ReadonlyArray<FlowNode>
+  readonly meta?: StepMetadata
+  readonly anonymous?: boolean
 }
 
 /**

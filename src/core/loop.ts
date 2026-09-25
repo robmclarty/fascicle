@@ -23,6 +23,7 @@
  * thread cancellation per the runner contract.
  */
 
+import { description_meta } from './display_name.js'
 import { dispatch_step, register_traced_kind, throw_if_aborted } from './runner.js'
 import { step } from './step.js'
 import type { AnyStep, RunContext, Step } from './types.js'
@@ -41,6 +42,7 @@ export type LoopOutcome = {
 
 export type LoopConfig<i, state, o> = {
   readonly name?: string
+  readonly description?: string
   readonly init: (input: i) => state
   readonly body: Step<state, state>
   readonly guard?: Step<state, LoopGuardResult<state>> | LoopGuardPredicate<state>
@@ -69,6 +71,8 @@ function next_id(): string {
  * (with an id derived from the loop's, so trees with several loops stay
  * unambiguous) rather than special-cased in the run loop: the predicate form
  * then dispatches, traces, and terminates identically to a hand-written guard.
+ * The wrapper is marked anonymous because its id carries the loop's counter,
+ * which `describe.diagram` must never print.
  */
 function wrap_guard<state>(
   guard: Step<state, LoopGuardResult<state>> | LoopGuardPredicate<state> | undefined,
@@ -76,10 +80,11 @@ function wrap_guard<state>(
 ): Step<state, LoopGuardResult<state>> | undefined {
   if (guard === undefined) return undefined
   if (typeof guard !== 'function') return guard
-  return step(`${loop_id}_guard`, async (state: state) => ({
+  const wrapped = step(`${loop_id}_guard`, async (state: state) => ({
     stop: await guard(state),
     state,
   }))
+  return { ...wrapped, anonymous: true }
 }
 
 /**
@@ -131,6 +136,7 @@ export function loop<i, state, o>(config: LoopConfig<i, state, o>): Step<i, o> {
     kind: 'loop',
     children,
     config: config_meta,
+    ...description_meta(config.description),
     run: run_fn,
   }
 }

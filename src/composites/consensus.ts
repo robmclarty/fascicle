@@ -7,6 +7,7 @@ import type { Step } from '#core'
 
 export type ConsensusConfig<i, o, projected = ConsensusResult<o>> = {
   readonly name?: string
+  readonly description?: string
   readonly members: Record<string, Step<i, o>>
   readonly agree: (results: Record<string, o>) => boolean
   readonly max_rounds: number
@@ -75,5 +76,5 @@ export function consensus<i, o, projected = ConsensusResult<o>>(
     max_rounds,
   })
 
-  return compose(inner, { name: config.name ?? 'consensus' })
+  return compose(inner, { name: config.name ?? 'consensus', description: config.description })
 }

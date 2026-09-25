@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest'
 import { adversarial } from '../adversarial.js'
 import { consensus } from '../consensus.js'
 import { ensemble } from '../ensemble.js'
+import { ensemble_step } from '../ensemble_step.js'
+import { gate } from '../gate.js'
 import { tournament } from '../tournament.js'
 
 const COMPOSITE_KINDS = ['adversarial', 'ensemble', 'tournament', 'consensus'] as const
@@ -55,5 +57,21 @@ describe('composites STEP_KINDS coverage', () => {
       expect(entry.flow.kind).toBe('compose')
       expect(entry.flow.config?.['display_name']).toBe(entry.kind)
     }
+  })
+
+  it('every composite forwards its description to the compose node, and adds no meta without one', () => {
+    const dummy = step('dummy', (n: number) => n)
+    const description = 'what it is for'
+    const described = [
+      ensemble({ members: { a: dummy }, score: () => 1, description }),
+      tournament({ members: { a: dummy }, compare: () => 'a' as const, description }),
+      consensus({ members: { a: dummy }, agree: () => true, max_rounds: 1, description }),
+      ensemble_step({ members: { a: dummy }, score: dummy, rank_by: (s: number) => s, description }),
+      gate(dummy, { id: 'approve', description }),
+    ]
+    for (const flow of described) {
+      expect(flow.meta).toEqual({ description })
+    }
+    expect(ensemble({ members: { a: dummy }, score: () => 1 }).meta).toBeUndefined()
   })
 })

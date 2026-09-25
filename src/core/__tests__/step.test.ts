@@ -107,4 +107,38 @@ describe('step', () => {
     expect(start?.['name']).toBe('step')
     expect(start?.['id']).toBe('inc')
   })
+
+  it('records a declared arm as its only child and leaves it out of meta', () => {
+    const arm = step('inner', (x: number) => x * 10)
+    const outer = step('outer', (x: number) => x, { description: 'calls inner', arm })
+    expect(outer.children).toEqual([arm])
+    expect(outer.meta).toEqual({ description: 'calls inner' })
+  })
+
+  it('records several declared arms in order', () => {
+    const first = step('first', (x: number) => x)
+    const second = step('second', (x: number) => x)
+    const outer = step('outer', (x: number) => x, { arm: [first, second] })
+    expect(outer.children).toEqual([first, second])
+  })
+
+  it('carries no meta when the options hold only an arm, and no children without one', () => {
+    const arm = step('inner', (x: number) => x)
+    expect(step('outer', (x: number) => x, { arm })).not.toHaveProperty('meta')
+    expect(step('plain', (x: number) => x, { name: 'Plain' })).not.toHaveProperty('children')
+  })
+
+  it('never dispatches a declared arm itself: the body decides', async () => {
+    let arm_runs = 0
+    const arm = step('inner', (x: number) => {
+      arm_runs += 1
+      return x
+    })
+    const silent = step('silent', (x: number) => x + 1, { arm })
+    await expect(run(silent, 1)).resolves.toBe(2)
+    expect(arm_runs).toBe(0)
+    const calling = step('calling', (x: number, ctx) => ctx.call(arm, x), { arm })
+    await expect(run(calling, 5)).resolves.toBe(5)
+    expect(arm_runs).toBe(1)
+  })
 })

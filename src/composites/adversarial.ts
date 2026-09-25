@@ -25,6 +25,7 @@ export type AdversarialResult<candidate> = {
 
 export type AdversarialConfig<input, candidate, projected = AdversarialResult<candidate>> = {
   readonly name?: string
+  readonly description?: string
   readonly build: Step<AdversarialBuildInput<input, candidate>, candidate>
   readonly critique: Step<candidate, AdversarialCritiqueResult>
   readonly accept: (critique_result: AdversarialCritiqueResult) => boolean
@@ -127,5 +128,5 @@ export function adversarial<input, candidate, projected = AdversarialResult<cand
     max_rounds,
   })
 
-  return compose(inner, { name: config.name ?? 'adversarial' })
+  return compose(inner, { name: config.name ?? 'adversarial', description: config.description })
 }

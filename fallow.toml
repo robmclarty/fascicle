@@ -8,6 +8,9 @@ entry = [
   "src/**/__tests__/**/*.mjs",
   "src/**/*-harness.ts",
   "src/viewer/cli.ts",
+  # The fascicle-diagram bin's entry: bundled by tsdown, run by the bin shim
+  # that scripts/build.mjs writes, and spawned by its tests, never imported.
+  "src/diagram_bin.ts",
   # The compiled run canvas: `main.tsx` is vite's html entry and the Playwright
   # specs are run by playwright, not imported. Neither is reachable from any
   # module graph rooted in src/index.ts.

@@ -1,45 +1,33 @@
 /**
- * describe(step) and describe.json(step): composition introspection.
+ * describe(step), describe.json(step), and describe.diagram(step):
+ * composition introspection.
  *
  * `describe(step)` is the text-tree renderer. Multi-line string with
  * hierarchical indentation. Function values render as `<fn>` (or
  * `<fn:name>` when the function has a non-empty `name`); zod schemas
- * render as `<schema>`.
+ * render as `<schema>`. A config entry that holds one of the node's own
+ * children (a branch's `then` and `otherwise`) renders that child once, in
+ * place of the config line, rather than again among the children.
  *
  * `describe.json(step)` returns a `FlowNode` tree (kind, id, config, children)
  * for tooling (Studio UI, Mermaid renderers, diff tools). Function values
  * serialize as `{ kind: '<fn>', name? }` and schemas as `{ kind: '<schema>' }`.
+ *
+ * `describe.diagram(step)` draws the `describe.json` tree as an annotated
+ * box-drawing diagram (see diagram.ts).
  *
  * Both forms detect cycles. Under the default (loose) mode, back-references
  * render as `<cycle>(id)` in text and `{ kind: '<cycle>', id }` in JSON. Under
  * `{ strict: true }`, cycles throw `describe_cycle_error`.
  */
 
+import { render_diagram, type DiagramOptions } from './diagram.js'
+import { resolve_display_name } from './display_name.js'
 import { describe_cycle_error } from './errors.js'
 import { is_step } from './is_step.js'
-import { resolve_display_name } from './display_name.js'
-import type { AnyStep, Step, StepMetadata } from './types.js'
+import type { AnyStep, FlowNode, FlowValue, Step, StepMetadata } from './types.js'
 
 const INDENT = '  '
-
-export type FlowValue =
-  | string
-  | number
-  | boolean
-  | null
-  | ReadonlyArray<FlowValue>
-  | Readonly<{ [key: string]: FlowValue }>
-  | { readonly kind: '<fn>'; readonly name?: string }
-  | { readonly kind: '<schema>' }
-  | { readonly kind: string; readonly id: string }
-
-export type FlowNode = {
-  readonly kind: string
-  readonly id: string
-  readonly config?: Readonly<{ [key: string]: FlowValue }>
-  readonly children?: ReadonlyArray<FlowNode>
-  readonly meta?: StepMetadata
-}
 
 export type DescribeOptions = {
   readonly strict?: boolean
@@ -66,16 +54,30 @@ function describe_json<i, o>(root: Step<i, o>, options?: DescribeOptions): FlowN
 }
 
 /**
+ * Render a step tree as an annotated box-drawing diagram. It is drawn from
+ * the `describe.json` tree, so the output depends on the flow's shape alone.
+ */
+function describe_diagram<i, o>(root: Step<i, o>, options?: DiagramOptions): string {
+  return render_diagram(describe_json(root, options), options)
+}
+
+/**
  * Public entry point: `describe(step)` for text, `describe.json(step)` for
- * the `FlowNode` tree.
+ * the `FlowNode` tree, `describe.diagram(step)` for the annotated diagram.
  */
 export const describe: {
   <i, o>(root: Step<i, o>, options?: DescribeOptions): string
   json: <i, o>(root: Step<i, o>, options?: DescribeOptions) => FlowNode
-} = Object.assign(describe_text, { json: describe_json })
+  diagram: <i, o>(root: Step<i, o>, options?: DiagramOptions) => string
+} = Object.assign(describe_text, { json: describe_json, diagram: describe_diagram })
 
 /**
  * Append one node (label line, config lines, then children) to `lines`.
+ *
+ * `role` prefixes the label line when a parent's config entry names this
+ * node. A config entry whose value is one of the node's own children renders
+ * that child's whole subtree in its place, under the entry's key, and the
+ * child is then skipped among the children so it appears once.
  *
  * `path` holds the steps on the current root-to-node path for cycle
  * detection; membership is added before recursing and removed in a `finally`
@@ -87,26 +89,30 @@ function render_text(
   lines: string[],
   path: Path,
   strict: boolean,
+  role = '',
 ): void {
   const prefix = INDENT.repeat(depth)
   if (path.has(node)) {
     if (strict) throw new describe_cycle_error(node.id)
-    lines.push(`${prefix}<cycle>(${node.id})`)
+    lines.push(`${prefix}${role}<cycle>(${node.id})`)
     return
   }
   path.add(node)
   try {
-    lines.push(`${prefix}${resolve_display_name(node, node.kind)}(${node.id})`)
-    if (node.config) {
-      for (const [key, value] of Object.entries(node.config)) {
-        if (key === 'display_name') continue
+    lines.push(`${prefix}${role}${resolve_display_name(node, node.kind)}(${node.id})`)
+    const children = node.children ?? []
+    const placed = new Set<AnyStep>()
+    for (const [key, value] of Object.entries(node.config ?? {})) {
+      if (key === 'display_name') continue
+      if (is_step(value) && children.includes(value)) {
+        placed.add(value)
+        render_text(value, depth + 1, lines, path, strict, `${key}: `)
+      } else {
         lines.push(`${prefix}${INDENT}${key}: ${render_value_text(value, path, strict)}`)
       }
     }
-    if (node.children && node.children.length > 0) {
-      for (const child of node.children) {
-        render_text(child, depth + 1, lines, path, strict)
-      }
+    for (const child of children) {
+      if (!placed.has(child)) render_text(child, depth + 1, lines, path, strict)
     }
   } finally {
     path.delete(node)
@@ -203,6 +209,7 @@ function render_json(
       config?: { [key: string]: FlowValue }
       children?: FlowNode[]
       meta?: StepMetadata
+      anonymous?: boolean
     } = { kind: node.kind, id: node.id }
     if (node.config) {
       const config: { [key: string]: FlowValue } = {}
@@ -216,6 +223,9 @@ function render_json(
     }
     if (node.meta) {
       result.meta = node.meta
+    }
+    if (node.anonymous === true) {
+      result.anonymous = true
     }
     return result
   } finally {

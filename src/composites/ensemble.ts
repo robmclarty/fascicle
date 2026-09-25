@@ -7,6 +7,7 @@ import type { Step } from '#core'
 
 export type EnsembleConfig<i, o, projected = EnsembleResult<o>> = {
   readonly name?: string
+  readonly description?: string
   readonly members: Record<string, Step<i, o>>
   readonly score: (result: o, member_id: string) => number | Promise<number>
   readonly select?: 'max' | 'min'
@@ -83,5 +84,5 @@ export function ensemble<i, o, projected = EnsembleResult<o>>(
 
   const inner = sequence([fan_out, pick])
 
-  return compose(inner, { name: config.name ?? 'ensemble' })
+  return compose(inner, { name: config.name ?? 'ensemble', description: config.description })
 }

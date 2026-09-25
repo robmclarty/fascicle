@@ -17,6 +17,7 @@
  * silently degrading to `Step<unknown, unknown>`.
  */
 
+import { description_meta } from './display_name.js'
 import { is_step } from './is_step.js'
 import { dispatch_step, register_traced_kind, throw_if_aborted } from './runner.js'
 import type { AnyStep, RunContext, Step, StepInput, StepOutput } from './types.js'
@@ -208,6 +209,7 @@ function next_id(): string {
 
 export type SequenceOptions = {
   readonly name?: string
+  readonly description?: string
 }
 
 /**
@@ -273,6 +275,7 @@ export function sequence(children: readonly unknown[], options?: SequenceOptions
     kind: 'sequence',
     children: children_ref,
     ...(config_meta ? { config: config_meta } : {}),
+    ...description_meta(options?.description),
     run: run_fn,
   }
 }

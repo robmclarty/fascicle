@@ -16,6 +16,7 @@
  * in declared order propagates.
  */
 
+import { description_meta } from './display_name.js'
 import { suspended_error } from './errors.js'
 import { dispatch_step, install_abort_fan_out, register_traced_kind, throw_if_aborted } from './runner.js'
 import type { AnyStep, RunContext, Step, StepInput, StepOutput } from './types.js'
@@ -107,6 +108,7 @@ function pick_error(settled: ReadonlyArray<Settled>): ErrorChoice {
 
 export type ParallelOptions = {
   readonly name?: string
+  readonly description?: string
 }
 
 /**
@@ -163,6 +165,7 @@ export function parallel<children extends Record<string, AnyStep>>(
     kind: 'parallel',
     children: child_list,
     config: config_meta,
+    ...description_meta(options?.description),
     run: run_fn,
   }
 }

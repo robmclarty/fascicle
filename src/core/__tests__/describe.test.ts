@@ -1,10 +1,22 @@
 import { z } from 'zod'
 import { describe as vdescribe, expect, it } from 'vitest'
-import { describe, type FlowNode, type FlowValue } from '../describe.js'
+import { describe } from '../describe.js'
+import type { AnyStep as ErasedStep, FlowNode, FlowValue } from '../types.js'
 import { describe_cycle_error } from '../errors.js'
+import { branch } from '../branch.js'
+import { checkpoint } from '../checkpoint.js'
+import { compose } from '../compose.js'
+import { fallback } from '../fallback.js'
+import { loop } from '../loop.js'
+import { map } from '../map.js'
 import { parallel } from '../parallel.js'
+import { pipe } from '../pipe.js'
+import { retry } from '../retry.js'
+import { scope, stash, use } from '../scope.js'
 import { sequence } from '../sequence.js'
 import { step } from '../step.js'
+import { suspend } from '../suspend.js'
+import { timeout } from '../timeout.js'
 
 function accept_non_empty(r: unknown): boolean {
   return Boolean(r)
@@ -557,4 +569,93 @@ vdescribe('describe non-finite numbers', () => {
     expect(json_value(Number.NaN)).toBeNaN()
     expect(json_value(Number.POSITIVE_INFINITY)).toBe(Number.POSITIVE_INFINITY)
   })
+})
+
+vdescribe('describe config entries that hold children', () => {
+  it('renders each branch arm once, under its config key', () => {
+    const verify = branch({
+      when: (x: number) => x > 0,
+      then: step('skip', (x: number) => x),
+      otherwise: sequence([step('check', (x: number) => x), step('critique', (x: number) => x)]),
+    })
+    const lines = describe(verify).split('\n')
+    expect(lines.slice(1)).toEqual([
+      '  when: <fn:when>',
+      '  then: step(skip)',
+      expect.stringMatching(/^ {2}otherwise: sequence\(sequence_\d+\)$/),
+      '    step(check)',
+      '    step(critique)',
+    ])
+  })
+
+  it('renders a step used for both arms under each key and nowhere else', () => {
+    const shared = step('shared', (x: number) => x)
+    const both = branch({ when: () => true, then: shared, otherwise: shared })
+    expect(describe(both).split('\n').slice(1)).toEqual([
+      '  when: <fn:when>',
+      '  then: step(shared)',
+      '  otherwise: step(shared)',
+    ])
+  })
+
+  it('keeps a step-valued config entry that is not a child on its config line', () => {
+    const outside = { id: 'outside', kind: 'k', run: (x: number) => x, children: [step('deep', (x: number) => x)] }
+    const node = { id: 'n', kind: 'k', run: (x: number) => x, config: { ref: outside } }
+    expect(describe(as_step(node)).split('\n')).toEqual(['k(n)', '  ref: k(outside)'])
+  })
+
+  it('prefixes a cycle under a config key with that key, and draws it once', () => {
+    const root: { id: string; kind: string; run: (x: number) => number; config: unknown; children: unknown[] } = {
+      id: 'root',
+      kind: 'k',
+      run: (x: number) => x,
+      config: {},
+      children: [],
+    }
+    root.config = { self: root }
+    root.children.push(root)
+    expect(describe(as_step(root)).split('\n')).toEqual(['k(root)', '  self: <cycle>(root)'])
+  })
+})
+
+vdescribe('describe.json anonymous marker', () => {
+  it('marks an anonymous step and leaves a named one unmarked', () => {
+    const tree = describe.json(sequence([step((x: number) => x), step('named', (x: number) => x)]))
+    expect(tree.children?.[0]?.anonymous).toBe(true)
+    expect(tree.children?.[1]).toEqual({ kind: 'step', id: 'named' })
+    expect(tree.anonymous).toBeUndefined()
+  })
+})
+
+vdescribe('describe.json carries composer descriptions', () => {
+  type Extra = { readonly description?: string }
+  const inner = step('inner', (x: number) => x)
+  const cases: ReadonlyArray<readonly [string, (extra: Extra) => ErasedStep]> = [
+    ['sequence', (extra) => sequence([inner], extra)],
+    ['parallel', (extra) => parallel({ a: inner }, extra)],
+    ['branch', (extra) => branch({ when: () => true, then: inner, otherwise: inner, ...extra })],
+    ['map', (extra) => map({ items: (xs: number[]) => xs, do: inner, ...extra })],
+    ['pipe', (extra) => pipe(inner, (x) => x, extra)],
+    ['retry', (extra) => retry(inner, { max_attempts: 1, ...extra })],
+    ['fallback', (extra) => fallback(inner, inner, extra)],
+    ['timeout', (extra) => timeout(inner, 10, extra)],
+    ['loop', (extra) => loop({ init: (x: number) => x, body: inner, finish: (x) => x, max_rounds: 1, ...extra })],
+    ['compose', (extra) => compose(inner, { name: 'named', ...extra })],
+    ['checkpoint', (extra) => checkpoint(inner, { key: 'k', ...extra })],
+    [
+      'suspend',
+      (extra) =>
+        suspend({ id: 'wait', on: () => {}, resume_schema: z.boolean(), combine: (x: number) => x, ...extra }),
+    ],
+    ['scope', (extra) => scope([inner], extra)],
+    ['stash', (extra) => stash('key', inner, extra)],
+    ['use', (extra) => use(['key'], () => 1, extra)],
+  ]
+
+  for (const [kind, build] of cases) {
+    it(`${kind} carries a description as meta.description, and no meta without one`, () => {
+      expect(describe.json(build({ description: `the ${kind}` })).meta).toEqual({ description: `the ${kind}` })
+      expect(describe.json(build({})).meta).toBeUndefined()
+    })
+  }
 })

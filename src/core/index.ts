@@ -14,7 +14,8 @@ export { run } from './runner.js'
 export type { RunOptions, RunOutcome, StreamingRunHandle } from './runner.js'
 export { step } from './step.js'
 export { describe } from './describe.js'
-export type { DescribeOptions, FlowNode, FlowValue } from './describe.js'
+export type { DescribeOptions } from './describe.js'
+export type { DiagramOptions } from './diagram.js'
 export { resolve_display_name } from './display_name.js'
 export { assert_valid_step_id, is_valid_step_id, suggest_step_id } from './step_id.js'
 export { sequence } from './sequence.js'
@@ -64,11 +65,14 @@ export type {
   AnyStep,
   CheckpointStore,
   CleanupFn,
+  FlowNode,
+  FlowValue,
   RunContext,
   Step,
   StepFn,
   StepInput,
   StepMetadata,
+  StepOptions,
   StepOutput,
   TrajectoryEvent,
   TrajectoryLogger,

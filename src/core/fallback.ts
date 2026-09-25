@@ -19,6 +19,7 @@
  * without a mutable closure. Omitted, the value is the output.
  */
 
+import { description_meta } from './display_name.js'
 import { is_control_flow_error } from './errors.js'
 import { dispatch_step, register_traced_kind } from './runner.js'
 import type { RunContext, Step } from './types.js'
@@ -43,6 +44,7 @@ export type FallbackOutcome<o> =
 
 export type FallbackOptions<i = unknown> = {
   readonly name?: string
+  readonly description?: string
   /**
    * Decide whether a primary error sends the run to the backup. Returning
    * false propagates the error untouched, the way a control-flow signal
@@ -134,6 +136,7 @@ export function fallback<i, o, projected = o>(
     kind: 'fallback',
     children: [primary, backup],
     ...(Object.keys(config_meta).length > 0 ? { config: config_meta } : {}),
+    ...description_meta(options?.description),
     run: run_fn,
   }
 }

@@ -15,7 +15,7 @@ You import everything below from `fascicle`. The primitives live in
 | `run(flow, input, options?)` | function | execute a flow to completion |
 | `run.stream(flow, input, options?)` | function | execute a flow and observe events |
 | `run.until_suspended(flow, input, options?)` | function | execute a flow; a `suspend` gate returns a typed `RunOutcome` with a `resume` closure |
-| `describe(step, options?)` | function | render the composition as a text tree; `describe.json(step)` returns the structured `FlowNode` tree instead |
+| `describe(step, options?)` | function | render the composition as a text tree; `describe.json(step)` returns the structured `FlowNode` tree instead, and `describe.diagram(step, options?)` draws it as an annotated box-drawing tree |
 | `flow_schema` | JSON value | JSON Schema for the YAML flow representation |
 | `step` | factory | atomic or anonymous step |
 | `sequence` | composer | chain steps, threading output into input |
@@ -59,9 +59,10 @@ You import everything below from `fascicle`. The primitives live in
 | `CheckpointStore` | type | persistent key-value store |
 | `Step<i, o>` | type | the step contract, so `id`, `kind`, and a `run(input, ctx)` function property, plus optional `config`, `children`, `anonymous`, and `meta`. `run` is a function property rather than a method, so strict mode checks `i` contravariantly and a step wired to an input it can't accept is a compile error |
 | `AnyStep` | type | the erased supertype (`Step<never, unknown>`) held by `children` |
-| `StepMetadata` | type | the third argument to `step`: `name` (display label for spans and `describe`), `description`, and port labels |
+| `StepMetadata` | type | a step's `meta`: `name` (display label for spans and `describe`), `description`, and port labels |
+| `StepOptions` | type | the third argument to `step`: `StepMetadata` plus `arm`, the steps the body runs through `ctx.call`, which `describe` shows as children |
 | `is_valid_step_id` / `suggest_step_id` / `assert_valid_step_id` | functions | the identifier rule every id is held to, the spelling it suggests on failure, and the guard the factories call |
-| `DescribeOptions` / `FlowNode` / `FlowValue` | types | `describe` options and the structured tree `describe.json` returns |
+| `DescribeOptions` / `DiagramOptions` / `FlowNode` / `FlowValue` | types | the `describe` and `describe.diagram` options, and the structured tree `describe.json` returns |
 
 The composites also export their config, result, and judge types (`Judge`,
 `Score`, `BenchCase`, `EnsembleResult`, `AdversarialConfig`, ...); the full

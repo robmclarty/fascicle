@@ -13,11 +13,13 @@
  * a cached result must map back to a stable, identifiable step.
  */
 
+import { description_meta } from './display_name.js'
 import { dispatch_step, register_traced_kind } from './runner.js'
 import type { RunContext, Step } from './types.js'
 
 export type CheckpointConfig<i> = {
   readonly name?: string
+  readonly description?: string
   readonly key: string | ((input: i) => string)
 }
 
@@ -103,6 +105,7 @@ export function checkpoint<i, o>(inner: Step<i, o>, config: CheckpointConfig<i>)
     kind: 'checkpoint',
     children: [inner],
     config: config_meta,
+    ...description_meta(config.description),
     run: run_fn,
   }
 }

@@ -13,6 +13,7 @@
  */
 
 import { validate_schema, type AnySchema } from '#schema'
+import { description_meta } from './display_name.js'
 import { resume_validation_error, suspended_error } from './errors.js'
 import { is_step } from './is_step.js'
 import { dispatch_step, register_traced_kind } from './runner.js'
@@ -21,6 +22,7 @@ import type { RunContext, Step } from './types.js'
 export type SuspendConfig<i, o, resume> = {
   readonly id: string
   readonly name?: string
+  readonly description?: string
   readonly on: (input: i, ctx: RunContext) => Promise<void> | void
   readonly resume_schema: AnySchema<resume>
   readonly combine: (
@@ -80,6 +82,7 @@ export function suspend<i, o, resume>(config: SuspendConfig<i, o, resume>): Step
     id: suspend_id,
     kind: 'suspend',
     config: config_meta,
+    ...description_meta(config.description),
     run: run_fn,
   }
 }

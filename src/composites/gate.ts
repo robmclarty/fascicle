@@ -43,6 +43,7 @@ import type { CheckpointStore, RunContext, Step } from '#core'
 export type GateConfig<o> = {
   readonly id: string
   readonly name?: string
+  readonly description?: string
   readonly store?: CheckpointStore
   readonly format?: (result: o) => unknown
 }
@@ -121,5 +122,5 @@ export function gate<i, o>(inner: Step<i, o>, config: GateConfig<o>): Step<i, o>
     approval,
   ])
 
-  return compose(body, { name: config.name ?? 'gate' })
+  return compose(body, { name: config.name ?? 'gate', description: config.description })
 }

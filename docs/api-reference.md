@@ -36,7 +36,7 @@ so a missing `ai` fails at module resolution rather than with a Fascicle error.
 | `run(flow, input, options?)` | `Promise<output>` | Execute a step. `options`: `{ trajectory?, checkpoint_store?, abort?, resume_data?, install_signal_handlers? }`. |
 | `run.stream(flow, input, options?)` | `{ events, result }` | Same graph as `run`; `events` is an async iterable of `TrajectoryEvent`, `result` resolves to the output. |
 | `run.until_suspended(flow, input, options?)` | `Promise<RunOutcome<output>>` | Same graph as `run`, but a `suspend` gate resolves `{ kind: 'suspended', id, payload, resume }` instead of throwing; `payload` is the value that the gate surfaced, and `resume(data)` re-runs with the decision and resolves to the next outcome. Completion is `{ kind: 'done', output }`; real errors still throw. |
-| `describe(step, options?)` | `string` | Static text-tree description of a step tree. No execution, no model calls. `describe.json(step)` returns the structured `FlowNode` tree instead. |
+| `describe(step, options?)` | `string` | Static text-tree description of a step tree. No execution, no model calls. `describe.json(step)` returns the structured `FlowNode` tree instead, and `describe.diagram(step, options?)` draws it as an annotated tree (see below). |
 | `ctx.call(step, input)` | `Promise<output>` | On `RunContext`, inside any step body, runs another Step with spans, abort, and error paths intact. The direct-style counterpart to composing. |
 
 ```ts
@@ -46,19 +46,57 @@ const flow = sequence([step('inc', (n: number) => n + 1), step('double', (n) => 
 await run(flow, 1); // 4
 ```
 
+`describe.diagram` draws the same tree that `describe.json` returns, one row
+per node, with each node's description in a column beside it. It never prints
+an id that a counter generated, so the same flow always renders to the same
+bytes, and a test can hold a hand-kept copy of the diagram to the code.
+`options.width` wraps the descriptions and `options.prefix` starts every line,
+so `{ prefix: ' * ' }` gives you a block that's ready to paste into a doc
+comment.
+
+<!-- snippet: check -->
+```ts
+import { describe, sequence, step } from 'fascicle';
+
+const flow = sequence(
+  [
+    step('draft', (topic: string) => `notes on ${topic}`, { description: 'write a first pass' }),
+    step('polish', (text: string) => text.trim(), { description: 'tidy the draft' }),
+  ],
+  { name: 'writer', description: 'draft, then polish' },
+);
+
+describe.diagram(flow);
+// writer     sequence: draft, then polish
+// ├─ draft   write a first pass
+// └─ polish  tidy the draft
+```
+
+The `fascicle-diagram` bin that ships with the package prints the same diagram
+from a terminal. Point it at a module whose `flow` export is the Step, or a
+function that builds the Step with no arguments, and pass `--width` and
+`--prefix` the way you'd pass the options, as in
+`pnpm exec fascicle-diagram src/diagram.ts --prefix ' * '`. It loads a
+TypeScript module through the project's own `tsx`, and `--export <name>` reads
+another export instead. The exit code is 0 when it prints, 1 when the module
+won't load or holds no Step, and 2 for a usage error.
+
 ## Composition Primitives
 
 Every composer takes `Step<i, o>` values and returns a `Step<i, o>`, so anything
-that fits a step fits any composition of steps you build.
+that fits a step fits any composition of steps you build. Each one also takes an
+optional `name`, which labels its span and its `describe` line, and an optional
+`description`, which `describe.json` carries as `meta.description` and
+`describe.diagram` prints beside the node.
 
 ### Lift and Sequence
 
 | Primitive | Shape |
 | --- | --- |
-| `step(id?, fn, meta?)` | lift a plain function into `Step<i, o>`; `id` is identity and must be a valid identifier, `meta.name` is the free-prose display label |
+| `step(id?, fn, options?)` | lift a plain function into `Step<i, o>`; `id` is identity and must be a valid identifier, `options.name` is the free-prose display label, and `options.arm` declares the steps that the body runs through `ctx.call` (one or a list), which `describe` shows as children and the step never runs itself |
 | `sequence([a, b, c])` | run in order, threading the value; literal tuples are joint-checked at compile time (each child must accept its predecessor's output) |
 | `pipe(inner, fn)` | post-process an inner step's output |
-| `compose(inner, { name })` | label a composite so it shows up by intent in trajectories; the label is display only and the id is `compose_<n>` |
+| `compose(inner, { name, description? })` | label a composite so it shows up by intent in trajectories; the label is display only and the id is `compose_<n>` |
 
 A straight pipe belongs in `sequence`, and you reach for `chain` when a step
 needs fan-in, phases, or named per-joint types.
@@ -112,7 +150,7 @@ You can walk the full loop in
 
 | Primitive | Shape |
 | --- | --- |
-| `chain<i>(input_name?)` → `.input` / `.step` / `.stage` / `.output` | named steps over a typed record; state the input type via `chain<i>()` or `chain('name').input<i>()` (unannotated chains default to `never` and fail at `run`): `.step(name, arm, select, options?)` dispatches a composed arm on the selected slice and records it as the binding's child, `.step(name, fn, { arm?, name? })` is the body form (`arm` records a describe-only child), `.stage(name, project?)` concludes a phase (with `project`, narrows the record), `.output(fn)` projects the result into a `Step`. Every binding name is a record key, so it follows the same identifier rule as a step id; `options.name` carries the free-prose label |
+| `chain<i>(input_name?)` → `.input` / `.step` / `.stage` / `.output` | named steps over a typed record; state the input type via `chain<i>()` or `chain('name').input<i>()` (unannotated chains default to `never` and fail at `run`): `.step(name, arm, select, options?)` dispatches a composed arm on the selected slice and records it as the binding's child, `.step(name, fn, { arm?, name?, description? })` is the body form (`arm` records a describe-only child, or several), `.stage(name, project?)` concludes a phase (with `project`, narrows the record), `.output(fn)` projects the result into a `Step`. Every binding name is a record key, so it follows the same identifier rule as a step id; `options.name` carries the free-prose label |
 | `scope` / `stash` / `use` | named state at the string-key level; the advanced tier under `chain` (see [advanced-composition.md](./advanced-composition.md)) |
 | `checkpoint(inner, { key })` | memoize an inner step by key in a `CheckpointStore` |
 | `suspend({ id, on, resume_schema, combine })` | pause for external input, then resume later with `resume_data` (throws `suspended_error` to signal the pause; `run.until_suspended` surfaces it as a typed outcome instead) |
@@ -238,8 +276,12 @@ threaded automatically. An `on_chunk` in the config is an observer: it sees
 every chunk of the call as it streams, which suits a live terminal renderer,
 and it runs beside the `model_chunk` forwarding that `run.stream` sets up
 rather than replacing it. Setting it makes the call stream even under a plain
-`run`, without teeing every token into the trajectory. Types:
-`ModelCallConfig`, `ModelCallInput`.
+`run`, without teeing every token into the trajectory. A config without an `id`
+gets a generated one and makes an anonymous step, the way `step(fn)` does, so
+`describe.diagram` labels it by its kind and `checkpoint` and `gate` refuse it.
+Give the call an `id`, and a `description` if you want one in the diagram,
+when it's a model boundary worth naming. Types: `ModelCallConfig`,
+`ModelCallInput`.
 
 ### `model_step`: The Answer, Not the Envelope
 
@@ -438,10 +480,10 @@ and fixes.
 For full field-level detail, read the source `.d.ts` (a generated reference is on
 the roadmap). The public type exports:
 
-**Composition.** `Step`, `AnyStep`, `StepMetadata`, `StepKind`, `RunContext`,
-`RunOutcome`, `Chain`, `ChainStepOptions`, `TrajectoryLogger`,
-`TrajectoryEvent`, `CheckpointStore`, `DescribeOptions`, `FlowNode`,
-`FlowValue`, `LoopConfig`, `LoopOutcome`, `LoopGuardResult`,
+**Composition.** `Step`, `AnyStep`, `StepMetadata`, `StepOptions`, `StepKind`,
+`RunContext`, `RunOutcome`, `Chain`, `ChainStepOptions`, `TrajectoryLogger`,
+`TrajectoryEvent`, `CheckpointStore`, `DescribeOptions`, `DiagramOptions`,
+`FlowNode`, `FlowValue`, `LoopConfig`, `LoopOutcome`, `LoopGuardResult`,
 `LoopGuardPredicate`, plus the trajectory event shapes (`SpanStartEvent`,
 `SpanEndEvent`, `EmitEvent`, `RunEndEvent`, `RunEndStatus`,
 `CheckpointEvent`, `CheckpointStatus`, `CustomTrajectoryEvent`,

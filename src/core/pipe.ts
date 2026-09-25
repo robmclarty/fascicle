@@ -5,6 +5,7 @@
  * result. Use for shape adaptation when composing heterogeneous steps.
  */
 
+import { description_meta } from './display_name.js'
 import { is_step } from './is_step.js'
 import { dispatch_step, register_traced_kind } from './runner.js'
 import type { RunContext, Step } from './types.js'
@@ -21,6 +22,7 @@ function next_id(): string {
 
 export type PipeOptions = {
   readonly name?: string
+  readonly description?: string
 }
 
 /**
@@ -68,6 +70,7 @@ export function pipe<i, a, b>(
     kind: 'pipe',
     children: [inner],
     config: config_meta,
+    ...description_meta(options?.description),
     run: run_fn,
   }
 }

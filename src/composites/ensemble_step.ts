@@ -7,6 +7,7 @@ import type { Step } from '#core'
 
 export type EnsembleStepConfig<i, o, ranked, projected = EnsembleStepResult<o, ranked>> = {
   readonly name?: string
+  readonly description?: string
   readonly members: Record<string, Step<i, o>>
   readonly score: Step<o, ranked>
   readonly rank_by: (r: ranked) => number
@@ -141,5 +142,5 @@ export function ensemble_step<i, o, ranked, projected = EnsembleStepResult<o, ra
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion
   ]) as Step<i, projected>
 
-  return compose(inner, { name: config.name ?? 'ensemble_step' })
+  return compose(inner, { name: config.name ?? 'ensemble_step', description: config.description })
 }

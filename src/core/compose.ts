@@ -17,11 +17,15 @@
  * folding it in would let a cosmetic rename move a trajectory id.
  */
 
+import { description_meta } from './display_name.js'
 import { dispatch_step, register_traced_kind } from './runner.js'
 import type { RunContext, Step } from './types.js'
 
 export type ComposeConfig = {
   readonly name: string
+  // Admits an explicit undefined so a named composite can forward its own
+  // optional description without a conditional spread.
+  readonly description?: string | undefined
 }
 
 let compose_counter = 0
@@ -55,6 +59,7 @@ export function compose<i, o>(inner: Step<i, o>, config: ComposeConfig): Step<i,
     kind: 'compose',
     children: [inner],
     config: { display_name: name },
+    ...description_meta(config.description),
     run: run_fn,
   }
 }

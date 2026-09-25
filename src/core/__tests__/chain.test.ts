@@ -364,6 +364,28 @@ vdescribe('chain binding names', () => {
     expect(describe(flow)).toContain('Bump the number(bumped)')
   })
 
+  it('carries a binding description into meta in both binding forms', () => {
+    const arm = step('inner', (n: number) => n + 1)
+    const flow = chain<number>()
+      .step('body', ({ input }) => input, { description: 'passes the input on' })
+      .step('called', arm, (s) => s.body, { description: 'bumps it' })
+      .output((s) => s.called)
+    expect(flow.children?.[0]?.meta).toEqual({ description: 'passes the input on' })
+    expect(flow.children?.[1]?.meta).toEqual({ description: 'bumps it' })
+  })
+
+  it('records several declared arms on a body binding, and the dispatched arm on an arm binding', () => {
+    const first = step('first', (n: number) => n)
+    const second = step('second', (n: number) => n)
+    const dispatched = step('dispatched', (n: number) => n)
+    const flow = chain<number>()
+      .step('both', ({ input }) => input, { arm: [first, second] })
+      .step('called', dispatched, (s) => s.both, { arm: first })
+      .output((s) => s.called)
+    expect(flow.children?.[0]?.children).toEqual([first, second])
+    expect(flow.children?.[1]?.children).toEqual([dispatched])
+  })
+
   it('leaves meta absent when no label is given', () => {
     const flow = chain<string>()
       .step('plain', ({ input }) => input)

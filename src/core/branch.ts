@@ -6,11 +6,13 @@
  * type.
  */
 
+import { description_meta } from './display_name.js'
 import { dispatch_step, register_traced_kind } from './runner.js'
 import type { RunContext, Step } from './types.js'
 
 export type BranchConfig<i, o> = {
   readonly name?: string
+  readonly description?: string
   readonly when: (input: i) => boolean | Promise<boolean>
   readonly then: Step<i, o>
   readonly otherwise: Step<i, o>
@@ -51,6 +53,7 @@ export function branch<i, o>(config: BranchConfig<i, o>): Step<i, o> {
     kind: 'branch',
     children: [then_step, otherwise_step],
     config: config_meta,
+    ...description_meta(config.description),
     run: run_fn,
   }
 }

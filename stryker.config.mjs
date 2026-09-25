@@ -23,6 +23,11 @@ export default {
     // CLI entry point: process glue (stdin/stdout/exit) exercised by the
     // spawn-based contract tests in src/stdio/__tests__/e2e/, not unit tests.
     '!src/stdio/run_stdio.ts',
+    // The fascicle-diagram bin's process glue (real streams, the EPIPE guard,
+    // loading through the project's tsx), exercised by the spawn-based tests
+    // in src/__tests__/diagram_bin.test.ts. The command's decisions live in
+    // src/diagram_cli.ts, which is mutated like any other module.
+    '!src/diagram_bin.ts',
     // The viewer canvas app splits along D4: `app/lib/*.ts` and `app/sse.ts`
     // hold every decision and are mutated like any other module, while the
     // `.tsx` components are markup and fall outside `src/**/*.ts` by

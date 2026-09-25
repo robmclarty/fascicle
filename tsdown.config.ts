@@ -21,6 +21,9 @@ export default defineConfig({
     testing: './src/testing/index.ts',
     ui: './src/ui/index.ts',
     viewer: './src/viewer/index.ts',
+    // The fascicle-diagram bin's body. Not a package export: only the bin
+    // shim that scripts/build.mjs writes imports it.
+    diagram_bin: './src/diagram_bin.ts',
   },
   outDir: './dist',
   format: ['esm'],

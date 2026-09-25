@@ -14,6 +14,7 @@
  * block so it does not leak across retries.
  */
 
+import { description_meta } from './display_name.js'
 import { aborted_error, timeout_error } from './errors.js'
 import { dispatch_step, register_traced_kind } from './runner.js'
 import type { RunContext, Step } from './types.js'
@@ -30,6 +31,7 @@ function next_id(): string {
 
 export type TimeoutOptions = {
   readonly name?: string
+  readonly description?: string
 }
 
 /**
@@ -88,6 +90,7 @@ export function timeout<i, o>(
     kind: 'timeout',
     children: [inner],
     config: config_meta,
+    ...description_meta(options?.description),
     run: run_fn,
   }
 }

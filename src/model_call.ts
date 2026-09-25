@@ -17,7 +17,7 @@
 
 import { createHash } from 'node:crypto'
 import { aborted_error, step } from '#core'
-import type { RunContext, Step, TrajectoryLogger } from '#core'
+import type { RunContext, Step, StepMetadata, TrajectoryLogger } from '#core'
 import type {
   EffortLevel,
   Engine,
@@ -48,7 +48,14 @@ export type ModelCallConfig<T = string, projected = GenerateResult<T>> = {
    * configured provider) is used.
    */
   readonly provider?: string
+  /**
+   * The step's id. Omitted, one is generated (`model_call_<hash>_<n>`) and
+   * the step is anonymous, like `step(fn)`: `describe.diagram` labels it by
+   * its kind, and `checkpoint` and `gate` reject it.
+   */
   readonly id?: string
+  /** What this model boundary is for, carried to `describe` as `meta.description`. */
+  readonly description?: string
   readonly system?: string
   readonly tools?: ReadonlyArray<Tool>
   readonly schema?: ToolSchema<T>
@@ -170,6 +177,21 @@ function next_auto_id(input: Parameters<typeof stable_signature>[0]): string {
  */
 function assign_if_present<T, K extends keyof T>(target: T, key: K, value: T[K]): void {
   if (value !== undefined) target[key] = value
+}
+
+/**
+ * The step fields that say what a model_call is, apart from its config: it is
+ * anonymous when its id was generated, and it carries `meta.description` when
+ * `cfg` gives one.
+ */
+function identity_fields(cfg: Pick<ModelCallConfig, 'id' | 'description'>): {
+  readonly anonymous?: boolean
+  readonly meta?: StepMetadata
+} {
+  return {
+    ...(cfg.id === undefined ? { anonymous: true } : {}),
+    ...(cfg.description === undefined ? {} : { meta: { description: cfg.description } }),
+  }
 }
 
 /**
@@ -313,6 +335,7 @@ export function model_call<T = string, projected = GenerateResult<T>>(
     kind: inner.kind,
     run: (input, ctx) => inner.run(input, ctx),
     config: Object.freeze({ ...describe_config }),
+    ...identity_fields(cfg),
   }
 }
 

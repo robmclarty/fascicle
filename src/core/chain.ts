@@ -31,7 +31,7 @@ import { is_step } from './is_step.js'
 import { dispatch_step, register_traced_kind, throw_if_aborted } from './runner.js'
 import { step } from './step.js'
 import { assert_valid_step_id } from './step_id.js'
-import type { AnyStep, RunContext, Step, StepMetadata } from './types.js'
+import type { AnyStep, RunContext, Step } from './types.js'
 
 let chain_counter = 0
 
@@ -46,13 +46,15 @@ function next_chain_id(): string {
 type merge<a, b> = { readonly [k in keyof (a & b)]: (a & b)[k] }
 
 export type ChainStepOptions = {
-  readonly arm?: AnyStep
+  readonly arm?: AnyStep | ReadonlyArray<AnyStep>
   /**
    * Display label for the binding's span and `describe` line. The binding
    * name is a record key and so must be identifier-shaped; this is where the
    * free prose goes, exactly as `meta.name` does for a plain `step`.
    */
   readonly name?: string
+  /** What the binding is for, carried to `describe` as `meta.description`. */
+  readonly description?: string
 }
 
 export type Chain<i, acc> = {
@@ -193,22 +195,11 @@ function build_chain(
 }
 
 /**
- * Project a binding's options onto `step`'s trailing metadata argument.
- *
- * Returned as a spreadable tuple so a binding with no label calls `step`
- * with two arguments, leaving `meta` genuinely absent rather than set to an
- * empty object that `describe` would then echo.
- */
-function binding_meta(options: ChainStepOptions | undefined): [] | [StepMetadata] {
-  return options?.name === undefined ? [] : [{ name: options.name }]
-}
-
-/**
  * Build the binding node for the arm-first `.step(name, arm, select)` form.
  *
  * The chain owns the dispatch: the synthesized body projects the record
  * through `select` and hands the result to the arm via `ctx.call`, and the
- * same arm is recorded as the binding's child, so the subtree `describe`
+ * same arm is declared as the binding's arm, so the subtree `describe`
  * renders and the step that runs are one value by construction.
  */
 function arm_node(
@@ -220,32 +211,29 @@ function arm_node(
   if (typeof select !== 'function') {
     throw new TypeError('chain.step(name, arm, select): select must be a function')
   }
-  const base = step(
+  return step(
     name,
     (s: Record<string, unknown>, ctx: RunContext) =>
       // The typed surface pairs select's projection with the arm's input, a
       // pairing the erased AnyStep cannot carry, so the call re-asserts it.
       // oxlint-disable-next-line typescript/no-unsafe-type-assertion
       ctx.call(arm, select(s) as never),
-    ...binding_meta(options),
+    { ...options, arm },
   )
-  return { ...base, children: [arm] }
 }
 
 /**
  * Build the binding node for the body form `.step(name, fn, { arm? })`.
+ *
+ * A declared arm is describe metadata only: `step` records it as the
+ * binding's child, and the body's own `ctx.call` is what runs it.
  */
 function body_node(
   name: string,
   fn: LooseFn,
   options: ChainStepOptions | LooseSelect | undefined,
 ): Step<Record<string, unknown>, unknown> {
-  const settings = typeof options === 'function' ? undefined : options
-  const base = step(name, fn, ...binding_meta(settings))
-  const arm = settings?.arm
-  // The arm is describe metadata only: recorded as the binding's child so
-  // the subtree renders, never dispatched (the body's ctx.call runs it).
-  return arm === undefined ? base : { ...base, children: [arm] }
+  return step(name, fn, typeof options === 'function' ? undefined : options)
 }
 
 /**

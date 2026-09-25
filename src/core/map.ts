@@ -12,11 +12,13 @@
  * rethrowing `ctx.abort.reason`.
  */
 
+import { description_meta } from './display_name.js'
 import { dispatch_step, install_abort_fan_out, register_traced_kind, throw_if_aborted } from './runner.js'
 import type { RunContext, Step } from './types.js'
 
 export type MapConfig<input, item, result> = {
   readonly name?: string
+  readonly description?: string
   readonly items: (input: input) => ReadonlyArray<item> | Promise<ReadonlyArray<item>>
   readonly do: Step<item, result>
   readonly concurrency?: number
@@ -109,6 +111,7 @@ export function map<input, item, result>(
     kind: 'map',
     children: [per_item],
     config: config_meta,
+    ...description_meta(config.description),
     run: run_fn,
   }
 }

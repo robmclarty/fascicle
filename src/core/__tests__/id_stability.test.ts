@@ -15,7 +15,7 @@ import { retry } from '../retry.js'
 import { run } from '../runner.js'
 import { sequence } from '../sequence.js'
 import { step } from '../step.js'
-import type { FlowNode } from '../describe.js'
+import type { FlowNode } from '../types.js'
 import type { TrajectoryEvent, TrajectoryLogger } from '../types.js'
 
 function collect_ids(node: FlowNode, into: Set<string> = new Set()): Set<string> {

@@ -49,6 +49,8 @@ const DIST_APP_DIR = join(DIST_DIR, 'viewer-app');
 const DIST_APP_HTML = join(DIST_APP_DIR, 'index.html');
 const DIST_BIN_DIR = join(DIST_DIR, 'bin');
 const DIST_BIN_VIEWER = join(DIST_BIN_DIR, 'fascicle-viewer.js');
+const DIST_DIAGRAM_BIN_JS = join(DIST_DIR, 'diagram_bin.js');
+const DIST_BIN_DIAGRAM = join(DIST_BIN_DIR, 'fascicle-diagram.js');
 const VIEWER_APP_CONFIG = 'vite.viewer.config.ts';
 
 // D10: the compiled canvas rides every npm install, so its size is a gate and
@@ -292,6 +294,9 @@ async function main() {
   await mkdir(DIST_BIN_DIR, { recursive: true });
   await write_viewer_bin_shim(DIST_BIN_VIEWER);
 
+  process.stderr.write(`▸ build: writing fascicle-diagram bin shim\n`);
+  await write_diagram_bin_shim(DIST_BIN_DIAGRAM);
+
   process.stderr.write(`▸ build: smoke-importing ${DIST_JS}\n`);
   const mod = await import(pathToFileURL(DIST_JS).href);
   const missing = EXPECTED_NAMED.filter((name) => typeof mod[name] === 'undefined');
@@ -415,6 +420,13 @@ async function main() {
     process.exit(1);
   }
 
+  process.stderr.write(`▸ build: smoke-importing ${DIST_DIAGRAM_BIN_JS}\n`);
+  const diagram_mod = await import(pathToFileURL(DIST_DIAGRAM_BIN_JS).href);
+  if (typeof diagram_mod.run_diagram_bin !== 'function') {
+    console.error(`\nbuild: dist/diagram_bin.js does not export run_diagram_bin (the fascicle-diagram bin)`);
+    process.exit(1);
+  }
+
   process.stderr.write(
     `\n✔ build ok (${js_stat.size} bytes js, ${dts_stat.size} bytes d.ts, ${EXPECTED_NAMED.length} named exports + describe.json + ${EXPECTED_ADAPTERS.length} adapters + ${EXPECTED_AGENTS.length} agents + ${EXPECTED_MCP.length} mcp + ${EXPECTED_OTEL.length} otel + ${EXPECTED_STDIO.length} stdio + ${EXPECTED_TESTING.length} testing + ${EXPECTED_UI.length} ui + ${EXPECTED_VIEWER.length} viewer verified)\n`,
   );
@@ -481,6 +493,22 @@ const here = dirname(fileURLToPath(import.meta.url));
 const dist_viewer = resolve(here, '..', 'viewer.js');
 const mod = await import(pathToFileURL(dist_viewer).href);
 await mod.run_viewer_cli(process.argv.slice(2));
+`;
+  await writeFile(path, shim, 'utf8');
+  await chmod(path, 0o755);
+}
+
+async function write_diagram_bin_shim(path) {
+  const { writeFile, chmod } = await import('node:fs/promises');
+  const shim = `#!/usr/bin/env node
+import { pathToFileURL } from 'node:url';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const here = dirname(fileURLToPath(import.meta.url));
+const dist_bin = resolve(here, '..', 'diagram_bin.js');
+const mod = await import(pathToFileURL(dist_bin).href);
+await mod.run_diagram_bin(process.argv.slice(2));
 `;
   await writeFile(path, shim, 'utf8');
   await chmod(path, 0o755);
