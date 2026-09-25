@@ -534,6 +534,74 @@ vdescribe('model_call', () => {
     expect(recorded).toEqual([{ kind: 'model_chunk', step_id: s.id, chunk }])
   })
 
+  it('hands every chunk to a caller on_chunk outside run.stream without recording it', async () => {
+    const chunk: StreamChunk = { kind: 'text', text: 'hi', step_index: 0 }
+    const { engine, calls } = make_mock_engine({
+      on_generate: async (opts) => {
+        if (opts.on_chunk) await opts.on_chunk(chunk)
+      },
+    })
+    const seen: StreamChunk[] = []
+    const s = model_call({ engine, model: 'x', on_chunk: (c) => void seen.push(c) })
+    const recorded: unknown[] = []
+    await s.run(
+      'hi',
+      bare_ctx({
+        trajectory: {
+          record: (e) => recorded.push(e),
+          start_span: () => 'span',
+          end_span: () => {},
+        },
+      }),
+    )
+    expect(calls[0]?.had_on_chunk).toBe(true)
+    expect(seen).toEqual([chunk])
+    expect(recorded).toEqual([])
+  })
+
+  it('records the model_chunk event before handing the chunk to on_chunk under run.stream', async () => {
+    const chunk: StreamChunk = { kind: 'text', text: 'hi', step_index: 0 }
+    const { engine } = make_mock_engine({
+      on_generate: async (opts) => {
+        if (opts.on_chunk) await opts.on_chunk(chunk)
+      },
+    })
+    const order: string[] = []
+    const s = model_call({
+      engine,
+      model: 'x',
+      on_chunk: async (c) => {
+        await Promise.resolve()
+        order.push(`observed:${c.kind}`)
+      },
+    })
+    await s.run(
+      'hi',
+      bare_ctx({
+        streaming: true,
+        trajectory: {
+          record: (e) => order.push(`recorded:${e.kind}`),
+          start_span: () => 'span',
+          end_span: () => {},
+        },
+      }),
+    )
+    expect(order).toEqual(['recorded:model_chunk', 'observed:text'])
+  })
+
+  it('passes on_chunk through model_step', async () => {
+    const chunk: StreamChunk = { kind: 'text', text: 'hi', step_index: 0 }
+    const { engine } = make_mock_engine({
+      on_generate: async (opts) => {
+        if (opts.on_chunk) await opts.on_chunk(chunk)
+      },
+    })
+    const seen: StreamChunk[] = []
+    const s = model_step({ engine, model: 'x', on_chunk: (c) => void seen.push(c) })
+    await s.run('hi', bare_ctx({}))
+    expect(seen).toEqual([chunk])
+  })
+
   it('nests engine spans, pops them on end, preserves explicit parents, and forwards records', async () => {
     const events: Array<Record<string, unknown>> = []
     let n = 0

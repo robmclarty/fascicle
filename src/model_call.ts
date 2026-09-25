@@ -9,8 +9,10 @@
  * The returned Step auto-threads ctx.abort, ctx.trajectory, and, only when
  * run.stream is driving, an on_chunk forwarder that records each chunk as a
  * `model_chunk` trajectory event. Callers cannot override these: the
- * composition layer owns cancellation and trajectory plumbing. Cost events
- * flow out via ctx.trajectory per the engine's own emission rules.
+ * composition layer owns cancellation and trajectory plumbing. A caller's own
+ * `on_chunk` is an observer called beside the forwarder, never in place of
+ * it. Cost events flow out via ctx.trajectory per the engine's own emission
+ * rules.
  */
 
 import { createHash } from 'node:crypto'
@@ -24,6 +26,7 @@ import type {
   Message,
   PrepareStepHook,
   RetryPolicy,
+  StreamChunk,
   Tool,
   ToolApprovalHandler,
 } from '#engine'
@@ -71,6 +74,15 @@ export type ModelCallConfig<T = string, projected = GenerateResult<T>> = {
   readonly tool_call_repair_attempts?: number
   readonly max_tool_calls_per_step?: number
   readonly on_tool_approval?: ToolApprovalHandler
+  /**
+   * Observe every chunk of the call as it streams, for a live renderer that
+   * should not go through `run.stream`. Setting it makes the call stream.
+   * It is called beside the `run.stream` forwarder, never in place of it, so
+   * abort and the trajectory stay owned by the composition layer. A returned
+   * promise is awaited before the next chunk, and a throw aborts the call
+   * with `on_chunk_error`, as `GenerateOptions.on_chunk` does.
+   */
+  readonly on_chunk?: (chunk: StreamChunk) => void | Promise<void>
   /**
    * Map the `GenerateResult` envelope into the step's output at the source.
    * The projection runs inside the model_call step itself, so `describe` and
@@ -204,7 +216,8 @@ function build_generate_options<T, projected>(
  *
  * Threads `ctx.abort` and `ctx.trajectory` (nested under the model_call
  * step's own span) into every call, and, when `run.stream` is driving,
- * records each chunk as a `model_chunk` trajectory event. `cfg.project`
+ * records each chunk as a `model_chunk` trajectory event before handing it
+ * to `cfg.on_chunk`. `cfg.project`
  * maps the `GenerateResult` envelope into the step's output inside the same
  * step; omitted, the envelope is the output.
  */
@@ -278,6 +291,7 @@ export function model_call<T = string, projected = GenerateResult<T>>(
 
     const opts = build_generate_options(cfg, prompt, ctx)
 
+    const observer = cfg.on_chunk
     if (ctx.streaming) {
       opts.on_chunk = (chunk) => {
         // Record with kind preserved. ctx.emit would clobber kind to 'emit'
@@ -285,7 +299,10 @@ export function model_call<T = string, projected = GenerateResult<T>>(
         // generic event; recording keeps a clean top-level `model_chunk` event
         // (what docs/concepts.md already documents) carrying the StreamChunk.
         ctx.trajectory.record({ kind: 'model_chunk', step_id, chunk })
+        return observer?.(chunk)
       }
+    } else if (observer !== undefined) {
+      opts.on_chunk = observer
     }
 
     return project(await cfg.engine.generate(opts))
