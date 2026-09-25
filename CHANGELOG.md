@@ -1,5 +1,31 @@
 # Changelog
 
+## v0.12.9 — 2026-09-24
+
+### Added
+
+- **`retry` and `fallback` can choose which errors they handle.** A new `when` predicate narrows either composer to the errors worth handling, and an error it rejects propagates untouched, the way a suspend or an abort already did. `retry` doesn't spend another attempt or fire `on_error` on it, and `fallback` never calls its handoff or its backup. That's what a schema failure needs, since a second attempt fails the same way, and it's what a paid provider needs, since every retry costs money.
+
+- **`retry` and `fallback` can say how they got their result.** The optional `project` that the envelope composites gained in v0.12.0 now reaches both. `retry` hands it `{ value, attempts, errors }` and `fallback` hands it `{ value, source, primary_error }`, so a flow can archive how many retries a value took, or mark a backup's answer as degraded, without keeping a mutable closure or reading the trajectory back. Leave `project` off and the output is the plain value, as before. It lives in its own `RetryProjection` and `FallbackProjection` types rather than on `RetryConfig` and `FallbackOptions`, so a config annotated with the named type still infers its output from the inner steps.
+
+- **`model_call` and `model_step` take an `on_chunk` observer.** It streams the call under a plain `run` and hands the caller that call's chunks, which is what a live terminal renderer wants. The alternative was to drive the whole run through `run.stream`, which tees every token into the trajectory logger (and so into `trajectory.jsonl`) and leaves the consumer to sort chunks back out by `step_id`. Under `run.stream` the observer runs after the `model_chunk` record, never in its place, so abort and the trajectory still belong to the composition layer.
+
+- **Every `GenerateResult` reports how long the whole call took.** `StepTiming` brackets one turn's provider round-trip and leaves tools out, so nothing measured a call from end to end, and `claude_cli` steps carried no timing at all. The new `timing` field (`GenerateTiming`, with `started_at` and `duration_ms`) covers every turn, the tools that ran between them, absorbed retries, and schema repair, and the engine stamps it for every adapter, external ones included.
+
+- **`throughput()` has a rate for `claude_cli`.** The adapter now reads `duration_api_ms` off the CLI's result event, reports it beside `duration_ms`, and splits it across the run's steps by output tokens (the same split it already used for cost). Each step gets a blended `StepTiming`, so a local model and Claude can be compared in tokens per second on the same terms.
+
+- **`claude_cli_reported(result)` reads the CLI's report back typed.** It narrows `provider_reported['claude_cli']` to a `ClaudeCliProviderReported` with a runtime shape check, or returns `undefined`. `ClaudeCliProviderReported` and `GenerateTiming` are exported from the package root now too, so an app that imports from `fascicle` no longer hand-writes either shape.
+
+### Fixed
+
+- **The `run.stream` buffer lost new events once it overflowed.** Past the high-water mark the channel dropped the oldest buffered event and then returned without buffering the new one, so each overflow lost two events while `events_dropped` counted one. Seven events into a buffer of three delivered 3, 5, and 7 with a count of 2. They now deliver 5, 6, and 7 with a count of 4, which is what the documentation always described.
+
+### Internal
+
+- The docs cover all of the above, with a type-checked retry-then-fallback ladder in the cookbook and a per-call streaming recipe. The `branch` entry in `composition.md` now explains that `unicorn/no-thenable` flags its `then` key as a false positive (the config is never awaited) and how to turn the rule off.
+
+- `.gitignore` covers volley's per-run state and the timestamped backups it takes of that state, both of which night-shift runs write into the main checkout.
+
 ## v0.12.8 — 2026-09-04
 
 ### Added
