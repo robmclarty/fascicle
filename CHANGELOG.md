@@ -1,5 +1,25 @@
 # Changelog
 
+## v0.12.12 — 2026-09-25
+
+### Added
+
+- **`describe.diagram(step)` draws a flow as an annotated tree.** It renders the `describe.json` tree with box-drawing glyphs, one row per node, and puts each node's description in a column beside it. A row is labelled with the node's display name, then an id its author chose, then its kind, so a counter-generated id never appears and the same flow always renders to the same bytes. That lets an app hold the diagram in its `flow.ts` header to the code with one equality test. A branch labels its arms `then` and `else`, a loop labels its guard, parallel members carry their keys, and a chain's stages nest the entries they span. `width` wraps the descriptions, and `prefix` starts every line so the output pastes straight into a doc comment.
+- **Composers take a `description`.** Every core composer, every composite, chain bindings, and `model_call` accept a `description` beside `name`. It's stored as `meta.description`, so it reaches `describe.json` and the trajectory's `flow_structure`, and the diagram prints it.
+- **`step(id, fn, { arm })` declares the steps its body calls.** A step whose body `ctx.call`s an arm can now name it (one step or a list) the way a chain binding already could. The arm shows up as a child in `describe`, the diagram, and `flow_structure`, and the step never runs it itself. The trailing argument's type is the new `StepOptions`.
+- **The `fascicle-diagram` command prints a flow's diagram.** It ships in the package beside `fascicle-viewer`. Point it at a module whose `flow` export is the Step, or a function that builds it from stubs with no arguments, and add `"diagram": "fascicle-diagram src/diagram.ts"` to your scripts to check a header against the code whenever you want. It loads TypeScript through the project's own `tsx` and takes `--export`, `--width`, and `--prefix`. It exits 0 when it prints, 1 when the module won't load or holds no Step, and 2 on a usage error.
+- **`FlowNode` marks a generated id.** `describe.json` sets `anonymous: true` on a node whose id was generated rather than chosen, which is what the diagram reads to keep counters out.
+
+### Changed
+
+- **A `model_call` without an `id` is anonymous, like `step(fn)`.** Its generated id carries a process-wide counter, so the diagram labels it by kind rather than printing a number that depends on build order. As a result, `checkpoint` and `gate` now reject an id-less `model_call` the way they reject an anonymous step, so give the call an `id` to wrap it.
+- **`describe()` prints a branch's arms once.** Its text tree listed `then` and `otherwise` as config lines and again as children. Each arm now renders once, under its key.
+
+### Internal
+
+- Release workflows survive a tag push that GitHub delivers twice. Both take a per-ref concurrency group, `release.yaml` exits cleanly when the release already exists, and `publish.yaml` skips the publish job before the approval gate when npm already has the version.
+- Blueprint rule 3 now has the flow draw its own header diagram, with a test holding the header to `describe.diagram` and a `diagram` script for looking at it. Rule 6 covers declaring the arms that a direct-style step calls.
+
 ## v0.12.11 — 2026-09-25
 
 ### Added
