@@ -4,7 +4,7 @@
  * Three stand-in judges score a shared input; the winner is the one with the
  * highest confidence. Matches the canonical "N-of-M pick best" pattern.
  *
- * Deterministic stub `fn` bodies — no engine layer, no network, no LLM calls.
+ * Deterministic stub `fn` bodies: no engine layer, no network, no LLM calls.
  *
  * Run directly:
  *   pnpm exec tsx examples/ensemble-judge/main.ts

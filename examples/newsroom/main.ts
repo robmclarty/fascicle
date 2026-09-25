@@ -17,7 +17,7 @@
  *     ├ stage 'gathered' (narrow the record)
  *     ├ outline   ← outliner (model_step)
  *     ├ article   ← adversarial(draft ensemble_step judged by a model, critique)
- *     ├ checked   ← consensus of three fact checkers
+ *     ├ verified  ← consensus of three fact checkers
  *     ├ headline  ← model_call (the envelope carries usage for the cost line)
  *     ├ stage 'editorial'
  *     ├ signed    ← suspend (editor sign-off; resumed via run.until_suspended)

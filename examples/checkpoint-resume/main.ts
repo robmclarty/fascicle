@@ -8,7 +8,7 @@
  * Writes to a fresh temp directory so the example is hermetic and can be run
  * repeatedly without stale state.
  *
- * Deterministic stub — no engine layer, no network, no LLM calls.
+ * Deterministic stub: no engine layer, no network, no LLM calls.
  *
  * Run directly:
  *   pnpm exec tsx examples/checkpoint-resume/main.ts

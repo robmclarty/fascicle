@@ -3,7 +3,7 @@
  *
  * Wires the markdown-defined `reviewer` agent against a tiny in-process
  * engine that returns canned, schema-conforming output. No API keys, no
- * network — the example exists to demonstrate how an agent factory plugs
+ * network: the example exists to demonstrate how an agent factory plugs
  * into the rest of Fascicle and produces typed, structured findings.
  *
  * Swap `make_stub_engine` for `create_engine({...})` from `fascicle`
@@ -12,7 +12,7 @@
  * Run directly:
  *   pnpm exec tsx examples/reviewer/main.ts
  *
- * The agent definition itself is demo code in `../agents/` — copy it alongside
+ * The agent definition itself is demo code in `../agents/`; copy it alongside
  * this file when porting the example into your own project.
  */
 

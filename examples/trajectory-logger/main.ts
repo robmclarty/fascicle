@@ -7,7 +7,7 @@
  * matter of forwarding each call to both sinks; the `TrajectoryLogger` type
  * is a plain object.
  *
- * Deterministic stub — no engine layer, no network, no LLM calls.
+ * Deterministic stub: no engine layer, no network, no LLM calls.
  *
  * Run directly:
  *   pnpm exec tsx examples/trajectory-logger/main.ts

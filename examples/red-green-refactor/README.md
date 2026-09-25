@@ -116,7 +116,7 @@ adversarial<Behavior, TestVerdict>({
     await ctx.call(ask, format_green_message(i.input, i.prior));  // sees prior verdict on retry
     return ctx.call(run_tests, undefined);
   }),
-  critique: step('verdict', (v) => ({ verdict: v.passed ? 'pass' : 'fail', notes: v.tail })),
+  critique: step('green_verdict', (v) => ({ verdict: v.passed ? 'pass' : 'fail', notes: v.tail })),
   accept:    (c) => c.verdict === 'pass',
   max_rounds: 4,
 });

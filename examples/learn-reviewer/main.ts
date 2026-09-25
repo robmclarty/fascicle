@@ -8,14 +8,14 @@
  *    pure-TypeScript analyzer that aggregates `agent.call` token usage and
  *    proposes prompt-tightening improvements.
  *
- * The engine is a stub returning canned, schema-conforming findings — the
+ * The engine is a stub returning canned, schema-conforming findings, so the
  * demo proves the wiring without any API keys. Swap `make_stub_engine` for
  * `create_engine({...})` to drive the same flow against a real provider.
  *
  * Run directly:
  *   pnpm exec tsx examples/learn-reviewer/main.ts
  *
- * The agent definition itself is demo code in `../agents/` — copy it alongside
+ * The agent definition itself is demo code in `../agents/`; copy it alongside
  * this file when porting the example into your own project.
  */
 

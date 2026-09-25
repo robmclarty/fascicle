@@ -5,12 +5,12 @@
  * Runs one tool-loop flow, streamed and non-streamed, across the three native
  * transports the native-expansion build shipped:
  *
- *   - openrouter  native   — hosted OpenAI-compatible chat/completions (the
- *                            step-6 gate, re-run here).
- *   - ollama      native   — the daemon's own /api/chat NDJSON endpoint (D2),
- *                            NOT the /v1 compat tail.
- *   - lmstudio    native   — LM Studio's OpenAI-compatible server (D10 tolerant
- *                            usage), on the raw-HTTP transport.
+ *   - openrouter  native: hosted OpenAI-compatible chat/completions (the
+ *                           step-6 gate, re-run here).
+ *   - ollama      native: the daemon's own /api/chat NDJSON endpoint (D2),
+ *                           NOT the /v1 compat tail.
+ *   - lmstudio    native: LM Studio's OpenAI-compatible server (D10 tolerant
+ *                           usage), on the raw-HTTP transport.
  *
  * The tool itself is a deterministic in-memory lookup, so the only network
  * under test is the provider wire: request mapping, the tool-call round trip,
@@ -19,9 +19,10 @@
  * change.
  *
  * Each backend is availability-gated: a backend whose key is absent or whose
- * daemon is unreachable is SKIPPED and reported not-run, never a failure — the
- * gate is "green where backends are available." The process exits non-zero only
- * if a backend that actually ran had a failing cell.
+ * daemon is unreachable is SKIPPED and reported not-run, never a failure: the
+ * gate is "green where backends are available." The process exits non-zero if
+ * a backend that actually ran had a failing cell, or if no backend was
+ * available at all, because a gate that ran nothing has proved nothing.
  *
  * Prereqs (any subset; missing ones are skipped):
  *   OPENROUTER_API_KEY exported, or set in the root .env (see .env.example).

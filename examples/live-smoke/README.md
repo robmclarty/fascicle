@@ -16,7 +16,8 @@ out of the test suite; re-run it manually after any provider-seam change.
 Each backend is availability-gated. A backend whose key is absent or whose
 daemon is unreachable is skipped and reported not-run, never failed, because
 the gate is "green where backends are available". The process exits non-zero
-only if a backend that actually ran had a failing cell.
+if a backend that actually ran had a failing cell, or if no backend was
+available at all, because a gate that ran nothing has proved nothing.
 
 ## Flow
 

@@ -12,7 +12,7 @@
  * Run directly:
  *   pnpm exec tsx examples/researcher/main.ts
  *
- * The agent definition itself is demo code in `../agents/` — copy it alongside
+ * The agent definition itself is demo code in `../agents/`; copy it alongside
  * this file when porting the example into your own project.
  */
 

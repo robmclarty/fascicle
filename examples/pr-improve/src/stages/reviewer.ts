@@ -2,7 +2,8 @@
  * Stage 1 — Reviewer.
  *
  * Reads the PR diff and emits up to 10 structured suggestions. Schema-driven
- * via `model_step({ schema })`.  * happen in flow.ts; this file is prompt wiring plus a factory.
+ * via `model_step({ schema })`. Message formatting (messages.ts) and content
+ * extraction are wired in flow.ts; this file is prompt wiring plus a factory.
  */
 
 import { model_step, type Engine, type Step } from 'fascicle'

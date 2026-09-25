@@ -1,19 +1,26 @@
 /**
- * pr-improve flow — pure Fascicle composition.
+ * pr-improve flow: pure Fascicle composition.
  *
  * Read top-to-bottom and you see the agent topology:
  *
  *   chain 'pr'
  *     ├ suggestions ← reviewer via ctx.call (model_step)
- *     └ output ← branch (any suggestions?)
- *         then ─ chain 'review'
- *           ├ spec ← pragmatist via ctx.call (model_step)
- *           └ output ← branch (any accepted?)
- *               then ─ chain 'accepted'
- *                 ├ final_state ← loop({ body: build+review, guard: pass? })
- *                 └ output: assemble FinalResult
- *               otherwise ─ FinalResult { no_changes_proposed }
- *         otherwise ─ FinalResult { no_changes_proposed }
+ *     ├ result ← branch 'has_suggestions' (any suggestions?)
+ *     │   then ─ chain 'review'
+ *     │     ├ spec ← pragmatist via ctx.call (model_step)
+ *     │     ├ result ← branch 'has_accepted_changes' (any accepted?)
+ *     │     │   then ─ chain 'accepted'
+ *     │     │     ├ final_state ← loop 'build_review' (max 3 rounds)
+ *     │     │     │   body ─ chain 'carry'
+ *     │     │     │     ├ handoff ← builder via ctx.call (model_step)
+ *     │     │     │     ├ verdict ← build_reviewer via ctx.call (model_step)
+ *     │     │     │     └ output: next LoopState
+ *     │     │     │   guard ─ check_pass (stop once the build passes)
+ *     │     │     └ output: assemble FinalResult
+ *     │     │   otherwise ─ no_changes: FinalResult { no_changes_proposed }
+ *     │     └ output: pass the result through
+ *     │   otherwise ─ no_changes: FinalResult { no_changes_proposed }
+ *     └ output: pass the result through
  *
  * Each model boundary is a `model_step` invoked via `ctx.call` and declared
  * as `arm` metadata so `describe` renders the whole tree. Formatting helpers

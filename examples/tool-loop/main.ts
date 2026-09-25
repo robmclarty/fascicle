@@ -7,7 +7,7 @@
  *
  * Uses the `openrouter` provider so the execute closure actually runs. Under
  * the `claude_cli` provider, `execute` tools with `tool_bridge: 'allowlist_only'`
- * are dropped in favor of the CLI's own built-in tools — a different pattern.
+ * are dropped in favor of the CLI's own built-in tools, which is a different pattern.
  *
  * Prereqs:
  *   OPENROUTER_API_KEY exported, or set in the root .env (see .env.example).

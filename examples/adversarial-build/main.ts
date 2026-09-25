@@ -5,7 +5,7 @@
  * accepted" pattern, with the critique powered by an ensemble of judges
  * that each score the candidate and the best-scoring verdict wins.
  *
- * Deterministic stub `fn` bodies — no engine layer, no network, no LLM calls.
+ * Deterministic stub `fn` bodies: no engine layer, no network, no LLM calls.
  *
  * Run directly:
  *   pnpm exec tsx examples/adversarial-build/main.ts

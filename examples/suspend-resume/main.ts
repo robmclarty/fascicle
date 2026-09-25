@@ -5,7 +5,7 @@
  * outcome's `resume(data)` re-runs the flow with the decision and the flow
  * continues into `combine`.
  *
- * Deterministic stub `fn` bodies — no engine layer, no network, no LLM calls.
+ * Deterministic stub `fn` bodies: no engine layer, no network, no LLM calls.
  *
  * Run directly:
  *   pnpm exec tsx examples/suspend-resume/main.ts

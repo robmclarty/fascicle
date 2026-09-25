@@ -48,7 +48,7 @@ chain
 
 The top-level `chain` opens on the `brief` binding, which holds the task, the target, and the metric. Each `output` row is where a chain closes: the inner one hands the settled round state back to the loop, and the outer one summarizes the run and names the rule that stopped it.
 
-The harness uses five Fascicle primitives heavily:
+The harness uses six Fascicle primitives heavily:
 
 - `chain` — the spine: named, typed bindings for the brief, baseline, research, and seeded round state
 - `loop` — the round loop, with the stop rule as a `guard` and progress as immutable carry-state rather than mutable closure variables
@@ -69,7 +69,7 @@ examples/amplify/
 ├── rules/                             the blueprint's ast-grep rules (pnpm check:rules)
 ├── src/
 │   ├── main.ts                        the shell: argv, engine, adapters, exit
-│   ├── flow.ts                        THE composition layer: scope + loop + branch
+│   ├── flow.ts                        THE composition layer: chain + loop + map + branch
 │   ├── engine.ts                      the only create_engine call site
 │   ├── round.ts                       pure round arithmetic (seed, decide, summarize)
 │   ├── budget.ts                      iters / wall-clock / patience rules (pure)

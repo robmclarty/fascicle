@@ -4,7 +4,7 @@
  * Optimizes a single integer toward a fixed target. The propose step walks
  * `parent + 1` each round; the score step rewards proximity to `TARGET` via
  * `-(value - TARGET)^2`. Once the loop overshoots, plateau detection trips
- * and the run stops. No engine layer, no network, no LLM calls — every step
+ * and the run stops. No engine layer, no network, no LLM calls; every step
  * is pure TypeScript.
  *
  * Run directly:

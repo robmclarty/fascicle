@@ -5,12 +5,12 @@
  * The example demonstrates how the markdown-defined `documenter` agent
  * accepts either a file or a symbol target and threads the requested style
  * through. The engine here is a stub returning a canned, schema-conforming
- * doc — swap it for `create_engine({...})` to run against a real provider.
+ * doc; swap it for `create_engine({...})` to run against a real provider.
  *
  * Run directly:
  *   pnpm exec tsx examples/documenter/main.ts
  *
- * The agent definition itself is demo code in `../agents/` — copy it alongside
+ * The agent definition itself is demo code in `../agents/`; copy it alongside
  * this file when porting the example into your own project.
  */
 

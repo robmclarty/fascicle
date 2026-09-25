@@ -5,7 +5,7 @@
  * iterates the event stream as the flow runs. Final result equals what
  * plain `run(...)` would return (spec.md §6.7 invariant).
  *
- * Deterministic stub `fn` bodies — no engine layer, no network, no LLM calls.
+ * Deterministic stub `fn` bodies: no engine layer, no network, no LLM calls.
  *
  * Run directly:
  *   pnpm exec tsx examples/streaming-chat/main.ts

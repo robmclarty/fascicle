@@ -19,7 +19,7 @@
  * Subsequent runs compare against bench/reviewer/baseline.json and exit 1 on
  * regression.
  *
- * The agent definition itself is demo code in `../agents/` — copy it alongside
+ * The agent definition itself is demo code in `../agents/`; copy it alongside
  * this file when porting the example into your own project.
  */
 

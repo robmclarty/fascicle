@@ -4,7 +4,7 @@
  * Synthesizes a tiny JSONL trajectory file in a tempdir, then runs `learn`
  * with a trivial analyzer that tallies events by kind and emits one
  * "improvement" proposal per kind. No engine layer, no network, no LLM
- * calls — the analyzer is pure TypeScript.
+ * calls; the analyzer is pure TypeScript.
  *
  * Run directly:
  *   pnpm exec tsx examples/learn/main.ts

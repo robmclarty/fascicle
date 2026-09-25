@@ -1,6 +1,6 @@
 /**
  * hello-claude-cli-lisp: the same harness as the hello-claude-cli example, rewritten in
- * a Lisp-flavored style. Functionally identical — different shape.
+ * a Lisp-flavored style. Functionally identical, different shape.
  *
  * The point of this example is pedagogical: TypeScript is an expression
  * language hiding inside a statement language, and if you lean on that you can
@@ -28,7 +28,7 @@
  *          '((install-signal-handlers . #f))))
  *
  *   (define (main argv)
- *     (let ((input (if (null? argv) "say hello to Fascicle" (join " " argv))))
+ *     (let ((input (if (null? argv) "say hello to fascicle" (join " " argv))))
  *       (dynamic-wind
  *         (lambda () '())
  *         (lambda () (display-pair input (hello input)))
@@ -67,12 +67,12 @@ const engine = create_engine({
 // argument is effectively an s-expression: `(sequence (list a b))`.
 //
 // Lisp-isms in play:
-//   • Nested call composition — no intermediate `const` bindings.
+//   • Nested call composition: no intermediate `const` bindings.
 //   • `step` takes an inline lambda, the TS analogue of `(lambda (r) ...)`.
 //   • Destructuring `{ content }` stands in for a Scheme `(let ((content ...))
 //     ...)` at the top of the lambda body.
 //   • The ternary `typeof content === 'string' ? content : JSON.stringify(...)`
-//     is an `(if ...)` expression — it *evaluates to* a value, unlike an
+//     is an `(if ...)` expression: it *evaluates to* a value, unlike an
 //     `if`-statement which merely executes.
 const hello = (input: string): Promise<string> =>
   run(
@@ -100,7 +100,7 @@ export const run_hello_claude_cli_lisp = async (
 //
 //   1. IIFE as `let`. In Scheme, `(let ((x v)) body)` desugars to
 //      `((lambda (x) body) v)`. That's literally what the outer
-//      `((argv) => ...)(process.argv.slice(2).join(' '))` is — a lambda applied
+//      `((argv) => ...)(process.argv.slice(2).join(' '))` is: a lambda applied
 //      to its bound value, establishing `argv` for the inner expression.
 //
 //   2. Comma operator as `begin`. Inside `.then(...)` we need to run two
@@ -110,7 +110,7 @@ export const run_hello_claude_cli_lisp = async (
 //      `b`. That matches Scheme's `(begin a b)` exactly.
 //
 // `.finally(() => void engine.dispose())` plays the role of the cleanup thunk
-// in `(dynamic-wind before thunk after)` — it runs whether the promise
+// in `(dynamic-wind before thunk after)`: it runs whether the promise
 // resolved or rejected.
 if (import.meta.url === `file://${process.argv[1] ?? ''}`) {
   void ((argv) =>

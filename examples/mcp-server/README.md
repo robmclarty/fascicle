@@ -1,8 +1,10 @@
 # mcp-server
 
 A minimal [Model Context Protocol](https://modelcontextprotocol.io) server over
-stdio, plus a tiny client that smoke-tests it. Standalone: it does not import
-Fascicle, and needs no API key, Docker, or Ollama.
+stdio, plus a tiny client that smoke-tests it. The server and client stand
+alone without importing Fascicle, and nothing here needs an API key, Docker,
+or Ollama. The one Fascicle file is `src/serve.ts`, which serves a composed
+flow as a tool (see [Flow](#flow)).
 
 ![terminal output of the smoke client: every tool called and checked, all checks passed](./screenshot.png)
 

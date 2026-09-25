@@ -15,7 +15,7 @@
  * `filesystem_store` from `fascicle/adapters`, a DB, or a queue) and calls
  * `run.until_suspended` again after a restart to rebuild the outcome.
  *
- * Deterministic stub `fn` bodies — no engine layer, no network, no LLM calls.
+ * Deterministic stub `fn` bodies: no engine layer, no network, no LLM calls.
  *
  * Run directly:
  *   pnpm exec tsx examples/hitl-http/main.ts
