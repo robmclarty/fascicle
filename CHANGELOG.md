@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.12.10 — 2026-09-24
+
+### Fixed
+
+- **`throughput()` counted prompt prefill as decode time on the ai_sdk transport.** A streamed step's `first_chunk_ms` was stamped on the first part of the AI SDK's stream, which is the `start` framing the SDK sends before the model has produced a token. The window `throughput()` treats as decode time (`duration_ms - first_chunk_ms`) still held the prefill, so a rate labeled `basis: 'decode'` was really a blended one. A local Ollama step with a 32k-token prompt reported a 9ms time to first chunk. The stamp now lands on the first chunk the turn dispatches, which is the rule the native transport already followed, and the `response_received` event and the OpenTelemetry time-to-first-chunk histogram carry the corrected value too. The same stamp decides when a failure counts as a mid-stream interruption, so an ai_sdk error after the stream opens but before the first token is now retried under the call's retry policy, as it already was on native.
+
+### Internal
+
+- Markdown linting skips volley's run state (`.volley/` and its `.volley.bak.*/` backups), which night-shift writes into the main checkout. Git already ignored those folders, but the linter keeps its own ignore list.
+
 ## v0.12.9 — 2026-09-24
 
 ### Added
