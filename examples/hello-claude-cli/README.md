@@ -12,6 +12,14 @@ automatically (opt out with `inherit_env: false`). Engine-level `defaults`
 fill in `model` and `system`, so `model_call({ engine })` needs no extra
 parameters.
 
+## Flow
+
+```text
+sequence    ask claude once, then keep the reply text
+├─ step     one claude_cli call, model and system from defaults
+└─ extract  keep the reply text, or its JSON when not a string
+```
+
 ## Run
 
 ```bash

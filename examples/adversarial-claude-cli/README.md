@@ -18,6 +18,30 @@ via `--json-schema`: the CLI provider compiles `critique_schema` to JSON
 Schema, forwards it, and parses the reply, with one automatic repair round
 before a second failure throws `schema_validation_error`.
 
+## Flow
+
+```text
+adversarial                       compose: a PRD in, a critic-approved plan out
+└─ loop                           up to 3 rounds, until the critic passes
+   ├─ scope                       one build round: a new or revised draft
+   │  ├─ stash                    keep the loop state for later in the round
+   │  │  └─ snapshot              pass the state through unchanged
+   │  ├─ to_build_input           give build the PRD, last draft, and notes
+   │  ├─ sequence                 the build step: prompt first, then the model
+   │  │  ├─ compose_build_prompt  pure: flatten the record into one prompt
+   │  │  └─ build                 claude_cli sonnet drafts or revises the plan
+   │  └─ use                      fold the new draft into the state
+   └─ guard  scope                critique the draft and decide whether to stop
+      ├─ stash                    keep the loop state for later in the round
+      │  └─ snapshot              pass the state through unchanged
+      ├─ extract_candidate        pull the draft out of the state
+      ├─ critic                   claude_cli haiku returns a zod-checked verdict
+      └─ use                      stop on pass, keep the notes for next round
+```
+
+Everything except the build `sequence` and the `critic` step is plumbing that
+`adversarial` builds from core primitives.
+
 ## Run
 
 No API key is required: the `claude_cli` provider piggybacks on your existing

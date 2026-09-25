@@ -18,6 +18,17 @@ daemon is unreachable is skipped and reported not-run, never failed, because
 the gate is "green where backends are available". The process exits non-zero
 only if a backend that actually ran had a failing cell.
 
+## Flow
+
+```text
+live-smoke            openrouter, ollama, and lmstudio, narrowed by SMOKE_ONLY
+├─ probe              no key or no daemon skips a backend, never fails it
+└─ cell               each backend that answered, non-streamed then streamed
+   ├─ model_call      the whole flow under test, a tool loop of up to 4 steps
+   │  └─ get_weather  in-memory lookup, so only the provider wire is live
+   └─ check_cell      tool output, finish reason, usage, cost, stream chunks
+```
+
 ## Run
 
 ```bash

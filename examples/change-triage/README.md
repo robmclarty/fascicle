@@ -29,6 +29,22 @@ call second, and a floor the model cannot undercut**.
   through the real `run()`, and the blueprint's [ast-grep rules](./rules/)
   wired up.
 
+## Flow
+
+```text
+chain
+├─ files             parse the unified diff into files (pure)
+├─ signals           detect risk signals in the full diff (pure, zero tokens)
+├─ screened          privacy screen: withhold fixtures, seeds, and snapshots
+├─ assessment        ask the assessor to score the screened diff
+│  └─ assessor_call  the only model boundary: score, confidence, factors
+└─ output            step
+```
+
+The `output` row is where the score floor lives: it raises the model's score to
+the highest floor any hard detector signal imposes, derives the band from the
+floored score, and merges the factors, all in pure code.
+
 ## Run it
 
 ```sh

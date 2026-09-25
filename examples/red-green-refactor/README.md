@@ -47,6 +47,54 @@ examples/red-green-refactor/
 
 The oracle and the snapshotter reach `flow.ts` as ports on `FlowEnv` rather than being called directly, which is what lets `__tests__/flow.test.ts` script a phase sequence (RED fails, GREEN passes, REFACTOR edits a test) and assert the harness reacts correctly, without spawning a subprocess or running a test suite inside a test suite.
 
+## Flow
+
+Each behavior from `src/behaviors.ts` runs through this tree once:
+
+```text
+timeout                                 give up on the behavior after 10 minutes
+└─ chain
+   ├─ before_red                        snapshot the toy's test files
+   ├─ stage  red
+   │  ├─ red_ask                        ask for exactly one new failing test
+   │  │  └─ coder_call                  the coder edits the toy, one-line reply
+   │  ├─ red_verdict                    run the tests
+   │  │  └─ run_tests                   vitest on the toy; exit code decides
+   │  ├─ assert_red                     throw unless vitest failed
+   │  ├─ after_red                      snapshot the test files again
+   │  └─ one_test_added                 throw unless exactly one test was added
+   ├─ stage  green
+   │  ├─ green                          make the new test pass
+   │  │  └─ adversarial                 compose: until green, at most 4 rounds
+   │  │     └─ loop
+   │  │        ├─ scope
+   │  │        │  ├─ stash
+   │  │        │  │  └─ snapshot        step
+   │  │        │  ├─ to_build_input     step
+   │  │        │  ├─ green_round        ask for a minimal fix, then run vitest
+   │  │        │  │  ├─ coder_call      the coder edits the toy, one-line reply
+   │  │        │  │  └─ run_tests       vitest on the toy; exit code decides
+   │  │        │  └─ use
+   │  │        └─ guard  scope
+   │  │           ├─ stash
+   │  │           │  └─ snapshot        step
+   │  │           ├─ extract_candidate  step
+   │  │           ├─ green_verdict      pass when vitest passed; tail as notes
+   │  │           └─ use
+   │  ├─ assert_green_converged         throw if GREEN ran out of rounds
+   │  └─ green_tests_frozen             throw if a test file changed since RED
+   └─ stage  refactor
+      ├─ refactor_ask                   ask for an optional cleanup
+      │  └─ coder_call                  the coder edits the toy, one-line reply
+      ├─ refactor_verdict               run the tests
+      │  └─ run_tests                   vitest on the toy; exit code decides
+      ├─ assert_still_green             throw unless vitest still passes
+      ├─ refactor_tests_frozen          throw if a test file changed since RED
+      └─ output                         step
+```
+
+The rows under `adversarial` that show no description are the composite's own machinery. The first `scope` builds a candidate through `green_round`, and the `guard` scope critiques it through `green_verdict` and ends the loop once vitest passes.
+
 ## How the flow is built
 
 The cycle is a single `chain` whose stage barriers mark the three phases; the behavior and both snapshots thread through typed bindings, so each phase reads exactly what it names:

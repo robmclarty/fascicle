@@ -11,6 +11,20 @@ stub that returns a canned, schema-conforming doc; swap it for
 The agent definition itself is demo code in [`../agents/`](../agents/); copy
 it alongside this example when porting it into your own project.
 
+## Flow
+
+The flow is the single `documenter` step, so this tree draws the program
+that drives it.
+
+```text
+run_documenter       document the sum function as tsdoc, no keys or network
+├─ make_stub_engine  answer any prompt with one canned doc
+└─ documenter        the model call on the symbol's signature and body
+   ├─ md_path        prompt.md, sent as the system prompt
+   ├─ build_prompt   the style, then the symbol, as the user message
+   └─ schema         check the reply against documenter_output_schema
+```
+
 ## Run
 
 ```bash

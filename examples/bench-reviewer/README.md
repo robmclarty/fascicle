@@ -14,6 +14,21 @@ flow against a real provider. The agent definition itself is demo code in
 [`../agents/`](../agents/); copy it alongside this example when porting it
 into your own project.
 
+## Flow
+
+`bench` is a function rather than a Step, and the flow it runs is the single
+`reviewer` step, so this tree draws the program around it.
+
+```text
+run_bench_reviewer       score the reviewer on bench/reviewer/cases.json
+├─ bench                 run all three cases at once, then judge each output
+│  ├─ reviewer           the model call; the stub picks a canned reply by case
+│  ├─ flagged_correctly  pure: 1 if a finding has the expected category
+│  └─ severity_match     pure: 1 if the worst severity is the expected one
+├─ write_baseline        with WRITE_BASELINE=1, save the report and stop
+└─ regression_compare    otherwise diff against baseline.json, exit 1 if worse
+```
+
 ## Run
 
 ```bash

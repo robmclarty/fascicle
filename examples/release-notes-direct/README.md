@@ -18,6 +18,13 @@ express "this stage exists only for some inputs" this plainly; a plain body
 can. When the topology is fixed, prefer the chain; when the control flow is
 data, write the body.
 
+## Flow
+
+```text
+release_notes  parse, group, and render in one ordinary TypeScript body
+└─ writer      the only model boundary, skipped for maintenance releases
+```
+
 ## Run
 
 ```bash

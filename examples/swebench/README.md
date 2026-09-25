@@ -41,6 +41,18 @@ that only exists at runtime, so the wiring cannot be expressed statically. The
 step body stays wiring-only, with formatting, engine construction, and the tool
 surface each in their own module.
 
+Drawn with `describe.diagram`, the whole flow is that one step:
+
+```text
+solve_instance  sandbox the case, model edits it, capture the git diff
+```
+
+The tree stops at `solve_instance` because the body builds its sandbox, and the
+tools around it, at runtime and then calls `engine.generate` directly, so no step
+exists before the body runs for it to declare as an arm. The tree holds no `map`
+over instances either: `main.ts` passes this step to `bench`, which runs it once
+per case from outside the flow.
+
 ## Sandboxes
 
 The harness ships three sandbox factories. Pick with `SWEBENCH_SANDBOX`:

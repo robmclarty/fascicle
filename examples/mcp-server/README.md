@@ -17,6 +17,17 @@ Three tools and one resource template, registered on an `McpServer`:
 | `word_count`         | tool     | Returns `{ words, chars }` for the input string. |
 | `greeting://{name}`  | resource | A personalized `Hello, {name}!` greeting.        |
 
+## Flow
+
+```text
+sequence      turn a topic into a punchy headline
+├─ normalize  trim and lowercase the topic
+└─ format     wrap the topic in a breaking-news headline
+```
+
+[`src/serve.ts`](./src/serve.ts) serves this flow as the `headline` tool through
+`serve_flow`; start it with `pnpm --filter @repo/example-mcp-server serve`.
+
 ## Run
 
 ```bash

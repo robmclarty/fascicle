@@ -9,6 +9,14 @@ API key.
 
 ![terminal output of the ollama-chat example: the topic and the refined paragraph produced by a local model](./screenshot.png)
 
+## Flow
+
+```text
+sequence   two local ollama calls over /api/chat, no API key
+├─ draft   write a two-sentence first draft of the topic
+└─ refine  rewrite the draft to be more concrete and specific
+```
+
 ## Run
 
 Prereqs: an Ollama daemon running at `OLLAMA_HOST` (default

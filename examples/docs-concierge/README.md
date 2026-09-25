@@ -29,6 +29,20 @@ pattern, distilled from a production consumer.
   services; the `Retriever` port is where a vector store, search API, or MCP
   server plugs in without touching the flow.
 
+## Flow
+
+```text
+chain
+├─ question     privacy screen: scrub emails and long numbers (pure)
+├─ passages     retrieve top k passages through the Retriever port
+├─ assessment   propose an answer that cites passages by number
+│  └─ answerer  the only model boundary: markdown prompt plus schema
+└─ output       step
+```
+
+The `output` row is the gate: pure code that can only narrow the model's answer
+toward abstention, never widen it.
+
 ## Run it
 
 ```sh

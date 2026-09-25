@@ -7,6 +7,15 @@ program).
 
 ![terminal output of the hello example: the input sentence and its word-reversed output](./screenshot.png)
 
+## Flow
+
+```text
+sequence          three pure steps, no engine and no model call
+├─ parse          split the input sentence on whitespace
+├─ reverse_words  reverse the order of the words
+└─ join           join the words back into one sentence
+```
+
 ## Run
 
 ```bash

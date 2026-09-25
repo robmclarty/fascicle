@@ -10,6 +10,31 @@ best-scoring verdict wins.
 Every step is a deterministic stub, so the example runs with no engine layer,
 no network, and no LLM calls.
 
+## Flow
+
+```text
+adversarial                             compose: rebuild until pass or 3 rounds
+└─ loop
+   ├─ scope
+   │  ├─ stash
+   │  │  └─ snapshot                    step
+   │  ├─ to_build_input                 step
+   │  ├─ build                          stub: wrap the brief as a candidate
+   │  └─ use
+   └─ guard  scope
+      ├─ stash
+      │  └─ snapshot                    step
+      ├─ extract_candidate              step
+      ├─ ensemble                       compose: the most confident judge wins
+      │  └─ sequence
+      │     ├─ parallel
+      │     │  ├─ opus  judge_opus      stub: pass at confidence 0.9
+      │     │  ├─ sonnet  judge_sonnet  stub: pass at confidence 0.8
+      │     │  └─ haiku  judge_haiku    stub: pass at confidence 0.6
+      │     └─ pick_winner              step
+      └─ use
+```
+
 ## Run
 
 ```bash

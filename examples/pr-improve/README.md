@@ -9,6 +9,40 @@ Automated PR improvement pipeline. Triggered (eventually) by a `fascicle-improve
 - [docs/architecture.md](./docs/architecture.md) — why `flow.ts` is pure Fascicle composition, and the module split that keeps it that way.
 - [../../docs/blueprint.md](../../docs/blueprint.md) — the generalized app architecture distilled from this example (and others); this app's [`rules/`](./rules/) are its canonical machine-checked copy.
 
+## Flow
+
+```text
+chain
+├─ suggestions                                        review the PR diff
+│  └─ reviewer_call                                   up to 10 suggestions
+├─ result                                             act on the suggestions
+│  └─ has_suggestions                                 branch: any suggestions?
+│     ├─ then  chain
+│     │  ├─ spec                                      distill the suggestions
+│     │  │  └─ pragmatist_call                        reject by default, max 3
+│     │  ├─ result                                    act on the accepted set
+│     │  │  └─ has_accepted_changes                   branch: anything accepted?
+│     │  │     ├─ then  chain
+│     │  │     │  ├─ final_state                      run the build-review loop
+│     │  │     │  │  └─ build_review                  loop: until a pass, max 3
+│     │  │     │  │     ├─ chain
+│     │  │     │  │     │  ├─ handoff                 build the spec
+│     │  │     │  │     │  │  └─ builder_call         edit files in the worktree
+│     │  │     │  │     │  ├─ verdict                 review the build
+│     │  │     │  │     │  │  └─ build_reviewer_call  pass or needs-changes
+│     │  │     │  │     │  └─ output                  step
+│     │  │     │  │     └─ guard  check_pass          stop once the build passes
+│     │  │     │  └─ output                           step
+│     │  │     └─ else  no_changes                    no changes proposed
+│     │  └─ output                                    step
+│     └─ else  no_changes                             no changes proposed
+└─ output                                             step
+```
+
+The `output` rows close each chain: the innermost folds a round's verdict into
+the loop state, the next reports whether the build converged, and the outer two
+pass the result through.
+
 ## Status
 
 **Phase C, PR B** (current): single-command demo against a real GitHub PR with full provider portability. The builder dispatches by provider — `claude_cli` uses the CLI's built-in Read/Write/Edit, while API providers (`anthropic`, `openrouter`) get explicit worktree-scoped tools. Same `flow.ts`, same `Step<string, Handoff>` contract, no code changes between runs.

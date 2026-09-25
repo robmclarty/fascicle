@@ -18,6 +18,14 @@ process: a real deployment persists the original input (for example,
 Every step is a deterministic stub: no engine layer, no network beyond
 localhost, no LLM calls.
 
+## Flow
+
+```text
+sequence    draft, then merge or discard once a human decides
+├─ draft    stub PR body from the brief, run again on resume
+└─ approve  suspend: wait for the decision that POST /resume/:id supplies
+```
+
 ## Run
 
 ```bash

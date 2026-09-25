@@ -12,12 +12,14 @@ deserves its own review surface, not before.
 
 ```text
 chain
-  ├ log      ← raw `git log --oneline` text
-  ├ commits  ← parse hash + subject per line (pure)
-  ├ grouped  ← bucket subjects by conventional-commit type (pure)
-  ├ notes    ← writer (model_step via ctx.call, the only model boundary)
-  └ output: render the release-notes markdown (pure)
+├─ commits    hash and subject per raw git log --oneline line, pure
+├─ grouped    bucket subjects by conventional-commit type, pure
+├─ notes      call the writer through ctx.call on every release
+│  └─ writer  model_step to the notes schema, the only model boundary
+└─ output     step
 ```
+
+The `output` row renders the release-notes markdown, and it's pure too.
 
 The engine is a canned stub, so the example runs with no keys and no network;
 swap `make_stub_engine()` for `create_engine({...})` to go live.

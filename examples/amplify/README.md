@@ -11,23 +11,42 @@ For the full design rationale (the academic landscape, the OSS prior art, the fa
 ## How it works
 
 ```text
-┌─ chain 'brief' ────────────────────────────────────────────┐
-│  brief          user input: task + target + metric         │
-│  baseline       score the starter; this is the floor       │
-│  research       fallback(web researcher, offline)          │
-│  seeded         parent contents + baseline + budget        │
-│                                                            │
-│  loop(guard: budget exhausted or plateau):                 │
-│    map(propose, concurrency N):   parallel model_step      │
-│    map(score,   concurrency 1):   (sequential, fs-isolated)│
-│         ├─ syntax: tsc --noEmit                            │
-│         ├─ gate:   metric.gate.command (exit 0 = pass)     │
-│         └─ measure: metric.score(impl_path)                │
-│    branch(round accepted?)                                 │
-│      then      ─ commit the winner as the new parent       │
-│      otherwise ─ keep the parent, bank the lessons         │
-└────────────────────────────────────────────────────────────┘
+chain
+├─ baseline                            score the unmodified starter, the floor to beat
+├─ research                            name techniques worth trying, cached to research.md
+│  └─ fallback                         fall back to offline research if the web call fails
+│     ├─ sequence                      research recent techniques on the web
+│     │  ├─ research_prompt            format the research request from the brief
+│     │  └─ pipe                       clamp the summary to 2,000 characters
+│     │     └─ research_web            researcher with the CLI's WebSearch tool
+│     └─ sequence                      research from training knowledge alone
+│        ├─ research_prompt            format the research request from the brief
+│        └─ pipe                       clamp the summary to 2,000 characters
+│           └─ research_offline        researcher from training knowledge, no tools
+├─ seeded                              seed round state: parent, baseline, budget
+├─ rounds                              run the round loop from the seeded state
+│  └─ amplify_rounds                   loop: until max rounds, the wall-clock cap, or a plateau
+│     ├─ chain
+│     │  ├─ round                      open the round and bump the counters
+│     │  ├─ inputs                     per-proposer inputs: research plus lessons
+│     │  ├─ specs                      propose N candidate rewrites
+│     │  │  └─ propose                 map: one proposal per proposer, N at a time
+│     │  │     └─ propose_one          ask the proposer for one candidate rewrite
+│     │  │        └─ proposer_call     rationale plus the complete new file, zod-checked
+│     │  ├─ candidates                 score every candidate
+│     │  │  └─ score                   map: one at a time, each swapped into the mutable path
+│     │  │     └─ score_candidate      syntax (tsc --noEmit), gate (exit 0), then metric.score
+│     │  ├─ outcome                    pick the winner, accept or reject, bank lessons
+│     │  ├─ settled                    commit the winner or keep the parent
+│     │  │  └─ round_accepted          branch: did the winner strictly beat the parent?
+│     │  │     ├─ then  commit_winner  commit the winner as the new parent
+│     │  │     └─ else  keep_parent    keep the parent, carry the new lessons
+│     │  └─ output                     step
+│     └─ guard  check_budget           stop after patience idle rounds or a spent budget
+└─ output                              step
 ```
+
+The top-level `chain` opens on the `brief` binding, which holds the task, the target, and the metric. Each `output` row is where a chain closes: the inner one hands the settled round state back to the loop, and the outer one summarizes the run and names the rule that stopped it.
 
 The harness uses five Fascicle primitives heavily:
 

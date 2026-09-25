@@ -8,6 +8,19 @@ raw text and the zod issue list.
 
 ![terminal output of the structured-output example: the input brief and the schema-validated plan as JSON](./screenshot.png)
 
+## Flow
+
+```text
+engine          openrouter, openai/gpt-4o-mini by default
+└─ model_step   one call whose reply must match plan_schema
+   ├─ reply     the model answers the brief with JSON
+   ├─ validate  parse the reply as { title, steps, risk }
+   ├─ repair    send the zod issues back and parse again, 2 at most
+   └─ result    the parsed plan, else schema_validation_error
+```
+
+The flow itself is one `model_step`, and the repair rounds run inside it.
+
 ## Run
 
 Prereq: `OPENROUTER_API_KEY` exported, or set in the root `.env` (see

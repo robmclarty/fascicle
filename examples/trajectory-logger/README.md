@@ -11,6 +11,14 @@ plain object.
 
 Every step is a deterministic stub: no engine layer, no network, no LLM calls.
 
+## Flow
+
+```text
+sequence      each node opens a span that both loggers see
+├─ double     multiply the input by two
+└─ increment  add one to the doubled value
+```
+
 ## Run
 
 ```bash

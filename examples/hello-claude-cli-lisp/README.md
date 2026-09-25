@@ -11,6 +11,17 @@ maps almost line-for-line onto Scheme. Each technique in [main.ts](./main.ts)
 is annotated so you can see the correspondence, and the header comment
 carries a Scheme shadow of the whole program to read alongside it.
 
+## Flow
+
+```text
+sequence    ask claude once, then keep the reply text
+├─ step     one claude_cli call, model and system from defaults
+└─ extract  keep the reply text, or its JSON when not a string
+```
+
+The code differs only in shape, so the flow draws the same tree as the plain
+version.
+
 ## Run
 
 ```bash

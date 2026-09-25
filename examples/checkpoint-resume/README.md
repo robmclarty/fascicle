@@ -11,6 +11,13 @@ The example writes to a fresh temp directory, so it is hermetic and can run
 repeatedly without stale state. Every step is a deterministic stub: no engine
 layer, no network, no LLM calls.
 
+## Flow
+
+```text
+checkpoint          memoize the build, keyed on expensive_build:<hash>
+└─ expensive_build  build the index; the second run hits the cache and skips it
+```
+
 ## Run
 
 ```bash

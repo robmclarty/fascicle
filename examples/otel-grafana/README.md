@@ -16,6 +16,15 @@ one tool call per run, and an occasional simulated rate limit, so no API key
 is needed. Swapping in a real provider changes nothing: the logger observes
 the run, not the provider.
 
+## Flow
+
+```text
+chain
+├─ advice      pass each question to the planner through ctx.call
+│  └─ planner  the only model boundary, spans for each turn and tool call
+└─ output      step
+```
+
 ## Run
 
 Start the Grafana OTel stack (Docker), then run the example:

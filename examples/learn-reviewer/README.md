@@ -15,6 +15,20 @@ demo proves the wiring without any API keys. Swap `make_stub_engine` for
 agent definition itself is demo code in [`../agents/`](../agents/); copy it
 alongside this example when porting it into your own project.
 
+## Flow
+
+```text
+reviewer  one model call per diff, each run to its own jsonl
+
+learn                          compose: recorded runs only, off the request path
+└─ scope                       stash the meta, analyze, then wrap the result
+   ├─ stash                    hold the event count and run ids for the end
+   │  └─ learn_compute_meta    read the three jsonl files, count events and runs
+   ├─ learn_build_input        pair the events with describe(reviewer)
+   ├─ reviewer_usage_analyzer  pure: sum agent.call usage, propose prompt edits
+   └─ use                      wrap proposals with the event count and run ids
+```
+
 ## Run
 
 ```bash

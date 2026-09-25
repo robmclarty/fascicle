@@ -10,6 +10,38 @@ and the run stops.
 
 Every step is pure TypeScript: no engine layer, no network, no LLM calls.
 
+## Flow
+
+```text
+improve                                                 compose: stop on 2 flat rounds, or 12 max
+└─ scope
+   ├─ seed                                              start at 0, scored -49
+   ├─ improve_init_state                                step
+   ├─ loop
+   │  ├─ scope
+   │  │  ├─ stash
+   │  │  │  └─ improve_snapshot                         step
+   │  │  ├─ improve_to_round_input                      step
+   │  │  ├─ improve_round                               compose
+   │  │  │  └─ scope
+   │  │  │     ├─ stash
+   │  │  │     │  └─ parallel
+   │  │  │     │     └─ p0  propose                     the lone proposer walks parent + 1
+   │  │  │     ├─ ensemble_step_to_pairs                step
+   │  │  │     ├─ map
+   │  │  │     │  └─ scope
+   │  │  │     │     ├─ stash
+   │  │  │     │     │  └─ ensemble_step_item_snapshot  step
+   │  │  │     │     ├─ ensemble_step_extract_value     step
+   │  │  │     │     ├─ score                           pure: -(value - 7)^2, zero at the target
+   │  │  │     │     └─ use
+   │  │  │     └─ use
+   │  │  ├─ use
+   │  │  └─ use
+   │  └─ guard  improve_guard                           step
+   └─ improve_stop                                      step
+```
+
 ## Run
 
 ```bash
