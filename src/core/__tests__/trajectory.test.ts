@@ -6,6 +6,7 @@ import {
   is_run_end_event,
   is_span_end_event,
   is_span_start_event,
+  is_step_replayed_event,
   parse_trajectory_event,
 } from '../trajectory.js'
 import type { ParsedTrajectoryEvent } from '../trajectory.js'
@@ -232,6 +233,38 @@ describe('is_checkpoint_event', () => {
   it('rejects other kinds and non-events', () => {
     expect(is_checkpoint_event({ kind: 'run_end', status: 'hit', key: 'k1' })).toBe(false)
     expect(is_checkpoint_event(null)).toBe(false)
+  })
+})
+
+describe('is_step_replayed_event', () => {
+  it('accepts a step id with a list of gate ids, empty or not', () => {
+    const event = { kind: 'step_replayed', step_id: 'draft', suspend_ids: ['approve'] }
+    expect(is_step_replayed_event(event)).toBe(true)
+    expect(is_step_replayed_event({ ...event, suspend_ids: [] })).toBe(true)
+  })
+
+  it('rejects a missing or non-string step id', () => {
+    expect(is_step_replayed_event({ kind: 'step_replayed', suspend_ids: ['a'] })).toBe(false)
+    expect(is_step_replayed_event({ kind: 'step_replayed', step_id: 7, suspend_ids: ['a'] })).toBe(
+      false,
+    )
+  })
+
+  it('rejects gate ids that are missing, not a list, or not all strings', () => {
+    expect(is_step_replayed_event({ kind: 'step_replayed', step_id: 'draft' })).toBe(false)
+    expect(
+      is_step_replayed_event({ kind: 'step_replayed', step_id: 'draft', suspend_ids: 'approve' }),
+    ).toBe(false)
+    expect(
+      is_step_replayed_event({ kind: 'step_replayed', step_id: 'draft', suspend_ids: ['a', 1] }),
+    ).toBe(false)
+  })
+
+  it('rejects other kinds and non-events', () => {
+    expect(
+      is_step_replayed_event({ kind: 'checkpoint', step_id: 'draft', suspend_ids: ['a'] }),
+    ).toBe(false)
+    expect(is_step_replayed_event(undefined)).toBe(false)
   })
 })
 

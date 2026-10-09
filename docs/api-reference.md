@@ -35,7 +35,7 @@ so a missing `ai` fails at module resolution rather than with a Fascicle error.
 | --- | --- | --- |
 | `run(flow, input, options?)` | `Promise<output>` | Execute a step. `options`: `{ trajectory?, checkpoint_store?, abort?, resume_data?, install_signal_handlers? }`. |
 | `run.stream(flow, input, options?)` | `{ events, result }` | Same graph as `run`; `events` is an async iterable of `TrajectoryEvent`, `result` resolves to the output. |
-| `run.until_suspended(flow, input, options?)` | `Promise<RunOutcome<output>>` | Same graph as `run`, but a `suspend` gate resolves `{ kind: 'suspended', id, payload, resume }` instead of throwing; `payload` is the value that the gate surfaced, and `resume(data)` re-runs with the decision and resolves to the next outcome. Completion is `{ kind: 'done', output }`; real errors still throw. |
+| `run.until_suspended(flow, input, options?)` | `Promise<RunOutcome<output>>` | Same graph as `run`, but a `suspend` gate resolves `{ kind: 'suspended', id, payload, deadline_ms?, resume }` instead of throwing; `payload` is the value that the gate surfaced, `deadline_ms` is there when the gate set one, and `resume(data)` re-runs with the decision and resolves to the next outcome. Completion is `{ kind: 'done', output }`; real errors still throw. |
 | `describe(step, options?)` | `string` | Static text-tree description of a step tree. No execution, no model calls. `describe.json(step)` returns the structured `FlowNode` tree instead, and `describe.diagram(step, options?)` draws it as an annotated tree (see below). |
 | `ctx.call(step, input)` | `Promise<output>` | On `RunContext`, inside any step body, runs another Step with spans, abort, and error paths intact. The direct-style counterpart to composing. |
 
@@ -93,7 +93,7 @@ optional `name`, which labels its span and its `describe` line, and an optional
 
 | Primitive | Shape |
 | --- | --- |
-| `step(id?, fn, options?)` | lift a plain function into `Step<i, o>`; `id` is identity and must be a valid identifier, `options.name` is the free-prose display label, and `options.arm` declares the steps that the body runs through `ctx.call` (one or a list), which `describe` shows as children and the step never runs itself |
+| `step(id?, fn, options?)` | lift a plain function into `Step<i, o>`; `id` is identity and must be a valid identifier, `options.name` is the free-prose display label, `options.arm` declares the steps that the body runs through `ctx.call` (one or a list), which `describe` shows as children and the step never runs itself, and `options.side_effect` marks a step that isn't free to run twice, so a resumed run that runs it again before its gate records a `step_replayed` event (every `model_call` is marked) |
 | `sequence([a, b, c])` | run in order, threading the value; literal tuples are joint-checked at compile time (each child must accept its predecessor's output) |
 | `pipe(inner, fn)` | post-process an inner step's output |
 | `compose(inner, { name, description? })` | label a composite so it shows up by intent in trajectories; the label is display only and the id is `compose_<n>` |
@@ -153,7 +153,7 @@ You can walk the full loop in
 | `chain<i>(input_name?)` → `.input` / `.step` / `.stage` / `.output` | named steps over a typed record; state the input type via `chain<i>()` or `chain('name').input<i>()` (unannotated chains default to `never` and fail at `run`): `.step(name, arm, select, options?)` dispatches a composed arm on the selected slice and records it as the binding's child, `.step(name, fn, { arm?, name?, description? })` is the body form (`arm` records a describe-only child, or several), `.stage(name, project?)` concludes a phase (with `project`, narrows the record), `.output(fn)` projects the result into a `Step`. Every binding name is a record key, so it follows the same identifier rule as a step id; `options.name` carries the free-prose label |
 | `scope` / `stash` / `use` | named state at the string-key level; the advanced tier under `chain` (see [advanced-composition.md](./advanced-composition.md)) |
 | `checkpoint(inner, { key })` | memoize an inner step by key in a `CheckpointStore` |
-| `suspend({ id, on, resume_schema, combine })` | pause for external input, then resume later with `resume_data` (throws `suspended_error` to signal the pause; `run.until_suspended` surfaces it as a typed outcome instead) |
+| `suspend({ id, on, resume_schema, combine, deadline_ms? })` | pause for external input, then resume later with `resume_data` (throws `suspended_error` to signal the pause; `run.until_suspended` surfaces it as a typed outcome instead). `deadline_ms` says how long the gate waits, and it rides out on the outcome so whoever drives the run can schedule the timer |
 | `gate(inner, { id, store?, format?, name? })` | run `inner`, checkpoint its result at `gate:<id>`, then suspend with it as the payload; resume passes the result through, and a restart with the same store replays from the checkpoint instead of re-running `inner` |
 
 ## The Engine
@@ -381,6 +381,7 @@ newer producer emits. The guards are how you narrow one.
 | `is_emit_event(value)` | guard | a `ctx.emit` event; the payload is the caller's |
 | `is_run_end_event(value)` | guard | the terminal `run_end` event, emitted once per run, where `status` is `'done' \| 'failed' \| 'aborted' \| 'suspended'`; failures carry `error` plus `error_name` / `error_kind` / `error_path` when known |
 | `is_checkpoint_event(value)` | guard | a `checkpoint` store lookup, where `status` is `'hit' \| 'miss' \| 'read_error'`, with the step `id` and store `key` |
+| `is_step_replayed_event(value)` | guard | a step marked `side_effect` that ran again before its resumed run reached its gates, with the `step_id` and the `suspend_ids` still ahead |
 | `is_custom_trajectory_event(value)` | guard | the fallback shape, meaning any string `kind`, well-known ones included |
 
 ## Testing Doubles (`fascicle/testing`)
@@ -501,7 +502,7 @@ the roadmap). The public type exports:
 `DiagramOptions`, `FlowNode`, `FlowValue`, `LoopConfig`, `LoopOutcome`, `LoopGuardResult`,
 `LoopGuardPredicate`, plus the trajectory event shapes (`SpanStartEvent`,
 `SpanEndEvent`, `EmitEvent`, `RunEndEvent`, `RunEndStatus`,
-`CheckpointEvent`, `CheckpointStatus`, `CustomTrajectoryEvent`,
+`CheckpointEvent`, `CheckpointStatus`, `StepReplayedEvent`, `CustomTrajectoryEvent`,
 `ParsedTrajectoryEvent`, `TrajectoryParseResult`).
 The step-kind vocabulary also ships at runtime, where `STEP_KINDS` is the closed
 list and `is_step_kind` its narrowing guard. Every config a composer

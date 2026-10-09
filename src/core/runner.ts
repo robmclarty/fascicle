@@ -38,6 +38,11 @@ type Dispatcher = (
 
 const dispatch = new Map<string, Dispatcher>()
 
+// The gates each resumed run holds resume data for and hasn't reached yet, by
+// run id. A step marked `side_effect` that starts while its run still has one
+// is redoing work that an earlier attempt already did.
+const unreached_gates = new Map<string, Set<string>>()
+
 /**
  * Register the dispatch handler for a step kind.
  *
@@ -66,6 +71,7 @@ export function register_traced_kind(kind: string): void {
       span_meta['parent_span_id'] = ctx.parent_span_id
     }
     const span_id = ctx.trajectory.start_span(label, span_meta)
+    if (flow.meta?.side_effect === true) record_replay(flow, ctx, span_id)
     const child_ctx: RunContext = { ...ctx, parent_span_id: span_id }
     try {
       // The dispatch table is the type-erasure boundary: `dispatch_step`
@@ -80,6 +86,48 @@ export function register_traced_kind(kind: string): void {
       throw err
     }
   })
+}
+
+/**
+ * Record a `step_replayed` event for `flow`, a step marked `side_effect`, when
+ * it starts before its run has reached every gate the run was resumed with.
+ * The event names the gates still ahead, and it carries the step's own span.
+ */
+function record_replay(flow: AnyStep, ctx: RunContext, span_id: string): void {
+  const unreached = unreached_gates.get(ctx.run_id)
+  if (unreached === undefined) return
+  ctx.trajectory.record({
+    kind: 'step_replayed',
+    step_id: flow.id,
+    span_id,
+    suspend_ids: [...unreached],
+  })
+}
+
+/**
+ * Note that a run has reached `suspend_ids`: a `suspend` consumed its resume
+ * data, or a checkpoint hit stood in for the gates inside it. Once a run has
+ * reached all of them, nothing it runs afterwards is a replay.
+ */
+export function mark_gates_reached(ctx: RunContext, suspend_ids: Iterable<string>): void {
+  const unreached = unreached_gates.get(ctx.run_id)
+  if (unreached === undefined) return
+  for (const id of suspend_ids) unreached.delete(id)
+  if (unreached.size === 0) unreached_gates.delete(ctx.run_id)
+}
+
+/**
+ * Start tracking the gates a run was resumed with, the ones `resume_data`
+ * holds a value for. A run started without any is never replaying.
+ */
+function track_resumed_gates(
+  run_id: string,
+  resume_data: Readonly<Record<string, unknown>> | undefined,
+): void {
+  const resumed = Object.entries(resume_data ?? {})
+    .filter(([, value]) => value !== undefined)
+    .map(([id]) => id)
+  if (resumed.length > 0) unreached_gates.set(run_id, new Set(resumed))
 }
 
 /**
@@ -387,6 +435,7 @@ function start_run<i, o>(
     streaming,
   }
 
+  track_resumed_gates(run_id, options.resume_data)
   active_runs.add(controller)
   if (install_signal_handlers) {
     ensure_signal_handlers()
@@ -421,6 +470,7 @@ function start_run<i, o>(
         // Recorded after cleanup so run_end is the true last event of the
         // run, and before the stream closes so `run.stream` consumers see it.
         logger.record(terminal)
+        unreached_gates.delete(run_id)
         unlink_abort()
         active_runs.delete(controller)
         release_signal_handlers()
@@ -503,6 +553,9 @@ export type RunOutcome<o> =
       // `{ input }`), so a driver loop can render what awaits approval without
       // re-running the flow. `unknown` because gates declare no payload type.
       readonly payload: unknown
+      // How long the gate waits before its deadline passes, present when the
+      // gate set one. The caller owns the timer and the clock it starts.
+      readonly deadline_ms?: number
       readonly resume: (data: unknown) => Promise<RunOutcome<o>>
     }
 
@@ -513,7 +566,8 @@ export type RunOutcome<o> =
  * Resolves `{ kind: 'done', output }` on completion. When a `suspend` gate
  * fires, resolves `{ kind: 'suspended', id, payload, resume }` where `id` is
  * the gate's suspend id, `payload` is what the gate raised on its
- * `suspended_error`, and `resume(data)` re-runs the flow from the original
+ * `suspended_error` (plus `deadline_ms`, when the gate set one), and
+ * `resume(data)` re-runs the flow from the original
  * input with `resume_data[id] = data` merged over the caller's options: the
  * same full re-run semantics as calling `run` again yourself, so pure
  * prefixes replay and `checkpoint`ed steps are served from the store. The
@@ -535,6 +589,7 @@ async function run_until_suspended<i, o>(
       kind: 'suspended',
       id,
       payload: err.payload,
+      ...(err.deadline_ms === undefined ? {} : { deadline_ms: err.deadline_ms }),
       resume: (data) =>
         run_until_suspended(flow, input, {
           ...options,

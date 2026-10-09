@@ -34,6 +34,23 @@ describe('typed errors', () => {
     const err = new resume_validation_error('bad resume', issues)
     expect(err.kind).toBe('resume_validation_error')
     expect(err.issues).toBe(issues)
+    expect(err.suspend_id).toBeUndefined()
+  })
+
+  it('resume_validation_error names the gate whose resume data failed', () => {
+    const err = new resume_validation_error('bad resume', [], 'approve')
+    expect(err.suspend_id).toBe('approve')
+    expect(err.name).toBe('resume_validation_error')
+  })
+
+  it('names suspended_error after its class', () => {
+    expect(new suspended_error('gate', null).name).toBe('suspended_error')
+  })
+
+
+  it('suspended_error carries the gate deadline, and none by default', () => {
+    expect(new suspended_error('ci', null, undefined, 3_600_000).deadline_ms).toBe(3_600_000)
+    expect(new suspended_error('ci', null).deadline_ms).toBeUndefined()
   })
 
   it('aborted_error defaults to message "aborted" with no reason', () => {

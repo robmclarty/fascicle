@@ -11,11 +11,15 @@
  * Wrapping an anonymous inner step throws synchronously at construction time
  * with the message `checkpoint requires a named step, got anonymous`, because
  * a cached result must map back to a stable, identifiable step.
+ *
+ * A hit stands in for every `suspend` gate inside `inner` as well. Those gates
+ * ran when the result was stored, so a resumed run that skips them has still
+ * reached them, and the steps after the checkpoint aren't replays.
  */
 
 import { description_meta } from './display_name.js'
-import { dispatch_step, register_traced_kind } from './runner.js'
-import type { RunContext, Step } from './types.js'
+import { dispatch_step, mark_gates_reached, register_traced_kind } from './runner.js'
+import type { AnyStep, RunContext, Step } from './types.js'
 
 export type CheckpointConfig<i> = {
   readonly name?: string
@@ -31,6 +35,19 @@ let checkpoint_counter = 0
 function next_id(): string {
   checkpoint_counter += 1
   return `checkpoint_${checkpoint_counter}`
+}
+
+/**
+ * The ids of every `suspend` gate in a step tree, the root included. `seen`
+ * guards against a tree that reaches the same step twice.
+ */
+function gates_within(root: AnyStep, seen: Set<AnyStep> = new Set()): string[] {
+  // Stryker disable next-line ArrayDeclaration: a step met a second time already had its gates counted, and a stray extra id names no gate, so it marks nothing.
+  if (seen.has(root)) return []
+  seen.add(root)
+  // Stryker disable next-line ArrayDeclaration: a stray child seeded into a leaf is no suspend step and has no children of its own, so it adds no gate.
+  const inner = (root.children ?? []).flatMap((child) => gates_within(child, seen))
+  return root.kind === 'suspend' ? [root.id, ...inner] : inner
 }
 
 /**
@@ -51,6 +68,7 @@ export function checkpoint<i, o>(inner: Step<i, o>, config: CheckpointConfig<i>)
 
   const id = next_id()
   const key_spec = config.key
+  const gates = gates_within(inner)
 
   const run_fn = async (input: i, ctx: RunContext): Promise<o> => {
     const key = typeof key_spec === 'function' ? key_spec(input) : key_spec
@@ -83,6 +101,7 @@ export function checkpoint<i, o>(inner: Step<i, o>, config: CheckpointConfig<i>)
         })
       }
       if (hit) {
+        mark_gates_reached(ctx, gates)
         // oxlint-disable-next-line typescript/no-unsafe-type-assertion
         return cached as o
       }

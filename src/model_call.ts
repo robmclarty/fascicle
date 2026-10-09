@@ -181,16 +181,20 @@ function assign_if_present<T, K extends keyof T>(target: T, key: K, value: T[K])
 
 /**
  * The step fields that say what a model_call is, apart from its config: it is
- * anonymous when its id was generated, and it carries `meta.description` when
- * `cfg` gives one.
+ * anonymous when its id was generated, it carries `meta.description` when
+ * `cfg` gives one, and it is always a `side_effect`, because every run of it
+ * bills the provider again.
  */
 function identity_fields(cfg: Pick<ModelCallConfig, 'id' | 'description'>): {
   readonly anonymous?: boolean
-  readonly meta?: StepMetadata
+  readonly meta: StepMetadata
 } {
   return {
     ...(cfg.id === undefined ? { anonymous: true } : {}),
-    ...(cfg.description === undefined ? {} : { meta: { description: cfg.description } }),
+    meta: {
+      ...(cfg.description === undefined ? {} : { description: cfg.description }),
+      side_effect: true,
+    },
   }
 }
 

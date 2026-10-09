@@ -208,7 +208,8 @@
         "id": { "type": "string" },
         "on": { "type": "string" },
         "resume_schema": { "type": "string" },
-        "combine": { "type": "string" }
+        "combine": { "type": "string" },
+        "deadline_ms": { "type": "number" }
       }
     },
     "scope_config": {

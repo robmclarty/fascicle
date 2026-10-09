@@ -40,11 +40,11 @@ You import everything below from `fascicle`. The primitives live in
 | `judge_equals` / `judge_llm` / `judge_with` | factories | the stock judges for `bench` |
 | `read_baseline` / `write_baseline` / `regression_compare` | functions | persist a report as JSON, load one back, diff a fresh report against it |
 | `checkpoint` | composer | memoize an inner step by key |
-| `suspend` | composer | pause awaiting external input |
+| `suspend` | composer | pause awaiting external input, with an optional `deadline_ms` for whoever drives the run to time |
 | `chain` | builder | named steps over a growing typed record (`Chain`, `ChainStepOptions`); the spine. Binding names are record keys, so they follow the same identifier rule as step ids, with the prose in `{ name }` |
 | `scope` / `stash` / `use` | composers | named state across non-adjacent steps |
 | `STEP_KINDS` / `is_step_kind` | value / guard | the closed list of step kinds and its narrowing guard (type: `StepKind`) |
-| `parse_trajectory_event`, `is_span_start_event` / `is_span_end_event` / `is_emit_event` / `is_custom_trajectory_event` | fn / guards | parse a recorded trajectory line, then narrow it by shape |
+| `parse_trajectory_event`, `is_span_start_event` / `is_span_end_event` / `is_emit_event` / `is_step_replayed_event` / `is_custom_trajectory_event` | fn / guards | parse a recorded trajectory line, then narrow it by shape |
 | `timeout_error` | error | thrown by `timeout` |
 | `suspended_error` | error | thrown by `suspend` on first pass |
 | `resume_validation_error` | error | thrown by `suspend` on invalid resume data |
@@ -59,7 +59,7 @@ You import everything below from `fascicle`. The primitives live in
 | `CheckpointStore` | type | persistent key-value store, with optional `scope`, `claim`, and `release` (a scoped store is a `ScopedCheckpointStore`, which adds `clear`) |
 | `Step<i, o>` | type | the step contract, so `id`, `kind`, and a `run(input, ctx)` function property, plus optional `config`, `children`, `anonymous`, and `meta`. `run` is a function property rather than a method, so strict mode checks `i` contravariantly and a step wired to an input it can't accept is a compile error |
 | `AnyStep` | type | the erased supertype (`Step<never, unknown>`) held by `children` |
-| `StepMetadata` | type | a step's `meta`: `name` (display label for spans and `describe`), `description`, and port labels |
+| `StepMetadata` | type | a step's `meta`: `name` (display label for spans and `describe`), `description`, `side_effect` (the step isn't free to run twice, so a replay of it is reported), and port labels |
 | `StepOptions` | type | the third argument to `step`: `StepMetadata` plus `arm`, the steps the body runs through `ctx.call`, which `describe` shows as children |
 | `is_valid_step_id` / `suggest_step_id` / `assert_valid_step_id` | functions | the identifier rule every id is held to, the spelling it suggests on failure, and the guard the factories call |
 | `DescribeOptions` / `DiagramOptions` / `FlowNode` / `FlowValue` | types | the `describe` and `describe.diagram` options, and the structured tree `describe.json` returns |

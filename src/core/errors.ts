@@ -29,11 +29,15 @@ export class suspended_error extends Error {
   declare readonly path?: ReadonlyArray<string>;
   readonly suspend_id: string;
   readonly payload: unknown;
-  constructor(suspend_id: string, payload: unknown, message?: string) {
+  // How long the gate waits for its resume before its deadline passes, when it
+  // set one. A driver that outlives the process schedules the timer from it.
+  readonly deadline_ms: number | undefined;
+  constructor(suspend_id: string, payload: unknown, message?: string, deadline_ms?: number) {
     super(message ?? `suspended at ${suspend_id}`)
     this.name = 'suspended_error'
     this.suspend_id = suspend_id
     this.payload = payload
+    this.deadline_ms = deadline_ms
   }
 }
 
@@ -41,10 +45,14 @@ export class resume_validation_error extends Error {
   readonly kind = 'resume_validation_error' as const;
   declare readonly path?: ReadonlyArray<string>;
   readonly issues: ReadonlyArray<SchemaIssue>;
-  constructor(message: string, issues: ReadonlyArray<SchemaIssue>) {
+  // The gate whose resume data failed, so a driver can reject that one event
+  // and leave the run waiting at the gate.
+  readonly suspend_id: string | undefined;
+  constructor(message: string, issues: ReadonlyArray<SchemaIssue>, suspend_id?: string) {
     super(message)
     this.name = 'resume_validation_error'
     this.issues = issues
+    this.suspend_id = suspend_id
   }
 }
 

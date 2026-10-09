@@ -1,7 +1,7 @@
 import { describe as vdescribe, expect, it } from 'vitest'
 import { z } from 'zod'
-import { aborted_error, checkpoint, describe, run } from '#core'
-import type { RunContext } from '#core'
+import { aborted_error, checkpoint, describe, run, sequence, suspend } from '#core'
+import type { RunContext, TrajectoryEvent } from '#core'
 import type {
   Engine,
   GenerateOptions,
@@ -314,12 +314,37 @@ vdescribe('model_call', () => {
     expect(describe.diagram(named)).toBe('reviewer  step')
   })
 
-  it('carries a description into meta, and no meta without one', () => {
+  it('carries a description into meta, and marks every call a side effect', () => {
     const { engine } = make_mock_engine()
     const described = model_call({ engine, id: 'critic', description: 'judges the change' })
-    expect(described.meta).toEqual({ description: 'judges the change' })
-    expect(model_call({ engine, id: 'plain' }).meta).toBeUndefined()
+    expect(described.meta).toStrictEqual({ description: 'judges the change', side_effect: true })
+    expect(model_call({ engine, id: 'plain' }).meta).toStrictEqual({ side_effect: true })
+    expect(model_step({ engine, id: 'answer' }).meta).toStrictEqual({ side_effect: true })
     expect(describe.diagram(described)).toBe('critic  judges the change')
+  })
+
+  it('reports a call that a resumed run makes again before reaching its gate', async () => {
+    const { engine, calls } = make_mock_engine({ result: make_result('drafted') })
+    const flow = sequence([
+      model_step({ engine, id: 'drafter' }),
+      suspend({
+        id: 'approve',
+        on: () => {},
+        resume_schema: z.object({ ok: z.boolean() }),
+        combine: (draft: string, resume) => (resume.ok ? draft : 'rejected'),
+      }),
+    ])
+    const events: TrajectoryEvent[] = []
+    const result = await run(flow, 'brief', {
+      install_signal_handlers: false,
+      resume_data: { approve: { ok: true } },
+      trajectory: { record: (e) => void events.push(e), start_span: (n) => n, end_span: () => {} },
+    })
+    expect(result).toBe('drafted')
+    expect(calls).toHaveLength(1)
+    expect(events.filter((e) => e.kind === 'step_replayed')).toMatchObject([
+      { step_id: 'drafter', suspend_ids: ['approve'] },
+    ])
   })
 
   it('describe surfaces model config and omits the raw engine object', () => {

@@ -13,6 +13,8 @@
  *                distinguishes done / failed / aborted / suspended without
  *                inferring from silence
  *   checkpoint:  checkpoint store lookup outcome (hit / miss / read_error)
+ *   step_replayed: a step marked `side_effect` re-running before a resumed
+ *                run reached the gates it was resumed at
  *   <other>:     anything else, recognized by `is_custom_trajectory_event`,
  *                which only requires a string `kind`
  *
@@ -61,6 +63,12 @@ export type CheckpointEvent = {
   readonly key: string
 } & { readonly [key: string]: unknown }
 
+export type StepReplayedEvent = {
+  readonly kind: 'step_replayed'
+  readonly step_id: string
+  readonly suspend_ids: ReadonlyArray<string>
+} & { readonly [key: string]: unknown }
+
 export type CustomTrajectoryEvent = {
   readonly kind: string
 } & { readonly [key: string]: unknown }
@@ -71,6 +79,7 @@ export type ParsedTrajectoryEvent =
   | EmitEvent
   | RunEndEvent
   | CheckpointEvent
+  | StepReplayedEvent
   | CustomTrajectoryEvent
 
 export type TrajectoryParseResult =
@@ -134,6 +143,20 @@ export function is_checkpoint_event(value: unknown): value is CheckpointEvent {
   const status = value['status']
   if (typeof status !== 'string' || !CHECKPOINT_STATUSES.has(status)) return false
   return typeof value['key'] === 'string'
+}
+
+/**
+ * A replay report: a step marked `side_effect` started before its resumed run
+ * reached the gates in `suspend_ids`, so the work it does was already paid for
+ * once. `step_id` names the step, and every gate id must be a string.
+ */
+export function is_step_replayed_event(value: unknown): value is StepReplayedEvent {
+  if (!is_custom_trajectory_event(value)) return false
+  if (value.kind !== 'step_replayed') return false
+  const suspend_ids = value['suspend_ids']
+  if (!Array.isArray(suspend_ids)) return false
+  const ids: ReadonlyArray<unknown> = suspend_ids
+  return typeof value['step_id'] === 'string' && ids.every((id) => typeof id === 'string')
 }
 
 /**

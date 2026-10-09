@@ -76,6 +76,12 @@ Two things to know before you ship this:
 > model calls. The provider bills the replay like any other call. Wrap your paid
 > leaves in `checkpoint(...)` with a `checkpoint_store` before any `suspend`
 > gate, and a resume reads the memoized result instead of buying it again.
+>
+> Every `model_call` counts as a side effect, and so does any step you mark with
+> `{ side_effect: true }`. When a resumed run runs one of them again before it
+> reaches the gate it was resumed at, the trajectory records a `step_replayed`
+> event that names the step, and you'll see a replay that costs money there
+> long before it's on the bill.
 
 The packaged form of that rule is the `gate` composite:
 

@@ -5,6 +5,7 @@ import { run } from '../runner.js'
 import { step } from '../step.js'
 import { suspend } from '../suspend.js'
 import type { TrajectoryEvent } from '../types.js'
+import { recording_logger } from '../../../test/fixtures/trajectory.js'
 
 describe('suspend', () => {
   it('calls on(input, ctx) and throws suspended_error on first encounter (criterion 15)', async () => {
@@ -153,5 +154,75 @@ describe('suspend', () => {
       resume_data: { go: { ok: true } },
     })
     expect(result).toBe('post:hello')
+  })
+})
+
+// A gate waiting on CI, with a deadline when one is given.
+const ci_gate = (deadline_ms?: number) =>
+  suspend({
+    id: 'ci',
+    ...(deadline_ms === undefined ? {} : { deadline_ms }),
+    on: () => {},
+    resume_schema: z.object({ green: z.boolean() }),
+    combine: (_: string, resume) => (resume.green ? 'merge' : 'hold'),
+  })
+
+describe('suspend resume lookup', () => {
+  it('suspends a gate named like an Object.prototype member when its data is absent', async () => {
+    const flow = suspend({
+      id: 'toString',
+      on: () => {},
+      resume_schema: z.object({ ok: z.boolean() }),
+      combine: (_: string, resume) => resume.ok,
+    })
+    await expect(
+      run(flow, 'in', { install_signal_handlers: false, resume_data: {} }),
+    ).rejects.toBeInstanceOf(suspended_error)
+    await expect(
+      run(flow, 'in', { install_signal_handlers: false, resume_data: { toString: { ok: true } } }),
+    ).resolves.toBe(true)
+  })
+})
+
+describe('suspend deadlines', () => {
+
+  it('raises its deadline on the suspended_error and the suspended event', async () => {
+    const { logger, events } = recording_logger()
+    const err: unknown = await run(ci_gate(5_000), 'pr', {
+      install_signal_handlers: false,
+      trajectory: logger,
+    }).catch((caught: unknown) => caught)
+    expect(err).toBeInstanceOf(suspended_error)
+    expect((err as suspended_error).deadline_ms).toBe(5_000)
+    expect(events.find((e) => e.kind === 'suspended')).toMatchObject({
+      suspend_id: 'ci',
+      deadline_ms: 5_000,
+    })
+  })
+
+  it('leaves the deadline off the event when the gate sets none', async () => {
+    const { logger, events } = recording_logger()
+    const err: unknown = await run(ci_gate(), 'pr', {
+      install_signal_handlers: false,
+      trajectory: logger,
+    }).catch((caught: unknown) => caught)
+    expect((err as suspended_error).deadline_ms).toBeUndefined()
+    const suspended = events.find((e) => e.kind === 'suspended') ?? {}
+    expect('deadline_ms' in suspended).toBe(false)
+  })
+
+  it('shows its deadline in the step config only when it has one', () => {
+    expect(ci_gate(5_000).config).toStrictEqual({ id: 'ci', deadline_ms: 5_000 })
+    expect(ci_gate().config).toStrictEqual({ id: 'ci' })
+  })
+
+  it('names itself on a resume_validation_error', async () => {
+    const err: unknown = await run(ci_gate(), 'pr', {
+      install_signal_handlers: false,
+      resume_data: { ci: { green: 'yes' } },
+    }).catch((caught: unknown) => caught)
+    expect(err).toBeInstanceOf(resume_validation_error)
+    expect((err as resume_validation_error).suspend_id).toBe('ci')
+    expect((err as resume_validation_error).message).toBe('resume data for ci failed validation')
   })
 })

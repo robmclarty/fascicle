@@ -1,11 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
+import { checkpoint } from '../checkpoint.js'
 import { describe as describe_flow } from '../describe.js'
 import { aborted_error, suspended_error, timeout_error } from '../errors.js'
-import { run } from '../runner.js'
+import { run, type RunOptions } from '../runner.js'
 import { sequence } from '../sequence.js'
 import { step } from '../step.js'
 import { suspend } from '../suspend.js'
+import type { Step } from '../types.js'
 import { remove_signal_listeners } from '../../../test/fixtures/signal_listeners.js'
 import { recording_logger } from '../../../test/fixtures/trajectory.js'
 
@@ -469,5 +471,147 @@ describe('run.until_suspended', () => {
     })
     if (outcome.kind !== 'suspended') throw new Error('expected a suspension')
     await expect(outcome.resume({ approved: true })).rejects.toThrow('combine failure')
+  })
+})
+
+describe('run.until_suspended deadlines', () => {
+  afterEach(remove_signal_listeners)
+
+  it('carries the gate deadline on the suspended outcome', async () => {
+    const gate = suspend({
+      id: 'ci',
+      deadline_ms: 90_000,
+      on: () => {},
+      resume_schema: z.object({ green: z.boolean() }),
+      combine: (_: string, resume) => resume.green,
+    })
+    const outcome = await run.until_suspended(gate, 'pr', { install_signal_handlers: false })
+    if (outcome.kind !== 'suspended') throw new Error('expected a suspension')
+    expect(outcome.deadline_ms).toBe(90_000)
+  })
+
+  it('has no deadline key when the gate sets none', async () => {
+    const outcome = await run.until_suspended(approval_gate('editor'), 'draft', {
+      install_signal_handlers: false,
+    })
+    expect(outcome.kind).toBe('suspended')
+    expect('deadline_ms' in outcome).toBe(false)
+  })
+})
+
+// A step marked as a side effect, and one that isn't.
+const paid = (id: string) => step(id, (s: string) => `${s}>${id}`, { side_effect: true })
+const free = (id: string) => step(id, (s: string) => `${s}>${id}`)
+
+// Run `flow` and return its step_replayed events, each with the id of the
+// step whose span it rides on in place of the span id.
+async function replays(
+  flow: Step<string, unknown>,
+  options: RunOptions = {},
+): Promise<ReadonlyArray<Record<string, unknown>>> {
+  const { logger, events } = recording_logger()
+  await run(flow, 'in', { install_signal_handlers: false, trajectory: logger, ...options })
+  const span_of = new Map(
+    events
+      .filter((e) => e.kind === 'span_start')
+      .map((e) => [e['span_id'], e['id']] as const),
+  )
+  return events
+    .filter((e) => e.kind === 'step_replayed')
+    .map(({ kind, step_id, span_id, suspend_ids }) => ({
+      kind,
+      step_id,
+      span_of: span_of.get(span_id),
+      suspend_ids,
+    }))
+}
+
+describe('step_replayed', () => {
+  afterEach(remove_signal_listeners)
+
+  it('reports a marked step that runs before the gate a run was resumed at', async () => {
+    const flow = sequence([paid('draft'), free('format'), approval_gate('approve'), paid('post')])
+    expect(await replays(flow, { resume_data: { approve: { approved: true } } })).toEqual([
+      { kind: 'step_replayed', step_id: 'draft', span_of: 'draft', suspend_ids: ['approve'] },
+    ])
+  })
+
+  it('reports nothing on a run that was not resumed', async () => {
+    const flow = sequence([paid('draft'), paid('post')])
+    expect(await replays(flow)).toEqual([])
+  })
+
+  it('narrows the gates still ahead as a run passes each one', async () => {
+    const flow = sequence([
+      paid('one'),
+      approval_gate('first'),
+      paid('two'),
+      approval_gate('second'),
+      paid('three'),
+    ])
+    const resume_data = { first: { approved: true }, second: { approved: false } }
+    expect(await replays(flow, { resume_data })).toEqual([
+      { kind: 'step_replayed', step_id: 'one', span_of: 'one', suspend_ids: ['first', 'second'] },
+      { kind: 'step_replayed', step_id: 'two', span_of: 'two', suspend_ids: ['second'] },
+    ])
+  })
+
+  it('ignores a resume entry whose value is undefined', async () => {
+    const flow = sequence([paid('draft'), approval_gate('approve')])
+    const { logger, events } = recording_logger()
+    await expect(
+      run(flow, 'in', {
+        install_signal_handlers: false,
+        trajectory: logger,
+        resume_data: { approve: undefined },
+      }),
+    ).rejects.toBeInstanceOf(suspended_error)
+    expect(events.filter((e) => e.kind === 'step_replayed')).toEqual([])
+  })
+
+  it('counts only suspend steps inside a checkpoint hit as gates', async () => {
+    const memo = new Map<string, unknown>([['early', 'in>late']])
+    const store = {
+      get: async (key: string) => memo.get(key) ?? null,
+      set: async (key: string, value: unknown) => {
+        memo.set(key, value)
+      },
+      delete: async (key: string) => {
+        memo.delete(key)
+      },
+    }
+    // A plain step inside the checkpoint shares its id with the gate after it,
+    // and the hit mustn't mistake the step for that gate.
+    const flow = sequence([
+      checkpoint(sequence([free('late'), approval_gate('early')]), { key: 'early' }),
+      paid('middle'),
+      approval_gate('late'),
+    ])
+    const resume_data = { early: { approved: true }, late: { approved: true } }
+    expect(await replays(flow, { resume_data, checkpoint_store: store })).toEqual([
+      { kind: 'step_replayed', step_id: 'middle', span_of: 'middle', suspend_ids: ['late'] },
+    ])
+  })
+
+  it('counts the gates inside a checkpoint hit as reached', async () => {
+    const memo = new Map<string, unknown>([['early', 'in>early-result']])
+    const store = {
+      get: async (key: string) => memo.get(key) ?? null,
+      set: async (key: string, value: unknown) => {
+        memo.set(key, value)
+      },
+      delete: async (key: string) => {
+        memo.delete(key)
+      },
+    }
+    const flow = sequence([
+      checkpoint(sequence([free('early_work'), approval_gate('early')]), { key: 'early' }),
+      paid('middle'),
+      approval_gate('late'),
+    ])
+    const resume_data = { early: { approved: true }, late: { approved: true } }
+    expect(await replays(flow, { resume_data, checkpoint_store: store })).toEqual([
+      { kind: 'step_replayed', step_id: 'middle', span_of: 'middle', suspend_ids: ['late'] },
+    ])
   })
 })

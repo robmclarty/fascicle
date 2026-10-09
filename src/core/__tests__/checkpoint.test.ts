@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { checkpoint } from '../checkpoint.js'
 import { run } from '../runner.js'
 import { step } from '../step.js'
-import type { CheckpointStore } from '../types.js'
+import type { AnyStep, CheckpointStore, Step } from '../types.js'
 import { recording_logger } from '../../../test/fixtures/trajectory.js'
 
 function memory_store(): CheckpointStore & { data: Map<string, unknown> } {
@@ -181,5 +181,14 @@ describe('checkpoint', () => {
 
     await run(flow, 5, { trajectory: logger, install_signal_handlers: false })
     expect(events.filter((e) => e.kind === 'checkpoint')).toHaveLength(0)
+  })
+})
+
+describe('checkpoint over a step tree that loops back on itself', () => {
+  it('builds without walking the loop forever', () => {
+    const children: AnyStep[] = []
+    const cyclic: Step<number, number> = { id: 'cyclic', kind: 'step', run: (n: number) => n, children }
+    children.push(cyclic)
+    expect(() => checkpoint(cyclic, { key: 'k' })).not.toThrow()
   })
 })

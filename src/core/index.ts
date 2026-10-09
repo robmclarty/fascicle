@@ -90,6 +90,7 @@ export {
   is_run_end_event,
   is_span_end_event,
   is_span_start_event,
+  is_step_replayed_event,
   parse_trajectory_event,
 } from './trajectory.js'
 export type {
@@ -102,6 +103,7 @@ export type {
   RunEndStatus,
   SpanEndEvent,
   SpanStartEvent,
+  StepReplayedEvent,
   TrajectoryParseResult,
 } from './trajectory.js'
 

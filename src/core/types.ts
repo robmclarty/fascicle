@@ -92,10 +92,17 @@ export type StepFn<i, o> = (input: i, ctx: RunContext) => Promise<o> | o
  * Descriptive metadata for a step. `name` is the display channel: it labels
  * trajectory spans and `describe` output, and changing it is always safe
  * because nothing keys off it. The step's `id` stays the identity channel.
+ *
+ * `side_effect` marks a step that isn't free to run twice, because it bills
+ * you (every `model_call` sets it) or it changes something outside the run.
+ * When a resumed run runs a marked step before reaching the gate it was
+ * resumed at, the runner records a `step_replayed` event, so the cost of
+ * replaying shows up in the trajectory.
  */
 export type StepMetadata = {
   readonly name?: string
   readonly description?: string
+  readonly side_effect?: boolean
   readonly port_labels?: Readonly<{
     readonly in?: string
     readonly out?: string
