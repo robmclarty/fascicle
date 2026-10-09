@@ -50,8 +50,9 @@ minimumReleaseAgeExclude:
 # Note what these entries cannot do. A `>=` pin is a floor, not a ceiling, so
 # it clears today's advisory and says nothing about the next one inside the
 # same major: fast-uri `>=3.1.2` resolved happily onto the vulnerable 4.1.2
-# until the advisory landed. The `security` slot is the thing that actually
-# catches that, which is why it stays in the default set rather than opt-in.
+# until the advisory landed. Only an audit catches that, and the `security`
+# slot runs only when asked (`pnpm check:security`), so run it after any change
+# to this file or the lockfile.
 overrides:
   tunnel: 'npm:@noble/secp256k1@2.1.0'
   smol-toml: '>=1.6.1'

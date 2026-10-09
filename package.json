@@ -126,7 +126,7 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "check": "checkride",
-    "check:all": "checkride --all",
+    "check:all": "checkride --all --skip security",
     "check:json": "checkride --json",
     "check:bail": "checkride --bail",
     "check:changed": "checkride --changed",

@@ -41,8 +41,8 @@
     "security": {
       "use": "pnpm-audit",
       "description": "pnpm audit: dependency advisories at or above high",
-      "note": "In the default set rather than opt-in, because CI runs `pnpm check` and never `check:all`, so an opt-in slot would gate nothing; the audit is a sub-second registry query, which is cheap enough for the inner loop. Checkride owns the verdict rather than trusting the exit code, so `--audit-level=high` in the adapter args means what it says. Advisories are cleared by lifting the transitive pin in `pnpm-workspace.yaml` overrides, never by widening the level. Working offline, this slot fails as unverifiable; reach for `--skip security` rather than turning it off.",
-      "optIn": false,
+      "note": "Runs only when asked, as `pnpm check:security`: opt-in here keeps it out of `pnpm check`, and the `check:all` script skips it. CI and the publish job both run `pnpm check`, so an advisory with no patched release to lift the pin to would otherwise hold every build red and strand a release tag with nothing to do about it. The cost is that nothing catches a new advisory until someone runs the slot, so run it after any dependency change and before a release. Checkride owns the verdict rather than trusting the exit code, so `--audit-level=high` in the adapter args means what it says. Advisories are cleared by lifting the transitive pin in `pnpm-workspace.yaml` overrides, never by widening the level. Working offline, this slot fails as unverifiable.",
+      "optIn": true,
       "order": 1
     },
 

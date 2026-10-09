@@ -12,7 +12,7 @@ If your task is to construct a new agent that *consumes* the published `fascicle
 
 The suite is [checkride](https://www.npmjs.com/package/checkride), configured in `checkride.config.json`. Each check occupies a named slot; `deps` is the one custom check (a Fascicle-specific invariant), everything else is a checkride built-in.
 
-`pnpm check` runs the default set (every slot except the opt-in ones) and is what you should use in tight feedback loops. `pnpm check:all` adds the opt-in slots (Stryker `mutation`, plus the `build` → `publint`/`attw`/`pack`/`smoke`/`snippets` packaging gate) and is the gate before declaring done.
+`pnpm check` runs the default set (every slot except the opt-in ones) and is what you should use in tight feedback loops. `pnpm check:all` adds the opt-in slots (Stryker `mutation`, plus the `build` → `publint`/`attw`/`pack`/`smoke`/`snippets` packaging gate) and is the gate before declaring done. The one slot neither of them runs is `security`, the dependency audit. It runs only as `pnpm check:security`, and the note on its entry in `checkride.config.json` says why.
 
 Before declaring a task finished:
 
@@ -40,11 +40,12 @@ pnpm check --bail              # stop at first failure
 pnpm check --only types,lint   # just the fast checks
 pnpm check --changed           # affected-only, against the git diff
 pnpm check --include mutation  # default set plus opt-in mutation
+pnpm check:security            # the dependency audit, which no other run includes
 pnpm test:watch                # watch-mode tests while implementing
 pnpm exec tsc --noEmit         # just types
 ```
 
-`pnpm check:all` (every slot, including opt-in) is the final gate before declaring done. Stryker's `mutation` slot is the slowest and is opt-in for exactly this reason; incremental mode keeps re-runs cheap once the shared baseline at `stryker.incremental.json` is up to date. `build` re-bundles, then `publint`, `attw`, `pack`, `smoke`, and `snippets` validate the npm packaging against `dist/` (manifest, type resolution, import liveness, doc snippets vs the built `.d.ts`), so surface changes fail here instead of at release time.
+`pnpm check:all` (every slot but `security`, the opt-in ones included) is the final gate before declaring done. Stryker's `mutation` slot is the slowest and is opt-in for exactly this reason; incremental mode keeps re-runs cheap once the shared baseline at `stryker.incremental.json` is up to date. `build` re-bundles, then `publint`, `attw`, `pack`, `smoke`, and `snippets` validate the npm packaging against `dist/` (manifest, type resolution, import liveness, doc snippets vs the built `.d.ts`), so surface changes fail here instead of at release time.
 
 ## Conventions
 
