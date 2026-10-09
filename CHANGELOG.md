@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.13.1 — 2026-10-09
+
+### Added
+
+- **`describe.replays(step)` names the steps a resume would pay for twice, before anything runs.** A run that resumes at a `suspend` replays the flow from its input, so a step marked `side_effect` (every `model_call` is) that can run before the gate runs again, unless a `checkpoint` that holds the step and not the gate stored its result. It reads the `describe.json` tree and returns a `ReplayHint` (`{ id, label, gates }`) for each such step, so a test can hold a flow to an empty list, and on `examples/durable-runs` it names the same step that the run's `step_replayed` event reports. Inside a `sequence`, a `chain`, a `fallback`, or one round of a `loop` the children run in order, `parallel` members and a step's arms can start in either order, and the arms of a `branch` never run against each other. A model call that a step's body makes without declaring it as an `arm` is out of its sight.
+- **`describe.diagram` and `fascicle-diagram` can mark those steps.** Pass `replays: true` to `describe.diagram`, or `--replays` to the bin, and each of those rows ends with the gates it runs before, as in `(replays before approve)`. Without the option the diagram is unchanged byte for byte.
+
 ## v0.13.0 — 2026-10-09
 
 ### Added
