@@ -13,10 +13,12 @@
  * parallel member's key, a chain's stages), never from a config dump.
  * Descriptions share one column after the widest row. A composer's description
  * follows its kind (`branch: ...`), and a node without one shows its kind.
+ * With `replays` set, a step that a resumed run can run again before a gate
+ * ends its description with the gates it runs before.
  */
 
-import { resolve_display_name } from './display_name.js'
-import { is_step_kind } from './step_kinds.js'
+import { label_of } from './node_label.js'
+import { replay_gates } from './replays.js'
 import type { FlowNode, FlowValue } from './types.js'
 
 export type DiagramOptions = {
@@ -26,7 +28,13 @@ export type DiagramOptions = {
   readonly width?: number
   /** Written at the start of every line, for example `' * '` for a doc comment. */
   readonly prefix?: string
+  /** Mark each step that `describe.replays` finds with the gates it can run again before. */
+  readonly replays?: boolean
 }
+
+// The gates each marked node can run before, by node, as `replay_gates`
+// finds them.
+type Marks = ReadonlyMap<FlowNode, ReadonlyArray<string>>
 
 type Item = {
   readonly head: string
@@ -41,10 +49,6 @@ type Row = {
   readonly wrap_lead: string
 }
 
-// Built-in kinds whose id the caller supplies. Every other built-in kind
-// numbers its id from a process-wide counter.
-const CHOSEN_ID_KINDS: ReadonlySet<string> = new Set(['step', 'suspend'])
-
 const BRANCH_ROLES: ReadonlyArray<string> = ['then', 'else']
 
 const STAGE_PREFIX = 'stage:'
@@ -57,7 +61,8 @@ const COLUMN_GAP = 2
  */
 export function render_diagram(root: FlowNode, options?: DiagramOptions): string {
   const rows: Row[] = []
-  flatten(to_item(root, undefined), '', '', rows)
+  const marks: Marks = options?.replays === true ? replay_gates(root) : new Map()
+  flatten(to_item(root, undefined, marks), '', '', rows)
   const column = Math.max(...rows.map((row) => row.lead.length + row.head.length)) + COLUMN_GAP
   const prefix = options?.prefix ?? ''
   const limit =
@@ -121,34 +126,21 @@ function wrap(words: ReadonlyArray<string>, limit: number): ReadonlyArray<string
  * Convert one node into the item the layout draws. `role` is the name the
  * parent gives this child, and it is dropped when it only repeats the label.
  */
-function to_item(node: FlowNode, role: string | undefined): Item {
+function to_item(node: FlowNode, role: string | undefined, marks: Marks): Item {
   const { label, by_kind } = label_of(node)
   return {
     head: role === undefined || role === label ? label : `${role}  ${label}`,
-    note: note_of(node, by_kind),
-    children: child_items(node),
+    note: [...note_of(node, by_kind), ...replay_note(marks.get(node))],
+    children: child_items(node, marks),
   }
 }
 
 /**
- * Pick a node's label: its display name, else an id its author chose, else
- * its kind. `by_kind` reports the last case, where the kind already shows.
+ * The words that mark a step a resumed run can run again, naming the gates
+ * it runs before, or none for a step it can't.
  */
-function label_of(node: FlowNode): { readonly label: string; readonly by_kind: boolean } {
-  const display = resolve_display_name(node, '')
-  if (display !== '') return { label: display, by_kind: false }
-  if (has_chosen_id(node)) return { label: node.id, by_kind: false }
-  return { label: node.kind, by_kind: true }
-}
-
-/**
- * True when a node's id was chosen by its author. Anonymous steps, cycle
- * markers, and every built-in composer carry generated ids. A kind outside
- * the built-in set belongs to a hand-built step, whose id is its author's.
- */
-export function has_chosen_id(node: FlowNode): boolean {
-  if (node.anonymous === true || node.kind === '<cycle>') return false
-  return !is_step_kind(node.kind) || CHOSEN_ID_KINDS.has(node.kind)
+function replay_note(gates: ReadonlyArray<string> | undefined): ReadonlyArray<string> {
+  return gates === undefined ? [] : `(replays before ${gates.join(', ')})`.split(' ')
 }
 
 /**
@@ -170,18 +162,18 @@ function note_of(node: FlowNode, by_kind: boolean): ReadonlyArray<string> {
  * Convert a node's children, naming each by the role its parent's kind gives
  * it.
  */
-function child_items(node: FlowNode): ReadonlyArray<Item> {
+function child_items(node: FlowNode, marks: Marks): ReadonlyArray<Item> {
   const children = node.children ?? []
-  if (node.kind === 'branch') return children.map((child, i) => to_item(child, BRANCH_ROLES[i]))
+  if (node.kind === 'branch') return children.map((child, i) => to_item(child, BRANCH_ROLES[i], marks))
   if (node.kind === 'loop') {
-    return children.map((child, i) => to_item(child, i === 1 ? 'guard' : undefined))
+    return children.map((child, i) => to_item(child, i === 1 ? 'guard' : undefined, marks))
   }
   if (node.kind === 'parallel') {
     const keys = string_list(node.config?.['keys'])
-    return children.map((child, i) => to_item(child, keys[i]))
+    return children.map((child, i) => to_item(child, keys[i], marks))
   }
-  if (node.kind === 'chain') return staged_items(children, string_list(node.config?.['plan']))
-  return children.map((child) => to_item(child, undefined))
+  if (node.kind === 'chain') return staged_items(children, string_list(node.config?.['plan']), marks)
+  return children.map((child) => to_item(child, undefined, marks))
 }
 
 /**
@@ -193,6 +185,7 @@ function child_items(node: FlowNode): ReadonlyArray<Item> {
 function staged_items(
   children: ReadonlyArray<FlowNode>,
   plan: ReadonlyArray<string>,
+  marks: Marks,
 ): ReadonlyArray<Item> {
   const top: Item[] = []
   let target = top
@@ -205,10 +198,10 @@ function staged_items(
     } else {
       const child = children[next]
       next += 1
-      if (child !== undefined) target.push(to_item(child, undefined))
+      if (child !== undefined) target.push(to_item(child, undefined, marks))
     }
   }
-  for (const child of children.slice(next)) target.push(to_item(child, undefined))
+  for (const child of children.slice(next)) target.push(to_item(child, undefined, marks))
   return top
 }
 

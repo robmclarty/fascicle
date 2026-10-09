@@ -1,6 +1,7 @@
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { sequence, step } from '#core'
+import { z } from 'zod'
+import { sequence, step, suspend } from '#core'
 import { run_diagram_cli } from '../diagram_cli.js'
 
 const writer = sequence(
@@ -19,6 +20,13 @@ const MODULE: Readonly<Record<string, unknown>> = {
   build_later: async () => step('later', (x: number) => x, { description: 'made by an async builder' }),
   needs_deps: (deps: { readonly engine: string }) => step(deps.engine, (x: number) => x),
   not_a_step: { id: 'x' },
+  gated: sequence(
+    [
+      step('fetch', (x: number) => x, { description: 'fetch the diff', side_effect: true }),
+      suspend({ id: 'approve', on: () => {}, resume_schema: z.object({}), combine: (x: number) => x }),
+    ],
+    { name: 'review' },
+  ),
 }
 
 type Result = {
@@ -123,6 +131,14 @@ describe('run_diagram_cli', () => {
     expect(failed.code).toBe(1)
     expect(failed.err).toBe('fascicle-diagram: could not load m.ts: Cannot find module\n')
     expect(odd.err).toContain('could not load m.ts: plain string\n')
+  })
+
+  it('marks the steps a resume would replay with --replays, and only then', async () => {
+    const marked = ['review      sequence', '├─ fetch    fetch the diff (replays before approve)', '└─ approve  suspend', '']
+    expect((await cli(['m.ts', '--export', 'gated', '--replays'])).out).toBe(marked.join('\n'))
+    expect((await cli(['m.ts', '--export', 'gated'])).out).toBe(
+      ['review      sequence', '├─ fetch    fetch the diff', '└─ approve  suspend', ''].join('\n'),
+    )
   })
 
   it('prints usage for --help and exits 0 without loading anything', async () => {

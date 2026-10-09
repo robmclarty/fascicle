@@ -82,6 +82,13 @@ Two things to know before you ship this:
 > reaches the gate it was resumed at, the trajectory records a `step_replayed`
 > event that names the step, and you'll see a replay that costs money there
 > long before it's on the bill.
+>
+> You don't have to wait for a resume to find them, either.
+> `describe.replays(flow)` reads the flow's shape and names every marked step
+> that can run before a gate with no checkpoint to protect it, so a test that
+> expects it to come back empty catches them before anything runs. It can't see
+> a model call that a step's body makes without declaring it as an `arm`, which
+> is one more reason to declare your arms.
 
 The packaged form of that rule is the `gate` composite:
 

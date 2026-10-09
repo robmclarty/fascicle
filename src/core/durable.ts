@@ -33,7 +33,7 @@
 
 import { createHash, randomUUID } from 'node:crypto'
 import { describe } from './describe.js'
-import { has_chosen_id } from './diagram.js'
+import { has_chosen_id } from './node_label.js'
 import {
   aborted_error,
   flow_changed_error,

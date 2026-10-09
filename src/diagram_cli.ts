@@ -4,7 +4,7 @@
  *   fascicle-diagram <module>                   print the diagram of the module's `flow`
  *   fascicle-diagram <module> --export <name>   read another export instead
  *
- * Flags: --export <name> --width <n> --prefix <text> --help
+ * Flags: --export <name> --width <n> --prefix <text> --replays --help
  *
  * The export is a Step, or a function that builds one with no arguments,
  * which is where an app wires its flow to stub dependencies so that drawing
@@ -54,6 +54,7 @@ Options:
   --export <name>   the export to draw (default flow)
   --width <n>       wrap descriptions so no line runs wider than n
   --prefix <text>   start every line with text, for example ' * '
+  --replays         mark the steps a resumed run would pay for again
   --help            show this message
 `
 
@@ -127,7 +128,7 @@ function parse(argv: readonly string[]): Parsed {
   const [module, ...extra] = positionals
   if (module === undefined) return { kind: 'usage', message: 'a <module> to draw is required' }
   if (extra.length > 0) return { kind: 'usage', message: `expected one <module>, got ${positionals.join(' ')}` }
-  const options: { width?: number; prefix?: string } = {}
+  const options: { width?: number; prefix?: string; replays?: boolean } = {}
   if (values.width !== undefined) {
     const width = Number(values.width)
     if (!Number.isInteger(width) || width <= 0) {
@@ -136,6 +137,7 @@ function parse(argv: readonly string[]): Parsed {
     options.width = width
   }
   if (values.prefix !== undefined) options.prefix = values.prefix
+  if (values.replays === true) options.replays = true
   return { kind: 'run', args: { module, export_name: values.export ?? 'flow', options } }
 }
 
@@ -151,6 +153,7 @@ function parse_flags(argv: readonly string[]) {
       export: { type: 'string' },
       width: { type: 'string' },
       prefix: { type: 'string' },
+      replays: { type: 'boolean' },
       help: { type: 'boolean' },
     },
   })

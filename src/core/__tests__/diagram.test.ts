@@ -308,6 +308,66 @@ vdescribe('describe.diagram', () => {
     }
   })
 
+  vdescribe('with replays', () => {
+    const gate_at = (id: string) =>
+      suspend({ id, on: () => {}, resume_schema: z.object({}), combine: (x: number) => x })
+    const review = sequence(
+      [
+        step('fetch', (x: number) => x, { description: 'fetch the diff', side_effect: true }),
+        gate_at('approve'),
+        step((x: number) => x),
+        gate_at('ship'),
+        step('post', (x: number) => x, { side_effect: true }),
+      ],
+      { name: 'review' },
+    )
+
+    it('ends the row of a step a resume would replay with the gates it runs before', () => {
+      expect(describe.diagram(review, { replays: true })).toBe(
+        [
+          'review      sequence',
+          '├─ fetch    fetch the diff (replays before approve, ship)',
+          '├─ approve  suspend',
+          '├─ step',
+          '├─ ship     suspend',
+          '└─ post     step',
+        ].join('\n'),
+      )
+    })
+
+    it('draws the same bytes as before when replays is not asked for', () => {
+      const plain = describe.diagram(review)
+      expect(plain).toBe(describe.diagram(review, { replays: false }))
+      expect(plain).not.toContain('replays')
+    })
+
+    it('wraps the mark with the description it follows', () => {
+      expect(describe.diagram(review, { replays: true, width: 40 }).split('\n').slice(1, 3)).toEqual([
+        '├─ fetch    fetch the diff (replays',
+        '│           before approve, ship)',
+      ])
+    })
+
+    it("marks a paid arm under a chain's stage", () => {
+      const staged = chain<number>()
+        .stage('gather')
+        .step('fetched', step('fetch', (x: number) => x, { side_effect: true }), (s) => s.input)
+        .step('approved', gate_at('approve'), (s) => s.fetched)
+        .output((s) => s.approved)
+      expect(describe.diagram(staged, { replays: true })).toBe(
+        [
+          'chain',
+          '└─ stage  gather',
+          '   ├─ fetched     step',
+          '   │  └─ fetch    step (replays before approve)',
+          '   ├─ approved    step',
+          '   │  └─ approve  suspend',
+          '   └─ output      step',
+        ].join('\n'),
+      )
+    })
+  })
+
   it('draws a cycle as <cycle> in loose mode and throws under strict', () => {
     const root: { id: string; kind: string; run: (x: number) => number; children: unknown[] } = {
       id: 'root',

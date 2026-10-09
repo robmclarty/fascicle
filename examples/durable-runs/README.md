@@ -20,7 +20,9 @@ Each event builds its own driver and its own copy of the flow over one
 The draft ran once across all three events, because its checkpoint served
 every later drive. The diff fetch ran again on the webhook's drive, and the
 trajectory reports it as a `step_replayed` event. That event is the cue to
-wrap the fetch in a checkpoint too.
+wrap the fetch in a checkpoint too. `describe.replays` names the same step from
+the flow's shape before anything runs, and `test/examples.test.ts` checks that
+the two agree.
 
 Every step is a deterministic stub: no engine layer, no network, no LLM calls.
 

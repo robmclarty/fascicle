@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest'
+import { describe as describe_flow } from 'fascicle'
 import { run_adversarial_build } from '../examples/adversarial-build/main.js'
 import { run_checkpoint_resume } from '../examples/checkpoint-resume/main.js'
 import { run_documenter } from '../examples/documenter/main.js'
-import { run_durable_runs } from '../examples/durable-runs/main.js'
+import { build_review, run_durable_runs } from '../examples/durable-runs/main.js'
 import { run_ensemble_judge } from '../examples/ensemble-judge/main.js'
 import { run_hello } from '../examples/hello/main.js'
 import { run_learn } from '../examples/learn/main.js'
@@ -64,6 +65,11 @@ describe('examples smoke', () => {
       drafts: 1,
       replayed: ['gather'],
     })
+  })
+
+  it('durable_runs: describe.replays names the step the run replayed, without running anything', () => {
+    const flow = build_review({ drafted: () => {}, posting: async () => {} })
+    expect(describe_flow.replays(flow)).toEqual([{ id: 'gather', label: 'gather', gates: ['ci'] }])
   })
 
   it('object_store keeps the whole store contract and holds a durable run in a bucket', async () => {

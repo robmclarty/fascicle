@@ -82,6 +82,23 @@ TypeScript module through the project's own `tsx`, and `--export <name>` reads
 another export instead. The exit code is 0 when it prints, 1 when the module
 won't load or holds no Step, and 2 for a usage error.
 
+`describe.replays(step)` reads the same tree for a different question, which
+is what a resumed run would pay for twice. A run that resumes at a `suspend`
+replays the flow from its input, so a step marked `side_effect` (every
+`model_call` is) that can run before the gate runs again, unless a `checkpoint`
+that holds the step and not the gate stored its result. It returns one
+`ReplayHint`, `{ id, label, gates }`, for each such step, where `gates` lists
+the gates it can run before. An empty array means a resume bills for nothing
+twice, and a test can hold the flow to it. Inside a
+`sequence`, a `chain`, a `fallback`, or one round of a `loop`, the children run
+in order, while `parallel` members and a step's arms can start in either
+order, and the arms of a `branch` never run against each other. It sees only what `describe.json`
+shows, so a model call that a step's body makes without declaring it as an
+`arm` stays out of sight, and the `step_replayed` event is still the record of
+what actually ran twice. Pass `replays: true` to `describe.diagram`, or
+`--replays` to the bin, and each of those steps ends its row with a mark like
+`(replays before approve)`.
+
 ## Composition Primitives
 
 Every composer takes `Step<i, o>` values and returns a `Step<i, o>`, so anything
@@ -503,7 +520,7 @@ the roadmap). The public type exports:
 **Composition.** `Step`, `AnyStep`, `StepMetadata`, `StepOptions`, `StepKind`,
 `RunContext`, `RunOutcome`, `Chain`, `ChainStepOptions`, `TrajectoryLogger`,
 `TrajectoryEvent`, `CheckpointStore`, `ScopedCheckpointStore`, `DescribeOptions`,
-`DiagramOptions`, `FlowNode`, `FlowValue`, `LoopConfig`, `LoopOutcome`, `LoopGuardResult`,
+`DiagramOptions`, `ReplayHint`, `FlowNode`, `FlowValue`, `LoopConfig`, `LoopOutcome`, `LoopGuardResult`,
 `LoopGuardPredicate`, plus the trajectory event shapes (`SpanStartEvent`,
 `SpanEndEvent`, `EmitEvent`, `RunEndEvent`, `RunEndStatus`,
 `CheckpointEvent`, `CheckpointStatus`, `StepReplayedEvent`, `MapItemFailedEvent`, `CustomTrajectoryEvent`,

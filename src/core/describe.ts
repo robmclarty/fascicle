@@ -16,6 +16,10 @@
  * `describe.diagram(step)` draws the `describe.json` tree as an annotated
  * box-drawing diagram (see diagram.ts).
  *
+ * `describe.replays(step)` reads the same tree for the steps marked
+ * `side_effect` that a resumed run can run again before it reaches a gate
+ * (see replays.ts).
+ *
  * Both forms detect cycles. Under the default (loose) mode, back-references
  * render as `<cycle>(id)` in text and `{ kind: '<cycle>', id }` in JSON. Under
  * `{ strict: true }`, cycles throw `describe_cycle_error`.
@@ -25,6 +29,7 @@ import { render_diagram, type DiagramOptions } from './diagram.js'
 import { resolve_display_name } from './display_name.js'
 import { describe_cycle_error } from './errors.js'
 import { is_step } from './is_step.js'
+import { find_replays, type ReplayHint } from './replays.js'
 import type { AnyStep, FlowNode, FlowValue, Step, StepMetadata } from './types.js'
 
 const INDENT = '  '
@@ -62,14 +67,25 @@ function describe_diagram<i, o>(root: Step<i, o>, options?: DiagramOptions): str
 }
 
 /**
+ * Find the steps marked `side_effect` that a resumed run can run again before
+ * it reaches a gate. Like the diagram, it reads the `describe.json` tree, so
+ * it judges the flow's shape and runs nothing.
+ */
+function describe_replays<i, o>(root: Step<i, o>, options?: DescribeOptions): ReadonlyArray<ReplayHint> {
+  return find_replays(describe_json(root, options))
+}
+
+/**
  * Public entry point: `describe(step)` for text, `describe.json(step)` for
- * the `FlowNode` tree, `describe.diagram(step)` for the annotated diagram.
+ * the `FlowNode` tree, `describe.diagram(step)` for the annotated diagram,
+ * and `describe.replays(step)` for the steps a resume would pay for twice.
  */
 export const describe: {
   <i, o>(root: Step<i, o>, options?: DescribeOptions): string
   json: <i, o>(root: Step<i, o>, options?: DescribeOptions) => FlowNode
   diagram: <i, o>(root: Step<i, o>, options?: DiagramOptions) => string
-} = Object.assign(describe_text, { json: describe_json, diagram: describe_diagram })
+  replays: <i, o>(root: Step<i, o>, options?: DescribeOptions) => ReadonlyArray<ReplayHint>
+} = Object.assign(describe_text, { json: describe_json, diagram: describe_diagram, replays: describe_replays })
 
 /**
  * Append one node (label line, config lines, then children) to `lines`.
