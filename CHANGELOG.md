@@ -1,5 +1,31 @@
 # Changelog
 
+## v0.13.0 — 2026-10-09
+
+### Added
+
+- **`durable({ store })` keeps a suspended run in a store, so events can drive it from fresh processes.** `start`, `resume`, `get`, and `delete` drive a run one event at a time (a webhook, a finished job, a deadline timer), and every drive runs the flow again from its input, so replay and checkpoints behave the way they always have. A lease keeps two invocations from driving one run at once, a revision on every write stops a stalled drive from writing over the drive that took the run over, an event that finds the run busy waits in its inbox, and a change to the flow's shape mid-run throws `flow_changed_error` unless you pass `on_flow_change: 'replay'`. `examples/durable-runs` races a webhook and a deadline timer for one gate.
+- **Checkpoint stores can scope and claim.** `CheckpointStore` gains three optional capabilities, which `durable` needs. `scope(prefix)` hands out a store whose keys and claims stand apart from its parent's and that can `clear`, and `claim(key, owner, ttl_ms)` with `release(key, owner)` takes and frees a key per owner. A store without them satisfies the contract as before, and `filesystem_store` implements all three, with claims created through `link(2)` so that two claimers can't both win.
+- **`checkpoint_store_conformance` in `fascicle/testing` proves a store keeps that contract.** It runs 32 checks against fresh stores from your factory, racing claimers, expired claims, damaged values, and a `clear` that mustn't reach a look-alike scope among them, and it returns a report rather than registering tests, so it works under any runner. `examples/object-store` writes a store over an S3-style client, with claims made of conditional writes, and passes every check.
+- **A `suspend` gate can carry a deadline.** `deadline_ms` rides out on the `suspended_error`, the `suspended` event, and the outcome that `run.until_suspended` reports, so whoever drives the run can schedule the timer, and `durable` hands it back as `deadline_at`. `resume_validation_error` carries the `suspend_id` of the gate whose data it refused.
+- **Replayed side effects show up in the trajectory.** `StepMetadata.side_effect` marks a step that isn't free to run twice, and every `model_call` sets it. When a resumed run starts a marked step before it has reached the gates it was resumed at, the runner records a `step_replayed` event, which `is_step_replayed_event` narrows, so a replay that bills you twice shows up before the invoice does.
+- **`map` can settle every item instead of failing on the first.** With `settle: true` every item runs, and the output holds one entry per item, `{ ok: true, value }` or `{ ok: false, error }`. The error is reduced to plain data (`message`, plus `name`, `kind`, and `path` when it has them), so a settled array survives a checkpoint. Each failure records a `map_item_failed` event, which `is_map_item_failed_event` narrows, and `suspended_error` and `aborted_error` still propagate. The config type is `MapSettleConfig`.
+
+### Changed
+
+- **`pipe_ui_message_stream_to_response` returns a promise.** As of `ai` 7.0.130, `pipeUIMessageStreamToResponse` returns one, and the wrapper passes it on and resolves once the response has ended.
+- **`filesystem_store` surfaces read failures other than a missing file or one that won't parse.** A permission error or a failing disk used to read as a miss, which could start a durable run over or hand a live claim to a second owner, and now it throws.
+
+### Fixed
+
+- **A `suspend` gate named like an `Object.prototype` member resumes correctly.** It read its resume data with a plain index, so a gate named `toString` or `constructor` found the inherited function on any run that passed resume data. It reads only the run's own data now.
+
+### Internal
+
+- The dependency audit runs only as `pnpm check:security`, outside `pnpm check` and `check:all`. The braces package (3.0.3) has a high advisory and no patched release, and leaving the audit in the default set would have failed CI and the publish job.
+- The dev toolchain moved to the newest release inside each major (oxlint 1.87, fallow 3.31, checkride 0.13, vitest 4.1.11, and more), and the audit cleared every advisory that had a fix.
+- Nine doc snippets marked for checking sat a blank line away from their fence, so the snippet check skipped them. All of them compile and are checked now, and two doc errors are corrected (ollama native's effort note and the cloud spec's cost guardrail).
+
 ## v0.12.13 — 2026-09-25
 
 ### Fixed
