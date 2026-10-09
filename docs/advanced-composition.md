@@ -28,7 +28,6 @@ and writes stay in the inner map. If you call `stash` or `use` outside a
 `scope` you get a runtime error.
 
 <!-- snippet: check -->
-
 ```ts
 import { scope, stash, step, use } from 'fascicle';
 
@@ -82,7 +81,6 @@ Both take the same `project` option as every envelope composite, so you unwrap
 at the source and your downstream steps see the domain value.
 
 <!-- snippet: check -->
-
 ```ts
 import { ensemble, step, tournament } from 'fascicle';
 import type { Step } from 'fascicle';
@@ -127,7 +125,6 @@ keep when quality is a number you're pushing up and you want plateau
 detection over an iteration budget.
 
 <!-- snippet: check -->
-
 ```ts
 import { improve, step } from 'fascicle';
 import type { Candidate, ImproveRoundInput } from 'fascicle';

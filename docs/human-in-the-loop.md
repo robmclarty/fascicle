@@ -24,7 +24,6 @@ into `combine`, and the promise resolves to the next outcome, so you drive
 several gates by resuming repeatedly. Real errors still throw.
 
 <!-- snippet: check -->
-
 ```ts
 import { run, sequence, step, suspend } from 'fascicle';
 import { z } from 'zod';
@@ -121,7 +120,6 @@ the driver runs the flow again from the input, so replay and checkpoints work
 the same way they do with `run.until_suspended`.
 
 <!-- snippet: check -->
-
 ```ts
 import { durable, sequence, step, suspend } from 'fascicle';
 import { filesystem_store } from 'fascicle/adapters';
@@ -228,7 +226,6 @@ the one subpath that needs that optional peer even on `transport: 'native'`. Run
 `pnpm add ai`, because without it your import fails at module resolution.
 
 <!-- snippet: check -->
-
 ```ts
 import { create_engine, model_step, run } from 'fascicle';
 import { to_ui_message_response } from 'fascicle/ui';

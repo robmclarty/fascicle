@@ -116,7 +116,6 @@ the first step that needs N-2 moves you to `chain`.
 ## The Shape, End to End
 
 <!-- snippet: check -->
-
 ```ts
 import { chain, consensus, model_step, retry, sequence, step, timeout } from 'fascicle';
 import type { Engine, Step } from 'fascicle';

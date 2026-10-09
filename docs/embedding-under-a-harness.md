@@ -28,7 +28,6 @@ Key rules:
 Your entry point stays yours, and Fascicle still ships no generic runner CLI. You call `run_stdio` from your own file:
 
 <!-- snippet: check -->
-
 ```ts
 import { z } from 'zod'
 import { step } from 'fascicle'

@@ -198,7 +198,6 @@ so a store over S3, DynamoDB, or Postgres can earn the same trust that
 `filesystem_store` has.
 
 <!-- snippet: check -->
-
 ```ts
 import type { CheckpointStore } from 'fascicle';
 import { checkpoint_store_conformance } from 'fascicle/testing';
