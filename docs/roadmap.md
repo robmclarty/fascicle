@@ -6,17 +6,29 @@ real usage lands, so pin an exact version and upgrade on purpose.
 
 ## Shipped
 
-The published surface as of v0.12.0:
+The published surface as of v0.13.0:
 
 - **Composition.** 22 primitives over a single `Step<i, o>` value type. You get
   the `chain` spine (`.step` / `.stage` / `.output`), `model_step` as the default
   model boundary, `ctx.call` for direct-style sub-steps, a `project` option on
-  the envelope composites, and compile-time joint checking for literal
+  the envelope composites, a `settle` mode that lets `map` keep every item's
+  outcome past a failure, and compile-time joint checking for literal
   `sequence` tuples (runtime-built arrays still degrade to unknown
   boundaries). The `Step` type is sound, because `run` is a function property with
   contravariant input and `AnyStep` is the erased supertype. Runners are
   `run` / `run.stream` / `run.until_suspended`, with opt-in durability via
   `checkpoint`, `suspend`, and `resume`.
+- **Durable runs.** `durable({ store })` keeps a run that suspends in a store
+  between events, so you can resume it from a webhook, a finished job, or a
+  deadline timer, each in a fresh process. A lease keeps two invocations from
+  driving one run at once, an event that lands while the run is busy waits in
+  its inbox, and a run whose flow changed shape under it fails loudly instead of
+  replaying the wrong steps. A `suspend` gate can carry a deadline, `gate`
+  checkpoints paid work before an approval pause, and a step marked
+  `side_effect` records a `step_replayed` event whenever a resume runs it again,
+  so you can see what a resume paid for twice. Stores can scope and claim, and
+  [`examples/object-store/`](../examples/object-store/) shows you how to write
+  one over an S3-style client.
 - **A provider-sovereign engine.** One `generate` seam fronts eight providers.
   Most wrap the Vercel AI SDK, and five can instead run `transport: 'native'`
   (raw HTTP, no SDK in the path). Those five are `anthropic` on the Messages API,
@@ -36,6 +48,8 @@ The published surface as of v0.12.0:
   enough to implement yourself, the run canvas viewer that draws a live run and
   replays a finished one over one pure fold, and a transport-neutral
   `fascicle/otel` bridge (see [configuration.md](./configuration.md#opentelemetry)).
+  `describe.diagram` draws a flow as an annotated tree, and the
+  `fascicle-diagram` bin prints the same diagram from a terminal.
 - **An app architecture.** [`docs/blueprint.md`](./blueprint.md) standardizes the
   consumer-app shape, [`docs/leaf-arm-spine.md`](./leaf-arm-spine.md) names the
   layering (with [`docs/advanced-composition.md`](./advanced-composition.md)
@@ -45,8 +59,10 @@ The published surface as of v0.12.0:
   [`examples/pr-improve/`](../examples/pr-improve/).
 - **Testing doubles** (`fascicle/testing`). `make_stub_engine` routes canned
   responses by system-prompt prefix and validates them through the call's schema,
-  and `make_capture_engine` records every call's `GenerateOptions` so you can
-  assert on them.
+  `make_script_engine` plays responses back in a strict call order, and
+  `make_capture_engine` records every call's `GenerateOptions` so you can
+  assert on them. `checkpoint_store_conformance` checks that a store you wrote
+  keeps the `CheckpointStore` contract, scopes and claims included.
 - **Supply-chain posture.** Releases publish from CI with npm Trusted Publishing
   (OIDC) and a signed provenance attestation, and you can verify one with
   `npm audit signatures`. See [SECURITY.md](../SECURITY.md).
