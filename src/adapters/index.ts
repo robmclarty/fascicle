@@ -29,4 +29,8 @@ export type { StderrLoggerOptions } from './stderr_logger.js'
 export { tee_logger } from './tee_logger.js'
 
 export { filesystem_store } from './filesystem_store.js'
-export type { FilesystemStoreConfig } from './filesystem_store.js'
+export type {
+  FilesystemScopedStore,
+  FilesystemStore,
+  FilesystemStoreConfig,
+} from './filesystem_store.js'

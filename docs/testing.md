@@ -12,6 +12,7 @@ runs for real. The pattern is worked through in
 
 ```ts
 import {
+  checkpoint_store_conformance,
   engine_from_generate,
   make_capture_engine,
   make_script_engine,
@@ -184,6 +185,47 @@ const flaky = engine_from_generate(async (opts) => ({
   model_resolved: { provider: 'stub', model_id: 'flaky' },
 }));
 ```
+
+## `checkpoint_store_conformance`
+
+A store is three small functions, and every one of them hides a decision that's
+easy to get wrong. A value that a crash left half-written has to read as a miss
+and not throw. Two keys can't share storage just because they encode to the
+same file name. A claim has to refuse a second owner even when both ask at the
+same moment, and once it's expired, it has to pass to the next one.
+`checkpoint_store_conformance` checks all of that against a store you wrote,
+so a store over S3, DynamoDB, or Postgres can earn the same trust that
+`filesystem_store` has.
+
+<!-- snippet: check -->
+
+```ts
+import type { CheckpointStore } from 'fascicle';
+import { checkpoint_store_conformance } from 'fascicle/testing';
+
+declare function make_my_store(): CheckpointStore;
+
+export async function prove_my_store(): Promise<void> {
+  const report = await checkpoint_store_conformance(() => make_my_store());
+  if (report.failed.length > 0) {
+    throw new Error(report.failed.map((f) => `${f.check}: ${f.message}`).join('\n'));
+  }
+}
+```
+
+It hands every check a fresh store from the factory you pass, so the factory
+should give each store a namespace of its own (a temporary directory, a random
+key prefix, a throwaway table). The scope checks run when your store has
+`scope`, the claim checks run when it has `claim` or `release`, and the report
+lists whatever it's skipped. It doesn't register tests. It returns the report
+instead, so it works under any runner, and asserting that `failed` is empty is
+the whole test.
+
+Two options tune it. `corrupt(store, key)` damages the value stored at a key the
+way a torn write would, and when you pass it, the suite checks that the
+damaged value reads as a miss. `ttl_ms` sets the claim lifetime that the expiry
+checks wait out. It's 200 milliseconds by default, and if your store's clock is
+coarse, you'll want it longer.
 
 ## Recipes
 

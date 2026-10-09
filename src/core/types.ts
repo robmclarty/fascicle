@@ -27,10 +27,42 @@ export type TrajectoryLogger = {
   readonly end_span: (id: string, meta?: Record<string, unknown>) => void
 }
 
+/**
+ * Where checkpointed results are kept.
+ *
+ * `get`, `set`, and `delete` are the whole contract `checkpoint` needs. A
+ * stored `null` or `undefined` reads as a miss, and so should a value the
+ * store can't read back whole.
+ *
+ * The rest are optional capabilities. `scope` hands out a store whose keys,
+ * claims, and nested scopes are disjoint from this one's, and the same prefix
+ * always reaches the same data. `claim` takes
+ * `key` for `owner` until `ttl_ms` passes and resolves true when the caller
+ * owns it afterwards: the key was free, its last claim expired or was
+ * released, or `owner` already held it (a renewal, which restarts the clock).
+ * It resolves false while another owner holds the key. `release` frees a
+ * claim `owner` holds and does nothing otherwise. Claims live apart from
+ * values, so a claim never changes what `get` returns and `set` or `delete`
+ * never touch a claim. `checkpoint_store_conformance` in `fascicle/testing`
+ * checks a store against all of this.
+ */
 export type CheckpointStore = {
   readonly get: (key: string) => Promise<unknown>
   readonly set: (key: string, value: unknown) => Promise<void>
   readonly delete: (key: string) => Promise<void>
+  readonly scope?: (prefix: string) => ScopedCheckpointStore
+  readonly claim?: (key: string, owner: string, ttl_ms: number) => Promise<boolean>
+  readonly release?: (key: string, owner: string) => Promise<void>
+}
+
+/**
+ * A store reached through `scope(prefix)`. It can scope again, and `clear`
+ * deletes every value, claim, and nested scope under its prefix while leaving
+ * its parent and its siblings alone. A cleared scope stays usable.
+ */
+export type ScopedCheckpointStore = Omit<CheckpointStore, 'scope'> & {
+  readonly scope: (prefix: string) => ScopedCheckpointStore
+  readonly clear: () => Promise<void>
 }
 
 export type CleanupFn = () => Promise<void> | void

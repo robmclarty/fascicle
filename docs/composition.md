@@ -56,7 +56,7 @@ You import everything below from `fascicle`. The primitives live in
 | `RunOutcome` | type | the `done` / `suspended` result of `run.until_suspended` |
 | `TrajectoryLogger` | type | structured-event observer |
 | `TrajectoryEvent` | type | one structured event |
-| `CheckpointStore` | type | persistent key-value store |
+| `CheckpointStore` | type | persistent key-value store, with optional `scope`, `claim`, and `release` (a scoped store is a `ScopedCheckpointStore`, which adds `clear`) |
 | `Step<i, o>` | type | the step contract, so `id`, `kind`, and a `run(input, ctx)` function property, plus optional `config`, `children`, `anonymous`, and `meta`. `run` is a function property rather than a method, so strict mode checks `i` contravariantly and a step wired to an input it can't accept is a compile error |
 | `AnyStep` | type | the erased supertype (`Step<never, unknown>`) held by `children` |
 | `StepMetadata` | type | a step's `meta`: `name` (display label for spans and `describe`), `description`, and port labels |

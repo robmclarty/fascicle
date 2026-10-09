@@ -68,6 +68,7 @@ export type {
   FlowNode,
   FlowValue,
   RunContext,
+  ScopedCheckpointStore,
   Step,
   StepFn,
   StepInput,

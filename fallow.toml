@@ -226,6 +226,6 @@ allow = []
 from = "schema"
 allow = []
 
-[[boundaries.rules]] # testing: engine only, type-only (canned Engine doubles); no src module imports it back
+[[boundaries.rules]] # testing: engine and core, type-only (canned Engine doubles, the CheckpointStore contract the store conformance suite checks); no src module imports it back
 from = "testing"
-allow = ["engine"]
+allow = ["engine", "core"]

@@ -7,6 +7,8 @@
  * consumes a response queue in strict call order; `make_capture_engine`
  * records what each call sent to the engine; `text_of` reads the
  * user-visible prompt text back out of a captured call.
+ * `checkpoint_store_conformance` proves a store you wrote keeps the
+ * `CheckpointStore` contract.
  */
 
 /**
@@ -17,6 +19,12 @@
  * `dispose`, which this shell supplies inert.
  */
 export { engine_from_generate } from './engine_from_generate.js'
+export { checkpoint_store_conformance } from './checkpoint_store_conformance.js'
+export type {
+  StoreConformanceFailure,
+  StoreConformanceOptions,
+  StoreConformanceReport,
+} from './checkpoint_store_conformance.js'
 export { make_capture_engine } from './make_capture_engine.js'
 export type { CaptureEngine, CaptureEngineOptions } from './make_capture_engine.js'
 export { make_script_engine } from './make_script_engine.js'

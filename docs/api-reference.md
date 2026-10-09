@@ -351,7 +351,20 @@ roll your own to target any sink.
 | `noop_logger()` | logger | discard all events |
 | `stderr_logger(options?)` | logger | JSONL to stderr; keeps stdout clean when your process is somebody's child |
 | `tee_logger(...loggers)` | logger | fan one event stream out to several loggers |
-| `filesystem_store(options)` | store | filesystem-backed `CheckpointStore` |
+| `filesystem_store(options)` | store | filesystem-backed `CheckpointStore` with scopes and claims |
+
+### Checkpoint Store Capabilities
+
+`checkpoint` only needs `get`, `set`, and `delete`, and the other three are
+optional. `checkpoint_store_conformance` from `fascicle/testing` checks a
+store you wrote against every row here.
+
+| Member | Contract |
+| --- | --- |
+| `get(key)` / `set(key, value)` / `delete(key)` | required; a stored `null` or `undefined`, or a value the store can't read back whole, reads as a miss |
+| `scope(prefix)` | a store whose keys, claims, and nested scopes are apart from this one's; the same prefix always reaches the same data, and the scoped store adds `clear()` |
+| `claim(key, owner, ttl_ms)` | resolves true when `owner` holds `key` afterwards (it was free, its claim expired or was released, or `owner` renewed it) and false while another owner holds it; claims never touch values |
+| `release(key, owner)` | frees a claim that `owner` holds, and does nothing otherwise |
 
 ### Reading a Trajectory Back
 
@@ -384,10 +397,12 @@ the pattern is worked through in
 | `make_capture_engine(options?)` | fn | records every call's `GenerateOptions` into a live `calls` array, answers with a canned result |
 | `text_of(opts)` | fn | the user-visible prompt text of a captured `GenerateOptions`, whatever the prompt shape |
 | `engine_from_generate(generate)` | fn | wrap a bare `generate` into a full `Engine`; the shell the factories build on, for rolling your own double |
+| `checkpoint_store_conformance(make_store, options?)` | fn | check a `CheckpointStore` you wrote against the contract, one fresh store per check, and resolve `{ passed, failed, skipped }`; see [testing.md](./testing.md#checkpoint_store_conformance) |
 
 Types: `StubEngineOptions`, `StubResponse`, `StubContentFn`,
 `ScriptResponse`, `ScriptEngineOptions`, `CaptureEngine`,
-`CaptureEngineOptions`.
+`CaptureEngineOptions`, `StoreConformanceOptions`, `StoreConformanceReport`,
+`StoreConformanceFailure`.
 
 ## MCP Bridge (`fascicle/mcp`)
 
@@ -482,8 +497,8 @@ the roadmap). The public type exports:
 
 **Composition.** `Step`, `AnyStep`, `StepMetadata`, `StepOptions`, `StepKind`,
 `RunContext`, `RunOutcome`, `Chain`, `ChainStepOptions`, `TrajectoryLogger`,
-`TrajectoryEvent`, `CheckpointStore`, `DescribeOptions`, `DiagramOptions`,
-`FlowNode`, `FlowValue`, `LoopConfig`, `LoopOutcome`, `LoopGuardResult`,
+`TrajectoryEvent`, `CheckpointStore`, `ScopedCheckpointStore`, `DescribeOptions`,
+`DiagramOptions`, `FlowNode`, `FlowValue`, `LoopConfig`, `LoopOutcome`, `LoopGuardResult`,
 `LoopGuardPredicate`, plus the trajectory event shapes (`SpanStartEvent`,
 `SpanEndEvent`, `EmitEvent`, `RunEndEvent`, `RunEndStatus`,
 `CheckpointEvent`, `CheckpointStatus`, `CustomTrajectoryEvent`,
@@ -500,6 +515,8 @@ the `project` envelopes and option shapes that `retry` and `fallback` take
 `StepOutput<s>`, and the schema vocabulary (`ToolSchema`, `AnySchema`,
 `SchemaIssue`). At runtime `is_step` narrows a value to a `Step`, and
 `error_path(err)` reads the `path` that a run attached to a thrown error.
+From `fascicle/adapters`, `FilesystemStore` and `FilesystemScopedStore` name
+what `filesystem_store` returns.
 
 **Composites.** Every deliberation composite carries a config and a result
 envelope: `AdversarialConfig` / `AdversarialResult` plus
