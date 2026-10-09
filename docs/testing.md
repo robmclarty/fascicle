@@ -191,8 +191,10 @@ const flaky = engine_from_generate(async (opts) => ({
 A store is three small functions, and every one of them hides a decision that's
 easy to get wrong. A value that a crash left half-written has to read as a miss
 and not throw. Two keys can't share storage just because they encode to the
-same file name. A claim has to refuse a second owner even when both ask at the
-same moment, and once it's expired, it has to pass to the next one.
+same file name, and clearing scope `a` can't reach a scope named `a/b` just
+because its name begins the same way. A claim has to refuse a second owner even
+when both ask at the same moment, and once it's expired, it has to pass to the
+next one.
 `checkpoint_store_conformance` checks all of that against a store you wrote,
 so a store over S3, DynamoDB, or Postgres can earn the same trust that
 `filesystem_store` has.

@@ -130,6 +130,11 @@ const LOOKALIKES: ReadonlyArray<string> = [
 // that joins prefixes into one string.
 const FLATTENED = ['a/b', 'ab', 'a.b', 'a:b', 'b']
 
+// Prefixes that begin the way `a` does, or match it but for case, which a
+// store that clears scope `a` by deleting everything under a raw prefix (or a
+// case-blind one) sweeps away with it.
+const BESIDE_A = ['a/b', 'a/', 'ab', 'a.b', 'a b', 'A']
+
 /**
  * Throw a check failure carrying `message` unless `condition` holds.
  */
@@ -379,6 +384,17 @@ const SCOPE_CHECKS: ReadonlyArray<Check> = [
       ensure((await store.get(KEY)) === 'root', "clear removed the parent's value")
       await a.set(KEY, 'again')
       ensure((await a.get(KEY)) === 'again', 'a cleared scope refused a new value')
+    },
+  },
+  {
+    name: 'clear leaves look-alike scopes alone',
+    run: async (store) => {
+      await Promise.all(BESIDE_A.map((prefix, i) => scope_of(store, prefix).set(KEY, i)))
+      await scope_of(store, A).clear()
+      const read = await Promise.all(BESIDE_A.map((prefix) => scope_of(store, prefix).get(KEY)))
+      BESIDE_A.forEach((prefix, i) => {
+        ensure(read[i] === i, `clearing scope 'a' emptied scope ${show(prefix)}`)
+      })
     },
   },
   {

@@ -23,6 +23,7 @@ const SCOPE = [
   'prefixes that encode alike stay apart',
   'nested scopes stay apart from look-alike prefixes',
   'clear empties a scope and nothing else',
+  'clear leaves look-alike scopes alone',
   'clearing an empty scope resolves',
 ]
 const CLAIM = [
@@ -586,6 +587,55 @@ describe('checkpoint_store_conformance', () => {
       )
       expect(failures).toMatchObject({
         'clear empties a scope and nothing else': "clear removed the parent's value",
+      })
+    })
+
+    it('fails a clear that sweeps away scopes whose names begin the same way', async () => {
+      const failures = await failures_of(
+        broken((base) => {
+          // Clearing a scope clears every scope whose name starts with its
+          // name, the way deleting everything under a raw prefix in a bucket
+          // would.
+          const opened = new Set<string>()
+          return {
+            scope: (prefix) => {
+              opened.add(prefix)
+              return {
+                ...base.scope(prefix),
+                clear: async () => {
+                  const swept = [...opened].filter((name) => name.startsWith(prefix))
+                  await Promise.all(swept.map((name) => base.scope(name).clear()))
+                },
+              }
+            },
+          }
+        }),
+      )
+      expect(failures).toEqual({
+        'clear leaves look-alike scopes alone': `clearing scope 'a' emptied scope "a/b"`,
+      })
+    })
+
+    it('fails a clear that sweeps away a scope whose name differs only in case', async () => {
+      const failures = await failures_of(
+        broken((base) => {
+          const opened = new Set<string>()
+          return {
+            scope: (prefix) => {
+              opened.add(prefix)
+              return {
+                ...base.scope(prefix),
+                clear: async () => {
+                  const swept = [...opened].filter((name) => name.toLowerCase() === prefix.toLowerCase())
+                  await Promise.all(swept.map((name) => base.scope(name).clear()))
+                },
+              }
+            },
+          }
+        }),
+      )
+      expect(failures).toEqual({
+        'clear leaves look-alike scopes alone': `clearing scope 'a' emptied scope "A"`,
       })
     })
 

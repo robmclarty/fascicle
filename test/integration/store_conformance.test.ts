@@ -35,6 +35,6 @@ describe('filesystem_store against the store conformance suite', () => {
     const report = await checkpoint_store_conformance(make_store, { corrupt: tear, ttl_ms: 60 })
     expect(report.failed).toEqual([])
     expect(report.skipped).toEqual([])
-    expect(report.passed).toHaveLength(31)
+    expect(report.passed).toHaveLength(32)
   })
 })
