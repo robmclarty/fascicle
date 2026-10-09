@@ -15,6 +15,7 @@ You import everything below from `fascicle`. The primitives live in
 | `run(flow, input, options?)` | function | execute a flow to completion |
 | `run.stream(flow, input, options?)` | function | execute a flow and observe events |
 | `run.until_suspended(flow, input, options?)` | function | execute a flow; a `suspend` gate returns a typed `RunOutcome` with a `resume` closure |
+| `durable({ store, lease_ms?, on_flow_change? })` | factory | keep runs in a store across processes and drive them one event at a time (`DurableConfig`, `DurableStore`, `DurableRuns`, `DurableRunOptions`, `DurableOutcome`, `DurableRunState`) |
 | `describe(step, options?)` | function | render the composition as a text tree; `describe.json(step)` returns the structured `FlowNode` tree instead, and `describe.diagram(step, options?)` draws it as an annotated box-drawing tree |
 | `flow_schema` | JSON value | JSON Schema for the YAML flow representation |
 | `step` | factory | atomic or anonymous step |
@@ -50,6 +51,8 @@ You import everything below from `fascicle`. The primitives live in
 | `resume_validation_error` | error | thrown by `suspend` on invalid resume data |
 | `aborted_error` | error | thrown on SIGINT/SIGTERM or user abort |
 | `describe_cycle_error` | error | thrown when `describe` meets a cycle in the tree |
+| `flow_changed_error` | error | thrown by `durable` when a run's flow changed shape while the run waited |
+| `run_not_found_error` | error | thrown by `durable` when a run is resumed before it started |
 | `resolve_display_name` | function | the label a step renders under, resolving `config.display_name`, then `meta.name`, then a caller fallback |
 | `bench_suspend_error` | error | thrown when a benched flow suspends (`bench` has no resume path) |
 | `RunContext` | type | per-run execution context |

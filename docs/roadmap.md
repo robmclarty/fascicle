@@ -80,16 +80,20 @@ Scoped but not sequenced. Each one is a bet on leverage, not a promise to you.
 
 ## Open Design Questions
 
-I've deferred two calls pending a real use case, and neither is rejected:
+I've deferred one call pending a real use case, and it isn't rejected:
 
 1. **Cancellation granularity.** `ensemble`, `ensemble_step`, `tournament`, and
    `consensus` cancel all in-flight children on abort. Letting the first
    resolver win and preemptively cancelling its siblings is `race` semantics,
    and whether that belongs as a mode or a separate composer is undecided.
-2. **Suspend and checkpoint state lifecycle.** Persisted suspend and checkpoint
-   state has no GC or TTL, and filesystem checkpoint stores are last-write-wins
-   across processes. Whether a first-party helper owns this or it stays
-   application-level is open.
+
+The other question I'd parked here, the lifecycle of suspend and checkpoint
+state, got its real use case and an answer. `durable` claims a run before it
+drives it and checks the record's revision on every write, so two processes
+don't drive one run at once, and a drive that stalls past its claim can't
+write over the one that took over. Deleting the run's scope is how its state
+goes away. Retention past that belongs to the store,
+which knows its own expiry far better than a timestamp on every write would.
 
 Runtime `.flow.yaml` parsing stays documentation-only until downstream demand
 appears.

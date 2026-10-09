@@ -194,8 +194,8 @@ function scope_of(store: CheckpointStore, prefix: string): ScopedCheckpointStore
 
 /**
  * The store's claim pair, or a failure naming the half that's missing. Both
- * are called on the store itself, so a store whose methods lean on `this`
- * works here too.
+ * are called on the store itself, the way `durable` calls them, so a store
+ * whose methods lean on `this` works here too.
  */
 function claims_of(store: CheckpointStore): Claims {
   const { claim, release } = store

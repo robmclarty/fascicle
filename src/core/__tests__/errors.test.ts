@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
   aborted_error,
+  flow_changed_error,
   resume_validation_error,
+  run_not_found_error,
   suspended_error,
   timeout_error,
 } from '../errors.js'
@@ -47,6 +49,26 @@ describe('typed errors', () => {
     expect(new suspended_error('gate', null).name).toBe('suspended_error')
   })
 
+  it('flow_changed_error carries both fingerprints and says what to do', () => {
+    const err = new flow_changed_error('pr-7', 'aaaa', 'bbbb')
+    expect(err).toBeInstanceOf(Error)
+    expect(err.kind).toBe('flow_changed_error')
+    expect(err.name).toBe('flow_changed_error')
+    expect(err.run_id).toBe('pr-7')
+    expect(err.started_on).toBe('aaaa')
+    expect(err.continued_on).toBe('bbbb')
+    expect(err.message).toBe(
+      "durable run pr-7 started on a flow of another shape (aaaa, now bbbb): finish it on the flow it started with, delete it, or drive it with on_flow_change: 'replay'",
+    )
+  })
+
+  it('run_not_found_error names the run', () => {
+    const err = new run_not_found_error('pr-7')
+    expect(err.kind).toBe('run_not_found_error')
+    expect(err.name).toBe('run_not_found_error')
+    expect(err.run_id).toBe('pr-7')
+    expect(err.message).toBe('no durable run pr-7: start it before resuming it')
+  })
 
   it('suspended_error carries the gate deadline, and none by default', () => {
     expect(new suspended_error('ci', null, undefined, 3_600_000).deadline_ms).toBe(3_600_000)

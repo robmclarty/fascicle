@@ -146,7 +146,7 @@ function label_of(node: FlowNode): { readonly label: string; readonly by_kind: b
  * markers, and every built-in composer carry generated ids. A kind outside
  * the built-in set belongs to a hand-built step, whose id is its author's.
  */
-function has_chosen_id(node: FlowNode): boolean {
+export function has_chosen_id(node: FlowNode): boolean {
   if (node.anonymous === true || node.kind === '<cycle>') return false
   return !is_step_kind(node.kind) || CHOSEN_ID_KINDS.has(node.kind)
 }

@@ -28,15 +28,15 @@ export type TrajectoryLogger = {
 }
 
 /**
- * Where checkpointed results are kept.
+ * Where checkpointed results, and a durable run's own records, are kept.
  *
  * `get`, `set`, and `delete` are the whole contract `checkpoint` needs. A
  * stored `null` or `undefined` reads as a miss, and so should a value the
  * store can't read back whole.
  *
- * The rest are optional capabilities. `scope` hands out a store whose keys,
- * claims, and nested scopes are disjoint from this one's, and the same prefix
- * always reaches the same data. `claim` takes
+ * The rest are optional capabilities, and `durable` needs all three. `scope`
+ * hands out a store whose keys, claims, and nested scopes are disjoint from
+ * this one's, and the same prefix always reaches the same data. `claim` takes
  * `key` for `owner` until `ttl_ms` passes and resolves true when the caller
  * owns it afterwards: the key was free, its last claim expired or was
  * released, or `owner` already held it (a renewal, which restarts the clock).

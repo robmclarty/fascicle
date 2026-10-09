@@ -65,11 +65,12 @@ Two things to know before you ship this:
   step before the suspend point. That's harmless for pure steps, but wrap any
   expensive or side-effecting prior step in `checkpoint(...)` against a
   `checkpoint_store` so it's memoized instead of repeated on resume.
-- **Persist the suspended input durably.** The outcome's `resume` is a
-  closure, so it can't outlive the process. An in-memory map is fine for a demo,
-  but a real deployment persists the original input (`filesystem_store` from
-  `fascicle/adapters`, a database, a queue) and calls
-  `run.until_suspended` again after a restart to rebuild the outcome.
+- **Persist the run if it has to outlive the process.** The outcome's
+  `resume` is a closure, so it can't survive a restart. An in-memory map is
+  fine for a demo. A deployment that restarts, or that resumes runs from
+  events in short-lived invocations, should keep its runs with
+  [`durable`](#durable-runs), which persists the input and the resume data for
+  you.
 
 > **Paid steps replay on resume.** Resuming after a process restart replays
 > every step before the gate that isn't checkpointed, and that includes paid
@@ -103,6 +104,117 @@ A complete server that runs this over HTTP (POST to start, GET the pending
 approval, POST the decision to resume) is in
 [`examples/hitl-http/main.ts`](../examples/hitl-http/main.ts). The minimal mechanical
 version is [`examples/suspend-resume/main.ts`](../examples/suspend-resume/main.ts).
+
+## Durable Runs
+
+`run.until_suspended` works while the process that suspended a run is still
+around to call `resume`. Plenty of deployments don't work that way. A review
+bot that waits on CI, a job that hands work to a container, or anything that
+runs in a short-lived function gets each event (a webhook, a finished task, a
+deadline timer) in a fresh invocation, and by then the closure that could have
+resumed the run is long gone.
+
+With `durable`, you keep the run in a store instead. It saves the run's
+input, the resume data that its gates have taken, and where it stopped, all
+under one scope per run id. When an event lands, you hand it to the run, and
+the driver runs the flow again from the input, so replay and checkpoints work
+the same way they do with `run.until_suspended`.
+
+<!-- snippet: check -->
+
+```ts
+import { durable, sequence, step, suspend } from 'fascicle';
+import { filesystem_store } from 'fascicle/adapters';
+import { z } from 'zod';
+
+type Gathered = { pr: number; diff: string };
+
+const review = sequence([
+  step('gather', ({ pr }: { pr: number }): Gathered => ({ pr, diff: `diff of #${pr}` })),
+  suspend({
+    id: 'ci',
+    deadline_ms: 60 * 60 * 1000,
+    on: () => {
+      // The push already started CI, so there's nobody to notify.
+    },
+    resume_schema: z.object({ green: z.boolean(), timed_out: z.boolean().optional() }),
+    combine: (gathered: Gathered, ci) =>
+      ci.green ? `review of the ${gathered.diff}` : `hold #${gathered.pr}`,
+  }),
+]);
+
+const runs = durable({ store: filesystem_store({ root_dir: '.fascicle/runs' }) });
+
+// A pull request opened.
+export async function on_opened(pr: number): Promise<void> {
+  const outcome = await runs.start(`pr-${pr}`, review, { pr });
+  if (outcome.kind === 'suspended' && outcome.deadline_at !== undefined) {
+    // Schedule on_ci(pr, { green: false, timed_out: true }) for deadline_at.
+  }
+}
+
+// CI reported, or the deadline timer fired.
+export async function on_ci(pr: number, ci: { green: boolean; timed_out?: boolean }): Promise<void> {
+  await runs.resume(`pr-${pr}`, review, { ci });
+}
+```
+
+`start` and `resume` both resolve to an outcome: `done` with the output,
+`suspended` with the gate the run waits at, or `busy`. Here's what the driver
+takes care of so that your handlers don't have to:
+
+- **One drive at a time.** A drive holds a lease on its run and renews it while
+  it works, and every write it makes checks that nobody else has written the
+  record since, so a drive that stalls past its lease can't overwrite the one
+  that took the run over. If you resume a run mid-drive, you get `busy` back,
+  and the data you passed waits in the run's inbox. The drive that holds the
+  run takes it up when the run reaches that gate, and if that drive dies
+  first, the next call on the run does (a resume with no data is enough to
+  nudge it). A CI webhook and a deadline timer that land together can't both
+  post the review.
+- **Repeated events are safe.** If you start a run that already exists, it
+  doesn't start over. A run that's waiting or done reports where it is, and
+  one that failed or died mid-drive is driven again from its input. The first
+  data to reach a gate is the data it gets, so a later event for the same gate
+  is dropped, and so is data for a gate the run already passed, because
+  changing it would change the replay. A webhook that's delivered twice
+  changes nothing.
+- **A bad event doesn't wedge the run.** When a gate's `resume_schema` refuses
+  the data you sent, `resume` throws `resume_validation_error` and the run goes
+  back to waiting at that gate. A step that throws marks the run failed, and
+  the next event drives it again.
+- **A changed flow fails loudly.** Each run records a fingerprint of its flow's
+  shape, meaning the kinds, the ids you chose, and how they nest. If a deploy
+  changes that shape while a run waits, the next drive throws
+  `flow_changed_error` rather than replay different steps against old
+  checkpoints. You can rename a step or edit a prompt without tripping it. Pass
+  `on_flow_change: 'replay'` when you mean to move the waiting runs onto the
+  new shape.
+- **Deadlines start once.** A gate with `deadline_ms` reports `deadline_at` on
+  its outcome, counted from the moment the run first stopped there. Schedule a
+  timer for it (a queue message, a scheduler entry), and have the timer resume
+  the gate with whatever a timeout means to your flow.
+
+Everything the driver keeps (the input, resume data, gate payloads, and the
+output) goes through the store, so it has to survive JSON, the same as any
+checkpointed value. Even the first drive reads the input back from the store,
+so a run sees it the same way on every drive.
+
+Your store has to offer `scope`, `claim`, and `release` on top of `get`,
+`set`, and `delete`. `filesystem_store` from `fascicle/adapters` has all of
+them. If
+you'd rather keep runs in S3, DynamoDB, or Postgres, write a store over the
+client you already use and prove it with `checkpoint_store_conformance` from
+`fascicle/testing` (see [testing.md](./testing.md#checkpoint_store_conformance)).
+
+Nothing in the store expires on its own. Call `runs.delete(run_id)` once
+you're done with a run, and it clears everything that the run kept. When your
+store has retention of its own (an S3 lifecycle rule on the run's prefix,
+say), you can let that do the job instead.
+
+[`examples/durable-runs/main.ts`](../examples/durable-runs/main.ts) drives one
+run through all of this, with a start, a webhook and a timer that land
+together, and a webhook that's delivered twice.
 
 ## Streaming the Outcome to a UI
 

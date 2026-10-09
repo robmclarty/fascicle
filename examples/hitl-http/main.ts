@@ -11,9 +11,9 @@
  * socket while waiting for the human.
  *
  * The store is an in-memory Map for brevity, and a closure cannot outlive
- * the process: a real deployment persists the original input (for example,
- * `filesystem_store` from `fascicle/adapters`, a DB, or a queue) and calls
- * `run.until_suspended` again after a restart to rebuild the outcome.
+ * the process. A deployment that has to survive a restart keeps its runs
+ * with `durable` instead, which persists the input and the decisions (see
+ * examples/durable-runs).
  *
  * Deterministic stub `fn` bodies: no engine layer, no network, no LLM calls.
  *

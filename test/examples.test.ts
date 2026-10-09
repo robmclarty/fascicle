@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { run_adversarial_build } from '../examples/adversarial-build/main.js'
 import { run_checkpoint_resume } from '../examples/checkpoint-resume/main.js'
 import { run_documenter } from '../examples/documenter/main.js'
+import { run_durable_runs } from '../examples/durable-runs/main.js'
 import { run_ensemble_judge } from '../examples/ensemble-judge/main.js'
 import { run_hello } from '../examples/hello/main.js'
 import { run_learn } from '../examples/learn/main.js'
@@ -51,6 +52,17 @@ describe('examples smoke', () => {
     const { suspended, resumed } = await run_suspend_resume()
     expect(suspended).toBe(true)
     expect(resumed).toBe('shipped:beta feature')
+  })
+
+  it('durable_runs drives one run across events, one drive at a time', async () => {
+    expect(await run_durable_runs()).toEqual({
+      opened: 'waiting at ci, deadline in 60 minutes',
+      webhook: 'done: posted review of the diff of #42',
+      timer: 'busy',
+      redelivered: 'done: posted review of the diff of #42',
+      drafts: 1,
+      replayed: ['gather'],
+    })
   })
 
   it('checkpoint_resume runs the inner step once and serves the second call from cache', async () => {

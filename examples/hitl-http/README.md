@@ -10,10 +10,10 @@ result. Nothing blocks a socket while the human decides.
 
 ![terminal output of the hitl-http example: the pending status code and the resumed result after approval](./screenshot.png)
 
-The store is an in-memory Map for brevity, and a closure cannot outlive the
-process: a real deployment persists the original input (for example,
-`filesystem_store` from `fascicle/adapters`, a DB, or a queue) and calls
-`run.until_suspended` again after a restart to rebuild the outcome.
+The store is an in-memory Map for brevity, and a closure can't outlive the
+process. A deployment that has to survive a restart keeps its runs with
+`durable` instead, which persists the input and the decisions for you.
+[durable-runs](../durable-runs/) shows that version.
 
 Every step is a deterministic stub: no engine layer, no network beyond
 localhost, no LLM calls.

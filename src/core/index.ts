@@ -12,6 +12,15 @@ import flow_schema_data from './flow-schema.json' with { type: 'json' }
 
 export { run } from './runner.js'
 export type { RunOptions, RunOutcome, StreamingRunHandle } from './runner.js'
+export { durable } from './durable.js'
+export type {
+  DurableConfig,
+  DurableOutcome,
+  DurableRunOptions,
+  DurableRunState,
+  DurableRuns,
+  DurableStore,
+} from './durable.js'
 export { step } from './step.js'
 export { describe } from './describe.js'
 export type { DescribeOptions } from './describe.js'
@@ -51,7 +60,9 @@ export {
   aborted_error,
   describe_cycle_error,
   error_path,
+  flow_changed_error,
   resume_validation_error,
+  run_not_found_error,
   suspended_error,
   timeout_error,
 } from './errors.js'

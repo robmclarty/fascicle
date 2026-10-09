@@ -10,7 +10,7 @@
  * never atomically renamed, or a JSON parse failure each read as a cache
  * miss (returning `null`) rather than an error. Any other failure to read
  * (a permission error, a failing disk) surfaces, because reading it as a miss
- * could hand a live claim to a second owner.
+ * could start a durable run over, or hand a live claim to a second owner.
  *
  * A scope is a directory beside the values (`<prefix>.scope/`), which makes
  * `clear` one recursive delete. A claim is a directory of numbered
@@ -37,7 +37,7 @@ export type FilesystemStoreConfig = {
 
 /**
  * What `filesystem_store` returns: a `CheckpointStore` with every optional
- * capability.
+ * capability, which is what `durable` needs from its store.
  */
 export type FilesystemStore = {
   readonly get: (key: string) => Promise<unknown>

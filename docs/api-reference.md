@@ -36,6 +36,7 @@ so a missing `ai` fails at module resolution rather than with a Fascicle error.
 | `run(flow, input, options?)` | `Promise<output>` | Execute a step. `options`: `{ trajectory?, checkpoint_store?, abort?, resume_data?, install_signal_handlers? }`. |
 | `run.stream(flow, input, options?)` | `{ events, result }` | Same graph as `run`; `events` is an async iterable of `TrajectoryEvent`, `result` resolves to the output. |
 | `run.until_suspended(flow, input, options?)` | `Promise<RunOutcome<output>>` | Same graph as `run`, but a `suspend` gate resolves `{ kind: 'suspended', id, payload, deadline_ms?, resume }` instead of throwing; `payload` is the value that the gate surfaced, `deadline_ms` is there when the gate set one, and `resume(data)` re-runs with the decision and resolves to the next outcome. Completion is `{ kind: 'done', output }`; real errors still throw. |
+| `durable({ store, lease_ms?, on_flow_change? })` | `DurableRuns` | Keeps runs in a store across processes, one event at a time: `start(run_id, flow, input)`, `resume(run_id, flow, { [gate]: data })`, `get(run_id)`, `delete(run_id)`. `start` and `resume` resolve `{ kind: 'done', output }`, `{ kind: 'suspended', id, payload, deadline_at? }`, or `{ kind: 'busy' }` when another invocation holds the run, and both are safe to repeat. See [Durable Runs](./human-in-the-loop.md#durable-runs). |
 | `describe(step, options?)` | `string` | Static text-tree description of a step tree. No execution, no model calls. `describe.json(step)` returns the structured `FlowNode` tree instead, and `describe.diagram(step, options?)` draws it as an annotated tree (see below). |
 | `ctx.call(step, input)` | `Promise<output>` | On `RunContext`, inside any step body, runs another Step with spans, abort, and error paths intact. The direct-style counterpart to composing. |
 
@@ -351,13 +352,13 @@ roll your own to target any sink.
 | `noop_logger()` | logger | discard all events |
 | `stderr_logger(options?)` | logger | JSONL to stderr; keeps stdout clean when your process is somebody's child |
 | `tee_logger(...loggers)` | logger | fan one event stream out to several loggers |
-| `filesystem_store(options)` | store | filesystem-backed `CheckpointStore` with scopes and claims |
+| `filesystem_store(options)` | store | filesystem-backed `CheckpointStore` with scopes and claims, so it also backs `durable` |
 
 ### Checkpoint Store Capabilities
 
-`checkpoint` only needs `get`, `set`, and `delete`, and the other three are
-optional. `checkpoint_store_conformance` from `fascicle/testing` checks a
-store you wrote against every row here.
+`checkpoint` only needs `get`, `set`, and `delete`. The other three are optional,
+and `durable` needs all of them. `checkpoint_store_conformance` from
+`fascicle/testing` checks a store you wrote against every row here.
 
 | Member | Contract |
 | --- | --- |
@@ -478,7 +479,9 @@ All are `Error` subclasses. Catch by class.
 (a `suspend` paused the run), `timeout_error` (a `timeout` elapsed),
 `resume_validation_error` (bad `resume_data`), `describe_cycle_error` (a cycle in
 `describe`), `bench_suspend_error` (a benched flow suspended; `bench` has no
-resume path).
+resume path), `flow_changed_error` (a durable run's flow changed shape while
+the run waited), `run_not_found_error` (a durable run was resumed before it
+started).
 
 **Engine.** `provider_required_error` (several providers configured, none named
 by the call or `defaults.provider`), `provider_not_configured_error`,
@@ -516,8 +519,10 @@ the `project` envelopes and option shapes that `retry` and `fallback` take
 `StepOutput<s>`, and the schema vocabulary (`ToolSchema`, `AnySchema`,
 `SchemaIssue`). At runtime `is_step` narrows a value to a `Step`, and
 `error_path(err)` reads the `path` that a run attached to a thrown error.
-From `fascicle/adapters`, `FilesystemStore` and `FilesystemScopedStore` name
-what `filesystem_store` returns.
+The durable driver adds `DurableConfig`, `DurableStore`, `DurableRuns`,
+`DurableRunOptions`, `DurableOutcome`, and `DurableRunState`, and
+`fascicle/adapters` names what `filesystem_store` returns as `FilesystemStore`
+and `FilesystemScopedStore`.
 
 **Composites.** Every deliberation composite carries a config and a result
 envelope: `AdversarialConfig` / `AdversarialResult` plus

@@ -56,6 +56,36 @@ export class resume_validation_error extends Error {
   }
 }
 
+export class flow_changed_error extends Error {
+  readonly kind = 'flow_changed_error' as const;
+  declare readonly path?: ReadonlyArray<string>;
+  readonly run_id: string;
+  // Fingerprints of the flow's shape: the one the run started with, and the
+  // one it was just asked to continue on.
+  readonly started_on: string;
+  readonly continued_on: string;
+  constructor(run_id: string, started_on: string, continued_on: string) {
+    super(
+      `durable run ${run_id} started on a flow of another shape (${started_on}, now ${continued_on}): finish it on the flow it started with, delete it, or drive it with on_flow_change: 'replay'`,
+    )
+    this.name = 'flow_changed_error'
+    this.run_id = run_id
+    this.started_on = started_on
+    this.continued_on = continued_on
+  }
+}
+
+export class run_not_found_error extends Error {
+  readonly kind = 'run_not_found_error' as const;
+  declare readonly path?: ReadonlyArray<string>;
+  readonly run_id: string;
+  constructor(run_id: string) {
+    super(`no durable run ${run_id}: start it before resuming it`)
+    this.name = 'run_not_found_error'
+    this.run_id = run_id
+  }
+}
+
 export class describe_cycle_error extends Error {
   readonly kind = 'describe_cycle_error' as const;
   declare readonly path?: ReadonlyArray<string>;
