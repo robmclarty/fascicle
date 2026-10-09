@@ -107,7 +107,7 @@ needs fan-in, phases, or named per-joint types.
 | Primitive | Shape |
 | --- | --- |
 | `branch({ when, then, otherwise })` | route on `when(input)` |
-| `map({ items, do, concurrency? })` | run `do` per item of `items(input)`, optional in-flight cap |
+| `map({ items, do, concurrency?, settle? })` | run `do` per item of `items(input)`, optional in-flight cap; with `settle: true` every item runs and each slot is a `Settled` entry, `{ ok: true, value }` or `{ ok: false, error }` |
 | `parallel({ a, b })` | run a named map of steps concurrently; the step's input is the intersection of the members' inputs |
 | `loop({ init, body, guard?, finish, max_rounds })` | bounded iteration with carry-state and an optional convergence guard (a `Step` or a bare `(state) => boolean` predicate); returns `finish(state, { converged, rounds })` |
 | `retry(step, { max_attempts, when?, project?, ... })` | re-run on failure with exponential backoff; `when(err, attempt)` picks the retryable errors, `project` maps `{ value, attempts, errors }` |
@@ -383,6 +383,7 @@ newer producer emits. The guards are how you narrow one.
 | `is_run_end_event(value)` | guard | the terminal `run_end` event, emitted once per run, where `status` is `'done' \| 'failed' \| 'aborted' \| 'suspended'`; failures carry `error` plus `error_name` / `error_kind` / `error_path` when known |
 | `is_checkpoint_event(value)` | guard | a `checkpoint` store lookup, where `status` is `'hit' \| 'miss' \| 'read_error'`, with the step `id` and store `key` |
 | `is_step_replayed_event(value)` | guard | a step marked `side_effect` that ran again before its resumed run reached its gates, with the `step_id` and the `suspend_ids` still ahead |
+| `is_map_item_failed_event(value)` | guard | an item of a `map` that settles threw, with the map's `step_id`, the item's `index`, the `error` message, and `error_kind` when the error had one |
 | `is_custom_trajectory_event(value)` | guard | the fallback shape, meaning any string `kind`, well-known ones included |
 
 ## Testing Doubles (`fascicle/testing`)
@@ -505,20 +506,22 @@ the roadmap). The public type exports:
 `DiagramOptions`, `FlowNode`, `FlowValue`, `LoopConfig`, `LoopOutcome`, `LoopGuardResult`,
 `LoopGuardPredicate`, plus the trajectory event shapes (`SpanStartEvent`,
 `SpanEndEvent`, `EmitEvent`, `RunEndEvent`, `RunEndStatus`,
-`CheckpointEvent`, `CheckpointStatus`, `StepReplayedEvent`, `CustomTrajectoryEvent`,
+`CheckpointEvent`, `CheckpointStatus`, `StepReplayedEvent`, `MapItemFailedEvent`, `CustomTrajectoryEvent`,
 `ParsedTrajectoryEvent`, `TrajectoryParseResult`).
 The step-kind vocabulary also ships at runtime, where `STEP_KINDS` is the closed
 list and `is_step_kind` its narrowing guard. Every config a composer
 signature names is exported too: `SequenceOptions`, `ParallelOptions`,
-`BranchConfig`, `MapConfig`, `PipeOptions`, `RetryConfig`, `FallbackOptions`,
+`BranchConfig`, `MapConfig`, `MapSettleConfig`, `PipeOptions`, `RetryConfig`, `FallbackOptions`,
 `TimeoutOptions`, `CheckpointConfig`, `SuspendConfig`, `ScopeOptions`,
 `StashOptions`, `UseOptions`, `GateConfig`, alongside `RunOptions`,
 the `project` envelopes and option shapes that `retry` and `fallback` take
 (`RetryOutcome`, `RetryProjection`, `FallbackOutcome`, `FallbackProjection`),
 `StreamingRunHandle`, `StepFn`, `CleanupFn`, the extractors `StepInput<s>` /
 `StepOutput<s>`, and the schema vocabulary (`ToolSchema`, `AnySchema`,
-`SchemaIssue`). At runtime `is_step` narrows a value to a `Step`, and
-`error_path(err)` reads the `path` that a run attached to a thrown error.
+`SchemaIssue`). A map that settles returns `Settled` entries, and a failed
+entry carries a `SettledError`. At runtime `is_step` narrows a value to a
+`Step`, and `error_path(err)` reads the `path` that a run attached to a thrown
+error.
 The durable driver adds `DurableConfig`, `DurableStore`, `DurableRuns`,
 `DurableRunOptions`, `DurableOutcome`, and `DurableRunState`, and
 `fascicle/adapters` names what `filesystem_store` returns as `FilesystemStore`

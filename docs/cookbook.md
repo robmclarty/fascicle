@@ -5,6 +5,7 @@ Short, worked patterns you can copy straight into your harness. Each one assumes
 - [Retries on flaky work](#retries-on-flaky-work)
 - [Timeout then fall back](#timeout-then-fall-back)
 - [Fan-out with map and concurrency cap](#fan-out-with-map-and-concurrency-cap)
+- [Keep every outcome when items fail](#keep-every-outcome-when-items-fail)
 - [Pick the best of N with a model judge](#pick-the-best-of-n-with-a-model-judge)
 - [Build-and-critique with adversarial](#build-and-critique-with-adversarial)
 - [Consensus of N runs](#consensus-of-n-runs)
@@ -67,6 +68,36 @@ const summarise_all = map({
   concurrency: 4,
 });
 ```
+
+## Keep Every Outcome When Items Fail
+
+A plain `map` fails on the first item that throws, and every result the other items finished goes with it. That's right when one bad item means the whole batch is wrong. When it doesn't (a nightly batch, a backfill, a fan-out over documents you don't control), add `settle: true`. Every item runs, and the output holds one entry per item, in input order:
+
+<!-- snippet: check -->
+```ts
+import { map, run, step } from 'fascicle';
+
+const summarise = step('summarise', (doc: string) => {
+  if (doc.length === 0) throw new Error('empty document');
+  return doc.slice(0, 80);
+});
+
+export const summarise_all = map({
+  items: (docs: string[]) => docs,
+  do: summarise,
+  concurrency: 4,
+  settle: true,
+});
+
+export async function report(docs: string[]): Promise<string[]> {
+  const outcomes = await run(summarise_all, docs);
+  return outcomes.map((outcome, i) =>
+    outcome.ok ? outcome.value : `doc ${i} failed: ${outcome.error.message}`,
+  );
+}
+```
+
+A failed entry's `error` keeps the message, plus the `name`, `kind`, and step-id `path` when the error has them. It's plain data rather than the `Error` itself, so a settled array survives a `checkpoint` and reads the same when a resumed run takes it from the store, and `kind` (`timeout_error`, for example) is how you tell one failure from another. Each failure also records a `map_item_failed` event with the item's `index`, which `is_map_item_failed_event` narrows. A `suspend` or an abort inside an item still stops the map, because those are control flow rather than failures, and so does an error that `items` itself throws.
 
 ## Pick the Best of N with a Model Judge
 

@@ -34,7 +34,7 @@ export type { ParallelOptions } from './parallel.js'
 export { branch } from './branch.js'
 export type { BranchConfig } from './branch.js'
 export { map } from './map.js'
-export type { MapConfig } from './map.js'
+export type { MapConfig, MapSettleConfig, Settled, SettledError } from './map.js'
 export { pipe } from './pipe.js'
 export type { PipeOptions } from './pipe.js'
 export { retry } from './retry.js'
@@ -98,6 +98,7 @@ export {
   is_checkpoint_event,
   is_custom_trajectory_event,
   is_emit_event,
+  is_map_item_failed_event,
   is_run_end_event,
   is_span_end_event,
   is_span_start_event,
@@ -109,6 +110,7 @@ export type {
   CheckpointStatus,
   CustomTrajectoryEvent,
   EmitEvent,
+  MapItemFailedEvent,
   ParsedTrajectoryEvent,
   RunEndEvent,
   RunEndStatus,

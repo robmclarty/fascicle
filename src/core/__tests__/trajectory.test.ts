@@ -3,13 +3,14 @@ import {
   is_checkpoint_event,
   is_custom_trajectory_event,
   is_emit_event,
+  is_map_item_failed_event,
   is_run_end_event,
   is_span_end_event,
   is_span_start_event,
   is_step_replayed_event,
   parse_trajectory_event,
 } from '../trajectory.js'
-import type { ParsedTrajectoryEvent } from '../trajectory.js'
+import type { MapItemFailedEvent, ParsedTrajectoryEvent } from '../trajectory.js'
 
 function parse_or_throw(value: unknown): ParsedTrajectoryEvent {
   const result = parse_trajectory_event(value)
@@ -265,6 +266,39 @@ describe('is_step_replayed_event', () => {
       is_step_replayed_event({ kind: 'checkpoint', step_id: 'draft', suspend_ids: ['a'] }),
     ).toBe(false)
     expect(is_step_replayed_event(undefined)).toBe(false)
+  })
+})
+
+describe('is_map_item_failed_event', () => {
+  const failed: MapItemFailedEvent = { kind: 'map_item_failed', step_id: 'map_1', index: 2, error: 'boom' }
+
+  it('accepts a map id, an item index, and a message, with or without an error kind', () => {
+    expect(is_map_item_failed_event(failed)).toBe(true)
+    expect(is_map_item_failed_event({ ...failed, index: 0 })).toBe(true)
+    expect(is_map_item_failed_event({ ...failed, error_kind: 'timeout_error' })).toBe(true)
+  })
+
+  it('rejects a missing or non-string step id', () => {
+    expect(is_map_item_failed_event({ kind: 'map_item_failed', index: 2, error: 'boom' })).toBe(false)
+    expect(is_map_item_failed_event({ ...failed, step_id: 1 })).toBe(false)
+  })
+
+  it('rejects an index that is not a whole number', () => {
+    expect(is_map_item_failed_event({ kind: 'map_item_failed', step_id: 'map_1', error: 'boom' })).toBe(
+      false,
+    )
+    expect(is_map_item_failed_event({ ...failed, index: '2' })).toBe(false)
+    expect(is_map_item_failed_event({ ...failed, index: 1.5 })).toBe(false)
+  })
+
+  it('rejects a missing or non-string error', () => {
+    expect(is_map_item_failed_event({ kind: 'map_item_failed', step_id: 'map_1', index: 2 })).toBe(false)
+    expect(is_map_item_failed_event({ ...failed, error: { message: 'boom' } })).toBe(false)
+  })
+
+  it('rejects other kinds and non-events', () => {
+    expect(is_map_item_failed_event({ ...failed, kind: 'step_replayed' })).toBe(false)
+    expect(is_map_item_failed_event(undefined)).toBe(false)
   })
 })
 

@@ -38,6 +38,7 @@ import type {
   FallbackOutcome,
   FallbackProjection,
   MapConfig,
+  MapSettleConfig,
   ParallelOptions,
   PipeOptions,
   RetryConfig,
@@ -47,6 +48,8 @@ import type {
   SchemaIssue,
   ScopeOptions,
   SequenceOptions,
+  Settled,
+  SettledError,
   StashOptions,
   StepFn,
   StepInput,
@@ -176,6 +179,33 @@ describe('exported composer config and option types', () => {
     // retry projection never saw a value.
     expect(verdict).toEqual({ score: 2, retries: 0, degraded: true })
     expect(calls).toBe(2)
+  })
+
+  it('MapSettleConfig picks the settled output type, and a plain MapConfig keeps plain results', async () => {
+    const settle_config: MapSettleConfig<ReadonlyArray<number>, number, number> = {
+      items: (xs) => xs,
+      do: double,
+      settle: true,
+    }
+    const settled = map(settle_config)
+    const outcomes: StepOutput<typeof settled> = await run(settled, [1, 2], run_options)
+    const first: Settled<number> | undefined = outcomes[0]
+    expect(first).toEqual({ ok: true, value: 2 })
+    // @ts-expect-error a settled map's output holds Settled entries, not plain results
+    const as_plain: number[] = outcomes
+    expect(as_plain).toHaveLength(2)
+
+    const plain = map({ items: (xs: number[]) => xs, do: double, settle: false })
+    const results: number[] = await run(plain, [3], run_options)
+    expect(results).toEqual([6])
+
+    const failure: SettledError = { message: 'boom', kind: 'timeout_error', path: ['item'] }
+    expect(failure.message).toBe('boom')
+
+    // Only a literal settle chooses an output type, so a mode known at runtime doesn't compile.
+    const mode = false as boolean
+    // @ts-expect-error settle has to be the literal true or false
+    expect(map({ items: (xs: number[]) => xs, do: double, settle: mode }).kind).toBe('map')
   })
 
   it('SuspendConfig and the schema vocabulary are nameable together', async () => {

@@ -22,7 +22,7 @@ You import everything below from `fascicle`. The primitives live in
 | `sequence` | composer | chain steps, threading output into input |
 | `parallel` | composer | run a named map of steps concurrently |
 | `branch` | composer | run `then` or `otherwise` based on `when(input)` |
-| `map` | composer | run a step per item with optional concurrency cap |
+| `map` | composer | run a step per item with optional concurrency cap, failing on the first error or settling every outcome |
 | `pipe` | composer | post-process a step's output with a plain function |
 | `retry` | composer | re-run an inner step with exponential backoff |
 | `fallback` | composer | run a backup step on primary failure |
@@ -45,7 +45,7 @@ You import everything below from `fascicle`. The primitives live in
 | `chain` | builder | named steps over a growing typed record (`Chain`, `ChainStepOptions`); the spine. Binding names are record keys, so they follow the same identifier rule as step ids, with the prose in `{ name }` |
 | `scope` / `stash` / `use` | composers | named state across non-adjacent steps |
 | `STEP_KINDS` / `is_step_kind` | value / guard | the closed list of step kinds and its narrowing guard (type: `StepKind`) |
-| `parse_trajectory_event`, `is_span_start_event` / `is_span_end_event` / `is_emit_event` / `is_step_replayed_event` / `is_custom_trajectory_event` | fn / guards | parse a recorded trajectory line, then narrow it by shape |
+| `parse_trajectory_event`, `is_span_start_event` / `is_span_end_event` / `is_emit_event` / `is_step_replayed_event` / `is_map_item_failed_event` / `is_custom_trajectory_event` | fn / guards | parse a recorded trajectory line, then narrow it by shape |
 | `timeout_error` | error | thrown by `timeout` |
 | `suspended_error` | error | thrown by `suspend` on first pass |
 | `resume_validation_error` | error | thrown by `suspend` on invalid resume data |
@@ -113,7 +113,11 @@ from English specifications:
   config, so the warning is a false positive here. Turn the rule off for
   that line, or for your whole project the way Fascicle's own
   `.oxlintrc.json` does.
-- `map({ items, do, concurrency? })` — run `do` per item; cap in-flight.
+- `map({ items, do, concurrency?, settle? })` — run `do` per item; cap in-flight.
+  The first item that throws fails the map. With `settle: true` every item
+  runs instead, and each slot holds `{ ok: true, value }` or
+  `{ ok: false, error }`, where `error` is the error reduced to plain data
+  (see [the cookbook](./cookbook.md#keep-every-outcome-when-items-fail)).
 - `pipe(inner, fn)` — post-process `inner`'s output. Strictly binary, so one
   Step, one plain mapping function. To chain Steps use `sequence([...])`;
   passing a Step as `fn` throws at construction.

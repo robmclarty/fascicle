@@ -15,6 +15,8 @@
  *   checkpoint:  checkpoint store lookup outcome (hit / miss / read_error)
  *   step_replayed: a step marked `side_effect` re-running before a resumed
  *                run reached the gates it was resumed at
+ *   map_item_failed: an item of a `map` that settles threw, and its slot
+ *                holds the error instead of a value
  *   <other>:     anything else, recognized by `is_custom_trajectory_event`,
  *                which only requires a string `kind`
  *
@@ -69,6 +71,13 @@ export type StepReplayedEvent = {
   readonly suspend_ids: ReadonlyArray<string>
 } & { readonly [key: string]: unknown }
 
+export type MapItemFailedEvent = {
+  readonly kind: 'map_item_failed'
+  readonly step_id: string
+  readonly index: number
+  readonly error: string
+} & { readonly [key: string]: unknown }
+
 export type CustomTrajectoryEvent = {
   readonly kind: string
 } & { readonly [key: string]: unknown }
@@ -80,6 +89,7 @@ export type ParsedTrajectoryEvent =
   | RunEndEvent
   | CheckpointEvent
   | StepReplayedEvent
+  | MapItemFailedEvent
   | CustomTrajectoryEvent
 
 export type TrajectoryParseResult =
@@ -157,6 +167,21 @@ export function is_step_replayed_event(value: unknown): value is StepReplayedEve
   if (!Array.isArray(suspend_ids)) return false
   const ids: ReadonlyArray<unknown> = suspend_ids
   return typeof value['step_id'] === 'string' && ids.every((id) => typeof id === 'string')
+}
+
+/**
+ * A failed item of a `map` that settles: `step_id` names the map, `index` is
+ * the item's position in the map's input, and `error` is the message. An
+ * error that carried a `kind` adds it as `error_kind`.
+ */
+export function is_map_item_failed_event(value: unknown): value is MapItemFailedEvent {
+  if (!is_custom_trajectory_event(value)) return false
+  if (value.kind !== 'map_item_failed') return false
+  return (
+    typeof value['step_id'] === 'string' &&
+    Number.isInteger(value['index']) &&
+    typeof value['error'] === 'string'
+  )
 }
 
 /**

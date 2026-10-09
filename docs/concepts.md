@@ -187,6 +187,7 @@ The bundled loggers have two limits you should know about before you wire them i
 - `ctx.emit(event)` records an event with `kind: 'emit'`.
 - A `suspend(...)` gate that first fires records `{ kind: 'suspended', suspend_id, step_id }` on the wire before the span-end error the runner logs for the escaping `suspended_error`, so a consumer sees the pause as its own event. `step_id` is the join key back to the `flow_structure` node. A gate that sets `deadline_ms` carries it on the event too.
 - A step marked `side_effect` (every `model_call` is) that starts before a resumed run has reached the gates it was resumed at records `{ kind: 'step_replayed', step_id, suspend_ids }`, which names the gates still ahead. It's the event that tells you a resume paid for work twice.
+- An item that throws inside a `map` that settles records `{ kind: 'map_item_failed', step_id, index, error }`, plus `error_kind` when the error had one, so a partial batch shows which items failed and why.
 
 Trajectory writes are never load-bearing, and a logger that throws doesn't fail the run. Keep your own loggers equally forgiving.
 

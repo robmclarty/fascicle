@@ -92,7 +92,8 @@
       "properties": {
         "items": { "type": "string" },
         "do": { "$ref": "#/$defs/node" },
-        "concurrency": { "type": "integer", "minimum": 1 }
+        "concurrency": { "type": "integer", "minimum": 1 },
+        "settle": { "type": "boolean" }
       }
     },
     "pipe_config": {
