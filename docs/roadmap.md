@@ -6,7 +6,7 @@ real usage lands, so pin an exact version and upgrade on purpose.
 
 ## Shipped
 
-The published surface as of v0.13.0:
+The published surface as of v0.13.1:
 
 - **Composition.** 22 primitives over a single `Step<i, o>` value type. You get
   the `chain` spine (`.step` / `.stage` / `.output`), `model_step` as the default
@@ -26,7 +26,9 @@ The published surface as of v0.13.0:
   replaying the wrong steps. A `suspend` gate can carry a deadline, `gate`
   checkpoints paid work before an approval pause, and a step marked
   `side_effect` records a `step_replayed` event whenever a resume runs it again,
-  so you can see what a resume paid for twice. Stores can scope and claim, and
+  so you can see what a resume paid for twice. `describe.replays` finds those
+  steps from the flow's shape before anything runs, so you can hold a flow to
+  having none in a test. Stores can scope and claim, and
   [`examples/object-store/`](../examples/object-store/) shows you how to write
   one over an S3-style client.
 - **A provider-sovereign engine.** One `generate` seam fronts eight providers.
