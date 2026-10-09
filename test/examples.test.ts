@@ -7,6 +7,7 @@ import { run_ensemble_judge } from '../examples/ensemble-judge/main.js'
 import { run_hello } from '../examples/hello/main.js'
 import { run_learn } from '../examples/learn/main.js'
 import { run_learn_reviewer } from '../examples/learn-reviewer/main.js'
+import { run_object_store } from '../examples/object-store/main.js'
 import { run_researcher } from '../examples/researcher/main.js'
 import { run_reviewer } from '../examples/reviewer/main.js'
 import { run_stdio_agent } from '../examples/stdio-agent/main.js'
@@ -62,6 +63,17 @@ describe('examples smoke', () => {
       redelivered: 'done: posted review of the diff of #42',
       drafts: 1,
       replayed: ['gather'],
+    })
+  })
+
+  it('object_store keeps the whole store contract and holds a durable run in a bucket', async () => {
+    expect(await run_object_store()).toEqual({
+      conformance: { passed: 32, failed: [], skipped: [] },
+      submitted: 'waiting at approve',
+      bucket_while_waiting: ['runs/s/exp-7/c/lease', 'runs/s/exp-7/s/flow/v/total', 'runs/s/exp-7/v/record'],
+      approved: 'done: reimbursed ada 42.50, approved by grace',
+      deleted: true,
+      bucket_after_delete: [],
     })
   })
 

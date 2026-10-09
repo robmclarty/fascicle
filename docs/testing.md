@@ -228,6 +228,10 @@ damaged value reads as a miss. `ttl_ms` sets the claim lifetime that the expiry
 checks wait out. It's 200 milliseconds by default, and if your store's clock is
 coarse, you'll want it longer.
 
+For a worked example, [examples/object-store](../examples/object-store/) writes a
+store over an S3-style client, with claims made of conditional writes, and runs
+it through the suite before `durable` keeps a run in it.
+
 ## Recipes
 
 All four run keyless and network-free in the default test suite, so you can paste any of

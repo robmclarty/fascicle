@@ -67,7 +67,7 @@ Then browse by topic:
 | composition and self-improvement | [improve](./improve/), [learn](./learn/), [ensemble-judge](./ensemble-judge/), [adversarial-build](./adversarial-build/) |
 | engine and providers | [hello-claude-cli](./hello-claude-cli/), [hello-claude-cli-lisp](./hello-claude-cli-lisp/), [adversarial-claude-cli](./adversarial-claude-cli/), [ollama-chat](./ollama-chat/), [streaming-chat](./streaming-chat/), [structured-output](./structured-output/) |
 | tools | [tool-loop](./tool-loop/) |
-| durability | [checkpoint-resume](./checkpoint-resume/), [suspend-resume](./suspend-resume/), [durable-runs](./durable-runs/) |
+| durability | [checkpoint-resume](./checkpoint-resume/), [suspend-resume](./suspend-resume/), [durable-runs](./durable-runs/), [object-store](./object-store/) |
 | human-in-the-loop | [hitl-http](./hitl-http/) |
 | observability | [trajectory-logger](./trajectory-logger/), [viewer-demo](./viewer-demo/), [otel-grafana](./otel-grafana/) |
 | embedding | [stdio-agent](./stdio-agent/) |
@@ -84,7 +84,7 @@ legend below is derived from those headers.
 
 | Needs | Examples |
 | --- | --- |
-| Nothing (keyless: no engine, or a stub engine) | `hello`, `newsroom`, `release-notes`, `release-notes-direct`, `adversarial-build`, `ensemble-judge`, `improve`, `learn`, `streaming-chat`, `suspend-resume`, `checkpoint-resume`, `durable-runs`, `trajectory-logger`, `viewer-demo`, `hitl-http`, `stdio-agent`, `reviewer`, `documenter`, `researcher`, `learn-reviewer`, `bench-reviewer` |
+| Nothing (keyless: no engine, or a stub engine) | `hello`, `newsroom`, `release-notes`, `release-notes-direct`, `adversarial-build`, `ensemble-judge`, `improve`, `learn`, `streaming-chat`, `suspend-resume`, `checkpoint-resume`, `durable-runs`, `object-store`, `trajectory-logger`, `viewer-demo`, `hitl-http`, `stdio-agent`, `reviewer`, `documenter`, `researcher`, `learn-reviewer`, `bench-reviewer` |
 | Local Docker (no key: the `grafana/otel-lgtm` container listening on localhost) | `otel-grafana` |
 | Local Ollama (no key: a running daemon plus a pulled model) | `ollama-chat` |
 | Local `claude` session (no key: Claude Code installed and `claude login` run) | `hello-claude-cli`, `hello-claude-cli-lisp`, `adversarial-claude-cli` |
