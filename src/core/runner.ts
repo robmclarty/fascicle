@@ -178,6 +178,18 @@ let sigint_handler: (() => void) | null = null
 let sigterm_handler: (() => void) | null = null
 
 /**
+ * Build the handler for one process signal: it aborts every active run with
+ * an `aborted_error` that names the signal.
+ */
+function abort_all_on(signal_name: string): () => void {
+  return () => {
+    for (const controller of active_runs) {
+      controller.abort(new aborted_error(`received ${signal_name}`, { reason: { signal: signal_name } }))
+    }
+  }
+}
+
+/**
  * Install process-wide SIGINT/SIGTERM handlers once.
  *
  * The handlers abort every active run with an `aborted_error` naming the
@@ -187,13 +199,8 @@ let sigterm_handler: (() => void) | null = null
 function ensure_signal_handlers(): void {
   if (signal_handler_installed) return
   signal_handler_installed = true
-  const abort_all = (signal_name: string) => () => {
-    for (const controller of active_runs) {
-      controller.abort(new aborted_error(`received ${signal_name}`, { reason: { signal: signal_name } }))
-    }
-  }
-  sigint_handler = abort_all('SIGINT')
-  sigterm_handler = abort_all('SIGTERM')
+  sigint_handler = abort_all_on('SIGINT')
+  sigterm_handler = abort_all_on('SIGTERM')
   process.on('SIGINT', sigint_handler)
   process.on('SIGTERM', sigterm_handler)
 }

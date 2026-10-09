@@ -25,6 +25,13 @@
     "no-console": "warn",
     "no-await-in-loop": "off",
     "eqeqeq": "error",
+    "no-unused-vars": [
+      "error",
+      {
+        "argsIgnorePattern": "^_",
+        "ignoreRestSiblings": true
+      }
+    ],
     "unicorn/no-thenable": "off",
     "import/no-unassigned-import": [
       "error",
@@ -41,7 +48,8 @@
         "**/*.test.ts"
       ],
       "rules": {
-        "typescript/no-unsafe-type-assertion": "off"
+        "typescript/no-unsafe-type-assertion": "off",
+        "unicorn/consistent-function-scoping": "off"
       }
     },
     {

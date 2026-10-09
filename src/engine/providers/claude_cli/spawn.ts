@@ -57,30 +57,34 @@ const ALL_REGISTRIES: Set<ChildRegistry> = new Set()
 let exit_handler_installed = false
 
 /**
- * Install the process-wide `exit` handler that SIGKILLs every live child
- * across every spawn registry. Calling this more than once is a no-op.
+ * SIGKILL every live child across every spawn registry.
  *
  * Children are spawned with `detached: true`, which makes each one the
  * leader of its own process group; signaling `-child.pid` (a negative pid)
  * targets the whole group instead of just the direct child, so any
  * grandchildren the CLI itself spawned die too.
  */
-function install_exit_handler_once(): void {
-  if (exit_handler_installed) return
-  exit_handler_installed = true
-  const handler = (): void => {
-    for (const reg of ALL_REGISTRIES) {
-      for (const child of reg) {
-        if (child.pid === undefined || child.exitCode !== null) continue
-        try {
-          process.kill(-child.pid, 'SIGKILL')
-        } catch {
-          // already exited, or signal failed; nothing more we can do synchronously
-        }
+function kill_live_children(): void {
+  for (const reg of ALL_REGISTRIES) {
+    for (const child of reg) {
+      if (child.pid === undefined || child.exitCode !== null) continue
+      try {
+        process.kill(-child.pid, 'SIGKILL')
+      } catch {
+        // already exited, or signal failed; nothing more we can do synchronously
       }
     }
   }
-  process.on('exit', handler)
+}
+
+/**
+ * Install the process-wide `exit` handler that kills every live child.
+ * Calling this more than once is a no-op.
+ */
+function install_exit_handler_once(): void {
+  if (exit_handler_installed) return
+  exit_handler_installed = true
+  process.on('exit', kill_live_children)
 }
 
 export type SpawnRuntime = {

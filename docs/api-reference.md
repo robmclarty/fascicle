@@ -444,7 +444,7 @@ Streamdown. Imports `ai` statically (see the peer note at the top).
 | Export | Kind | Notes |
 | --- | --- | --- |
 | `to_ui_message_response(handle, options?)` | fn | turn a `run.stream(...)` handle into an SSE `Response` a `useChat` endpoint can return directly |
-| `pipe_ui_message_stream_to_response(handle, res, options?)` | fn | the same stream piped to a Node `http.ServerResponse`, for `node:http` servers |
+| `pipe_ui_message_stream_to_response(handle, res, options?)` | fn | the same stream piped to a Node `http.ServerResponse`, for `node:http` servers; resolves once the response has ended |
 | `to_ui_message_chunks(event, state)` | fn | map one run event to zero or more `UIMessageChunk`s, advancing `state`; the low-level mapper both entry points share |
 | `close_open_blocks(state)` | fn | the `*-end` chunks for every text/reasoning block still open; flushes a stream whose event iterable ends early |
 | `create_ui_mapper_state()` | fn | fresh per-stream mapper state for the low-level API |

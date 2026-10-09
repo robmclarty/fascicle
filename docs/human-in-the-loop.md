@@ -247,7 +247,7 @@ export function chat_handler(): Response {
 
 For a `node:http` server that holds a `ServerResponse` rather than returning a
 web `Response`, use `pipe_ui_message_stream_to_response(handle, res)` from the
-same module.
+same module, which resolves once the response has ended.
 
 ## Synchronous: Tool Approval
 

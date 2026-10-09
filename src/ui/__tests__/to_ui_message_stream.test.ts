@@ -200,20 +200,23 @@ describe('to_ui_message_response: end to end through the ai builders', () => {
       setHeader: (name: string, value: unknown) => {
         headers[name] = value
       },
+      setHeaders: (all: Headers) => {
+        for (const [name, value] of all) headers[name] = value
+      },
       end: () => {
         ended = true
       },
       on: () => {},
       once: () => {},
+      off: () => {},
       emit: () => {},
     }
-    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-    pipe_ui_message_stream_to_response(
+    await pipe_ui_message_stream_to_response(
       handle_of([model_chunk({ kind: 'text', text: 'hi', step_index: 0 })]),
       fake_response as unknown as Parameters<typeof pipe_ui_message_stream_to_response>[1],
     )
-    await new Promise((resolve) => setTimeout(resolve, 20))
     expect(ended).toBe(true)
     expect(written.join('')).toContain('"delta":"hi"')
+    expect(headers['content-type']).toBe('text/event-stream')
   })
 })

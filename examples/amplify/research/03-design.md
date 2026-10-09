@@ -2,10 +2,10 @@
 
 Each load-bearing decision below is traced to a finding in [`02-landscape.md`](./02-landscape.md) and a source in [`sources.md`](./sources.md). Format:
 
-> **Decision** — what we did
-> **Why** — the research finding that justifies it
-> **Rejected** — what we considered and why we didn't ship it
-> **Where** — code path
+> **Decision.** What we did.
+> **Why.** The research finding that justifies it.
+> **Rejected.** What we considered, and why we didn't ship it.
+> **Where.** The code path.
 
 ---
 

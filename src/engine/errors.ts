@@ -74,9 +74,6 @@ export class provider_error extends Error {
  * stream interruption first.
  */
 export class turn_timeout_error extends Error {
-  // classify_retryable reads this off an `unknown` via read_string(err, 'kind'),
-  // a dynamic access no static analysis can resolve back to this field.
-  // fallow-ignore-next-line unused-class-member
   readonly kind = 'timeout' as const;
   declare readonly path?: ReadonlyArray<string>;
   readonly timeout_ms: number;
@@ -90,9 +87,6 @@ export class turn_timeout_error extends Error {
 }
 
 export class schema_validation_error extends Error {
-  // Part of the published discriminant surface: consumers switch on `kind`
-  // outside this repo, so the field has no in-repo production reader.
-  // fallow-ignore-next-line unused-class-member
   readonly kind = 'schema_validation_error' as const;
   declare readonly path?: ReadonlyArray<string>;
   readonly schema_issues: ReadonlyArray<SchemaIssue>;

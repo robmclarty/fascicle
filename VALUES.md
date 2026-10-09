@@ -87,8 +87,8 @@ contained edit instead of a rewrite. You keep the right to change direction.
 ## Security and privacy
 
 The smallest surface is the safest one. Fascicle has no direct runtime dependencies and
-zero mandatory peer dependencies — `ai`, `zod`, and every provider SDK are optional,
-loaded only when you call them — so it adds little to your attack surface and nothing
+zero mandatory peer dependencies (`ai`, `zod`, and every provider SDK are optional,
+loaded only when you call them), so it adds little to your attack surface and nothing
 you did not choose. Local models are
 first-class precisely so your data and your prompts can stay on machines you control.
 The full posture, including the honest admission that Fascicle is itself a dependency

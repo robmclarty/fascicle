@@ -110,15 +110,16 @@ export function scope<const children extends readonly AnyStep[]>(
   const config_meta: Record<string, unknown> | undefined =
     options?.name === undefined ? undefined : { display_name: options.name }
 
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-  return {
+  const built = {
     id,
     kind: 'scope',
     children,
     ...(config_meta ? { config: config_meta } : {}),
     ...description_meta(options?.description),
     run: run_fn,
-  } as Step<unknown, LastOutput<children>>
+  }
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+  return built as Step<unknown, LastOutput<children>>
 }
 
 /**

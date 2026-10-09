@@ -48,7 +48,7 @@ vdescribe('chain', () => {
       .step('a', ({ input }) => input + 1)
       .step('b', ({ a }) => a * 10)
       .stage('narrowed', ({ b }) => ({ b }))
-      .step('after', (s) => Object.keys(s).sort())
+      .step('after', (s) => Object.keys(s).toSorted())
       .output(({ after }) => after)
 
     expect(await run(flow, 1, { install_signal_handlers: false })).toEqual(['b'])

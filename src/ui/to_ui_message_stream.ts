@@ -232,12 +232,13 @@ export function to_ui_message_response(
 /**
  * Pipe a `run.stream(...)` handle to a Node `http.ServerResponse` as SSE, for
  * `node:http` servers that hold a `ServerResponse` rather than returning a
- * web `Response`.
+ * web `Response`. Resolves once the stream has ended the response, or stopped
+ * because the client went away.
  */
 export function pipe_ui_message_stream_to_response(
   handle: RunStreamLike,
   response: ServerResponse,
   options: ToUiStreamOptions = {},
-): void {
-  pipeUIMessageStreamToResponse({ response, stream: build_stream(handle, options) })
+): Promise<void> {
+  return pipeUIMessageStreamToResponse({ response, stream: build_stream(handle, options) })
 }

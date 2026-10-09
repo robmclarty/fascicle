@@ -203,7 +203,7 @@ describe('layout of every registered kind', () => {
     }
   }
 
-  const FANS = ['parallel', 'branch', 'adversarial', 'ensemble', 'tournament', 'consensus']
+  const FANS = new Set(['parallel', 'branch', 'adversarial', 'ensemble', 'tournament', 'consensus'])
 
   for (const kind of STEP_KINDS) {
     it(`maps ${kind} to drawn geometry`, () => {
@@ -221,7 +221,7 @@ describe('layout of every registered kind', () => {
         expect(node_of(result, child.id).center.x).toBeGreaterThanOrEqual(TOKENS.margin)
       }
 
-      if (FANS.includes(kind)) {
+      if (FANS.has(kind)) {
         expect(result.junctions[0]?.id).toBe(`${kind}_1:junction`)
         expect(segments_of(result, 'branch_in')).toHaveLength(2)
         expect(segments_of(result, 'branch_out')).toHaveLength(2)
