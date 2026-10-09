@@ -163,20 +163,26 @@ Operator runbook (in `infra/README.md`): after first `terraform apply`, populate
 
 ### Cost guardrail
 
-Per-run hard cap (`MAX_COST_USD`, default `1.00`). Implemented in `worker.ts` by subscribing to the engine's cost trajectory events:
+Per-run hard cap (`MAX_COST_USD`, default `1.00`). Implemented in `worker.ts` by wrapping the run's trajectory logger, so every `cost` event the engine records passes through a meter on its way to the real sink. A `TrajectoryLogger` is only `record`, `start_span`, and `end_span`, and each `cost` event carries one turn's `total_usd`:
 
 ```ts
 let cumulative_usd = 0
 const cost_abort = new AbortController()
-trajectory.on('cost', (e) => {
-  cumulative_usd += e.usd
-  if (cumulative_usd > MAX_COST_USD) {
-    cost_abort.abort(new Error(`cost cap exceeded: $${cumulative_usd.toFixed(2)} > $${MAX_COST_USD}`))
-  }
-})
+const metered: TrajectoryLogger = {
+  ...trajectory,
+  record: (event) => {
+    trajectory.record(event)
+    const usd = event['total_usd']
+    if (event.kind !== 'cost' || typeof usd !== 'number') return
+    cumulative_usd += usd
+    if (cumulative_usd > MAX_COST_USD) {
+      cost_abort.abort(new Error(`cost cap exceeded: $${cumulative_usd.toFixed(2)} > $${MAX_COST_USD}`))
+    }
+  },
+}
 ```
 
-The `AbortSignal` is composed with the run's existing signal so any in-flight `model_call` aborts cleanly. Aborted runs still upload their partial trajectory to S3, exit 1, and surface in CloudWatch.
+The run gets `metered` as its `trajectory`, and `cost_abort.signal` is composed with the run's existing signal (`AbortSignal.any`), so any in-flight `model_call` aborts cleanly. Aborted runs still upload their partial trajectory to S3, exit 1, and surface in CloudWatch.
 
 ### Concurrency
 
