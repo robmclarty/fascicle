@@ -134,8 +134,14 @@ function lines_text(count: number): string {
 }
 
 describe('workspace_tools', () => {
-  it('returns read_file, list_files, and search, in that order', () => {
-    expect(workspace_tools(session).map((tool) => tool.name)).toEqual(['read_file', 'list_files', 'search'])
+  it('returns the reads, then the writes, in that order', () => {
+    expect(workspace_tools(session).map((tool) => tool.name)).toEqual([
+      'read_file',
+      'list_files',
+      'search',
+      'write_file',
+      'edit_file',
+    ])
   })
 
   it("describes read_file to the model with its cap, and declares its input as JSON Schema", () => {

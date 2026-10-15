@@ -10,9 +10,11 @@
  */
 
 import type { Tool } from '#engine'
+import { edit_file_tool } from './tools/edit_file.js'
 import { list_files_tool } from './tools/list_files.js'
 import { read_file_tool } from './tools/read_file.js'
 import { search_tool } from './tools/search.js'
+import { write_file_tool } from './tools/write_file.js'
 import type { AcpSession, WorkspaceToolsOptions } from './types.js'
 
 /** The most lines one `read_file` call returns unless the options say otherwise. */
@@ -29,8 +31,9 @@ const IGNORE: ReadonlyArray<string> = ['.git', 'node_modules']
 const SEARCH_BUDGET_MS = 30_000
 
 /**
- * The workspace tools for one session: `read_file`, `list_files`, and
- * `search`, each confined to the session's `cwd` and additional directories.
+ * The workspace tools for one session: the reads (`read_file`, `list_files`,
+ * and `search`), then the writes (`write_file` and `edit_file`), each
+ * confined to the session's `cwd` and additional directories.
  */
 export function workspace_tools(session: AcpSession, options: WorkspaceToolsOptions = {}): ReadonlyArray<Tool> {
   const ignore = options.ignore ?? IGNORE
@@ -38,5 +41,7 @@ export function workspace_tools(session: AcpSession, options: WorkspaceToolsOpti
     read_file_tool(session, options.read_limit_lines ?? READ_LIMIT_LINES),
     list_files_tool(session, ignore),
     search_tool(session, ignore, SEARCH_BUDGET_MS),
+    write_file_tool(session),
+    edit_file_tool(session),
   ]
 }
