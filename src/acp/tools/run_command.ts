@@ -29,6 +29,8 @@ import { StringDecoder } from 'node:string_decoder'
 import type { Tool } from '#engine'
 import { as_record, json_schema_to_standard } from '#schema'
 import type { AcpSession } from '../types.js'
+import { record_preview } from './previews.js'
+import type { CommandPreview } from './previews.js'
 
 /** The shell every command runs in. */
 const SHELL = '/bin/sh'
@@ -141,11 +143,21 @@ function ending(child: ChildProcess): string {
 }
 
 /**
+ * A command that ran to its end: what it printed, its process, and whether
+ * something it moved out of its group held its output open.
+ */
+type Finished = {
+  readonly capture: Capture
+  readonly child: ChildProcess
+  readonly held: boolean
+}
+
+/**
  * A finished command's report: what it printed, then how it ended, and a
  * note when something it moved out of its group held its output open and
  * was left running.
  */
-function report(capture: Capture, child: ChildProcess, held: boolean): string {
+function report({ capture, child, held }: Finished): string {
   const lines = [...printed(capture), ending(child)]
   if (held) {
     lines.push(
@@ -153,6 +165,19 @@ function report(capture: Capture, child: ChildProcess, held: boolean): string {
     )
   }
   return lines.join('\n')
+}
+
+/**
+ * A finished command as its card shows it: what it printed, with nothing in
+ * place of an empty output, and its exit code or the signal that ended it.
+ */
+function command_preview({ capture, child }: Finished): CommandPreview {
+  return {
+    kind: 'command',
+    output: capture.total === 0 ? '' : printed(capture).join('\n'),
+    exit_code: child.exitCode,
+    signal: child.signalCode,
+  }
 }
 
 /**
@@ -184,21 +209,21 @@ function kill_group(child: ChildProcess): void {
 }
 
 /**
- * Run one command to its end in its own process group and report it. A
- * command that ends on its own is a result, whatever its exit code; a
- * timeout and a shell that won't start are errors, and the turn's abort
- * rejects with its reason. The timeout and the abort kill the group, and the
- * shell's exit kills whatever it left behind. Each reads on to the end of
- * the output, so what the command printed last isn't lost, until the grace
- * after the shell's exit runs out. However the call ends, its timers and the
- * abort listener go with it.
+ * Run one command to its end in its own process group. A command that ends
+ * on its own is a result, whatever its exit code; a timeout and a shell that
+ * won't start are errors, and the turn's abort rejects with its reason. The
+ * timeout and the abort kill the group, and the shell's exit kills whatever
+ * it left behind. Each reads on to the end of the output, so what the
+ * command printed last isn't lost, until the grace after the shell's exit
+ * runs out. However the call ends, its timers and the abort listener go
+ * with it.
  */
 async function run_shell(
   request: CommandRequest,
   cwd: string,
   settings: CommandSettings,
   abort: AbortSignal,
-): Promise<string> {
+): Promise<Finished> {
   abort.throwIfAborted()
   const timeout_ms = request.timeout_ms ?? settings.timeout_ms
   const capture: Capture = { limit: settings.output_limit_bytes, parts: [], kept: 0, total: 0 }
@@ -208,7 +233,7 @@ async function run_shell(
     detached: true,
     stdio: ['ignore', 'pipe', 'pipe'],
   })
-  const { promise, resolve, reject } = Promise.withResolvers<string>()
+  const { promise, resolve, reject } = Promise.withResolvers<Finished>()
   let timed_out = false
   let held = false
   let grace: NodeJS.Timeout | undefined
@@ -247,7 +272,7 @@ async function run_shell(
   })
   child.once('close', () => {
     if (timed_out) reject(timeout_error(capture, timeout_ms))
-    else resolve(report(capture, child, held))
+    else resolve({ capture, child, held })
   })
   abort.addEventListener('abort', on_abort)
   try {
@@ -295,7 +320,9 @@ export function run_command_tool(session: AcpSession, settings: CommandSettings)
             'so it can only refuse here; read_file, list_files, search, write_file, and edit_file still work',
         )
       }
-      return run_shell(command_request(input), session.cwd, settings, ctx.abort)
+      const finished = await run_shell(command_request(input), session.cwd, settings, ctx.abort)
+      record_preview(session, ctx.tool_call_id, command_preview(finished))
+      return report(finished)
     },
   }
 }

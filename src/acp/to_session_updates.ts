@@ -6,15 +6,21 @@
  * a prompt turn does no I/O and holds no SDK value, so a flow author can wrap
  * `to_session_updates` in their own `to_updates` and add to what it returns,
  * as long as every event still reaches it: each `span_start` advances the
- * state's count of how many times a step has run. Spans, `cost`, and `emit`
- * events map to nothing; an `emit` never becomes chat output implicitly,
- * because output that changes with a value's shape is a trap.
+ * state's count of how many times a step has run, and a workspace tool's
+ * result takes its call's preview from the session's store. Spans, `cost`,
+ * and `emit` events map to nothing; an `emit` never becomes chat output
+ * implicitly, because output that changes with a value's shape is a trap.
+ *
+ * Every tool gets a plain card here. Given the turn's session, the workspace
+ * tools' cards also take the look `presentation.ts` gives them.
  */
 
 import { randomUUID } from 'node:crypto'
 import type { ContentBlock, SessionUpdate } from '@agentclientprotocol/sdk'
 import type { TrajectoryEvent } from '#core'
 import type { StreamChunk } from '#engine'
+import { closing_updates, input_fields, opening_fields } from './presentation.js'
+import type { CardUpdate } from './presentation.js'
 import type { AcpMapperOptions, AcpMapperState, AcpStreamRoute } from './types.js'
 
 type ToolResultChunk = Extract<StreamChunk, { kind: 'tool_result' }>
@@ -28,6 +34,8 @@ export function create_acp_mapper_state(options: AcpMapperOptions = {}): AcpMapp
     turn_id: options.turn_id ?? randomUUID(),
     stream: options.stream ?? (() => 'message'),
     runs: new Map(),
+    session: options.session,
+    tools: new Map(),
   }
 }
 
@@ -68,7 +76,7 @@ function text_updates(route: AcpStreamRoute, text: string): SessionUpdate[] {
  * error text as the card's content, since that text is what the user needs
  * to see.
  */
-function tool_result_update(tool_call_id: string, chunk: ToolResultChunk): SessionUpdate {
+function tool_result_update(tool_call_id: string, chunk: ToolResultChunk): CardUpdate {
   if (chunk.error !== undefined) {
     return {
       sessionUpdate: 'tool_call_update',
@@ -95,27 +103,36 @@ function map_chunk(chunk: StreamChunk, step_id: string, state: AcpMapperState): 
       return text_updates(state.stream(step_id), chunk.text)
     case 'reasoning':
       return text_updates('thought', chunk.text)
-    case 'tool_call_start':
+    case 'tool_call_start': {
+      const card = acp_tool_call_id(state, step_id, chunk.id)
+      state.tools.set(card, chunk.name)
       return [
         {
           sessionUpdate: 'tool_call',
-          toolCallId: acp_tool_call_id(state, step_id, chunk.id),
+          toolCallId: card,
           title: chunk.name,
           kind: 'other',
           status: 'pending',
+          ...opening_fields(state.session, chunk.name, card),
         },
       ]
-    case 'tool_call_end':
+    }
+    case 'tool_call_end': {
+      const card = acp_tool_call_id(state, step_id, chunk.id)
       return [
         {
           sessionUpdate: 'tool_call_update',
-          toolCallId: acp_tool_call_id(state, step_id, chunk.id),
+          toolCallId: card,
           status: 'in_progress',
           rawInput: chunk.input,
+          ...input_fields(state.session, state.tools.get(card), chunk.input),
         },
       ]
-    case 'tool_result':
-      return [tool_result_update(acp_tool_call_id(state, step_id, chunk.id), chunk)]
+    }
+    case 'tool_result': {
+      const card = acp_tool_call_id(state, step_id, chunk.id)
+      return closing_updates(state.session, state.tools.get(card), card, chunk, tool_result_update(card, chunk))
+    }
     default:
       // The input arrives whole at tool_call_end, so its deltas add nothing,
       // and step_finish and finish carry no content for the client.
@@ -134,8 +151,9 @@ function is_stream_chunk(value: unknown): value is StreamChunk {
 
 /**
  * Map one run event to zero or more ACP session updates. Only `model_chunk`
- * events produce any, and only a `span_start` advances the state; the
- * function does no I/O.
+ * events produce any. A `span_start` advances the state's run count, a
+ * card's opening records its tool, and a workspace tool's result takes its
+ * preview; the function does no I/O.
  */
 export function to_session_updates(event: TrajectoryEvent, state: AcpMapperState): SessionUpdate[] {
   if (event.kind === 'span_start') {

@@ -20,6 +20,12 @@ export type AcpMapperOptions = {
   readonly turn_id?: string | undefined
   /** Where each model call's text goes, by its `step_id`; default: `'message'` for every call. */
   readonly stream?: ((step_id: string) => AcpStreamRoute) | undefined
+  /**
+   * The session the turn runs in. With it, a workspace tool's card shows the
+   * call the way Claude Agent shows its own (a kind, a title, locations, a
+   * diff, a command's output); without it, every tool gets the plain card.
+   */
+  readonly session?: AcpSession | undefined
 }
 
 /**
@@ -35,6 +41,12 @@ export type AcpMapperState = {
    * under `loop` or `retry` runs again with the same `step_id`.
    */
   readonly runs: Map<string, number>
+  readonly session: AcpSession | undefined
+  /**
+   * The tool behind each card the turn opened, by the card's id, since a
+   * call's later chunks carry only its id.
+   */
+  readonly tools: Map<string, string>
 }
 
 /**

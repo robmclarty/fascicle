@@ -20,6 +20,7 @@ import { as_record, json_schema_to_standard } from '#schema'
 import type { AcpSession } from '../types.js'
 import { contain, error_code, shown_path } from './containment.js'
 import type { ContainedPath } from './containment.js'
+import { record_preview } from './previews.js'
 import { is_binary } from './read_file.js'
 
 /**
@@ -101,6 +102,24 @@ export async function apply_change(change: FileChange, abort: AbortSignal): Prom
 }
 
 /**
+ * Leave a change that landed in the session's preview store, for the card
+ * of the call that made it to show as a diff.
+ */
+export function record_change(
+  session: AcpSession,
+  tool_call_id: string,
+  change: FileChange & { readonly line?: number },
+): void {
+  record_preview(session, tool_call_id, {
+    kind: 'change',
+    path: change.path,
+    old_text: change.old_text,
+    new_text: change.new_text,
+    line: change.line,
+  })
+}
+
+/**
  * The change a `write_file` call would make, worked out without writing: its
  * path checked against the session's roots, the text it would replace, and
  * the content that replaces it.
@@ -136,6 +155,7 @@ export function write_file_tool(session: AcpSession): Tool {
     execute: async (input, ctx) => {
       const change = await write_file_change(session, input)
       await apply_change(change, ctx.abort)
+      record_change(session, ctx.tool_call_id, change)
       return `${change.old_text === null ? 'created' : 'overwrote'} ${shown_path(session, change.path)}`
     },
   }

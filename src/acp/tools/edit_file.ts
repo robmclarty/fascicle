@@ -12,7 +12,7 @@ import type { Tool } from '#engine'
 import { as_record, json_schema_to_standard } from '#schema'
 import type { AcpSession } from '../types.js'
 import { contain, shown_path } from './containment.js'
-import { apply_change, current_text } from './write_file.js'
+import { apply_change, current_text, record_change } from './write_file.js'
 import type { FileChange } from './write_file.js'
 
 /**
@@ -121,6 +121,7 @@ export function edit_file_tool(session: AcpSession): Tool {
     execute: async (input, ctx) => {
       const change = await edit_file_change(session, input)
       await apply_change(change, ctx.abort)
+      record_change(session, ctx.tool_call_id, change)
       const shown = shown_path(session, change.path)
       return change.matches === 1
         ? `edited ${shown} at line ${change.line}`

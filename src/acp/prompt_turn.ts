@@ -15,6 +15,7 @@ import type { ContentBlock, PromptResponse, SessionUpdate } from '@agentclientpr
 import { aborted_error, run } from '#core'
 import type { Step, TrajectoryEvent } from '#core'
 import { create_acp_mapper_state, to_session_updates } from './to_session_updates.js'
+import { reset_previews } from './tools/previews.js'
 import type { AcpHistoryEntry, AcpSession, AcpTurn, ServeAcpConfig } from './types.js'
 
 /**
@@ -139,10 +140,11 @@ function warn_dropped(event: TrajectoryEvent): void {
 async function forward<i, o>(
   events: AsyncIterable<TrajectoryEvent>,
   config: ServeAcpConfig<i, o>,
+  session: AcpSession,
   cancelled: AbortSignal,
   send: SendUpdate,
 ): Promise<void> {
-  const state = create_acp_mapper_state({ stream: config.stream })
+  const state = create_acp_mapper_state({ stream: config.stream, session })
   const to_updates = config.to_updates ?? to_session_updates
   for await (const event of events) {
     if (event.kind === 'events_dropped') warn_dropped(event)
@@ -178,6 +180,9 @@ async function run_turn<i, o>(
     note_reply(reply, update)
   }
   const stop = new AbortController()
+  // A turn cancelled before its consumer caught up leaves previews nobody
+  // took, and raw ids repeat from turn to turn.
+  reset_previews(record.session)
   const handle = run.stream(record.flow, turn_input(config, turn), {
     abort: AbortSignal.any([cancelled, stop.signal]),
     install_signal_handlers: false,
@@ -186,7 +191,7 @@ async function run_turn<i, o>(
   })
   const outcome = settle(handle.result)
   try {
-    await forward(handle.events, config, cancelled, send_update)
+    await forward(handle.events, config, record.session, cancelled, send_update)
     const result = await outcome
     if (!cancelled.aborted) {
       if (!result.ok) throw result.error
