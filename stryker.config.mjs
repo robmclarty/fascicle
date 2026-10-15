@@ -28,6 +28,13 @@ export default {
     // The serving loop and its disconnect path live in src/acp/serve_streams.ts,
     // which is mutated like any other module.
     '!src/acp/serve_acp.ts',
+    // The search worker's shell, which hands its thread's job to search_files
+    // and posts the result back. Stryker switches a mutant on in the test's
+    // own thread, never inside a worker, so every decision lives in
+    // src/acp/tools/search.ts, whose tests call search_files on the main
+    // thread, and src/acp/__tests__/search.test.ts runs the shell through real
+    // workers.
+    '!src/acp/tools/search_worker.ts',
     // The fascicle-diagram bin's process glue (real streams, the EPIPE guard,
     // loading through the project's tsx), exercised by the spawn-based tests
     // in src/__tests__/diagram_bin.test.ts. The command's decisions live in

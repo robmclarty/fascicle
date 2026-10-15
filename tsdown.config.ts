@@ -27,6 +27,10 @@ export default defineConfig({
     // The fascicle-diagram bin's body. Not a package export: only the bin
     // shim that scripts/build.mjs writes imports it.
     diagram_bin: './src/diagram_bin.ts',
+    // fascicle/acp's search worker. Not a package export either: the search
+    // tool starts it by URL as dist/search_worker.js, beside the chunk that
+    // holds the tool, since every chunk lands flat in dist/.
+    search_worker: './src/acp/tools/search_worker.ts',
   },
   outDir: './dist',
   format: ['esm'],

@@ -55,9 +55,10 @@ function read_request(input: unknown, read_limit_lines: number): ReadRequest {
 }
 
 /**
- * Whether the file's first BINARY_SNIFF_BYTES hold a NUL byte.
+ * Whether the file's first BINARY_SNIFF_BYTES hold a NUL byte. `search`
+ * skips a file this calls binary, so the two tools agree on what is text.
  */
-async function is_binary(handle: FileHandle): Promise<boolean> {
+export async function is_binary(handle: FileHandle): Promise<boolean> {
   const head = Buffer.alloc(BINARY_SNIFF_BYTES)
   const { bytesRead } = await handle.read(head, 0, BINARY_SNIFF_BYTES, 0)
   return head.subarray(0, bytesRead).includes(0)

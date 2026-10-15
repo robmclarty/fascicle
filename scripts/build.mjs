@@ -19,8 +19,9 @@
  */
 
 import { spawn } from 'node:child_process';
-import { mkdir, readFile, readdir, rm, stat } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, realpath, rm, stat, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
 
@@ -330,6 +331,7 @@ async function main() {
     console.error(`\nbuild: acp smoke test missing exports: ${missing_acp.join(', ')}`);
     process.exit(1);
   }
+  await smoke_search(acp_mod);
 
   process.stderr.write(`▸ build: smoke-importing ${DIST_ADAPTERS_JS}\n`);
   if (!existsSync(DIST_ADAPTERS_JS) || !existsSync(DIST_ADAPTERS_DTS)) {
@@ -452,6 +454,31 @@ async function main() {
   process.stderr.write(
     `\n✔ build ok (${js_stat.size} bytes js, ${dts_stat.size} bytes d.ts, ${EXPECTED_NAMED.length} named exports + describe.json + ${EXPECTED_ACP.length} acp + ${EXPECTED_ADAPTERS.length} adapters + ${EXPECTED_AGENTS.length} agents + ${EXPECTED_MCP.length} mcp + ${EXPECTED_OTEL.length} otel + ${EXPECTED_STDIO.length} stdio + ${EXPECTED_TESTING.length} testing + ${EXPECTED_UI.length} ui + ${EXPECTED_VIEWER.length} viewer verified)\n`,
   );
+}
+
+/**
+ * Run one search through the built fascicle/acp. The search tool starts its
+ * worker by URL, as dist/search_worker.js beside whichever chunk holds the
+ * tool, and nothing else proves that file lands where the chunk looks: the
+ * tests start the worker from the source tree, and a smoke import never
+ * starts it at all.
+ */
+async function smoke_search(acp_mod) {
+  process.stderr.write(`▸ build: running one search through ${DIST_ACP_JS}\n`);
+  const root = await realpath(await mkdtemp(join(tmpdir(), 'fascicle-build-search-')));
+  try {
+    await writeFile(join(root, 'probe.txt'), 'alpha\nfind the needle\nomega\n');
+    const session = { id: 'build', cwd: root, additional_directories: [], roots: [root], client_capabilities: {} };
+    const search = acp_mod.workspace_tools(session).find((tool) => tool.name === 'search');
+    const context = { abort: new AbortController().signal, tool_call_id: 'build', step_index: 0 };
+    const found = await search.execute({ pattern: 'needle' }, context);
+    if (found !== 'probe.txt:2: find the needle') {
+      console.error(`\nbuild: search through dist/acp.js answered ${JSON.stringify(found)}, not probe.txt's needle`);
+      process.exit(1);
+    }
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 }
 
 /**

@@ -31,7 +31,7 @@ type ListRequest = {
 }
 
 /** What one walk needs besides the directory it's in. */
-type Walk = {
+export type Walk = {
   readonly pattern: string
   readonly ignored: ReadonlySet<string>
   readonly abort: AbortSignal
@@ -61,9 +61,9 @@ function list_request(input: unknown): ListRequest {
  * Walk one directory, depth first: descend into each subdirectory and keep
  * each regular file that matches, skipping ignored names. A symlink is
  * neither a directory nor a file to a `readdir` entry, so the walk never
- * follows one.
+ * follows one. `search` walks with it too, so both tools see the same files.
  */
-async function walk(directory: string, below: string, work: Walk): Promise<void> {
+export async function walk(directory: string, below: string, work: Walk): Promise<void> {
   work.abort.throwIfAborted()
   const entries: Dirent[] = await readdir(directory, { withFileTypes: true })
   for (const entry of entries) {

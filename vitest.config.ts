@@ -40,6 +40,12 @@ export default defineConfig({
       'examples/agents/**/__tests__/**/*.{test,spec}.ts',
     ],
     pool: 'forks',
+    // A worker thread that the source starts (fascicle/acp's search worker)
+    // loads outside vite's module runner, so Node resolves its imports, and
+    // Node strips types without mapping the sources' `.js` specifiers to
+    // their `.ts` files. Each test worker, Stryker's included, registers the
+    // resolver the spawn harnesses use, and the threads it starts inherit it.
+    execArgv: ['--import', fileURLToPath(new URL('./test/support/register-ts-resolver.mjs', import.meta.url))],
     // Off inside Stryker's workers. Its sandbox links node_modules, so all of
     // them share vitest's module cache there, and vitest wipes that cache when
     // the lockfile changes: the first mutation run after a dependency change

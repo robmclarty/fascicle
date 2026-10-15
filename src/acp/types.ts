@@ -87,7 +87,7 @@ export type AcpSession = {
 export type WorkspaceToolsOptions = {
   /** The most lines one `read_file` call returns; default: 2000. */
   readonly read_limit_lines?: number | undefined
-  /** Names `list_files` skips wherever they appear in a path; default: `['.git', 'node_modules']`. */
+  /** Names `list_files` and `search` skip wherever they appear in a path; default: `['.git', 'node_modules']`. */
   readonly ignore?: ReadonlyArray<string> | undefined
 }
 
