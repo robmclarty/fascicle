@@ -1,9 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import { json_schema_to_standard } from '../schema_bridge.js'
+import { json_schema_to_standard } from '#schema'
 
 async function accepts(schema: unknown, value: unknown): Promise<boolean> {
   const result = await json_schema_to_standard(schema)['~standard'].validate(value)
   return result.issues === undefined
+}
+
+async function issues(schema: unknown, value: unknown): Promise<unknown> {
+  const result = await json_schema_to_standard(schema)['~standard'].validate(value)
+  return result.issues
 }
 
 function emitted(schema: unknown): Record<string, unknown> {
@@ -219,6 +224,13 @@ describe('json_schema_to_standard validation', () => {
     expect(await accepts({ type: 'object', required: ['a'] }, {})).toBe(true)
   })
 
+  it('enforces nothing from a required that is not an array', async () => {
+    // A bare string is malformed, and reading it as a substring match would
+    // reject an argument the server never asked for.
+    const schema = { type: 'object', properties: { a: { type: 'string' } }, required: 'a' }
+    expect(await accepts(schema, {})).toBe(true)
+  })
+
   it('reports the dotted path to a nested failure', async () => {
     const result = await json_schema_to_standard({
       type: 'object',
@@ -248,9 +260,48 @@ describe('json_schema_to_standard validation', () => {
     const root = await json_schema_to_standard({ type: 'string' })['~standard'].validate(1)
     expect(root.issues).toEqual([{ message: 'expected string, received number' }])
   })
+
+  it('says what a const or an enum expected', async () => {
+    expect(await issues({ const: null }, 1)).toEqual([{ message: 'expected null' }])
+    expect(await issues({ const: 'a' }, 'b')).toEqual([{ message: 'expected "a"' }])
+    expect(await issues({ enum: ['a', 1] }, 'b')).toEqual([{ message: 'expected one of "a", 1' }])
+  })
+
+  it('counts the variants a union expected, and reports a lone branch as itself', async () => {
+    const pair = { anyOf: [{ type: 'string' }, { type: 'number' }] }
+    expect(await issues(pair, true)).toEqual([{ message: 'expected one of 2 variants' }])
+    expect(await issues({ anyOf: [{ type: 'string' }] }, 1)).toEqual([
+      { message: 'expected string, received number' },
+    ])
+  })
+
+  it('lists the types a type array expected, and reports a lone type as itself', async () => {
+    expect(await issues({ type: ['string', 'null'] }, 1)).toEqual([
+      { message: 'expected one of string, null' },
+    ])
+    expect(await issues({ type: ['string'] }, 1)).toEqual([
+      { message: 'expected string, received number' },
+    ])
+  })
+
+  it('names null and arrays apart from objects in a type mismatch', async () => {
+    expect(await issues({ type: 'object' }, [])).toEqual([
+      { message: 'expected object, received array' },
+    ])
+    expect(await issues({ type: 'array' }, null)).toEqual([
+      { message: 'expected array, received null' },
+    ])
+  })
 })
 
 describe('json_schema_to_standard emission', () => {
+  it('names fascicle as the vendor, since the bridge is no longer MCP-only', () => {
+    expect(json_schema_to_standard({ type: 'object' })['~standard']).toMatchObject({
+      version: 1,
+      vendor: 'fascicle',
+    })
+  })
+
   it('emits the server schema verbatim, in both directions', () => {
     // The whole point of the step: no round trip, so the constraints a Zod
     // conversion dropped (minLength, format, pattern) reach the model intact.
@@ -304,6 +355,17 @@ describe('json_schema_to_standard emission', () => {
 
     expect(standard.jsonSchema.input({ target: 'draft-2020-12' })).toEqual(server)
     expect(server).toEqual({ type: 'object', properties: { a: { type: 'string' } } })
+  })
+
+  it('copies the arrays inside the schema too, not just its objects', () => {
+    const server = { type: 'object', properties: { a: { type: 'string' } }, required: ['a'] }
+    const standard = json_schema_to_standard(server)['~standard']
+
+    const required = standard.jsonSchema.input({ target: 'draft-2020-12' })['required'] as string[]
+    required.push('b')
+
+    expect(standard.jsonSchema.input({ target: 'draft-2020-12' })['required']).toEqual(['a'])
+    expect(server.required).toEqual(['a'])
   })
 
   it('does not alias the advertised schema, so a later server-side edit cannot leak in', () => {

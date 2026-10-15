@@ -1,37 +1,41 @@
 /**
- * A Standard Schema over an inbound MCP tool's advertised JSON Schema.
+ * A Standard Schema over a plain JSON Schema, with no validator library behind
+ * it.
  *
- * An MCP tool advertises its input as JSON Schema, and a Fascicle `Tool` carries
- * a `ToolSchema` that the tool loop validates before `execute` and the engine
- * emits back to the provider as JSON Schema. Those are two faces of one object,
- * so this bridge builds both directly over the schema the server sent: emission
- * hands the advertised schema back unchanged, and validation walks it.
+ * Built for inbound MCP tools, which advertise their input as JSON Schema, and
+ * kept in the schema seam so any tool that declares its input that way can use
+ * it without importing zod. A Fascicle `Tool` carries a `ToolSchema` that the
+ * tool loop validates before `execute` and the engine emits back to the
+ * provider as JSON Schema. Those are two faces of one object, so this bridge
+ * builds both directly over the schema it is given: emission hands that schema
+ * back unchanged, and validation walks it.
  *
- * The old bridge converted the advertised schema into Zod so the provider path
- * could convert it back, a round trip that was lossy by construction. Verbatim
- * emission is strictly higher fidelity: whatever the server declared is what the
- * model is told, including the constraints (`minLength`, `format`, `pattern`)
- * the Zod conversion dropped.
+ * The old MCP bridge converted the advertised schema into Zod so the provider
+ * path could convert it back, a round trip that was lossy by construction.
+ * Verbatim emission is strictly higher fidelity: whatever the schema declares
+ * is what the model is told, including the constraints (`minLength`, `format`,
+ * `pattern`) the Zod conversion dropped.
  *
  * Validation stays deliberately loose, unchanged from the Zod bridge's reach:
  * structure, types, enums, const, unions, and required keys are checked, value
- * constraints are not, extra keys pass through to the server, and anything
- * unrecognized accepts. The remote server re-validates its own arguments and is
- * the authority on them, so this check is a guard against an obviously wrong
- * call, not the contract.
+ * constraints are not, extra keys pass through, and anything unrecognized
+ * accepts. Whatever runs the call is the authority on its arguments (an MCP
+ * server re-validates its own), so this check is a guard against an obviously
+ * wrong call, not the contract.
  */
 
-import type { SchemaIssue, ToolSchema } from '#schema'
-import { as_record, is_record } from './internal.js'
+import { as_record, is_record } from './records.js'
+import type { SchemaIssue, ToolSchema } from './types.js'
 
 /**
- * Builds a `ToolSchema` over an MCP server's advertised JSON Schema.
+ * Builds a `ToolSchema` over a JSON Schema, such as an MCP server's advertised
+ * tool input.
  *
- * The advertised schema is snapshotted once, deeply, and both faces of the
- * returned object read that snapshot. A malformed or hostile schema degrades to
- * the empty schema during the snapshot rather than propagating an error, since
- * an arbitrary remote server's advertisement must never crash tool discovery,
- * and it leaves both faces describing the same thing: accept anything, emit
+ * The schema is snapshotted once, deeply, and both faces of the returned object
+ * read that snapshot. A malformed or hostile schema degrades to the empty
+ * schema during the snapshot rather than propagating an error, since an
+ * arbitrary remote server's advertisement must never crash tool discovery, and
+ * it leaves both faces describing the same thing: accept anything, emit
  * nothing.
  */
 export function json_schema_to_standard(schema: unknown): ToolSchema {
@@ -39,7 +43,7 @@ export function json_schema_to_standard(schema: unknown): ToolSchema {
   return {
     '~standard': {
       version: 1,
-      vendor: 'fascicle-mcp',
+      vendor: 'fascicle',
       validate: (value: unknown) => {
         const issues = check(advertised, value, [])
         return issues.length === 0 ? { value } : { issues }
@@ -67,8 +71,7 @@ export function json_schema_to_standard(schema: unknown): ToolSchema {
  */
 function snapshot(schema: unknown): Record<string, unknown> {
   try {
-    const record = as_record(schema)
-    return record === undefined ? {} : clone_schema(record)
+    return clone_schema(as_record(schema) ?? {})
   } catch {
     return {}
   }
@@ -240,7 +243,7 @@ function check_type_union(
  */
 const SCALAR_TYPES: Record<string, (value: unknown) => boolean> = {
   string: (value) => typeof value === 'string',
-  number: (value) => typeof value === 'number' && Number.isFinite(value),
+  number: (value) => Number.isFinite(value),
   integer: (value) => Number.isInteger(value),
   boolean: (value) => typeof value === 'boolean',
   null: (value) => value === null,
@@ -273,6 +276,7 @@ function check_type(
  * argument this bridge did not anticipate still reaches the server, which
  * re-validates and is the real authority. A `required` name with no entry in
  * `properties` is likewise not enforced: there is nothing to check it against.
+ * Nor is a `required` that is not an array, which is malformed.
  */
 function check_object(
   schema: Record<string, unknown>,
@@ -281,12 +285,14 @@ function check_object(
 ): SchemaIssue[] {
   if (!is_record(value)) return [type_issue('object', value, path)]
   const properties = as_record(schema['properties']) ?? {}
-  const required = new Set(string_array(schema['required']))
+  const required = schema['required']
   const issues: SchemaIssue[] = []
   for (const [key, property] of Object.entries(properties)) {
     const child = value[key]
     if (child === undefined) {
-      if (required.has(key)) issues.push(issue('required', [...path, key]))
+      if (Array.isArray(required) && required.includes(key)) {
+        issues.push(issue('required', [...path, key]))
+      }
       continue
     }
     issues.push(...check(property, child, [...path, key]))
@@ -337,12 +343,4 @@ function describe(value: unknown): string {
  */
 function issue(message: string, path: ReadonlyArray<PropertyKey>): SchemaIssue {
   return path.length === 0 ? { message } : { message, path: [...path] }
-}
-
-/**
- * Filters a value down to the strings it contains, or an empty array when it
- * is not an array at all.
- */
-function string_array(value: unknown): string[] {
-  return Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string') : []
 }

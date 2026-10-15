@@ -1,6 +1,7 @@
 /**
- * Small shared guards for the MCP adapter. Kept in one place so the client,
- * schema bridge, and result mapping do not each carry a copy.
+ * Small shared guards for reading untyped JSON. They live beside the JSON
+ * Schema bridge that needs them and are exported, so MCP's client and result
+ * mapping read payloads through the same copy rather than carrying their own.
  */
 
 /**

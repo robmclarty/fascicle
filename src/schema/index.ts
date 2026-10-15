@@ -2,13 +2,16 @@
  * Public surface for schema.
  *
  * The vendor-neutral schema seam: the types Fascicle accepts from users, the
- * validator it runs them through, and the JSON Schema it hands to providers.
+ * validator it runs them through, the JSON Schema it hands to providers, and
+ * the zod-free bridge that builds a `ToolSchema` from plain JSON Schema.
  * Internal to the package: `#schema` has no published subpath, because the
  * types travel out through the surfaces that use them rather than on their own.
  */
 
 export { schema_not_convertible_error } from './errors.js'
 export { to_json_schema } from './json_schema.js'
+export { json_schema_to_standard } from './json_schema_to_standard.js'
+export { as_record, is_record } from './records.js'
 export { format_schema_issues, validate_schema } from './validate.js'
 export type {
   AnySchema,

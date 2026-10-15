@@ -4,8 +4,8 @@
  * for `serve_flow`.
  */
 
+import { as_record, is_record } from '#schema'
 import { mcp_error } from './errors.js'
-import { as_record, is_record } from './internal.js'
 
 export type McpToolResult = {
   content: Array<{ type: 'text'; text: string }>

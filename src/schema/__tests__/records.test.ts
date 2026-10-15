@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { as_record, is_record } from '../internal.js'
+import { as_record, is_record } from '#schema'
 
 describe('is_record', () => {
   it('accepts only non-null, non-array objects', () => {

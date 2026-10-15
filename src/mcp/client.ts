@@ -6,10 +6,9 @@
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
 import type { Tool, ToolExecContext } from '#engine'
+import { is_record, json_schema_to_standard } from '#schema'
 import { mcp_error } from './errors.js'
-import { is_record } from './internal.js'
 import { call_result_to_output } from './result_mapping.js'
-import { json_schema_to_standard } from './schema_bridge.js'
 import { load_client_sdk, type McpClientSdk } from './sdk_loader.js'
 
 const DEFAULT_CLIENT_INFO = { name: 'fascicle', version: '0.0.0' }
