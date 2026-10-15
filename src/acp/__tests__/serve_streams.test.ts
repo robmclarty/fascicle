@@ -1,3 +1,4 @@
+import { tmpdir } from 'node:os'
 import { describe, expect, it } from 'vitest'
 import { client, ndJsonStream, PROTOCOL_VERSION } from '@agentclientprotocol/sdk'
 import type { ActiveSession, ClientConnection } from '@agentclientprotocol/sdk'
@@ -31,7 +32,7 @@ function serve(config: ServeAcpConfig<string, string>, shutdown?: AbortSignal): 
 
 async function open(connection: ClientConnection): Promise<ActiveSession> {
   await connection.agent.request('initialize', { protocolVersion: PROTOCOL_VERSION, clientCapabilities: {} })
-  return connection.agent.buildSession({ cwd: '/workspace', mcpServers: [] }).start()
+  return connection.agent.buildSession({ cwd: tmpdir(), mcpServers: [] }).start()
 }
 
 /**

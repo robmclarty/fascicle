@@ -11,6 +11,7 @@
  * arrives rather than that nothing failed.
  */
 
+import { tmpdir } from 'node:os'
 import { client, ndJsonStream, PROTOCOL_VERSION } from '@agentclientprotocol/sdk'
 import type {
   ActiveSession,
@@ -60,8 +61,9 @@ export function connect_client(app: AgentApp, client_app: ClientApp = client()):
 }
 
 /**
- * Connect a client, initialize, and start one session in `/workspace`
- * unless the options say otherwise.
+ * Connect a client, initialize, and start one session in the system's temp
+ * directory unless the options say otherwise. `session/new` resolves its
+ * roots on disk, so the default has to be a directory that exists.
  */
 export async function open_session(app: AgentApp, options: OpenSessionOptions = {}): Promise<OpenSession> {
   const connected = connect_client(app, options.client)
@@ -70,7 +72,7 @@ export async function open_session(app: AgentApp, options: OpenSessionOptions = 
     clientCapabilities: options.client_capabilities ?? {},
   })
   const session = await connected.agent
-    .buildSession({ cwd: '/workspace', mcpServers: [], ...options.session })
+    .buildSession({ cwd: tmpdir(), mcpServers: [], ...options.session })
     .start()
   return { ...connected, session }
 }

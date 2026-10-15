@@ -1,4 +1,7 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { afterAll, afterEach, describe, expect, it, vi } from 'vitest'
 import { client, PROTOCOL_VERSION, RequestError } from '@agentclientprotocol/sdk'
 import type { ContentBlock, SessionUpdate } from '@agentclientprotocol/sdk'
 import { model_step } from 'fascicle'
@@ -83,8 +86,21 @@ function history_probe(options: { reply_first: boolean; ignore_abort?: boolean }
   return { flow, started: started.promise, histories, reasons }
 }
 
+const scratch_dirs: string[] = []
+
+/** A fresh directory under the system's temp directory, removed after the suite. */
+async function scratch(): Promise<string> {
+  const dir = await mkdtemp(join(tmpdir(), 'fascicle-acp-agent-'))
+  scratch_dirs.push(dir)
+  return dir
+}
+
 afterEach(() => {
   vi.restoreAllMocks()
+})
+
+afterAll(async () => {
+  await Promise.all(scratch_dirs.map((dir) => rm(dir, { recursive: true, force: true })))
 })
 
 describe('acp_agent: initialize and sessions', () => {
@@ -95,7 +111,11 @@ describe('acp_agent: initialize and sessions', () => {
     expect(response).toEqual({
       protocolVersion: PROTOCOL_VERSION,
       agentInfo: { name: 'test-agent', version: '1.2.3' },
-      agentCapabilities: { loadSession: false, promptCapabilities: { embeddedContext: true } },
+      agentCapabilities: {
+        loadSession: false,
+        promptCapabilities: { embeddedContext: true },
+        sessionCapabilities: { additionalDirectories: {} },
+      },
       authMethods: [],
     })
   })
@@ -132,13 +152,14 @@ describe('acp_agent: initialize and sessions', () => {
         return reply_step()
       },
     })
-    const first = await open_session(app, { client_capabilities: { terminal: true }, session: { cwd: '/repo/a' } })
+    const [a, b] = await Promise.all([scratch(), scratch()])
+    const first = await open_session(app, { client_capabilities: { terminal: true }, session: { cwd: a } })
     await first.session.prompt('one')
     await first.session.prompt('two')
-    const second = await open_session(app, { session: { cwd: '/repo/b' } })
+    const second = await open_session(app, { session: { cwd: b } })
     expect(built).toHaveLength(2)
-    expect(built[0]).toMatchObject({ id: first.session.sessionId, cwd: '/repo/a', client_capabilities: { terminal: true } })
-    expect(built[1]).toMatchObject({ id: second.session.sessionId, cwd: '/repo/b' })
+    expect(built[0]).toMatchObject({ id: first.session.sessionId, cwd: a, client_capabilities: { terminal: true } })
+    expect(built[1]).toMatchObject({ id: second.session.sessionId, cwd: b })
     expect(built[1]?.client_capabilities.terminal).not.toBe(true)
   })
 
@@ -151,9 +172,94 @@ describe('acp_agent: initialize and sessions', () => {
     })
     const { agent } = connect_client(app)
     await agent.request('initialize', { protocolVersion: PROTOCOL_VERSION })
-    const failure = agent.request('session/new', { cwd: '/workspace', mcpServers: [] })
+    const failure = agent.request('session/new', { cwd: tmpdir(), mcpServers: [] })
     await expect(failure).rejects.toBeInstanceOf(RequestError)
     await expect(failure).rejects.toThrow('Internal error: no flow for this workspace')
+  })
+})
+
+describe('acp_agent: workspace roots', () => {
+  /** An agent whose flow builder records each session it's handed. */
+  async function recording_agent() {
+    const built: AcpSession[] = []
+    const app = await acp_agent({
+      name: 'test-agent',
+      flow: (session) => {
+        built.push(session)
+        return reply_step()
+      },
+    })
+    const { agent } = connect_client(app)
+    await agent.request('initialize', { protocolVersion: PROTOCOL_VERSION })
+    return { agent, built }
+  }
+
+  it('hands the flow the roots as the client sent them and as real paths, a cwd behind a symlink included', async () => {
+    const base = await scratch()
+    await Promise.all([mkdir(join(base, 'project')), mkdir(join(base, 'shared'))])
+    await symlink(join(base, 'project'), join(base, 'via'))
+    const { agent, built } = await recording_agent()
+    await agent.request('session/new', {
+      cwd: join(base, 'via'),
+      additionalDirectories: [join(base, 'shared')],
+      mcpServers: [],
+    })
+    // tmpdir() itself sits behind a symlink on macOS, so the real roots differ from base twice over.
+    const real_base = await realpath(base)
+    expect(built).toEqual([
+      expect.objectContaining({
+        cwd: join(base, 'via'),
+        additional_directories: [join(base, 'shared')],
+        roots: [join(real_base, 'project'), join(real_base, 'shared')],
+      }),
+    ])
+  })
+
+  it('gives a session with no additional directories its cwd alone as a root', async () => {
+    const cwd = await scratch()
+    const { agent, built } = await recording_agent()
+    await agent.request('session/new', { cwd, mcpServers: [] })
+    expect(built[0]?.additional_directories).toEqual([])
+    expect(built[0]?.roots).toEqual([await realpath(cwd)])
+  })
+
+  it('fails session/new with invalid params naming a cwd that does not exist, and builds no flow', async () => {
+    const missing = join(await scratch(), 'missing')
+    const { agent, built } = await recording_agent()
+    await expect(agent.request('session/new', { cwd: missing, mcpServers: [] })).rejects.toMatchObject({
+      code: -32602,
+      message: `Invalid params: the workspace root ${missing} can't be opened (ENOENT); send session/new with a directory that exists`,
+      data: { cwd: missing, additionalDirectories: [] },
+    })
+    expect(built).toEqual([])
+  })
+
+  it('fails session/new naming an additional directory that does not exist', async () => {
+    const cwd = await scratch()
+    const missing = join(cwd, 'gone')
+    const { agent } = await recording_agent()
+    await expect(
+      agent.request('session/new', { cwd, additionalDirectories: [missing], mcpServers: [] }),
+    ).rejects.toMatchObject({
+      message: `Invalid params: the workspace root ${missing} can't be opened (ENOENT); send session/new with a directory that exists`,
+      data: { cwd, additionalDirectories: [missing] },
+    })
+  })
+
+  it('refuses a relative root, which would resolve against wherever the agent was launched', async () => {
+    const { agent } = await recording_agent()
+    await expect(agent.request('session/new', { cwd: 'src', mcpServers: [] })).rejects.toMatchObject({
+      message: 'Invalid params: the workspace root src is a relative path; send session/new with absolute paths',
+    })
+  })
+
+  it('refuses a file as a root', async () => {
+    const file = join(await scratch(), 'notes.txt')
+    await writeFile(file, 'not a directory')
+    const { agent } = await recording_agent()
+    await expect(agent.request('session/new', { cwd: file, mcpServers: [] })).rejects.toMatchObject({
+      message: `Invalid params: the workspace root ${file} is a file; send session/new with a directory`,
+    })
   })
 })
 
@@ -264,13 +370,14 @@ describe('acp_agent: prompt turns', () => {
       }),
       to_input: (turn) => turn,
     })
-    const { session } = await open_session(app, { session: { cwd: '/repo' } })
+    const cwd = await scratch()
+    const { session } = await open_session(app, { session: { cwd } })
     const prompt: ContentBlock[] = [
       { type: 'text', text: 'one ' },
       { type: 'text', text: 'two' },
     ]
     await session.prompt(prompt)
-    expect(turns[0]).toEqual({ session_id: session.sessionId, cwd: '/repo', text: 'one two', prompt, history: [] })
+    expect(turns[0]).toEqual({ session_id: session.sessionId, cwd, text: 'one two', prompt, history: [] })
   })
 
   it('writes a resource link as its URI and inlines an embedded resource after the prompt', async () => {
@@ -526,8 +633,8 @@ describe('acp_agent: cancellation', () => {
     const { flow } = stalled_reply()
     const app = await acp_agent({ name: 'test-agent', flow })
     const { agent, session } = await open_session(app)
-    const other = await agent.buildSession({ cwd: '/elsewhere', mcpServers: [] }).start()
-    const idle = await agent.buildSession({ cwd: '/idle', mcpServers: [] }).start()
+    const other = await agent.buildSession({ cwd: tmpdir(), mcpServers: [] }).start()
+    const idle = await agent.buildSession({ cwd: tmpdir(), mcpServers: [] }).start()
     const first = session.prompt('go')
     const second = other.prompt('go')
     await read_until(session, is_message)

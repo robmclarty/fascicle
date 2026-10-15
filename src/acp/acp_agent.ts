@@ -13,9 +13,17 @@ import type { AgentApp, ClientCapabilities, SessionUpdate } from '@agentclientpr
 import { cancel_turn, prompt_turn } from './prompt_turn.js'
 import type { SessionRecord } from './prompt_turn.js'
 import { load_acp_sdk } from './sdk_loader.js'
+import { resolve_roots } from './tools/containment.js'
 import type { AcpSession, ServeAcpConfig } from './types.js'
 
 type AcpSdk = Awaited<ReturnType<typeof load_acp_sdk>>
+
+/**
+ * The message a failure carries, whatever was thrown.
+ */
+function message_of(err: unknown): string {
+  return err instanceof Error ? err.message : String(err)
+}
 
 /**
  * Turn a failure inside a handler into a JSON-RPC error that carries its
@@ -23,7 +31,7 @@ type AcpSdk = Awaited<ReturnType<typeof load_acp_sdk>>
  * which tells the user in the client nothing about what went wrong.
  */
 function internal_error(sdk: AcpSdk, err: unknown): Error {
-  return sdk.RequestError.internalError(undefined, err instanceof Error ? err.message : String(err))
+  return sdk.RequestError.internalError(undefined, message_of(err))
 }
 
 /**
@@ -43,7 +51,12 @@ export async function acp_agent<i, o>(config: ServeAcpConfig<i, o>): Promise<Age
         agentInfo: { name: config.name, version: config.version ?? '0.0.0' },
         // Embedded context lets a file the user @-mentions arrive with its
         // text, rather than as a bare URI the flow has no way to read.
-        agentCapabilities: { loadSession: false, promptCapabilities: { embeddedContext: true } },
+        // Additional directories let a client widen the workspace past `cwd`.
+        agentCapabilities: {
+          loadSession: false,
+          promptCapabilities: { embeddedContext: true },
+          sessionCapabilities: { additionalDirectories: {} },
+        },
         // Providers authenticate with what the launched process can see;
         // ACP v1 gives the client no way to hand the agent credentials.
         authMethods: [],
@@ -54,9 +67,15 @@ export async function acp_agent<i, o>(config: ServeAcpConfig<i, o>): Promise<Age
       // Stryker disable next-line ArrowFunction: the SDK answers an authenticate handler's undefined with {}, so both read the same on the wire.
       () => ({}),
     )
-    .onRequest('session/new', (ctx) => {
+    .onRequest('session/new', async (ctx) => {
       // `mcpServers` is accepted and ignored until a flow can be handed them.
-      const session: AcpSession = { id: randomUUID(), cwd: ctx.params.cwd, client_capabilities }
+      const { cwd, additionalDirectories: additional_directories = [] } = ctx.params
+      // The roots resolve once, here, so every containment check compares
+      // against the same real paths for the life of the session.
+      const roots = await resolve_roots([cwd, ...additional_directories]).catch((err: unknown) => {
+        throw sdk.RequestError.invalidParams({ cwd, additionalDirectories: additional_directories }, message_of(err))
+      })
+      const session: AcpSession = { id: randomUUID(), cwd, additional_directories, roots, client_capabilities }
       try {
         const flow = typeof config.flow === 'function' ? config.flow(session) : config.flow
         sessions.set(session.id, { session, flow, history: [], last_turn: null })

@@ -67,10 +67,28 @@ export type AcpTurn = {
  */
 export type AcpSession = {
   readonly id: string
-  /** The working directory the client sent with `session/new`. */
+  /** The working directory the client sent with `session/new`, which relative paths start from. */
   readonly cwd: string
+  /** More workspace roots the client sent with `session/new`, beside `cwd`. */
+  readonly additional_directories: ReadonlyArray<string>
+  /**
+   * `cwd`, then each additional directory, as real paths with symlinks
+   * resolved once at `session/new`. The workspace tools check paths against
+   * these; anything shown to the client stays in the terms it sent.
+   */
+  readonly roots: ReadonlyArray<string>
   /** What the client said it supports in `initialize`. */
   readonly client_capabilities: ClientCapabilities
+}
+
+/**
+ * How `workspace_tools` reads the workspace.
+ */
+export type WorkspaceToolsOptions = {
+  /** The most lines one `read_file` call returns; default: 2000. */
+  readonly read_limit_lines?: number | undefined
+  /** Names `list_files` skips wherever they appear in a path; default: `['.git', 'node_modules']`. */
+  readonly ignore?: ReadonlyArray<string> | undefined
 }
 
 type ServeAcpCommon<i, o> = {
