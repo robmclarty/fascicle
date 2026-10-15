@@ -13,6 +13,7 @@ import { /* composition + engine */ } from 'fascicle';
 import { /* loggers + stores */ } from 'fascicle/adapters';
 import { /* define_agent */ } from 'fascicle/agents';
 import { /* MCP bridge */ } from 'fascicle/mcp';
+import { /* ACP agent server */ } from 'fascicle/acp';
 import { /* stdio child contract */ } from 'fascicle/stdio';
 import { /* OpenTelemetry bridge */ } from 'fascicle/otel';
 import { /* stub + capture engines */ } from 'fascicle/testing';
@@ -22,9 +23,11 @@ import { /* useChat stream adapters */ } from 'fascicle/ui';
 Fascicle is ESM-only and needs Node >= 24. It has no default exports, and no
 classes other than `Error` subclasses.
 
-`fascicle` itself has no mandatory peers. Three subpaths need one to do their
+`fascicle` itself has no mandatory peers. Four subpaths need one to do their
 work. `fascicle/mcp` needs `@modelcontextprotocol/sdk`, which it loads
-dynamically and reports as `mcp_sdk_missing_error` when absent, and
+dynamically and reports as `mcp_sdk_missing_error` when absent.
+`fascicle/acp` needs `@agentclientprotocol/sdk` and the `zod` that the SDK
+imports, which it loads the same way and reports as `acp_sdk_missing_error`.
 `fascicle/otel` needs `@opentelemetry/api`. `fascicle/ui` needs `ai`, which it
 imports statically because it speaks the AI SDK's UI message-stream protocol,
 so a missing `ai` fails at module resolution rather than with a Fascicle error.
@@ -452,6 +455,26 @@ authoritative, 1 = flow failure, 2 = contract violation). See
 | `run_stdio(flow, options?)` | fn | the whole child contract in one call, from your own entry point |
 | `execute_stdio(flow, options, io)` | fn | the same contract over injected io; returns a `StdioOutcome` instead of exiting |
 | `RunStdioOptions`, `StdioFailure`, `StdioOutcome`, `StdioIo` | type | options and the machine-readable failure envelope |
+
+## Agent Client Protocol (`fascicle/acp`)
+
+Serves a flow as an [ACP](https://agentclientprotocol.com) agent, the kind
+that Zed and other editors run in their agent panel. Each prompt turn runs the
+flow through `run.stream`, and its events stream back to the editor as session
+updates. `@agentclientprotocol/sdk` is an optional peer that's loaded only when
+an agent starts. See [acp.md](./acp.md).
+
+| Export | Kind | Notes |
+| --- | --- | --- |
+| `serve_acp(config)` | fn | serve the flow over stdin and stdout until the client disconnects, then dispose the engine; sends `console.log` to stderr, and SIGTERM or SIGINT aborts every run and exits |
+| `acp_agent(config)` | fn | the same agent as the SDK's `AgentApp`, its handlers registered but not connected, for another transport or an in-process client |
+| `to_session_updates(event, state)` | fn | map one run event to zero or more ACP `SessionUpdate`s; the default `to_updates`, pure, so a custom one can wrap it |
+| `create_acp_mapper_state(options?)` | fn | fresh per-turn mapper state (`turn_id`, `stream`) for the low-level API |
+| `acp_sdk_missing_error` | error | missing optional peer |
+
+Types: `ServeAcpConfig` (`to_input` is required unless the flow takes a
+string), `AcpSession`, `AcpTurn`, `AcpHistoryEntry`, `AcpStreamRoute`,
+`AcpMapperState`, `AcpMapperOptions`.
 
 ## UI Message Streams (`fascicle/ui`)
 

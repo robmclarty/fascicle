@@ -174,7 +174,7 @@ pnpm exec tsx examples/hello/main.ts
 pnpm exec tsx examples/hello/main.ts "your custom input here"
 ```
 
-> **Layout note.** This repo is a single installable package (`fascicle`). All source lives under `src/` as deep modules (`core`, `engine`, `composites`, `agents`, `adapters`, `mcp`, `stdio`, `ui`, `otel`, `policy`, `schema`, `testing`, `viewer`), each with a barrel `index.ts` that you reach only through its `#<module>` import alias. The aliases enforce architectural boundaries (for example, core can't import from adapters, engine can't reach into providers). The umbrella surface at the `src/` root is what bundles to npm — the published surface is the only public face.
+> **Layout note.** This repo is a single installable package (`fascicle`). All source lives under `src/` as deep modules (`core`, `engine`, `composites`, `agents`, `adapters`, `mcp`, `acp`, `stdio`, `ui`, `otel`, `policy`, `schema`, `testing`, `viewer`), each with a barrel `index.ts` that you reach only through its `#<module>` import alias. The aliases enforce architectural boundaries (for example, core can't import from adapters, engine can't reach into providers). The umbrella surface at the `src/` root is what bundles to npm — the published surface is the only public face.
 
 ## Checklist
 
@@ -189,3 +189,4 @@ Before you call a harness done:
 - [ ] Secrets come from env or a secret manager, never from source.
 - [ ] The harness exits with a non-zero code on failure so CI/queues can retry.
 - [ ] If your harness might be spawned by another program, speak the child contract with `run_stdio` — see [embedding-under-a-harness.md](./embedding-under-a-harness.md).
+- [ ] If people will talk to it in their editor, serve it as an ACP agent with `serve_acp`, as [acp.md](./acp.md) describes.

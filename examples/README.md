@@ -70,7 +70,7 @@ Then browse by topic:
 | durability | [checkpoint-resume](./checkpoint-resume/), [suspend-resume](./suspend-resume/), [durable-runs](./durable-runs/), [object-store](./object-store/) |
 | human-in-the-loop | [hitl-http](./hitl-http/) |
 | observability | [trajectory-logger](./trajectory-logger/), [viewer-demo](./viewer-demo/), [otel-grafana](./otel-grafana/) |
-| embedding | [stdio-agent](./stdio-agent/) |
+| embedding | [stdio-agent](./stdio-agent/), [acp-agent](./acp-agent/) |
 | agents | [reviewer](./reviewer/), [documenter](./documenter/), [researcher](./researcher/), [learn-reviewer](./learn-reviewer/), [bench-reviewer](./bench-reviewer/) |
 | live smoke | [live-smoke](./live-smoke/) |
 
@@ -84,7 +84,7 @@ legend below is derived from those headers.
 
 | Needs | Examples |
 | --- | --- |
-| Nothing (keyless: no engine, or a stub engine) | `hello`, `newsroom`, `release-notes`, `release-notes-direct`, `adversarial-build`, `ensemble-judge`, `improve`, `learn`, `streaming-chat`, `suspend-resume`, `checkpoint-resume`, `durable-runs`, `object-store`, `trajectory-logger`, `viewer-demo`, `hitl-http`, `stdio-agent`, `reviewer`, `documenter`, `researcher`, `learn-reviewer`, `bench-reviewer` |
+| Nothing (keyless: no engine, or a stub engine) | `hello`, `newsroom`, `release-notes`, `release-notes-direct`, `adversarial-build`, `ensemble-judge`, `improve`, `learn`, `streaming-chat`, `suspend-resume`, `checkpoint-resume`, `durable-runs`, `object-store`, `trajectory-logger`, `viewer-demo`, `hitl-http`, `stdio-agent`, `acp-agent` (until `--model` names a model), `reviewer`, `documenter`, `researcher`, `learn-reviewer`, `bench-reviewer` |
 | Local Docker (no key: the `grafana/otel-lgtm` container listening on localhost) | `otel-grafana` |
 | Local Ollama (no key: a running daemon plus a pulled model) | `ollama-chat` |
 | Local `claude` session (no key: Claude Code installed and `claude login` run) | `hello-claude-cli`, `hello-claude-cli-lisp`, `adversarial-claude-cli` |

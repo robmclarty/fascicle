@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { describe as describe_flow } from 'fascicle'
+import { acp_agent } from 'fascicle/acp'
+import { keyless_agent } from '../examples/acp-agent/main.js'
 import { run_adversarial_build } from '../examples/adversarial-build/main.js'
 import { run_checkpoint_resume } from '../examples/checkpoint-resume/main.js'
 import { run_documenter } from '../examples/documenter/main.js'
@@ -15,6 +17,7 @@ import { run_stdio_agent } from '../examples/stdio-agent/main.js'
 import { run_streaming_chat } from '../examples/streaming-chat/main.js'
 import { run_suspend_resume } from '../examples/suspend-resume/main.js'
 import { run_trajectory_logger } from '../examples/trajectory-logger/main.js'
+import { open_session, read_turn } from '../src/acp/test/connect_client.js'
 
 describe('examples smoke', () => {
   it('hello reverses the input words and preserves the input string', async () => {
@@ -42,6 +45,21 @@ describe('examples smoke', () => {
     const result = await run_stdio_agent('flaky tests')
     expect(result.headline).toBe('flaky tests: what actually changed')
     expect(result.candidates).toHaveLength(2)
+  })
+
+  it('acp_agent echoes each prompt with its turn number over the wire, keylessly', async () => {
+    const { session } = await open_session(await acp_agent(keyless_agent))
+    const replies: unknown[] = []
+    for (const prompt of ['hello', 'again']) {
+      await session.prompt(prompt)
+      replies.push(await read_turn(session))
+    }
+    expect(replies).toEqual(
+      ['turn 1: you said "hello"', 'turn 2: you said "again"'].map((text) => ({
+        updates: [{ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text } }],
+        stop_reason: 'end_turn',
+      })),
+    )
   })
 
   it('streaming_chat surfaces emitted tokens and the final result', async () => {

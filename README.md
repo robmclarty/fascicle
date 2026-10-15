@@ -151,6 +151,24 @@ serve_flow({
 });
 ```
 
+**Editor agents over ACP.** The `fascicle/acp` subpath serves a flow as an [Agent Client Protocol](https://agentclientprotocol.com) agent, so you can talk to it in Zed's agent panel beside Claude Code, Codex, and Gemini CLI. Each prompt the user sends runs the flow, and the answer streams back into the thread as the model writes it. `@agentclientprotocol/sdk` is an optional peer, just as the MCP SDK is, and [docs/acp.md](./docs/acp.md) covers the rest.
+
+<!-- snippet: check -->
+```typescript
+import { create_engine, model_step } from 'fascicle';
+import { serve_acp } from 'fascicle/acp';
+
+const engine = create_engine({
+  providers: { openrouter: { api_key: process.env['OPENROUTER_API_KEY'] ?? '', transport: 'native' } },
+});
+
+await serve_acp({
+  name: 'my-agent',
+  flow: model_step({ engine, model: 'anthropic/claude-sonnet-5.5', system: 'Answer briefly.' }),
+  engine,
+});
+```
+
 ## Provider matrix
 
 | Provider     | Peer dep                      | Auth                |
@@ -217,6 +235,7 @@ The canonical worked example is [examples/pr-improve/](./examples/pr-improve/), 
 - [docs/human-in-the-loop.md](./docs/human-in-the-loop.md) — suspend/resume approval over HTTP and streaming to a `useChat` UI via `fascicle/ui`
 - [docs/writing-a-harness.md](./docs/writing-a-harness.md) — building a runner around Fascicle
 - [docs/embedding-under-a-harness.md](./docs/embedding-under-a-harness.md) — running a Fascicle agent as somebody's child process
+- [docs/acp.md](./docs/acp.md) covers serving a flow as an agent that you talk to in Zed's agent panel, over the Agent Client Protocol
 - [docs/troubleshooting.md](./docs/troubleshooting.md) — first-run errors and what they mean
 - [docs/comparison.md](./docs/comparison.md) — how Fascicle compares to LangChain, Mastra, and others
 - [docs/adoption-decision.md](./docs/adoption-decision.md) weighs whether to adopt Fascicle: the honest case, the risks, and when to reach for something else
@@ -231,7 +250,7 @@ Fascicle is early and not accepting outside pull requests yet. Bug reports and f
 
 ## Development
 
-This repo is a **single package**. The code is organized as deep modules under `src/` (`core`, `engine`, `composites`, `agents`, `adapters`, `mcp`, `stdio`, `ui`, `otel`, `policy`, `schema`, `testing`, `viewer`), each reachable only through its barrel via the `#<module>` import alias. The umbrella surface at the `src/` root is what publishes to npm as `fascicle`. Architectural boundaries (for example, core cannot import adapters, engine imports core type-only, and no `process.env` outside the audited exceptions) are enforced by the ast-grep rules in `rules/` and a directory-level boundary DAG in `fallow.toml`. The 7 apps under `examples/*/` are separate workspace members that consume the library via `fascicle: workspace:*`.
+This repo is a **single package**. The code is organized as deep modules under `src/` (`core`, `engine`, `composites`, `agents`, `adapters`, `mcp`, `acp`, `stdio`, `ui`, `otel`, `policy`, `schema`, `testing`, `viewer`), each reachable only through its barrel via the `#<module>` import alias. The umbrella surface at the `src/` root is what publishes to npm as `fascicle`. Architectural boundaries (for example, core cannot import adapters, engine imports core type-only, and no `process.env` outside the audited exceptions) are enforced by the ast-grep rules in `rules/` and a directory-level boundary DAG in `fallow.toml`. The 7 apps under `examples/*/` are separate workspace members that consume the library via `fascicle: workspace:*`.
 
 ```bash
 pnpm install
