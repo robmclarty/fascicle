@@ -234,7 +234,7 @@ async function request_approval(
   }
 
   const approval_promise = Promise.resolve(
-    on_tool_approval({ tool_name: tool.name, input, step_index, abort }),
+    on_tool_approval({ tool_name: tool.name, input, step_index, tool_call_id, abort }),
   )
 
   const approved = await new Promise<boolean>((resolve, reject) => {

@@ -2256,3 +2256,76 @@ describe('run_tool_loop body (step 5)', () => {
     })
   })
 })
+
+describe('run_tool_loop approval request', () => {
+  it('passes each granted call its own tool_call_id, the one execute sees', async () => {
+    const asked: string[] = []
+    const ran: string[] = []
+    const out = await run_tool_loop(
+      base_config({
+        invoke: [
+          {
+            tool_calls: [call('a', 'echo', { value: 'a' }), call('b', 'echo', { value: 'b' })],
+            finish_reason: 'tool_calls',
+          },
+          { text: 'done' },
+        ],
+        tools: [
+          make_tool({
+            name: 'echo',
+            needs_approval: true,
+            execute: (_input, ctx) => {
+              ran.push(ctx.tool_call_id)
+              return 'ran'
+            },
+          }),
+        ],
+        on_tool_approval: (req) => {
+          asked.push(req.tool_call_id)
+          return true
+        },
+      }),
+    )
+    expect(asked).toEqual(['a', 'b'])
+    expect(ran).toEqual(['a', 'b'])
+    expect(out.tool_calls.map((c) => c.output)).toEqual(['ran', 'ran'])
+  })
+
+  it('passes a denied call its tool_call_id, the one the denial event records', async () => {
+    const { trajectory, events } = recording_trajectory()
+    let asked: string | undefined
+    const out = await run_tool_loop(
+      base_config({
+        invoke: [{ tool_calls: [call('c1', 'echo', { value: 'x' })], finish_reason: 'tool_calls' }, { text: 'done' }],
+        tools: [make_tool({ name: 'echo', needs_approval: true })],
+        on_tool_approval: (req) => {
+          asked = req.tool_call_id
+          return false
+        },
+        trajectory,
+      }),
+    )
+    expect(asked).toBe('c1')
+    expect(out.tool_calls[0]?.error?.message).toBe('tool_approval_denied')
+    expect(events.find((e) => e['kind'] === 'tool_approval_denied')).toMatchObject({ tool_call_id: 'c1' })
+  })
+
+  it('passes the tool_call_id before an abort wins the approval wait', async () => {
+    const controller = new AbortController()
+    let asked: string | undefined
+    const promise = run_tool_loop(
+      base_config({
+        invoke: [{ tool_calls: [call('c1', 'danger', { value: 'x' })], finish_reason: 'tool_calls' }],
+        tools: [make_tool({ name: 'danger', needs_approval: true })],
+        on_tool_approval: (req) => {
+          asked = req.tool_call_id
+          return new Promise<boolean>(() => {})
+        },
+        abort: controller.signal,
+      }),
+    )
+    setTimeout(() => controller.abort(new Error('wait cancel')), 15)
+    await expect(promise).rejects.toBeInstanceOf(aborted_error)
+    expect(asked).toBe('c1')
+  })
+})

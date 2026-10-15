@@ -206,6 +206,12 @@ export type ToolApprovalRequest = {
   tool_name: string
   input: unknown
   step_index: number
+  /**
+   * The id of the call awaiting approval: the same id its stream chunks,
+   * ToolExecContext.tool_call_id, and the tool_approval_* trajectory events
+   * carry, so a handler can point at a call a UI already shows.
+   */
+  tool_call_id: string
   abort: AbortSignal
 }
 
