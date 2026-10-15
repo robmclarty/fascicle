@@ -82,13 +82,26 @@ export type AcpSession = {
 }
 
 /**
- * How `workspace_tools` reads the workspace.
+ * How `workspace_tools` reads the workspace and runs its commands.
  */
 export type WorkspaceToolsOptions = {
   /** The most lines one `read_file` call returns; default: 2000. */
   readonly read_limit_lines?: number | undefined
   /** Names `list_files` and `search` skip wherever they appear in a path; default: `['.git', 'node_modules']`. */
   readonly ignore?: ReadonlyArray<string> | undefined
+  /**
+   * How long one `run_command` call may run before its process group is
+   * killed, unless the call sets its own `timeout_ms`; default: 120_000.
+   */
+  readonly command_timeout_ms?: number | undefined
+  /** The most output one `run_command` call returns, in bytes, before it's cut; default: 32_000. */
+  readonly output_limit_bytes?: number | undefined
+  /**
+   * The whole environment `run_command` runs commands with, in place of the
+   * agent's own, which they inherit by default, provider keys included.
+   * Nothing is merged in, so give it the `PATH` the commands need.
+   */
+  readonly command_env?: Readonly<Record<string, string>> | undefined
 }
 
 type ServeAcpCommon<i, o> = {

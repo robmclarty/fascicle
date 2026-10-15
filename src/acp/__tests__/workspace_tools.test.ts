@@ -134,13 +134,14 @@ function lines_text(count: number): string {
 }
 
 describe('workspace_tools', () => {
-  it('returns the reads, then the writes, in that order', () => {
+  it('returns the reads, then the writes, then run_command, in that order', () => {
     expect(workspace_tools(session).map((tool) => tool.name)).toEqual([
       'read_file',
       'list_files',
       'search',
       'write_file',
       'edit_file',
+      'run_command',
     ])
   })
 

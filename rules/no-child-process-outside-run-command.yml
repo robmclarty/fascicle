@@ -1,0 +1,19 @@
+id: no-child-process-outside-run-command
+message: "node:child_process may only be imported in src/acp/ from the run_command tool. Every other workspace tool works in-process, so a process the agent starts always runs inside run_command's process group, timeout, and output cap."
+severity: error
+language: typescript
+files:
+  - src/acp/**/*.ts
+ignores:
+  - src/**/__tests__/**
+  - src/acp/tools/run_command.ts
+rule:
+  any:
+    - pattern: import $$$ from 'node:child_process'
+    - pattern: import $$$ from "node:child_process"
+    - pattern: import $$$ from 'child_process'
+    - pattern: import $$$ from "child_process"
+    - pattern: export { $$$ } from 'node:child_process'
+    - pattern: export { $$$ } from 'child_process'
+    - pattern: import('node:child_process')
+    - pattern: import('child_process')
