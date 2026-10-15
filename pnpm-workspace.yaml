@@ -106,5 +106,29 @@ overrides:
 #   pnpm exec stryker run --mutate src/core/pipe.ts --force \
 #     --incrementalFile /tmp/canary.json --reporters clear-text
 # A score near 100% means the release fixed it; one near zero means it didn't.
+#
+# braces 3.0.3 limits a pattern's length but not its nesting, and its
+# recursive walkers overflow the stack on a deeply nested one: on Node 24,
+# `braces.expand` throws RangeError at a depth of 4990, inside the length
+# cap (GHSA-vfj7-8cjw-p6xm, high). No release fixes it, and upstream has a
+# dozen open pull requests and no merge since January 2025. The patch is
+# micromatch/braces#88: the parser refuses nesting deeper than 128 and the
+# walkers check depth before recursing, so such a pattern throws a
+# SyntaxError instead. braces reaches the tree only through
+# markdownlint-cli2's globbing, which reads patterns from this repo.
+#
+# Retire it when braces ships a fix: delete the entry, the patch file, and
+# the `audit.ignore` line below, re-install, and run `pnpm check:security`.
 patchedDependencies:
   '@stryker-mutator/vitest-runner@10.0.0': patches/@stryker-mutator__vitest-runner@10.0.0.patch
+  braces@3.0.3: patches/braces@3.0.3.patch
+
+# pnpm audit matches advisories by version, so it can't see a patch. This
+# tells it the braces advisory is handled above, and `pnpm audit` passes.
+# pnpm 11 still counts an ignored advisory in the report's per-severity
+# totals, though, and those totals are what checkride's `security` slot
+# gates on, so the slot stays red on braces until pnpm 12.4, which leaves
+# ignored advisories out of them.
+audit:
+  ignore:
+    - GHSA-vfj7-8cjw-p6xm # braces 3.0.3, patched above
