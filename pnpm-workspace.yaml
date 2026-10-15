@@ -18,35 +18,9 @@ allowBuilds:
 # The global minimumReleaseAge quarantine exists to blunt third-party registry
 # compromise. These are first-party packages published from repos on this
 # machine, so the quarantine buys nothing and only delays adopting a fix.
-#
-# oxlint is the exception that isn't first-party. 1.88.0 went in a day inside
-# the quarantine, by choice. pnpm accepts a version only beside an exact name,
-# never a pattern, so oxlint and each of its binding packages get a line, and
-# the next release waits like any other. Every oxlint line can go once 1.88.0
-# is two days old (2026-10-15).
 minimumReleaseAgeExclude:
   - checkride
   - fallow
-  - oxlint@1.88.0
-  - '@oxlint/binding-android-arm-eabi@1.88.0'
-  - '@oxlint/binding-android-arm64@1.88.0'
-  - '@oxlint/binding-darwin-arm64@1.88.0'
-  - '@oxlint/binding-darwin-x64@1.88.0'
-  - '@oxlint/binding-freebsd-x64@1.88.0'
-  - '@oxlint/binding-linux-arm-gnueabihf@1.88.0'
-  - '@oxlint/binding-linux-arm-musleabihf@1.88.0'
-  - '@oxlint/binding-linux-arm64-gnu@1.88.0'
-  - '@oxlint/binding-linux-arm64-musl@1.88.0'
-  - '@oxlint/binding-linux-ppc64-gnu@1.88.0'
-  - '@oxlint/binding-linux-riscv64-gnu@1.88.0'
-  - '@oxlint/binding-linux-riscv64-musl@1.88.0'
-  - '@oxlint/binding-linux-s390x-gnu@1.88.0'
-  - '@oxlint/binding-linux-x64-gnu@1.88.0'
-  - '@oxlint/binding-linux-x64-musl@1.88.0'
-  - '@oxlint/binding-openharmony-arm64@1.88.0'
-  - '@oxlint/binding-win32-arm64-msvc@1.88.0'
-  - '@oxlint/binding-win32-ia32-msvc@1.88.0'
-  - '@oxlint/binding-win32-x64-msvc@1.88.0'
 
 # pnpm reads overrides from this file (not the package.json `pnpm` field) in a
 # workspace. Every entry below lifts a transitive pin past an advisory, and
