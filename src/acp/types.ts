@@ -29,6 +29,12 @@ export type AcpMapperOptions = {
 export type AcpMapperState = {
   readonly turn_id: string
   readonly stream: (step_id: string) => AcpStreamRoute
+  /**
+   * How many times each step has started in the turn, by its `step_id`.
+   * `to_session_updates` counts every `span_start`, because a model call
+   * under `loop` or `retry` runs again with the same `step_id`.
+   */
+  readonly runs: Map<string, number>
 }
 
 /**

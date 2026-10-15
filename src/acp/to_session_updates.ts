@@ -2,12 +2,13 @@
  * Maps a run's events onto ACP `session/update` payloads.
  *
  * Under `run.stream`, each `model_call` records `model_chunk` events carrying
- * the engine's `StreamChunk`, the same source fascicle/ui reads. This is the
- * pure half of a prompt turn: no I/O and no SDK value, so a flow author can
- * wrap `to_session_updates` in their own `to_updates` and add to what it
- * returns. Spans, `cost`, and `emit` events map to nothing; an `emit` never
- * becomes chat output implicitly, because output that changes with a value's
- * shape is a trap.
+ * the engine's `StreamChunk`, the same source fascicle/ui reads. This half of
+ * a prompt turn does no I/O and holds no SDK value, so a flow author can wrap
+ * `to_session_updates` in their own `to_updates` and add to what it returns,
+ * as long as every event still reaches it: each `span_start` advances the
+ * state's count of how many times a step has run. Spans, `cost`, and `emit`
+ * events map to nothing; an `emit` never becomes chat output implicitly,
+ * because output that changes with a value's shape is a trap.
  */
 
 import { randomUUID } from 'node:crypto'
@@ -26,18 +27,30 @@ export function create_acp_mapper_state(options: AcpMapperOptions = {}): AcpMapp
   return {
     turn_id: options.turn_id ?? randomUUID(),
     stream: options.stream ?? (() => 'message'),
+    runs: new Map(),
   }
 }
 
 /**
  * Build the session-unique ACP id for an engine tool call id.
  *
- * Raw ids repeat across model calls and turns (Ollama has none on the wire,
- * so the engine numbers them `ollama_call_<step>_<n>`), and a repeated id
+ * Raw ids repeat across model calls, turns, and runs of one model call
+ * (Ollama has none on the wire, so the engine numbers them
+ * `ollama_call_<step>_<n>` afresh on every generate call), and a repeated id
  * would make the client update an old card instead of opening a new one.
  */
 function acp_tool_call_id(state: AcpMapperState, step_id: string, raw_id: string): string {
-  return `${state.turn_id}:${step_id}:${raw_id}`
+  return `${state.turn_id}:${step_id}:${state.runs.get(step_id) ?? 0}:${raw_id}`
+}
+
+/**
+ * Count one more run of the step a `span_start` opens, by the `id` its span
+ * carries. Counting starts rather than finishes covers a retry whose first
+ * attempt failed before it finished.
+ */
+function count_run(event: TrajectoryEvent, state: AcpMapperState): void {
+  const id = event['id']
+  if (typeof id === 'string') state.runs.set(id, (state.runs.get(id) ?? 0) + 1)
 }
 
 /**
@@ -121,9 +134,14 @@ function is_stream_chunk(value: unknown): value is StreamChunk {
 
 /**
  * Map one run event to zero or more ACP session updates. Only `model_chunk`
- * events produce any; the function does no I/O and touches no state.
+ * events produce any, and only a `span_start` advances the state; the
+ * function does no I/O.
  */
 export function to_session_updates(event: TrajectoryEvent, state: AcpMapperState): SessionUpdate[] {
+  if (event.kind === 'span_start') {
+    count_run(event, state)
+    return []
+  }
   if (event.kind !== 'model_chunk') return []
   const step_id = event['step_id']
   const chunk = event['chunk']

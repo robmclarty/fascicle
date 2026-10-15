@@ -468,8 +468,8 @@ an agent starts. See [acp.md](./acp.md).
 | --- | --- | --- |
 | `serve_acp(config)` | fn | serve the flow over stdin and stdout until the client disconnects, then dispose the engine; sends `console.log` to stderr, and SIGTERM or SIGINT aborts every run and exits |
 | `acp_agent(config)` | fn | the same agent as the SDK's `AgentApp`, its handlers registered but not connected, for another transport or an in-process client |
-| `to_session_updates(event, state)` | fn | map one run event to zero or more ACP `SessionUpdate`s; the default `to_updates`, pure, so a custom one can wrap it |
-| `create_acp_mapper_state(options?)` | fn | fresh per-turn mapper state (`turn_id`, `stream`) for the low-level API |
+| `to_session_updates(event, state)` | fn | map one run event to zero or more ACP `SessionUpdate`s, with no I/O; the default `to_updates`, which a custom one can wrap as long as it passes every event through, since each `span_start` advances the state's run count |
+| `create_acp_mapper_state(options?)` | fn | fresh per-turn mapper state (`turn_id`, `stream`, and `runs`, the count that keeps a model call's cards apart when it runs again) for the low-level API |
 | `acp_sdk_missing_error` | error | missing optional peer |
 
 Types: `ServeAcpConfig` (`to_input` is required unless the flow takes a
