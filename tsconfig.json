@@ -24,6 +24,7 @@
 
     "paths": {
       "fascicle": ["./src/index.ts"],
+      "fascicle/acp": ["./src/acp/index.ts"],
       "fascicle/adapters": ["./src/adapters/index.ts"],
       "fascicle/mcp": ["./src/mcp/index.ts"],
       "fascicle/otel": ["./src/otel/index.ts"],
@@ -39,6 +40,7 @@
       "#viewer": ["./src/viewer/index.ts"],
       "#agents": ["./src/agents/index.ts"],
       "#stdio": ["./src/stdio/index.ts"],
+      "#acp": ["./src/acp/index.ts"],
       "#ui": ["./src/ui/index.ts"],
       "#policy": ["./src/policy/index.ts"],
       "#schema": ["./src/schema/index.ts"],

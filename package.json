@@ -48,6 +48,11 @@
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
+    "./acp": {
+      "types": "./dist/acp.d.ts",
+      "import": "./dist/acp.js",
+      "default": "./dist/acp.js"
+    },
     "./adapters": {
       "types": "./dist/adapters.d.ts",
       "import": "./dist/adapters.js",
@@ -97,6 +102,7 @@
     "#viewer": "./src/viewer/index.ts",
     "#agents": "./src/agents/index.ts",
     "#stdio": "./src/stdio/index.ts",
+    "#acp": "./src/acp/index.ts",
     "#ui": "./src/ui/index.ts",
     "#policy": "./src/policy/index.ts",
     "#schema": "./src/schema/index.ts",
@@ -145,6 +151,7 @@
     "viewer:app:watch": "vite build --watch --config vite.viewer.config.ts"
   },
   "peerDependencies": {
+    "@agentclientprotocol/sdk": "^1.8.0",
     "@ai-sdk/amazon-bedrock": "^5.0.0",
     "@ai-sdk/anthropic": "^4.0.0",
     "@ai-sdk/google": "^4.0.0",
@@ -184,6 +191,9 @@
     "@ai-sdk/otel": {
       "optional": true
     },
+    "@agentclientprotocol/sdk": {
+      "optional": true
+    },
     "@modelcontextprotocol/sdk": {
       "optional": true
     },
@@ -201,6 +211,7 @@
     }
   },
   "devDependencies": {
+    "@agentclientprotocol/sdk": "1.8.0",
     "@arethetypeswrong/cli": "0.18.5",
     "@ast-grep/cli": "0.50.0",
     "@modelcontextprotocol/sdk": "^1.32.1",

@@ -29,6 +29,8 @@ const REPO_ROOT = resolve(__dirname, '..');
 const DIST_DIR = join(REPO_ROOT, 'dist');
 const DIST_JS = join(DIST_DIR, 'index.js');
 const DIST_DTS = join(DIST_DIR, 'index.d.ts');
+const DIST_ACP_JS = join(DIST_DIR, 'acp.js');
+const DIST_ACP_DTS = join(DIST_DIR, 'acp.d.ts');
 const DIST_ADAPTERS_JS = join(DIST_DIR, 'adapters.js');
 const DIST_ADAPTERS_DTS = join(DIST_DIR, 'adapters.d.ts');
 const DIST_AGENTS_JS = join(DIST_DIR, 'agents.js');
@@ -227,19 +229,7 @@ async function main() {
   // Only the root entry's graph is constrained: fascicle/ui interops with AI
   // SDK UI messages and imports `ai` statically on purpose, and a consumer of
   // that subpath has opted in. Walk the static closure of index.js.
-  const static_deps = (text) =>
-    [...text.matchAll(/(?:from\s+|import\s+)["']\.\/([^"']+\.js)["']/g)].map((m) => m[1]);
-  const closure = new Set(['index.js']);
-  const queue = ['index.js'];
-  while (queue.length > 0) {
-    const current = queue.pop();
-    for (const dep of static_deps(chunk_texts.get(current) ?? '')) {
-      if (!closure.has(dep)) {
-        closure.add(dep);
-        queue.push(dep);
-      }
-    }
-  }
+  const closure = static_closure(chunk_texts, 'index.js');
   const static_ai = [...closure].filter((f) => /from\s+["']ai["']/.test(chunk_texts.get(f) ?? ''));
   if (static_ai.length > 0) {
     console.error(
@@ -282,6 +272,20 @@ async function main() {
     process.exit(1);
   }
 
+  // fascicle/acp must import without its optional peer installed, so the SDK
+  // is reached only through sdk_loader's `await import(...)`. A static edge
+  // anywhere in acp.js's closure would fail every import of the subpath on a
+  // machine without the peer, long before anything serves a flow.
+  const acp_text = [...static_closure(chunk_texts, 'acp.js')]
+    .map((f) => chunk_texts.get(f) ?? '')
+    .join('\n');
+  if (/(?:from\s+|import\s+)["']@agentclientprotocol\//.test(acp_text)) {
+    console.error(
+      `\nbuild: dist/acp.js statically imports @agentclientprotocol/sdk; the optional peer must load through a dynamic import()`,
+    );
+    process.exit(1);
+  }
+
   process.stderr.write(`▸ build: compiling the viewer canvas app\n`);
   const app_res = await run_subprocess('pnpm', ['exec', 'vite', 'build', '--config', VIEWER_APP_CONFIG]);
   if (app_res.code !== 0) {
@@ -311,6 +315,19 @@ async function main() {
   }
   if (typeof mod.describe?.json !== 'function') {
     console.error(`\nbuild: smoke test missing describe.json namespace member`);
+    process.exit(1);
+  }
+
+  process.stderr.write(`▸ build: smoke-importing ${DIST_ACP_JS}\n`);
+  if (!existsSync(DIST_ACP_JS) || !existsSync(DIST_ACP_DTS)) {
+    console.error(`\nbuild: dist/acp.{js,d.ts} were not produced (the ./acp subpath)`);
+    process.exit(1);
+  }
+  const acp_mod = await import(pathToFileURL(DIST_ACP_JS).href);
+  const EXPECTED_ACP = ['acp_sdk_missing_error'];
+  const missing_acp = EXPECTED_ACP.filter((name) => typeof acp_mod[name] === 'undefined');
+  if (missing_acp.length > 0) {
+    console.error(`\nbuild: acp smoke test missing exports: ${missing_acp.join(', ')}`);
     process.exit(1);
   }
 
@@ -433,8 +450,30 @@ async function main() {
   }
 
   process.stderr.write(
-    `\n✔ build ok (${js_stat.size} bytes js, ${dts_stat.size} bytes d.ts, ${EXPECTED_NAMED.length} named exports + describe.json + ${EXPECTED_ADAPTERS.length} adapters + ${EXPECTED_AGENTS.length} agents + ${EXPECTED_MCP.length} mcp + ${EXPECTED_OTEL.length} otel + ${EXPECTED_STDIO.length} stdio + ${EXPECTED_TESTING.length} testing + ${EXPECTED_UI.length} ui + ${EXPECTED_VIEWER.length} viewer verified)\n`,
+    `\n✔ build ok (${js_stat.size} bytes js, ${dts_stat.size} bytes d.ts, ${EXPECTED_NAMED.length} named exports + describe.json + ${EXPECTED_ACP.length} acp + ${EXPECTED_ADAPTERS.length} adapters + ${EXPECTED_AGENTS.length} agents + ${EXPECTED_MCP.length} mcp + ${EXPECTED_OTEL.length} otel + ${EXPECTED_STDIO.length} stdio + ${EXPECTED_TESTING.length} testing + ${EXPECTED_UI.length} ui + ${EXPECTED_VIEWER.length} viewer verified)\n`,
   );
+}
+
+/**
+ * The chunks `entry` reaches through static imports, itself included. A
+ * dynamic `import()` ends the walk, which is what lets a lazily loaded
+ * optional peer sit outside an entry's closure.
+ */
+function static_closure(chunk_texts, entry) {
+  const static_deps = (text) =>
+    [...text.matchAll(/(?:from\s+|import\s+)["']\.\/([^"']+\.js)["']/g)].map((m) => m[1]);
+  const closure = new Set([entry]);
+  const queue = [entry];
+  while (queue.length > 0) {
+    const current = queue.pop();
+    for (const dep of static_deps(chunk_texts.get(current) ?? '')) {
+      if (!closure.has(dep)) {
+        closure.add(dep);
+        queue.push(dep);
+      }
+    }
+  }
+  return closure;
 }
 
 /** Every file under `dir`, recursively, as absolute paths. */

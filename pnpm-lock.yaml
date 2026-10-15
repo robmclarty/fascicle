@@ -51,6 +51,9 @@ importers:
         specifier: ^4.0.0
         version: 4.1.0(ai@7.0.138(zod@4.4.3))(zod@4.4.3)
     devDependencies:
+      '@agentclientprotocol/sdk':
+        specifier: 1.8.0
+        version: 1.8.0(zod@4.4.3)
       '@arethetypeswrong/cli':
         specifier: 0.18.5
         version: 0.18.5
@@ -249,6 +252,11 @@ importers:
         version: 4.23.15
 
 packages:
+
+  '@agentclientprotocol/sdk@1.8.0':
+    resolution: {integrity: sha512-fbP7qHZsFyTJVT0/RPrcWJ8An26qLXHEuGCHHEKDyxD1xpXV+Ejyh2LAE6vBAFePkpVjZeeohnbgvuEhZ7wLMg==}
+    peerDependencies:
+      zod: ^3.25.0 || ^4.0.0
 
   '@ai-sdk/amazon-bedrock@5.0.57':
     resolution: {integrity: sha512-4G2Fzhgwbf62yQHoXYbuPLfzA1sybAmcKn+ep+sjhWozPNpld0V0QMdchQSXNlfcF8Kd4XmagWJjRvuwmR9bgw==}
@@ -3791,6 +3799,10 @@ packages:
     resolution: {integrity: sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ==}
 
 snapshots:
+
+  '@agentclientprotocol/sdk@1.8.0(zod@4.4.3)':
+    dependencies:
+      zod: 4.4.3
 
   '@ai-sdk/amazon-bedrock@5.0.57(zod@4.4.3)':
     dependencies:

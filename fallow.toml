@@ -155,6 +155,10 @@ name = "mcp"
 patterns = ["src/mcp/**"]
 
 [[boundaries.zones]]
+name = "acp"
+patterns = ["src/acp/**"]
+
+[[boundaries.zones]]
 name = "stdio"
 patterns = ["src/stdio/**"]
 
@@ -205,6 +209,10 @@ allow = ["core", "engine", "composites", "mcp", "stdio", "ui", "schema"]
 [[boundaries.rules]] # mcp: core + engine only (bridges flows/tools to the MCP wire)
 from = "mcp"
 allow = ["core", "engine", "stdio", "ui", "schema"]
+
+[[boundaries.rules]] # acp: core + engine + schema (serves a flow as an ACP agent); testing for its lifecycle tests' stub engine
+from = "acp"
+allow = ["core", "engine", "schema", "testing"]
 
 [[boundaries.rules]] # stdio: core + adapters only (single-shot child-process entry helper)
 from = "stdio"
