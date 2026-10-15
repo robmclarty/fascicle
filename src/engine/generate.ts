@@ -824,11 +824,13 @@ function build_loop_config<T>(
   const resolve_pricing = (): Pricing | undefined => {
     return cfg.pricing[pricing_key(target.provider, target.model_id)]
   }
+  // The parentheses are for Stryker: Babel 8, which it parses source with,
+  // rejects an async arrow with a return type as a branch of a ternary.
   const dispatch_chunk =
     cfg.on_chunk_provided
-      ? async (chunk: StreamChunk): Promise<void> => {
+      ? (async (chunk: StreamChunk): Promise<void> => {
           await cfg.dispatcher.dispatch(chunk)
-        }
+        })
       : undefined
   return {
     invoke_once: cfg.invoke_once,

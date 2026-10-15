@@ -1,4 +1,11 @@
-{
+/**
+ * JSON Schema for the YAML flow representation, exported as `flow_schema`.
+ *
+ * It lives in a TypeScript module, not a .json file, because the published
+ * declarations come from tsgo under TypeScript 7, and tsgo writes none for a
+ * JSON module, which leaves the build nothing to type this export with.
+ */
+export const flow_schema = {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://robmclarty.dev/schemas/flow-schema.json",
   "title": "fascicle Flow DSL",

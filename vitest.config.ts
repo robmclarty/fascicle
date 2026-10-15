@@ -38,6 +38,11 @@ export default defineConfig({
       'examples/agents/**/__tests__/**/*.{test,spec}.ts',
     ],
     pool: 'forks',
+    // Off inside Stryker's workers. Its sandbox links node_modules, so all of
+    // them share vitest's module cache there, and vitest wipes that cache when
+    // the lockfile changes: the first mutation run after a dependency change
+    // had every worker deleting the same directory at once (ENOTEMPTY).
+    fsModuleCache: process.env['STRYKER_MUTATOR_WORKER'] === undefined,
     reporters: ['default'],
     coverage: {
       provider: 'v8',

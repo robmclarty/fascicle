@@ -8,8 +8,6 @@
  * and surface through the umbrella package.
  */
 
-import flow_schema_data from './flow-schema.json' with { type: 'json' }
-
 export { run } from './runner.js'
 export type { RunOptions, RunOutcome, StreamingRunHandle } from './runner.js'
 export { durable } from './durable.js'
@@ -121,4 +119,4 @@ export type {
   TrajectoryParseResult,
 } from './trajectory.js'
 
-export { flow_schema_data as flow_schema }
+export { flow_schema } from './flow_schema.js'

@@ -127,13 +127,18 @@ function run_subprocess(cmd, args, opts = {}) {
   });
 }
 
-// Known-benign tsdown self-deprecation messages. These fire when the spec-
+// Known-benign tsdown messages. The two deprecations fire when the spec-
 // mandated config field names (`external`, `noExternal`) are used instead of
 // tsdown's newer `deps.neverBundle` / `deps.alwaysBundle`. Keeping the spec
 // field names is deliberate (constraints.md §3.3); tsdown still honors them.
+// The TypeScript 7.0 notice fires on every build since the move to 7:
+// rolldown-plugin-dts prints it whenever it emits declarations through the
+// tsgo binary, which it must, since 7 ships no JavaScript API. The snippets
+// and attw slots check the declarations it produces.
 const BENIGN_WARNING_RE = [
   /`external` is deprecated\. Use `deps\.neverBundle` instead\./,
   /`noExternal` is deprecated\. Use `deps\.alwaysBundle` instead\./,
+  /TypeScript 7\.0 does not yet have a stable API and is experimental\./,
 ];
 
 function detect_warning(text) {

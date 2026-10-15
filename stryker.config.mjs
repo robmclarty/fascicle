@@ -28,6 +28,11 @@ export default {
     // in src/__tests__/diagram_bin.test.ts. The command's decisions live in
     // src/diagram_cli.ts, which is mutated like any other module.
     '!src/diagram_bin.ts',
+    // The flow schema is a JSON Schema document held in a TypeScript module
+    // only so tsgo can declare it (see the file's header). It was a .json file
+    // until then, outside `src/**/*.ts`, and it is still data: mutating its
+    // strings would score the document's wording, not any decision.
+    '!src/core/flow_schema.ts',
     // The viewer canvas app splits along D4: `app/lib/*.ts` and `app/sse.ts`
     // hold every decision and are mutated like any other module, while the
     // `.tsx` components are markup and fall outside `src/**/*.ts` by
@@ -37,6 +42,12 @@ export default {
     // specs themselves are already excluded as `src/**/__tests__/**`.
   ],
   coverageAnalysis: 'perTest',
+  // No such file, on purpose. Stryker rewrites the tsconfig chain in its sandbox
+  // through TypeScript's JavaScript API, which TypeScript 7 no longer ships, so
+  // the rewrite crashes the run (`ts.parseConfigFileTextToJson is not a
+  // function`). The vitest runner never reads those tsconfigs, and Stryker skips
+  // the rewrite when it can't find the file.
+  tsconfigFile: 'tsconfig.stryker-skip.json',
   incremental: true,
   incrementalFile: 'stryker.incremental.json',
   thresholds: {
