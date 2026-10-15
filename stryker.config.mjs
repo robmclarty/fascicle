@@ -23,6 +23,11 @@ export default {
     // CLI entry point: process glue (stdin/stdout/exit) exercised by the
     // spawn-based contract tests in src/stdio/__tests__/e2e/, not unit tests.
     '!src/stdio/run_stdio.ts',
+    // serve_acp's process glue (the console reroute, stdin and stdout, the
+    // signal exit), exercised by the spawn tests in src/acp/__tests__/e2e/.
+    // The serving loop and its disconnect path live in src/acp/serve_streams.ts,
+    // which is mutated like any other module.
+    '!src/acp/serve_acp.ts',
     // The fascicle-diagram bin's process glue (real streams, the EPIPE guard,
     // loading through the project's tsx), exercised by the spawn-based tests
     // in src/__tests__/diagram_bin.test.ts. The command's decisions live in
