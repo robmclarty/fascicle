@@ -325,7 +325,14 @@ async function main() {
     process.exit(1);
   }
   const acp_mod = await import(pathToFileURL(DIST_ACP_JS).href);
-  const EXPECTED_ACP = ['acp_sdk_missing_error'];
+  const EXPECTED_ACP = [
+    'acp_agent',
+    'acp_sdk_missing_error',
+    'serve_acp',
+    'create_acp_mapper_state',
+    'to_session_updates',
+    'workspace_tools',
+  ];
   const missing_acp = EXPECTED_ACP.filter((name) => typeof acp_mod[name] === 'undefined');
   if (missing_acp.length > 0) {
     console.error(`\nbuild: acp smoke test missing exports: ${missing_acp.join(', ')}`);

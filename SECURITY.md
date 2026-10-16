@@ -2,8 +2,9 @@
 
 Fascicle is a library that wires LLM calls, tool calls, and subprocesses into
 typed workflows. That puts it on the path of API credentials, model output, and
-(via the `claude_cli` provider) a spawned child process, so the security model
-below is worth reading before you wire it into anything sensitive.
+a spawned child process (the `claude_cli` provider's, or a shell command that a
+coding agent runs through `fascicle/acp`), so the security model below is worth
+reading before you wire it into anything sensitive.
 
 ## Reporting a vulnerability
 
@@ -68,6 +69,52 @@ output. That is a real trust boundary:
 Tools you pass to a model call run **in your process**, with whatever privileges
 your process holds. Validate their inputs and scope their side effects; Fascicle
 does not sandbox in-process tool execution.
+
+## Workspace tools (`fascicle/acp`)
+
+`workspace_tools` gives a coding agent that's served over ACP six tools that
+act on your machine from inside the agent's process. `read_file`, `list_files`,
+and `search` read files, `write_file` and `edit_file` change them, and
+`run_command` runs a shell command. The model decides when to call them, and
+anything it reads (a README, a code comment, the output of a command) can try
+to steer it. So treat whatever the tools can reach as something a prompt
+injection can reach too.
+
+- **The file tools stay inside the workspace.** A path is allowed only when its
+  real path, with every symlink resolved, lands under the session's `cwd` or
+  under one of the additional directories that the client sent. A symlink that
+  points out of the workspace is refused, and so is a new file whose nearest
+  existing parent sits outside it. Inside the workspace the reads see
+  everything you keep there, `.env` files included, since nothing reads
+  `.gitignore`. If you find a file tool that reaches a path outside the
+  workspace, that's a Fascicle vulnerability, so please report it.
+- **Containment binds the file tools only.** `run_command` hands its string to
+  `/bin/sh`, and a shell can read and write anything you can, including
+  `~/.ssh`, `~/.aws`, your other repositories, and the network. The workspace
+  boundary doesn't apply to a command at all. That's why Manual, the mode a
+  session starts in, asks you before every command, and why Accept edits still
+  does.
+- **Commands inherit the agent's environment by default.** That includes the
+  provider keys in your editor's agent server entry, so a command the model
+  runs can read `OPENROUTER_API_KEY` and send it anywhere. `command_env` in
+  `WorkspaceToolsOptions` replaces the environment whole, with nothing merged
+  in, and `examples/acp-coder` builds it from `process.env` minus the keys that
+  its providers read. Fascicle itself still reads no `process.env`, because
+  your harness makes that copy at its own boundary.
+- **Permission prompts fail closed.** A call that asks runs only when you
+  choose an allow. A rejection, a cancelled prompt, and a request that fails
+  for any reason all deny it. An "always" grant lives in memory for one session.
+  For a command, it covers the program and its first argument that isn't a flag
+  (`pnpm test`). A command with shell control syntax (`;`, `&`, `|`, `>`, `<`, a
+  backtick, `$(`, or a newline) is never covered and never offered a grant, so
+  `pnpm test && curl … | sh` asks you every time.
+- **Auto asks for nothing.** It edits files and runs commands with nobody
+  watching, so run it in a container or a throwaway worktree that holds no
+  credentials you'd mind a command reading. A container doesn't hide the
+  provider key that the agent itself needs, so pair it with `command_env`.
+
+[docs/acp.md](./docs/acp.md#coding-sessions) covers the tools, the modes, and
+the prompts in full.
 
 ## Supply-chain posture
 
