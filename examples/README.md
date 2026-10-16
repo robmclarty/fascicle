@@ -70,7 +70,7 @@ Then browse by topic:
 | durability | [checkpoint-resume](./checkpoint-resume/), [suspend-resume](./suspend-resume/), [durable-runs](./durable-runs/), [object-store](./object-store/) |
 | human-in-the-loop | [hitl-http](./hitl-http/) |
 | observability | [trajectory-logger](./trajectory-logger/), [viewer-demo](./viewer-demo/), [otel-grafana](./otel-grafana/) |
-| embedding | [stdio-agent](./stdio-agent/), [acp-agent](./acp-agent/) |
+| embedding | [stdio-agent](./stdio-agent/), [acp-agent](./acp-agent/), [acp-coder](./acp-coder/) |
 | agents | [reviewer](./reviewer/), [documenter](./documenter/), [researcher](./researcher/), [learn-reviewer](./learn-reviewer/), [bench-reviewer](./bench-reviewer/) |
 | live smoke | [live-smoke](./live-smoke/) |
 
@@ -88,4 +88,4 @@ legend below is derived from those headers.
 | Local Docker (no key: the `grafana/otel-lgtm` container listening on localhost) | `otel-grafana` |
 | Local Ollama (no key: a running daemon plus a pulled model) | `ollama-chat` |
 | Local `claude` session (no key: Claude Code installed and `claude login` run) | `hello-claude-cli`, `hello-claude-cli-lisp`, `adversarial-claude-cli` |
-| Provider API key | `structured-output` and `tool-loop` (`OPENROUTER_API_KEY`, exported or in the root `.env`), `live-smoke` (`OPENROUTER_API_KEY`, plus optional local Ollama / LM Studio; missing legs are skipped) |
+| Provider API key | `structured-output` and `tool-loop` (`OPENROUTER_API_KEY`, exported or in the root `.env`), `acp-coder` (`OPENROUTER_API_KEY` in the `env` of its Zed agent server entry, or another provider's key with `--provider`), `live-smoke` (`OPENROUTER_API_KEY`, plus optional local Ollama / LM Studio; missing legs are skipped) |

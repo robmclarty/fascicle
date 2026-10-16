@@ -110,11 +110,13 @@ function note_reply(reply: Reply, update: SessionUpdate): void {
 
 /**
  * Append a turn to the session's history: the user's text, then the reply
- * text the client was sent, when there was any.
+ * text the client was sent, when there was any. A cancelled turn marks
+ * whichever of the two came last.
  */
-function record_exchange(history: AcpHistoryEntry[], user_text: string, reply_text: string): void {
-  history.push({ role: 'user', text: user_text })
-  if (reply_text !== '') history.push({ role: 'agent', text: reply_text })
+function record_exchange(history: AcpHistoryEntry[], user_text: string, reply_text: string, cancelled: boolean): void {
+  const stop = cancelled ? { cancelled: true as const } : {}
+  if (reply_text === '') history.push({ role: 'user', text: user_text, ...stop })
+  else history.push({ role: 'user', text: user_text }, { role: 'agent', text: reply_text, ...stop })
 }
 
 /**
@@ -212,7 +214,7 @@ async function run_turn<i, o>(
     await outcome
     if (!cancelled.aborted) throw err
   }
-  record_exchange(record.history, turn.text, reply.text)
+  record_exchange(record.history, turn.text, reply.text, cancelled.aborted)
   return { stopReason: cancelled.aborted ? 'cancelled' : 'end_turn' }
 }
 

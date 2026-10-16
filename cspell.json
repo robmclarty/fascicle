@@ -171,6 +171,7 @@
     "artboards",
     "headerless",
     "centiseconds",
-    "playhead"
+    "playhead",
+    "pgrep"
   ]
 }

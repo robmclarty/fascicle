@@ -142,7 +142,9 @@ describe('run_command', () => {
       'Run a shell command with /bin/sh -c in the workspace root, and return what it printed (stdout and stderr together) and its exit code. ' +
         'Each call starts a fresh shell there, so a cd lasts for its own command only. ' +
         'The command is stopped after 5 s unless timeout_ms says otherwise, ' +
-        'and output past 1000 bytes is cut, so pipe a long one through tail, head, or grep. ' +
+        'and output past 1000 bytes is cut, with a note that says so; run it again through tail, head, or grep for the part you need. ' +
+        'Give the command plainly, without 2>&1 or a pipe to trim output that may well fit: ' +
+        'the user can allow a plain command for the rest of the session, but never one that holds a pipe, a redirect, &&, or ;. ' +
         "It gets no input, and anything it starts is stopped once it exits, so it can't leave a server or a watcher running.",
     )
     expect(to_json_schema(tool.input_schema)).toEqual({

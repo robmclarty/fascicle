@@ -29,10 +29,20 @@ function api_key(name: string): string {
   return key
 }
 
+/**
+ * The variable each keyed provider reads its API key from, so an agent that
+ * runs commands can keep the keys out of their environment.
+ */
+export const API_KEYS = {
+  openrouter: 'OPENROUTER_API_KEY',
+  anthropic: 'ANTHROPIC_API_KEY',
+  openai: 'OPENAI_API_KEY',
+} as const
+
 const PROVIDERS: Readonly<Record<string, () => ProviderConfigMap>> = {
-  openrouter: () => ({ openrouter: { api_key: api_key('OPENROUTER_API_KEY'), transport: 'native' } }),
-  anthropic: () => ({ anthropic: { api_key: api_key('ANTHROPIC_API_KEY'), transport: 'native' } }),
-  openai: () => ({ openai: { api_key: api_key('OPENAI_API_KEY'), transport: 'native' } }),
+  openrouter: () => ({ openrouter: { api_key: api_key(API_KEYS.openrouter), transport: 'native' } }),
+  anthropic: () => ({ anthropic: { api_key: api_key(API_KEYS.anthropic), transport: 'native' } }),
+  openai: () => ({ openai: { api_key: api_key(API_KEYS.openai), transport: 'native' } }),
   // Bedrock has no native transport, so it needs the ai, @ai-sdk/amazon-bedrock,
   // and @aws-sdk/credential-providers peers. The credential chain is what picks
   // up an existing `aws sso login` or a named profile.

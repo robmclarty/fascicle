@@ -1,7 +1,14 @@
+import { mkdtemp, readFile, realpath, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { client } from '@agentclientprotocol/sdk'
 import { describe, expect, it } from 'vitest'
 import { describe as describe_flow } from 'fascicle'
+import type { TurnRequest } from 'fascicle'
 import { acp_agent } from 'fascicle/acp'
-import { keyless_agent } from '../examples/acp-agent/main.js'
+import type { AcpTurn } from 'fascicle/acp'
+import { keyless_agent, to_messages } from '../examples/acp-agent/main.js'
+import { coder_agent, command_env } from '../examples/acp-coder/main.js'
 import { run_adversarial_build } from '../examples/adversarial-build/main.js'
 import { run_checkpoint_resume } from '../examples/checkpoint-resume/main.js'
 import { run_documenter } from '../examples/documenter/main.js'
@@ -18,6 +25,7 @@ import { run_streaming_chat } from '../examples/streaming-chat/main.js'
 import { run_suspend_resume } from '../examples/suspend-resume/main.js'
 import { run_trajectory_logger } from '../examples/trajectory-logger/main.js'
 import { open_session, read_turn } from '../src/acp/test/connect_client.js'
+import { scripted_engine } from '../src/acp/test/scripted_provider.js'
 
 describe('examples smoke', () => {
   it('hello reverses the input words and preserves the input string', async () => {
@@ -60,6 +68,88 @@ describe('examples smoke', () => {
         stop_reason: 'end_turn',
       })),
     )
+  })
+
+  it('acp_coder writes and runs commands behind permission requests, with the provider keys kept from commands', async () => {
+    const cwd = await realpath(await mkdtemp(join(tmpdir(), 'acp-coder-')))
+    const command = 'echo "key: ${OPENROUTER_API_KEY:-unset}"'
+    const seen: TurnRequest[] = []
+    const engine = scripted_engine(
+      [
+        [{ id: 'w', name: 'write_file', input: { path: 'note.txt', content: 'hello\n' } }],
+        [{ id: 'r', name: 'run_command', input: { command } }],
+        'wrote note.txt',
+        'you are welcome',
+      ],
+      seen,
+    )
+    const asked: unknown[] = []
+    const client_app = client().onRequest('session/request_permission', (ctx) => {
+      asked.push(ctx.params.toolCall.title)
+      return { outcome: { outcome: 'selected', optionId: 'allow_once' } }
+    })
+    const env = command_env({ PATH: process.env['PATH'], OPENROUTER_API_KEY: 'sk-secret', UNSET: undefined })
+    const app = await acp_agent(coder_agent({ engine, model: 'script', command_env: env }))
+    try {
+      const { session } = await open_session(app, { client: client_app, session: { cwd } })
+      const stops: unknown[] = []
+      for (const prompt of ['write a note, then show the key', 'thanks']) {
+        await session.prompt(prompt)
+        stops.push((await read_turn(session)).stop_reason)
+      }
+      expect(stops).toEqual(['end_turn', 'end_turn'])
+      expect(asked).toEqual(['Write note.txt', command])
+      expect(await readFile(join(cwd, 'note.txt'), 'utf8')).toBe('hello\n')
+      expect(seen[2]?.messages.at(-1)).toMatchObject({ role: 'tool', content: expect.stringContaining('key: unset') })
+      expect(seen[0]?.system).toContain(`The workspace root is ${cwd}, and relative paths start there.`)
+      expect(seen[0]?.tools.map((tool) => tool.name)).toEqual([
+        'read_file',
+        'list_files',
+        'search',
+        'write_file',
+        'edit_file',
+        'run_command',
+      ])
+      expect(seen[3]?.messages).toEqual([
+        { role: 'user', content: 'write a note, then show the key' },
+        { role: 'assistant', content: 'wrote note.txt' },
+        { role: 'user', content: 'thanks' },
+      ])
+    } finally {
+      await rm(cwd, { recursive: true, force: true })
+    }
+  })
+
+  it('to_messages tells the model where a cancelled turn stopped', () => {
+    const turn = {
+      session_id: 's',
+      cwd: '/',
+      text: 'read the hosts file',
+      prompt: [],
+      history: [
+        { role: 'user', text: 'run sleep 45', cancelled: true },
+        { role: 'user', text: 'explain a.ts' },
+        { role: 'agent', text: 'It adds', cancelled: true },
+      ],
+    } satisfies AcpTurn
+    const stopped = '[The user stopped this turn here. Leave what it asked for unless they ask again.]'
+    expect(to_messages(turn)).toEqual([
+      { role: 'user', content: `run sleep 45\n\n${stopped}` },
+      { role: 'user', content: 'explain a.ts' },
+      { role: 'assistant', content: `It adds\n\n${stopped}` },
+      { role: 'user', content: 'read the hosts file' },
+    ])
+  })
+
+  it('acp_coder keeps every provider key out of the command environment', () => {
+    const env = command_env({
+      PATH: '/bin',
+      OPENROUTER_API_KEY: 'a',
+      ANTHROPIC_API_KEY: 'b',
+      OPENAI_API_KEY: 'c',
+      UNSET: undefined,
+    })
+    expect(env).toEqual({ PATH: '/bin' })
   })
 
   it('streaming_chat surfaces emitted tokens and the final result', async () => {

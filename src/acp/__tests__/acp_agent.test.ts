@@ -521,7 +521,7 @@ describe('acp_agent: cancellation', () => {
     expect(seen.finished).toBe(true)
   })
 
-  it("records only the user's text for a turn cancelled before any reply", async () => {
+  it("records only the user's text, marked cancelled, for a turn cancelled before any reply", async () => {
     const { flow, started, histories, reasons } = history_probe({ reply_first: false })
     const app = await acp_agent({ name: 'test-agent', flow, to_input: (turn) => turn })
     const { agent, session } = await open_session(app)
@@ -530,7 +530,7 @@ describe('acp_agent: cancellation', () => {
     await agent.notify('session/cancel', { sessionId: session.sessionId })
     await expect(response).resolves.toEqual({ stopReason: 'cancelled' })
     await session.prompt('second')
-    expect(histories[1]).toEqual([{ role: 'user', text: 'first' }])
+    expect(histories[1]).toEqual([{ role: 'user', text: 'first', cancelled: true }])
     expect(reasons).toEqual(['the ACP client cancelled the turn'])
   })
 
@@ -544,7 +544,7 @@ describe('acp_agent: cancellation', () => {
     await expect(response).resolves.toEqual({ stopReason: 'cancelled' })
     expect(await read_turn(session)).toEqual({ updates: [], stop_reason: 'cancelled' })
     await session.prompt('second')
-    expect(histories[1]).toEqual([{ role: 'user', text: 'first' }])
+    expect(histories[1]).toEqual([{ role: 'user', text: 'first', cancelled: true }])
   })
 
   it('answers cancelled when something fails after the cancel', async () => {
@@ -571,7 +571,7 @@ describe('acp_agent: cancellation', () => {
     await expect(response).resolves.toEqual({ stopReason: 'cancelled' })
   })
 
-  it("records the user's text and the reply already sent for a turn cancelled mid-reply", async () => {
+  it("records the user's text and the reply already sent, marked cancelled, for a turn cancelled mid-reply", async () => {
     const { flow, histories } = history_probe({ reply_first: true })
     const app = await acp_agent({ name: 'test-agent', flow, to_input: (turn) => turn })
     const { agent, session } = await open_session(app)
@@ -582,7 +582,7 @@ describe('acp_agent: cancellation', () => {
     await session.prompt('second')
     expect(histories[1]).toEqual([
       { role: 'user', text: 'first' },
-      { role: 'agent', text: 'partial' },
+      { role: 'agent', text: 'partial', cancelled: true },
     ])
   })
 
@@ -621,7 +621,7 @@ describe('acp_agent: cancellation', () => {
     await expect(second).resolves.toEqual({ stopReason: 'end_turn' })
     expect(histories[1]).toEqual([
       { role: 'user', text: 'first' },
-      { role: 'agent', text: 'partial' },
+      { role: 'agent', text: 'partial', cancelled: true },
     ])
     expect(reasons).toEqual(['a new prompt replaced the turn'])
     // A cancel now targets the second turn, which has already finished.

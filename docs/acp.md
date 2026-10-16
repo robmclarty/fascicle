@@ -53,11 +53,11 @@ A flow that wants the whole turn sets `to_input: (turn) => turn` and receives an
 | `cwd` | the working directory the editor sent when it opened the session |
 | `text` | the prompt as one string. A resource link or an attached file reads as its URI where it sat, and each attached file's text follows the prompt in a `<context ref="…">` block |
 | `prompt` | the raw ACP content blocks, for a flow that wants more than text |
-| `history` | the earlier turns, oldest first, as `{ role, text }` with a role of `'user'` or `'agent'` |
+| `history` | the earlier turns, oldest first, as `{ role, text }` with a role of `'user'` or `'agent'`, and `cancelled: true` on the last entry of a turn that was cancelled |
 
 The agent tells the editor it accepts embedded context, so a file the user @-mentions in Zed arrives with its text, rather than as a bare URI the flow has no way to read.
 
-`history` is a copy, so a flow can't change the session's own, and it holds what the user actually saw. A cancelled turn still records the prompt, along with any reply text that had already streamed before the stop, so the next turn's "as I said above" points at something. Sessions live in the process's memory, and the agent doesn't offer `session/load`, so a session ends when the process does.
+`history` is a copy, so a flow can't change the session's own, and it holds what the user actually saw. A cancelled turn still records the prompt, along with any reply text that had already streamed before the stop, so the next turn's "as I said above" points at something. Its last entry carries `cancelled: true`, which a flow should pass on to its model. A model that reads a stopped request with nothing to mark it takes the request as still waiting, and carries it out at the next prompt. Sessions live in the process's memory, and the agent doesn't offer `session/load`, so a session ends when the process does.
 
 ## Stdout Belongs to the Protocol
 

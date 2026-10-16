@@ -37,12 +37,19 @@ export const keyless_agent: ServeAcpConfig<AcpTurn, string> = {
   to_input: (turn) => turn,
 }
 
-/** Earlier turns and the new prompt, as the conversation that a model reads. */
-function to_messages(turn: AcpTurn): Message[] {
-  const earlier = turn.history.map(
-    (entry): Message =>
-      entry.role === 'user' ? { role: 'user', content: entry.text } : { role: 'assistant', content: entry.text },
-  )
+/** What the model reads after the last text of a turn the user stopped. */
+const STOPPED = '[The user stopped this turn here. Leave what it asked for unless they ask again.]'
+
+/**
+ * Earlier turns and the new prompt, as the conversation that a model reads.
+ * A turn the user stopped says so where it stopped, or the model reads its
+ * request as still waiting and carries it out at the next prompt.
+ */
+export function to_messages(turn: AcpTurn): Message[] {
+  const earlier = turn.history.map((entry): Message => {
+    const content = entry.cancelled === true ? `${entry.text}\n\n${STOPPED}` : entry.text
+    return entry.role === 'user' ? { role: 'user', content } : { role: 'assistant', content }
+  })
   return [...earlier, { role: 'user', content: turn.text }]
 }
 

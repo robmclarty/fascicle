@@ -57,6 +57,13 @@ export type AcpMapperState = {
 export type AcpHistoryEntry = {
   readonly role: 'user' | 'agent'
   readonly text: string
+  /**
+   * Set on the last entry of a turn that was cancelled, which is where it
+   * stopped: the reply sent so far, or the user's text when none went out.
+   * Without it a model reads a stopped request as one still waiting for an
+   * answer, and picks it up again at the next prompt.
+   */
+  readonly cancelled?: true | undefined
 }
 
 /**
