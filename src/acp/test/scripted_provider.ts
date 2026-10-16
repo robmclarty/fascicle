@@ -47,9 +47,10 @@ async function play(req: TurnRequest, turn: ScriptedTurn | undefined): Promise<T
 /**
  * An engine whose one provider, its default along with a default model,
  * plays `turns` in order: a turn each time any model call made through it
- * asks the model for one.
+ * asks the model for one. Each request lands in `seen` first, so a test can
+ * read what the model was sent, its tool results included.
  */
-export function scripted_engine(turns: ReadonlyArray<ScriptedTurn>): Engine {
+export function scripted_engine(turns: ReadonlyArray<ScriptedTurn>, seen: TurnRequest[] = []): Engine {
   const left = [...turns]
   return create_engine({
     providers: { [PROVIDER]: {} },
@@ -58,7 +59,10 @@ export function scripted_engine(turns: ReadonlyArray<ScriptedTurn>): Engine {
         kind: 'native',
         name: PROVIDER,
         supports: () => true,
-        invoke_turn: (req) => play(req, left.shift()),
+        invoke_turn: (req) => {
+          seen.push(req)
+          return play(req, left.shift())
+        },
       }),
     },
     defaults: { model: 'script' },

@@ -60,6 +60,7 @@ beforeAll(async () => {
     roots: await resolve_roots([cwd, shared]),
     client_capabilities: {},
     mode: () => 'manual',
+    approve: () => false,
   }
 })
 

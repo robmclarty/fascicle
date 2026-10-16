@@ -9,6 +9,7 @@ import type { Step, TrajectoryEvent } from '#core'
 import type { Engine, StreamChunk, Tool } from '#engine'
 import { json_schema_to_standard } from '#schema'
 import { acp_agent } from '../acp_agent.js'
+import { create_card_sync } from '../approve.js'
 import { prompt_turn } from '../prompt_turn.js'
 import { open_session, read_turn } from '../test/connect_client.js'
 import { scripted_engine } from '../test/scripted_provider.js'
@@ -57,7 +58,7 @@ afterAll(async () => {
  */
 async function fixture_session(client_capabilities: ClientCapabilities = {}): Promise<AcpSession> {
   const roots = await resolve_roots([cwd])
-  return { id: 'session-1', cwd, additional_directories: [], roots, client_capabilities, mode: () => 'auto' }
+  return { id: 'session-1', cwd, additional_directories: [], roots, client_capabilities, mode: () => 'auto', approve: () => false }
 }
 
 /** A model call on the scripted engine with the session's workspace tools. */
@@ -393,7 +394,7 @@ describe('presentation: previews that share a raw id', () => {
       await finished
       updates.push(update)
     }
-    const record = { session, flow: build(release), history: [], last_turn: null }
+    const record = { session, flow: build(release), history: [], cards: create_card_sync(), last_turn: null }
     await prompt_turn({ name: 'presentation', flow: record.flow }, record, [{ type: 'text', text: 'go' }], new AbortController().signal, send)
     return updates
   }
@@ -462,6 +463,7 @@ describe('presentation: titles and locations', () => {
     roots: ['/work', '/shared'],
     client_capabilities: {},
     mode: () => 'manual',
+    approve: () => false,
   }
 
   function model_chunk(chunk: StreamChunk): TrajectoryEvent {
@@ -566,6 +568,7 @@ describe('presentation: closing a card from the mapper', () => {
     roots: ['/work'],
     client_capabilities: {},
     mode: () => 'manual',
+    approve: () => false,
   }
   const terminals: AcpSession = { ...session, id: 't', client_capabilities: { _meta: { terminal_output: true } } }
 
@@ -634,6 +637,7 @@ describe('presentation: the preview store', () => {
     roots: ['/a'],
     client_capabilities: {},
     mode: () => 'manual',
+    approve: () => false,
   })
 
   it('hands back a raw id previews oldest first, and nothing once they are gone', () => {

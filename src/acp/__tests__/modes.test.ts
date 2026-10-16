@@ -201,7 +201,7 @@ describe('modes: refusals', () => {
 describe('modes: when the workspace tools ask', () => {
   /** A session whose mode is whatever `mode` returns at the time. */
   function session_in(mode: () => AcpMode): AcpSession {
-    return { id: 's', cwd: '/work', additional_directories: [], roots: ['/work'], client_capabilities: {}, mode }
+    return { id: 's', cwd: '/work', additional_directories: [], roots: ['/work'], client_capabilities: {}, mode, approve: () => false }
   }
 
   /** Whether the engine's approval check would ask before `tool` runs. */

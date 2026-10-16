@@ -14,6 +14,7 @@
 import type { ContentBlock, PromptResponse, SessionUpdate } from '@agentclientprotocol/sdk'
 import { aborted_error, run } from '#core'
 import type { Step, TrajectoryEvent } from '#core'
+import type { CardSync } from './approve.js'
 import { create_acp_mapper_state, to_session_updates } from './to_session_updates.js'
 import { reset_previews } from './tools/previews.js'
 import type { AcpHistoryEntry, AcpSession, AcpTurn, ServeAcpConfig } from './types.js'
@@ -28,11 +29,15 @@ type TurnHandle = {
   readonly settled: Promise<void>
 }
 
-/** A session between turns: its flow, its history, and its latest turn. */
+/**
+ * A session between turns: its flow, its history, its latest turn, and the
+ * sync that lets its approvals wait for the client to catch up.
+ */
 export type SessionRecord<i, o> = {
   readonly session: AcpSession
   readonly flow: Step<i, o>
   readonly history: AcpHistoryEntry[]
+  readonly cards: CardSync
   last_turn: TurnHandle | null
 }
 
@@ -134,24 +139,27 @@ function warn_dropped(event: TrajectoryEvent): void {
 }
 
 /**
- * Send each run event's updates in order. Once the turn is cancelled nothing
- * more is sent, and leaving the loop closes the run's event stream.
+ * Send each run event's updates in order, and tell the session's card sync
+ * once all of an event's updates have gone out. Once the turn is cancelled
+ * nothing more is sent, and leaving the loop closes the run's event stream.
  */
 async function forward<i, o>(
   events: AsyncIterable<TrajectoryEvent>,
   config: ServeAcpConfig<i, o>,
-  session: AcpSession,
+  record: SessionRecord<i, o>,
   cancelled: AbortSignal,
   send: SendUpdate,
 ): Promise<void> {
-  const state = create_acp_mapper_state({ stream: config.stream, session })
+  const state = create_acp_mapper_state({ stream: config.stream, session: record.session })
   const to_updates = config.to_updates ?? to_session_updates
   for await (const event of events) {
     if (event.kind === 'events_dropped') warn_dropped(event)
-    for (const update of to_updates(event, state)) {
+    const updates = to_updates(event, state)
+    for (const update of updates) {
       if (cancelled.aborted) return
       await send(update)
     }
+    record.cards.sent(event, updates)
   }
 }
 
@@ -186,12 +194,13 @@ async function run_turn<i, o>(
   const handle = run.stream(record.flow, turn_input(config, turn), {
     abort: AbortSignal.any([cancelled, stop.signal]),
     install_signal_handlers: false,
-    // Stryker disable next-line ConditionalExpression: run.stream reads an undefined trajectory as none, so the spread only satisfies exactOptionalPropertyTypes.
-    ...(config.trajectory === undefined ? {} : { trajectory: config.trajectory }),
+    // Every event the run queues for the consumer passes through here first,
+    // which is how an approval knows what the client hasn't been sent yet.
+    trajectory: record.cards.start(config.trajectory),
   })
   const outcome = settle(handle.result)
   try {
-    await forward(handle.events, config, record.session, cancelled, send_update)
+    await forward(handle.events, config, record, cancelled, send_update)
     const result = await outcome
     if (!cancelled.aborted) {
       if (!result.ok) throw result.error

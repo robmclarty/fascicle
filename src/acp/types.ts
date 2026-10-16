@@ -6,6 +6,7 @@
 
 import type { ClientCapabilities, ContentBlock, SessionUpdate } from '@agentclientprotocol/sdk'
 import type { Step, TrajectoryEvent, TrajectoryLogger } from '#core'
+import type { ToolApprovalHandler } from '#engine'
 
 /**
  * Where a model call's streamed text goes: the reply, the collapsed thought
@@ -103,6 +104,13 @@ export type AcpSession = {
    * included, so a tool reads it at each call rather than once.
    */
   readonly mode: () => AcpMode
+  /**
+   * Asks the client before a tool call runs, through
+   * `session/request_permission`, for a model call's `on_tool_approval`.
+   * Anything short of an allow denies the call, a request that fails
+   * included.
+   */
+  readonly approve: ToolApprovalHandler
 }
 
 /**

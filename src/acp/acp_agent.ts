@@ -10,6 +10,8 @@
 
 import { randomUUID } from 'node:crypto'
 import type { AgentApp, AgentContext, ClientCapabilities, SessionUpdate } from '@agentclientprotocol/sdk'
+import { create_card_sync, session_approver } from './approve.js'
+import type { PermissionAsker } from './approve.js'
 import {
   config_options,
   DEFAULT_MODE,
@@ -52,6 +54,16 @@ function internal_error(sdk: AcpSdk, err: unknown): Error {
  */
 function sender(sdk: AcpSdk, client: AgentContext, sessionId: string): (update: SessionUpdate) => Promise<void> {
   return (update) => client.notify(sdk.methods.client.session.update, { sessionId, update })
+}
+
+/**
+ * A function that asks the client to approve one tool call. The SDK
+ * withdraws the request with `$/cancel_request` once `cancel` fires, which
+ * is the turn's abort, so a cancelled turn takes its prompt down with it.
+ */
+function permission_asker(sdk: AcpSdk, client: AgentContext): PermissionAsker {
+  return (request, cancel) =>
+    client.request(sdk.methods.client.session.requestPermission, request, { cancellationSignal: cancel })
 }
 
 /**
@@ -111,10 +123,20 @@ export async function acp_agent<i, o>(config: ServeAcpConfig<i, o>): Promise<Age
       })
       const id = randomUUID()
       const modes = session_modes(config.default_mode ?? DEFAULT_MODE, sender(sdk, ctx.client, id))
-      const session: AcpSession = { id, cwd, additional_directories, roots, client_capabilities, mode: modes.current }
+      const cards = create_card_sync()
+      const approver = session_approver({ modes, cards, ask: permission_asker(sdk, ctx.client) })
+      const session: AcpSession = {
+        id,
+        cwd,
+        additional_directories,
+        roots,
+        client_capabilities,
+        mode: modes.current,
+        approve: (request) => approver(session, request),
+      }
       try {
         const flow = typeof config.flow === 'function' ? config.flow(session) : config.flow
-        sessions.set(id, { session, flow, history: [], last_turn: null, modes })
+        sessions.set(id, { session, flow, history: [], cards, last_turn: null, modes })
       } catch (err: unknown) {
         throw internal_error(sdk, err)
       }
