@@ -27,4 +27,18 @@ Per-provider keys, each block skipped independently when its key is absent:
 - `GOOGLE_GENERATIVE_AI_API_KEY` for google
 - `OPENAI_API_KEY` for openai
 
+A second opt-in file, `live_reasoning.test.ts`, checks that reasoning survives a
+tool loop. It runs a three-step loop on OpenRouter, and on Claude through
+OpenRouter's Anthropic-compatible endpoint, and prints one line per case that
+says whether the reasoning streamed and whether it came back with the next
+request. You don't need any key but `OPENROUTER_API_KEY`. A case where the model
+doesn't reason before a tool call skips itself, because it hasn't exercised
+anything, and each response stream lands under `research/live/`, which git
+ignores. Run it before you change the reasoning path and again after, so you
+can compare what it prints:
+
+```bash
+LIVE_TESTS=1 OPENROUTER_API_KEY=... pnpm exec vitest run src/engine/__tests__/live/live_reasoning.test.ts
+```
+
 — Rob
