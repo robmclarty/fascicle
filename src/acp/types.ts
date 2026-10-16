@@ -75,6 +75,13 @@ export type AcpTurn = {
 }
 
 /**
+ * When a coding session asks the client before a workspace tool acts:
+ * `manual` before every edit and every command, `accept_edits` only before a
+ * command, and `auto` never. Reads and searches never ask.
+ */
+export type AcpMode = 'manual' | 'accept_edits' | 'auto'
+
+/**
  * A session as its flow builder sees it, made once per `session/new`.
  */
 export type AcpSession = {
@@ -91,6 +98,11 @@ export type AcpSession = {
   readonly roots: ReadonlyArray<string>
   /** What the client said it supports in `initialize`. */
   readonly client_capabilities: ClientCapabilities
+  /**
+   * The session's mode now. The client can switch it at any point, mid-turn
+   * included, so a tool reads it at each call rather than once.
+   */
+  readonly mode: () => AcpMode
 }
 
 /**
@@ -126,6 +138,8 @@ type ServeAcpCommon<i, o> = {
   readonly name: string
   /** Reported to the client as `agentInfo.version`; default: `'0.0.0'`. */
   readonly version?: string | undefined
+  /** The mode each session starts in, until the client picks another; default: `'manual'`. */
+  readonly default_mode?: AcpMode | undefined
   /**
    * The turn's reply when the flow streamed no message text; default: a
    * string as-is, anything else as JSON.

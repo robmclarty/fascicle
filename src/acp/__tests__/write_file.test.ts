@@ -59,6 +59,7 @@ beforeAll(async () => {
     additional_directories: [shared],
     roots: await resolve_roots([cwd, shared]),
     client_capabilities: {},
+    mode: () => 'manual',
   }
 })
 

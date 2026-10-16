@@ -9,9 +9,14 @@
  * reads), set its own beside them, or wrap them. Each file tool checks every
  * path it's handed against the session's roots; a command starts in `cwd`
  * and reaches whatever the user can.
+ *
+ * The writes and `run_command` ask for approval when the session's mode
+ * says to, and the reads never do.
  */
 
 import type { Tool } from '#engine'
+import { asks_before } from './modes.js'
+import type { GatedAction } from './modes.js'
 import { edit_file_tool } from './tools/edit_file.js'
 import { list_files_tool } from './tools/list_files.js'
 import { read_file_tool } from './tools/read_file.js'
@@ -40,10 +45,20 @@ const COMMAND_TIMEOUT_MS = 120_000
 const OUTPUT_LIMIT_BYTES = 32_000
 
 /**
+ * `tool`, asking for approval before each call when the session's mode asks
+ * before `action`. The mode is read at each call, not once, so a switch the
+ * client makes mid-turn holds from the next call on.
+ */
+function gated(tool: Tool, session: AcpSession, action: GatedAction): Tool {
+  return { ...tool, needs_approval: () => asks_before(session.mode(), action) }
+}
+
+/**
  * The workspace tools for one session: the reads (`read_file`, `list_files`,
  * and `search`), then the writes (`write_file` and `edit_file`), each
  * confined to the session's `cwd` and additional directories, then
- * `run_command`.
+ * `run_command`. The writes and the command ask before they run as the
+ * session's mode says.
  */
 export function workspace_tools(session: AcpSession, options: WorkspaceToolsOptions = {}): ReadonlyArray<Tool> {
   const ignore = options.ignore ?? IGNORE
@@ -51,12 +66,16 @@ export function workspace_tools(session: AcpSession, options: WorkspaceToolsOpti
     read_file_tool(session, options.read_limit_lines ?? READ_LIMIT_LINES),
     list_files_tool(session, ignore),
     search_tool(session, ignore, SEARCH_BUDGET_MS),
-    write_file_tool(session),
-    edit_file_tool(session),
-    run_command_tool(session, {
-      timeout_ms: options.command_timeout_ms ?? COMMAND_TIMEOUT_MS,
-      output_limit_bytes: options.output_limit_bytes ?? OUTPUT_LIMIT_BYTES,
-      env: options.command_env,
-    }),
+    gated(write_file_tool(session), session, 'edit'),
+    gated(edit_file_tool(session), session, 'edit'),
+    gated(
+      run_command_tool(session, {
+        timeout_ms: options.command_timeout_ms ?? COMMAND_TIMEOUT_MS,
+        output_limit_bytes: options.output_limit_bytes ?? OUTPUT_LIMIT_BYTES,
+        env: options.command_env,
+      }),
+      session,
+      'command',
+    ),
   ]
 }

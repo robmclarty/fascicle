@@ -9,14 +9,27 @@
  */
 
 import { randomUUID } from 'node:crypto'
-import type { AgentApp, ClientCapabilities, SessionUpdate } from '@agentclientprotocol/sdk'
+import type { AgentApp, AgentContext, ClientCapabilities, SessionUpdate } from '@agentclientprotocol/sdk'
+import {
+  config_options,
+  DEFAULT_MODE,
+  is_acp_mode,
+  MODE_CONFIG_ID,
+  mode_state,
+  session_modes,
+  unknown_mode_message,
+} from './modes.js'
+import type { SessionModes } from './modes.js'
 import { cancel_turn, prompt_turn } from './prompt_turn.js'
 import type { SessionRecord } from './prompt_turn.js'
 import { load_acp_sdk } from './sdk_loader.js'
 import { resolve_roots } from './tools/containment.js'
-import type { AcpSession, ServeAcpConfig } from './types.js'
+import type { AcpMode, AcpSession, ServeAcpConfig } from './types.js'
 
 type AcpSdk = Awaited<ReturnType<typeof load_acp_sdk>>
+
+/** A session as the agent holds it: what a turn needs, and its mode. */
+type AgentSession<i, o> = SessionRecord<i, o> & { readonly modes: SessionModes }
 
 /**
  * The message a failure carries, whatever was thrown.
@@ -35,13 +48,34 @@ function internal_error(sdk: AcpSdk, err: unknown): Error {
 }
 
 /**
+ * A function that sends one update to the client for one session.
+ */
+function sender(sdk: AcpSdk, client: AgentContext, sessionId: string): (update: SessionUpdate) => Promise<void> {
+  return (update) => client.notify(sdk.methods.client.session.update, { sessionId, update })
+}
+
+/**
+ * The mode a client asked for, or an invalid-params error naming the modes
+ * there are. `field` is the param the id arrived in, for the error's data.
+ */
+function requested_mode(sdk: AcpSdk, id: unknown, field: 'modeId' | 'value'): AcpMode {
+  if (is_acp_mode(id)) return id
+  throw sdk.RequestError.invalidParams({ [field]: id }, unknown_mode_message(id))
+}
+
+/**
  * Build the ACP agent app that answers each prompt turn by running the
  * config's flow, with its handlers registered and not yet connected.
  */
 export async function acp_agent<i, o>(config: ServeAcpConfig<i, o>): Promise<AgentApp> {
   const sdk = await load_acp_sdk()
-  const sessions = new Map<string, SessionRecord<i, o>>()
+  const sessions = new Map<string, AgentSession<i, o>>()
   let client_capabilities: ClientCapabilities = {}
+  const session_of = (sessionId: string): AgentSession<i, o> => {
+    const record = sessions.get(sessionId)
+    if (record !== undefined) return record
+    throw sdk.RequestError.invalidParams({ sessionId }, `unknown session ${sessionId}; start one with session/new first`)
+  }
   return sdk
     .agent()
     .onRequest('initialize', (ctx) => {
@@ -75,31 +109,43 @@ export async function acp_agent<i, o>(config: ServeAcpConfig<i, o>): Promise<Age
       const roots = await resolve_roots([cwd, ...additional_directories]).catch((err: unknown) => {
         throw sdk.RequestError.invalidParams({ cwd, additionalDirectories: additional_directories }, message_of(err))
       })
-      const session: AcpSession = { id: randomUUID(), cwd, additional_directories, roots, client_capabilities }
+      const id = randomUUID()
+      const modes = session_modes(config.default_mode ?? DEFAULT_MODE, sender(sdk, ctx.client, id))
+      const session: AcpSession = { id, cwd, additional_directories, roots, client_capabilities, mode: modes.current }
       try {
         const flow = typeof config.flow === 'function' ? config.flow(session) : config.flow
-        sessions.set(session.id, { session, flow, history: [], last_turn: null })
+        sessions.set(id, { session, flow, history: [], last_turn: null, modes })
       } catch (err: unknown) {
         throw internal_error(sdk, err)
       }
-      return { sessionId: session.id }
+      return { sessionId: id, modes: mode_state(modes.current()), configOptions: config_options(modes.current()) }
     })
     .onRequest('session/prompt', async (ctx) => {
       const { sessionId, prompt } = ctx.params
-      const record = sessions.get(sessionId)
-      if (record === undefined) {
-        throw sdk.RequestError.invalidParams(
-          { sessionId },
-          `unknown session ${sessionId}; start one with session/new first`,
-        )
-      }
-      const send = (update: SessionUpdate): Promise<void> =>
-        ctx.client.notify(sdk.methods.client.session.update, { sessionId, update })
+      const record = session_of(sessionId)
       try {
-        return await prompt_turn(config, record, prompt, ctx.signal, send)
+        return await prompt_turn(config, record, prompt, ctx.signal, sender(sdk, ctx.client, sessionId))
       } catch (err: unknown) {
         throw internal_error(sdk, err)
       }
+    })
+    .onRequest('session/set_mode', async (ctx) => {
+      const { sessionId, modeId } = ctx.params
+      const { modes } = session_of(sessionId)
+      await modes.switch_to(requested_mode(sdk, modeId, 'modeId'))
+      return {}
+    })
+    .onRequest('session/set_config_option', async (ctx) => {
+      const { sessionId, configId, value } = ctx.params
+      const { modes } = session_of(sessionId)
+      if (configId !== MODE_CONFIG_ID) {
+        throw sdk.RequestError.invalidParams(
+          { configId },
+          `unknown config option ${configId}; the only one is ${MODE_CONFIG_ID}`,
+        )
+      }
+      await modes.switch_to(requested_mode(sdk, value, 'value'))
+      return { configOptions: config_options(modes.current()) }
     })
     .onNotification('session/cancel', (ctx) => {
       const record = sessions.get(ctx.params.sessionId)

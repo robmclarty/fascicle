@@ -50,9 +50,14 @@ afterAll(async () => {
   await rm(base, { recursive: true, force: true })
 })
 
-/** The real paths of the fixture's session, made fresh for each test that needs its own store. */
+/**
+ * The real paths of the fixture's session, made fresh for each test that
+ * needs its own store. It runs in Auto, as `wire_turn`'s sessions do, so the
+ * writes and commands run without an approval handler.
+ */
 async function fixture_session(client_capabilities: ClientCapabilities = {}): Promise<AcpSession> {
-  return { id: 'session-1', cwd, additional_directories: [], roots: await resolve_roots([cwd]), client_capabilities }
+  const roots = await resolve_roots([cwd])
+  return { id: 'session-1', cwd, additional_directories: [], roots, client_capabilities, mode: () => 'auto' }
 }
 
 /** A model call on the scripted engine with the session's workspace tools. */
@@ -69,7 +74,7 @@ async function wire_turn(
   capabilities: ClientCapabilities = {},
 ): Promise<ReadonlyArray<SessionUpdate>> {
   const engine = scripted_engine(script)
-  const app = await acp_agent({ name: 'presentation', flow: (session) => coder(engine, session) })
+  const app = await acp_agent({ name: 'presentation', default_mode: 'auto', flow: (session) => coder(engine, session) })
   const { session } = await open_session(app, { client_capabilities: capabilities, session: { cwd } })
   await session.prompt('go')
   const { updates } = await read_turn(session)
@@ -456,6 +461,7 @@ describe('presentation: titles and locations', () => {
     additional_directories: ['/shared'],
     roots: ['/work', '/shared'],
     client_capabilities: {},
+    mode: () => 'manual',
   }
 
   function model_chunk(chunk: StreamChunk): TrajectoryEvent {
@@ -553,7 +559,14 @@ describe('presentation: titles and locations', () => {
 })
 
 describe('presentation: closing a card from the mapper', () => {
-  const session: AcpSession = { id: 's', cwd: '/work', additional_directories: [], roots: ['/work'], client_capabilities: {} }
+  const session: AcpSession = {
+    id: 's',
+    cwd: '/work',
+    additional_directories: [],
+    roots: ['/work'],
+    client_capabilities: {},
+    mode: () => 'manual',
+  }
   const terminals: AcpSession = { ...session, id: 't', client_capabilities: { _meta: { terminal_output: true } } }
 
   function model_chunk(chunk: StreamChunk): TrajectoryEvent {
@@ -614,7 +627,14 @@ describe('presentation: closing a card from the mapper', () => {
 
 describe('presentation: the preview store', () => {
   const change = (new_text: string): ToolPreview => ({ kind: 'change', path: '/a', old_text: null, new_text, line: undefined })
-  const bare = (id: string): AcpSession => ({ id, cwd: '/a', additional_directories: [], roots: ['/a'], client_capabilities: {} })
+  const bare = (id: string): AcpSession => ({
+    id,
+    cwd: '/a',
+    additional_directories: [],
+    roots: ['/a'],
+    client_capabilities: {},
+    mode: () => 'manual',
+  })
 
   it('hands back a raw id previews oldest first, and nothing once they are gone', () => {
     const session = bare('q')

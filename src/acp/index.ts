@@ -7,6 +7,7 @@ export type {
   AcpHistoryEntry,
   AcpMapperOptions,
   AcpMapperState,
+  AcpMode,
   AcpSession,
   AcpStreamRoute,
   AcpTurn,

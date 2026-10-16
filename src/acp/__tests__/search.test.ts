@@ -45,6 +45,7 @@ async function session_over(root: string, additional: string[] = []): Promise<Ac
     additional_directories: additional,
     roots: await resolve_roots([root, ...additional]),
     client_capabilities: {},
+    mode: () => 'manual',
   }
 }
 

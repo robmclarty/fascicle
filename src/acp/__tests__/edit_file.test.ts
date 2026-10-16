@@ -44,6 +44,7 @@ beforeAll(async () => {
     additional_directories: [],
     roots: await resolve_roots([cwd]),
     client_capabilities: {},
+    mode: () => 'manual',
   }
 })
 
