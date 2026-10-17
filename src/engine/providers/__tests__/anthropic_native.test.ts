@@ -341,11 +341,53 @@ describe('build_messages_body', () => {
     })
   })
 
-  it('maps effort to a thinking budget, raises default max_tokens above it, and drops sampling params', () => {
-    const body = build_messages_body(make_req({ effort: 'medium', temperature: 0.2 }))
-    expect(body['thinking']).toEqual({ type: 'enabled', budget_tokens: 5000 })
-    expect(body['max_tokens']).toBe(9096)
-    expect(body).not.toHaveProperty('temperature')
+  it.each([
+    ['low', 5120],
+    ['medium', 9096],
+    ['high', 24096],
+    ['xhigh', 36096],
+    ['max', 68096],
+  ] as const)(
+    'maps effort %s to adaptive thinking and output_config, max_tokens %i, and drops sampling params',
+    (effort, max_tokens) => {
+      const body = build_messages_body(make_req({ effort, temperature: 0.2, top_p: 0.9 }))
+      expect(body['thinking']).toStrictEqual({ type: 'adaptive', display: 'summarized' })
+      expect(body['output_config']).toStrictEqual({ effort })
+      expect(body['max_tokens']).toBe(max_tokens)
+      expect(body).not.toHaveProperty('temperature')
+      expect(body).not.toHaveProperty('top_p')
+    },
+  )
+
+  it('sends neither thinking nor output_config for effort none', () => {
+    const body = build_messages_body(make_req({ effort: 'none' }))
+    expect(body).not.toHaveProperty('thinking')
+    expect(body).not.toHaveProperty('output_config')
+    expect(body['max_tokens']).toBe(4096)
+  })
+
+  // D5 (adaptive-no-sniff): a model older than 4.6 refuses adaptive, so its
+  // caller sets effort none and passes the budget through.
+  it('lets a passthrough thinking budget stand alone under effort none', () => {
+    const body = build_messages_body(
+      make_req({
+        effort: 'none',
+        provider_options: { anthropic: { thinking: { type: 'enabled', budget_tokens: 2048 } } },
+      }),
+    )
+    expect(body['thinking']).toStrictEqual({ type: 'enabled', budget_tokens: 2048 })
+    expect(body).not.toHaveProperty('output_config')
+  })
+
+  it('lets a passthrough thinking beat the effort-derived one, keeping output_config', () => {
+    const body = build_messages_body(
+      make_req({
+        effort: 'high',
+        provider_options: { anthropic: { thinking: { type: 'adaptive' } } },
+      }),
+    )
+    expect(body['thinking']).toStrictEqual({ type: 'adaptive' })
+    expect(body['output_config']).toStrictEqual({ effort: 'high' })
   })
 
   it('passes an explicit max_tokens through verbatim, even under thinking', () => {
@@ -429,13 +471,13 @@ describe('build_messages_body', () => {
     expect(body['system']).toBe('from request\n\nfrom message')
   })
 
-  it('applies only temperature when top_p is unset and thinking is off', () => {
+  it('applies only temperature when top_p is unset and effort is none', () => {
     const body = build_messages_body(make_req({ temperature: 0.5 }))
     expect(body['temperature']).toBe(0.5)
     expect(body).not.toHaveProperty('top_p')
   })
 
-  it('applies only top_p when temperature is unset and thinking is off', () => {
+  it('applies only top_p when temperature is unset and effort is none', () => {
     const body = build_messages_body(make_req({ top_p: 0.8 }))
     expect(body['top_p']).toBe(0.8)
     expect(body).not.toHaveProperty('temperature')

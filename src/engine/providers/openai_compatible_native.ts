@@ -55,7 +55,10 @@ import type { NativeProviderAdapter, ProviderCapability } from './types.js'
  * and the `provider_options` key it reads, kept stable across transports so
  * pricing keys and usage fields carry over. `tolerant_usage` marks backends
  * whose usage may be absent or approximate (lmstudio, ollama-compat): the
- * mapper returns zeroed totals instead of throwing.
+ * mapper returns zeroed totals instead of throwing. `effort_shape` picks the
+ * effort field: `'flat'` (the default) is OpenAI's `reasoning_effort`, and
+ * `'nested'` is OpenRouter's `reasoning: { effort }`, kept apart from any
+ * reasoning field a server returns, since one doesn't decide the other.
  */
 export type OpenAICompatibleDialect = {
   readonly name: string
@@ -65,13 +68,15 @@ export type OpenAICompatibleDialect = {
   readonly token_limit_field: 'max_tokens' | 'max_completion_tokens'
   readonly stream_include_usage: boolean
   readonly tolerant_usage: boolean
+  readonly effort_shape?: 'flat' | 'nested'
 }
 
 /**
- * The wire enum is `low | medium | high` only, so `xhigh` and `max` clamp to
- * `high`, the same clamp as the ai_sdk transport's `reasoningEffort`. `none`
- * omits the field entirely. Non-reasoning models ignore the field
- * server-side; the adapter does not model-sniff.
+ * The flat field's wire enum is `low | medium | high` only, so `xhigh` and
+ * `max` clamp to `high`, the same clamp as the ai_sdk transport's
+ * `reasoningEffort`. The nested shape takes every level, so it skips this
+ * table. Non-reasoning models ignore either field server-side; the adapter
+ * does not model-sniff.
  */
 const OPENAI_COMPATIBLE_REASONING_EFFORT: Record<
   Exclude<EffortLevel, 'none'>,
@@ -188,10 +193,27 @@ export function to_chat_tools(tools: ReadonlyArray<Tool>): Array<{
 }
 
 /**
+ * Write effort into the body in the dialect's shape. `none` writes nothing,
+ * on either shape.
+ */
+function apply_effort(
+  body: Record<string, unknown>,
+  effort: EffortLevel,
+  dialect: OpenAICompatibleDialect,
+): void {
+  if (effort === 'none') return
+  if (dialect.effort_shape === 'nested') {
+    body['reasoning'] = { effort }
+  } else {
+    body['reasoning_effort'] = OPENAI_COMPATIBLE_REASONING_EFFORT[effort]
+  }
+}
+
+/**
  * Build the Chat Completions request body for one turn: mapped messages and
- * tools, the token-limit field named per dialect, sampling params, the
- * effort-derived reasoning_effort, and the dialect's
- * `provider_options.<name>` wire passthrough merged last.
+ * tools, the token-limit field named per dialect, sampling params, effort in
+ * the dialect's shape, and the dialect's `provider_options.<name>` wire
+ * passthrough merged last.
  */
 export function build_chat_completions_body(
   req: TurnRequest,
@@ -211,9 +233,7 @@ export function build_chat_completions_body(
   if (req.max_tokens !== undefined) body[dialect.token_limit_field] = req.max_tokens
   if (req.temperature !== undefined) body['temperature'] = req.temperature
   if (req.top_p !== undefined) body['top_p'] = req.top_p
-  if (req.effort !== 'none') {
-    body['reasoning_effort'] = OPENAI_COMPATIBLE_REASONING_EFFORT[req.effort]
-  }
+  apply_effort(body, req.effort, dialect)
   if (req.stream) {
     body['stream'] = true
     // Usage arrives on the final pre-DONE chunk only when asked for; local
@@ -222,8 +242,7 @@ export function build_chat_completions_body(
   }
   // provider_options.<name> is raw wire-format passthrough (snake_case
   // chat/completions keys), shallow-merged last so an explicit user key beats
-  // every derived field: the effort-derived reasoning_effort, the token
-  // limit, sampling params. Wire keys are the user asserting they know the
+  // every derived field: the effort field, the token limit, sampling params. Wire keys are the user asserting they know the
   // wire; the adapter does not reconcile interactions the API rejects.
   const passthrough = req.provider_options?.[dialect.name]
   return passthrough === undefined ? body : { ...body, ...passthrough }

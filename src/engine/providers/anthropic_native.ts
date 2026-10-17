@@ -43,10 +43,11 @@ import { create_sse_decoder } from './sse_native.js'
 import type { NativeProviderAdapter, ProviderCapability } from './types.js'
 
 /**
- * Effort level to extended-thinking budget tokens. Lives here (not in
- * anthropic.ts) because both transports map effort from this table and the
- * ai_sdk factory already imports this module for transport dispatch; the
- * reverse import would be a cycle.
+ * Effort level to thinking budget tokens. The ai_sdk transport sends it as
+ * the budget, and native adds it to the max_tokens default as room for
+ * adaptive thinking. Lives here (not in anthropic.ts) because the ai_sdk
+ * factory already imports this module for transport dispatch; the reverse
+ * import would be a cycle.
  */
 export const ANTHROPIC_THINKING_BUDGETS: Record<EffortLevel, number> = {
   none: 0,
@@ -67,9 +68,9 @@ const ANTHROPIC_VERSION = '2023-06-01'
 const DEFAULT_BASE_URL = 'https://api.anthropic.com/v1'
 
 /**
- * The Messages API requires max_tokens on every request. When extended
- * thinking is enabled the budget counts against max_tokens, so the default
- * rides on top of the thinking budget rather than being swallowed by it.
+ * The Messages API requires max_tokens on every request. Thinking spends
+ * from max_tokens, so with effort set the default rides on top of that
+ * effort's budget-table value rather than being swallowed by it.
  */
 const DEFAULT_MAX_TOKENS = 4096
 
@@ -211,44 +212,48 @@ export function to_anthropic_tools(
 
 /**
  * Build the Messages-API request body for one turn: mapped messages and
- * tools, the effort-derived thinking block, the required max_tokens default,
- * and the `provider_options.anthropic` wire passthrough merged last.
+ * tools, effort as adaptive thinking plus `output_config.effort`, the
+ * required max_tokens default, and the `provider_options.anthropic` wire
+ * passthrough merged last.
  */
 export function build_messages_body(req: TurnRequest): Record<string, unknown> {
   const { system: hoisted_system, messages } = to_anthropic_messages(req.messages)
   const system_parts = [req.system, hoisted_system].filter(
     (s): s is string => typeof s === 'string' && s.length > 0,
   )
-  const budget = ANTHROPIC_THINKING_BUDGETS[req.effort]
-  const thinking_enabled = budget > 0
 
   const body: Record<string, unknown> = {
     model: req.model_id,
     messages,
-    max_tokens:
-      req.max_tokens ?? (thinking_enabled ? budget + DEFAULT_MAX_TOKENS : DEFAULT_MAX_TOKENS),
+    // The `none` row is 0, so effort `none` gets the bare default.
+    max_tokens: req.max_tokens ?? ANTHROPIC_THINKING_BUDGETS[req.effort] + DEFAULT_MAX_TOKENS,
   }
   if (system_parts.length > 0) body['system'] = system_parts.join('\n\n')
   if (req.tools.length > 0) body['tools'] = to_anthropic_tools(req.tools)
   if (req.stream) body['stream'] = true
-  if (thinking_enabled) {
-    body['thinking'] = { type: 'enabled', budget_tokens: budget }
-  } else {
-    // The API rejects temperature/top_p alongside extended thinking, so
-    // sampling params apply only when thinking is off (parity with the
-    // @ai-sdk/anthropic backend, which strips them the same way). The inner
-    // guards already gate each key, so the branch is a plain else rather than
-    // a redundant `else if` on the same two conditions.
+  if (req.effort === 'none') {
+    // The API rejects temperature/top_p alongside thinking, so sampling
+    // params apply only with effort `none` (parity with the @ai-sdk/anthropic
+    // backend, which strips them the same way).
     if (req.temperature !== undefined) body['temperature'] = req.temperature
     if (req.top_p !== undefined) body['top_p'] = req.top_p
+  } else {
+    // Every model from Claude 4.6 on takes adaptive thinking, and from 4.7 on
+    // refuses the `enabled` budget, so the adapter sends adaptive without
+    // reading the model id; an older model's caller passes a budget through
+    // provider_options.anthropic.thinking instead. The two effort scales match
+    // one for one. The summary is asked for only here, since a `thinking`
+    // field with effort `none` would turn thinking on for 4.6 to 4.8.
+    body['thinking'] = { type: 'adaptive', display: 'summarized' }
+    body['output_config'] = { effort: req.effort }
   }
   // provider_options.anthropic is raw wire-format passthrough (snake_case
   // Messages-API keys, not the ai_sdk transport's camelCase spellings),
   // shallow-merged last so an explicit user key beats every derived field:
-  // the effort-derived thinking block, the max_tokens default, sampling
-  // params. The adapter does not reconcile interactions the API rejects
-  // (for example, a passthrough temperature alongside thinking); wire keys are the
-  // user asserting they know the wire.
+  // the thinking and output_config the effort sets, the max_tokens default,
+  // sampling params. The adapter does not reconcile interactions the API
+  // rejects (for example, a passthrough temperature alongside thinking);
+  // wire keys are the user asserting they know the wire.
   const passthrough = req.provider_options?.['anthropic']
   // Stryker disable next-line ConditionalExpression: spreading an undefined
   // passthrough is a no-op, so forcing the merge branch ({ ...body, ...undefined })

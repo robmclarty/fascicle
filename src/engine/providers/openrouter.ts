@@ -10,11 +10,12 @@
  * quirk).
  *
  * Reasoning effort support varies per upstream model; OpenRouter itself
- * forwards the `reasoning` provider option. The ai_sdk backend translates
- * effort to the OpenRouter `reasoning.effort` shape; the native core maps it
- * to the flat `reasoning_effort` field. Effort_ignored is false so that the
- * orchestrator does not emit effort_ignored indiscriminately; upstream
- * models that don't support reasoning drop the field themselves.
+ * forwards the `reasoning` provider option. Both backends send effort as
+ * OpenRouter's `reasoning: { effort }`, every level passed through, since
+ * that's the form OpenRouter's guide documents and it takes `max`, which one
+ * reference page leaves out of the flat field. Effort_ignored is false so
+ * that the orchestrator does not emit effort_ignored indiscriminately;
+ * upstream models that don't support reasoning drop the field themselves.
  */
 
 import type { EffortLevel, ProviderInit, UsageTotals } from '../types.js'
@@ -100,7 +101,8 @@ export const create_openrouter_adapter = (init: ProviderInit): ProviderAdapter =
 /**
  * Build the openrouter dialect and hand it to the shared OpenAI-compatible
  * core: Bearer auth, the optional `HTTP-Referer`/`X-Title` attribution
- * headers, the `max_tokens` token-limit field, and strict usage. The
+ * headers, the `max_tokens` token-limit field, the nested effort shape, and
+ * strict usage. The
  * empty-api_key guard rides on the core, which throws the same
  * `openrouter provider requires a non-empty api_key` engine_config_error.
  */
@@ -118,6 +120,10 @@ const create_openrouter_native_adapter = (init: ProviderInit): NativeProviderAda
     token_limit_field: 'max_tokens',
     stream_include_usage: true,
     tolerant_usage: false,
+    effort_shape: 'nested',
+    // Stryker disable next-line ConditionalExpression,EqualityOperator: the core
+    // spreads extra_headers into its own headers, so an empty object and no key
+    // send the same request.
     ...(Object.keys(extra_headers).length > 0 ? { extra_headers } : {}),
   }
   return create_openai_compatible_adapter(dialect)

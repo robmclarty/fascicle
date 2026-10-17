@@ -348,6 +348,38 @@ describe('build_chat_completions_body', () => {
     } else {
       expect(body['reasoning_effort']).toBe(expected)
     }
+    expect(body).not.toHaveProperty('reasoning')
+  })
+
+  it('treats an explicit flat effort_shape as the default', () => {
+    const body = build_chat_completions_body(
+      make_req({ effort: 'max' }),
+      make_dialect({ effort_shape: 'flat' }),
+    )
+    expect(body['reasoning_effort']).toBe('high')
+    expect(body).not.toHaveProperty('reasoning')
+  })
+
+  // D20 (effort-field-knob): the nested shape takes every level unclamped.
+  it.each(['low', 'medium', 'high', 'xhigh', 'max'] as const)(
+    'maps effort %s to reasoning: { effort } under the nested effort_shape',
+    (effort) => {
+      const body = build_chat_completions_body(
+        make_req({ effort }),
+        make_dialect({ effort_shape: 'nested' }),
+      )
+      expect(body['reasoning']).toStrictEqual({ effort })
+      expect(body).not.toHaveProperty('reasoning_effort')
+    },
+  )
+
+  it('writes no effort field for effort none under the nested effort_shape', () => {
+    const body = build_chat_completions_body(
+      make_req({ effort: 'none' }),
+      make_dialect({ effort_shape: 'nested' }),
+    )
+    expect(body).not.toHaveProperty('reasoning')
+    expect(body).not.toHaveProperty('reasoning_effort')
   })
 
   it('maps tools onto the body', () => {

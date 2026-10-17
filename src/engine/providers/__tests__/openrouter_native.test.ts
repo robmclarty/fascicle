@@ -3,7 +3,8 @@
  * 'native'` routes through the shared OpenAI-compatible core with the openrouter
  * dialect: Bearer auth, the optional `HTTP-Referer`/`X-Title` attribution
  * headers, `max_tokens` as the token-limit field (not `max_completion_tokens`),
- * `reasoning_effort` per Appendix A4, and `provider_options.openrouter` wire
+ * effort as the nested `reasoning: { effort }` per D4 (nested-effort-openrouter),
+ * and `provider_options.openrouter` wire
  * passthrough merging last on both the stream and non-stream paths (D9). The
  * core's own mapping/parsing is covered by openai_compatible_native.test.ts;
  * here the assertions target the dialect the factory constructs. No live
@@ -122,9 +123,12 @@ describe('transport dispatch', () => {
     expect(adapter.name).toBe('openrouter')
   })
 
-  it('throws engine_config_error on an unknown transport', () => {
+  it('throws engine_config_error on an unknown transport, naming the provider', () => {
     expect(() => create_openrouter_adapter({ api_key: 'sk-test', transport: 'grpc' })).toThrow(
       engine_config_error,
+    )
+    expect(() => create_openrouter_adapter({ api_key: 'sk-test', transport: 'grpc' })).toThrow(
+      `openrouter provider: transport must be 'ai_sdk' or 'native', got "grpc"`,
     )
   })
 
@@ -164,6 +168,19 @@ describe('openrouter native dialect wiring', () => {
     expect(headers).not.toHaveProperty('X-Title')
   })
 
+  it('ignores attribution values that are not strings', async () => {
+    const { headers } = await sent_body({ http_referer: 42, x_title: true }, {})
+    expect(headers).not.toHaveProperty('HTTP-Referer')
+    expect(headers).not.toHaveProperty('X-Title')
+  })
+
+  it('treats a response without usage as broken (strict usage)', async () => {
+    stub_fetch(json_response({ ...TEXT_FIXTURE, usage: undefined }))
+    await expect(native_adapter().invoke_turn(make_req())).rejects.toThrow(
+      'openrouter native: response is missing its usage object',
+    )
+  })
+
   it('respects a base_url override', async () => {
     const { url } = await sent_body({ base_url: 'https://proxy.local/api/v1' }, {})
     expect(url).toBe('https://proxy.local/api/v1/chat/completions')
@@ -175,20 +192,26 @@ describe('openrouter native dialect wiring', () => {
     expect(body).not.toHaveProperty('max_completion_tokens')
   })
 
-  it.each([
-    ['none', undefined],
-    ['low', 'low'],
-    ['medium', 'medium'],
-    ['high', 'high'],
-    ['xhigh', 'high'],
-    ['max', 'high'],
-  ] as const)('maps effort %s to reasoning_effort %s (A4)', async (effort, expected) => {
-    const { body } = await sent_body({}, { effort })
-    if (expected === undefined) {
+  // D4 (nested-effort-openrouter): every level passes through unclamped.
+  it.each(['low', 'medium', 'high', 'xhigh', 'max'] as const)(
+    'sends effort %s as reasoning: { effort }, never the flat field',
+    async (effort) => {
+      const { body } = await sent_body({}, { effort })
+      expect(body['reasoning']).toStrictEqual({ effort })
       expect(body).not.toHaveProperty('reasoning_effort')
-    } else {
-      expect(body['reasoning_effort']).toBe(expected)
-    }
+    },
+  )
+
+  it('sends no effort field for effort none', async () => {
+    const { body } = await sent_body({}, { effort: 'none' })
+    expect(body).not.toHaveProperty('reasoning')
+    expect(body).not.toHaveProperty('reasoning_effort')
+  })
+
+  it('sends the nested effort on the stream path too', async () => {
+    const body = await streamed_body({}, { effort: 'max' })
+    expect(body['reasoning']).toStrictEqual({ effort: 'max' })
+    expect(body).not.toHaveProperty('reasoning_effort')
   })
 })
 
@@ -204,10 +227,19 @@ describe('provider_options.openrouter passthrough (D9)', () => {
     )
     // The passthrough token limit beats the engine-derived one.
     expect(body['max_tokens']).toBe(512)
-    // A passthrough-only key rides through untouched.
-    expect(body['reasoning']).toEqual({ max_tokens: 2048 })
-    // A derived field with no override is left in place.
-    expect(body['reasoning_effort']).toBe('medium')
+    // The merge is shallow, so a passthrough reasoning object replaces the
+    // effort-derived one whole.
+    expect(body['reasoning']).toStrictEqual({ max_tokens: 2048 })
+    expect(body).not.toHaveProperty('reasoning_effort')
+  })
+
+  it('leaves the effort-derived reasoning in place when nothing overrides it', async () => {
+    const { body } = await sent_body(
+      {},
+      { effort: 'medium', provider_options: { openrouter: { transforms: ['middle-out'] } } },
+    )
+    expect(body['reasoning']).toStrictEqual({ effort: 'medium' })
+    expect(body['transforms']).toEqual(['middle-out'])
   })
 
   it('merges wire keys last over derived fields on the stream path', async () => {
@@ -223,7 +255,7 @@ describe('provider_options.openrouter passthrough (D9)', () => {
     expect(body['stream_options']).toEqual({ include_usage: true })
     expect(body['max_tokens']).toBe(512)
     expect(body['transforms']).toEqual(['middle-out'])
-    expect(body['reasoning_effort']).toBe('medium')
+    expect(body['reasoning']).toStrictEqual({ effort: 'medium' })
   })
 
   it('ignores provider_options keyed to other providers', async () => {
