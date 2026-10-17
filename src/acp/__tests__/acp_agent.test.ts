@@ -86,6 +86,51 @@ function history_probe(options: { reply_first: boolean; ignore_abort?: boolean }
   return { flow, started: started.promise, histories, reasons }
 }
 
+const card: SessionUpdate = {
+  sessionUpdate: 'tool_call',
+  toolCallId: 'card-1',
+  title: 'Run the tests',
+  kind: 'execute',
+  status: 'pending',
+}
+
+const card_progress: SessionUpdate = { sessionUpdate: 'tool_call_update', toolCallId: 'card-1', status: 'completed' }
+
+const picture: SessionUpdate = {
+  sessionUpdate: 'agent_message_chunk',
+  content: { type: 'image', data: 'iVBORw0KGgo=', mimeType: 'image/png' },
+}
+
+/**
+ * Run a turn whose flow sends `updates` in order, then a second turn, and
+ * return what the client was sent for the first along with the reply text
+ * the second turn's history holds for it.
+ */
+async function recorded_reply(
+  updates: ReadonlyArray<SessionUpdate>,
+): Promise<{ sent: ReadonlyArray<SessionUpdate>; recorded: string | undefined }> {
+  const histories: AcpHistoryEntry[][] = []
+  const app = await acp_agent({
+    name: 'test-agent',
+    flow: step('sender', (turn: AcpTurn, ctx) => {
+      histories.push(structuredClone([...turn.history]))
+      if (histories.length === 1) updates.forEach((_, index) => ctx.emit({ index }))
+      return ''
+    }),
+    to_input: (turn) => turn,
+    to_updates: (event) => {
+      const update = event.kind === 'emit' ? updates[Number(event['index'])] : undefined
+      return update === undefined ? [] : [update]
+    },
+  })
+  const { session } = await open_session(app)
+  await session.prompt('go')
+  const first = await read_turn(session)
+  await session.prompt('again')
+  await read_turn(session)
+  return { sent: first.updates, recorded: histories[1]?.[1]?.text }
+}
+
 const scratch_dirs: string[] = []
 
 /** A fresh directory under the system's temp directory, removed after the suite. */
@@ -358,6 +403,31 @@ describe('acp_agent: prompt turns', () => {
     await session.prompt('again')
     await read_turn(session)
     expect(histories[1]).toEqual([{ role: 'user', text: 'draw' }])
+  })
+
+  it('records the reply text after a tool card on a blank line, and sends the client the same updates', async () => {
+    const updates = [message('Running the tests.'), card, card_progress, message('All pass.')]
+    const { sent, recorded } = await recorded_reply(updates)
+    expect(sent).toEqual(updates)
+    expect(recorded).toBe('Running the tests.\n\nAll pass.')
+  })
+
+  it('records chunks with no card between them joined, as before', async () => {
+    const { recorded } = await recorded_reply([message('one '), message('two')])
+    expect(recorded).toBe('one two')
+  })
+
+  it.each([
+    ['a card before any reply text adds no leading gap', [card, message('hi')], 'hi'],
+    ['a card with no text after it adds no trailing gap', [message('a'), card], 'a'],
+    ['cards in a row add one gap', [message('a'), card, card, message('b')], 'a\n\nb'],
+    ['every run after a card starts on its own line', [message('a'), card, message('b'), card, message('c')], 'a\n\nb\n\nc'],
+    ['a card update without a new card adds no gap', [message('a'), card_progress, message('b')], 'ab'],
+    ['an empty chunk after a card adds no trailing gap', [message('a'), card, message('')], 'a'],
+    ['a picture leaves the gap for the next text', [message('a'), card, picture, message('b')], 'a\n\nb'],
+  ] as const)('%s', async (_name, updates, expected) => {
+    const { recorded } = await recorded_reply(updates)
+    expect(recorded).toBe(expected)
   })
 
   it('hands the flow its turn: the session id, the cwd, the text, and the raw prompt', async () => {

@@ -43,7 +43,7 @@ export type SessionRecord<i, o> = {
 
 export type SendUpdate = (update: SessionUpdate) => Promise<void>
 
-type Reply = { sent: boolean; text: string }
+type Reply = { sent: boolean; text: string; card_since_text: boolean }
 
 type Settled<o> = { readonly ok: true; readonly output: o } | { readonly ok: false; readonly error: unknown }
 
@@ -100,12 +100,18 @@ function agent_message(text: string): SessionUpdate {
 /**
  * Count a message update the client was sent toward the turn's reply. Only
  * text joins the reply's text, but any message counts as a reply, so a flow
- * that sent an image doesn't get a `to_text` message after it.
+ * that sent an image doesn't get a `to_text` message after it. A tool card
+ * that opened after some reply text splits the reply in two on the client,
+ * so the recorded text starts the next run on a blank line instead of
+ * running the two together.
  */
 function note_reply(reply: Reply, update: SessionUpdate): void {
+  if (update.sessionUpdate === 'tool_call' && reply.text !== '') reply.card_since_text = true
   if (update.sessionUpdate !== 'agent_message_chunk') return
   reply.sent = true
-  if (update.content.type === 'text') reply.text += update.content.text
+  if (update.content.type !== 'text' || update.content.text === '') return
+  reply.text += reply.card_since_text ? `\n\n${update.content.text}` : update.content.text
+  reply.card_since_text = false
 }
 
 /**
@@ -184,7 +190,7 @@ async function run_turn<i, o>(
     prompt,
     history: [...record.history],
   }
-  const reply: Reply = { sent: false, text: '' }
+  const reply: Reply = { sent: false, text: '', card_since_text: false }
   const send_update: SendUpdate = async (update) => {
     await send(update)
     note_reply(reply, update)

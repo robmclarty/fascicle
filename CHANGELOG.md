@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- **A turn's history keeps reply text apart across a tool card.** The text before a tool call and the text after it were recorded with nothing between them, so the next turn's history read "...tool calls.All tests pass". The second run now starts on a blank line. What the client is sent is unchanged, since Zed already shows the two runs as separate messages.
+
 ## v0.14.0 — 2026-10-16
 
 ### Added

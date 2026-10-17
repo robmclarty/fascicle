@@ -58,7 +58,7 @@ A flow that wants the whole turn sets `to_input: (turn) => turn` and receives an
 
 The agent tells the editor it accepts embedded context, so a file the user @-mentions in Zed arrives with its text, rather than as a bare URI the flow has no way to read.
 
-`history` is a copy, so a flow can't change the session's own, and it holds what the user actually saw. A cancelled turn still records the prompt, along with any reply text that had already streamed before the stop, so the next turn's "as I said above" points at something. Its last entry carries `cancelled: true`, which a flow should pass on to its model. A model that reads a stopped request with nothing to mark it takes the request as still waiting, and carries it out at the next prompt. Sessions live in the process's memory, and the agent doesn't offer `session/load`, so a session ends when the process does.
+`history` is a copy, so a flow can't change the session's own, and it holds what the user actually saw. Reply text on either side of a tool call is recorded as two paragraphs with a blank line between them, because the client shows it as two messages and a flow that reads the history shouldn't see the sentences run together. A cancelled turn still records the prompt, along with any reply text that had already streamed before the stop, so the next turn's "as I said above" points at something. Its last entry carries `cancelled: true`, which a flow should pass on to its model. A model that reads a stopped request with nothing to mark it takes the request as still waiting, and carries it out at the next prompt. Sessions live in the process's memory, and the agent doesn't offer `session/load`, so a session ends when the process does.
 
 ## Stdout Belongs to the Protocol
 
