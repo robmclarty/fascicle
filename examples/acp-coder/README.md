@@ -62,7 +62,7 @@ Add a custom agent server to Zed's `settings.json`, the same way as for
 [acp-agent](../acp-agent/README.md#run-in-zed), with this example's `main.ts`,
 a model, your OpenRouter key, and a `PATH`:
 
-```json
+```jsonc
 {
   "agent_servers": {
     "Fascicle coder": {
@@ -73,6 +73,10 @@ a model, your OpenRouter key, and a `PATH`:
         "/abs/path/to/fascicle/examples/acp-coder/main.ts",
         "--model", "anthropic/claude-sonnet-5.5"
       ],
+      // To start each thread in a mode other than Manual, uncomment this and
+      // name the mode ("accept_edits" or "auto"). Zed reads this setting, and
+      // not "default_mode", for an agent like this one.
+      // "default_config_options": { "mode": "accept_edits" },
       "env": {
         "OPENROUTER_API_KEY": "sk-or-...",
         "PATH": "/usr/local/bin:/usr/bin:/bin"

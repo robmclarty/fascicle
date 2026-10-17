@@ -224,7 +224,7 @@ Each session runs in one of three modes, which set how often the agent asks befo
 | Accept edits (`accept_edits`) | no | yes |
 | Auto (`auto`) | no | no |
 
-The user picks one in Zed's mode picker and can switch at any point, mid-turn included, since each tool reads the mode when it's called. `default_mode` in the config sets the mode that a session starts in, and Zed's `default_mode` setting on the agent server entry picks another one for that editor. ACP reports a mode two ways, as the session's `modes` and as a config option in the `mode` category. A client reads one or the other, so the agent keeps the two in step and tells the client both ways whenever either one changes.
+The user picks one in Zed's mode picker and can switch at any point, mid-turn included, since each tool reads the mode when it's called. `default_mode` in the config sets the mode that a session starts in, and in Zed, `"default_config_options": { "mode": "accept_edits" }` on the agent server entry picks another one for that editor, keyed by the option's id. Zed doesn't read its older `default_mode` setting for an agent whose session carries config options, as this one's does, and it writes `default_config_options` itself when the user picks a mode. ACP reports a mode two ways, as the session's `modes` and as a config option in the `mode` category. A client reads one or the other, so the agent keeps the two in step and tells the client both ways whenever either one changes.
 
 Auto runs commands with nobody watching, so it belongs in a container or a throwaway worktree. Don't point it at a checkout you'd mind losing, or run it anywhere a command could read credentials you'd mind it sending somewhere.
 
