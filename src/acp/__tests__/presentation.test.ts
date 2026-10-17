@@ -115,7 +115,13 @@ describe('presentation: each workspace tool over the real tool loop', () => {
         title: 'Read src/a.ts (2 - 3)',
         locations: [{ path: join(cwd, 'src', 'a.ts'), line: 2 }],
       },
-      { sessionUpdate: 'tool_call_update', toolCallId: 'CARD', status: 'completed', rawOutput: '     2\ttwo\n     3\tthree' },
+      {
+        sessionUpdate: 'tool_call_update',
+        toolCallId: 'CARD',
+        status: 'completed',
+        rawOutput: '     2\ttwo\n     3\tthree',
+        content: [{ type: 'content', content: { type: 'text', text: '```\n     2\ttwo\n     3\tthree\n```' } }],
+      },
     ])
   })
 
@@ -131,7 +137,13 @@ describe('presentation: each workspace tool over the real tool loop', () => {
         rawInput: input,
         title: 'Find `lib` `**/*.ts`',
       },
-      { sessionUpdate: 'tool_call_update', toolCallId: 'CARD', status: 'completed', rawOutput: 'lib/b.ts' },
+      {
+        sessionUpdate: 'tool_call_update',
+        toolCallId: 'CARD',
+        status: 'completed',
+        rawOutput: 'lib/b.ts',
+        content: [{ type: 'content', content: { type: 'text', text: '```\nlib/b.ts\n```' } }],
+      },
     ])
   })
 
@@ -152,6 +164,7 @@ describe('presentation: each workspace tool over the real tool loop', () => {
         toolCallId: 'CARD',
         status: 'completed',
         rawOutput: 'lib/b.ts:1: export const b = 2',
+        content: [{ type: 'content', content: { type: 'text', text: '```\nlib/b.ts:1: export const b = 2\n```' } }],
       },
     ])
   })
@@ -593,6 +606,33 @@ describe('presentation: closing a card from the mapper', () => {
     expect(update).toMatchObject({
       content: [{ type: 'content', content: { type: 'text', text: `${fence}console\n${output}\n${fence}` } }],
     })
+  })
+
+  it.each(['read_file', 'list_files', 'search'])(
+    'puts what %s returned on its card in a code block whose fence outruns the text, keeping rawOutput',
+    (name) => {
+      const output = 'src/a.ts:1: *a*\n```\nsrc/a.ts:3: # b'
+      expect(close(session, name, 'r1', { output })).toEqual([
+        {
+          sessionUpdate: 'tool_call_update',
+          toolCallId: 't:m:0:r1',
+          status: 'completed',
+          rawOutput: output,
+          content: [{ type: 'content', content: { type: 'text', text: `\`\`\`\`\n${output}\n\`\`\`\`` } }],
+        },
+      ])
+    },
+  )
+
+  it.each(['read_file', 'list_files', 'search'])('keeps the error text on a failed %s card', (name) => {
+    expect(close(session, name, 'r1', { error: { message: "src/a.ts doesn't exist" } })).toEqual([
+      {
+        sessionUpdate: 'tool_call_update',
+        toolCallId: 't:m:0:r1',
+        status: 'failed',
+        content: [{ type: 'content', content: { type: 'text', text: "src/a.ts doesn't exist" } }],
+      },
+    ])
   })
 
   it('ends a terminal with no output when the command left no preview', () => {

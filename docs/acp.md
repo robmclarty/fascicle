@@ -257,14 +257,14 @@ Each workspace tool's card looks the way Claude Agent's do, with a kind that pic
 
 | Tool | Kind | Title | The card also shows |
 | --- | --- | --- | --- |
-| `read_file` | `read` | `Read src/a.ts (1 - 40)` | a location at the first line it read |
-| `list_files` | `search` | `Find` with the directory and the glob | nothing more |
-| `search` | `search` | the grep command line that does the same search, such as `grep --include="*.ts" "todo" src` | nothing more |
+| `read_file` | `read` | `Read src/a.ts (1 - 40)` | a location at the first line it read, and the numbered lines in a code block |
+| `list_files` | `search` | `Find` with the directory and the glob | the listing in a code block |
+| `search` | `search` | the grep command line that does the same search, such as `grep --include="*.ts" "todo" src` | the matching lines in a code block |
 | `write_file` | `edit` | `Write src/a.ts` | the diff, with no old text for a new file |
 | `edit_file` | `edit` | `Edit src/a.ts` | the diff, and a location at the first line it changed |
 | `run_command` | `execute` | the command line | what it printed and how it ended |
 
-A write's or an edit's diff is worked out before the call runs, so the card keeps it in every mode, not only when a prompt asks. A command's output goes to a terminal on the card when the client advertises Zed's terminal extension (`_meta.terminal_output`), and into the card as a `console` code block otherwise.
+A write's or an edit's diff is worked out before the call runs, so the card keeps it in every mode, not only when a prompt asks. A command's output goes to a terminal on the card when the client advertises Zed's terminal extension (`_meta.terminal_output`), and into the card as a `console` code block otherwise. A read, a listing, or a search shows the text that the model read in a code block with no info string, so the `*`, `#`, or backtick in a matching line shows as it is rather than rendering as markdown. Each card keeps that text in `rawOutput` too, which is what hosts other than Zed read, and a failed call shows its error instead.
 
 Location lines count from 1, as Claude Agent's do. Zed reads them as counting from 0, so following the agent lands one line below the line it read or edited, exactly as it does with Claude Agent. Matching Claude Agent means a user who switches between the two lands on the same line, and a fix on Zed's side fixes both at once.
 

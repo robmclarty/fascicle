@@ -6,8 +6,9 @@
  * call (`Read src/a.ts (1 - 40)`, `grep "todo" src`, the command line) with
  * its paths relative to `cwd`, and the places it touches as locations, whose
  * lines count from 1 as Claude Agent's do. A write's or an edit's card shows
- * its diff once the call lands, and a command's shows what it printed: in a
- * terminal when the client advertises Zed's terminal extension
+ * its diff once the call lands, a read's, a listing's, or a search's shows
+ * the text the model read in a code block, and a command's shows what it
+ * printed: in a terminal when the client advertises Zed's terminal extension
  * (`_meta.terminal_output`), and as a `console` code block otherwise.
  *
  * It's keyed by tool name, since nothing ACP-specific may reach the engine's
@@ -41,14 +42,14 @@ type Ran = Pick<CommandPreview, 'output' | 'exit_code' | 'signal'>
 
 /**
  * How one workspace tool's cards look: the kind that picks the icon, what a
- * call's input says about it, and, for a tool that leaves a preview, what
- * its card shows once the call succeeds: the change it made, or what the
- * command printed.
+ * call's input says about it, and what its card shows once the call
+ * succeeds: the change it made, what the command printed, or the text the
+ * model read.
  */
 type Presenter = {
   readonly kind: ToolKind
   readonly describe: (fields: Record<string, unknown>, session: AcpSession) => Described | undefined
-  readonly shows?: 'change' | 'command'
+  readonly shows?: 'change' | 'command' | 'text'
 }
 
 /**
@@ -138,9 +139,9 @@ function describe_command({ command }: Record<string, unknown>): Described | und
  * whose opening the mapper never saw simply finds nothing.
  */
 const PRESENTERS = new Map<string | undefined, Presenter>([
-  ['read_file', { kind: 'read', describe: describe_read }],
-  ['list_files', { kind: 'search', describe: describe_find }],
-  ['search', { kind: 'search', describe: describe_grep }],
+  ['read_file', { kind: 'read', describe: describe_read, shows: 'text' }],
+  ['list_files', { kind: 'search', describe: describe_find, shows: 'text' }],
+  ['search', { kind: 'search', describe: describe_grep, shows: 'text' }],
   ['write_file', { kind: 'edit', describe: describe_change('Write'), shows: 'change' }],
   ['edit_file', { kind: 'edit', describe: describe_change('Edit'), shows: 'change' }],
   ['run_command', { kind: 'execute', describe: describe_command, shows: 'command' }],
@@ -209,14 +210,25 @@ function close_change(closing: CardUpdate, preview: ToolPreview | undefined): Ca
 }
 
 /**
- * Text in a `console` code block, its fence longer than any run of
- * backticks that opens one of its lines, so nothing the command printed
- * can close the block early.
+ * Text in a code block under the `info` string, its fence longer than any
+ * run of backticks that opens one of its lines, so nothing in the text can
+ * close the block early.
  */
-function console_block(text: string): ToolCallContent {
+function code_block(text: string, info: string): ToolCallContent {
   const longest = Math.max(2, ...Array.from(text.matchAll(/^`+/gm), ([run]) => run.length))
   const fence = '`'.repeat(longest + 1)
-  return { type: 'content', content: { type: 'text', text: `${fence}console\n${text}\n${fence}` } }
+  return { type: 'content', content: { type: 'text', text: `${fence}${info}\n${text}\n${fence}` } }
+}
+
+/**
+ * Close a read's, a listing's, or a search's card with the text the model
+ * read. A listing or a search result goes in a code block too, since a
+ * matching line can hold markdown that the client would otherwise render.
+ * A failed call keeps its error text.
+ */
+function close_text(closing: CardUpdate, chunk: ToolResultChunk): CardUpdate {
+  if (chunk.error !== undefined) return closing
+  return { ...closing, content: [code_block(String(chunk.output), '')] }
 }
 
 /**
@@ -245,7 +257,7 @@ function close_command(
 ): SessionUpdate[] {
   if (!renders_terminals(session)) {
     if (chunk.error !== undefined) return [closing]
-    return [{ ...closing, content: [console_block(String(chunk.output))] }]
+    return [{ ...closing, content: [code_block(String(chunk.output), 'console')] }]
   }
   const { output, exit_code, signal } = ran(chunk, preview)
   return [
@@ -264,9 +276,10 @@ function close_command(
 
 /**
  * The updates that close a tool call's card, starting from the plain
- * `closing` update. A successful call of a tool that leaves a preview takes
- * it from the session's store whatever the card then does with it, which
- * keeps each raw id's queue in step with its results.
+ * `closing` update. A read, a listing, or a search leaves no preview, so its
+ * card takes nothing from the session's store. A successful call of a tool
+ * that leaves a preview takes it from the store whatever the card then does
+ * with it, which keeps each raw id's queue in step with its results.
  */
 export function closing_updates(
   session: AcpSession | undefined,
@@ -277,6 +290,7 @@ export function closing_updates(
 ): SessionUpdate[] {
   const shows = PRESENTERS.get(name)?.shows
   if (session === undefined || shows === undefined) return [closing]
+  if (shows === 'text') return [close_text(closing, chunk)]
   const preview = chunk.error === undefined ? take_preview(session, chunk.id) : undefined
   if (shows === 'change') return [close_change(closing, preview)]
   return close_command(session, card, chunk, closing, preview)
