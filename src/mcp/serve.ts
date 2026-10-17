@@ -16,7 +16,7 @@ import { run } from '#core'
 import type { Step, TrajectoryLogger } from '#core'
 import { output_to_call_result } from './result_mapping.js'
 
-export type ServeFlowOptions<i, o> = {
+export type ServeFlowConfig<i, o> = {
   server: McpServer
   flow: Step<i, o>
   name: string
@@ -42,8 +42,8 @@ export type ServeFlowOptions<i, o> = {
  * into a `CallToolResult`. A thrown flow becomes an `isError` result rather
  * than a JSON-RPC protocol error.
  */
-export function serve_flow<i, o>(options: ServeFlowOptions<i, o>): void {
-  const { server, flow, name, description, input_schema, trajectory, to_result } = options
+export function serve_flow<i, o>(config: ServeFlowConfig<i, o>): void {
+  const { server, flow, name, description, input_schema, trajectory, to_result } = config
   server.registerTool(
     name,
     { description, inputSchema: input_schema },

@@ -436,7 +436,7 @@ optional peer dependency, installed only when this subpath is used.
 | Export | Kind | Notes |
 | --- | --- | --- |
 | `mcp_client(config, options?)` | fn | connect to an MCP server (stdio / HTTP / existing client), returns `{ tools, close }` |
-| `serve_flow(options)` | fn | register a composed flow as an MCP tool on a caller-provided `McpServer` |
+| `serve_flow(config)` | fn | register a composed flow as an MCP tool on a caller-provided `McpServer` |
 | `json_schema_to_standard(schema)` | fn | wraps a server's JSON Schema as the `ToolSchema` inbound tools carry; emits it back verbatim, save for the `additionalProperties: false` every tool schema is closed with |
 | `mcp_error`, `mcp_sdk_missing_error` | error | tool-level failure / missing optional peer |
 

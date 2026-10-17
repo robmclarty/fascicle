@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import type { Step, TrajectoryLogger } from '#core'
+import type * as mcp from '../index.js'
 
 // run() is mocked so the registered handler can be inspected in isolation:
 // these tests assert exactly which options serve_flow threads into run() and how
@@ -40,6 +41,16 @@ afterEach(() => {
 })
 
 describe('serve_flow', () => {
+  it('takes its config as ServeFlowConfig, which fascicle/mcp exports with no ServeFlowOptions beside it', () => {
+    const { server, registrations } = fake_server()
+    const config: mcp.ServeFlowConfig<{ x: number }, unknown> = { server, flow, name: 'f', description: 'd', input_schema }
+    serve_flow(config)
+    // @ts-expect-error: the old name went without an alias
+    const renamed: mcp.ServeFlowOptions<{ x: number }, unknown> = config
+    expect(renamed).toBe(config)
+    expect([...registrations.keys()]).toEqual(['f'])
+  })
+
   it('registers the tool with its description and input schema', () => {
     const { server, registrations } = fake_server()
     serve_flow({ server, flow, name: 'f', description: 'does a thing', input_schema })
