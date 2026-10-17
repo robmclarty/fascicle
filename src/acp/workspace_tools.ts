@@ -28,15 +28,14 @@ import type { AcpSession, WorkspaceToolsOptions } from './types.js'
 /** The most lines one `read_file` call returns unless the options say otherwise. */
 const READ_LIMIT_LINES = 2000
 
+/** The most paths one `list_files` call returns, so a very large repository's listing can't fill the context. */
+const LIST_LIMIT = 1000
+
 /** The names `list_files` and `search` skip unless the options say otherwise. */
 const IGNORE: ReadonlyArray<string> = ['.git', 'node_modules']
 
-/**
- * How long one `search` may run, its worker's start included, before it's
- * stopped. Long enough to read a large repository, and short enough that a
- * pattern stuck backtracking comes back as an error the model can act on.
- */
-const SEARCH_BUDGET_MS = 30_000
+/** How long one `search` may run unless the options say otherwise. */
+const SEARCH_TIMEOUT_MS = 30_000
 
 /** How long one `run_command` call may run unless the options or the call say otherwise. */
 const COMMAND_TIMEOUT_MS = 120_000
@@ -64,8 +63,8 @@ export function workspace_tools(session: AcpSession, options: WorkspaceToolsOpti
   const ignore = options.ignore ?? IGNORE
   return [
     read_file_tool(session, options.read_limit_lines ?? READ_LIMIT_LINES),
-    list_files_tool(session, ignore),
-    search_tool(session, ignore, SEARCH_BUDGET_MS),
+    list_files_tool(session, ignore, LIST_LIMIT),
+    search_tool(session, ignore, options.search_timeout_ms ?? SEARCH_TIMEOUT_MS),
     gated(write_file_tool(session), session, 'edit'),
     gated(edit_file_tool(session), session, 'edit'),
     gated(

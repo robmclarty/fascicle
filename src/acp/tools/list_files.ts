@@ -94,15 +94,27 @@ async function matching_files(
 }
 
 /**
- * The `list_files` tool for one session: the files under a directory in
- * its workspace that match a glob, skipping the `ignore` names.
+ * The files as the model reads them, one to a line, and past `limit` the
+ * first `limit` of them with a note giving the total. The walk has already
+ * found every match to sort them, so the total costs nothing to count.
  */
-export function list_files_tool(session: AcpSession, ignore: ReadonlyArray<string>): Tool {
+function listing(files: ReadonlyArray<string>, limit: number): string {
+  if (files.length <= limit) return files.join('\n')
+  const note = `[the first ${limit} of ${files.length} files; narrow pattern or path to see the rest]`
+  return [...files.slice(0, limit), '', note].join('\n')
+}
+
+/**
+ * The `list_files` tool for one session: the files under a directory in
+ * its workspace that match a glob, skipping the `ignore` names, at most
+ * `limit` per call.
+ */
+export function list_files_tool(session: AcpSession, ignore: ReadonlyArray<string>, limit: number): Tool {
   const ignored = new Set(ignore)
   return {
     name: 'list_files',
     description: [
-      'List the files in the workspace that match a glob pattern, one per line; a path under the workspace root is shown relative to it.',
+      `List the files in the workspace that match a glob pattern, one per line and at most ${limit} per call; a path under the workspace root is shown relative to it.`,
       `The pattern matches under path (default: the workspace root) and defaults to ${ALL_FILES}.`,
       'As in a shell, * and ** skip names that start with a dot, so name the dot to list hidden files (.github/**/*).',
       ...(ignore.length === 0 ? [] : [`Skips ${ignore.join(', ')}.`]),
@@ -121,7 +133,7 @@ export function list_files_tool(session: AcpSession, ignore: ReadonlyArray<strin
     execute: async (input, ctx) => {
       const request = list_request(input)
       const files = await matching_files(session, request, ignored, ctx.abort)
-      return files.length === 0 ? `no files match ${request.pattern} under ${request.path}` : files.join('\n')
+      return files.length === 0 ? `no files match ${request.pattern} under ${request.path}` : listing(files, limit)
     },
   }
 }

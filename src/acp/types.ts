@@ -129,6 +129,13 @@ export type WorkspaceToolsOptions = {
   /** Names `list_files` and `search` skip wherever they appear in a path; default: `['.git', 'node_modules']`. */
   readonly ignore?: ReadonlyArray<string> | undefined
   /**
+   * How long one `search` may run, its worker's start included, before it's
+   * stopped; default: 30_000. The budget is what turns a pattern stuck
+   * backtracking into an error the model can act on, and a large repository
+   * may need longer to read.
+   */
+  readonly search_timeout_ms?: number | undefined
+  /**
    * How long one `run_command` call may run before its process group is
    * killed, unless the call sets its own `timeout_ms`; default: 120_000.
    */

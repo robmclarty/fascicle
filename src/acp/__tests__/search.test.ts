@@ -11,7 +11,7 @@ import type { Tool } from '#engine'
 import { to_json_schema, validate_schema } from '#schema'
 import { resolve_roots } from '../tools/containment.js'
 import { search_files, search_tool } from '../tools/search.js'
-import type { AcpSession } from '../types.js'
+import type { AcpSession, WorkspaceToolsOptions } from '../types.js'
 import { workspace_tools } from '../workspace_tools.js'
 
 /**
@@ -110,9 +110,9 @@ async function lines_fixture(name: string, content: string): Promise<string> {
   return name
 }
 
-/** The workspace tools' `search` for a session. */
-function search_in(over: AcpSession): Tool {
-  const found = workspace_tools(over).find((tool) => tool.name === 'search')
+/** The workspace tools' `search` for a session, built with `options`. */
+function search_in(over: AcpSession, options?: WorkspaceToolsOptions): Tool {
+  const found = workspace_tools(over, options).find((tool) => tool.name === 'search')
   if (found === undefined) throw new Error('workspace_tools has no search')
   return found
 }
@@ -371,6 +371,36 @@ describe('search', () => {
     const before = process.cpuUsage()
     await sleep(300)
     expect(process.cpuUsage(before).user).toBeLessThan(150_000)
+  })
+
+  it.each([
+    ['the search_timeout_ms the options set', { search_timeout_ms: 5000 }, 5000],
+    ['30 seconds by default', {}, 30_000],
+  ])('gives a search that never finishes %s', async (_, options: WorkspaceToolsOptions, budget_ms) => {
+    const name = await lines_fixture('budget.txt', `${'a'.repeat(40)}b\n`)
+    const tool = search_in(lined, options)
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    try {
+      let outcome = 'pending'
+      const searching = call({ pattern: '(a+)+$', glob: name }, { tool }).then(
+        () => {
+          outcome = 'finished'
+        },
+        (error: unknown) => {
+          outcome = String(error)
+        },
+      )
+      // The budget's timer starts once the path is checked, so wait for it
+      // before moving the clock.
+      while (vi.getTimerCount() === 0) await new Promise((resolve) => setImmediate(resolve))
+      await vi.advanceTimersByTimeAsync(budget_ms - 1)
+      expect(outcome).toBe('pending')
+      await vi.advanceTimersByTimeAsync(1)
+      await searching
+      expect(outcome).toMatch(new RegExp(`^Error: search stopped after ${budget_ms / 1000} s without finishing`))
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('stops a search when the turn is cancelled, well before the budget', async () => {

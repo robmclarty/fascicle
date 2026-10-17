@@ -187,7 +187,7 @@ The flow is a function of the session, because the tools and `session.approve` b
 | Tool | Input | What it does |
 | --- | --- | --- |
 | `read_file` | `path`, `offset?`, `limit?` | returns the file with numbered lines, at most `read_limit_lines` of them, and says how to read the rest. A line past 2000 characters is cut with a marker, and a binary file is refused |
-| `list_files` | `pattern?`, `path?` | lists the files under a directory that match a glob |
+| `list_files` | `pattern?`, `path?` | lists the files under a directory that match a glob, in sorted order, and stops at 1,000 with a note that gives the total |
 | `search` | `pattern`, `path?`, `glob?` | searches file contents with a JavaScript regular expression and returns up to 100 matches as `path:line: text`, skipping binary files |
 | `write_file` | `path`, `content` | creates or overwrites a file, along with any directories missing on the way to it |
 | `edit_file` | `path`, `old_text`, `new_text`, `replace_all?` | replaces an exact match, and fails when `old_text` isn't there, or when it matches more than once without `replace_all` |
@@ -199,11 +199,12 @@ They're plain `Tool` values, so a flow can filter them, set its own beside them,
 
 - `read_limit_lines` is the most lines one `read_file` call returns (default 2000).
 - `ignore` names the files and directories that `list_files` and `search` skip wherever they turn up in a path (default `['.git', 'node_modules']`). Neither tool reads `.gitignore`, so a `dist/` or a `coverage/` folder is fair game unless `ignore` names it.
+- `search_timeout_ms` is how long one search may run before it's stopped (default 30 seconds). Raise it for a repository that's too large to search in that time.
 - `command_timeout_ms` is how long a command may run before it's killed, unless the call sets its own `timeout_ms` (default two minutes).
 - `output_limit_bytes` is the most output one command returns before it's cut, with a note that says so (default 32,000 bytes).
 - `command_env` replaces the environment that commands run with (see [Commands](#commands)).
 
-A search runs in a worker thread with a 30-second budget. JavaScript's regular expressions backtrack, so a pattern such as `(a+)+$` can run for minutes against one long line, and the worker is what lets a cancel or the budget stop it mid-match. The model gets back a tool error that tells it to simplify the pattern or narrow the search.
+A search runs in a worker thread, inside the budget that `search_timeout_ms` sets. JavaScript's regular expressions backtrack, so a pattern such as `(a+)+$` can run for minutes against one long line, and the worker is what lets a cancel or the budget stop it mid-match. The model gets back a tool error that tells it to simplify the pattern or narrow the search.
 
 ### What the File Tools Can Reach
 

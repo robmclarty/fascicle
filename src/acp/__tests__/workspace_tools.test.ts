@@ -7,6 +7,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import type { Tool } from '#engine'
 import { to_json_schema, validate_schema } from '#schema'
 import { contain, resolve_roots, shown_path } from '../tools/containment.js'
+import { list_files_tool } from '../tools/list_files.js'
 import type { AcpSession, WorkspaceToolsOptions } from '../types.js'
 import { workspace_tools } from '../workspace_tools.js'
 
@@ -113,9 +114,9 @@ function tool_named(name: string, over: AcpSession, options?: WorkspaceToolsOpti
 async function call(
   name: string,
   input: unknown,
-  options: { over?: AcpSession; tools?: WorkspaceToolsOptions; abort?: AbortSignal } = {},
+  options: { over?: AcpSession; tools?: WorkspaceToolsOptions; tool?: Tool; abort?: AbortSignal } = {},
 ): Promise<unknown> {
-  const tool = tool_named(name, options.over ?? session, options.tools)
+  const tool = options.tool ?? tool_named(name, options.over ?? session, options.tools)
   return tool.execute(input, { abort: options.abort ?? new AbortController().signal, tool_call_id: 'call_1', step_index: 0 })
 }
 
@@ -169,7 +170,7 @@ describe('workspace_tools', () => {
   it('describes list_files to the model with the names it skips, and declares its input as JSON Schema', () => {
     const tool = tool_named('list_files', session)
     expect(tool.description).toBe(
-      'List the files in the workspace that match a glob pattern, one per line; a path under the workspace root is shown relative to it. ' +
+      'List the files in the workspace that match a glob pattern, one per line and at most 1000 per call; a path under the workspace root is shown relative to it. ' +
         'The pattern matches under path (default: the workspace root) and defaults to **/*. ' +
         'As in a shell, * and ** skip names that start with a dot, so name the dot to list hidden files (.github/**/*). ' +
         'Skips .git, node_modules.',
@@ -186,7 +187,7 @@ describe('workspace_tools', () => {
       additionalProperties: false,
     })
     expect(tool_named('list_files', session, { ignore: [] }).description).toBe(
-      'List the files in the workspace that match a glob pattern, one per line; a path under the workspace root is shown relative to it. ' +
+      'List the files in the workspace that match a glob pattern, one per line and at most 1000 per call; a path under the workspace root is shown relative to it. ' +
         'The pattern matches under path (default: the workspace root) and defaults to **/*. ' +
         'As in a shell, * and ** skip names that start with a dot, so name the dot to list hidden files (.github/**/*).',
     )
@@ -504,6 +505,26 @@ describe('list_files', () => {
 
   it('says when nothing matches', async () => {
     await expect(call('list_files', { pattern: '**/*.rs', path: 'src' })).resolves.toBe('no files match **/*.rs under src')
+  })
+
+  it('lists the first files in sorted order past its limit, then a note giving the total', async () => {
+    const tool = list_files_tool(session, ['.git', 'node_modules'], 3)
+    await expect(call('list_files', {}, { tool })).resolves.toBe(
+      [
+        'notes.md',
+        'src/a.ts',
+        'src/deep/b.ts',
+        '',
+        '[the first 3 of 4 files; narrow pattern or path to see the rest]',
+      ].join('\n'),
+    )
+  })
+
+  it('lists every file with no note when exactly its limit match', async () => {
+    const tool = list_files_tool(session, ['.git', 'node_modules'], 4)
+    await expect(call('list_files', {}, { tool })).resolves.toBe(
+      ['notes.md', 'src/a.ts', 'src/deep/b.ts', 'sub/keep.ts'].join('\n'),
+    )
   })
 
   it('stops when the turn is cancelled', async () => {

@@ -468,7 +468,7 @@ an agent starts. See [acp.md](./acp.md).
 | --- | --- | --- |
 | `serve_acp(config)` | fn | serve the flow over stdin and stdout until the client disconnects, then dispose the engine; sends `console.log` to stderr, and SIGTERM or SIGINT aborts every run and exits |
 | `acp_agent(config)` | fn | the same agent as the SDK's `AgentApp`, its handlers registered but not connected, for another transport or an in-process client |
-| `workspace_tools(session, options?)` | fn | the six tools of a coding session (`read_file`, `list_files`, `search`, `write_file`, `edit_file`, `run_command`) as plain `Tool` values; the file tools reach only paths whose real path lands under the session's roots, and the writes and `run_command` ask before they run as the session's mode says. See [Coding Sessions](./acp.md#coding-sessions) |
+| `workspace_tools(session, options?)` | fn | the six tools of a coding session (`read_file`, `list_files`, `search`, `write_file`, `edit_file`, `run_command`) as plain `Tool` values; the file tools reach only paths whose real path lands under the session's roots, and the writes and `run_command` ask before they run as the session's mode says. `list_files` returns at most 1,000 paths a call. See [Coding Sessions](./acp.md#coding-sessions) |
 | `to_session_updates(event, state)` | fn | map one run event to zero or more ACP `SessionUpdate`s, with no I/O; the default `to_updates`, which a custom one can wrap as long as it passes every event through, since each `span_start` advances the state's run count |
 | `create_acp_mapper_state(options?)` | fn | fresh per-turn mapper state for the low-level API: `turn_id`, `stream`, `runs` (the count that keeps a model call's cards apart when it runs again), `tools` (each card's tool), and `session`, which gives the workspace tools' cards their titles, diffs, and command output |
 | `acp_sdk_missing_error` | error | missing optional peer |
@@ -477,7 +477,9 @@ Types: `ServeAcpConfig` (`to_input` is required unless the flow takes a
 string), `AcpSession`, `AcpTurn`, `AcpHistoryEntry`, `AcpStreamRoute`,
 `AcpMapperState`, `AcpMapperOptions`, `AcpMode` (`manual`, the default, asks
 before edits and commands, `accept_edits` only before commands, and `auto`
-never), `WorkspaceToolsOptions`.
+never), `WorkspaceToolsOptions` (`read_limit_lines`, `ignore`,
+`search_timeout_ms`, `command_timeout_ms`, `output_limit_bytes`, and
+`command_env`).
 
 ## UI Message Streams (`fascicle/ui`)
 
