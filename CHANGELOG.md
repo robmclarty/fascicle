@@ -5,6 +5,7 @@
 ### Fixed
 
 - **A turn's history keeps reply text apart across a tool card.** The text before a tool call and the text after it were recorded with nothing between them, so the next turn's history read "...tool calls.All tests pass". The second run now starts on a blank line. What the client is sent is unchanged, since Zed already shows the two runs as separate messages.
+- **`examples/pr-improve`'s `edit_file` writes a replacement as the model gave it.** When `find` matched once, the tool replaced it with `String.prototype.replace`, which reads `$&`, `$$`, and their kin in the replacement as patterns even when the search is a plain string. A shell snippet or a regular expression that the model wrote into a file was changed on its way in. A single match now splits and joins the way `replace_all` already did, and the way `fascicle/acp`'s `edit_file` does.
 
 ## v0.14.0 — 2026-10-16
 

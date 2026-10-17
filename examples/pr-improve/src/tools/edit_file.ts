@@ -67,10 +67,11 @@ export function make_edit_file(root: string): Tool {
             `add unique surrounding context or pass replace_all: true`,
         )
       }
-      const after =
-        input.replace_all === true
-          ? before.split(input.find).join(input.replace)
-          : before.replace(input.find, input.replace)
+      // Splitting on the match, where String.replace would read its replacement
+      // as a pattern, keeps a `$&` or `$$` in `replace` as the model wrote it.
+      // The ambiguity check above leaves one match unless replace_all is set, so
+      // the same join serves both.
+      const after = before.split(input.find).join(input.replace)
       const after_bytes = Buffer.byteLength(after, 'utf8')
       if (after_bytes > MAX_FILE_BYTES) {
         throw new Error(

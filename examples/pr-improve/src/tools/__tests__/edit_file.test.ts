@@ -59,6 +59,20 @@ describe('edit_file', () => {
     expect(await readFile(join(root, 'a.txt'), 'utf8')).toBe('yo yo yo')
   })
 
+  it('writes replacement patterns as given for a single match', async () => {
+    await writeFile(join(root, 'a.txt'), 'run TARGET\n')
+    const tool = make_edit_file(root)
+    await tool.execute({ path: 'a.txt', find: 'TARGET', replace: "echo '$&' $1 $$ $` $'" }, ctx)
+    expect(await readFile(join(root, 'a.txt'), 'utf8')).toBe("run echo '$&' $1 $$ $` $'\n")
+  })
+
+  it('writes replacement patterns as given with replace_all', async () => {
+    await writeFile(join(root, 'a.txt'), 'X and X')
+    const tool = make_edit_file(root)
+    await tool.execute({ path: 'a.txt', find: 'X', replace: '$&-$1-$$', replace_all: true }, ctx)
+    expect(await readFile(join(root, 'a.txt'), 'utf8')).toBe('$&-$1-$$ and $&-$1-$$')
+  })
+
   it('rejects path traversal', async () => {
     const tool = make_edit_file(root)
     await expect(
