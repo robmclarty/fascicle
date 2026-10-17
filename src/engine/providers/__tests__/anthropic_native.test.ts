@@ -284,6 +284,30 @@ describe('to_anthropic_messages', () => {
     })
   })
 
+  it('drops assistant reasoning parts, keyed or not, and keeps the blocks around them', () => {
+    expect(
+      to_anthropic_messages([
+        { role: 'user', content: 'weather?' },
+        {
+          role: 'assistant',
+          content: [
+            { type: 'reasoning', text: 'plan', provider_options: { anthropic: { signature: 'sig' } } },
+            { type: 'text', text: 'Let me check' },
+            { type: 'reasoning', text: 'other', provider_options: { openrouter: { detail: {} } } },
+            { type: 'tool_call', id: 'toolu_01', name: 'get_weather', input: { city: 'Ottawa' } },
+            { type: 'reasoning', text: '' },
+          ],
+        },
+      ]).messages[1],
+    ).toStrictEqual({
+      role: 'assistant',
+      content: [
+        { type: 'text', text: 'Let me check' },
+        { type: 'tool_use', id: 'toolu_01', name: 'get_weather', input: { city: 'Ottawa' } },
+      ],
+    })
+  })
+
   it('throws provider_capability_error with exact provider/capability/detail on image parts', () => {
     const messages: Message[] = [
       {

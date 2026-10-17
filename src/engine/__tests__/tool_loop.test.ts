@@ -16,7 +16,13 @@ import {
   type RawToolCall,
   type ToolLoopConfig,
 } from '../tool_loop.js'
-import type { Message, StreamChunk, Tool, UsageTotals } from '../types.js'
+import type {
+  AssistantContentPart,
+  Message,
+  StreamChunk,
+  Tool,
+  UsageTotals,
+} from '../types.js'
 import { tool_error, tool_approval_denied_error, aborted_error } from '../errors.js'
 import { create_pricing_missing_dedup } from '../trajectory.js'
 
@@ -55,6 +61,7 @@ function make_invoke_once(results: ReadonlyArray<Partial<InvokeOnceResult>>): In
       tool_calls: r.tool_calls ?? [],
       finish_reason: r.finish_reason ?? 'stop',
       usage: r.usage ?? zero_usage,
+      ...(r.content !== undefined ? { content: r.content } : {}),
     }
   }
 }
@@ -2327,5 +2334,184 @@ describe('run_tool_loop approval request', () => {
     setTimeout(() => controller.abort(new Error('wait cancel')), 15)
     await expect(promise).rejects.toBeInstanceOf(aborted_error)
     expect(asked).toBe('c1')
+  })
+})
+
+describe('run_tool_loop assistant content (reasoning and provider data)', () => {
+  const thought = (text: string, signature: string): AssistantContentPart => ({
+    type: 'reasoning',
+    text,
+    provider_options: { anthropic: { signature } },
+  })
+  const signed_call = (id: string, value: string): AssistantContentPart => ({
+    type: 'tool_call',
+    id,
+    name: 'echo',
+    input: { value },
+    provider_options: { google: { thoughtSignature: `sig_${id}` } },
+  })
+
+  it('sends the first turn\'s parts back with the second request, in order, with their data', async () => {
+    const requests: Array<ReadonlyArray<Message>> = []
+    const first: AssistantContentPart[] = [
+      thought('plan the call', 'sig_a'),
+      { type: 'text', text: 'Checking.', provider_options: { google: { thoughtSignature: 'sig_t' } } },
+      signed_call('c1', 'x'),
+      thought('', 'sig_b'),
+    ]
+    const results: InvokeOnceResult[] = [
+      {
+        text: 'Checking.',
+        tool_calls: [call('c1', 'echo', { value: 'x' })],
+        finish_reason: 'tool_calls',
+        usage: zero_usage,
+        content: first,
+      },
+      {
+        text: 'done',
+        tool_calls: [],
+        finish_reason: 'stop',
+        usage: zero_usage,
+        content: [thought('wrap up', 'sig_c'), { type: 'text', text: 'done' }],
+      },
+    ]
+    const messages: Message[] = [{ role: 'user', content: 'go' }]
+    const recording: InvokeOnce = async (args) => {
+      requests.push([...args.messages])
+      const next = results[requests.length - 1]
+      if (next === undefined) throw new Error('unexpected turn')
+      return next
+    }
+    await run_tool_loop({
+      ...base_config({ invoke: [], tools: [make_tool()], messages }),
+      invoke_once: recording,
+    })
+    expect(requests).toHaveLength(2)
+    expect(requests[1]?.[1]).toStrictEqual({ role: 'assistant', content: first })
+    expect(requests[1]?.[2]).toMatchObject({ role: 'tool', tool_call_id: 'c1' })
+    expect(messages[3]).toStrictEqual({
+      role: 'assistant',
+      content: [thought('wrap up', 'sig_c'), { type: 'text', text: 'done' }],
+    })
+  })
+
+  it('drops a call the clamp did not keep while the reasoning around it stays', async () => {
+    const messages: Message[] = [{ role: 'user', content: 'go' }]
+    await run_tool_loop(
+      base_config({
+        invoke: [
+          {
+            tool_calls: [call('c1', 'echo', { value: '1' }), call('c2', 'echo', { value: '2' })],
+            finish_reason: 'tool_calls',
+            content: [
+              thought('first', 'sig_1'),
+              signed_call('c1', '1'),
+              thought('second', 'sig_2'),
+              signed_call('c2', '2'),
+              thought('third', 'sig_3'),
+            ],
+          },
+          { text: 'done' },
+        ],
+        tools: [make_tool()],
+        messages,
+        max_tool_calls_per_step: 1,
+      }),
+    )
+    expect(messages[1]).toStrictEqual({
+      role: 'assistant',
+      content: [
+        thought('first', 'sig_1'),
+        signed_call('c1', '1'),
+        thought('second', 'sig_2'),
+        thought('third', 'sig_3'),
+      ],
+    })
+  })
+
+  it('puts salvaged text in the first text part\'s place and the salvaged calls after the last part', async () => {
+    const messages: Message[] = [{ role: 'user', content: 'go' }]
+    const lead = 'Let me help.\n'
+    await run_tool_loop(
+      base_config({
+        invoke: [
+          {
+            text: `${lead}${hermes('hi')}`,
+            finish_reason: 'stop',
+            content: [
+              thought('which tool', 'sig_1'),
+              { type: 'text', text: lead, provider_options: { google: { thoughtSignature: 'sig_t' } } },
+              thought('call it', 'sig_2'),
+              { type: 'text', text: hermes('hi') },
+            ],
+          },
+          { text: 'done' },
+        ],
+        tools: [make_tool()],
+        messages,
+        salvage_budget: { remaining: 1 },
+      }),
+    )
+    expect(messages[1]).toStrictEqual({
+      role: 'assistant',
+      content: [
+        thought('which tool', 'sig_1'),
+        { type: 'text', text: 'Let me help.' },
+        thought('call it', 'sig_2'),
+        { type: 'tool_call', id: 'salvaged_0_0', name: 'echo', input: { value: 'hi' } },
+      ],
+    })
+  })
+
+  it('leaves no text part when salvage strips the whole text', async () => {
+    const messages: Message[] = [{ role: 'user', content: 'go' }]
+    await run_tool_loop(
+      base_config({
+        invoke: [
+          {
+            text: hermes('hi'),
+            finish_reason: 'stop',
+            content: [thought('call it', 'sig_1'), { type: 'text', text: hermes('hi') }],
+          },
+          { text: 'done' },
+        ],
+        tools: [make_tool()],
+        messages,
+        salvage_budget: { remaining: 1 },
+      }),
+    )
+    expect(messages[1]).toStrictEqual({
+      role: 'assistant',
+      content: [
+        thought('call it', 'sig_1'),
+        { type: 'tool_call', id: 'salvaged_0_0', name: 'echo', input: { value: 'hi' } },
+      ],
+    })
+  })
+
+  it('builds exactly today\'s message for a turn without content', async () => {
+    const messages: Message[] = [{ role: 'user', content: 'go' }]
+    await run_tool_loop(
+      base_config({
+        invoke: [
+          {
+            text: 'Checking.',
+            tool_calls: [call('c1', 'echo', { value: 'x' })],
+            finish_reason: 'tool_calls',
+          },
+          { text: 'done' },
+        ],
+        tools: [make_tool()],
+        messages,
+      }),
+    )
+    expect(messages[1]).toStrictEqual({
+      role: 'assistant',
+      content: [
+        { type: 'text', text: 'Checking.' },
+        { type: 'tool_call', id: 'c1', name: 'echo', input: { value: 'x' } },
+      ],
+    })
+    expect(messages[3]).toStrictEqual({ role: 'assistant', content: 'done' })
   })
 })

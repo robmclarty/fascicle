@@ -260,6 +260,27 @@ describe('to_sdk_messages', () => {
       ],
     })
   })
+
+  it('drops assistant reasoning parts, keyed or not, and keeps the parts around them', () => {
+    const messages: Message[] = [
+      {
+        role: 'assistant',
+        content: [
+          { type: 'reasoning', text: 'plan', provider_options: { anthropic: { signature: 'sig' } } },
+          { type: 'text', text: 'checking' },
+          { type: 'reasoning', text: '' },
+          { type: 'tool_call', id: 'c1', name: 'search', input: { q: 'x' } },
+        ],
+      },
+    ]
+    expect(to_sdk_messages(messages)[0]).toStrictEqual({
+      role: 'assistant',
+      content: [
+        { type: 'text', text: 'checking' },
+        { type: 'tool-call', toolCallId: 'c1', toolName: 'search', input: { q: 'x' } },
+      ],
+    })
+  })
 })
 
 const sys = (content: string) => ({ role: 'system' as const, content })

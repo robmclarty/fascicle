@@ -23,6 +23,7 @@ import {
   type ModelMessage,
   type TextPart,
   type TextStreamPart,
+  type ToolCallPart,
   type ToolSet,
 } from 'ai'
 import type { ToolSchema } from '#schema'
@@ -213,14 +214,20 @@ export function to_sdk_messages(messages: ReadonlyArray<Message>): ModelMessage[
       out.push({ role: 'assistant', content: m.content })
       continue
     }
-    const parts = m.content.map((p) => {
-      if (p.type === 'text') return { type: 'text' as const, text: p.text }
-      return {
-        type: 'tool-call' as const,
-        toolCallId: p.id,
-        toolName: p.name,
-        input: p.input,
-      }
+    // Reasoning parts are dropped: assistant parts go back here without their
+    // provider data, and a reasoning part without its signature is what a
+    // signing provider refuses.
+    const parts = m.content.flatMap((p): Array<TextPart | ToolCallPart> => {
+      if (p.type === 'text') return [{ type: 'text', text: p.text }]
+      if (p.type === 'reasoning') return []
+      return [
+        {
+          type: 'tool-call',
+          toolCallId: p.id,
+          toolName: p.name,
+          input: p.input,
+        },
+      ]
     })
     out.push({ role: 'assistant', content: parts })
   }

@@ -49,6 +49,7 @@
 import { format_schema_issues, validate_schema } from '#schema'
 import type { TrajectoryLogger } from '#core'
 import type {
+  AssistantContentPart,
   CostBreakdown,
   FinishReason,
   Message,
@@ -319,20 +320,72 @@ function safe_json_stringify(value: unknown): string {
 }
 
 /**
- * Build the assistant history message for a turn: plain text when there are
- * no tool calls, otherwise structured text plus tool_call parts.
+ * Build the assistant history message for a turn. A turn with `content`
+ * keeps the provider's parts in its order, data included, so reasoning goes
+ * back beside the text and calls it came with. Any other turn is plain text
+ * when there are no tool calls, otherwise text plus tool_call parts.
  */
-function build_assistant_message(text: string, tool_calls: ReadonlyArray<RawToolCall>): Message {
-  if (tool_calls.length === 0) return { role: 'assistant', content: text }
-  const parts: Array<
-    | { type: 'text'; text: string }
-    | { type: 'tool_call'; id: string; name: string; input: unknown }
-  > = []
-  if (text.length > 0) parts.push({ type: 'text', text })
-  for (const tc of tool_calls) {
-    parts.push({ type: 'tool_call', id: tc.id, name: tc.name, input: tc.input })
+function build_assistant_message(
+  turn: TurnResult,
+  view: SalvageView,
+  kept: ReadonlyArray<RawToolCall>,
+): Message {
+  if (turn.content !== undefined) {
+    return { role: 'assistant', content: history_parts(turn.content, view, kept) }
   }
+  if (kept.length === 0) return { role: 'assistant', content: view.history_text }
+  const parts: AssistantContentPart[] = []
+  if (view.history_text.length > 0) parts.push({ type: 'text', text: view.history_text })
+  for (const tc of kept) parts.push(tool_call_part(tc))
   return { role: 'assistant', content: parts }
+}
+
+/**
+ * A raw call as a history part, carrying no provider data.
+ */
+function tool_call_part(tc: RawToolCall): AssistantContentPart {
+  return { type: 'tool_call', id: tc.id, name: tc.name, input: tc.input }
+}
+
+/**
+ * A turn's own parts for history. A call the per-step clamp dropped leaves,
+ * as it leaves the plain message, while everything around it stays.
+ */
+function history_parts(
+  content: ReadonlyArray<AssistantContentPart>,
+  view: SalvageView,
+  kept: ReadonlyArray<RawToolCall>,
+): AssistantContentPart[] {
+  if (view.outcome !== undefined) return salvaged_parts(content, view.history_text, kept)
+  const kept_ids = new Set(kept.map((tc) => tc.id))
+  return content.filter((part) => part.type !== 'tool_call' || kept_ids.has(part.id))
+}
+
+/**
+ * A salvaged turn's parts for history: the stripped text replaces the text
+ * parts at the first one's place, and the salvaged calls follow the last
+ * part. Salvage runs only on a turn with no native calls, so the provider
+ * gave its calls no place of their own. The replacement carries no provider
+ * data, since whatever the provider attached belonged to the text salvage
+ * rewrote.
+ */
+function salvaged_parts(
+  content: ReadonlyArray<AssistantContentPart>,
+  stripped_text: string,
+  kept: ReadonlyArray<RawToolCall>,
+): AssistantContentPart[] {
+  const parts: AssistantContentPart[] = []
+  let text_placed = false
+  for (const part of content) {
+    if (part.type !== 'text') {
+      parts.push(part)
+    } else if (!text_placed) {
+      text_placed = true
+      if (stripped_text.length > 0) parts.push({ type: 'text', text: stripped_text })
+    }
+  }
+  for (const tc of kept) parts.push(tool_call_part(tc))
+  return parts
 }
 
 /**
@@ -1003,7 +1056,7 @@ async function run_loop_step(
 
   const view = await salvage_turn(config, turn, tool_map, step_index)
   const { kept, dropped } = clamp_calls(config, view.calls, step_index)
-  config.messages.push(build_assistant_message(view.history_text, kept))
+  config.messages.push(build_assistant_message(turn, view, kept))
 
   if (kept.length === 0) {
     push_step_record(config, acc, step_index, turn, [], turn.finish_reason, step_span)

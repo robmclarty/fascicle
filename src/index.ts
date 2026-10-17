@@ -65,6 +65,7 @@ export type {
   ProviderConfigMap,
   ProviderFactory,
   ProviderInit,
+  ProviderOptions,
   ProviderTransport,
   RawProviderUsage,
   ResolvedModel,

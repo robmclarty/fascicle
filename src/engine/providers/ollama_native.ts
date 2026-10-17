@@ -90,11 +90,13 @@ function to_user_content(content: string | UserContentPart[]): string {
 /**
  * Map assistant message content to this wire's message shape: text parts
  * join into `content`, and tool-call parts become `tool_calls` entries with
- * structured (not JSON-string) arguments.
+ * structured (not JSON-string) arguments. Reasoning parts are never sent:
+ * this adapter maps no `thinking` field in either direction.
  */
 function to_assistant_message(content: string | AssistantContentPart[]): OllamaChatMessage {
   if (typeof content === 'string') return { role: 'assistant', content }
-  const { texts, tool_parts } = split_assistant_parts(content)
+  // Stryker disable next-line StringLiteral: the key only filters the reasoning list, which this wire never reads, so any key is equivalent.
+  const { texts, tool_parts } = split_assistant_parts(content, 'ollama')
   const message: OllamaChatMessage = { role: 'assistant', content: texts.join('') }
   if (tool_parts.length > 0) {
     // arguments is a structured object on this wire, not a JSON string, and

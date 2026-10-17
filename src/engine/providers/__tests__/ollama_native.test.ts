@@ -312,6 +312,27 @@ describe('to_ollama_messages', () => {
       { role: 'tool', tool_name: 'get_weather', content: 'sunny' },
     ])
   })
+
+  it('sends none of an assistant turn\'s reasoning, even a part keyed for ollama', () => {
+    const messages: Message[] = [
+      {
+        role: 'assistant',
+        content: [
+          { type: 'reasoning', text: 'think', provider_options: { ollama: { thinking: 'think' } } },
+          { type: 'text', text: 'calling' },
+          { type: 'reasoning', text: 'more' },
+          { type: 'tool_call', id: 'ollama_call_0_0', name: 'get_weather', input: { city: 'Ottawa' } },
+        ],
+      },
+    ]
+    expect(to_ollama_messages(messages)).toStrictEqual([
+      {
+        role: 'assistant',
+        content: 'calling',
+        tool_calls: [{ function: { name: 'get_weather', arguments: { city: 'Ottawa' } } }],
+      },
+    ])
+  })
 })
 
 describe('build_ollama_chat_body', () => {

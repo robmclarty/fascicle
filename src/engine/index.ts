@@ -32,6 +32,7 @@ export type {
   PricingTable,
   ProviderConfigMap,
   ProviderInit,
+  ProviderOptions,
   ResolvedModel,
   RetryFailureKind,
   RetryPolicy,

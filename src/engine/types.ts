@@ -149,6 +149,13 @@ export type StepRecord = {
 }
 
 /**
+ * Provider-specific data on a content part, keyed by provider name: the AI
+ * SDK's own `providerOptions` shape, and the shape the call-level
+ * `provider_options` takes too.
+ */
+export type ProviderOptions = Readonly<Record<string, Readonly<Record<string, unknown>>>>
+
+/**
  * A part's `provider_options` reaches the AI SDK as that part's
  * `providerOptions`, keyed by provider name like the call-level field. It is
  * the only way to reach per-part provider features such as Bedrock's guard
@@ -157,21 +164,37 @@ export type StepRecord = {
  * transports and claude_cli ignore it.
  */
 export type UserContentPart =
-  | {
-      type: 'text'
-      text: string
-      provider_options?: Readonly<Record<string, Readonly<Record<string, unknown>>>>
-    }
+  | { type: 'text'; text: string; provider_options?: ProviderOptions }
   | {
       type: 'image'
       image: Uint8Array | string
       media_type?: string
-      provider_options?: Readonly<Record<string, Readonly<Record<string, unknown>>>>
+      provider_options?: ProviderOptions
     }
 
+/**
+ * An assistant turn's parts, in the order the provider sent them. A part's
+ * `provider_options` holds the data its provider wants back on the next
+ * request (a thinking block's signature, Gemini's thought signature on a tool
+ * call), keyed by provider name. Each adapter sends back only the reasoning
+ * parts carrying its own key, so a `fallback` never hands one vendor's
+ * signature to another.
+ */
 export type AssistantContentPart =
-  | { type: 'text'; text: string }
-  | { type: 'tool_call'; id: string; name: string; input: unknown }
+  | { type: 'text'; text: string; provider_options?: ProviderOptions }
+  | {
+      type: 'tool_call'
+      id: string
+      name: string
+      input: unknown
+      provider_options?: ProviderOptions
+    }
+  | {
+      type: 'reasoning'
+      /** The thinking the model showed, or '' when it showed none (encrypted, redacted, or omitted). */
+      text: string
+      provider_options?: ProviderOptions
+    }
 
 export type Message =
   | { role: 'system'; content: string }
@@ -256,6 +279,15 @@ export type TurnResult = {
   }>
   readonly finish_reason: FinishReason
   readonly usage: UsageTotals
+  /**
+   * The turn's parts in the order the provider sent them, with the data it
+   * wants back. An adapter sets it only when the turn has a reasoning part or
+   * a part carrying provider data, and leaves it out otherwise, so every
+   * other turn stays as it was. The tool loop builds the assistant message
+   * from it when present; `text` and `tool_calls` stay the fields everything
+   * else reads.
+   */
+  readonly content?: ReadonlyArray<AssistantContentPart>
   /**
    * Stamped by the engine's retry wrapper around the successful attempt, not
    * by adapters: an adapter-returned TurnResult never carries one, and the

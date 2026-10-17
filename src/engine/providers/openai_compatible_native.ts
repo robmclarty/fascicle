@@ -122,12 +122,15 @@ function to_user_content(
 
 /**
  * Map assistant message content to Chat Completions shape: text parts join
- * into `content`, and tool-call parts become `tool_calls` entries with
- * JSON-stringified arguments.
+ * into `content`, tool-call parts become `tool_calls` entries with
+ * JSON-stringified arguments, and reasoning parts are not sent.
  */
-function to_assistant_message(content: string | AssistantContentPart[]): ChatMessage {
+function to_assistant_message(
+  content: string | AssistantContentPart[],
+  provider: string,
+): ChatMessage {
   if (typeof content === 'string') return { role: 'assistant', content }
-  const { texts, tool_parts } = split_assistant_parts(content)
+  const { texts, tool_parts } = split_assistant_parts(content, provider)
   const tool_calls: ChatToolCall[] = tool_parts.map((part) => ({
     id: part.id,
     type: 'function',
@@ -157,7 +160,7 @@ export function to_chat_messages(
   return map_messages_by_role<ChatMessage>(messages, {
     system: (content) => ({ role: 'system', content }),
     user: (content) => ({ role: 'user', content: to_user_content(content, provider) }),
-    assistant: to_assistant_message,
+    assistant: (content) => to_assistant_message(content, provider),
     tool: (message) => ({
       role: 'tool',
       tool_call_id: message.tool_call_id,

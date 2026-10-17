@@ -114,7 +114,8 @@ function to_user_blocks(content: string | UserContentPart[]): AnthropicContentBl
 
 /**
  * Map assistant message content to Messages-API blocks: text parts become
- * text blocks (empties dropped), tool-call parts become tool_use blocks.
+ * text blocks (empties dropped), tool-call parts become tool_use blocks, and
+ * reasoning parts are dropped, since this mapper builds no thinking blocks.
  */
 function to_assistant_blocks(
   content: string | AssistantContentPart[],
@@ -124,7 +125,7 @@ function to_assistant_blocks(
   for (const part of content) {
     if (part.type === 'text') {
       blocks.push(...text_blocks(part.text))
-    } else {
+    } else if (part.type === 'tool_call') {
       blocks.push({ type: 'tool_use', id: part.id, name: part.name, input: part.input })
     }
   }

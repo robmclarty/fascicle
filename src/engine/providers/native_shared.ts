@@ -302,21 +302,41 @@ export function map_messages_by_role<m>(
   return out
 }
 
+type ReasoningPart = Extract<AssistantContentPart, { type: 'reasoning' }>
+
 /**
- * Partition assistant content parts into the text runs and tool calls the
- * wire mappers serialize separately.
+ * Whether a reasoning part is one this provider may send back: only a part
+ * carrying data under the provider's own key goes. A part keyed for another
+ * vendor stays behind, so a `fallback` never hands one vendor's signature to
+ * another, and so does a part with no data, whose text alone is what a
+ * signing wire refuses.
  */
-export function split_assistant_parts(parts: ReadonlyArray<AssistantContentPart>): {
+export function is_own_reasoning(part: ReasoningPart, key: string): boolean {
+  return part.provider_options?.[key] !== undefined
+}
+
+/**
+ * Partition assistant content parts into the text runs, tool calls, and
+ * reasoning the wire mappers serialize separately. `reasoning` holds only
+ * the parts `provider` may send back, in order (see is_own_reasoning).
+ */
+export function split_assistant_parts(
+  parts: ReadonlyArray<AssistantContentPart>,
+  provider: string,
+): {
   texts: string[]
   tool_parts: Array<Extract<AssistantContentPart, { type: 'tool_call' }>>
+  reasoning: ReasoningPart[]
 } {
   const texts: string[] = []
   const tool_parts: Array<Extract<AssistantContentPart, { type: 'tool_call' }>> = []
+  const reasoning: ReasoningPart[] = []
   for (const part of parts) {
     if (part.type === 'text') texts.push(part.text)
-    else tool_parts.push(part)
+    else if (part.type === 'tool_call') tool_parts.push(part)
+    else if (is_own_reasoning(part, provider)) reasoning.push(part)
   }
-  return { texts, tool_parts }
+  return { texts, tool_parts, reasoning }
 }
 
 /**
