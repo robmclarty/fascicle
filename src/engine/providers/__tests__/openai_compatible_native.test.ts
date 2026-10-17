@@ -2225,3 +2225,91 @@ describe('the cost a reporting dialect reads (the spec Part 2)', () => {
     }
   })
 })
+
+/** Feed frames to a fresh aggregator and return what it threw and dispatched. */
+async function feed_until_throw(
+  frames: ReadonlyArray<Record<string, unknown>>,
+  dialect: OpenAICompatibleDialect = make_dialect(),
+): Promise<{ thrown: unknown; chunks: StreamChunk[] }> {
+  const chunks: StreamChunk[] = []
+  const aggregator = create_chat_stream_aggregator(dialect, 0, async (chunk) => {
+    chunks.push(chunk)
+  })
+  try {
+    for (const frame of frames) {
+      // oxlint-disable-next-line no-await-in-loop
+      await aggregator.handle_data(JSON.stringify(frame))
+    }
+  } catch (err: unknown) {
+    return { thrown: err, chunks }
+  }
+  return { thrown: undefined, chunks }
+}
+
+/** OpenRouter's mid-stream failure: the error, and a choice repeating it. */
+function error_frame(error: Record<string, unknown>): Record<string, unknown> {
+  return { error, choices: [{ index: 0, delta: { content: '' }, finish_reason: 'error' }] }
+}
+
+describe('an error frame mid-stream (the spec Part 3)', () => {
+  it.each([
+    ['openai', make_dialect()],
+    ['openrouter', make_dialect({ name: 'openrouter', reports_cost: true, reasoning: 'reasoning_details' })],
+  ] as const)('throws a provider_error with the message and the code as status on %s', async (name, dialect) => {
+    const { thrown } = await feed_until_throw(
+      [error_frame({ code: 429, message: 'Rate limit exceeded upstream' })],
+      dialect,
+    )
+    expect(thrown).toBeInstanceOf(provider_error)
+    expect(thrown).toMatchObject({
+      message: `${name} native: the server reported an error mid-stream (code 429): Rate limit exceeded upstream`,
+      status: 429,
+    })
+  })
+
+  it('keeps a string code in the message and sets no status', async () => {
+    const { thrown } = await feed_until_throw([
+      error_frame({ code: 'server_error', message: 'Provider disconnected unexpectedly' }),
+    ])
+    expect(thrown).toBeInstanceOf(provider_error)
+    expect((thrown as provider_error).message).toBe(
+      'openai native: the server reported an error mid-stream (code "server_error"): Provider disconnected unexpectedly',
+    )
+    expect((thrown as provider_error).status).toBeUndefined()
+  })
+
+  it.each([{ message: '' }, {}, { message: 42 }])(
+    'says so when the error carries no code and no message: %j',
+    async (error) => {
+      const { thrown } = await feed_until_throw([{ error }])
+      expect((thrown as provider_error).message).toBe(
+        'openai native: the server reported an error mid-stream: (no message)',
+      )
+      expect((thrown as provider_error).status).toBeUndefined()
+    },
+  )
+
+  it("throws before the frame's choice or usage is read", async () => {
+    const { thrown, chunks } = await feed_until_throw([
+      {
+        error: { code: 502, message: 'Bad gateway' },
+        choices: [{ index: 0, delta: { content: 'late text' }, finish_reason: 'error' }],
+        usage: { prompt_tokens: 1, completion_tokens: 1 },
+      },
+    ])
+    expect(thrown).toMatchObject({ status: 502 })
+    expect(chunks).toStrictEqual([])
+  })
+
+  it('reads a frame whose error field is not an object as an ordinary frame', async () => {
+    const { thrown, chunks } = await feed_until_throw([
+      { error: null, choices: [{ index: 0, delta: { content: 'hi' } }] },
+      { error: 'not an object', choices: [{ index: 0, delta: { content: '!' } }] },
+    ])
+    expect(thrown).toBeUndefined()
+    expect(chunks).toStrictEqual([
+      { kind: 'text', text: 'hi', step_index: 0 },
+      { kind: 'text', text: '!', step_index: 0 },
+    ])
+  })
+})

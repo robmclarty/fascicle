@@ -14,9 +14,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 import { create_engine } from '../../create_engine.js'
-import { tool_approval_denied_error } from '../../errors.js'
+import { provider_error, tool_approval_denied_error } from '../../errors.js'
 import { create_openai_compatible_adapter } from '../openai_compatible_native.js'
-import type { GenerateResult, StreamChunk, Tool } from '../../types.js'
+import type { GenerateResult, RetryPolicy, StreamChunk, Tool } from '../../types.js'
 
 const MODEL = 'gpt-test'
 
@@ -580,4 +580,84 @@ describe('openai-compatible native e2e reasoning round trip', () => {
       ])
     },
   )
+})
+
+/** No backoff waits so the retry cases run instantly. */
+const INSTANT_RETRY: RetryPolicy = {
+  max_attempts: 3,
+  initial_delay_ms: 0,
+  max_delay_ms: 0,
+  retry_on: ['rate_limit', 'provider_5xx', 'network'],
+}
+
+/** A stream whose first data frame is a mid-stream error with `code`. */
+function error_stream(code: unknown, before: ReadonlyArray<Record<string, unknown>> = []): Response {
+  return sse_response([
+    ...before,
+    {
+      error: { code, message: 'Upstream gave out' },
+      choices: [{ index: 0, delta: { content: '' }, finish_reason: 'error' }],
+    },
+    '[DONE]',
+  ])
+}
+
+const RECOVERED_STREAM: ReadonlyArray<Record<string, unknown> | '[DONE]'> = [
+  { choices: [{ index: 0, delta: { role: 'assistant', content: 'recovered' } }] },
+  { choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] },
+  { choices: [], usage: { prompt_tokens: 3, completion_tokens: 1 } },
+  '[DONE]',
+]
+
+/** Stream one prompt through the engine, keeping the chunks it dispatched. */
+async function stream_once(): Promise<{ result?: GenerateResult; thrown?: unknown; chunks: StreamChunk[] }> {
+  const chunks: StreamChunk[] = []
+  try {
+    const result = await make_engine().generate({
+      model: MODEL,
+      prompt: 'hi',
+      retry: INSTANT_RETRY,
+      on_chunk: (chunk: StreamChunk) => {
+        chunks.push(chunk)
+      },
+    })
+    return { result, chunks }
+  } catch (err: unknown) {
+    return { thrown: err, chunks }
+  }
+}
+
+describe('openai-compatible native e2e error frame mid-stream', () => {
+  it.each([429, 502])('retries an error frame with code %i that arrives before any chunk', async (code) => {
+    const mock = stub_fetch_queue([error_stream(code), sse_response(RECOVERED_STREAM)])
+    const { result, thrown } = await stream_once()
+    expect(thrown).toBeUndefined()
+    expect(result?.content).toBe('recovered')
+    expect(mock).toHaveBeenCalledTimes(2)
+  })
+
+  it('fails at once on an error frame whose code is not a transient', async () => {
+    const mock = stub_fetch_queue([error_stream(400), sse_response(RECOVERED_STREAM)])
+    const { thrown } = await stream_once()
+    expect(thrown).toBeInstanceOf(provider_error)
+    expect(thrown).toMatchObject({
+      message: 'compat native: the server reported an error mid-stream (code 400): Upstream gave out',
+      status: 400,
+    })
+    expect(mock).toHaveBeenCalledTimes(1)
+  })
+
+  it('fails the turn as a stream interruption naming the message once a chunk has streamed', async () => {
+    const mock = stub_fetch_queue([
+      error_stream(502, [{ choices: [{ index: 0, delta: { role: 'assistant', content: 'partial' } }] }]),
+      sse_response(RECOVERED_STREAM),
+    ])
+    const { thrown, chunks } = await stream_once()
+    expect(thrown).toBeInstanceOf(provider_error)
+    expect((thrown as provider_error).message).toBe(
+      'stream interrupted: compat native: the server reported an error mid-stream (code 502): Upstream gave out',
+    )
+    expect(chunks.filter((chunk) => chunk.kind === 'text')).toHaveLength(1)
+    expect(mock).toHaveBeenCalledTimes(1)
+  })
 })

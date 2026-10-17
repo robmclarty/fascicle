@@ -491,6 +491,26 @@ function with_reasoning_content(result: TurnResult, reasoning: ReasoningPart[]):
 }
 
 /**
+ * The error a compatible server reports after its stream began under HTTP
+ * 200: a frame whose top-level `error` holds the server's message and, on
+ * OpenRouter, the HTTP status the failure would have had as a numeric
+ * `code`. Carrying that code as `status` lets the engine's retry ladder treat
+ * it as it treats the same error at the start of a response, so a 429 or a
+ * 5xx before any chunk retries, and any error after a chunk fails the turn as
+ * a stream interruption that names the message.
+ */
+function stream_error_frame(error: Record<string, unknown>, provider: string): provider_error {
+  const message = error['message']
+  const code = error['code']
+  const detail = typeof message === 'string' && message.length > 0 ? message : '(no message)'
+  const label = code === undefined ? '' : ` (code ${JSON.stringify(code)})`
+  return new provider_error(
+    `${provider} native: the server reported an error mid-stream${label}: ${detail}`,
+    typeof code === 'number' ? { status: code } : {},
+  )
+}
+
+/**
  * Join streamed reasoning_details fragments into whole entries, the way
  * OpenRouter's own AI SDK provider does. Consecutive `reasoning.text` or
  * `reasoning.summary` fragments of one type grow one entry until the type
@@ -547,7 +567,8 @@ function create_reasoning_joiner(): {
  * `delta.reasoning_details` fragment dispatches a reasoning chunk and joins
  * into the message's entries. A tool call closes (parsed input dispatched)
  * when the choice's finish_reason frame arrives, or at `[DONE]` for servers
- * that never send one. Usage rides the final pre-DONE frame
+ * that never send one. A frame with a top-level `error` throws before its
+ * choice is read, on any dialect. Usage rides the final pre-DONE frame
  * (stream_options.include_usage), and OpenRouter's reported cost rides
  * inside it, so the streamed turn reads the same charge as the whole
  * response; a stream that ends without `[DONE]` is
@@ -707,6 +728,10 @@ export function create_chat_stream_aggregator(
         throw new provider_error(`${dialect.name} native: stream frame is not valid JSON`)
       }
       if (frame === null || typeof frame !== 'object') return
+      // Read before the choice, which repeats the failure as
+      // finish_reason 'error' and would otherwise read as a stop.
+      const error: unknown = Reflect.get(frame, 'error')
+      if (is_record(error)) throw stream_error_frame(error, dialect.name)
       const raw_usage: unknown = Reflect.get(frame, 'usage')
       if (raw_usage !== null && typeof raw_usage === 'object') usage = raw_usage
       const choices: unknown = Reflect.get(frame, 'choices')
