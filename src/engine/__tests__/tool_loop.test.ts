@@ -25,6 +25,7 @@ import type {
 } from '../types.js'
 import { tool_error, tool_approval_denied_error, aborted_error } from '../errors.js'
 import { create_pricing_missing_dedup } from '../trajectory.js'
+import { decompose_total_cost } from '../pricing.js'
 
 const zero_usage: UsageTotals = { input_tokens: 0, output_tokens: 0 }
 
@@ -62,6 +63,7 @@ function make_invoke_once(results: ReadonlyArray<Partial<InvokeOnceResult>>): In
       finish_reason: r.finish_reason ?? 'stop',
       usage: r.usage ?? zero_usage,
       ...(r.content !== undefined ? { content: r.content } : {}),
+      ...(r.reported_cost_usd !== undefined ? { reported_cost_usd: r.reported_cost_usd } : {}),
     }
   }
 }
@@ -1881,6 +1883,66 @@ describe('run_tool_loop helpers (step 4)', () => {
     const cost_event = events.find((e) => e['kind'] === 'cost')
     expect(cost_event).toBeDefined()
     expect(cost_event?.['source']).toBe('engine_derived')
+  })
+
+  it('records a reported cost split by token weight, with no pricing_missing (D9)', async () => {
+    const { trajectory, events } = recording_trajectory()
+    const emitted: string[] = []
+    const usage = { input_tokens: 1000, output_tokens: 500, cached_input_tokens: 200 }
+    const out = await run_tool_loop(
+      base_config({
+        invoke: [{ text: 'hi', usage, reported_cost_usd: 0.0123 }],
+        trajectory,
+        provider: 'openrouter',
+        model_id: 'anthropic/claude-sonnet-5.5',
+        resolve_pricing: () => undefined,
+        pricing_dedup: { emit: (provider) => emitted.push(provider) },
+      }),
+    )
+    expect(out.steps[0]?.cost).toStrictEqual(decompose_total_cost(0.0123, usage))
+    expect(out.steps[0]?.cost?.total_usd).toBe(0.0123)
+    expect(out.steps[0]?.cost?.is_estimate).toBe(true)
+    expect(emitted).toStrictEqual([])
+    const cost_events = events.filter((e) => e['kind'] === 'cost')
+    expect(cost_events).toHaveLength(1)
+    expect(cost_events[0]).toMatchObject({
+      step_index: 0,
+      source: 'provider_reported',
+      total_usd: 0.0123,
+      span_id: 's1',
+    })
+  })
+
+  it('takes a reported cost over a pricing row for the same model (D10)', async () => {
+    const { trajectory, events } = recording_trajectory()
+    const resolve_pricing = vi.fn(() => ({ input_per_million: 3, output_per_million: 15 }))
+    const usage = { input_tokens: 1000, output_tokens: 500 }
+    const out = await run_tool_loop(
+      base_config({
+        invoke: [{ text: 'hi', usage, reported_cost_usd: 0.5 }],
+        trajectory,
+        resolve_pricing,
+      }),
+    )
+    expect(out.steps[0]?.cost).toStrictEqual(decompose_total_cost(0.5, usage))
+    expect(resolve_pricing).not.toHaveBeenCalled()
+    expect(events.filter((e) => e['kind'] === 'cost').map((e) => e['source'])).toStrictEqual([
+      'provider_reported',
+    ])
+  })
+
+  it('records each step of a tool loop at the cost reported for it', async () => {
+    const usage = { input_tokens: 100, output_tokens: 50 }
+    const out = await run_tool_loop(
+      base_config({
+        invoke: [
+          { tool_calls: [call('c1', 'echo', { value: 'a' })], finish_reason: 'tool_calls', usage, reported_cost_usd: 0.002 },
+          { text: 'done', usage, reported_cost_usd: 0.003 },
+        ],
+        tools: [make_tool()],
+      }),
+    )
+    expect(out.steps.map((step) => step.cost?.total_usd)).toStrictEqual([0.002, 0.003])
   })
 
   it('stamps the enclosing step span id onto response_received and cost', async () => {

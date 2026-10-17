@@ -289,6 +289,13 @@ export type TurnResult = {
    */
   readonly content?: ReadonlyArray<AssistantContentPart>
   /**
+   * What the provider says this turn cost, in US dollars, for a provider that
+   * reports its charge on the response (OpenRouter does). The loop records it
+   * in place of a pricing-table estimate, since it is what was charged. Absent
+   * when the provider reported no cost.
+   */
+  readonly reported_cost_usd?: number
+  /**
    * Stamped by the engine's retry wrapper around the successful attempt, not
    * by adapters: an adapter-returned TurnResult never carries one, and the
    * wrapper's value would overwrite it if it did. See StepTiming.

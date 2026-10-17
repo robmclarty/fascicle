@@ -63,7 +63,6 @@ import type {
   ToolCallRecord,
   ToolExecContext,
   TurnResult,
-  UsageTotals,
 } from './types.js'
 import { salvage_tool_calls, type SalvageOutcome } from './tool_call_salvage.js'
 import {
@@ -83,7 +82,7 @@ import {
   start_step_span,
   type PricingMissingDedup,
 } from './trajectory.js'
-import { compute_cost, FREE_PROVIDERS } from './pricing.js'
+import { compute_cost, decompose_total_cost, FREE_PROVIDERS } from './pricing.js'
 
 export type InvokeOnceArgs = {
   readonly step_index: number
@@ -389,23 +388,32 @@ function salvaged_parts(
 }
 
 /**
- * Derive the step's cost from pricing tables and record it.
+ * Derive the step's cost and record it.
  *
- * Missing pricing for a paid provider emits `pricing_missing` (deduped per
- * call) and yields no breakdown; free providers skip the emit entirely.
+ * A cost the provider reported wins over any pricing row, since it is what
+ * was charged: it is split by token weight and recorded as
+ * `provider_reported`, and the pricing lookup never runs, so no
+ * `pricing_missing` either. Otherwise the cost comes from the pricing tables,
+ * where missing pricing for a paid provider emits `pricing_missing` (deduped
+ * per call) and yields no breakdown; free providers skip the emit entirely.
  */
 function compute_and_record_cost(
   config: ToolLoopConfig,
   step_index: number,
-  usage: UsageTotals,
+  turn: TurnResult,
   step_span: string | undefined,
 ): CostBreakdown | undefined {
+  if (turn.reported_cost_usd !== undefined) {
+    const reported = decompose_total_cost(turn.reported_cost_usd, turn.usage)
+    record_cost(config.trajectory, step_index, reported, 'provider_reported', step_span)
+    return reported
+  }
   const pricing = config.resolve_pricing()
   if (pricing === undefined && !FREE_PROVIDERS.has(config.provider)) {
     config.pricing_dedup.emit(config.provider, config.model_id)
     return undefined
   }
-  const breakdown = compute_cost(usage, pricing, config.provider)
+  const breakdown = compute_cost(turn.usage, pricing, config.provider)
   if (breakdown !== undefined) {
     record_cost(config.trajectory, step_index, breakdown, 'engine_derived', step_span)
   }
@@ -1025,7 +1033,7 @@ function push_step_record(
     usage: turn.usage,
     finish_reason,
   }
-  const breakdown = compute_and_record_cost(config, step_index, turn.usage, step_span)
+  const breakdown = compute_and_record_cost(config, step_index, turn, step_span)
   if (breakdown !== undefined) record.cost = breakdown
   if (turn.timing !== undefined) record.timing = turn.timing
   if (turn.provider_reported !== undefined) {

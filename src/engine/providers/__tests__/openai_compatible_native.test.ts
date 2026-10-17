@@ -45,6 +45,7 @@ function make_dialect(
     token_limit_field: 'max_completion_tokens',
     stream_include_usage: true,
     tolerant_usage: false,
+    reports_cost: false,
     ...overrides,
   }
 }
@@ -2115,5 +2116,112 @@ describe('to_chat_messages sends reasoning back', () => {
     expect(to_chat_messages(messages, 'openrouter')).toStrictEqual([
       { role: 'assistant', content: 'hi' },
     ])
+  })
+})
+
+const COST_DIALECT = make_dialect({ name: 'openrouter', reports_cost: true })
+
+/** A whole text response whose usage carries `extra` beside the token counts. */
+function cost_payload(extra: Record<string, unknown>): Record<string, unknown> {
+  return {
+    choices: [{ index: 0, message: { role: 'assistant', content: 'hi' }, finish_reason: 'stop' }],
+    usage: { prompt_tokens: 12, completion_tokens: 6, ...extra },
+  }
+}
+
+/** The same text turn as a stream, the usage frame carrying `extra`. */
+function cost_stream(extra: Record<string, unknown>): StreamFrame[] {
+  return [
+    { choices: [{ index: 0, delta: { role: 'assistant', content: 'hi' } }] },
+    { choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] },
+    { choices: [{ index: 0, delta: {}, finish_reason: 'stop' }], usage: { prompt_tokens: 12, completion_tokens: 6, ...extra } },
+    '[DONE]',
+  ]
+}
+
+describe('the cost a reporting dialect reads (the spec Part 2)', () => {
+  it('reads usage.cost into reported_cost_usd with the raw fields under provider_reported', () => {
+    const cost_details = { upstream_inference_cost: null, server_tool_cost: 0 }
+    const result = parse_chat_completion(
+      cost_payload({ cost: 0.00042, is_byok: false, cost_details }),
+      COST_DIALECT,
+    )
+    expect(result).toStrictEqual({
+      text: 'hi',
+      tool_calls: [],
+      finish_reason: 'stop',
+      usage: { input_tokens: 12, output_tokens: 6 },
+      reported_cost_usd: 0.00042,
+      provider_reported: { openrouter: { cost: 0.00042, is_byok: false, cost_details } },
+    })
+  })
+
+  it('reads the same charge from the stream as from the whole response', async () => {
+    const extra = { cost: 0.00042, is_byok: false, cost_details: { upstream_inference_cost: null } }
+    const { result } = await invoke_streamed(cost_stream(extra), COST_DIALECT)
+    expect(result).toStrictEqual(parse_chat_completion(cost_payload(extra), COST_DIALECT))
+    expect(result.reported_cost_usd).toBe(0.00042)
+  })
+
+  it('adds the upstream charge on a BYOK request (D13)', () => {
+    const result = parse_chat_completion(
+      cost_payload({ cost: 0.0005, is_byok: true, cost_details: { upstream_inference_cost: 0.01 } }),
+      COST_DIALECT,
+    )
+    expect(result.reported_cost_usd).toBeCloseTo(0.0105, 12)
+  })
+
+  it('counts a null upstream charge on a BYOK request as nothing (D13)', () => {
+    const result = parse_chat_completion(
+      cost_payload({ cost: 0.0005, is_byok: true, cost_details: { upstream_inference_cost: null } }),
+      COST_DIALECT,
+    )
+    expect(result.reported_cost_usd).toBe(0.0005)
+  })
+
+  it('takes cost alone on a BYOK request whose usage carries no cost_details', () => {
+    const result = parse_chat_completion(cost_payload({ cost: 0.0005, is_byok: true }), COST_DIALECT)
+    expect(result.reported_cost_usd).toBe(0.0005)
+    expect(result.provider_reported).toStrictEqual({ openrouter: { cost: 0.0005, is_byok: true } })
+  })
+
+  it('adds no upstream charge when the request is not BYOK', () => {
+    const result = parse_chat_completion(
+      cost_payload({ cost: 0.0005, is_byok: false, cost_details: { upstream_inference_cost: 0.0004 } }),
+      COST_DIALECT,
+    )
+    expect(result.reported_cost_usd).toBe(0.0005)
+  })
+
+  it('takes cost alone when the usage carries no is_byok or cost_details', () => {
+    const result = parse_chat_completion(cost_payload({ cost: 0.0005 }), COST_DIALECT)
+    expect(result.reported_cost_usd).toBe(0.0005)
+    expect(result.provider_reported).toStrictEqual({ openrouter: { cost: 0.0005 } })
+  })
+
+  it('reports nothing when the usage has no numeric cost, so pricing takes over', () => {
+    const without = parse_chat_completion(cost_payload({}), COST_DIALECT)
+    const not_a_number = parse_chat_completion(cost_payload({ cost: '0.1' }), COST_DIALECT)
+    for (const result of [without, not_a_number]) {
+      expect('reported_cost_usd' in result).toBe(false)
+      expect('provider_reported' in result).toBe(false)
+    }
+  })
+
+  it('reports nothing when a tolerant reporting dialect gets no usage at all', () => {
+    const { usage: _usage, ...payload } = cost_payload({})
+    const result = parse_chat_completion(payload, make_dialect({ reports_cost: true, tolerant_usage: true }))
+    expect(result.usage).toStrictEqual({ input_tokens: 0, output_tokens: 0 })
+    expect('reported_cost_usd' in result).toBe(false)
+  })
+
+  it('ignores usage.cost on a dialect that does not report cost', async () => {
+    const extra = { cost: 0.00042, is_byok: false }
+    const plain = parse_chat_completion(cost_payload(extra), make_dialect())
+    const { result: streamed } = await invoke_streamed(cost_stream(extra), make_dialect())
+    for (const result of [plain, streamed]) {
+      expect('reported_cost_usd' in result).toBe(false)
+      expect('provider_reported' in result).toBe(false)
+    }
   })
 })

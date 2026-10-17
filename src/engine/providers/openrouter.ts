@@ -102,8 +102,9 @@ export const create_openrouter_adapter = (init: ProviderInit): ProviderAdapter =
  * Build the openrouter dialect and hand it to the shared OpenAI-compatible
  * core: Bearer auth, the optional `HTTP-Referer`/`X-Title` attribution
  * headers, the `max_tokens` token-limit field, the nested effort shape,
- * reasoning read from and sent back as `reasoning_details`, and strict
- * usage. The empty-api_key guard rides on the core, which throws the same
+ * reasoning read from and sent back as `reasoning_details`, strict usage,
+ * and the cost OpenRouter reports on every response. The empty-api_key guard
+ * rides on the core, which throws the same
  * `openrouter provider requires a non-empty api_key` engine_config_error.
  */
 const create_openrouter_native_adapter = (init: ProviderInit): NativeProviderAdapter => {
@@ -120,6 +121,7 @@ const create_openrouter_native_adapter = (init: ProviderInit): NativeProviderAda
     token_limit_field: 'max_tokens',
     stream_include_usage: true,
     tolerant_usage: false,
+    reports_cost: true,
     effort_shape: 'nested',
     reasoning: 'reasoning_details',
     // Stryker disable next-line ConditionalExpression,EqualityOperator: the core

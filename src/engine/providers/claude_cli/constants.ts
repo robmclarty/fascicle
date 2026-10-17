@@ -1,7 +1,6 @@
 /**
  * Frozen constants for the claude_cli provider: startup and idle defaults,
- * the escalation window, cost decomposition multipliers, and the auth
- * failure pattern list.
+ * the escalation window, and the auth failure pattern list.
  *
  * Arrays are Object.freeze-d at module load so downstream code cannot mutate
  * them.
@@ -14,10 +13,6 @@ export const DEFAULT_STARTUP_TIMEOUT_MS = 120_000
 export const DEFAULT_STALL_TIMEOUT_MS = 300_000
 
 export const SIGKILL_ESCALATION_MS = 2000
-
-export const CACHE_READ_MULTIPLIER = 0.1
-
-export const CACHE_WRITE_MULTIPLIER = 1.25
 
 export const CLI_AUTH_ERROR_PATTERNS: ReadonlyArray<string> = Object.freeze([
   'authentication',

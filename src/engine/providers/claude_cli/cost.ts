@@ -1,74 +1,16 @@
 /**
- * Cost decomposition from the CLI's reported `total_cost_usd`.
+ * Cost allocation from the CLI's reported `total_cost_usd`.
  *
  * The CLI reports a single total_cost_usd and per-turn usage; it does not
- * break cost down by component or by turn. This module synthesizes a
- * component split by computing an implied per-million-token rate from the
- * total and allocating that rate to each token component, weighted by
- * `CACHE_READ_MULTIPLIER` and `CACHE_WRITE_MULTIPLIER`.
- *
- * Per-turn allocation splits `total_cost_usd` across turns proportional to
- * each turn's output tokens. Sum equality is preserved exactly by giving
- * any floating-point rounding remainder to the last turn.
+ * break cost down by component or by turn. This module splits the total
+ * across turns proportional to each turn's output tokens, then hands each
+ * turn's share to the engine's `decompose_total_cost` for the component
+ * split. Sum equality is preserved exactly by giving any floating-point
+ * rounding remainder to the last turn.
  */
 
+import { decompose_total_cost } from '../../pricing.js'
 import type { CostBreakdown, UsageTotals } from '../../types.js'
-import { CACHE_READ_MULTIPLIER, CACHE_WRITE_MULTIPLIER } from './constants.js'
-
-/**
- * Split a single `total_cost_usd` figure into an input/output cost
- * breakdown, weighted by token counts.
- *
- * Cache-read and cache-write tokens are cheaper and pricier respectively
- * than base input tokens, so they're weighted by `CACHE_READ_MULTIPLIER`
- * and `CACHE_WRITE_MULTIPLIER` before the total is distributed
- * proportionally across all weighted components. Returns an all-zero
- * estimate when there's no usage or no cost to distribute.
- */
-export function decompose_total_cost(
-  total_cost_usd: number,
-  usage: UsageTotals,
-): CostBreakdown {
-  const input = Math.max(0, usage.input_tokens)
-  const output = Math.max(0, usage.output_tokens)
-  const cached = Math.max(0, usage.cached_input_tokens ?? 0)
-  const cache_write = Math.max(0, usage.cache_write_tokens ?? 0)
-
-  const base_input = Math.max(0, input - cached - cache_write)
-
-  const input_weight = base_input
-  const output_weight = output
-  const cached_weight = cached * CACHE_READ_MULTIPLIER
-  const cache_write_weight = cache_write * CACHE_WRITE_MULTIPLIER
-
-  const total_weight = input_weight + output_weight + cached_weight + cache_write_weight
-
-  if (total_weight === 0 || total_cost_usd === 0) {
-    return {
-      total_usd: total_cost_usd,
-      input_usd: 0,
-      output_usd: 0,
-      currency: 'USD',
-      is_estimate: true,
-    }
-  }
-
-  const input_usd = (total_cost_usd * input_weight) / total_weight
-  const output_usd = (total_cost_usd * output_weight) / total_weight
-  const cached_usd_raw = (total_cost_usd * cached_weight) / total_weight
-  const cache_write_usd_raw = (total_cost_usd * cache_write_weight) / total_weight
-
-  const breakdown: CostBreakdown = {
-    total_usd: total_cost_usd,
-    input_usd,
-    output_usd,
-    currency: 'USD',
-    is_estimate: true,
-  }
-  if (cached > 0) breakdown.cached_input_usd = cached_usd_raw
-  if (cache_write > 0) breakdown.cache_write_usd = cache_write_usd_raw
-  return breakdown
-}
 
 export type TurnUsage = {
   readonly output_tokens: number

@@ -91,6 +91,7 @@ const create_openai_native_adapter = (init: ProviderInit): NativeProviderAdapter
     token_limit_field: 'max_completion_tokens',
     stream_include_usage: true,
     tolerant_usage: false,
+    reports_cost: false,
     ...(organization !== undefined
       ? { extra_headers: { 'OpenAI-Organization': organization } }
       : {}),

@@ -20,11 +20,19 @@
  * so it reports the fields that saw usage in THIS turn. The top-level
  * aggregation stage decides which fields to omit on the aggregated
  * CostBreakdown.
+ *
+ * A provider that reports its own charge (OpenRouter, the claude_cli) skips
+ * the table: decompose_total_cost splits that total across the components by
+ * token weight instead.
  */
 
 import type { CostBreakdown, Pricing, PricingTable, UsageTotals } from './types.js'
 
 export const FREE_PROVIDERS: ReadonlySet<string> = new Set(['ollama', 'lmstudio'])
+
+export const CACHE_READ_MULTIPLIER = 0.1
+
+export const CACHE_WRITE_MULTIPLIER = 1.25
 
 export const DEFAULT_PRICING: PricingTable = Object.freeze({
   'anthropic:claude-opus-4-8': {
@@ -193,5 +201,62 @@ export function compute_cost(
   if (cached > 0) breakdown.cached_input_usd = round6(cached_usd_raw)
   if (cache_write > 0) breakdown.cache_write_usd = round6(cache_write_usd_raw)
   if (surface_reasoning_usd !== undefined) breakdown.reasoning_usd = surface_reasoning_usd
+  return breakdown
+}
+
+/**
+ * Split a reported total cost into an input/output cost breakdown, weighted
+ * by token counts.
+ *
+ * Cache-read and cache-write tokens are cheaper and pricier respectively
+ * than base input tokens, so they're weighted by `CACHE_READ_MULTIPLIER`
+ * and `CACHE_WRITE_MULTIPLIER` before the total is distributed
+ * proportionally across all weighted components. The total is what the
+ * provider charged and the split is estimated, so the breakdown keeps
+ * `is_estimate: true`. Returns an all-zero estimate when there's no usage or
+ * no cost to distribute.
+ */
+export function decompose_total_cost(
+  total_cost_usd: number,
+  usage: UsageTotals,
+): CostBreakdown {
+  const input = Math.max(0, usage.input_tokens)
+  const output = Math.max(0, usage.output_tokens)
+  const cached = Math.max(0, usage.cached_input_tokens ?? 0)
+  const cache_write = Math.max(0, usage.cache_write_tokens ?? 0)
+
+  const base_input = Math.max(0, input - cached - cache_write)
+
+  const input_weight = base_input
+  const output_weight = output
+  const cached_weight = cached * CACHE_READ_MULTIPLIER
+  const cache_write_weight = cache_write * CACHE_WRITE_MULTIPLIER
+
+  const total_weight = input_weight + output_weight + cached_weight + cache_write_weight
+
+  if (total_weight === 0 || total_cost_usd === 0) {
+    return {
+      total_usd: total_cost_usd,
+      input_usd: 0,
+      output_usd: 0,
+      currency: 'USD',
+      is_estimate: true,
+    }
+  }
+
+  const input_usd = (total_cost_usd * input_weight) / total_weight
+  const output_usd = (total_cost_usd * output_weight) / total_weight
+  const cached_usd_raw = (total_cost_usd * cached_weight) / total_weight
+  const cache_write_usd_raw = (total_cost_usd * cache_write_weight) / total_weight
+
+  const breakdown: CostBreakdown = {
+    total_usd: total_cost_usd,
+    input_usd,
+    output_usd,
+    currency: 'USD',
+    is_estimate: true,
+  }
+  if (cached > 0) breakdown.cached_input_usd = cached_usd_raw
+  if (cache_write > 0) breakdown.cache_write_usd = cache_write_usd_raw
   return breakdown
 }

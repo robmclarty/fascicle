@@ -180,6 +180,15 @@ describe('openai native dialect wiring', () => {
   })
 })
 
+describe('openai native cost', () => {
+  it('reports no cost, even from a usage object that carries one', async () => {
+    stub_fetch(json_response({ ...TEXT_FIXTURE, usage: { ...TEXT_FIXTURE.usage, cost: 0.01 } }))
+    const result = await native_adapter().invoke_turn(make_req())
+    expect('reported_cost_usd' in result).toBe(false)
+    expect('provider_reported' in result).toBe(false)
+  })
+})
+
 describe('provider_options.openai passthrough (D9)', () => {
   it('merges wire keys last over derived fields on the non-stream path', async () => {
     const { body } = await sent_body(

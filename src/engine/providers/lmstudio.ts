@@ -95,6 +95,7 @@ const create_lmstudio_native_adapter = (init: ProviderInit): NativeProviderAdapt
     token_limit_field: 'max_tokens',
     stream_include_usage: true,
     tolerant_usage: true,
+    reports_cost: false,
   }
   return create_openai_compatible_adapter(dialect)
 }

@@ -62,6 +62,9 @@ import type { NativeProviderAdapter, ProviderCapability } from './types.js'
  * field. `reasoning: 'reasoning_details'` reads OpenRouter's entries from a
  * response and sends a turn's own back; a dialect without it reads no
  * reasoning at all, and another server's field would be a new value here.
+ * `reports_cost` reads the charge the server puts on its usage object as
+ * `usage.cost` (OpenRouter's), which the loop records in place of a pricing
+ * row.
  */
 export type OpenAICompatibleDialect = {
   readonly name: string
@@ -71,6 +74,7 @@ export type OpenAICompatibleDialect = {
   readonly token_limit_field: 'max_tokens' | 'max_completion_tokens'
   readonly stream_include_usage: boolean
   readonly tolerant_usage: boolean
+  readonly reports_cost: boolean
   readonly effort_shape?: 'flat' | 'nested'
   readonly reasoning?: 'reasoning_details'
 }
@@ -362,6 +366,37 @@ export function map_chat_usage(raw: unknown, dialect: OpenAICompatibleDialect): 
 }
 
 /**
+ * Give a turn the charge a cost-reporting dialect puts on its usage object,
+ * and leave every other turn as it was. `usage.cost` is the request's cost in
+ * US dollars (OpenRouter's credits are dollars). On a bring-your-own-key
+ * request it is only OpenRouter's fee, so the upstream provider's own charge
+ * (`cost_details.upstream_inference_cost`) is added, a null one counting as
+ * nothing. The raw fields ride `provider_reported` under the dialect's name
+ * as sent. A usage object without a numeric `cost` reports nothing, so the
+ * loop falls back to pricing.
+ */
+function with_reported_cost(
+  result: TurnResult,
+  raw_usage: unknown,
+  dialect: OpenAICompatibleDialect,
+): TurnResult {
+  if (!dialect.reports_cost || !is_record(raw_usage)) return result
+  const cost = raw_usage['cost']
+  if (typeof cost !== 'number') return result
+  const details = raw_usage['cost_details']
+  const upstream = is_record(details) ? details['upstream_inference_cost'] : undefined
+  const byok_upstream = raw_usage['is_byok'] === true && typeof upstream === 'number' ? upstream : 0
+  const reported: Record<string, unknown> = { cost }
+  if (raw_usage['is_byok'] !== undefined) reported['is_byok'] = raw_usage['is_byok']
+  if (details !== undefined) reported['cost_details'] = details
+  return {
+    ...result,
+    reported_cost_usd: cost + byok_upstream,
+    provider_reported: { [dialect.name]: reported },
+  }
+}
+
+/**
  * Parse one Chat Completions tool_calls entry into the engine's tool-call
  * shape, throwing a provider_error if the entry is missing id, function
  * name, or valid JSON arguments.
@@ -412,15 +447,17 @@ export function parse_chat_completion(
   const tool_calls = Array.isArray(raw_tool_calls)
     ? raw_tool_calls.map((entry) => parse_tool_call(entry, dialect.name))
     : []
-  return with_reasoning_content(
+  const raw_usage: unknown = Reflect.get(payload, 'usage')
+  const result = with_reasoning_content(
     {
       text: typeof content === 'string' ? content : '',
       tool_calls,
       finish_reason: map_chat_finish_reason(Reflect.get(choice, 'finish_reason')),
-      usage: map_chat_usage(Reflect.get(payload, 'usage'), dialect),
+      usage: map_chat_usage(raw_usage, dialect),
     },
     read_reasoning_parts(message, dialect),
   )
+  return with_reported_cost(result, raw_usage, dialect)
 }
 
 /**
@@ -511,7 +548,9 @@ function create_reasoning_joiner(): {
  * into the message's entries. A tool call closes (parsed input dispatched)
  * when the choice's finish_reason frame arrives, or at `[DONE]` for servers
  * that never send one. Usage rides the final pre-DONE frame
- * (stream_options.include_usage); a stream that ends without `[DONE]` is
+ * (stream_options.include_usage), and OpenRouter's reported cost rides
+ * inside it, so the streamed turn reads the same charge as the whole
+ * response; a stream that ends without `[DONE]` is
  * truncated output, so complete() fails loud instead of returning a partial
  * turn. complete() feeds the synthetic payload through parse_chat_completion,
  * which is what makes the streamed TurnResult equal the non-streamed one by

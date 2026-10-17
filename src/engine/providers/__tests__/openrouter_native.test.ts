@@ -7,12 +7,17 @@
  * and `provider_options.openrouter` wire
  * passthrough merging last on both the stream and non-stream paths (D9). The
  * core's own mapping/parsing is covered by openai_compatible_native.test.ts;
- * here the assertions target the dialect the factory constructs. No live
+ * here the assertions target the dialect the factory constructs, and the
+ * engine-level cases below drive the reported cost through generate. No live
  * network; fetch is stubbed per test.
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { TurnRequest } from '../../types.js'
+import { z } from 'zod'
+import type { TrajectoryEvent, TrajectoryLogger } from '#core'
+import type { PricingTable, StreamChunk, Tool, TurnRequest } from '../../types.js'
+import { create_engine } from '../../create_engine.js'
+import { decompose_total_cost } from '../../pricing.js'
 import { create_openrouter_adapter } from '../openrouter.js'
 import type { NativeProviderAdapter } from '../types.js'
 import { engine_config_error } from '../../errors.js'
@@ -337,5 +342,148 @@ describe('openrouter native reasoning (the spec 1.2)', () => {
       { role: 'assistant', content: 'Hello', reasoning_details: [ENTRY] },
       { role: 'user', content: 'again' },
     ])
+  })
+})
+
+const COST_MODEL = 'anthropic/claude-sonnet-5.5'
+
+function stub_fetch_queue(responses: Response[]): void {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => {
+      const next = responses.shift()
+      if (next === undefined) throw new Error('fetch queue exhausted')
+      return next
+    }),
+  )
+}
+
+function record_trajectory(): { trajectory: TrajectoryLogger; records: TrajectoryEvent[] } {
+  const records: TrajectoryEvent[] = []
+  let counter = 0
+  const trajectory: TrajectoryLogger = {
+    record(event) {
+      records.push(event)
+    },
+    start_span() {
+      counter += 1
+      return `span-${counter}`
+    },
+    end_span() {},
+  }
+  return { trajectory, records }
+}
+
+function cost_engine(pricing?: PricingTable): ReturnType<typeof create_engine> {
+  return create_engine({
+    providers: { openrouter: { api_key: 'sk-test', transport: 'native' } },
+    ...(pricing !== undefined ? { pricing } : {}),
+  })
+}
+
+const COST_USAGE = { prompt_tokens: 1000, completion_tokens: 200, prompt_tokens_details: { cached_tokens: 400 } }
+
+/** One turn, whole or streamed, whose usage reports `cost` (or none when undefined). */
+function cost_turn(
+  streamed: boolean,
+  cost: number | undefined,
+  tool_call?: { id: string; arguments: string },
+): Response {
+  const usage = cost === undefined ? COST_USAGE : { ...COST_USAGE, cost, is_byok: false, cost_details: { upstream_inference_cost: null } }
+  const finish_reason = tool_call === undefined ? 'stop' : 'tool_calls'
+  const calls =
+    tool_call === undefined
+      ? undefined
+      : [{ id: tool_call.id, type: 'function', function: { name: 'lookup', arguments: tool_call.arguments } }]
+  if (!streamed) {
+    const message = { role: 'assistant', content: tool_call === undefined ? 'done' : null, ...(calls !== undefined ? { tool_calls: calls } : {}) }
+    return json_response({ choices: [{ index: 0, message, finish_reason }], usage })
+  }
+  const delta = calls !== undefined ? { tool_calls: calls.map((c, index) => ({ index, ...c })) } : { content: 'done' }
+  return sse_response([
+    { choices: [{ index: 0, delta: { role: 'assistant', ...delta } }] },
+    { choices: [{ index: 0, delta: {}, finish_reason }] },
+    { choices: [{ index: 0, delta: {}, finish_reason }], usage },
+    '[DONE]',
+  ])
+}
+
+const lookup_tool: Tool = {
+  name: 'lookup',
+  description: 'Look a key up',
+  input_schema: z.object({ key: z.string() }),
+  execute: () => 'value',
+}
+
+describe('the cost OpenRouter reports, through generate (the spec Part 2)', () => {
+  it.each([false, true])(
+    'records the reported charge split by token weight, streamed %s, with no pricing_missing',
+    async (streamed) => {
+      stub_fetch_queue([cost_turn(streamed, 0.0042)])
+      const { trajectory, records } = record_trajectory()
+      const result = await cost_engine().generate({
+        model: COST_MODEL,
+        prompt: 'hi',
+        trajectory,
+        ...(streamed ? { on_chunk: (_chunk: StreamChunk) => {} } : {}),
+      })
+      const usage = { input_tokens: 1000, output_tokens: 200, cached_input_tokens: 400 }
+      expect(result.steps[0]?.cost).toStrictEqual(decompose_total_cost(0.0042, usage))
+      expect(result.cost?.total_usd).toBeCloseTo(0.0042, 12)
+      expect(records.filter((e) => e.kind === 'pricing_missing')).toStrictEqual([])
+      const cost_events = records.filter((e) => e.kind === 'cost')
+      expect(cost_events).toHaveLength(1)
+      expect(cost_events[0]).toMatchObject({ source: 'provider_reported', total_usd: 0.0042 })
+      expect(result.steps[0]?.provider_reported).toStrictEqual({
+        openrouter: { cost: 0.0042, is_byok: false, cost_details: { upstream_inference_cost: null } },
+      })
+    },
+  )
+
+  it.each([false, true])(
+    "sums a two-step tool loop's reported charges into GenerateResult.cost, streamed %s",
+    async (streamed) => {
+      stub_fetch_queue([
+        cost_turn(streamed, 0.003, { id: 'call_1', arguments: '{"key":"a"}' }),
+        cost_turn(streamed, 0.0015),
+      ])
+      const result = await cost_engine().generate({
+        model: COST_MODEL,
+        prompt: 'look a up',
+        tools: [lookup_tool],
+        ...(streamed ? { on_chunk: (_chunk: StreamChunk) => {} } : {}),
+      })
+      expect(result.steps.map((step) => step.cost?.total_usd)).toStrictEqual([0.003, 0.0015])
+      expect(result.cost?.total_usd).toBeCloseTo(0.0045, 12)
+    },
+  )
+
+  it('takes the reported charge over a pricing row for the same model (D10)', async () => {
+    stub_fetch_queue([cost_turn(false, 0.0042)])
+    const { trajectory, records } = record_trajectory()
+    const result = await cost_engine({
+      [`openrouter:${COST_MODEL}`]: { input_per_million: 100, output_per_million: 100 },
+    }).generate({ model: COST_MODEL, prompt: 'hi', trajectory })
+    expect(result.cost?.total_usd).toBeCloseTo(0.0042, 12)
+    expect(records.filter((e) => e.kind === 'cost').map((e) => e['source'])).toStrictEqual([
+      'provider_reported',
+    ])
+  })
+
+  it('emits pricing_missing once and records no cost when no charge is reported', async () => {
+    stub_fetch_queue([
+      cost_turn(false, undefined, { id: 'call_1', arguments: '{"key":"a"}' }),
+      cost_turn(false, undefined),
+    ])
+    const { trajectory, records } = record_trajectory()
+    const result = await cost_engine().generate({
+      model: COST_MODEL,
+      prompt: 'look a up',
+      tools: [lookup_tool],
+      trajectory,
+    })
+    expect('cost' in result).toBe(false)
+    expect(records.filter((e) => e.kind === 'cost')).toStrictEqual([])
+    expect(records.filter((e) => e.kind === 'pricing_missing')).toHaveLength(1)
   })
 })

@@ -11,7 +11,7 @@
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { TurnRequest } from '../../types.js'
+import type { ProviderInit, TurnRequest } from '../../types.js'
 import { create_lmstudio_adapter } from '../lmstudio.js'
 import type { NativeProviderAdapter } from '../types.js'
 import { engine_config_error } from '../../errors.js'
@@ -129,9 +129,12 @@ describe('transport dispatch', () => {
     expect(adapter.name).toBe('lmstudio')
   })
 
-  it('throws engine_config_error on an unknown transport', () => {
+  it('throws engine_config_error on an unknown transport, naming the provider', () => {
     expect(() => create_lmstudio_adapter({ base_url: BASE_URL, transport: 'grpc' })).toThrow(
       engine_config_error,
+    )
+    expect(() => create_lmstudio_adapter({ base_url: BASE_URL, transport: 'grpc' })).toThrow(
+      /^lmstudio provider: transport must be/,
     )
   })
 
@@ -139,6 +142,20 @@ describe('transport dispatch', () => {
     expect(() => create_lmstudio_adapter({ base_url: '', transport: 'native' })).toThrow(
       engine_config_error,
     )
+  })
+
+  it('reads a non-string base_url as empty and refuses it, naming the provider', () => {
+    let thrown: unknown
+    try {
+      create_lmstudio_adapter({ base_url: 1234, transport: 'native' } as unknown as ProviderInit)
+    } catch (err: unknown) {
+      thrown = err
+    }
+    expect(thrown).toBeInstanceOf(engine_config_error)
+    expect(thrown).toMatchObject({
+      message: 'lmstudio provider requires a non-empty base_url',
+      provider: 'lmstudio',
+    })
   })
 })
 
@@ -179,6 +196,13 @@ describe('tolerant usage (D10)', () => {
     const result = await native_adapter().invoke_turn(make_req())
     expect(result.text).toBe('ok')
     expect(result.usage).toEqual({ input_tokens: 0, output_tokens: 0 })
+  })
+
+  it('reports no cost, even from a usage object that carries one', async () => {
+    stub_fetch(json_response({ ...TEXT_FIXTURE, usage: { ...TEXT_FIXTURE.usage, cost: 0.01 } }))
+    const result = await native_adapter().invoke_turn(make_req())
+    expect('reported_cost_usd' in result).toBe(false)
+    expect('provider_reported' in result).toBe(false)
   })
 })
 

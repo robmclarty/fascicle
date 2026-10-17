@@ -32,6 +32,7 @@ function make_engine(): ReturnType<typeof create_engine> {
           token_limit_field: 'max_tokens',
           stream_include_usage: true,
           tolerant_usage: false,
+          reports_cost: false,
         }),
     },
     pricing: {
@@ -436,6 +437,7 @@ function make_reasoning_engine(): ReturnType<typeof create_engine> {
           token_limit_field: 'max_tokens',
           stream_include_usage: true,
           tolerant_usage: false,
+          reports_cost: false,
           effort_shape: 'nested',
           reasoning: 'reasoning_details',
         }),

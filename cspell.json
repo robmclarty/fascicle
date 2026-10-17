@@ -172,6 +172,7 @@
     "headerless",
     "centiseconds",
     "playhead",
-    "pgrep"
+    "pgrep",
+    "byok"
   ]
 }
