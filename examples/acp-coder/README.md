@@ -39,6 +39,23 @@ Commands inherit the agent's environment, minus the API keys that
 `command_env`, so a command the model runs can't read the key that the model
 runs on.
 
+## How hard it thinks
+
+`--effort` sets how hard the model thinks before it answers. It takes `low`,
+`medium`, `high`, `xhigh`, or `max`, and it's unset by default. `none` is the
+same as leaving it out, since neither one sends anything to the provider.
+
+Claude Sonnet 5.5 thinks without the flag. It decides at each step whether
+the work in front of it needs thinking through, and OpenRouter sends back a
+summary of what it thought. So Zed already shows a thought block on a step
+that took some reasoning, and none on a step that went straight to a tool
+call. `--effort high` asks it to think more often and for longer, so more
+steps get a thought block and each block runs longer, while every step
+spends more output tokens and starts its reply later. `--effort low` asks it
+to think less.
+
+To set it in Zed, add `"--effort", "high"` to the `args` of the entry below.
+
 ## Run in Zed
 
 Add a custom agent server to Zed's `settings.json`, the same way as for

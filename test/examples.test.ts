@@ -8,7 +8,7 @@ import type { TurnRequest } from 'fascicle'
 import { acp_agent } from 'fascicle/acp'
 import type { AcpTurn } from 'fascicle/acp'
 import { keyless_agent, to_messages } from '../examples/acp-agent/main.js'
-import { coder_agent, command_env } from '../examples/acp-coder/main.js'
+import { coder_agent, command_env, parse_effort } from '../examples/acp-coder/main.js'
 import { run_adversarial_build } from '../examples/adversarial-build/main.js'
 import { run_checkpoint_resume } from '../examples/checkpoint-resume/main.js'
 import { run_documenter } from '../examples/documenter/main.js'
@@ -150,6 +150,26 @@ describe('examples smoke', () => {
       UNSET: undefined,
     })
     expect(env).toEqual({ PATH: '/bin' })
+  })
+
+  it('acp_coder hands --effort to the model call, and leaves the default alone without it', async () => {
+    const efforts: unknown[] = []
+    for (const effort of [undefined, 'high'] as const) {
+      const seen: TurnRequest[] = []
+      const engine = scripted_engine(['hi'], seen)
+      const config = { engine, model: 'script', command_env: {}, ...(effort === undefined ? {} : { effort }) }
+      const { session } = await open_session(await acp_agent(coder_agent(config)))
+      await session.prompt('hello')
+      await read_turn(session)
+      efforts.push(seen[0]?.effort)
+    }
+    expect(efforts).toEqual(['none', 'high'])
+  })
+
+  it('acp_coder refuses an unknown --effort, naming the levels it takes', () => {
+    expect(parse_effort(undefined)).toBeUndefined()
+    expect(parse_effort('xhigh')).toBe('xhigh')
+    expect(() => parse_effort('extreme')).toThrow('unknown effort extreme: use none, low, medium, high, xhigh, max')
   })
 
   it('streaming_chat surfaces emitted tokens and the final result', async () => {

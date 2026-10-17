@@ -13,17 +13,22 @@
  * key each one reads). Commands run with the agent's environment minus those
  * keys, so a command the model runs can't read them.
  *
+ * --effort sets how hard the model thinks, from none to max. Without it the
+ * model keeps its own default, and Claude Sonnet 5.5 decides for itself when
+ * a prompt needs thinking, so Zed's thought block fills in without the flag.
+ *
  * Stdout carries the protocol, so nothing here writes to it. Zed launches
  * this file itself, and README.md has the settings entry that tells it how.
  *
  * Run directly (it waits for an ACP client on stdin until stdin closes):
  *   pnpm exec tsx --env-file=.env examples/acp-coder/main.ts
  *   pnpm exec tsx --env-file=.env examples/acp-coder/main.ts --model openai/gpt-5.5
+ *   pnpm exec tsx --env-file=.env examples/acp-coder/main.ts --effort high
  */
 
 import { readFileSync } from 'node:fs'
 import { model_step, sequence, step } from 'fascicle'
-import type { Engine, Step } from 'fascicle'
+import type { EffortLevel, Engine, Step } from 'fascicle'
 import { serve_acp, workspace_tools } from 'fascicle/acp'
 import type { AcpSession, AcpTurn, ServeAcpConfig } from 'fascicle/acp'
 import { API_KEYS, engine_for, flag } from '../acp-agent/engines.js'
@@ -32,6 +37,32 @@ import { to_messages } from '../acp-agent/main.js'
 const CODER_PROMPT = readFileSync(new URL('./prompts/coder.md', import.meta.url), 'utf8')
 
 const DEFAULT_MODEL = 'anthropic/claude-sonnet-5.5'
+
+// Keyed by EffortLevel so tsc flags this table whenever the engine's levels
+// change, and the flag's error lists exactly what the engine takes.
+const EFFORT_LEVELS: Readonly<Record<EffortLevel, true>> = {
+  none: true,
+  low: true,
+  medium: true,
+  high: true,
+  xhigh: true,
+  max: true,
+}
+
+/** Whether a command-line value names one of the engine's effort levels. */
+function is_effort(value: string): value is EffortLevel {
+  return Object.hasOwn(EFFORT_LEVELS, value)
+}
+
+/**
+ * The effort that `--effort` names, or undefined when the flag is absent,
+ * which leaves the model's own default. An unknown level fails here, listing
+ * the levels, rather than reaching the provider.
+ */
+export function parse_effort(value: string | undefined): EffortLevel | undefined {
+  if (value === undefined || is_effort(value)) return value
+  throw new Error(`unknown effort ${value}: use ${Object.keys(EFFORT_LEVELS).join(', ')}`)
+}
 
 /**
  * The coder's prompt, followed by where the session's workspace is, so the
@@ -61,6 +92,8 @@ export function command_env(env: NodeJS.ProcessEnv): Record<string, string> {
 export type CoderConfig = {
   readonly engine: Engine
   readonly model: string
+  /** How hard the model thinks. Left out, the model keeps its own default. */
+  readonly effort?: EffortLevel
   /** The whole environment the model's commands run with. */
   readonly command_env: Readonly<Record<string, string>>
 }
@@ -82,6 +115,7 @@ export function coder_agent(config: CoderConfig): ServeAcpConfig<AcpTurn, string
           id: 'coder',
           engine: config.engine,
           model: config.model,
+          ...(config.effort === undefined ? {} : { effort: config.effort }),
           system: system_for(session),
           tools: workspace_tools(session, { command_env: config.command_env }),
           max_steps: 100,
@@ -107,5 +141,13 @@ function chosen_model(provider: string): string {
 if (import.meta.url === `file://${process.argv[1] ?? ''}`) {
   const provider = flag('--provider') ?? 'openrouter'
   const model = chosen_model(provider)
-  await serve_acp(coder_agent({ engine: engine_for(provider), model, command_env: command_env(process.env) }))
+  const effort = parse_effort(flag('--effort'))
+  await serve_acp(
+    coder_agent({
+      engine: engine_for(provider),
+      model,
+      ...(effort === undefined ? {} : { effort }),
+      command_env: command_env(process.env),
+    }),
+  )
 }
