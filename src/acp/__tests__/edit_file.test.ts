@@ -197,6 +197,17 @@ describe('edit_file', () => {
     )
   })
 
+  it('refuses a file one byte over the change limit, and edits one at the limit', async () => {
+    const over = await project_file('over.txt', `x\n${'a'.repeat(999_999)}`)
+    await expect(call({ path: over, old_text: 'x', new_text: 'y' })).rejects.toThrow(
+      'over.txt is 1000001 bytes, over the 1000000 that write_file and edit_file read to show a change as a diff; change it with run_command instead',
+    )
+    await expect(readFile(join(real_project, over))).resolves.toHaveLength(1_000_001)
+    const at = await project_file('at.txt', `x\n${'a'.repeat(999_998)}`)
+    await expect(call({ path: at, old_text: 'x', new_text: 'y' })).resolves.toBe('edited at.txt at line 1')
+    await expect(text_of(at)).resolves.toBe(`y\n${'a'.repeat(999_998)}`)
+  })
+
   it('refuses a binary file, naming edit_file', async () => {
     const path = await project_file('blob.bin', Buffer.from([0x61, 0, 0x62]))
     await expect(call({ path, old_text: 'a', new_text: 'c' })).rejects.toThrow(

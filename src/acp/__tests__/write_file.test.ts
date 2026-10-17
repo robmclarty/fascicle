@@ -203,6 +203,18 @@ describe('write_file', () => {
     await expect(text_of(join(real_base, 'outside', 'source.txt'))).resolves.toBe('source\n')
   })
 
+  it('refuses a file one byte over the change limit from its size, before reading it, and replaces one at the limit', async () => {
+    // NUL bytes throughout, so a refusal that came from reading the file would call it binary.
+    const over = await project_file('over.bin', Buffer.alloc(1_000_001))
+    await expect(call({ path: over, content: 'small\n' })).rejects.toThrow(
+      'over.bin is 1000001 bytes, over the 1000000 that write_file and edit_file read to show a change as a diff; change it with run_command instead',
+    )
+    await expect(readFile(join(real_project, over))).resolves.toHaveLength(1_000_001)
+    const at = await project_file('at.txt', 'a'.repeat(1_000_000))
+    await expect(call({ path: at, content: 'small\n' })).resolves.toBe('overwrote at.txt')
+    await expect(text_of(join(real_project, at))).resolves.toBe('small\n')
+  })
+
   it('refuses to replace a binary file', async () => {
     const path = await project_file('blob.bin', Buffer.from([1, 0, 2]))
     await expect(call({ path, content: 'text\n' })).rejects.toThrow(

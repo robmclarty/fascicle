@@ -33,6 +33,13 @@ export type FileChange = ContainedPath & {
   readonly new_text: string
 }
 
+/**
+ * The largest file a change reads, in bytes. A change is shown as a diff,
+ * which carries the file's whole text twice, as its text before and after,
+ * and the closing card update carries it again.
+ */
+const CHANGE_LIMIT_BYTES = 1_000_000
+
 /** One write as the model asked for it. */
 type WriteRequest = {
   readonly path: string
@@ -57,8 +64,9 @@ function write_request(input: unknown): WriteRequest {
  * shown as a diff of text, and rewriting a file in another encoding would
  * change bytes outside the edit. A file with other hard links is refused too:
  * a write changes the file under every name it has, and real paths can't say
- * where the other names lie. `shown` is the path as the model gave it, and
- * `tool` names the tool asking, for the refusals.
+ * where the other names lie. A file over CHANGE_LIMIT_BYTES is refused from
+ * its size, before it's opened. `shown` is the path as the model gave it,
+ * and `tool` names the tool asking, for the refusals.
  */
 export async function current_text(real: string, shown: string, tool: string): Promise<string | null> {
   const info = await stat(real).catch((err: unknown) => {
@@ -71,6 +79,11 @@ export async function current_text(real: string, shown: string, tool: string): P
   if (info.nlink > 1) {
     throw new Error(
       `${shown} is one of ${info.nlink} hard links to the same file, and the rest may lie outside the workspace, so ${tool} won't change it`,
+    )
+  }
+  if (info.size > CHANGE_LIMIT_BYTES) {
+    throw new Error(
+      `${shown} is ${info.size} bytes, over the ${CHANGE_LIMIT_BYTES} that write_file and edit_file read to show a change as a diff; change it with run_command instead`,
     )
   }
   const handle = await open(real)

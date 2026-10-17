@@ -227,6 +227,30 @@ describe('approve: what the request shows', () => {
     expect(tool_result(run.seen, 'e')).toContain(why)
   })
 
+  it('shows the change limit in place of a diff for a file one byte over, and a diff for one at the limit', async () => {
+    await writeFile(join(cwd, 'over.txt'), `x\n${'a'.repeat(999_999)}`)
+    await writeFile(join(cwd, 'at.txt'), `x\n${'a'.repeat(999_998)}`)
+    const over = { path: 'over.txt', old_text: 'x', new_text: 'y' }
+    const at = { path: 'at.txt', old_text: 'x', new_text: 'y' }
+    const run = await wire_run(
+      [
+        [
+          { id: 'o', name: 'edit_file', input: over },
+          { id: 'a', name: 'edit_file', input: at },
+        ],
+        'done',
+      ],
+      () => choose('allow_once'),
+    )
+    const why = 'over.txt is 1000001 bytes, over the 1000000 that write_file and edit_file read to show a change as a diff; change it with run_command instead'
+    const path = join(cwd, 'at.txt')
+    expect(run.asked.map((request) => request.toolCall.content)).toEqual([
+      [{ type: 'content', content: { type: 'text', text: why } }],
+      [{ type: 'diff', path, oldText: `x\n${'a'.repeat(999_998)}`, newText: `y\n${'a'.repeat(999_998)}` }],
+    ])
+    expect(tool_result(run.seen, 'o')).toContain(why)
+  })
+
   it('asks about a tool of the flow\'s own by its name, with no "always" on offer, even for a command in its input', async () => {
     const deploy: Tool = {
       name: 'deploy',

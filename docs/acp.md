@@ -206,6 +206,8 @@ They're plain `Tool` values, so a flow can filter them, set its own beside them,
 
 A search runs in a worker thread, inside the budget that `search_timeout_ms` sets. JavaScript's regular expressions backtrack, so a pattern such as `(a+)+$` can run for minutes against one long line, and the worker is what lets a cancel or the budget stop it mid-match. The model gets back a tool error that tells it to simplify the pattern or narrow the search.
 
+A write or an edit reads the whole file it changes, so the change can be shown as a diff, and it refuses a file over 1,000,000 bytes before it opens it. A diff carries the file's whole text twice, once as it was and once as it will be, and the card's closing update carries it again, so the refusal tells the model to change a file that size with `run_command` instead.
+
 ### What the File Tools Can Reach
 
 A path can be absolute or relative to `cwd`. The file tools accept it only when its real path, with every symlink resolved, lands under `cwd` or under one of the additional directories that the client sent with `session/new`. The agent advertises `sessionCapabilities.additionalDirectories`, which is how a client widens the workspace beyond `cwd`. The roots themselves are resolved the same way, once, when the session starts, so a project that sits behind a symlink still works (on macOS, everything under `/tmp` and `/var` does). A path that doesn't exist yet, such as the file a `write_file` is about to create, is checked through the nearest directory on its way that does exist, so a new file under a symlink that points out of the workspace is refused as well. A refusal is an ordinary tool error that names the allowed roots, and the model reads it and tries a path that fits.
@@ -228,7 +230,7 @@ Auto runs commands with nobody watching, so it belongs in a container or a throw
 
 ### Permission Requests
 
-When the mode says to ask, `session.approve` sends `session/request_permission` with the call's card, so the prompt sits on the card that the user is already looking at. For an edit, the agent works out the change on disk first and the prompt shows that diff, so the user approves the change itself rather than a summary of it. A prompt offers these options:
+When the mode says to ask, `session.approve` sends `session/request_permission` with the call's card, so the prompt sits on the card that the user is already looking at. For an edit, the agent works out the change on disk first and the prompt shows that diff, so the user approves the change itself rather than a summary of it. When the change can't be worked out, as for a file over that size limit, the prompt shows why in place of the diff, and that's the error the call fails with if it's allowed. A prompt offers these options:
 
 - **Allow** runs this one call.
 - **Allow all edits this session**, offered for an edit, switches the session to Accept edits, the way Claude Agent's does. The agent tells the client, so Zed's mode picker follows.
