@@ -414,6 +414,22 @@ function read_block_index(event: object): number {
 }
 
 /**
+ * Parse one Messages-stream data line. OpenRouter's Anthropic-compatible
+ * endpoint ends every stream with a chat-completions `[DONE]` line after
+ * message_stop; it carries no event, so it reads as null, which the
+ * aggregator drops like a JSON null. Any other data that isn't JSON is a
+ * broken stream.
+ */
+function parse_stream_event(data: string): unknown {
+  if (data === '[DONE]') return null
+  try {
+    return JSON.parse(data)
+  } catch {
+    throw new provider_error('anthropic native: stream event is not valid JSON')
+  }
+}
+
+/**
  * Consume parsed Messages-stream events, dispatching StreamChunks as they
  * arrive and rebuilding the non-stream response payload as it goes: text
  * deltas accumulate into synthetic text blocks, tool_use input arrives as raw
@@ -541,12 +557,7 @@ function create_stream_aggregator(
 
   return {
     async handle(data: string): Promise<void> {
-      let event: unknown
-      try {
-        event = JSON.parse(data)
-      } catch {
-        throw new provider_error('anthropic native: stream event is not valid JSON')
-      }
+      const event = parse_stream_event(data)
       if (event === null || typeof event !== 'object') return
       switch (Reflect.get(event, 'type')) {
         case 'message_start': {

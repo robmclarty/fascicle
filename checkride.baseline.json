@@ -20,9 +20,7 @@
       "dupes:dup:ebf82819",
       "dupes:dup:edb97556"
     ],
-    "health": [
-      "health:src/engine/providers/anthropic_native.ts:handle"
-    ],
+    "health": [],
     "lint": [],
     "prose": [],
     "spell": [],

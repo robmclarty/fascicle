@@ -18,6 +18,7 @@ import {
   to_anthropic_messages,
 } from '../anthropic_native.js'
 import { classify_provider_error } from '../../generate.js'
+import { create_engine } from '../../create_engine.js'
 import {
   engine_config_error,
   provider_auth_error,
@@ -793,13 +794,19 @@ function sse_payload(events: ReadonlyArray<Record<string, unknown>>): string {
 /**
  * Recorded-stream Response: the SSE payload is enqueued in small byte chunks
  * so every test also exercises reassembly across arbitrary boundaries,
- * including splits inside multi-byte UTF-8 sequences.
+ * including splits inside multi-byte UTF-8 sequences. `tail` is raw SSE text
+ * sent after the events, for a server's own trailer.
  */
 function stream_response(
   events: ReadonlyArray<Record<string, unknown>>,
   chunk_size = 9,
+  tail = '',
 ): Response {
-  const bytes = new TextEncoder().encode(sse_payload(events))
+  return chunked_sse_response(sse_payload(events) + tail, chunk_size)
+}
+
+function chunked_sse_response(payload: string, chunk_size: number): Response {
+  const bytes = new TextEncoder().encode(payload)
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
       for (let i = 0; i < bytes.length; i += chunk_size) {
@@ -833,19 +840,7 @@ function chunk_collector(): {
  * `null`, a non-JSON body, or any shape the object helper cannot serialize.
  */
 function stream_from_frames(frames: readonly string[], chunk_size = 9): Response {
-  const bytes = new TextEncoder().encode(frames.map((f) => `data: ${f}\n\n`).join(''))
-  const stream = new ReadableStream<Uint8Array>({
-    start(controller) {
-      for (let i = 0; i < bytes.length; i += chunk_size) {
-        controller.enqueue(bytes.slice(i, i + chunk_size))
-      }
-      controller.close()
-    },
-  })
-  return new Response(stream, {
-    status: 200,
-    headers: { 'content-type': 'text/event-stream' },
-  })
+  return chunked_sse_response(frames.map((f) => `data: ${f}\n\n`).join(''), chunk_size)
 }
 
 const frame = (event: Record<string, unknown>): string => JSON.stringify(event)
@@ -1167,6 +1162,63 @@ describe('streaming invoke_turn', () => {
 })
 
 /**
+ * OpenRouter's Anthropic-compatible Messages endpoint closes every stream with
+ * a chat-completions trailer after message_stop (D27). A stream that ends that
+ * way has to give the same turn as one that doesn't, from the adapter and from
+ * the engine above it.
+ */
+describe("OpenRouter's [DONE] trailer", () => {
+  const DONE_TRAILER = 'event: data\ndata: [DONE]\n\n'
+
+  it.each([
+    ['text', TEXT_STREAM_EVENTS],
+    ['tool-call', TOOL_CALL_STREAM_EVENTS],
+    ['mixed', MIXED_STREAM_EVENTS],
+  ])('completes a streamed %s turn the same as the stream without it', async (_label, events) => {
+    const adapter = create_anthropic_native_adapter({ api_key: 'sk-test' })
+    stub_fetch(stream_response(events))
+    const plain = chunk_collector()
+    const expected = await adapter.invoke_turn(
+      make_req({ stream: true, dispatch_chunk: plain.dispatch_chunk }),
+    )
+    stub_fetch(stream_response(events, 9, DONE_TRAILER))
+    const trailed = chunk_collector()
+    const result = await adapter.invoke_turn(
+      make_req({ stream: true, dispatch_chunk: trailed.dispatch_chunk }),
+    )
+    expect(result).toStrictEqual(expected)
+    expect(trailed.chunks).toStrictEqual(plain.chunks)
+  })
+
+  it('completes a turn streamed through the engine the same as the stream without it', async () => {
+    const run = async (tail: string): Promise<{ result: unknown; chunks: StreamChunk[] }> => {
+      stub_fetch(stream_response(TEXT_STREAM_EVENTS, 9, tail))
+      const engine = create_engine({
+        providers: { anthropic: { api_key: 'sk-test', transport: 'native' } },
+        pricing: {
+          'anthropic:claude-sonnet-5': { input_per_million: 10, output_per_million: 20 },
+        },
+      })
+      const chunks: StreamChunk[] = []
+      const { timing: _call, ...result } = await engine.generate({
+        model: 'claude-sonnet-5',
+        prompt: 'hi',
+        on_chunk: (chunk) => {
+          chunks.push(chunk)
+        },
+      })
+      // Wall-clock timing differs run to run; everything else must match.
+      const steps = result.steps.map(({ timing: _t, ...step }) => step)
+      return { result: { ...result, steps }, chunks }
+    }
+    const plain = await run('')
+    const trailed = await run(DONE_TRAILER)
+    expect(trailed).toStrictEqual(plain)
+    expect(plain.chunks.map((c) => c.kind)).toEqual(['text', 'text', 'step_finish', 'finish'])
+  })
+})
+
+/**
  * Boundary coverage for the streaming aggregator (create_stream_aggregator,
  * stream_event_error, read_block_index). The C4 equality tests above prove the
  * happy paths; these pin the exact error/status strings and drive every
@@ -1268,8 +1320,10 @@ describe('streaming aggregator boundaries', () => {
   })
 
   describe('malformed-event guards', () => {
-    it('rejects invalid JSON in a data frame with the exact message', async () => {
-      stub_fetch(stream_from_frames(['{ not json']))
+    // '[done]' sits beside the [DONE] sentinel the parser skips, so only that
+    // exact line is let through.
+    it.each(['{ not json', '[done]'])('rejects invalid JSON %j in a data frame with the exact message', async (data) => {
+      stub_fetch(stream_from_frames([data]))
       const adapter = create_anthropic_native_adapter({ api_key: 'sk-test' })
       const err: unknown = await adapter
         .invoke_turn(make_req({ stream: true, dispatch_chunk: async () => {} }))
