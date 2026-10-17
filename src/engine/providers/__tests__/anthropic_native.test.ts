@@ -6,6 +6,7 @@
  * stubbed per test.
  */
 
+import { readFileSync } from 'node:fs'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 import type { Message, StreamChunk, Tool, TurnRequest } from '../../types.js'
@@ -285,18 +286,49 @@ describe('to_anthropic_messages', () => {
     })
   })
 
-  it('drops assistant reasoning parts, keyed or not, and keeps the blocks around them', () => {
+  it('sends its own reasoning parts back as the blocks they came from, in part order', () => {
     expect(
       to_anthropic_messages([
         { role: 'user', content: 'weather?' },
         {
           role: 'assistant',
           content: [
-            { type: 'reasoning', text: 'plan', provider_options: { anthropic: { signature: 'sig' } } },
+            { type: 'reasoning', text: 'plan', provider_options: { anthropic: { signature: 'sig_1' } } },
             { type: 'text', text: 'Let me check' },
-            { type: 'reasoning', text: 'other', provider_options: { openrouter: { detail: {} } } },
+            { type: 'reasoning', text: '', provider_options: { anthropic: { redactedData: 'opaque' } } },
+            { type: 'reasoning', text: '', provider_options: { anthropic: { signature: 'sig_2' } } },
             { type: 'tool_call', id: 'toolu_01', name: 'get_weather', input: { city: 'Ottawa' } },
-            { type: 'reasoning', text: '' },
+          ],
+        },
+      ]).messages[1],
+    ).toStrictEqual({
+      role: 'assistant',
+      content: [
+        { type: 'thinking', thinking: 'plan', signature: 'sig_1' },
+        { type: 'text', text: 'Let me check' },
+        { type: 'redacted_thinking', data: 'opaque' },
+        { type: 'thinking', thinking: '', signature: 'sig_2' },
+        { type: 'tool_use', id: 'toolu_01', name: 'get_weather', input: { city: 'Ottawa' } },
+      ],
+    })
+  })
+
+  // D3 (own-reasoning-only): another vendor's signature, or thinking with none,
+  // would be refused.
+  it('leaves behind reasoning keyed for another provider, with no data, or with non-string data', () => {
+    expect(
+      to_anthropic_messages([
+        { role: 'user', content: 'weather?' },
+        {
+          role: 'assistant',
+          content: [
+            { type: 'reasoning', text: 'other', provider_options: { openrouter: { detail: {} } } },
+            { type: 'text', text: 'Let me check' },
+            { type: 'reasoning', text: 'bare' },
+            { type: 'reasoning', text: 'odd', provider_options: { anthropic: { signature: 7 } } },
+            { type: 'reasoning', text: '', provider_options: { anthropic: { redactedData: null } } },
+            { type: 'reasoning', text: 'empty', provider_options: { anthropic: {} } },
+            { type: 'tool_call', id: 'toolu_01', name: 'get_weather', input: { city: 'Ottawa' } },
           ],
         },
       ]).messages[1],
@@ -572,7 +604,7 @@ describe('parse_messages_response', () => {
     })
   })
 
-  it('parses a mixed response, joining text and skipping thinking blocks', () => {
+  it('parses a mixed response, joining text and keeping every block as a part in order', () => {
     expect(parse_messages_response(MIXED_FIXTURE)).toStrictEqual({
       text: 'Checking the weather. One moment.',
       tool_calls: [{ id: 'toolu_02', name: 'get_weather', input: { city: 'Kingston' } }],
@@ -583,7 +615,47 @@ describe('parse_messages_response', () => {
         cached_input_tokens: 100,
         cache_write_tokens: 10,
       },
+      content: [
+        {
+          type: 'reasoning',
+          text: 'need the forecast first',
+          provider_options: { anthropic: { signature: 'sig_abc' } },
+        },
+        { type: 'text', text: 'Checking the weather. ' },
+        { type: 'tool_call', id: 'toolu_02', name: 'get_weather', input: { city: 'Kingston' } },
+        { type: 'text', text: 'One moment.' },
+      ],
     })
+  })
+
+  it('reads redacted and empty thinking blocks, and keeps a block missing its data as a bare part', () => {
+    const result = parse_messages_response({
+      ...TOOL_CALL_FIXTURE,
+      content: [
+        { type: 'redacted_thinking', data: 'opaque' },
+        { type: 'thinking', thinking: '', signature: 'sig_empty' },
+        { type: 'thinking', signature: 'sig_no_text' },
+        { type: 'thinking', thinking: 'unsigned' },
+        { type: 'redacted_thinking' },
+        { type: 'server_tool_use', id: 'srv_1' },
+        ...TOOL_CALL_FIXTURE.content,
+      ],
+    })
+    expect(result.content).toStrictEqual([
+      { type: 'reasoning', text: '', provider_options: { anthropic: { redactedData: 'opaque' } } },
+      { type: 'reasoning', text: '', provider_options: { anthropic: { signature: 'sig_empty' } } },
+      { type: 'reasoning', text: '', provider_options: { anthropic: { signature: 'sig_no_text' } } },
+      { type: 'reasoning', text: 'unsigned' },
+      { type: 'reasoning', text: '' },
+      { type: 'tool_call', id: 'toolu_01', name: 'get_weather', input: { city: 'Ottawa' } },
+    ])
+    expect(result.text).toBe('')
+  })
+
+  // D18 (content-only-with-data): a turn with no thinking stays exactly as it was.
+  it('leaves content out of a turn with no thinking block', () => {
+    expect('content' in parse_messages_response(TEXT_FIXTURE)).toBe(false)
+    expect('content' in parse_messages_response(TOOL_CALL_FIXTURE)).toBe(false)
   })
 
   it('treats non-array content as an empty result', () => {
@@ -1596,9 +1668,9 @@ describe('streaming aggregator boundaries', () => {
     })
 
     it('ignores a non-input_json delta arriving on an open tool block', async () => {
-      // A delta whose type is neither text_delta, thinking_delta, nor
-      // input_json_delta is dropped: the tool input stays its start value even
-      // though the stray delta carries a partial_json string.
+      // A delta of a kind the aggregator doesn't know is dropped: the tool
+      // input stays its start value even though the stray delta carries a
+      // partial_json string. (signature_delta has a handler of its own now.)
       const { result } = await run_stream([
         MSG_START,
         {
@@ -1606,7 +1678,7 @@ describe('streaming aggregator boundaries', () => {
           index: 0,
           content_block: { type: 'tool_use', id: 'toolu_x', name: 'get_weather', input: {} },
         },
-        { type: 'content_block_delta', index: 0, delta: { type: 'signature_delta', partial_json: '{"seeded":1}' } },
+        { type: 'content_block_delta', index: 0, delta: { type: 'citations_delta', partial_json: '{"seeded":1}' } },
         { type: 'content_block_stop', index: 0 },
         { type: 'message_delta', delta: { stop_reason: 'tool_use' }, usage: { output_tokens: 3 } },
         MSG_STOP,
@@ -1908,5 +1980,228 @@ describe('create_anthropic_native_adapter config', () => {
     })
     await adapter.invoke_turn(make_req())
     expect((mock.mock.calls[0] as [string, RequestInit])[0]).toBe('https://proxy.local/v1/messages')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Thinking blocks kept and sent back (the spec's 1.3). Every thinking and
+// redacted_thinking block goes back complete and in block order, empty text
+// included, since Anthropic refuses a tool-use turn whose blocks moved.
+// ---------------------------------------------------------------------------
+
+const INTERLEAVED_FIXTURE = {
+  id: 'msg_04',
+  type: 'message',
+  role: 'assistant',
+  model: 'claude-sonnet-5',
+  content: [
+    { type: 'thinking', thinking: 'need the city', signature: 'sig_1' },
+    { type: 'text', text: 'Checking.' },
+    { type: 'redacted_thinking', data: 'opaque' },
+    { type: 'thinking', thinking: '', signature: 'sig_2' },
+    { type: 'tool_use', id: 'toolu_04', name: 'get_weather', input: { city: 'Ottawa' } },
+  ],
+  stop_reason: 'tool_use',
+  stop_sequence: null,
+  usage: { input_tokens: 20, output_tokens: 9 },
+}
+
+const INTERLEAVED_STREAM_EVENTS = [
+  {
+    type: 'message_start',
+    message: { id: 'msg_04', type: 'message', role: 'assistant', content: [], usage: { input_tokens: 20, output_tokens: 1 } },
+  },
+  { type: 'content_block_start', index: 0, content_block: { type: 'thinking', thinking: '', signature: '' } },
+  { type: 'content_block_delta', index: 0, delta: { type: 'thinking_delta', thinking: 'need ' } },
+  { type: 'content_block_delta', index: 0, delta: { type: 'thinking_delta', thinking: 'the city' } },
+  { type: 'content_block_delta', index: 0, delta: { type: 'signature_delta', signature: 'sig_1' } },
+  { type: 'content_block_stop', index: 0 },
+  { type: 'content_block_start', index: 1, content_block: { type: 'text', text: '' } },
+  { type: 'content_block_delta', index: 1, delta: { type: 'text_delta', text: 'Checking.' } },
+  { type: 'content_block_stop', index: 1 },
+  { type: 'content_block_start', index: 2, content_block: { type: 'redacted_thinking', data: 'opaque' } },
+  { type: 'content_block_stop', index: 2 },
+  { type: 'content_block_start', index: 3, content_block: { type: 'thinking', thinking: '', signature: '' } },
+  { type: 'content_block_delta', index: 3, delta: { type: 'thinking_delta', thinking: '' } },
+  { type: 'content_block_delta', index: 3, delta: { type: 'signature_delta', signature: 'sig_2' } },
+  { type: 'content_block_stop', index: 3 },
+  {
+    type: 'content_block_start',
+    index: 4,
+    content_block: { type: 'tool_use', id: 'toolu_04', name: 'get_weather', input: {} },
+  },
+  { type: 'content_block_delta', index: 4, delta: { type: 'input_json_delta', partial_json: '{"city":"Ottawa"}' } },
+  { type: 'content_block_stop', index: 4 },
+  { type: 'message_delta', delta: { stop_reason: 'tool_use' }, usage: { output_tokens: 9 } },
+  { type: 'message_stop' },
+]
+
+const INTERLEAVED_RESULT = {
+  text: 'Checking.',
+  tool_calls: [{ id: 'toolu_04', name: 'get_weather', input: { city: 'Ottawa' } }],
+  finish_reason: 'tool_calls',
+  usage: { input_tokens: 20, output_tokens: 9 },
+  content: [
+    { type: 'reasoning', text: 'need the city', provider_options: { anthropic: { signature: 'sig_1' } } },
+    { type: 'text', text: 'Checking.' },
+    { type: 'reasoning', text: '', provider_options: { anthropic: { redactedData: 'opaque' } } },
+    { type: 'reasoning', text: '', provider_options: { anthropic: { signature: 'sig_2' } } },
+    { type: 'tool_call', id: 'toolu_04', name: 'get_weather', input: { city: 'Ottawa' } },
+  ],
+}
+
+/** Stream one turn's events through the adapter, collecting its chunks. */
+async function stream_turn(
+  events: ReadonlyArray<Record<string, unknown>>,
+): Promise<{ result: Awaited<ReturnType<ReturnType<typeof create_anthropic_native_adapter>['invoke_turn']>>; chunks: StreamChunk[] }> {
+  stub_fetch(stream_response(events))
+  const { chunks, dispatch_chunk } = chunk_collector()
+  const result = await create_anthropic_native_adapter({ api_key: 'sk-test' }).invoke_turn(
+    make_req({ stream: true, dispatch_chunk }),
+  )
+  return { result, chunks }
+}
+
+describe('thinking blocks on anthropic native', () => {
+  it('keeps interleaved, empty, and redacted blocks in order, streamed and not', async () => {
+    expect(parse_messages_response(INTERLEAVED_FIXTURE)).toStrictEqual(INTERLEAVED_RESULT)
+    const { result, chunks } = await stream_turn(INTERLEAVED_STREAM_EVENTS)
+    expect(result).toStrictEqual(INTERLEAVED_RESULT)
+    expect(chunks.filter((chunk) => chunk.kind === 'reasoning')).toStrictEqual([
+      { kind: 'reasoning', text: 'need ', step_index: 0 },
+      { kind: 'reasoning', text: 'the city', step_index: 0 },
+      { kind: 'reasoning', text: '', step_index: 0 },
+    ])
+  })
+
+  it('keeps the start signature until a signature delta replaces it, and none when neither came', async () => {
+    const start = INTERLEAVED_STREAM_EVENTS[0] as Record<string, unknown>
+    const { result } = await stream_turn([
+      start,
+      { type: 'content_block_start', index: 0, content_block: { type: 'thinking', thinking: 'a', signature: 'early' } },
+      { type: 'content_block_stop', index: 0 },
+      { type: 'content_block_start', index: 1, content_block: { type: 'thinking', thinking: 'b', signature: 'early' } },
+      { type: 'content_block_delta', index: 1, delta: { type: 'signature_delta', signature: 'late' } },
+      { type: 'content_block_delta', index: 1, delta: { type: 'signature_delta', signature: 42 } },
+      { type: 'content_block_stop', index: 1 },
+      { type: 'content_block_start', index: 2, content_block: { type: 'thinking' } },
+      { type: 'content_block_stop', index: 2 },
+      { type: 'message_delta', delta: { stop_reason: 'end_turn' }, usage: { output_tokens: 3 } },
+      { type: 'message_stop' },
+    ])
+    expect(result.content).toStrictEqual([
+      { type: 'reasoning', text: 'a', provider_options: { anthropic: { signature: 'early' } } },
+      { type: 'reasoning', text: 'b', provider_options: { anthropic: { signature: 'late' } } },
+      { type: 'reasoning', text: '' },
+    ])
+  })
+
+  it('streams a thinking delta with no open block without growing any block, and ignores a stray signature', async () => {
+    const start = INTERLEAVED_STREAM_EVENTS[0] as Record<string, unknown>
+    const { result, chunks } = await stream_turn([
+      start,
+      { type: 'content_block_start', index: 0, content_block: { type: 'thinking', thinking: 'kept', signature: 's' } },
+      { type: 'content_block_stop', index: 0 },
+      // After its stop, index 0 is closed: the delta streams but the block stays.
+      { type: 'content_block_delta', index: 0, delta: { type: 'thinking_delta', thinking: ' late' } },
+      { type: 'content_block_delta', index: 0, delta: { type: 'signature_delta', signature: 'stray' } },
+      { type: 'content_block_delta', index: 9, delta: { type: 'thinking_delta', thinking: 'orphan' } },
+      { type: 'message_delta', delta: { stop_reason: 'end_turn' }, usage: { output_tokens: 3 } },
+      { type: 'message_stop' },
+    ])
+    expect(result.content).toStrictEqual([
+      { type: 'reasoning', text: 'kept', provider_options: { anthropic: { signature: 's' } } },
+    ])
+    expect(
+      chunks.flatMap((chunk) => (chunk.kind === 'reasoning' ? [chunk.text] : [])),
+    ).toStrictEqual([' late', 'orphan'])
+  })
+
+  it('grows a thinking block whose start carried no text from its deltas', async () => {
+    const start = INTERLEAVED_STREAM_EVENTS[0] as Record<string, unknown>
+    const { result } = await stream_turn([
+      start,
+      { type: 'content_block_start', index: 0, content_block: { type: 'thinking', signature: 's' } },
+      { type: 'content_block_delta', index: 0, delta: { type: 'thinking_delta', thinking: 'grown' } },
+      { type: 'content_block_stop', index: 0 },
+      { type: 'message_delta', delta: { stop_reason: 'end_turn' }, usage: { output_tokens: 1 } },
+      { type: 'message_stop' },
+    ])
+    expect(result.content).toStrictEqual([
+      { type: 'reasoning', text: 'grown', provider_options: { anthropic: { signature: 's' } } },
+    ])
+  })
+
+  it('keeps no block for a start of a type it does not read', async () => {
+    const start = INTERLEAVED_STREAM_EVENTS[0] as Record<string, unknown>
+    const { result } = await stream_turn([
+      start,
+      { type: 'content_block_start', index: 0, content_block: { type: 'server_tool_use', id: 'srv_1' } },
+      { type: 'content_block_stop', index: 0 },
+      { type: 'content_block_start', index: 1, content_block: { type: 'text', text: 'hi' } },
+      { type: 'content_block_stop', index: 1 },
+      { type: 'message_delta', delta: { stop_reason: 'end_turn' }, usage: { output_tokens: 1 } },
+      { type: 'message_stop' },
+    ])
+    expect(result).toStrictEqual({
+      text: 'hi',
+      tool_calls: [],
+      finish_reason: 'stop',
+      usage: { input_tokens: 20, output_tokens: 1 },
+    })
+  })
+
+  it('reads a redacted block whose data is missing as a part with no data', async () => {
+    const start = INTERLEAVED_STREAM_EVENTS[0] as Record<string, unknown>
+    const { result } = await stream_turn([
+      start,
+      { type: 'content_block_start', index: 0, content_block: { type: 'redacted_thinking' } },
+      { type: 'content_block_stop', index: 0 },
+      { type: 'message_delta', delta: { stop_reason: 'end_turn' }, usage: { output_tokens: 1 } },
+      { type: 'message_stop' },
+    ])
+    expect(result.content).toStrictEqual([{ type: 'reasoning', text: '' }])
+  })
+
+  // D23 (subscription-via-claude-code): the one first-party response this
+  // machine can get, captured through `claude -p --include-partial-messages`
+  // on 2026-10-16. Its display was omitted, so the thinking text is empty and
+  // only the signature carries the block.
+  it('parses the captured first-party tool turn into a signed reasoning part, then the call', async () => {
+    const sse = readFileSync(
+      new URL('./fixtures/anthropic_thinking_tool_turn.sse', import.meta.url),
+      'utf8',
+    )
+    const signature = /"signature_delta","signature":"([^"]+)"/.exec(sse)?.[1]
+    expect(signature).toMatch(/^[A-Za-z0-9+/=]{1000,}$/)
+    stub_fetch(chunked_sse_response(sse, 64))
+    const { chunks, dispatch_chunk } = chunk_collector()
+    const result = await create_anthropic_native_adapter({ api_key: 'sk-test' }).invoke_turn(
+      make_req({ stream: true, dispatch_chunk }),
+    )
+    const call = {
+      id: 'toolu_01AsXfyDdH1r8Jc7GNBeyr65',
+      name: 'Bash',
+      input: { command: 'echo 3758', description: 'Print the computed answer' },
+    }
+    expect(result.finish_reason).toBe('tool_calls')
+    expect(result.tool_calls).toStrictEqual([call])
+    expect(result.content).toStrictEqual([
+      { type: 'reasoning', text: '', provider_options: { anthropic: { signature } } },
+      { type: 'tool_call', ...call },
+    ])
+    expect(chunks.map((chunk) => chunk.kind)[0]).toBe('reasoning')
+    // Sent back, the block is exactly what arrived.
+    expect(
+      to_anthropic_messages([{ role: 'assistant', content: [...(result.content ?? [])] }]).messages,
+    ).toStrictEqual([
+      {
+        role: 'assistant',
+        content: [
+          { type: 'thinking', thinking: '', signature },
+          { type: 'tool_use', ...call },
+        ],
+      },
+    ])
   })
 })

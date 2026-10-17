@@ -384,3 +384,82 @@ describe('native anthropic e2e fail-closed approval', () => {
     expect(mock).toHaveBeenCalledTimes(1)
   })
 })
+
+// ---------------------------------------------------------------------------
+// Thinking across the loop (the spec's 1.3): the second request carries the
+// first turn's thinking and redacted_thinking blocks exactly as received, in
+// block order, empty thinking text included.
+// ---------------------------------------------------------------------------
+
+const THINKING_TOOL_TURN_FIXTURE = {
+  ...TOOL_TURN_FIXTURE,
+  content: [
+    { type: 'thinking', thinking: 'Ottawa needs a lookup.', signature: 'sig_1' },
+    { type: 'redacted_thinking', data: 'opaque' },
+    { type: 'text', text: 'Checking.' },
+    { type: 'thinking', thinking: '', signature: 'sig_2' },
+    ...TOOL_TURN_FIXTURE.content,
+  ],
+}
+
+const THINKING_TOOL_TURN_STREAM = [
+  TOOL_TURN_STREAM[0],
+  { type: 'content_block_start', index: 0, content_block: { type: 'thinking', thinking: '', signature: '' } },
+  { type: 'content_block_delta', index: 0, delta: { type: 'thinking_delta', thinking: 'Ottawa needs ' } },
+  { type: 'content_block_delta', index: 0, delta: { type: 'thinking_delta', thinking: 'a lookup.' } },
+  { type: 'content_block_delta', index: 0, delta: { type: 'signature_delta', signature: 'sig_1' } },
+  { type: 'content_block_stop', index: 0 },
+  { type: 'content_block_start', index: 1, content_block: { type: 'redacted_thinking', data: 'opaque' } },
+  { type: 'content_block_stop', index: 1 },
+  { type: 'content_block_start', index: 2, content_block: { type: 'text', text: '' } },
+  { type: 'content_block_delta', index: 2, delta: { type: 'text_delta', text: 'Checking.' } },
+  { type: 'content_block_stop', index: 2 },
+  { type: 'content_block_start', index: 3, content_block: { type: 'thinking', thinking: '', signature: '' } },
+  { type: 'content_block_delta', index: 3, delta: { type: 'signature_delta', signature: 'sig_2' } },
+  { type: 'content_block_stop', index: 3 },
+  // The tool_use block, re-indexed to follow the thinking blocks.
+  ...TOOL_TURN_STREAM.slice(1, 5).map((event) => ({ ...event, index: 4 })),
+  ...TOOL_TURN_STREAM.slice(5),
+]
+
+describe('native anthropic e2e thinking round trip', () => {
+  it.each([false, true])(
+    "sends the first turn's blocks back exactly as received (streamed: %s)",
+    async (streamed) => {
+      const mock = stub_fetch_queue(
+        streamed
+          ? [sse_response(THINKING_TOOL_TURN_STREAM as Array<Record<string, unknown>>), sse_response(FINAL_TURN_STREAM)]
+          : [json_response(THINKING_TOOL_TURN_FIXTURE), json_response(FINAL_TURN_FIXTURE)],
+      )
+      const weather = make_weather_tool()
+      const result = await make_engine().generate({
+        model: MODEL,
+        prompt: 'weather in Ottawa?',
+        tools: [weather],
+        ...(streamed ? { on_chunk: () => {} } : {}),
+      })
+
+      expect(weather.calls).toEqual([{ city: 'Ottawa' }])
+      expect(result.content).toBe('The weather in Ottawa is sunny.')
+      const second = mock.mock.calls[1] as [string, RequestInit]
+      const body = JSON.parse(second[1].body as string) as Record<string, unknown>
+      expect(body['messages']).toStrictEqual([
+        { role: 'user', content: [{ type: 'text', text: 'weather in Ottawa?' }] },
+        {
+          role: 'assistant',
+          content: [
+            { type: 'thinking', thinking: 'Ottawa needs a lookup.', signature: 'sig_1' },
+            { type: 'redacted_thinking', data: 'opaque' },
+            { type: 'text', text: 'Checking.' },
+            { type: 'thinking', thinking: '', signature: 'sig_2' },
+            { type: 'tool_use', id: 'toolu_01', name: 'get_weather', input: { city: 'Ottawa' } },
+          ],
+        },
+        {
+          role: 'user',
+          content: [{ type: 'tool_result', tool_use_id: 'toolu_01', content: 'sunny' }],
+        },
+      ])
+    },
+  )
+})
