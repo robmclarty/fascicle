@@ -39,7 +39,7 @@ type ProviderConfigMap = {
 
 A provider that's absent from `providers` throws `provider_not_configured_error` at call time — constructing an engine without a provider doesn't fail; the failure is deferred to the first `generate` against it.
 
-Five providers take an optional `transport` selector. `'ai_sdk'` (the default) wraps that provider's AI SDK peer, and `'native'` talks to the provider's own API directly over `fetch` with no peer to install. `anthropic` native targets the Messages API. `openai`, `openrouter`, and `lmstudio` native ride a shared OpenAI Chat Completions core, and `ollama` native targets its own `/api/chat` endpoint. The provider name, pricing keys, and effort mapping are identical across transports. See [providers.md](./providers.md#transport-picking-a-depth-1-backend).
+Five providers take an optional `transport` selector. `'ai_sdk'` (the default) wraps that provider's AI SDK peer, and `'native'` talks to the provider's own API directly over `fetch` with no peer to install. `anthropic` native targets the Messages API. `openai`, `openrouter`, and `lmstudio` native ride a shared OpenAI Chat Completions core, and `ollama` native targets its own `/api/chat` endpoint. The provider name, pricing keys, and effort levels are the same on either transport, though each one puts a level on the wire its own way. See [providers.md](./providers.md#transport-picking-a-depth-1-backend).
 
 Every provider's SDK is an optional peer dependency that loads on the first `generate`, and so is the shared `ai` package that the `ai_sdk` adapters wrap. Install `ai` alongside the per-provider package rather than the per-provider package alone: the official `@ai-sdk/*` packages peer-depend on `zod`, not on `ai`, so nothing pulls it in for you. Install only the providers you use.
 
@@ -202,7 +202,7 @@ engine.register_price('openai', 'gpt-4o', {
 });
 ```
 
-Unpriced models hand you usage without cost. The `is_estimate: true` flag is always set, because pricing tables drift and your accounting is the source of truth.
+Unpriced models hand you usage without cost. If a provider reports what a call cost, you don't need a row for it. `openrouter` on `transport: 'native'` records the charge that OpenRouter reports, and that charge wins over a row for the same model (see [providers.md](./providers.md#cost-estimation)). The `is_estimate: true` flag is always set, a reported total included. Pricing tables drift, and a reported total arrives as one number that Fascicle splits across input, output, and cache tokens by their weight, so the total is exact while the split is an estimate. Your accounting is the source of truth.
 
 ## Engine Defaults
 

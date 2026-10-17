@@ -151,11 +151,16 @@ of any loop that doesn't otherwise await something abortable. See
 
 ## `GenerateResult.cost` Is Missing
 
-Cost is populated only when the resolved `provider:model_id` has a row in the
-pricing table. Unpriced models return usage without cost — not an error. Add a row
-with `engine.register_price(provider, model_id, { ... })` or the `pricing` config
-key. `is_estimate` is always `true`; treat the number as a budget signal. See
-[configuration.md](./configuration.md#pricing).
+Cost is populated when the resolved `provider:model_id` has a row in the pricing
+table, or when the provider reports what the call cost, as OpenRouter does on
+`transport: 'native'`. An unpriced model returns usage without cost, which isn't
+an error. Add a row with `engine.register_price(provider, model_id, { ... })` or
+the `pricing` config key. The `ai_sdk` transport's `openrouter` reads no reported
+cost, so it needs a row like any other provider. `is_estimate` is always `true`,
+a reported total included. That total is what OpenRouter charged, but Fascicle
+splits it across input, output, and cache tokens by their weight, and the split
+is an estimate. Treat a number that a pricing row produced as a budget signal.
+See [configuration.md](./configuration.md#pricing).
 
 ## `GenerateResult.provider_reported` Is Missing
 

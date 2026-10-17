@@ -589,11 +589,11 @@ The bench tier adds `BenchCase`, `BenchOptions`, `BenchReport`, `BenchSummary`,
 
 **Engine.** `Engine`, `EngineConfig`, `EngineDefaults`, `GenerateOptions`,
 `GenerateResult`, `Message`, `UserContentPart`, `AssistantContentPart`,
-`StreamChunk`, `FinishReason`, `Tool`, `ToolExecContext`, `ToolCallRecord`,
-`ToolApprovalHandler`, `ToolApprovalRequest`, `StepRecord`, `StepTiming`,
-`GenerateTiming`, `Throughput`, `UsageTotals`, `ClaudeCliProviderReported`,
-`CostBreakdown`, `Pricing`, `PricingTable`, `EffortLevel`,
-`EffortTranslation`, `RawProviderUsage`, `PrepareStepContext`,
+`ProviderOptions`, `StreamChunk`, `FinishReason`, `Tool`, `ToolExecContext`,
+`ToolCallRecord`, `ToolApprovalHandler`, `ToolApprovalRequest`, `StepRecord`,
+`StepTiming`, `GenerateTiming`, `Throughput`, `UsageTotals`,
+`ClaudeCliProviderReported`, `CostBreakdown`, `Pricing`, `PricingTable`,
+`EffortLevel`, `EffortTranslation`, `RawProviderUsage`, `PrepareStepContext`,
 `PrepareStepResult`, `RetryPolicy`, `RetryFailureKind`, `ProviderConfigMap`,
 `ProviderInit`, `ResolvedModel`.
 

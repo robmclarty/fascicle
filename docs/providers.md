@@ -48,7 +48,7 @@ const engine = create_engine({
 });
 ```
 
-The provider name stays stable across transports, so your pricing keys (`<provider>:<model-id>`), usage fields, and effort mapping carry over unchanged; only the wire implementation swaps. The default is `'ai_sdk'` and any other value throws `engine_config_error` at construction. Per-provider differences on the native transport (and the raw `provider_options.<provider>` wire-format passthrough each one accepts) are listed in that provider's section below.
+The provider name stays stable across transports, so your pricing keys (`<provider>:<model-id>`), usage fields, and effort levels carry over unchanged, and only the wire implementation swaps. Each transport puts an effort level on the wire its own way, which [Effort Translation](#effort-translation) lays out. The default is `'ai_sdk'` and any other value throws `engine_config_error` at construction. Per-provider differences on the native transport (and the raw `provider_options.<provider>` wire-format passthrough each one accepts) are listed in that provider's section below.
 
 `openai`, `openrouter`, and `lmstudio` native all ride one shared OpenAI Chat Completions core, parameterized per dialect (auth, attribution headers, token-limit field, usage tolerance); `ollama` native is a separate adapter on its own `/api/chat` wire. `google` and `bedrock` remain `ai_sdk`-only (SigV4 and low leverage, respectively).
 
@@ -98,7 +98,9 @@ Fascicle uses the AI SDK strictly as a single-turn provider layer, so every AI S
 | lmstudio (native)   | ✅   | ✅    | ✅     | ✅        | —           | ✅        |
 | claude_cli          | ✅   | ✅    | ✅     | ✅        | —           | ✅        |
 
-Call `supports(capability)` on any adapter and you get this table back. Two things to read off the native rows. **No native transport claims `image_input`** (image parts throw `provider_capability_error`; use `transport: 'ai_sdk'` for vision in v1), and the OpenAI-compatible core (openai / openrouter / lmstudio native) always forwards `reasoning_effort`, so those three report `reasoning` on native even where their `ai_sdk` row doesn't — non-reasoning and local models simply drop the field server-side. `ollama` native ignores effort entirely (D2). The table omits one more capability: `structured_output`, meaning the provider constrains decoding to the schema natively. Every provider satisfies `schema` (via the engine's prompt + parse + repair loop when the provider can't constrain the decode); no native transport claims `structured_output`, so schema requests there always ride the repair loop.
+Call `supports(capability)` on any adapter and you get this table back. Two things to read off the native rows. **No native transport claims `image_input`** (image parts throw `provider_capability_error`; use `transport: 'ai_sdk'` for vision in v1), and the OpenAI-compatible core (openai / openrouter / lmstudio native) always forwards effort, so those three report `reasoning` on native even where their `ai_sdk` row doesn't. A model that doesn't reason, a local one included, drops the field server-side. `ollama` native ignores effort entirely (D2). The table omits one more capability: `structured_output`, meaning the provider constrains decoding to the schema natively. Every provider satisfies `schema` (via the engine's prompt + parse + repair loop when the provider can't constrain the decode); no native transport claims `structured_output`, so schema requests there always ride the repair loop.
+
+The `reasoning` column says that a provider takes `effort`. Seeing what the model reasoned is a separate matter. `openrouter` and `anthropic` on native stream it to `on_chunk` as `reasoning` chunks whenever the model sends some text, the way the `ai_sdk` transport does, and inside a tool loop they send it back to the model with the next request (see [Reasoning in a Tool Loop](#reasoning-in-a-tool-loop)). `openai` and `lmstudio` native read no reasoning field, so they stream none.
 
 ## Effort Translation
 
@@ -106,20 +108,52 @@ Call `supports(capability)` on any adapter and you get this table back. Two thin
 
 | Provider     | `low`     | `medium`  | `high`    | When unsupported                     |
 | ------------ | --------- | --------- | --------- | ------------------------------------ |
-| anthropic    | `budgetTokens: 1024`  | `budgetTokens: 5000`  | `budgetTokens: 20000` | —                                    |
-| openai       | `reasoningEffort: low` | `reasoningEffort: medium` | `reasoningEffort: high` | non-reasoning models silently drop it |
-| google       | `thinkingBudget: 1024`  | `thinkingBudget: 8192`  | `thinkingBudget: 24576` | —                                  |
+| anthropic    | `reasoning: 'low'` | `reasoning: 'medium'` | `reasoning: 'high'` | the peer maps the level per model |
+| openai       | `reasoning: 'low'` | `reasoning: 'medium'` | `reasoning: 'high'` | non-reasoning models silently drop it |
+| google       | `reasoning: 'low'` | `reasoning: 'medium'` | `reasoning: 'high'` | the peer maps the level per model |
 | openrouter   | `reasoning.effort: low` | `reasoning.effort: medium` | `reasoning.effort: high` | upstream model drops it             |
-| bedrock      | `budgetTokens: 1024`  | `budgetTokens: 5000`  | `budgetTokens: 20000` | non-reasoning models drop it         |
+| bedrock      | `reasoning: 'low'` | `reasoning: 'medium'` | `reasoning: 'high'` | non-reasoning models drop it |
 | ollama       | dropped   | dropped   | dropped   | records `effort_ignored` on trajectory |
 | lmstudio     | dropped   | dropped   | dropped   | records `effort_ignored` on trajectory |
 | claude_cli   | `CLAUDE_CODE_EFFORT_LEVEL=low` | `CLAUDE_CODE_EFFORT_LEVEL=medium` | `CLAUDE_CODE_EFFORT_LEVEL=high` | `'none'` sets no env var |
 
-`xhigh` and `max` raise the ceiling: anthropic and bedrock use `budgetTokens: 32000` and `64000`, google maps both to `thinkingBudget: 32768` (the Gemini 2.5 Pro ceiling), and openai clamps both to `reasoningEffort: high`; openrouter forwards the level verbatim, and so does `claude_cli` (the env var takes `xhigh` / `max` as-is). The anthropic budgets are shared by both transports; on `native` they're sent as the API's `thinking.budget_tokens` directly.
+On the `ai_sdk` transport, `anthropic`, `openai`, `google`, and `bedrock` hand the level to the AI SDK's own `reasoning` call option and build none of it into their provider options. Each peer then maps the level per model from a table that it keeps. `@ai-sdk/anthropic` and Bedrock's peer send adaptive thinking with an effort to Claude 4.6 and later, and a thinking budget to older Claude models. `@ai-sdk/google` sends a `thinkingLevel` to Gemini 3 and a `thinkingBudget` to Gemini 2.5, and `@ai-sdk/openai` passes the level on as `reasoningEffort`. Fascicle keeps no table of its own for these four, so a new model works as soon as its peer knows it. Your own `provider_options` still merge over the translation, and the peers let them win: `@ai-sdk/anthropic`, for one, maps the level only when you've set no `effort` of your own, and it keeps a `thinking` that you set.
 
-The table above is the `ai_sdk` mapping. On `transport: 'native'`, the OpenAI-compatible core maps effort to the wire's flat `reasoning_effort` string (`low`/`medium`/`high`, with `xhigh`/`max` clamped to `high`) for **all three** dialects — so `openai`, `openrouter`, **and** `lmstudio` native forward `reasoning_effort` rather than dropping it (`lmstudio` diverges from its `ai_sdk` row here); non-reasoning and local models ignore the field server-side. `ollama` native ignores effort entirely (D2), and unlike its `ai_sdk` row it records no `effort_ignored` event, so nothing in the trajectory shows that the level was dropped. Thinking on that wire is opt-in through `provider_options.ollama.think`.
+`xhigh` and `max` extend the same axis. `openrouter` forwards them verbatim, and so does `claude_cli` (the env var takes `xhigh` / `max` as-is). On the four providers that the AI SDK maps, the peer decides what a level becomes. A model that lacks a level gets the nearest one or none, and the SDK's warning about it doesn't reach the trajectory. `@ai-sdk/openai` passes both through. The Anthropic and Bedrock peers, and Google's for Gemini 3, have no mapping for `max` (as of `@ai-sdk/anthropic` 4.0.39), so a Claude call at `max` runs at the model's default effort. Pass `provider_options.anthropic.effort: 'max'` to be sure of it.
 
-`effort: 'none'` forwards nothing, so anthropic emits no thinking block and google omits `thinkingConfig` entirely. On the OpenAI-compatible native core, `none` omits `reasoning_effort`.
+The table above is the `ai_sdk` mapping. On `transport: 'native'`:
+
+- **`openrouter`** sends OpenRouter's nested `reasoning: { effort }`, the same field that its `ai_sdk` row sends, with every level passed through, `xhigh` and `max` included.
+- **`openai` and `lmstudio`** send the flat `reasoning_effort` string (`low`/`medium`/`high`, with `xhigh`/`max` clamped to `high`), so `lmstudio` native forwards effort where its `ai_sdk` row drops it. A model that doesn't reason ignores the field server-side.
+- **`anthropic`** turns `low` through `max` into adaptive thinking, `thinking: { type: 'adaptive', display: 'summarized' }`, plus `output_config: { effort }` with the level as it is, since the two scales match one for one. It reads no model id to do it. Every Claude model from 4.6 on takes adaptive thinking, and from 4.7 on they refuse the old `thinking: { type: 'enabled', budget_tokens }` with a 400. A model older than 4.6 refuses `adaptive`, so its caller sets `effort: 'none'` and passes a budget as `provider_options.anthropic.thinking`, or takes the `ai_sdk` transport, whose peer still sends that model a budget.
+- **`ollama`** ignores effort entirely (D2), and unlike its `ai_sdk` row it records no `effort_ignored` event, so nothing in the trajectory shows that the level was dropped. Thinking on that wire is opt-in through `provider_options.ollama.think`.
+
+`effort: 'none'` forwards nothing. The four providers that the AI SDK maps leave the `reasoning` option out, which is the SDK's provider default, and the OpenAI-compatible native core omits its effort field. `anthropic` native sends neither `thinking` nor `output_config`, so the model keeps its own default: the Claude 5 models think adaptively anyway, and older ones don't think at all. It asks for the thinking summary only when effort is set, because asking takes a `thinking` field, which would turn thinking on for 4.6 through 4.8.
+
+## Reasoning in a Tool Loop
+
+A model that reasons inside a tool loop expects its reasoning back with the next request. Anthropic checks that every thinking block in a tool-use turn comes back unmodified and in its place. Gemini 3 refuses a function call whose thought signature is missing. And a model that has lost its earlier reasoning writes more to make up for it. So the tool loop keeps each turn's parts in the order that the provider sent them, reasoning included, and builds the next request's assistant message from them. Each part keeps the data that its provider wants back in `provider_options`, keyed by provider name: a thinking block's signature, an OpenRouter `reasoning_details` entry, or Gemini's thought signature on a tool call.
+
+- **Each provider gets back its own reasoning and nothing else.** An adapter sends a reasoning part back only when the part carries that provider's key. A `fallback` from one provider to another then never hands the second vendor a signature that the first one issued, and a part with no data never reaches a wire that would refuse it. On the `ai_sdk` transport the key is the adapter's `metadata_key` (see [Writing Your Own](#writing-your-own)).
+- **A `prepare_step` hook that rebuilds the messages has to keep the parts' `provider_options`.** A hook that maps an assistant message to its text, or copies its parts without their data, strips what the provider needs. A thinking model then loses its reasoning, and Gemini 3, or an older Claude model on a thinking budget, refuses the request. An assistant turn that carries reasoning or provider data reaches the hook as an array of parts even when it called no tools, so don't assume that its content is a string.
+- **Reasoning stays inside one `generate` call.** `GenerateResult` doesn't carry it, so a conversation that you continue across calls sends its earlier turns as text, and the model never sees what it reasoned in an earlier call. Anthropic allows that outside a tool-use turn.
+
+**A current Claude model's thinking text.** Claude 4.7 and later send their thinking blocks with empty text unless the request asks for a summary, though each block keeps its signature and goes back all the same. `anthropic` native asks for the summary whenever effort is set. On `ai_sdk` the display is the peer's call: `@ai-sdk/anthropic` 4.0.39 asks for the summary when it maps an effort level onto adaptive thinking, and Bedrock's peer doesn't ask. To be sure of the text there, ask for it yourself:
+
+```ts
+await engine.generate({
+  prompt: 'plan the migration',
+  tools,
+  effort: 'high',
+  provider_options: {
+    anthropic: { thinking: { type: 'adaptive', display: 'summarized' } },
+    // on Bedrock, the same request goes in its reasoningConfig:
+    bedrock: { reasoningConfig: { type: 'adaptive', display: 'summarized' } },
+  },
+});
+```
+
+**OpenAI on `ai_sdk` and stored responses.** `@ai-sdk/openai` calls the Responses API, which tags every part with an item id, and the tool loop gives those ids back. While `store` is on, which is the peer's default, the peer sends each earlier part as a reference to the response that OpenAI stored instead of sending its content, and that's what keeps OpenAI's reasoning across a loop. It works only while OpenAI keeps the response. If your organization doesn't store responses, set `provider_options.openai.store: false`, and the peer sends the content and the encrypted reasoning itself.
 
 ## `anthropic`
 
@@ -143,11 +177,13 @@ await engine.generate({
   model: 'claude-sonnet-4-6',     // or 'claude-opus-4-8', 'claude-haiku-4-5', ...
   system: 'Be terse.',
   prompt: 'say hi',
-  effort: 'medium',               // thinking budget 5000 tokens
+  effort: 'medium',               // the peer maps it per model
 });
 ```
 
-Effort maps to extended-thinking `budgetTokens` (the `@ai-sdk/anthropic` option name, which the SDK forwards to the API's `budget_tokens`). `none →` no thinking block, `low → 1024`, `medium → 5000`, `high → 20000`, `xhigh → 32000`, `max → 64000`.
+Effort goes to the AI SDK's `reasoning` option, and `@ai-sdk/anthropic` maps it per model: adaptive thinking at that effort for Claude 4.6 and later, and a thinking budget for older models. `none` sends neither, and the model keeps its own default. [Effort Translation](#effort-translation) covers `xhigh` and `max`, and [Reasoning in a Tool Loop](#reasoning-in-a-tool-loop) covers how to see a current model's thinking text.
+
+Current Claude models refuse a non-default `temperature`, `top_p`, or `top_k`. Claude 4.7 and every later model return a 400 for one, on either transport, and Fascicle reads no model id, so it can't drop them for you. Leave `temperature` and `top_p` unset for those models, and keep `top_k` out of `provider_options.anthropic`.
 
 Pass a concrete model id of your own (`claude-opus-4-8`, `claude-sonnet-4-6`, `claude-haiku-4-5`, …). Fascicle doesn't expand `opus`/`sonnet` shorthands on this transport — the `model` string is sent to the API verbatim.
 
@@ -167,12 +203,14 @@ const engine = create_engine({
 });
 ```
 
-Everything call-facing carries over, with the same provider name, the same pricing keys, the same effort-to-budget mapping, the same usage fields, and streamed results equal non-streamed results for the same input. Differences to know about:
+Everything call-facing carries over, with the same provider name, the same pricing keys, the same effort levels, the same usage fields, and streamed results equal non-streamed results for the same input. Differences to know about:
 
 - **No image input.** `image_input` is unsupported on the native transport in v1.
 - **Schema always rides the repair loop.** The native adapter doesn't claim `structured_output`, so your `schema` requests are satisfied by the engine's prompt + parse + repair path, which is provider-neutral and usually sufficient.
-- **`max_tokens` defaults to 4096.** The Messages API requires `max_tokens` on every request. When extended thinking is enabled, the default rides on top of the thinking budget rather than being swallowed by it; pass `max_tokens` explicitly to override.
-- **`provider_options.anthropic` is raw wire format.** On the native transport, keys under `provider_options.anthropic` are Messages-API fields as Anthropic documents them (snake_case: `thinking`, `max_tokens`, `top_k`, `stop_sequences`, ...), shallow-merged last over the engine-computed request body. An explicit key beats every derived field, including the effort-derived `thinking` block and the `max_tokens` default. Keys don't port verbatim from the `ai_sdk` transport, which uses `@ai-sdk/anthropic`'s camelCase spellings — `budgetTokens` there is `thinking: { type: 'enabled', budget_tokens: n }` here. The merge is shallow and unreconciled: pass a whole `thinking` object, not a fragment, and combinations that the API rejects (say, `temperature` alongside thinking) are rejected by the API, not repaired by Fascicle.
+- **Effort is adaptive thinking.** `low` through `max` become `thinking: { type: 'adaptive', display: 'summarized' }` and `output_config: { effort }`, and sampling parameters apply only with effort `none`. A model older than Claude 4.6 takes a budget through `provider_options.anthropic.thinking` instead (see [Effort Translation](#effort-translation)).
+- **Thinking blocks go back as they came.** Each `thinking` and `redacted_thinking` block becomes a reasoning part, with its signature or its data under the keys that `@ai-sdk/anthropic` uses (`signature` and `redactedData` under `anthropic`), so a transcript moves between Anthropic's two transports. Inside a tool loop each block goes back with the next request, unmodified and in its place.
+- **`max_tokens` defaults to 4096, plus room for thinking.** The Messages API requires `max_tokens` on every request, and thinking spends from it, so with effort set the default adds that level's room on top: 1024 for `low`, 5000 for `medium`, 20000 for `high`, 32000 for `xhigh`, and 64000 for `max`. Pass `max_tokens` explicitly to override.
+- **`provider_options.anthropic` is raw wire format.** On the native transport, keys under `provider_options.anthropic` are Messages-API fields as Anthropic documents them (snake_case: `thinking`, `max_tokens`, `top_k`, `stop_sequences`, ...), shallow-merged last over the engine-computed request body. An explicit key beats every derived field, including the `thinking` and `output_config` that effort sets and the `max_tokens` default. Keys don't port verbatim from the `ai_sdk` transport, which uses `@ai-sdk/anthropic`'s camelCase spellings — `budgetTokens` there is `thinking: { type: 'enabled', budget_tokens: n }` here. The merge is shallow and unreconciled: pass a whole `thinking` object, not a fragment, and combinations that the API rejects (say, `temperature` alongside thinking) are rejected by the API, not repaired by Fascicle.
 - **Auth headers are `x-api-key` plus `anthropic-version`.** OAuth isn't supported here, and that's `claude_cli` territory.
 - **Retry belongs to the engine.** 429 (honoring `retry-after`), 5xx, and network failures are classified by the shared classifier and retried by the engine's retry policy, exactly as on the `ai_sdk` transport.
 
@@ -196,7 +234,7 @@ const engine = create_engine({
 });
 ```
 
-Effort maps to OpenAI's `reasoningEffort: 'low' | 'medium' | 'high'`, and non-reasoning models drop it silently.
+Effort goes to the AI SDK's `reasoning` option, which `@ai-sdk/openai` passes on as `reasoningEffort` with every level as it is, and non-reasoning models drop it silently. Inside a tool loop, earlier turns go back as references to the responses that OpenAI stored, so read [Reasoning in a Tool Loop](#reasoning-in-a-tool-loop) if your organization doesn't store them.
 
 Pass a concrete model id like `gpt-4o` or `gpt-4o-mini`, and your `model` string reaches the API verbatim.
 
@@ -243,7 +281,7 @@ const engine = create_engine({
 });
 ```
 
-Effort maps to Gemini's `thinkingConfig.thinkingBudget`, a token count, so `low → 1024`, `medium → 8192`, `high → 24576`, `xhigh`/`max → 32768`. Google doesn't report cache-write tokens; the adapter strips `cache_write_tokens` when absent.
+Effort goes to the AI SDK's `reasoning` option, which `@ai-sdk/google` maps per model, as a `thinkingLevel` for Gemini 3 and a `thinkingBudget` for Gemini 2.5. Google doesn't report cache-write tokens; the adapter strips `cache_write_tokens` when absent.
 
 Pass a concrete model id like `gemini-2.5-pro` or `gemini-2.5-flash`, and your `model` string reaches the API verbatim.
 
@@ -278,7 +316,7 @@ Pass the full OpenRouter slug as `model` with `provider: 'openrouter'` — for e
 
 ### `transport: 'native'`
 
-Set `transport: 'native'` to talk to OpenRouter's Chat Completions API directly over `fetch`, with no `@openrouter/ai-sdk-provider` peer. It rides the shared OpenAI-compatible core with the openrouter dialect: `Authorization: Bearer`, the optional `HTTP-Referer` / `X-Title` attribution headers (from `http_referer` / `x_title` on the init), `max_tokens` as the token-limit field, and the flat `reasoning_effort` field from `effort` (Appendix A4).
+Set `transport: 'native'` to talk to OpenRouter's Chat Completions API directly over `fetch`, with no `@openrouter/ai-sdk-provider` peer. It rides the shared OpenAI-compatible core with the openrouter dialect: `Authorization: Bearer`, the optional `HTTP-Referer` / `X-Title` attribution headers (from `http_referer` / `x_title` on the init), `max_tokens` as the token-limit field, and OpenRouter's nested `reasoning: { effort }` from `effort`, with every level passed through as the `ai_sdk` transport sends it.
 
 ```ts
 const engine = create_engine({
@@ -296,8 +334,10 @@ const engine = create_engine({
 Same provider name, pricing keys, usage fields, and streamed-equals-non-streamed guarantee as the `ai_sdk` transport. Differences and knobs:
 
 - **No image input**, and **schema always rides the repair loop** (no `structured_output`), as on every native transport.
-- **`provider_options.openrouter` is raw wire format (D9).** Keys are OpenRouter Chat Completions fields exactly as documented (**snake_case**: `reasoning_effort`, `max_tokens`, `top_p`, `provider`, `models`, `transforms`, ...), shallow-merged last over the engine-computed body. Mind the reasoning shape: the `ai_sdk` transport translates effort to the **nested** `reasoning: { effort: 'high' }` object, but the native core sends the **flat** `reasoning_effort: 'high'` string — to override reasoning on native, set `reasoning_effort`, not `reasoning`.
-- **Retry belongs to the engine** (401 / 429 / 5xx / network), identical to `ai_sdk`.
+- **`provider_options.openrouter` is raw wire format (D9).** Keys are OpenRouter Chat Completions fields exactly as documented (**snake_case**: `reasoning`, `max_tokens`, `top_p`, `provider`, `models`, `transforms`, ...), shallow-merged last over the engine-computed body. Effort arrives as the **nested** `reasoning: { effort: 'high' }` object on both transports, and the shallow merge replaces it whole, so to override reasoning on native, pass the whole `reasoning` object.
+- **Reasoning streams, and it goes back.** Each `reasoning_details` entry that OpenRouter sends streams its text to `on_chunk` as `reasoning` chunks and becomes a reasoning part, with the entry itself under `provider_options.openrouter.detail`. Inside a tool loop the next request carries the turn's entries back as `reasoning_details`, all of them, once, and in order, which is what keeps a Claude loop's thinking and Gemini 3's thought signatures from one step to the next. An encrypted entry has no text to stream, and it goes back all the same.
+- **The cost is the one OpenRouter reports.** Each step records what OpenRouter charged for it, with no pricing row needed (see [Cost Estimation](#cost-estimation)).
+- **Retry belongs to the engine** (401 / 429 / 5xx / network), identical to `ai_sdk`. OpenRouter can report a failure inside a stream that has already begun, as a frame that carries an `error` object, and the core throws it with OpenRouter's message. Before the first chunk, a 429 or a 5xx code in that frame retries like the same HTTP status, and after it the turn fails as a stream interruption.
 
 ## `bedrock`
 
@@ -348,9 +388,9 @@ pnpm add @aws-sdk/credential-providers   # only needed for use_credential_chain
 
 `use_credential_chain` is a fallback rather than an override, so it's safe to set unconditionally. On a laptop it picks up your profile, and in Lambda the execution role's env-var credentials take precedence if you forward them. Setting both `use_credential_chain` and `credential_provider` is an `engine_config_error` — they're two answers to the same question, not a fallback pair.
 
-Model ids are AWS Bedrock ids passed verbatim — on-demand ids like `anthropic.claude-3-5-sonnet-20241022-v2:0` or cross-region inference profiles like `us.anthropic.claude-sonnet-4-20250514-v1:0`. The trailing `:0` version suffix rides through untouched. Effort maps to the Bedrock `reasoningConfig.budgetTokens` field for Claude models (the same budgets as the `anthropic` adapter); models without reasoning drop it.
+Model ids are AWS Bedrock ids passed verbatim — on-demand ids like `anthropic.claude-3-5-sonnet-20241022-v2:0` or cross-region inference profiles like `us.anthropic.claude-sonnet-4-20250514-v1:0`. The trailing `:0` version suffix rides through untouched. Effort goes to the AI SDK's `reasoning` option, which the Bedrock peer turns into a `reasoningConfig` per model: adaptive thinking with an effort for Claude 4.6 and later, a thinking budget for older Claude models, and an effort for the other models that reason. Models without reasoning drop it.
 
-Guardrails ride `provider_options.bedrock.guardrailConfig`, engine-wide via `defaults` or per call. The two-level merge keeps it alongside the effort translation's `reasoningConfig`, and it lands at the top level of the Converse request:
+Guardrails ride `provider_options.bedrock.guardrailConfig`, engine-wide via `defaults` or per call. The two-level merge keeps it beside any other `bedrock` key you pass, the peer adds the `reasoningConfig` that effort asks for, and the guardrail lands at the top level of the Converse request:
 
 ```ts
 const engine = create_engine({
@@ -504,7 +544,7 @@ const engine = create_engine({
 ```
 
 - **No image input**, and **schema always rides the repair loop** (no `structured_output`).
-- **Reasoning is forwarded, not dropped.** Unlike the `ai_sdk` transport, the native core maps `effort` to `reasoning_effort` for every dialect, so it's sent on the wire; a model that doesn't reason simply ignores it server-side.
+- **Reasoning is forwarded, not dropped.** Unlike the `ai_sdk` transport, the native core maps `effort` to the flat `reasoning_effort`, as it does for `openai`, so it's sent on the wire, and a model that doesn't reason simply ignores it server-side.
 - **`provider_options.lmstudio` is raw OpenAI-compatible wire format (D9).** Keys are Chat Completions fields (**snake_case**: `max_tokens`, `reasoning_effort`, `top_p`, `stop`, ...), shallow-merged last over the engine-computed body. As with `openai` native, these don't port from the camelCase `ai_sdk` spellings.
 
 ## `claude_cli`
@@ -591,7 +631,11 @@ One gap is worth naming. When the AI SDK rejects a structured-output response be
 
 ## Cost Estimation
 
-`GenerateResult.cost` is populated when the resolved `provider:model_id` has a pricing row in the engine's `PricingTable`. Missing rows simply omit `cost` — the run doesn't fail. `is_estimate: true` is always set; pricing tables drift, treat the number as a budget signal, not an invoice.
+`GenerateResult.cost` is populated when the resolved `provider:model_id` has a pricing row in the engine's `PricingTable`, or when the provider reports what the call cost. Missing rows simply omit `cost`, and the run doesn't fail. `is_estimate: true` is always set; pricing tables drift, treat the number as a budget signal, not an invoice.
+
+`openrouter` on `transport: 'native'` needs no row. OpenRouter reports its charge on every response, streamed or not, and each step records that figure as its cost, with the `cost` event's `source` set to `'provider_reported'` and no `pricing_missing` event. A reported charge wins over a pricing row for the same model, because it's what you were charged, and a row for an OpenRouter model id would be a guess at a price that OpenRouter can change. A tool loop's `GenerateResult.cost` is then the sum of what each request cost. OpenRouter reports one total, so Fascicle splits it across input, output, and cache tokens by their weight, the way it splits the total that `claude_cli` reports. The total is exact and the split is an estimate, which is why `is_estimate` stays `true` here too.
+
+On a request that used your own provider key (BYOK), OpenRouter's `cost` is only its fee, and the provider's charge arrives beside it as `cost_details.upstream_inference_cost`. The step's cost adds the two, since a budget means what the request cost you, and an upstream cost of `null` counts as nothing. `provider_reported.openrouter` keeps `cost`, `is_byok`, and `cost_details` as OpenRouter sent them, if you want the raw figures. The `ai_sdk` transport's `openrouter` reads no reported cost, so it still needs a pricing row like any other provider.
 
 ## Writing Your Own
 
@@ -602,6 +646,10 @@ Pick the kind by how much of the loop you want to inherit (see [Three integratio
 ### `kind: 'ai_sdk'`: Wrap an AI SDK Community Provider
 
 Implement `build_model` (return the SDK's model object, loading the SDK lazily inside it), `translate_effort`, `normalize_usage` (the exported `default_normalize_usage` covers the standard v7 usage shape), and `supports`. A complete worked example lives in [configuration.md](./configuration.md#custom-providers).
+
+`translate_effort` returns an `EffortTranslation`. When your provider package reads the AI SDK's `reasoning` option, put the level in the translation's `reasoning` field and leave `provider_options` empty, as the built-in `anthropic`, `bedrock`, `google`, and `openai` adapters do, and the package maps it per model. When the package doesn't read the option, build the level into `provider_options` yourself, as `openrouter` does.
+
+The transport keeps each part's `providerMetadata` as its `provider_options` and gives it back on the next request, with no code of yours. It sends a reasoning part back only when the part carries data under the adapter's `metadata_key`, which defaults to its `name`. A custom provider can't take a built-in name, so if yours wraps `@ai-sdk/anthropic` (on Vertex, say) under a name of its own, set `metadata_key: 'anthropic'`, the key that the package writes under, or every turn's reasoning stays behind.
 
 ### `kind: 'native'`: Raw HTTP against a Provider's Own API
 
@@ -641,7 +689,10 @@ Rules of the road for native adapters:
 - **Never retry internally.** Throw failures in classifiable shapes (`status` and `responseHeaders` for HTTP errors) and let the engine's retry policy own attempts; hidden retries are exactly the illegibility that the engine refuses. An optional `classify_error(err)` overrides the shared classifier when your provider's error shapes need it.
 - **Streaming means both.** When `req.stream` is true, push chunks through `req.dispatch_chunk` and still return the aggregated `TurnResult`; streamed and non-streamed results for the same input must be equal.
 - **Skip `structured_output` unless you truly constrain decoding.** Claiming `schema` is enough; the engine's repair loop does the rest.
-- `NativeProviderAdapter`, `TurnRequest`, and `TurnResult` are exported from `fascicle`, so you can type the adapter and its mapping helpers explicitly instead of relying on `ProviderFactory`'s contextual check.
+- **Return what the provider wants back.** When a turn holds reasoning, or a part that carries your provider's data, set `TurnResult.content` to the turn's parts in the order that the provider sent them, with that data under your provider's name in each part's `provider_options`. Leave it out otherwise. The tool loop builds the next assistant message from it, and `text` and `tool_calls` stay what everything else reads.
+- **Give the `reasoning` part kind a branch of its own.** An assistant message's parts are `text`, `tool_call`, and `reasoning`. A mapper that's written as `if (part.type === 'text') … else` sends a reasoning part down its tool-call branch, which TypeScript usually catches, since a reasoning part has no `id`. Send a reasoning part back only when `part.provider_options?.[your_name]` is set, and drop it otherwise, so another vendor's signature, or text with no signature, never reaches your wire.
+- **Report a cost you're given.** If your provider reports what a turn cost, set `TurnResult.reported_cost_usd` in US dollars. The loop records it in place of a pricing-table estimate, split across the token types by their weight.
+- `NativeProviderAdapter`, `TurnRequest`, and `TurnResult` are exported from `fascicle`, so you can type the adapter and its mapping helpers explicitly instead of relying on `ProviderFactory`'s contextual check, and so are `AssistantContentPart` and `ProviderOptions` for the parts.
 
 ### `kind: 'external'`: Delegate to Something That Is Already an Agent
 
