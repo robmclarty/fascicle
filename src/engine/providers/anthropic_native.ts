@@ -43,13 +43,12 @@ import { create_sse_decoder } from './sse_native.js'
 import type { NativeProviderAdapter, ProviderCapability } from './types.js'
 
 /**
- * Effort level to thinking budget tokens. The ai_sdk transport sends it as
- * the budget, and native adds it to the max_tokens default as room for
- * adaptive thinking. Lives here (not in anthropic.ts) because the ai_sdk
- * factory already imports this module for transport dispatch; the reverse
- * import would be a cycle.
+ * Effort level to the room native adds to its max_tokens default for
+ * adaptive thinking. No transport sends these as a budget any more: native
+ * sends `output_config.effort`, and the ai_sdk transport hands the level to
+ * the SDK's `reasoning` option.
  */
-export const ANTHROPIC_THINKING_BUDGETS: Record<EffortLevel, number> = {
+const ANTHROPIC_THINKING_BUDGETS: Record<EffortLevel, number> = {
   none: 0,
   low: 1024,
   medium: 5000,

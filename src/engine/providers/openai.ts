@@ -5,19 +5,20 @@
  * @ai-sdk/openai as an optional peer; 'native' builds the openai dialect of
  * the shared OpenAI-compatible core, with Bearer auth, an
  * OpenAI-Organization header, `max_completion_tokens`, and
- * `reasoning_effort`. Effort maps to the o-series `reasoning_effort` string.
- * Non-reasoning models silently ignore the effort field (providers without
- * reasoning support drop it; signaling is model-specific and handled by the
- * orchestrator via the `effort_ignored` flag).
+ * `reasoning_effort` (clamped to `high`). On the AI SDK, effort goes through
+ * the SDK's own `reasoning` option, which @ai-sdk/openai passes on as
+ * `reasoningEffort`. Non-reasoning models silently ignore the effort field
+ * (providers without reasoning support drop it; signaling is model-specific
+ * and handled by the orchestrator via the `effort_ignored` flag).
  */
 
-import type { EffortLevel, ProviderInit, UsageTotals } from '../types.js'
+import type { ProviderInit, UsageTotals } from '../types.js'
 import {
   default_normalize_usage,
   load_optional_peer,
   resolve_transport,
+  translate_effort_to_sdk_reasoning,
   type AiSdkProviderAdapter,
-  type EffortTranslation,
   type NativeProviderAdapter,
   type ProviderAdapter,
   type ProviderCapability,
@@ -36,31 +37,6 @@ type OpenaiSdk = {
     baseURL?: string
     organization?: string
   }) => (model_id: string) => unknown
-}
-
-// OpenAI's reasoning effort enum is `low | medium | high` only.
-// `xhigh` and `max` clamp to `high` until OpenAI exposes more levels.
-const OPENAI_REASONING_EFFORT: Record<Exclude<EffortLevel, 'none'>, string> = {
-  low: 'low',
-  medium: 'medium',
-  high: 'high',
-  xhigh: 'high',
-  max: 'high',
-}
-
-/**
- * Map an EffortLevel to OpenAI's `reasoningEffort` provider option.
- */
-export function translate_openai_effort(effort: EffortLevel): EffortTranslation {
-  if (effort === 'none') {
-    return { provider_options: {}, effort_ignored: false }
-  }
-  return {
-    provider_options: {
-      openai: { reasoningEffort: OPENAI_REASONING_EFFORT[effort] },
-    },
-    effort_ignored: false,
-  }
 }
 
 /**
@@ -150,7 +126,7 @@ const create_openai_ai_sdk_adapter = (init: ProviderInit): AiSdkProviderAdapter 
       const provider = sdk.createOpenAI(config)
       return provider(model_id)
     },
-    translate_effort: translate_openai_effort,
+    translate_effort: translate_effort_to_sdk_reasoning,
     normalize_usage: normalize_openai_usage,
     supports: (capability) => SUPPORTED.has(capability),
   }

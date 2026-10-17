@@ -19,9 +19,10 @@
  *    credential chain: the SDK never reads `~/.aws/credentials`, so a profile
  *    without exported env vars needs mode 3.
  *
- * Effort maps to the Anthropic extended-thinking budget, emitted under the
- * bedrock `reasoningConfig` provider option; models that do not support
- * reasoning drop the field upstream.
+ * Effort goes through the AI SDK's own `reasoning` option, which
+ * @ai-sdk/amazon-bedrock maps per model into its `reasoningConfig`: adaptive
+ * thinking or a budget for Claude, the level itself for the models that take
+ * one.
  *
  * Guardrails ride `provider_options.bedrock.guardrailConfig`, which the peer
  * rest-spreads into the top level of the Converse command (an undocumented seam,
@@ -32,12 +33,12 @@
  * whether such a guardrail is attached or absent.
  */
 
-import type { BedrockCredentialProvider, EffortLevel, ProviderInit, UsageTotals } from '../types.js'
+import type { BedrockCredentialProvider, ProviderInit, UsageTotals } from '../types.js'
 import {
   default_normalize_usage,
   load_optional_peer,
+  translate_effort_to_sdk_reasoning,
   type AiSdkProviderAdapter,
-  type EffortTranslation,
   type ProviderCapability,
   type RawProviderUsage,
 } from './types.js'
@@ -61,38 +62,6 @@ type BedrockSdk = {
 // rebuilt inside build_model.
 type CredentialProvidersSdk = {
   fromNodeProviderChain: () => BedrockCredentialProvider
-}
-
-// Bedrock hosts Anthropic Claude models; reasoning maps to the same
-// extended-thinking budget the anthropic adapter uses, emitted under the bedrock
-// provider option. Budgets stay within Bedrock's 1024..64000 window.
-const BEDROCK_THINKING_BUDGETS: Record<EffortLevel, number> = {
-  none: 0,
-  low: 1024,
-  medium: 5000,
-  high: 20000,
-  xhigh: 32000,
-  max: 64000,
-}
-
-/**
- * Map an EffortLevel to the Bedrock `reasoningConfig` provider option.
- */
-export function translate_bedrock_effort(effort: EffortLevel): EffortTranslation {
-  // `none` is the only level with a 0 budget, so the budget alone decides
-  // whether reasoning is requested.
-  const budget = BEDROCK_THINKING_BUDGETS[effort]
-  if (budget === 0) {
-    return { provider_options: {}, effort_ignored: false }
-  }
-  return {
-    provider_options: {
-      bedrock: {
-        reasoningConfig: { type: 'enabled', budgetTokens: budget },
-      },
-    },
-    effort_ignored: false,
-  }
 }
 
 /**
@@ -236,7 +205,7 @@ export const create_bedrock_adapter = (init: ProviderInit): AiSdkProviderAdapter
       )
       return provider(model_id)
     },
-    translate_effort: translate_bedrock_effort,
+    translate_effort: translate_effort_to_sdk_reasoning,
     normalize_usage: normalize_bedrock_usage,
     supports: (capability) => SUPPORTED.has(capability),
   }

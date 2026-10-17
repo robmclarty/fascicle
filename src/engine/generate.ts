@@ -757,6 +757,7 @@ async function build_ai_sdk_transport<T>(
       temperature: opts.temperature,
       max_tokens: opts.max_tokens,
       top_p: opts.top_p,
+      reasoning: effort_translation.reasoning,
       telemetry: cfg.telemetry,
     }),
     retry_policy: cfg.retry_policy,

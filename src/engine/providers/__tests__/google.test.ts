@@ -2,43 +2,31 @@ import { describe, expect, it } from 'vitest'
 import {
   create_google_adapter,
   normalize_google_usage,
-  translate_google_effort,
 } from '../google.js'
 import { engine_config_error } from '../../errors.js'
 
-describe('translate_google_effort', () => {
-  it('maps none to empty provider options', () => {
-    expect(translate_google_effort('none')).toEqual({
+// D7 (sdk-reasoning-option): the level goes to the AI SDK's own `reasoning`
+// option, which @ai-sdk/google maps per model, and no provider options are built.
+describe('google ai_sdk effort translation', () => {
+  const adapter = create_google_adapter({ api_key: 'secret' })
+  if (adapter.kind !== 'ai_sdk') throw new Error('expected the ai_sdk adapter')
+
+  it.each(['low', 'medium', 'high', 'xhigh', 'max'] as const)(
+    'hands %s to the SDK reasoning option with no provider options',
+    (level) => {
+      expect(adapter.translate_effort(level)).toStrictEqual({
+        provider_options: {},
+        effort_ignored: false,
+        reasoning: level,
+      })
+    },
+  )
+
+  it('sends neither a reasoning level nor provider options for none', () => {
+    expect(adapter.translate_effort('none')).toStrictEqual({
       provider_options: {},
       effort_ignored: false,
     })
-  })
-
-  // @ai-sdk/google's thinkingBudget is a token count (number); a string fails
-  // the provider's zod validation.
-  it('maps low/medium/high to numeric thinkingConfig.thinkingBudget per spec §6.3', () => {
-    const expected = { low: 1024, medium: 8192, high: 24576 } as const
-    for (const effort of ['low', 'medium', 'high'] as const) {
-      const translated = translate_google_effort(effort)
-      expect(
-        (translated.provider_options['google'] as {
-          thinkingConfig: { thinkingBudget: number }
-        }).thinkingConfig.thinkingBudget,
-      ).toBe(expected[effort])
-      expect(translated.effort_ignored).toBe(false)
-    }
-  })
-
-  it('maps xhigh and max to the Gemini 2.5 Pro thinking ceiling', () => {
-    for (const effort of ['xhigh', 'max'] as const) {
-      const translated = translate_google_effort(effort)
-      expect(
-        (translated.provider_options['google'] as {
-          thinkingConfig: { thinkingBudget: number }
-        }).thinkingConfig.thinkingBudget,
-      ).toBe(32768)
-      expect(translated.effort_ignored).toBe(false)
-    }
   })
 })
 

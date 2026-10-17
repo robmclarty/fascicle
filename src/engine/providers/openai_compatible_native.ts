@@ -77,8 +77,7 @@ export type OpenAICompatibleDialect = {
 
 /**
  * The flat field's wire enum is `low | medium | high` only, so `xhigh` and
- * `max` clamp to `high`, the same clamp as the ai_sdk transport's
- * `reasoningEffort`. The nested shape takes every level, so it skips this
+ * `max` clamp to `high`. The nested shape takes every level, so it skips this
  * table. Non-reasoning models ignore either field server-side; the adapter
  * does not model-sniff.
  */

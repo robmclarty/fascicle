@@ -34,18 +34,15 @@ import { createOpenAI } from '@ai-sdk/openai'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 import { create_anthropic_adapter } from '../anthropic.js'
-import {
-  create_openai_adapter,
-  normalize_openai_usage,
-  translate_openai_effort,
-} from '../openai.js'
+import { create_openai_adapter, normalize_openai_usage } from '../openai.js'
 import { create_ai_sdk_turn } from '../ai_sdk/invoke.js'
 import { create_chunk_dispatcher } from '../../streaming.js'
-import type {
-  AiSdkProviderAdapter,
-  NativeProviderAdapter,
-  ProviderAdapter,
-  ProviderCapability,
+import {
+  translate_effort_to_sdk_reasoning,
+  type AiSdkProviderAdapter,
+  type NativeProviderAdapter,
+  type ProviderAdapter,
+  type ProviderCapability,
 } from '../types.js'
 import type { Message, StreamChunk, Tool, TurnRequest, TurnResult } from '../../types.js'
 
@@ -163,6 +160,7 @@ async function run_ai_sdk_turn(
     temperature: undefined,
     max_tokens: undefined,
     top_p: undefined,
+    reasoning: undefined,
     telemetry: undefined,
   })
   return turn({
@@ -345,16 +343,17 @@ function openai_native_adapter(): NativeProviderAdapter {
 /**
  * The ai_sdk leg for openai: a real @ai-sdk/openai CHAT model (wire-compatible
  * with the native chat/completions transport) behind the engine's real
- * normalize_openai_usage / translate_openai_effort. Only the endpoint choice
- * differs from the production ai_sdk openai adapter (which defaults to the
- * Responses API); the usage/finish-reason normalization under test is identical.
+ * normalize_openai_usage / translate_effort_to_sdk_reasoning. Only the
+ * endpoint choice differs from the production ai_sdk openai adapter (which
+ * defaults to the Responses API); the usage/finish-reason normalization under
+ * test is identical.
  */
 function openai_ai_sdk_adapter(): AiSdkProviderAdapter {
   return {
     kind: 'ai_sdk',
     name: 'openai',
     build_model: async (model_id: string) => createOpenAI({ apiKey: 'sk-test' }).chat(model_id),
-    translate_effort: translate_openai_effort,
+    translate_effort: translate_effort_to_sdk_reasoning,
     normalize_usage: normalize_openai_usage,
     supports: (capability) => SUPPORTED.has(capability),
   }

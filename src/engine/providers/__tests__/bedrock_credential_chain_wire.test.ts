@@ -125,6 +125,7 @@ async function run_turn(init: ProviderInit): Promise<TurnResult> {
     temperature: undefined,
     max_tokens: undefined,
     top_p: undefined,
+    reasoning: undefined,
     telemetry: undefined,
   })
   return turn({

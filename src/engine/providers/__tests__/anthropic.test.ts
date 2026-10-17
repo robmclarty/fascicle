@@ -2,53 +2,31 @@ import { describe, expect, it } from 'vitest'
 import {
   create_anthropic_adapter,
   normalize_anthropic_usage,
-  translate_anthropic_effort,
 } from '../anthropic.js'
 import { engine_config_error } from '../../errors.js'
 
-describe('translate_anthropic_effort', () => {
-  it('maps none to empty provider options without ignoring', () => {
-    expect(translate_anthropic_effort('none')).toEqual({
+// D7 (sdk-reasoning-option): the level goes to the AI SDK's own `reasoning`
+// option, which @ai-sdk/anthropic maps per model, and no provider options are built.
+describe('anthropic ai_sdk effort translation', () => {
+  const adapter = create_anthropic_adapter({ api_key: 'sk-test' })
+  if (adapter.kind !== 'ai_sdk') throw new Error('expected the ai_sdk adapter')
+
+  it.each(['low', 'medium', 'high', 'xhigh', 'max'] as const)(
+    'hands %s to the SDK reasoning option with no provider options',
+    (level) => {
+      expect(adapter.translate_effort(level)).toStrictEqual({
+        provider_options: {},
+        effort_ignored: false,
+        reasoning: level,
+      })
+    },
+  )
+
+  it('sends neither a reasoning level nor provider options for none', () => {
+    expect(adapter.translate_effort('none')).toStrictEqual({
       provider_options: {},
       effort_ignored: false,
     })
-  })
-
-  // @ai-sdk/anthropic reads `budgetTokens` (camelCase); snake_case is stripped
-  // by the provider's zod schema and never reaches the wire.
-  it('maps low/medium/high to Anthropic thinking budgetTokens per spec §6.3', () => {
-    const low = translate_anthropic_effort('low')
-    // Whole-shape assertion: the `type: 'enabled'` literal and the
-    // effort_ignored flag are as load-bearing as the budget itself.
-    expect(low).toEqual({
-      provider_options: {
-        anthropic: { thinking: { type: 'enabled', budgetTokens: 1024 } },
-      },
-      effort_ignored: false,
-    })
-    const medium = translate_anthropic_effort('medium')
-    expect(
-      (medium.provider_options['anthropic'] as { thinking: { budgetTokens: number } }).thinking
-        .budgetTokens,
-    ).toBe(5000)
-    const high = translate_anthropic_effort('high')
-    expect(
-      (high.provider_options['anthropic'] as { thinking: { budgetTokens: number } }).thinking
-        .budgetTokens,
-    ).toBe(20000)
-  })
-
-  it('maps xhigh and max to higher budgetTokens per CLI ceilings', () => {
-    const xhigh = translate_anthropic_effort('xhigh')
-    expect(
-      (xhigh.provider_options['anthropic'] as { thinking: { budgetTokens: number } }).thinking
-        .budgetTokens,
-    ).toBe(32000)
-    const max = translate_anthropic_effort('max')
-    expect(
-      (max.provider_options['anthropic'] as { thinking: { budgetTokens: number } }).thinking
-        .budgetTokens,
-    ).toBe(64000)
   })
 })
 

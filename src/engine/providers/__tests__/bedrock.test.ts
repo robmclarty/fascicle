@@ -2,46 +2,31 @@ import { describe, expect, it } from 'vitest'
 import {
   create_bedrock_adapter,
   normalize_bedrock_usage,
-  translate_bedrock_effort,
 } from '../bedrock.js'
 import { engine_config_error } from '../../errors.js'
 
-describe('translate_bedrock_effort', () => {
-  it('maps none to empty provider options', () => {
-    expect(translate_bedrock_effort('none')).toEqual({
+// D7 (sdk-reasoning-option): the level goes to the AI SDK's own `reasoning`
+// option, which @ai-sdk/amazon-bedrock maps per model, and no provider options are built.
+describe('bedrock ai_sdk effort translation', () => {
+  const adapter = create_bedrock_adapter({ region: 'us-east-1' })
+  if (adapter.kind !== 'ai_sdk') throw new Error('expected the ai_sdk adapter')
+
+  it.each(['low', 'medium', 'high', 'xhigh', 'max'] as const)(
+    'hands %s to the SDK reasoning option with no provider options',
+    (level) => {
+      expect(adapter.translate_effort(level)).toStrictEqual({
+        provider_options: {},
+        effort_ignored: false,
+        reasoning: level,
+      })
+    },
+  )
+
+  it('sends neither a reasoning level nor provider options for none', () => {
+    expect(adapter.translate_effort('none')).toStrictEqual({
       provider_options: {},
       effort_ignored: false,
     })
-  })
-
-  it('maps low/medium/high to reasoningConfig.budgetTokens', () => {
-    const budgets = { low: 1024, medium: 5000, high: 20000 } as const
-    for (const effort of ['low', 'medium', 'high'] as const) {
-      const translated = translate_bedrock_effort(effort)
-      expect(
-        (
-          translated.provider_options['bedrock'] as {
-            reasoningConfig: { type: string; budgetTokens: number }
-          }
-        ).reasoningConfig,
-      ).toEqual({ type: 'enabled', budgetTokens: budgets[effort] })
-      expect(translated.effort_ignored).toBe(false)
-    }
-  })
-
-  it('raises the ceiling for xhigh and max', () => {
-    for (const [effort, budget] of [
-      ['xhigh', 32000],
-      ['max', 64000],
-    ] as const) {
-      expect(
-        (
-          translate_bedrock_effort(effort).provider_options['bedrock'] as {
-            reasoningConfig: { budgetTokens: number }
-          }
-        ).reasoningConfig.budgetTokens,
-      ).toBe(budget)
-    }
   })
 })
 

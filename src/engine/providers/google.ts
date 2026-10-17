@@ -1,16 +1,17 @@
 /**
  * Google Gemini provider adapter.
  *
- * Wraps @ai-sdk/google as an optional peer. Effort maps to the
- * `thinkingConfig.thinkingBudget` provider option.
+ * Wraps @ai-sdk/google as an optional peer. Effort goes through the AI SDK's
+ * own `reasoning` option, which @ai-sdk/google maps per model: `thinkingLevel`
+ * on Gemini 3 and a `thinkingBudget` on Gemini 2.5.
  */
 
-import type { EffortLevel, ProviderInit, UsageTotals } from '../types.js'
+import type { ProviderInit, UsageTotals } from '../types.js'
 import {
   default_normalize_usage,
   load_optional_peer,
+  translate_effort_to_sdk_reasoning,
   type AiSdkProviderAdapter,
-  type EffortTranslation,
   type ProviderCapability,
   type RawProviderUsage,
 } from './types.js'
@@ -21,34 +22,6 @@ type GoogleSdk = {
     apiKey?: string
     baseURL?: string
   }) => (model_id: string) => unknown
-}
-
-// @ai-sdk/google's `thinkingConfig.thinkingBudget` is a token count (number),
-// not an enum: passing a string fails the provider's zod validation. Gemini 2.5
-// Pro accepts up to 32768 thinking tokens; lighter models clamp the high end.
-// `none` omits thinkingConfig entirely (see translate_google_effort).
-const GOOGLE_THINKING_BUDGET: Record<Exclude<EffortLevel, 'none'>, number> = {
-  low: 1024,
-  medium: 8192,
-  high: 24576,
-  xhigh: 32768,
-  max: 32768,
-}
-
-/**
- * Map an EffortLevel to Google's `thinkingConfig.thinkingBudget` provider
- * option.
- */
-export function translate_google_effort(effort: EffortLevel): EffortTranslation {
-  if (effort === 'none') {
-    return { provider_options: {}, effort_ignored: false }
-  }
-  return {
-    provider_options: {
-      google: { thinkingConfig: { thinkingBudget: GOOGLE_THINKING_BUDGET[effort] } },
-    },
-    effort_ignored: false,
-  }
 }
 
 /**
@@ -93,7 +66,7 @@ export const create_google_adapter = (init: ProviderInit): AiSdkProviderAdapter 
       const provider = sdk.createGoogleGenerativeAI(config)
       return provider(model_id)
     },
-    translate_effort: translate_google_effort,
+    translate_effort: translate_effort_to_sdk_reasoning,
     normalize_usage: normalize_google_usage,
     supports: (capability) => SUPPORTED.has(capability),
   }

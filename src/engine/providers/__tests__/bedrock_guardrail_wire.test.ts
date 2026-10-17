@@ -23,11 +23,12 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
-import { create_bedrock_adapter, translate_bedrock_effort } from '../bedrock.js'
+import { create_bedrock_adapter } from '../bedrock.js'
 import { create_ai_sdk_turn } from '../ai_sdk/invoke.js'
 import { create_chunk_dispatcher } from '../../streaming.js'
 import { merge_provider_options } from '../../merge_defaults.js'
 import type { Message, TurnResult } from '../../types.js'
+import type { EffortTranslation } from '../types.js'
 
 const MODEL_ID = 'us.anthropic.claude-sonnet-4-20250514-v1:0'
 
@@ -100,10 +101,12 @@ function stub_capturing_fetch(stop_reason: string, trace?: unknown): CapturedReq
 
 /**
  * Drive one non-streamed bedrock turn through the real @ai-sdk/amazon-bedrock
- * peer with the given already-merged provider options.
+ * peer with the given already-merged provider options and, optionally, the
+ * effort translation's level for the SDK's `reasoning` option.
  */
 async function run_turn(
   provider_options: Readonly<Record<string, Readonly<Record<string, unknown>>>> | undefined,
+  reasoning?: EffortTranslation['reasoning'],
 ): Promise<TurnResult> {
   const adapter = create_bedrock_adapter({ region: 'us-east-1', api_key: 'test-bearer-token' })
   const turn = create_ai_sdk_turn({
@@ -116,6 +119,7 @@ async function run_turn(
     temperature: undefined,
     max_tokens: undefined,
     top_p: undefined,
+    reasoning,
     telemetry: undefined,
   })
   return turn({
@@ -150,19 +154,22 @@ describe('bedrock guardrail wire contract', () => {
     expect(request.body['guardrailConfig']).toEqual(GUARDRAIL_CONFIG)
   })
 
-  it('keeps guardrailConfig intact when merged with the effort translation', async () => {
+  it('keeps guardrailConfig intact beside the effort translation', async () => {
     const captured = stub_capturing_fetch('end_turn')
-    const merged = merge_provider_options(translate_bedrock_effort('low').provider_options, {
+    const translation = create_bedrock_adapter({ region: 'us-east-1' }).translate_effort('low')
+    const merged = merge_provider_options(translation.provider_options, {
       bedrock: { guardrailConfig: GUARDRAIL_CONFIG },
     })
-    await run_turn(provider_options_record.parse(merged))
+    await run_turn(provider_options_record.parse(merged), translation.reasoning)
 
-    // The SDK consumes reasoningConfig and re-emits it as the Anthropic
-    // thinking block; both halves of the merge must reach the wire.
+    // The peer maps the SDK's reasoning level per model from its own table:
+    // for this pre-4.6 Claude, `low` becomes a 6400-token thinking budget
+    // (Fascicle's old table sent 1024). Both the level and the guardrail must
+    // reach the wire.
     const request = single_request(captured)
     expect(request.body['guardrailConfig']).toEqual(GUARDRAIL_CONFIG)
     const additional = json_record.parse(request.body['additionalModelRequestFields'])
-    expect(additional['thinking']).toEqual({ type: 'enabled', budget_tokens: 1024 })
+    expect(additional['thinking']).toEqual({ type: 'enabled', budget_tokens: 6400 })
     expect(request.body['reasoningConfig']).toBeUndefined()
   })
 

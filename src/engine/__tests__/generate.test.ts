@@ -27,6 +27,7 @@ vi.mock('../providers/registry.js', async () => build_mock_registry_module())
 
 import type { TrajectoryEvent, TrajectoryLogger } from '#core'
 import { create_engine } from '../create_engine.js'
+import { default_normalize_usage, translate_effort_to_sdk_reasoning } from '../providers/types.js'
 import {
   aborted_error,
   engine_config_error,
@@ -1535,5 +1536,69 @@ describe('generate: prepare_step (ai_sdk transport)', () => {
     }
     expect(params.messages).toHaveLength(1)
     expect(params.messages[0]).toMatchObject({ role: 'user', content: 'second' })
+  })
+})
+
+// D7 (sdk-reasoning-option): an adapter that translates effort through
+// translate_effort_to_sdk_reasoning gets the level onto the SDK call's own
+// `reasoning` option, and builds no provider options of its own.
+describe('generate: the AI SDK reasoning option', () => {
+  function reasoning_engine() {
+    return create_engine({
+      providers: { sdk_reasoning: {} },
+      custom_providers: {
+        sdk_reasoning: () => ({
+          kind: 'ai_sdk',
+          name: 'sdk_reasoning',
+          build_model: async (model_id: string) => ({ _mock: true, model_id }),
+          translate_effort: translate_effort_to_sdk_reasoning,
+          normalize_usage: default_normalize_usage,
+          supports: () => true,
+        }),
+      },
+    })
+  }
+
+  it.each(['low', 'medium', 'high', 'xhigh', 'max'] as const)(
+    'hands effort %s to generateText as reasoning, with no providerOptions',
+    async (effort) => {
+      enqueue_generate_text(make_text_result('ok'))
+      await reasoning_engine().generate({ model: 'm', prompt: 'hi', effort })
+      const params = mock_state.last_generate_text_params as Record<string, unknown>
+      expect(params['reasoning']).toBe(effort)
+      expect('providerOptions' in params).toBe(false)
+    },
+  )
+
+  it('hands the level to streamText on a streamed call', async () => {
+    enqueue_stream([
+      { type: 'text-delta', text: 'ok' },
+      { type: 'finish-step', finishReason: 'stop', usage: { inputTokens: 1, outputTokens: 1 } },
+    ])
+    await reasoning_engine().generate({ model: 'm', prompt: 'hi', effort: 'max', on_chunk: () => {} })
+    const params = mock_state.last_stream_text_params as Record<string, unknown>
+    expect(params['reasoning']).toBe('max')
+  })
+
+  it('leaves reasoning off the call for effort none', async () => {
+    enqueue_generate_text(make_text_result('ok'))
+    await reasoning_engine().generate({ model: 'm', prompt: 'hi', effort: 'none' })
+    const params = mock_state.last_generate_text_params as Record<string, unknown>
+    expect('reasoning' in params).toBe(false)
+  })
+
+  it("keeps a caller's provider_options beside the level", async () => {
+    enqueue_generate_text(make_text_result('ok'))
+    await reasoning_engine().generate({
+      model: 'm',
+      prompt: 'hi',
+      effort: 'high',
+      provider_options: { anthropic: { thinking: { type: 'adaptive', display: 'summarized' } } },
+    })
+    const params = mock_state.last_generate_text_params as Record<string, unknown>
+    expect(params['reasoning']).toBe('high')
+    expect(params['providerOptions']).toStrictEqual({
+      anthropic: { thinking: { type: 'adaptive', display: 'summarized' } },
+    })
   })
 })

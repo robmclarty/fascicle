@@ -3,25 +3,23 @@
  *
  * Dispatches on `transport`: the default 'ai_sdk' backend wraps
  * @ai-sdk/anthropic as an optional peer; 'native' returns the raw-HTTP
- * adapter from anthropic_native.ts. Effort levels map to extended-thinking
- * budget tokens.
+ * adapter from anthropic_native.ts. On the AI SDK, effort goes through the
+ * SDK's own `reasoning` option, which @ai-sdk/anthropic maps per model:
+ * adaptive thinking with `effort` from Claude 4.6 on, a budget before that.
  */
 
-import type { EffortLevel, ProviderInit, UsageTotals } from '../types.js'
+import type { ProviderInit, UsageTotals } from '../types.js'
 import {
   default_normalize_usage,
   load_optional_peer,
   resolve_transport,
+  translate_effort_to_sdk_reasoning,
   type AiSdkProviderAdapter,
-  type EffortTranslation,
   type ProviderAdapter,
   type ProviderCapability,
   type RawProviderUsage,
 } from './types.js'
-import {
-  ANTHROPIC_THINKING_BUDGETS,
-  create_anthropic_native_adapter,
-} from './anthropic_native.js'
+import { create_anthropic_native_adapter } from './anthropic_native.js'
 import { engine_config_error } from '../errors.js'
 
 type AnthropicSdk = {
@@ -29,31 +27,6 @@ type AnthropicSdk = {
     apiKey?: string
     baseURL?: string
   }) => (model_id: string) => unknown
-}
-
-/**
- * Map an effort level to Anthropic's extended-thinking provider options.
- *
- * A zero budget (which is what `none` maps to) sends no thinking config at all
- * rather than an explicit "disabled" value, so non-reasoning models see a plain
- * request.
- */
-export function translate_anthropic_effort(effort: EffortLevel): EffortTranslation {
-  const budget = ANTHROPIC_THINKING_BUDGETS[effort]
-  if (budget === 0) {
-    return { provider_options: {}, effort_ignored: false }
-  }
-  return {
-    provider_options: {
-      anthropic: {
-        // @ai-sdk/anthropic reads `budgetTokens` (camelCase) and maps it to the
-        // API's `budget_tokens`. Passing snake_case here is silently stripped by
-        // the provider's zod schema, so the budget never reaches the wire.
-        thinking: { type: 'enabled', budgetTokens: budget },
-      },
-    },
-    effort_ignored: false,
-  }
 }
 
 /**
@@ -109,7 +82,7 @@ const create_anthropic_ai_sdk_adapter = (init: ProviderInit): AiSdkProviderAdapt
       const provider = sdk.createAnthropic(config)
       return provider(model_id)
     },
-    translate_effort: translate_anthropic_effort,
+    translate_effort: translate_effort_to_sdk_reasoning,
     normalize_usage: normalize_anthropic_usage,
     supports: (capability) => SUPPORTED.has(capability),
   }

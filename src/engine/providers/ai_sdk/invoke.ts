@@ -43,6 +43,7 @@ import type { RawToolCall } from '../../tool_loop.js'
 import {
   default_normalize_usage,
   type AiSdkProviderAdapter,
+  type EffortTranslation,
   type RawProviderUsage,
 } from '../types.js'
 import { build_ai_sdk_telemetry, type AiSdkTelemetryPassthrough } from './telemetry.js'
@@ -522,6 +523,7 @@ export type AiSdkTurnConfig = {
   readonly temperature: number | undefined
   readonly max_tokens: number | undefined
   readonly top_p: number | undefined
+  readonly reasoning: EffortTranslation['reasoning']
   readonly telemetry: AiSdkTelemetrySettings | undefined
 }
 
@@ -632,6 +634,9 @@ export function create_ai_sdk_turn(cfg: AiSdkTurnConfig): AiSdkTurn {
     if (cfg.temperature !== undefined) base_params.temperature = cfg.temperature
     if (cfg.max_tokens !== undefined) base_params.maxOutputTokens = cfg.max_tokens
     if (cfg.top_p !== undefined) base_params.topP = cfg.top_p
+    // The SDK's own effort option; the provider package maps the level per
+    // model, and leaving it out is the provider's default.
+    if (cfg.reasoning !== undefined) base_params.reasoning = cfg.reasoning
     if (telemetry !== undefined) {
       // AiSdkTelemetryPassthrough uses the SDK's own telemetry keys; the slot's
       // generic (RUNTIME_CONTEXT/TOOLS) is erased for our usage.

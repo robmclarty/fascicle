@@ -1,37 +1,33 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   create_openai_adapter,
   normalize_openai_usage,
-  translate_openai_effort,
 } from '../openai.js'
 import { engine_config_error } from '../../errors.js'
+import { resolve_transport } from '../types.js'
 
-describe('translate_openai_effort', () => {
-  it('maps none to empty provider options', () => {
-    expect(translate_openai_effort('none')).toEqual({
+// D7 (sdk-reasoning-option): the level goes to the AI SDK's own `reasoning`
+// option, which @ai-sdk/openai maps per model, and no provider options are built.
+describe('openai ai_sdk effort translation', () => {
+  const adapter = create_openai_adapter({ api_key: 'secret' })
+  if (adapter.kind !== 'ai_sdk') throw new Error('expected the ai_sdk adapter')
+
+  it.each(['low', 'medium', 'high', 'xhigh', 'max'] as const)(
+    'hands %s to the SDK reasoning option with no provider options',
+    (level) => {
+      expect(adapter.translate_effort(level)).toStrictEqual({
+        provider_options: {},
+        effort_ignored: false,
+        reasoning: level,
+      })
+    },
+  )
+
+  it('sends neither a reasoning level nor provider options for none', () => {
+    expect(adapter.translate_effort('none')).toStrictEqual({
       provider_options: {},
       effort_ignored: false,
     })
-  })
-
-  it('maps low/medium/high to the o-series reasoningEffort string per spec §6.3', () => {
-    for (const effort of ['low', 'medium', 'high'] as const) {
-      const translated = translate_openai_effort(effort)
-      expect(
-        (translated.provider_options['openai'] as { reasoningEffort: string }).reasoningEffort,
-      ).toBe(effort)
-      expect(translated.effort_ignored).toBe(false)
-    }
-  })
-
-  it('clamps xhigh and max to high since OpenAI exposes no level above high', () => {
-    for (const effort of ['xhigh', 'max'] as const) {
-      const translated = translate_openai_effort(effort)
-      expect(
-        (translated.provider_options['openai'] as { reasoningEffort: string }).reasoningEffort,
-      ).toBe('high')
-      expect(translated.effort_ignored).toBe(false)
-    }
   })
 })
 
@@ -80,5 +76,62 @@ describe('create_openai_adapter', () => {
     if (adapter.kind !== 'ai_sdk') throw new Error('expected the ai_sdk adapter')
     const model = await adapter.build_model('gpt-5-codex')
     expect(model).toBeDefined()
+  })
+})
+
+describe('openai transport selection and native wiring', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('reads an unset transport as ai_sdk', () => {
+    expect(resolve_transport({}, 'openai')).toBe('ai_sdk')
+    expect(resolve_transport({ transport: 'ai_sdk' }, 'openai')).toBe('ai_sdk')
+  })
+
+  it('names the provider when the transport is unknown', () => {
+    expect(() => create_openai_adapter({ api_key: 'secret', transport: 'grpc' })).toThrow(
+      `openai provider: transport must be 'ai_sdk' or 'native', got "grpc"`,
+    )
+  })
+
+  /** Run one native turn against a stubbed response and return the request headers. */
+  async function native_turn(
+    init: Record<string, unknown>,
+    payload: Record<string, unknown>,
+  ): Promise<Record<string, string>> {
+    const mock = vi.fn(async () =>
+      new Response(JSON.stringify(payload), { status: 200, headers: { 'content-type': 'application/json' } }),
+    )
+    vi.stubGlobal('fetch', mock)
+    const adapter = create_openai_adapter({ api_key: 'secret', transport: 'native', ...init })
+    if (adapter.kind !== 'native') throw new Error('expected the native adapter')
+    await adapter.invoke_turn({
+      step_index: 0,
+      messages: [{ role: 'user', content: 'hi' }],
+      tools: [],
+      abort: new AbortController().signal,
+      stream: false,
+      model_id: 'gpt-test',
+      effort: 'none',
+    })
+    const call = mock.mock.calls[0] as unknown as [string, RequestInit]
+    return call[1].headers as Record<string, string>
+  }
+
+  const OK = {
+    choices: [{ index: 0, message: { role: 'assistant', content: 'hi' }, finish_reason: 'stop' }],
+    usage: { prompt_tokens: 1, completion_tokens: 1 },
+  }
+
+  it('ignores an organization that is not a string', async () => {
+    const headers = await native_turn({ organization: 42 }, OK)
+    expect(headers).not.toHaveProperty('OpenAI-Organization')
+  })
+
+  it('treats a native response without usage as broken (strict usage)', async () => {
+    await expect(native_turn({}, { ...OK, usage: undefined })).rejects.toThrow(
+      'openai native: response is missing its usage object',
+    )
   })
 })

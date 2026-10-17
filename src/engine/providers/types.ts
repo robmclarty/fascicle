@@ -55,6 +55,22 @@ export type EffortTranslation = {
   // matching the two-level shape merge_provider_options expects.
   provider_options: Record<string, Record<string, unknown>>
   effort_ignored: boolean
+  // A level for the AI SDK's own `reasoning` call option, which the provider
+  // package maps per model. Left out, the SDK uses the provider's default.
+  reasoning?: Exclude<EffortLevel, 'none'>
+}
+
+/**
+ * Hand effort to the AI SDK's `reasoning` option and build no provider
+ * options of its own, so the provider package maps each level per model from
+ * the capability table it keeps (adaptive thinking or a budget for Claude,
+ * `thinkingLevel` or a budget for Gemini, `reasoningEffort` for OpenAI).
+ * `none` sends neither, which is the SDK's provider default. The anthropic,
+ * bedrock, google, and openai ai_sdk adapters all translate this way.
+ */
+export function translate_effort_to_sdk_reasoning(effort: EffortLevel): EffortTranslation {
+  if (effort === 'none') return { provider_options: {}, effort_ignored: false }
+  return { provider_options: {}, effort_ignored: false, reasoning: effort }
 }
 
 export type ProviderCapability =
