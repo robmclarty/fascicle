@@ -263,3 +263,79 @@ describe('provider_options.openrouter passthrough (D9)', () => {
     expect(body).not.toHaveProperty('logprobs')
   })
 })
+
+describe('openrouter native reasoning (the spec 1.2)', () => {
+  const ENTRY = {
+    type: 'reasoning.text',
+    text: 'think',
+    signature: 'sig_or',
+    format: 'anthropic-claude-v1',
+    index: 0,
+  }
+
+  it('reads reasoning_details into parts keyed openrouter, streamed and not', async () => {
+    stub_fetch(
+      json_response({
+        ...TEXT_FIXTURE,
+        choices: [
+          {
+            index: 0,
+            message: { role: 'assistant', content: 'Hello there', reasoning_details: [ENTRY] },
+            finish_reason: 'stop',
+          },
+        ],
+      }),
+    )
+    const whole = await native_adapter().invoke_turn(make_req())
+    expect(whole.content).toStrictEqual([
+      { type: 'reasoning', text: 'think', provider_options: { openrouter: { detail: ENTRY } } },
+      { type: 'text', text: 'Hello there' },
+    ])
+
+    const chunks: string[] = []
+    stub_fetch(
+      sse_response([
+        { choices: [{ index: 0, delta: { reasoning_details: [ENTRY] } }] },
+        ...TEXT_STREAM,
+      ]),
+    )
+    const streamed = await native_adapter().invoke_turn(
+      make_req({
+        stream: true,
+        dispatch_chunk: async (chunk) => {
+          if (chunk.kind === 'reasoning') chunks.push(chunk.text)
+        },
+      }),
+    )
+    expect(chunks).toStrictEqual(['think'])
+    expect(streamed.content?.[0]).toStrictEqual({
+      type: 'reasoning',
+      text: 'think',
+      provider_options: { openrouter: { detail: ENTRY } },
+    })
+  })
+
+  it("sends a turn's own entries back as reasoning_details", async () => {
+    const { body } = await sent_body(
+      {},
+      {
+        messages: [
+          { role: 'user', content: 'hi' },
+          {
+            role: 'assistant',
+            content: [
+              { type: 'reasoning', text: 'think', provider_options: { openrouter: { detail: ENTRY } } },
+              { type: 'text', text: 'Hello' },
+            ],
+          },
+          { role: 'user', content: 'again' },
+        ],
+      },
+    )
+    expect(body['messages']).toStrictEqual([
+      { role: 'user', content: 'hi' },
+      { role: 'assistant', content: 'Hello', reasoning_details: [ENTRY] },
+      { role: 'user', content: 'again' },
+    ])
+  })
+})

@@ -417,3 +417,165 @@ describe('openai-compatible native e2e fail-closed approval', () => {
     expect(mock).toHaveBeenCalledTimes(1)
   })
 })
+
+// ---------------------------------------------------------------------------
+// Reasoning across the loop (the spec's 1.2): a reasoning_details dialect
+// sends the first turn's entries back with the second request, once, in
+// order, unchanged, and never as a `reasoning` string.
+// ---------------------------------------------------------------------------
+
+function make_reasoning_engine(): ReturnType<typeof create_engine> {
+  return create_engine({
+    providers: { compat: {} },
+    custom_providers: {
+      compat: () =>
+        create_openai_compatible_adapter({
+          name: 'compat',
+          base_url: 'http://localhost:8080/v1',
+          auth: { kind: 'bearer', api_key: 'sk-test' },
+          token_limit_field: 'max_tokens',
+          stream_include_usage: true,
+          tolerant_usage: false,
+          effort_shape: 'nested',
+          reasoning: 'reasoning_details',
+        }),
+    },
+  })
+}
+
+const SIGNED_ENTRY = {
+  type: 'reasoning.text',
+  text: 'Ottawa needs a lookup.',
+  signature: 'sig_e2e',
+  format: 'anthropic-claude-v1',
+  index: 0,
+}
+const ENCRYPTED_ENTRY = {
+  type: 'reasoning.encrypted',
+  data: 'opaque',
+  format: 'google-gemini-v1',
+  id: 'call_01',
+  index: 0,
+}
+
+function reasoning_tool_turn(finish_reason: string, entries: unknown[]): Record<string, unknown> {
+  return {
+    ...TOOL_TURN_FIXTURE,
+    choices: [
+      {
+        index: 0,
+        message: {
+          ...TOOL_TURN_FIXTURE.choices[0]?.message,
+          reasoning: 'Ottawa needs a lookup.',
+          reasoning_details: entries,
+        },
+        finish_reason,
+      },
+    ],
+  }
+}
+
+function reasoning_tool_stream(
+  finish_reason: string,
+  fragments: unknown[],
+): Array<Record<string, unknown> | '[DONE]'> {
+  return [
+    ...fragments.map((fragment) => ({
+      choices: [{ index: 0, delta: { content: '', reasoning_details: [fragment] } }],
+    })),
+    ...TOOL_TURN_STREAM.slice(0, 3),
+    { choices: [{ index: 0, delta: {}, finish_reason }] },
+    ...TOOL_TURN_STREAM.slice(4),
+  ]
+}
+
+async function run_reasoning_loop(
+  streamed: boolean,
+  finish_reason: string,
+): Promise<{
+  result: GenerateResult
+  mock: ReturnType<typeof vi.fn>
+  weather: Tool & { calls: unknown[] }
+  reasoning: string[]
+}> {
+  const entries = [SIGNED_ENTRY, ENCRYPTED_ENTRY]
+  const fragments = [
+    { ...SIGNED_ENTRY, text: 'Ottawa needs ', signature: undefined },
+    { ...SIGNED_ENTRY, text: 'a lookup.' },
+    ENCRYPTED_ENTRY,
+  ]
+  const mock = stub_fetch_queue(
+    streamed
+      ? [sse_response(reasoning_tool_stream(finish_reason, fragments)), sse_response(FINAL_TURN_STREAM)]
+      : [json_response(reasoning_tool_turn(finish_reason, entries)), json_response(FINAL_TURN_FIXTURE)],
+  )
+  const weather = make_weather_tool()
+  const reasoning: string[] = []
+  const result = await make_reasoning_engine().generate({
+    model: MODEL,
+    prompt: 'weather in Ottawa?',
+    tools: [weather],
+    ...(streamed
+      ? {
+          on_chunk: (chunk: StreamChunk) => {
+            if (chunk.kind === 'reasoning') reasoning.push(chunk.text)
+          },
+        }
+      : {}),
+  })
+  return { result, mock, weather, reasoning }
+}
+
+function second_request_messages(mock: ReturnType<typeof vi.fn>): unknown {
+  const call = mock.mock.calls[1] as [string, RequestInit]
+  return (JSON.parse(call[1].body as string) as Record<string, unknown>)['messages']
+}
+
+describe('openai-compatible native e2e reasoning round trip', () => {
+  it.each([false, true])(
+    "sends the first turn's entries back with the second request (streamed: %s)",
+    async (streamed) => {
+      const { result, mock, weather } = await run_reasoning_loop(streamed, 'tool_calls')
+      expect(weather.calls).toEqual([{ city: 'Ottawa' }])
+      expect(result.content).toBe('The weather in Ottawa is sunny.')
+      expect(second_request_messages(mock)).toStrictEqual([
+        { role: 'user', content: 'weather in Ottawa?' },
+        {
+          role: 'assistant',
+          content: null,
+          tool_calls: [
+            {
+              id: 'call_01',
+              type: 'function',
+              function: { name: 'get_weather', arguments: '{"city":"Ottawa"}' },
+            },
+          ],
+          reasoning_details: [SIGNED_ENTRY, ENCRYPTED_ENTRY],
+        },
+        { role: 'tool', tool_call_id: 'call_01', content: 'sunny' },
+      ])
+    },
+  )
+
+  it('streams each fragment as a reasoning chunk on the way', async () => {
+    const { reasoning } = await run_reasoning_loop(true, 'tool_calls')
+    expect(reasoning).toStrictEqual(['Ottawa needs ', 'a lookup.'])
+  })
+
+  // Gemini 3 has reported finish_reason 'stop' beside its tool calls; the loop
+  // reads tool_calls, never the finish reason, so the tools still run.
+  it.each([false, true])(
+    'runs the tools of a turn whose finish_reason is stop (streamed: %s)',
+    async (streamed) => {
+      const { result, mock, weather } = await run_reasoning_loop(streamed, 'stop')
+      expect(weather.calls).toEqual([{ city: 'Ottawa' }])
+      expect(result.steps).toHaveLength(2)
+      expect(result.content).toBe('The weather in Ottawa is sunny.')
+      expect(second_request_messages(mock)).toMatchObject([
+        {},
+        { reasoning_details: [SIGNED_ENTRY, ENCRYPTED_ENTRY] },
+        { role: 'tool', tool_call_id: 'call_01' },
+      ])
+    },
+  )
+})

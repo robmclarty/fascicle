@@ -1753,3 +1753,367 @@ describe('streaming invoke_turn (mutation hardening)', () => {
     expect(cancelled).toBe(true)
   })
 })
+
+// ---------------------------------------------------------------------------
+// OpenRouter's reasoning_details on the native core (the spec's 1.2). The
+// fragment shapes follow the live captures under research/live/: Claude's text
+// streams in pieces and its signature arrives last in a fragment of its own,
+// GPT streams summary pieces, and Gemini sends one encrypted entry.
+// ---------------------------------------------------------------------------
+
+const REASONING_DIALECT = make_dialect({ name: 'openrouter', reasoning: 'reasoning_details' })
+
+const CLAUDE_FORMAT = 'anthropic-claude-v1'
+
+function text_fragment(text: string, extra: Record<string, unknown> = {}): Record<string, unknown> {
+  return { type: 'reasoning.text', text, format: CLAUDE_FORMAT, index: 0, ...extra }
+}
+
+function reasoning_frame(
+  fragments: unknown[],
+  extra: Record<string, unknown> = {},
+): StreamFrame {
+  return { choices: [{ index: 0, delta: { content: '', reasoning_details: fragments, ...extra } }] }
+}
+
+const JOINED_CLAUDE_ENTRY = {
+  type: 'reasoning.text',
+  text: 'Need the city.',
+  format: CLAUDE_FORMAT,
+  index: 0,
+  signature: 'sig_claude_01',
+}
+
+/** Reasoning, text, then the signature after the text started, then a call. */
+const CLAUDE_REASONING_STREAM: StreamFrame[] = [
+  reasoning_frame([text_fragment('Need ')], { role: 'assistant', reasoning: 'Need ' }),
+  reasoning_frame([text_fragment('the city.')], { reasoning: 'the city.' }),
+  { choices: [{ index: 0, delta: { content: 'Checking.' } }] },
+  reasoning_frame([
+    { type: 'reasoning.text', signature: 'sig_claude_01', format: CLAUDE_FORMAT, index: 0 },
+  ]),
+  ...TOOL_CALL_STREAM.slice(0, 3),
+  { choices: [{ index: 0, delta: { content: '', reasoning: null }, finish_reason: 'tool_calls' }] },
+  { choices: [], usage: { prompt_tokens: 30, completion_tokens: 18, total_tokens: 48 } },
+  '[DONE]',
+]
+
+const CLAUDE_REASONING_FIXTURE = {
+  ...TOOL_CALL_FIXTURE,
+  choices: [
+    {
+      index: 0,
+      message: {
+        role: 'assistant',
+        content: 'Checking.',
+        reasoning: 'Need the city.',
+        reasoning_details: [JOINED_CLAUDE_ENTRY],
+        tool_calls: TOOL_CALL_FIXTURE.choices[0]?.message.tool_calls,
+      },
+      finish_reason: 'tool_calls',
+    },
+  ],
+  usage: { prompt_tokens: 30, completion_tokens: 18, total_tokens: 48 },
+}
+
+const CLAUDE_REASONING_RESULT = {
+  text: 'Checking.',
+  tool_calls: [{ id: 'call_01', name: 'get_weather', input: { city: 'Ottawa' } }],
+  finish_reason: 'tool_calls',
+  usage: { input_tokens: 30, output_tokens: 18 },
+  content: [
+    {
+      type: 'reasoning',
+      text: 'Need the city.',
+      provider_options: { openrouter: { detail: JOINED_CLAUDE_ENTRY } },
+    },
+    { type: 'text', text: 'Checking.' },
+    { type: 'tool_call', id: 'call_01', name: 'get_weather', input: { city: 'Ottawa' } },
+  ],
+}
+
+/** Run frames through the aggregator directly and return its entries' parts. */
+async function aggregate(
+  frames: ReadonlyArray<StreamFrame>,
+  dialect: OpenAICompatibleDialect = REASONING_DIALECT,
+): Promise<{ chunks: StreamChunk[]; details: unknown[]; content: unknown }> {
+  const chunks: StreamChunk[] = []
+  const aggregator = create_chat_stream_aggregator(dialect, 0, async (chunk) => {
+    chunks.push(chunk)
+  })
+  for (const frame of frames) {
+    // oxlint-disable-next-line no-await-in-loop
+    await aggregator.handle_data(frame === '[DONE]' ? frame : JSON.stringify(frame))
+  }
+  await aggregator.handle_data(
+    JSON.stringify({ choices: [], usage: { prompt_tokens: 1, completion_tokens: 1 } }),
+  )
+  await aggregator.handle_data('[DONE]')
+  const result = aggregator.complete()
+  const content = result.content
+  const details = (content ?? [])
+    .filter((part) => part.type === 'reasoning')
+    .map((part) => part.provider_options?.['openrouter']?.['detail'])
+  return { chunks, details, content }
+}
+
+function reasoning_texts(chunks: ReadonlyArray<StreamChunk>): string[] {
+  return chunks.flatMap((chunk) => (chunk.kind === 'reasoning' ? [chunk.text] : []))
+}
+
+describe('reasoning_details on the native core', () => {
+  it('returns the same TurnResult streamed and not, with the joined entry on its part', async () => {
+    stub_fetch(json_response(CLAUDE_REASONING_FIXTURE))
+    const adapter = create_openai_compatible_adapter(REASONING_DIALECT)
+    const non_streamed = await adapter.invoke_turn(make_req({ tools: [weather_tool] }))
+    vi.unstubAllGlobals()
+    const { result: streamed } = await invoke_streamed(CLAUDE_REASONING_STREAM, REASONING_DIALECT)
+    expect(non_streamed).toStrictEqual(CLAUDE_REASONING_RESULT)
+    expect(streamed).toStrictEqual(CLAUDE_REASONING_RESULT)
+  })
+
+  it('streams one reasoning chunk per fragment, in order with the text, ignoring the parallel string', async () => {
+    const { chunks } = await invoke_streamed(CLAUDE_REASONING_STREAM, REASONING_DIALECT)
+    expect(chunks.slice(0, 3)).toStrictEqual([
+      { kind: 'reasoning', text: 'Need ', step_index: 0 },
+      { kind: 'reasoning', text: 'the city.', step_index: 0 },
+      { kind: 'text', text: 'Checking.', step_index: 0 },
+    ])
+    expect(reasoning_texts(chunks)).toStrictEqual(['Need ', 'the city.'])
+    expect(chunks[3]?.kind).toBe('tool_call_start')
+  })
+
+  it('closes a text entry at its signature, so two signed blocks stay two', async () => {
+    const { details, chunks } = await aggregate([
+      reasoning_frame([text_fragment('one')]),
+      reasoning_frame([text_fragment('', { signature: 'sig_1' })]),
+      reasoning_frame([text_fragment('two'), text_fragment('', { signature: 'sig_2' })]),
+    ])
+    expect(details).toStrictEqual([
+      text_fragment('one', { signature: 'sig_1' }),
+      text_fragment('two', { signature: 'sig_2' }),
+    ])
+    expect(reasoning_texts(chunks)).toStrictEqual(['one', 'two'])
+  })
+
+  it('keeps an empty signature from closing its entry', async () => {
+    const { details } = await aggregate([
+      reasoning_frame([text_fragment('a', { signature: '' })]),
+      reasoning_frame([text_fragment('b')]),
+    ])
+    expect(details).toStrictEqual([text_fragment('ab', { signature: '' })])
+  })
+
+  it('fills only the fields an entry still lacks, so a late signature lands and the first format stays', async () => {
+    const { details } = await aggregate([
+      reasoning_frame([{ type: 'reasoning.text', text: 'x', signature: null, format: 'f1', index: 0 }]),
+      reasoning_frame([{ type: 'reasoning.text', text: 'y', signature: 'sig', format: 'f2', index: 3, id: 'r1' }]),
+    ])
+    expect(details).toStrictEqual([
+      { type: 'reasoning.text', text: 'xy', signature: 'sig', format: 'f1', index: 0, id: 'r1' },
+    ])
+  })
+
+  it('joins a fragment that brings text into an entry that had none', async () => {
+    const { details } = await aggregate([
+      reasoning_frame([{ type: 'reasoning.text', format: 'f1' }]),
+      reasoning_frame([{ type: 'reasoning.text', text: 'late' }]),
+    ])
+    expect(details).toStrictEqual([{ type: 'reasoning.text', text: 'late', format: 'f1' }])
+  })
+
+  it('joins summary pieces into one entry and starts a new entry when the type changes', async () => {
+    const summary = (text: string): Record<string, unknown> => ({
+      type: 'reasoning.summary',
+      summary: text,
+      format: 'openai-responses-v1',
+      index: 0,
+    })
+    const { details, chunks, content } = await aggregate([
+      reasoning_frame([summary('**Plan**\n\nI')]),
+      reasoning_frame([summary(' need'), summary(' k.')]),
+      reasoning_frame([text_fragment('then text')]),
+    ])
+    expect(details).toStrictEqual([summary('**Plan**\n\nI need k.'), text_fragment('then text')])
+    expect(reasoning_texts(chunks)).toStrictEqual(['**Plan**\n\nI', ' need', ' k.', 'then text'])
+    expect(content).toStrictEqual([
+      {
+        type: 'reasoning',
+        text: '**Plan**\n\nI need k.',
+        provider_options: { openrouter: { detail: summary('**Plan**\n\nI need k.') } },
+      },
+      {
+        type: 'reasoning',
+        text: 'then text',
+        provider_options: { openrouter: { detail: text_fragment('then text') } },
+      },
+    ])
+  })
+
+  it('gives an encrypted entry a part with no text and no chunk, and never joins across it', async () => {
+    const encrypted = { type: 'reasoning.encrypted', data: 'opaque', format: 'google-gemini-v1', id: 'call_1', index: 0 }
+    const { details, chunks, content } = await aggregate([
+      reasoning_frame([text_fragment('before')]),
+      reasoning_frame([encrypted]),
+      reasoning_frame([{ ...encrypted, data: 'second' }]),
+      reasoning_frame([text_fragment('after')]),
+    ])
+    expect(details).toStrictEqual([
+      text_fragment('before'),
+      encrypted,
+      { ...encrypted, data: 'second' },
+      text_fragment('after'),
+    ])
+    expect(reasoning_texts(chunks)).toStrictEqual(['before', 'after'])
+    expect(content).toContainEqual({
+      type: 'reasoning',
+      text: '',
+      provider_options: { openrouter: { detail: encrypted } },
+    })
+  })
+
+  it('skips a fragment that is not an object without closing the open entry', async () => {
+    const { details, chunks } = await aggregate([
+      reasoning_frame([text_fragment('a'), null, 'stray', text_fragment('b')]),
+    ])
+    expect(details).toStrictEqual([text_fragment('ab')])
+    expect(reasoning_texts(chunks)).toStrictEqual(['a', 'b'])
+  })
+
+  it('dispatches no chunk for a fragment with no visible text', async () => {
+    const { chunks, details } = await aggregate([
+      reasoning_frame([{ type: 'reasoning.text', text: 42 }, { type: 'reasoning.summary' }]),
+    ])
+    expect(reasoning_texts(chunks)).toStrictEqual([])
+    expect(details).toStrictEqual([{ type: 'reasoning.text', text: 42 }, { type: 'reasoning.summary' }])
+  })
+
+  it('streams a bare reasoning string but adds no part and leaves content out', async () => {
+    const frames: StreamFrame[] = [
+      { choices: [{ index: 0, delta: { role: 'assistant', content: '', reasoning: 'thinking aloud' } }] },
+      { choices: [{ index: 0, delta: { content: 'hi', reasoning_details: [], reasoning: ' still' } }] },
+      { choices: [{ index: 0, delta: { content: '', reasoning: '' } }] },
+      { choices: [{ index: 0, delta: { content: '', reasoning: null }, finish_reason: 'stop' }] },
+      { choices: [], usage: { prompt_tokens: 1, completion_tokens: 1 } },
+      '[DONE]',
+    ]
+    const { result, chunks } = await invoke_streamed(frames, REASONING_DIALECT)
+    expect(reasoning_texts(chunks)).toStrictEqual(['thinking aloud', ' still'])
+    expect(result).toStrictEqual({
+      text: 'hi',
+      tool_calls: [],
+      finish_reason: 'stop',
+      usage: { input_tokens: 1, output_tokens: 1 },
+    })
+  })
+
+  it.each([
+    ['openai', make_dialect()],
+    ['lmstudio', make_dialect({ name: 'lmstudio', auth: { kind: 'none' }, tolerant_usage: true })],
+  ] as const)('reads no reasoning on the %s dialect, streamed or not', async (_name, dialect) => {
+    const { content: _content, ...plain } = CLAUDE_REASONING_RESULT
+    const { result: streamed, chunks } = await invoke_streamed(CLAUDE_REASONING_STREAM, dialect)
+    expect(reasoning_texts(chunks)).toStrictEqual([])
+    expect(streamed).toStrictEqual(plain)
+    expect(parse_chat_completion(CLAUDE_REASONING_FIXTURE, dialect)).toStrictEqual(plain)
+  })
+
+  it('leaves content out of a reasoning dialect turn that carried no entries', () => {
+    expect(parse_chat_completion(TEXT_FIXTURE, REASONING_DIALECT)).toStrictEqual(
+      parse_chat_completion(TEXT_FIXTURE, make_dialect()),
+    )
+    const not_a_list = {
+      ...TEXT_FIXTURE,
+      choices: [{ index: 0, message: { role: 'assistant', content: 'x', reasoning_details: { type: 'reasoning.text' } }, finish_reason: 'stop' }],
+    }
+    expect('content' in parse_chat_completion(not_a_list, REASONING_DIALECT)).toBe(false)
+  })
+
+  it('parses whole-response entries in order, skipping non-objects, with no text part for a tool-only turn', () => {
+    const summary = { type: 'reasoning.summary', summary: 'plan', format: 'openai-responses-v1' }
+    const encrypted = { type: 'reasoning.encrypted', data: 'opaque', id: 'rs_1' }
+    const payload = {
+      ...TOOL_CALL_FIXTURE,
+      choices: [
+        {
+          index: 0,
+          message: {
+            ...TOOL_CALL_FIXTURE.choices[0]?.message,
+            reasoning_details: [summary, null, encrypted],
+          },
+          finish_reason: 'tool_calls',
+        },
+      ],
+    }
+    expect(parse_chat_completion(payload, REASONING_DIALECT).content).toStrictEqual([
+      { type: 'reasoning', text: 'plan', provider_options: { openrouter: { detail: summary } } },
+      { type: 'reasoning', text: '', provider_options: { openrouter: { detail: encrypted } } },
+      { type: 'tool_call', id: 'call_01', name: 'get_weather', input: { city: 'Ottawa' } },
+    ])
+  })
+
+  it('keys each part by the dialect name', () => {
+    const payload = {
+      ...TEXT_FIXTURE,
+      choices: [
+        {
+          index: 0,
+          message: { role: 'assistant', content: 'hi', reasoning_details: [text_fragment('r')] },
+          finish_reason: 'stop',
+        },
+      ],
+    }
+    const dialect = make_dialect({ name: 'proxy', reasoning: 'reasoning_details' })
+    expect(parse_chat_completion(payload, dialect).content).toStrictEqual([
+      { type: 'reasoning', text: 'r', provider_options: { proxy: { detail: text_fragment('r') } } },
+      { type: 'text', text: 'hi' },
+    ])
+  })
+})
+
+describe('to_chat_messages sends reasoning back', () => {
+  const first = text_fragment('one', { signature: 'sig_1' })
+  const second = { type: 'reasoning.encrypted', data: 'opaque' }
+
+  it("sends the provider's own entries once, in order, as reasoning_details and never a reasoning string", () => {
+    const messages: Message[] = [
+      {
+        role: 'assistant',
+        content: [
+          { type: 'reasoning', text: 'one', provider_options: { openrouter: { detail: first } } },
+          { type: 'text', text: 'Checking.' },
+          { type: 'reasoning', text: '', provider_options: { openrouter: { detail: second } } },
+          { type: 'tool_call', id: 'call_01', name: 'get_weather', input: { city: 'Ottawa' } },
+        ],
+      },
+    ]
+    expect(to_chat_messages(messages, 'openrouter')).toStrictEqual([
+      {
+        role: 'assistant',
+        content: 'Checking.',
+        tool_calls: [
+          { id: 'call_01', type: 'function', function: { name: 'get_weather', arguments: '{"city":"Ottawa"}' } },
+        ],
+        reasoning_details: [first, second],
+      },
+    ])
+  })
+
+  it('leaves behind a part keyed for another provider, one with no data, and one with no entry', () => {
+    const messages: Message[] = [
+      {
+        role: 'assistant',
+        content: [
+          { type: 'reasoning', text: 'theirs', provider_options: { anthropic: { signature: 's' } } },
+          { type: 'reasoning', text: 'bare' },
+          { type: 'reasoning', text: 'sdk', provider_options: { openrouter: { reasoning_details: [first] } } },
+          { type: 'reasoning', text: 'listed', provider_options: { openrouter: { detail: [first] } } },
+          { type: 'text', text: 'hi' },
+        ],
+      },
+    ]
+    expect(to_chat_messages(messages, 'openrouter')).toStrictEqual([
+      { role: 'assistant', content: 'hi' },
+    ])
+  })
+})

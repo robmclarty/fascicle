@@ -22,7 +22,7 @@
  * parallel code paths.
  */
 
-import { to_json_schema } from '#schema'
+import { is_record, to_json_schema } from '#schema'
 import type {
   AssistantContentPart,
   EffortLevel,
@@ -57,8 +57,11 @@ import type { NativeProviderAdapter, ProviderCapability } from './types.js'
  * whose usage may be absent or approximate (lmstudio, ollama-compat): the
  * mapper returns zeroed totals instead of throwing. `effort_shape` picks the
  * effort field: `'flat'` (the default) is OpenAI's `reasoning_effort`, and
- * `'nested'` is OpenRouter's `reasoning: { effort }`, kept apart from any
- * reasoning field a server returns, since one doesn't decide the other.
+ * `'nested'` is OpenRouter's `reasoning: { effort }`, kept apart from
+ * `reasoning`, since a server's reasoning field doesn't decide its effort
+ * field. `reasoning: 'reasoning_details'` reads OpenRouter's entries from a
+ * response and sends a turn's own back; a dialect without it reads no
+ * reasoning at all, and another server's field would be a new value here.
  */
 export type OpenAICompatibleDialect = {
   readonly name: string
@@ -69,6 +72,7 @@ export type OpenAICompatibleDialect = {
   readonly stream_include_usage: boolean
   readonly tolerant_usage: boolean
   readonly effort_shape?: 'flat' | 'nested'
+  readonly reasoning?: 'reasoning_details'
 }
 
 /**
@@ -98,8 +102,38 @@ type ChatToolCall = {
 export type ChatMessage =
   | { role: 'system'; content: string }
   | { role: 'user'; content: string | Array<{ type: 'text'; text: string }> }
-  | { role: 'assistant'; content: string | null; tool_calls?: ChatToolCall[] }
+  | {
+      role: 'assistant'
+      content: string | null
+      tool_calls?: ChatToolCall[]
+      reasoning_details?: Array<Record<string, unknown>>
+    }
   | { role: 'tool'; tool_call_id: string; content: string }
+
+type ReasoningPart = Extract<AssistantContentPart, { type: 'reasoning' }>
+
+/**
+ * The field each joinable reasoning_details entry type carries its visible
+ * text in. A Map rather than an object literal, since the lookup key is a
+ * `type` read off the wire.
+ */
+const REASONING_TEXT_FIELD: ReadonlyMap<unknown, 'text' | 'summary'> = new Map([
+  ['reasoning.text', 'text'],
+  ['reasoning.summary', 'summary'],
+])
+
+/**
+ * Read a reasoning_details entry's visible text: a text entry's `text`, a
+ * summary's `summary`, and '' for any other entry or a missing value.
+ */
+function reasoning_detail_text(entry: Record<string, unknown>): string {
+  const field = REASONING_TEXT_FIELD.get(entry['type'])
+  // Stryker disable next-line ConditionalExpression: without the guard the read
+  // is entry['undefined'], a key no reasoning_details entry carries, so it
+  // returns '' all the same.
+  const value = field === undefined ? undefined : entry[field]
+  return typeof value === 'string' ? value : ''
+}
 
 /**
  * Map user message content to this wire's shape (a string, or an array of
@@ -128,14 +162,15 @@ function to_user_content(
 /**
  * Map assistant message content to Chat Completions shape: text parts join
  * into `content`, tool-call parts become `tool_calls` entries with
- * JSON-stringified arguments, and reasoning parts are not sent.
+ * JSON-stringified arguments, and the provider's own reasoning parts give
+ * their entries back as `reasoning_details`.
  */
 function to_assistant_message(
   content: string | AssistantContentPart[],
   provider: string,
 ): ChatMessage {
   if (typeof content === 'string') return { role: 'assistant', content }
-  const { texts, tool_parts } = split_assistant_parts(content, provider)
+  const { texts, tool_parts, reasoning } = split_assistant_parts(content, provider)
   const tool_calls: ChatToolCall[] = tool_parts.map((part) => ({
     id: part.id,
     type: 'function',
@@ -149,7 +184,28 @@ function to_assistant_message(
     content: text.length > 0 || tool_calls.length === 0 ? text : null,
   }
   if (tool_calls.length > 0) message.tool_calls = tool_calls
+  // Every entry goes back once, in order, unchanged: OpenRouter checks the
+  // whole sequence, and the plain `reasoning` string is never sent, since
+  // thinking text without its signature is what Anthropic refuses.
+  const reasoning_details = reasoning.flatMap((part) => own_reasoning_detail(part, provider))
+  if (reasoning_details.length > 0) message.reasoning_details = reasoning_details
   return message
+}
+
+/**
+ * The reasoning_details entry a reasoning part keeps for `provider`, as a
+ * one-element list, or an empty one when the part carries no entry (a part
+ * another transport keyed for this provider, say).
+ */
+function own_reasoning_detail(
+  part: ReasoningPart,
+  provider: string,
+): Array<Record<string, unknown>> {
+  // Stryker disable next-line OptionalChaining: split_assistant_parts keeps a
+  // reasoning part only when provider_options[provider] is set, so neither link
+  // can be nullish here.
+  const detail: unknown = part.provider_options?.[provider]?.['detail']
+  return is_record(detail) ? [detail] : []
 }
 
 /**
@@ -357,11 +413,91 @@ export function parse_chat_completion(
   const tool_calls = Array.isArray(raw_tool_calls)
     ? raw_tool_calls.map((entry) => parse_tool_call(entry, dialect.name))
     : []
+  return with_reasoning_content(
+    {
+      text: typeof content === 'string' ? content : '',
+      tool_calls,
+      finish_reason: map_chat_finish_reason(Reflect.get(choice, 'finish_reason')),
+      usage: map_chat_usage(Reflect.get(payload, 'usage'), dialect),
+    },
+    read_reasoning_parts(message, dialect),
+  )
+}
+
+/**
+ * Read a response message's reasoning_details into reasoning parts, one per
+ * entry, in order, each keeping its entry under
+ * `provider_options.<name>.detail` for the trip back. Empty unless the
+ * dialect reads reasoning_details.
+ */
+function read_reasoning_parts(message: object, dialect: OpenAICompatibleDialect): ReasoningPart[] {
+  if (dialect.reasoning !== 'reasoning_details') return []
+  const entries: unknown = Reflect.get(message, 'reasoning_details')
+  if (!Array.isArray(entries)) return []
+  return entries.filter(is_record).map((detail) => ({
+    type: 'reasoning',
+    text: reasoning_detail_text(detail),
+    provider_options: { [dialect.name]: { detail } },
+  }))
+}
+
+/**
+ * Give a turn its `content` when it carries reasoning, and leave every other
+ * turn exactly as it was. This wire keeps reasoning, text, and tool calls in
+ * separate fields, so the parts go in that order.
+ */
+function with_reasoning_content(result: TurnResult, reasoning: ReasoningPart[]): TurnResult {
+  if (reasoning.length === 0) return result
+  const content: AssistantContentPart[] = [...reasoning]
+  if (result.text.length > 0) content.push({ type: 'text', text: result.text })
+  for (const call of result.tool_calls) content.push({ type: 'tool_call', ...call })
+  return { ...result, content }
+}
+
+/**
+ * Join streamed reasoning_details fragments into whole entries, the way
+ * OpenRouter's own AI SDK provider does. Consecutive `reasoning.text` or
+ * `reasoning.summary` fragments of one type grow one entry until the type
+ * changes or a signature closes a text entry, and any other entry (encrypted,
+ * a server tool call) stands alone. `index` is ignored, since providers
+ * repeat it. A later fragment fills only the fields its entry still lacks, so
+ * the late signature lands and the first format stays. add() returns the
+ * fragment's visible text, '' when it has none.
+ */
+function create_reasoning_joiner(): {
+  add: (fragment: unknown) => string
+  entries: Array<Record<string, unknown>>
+} {
+  // Stryker disable next-line ArrayDeclaration: a seeded initial element is not
+  // an object, so read_reasoning_parts' is_record filter drops it.
+  const entries: Array<Record<string, unknown>> = []
+  let open: Record<string, unknown> | undefined
   return {
-    text: typeof content === 'string' ? content : '',
-    tool_calls,
-    finish_reason: map_chat_finish_reason(Reflect.get(choice, 'finish_reason')),
-    usage: map_chat_usage(Reflect.get(payload, 'usage'), dialect),
+    entries,
+    add(fragment: unknown): string {
+      if (!is_record(fragment)) return ''
+      const field = REASONING_TEXT_FIELD.get(fragment['type'])
+      if (field === undefined) {
+        entries.push(fragment)
+        open = undefined
+        return ''
+      }
+      const text = reasoning_detail_text(fragment)
+      const joinable = open?.['type'] === fragment['type'] ? open : undefined
+      let entry: Record<string, unknown>
+      if (joinable === undefined) {
+        entry = { ...fragment }
+        entries.push(entry)
+      } else {
+        entry = joinable
+        const joined = reasoning_detail_text(entry) + text
+        for (const [key, value] of Object.entries(fragment)) entry[key] ??= value
+        entry[field] = joined
+      }
+      const signature = entry['signature']
+      open = typeof signature === 'string' && signature.length > 0 ? undefined : entry
+      return text
+    },
   }
 }
 
@@ -369,9 +505,11 @@ export function parse_chat_completion(
  * Consume Chat Completions stream frames (the JSON payload of each SSE
  * `data:` line, plus the literal `[DONE]` terminator), dispatching
  * StreamChunks as they arrive and rebuilding the non-stream payload as it
- * goes: `delta.content` accumulates into the message text, and
+ * goes: `delta.content` accumulates into the message text,
  * `delta.tool_calls[]` entries accumulate `function.arguments` string deltas
- * keyed by their `index` field. A tool call closes (parsed input dispatched)
+ * keyed by their `index` field, and under a reasoning_details dialect each
+ * `delta.reasoning_details` fragment dispatches a reasoning chunk and joins
+ * into the message's entries. A tool call closes (parsed input dispatched)
  * when the choice's finish_reason frame arrives, or at `[DONE]` for servers
  * that never send one. Usage rides the final pre-DONE frame
  * (stream_options.include_usage); a stream that ends without `[DONE]` is
@@ -398,6 +536,7 @@ export function create_chat_stream_aggregator(
   let text = ''
   const tool_calls: OpenToolCall[] = []
   const by_index = new Map<number, OpenToolCall>()
+  const reasoning = create_reasoning_joiner()
   let finish_reason: string | undefined
   let usage: unknown
   let done = false
@@ -461,9 +600,31 @@ export function create_chat_stream_aggregator(
     }
   }
 
+  // Each fragment streams as it arrives, before the frame's text, and keeps
+  // being read after the text starts, since a signature arrives late. A bare
+  // `reasoning` string with no entries streams but adds none: it has no
+  // signature to send back.
+  const on_reasoning_delta = async (delta: object): Promise<void> => {
+    if (dialect.reasoning !== 'reasoning_details') return
+    const fragments: unknown = Reflect.get(delta, 'reasoning_details')
+    if (Array.isArray(fragments) && fragments.length > 0) {
+      for (const fragment of fragments) {
+        const shown = reasoning.add(fragment)
+        // oxlint-disable-next-line no-await-in-loop
+        if (shown.length > 0) await dispatch({ kind: 'reasoning', text: shown, step_index })
+      }
+      return
+    }
+    const bare: unknown = Reflect.get(delta, 'reasoning')
+    if (typeof bare === 'string' && bare.length > 0) {
+      await dispatch({ kind: 'reasoning', text: bare, step_index })
+    }
+  }
+
   const on_choice = async (choice: object): Promise<void> => {
     const delta: unknown = Reflect.get(choice, 'delta')
     if (delta !== null && typeof delta === 'object') {
+      await on_reasoning_delta(delta)
       const content: unknown = Reflect.get(delta, 'content')
       if (typeof content === 'string' && content.length > 0) {
         text += content
@@ -523,9 +684,12 @@ export function create_chat_stream_aggregator(
         )
       }
       const ordered = in_index_order()
+      // The joined entries ride the synthetic message exactly as a whole
+      // response carries them, an empty list being no entries at all.
       const message: Record<string, unknown> = {
         role: 'assistant',
         content: text.length > 0 || ordered.length === 0 ? text : null,
+        reasoning_details: reasoning.entries,
       }
       if (ordered.length > 0) {
         message['tool_calls'] = ordered.map((call) => ({
