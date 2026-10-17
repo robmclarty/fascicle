@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.15.0 — 2026-10-17
 
 ### Added
 
@@ -30,6 +30,11 @@
 - **`anthropic` native finishes a turn that OpenRouter streams.** OpenRouter's Anthropic-compatible Messages endpoint ends every stream the way a chat-completions stream ends, with a `data: [DONE]` line after `message_stop`. The adapter read that line as an event that wasn't JSON and failed a turn that had already arrived in full. It now skips the line, and any other data that isn't JSON still fails the turn.
 - **Effort works on current Claude models, on every transport.** Every Claude model from 4.7 on refuses `thinking: { type: 'enabled', budget_tokens }` with a 400, and that's what `anthropic` native, `anthropic` on `ai_sdk`, and `bedrock` all sent for any effort but `none`. Each one now sends adaptive thinking with an effort, as the Changed entries above describe.
 - **A failure that a compatible server reports mid-stream says what went wrong.** OpenRouter reports an error that happens after a stream started as a frame with a top-level `error`, under the HTTP 200 that the stream began with. The core ignored that frame, so the turn failed as a truncated stream or a missing usage object, and OpenRouter's message was lost. It now throws a `provider_error` that carries the server's message, with the error's code as `status` when the code is a number, on every dialect. Before any chunk has streamed, a 429 or a 5xx retries the way the same HTTP status does, and after one, the turn fails as a stream interruption that names the message.
+
+### Internal
+
+- A live reasoning check, `src/engine/__tests__/live/live_reasoning.test.ts`, runs a three-step tool loop on OpenRouter, and on Claude through OpenRouter's Messages endpoint, and asserts that each request carries the last turn's reasoning back and that each OpenRouter run's cost matches the charges it reported. It's opt-in (`LIVE_TESTS=1` and `OPENROUTER_API_KEY`), so `pnpm check` skips it.
+- The live smoke gains Claude Sonnet 5.5 on `anthropic` native and on `ai_sdk`, both through OpenRouter, and each of its cases names its provider beside the model id. CONTRIBUTING.md names the key for both.
 
 ## v0.14.0 — 2026-10-16
 
