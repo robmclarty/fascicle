@@ -24,12 +24,30 @@ export type FakeStreamPart =
   | { type: 'error'; error: unknown }
   | { type: 'abort' }
 
+/**
+ * One entry of a step's `content`, the shape the real SDK returns on a
+ * generateText result and as a promise on a streamText result.
+ */
+export type FakeContentPart =
+  | { type: 'text'; text: string; providerMetadata?: Record<string, Record<string, unknown>> }
+  | { type: 'reasoning'; text: string; providerMetadata?: Record<string, Record<string, unknown>> }
+  | {
+      type: 'tool-call'
+      toolCallId: string
+      toolName: string
+      input: unknown
+      providerMetadata?: Record<string, Record<string, unknown>>
+    }
+  | { type: 'source'; id: string; url: string }
+
 export type FakeGenerateTextResult = {
   text: string
   toolCalls: Array<{ toolCallId: string; toolName: string; input: unknown }>
   finishReason: string
   usage: { inputTokens: number; outputTokens: number } & Record<string, unknown>
   providerMetadata?: Record<string, unknown>
+  /** The step's content; derived from text and toolCalls when left out. */
+  content?: FakeContentPart[]
 }
 
 export type FakeStreamScript = {
@@ -37,6 +55,45 @@ export type FakeStreamScript = {
   delayMsPerPart?: number
   /** Runs just before each part is yielded, so a test can move a faked clock. */
   beforePart?: (index: number) => void
+  /** The step's content promise; derived from the scripted parts when left out. */
+  content?: FakeContentPart[]
+}
+
+/**
+ * Derive a generateText result's content the way the SDK lays it out: the
+ * text, when there is any, then each tool call. None of it carries data, so
+ * the transport leaves TurnResult.content off and a test sees the turn it
+ * always saw.
+ */
+function derive_generate_content(result: FakeGenerateTextResult): FakeContentPart[] {
+  const parts: FakeContentPart[] = result.text.length > 0 ? [{ type: 'text', text: result.text }] : []
+  for (const call of result.toolCalls) parts.push({ type: 'tool-call', ...call })
+  return parts
+}
+
+/**
+ * Derive a stream's content from its scripted parts: consecutive text deltas
+ * join into one text part, consecutive reasoning deltas into one reasoning
+ * part, and each tool call is its own part.
+ */
+function derive_stream_content(parts: ReadonlyArray<FakeStreamPart>): FakeContentPart[] {
+  const content: FakeContentPart[] = []
+  for (const part of parts) {
+    const last = content.at(-1)
+    if (part.type === 'text-delta' || part.type === 'reasoning-delta') {
+      const type = part.type === 'text-delta' ? 'text' : 'reasoning'
+      if (last?.type === type) last.text += part.text
+      else content.push({ type, text: part.text })
+    } else if (part.type === 'tool-call') {
+      content.push({
+        type: 'tool-call',
+        toolCallId: part.toolCallId,
+        toolName: part.toolName,
+        input: part.input,
+      })
+    }
+  }
+  return content
 }
 
 export type MockState = {
@@ -164,8 +221,8 @@ export async function build_mock_ai_module(): Promise<Record<string, unknown>> {
       const next = mock_state.generate_text_responses.shift()
       if (next === undefined) throw new Error('mock generateText: no response queued')
       if (next instanceof Error) throw next
-      if (typeof next === 'function') return next()
-      return next
+      const result = typeof next === 'function' ? await next() : next
+      return { ...result, content: result.content ?? derive_generate_content(result) }
     },
     streamText: (params: { abortSignal?: AbortSignal }) => {
       mock_state.stream_text_call_count += 1
@@ -205,7 +262,10 @@ export async function build_mock_ai_module(): Promise<Record<string, unknown>> {
         }
       }
   
-      return { stream: gen() }
+      return {
+        stream: gen(),
+        content: Promise.resolve(script.content ?? derive_stream_content(script.parts)),
+      }
     },
   }
 }

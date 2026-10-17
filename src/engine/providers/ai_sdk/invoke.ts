@@ -18,6 +18,8 @@ import {
   isStepCount,
   streamText,
   tool as ai_tool,
+  type AssistantContent,
+  type ContentPart,
   type ImagePart,
   type LanguageModel,
   type ModelMessage,
@@ -29,8 +31,10 @@ import {
 import type { ToolSchema } from '#schema'
 import type {
   AiSdkTelemetrySettings,
+  AssistantContentPart,
   FinishReason,
   Message,
+  ProviderOptions,
   StreamChunk,
   Tool,
   TurnResult,
@@ -46,7 +50,27 @@ import {
   type EffortTranslation,
   type RawProviderUsage,
 } from '../types.js'
+import { is_own_reasoning } from '../native_shared.js'
 import { build_ai_sdk_telemetry, type AiSdkTelemetryPassthrough } from './telemetry.js'
+
+// The SDK exports no name for an assistant reasoning part, so it is read off
+// the assistant content union.
+type SdkReasoningPart = Extract<Exclude<AssistantContent, string>[number], { type: 'reasoning' }>
+
+/**
+ * Attach a Fascicle part's provider_options to an SDK prompt part as its
+ * providerOptions, the key the SDK reads a part's provider data back from.
+ */
+function with_provider_options<part extends { providerOptions?: TextPart['providerOptions'] }>(
+  sdk_part: part,
+  provider_options: ProviderOptions | undefined,
+): part {
+  if (provider_options === undefined) return sdk_part
+  // ProviderOptions is the two-level provider map the SDK's shared provider
+  // options spell with JSON values; the payloads are the SDK's own metadata.
+  // eslint-disable-next-line typescript-eslint/no-unsafe-type-assertion
+  return { ...sdk_part, providerOptions: provider_options as NonNullable<part['providerOptions']> }
+}
 
 /**
  * Map the AI SDK's finish reason string to the engine's FinishReason.
@@ -162,9 +186,16 @@ export function to_provider_reported(metadata: unknown): Record<string, unknown>
 }
 
 /**
- * Map Fascicle's Message[] to the AI SDK's ModelMessage[] shape.
+ * Map Fascicle's Message[] to the AI SDK's ModelMessage[] shape. Each
+ * assistant part's provider_options go back as its providerOptions, which is
+ * where the SDK reads a signature or a thought signature back from, and a
+ * reasoning part goes back only when it carries data under `metadata_key`,
+ * the key the adapter's package writes (D3 own-reasoning-only).
  */
-export function to_sdk_messages(messages: ReadonlyArray<Message>): ModelMessage[] {
+export function to_sdk_messages(
+  messages: ReadonlyArray<Message>,
+  metadata_key: string,
+): ModelMessage[] {
   const out: ModelMessage[] = []
   for (const m of messages) {
     if (m.role === 'system') {
@@ -176,21 +207,12 @@ export function to_sdk_messages(messages: ReadonlyArray<Message>): ModelMessage[
         out.push({ role: 'user', content: m.content })
       } else {
         const parts: Array<TextPart | ImagePart> = m.content.map((p) => {
-          let part: TextPart | ImagePart
           if (p.type === 'text') {
-            part = { type: 'text', text: p.text }
-          } else {
-            const image_part: ImagePart = { type: 'image', image: p.image }
-            if (p.media_type !== undefined) image_part.mediaType = p.media_type
-            part = image_part
+            return with_provider_options<TextPart>({ type: 'text', text: p.text }, p.provider_options)
           }
-          if (p.provider_options !== undefined) {
-            // Same structural cast as the call-level provider_options in
-            // create_ai_sdk_turn.
-            // eslint-disable-next-line typescript-eslint/no-unsafe-type-assertion
-            part.providerOptions = p.provider_options as NonNullable<TextPart['providerOptions']>
-          }
-          return part
+          const image_part: ImagePart = { type: 'image', image: p.image }
+          if (p.media_type !== undefined) image_part.mediaType = p.media_type
+          return with_provider_options(image_part, p.provider_options)
         })
         out.push({ role: 'user', content: parts })
       }
@@ -215,19 +237,26 @@ export function to_sdk_messages(messages: ReadonlyArray<Message>): ModelMessage[
       out.push({ role: 'assistant', content: m.content })
       continue
     }
-    // Reasoning parts are dropped: assistant parts go back here without their
-    // provider data, and a reasoning part without its signature is what a
-    // signing provider refuses.
-    const parts = m.content.flatMap((p): Array<TextPart | ToolCallPart> => {
-      if (p.type === 'text') return [{ type: 'text', text: p.text }]
-      if (p.type === 'reasoning') return []
+    const parts = m.content.flatMap((p): Array<TextPart | SdkReasoningPart | ToolCallPart> => {
+      if (p.type === 'text') {
+        return [with_provider_options<TextPart>({ type: 'text', text: p.text }, p.provider_options)]
+      }
+      if (p.type === 'reasoning') {
+        // Another package's reasoning, or reasoning with no data, would draw a
+        // warning or a refusal from this one.
+        if (!is_own_reasoning(p, metadata_key)) return []
+        return [
+          with_provider_options<SdkReasoningPart>(
+            { type: 'reasoning', text: p.text },
+            p.provider_options,
+          ),
+        ]
+      }
       return [
-        {
-          type: 'tool-call',
-          toolCallId: p.id,
-          toolName: p.name,
-          input: p.input,
-        },
+        with_provider_options<ToolCallPart>(
+          { type: 'tool-call', toolCallId: p.id, toolName: p.name, input: p.input },
+          p.provider_options,
+        ),
       ]
     })
     out.push({ role: 'assistant', content: parts })
@@ -258,6 +287,63 @@ export function split_leading_system(messages: ReadonlyArray<ModelMessage>): {
   messages: ModelMessage[]
 } {
   return split_leading_system_run(messages, (m) => m.content)
+}
+
+/**
+ * Read a part's providerMetadata as provider_options, or undefined when it
+ * carries none, so a part with nothing to send back stays bare.
+ */
+function to_part_options(metadata: ProviderOptions | undefined): ProviderOptions | undefined {
+  return metadata !== undefined && Object.keys(metadata).length > 0 ? metadata : undefined
+}
+
+/**
+ * Map one SDK content part to an assistant part with its providerMetadata as
+ * provider_options, or undefined for a kind with nothing to send back
+ * (sources, files, tool results).
+ */
+function to_turn_part(part: ContentPart<ToolSet>): AssistantContentPart | undefined {
+  if (part.type === 'text') {
+    return with_part_options({ type: 'text', text: part.text }, part.providerMetadata)
+  }
+  if (part.type === 'reasoning') {
+    return with_part_options({ type: 'reasoning', text: part.text }, part.providerMetadata)
+  }
+  if (part.type === 'tool-call') {
+    return with_part_options(
+      { type: 'tool_call', id: part.toolCallId, name: part.toolName, input: part.input },
+      part.providerMetadata,
+    )
+  }
+  return undefined
+}
+
+/**
+ * Give an assistant part the provider_options its metadata carries, leaving
+ * the key off when there is none.
+ */
+function with_part_options<part extends AssistantContentPart>(
+  turn_part: part,
+  metadata: ProviderOptions | undefined,
+): part {
+  const provider_options = to_part_options(metadata)
+  return provider_options === undefined ? turn_part : { ...turn_part, provider_options }
+}
+
+/**
+ * Map an SDK step's content to TurnResult.content: its text, reasoning, and
+ * tool calls in the order the provider sent them, each with its
+ * providerMetadata as provider_options. Undefined when no part is reasoning
+ * or carries data, so every other turn stays exactly what it was (D18).
+ */
+export function to_turn_content(
+  content: ReadonlyArray<ContentPart<ToolSet>>,
+): AssistantContentPart[] | undefined {
+  const parts = content.flatMap((part) => to_turn_part(part) ?? [])
+  const carries = parts.some(
+    (part) => part.type === 'reasoning' || part.provider_options !== undefined,
+  )
+  return carries ? parts : undefined
 }
 
 /**
@@ -430,6 +516,9 @@ async function collect_stream(
     }
   }
 
+  // The step's content settles once the stream has drained, so it is read
+  // only after the loop and never on a failed stream.
+  const content = to_turn_content(await stream_result.content)
   return {
     text: acc.text,
     tool_calls: acc.tool_calls,
@@ -437,6 +526,7 @@ async function collect_stream(
     usage: adapter.normalize_usage(acc.raw_usage),
     // Stryker disable next-line ConditionalExpression: an always-true spread only adds an explicit `provider_reported: undefined` key, which every reader of TurnResult treats identically to the absent key.
     ...(acc.provider_reported !== undefined ? { provider_reported: acc.provider_reported } : {}),
+    ...(content !== undefined ? { content } : {}),
   }
 }
 
@@ -470,6 +560,7 @@ async function collect_non_stream(
   // two are the same value under stopWhen isStepCount(1), and the flat field
   // exists across the whole `ai` ^7 peer range this package declares.
   const provider_reported = to_provider_reported(result.providerMetadata)
+  const content = to_turn_content(result.content)
   return {
     text: result.text,
     tool_calls,
@@ -477,6 +568,7 @@ async function collect_non_stream(
     usage: adapter.normalize_usage(raw_usage),
     // Stryker disable next-line ConditionalExpression: see collect_stream; the always-true spread is unobservable through every TurnResult reader.
     ...(provider_reported !== undefined ? { provider_reported } : {}),
+    ...(content !== undefined ? { content } : {}),
   }
 }
 
@@ -615,7 +707,7 @@ export function create_ai_sdk_turn(cfg: AiSdkTurnConfig): AiSdkTurn {
       args.abort.addEventListener('abort', cancel_on_user_abort, { once: true })
     }
     const { system: hoisted_system, messages: sdk_messages } = split_leading_system(
-      to_sdk_messages(args.messages),
+      to_sdk_messages(args.messages, cfg.adapter.metadata_key ?? cfg.adapter.name),
     )
     const base_params: AiSdkCallParams = {
       model,

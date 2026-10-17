@@ -107,6 +107,11 @@ export type RawProviderUsage = {
 export type AiSdkProviderAdapter = {
   readonly kind: 'ai_sdk'
   readonly name: string
+  // The key the adapter's package writes providerMetadata under, which is
+  // the only key a reasoning part may carry to be sent back (D26). Defaults
+  // to `name`; a custom adapter over a built-in package (@ai-sdk/anthropic on
+  // Vertex, say) can't take the built-in name, so it sets the package's key.
+  readonly metadata_key?: string
   readonly build_model: (model_id: string) => Promise<unknown>
   readonly translate_effort: (effort: EffortLevel) => EffortTranslation
   readonly normalize_usage: (raw: RawProviderUsage | undefined) => UsageTotals
