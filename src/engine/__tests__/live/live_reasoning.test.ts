@@ -261,6 +261,24 @@ function answer_matches(content: string, ledger: Ledger): boolean {
 }
 
 /**
+ * The sum of the charges OpenRouter reported on each step, a BYOK step's
+ * upstream cost included, the way the engine counts a BYOK total. Undefined
+ * when no step reported one, which is every case off the openrouter provider.
+ */
+function reported_charges(result: GenerateResult | undefined): number | undefined {
+  let sum: number | undefined
+  for (const step of result?.steps ?? []) {
+    const reported = field(step.provider_reported, 'openrouter')
+    const cost = field(reported, 'cost')
+    if (typeof cost !== 'number') continue
+    const upstream = field(field(reported, 'cost_details'), 'upstream_inference_cost')
+    const byok = field(reported, 'is_byok') === true && typeof upstream === 'number' ? upstream : 0
+    sum = (sum ?? 0) + (cost + byok)
+  }
+  return sum
+}
+
+/**
  * A thrown value as one short line, so a provider's multi-line error body
  * fits in the case's summary.
  */
@@ -323,7 +341,8 @@ function round_trip_exercised(tap: Tap): boolean {
 /**
  * One line for the build log: finished, error, which turns came back with
  * reasoning, whether each next request carried it back, the reasoning chunks
- * seen, output tokens per step, and the upstream per step.
+ * seen, output tokens per step, the upstream per step, and the call's cost
+ * beside the charges OpenRouter reported for it.
  */
 function summary_line(
   label: string,
@@ -345,6 +364,8 @@ function summary_line(
     `output_tokens=[${steps.map((s) => String(s.usage.output_tokens)).join(',')}]`,
     `reasoning_tokens=[${steps.map((s) => String(s.usage.reasoning_tokens ?? 0)).join(',')}]`,
     `upstream=[${tap.records.map((r) => r.upstream).join(',')}]`,
+    `cost_usd=${String(outcome.result?.cost?.total_usd ?? '-')}`,
+    `reported_usd=${String(reported_charges(outcome.result) ?? '-')}`,
     `exercised=${String(round_trip_exercised(tap))}`,
     `answer_ok=${String(outcome.result !== undefined && answer_matches(outcome.result.content, ledger))}`,
   ]
@@ -383,6 +404,14 @@ describe.skipIf(!enabled)('live reasoning check', () => {
             expect(result?.finish_reason).toBe('stop')
             expect(result?.steps).toHaveLength(EXPECTED_STEPS)
             expect(result?.tool_calls).toHaveLength(EXPECTED_TOOL_CALLS)
+
+            if (c.provider === 'openrouter') {
+              const charged = reported_charges(result)
+              expect(charged, 'no step reported what OpenRouter charged').toBeDefined()
+              // The engine rounds a call's total to six places, and OpenRouter
+              // can report a step to seven, so the sum is compared rounded.
+              expect(result?.cost?.total_usd).toBe(Math.round((charged ?? Number.NaN) * 1e6) / 1e6)
+            }
 
             active.records.forEach((record, i) => {
               if (i === 0) return

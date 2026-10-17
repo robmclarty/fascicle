@@ -26,6 +26,9 @@ Per-provider keys, each block skipped independently when its key is absent:
 - `ANTHROPIC_API_KEY` for anthropic
 - `GOOGLE_GENERATIVE_AI_API_KEY` for google
 - `OPENAI_API_KEY` for openai
+- `OPENROUTER_API_KEY` for the two Claude 5.5 cases, which reach
+  `anthropic/claude-sonnet-5.5` on both Anthropic transports through
+  OpenRouter's Anthropic-compatible endpoint
 
 A second opt-in file, `live_reasoning.test.ts`, checks that reasoning survives a
 tool loop. It runs a three-step loop on OpenRouter, and on Claude through
