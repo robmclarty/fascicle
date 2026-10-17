@@ -67,7 +67,7 @@ export async function edit_file_change(session: AcpSession, input: unknown): Pro
   const text = await current_text(target.real, request.path, 'edit_file')
   if (text === null) throw new Error(`${request.path} doesn't exist; write_file creates a file`)
   // Splitting on the match, where String.replace would read its replacement
-  // as a pattern, keeps a `$&` or `$1` in new_text as the model wrote it.
+  // as a pattern, keeps a `$&` or `$$` in new_text as the model wrote it.
   const pieces = text.split(request.old_text)
   const matches = pieces.length - 1
   if (matches === 0) {
