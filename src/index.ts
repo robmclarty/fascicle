@@ -17,7 +17,7 @@
 export * from '#core'
 export * from '#composites'
 
-export { create_engine } from '#engine'
+export { create_engine, define_tool } from '#engine'
 
 export {
   claude_cli_error,

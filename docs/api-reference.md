@@ -214,10 +214,33 @@ Full shape in [configuration.md](./configuration.md#generate-options).
 | `prompt` | `string \| Message[]` |
 | `system` | system prompt |
 | `schema` | any Standard Schema (zod, ArkType, Valibot, ...); structured output with repair passes |
-| `tools` | agentic tool surface (`Tool[]`); a tool may set `ends_turn: true` to end the loop on a successful call |
+| `tools` | agentic tool surface (`Tool[]`); `define_tool` types a tool's input, and a tool may set `ends_turn: true` to end the loop on a successful call |
 | `effort` | `'none' \| 'low' \| 'medium' \| 'high' \| 'xhigh' \| 'max'`, translated per provider |
 | `abort`, `trajectory`, `on_chunk` | cancellation, observation, streaming |
 | `retry` | per-call `RetryPolicy` |
+
+### Typed Tools with `define_tool`
+
+```ts
+import { define_tool } from 'fascicle';
+import { z } from 'zod';
+
+const get_weather = define_tool({
+  name: 'get_weather',
+  description: 'Look up the current temperature in Celsius for a city.',
+  input_schema: z.object({ city: z.string() }),
+  execute: async ({ city }) => lookup_temperature(city), // city: string
+});
+```
+
+`define_tool(spec)` takes the same fields as a `Tool` and reads the input's
+type from `input_schema`, so `execute` and `needs_approval` get the validated
+input under that type. It returns the spec as a plain `Tool`, which `tools`
+takes with no cast. A `Tool` written by hand types its input as `unknown`,
+since a `Tool` whose `execute` wants `{ city: string }` can't go into a list
+whose tools take any input. The widening is safe because the engine validates
+every call against `input_schema` first and hands `execute` the value that
+passed, and a call that fails goes back to the model as a tool error.
 
 ### Timing and Tokens per Second
 

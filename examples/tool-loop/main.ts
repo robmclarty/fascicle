@@ -21,9 +21,9 @@ import { z } from 'zod'
 
 import {
   create_engine,
+  define_tool,
   model_step,
   run,
-  type Tool,
 } from 'fascicle'
 
 const is_main = import.meta.url === `file://${process.argv[1] ?? ''}`
@@ -42,14 +42,14 @@ const weather_response = z.object({
     .min(1),
 })
 
-const weather_input = z.object({ city: z.string() })
-
-const get_weather: Tool = {
+// `define_tool` types `execute`'s input from `input_schema`, which the engine
+// has already validated by the time `execute` runs, so there is nothing to
+// parse again here.
+const get_weather = define_tool({
   name: 'get_weather',
   description: 'Look up the current temperature in Celsius for a city.',
-  input_schema: weather_input,
-  execute: async (raw, ctx) => {
-    const { city } = weather_input.parse(raw)
+  input_schema: z.object({ city: z.string() }),
+  execute: async ({ city }, ctx) => {
     const res = await fetch(
       `https://wttr.in/${encodeURIComponent(city)}?format=j1`,
       { signal: ctx.abort },
@@ -58,7 +58,7 @@ const get_weather: Tool = {
     const body = weather_response.parse(await res.json())
     return { temp_c: Number(body.current_condition[0]?.temp_C ?? 'NaN') }
   },
-}
+})
 
 // `model_step`: the engine runs the whole tool loop internally, so the step's
 // output is the model's final text. Reach for `model_call` when the caller

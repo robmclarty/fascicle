@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Added
+
+- **`define_tool` gives a tool's `execute` the type that its schema validates to.** A `Tool` whose `execute` wanted `{ city: string }` couldn't go into `tools: [...]`, because a `Tool`'s `execute` takes `unknown`, so every tool took `unknown` and parsed its input a second time, though the engine had already validated it against `input_schema`. `define_tool({ name, description, input_schema, execute })` reads the type from `input_schema`, hands it to `execute` and to `needs_approval`, and returns a plain `Tool` that any `tools` list takes with no cast. The engine passes a tool only the input that passed its schema, and a call that fails goes back to the model as a tool error, so the type that `execute` sees is the type that it gets. A tool written as a plain `Tool` keeps working, and moving one over drops its `parse` call. The cookbook and `examples/tool-loop` now use it.
+
 ### Changed
 
 - **`turn_timeout_error` is exported, and the engine's types promise only what it does.** A turn that outruns `turn_timeout_ms` before any chunk streams throws `turn_timeout_error`, which reaches the caller whenever `retry_on` leaves out `'timeout'`, but the class wasn't exported, so code couldn't catch it by `instanceof`. It now imports from `fascicle`. Three things that nothing implemented are gone. `ClaudeCliProviderConfig` loses `skip_probe`, which no code ever read. `ClaudeCliErrorReason` loses `auth_missing`, `auth_expired`, `api_key_missing`, `engine_disposed`, and `parse_error`, since the adapter reports an auth failure as `provider_auth_error`, a missing key as `engine_config_error`, a disposed engine as an `aborted_error` whose `reason` is `'engine_disposed'`, and a line it can't parse as a trajectory event. `FinishReason` loses `'aborted'`, which no call finished with, since an abort throws. Code that set `skip_probe` drops it, and code that matched one of the removed reasons or `'aborted'` matches the error that the adapter throws instead. `docs/cli.md` now lists the reasons and the dispose errors as they are.

@@ -1,8 +1,8 @@
 /**
  * Public entry point for engine.
  *
- * Exposes `create_engine(config)` and re-exports every public type and typed
- * error, plus the provider-authoring surface
+ * Exposes `create_engine(config)` and `define_tool(spec)`, and re-exports
+ * every public type and typed error, plus the provider-authoring surface
  * (`ProviderFactory`, the adapter union, the neutral turn types
  * `TurnRequest`/`TurnResult`, and `default_normalize_usage`) for
  * `custom_providers`, and `claude_cli_reported` for reading the claude CLI's
@@ -11,6 +11,7 @@
  */
 
 export { create_engine } from './create_engine.js'
+export { define_tool } from './define_tool.js'
 
 export type {
   AiSdkTelemetrySettings,

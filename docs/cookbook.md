@@ -311,25 +311,21 @@ end-to-end suspend/confirm/resume server, and
 Give the model tools and it calls them; the engine runs the `execute` closures and feeds the output back until the model stops asking or `max_steps` is hit.
 
 ```ts
-import { model_step, run } from 'fascicle';
-import type { Tool } from 'fascicle';
+import { define_tool, model_step, run } from 'fascicle';
 import { z } from 'zod';
 
-const weather_input = z.object({ city: z.string() });
-
-const get_weather: Tool = {
+const get_weather = define_tool({
   name: 'get_weather',
   description: 'Look up the current temperature in Celsius for a city.',
-  input_schema: weather_input,
-  execute: async (input, ctx) => {
-    const { city } = weather_input.parse(input);
+  input_schema: z.object({ city: z.string() }),
+  execute: async ({ city }, ctx) => {
     const res = await fetch(`https://wttr.in/${encodeURIComponent(city)}?format=j1`, {
       signal: ctx.abort,
     });
     const body = (await res.json()) as { current_condition: Array<{ temp_C: string }> };
     return { temp_c: Number(body.current_condition[0]?.temp_C) };
   },
-};
+});
 
 const ask = model_step({
   engine,
@@ -342,15 +338,17 @@ const ask = model_step({
 const out = await run(ask, 'What is the temperature in Vancouver right now?');
 ```
 
-A `Tool` hands `execute` its input as `unknown`, even though the engine has already validated it against `input_schema`, so parsing it again is what gives `city` its type. `ctx` inside `execute` is a `ToolExecContext` that carries `abort`, `trajectory`, `tool_call_id`, and `step_index`. Pass `ctx.abort` to `fetch` so the tool respects run cancellation. `out` is the model's final answer; when the harness wants the `ToolCallRecord`s, per-step usage, or finish reason, swap in `model_call` and read the envelope.
+`define_tool` reads the input's type from `input_schema`, so `execute` gets `{ city: string }`, and it hands back a plain `Tool` that `tools` takes as it is. The engine validates every call against `input_schema` before it runs the tool, and a call that fails goes back to the model as a tool error, so `execute` never sees an input that the schema turned away and has nothing to parse. A tool written as a plain `Tool` object works too, but its `execute` gets the input as `unknown`. `ctx` inside `execute` is a `ToolExecContext` that carries `abort`, `trajectory`, `tool_call_id`, and `step_index`. Pass `ctx.abort` to `fetch` so the tool respects run cancellation. `out` is the model's final answer; when the harness wants the `ToolCallRecord`s, per-step usage, or finish reason, swap in `model_call` and read the envelope.
 
 Your tools can require approval:
 
 ```ts
-tools: [{
-  ...get_weather,
-  needs_approval: (input) => weather_input.parse(input).city.startsWith('classified'),
-}],
+const get_weather = define_tool({
+  // name, description, input_schema, and execute as above
+  needs_approval: ({ city }) => city.startsWith('classified'),
+});
+
+// then, beside tools: [get_weather] in the model_step config:
 on_tool_approval: async (req) => {
   const yes = await ask_operator(req.tool_name, req.input);
   return yes;
@@ -362,15 +360,13 @@ What a denied call does depends on `tool_error_policy`. Under the default, `'fee
 Your tools can also end the loop. By default it runs until the model emits a turn with no tool call, or until `max_steps` is hit, and a weak local model often does better with an explicit `finish` tool that it can call to signal it's done. Flag that tool `ends_turn: true` and a successful call ends the loop immediately, with no extra model turn:
 
 ```ts
-const finish_input = z.object({ summary: z.string() });
-
-const finish: Tool = {
+const finish = define_tool({
   name: 'finish',
   description: 'Call when the task is complete. Provide a short summary.',
-  input_schema: finish_input,
-  execute: (input) => finish_input.parse(input).summary,
+  input_schema: z.object({ summary: z.string() }),
+  execute: ({ summary }) => summary,
   ends_turn: true,
-};
+});
 ```
 
 The call runs its `execute` first (so the summary lands in the `ToolCallRecord` output and the trajectory), then the loop stops with `finish_reason: 'stop'`. Only a successful call ends the loop: a denied, invalid, dropped, or throwing terminal call is fed back like any other tool error and the loop keeps going. A terminal call also wins over a coincident `max_steps` cap, so a `finish` on the last allowed step is a clean stop, not a cutoff. `ends_turn` composes with `tool_call_repair_attempts` (a salvaged `finish` ends the loop too) and `max_tool_calls_per_step`.
