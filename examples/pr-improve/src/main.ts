@@ -1,6 +1,8 @@
 /**
- * pr-improve CLI entry — local end-to-end on a fixture diff (Phase A) or a
- * real GitHub PR via gh + claude_cli (Phase B).
+ * pr-improve CLI entry: local end-to-end on a fixture diff (Phase A) or a
+ * real GitHub PR through gh (Phase B). The engine is OpenRouter on the native
+ * transport unless `--provider` or `FASCICLE_PROVIDER` picks another (see
+ * engine.ts), and `claude_cli` runs only under `--provider claude_cli`.
  *
  * Phase A modes:
  *   pnpm --filter @repo/example-pr-improve improve:stub
@@ -8,7 +10,7 @@
  *
  * Phase B (single command demo):
  *   pr-improve <pr-number>             # → review comment + improvement PR + linking comment
- *   tsx src/main.ts --pr <n> --provider claude_cli
+ *   tsx src/main.ts --pr <n>
  *
  * Writes per-run artifacts under `.runs/<run_id>/`:
  *   - trajectory.jsonl   (also tee'd to stdout for CloudWatch)
@@ -29,7 +31,9 @@ import { make_stub_engine, type StubResponse } from 'fascicle/testing'
 
 import {
   create_app_engine,
+  PROVIDERS,
   read_engine_env,
+  resolve_provider,
   STUB_MODELS,
   type Provider,
 } from './engine.js'
@@ -66,16 +70,18 @@ const HERE = dirname(fileURLToPath(import.meta.url))
 const PACKAGE_ROOT = join(HERE, '..')
 const RUNS_DIR = join(PACKAGE_ROOT, '.runs')
 
-type CliArgs = {
+export type CliArgs = {
   readonly fixture?: string
   readonly pr?: number
   readonly provider?: Provider
   readonly stub: boolean
 }
 
-const VALID_PROVIDERS: ReadonlyArray<Provider> = ['anthropic', 'openrouter', 'claude_cli']
-
-function parse_argv(argv: ReadonlyArray<string>): CliArgs {
+/**
+ * Read the CLI flags. A missing `--provider` stays missing here, so
+ * `read_engine_env` is the one place that picks the default.
+ */
+export function parse_argv(argv: ReadonlyArray<string>): CliArgs {
   const args = argv.slice(2)
   let fixture: string | undefined
   let pr: number | undefined
@@ -97,8 +103,8 @@ function parse_argv(argv: ReadonlyArray<string>): CliArgs {
     } else if (a === '--provider') {
       const raw = args[i + 1]
       if (raw === undefined) throw new Error('--provider requires a value')
-      const found = VALID_PROVIDERS.find((p) => p === raw)
-      if (found === undefined) throw new Error(`--provider must be one of ${VALID_PROVIDERS.join(', ')}`)
+      const found = PROVIDERS.find((p) => p === raw)
+      if (found === undefined) throw new Error(`--provider must be one of ${PROVIDERS.join(', ')}`)
       provider = found
       i += 1
     }
@@ -338,7 +344,7 @@ async function run_fixture_mode(
     const pr = await load_pr_from_fixture(resolve(args.fixture))
     const flow = build_flow(engine, cfg?.models ?? STUB_MODELS, {
       worktree_root: run_dir,
-      provider: args.provider ?? 'claude_cli',
+      provider: cfg?.provider ?? resolve_provider(process.env, args.provider),
     })
     const result = await run(flow, pr, { trajectory, install_signal_handlers: false })
 
@@ -373,6 +379,9 @@ async function run_pr_mode(
   trajectory: ReturnType<typeof tee_logger>,
 ): Promise<FinalResult> {
   if (args.pr === undefined) throw new Error('internal: run_pr_mode without pr')
+  // Read the key before touching GitHub, so a missing one fails before a
+  // worktree exists.
+  const cfg = read_engine_env(process.env, args.provider)
   const user_cwd = process.env['PR_IMPROVE_USER_CWD'] ?? process.cwd()
   await ensure_git_repo(user_cwd)
   const origin = await gh_repo_origin(user_cwd)
@@ -404,16 +413,12 @@ async function run_pr_mode(
   console.error(`→ branch:   ${wt.improvement_branch}`)
 
   try {
-    const env_provider = process.env['FASCICLE_PROVIDER']
-    const provider: Provider =
-      args.provider ?? (VALID_PROVIDERS.find((p) => p === env_provider)) ?? 'claude_cli'
-    const cfg = read_engine_env(process.env, provider)
     const engine = create_app_engine(cfg, { cwd: wt.worktree_path })
     let result: FinalResult
     try {
       const flow = build_flow(engine, cfg.models, {
         worktree_root: wt.worktree_path,
-        provider,
+        provider: cfg.provider,
       })
       result = await run(flow, pr, { trajectory, install_signal_handlers: false })
     } finally {

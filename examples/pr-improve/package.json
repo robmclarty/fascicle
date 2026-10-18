@@ -1,7 +1,7 @@
 {
   "name": "@repo/example-pr-improve",
   "version": "0.0.0",
-  "description": "Automated PR improvement pipeline (review → pragmatic spec → build → review) on fascicle, API-engine only for provider portability.",
+  "description": "Automated PR improvement pipeline (review → pragmatic spec → build → review) on fascicle, on OpenRouter's API by default, with claude_cli only behind --provider claude_cli.",
   "type": "module",
   "private": true,
   "bin": {
@@ -10,7 +10,7 @@
   "scripts": {
     "improve": "tsx src/main.ts",
     "improve:stub": "tsx src/main.ts --stub --fixture fixtures/pr-sample.patch",
-    "improve:pr": "tsx src/main.ts --provider claude_cli --pr",
+    "improve:pr": "tsx src/main.ts --pr",
     "check:rules": "ast-grep scan src"
   },
   "dependencies": {

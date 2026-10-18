@@ -48,8 +48,9 @@ pass the result through.
 **Phase C, PR B** (current): single-command demo against a real GitHub PR with full provider portability. The builder dispatches by provider — `claude_cli` uses the CLI's built-in Read/Write/Edit, while API providers (`anthropic`, `openrouter`) get explicit worktree-scoped tools. Same `flow.ts`, same `Step<string, Handoff>` contract, no code changes between runs.
 
 ```sh
-pr-improve <pr-number>                       # default: --provider claude_cli
-pr-improve <pr-number> --provider anthropic  # API path; requires ANTHROPIC_API_KEY
+pr-improve <pr-number>                        # default: openrouter; requires OPENROUTER_API_KEY
+pr-improve <pr-number> --provider anthropic   # requires ANTHROPIC_API_KEY
+pr-improve <pr-number> --provider claude_cli  # your logged-in claude CLI; no key
 ```
 
 **Phase A** (still works): local end-to-end against a fixture diff with a stub engine. No GitHub, no real model calls.
@@ -62,7 +63,7 @@ The remaining cloud-deployment work (Fargate worker, webhook Lambda, Terraform-m
 
 ## Demo: install + run
 
-Prerequisites: `gh auth login` and `claude` (the Claude CLI) logged into your account.
+Prerequisites: `gh auth login`, and `OPENROUTER_API_KEY` exported in your shell (or the key for the provider that you pick with `--provider`, as [Provider portability proof](#provider-portability-proof) lists).
 
 ```sh
 gh repo clone robmclarty/fascicle ~/src/fascicle
@@ -79,7 +80,7 @@ pr-improve 1234        # → review comment + improvement PR + linking comment o
 
 What happens:
 
-1. The pipeline pulls the PR via `gh`, sets up an isolated `git worktree` at `.fascicle/<run-id>/`, and runs reviewer → pragmatist → builder → build-reviewer through `claude_cli`.
+1. The pipeline pulls the PR via `gh`, sets up an isolated `git worktree` at `.fascicle/<run-id>/`, and runs reviewer → pragmatist → builder → build-reviewer through the engine for your provider, which is OpenRouter unless you pick another.
 2. A review comment with the reviewer's suggestions is posted on the target PR.
 3. If the build-reviewer's verdict is `pass`, a new improvement PR is opened against the target PR's head branch and a follow-up comment links the two.
 4. Otherwise (no pragmatic improvements / failed to converge), only the review comment + a brief follow-up explaining why is posted.
@@ -90,10 +91,10 @@ If you're running this against a third-party repo where you don't want the workt
 
 ## Provider portability proof
 
-Every stage routes through the Fascicle engine via `model_step`. Provider is selected by `--provider <name>` (CLI flag) or `FASCICLE_PROVIDER` env var. Three providers coexist:
+Every stage routes through the Fascicle engine via `model_step`. The provider is OpenRouter on the native transport unless `--provider <name>` or the `FASCICLE_PROVIDER` env var picks another, and the flag wins over the env var. Three providers coexist:
 
-- `claude_cli` — default; uses the developer's logged-in Claude (no API key). The CLI's built-in Read/Write/Edit tools handle file edits in the worktree's cwd.
-- `anthropic` — requires `ANTHROPIC_API_KEY`. The builder gets explicit worktree-scoped tools (`read_file`, `write_file`, `edit_file`, `list_dir`, `run_shell`) wired by `make_builder_tools(worktree_root)`.
-- `openrouter` — requires `OPENROUTER_API_KEY`. Same explicit-tool path as `anthropic`.
+- `openrouter` is the default. It requires `OPENROUTER_API_KEY` and runs on the native transport, so it needs no AI SDK package. The builder gets explicit worktree-scoped tools (`read_file`, `write_file`, `edit_file`, `list_dir`, `run_shell`) that `make_builder_tools(worktree_root)` wires.
+- `anthropic` requires `ANTHROPIC_API_KEY` and takes the same explicit-tool path as `openrouter`.
+- `claude_cli` runs only under `--provider claude_cli`. `FASCICLE_PROVIDER` can't select it, so an env var that your shell exports never moves every run onto the CLI. It uses the developer's logged-in Claude (no API key), and the CLI's built-in Read/Write/Edit tools handle file edits in the worktree's cwd.
 
 Acceptance criterion (live as of Phase C, PR B): the same PR run with `--provider claude_cli` and `--provider anthropic` produces the same end-to-end result with no code changes.

@@ -1,12 +1,12 @@
 /**
  * Engine factory for pr-improve.
  *
- * Two paths:
- *
- * - `create_app_engine(env)` — build a real engine from environment config.
- *   Provider selected by `FASCICLE_PROVIDER` (default: anthropic). Swapping
- *   providers is the explicit proof point of this app — no code changes
- *   should be required.
+ * `read_engine_env` picks the provider and its key, and `create_app_engine`
+ * builds the engine for it. The provider is OpenRouter on the native
+ * transport unless `--provider` or `FASCICLE_PROVIDER` names another, so
+ * swapping providers takes a flag or an env change and no code. `claude_cli`
+ * runs only when `--provider claude_cli` asks for it, since an API engine is
+ * this app's main path.
  *
  * The stub path (Phase A and tests) uses `make_stub_engine` from
  * `fascicle/testing`, imported by the shell and the tests directly.
@@ -14,12 +14,16 @@
 
 import { z } from 'zod'
 
-import { create_engine, type Engine } from 'fascicle'
+import { create_engine, type Engine, type EngineConfig } from 'fascicle'
 
 import type { FlowModels } from './types.js'
 
 const provider_schema = z.enum(['anthropic', 'openrouter', 'claude_cli'])
 export type Provider = z.infer<typeof provider_schema>
+
+export const PROVIDERS: ReadonlyArray<Provider> = provider_schema.options
+
+const DEFAULT_PROVIDER: Provider = 'openrouter'
 
 export type AppEngineConfig = {
   readonly provider: Provider
@@ -79,8 +83,27 @@ function read_models(env: NodeJS.ProcessEnv, provider: Provider): FlowModels {
   }
 }
 
+/**
+ * Pick the provider: `--provider` first, then `FASCICLE_PROVIDER`, then
+ * OpenRouter. The env var can't select `claude_cli`, so a shell that exports
+ * it never moves every run onto the CLI without the flag that says so.
+ */
+export function resolve_provider(env: NodeJS.ProcessEnv, override_provider?: Provider): Provider {
+  if (override_provider !== undefined) return override_provider
+  const from_env = env['FASCICLE_PROVIDER']
+  if (from_env === undefined || from_env === '') return DEFAULT_PROVIDER
+  if (from_env === 'anthropic' || from_env === 'openrouter') return from_env
+  throw new Error(
+    `FASCICLE_PROVIDER=${from_env} is not one this app reads from the environment. Set it to anthropic or openrouter, or pass --provider claude_cli to run on the claude CLI.`,
+  )
+}
+
+/**
+ * Resolve the provider, its per-role models, and its API key from the
+ * environment, failing early with the name of a missing key.
+ */
 export function read_engine_env(env: NodeJS.ProcessEnv = process.env, override_provider?: Provider): AppEngineConfig {
-  const provider = override_provider ?? provider_schema.parse(env['FASCICLE_PROVIDER'] ?? 'anthropic')
+  const provider = resolve_provider(env, override_provider)
   const models = read_models(env, provider)
   if (provider === 'claude_cli') {
     return { provider, api_key: '', models }
@@ -88,19 +111,23 @@ export function read_engine_env(env: NodeJS.ProcessEnv = process.env, override_p
   const api_key_var = provider === 'openrouter' ? 'OPENROUTER_API_KEY' : 'ANTHROPIC_API_KEY'
   const api_key = env[api_key_var] ?? ''
   if (api_key.length === 0) {
-    throw new Error(`${api_key_var} is required for FASCICLE_PROVIDER=${provider}`)
+    throw new Error(`${api_key_var} is required for the ${provider} provider. Export it, or pick another with --provider.`)
   }
   return { provider, api_key, models }
 }
 
-export function create_app_engine(cfg: AppEngineConfig, opts: AppEngineOptions = {}): Engine {
+/**
+ * The `create_engine` config for a resolved provider. OpenRouter rides the
+ * native transport, so the default path needs no AI SDK peer installed.
+ */
+export function app_engine_config(cfg: AppEngineConfig, opts: AppEngineOptions = {}): EngineConfig {
   if (cfg.provider === 'anthropic') {
-    return create_engine({ providers: { anthropic: { api_key: cfg.api_key } } })
+    return { providers: { anthropic: { api_key: cfg.api_key } } }
   }
   if (cfg.provider === 'openrouter') {
-    return create_engine({ providers: { openrouter: { api_key: cfg.api_key } } })
+    return { providers: { openrouter: { api_key: cfg.api_key, transport: 'native' } } }
   }
-  return create_engine({
+  return {
     providers: {
       claude_cli: {
         auth_mode: 'oauth',
@@ -108,5 +135,13 @@ export function create_app_engine(cfg: AppEngineConfig, opts: AppEngineOptions =
         ...(opts.cwd !== undefined ? { default_cwd: opts.cwd } : {}),
       },
     },
-  })
+  }
+}
+
+/**
+ * Build the app's one engine. This is the only `create_engine` call in the
+ * app, so provider selection stays in this file.
+ */
+export function create_app_engine(cfg: AppEngineConfig, opts: AppEngineOptions = {}): Engine {
+  return create_engine(app_engine_config(cfg, opts))
 }
