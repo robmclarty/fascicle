@@ -2,8 +2,8 @@
  * Header formatting for the run canvas.
  *
  * Pure string work, kept out of the components so it can be mutation-gated
- * (D4). The full header stat line lives here now that the fold produces its
- * numbers: `T+130MS · 1 RETRY ABSORBED · SCARS 0 · $0.0000` is the artboard-01
+ * (D4). The full header stat line lives here:
+ * `T+130MS · 1 RETRY ABSORBED · SCARS 0 · $0.0000` is the artboard-01
  * reference string, and `format_header_stats` is the one place its shape is
  * decided.
  */
@@ -48,9 +48,8 @@ export function format_t_plus(ms: number): string {
 }
 
 /**
- * The run's cost rule, carried over from the old page: under one cent to four
- * decimals so a cheap run reads as a real number instead of $0.00, two
- * decimals once cents exist.
+ * The run's cost rule: under one cent to four decimals so a cheap run reads as
+ * a real number instead of $0.00, two decimals once cents exist.
  */
 export function format_cost(usd: number): string {
   return usd < 0.01 ? `$${usd.toFixed(4)}` : `$${usd.toFixed(2)}`

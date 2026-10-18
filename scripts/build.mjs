@@ -8,9 +8,9 @@
  *   3. Verify ./dist/index.js and ./dist/index.d.ts exist and are non-empty.
  *   3b. Compile the viewer canvas app with vite into ./dist/viewer-app/, and
  *      hold it to the size budget and the no-external-hosts rule.
- *   4. Dynamic-import the built bundle and assert the 16 composition
+ *   4. Dynamic-import the built bundle and assert the composition
  *      primitives plus `create_engine`, `model_call`, `describe`, and
- *      `describe.json` are exported.
+ *      `describe.json` are exported, then smoke-import every subpath.
  *
  * Exit codes:
  *   0  clean build
@@ -19,7 +19,7 @@
  */
 
 import { spawn } from 'node:child_process';
-import { mkdir, mkdtemp, readFile, readdir, realpath, rm, stat, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readFile, readdir, realpath, rm, stat, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -74,22 +74,27 @@ const NAMESPACE_URL_RE = /\/\/www\.w3\.org\//;
 const APP_TEXT_EXT = ['.css', '.html', '.js'];
 
 const EXPECTED_NAMED = [
-  // 16 composition primitives
+  // composition primitives
   'step',
   'sequence',
   'parallel',
   'branch',
   'map',
   'pipe',
+  'compose',
+  'chain',
+  'loop',
   'retry',
   'fallback',
   'timeout',
   'adversarial',
   'ensemble',
+  'ensemble_step',
   'tournament',
   'consensus',
   'checkpoint',
   'suspend',
+  'gate',
   'scope',
   'stash',
   'use',
@@ -130,17 +135,15 @@ function run_subprocess(cmd, args, opts = {}) {
   });
 }
 
-// Known-benign tsdown messages. The two deprecations fire when the spec-
-// mandated config field names (`external`, `noExternal`) are used instead of
-// tsdown's newer `deps.neverBundle` / `deps.alwaysBundle`. Keeping the spec
-// field names is deliberate (constraints.md §3.3); tsdown still honors them.
+// Known-benign tsdown messages. The deprecation fires because tsdown.config.ts
+// keeps the `external` field name instead of tsdown's newer
+// `deps.neverBundle`; tsdown still honors it.
 // The TypeScript 7.0 notice fires on every build since the move to 7:
 // rolldown-plugin-dts prints it whenever it emits declarations through the
 // tsgo binary, which it must, since 7 ships no JavaScript API. The snippets
 // and attw slots check the declarations it produces.
 const BENIGN_WARNING_RE = [
   /`external` is deprecated\. Use `deps\.neverBundle` instead\./,
-  /`noExternal` is deprecated\. Use `deps\.alwaysBundle` instead\./,
   /TypeScript 7\.0 does not yet have a stable API and is experimental\./,
 ];
 
@@ -561,7 +564,6 @@ async function verify_app_bundle(files) {
 }
 
 async function write_viewer_bin_shim(path) {
-  const { writeFile, chmod } = await import('node:fs/promises');
   const shim = `#!/usr/bin/env node
 import { pathToFileURL } from 'node:url';
 import { dirname, resolve } from 'node:path';
@@ -570,14 +572,16 @@ import { fileURLToPath } from 'node:url';
 const here = dirname(fileURLToPath(import.meta.url));
 const dist_viewer = resolve(here, '..', 'viewer.js');
 const mod = await import(pathToFileURL(dist_viewer).href);
-await mod.run_viewer_cli(process.argv.slice(2));
+await mod.run_viewer_cli(process.argv.slice(2)).catch((err) => {
+  process.stderr.write(\`fascicle-viewer: \${err instanceof Error ? err.message : String(err)}\\n\`);
+  process.exit(1);
+});
 `;
   await writeFile(path, shim, 'utf8');
   await chmod(path, 0o755);
 }
 
 async function write_diagram_bin_shim(path) {
-  const { writeFile, chmod } = await import('node:fs/promises');
   const shim = `#!/usr/bin/env node
 import { pathToFileURL } from 'node:url';
 import { dirname, resolve } from 'node:path';

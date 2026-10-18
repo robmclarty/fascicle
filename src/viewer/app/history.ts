@@ -76,8 +76,8 @@ export function read_cursor_header(value: string | null): number {
 
 /**
  * The `/api/events` url that resumes the live tail past `cursor`. A zero cursor
- * (nothing folded, empty history) opens the plain stream, so a first, empty
- * load is byte-identical to the pre-history contract.
+ * (nothing folded, empty history) opens the plain stream with no `since`
+ * query.
  */
 export function events_url(cursor: number): string {
   return cursor > 0 ? `/api/events?since=${cursor}` : '/api/events'

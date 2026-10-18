@@ -65,8 +65,9 @@ function is_frame(value: unknown): value is ViewerFrame {
 /**
  * Opens the SSE stream and reports frames and connection status.
  *
- * The server replays whatever the ring buffer holds before following live, so
- * a late-arriving browser sees the same frames in the same order as one that
+ * The server replays the ring buffer past the `since` cursor (or the
+ * `Last-Event-ID` a reconnect sends) before following live, so a
+ * late-arriving browser sees the same frames in the same order as one that
  * was open from the first event. `close` is idempotent from the caller's side
  * because `EventSource.close` is.
  */
@@ -82,8 +83,10 @@ export function connect_events(options: ConnectOptions): SseConnection {
     const frame = parse_frame(event.data)
     if (frame !== null) on_frame(frame)
   })
-  // The server writes a `close` frame on shutdown and the browser raises
-  // `error` on a dropped socket; both mean the same thing to the header.
+  // A server shutdown arrives as `error` on the dropped socket. The server
+  // also writes a `close` frame as it tears a stream down, but only after the
+  // socket is gone, so that frame does not reach the browser in practice.
+  // Either one means the same thing to the header.
   source.addEventListener('close', () => {
     on_status('offline')
   })

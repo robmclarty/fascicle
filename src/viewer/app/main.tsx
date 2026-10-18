@@ -72,7 +72,9 @@ import './styles.css'
 /** The density dial's home in storage, the one preference the viewer keeps. */
 const DENSITY_KEY = 'fascicle-viewer:density'
 
-/*
+/**
+ * Reads the stored density dial, off when nothing is stored or storage is denied.
+ *
  * Storage can be denied (private browsing, a locked-down profile), and a dial
  * that cannot persist should still work for the session rather than take the
  * canvas down at startup, so denial is absorbed on both sides.
@@ -85,6 +87,7 @@ function read_density(): boolean {
   }
 }
 
+/** Stores the density dial, leaving it session-only when storage is denied. */
 function store_density(on: boolean): void {
   try {
     localStorage.setItem(DENSITY_KEY, on ? 'on' : 'off')

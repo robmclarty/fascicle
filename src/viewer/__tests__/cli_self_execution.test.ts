@@ -1,17 +1,19 @@
 /**
  * Regression: the viewer entry `dist/viewer.js` inlines src/viewer/cli.ts.
- * A previous self-execution guard used `process.argv[1].endsWith('/cli.js')`,
- * which fired any time a downstream consumer's own entry script happened to
- * be named `cli.js`/`cli.ts`, silently hijacking the import to start the
- * viewer. The fix compares argv[1] against `fileURLToPath(import.meta.url)`.
+ * A self-execution guard of the form `process.argv[1].endsWith('/cli.js')`
+ * fires any time a downstream consumer's own entry script happens to be
+ * named `cli.js`/`cli.ts`, silently hijacking the import to start the
+ * viewer. The guard compares argv[1] against `fileURLToPath(import.meta.url)`
+ * instead.
  *
  * This test guards the bundled output: spawn `node` with argv[1] set to a
  * path ending in `/cli.js`, import the built `dist/viewer.js`, and assert
  * (a) no `fascicle-viewer:` text leaks to stderr (the CLI never auto-ran)
  * and (b) the module exposes the expected named exports.
  *
- * Skipped when `dist/viewer.js` is missing (unit-test runs without a build).
- * `pnpm check:all` builds first, so CI always exercises this.
+ * Runs only when a `dist/viewer.js` from an earlier build is already present,
+ * and skips otherwise. The check suite runs the tests before its `build` slot,
+ * so a clean checkout (CI included) skips it.
  */
 
 import { spawn } from 'node:child_process'

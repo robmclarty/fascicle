@@ -2,15 +2,15 @@
  * In-process coverage for `start_viewer`.
  *
  * `cli.test.ts` mocks `start_viewer` entirely, so this composition over the
- * already-tested server and tail seams was previously only exercised via the
- * built bundle in a subprocess — invisible to in-process coverage. These
- * tests boot the real thing on an ephemeral port (`port: 0`, never a fixed
- * port) and drive both the tail-enabled and tail-less paths through to a
- * clean `close()`.
+ * already-tested server and tail seams is covered here rather than through
+ * the built bundle in a subprocess, which in-process coverage cannot see.
+ * These tests boot the real thing on an ephemeral port (`port: 0`, never a
+ * fixed port) and drive both the tail-enabled and tail-less paths through to
+ * a clean `close()`.
  */
 
 import { appendFileSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { networkInterfaces, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { start_viewer, type ViewerHandle } from '../start_viewer.js'
@@ -26,6 +26,13 @@ afterEach(async () => {
 })
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
+// Some containers run without IPv6, where binding `::1` fails before the url
+// is ever built, so the IPv6 test runs only where the loopback exists.
+const HAS_IPV6_LOOPBACK = Object.values(networkInterfaces())
+  .flat()
+  .some((iface) => iface?.address === '::1')
+
 
 async function snapshot(url: string): Promise<Array<{ event: { kind: string } }>> {
   const res = await fetch(`${url}/api/snapshot`)
@@ -52,6 +59,15 @@ describe('start_viewer', () => {
     expect(handle.host).toBe('127.0.0.1')
     expect(handle.port).toBeGreaterThan(0)
     expect(handle.url).toBe(`http://127.0.0.1:${handle.port}`)
+    const res = await fetch(`${handle.url}/api/health`)
+    expect(res.status).toBe(200)
+  })
+
+  it.skipIf(!HAS_IPV6_LOOPBACK)('brackets an IPv6 host in the url it hands back', async () => {
+    handle = await start_viewer({ host: '::1', port: 0 })
+    expect(handle.host).toBe('::1')
+    expect(handle.port).toBeGreaterThan(0)
+    expect(handle.url).toBe(`http://[::1]:${handle.port}`)
     const res = await fetch(`${handle.url}/api/health`)
     expect(res.status).toBe(200)
   })

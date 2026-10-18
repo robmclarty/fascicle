@@ -242,13 +242,20 @@ describe('run_viewer_cli', () => {
     expect(start_viewer_mock).toHaveBeenCalledTimes(1)
   })
 
-  it('warns when binding 0.0.0.0', async () => {
-    await run_viewer_cli([existing_file, '--host', '0.0.0.0', '--no-open'])
+  it.each(['0.0.0.0', '::', '192.168.1.20'])('warns when binding the non-loopback host %s', async (host) => {
+    await run_viewer_cli([existing_file, '--host', host, '--no-open'])
 
     const opts = start_viewer_mock.mock.calls[0]?.[0]
     if (!opts) throw new Error('expected start_viewer to be called')
-    expect(opts.host).toBe('0.0.0.0')
-    expect(stderr_text).toContain('binding 0.0.0.0')
+    expect(opts.host).toBe(host)
+    expect(stderr_text).toContain(`fascicle-viewer: warning: binding ${host} `)
+  })
+
+  it.each(['127.0.0.1', 'localhost', '::1'])('does not warn when binding the loopback host %s', async (host) => {
+    await run_viewer_cli([existing_file, '--host', host, '--no-open'])
+
+    expect(start_viewer_mock).toHaveBeenCalledTimes(1)
+    expect(stderr_text).not.toContain('warning')
   })
 
   it('logs the ingest endpoint and passes no path in listen mode', async () => {

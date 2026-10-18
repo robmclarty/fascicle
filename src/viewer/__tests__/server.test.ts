@@ -1,5 +1,5 @@
 import { EventEmitter } from 'node:events'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import type { IncomingHttpHeaders, IncomingMessage, Server, ServerResponse } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
@@ -75,6 +75,10 @@ import {
 
 const { parse_last_event_id, parse_since, handle_sse, handle_ingest, SSE_HEARTBEAT_MS } =
   internals_for_test
+
+// Root reads a mode-000 file anyway, so the unreadable-file tests have nothing
+// to prove under it.
+const RUNS_AS_ROOT = process.getuid?.() === 0
 
 const gate = vi.hoisted(() => ({
   // The http.Server behind the most recent start_server call.
@@ -240,6 +244,21 @@ describe('viewer http server', () => {
     expect(res.headers.get('content-type')).toBe(content_type)
     expect(res.headers.get('cache-control')).toBe('no-store')
     expect(await res.text()).toBe(body)
+  })
+
+  it.skipIf(RUNS_AS_ROOT)('drops the response, not the server, for an asset it cannot open', async () => {
+    // The file passes the stat that picks a 200, then fails to open. Left
+    // unhandled, that stream error is an uncaught exception that ends the
+    // process.
+    const locked = join(app_dir, 'assets', 'locked.js')
+    writeFileSync(locked, 'secret')
+    chmodSync(locked, 0o000)
+    try {
+      await expect(fetch(url('/assets/locked.js'))).rejects.toThrow()
+      expect((await fetch(url('/api/health'))).status).toBe(200)
+    } finally {
+      rmSync(locked, { force: true })
+    }
   })
 
   it('404s an asset the compiled app does not ship', async () => {
@@ -453,6 +472,22 @@ describe('GET /api/trajectory from a file', () => {
     expect(await res.text()).toBe(body)
   })
 
+  it.skipIf(RUNS_AS_ROOT)('drops the response, not the server, for a file it cannot open', async () => {
+    dir = mkdtempSync(join(tmpdir(), 'fascicle-viewer-traj-'))
+    const path = join(dir, 'run.jsonl')
+    writeFileSync(path, `${JSON.stringify({ kind: 'emit' })}\n`)
+    chmodSync(path, 0o000)
+    srv = await start_server({
+      broadcaster: create_broadcaster({ buffer: 10 }),
+      host: '127.0.0.1',
+      port: 0,
+      trajectory_path: path,
+    })
+
+    await expect(fetch(`${srv.url}/api/trajectory`)).rejects.toThrow()
+    expect((await fetch(`${srv.url}/api/health`)).status).toBe(200)
+  })
+
   it('falls back to the ring when the configured file is missing', async () => {
     dir = mkdtempSync(join(tmpdir(), 'fascicle-viewer-traj-'))
     const bc = create_broadcaster({ buffer: 100 })
@@ -572,9 +607,15 @@ describe('resolve_route', () => {
     expect(resolve_route({ url: '/x', method: 'GET', headers: {} }, 'myhost', 1234)).toBe('GET /x')
   })
 
+  it('brackets an IPv6 server host when it falls back to the server authority', () => {
+    // `http://::1:9` is not a URL; an unbracketed literal throws out of the
+    // request handler for any client that omits the Host header.
+    expect(resolve_route({ url: '/x', method: 'GET', headers: {} }, '::1', 9)).toBe('GET /x')
+  })
+
   it('falls back to the server authority when the Host header is malformed', () => {
-    // A present-but-malformed host is neither null nor undefined, so the old
-    // `??` let it reach `new URL` and throw. Resolution must stay total.
+    // A present-but-malformed host is neither null nor undefined, so a bare
+    // `??` lets it reach `new URL` and throw. Resolution must stay total.
     expect(resolve_route({ url: '/x', method: 'GET', headers: { host: 'in valid' } }, 'h', 9)).toBe(
       'GET /x',
     )

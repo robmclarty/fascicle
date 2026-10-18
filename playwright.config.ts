@@ -11,8 +11,9 @@ import { defineConfig, devices } from '@playwright/test';
 export default defineConfig({
   testDir: './src/viewer/__tests__/e2e',
   testMatch: '**/*.e2e.ts',
-  // Screenshot baselines freeze the design language, so looping chrome (the
-  // LIVE dot pulse, later the marquee) is stilled rather than raced.
+  // Screenshot baselines freeze the design language, so looping motion (the
+  // LIVE dot pulse, a live segment's marquee, the halo pulse) is stilled
+  // rather than raced.
   expect: { toHaveScreenshot: { animations: 'disabled' } },
   fullyParallel: true,
   forbidOnly: Boolean(process.env['CI']),

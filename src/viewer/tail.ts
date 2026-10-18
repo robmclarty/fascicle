@@ -98,6 +98,12 @@ export function start_tail(config: TailConfig): Tail {
       const { bytesRead } = await fh.read(buf, 0, length, offset)
       offset += bytesRead
       buffer += buf.subarray(0, bytesRead).toString('utf8')
+    } catch (err) {
+      // A path that stats and opens can still refuse a read (a directory
+      // answers EISDIR). The watcher starts read passes without awaiting
+      // them, so the error is reported here rather than left to reject one.
+      if (on_io_error) on_io_error(err)
+      return
     } finally {
       await fh.close()
     }

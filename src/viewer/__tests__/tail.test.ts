@@ -6,18 +6,19 @@ import type { ParsedTrajectoryEvent } from '#core'
 import { start_tail, type Tail } from '../tail.js'
 
 /**
- * Deterministic tail tests. The tailer's hard paths are async and were
- * previously reached with fixed `wait(50)` sleeps that neither pinned the
- * ordering nor killed the io-error/coalescing mutants. Two things replace them:
+ * Deterministic tail tests. The tailer's hard paths are async, and a fixed
+ * sleep neither pins their ordering nor kills the io-error/coalescing mutants,
+ * so the suite never waits on the clock. Two things make that possible:
  *
  *   - The public `drain()` forces a read synchronously, so every append is
  *     observed by awaiting `drain()` rather than sleeping for the watcher.
  *   - Two passthrough module mocks (`node:fs` for `watch`, `node:fs/promises`
- *     for `stat`/`open`) that delegate to the real implementation until a test
- *     arms a one-shot on the shared `gate`. This lets a test park a read
- *     mid-flight (to prove burst coalescing) or fail a single syscall (to reach
- *     an `on_io_error` branch) with no timing at all. Disarmed, both mocks are
- *     transparent, so the real-file behavioural tests run against real fs.
+ *     for `stat`/`open` and the handle's `read`) that delegate to the real
+ *     implementation until a test arms a one-shot on the shared `gate`. This
+ *     lets a test park a read mid-flight (to prove burst coalescing) or fail a
+ *     single syscall (to reach an `on_io_error` branch) with no timing at all.
+ *     Disarmed, both mocks are transparent, so the real-file behavioural tests
+ *     run against real fs.
  *
  * Equivalent-mutant ledger (survivors left after this suite, all behaviourally
  * unobservable, so classified here rather than chased):
@@ -63,6 +64,7 @@ const gate = vi.hoisted(() => ({
   // Persistent one-file failures; a test flips one on, afterEach clears it.
   stat_fails: false,
   open_fails: false,
+  read_fails: false,
   watch_fails: false,
 }))
 
@@ -93,7 +95,13 @@ vi.mock('node:fs/promises', async (importOriginal) => {
     },
     open: async (...args: Parameters<typeof actual.open>) => {
       if (gate.open_fails) throw new Error('mock open failure')
-      return actual.open(...args)
+      const fh = await actual.open(...args)
+      if (gate.read_fails) {
+        // Shadows only `read`, so the real `close` still runs and the
+        // descriptor is released the way it is on any other pass.
+        Object.assign(fh, { read: async () => { throw new Error('mock read failure') } })
+      }
+      return fh
     },
   }
 })
@@ -112,6 +120,7 @@ beforeEach(() => {
   gate.stat_arm = null
   gate.stat_fails = false
   gate.open_fails = false
+  gate.read_fails = false
   gate.watch_fails = false
 })
 
@@ -330,6 +339,44 @@ describe('start_tail', () => {
       await tail.drain()
 
       gate.open_fails = true
+      appendFileSync(path, JSON.stringify({ kind: 'emit', text: 'x' }) + '\n')
+      await expect(tail.drain()).resolves.toBeUndefined()
+    })
+
+    it('surfaces a read failure via on_io_error and keeps the drain settled', async () => {
+      const path = join(work_dir, 'read.jsonl')
+      writeFileSync(path, '')
+      const events: ParsedTrajectoryEvent[] = []
+      const errors: unknown[] = []
+      const tail = spawn({
+        path,
+        on_event: (e) => events.push(e),
+        on_io_error: (err) => errors.push(err),
+      })
+      await tail.drain()
+
+      gate.read_fails = true
+      appendFileSync(path, JSON.stringify({ kind: 'emit', text: 'x' }) + '\n')
+      // An unrouted read error rejects the drain promise, which a tail started
+      // by the CLI never awaits, so it surfaces as an unhandled rejection.
+      await expect(tail.drain()).resolves.toBeUndefined()
+      expect(errors.length).toBeGreaterThanOrEqual(1)
+      expect(errors[0]).toEqual(new Error('mock read failure'))
+      expect(events).toHaveLength(0)
+
+      // The failed pass consumed nothing, so the bytes are read once it clears.
+      gate.read_fails = false
+      await tail.drain()
+      expect(events).toHaveLength(1)
+    })
+
+    it('does not throw when a read fails and no on_io_error is set', async () => {
+      const path = join(work_dir, 'read2.jsonl')
+      writeFileSync(path, '')
+      const tail = spawn({ path, on_event: () => {} })
+      await tail.drain()
+
+      gate.read_fails = true
       appendFileSync(path, JSON.stringify({ kind: 'emit', text: 'x' }) + '\n')
       await expect(tail.drain()).resolves.toBeUndefined()
     })

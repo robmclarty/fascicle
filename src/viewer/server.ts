@@ -19,7 +19,9 @@
 
 import { createReadStream, statSync, type Stats } from 'node:fs'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
+import { isIPv6 } from 'node:net'
 import { dirname, extname, resolve, sep } from 'node:path'
+import { pipeline } from 'node:stream'
 import { fileURLToPath } from 'node:url'
 import { parse_trajectory_event, type ParsedTrajectoryEvent } from '#core'
 import type { Broadcaster } from './broadcast.js'
@@ -74,16 +76,19 @@ export type ServerConfig = {
 
 export type ViewerServer = {
   readonly url: string
+  /** The port the socket bound, which differs from the requested one for `port: 0`. */
+  readonly port: number
   readonly close: () => Promise<void>
 }
 
 /**
  * Starts the HTTP server and resolves once it is listening.
  *
- * Wires the four API routes (health, snapshot, SSE, ingest) plus the compiled
- * app's static files to a single request handler, and resolves with the bound
- * URL and a `close` that shuts the socket down. The API routes are matched
- * first and exactly, so no file the canvas ships can ever shadow one.
+ * Wires the five API routes (health, snapshot, trajectory, SSE, ingest) plus
+ * the compiled app's static files to a single request handler, and resolves
+ * with the bound URL and port and a `close` that shuts the socket down. The API
+ * routes are matched first and exactly, so no file the canvas ships can ever
+ * shadow one.
  */
 export function start_server(config: ServerConfig): Promise<ViewerServer> {
   const { broadcaster, host, port, app_dir, trajectory_path, on_parse_error } = config
@@ -126,9 +131,10 @@ export function start_server(config: ServerConfig): Promise<ViewerServer> {
     http_server.once('error', res_err)
     http_server.listen(port, host, () => {
       http_server.removeListener('error', res_err)
-      const url = `http://${host}:${bound_port_of(http_server.address(), port)}`
+      const bound_port = bound_port_of(http_server.address(), port)
       res_ok({
-        url,
+        url: `http://${format_authority(host, bound_port)}`,
+        port: bound_port,
         close: () => close_server(http_server),
       })
     })
@@ -145,6 +151,16 @@ export function start_server(config: ServerConfig): Promise<ViewerServer> {
  */
 export function bound_port_of(addr: ReturnType<Server['address']>, fallback: number): number {
   return addr !== null && typeof addr === 'object' && 'port' in addr ? addr.port : fallback
+}
+
+/**
+ * Joins a host and port into a URL authority, bracketing an IPv6 literal.
+ *
+ * `http://::1:4242` is not a URL; `http://[::1]:4242` is. A hostname or IPv4
+ * address passes through untouched.
+ */
+function format_authority(host: string, port: number): string {
+  return `${isIPv6(host) ? `[${host}]` : host}:${port}`
 }
 
 /**
@@ -176,7 +192,7 @@ export function resolve_route(
       // A malformed Host header falls through to the server's own authority.
     }
   }
-  return `${method} ${new URL(path, `http://${host}:${port}`).pathname}`
+  return `${method} ${new URL(path, `http://${format_authority(host, port)}`).pathname}`
 }
 
 /**
@@ -245,7 +261,7 @@ function serve_trajectory(
   // for a missing path either way, which keeps the fallthrough total.
   if (trajectory_path !== undefined) {
     if (stat_file(trajectory_path) !== null) {
-      createReadStream(trajectory_path).pipe(res)
+      stream_file(res, trajectory_path)
       return
     }
   }
@@ -339,7 +355,23 @@ function serve_app_asset(res: ServerResponse, route: string, override: string | 
   // serves may be cached: a stale bundle would look like a broken canvas.
   res.setHeader('cache-control', 'no-store')
   res.setHeader('content-length', String(stats.size))
-  createReadStream(file).pipe(res)
+  stream_file(res, file)
+}
+
+/**
+ * Streams a file as the response body, dropping the connection if the read
+ * fails.
+ *
+ * A file can pass `stat_file` and still refuse to open (mode 000 answers
+ * EACCES), and a bare `pipe` leaves that stream error unhandled, which ends the
+ * process. `pipeline` handles it by destroying both ends, so the client sees a
+ * dropped connection and the server keeps serving. It also closes the file when
+ * a client leaves mid-stream.
+ */
+function stream_file(res: ServerResponse, path: string): void {
+  pipeline(createReadStream(path), res, () => {
+    // Both streams are already destroyed on failure; nothing is left to undo.
+  })
 }
 
 /**

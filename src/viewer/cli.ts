@@ -10,7 +10,8 @@
  *
  * Defaults bind 127.0.0.1:4242 and open the user's default browser. SIGINT
  * shuts everything down cleanly. The CLI body is exposed as `run_viewer_cli`
- * so the umbrella's bin shim can drive it from a bundled `dist/index.js`.
+ * so the `fascicle-viewer` bin shim can drive it from the bundled
+ * `dist/viewer.js`.
  */
 
 import { spawn } from 'node:child_process'
@@ -28,6 +29,9 @@ type CliArgs = {
   readonly open: boolean
 }
 
+/** The hosts that keep the dashboard on this machine; binding any other warns. */
+const LOOPBACK_HOSTS: ReadonlySet<string> = new Set(['127.0.0.1', 'localhost', '::1'])
+
 const HELP = `\
 fascicle-viewer — minimal in-repo dashboard for fascicle trajectory streams.
 
@@ -38,7 +42,7 @@ Usage:
 
 Options:
   --port <n>      port (default 4242)
-  --host <h>      bind host (default 127.0.0.1; --host 0.0.0.0 warns)
+  --host <h>      bind host (default 127.0.0.1; a non-loopback host warns)
   --buffer <n>    ring-buffer size (default 1000)
   --no-open       do not open the browser
   --help          show this message
@@ -68,8 +72,8 @@ export function parse(argv: readonly string[]): CliArgs {
     process.stdout.write(HELP)
     process.exit(0)
   }
-  const port_raw = values.port ?? '4242'
-  const buffer_raw = values.buffer ?? '1000'
+  const port_raw = values.port
+  const buffer_raw = values.buffer
   const port = Number.parseInt(port_raw, 10)
   const buffer = Number.parseInt(buffer_raw, 10)
   if (!Number.isFinite(port) || port <= 0) {
@@ -85,7 +89,7 @@ export function parse(argv: readonly string[]): CliArgs {
     process.exit(2)
   }
   const path = positionals[0]
-  const listen = values.listen ?? false
+  const listen = values.listen
   if (path === undefined && !listen) {
     process.stderr.write('fascicle-viewer: a <path> is required unless --listen is set\n')
     process.stderr.write(HELP)
@@ -93,11 +97,11 @@ export function parse(argv: readonly string[]): CliArgs {
   }
   return {
     ...(path !== undefined ? { path } : {}),
-    host: values.host ?? '127.0.0.1',
+    host: values.host,
     port,
     buffer,
     listen,
-    open: !values['no-open'] && (values.open ?? true),
+    open: !values['no-open'] && values.open,
   }
 }
 
@@ -124,7 +128,7 @@ export function open_browser(url: string): void {
  * CLI entry point: parses argv, starts the viewer, and wires shutdown.
  *
  * Warns but proceeds when the tailed path does not exist yet or when the
- * bind host is 0.0.0.0 (the dashboard has no auth). Optionally opens the
+ * bind host is not loopback (the dashboard has no auth). Optionally opens the
  * browser, then installs SIGINT/SIGTERM handlers that close the viewer
  * before exiting.
  */
@@ -136,9 +140,9 @@ export async function run_viewer_cli(argv: readonly string[]): Promise<void> {
       `fascicle-viewer: warning: ${args.path} does not exist yet — will pick up events once it is created\n`,
     )
   }
-  if (args.host === '0.0.0.0') {
+  if (!LOOPBACK_HOSTS.has(args.host)) {
     process.stderr.write(
-      'fascicle-viewer: warning: binding 0.0.0.0 — this dashboard has no auth and exposes whatever is in your trajectory stream\n',
+      `fascicle-viewer: warning: binding ${args.host} reaches beyond this machine, and the dashboard has no auth, so anyone who can reach it reads your trajectory stream; pass --host 127.0.0.1 to keep it local\n`,
     )
   }
 
@@ -185,7 +189,7 @@ function describe_error(err: unknown): string {
   }
 }
 
-// ESM main-module detection. The bundler inlines this file into dist/index.js,
+// ESM main-module detection. The bundler inlines this file into dist/viewer.js,
 // so a fragile suffix check (`endsWith('/cli.js')`) would fire whenever a
 // consumer's own entry script happened to be named cli.js, see
 // https://nodejs.org/api/esm.html#importmetaurl. Compare the resolved path of
