@@ -17,18 +17,22 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import type { FlowNode } from '#core'
+import { fold_history } from '../app/history.js'
 import { reduce, t_plus_ms } from '../app/lib/reduce.js'
 import { EMPTY_SESSION, apply_frame } from '../app/lib/scene.js'
 import {
   build_timeline,
   density_bins,
+  follow_frame,
   fraction_at,
   index_at_fraction,
   next_beat,
   scrub_key,
   session_at,
+  starts_run,
   step_event,
   step_second,
+  type RunLog,
   type Timeline,
 } from '../app/lib/timeline.js'
 import type { ViewerFrame } from '../app/sse.js'
@@ -71,6 +75,68 @@ describe('build_timeline over the fixture', () => {
   it('marks each error close at its own moment on the spine', () => {
     const timeline = build_timeline(frames)
     expect(timeline.failures).toEqual([FIRST_FAIL_MS / SPAN_MS, SECOND_FAIL_MS / SPAN_MS])
+  })
+})
+
+/** Five minutes, the gap between the two runs of the two-run log. */
+const RUN_GAP_MS = 5 * 60 * 1000
+
+/**
+ * The fixture run again, five minutes earlier and under another run id, so a
+ * log of it followed by the fixture holds two runs whose failures sit at the
+ * same offsets but a different spine.
+ */
+const earlier_run: ViewerFrame[] = frames.map((frame) => ({
+  ...frame,
+  run_id: 'earlier',
+  ...(typeof frame['ts'] === 'number' ? { ts: frame['ts'] - RUN_GAP_MS } : {}),
+}))
+
+/** Assert the header clock and the scrubber agree at every index of a log. */
+function expect_clocks_agree(log: ReadonlyArray<ViewerFrame>): void {
+  const timeline = build_timeline(log)
+  for (let i = 0; i < timeline.count; i += 1) {
+    expect(timeline.times[i]).toBe(t_plus_ms(session_at(log, i).state))
+  }
+}
+
+describe('a log of two runs five minutes apart', () => {
+  it('loads as the newest run alone, its spine, clock, and failures', () => {
+    const body = [...earlier_run, ...frames].map((frame) => JSON.stringify(frame)).join('\n')
+    const history = fold_history(body, 0)
+    expect(history.frames).toEqual(frames)
+
+    const timeline = build_timeline(history.frames)
+    expect(timeline.span_ms).toBe(SPAN_MS)
+    expect(timeline.failures).toEqual([FIRST_FAIL_MS / SPAN_MS, SECOND_FAIL_MS / SPAN_MS])
+    expect_clocks_agree(history.frames)
+    // The live edge of the scoped log is the session the whole fold reached.
+    expect(session_at(history.frames, timeline.count - 1)).toEqual(history.session)
+  })
+
+  it('starts a fresh timeline when the newest run arrives live', () => {
+    let log: RunLog = { session: EMPTY_SESSION, frames: [] }
+    const starts: number[] = []
+    for (const [index, frame] of [...earlier_run, ...frames].entries()) {
+      const next = follow_frame(log, frame)
+      if (next.started) starts.push(index)
+      log = next
+    }
+    expect(starts).toEqual([0, earlier_run.length])
+    expect(log.frames).toEqual(frames)
+    expect(build_timeline(log.frames).span_ms).toBe(SPAN_MS)
+    expect_clocks_agree(log.frames)
+  })
+
+  it('appends a frame that starts no run, an unreadable structure line included', () => {
+    const [first] = frames
+    if (first === undefined) throw new Error('the fixture has no frames')
+    const seeded = follow_frame({ session: EMPTY_SESSION, frames: [] }, first)
+    const unreadable: ViewerFrame = { kind: 'flow_structure', structure: 'not a tree', ts: 5 }
+    const next = follow_frame(seeded, unreadable)
+    expect(next.started).toBe(false)
+    expect(next.frames).toEqual([first, unreadable])
+    expect(starts_run(seeded.session, next.session)).toBe(false)
   })
 })
 

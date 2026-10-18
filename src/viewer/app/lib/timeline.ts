@@ -17,6 +17,13 @@
  * spine the eye reads can never disagree. Nothing here touches a clock or the
  * DOM, which keeps the whole module a pure fold the node suite covers.
  *
+ * The log is the newest run's alone. A readable `flow_structure` reseeds the
+ * fold, which drops every run before it, so the log starts over at that frame
+ * too (`starts_run`), in the history load and on the live tail alike. A log
+ * that kept the older runs would start its clock at the first run, so its
+ * spine, its failure marks, and every scrub index would describe events the
+ * canvas no longer folds, while the header counts from the newest run's T+0.
+ *
  * A degenerate domain (one event, or a run whose events all share a ts) has no
  * time to spread across, so positions fall back to the event index instead of
  * dividing by a zero span. The wire reading stays permissive for the reason the
@@ -38,6 +45,40 @@ export type Timeline = {
   readonly span_ms: number
   readonly times: ReadonlyArray<number>
   readonly failures: ReadonlyArray<number>
+}
+
+/**
+ * The newest run as the app follows it: the session the fold has reached and
+ * the frames of that run, from its own `flow_structure` on, which are the
+ * frames the scrubber replays.
+ */
+export type RunLog = {
+  readonly session: Session
+  readonly frames: ReadonlyArray<ViewerFrame>
+}
+
+/**
+ * True when folding a frame took the session from `before` to a new run in
+ * `after`. Only a readable `flow_structure` does that, and `apply_frame`
+ * answers it with a fresh structure, while every other frame keeps the
+ * structure it found, so a changed structure is the mark of a new run.
+ */
+export function starts_run(before: Session, after: Session): boolean {
+  return after.structure !== before.structure
+}
+
+/**
+ * Fold one live frame into the run log. The frame joins the log, or starts it
+ * over when it starts a new run, so the scrubber spans the run the canvas
+ * shows; `started` tells the caller to let go of a scrub held in the old one.
+ */
+export function follow_frame(
+  log: RunLog,
+  frame: ViewerFrame,
+): RunLog & { readonly started: boolean } {
+  const session = apply_frame(log.session, frame)
+  const started = starts_run(log.session, session)
+  return { session, frames: started ? [frame] : [...log.frames, frame], started }
 }
 
 /**

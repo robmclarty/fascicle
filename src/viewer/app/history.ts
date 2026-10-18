@@ -21,6 +21,7 @@
  */
 
 import { EMPTY_SESSION, apply_frame, type Session } from './lib/scene.js'
+import { starts_run } from './lib/timeline.js'
 import { parse_frame, type ViewerFrame } from './sse.js'
 
 /**
@@ -34,11 +35,14 @@ export const CURSOR_HEADER = 'x-fascicle-cursor'
 export type History = {
   readonly session: Session
   /**
-   * The parsed frames the fold consumed, in order. The scrubber seeds its frame
-   * log from this list so a scrub of the loaded run refolds exactly the events
-   * history folded, and the live tail appends its own frames onto the same list.
+   * The newest run's frames, in order, from its own `flow_structure` on. The
+   * scrubber seeds its frame log from this list so a scrub of the loaded run
+   * refolds exactly the events that built the canvas, and the live tail
+   * appends its own frames onto the same list. A log that holds several runs
+   * keeps only the last, since the fold has dropped the others.
    */
   readonly frames: ReadonlyArray<ViewerFrame>
+  /** Every frame the fold consumed, older runs included, for the cursor. */
   readonly count: number
   readonly cursor: number
 }
@@ -48,19 +52,24 @@ export type History = {
  *
  * `head` is the broadcaster id the route stamped; the returned cursor is the
  * larger of it and the folded count, so a lagging file and an evicted ring both
- * resume on the correct seam.
+ * resume on the correct seam. The count covers every frame, while the frames
+ * handed back start over at each new run, as the live tail's log does.
  */
 export function fold_history(body: string, head: number): History {
   let session = EMPTY_SESSION
-  const frames: ViewerFrame[] = []
+  let frames: ViewerFrame[] = []
+  let count = 0
   for (const line of body.split('\n')) {
     if (line.length === 0) continue
     const frame = parse_frame(line)
     if (frame === null) continue
-    session = apply_frame(session, frame)
+    const next = apply_frame(session, frame)
+    if (starts_run(session, next)) frames = []
     frames.push(frame)
+    session = next
+    count += 1
   }
-  return { session, frames, count: frames.length, cursor: Math.max(frames.length, head) }
+  return { session, frames, count, cursor: Math.max(count, head) }
 }
 
 /**

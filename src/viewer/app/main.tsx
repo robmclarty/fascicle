@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, type Setter } from 'solid-js'
+import { batch, createEffect, createMemo, createSignal, type Setter } from 'solid-js'
 import { render } from 'solid-js/web'
 import { Canvas } from './canvas'
 import { CURSOR_HEADER, events_url, fold_history, read_cursor_header } from './history'
@@ -20,13 +20,15 @@ import {
 } from './lib/playback'
 import {
   build_timeline,
+  follow_frame,
   fraction_at,
   index_at_fraction,
   next_beat,
   scrub_key,
   session_at,
+  type RunLog,
 } from './lib/timeline'
-import { EMPTY_SESSION, apply_frame, type Session } from './lib/scene'
+import { EMPTY_SESSION, type Session } from './lib/scene'
 import { connect_events, type SseStatus, type ViewerFrame } from './sse'
 import type { Viewport } from './stage'
 import './styles.css'
@@ -250,7 +252,15 @@ function main(): void {
     root,
   )
 
-  void follow_run(set_frames, set_feed, set_status)
+  void follow_run({ set_frames, set_feed, set_status, on_new_run: return_to_live })
+}
+
+type FollowSinks = {
+  readonly set_frames: Setter<ReadonlyArray<ViewerFrame>>
+  readonly set_feed: Setter<Feed>
+  readonly set_status: Setter<SseStatus>
+  /** A new run started live, so a scrub held in the old one has nothing left. */
+  readonly on_new_run: () => void
 }
 
 /**
@@ -258,27 +268,26 @@ function main(): void {
  *
  * History arrives once over `/api/trajectory` (the whole file, or the ring when
  * the server is ingest-fed), so a finished `.jsonl` opened with no live producer
- * renders complete from the first paint. The frame log is seeded from the same
- * frames history folded, and each SSE frame appends to it, so a scrub of either
- * a loaded or a live run refolds the exact events that produced the canvas. SSE
- * resumes past the history cursor, which is what keeps the fold from
- * double-counting the events both transports would otherwise carry. A transport
- * error just starts empty and lets SSE carry the run from here: a localhost dev
- * tool has nothing to retry against.
+ * renders complete from the first paint. The frame log is seeded from the
+ * newest run's frames that history folded, and each SSE frame joins it through
+ * `follow_frame`, which starts the log over when a new run begins, so a scrub
+ * of either a loaded or a live run refolds the exact events that produced the
+ * canvas. SSE resumes past the history cursor, which is what keeps the fold
+ * from double-counting the events both transports would otherwise carry. A
+ * transport error just starts empty and lets SSE carry the run from here: a
+ * localhost dev tool has nothing to retry against.
  */
-async function follow_run(
-  set_frames: Setter<ReadonlyArray<ViewerFrame>>,
-  set_feed: Setter<Feed>,
-  set_status: Setter<SseStatus>,
-): Promise<void> {
+async function follow_run(sinks: FollowSinks): Promise<void> {
   let cursor = 0
+  let log: RunLog = { session: EMPTY_SESSION, frames: [] }
   try {
     const res = await fetch('/api/trajectory')
     const history = fold_history(await res.text(), read_cursor_header(res.headers.get(CURSOR_HEADER)))
     cursor = history.cursor
     if (history.count > 0) {
-      set_frames(history.frames)
-      set_feed({ session: history.session, received_at_ms: performance.now() })
+      log = { session: history.session, frames: history.frames }
+      sinks.set_frames(log.frames)
+      sinks.set_feed({ session: log.session, received_at_ms: performance.now() })
     }
   } catch {
     // No history folded; SSE carries the run from the plain stream.
@@ -287,13 +296,16 @@ async function follow_run(
   connect_events({
     url: events_url(cursor),
     open: (url) => new EventSource(url),
-    on_status: set_status,
+    on_status: sinks.set_status,
+    // One batch, so the header and the scrubber never draw a frame apart.
     on_frame: (frame) => {
-      set_frames((prev) => [...prev, frame])
-      set_feed(({ session }) => ({
-        session: apply_frame(session, frame),
-        received_at_ms: performance.now(),
-      }))
+      const next = follow_frame(log, frame)
+      log = next
+      batch(() => {
+        if (next.started) sinks.on_new_run()
+        sinks.set_frames(next.frames)
+        sinks.set_feed({ session: next.session, received_at_ms: performance.now() })
+      })
     },
   })
 }

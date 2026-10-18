@@ -63,6 +63,27 @@ describe('fold_history', () => {
     expect(history.frames).toHaveLength(history.count)
   })
 
+  it('hands back only the newest run of a log that holds two, and counts both', () => {
+    const run = (run_id: string): string[] => [
+      JSON.stringify({ kind: 'flow_structure', structure: { kind: 'step', id: 'a' }, run_id, ts: 1 }),
+      JSON.stringify({ kind: 'emit', run_id, ts: 2 }),
+    ]
+    const history = fold_history([...run('first'), ...run('second')].join('\n'), 0)
+    expect(history.frames.map((frame) => frame['run_id'])).toEqual(['second', 'second'])
+    expect(history.session.state.run_id).toBe('second')
+    // The cursor counts every folded event, or SSE would replay the first run.
+    expect(history.count).toBe(4)
+    expect(history.cursor).toBe(4)
+  })
+
+  it('keeps the frames before an unreadable structure line, which starts no run', () => {
+    const body = [
+      '{"kind":"flow_structure","structure":{"kind":"step","id":"a"},"ts":1}',
+      '{"kind":"flow_structure","structure":"not a tree","ts":2}',
+    ].join('\n')
+    expect(fold_history(body, 0).frames).toHaveLength(2)
+  })
+
   it('takes the folded count as the cursor when it leads the stamped head', () => {
     // A file tail that lagged its own file: the dump carried events the
     // broadcaster had not, so the count is the true seam.
