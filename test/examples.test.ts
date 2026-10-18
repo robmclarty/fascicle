@@ -2,7 +2,7 @@ import { mkdtemp, readFile, realpath, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { client } from '@agentclientprotocol/sdk'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { describe as describe_flow } from 'fascicle'
 import type { TurnRequest } from 'fascicle'
 import { acp_agent } from 'fascicle/acp'
@@ -10,14 +10,20 @@ import type { AcpTurn } from 'fascicle/acp'
 import { keyless_agent, to_messages } from '../examples/acp-agent/main.js'
 import { coder_agent, command_env, parse_effort } from '../examples/acp-coder/main.js'
 import { run_adversarial_build } from '../examples/adversarial-build/main.js'
+import { run_bench_reviewer } from '../examples/bench-reviewer/main.js'
 import { run_checkpoint_resume } from '../examples/checkpoint-resume/main.js'
 import { run_documenter } from '../examples/documenter/main.js'
 import { build_review, run_durable_runs } from '../examples/durable-runs/main.js'
 import { run_ensemble_judge } from '../examples/ensemble-judge/main.js'
 import { run_hello } from '../examples/hello/main.js'
+import { run_hitl_http } from '../examples/hitl-http/main.js'
+import { run_improve } from '../examples/improve/main.js'
 import { run_learn } from '../examples/learn/main.js'
 import { run_learn_reviewer } from '../examples/learn-reviewer/main.js'
+import { run_newsroom } from '../examples/newsroom/main.js'
 import { run_object_store } from '../examples/object-store/main.js'
+import { run_release_notes } from '../examples/release-notes/main.js'
+import { run_release_notes_direct } from '../examples/release-notes-direct/main.js'
 import { run_researcher } from '../examples/researcher/main.js'
 import { run_reviewer } from '../examples/reviewer/main.js'
 import { run_stdio_agent } from '../examples/stdio-agent/main.js'
@@ -264,5 +270,92 @@ describe('examples smoke', () => {
     expect(per_agent['reviewer']?.calls).toBe(3)
     expect(per_agent['reviewer']?.input_tokens).toBe(750)
     expect(per_agent['reviewer']?.output_tokens).toBe(270)
+  })
+
+  it('newsroom suspends at the editor gate and, once approved, renders the signed-off article with its cost line', async () => {
+    expect(await run_newsroom()).toMatch(
+      /^# The Topology Is the File\n\nThe topology is the file\.\n\n\(fact-checked; editor: ship it; headline cost: \d+ tokens\)\n$/,
+    )
+  })
+
+  it('release_notes renders the headline, the highlights, and a tally of commit types', async () => {
+    expect(await run_release_notes()).toBe(
+      [
+        '# Composable chains and a live viewer',
+        '',
+        '- Flows can now be written as a single typed chain of named steps.',
+        '- The live viewer shows the span tree of a running flow.',
+        '- Aborting a run now cleans up CLI subprocesses reliably.',
+        '',
+        '## In this release (5 commits)',
+        '',
+        '- feat: 2',
+        '- chore: 1',
+        '- fix: 1',
+        '- docs: 1',
+        '',
+      ].join('\n'),
+    )
+  })
+
+  it('release_notes_direct calls the writer for a feature release and skips it for a maintenance one', async () => {
+    const feature = 'bc46bb3 feat(core): add chain and ctx.call primitives\na22f521 fix(engine): dispose on abort\n'
+    const chores = 'bfaf23d chore(gitignore): ignore scratch\nd20c771 docs(contributing): clarify the baseline\n'
+    expect(await run_release_notes_direct(feature)).toBe(
+      [
+        '# Composable chains, safer aborts',
+        '',
+        '- A whole flow can be plain code with ctx.call at the model boundary.',
+        '- Aborting a run now cleans up CLI subprocesses reliably.',
+        '',
+        '## In this release (2 commits)',
+        '',
+        '- feat: 1',
+        '- fix: 1',
+        '',
+      ].join('\n'),
+    )
+    expect(await run_release_notes_direct(chores)).toBe(
+      '# Maintenance release\n\nNo user-facing changes in these 2 commits.\n\n- chore: 1\n- docs: 1\n',
+    )
+  })
+
+  it('improve walks to the target and stops on a plateau after two flat rounds', async () => {
+    const result = await run_improve()
+    expect(result.stopped_by).toBe('plateau')
+    expect(result.rounds_used).toBe(9)
+    expect(`value=${String(result.best.content)} score=${String(result.best.score)}`).toBe('value=7 score=0')
+    expect(result.history.map((entry) => entry.winner.candidate.content)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 8])
+  })
+
+  it('bench_reviewer scores the three cases and finds no regression against the recorded baseline', async () => {
+    vi.stubEnv('WRITE_BASELINE', '')
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const exit = vi.spyOn(process, 'exit').mockImplementation((code) => {
+      throw new Error(`bench_reviewer called process.exit(${String(code)})`)
+    })
+    try {
+      await run_bench_reviewer()
+      expect(log.mock.calls.slice(0, 5)).toEqual([
+        ['flow:           ', 'reviewer'],
+        ['cases:          ', 3],
+        ['pass_rate:      ', '1.000'],
+        ['mean scores:    ', { flagged_correctly: 1, severity_match: 1 }],
+        ['total cost:     ', '$0.0000'],
+      ])
+      expect(log.mock.calls.at(-1)).toEqual(['\nno regressions vs baseline.'])
+      expect(exit).not.toHaveBeenCalled()
+    } finally {
+      log.mockRestore()
+      exit.mockRestore()
+      vi.unstubAllEnvs()
+    }
+  })
+
+  it('hitl_http answers 202 with a pending id, then resumes the run over HTTP with the decision', async () => {
+    expect(await run_hitl_http()).toEqual({
+      pending_status: 202,
+      resumed_result: 'merged: PR body for "add rate limiting"',
+    })
   })
 })
