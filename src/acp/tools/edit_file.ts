@@ -11,7 +11,7 @@
 import type { Tool } from '#engine'
 import { as_record, json_schema_to_standard } from '#schema'
 import type { AcpSession } from '../types.js'
-import { contain, shown_path } from './containment.js'
+import { contain_writable, shown_path } from './containment.js'
 import { apply_change, current_text, record_change } from './write_file.js'
 import type { FileChange } from './write_file.js'
 
@@ -57,13 +57,13 @@ function edit_request(input: unknown): EditRequest {
 
 /**
  * The change an `edit_file` call would make, worked out without writing: the
- * file's whole text before, and after `old_text` is replaced. It fails when
- * `old_text` isn't there, or is there more than once and the call doesn't set
- * `replace_all`.
+ * file's whole text before, and after `old_text` is replaced. It fails on a
+ * path that `contain_writable` refuses, when `old_text` isn't there, or when
+ * it's there more than once and the call doesn't set `replace_all`.
  */
 export async function edit_file_change(session: AcpSession, input: unknown): Promise<EditChange> {
   const request = edit_request(input)
-  const target = await contain(session, request.path)
+  const target = await contain_writable(session, request.path, 'edit_file')
   const text = await current_text(target.real, request.path, 'edit_file')
   if (text === null) throw new Error(`${request.path} doesn't exist; write_file creates a file`)
   // Splitting on the match, where String.replace would read its replacement

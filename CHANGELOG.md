@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- **`write_file` and `edit_file` refuse writes into `.git` and `node_modules`.** In Accept edits, the model could write `.git/config` or a file in `node_modules/.bin`, and what it wrote would run on the user's next `git` or `pnpm` command without ever showing in `git diff`. Both tools now refuse, in every mode, a path that passes through a file or a directory named `.git` or `node_modules` anywhere under a root, a nested repository's `.git` and a worktree's `.git` file included, whether the path gets there as written or through a symlink. The error names the directory and points the model at `run_command`, and the permission prompt shows it in place of a diff. A flow that wrote there through the file tools uses `run_command` instead. `docs/acp.md` now says that an edit to any other file that git ignores never shows in `git diff` either, so Manual is the mode for a checkout whose ignored files matter.
+
 ## v0.15.0 — 2026-10-17
 
 ### Added

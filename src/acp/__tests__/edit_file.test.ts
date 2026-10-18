@@ -1,12 +1,12 @@
 import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import type { Tool } from '#engine'
 import { to_json_schema, validate_schema } from '#schema'
 import { resolve_roots } from '../tools/containment.js'
 import { edit_file_change } from '../tools/edit_file.js'
-import type { AcpSession } from '../types.js'
+import type { AcpMode, AcpSession } from '../types.js'
 import { workspace_tools } from '../workspace_tools.js'
 
 /**
@@ -15,11 +15,19 @@ import { workspace_tools } from '../workspace_tools.js'
  *   project/           the workspace, reached as `via`, a symlink, so the
  *                      client's terms and the real paths differ
  *     escape_file.ts -> outside/secret.ts
+ *     .git/config                  node_modules/.bin/tsc
+ *     vendor/lib/.git/config       a nested repository
+ *     worktree/.git                a worktree's .git, which is a file
+ *     git_config -> .git/config
+ *     gitlink/.git -> gitstore     a .git that's a symlink, to gitstore/config
  *   via -> project
  *   outside/secret.ts  outside every root
  *
  * Each test edits a file of its own, so the edits don't meet.
  */
+/** What every file under a `.git` or a `node_modules` holds, which no refused edit may change. */
+const GUARDED_TEXT = 'x = 1\n'
+
 let base: string
 let real_project: string
 let real_secret: string
@@ -29,11 +37,22 @@ let session: AcpSession
 beforeAll(async () => {
   base = await mkdtemp(join(tmpdir(), 'fascicle-acp-edit-'))
   const project = join(base, 'project')
-  await Promise.all([mkdir(project), mkdir(join(base, 'outside'))])
-  await writeFile(join(base, 'outside', 'secret.ts'), 'const secret = 1\n')
+  const guarded = ['.git/config', 'node_modules/.bin/tsc', 'vendor/lib/.git/config', 'worktree/.git', 'gitstore/config']
+  await Promise.all(
+    [project, join(base, 'outside'), ...guarded.map((path) => dirname(join(project, path)))].map((dir) =>
+      mkdir(dir, { recursive: true }),
+    ),
+  )
+  await Promise.all([
+    writeFile(join(base, 'outside', 'secret.ts'), 'const secret = 1\n'),
+    ...guarded.map((path) => writeFile(join(project, path), GUARDED_TEXT)),
+    mkdir(join(project, 'gitlink')),
+  ])
   await Promise.all([
     symlink(project, join(base, 'via')),
     symlink(join(base, 'outside', 'secret.ts'), join(project, 'escape_file.ts')),
+    symlink(join(project, '.git', 'config'), join(project, 'git_config')),
+    symlink(join(project, 'gitstore'), join(project, 'gitlink', '.git')),
   ])
   real_project = join(await realpath(base), 'project')
   real_secret = join(await realpath(base), 'outside', 'secret.ts')
@@ -256,5 +275,43 @@ describe('edit_file', () => {
     await expect(call(input)).rejects.toThrow(
       'edit_file needs path, old_text, and new_text as strings, and takes replace_all as true or false',
     )
+  })
+})
+
+/** The refusal an edit into `.git` or `node_modules` fails with. */
+function floor(path: string, segment: string): string {
+  return `${path} reaches ${segment}, where edit_file never writes, since what's there can run on the user's next command without showing in git diff; if it has to change, use run_command`
+}
+
+describe('edit_file: .git and node_modules', () => {
+  it.each([
+    ["the project's git config", '.git/config', '.git', '.git/config'],
+    ['a binary a package manager runs', 'node_modules/.bin/tsc', 'node_modules', 'node_modules/.bin/tsc'],
+    ["a nested repository's .git", 'vendor/lib/.git/config', '.git', 'vendor/lib/.git/config'],
+    ["a worktree's .git file", 'worktree/.git', '.git', 'worktree/.git'],
+    ['a symlink to a file in .git', 'git_config', '.git', '.git/config'],
+    ['a .git that is a symlink to an ordinary directory', 'gitlink/.git/config', '.git', 'gitstore/config'],
+    ['.git in capitals', '.GIT/config', '.git', '.git/config'],
+  ])('refuses %s, naming the segment and changing nothing', async (_, path, segment, lands) => {
+    const input = { path, old_text: 'x = 1', new_text: 'x = 2' }
+    await expect(edit_file_change(session, input)).rejects.toThrow(floor(path, segment))
+    await expect(call(input)).rejects.toThrow(floor(path, segment))
+    await expect(text_of(lands)).resolves.toBe(GUARDED_TEXT)
+  })
+
+  it("refuses a missing file in .git as the floor, before saying it doesn't exist", async () => {
+    await expect(call({ path: '.git/hooks/pre-commit', old_text: 'a', new_text: 'b' })).rejects.toThrow(
+      floor('.git/hooks/pre-commit', '.git'),
+    )
+  })
+
+  it.each<AcpMode>(['manual', 'accept_edits', 'auto'])('refuses in %s, whether or not the mode asks first', async (mode) => {
+    const tool = workspace_tools({ ...session, mode: () => mode }).find((found) => found.name === 'edit_file')
+    expect(typeof tool?.needs_approval === 'function' && (await tool.needs_approval({}))).toBe(mode === 'manual')
+    const input = { path: '.git/config', old_text: 'x = 1', new_text: 'x = 2' }
+    await expect(
+      tool?.execute(input, { abort: new AbortController().signal, tool_call_id: 'call_1', step_index: 0 }),
+    ).rejects.toThrow(floor('.git/config', '.git'))
+    await expect(text_of('.git/config')).resolves.toBe(GUARDED_TEXT)
   })
 })

@@ -18,7 +18,7 @@ import { dirname } from 'node:path'
 import type { Tool } from '#engine'
 import { as_record, json_schema_to_standard } from '#schema'
 import type { AcpSession } from '../types.js'
-import { contain, error_code, shown_path } from './containment.js'
+import { contain_writable, error_code, shown_path } from './containment.js'
 import type { ContainedPath } from './containment.js'
 import { record_preview } from './previews.js'
 import { is_binary } from './read_file.js'
@@ -137,12 +137,13 @@ export function record_change(
 
 /**
  * The change a `write_file` call would make, worked out without writing: its
- * path checked against the session's roots, the text it would replace, and
- * the content that replaces it.
+ * path checked against the session's roots and kept out of `.git` and
+ * `node_modules`, the text it would replace, and the content that replaces
+ * it.
  */
 export async function write_file_change(session: AcpSession, input: unknown): Promise<FileChange> {
   const request = write_request(input)
-  const target = await contain(session, request.path)
+  const target = await contain_writable(session, request.path, 'write_file')
   const old_text = await current_text(target.real, request.path, 'write_file')
   return { ...target, old_text, new_text: request.content }
 }

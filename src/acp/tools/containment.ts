@@ -12,6 +12,13 @@
  * through its nearest existing ancestor, and a dangling symlink through its
  * target, so a path outside the roots is refused the same way whether or
  * not it exists.
+ *
+ * The writes keep a stricter boundary inside the roots: nothing under a
+ * `.git` or a `node_modules`. Git runs what its directory holds (a hook,
+ * `core.fsmonitor`), a package manager runs what `node_modules` holds
+ * (`.bin`, an install script), and a change in either never shows in
+ * `git diff`, so an edit there would be code that runs unseen. No mode lifts
+ * it, since Accept edits and Auto write without asking.
  */
 
 import { readlink, realpath, stat } from 'node:fs/promises'
@@ -35,6 +42,13 @@ const MISSING: ReadonlySet<unknown> = new Set(['ENOENT', 'ENOTDIR'])
  * fail on it, so a link such as `a -> missing/../a` would otherwise loop.
  */
 const MAX_LINK_HOPS = 40
+
+/**
+ * The names a write never reaches through, wherever under a root they sit:
+ * a nested repository's `.git` counts, and so does a worktree's, which is a
+ * file pointing git at its real directory.
+ */
+const GUARDED_NAMES: ReadonlySet<string> = new Set(['.git', 'node_modules'])
 
 /**
  * The code a Node file system error carries, such as `ENOENT`. Every
@@ -120,6 +134,47 @@ export async function contain(session: AcpSession, requested: string): Promise<C
   if (session.roots.some((root) => is_within(root, real))) return { path, real }
   const allowed = [session.cwd, ...session.additional_directories].join(', ')
   throw new Error(`${requested} is outside the workspace; the file tools only reach paths under ${allowed}`)
+}
+
+/**
+ * A path segment as a file system that ignores case, or Windows, which also
+ * drops trailing dots and spaces, compares it, so `.GIT` and `.git.` name
+ * the same directory as `.git` wherever they do.
+ */
+function folded(segment: string): string {
+  return segment.toLowerCase().replace(/[. ]+$/u, '')
+}
+
+/**
+ * The first of GUARDED_NAMES on the way down to `path` from any root it lies
+ * under, or `undefined` when there is none.
+ */
+function guarded_segment(roots: ReadonlyArray<string>, path: string): string | undefined {
+  for (const root of roots) {
+    if (!is_within(root, path)) continue
+    const found = relative(root, path).split(sep).map(folded).find((name) => GUARDED_NAMES.has(name))
+    if (found !== undefined) return found
+  }
+  return undefined
+}
+
+/**
+ * Check a path a write was handed the way `contain` does, then refuse one
+ * that reaches `.git` or `node_modules` under a root. The path is checked as
+ * written, against the roots in the client's terms, and as its symlinks
+ * resolve, against the real ones, so a `.git` that is a symlink and a
+ * symlink into `.git` are both refused. `tool` names the tool asking, for
+ * the refusal, which points the model at `run_command`, the tool that asks
+ * before it acts in Manual and in Accept edits.
+ */
+export async function contain_writable(session: AcpSession, requested: string, tool: string): Promise<ContainedPath> {
+  const target = await contain(session, requested)
+  const roots = [...session.roots, ...[session.cwd, ...session.additional_directories].map((dir) => resolve(dir))]
+  const segment = guarded_segment(roots, target.path) ?? guarded_segment(roots, target.real)
+  if (segment === undefined) return target
+  throw new Error(
+    `${requested} reaches ${segment}, where ${tool} never writes, since what's there can run on the user's next command without showing in git diff; if it has to change, use run_command`,
+  )
 }
 
 /**

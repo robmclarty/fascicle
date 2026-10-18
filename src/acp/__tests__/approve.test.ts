@@ -251,6 +251,20 @@ describe('approve: what the request shows', () => {
     expect(tool_result(run.seen, 'o')).toContain(why)
   })
 
+  it('shows the refusal of a write into .git in place of a diff, and refuses it without asking in the modes that never ask', async () => {
+    const input = { path: '.git/config', content: '[core]\n\tfsmonitor = ./run.sh\n' }
+    const why = `.git/config reaches .git, where write_file never writes, since what's there can run on the user's next command without showing in git diff; if it has to change, use run_command`
+    const asked = await wire_run([[{ id: 'w', name: 'write_file', input }], 'done'], () => choose('allow_once'))
+    expect(asked.asked.map((request) => request.toolCall.content)).toEqual([[{ type: 'content', content: { type: 'text', text: why } }]])
+    expect(tool_result(asked.seen, 'w')).toContain(why)
+    for (const mode of ['accept_edits', 'auto'] as const) {
+      const run = await wire_run([[{ id: 'w', name: 'write_file', input }], 'done'], () => choose('allow_once'), { mode })
+      expect(run.asked).toEqual([])
+      expect(tool_result(run.seen, 'w')).toContain(why)
+    }
+    expect(await exists('.git')).toBe(false)
+  })
+
   it('asks about a tool of the flow\'s own by its name, with no "always" on offer, even for a command in its input', async () => {
     const deploy: Tool = {
       name: 'deploy',
