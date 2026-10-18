@@ -487,7 +487,11 @@ never), `WorkspaceToolsOptions` (`read_limit_lines`, `ignore`,
 
 Bridges a `run.stream(...)` handle onto the AI SDK UI message-stream protocol,
 so a Fascicle flow can back a `useChat` endpoint rendered by AI Elements or
-Streamdown. Imports `ai` statically (see the peer note at the top).
+Streamdown. Imports `ai` statically (see the peer note at the top). A client
+that disconnects ends the stream but not the run, so pass `run.stream` an
+`abort` that fires with it, as
+[Streaming the Outcome to a UI](./human-in-the-loop.md#streaming-the-outcome-to-a-ui)
+shows.
 
 | Export | Kind | Notes |
 | --- | --- | --- |

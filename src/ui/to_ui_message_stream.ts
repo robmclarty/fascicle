@@ -12,6 +12,12 @@
  * `x-vercel-ai-ui-message-stream` header) is owned by the `ai` builders; this
  * file only translates chunk shapes and manages open text/reasoning blocks.
  *
+ * The stream alone doesn't stop the run. A client that disconnects ends the
+ * response, but the run keeps calling the model until its flow finishes. To
+ * stop it with the client, pass `run.stream` an `abort` signal that fires on
+ * disconnect: the route handler's `request.signal`, or a controller that the
+ * Node response's `close` event aborts.
+ *
  * v7's `file`/`reasoning-file` UI parts are never emitted: the engine chunk
  * vocabulary has no generated-file kind (those provider parts drop at the
  * inbound mapping), so there is nothing here to translate them from.
@@ -233,7 +239,8 @@ export function to_ui_message_response(
  * Pipe a `run.stream(...)` handle to a Node `http.ServerResponse` as SSE, for
  * `node:http` servers that hold a `ServerResponse` rather than returning a
  * web `Response`. Resolves once the stream has ended the response, or stopped
- * because the client went away.
+ * because the client went away, which leaves the run going unless its `abort`
+ * signal fires too.
  */
 export function pipe_ui_message_stream_to_response(
   handle: RunStreamLike,

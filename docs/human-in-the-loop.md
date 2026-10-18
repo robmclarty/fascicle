@@ -243,16 +243,54 @@ const engine = create_engine({
 });
 const chat = model_step({ engine, model: 'claude-sonnet-4-6' });
 
-export function chat_handler(): Response {
+export function chat_handler(request: Request): Response {
   return to_ui_message_response(
-    run.stream(chat, 'Summarize the approved change.', { install_signal_handlers: false }),
+    run.stream(chat, 'Summarize the approved change.', {
+      abort: request.signal,
+      install_signal_handlers: false,
+    }),
   );
 }
 ```
 
+The stream doesn't stop the run on its own. When the user closes the tab, the
+response goes away, but the run keeps calling the model (and paying for it)
+until its flow ends. A route handler's `request.signal` fires when the client
+disconnects, so passing it as `abort` ends the run along with the request, and
+the run's cleanup handlers still run on the way out.
+
 For a `node:http` server that holds a `ServerResponse` rather than returning a
 web `Response`, use `pipe_ui_message_stream_to_response(handle, res)` from the
-same module, which resolves once the response has ended.
+same module, which resolves once the response has ended. A `ServerResponse`
+carries no signal of its own, so abort a controller of your own when the
+response closes:
+
+<!-- snippet: check -->
+```ts
+import type { IncomingMessage, ServerResponse } from 'node:http';
+import { create_engine, model_step, run } from 'fascicle';
+import { pipe_ui_message_stream_to_response } from 'fascicle/ui';
+
+const engine = create_engine({
+  providers: { anthropic: { api_key: process.env.ANTHROPIC_API_KEY ?? '' } },
+});
+const chat = model_step({ engine, model: 'claude-sonnet-4-6' });
+
+export async function chat_listener(_req: IncomingMessage, res: ServerResponse): Promise<void> {
+  const controller = new AbortController();
+  res.once('close', () => controller.abort());
+  await pipe_ui_message_stream_to_response(
+    run.stream(chat, 'Summarize the approved change.', {
+      abort: controller.signal,
+      install_signal_handlers: false,
+    }),
+    res,
+  );
+}
+```
+
+The response closes after a normal finish too, and that's harmless, because an
+abort that arrives once the run has ended does nothing.
 
 ## Synchronous: Tool Approval
 
