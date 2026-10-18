@@ -11,10 +11,6 @@ files:
   - src/core/retry.ts
   - src/core/fallback.ts
   - src/core/timeout.ts
-  - src/core/adversarial.ts
-  - src/core/ensemble.ts
-  - src/core/tournament.ts
-  - src/core/consensus.ts
   - src/core/checkpoint.ts
   - src/core/suspend.ts
   - src/core/scope.ts
@@ -25,4 +21,4 @@ rule:
     - pattern: import $$$ from "$PATH"
 constraints:
   PATH:
-    regex: '^\./(sequence|parallel|branch|map|pipe|retry|fallback|timeout|adversarial|ensemble|tournament|consensus|checkpoint|suspend|scope|step)(\.js)?$'
+    regex: '^\./(sequence|parallel|branch|map|pipe|retry|fallback|timeout|checkpoint|suspend|scope|step)(\.js)?$'

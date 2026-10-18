@@ -1,8 +1,9 @@
 name: Release
 
-# Publishing to npm is done MANUALLY (locally, gated by MFA) so no long-lived
-# npm credential ever lives in CI. This workflow only turns a pushed `v*` tag
-# into a GitHub Release, with notes pulled from the matching CHANGELOG section.
+# Publishing to npm happens in publish.yaml (Trusted Publishing over OIDC,
+# approval-gated), so no long-lived npm credential lives in CI. This workflow
+# only turns a pushed `v*` tag into a GitHub Release, with notes pulled from
+# the matching CHANGELOG section.
 
 on:
   push:

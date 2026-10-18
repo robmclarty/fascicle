@@ -20,4 +20,4 @@ rule:
     - pattern: import * as $NAME from "$PATH"
 constraints:
   PATH:
-    regex: '^fascicle$'
+    regex: '^fascicle(/|$)'

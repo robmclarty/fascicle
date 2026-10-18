@@ -23,7 +23,7 @@
     "deps": {
       "command": "node",
       "args": ["scripts/check-deps.mjs"],
-      "description": "core/engine production deps + engine optional peers invariant (constraints.md §7.2)",
+      "description": "provider SDKs are optional peers, the root is publishable, and every exports subpath maps to source in tsconfig paths",
       "order": 1
     },
     "exemplars": {

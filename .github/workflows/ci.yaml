@@ -74,8 +74,9 @@ jobs:
             stryker-main-
       - name: Mutation testing
         run: pnpm check:mutation
-      # Surviving mutants are listed in mutation.stdout.txt; the HTML report
-      # under .check/mutation/ is the bulk of the directory and is excluded.
+      # Surviving mutants are listed in .check/mutation.json and in this step's
+      # clear-text log; the HTML report under .check/mutation/ is the bulk of
+      # the directory and is excluded.
       - name: Upload mutation reports
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

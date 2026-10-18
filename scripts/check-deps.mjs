@@ -27,6 +27,7 @@ const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const ROOT_PKG = join(REPO_ROOT, 'package.json');
 const ROOT_TSCONFIG = join(REPO_ROOT, 'tsconfig.json');
 const REQUIRED_OPTIONAL_PEERS = [
+  '@ai-sdk/amazon-bedrock',
   '@ai-sdk/anthropic',
   '@ai-sdk/google',
   '@ai-sdk/openai',

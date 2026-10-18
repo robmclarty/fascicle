@@ -19,11 +19,9 @@
     ".check/**",
     ".stryker-tmp/**",
     ".plumbbob/**",
-    ".ridgeline/**",
     ".volley/**",
     ".volley.bak.*/**",
     "research/**",
-    "spec/**",
     "examples/**/.runs/**",
     "CHANGELOG.md"
   ]

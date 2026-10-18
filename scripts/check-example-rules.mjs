@@ -5,8 +5,9 @@
  * Each app under examples/ carries its own ast-grep rules (docs/blueprint.md):
  * create_engine confined to engine.ts, no imperative loops in the composition
  * layer, and fascicle value imports confined to the files allowed to know
- * about them. The root `struct` check globs `src/**`, so it never sees the
- * examples; without this check the rules only run when a human remembers to.
+ * about them. The root `struct` check never loads these rules, because they
+ * live in each app's own rules/ directory; without this check they only run
+ * when a human remembers to.
  *
  * Discovers every examples/<app>/sgconfig.yml and scans that app's src.
  */
