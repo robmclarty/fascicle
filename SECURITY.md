@@ -35,10 +35,12 @@ Pin a version you have reviewed and upgrade deliberately.
 
 ## Credentials and data
 
-- **The library never reads `process.env`.** Provider credentials are passed
-  explicitly into `create_engine({ providers })`; reading them from the
-  environment is the harness's job, done at its own boundary. An internal rule
-  (`no-process-env-in-core`) enforces this across `src/`. See
+- **The library doesn't read credentials from `process.env`.** Provider
+  credentials are passed explicitly into `create_engine({ providers })`; reading
+  them from the environment is the harness's job, done at its own boundary. An
+  internal rule (`no-process-env-in-core`) enforces this across `src/`, with two
+  audited exceptions that build a subprocess environment: the `claude_cli`
+  adapter and the opt-in `forward_standard_env()` helper. See
   [docs/configuration.md](./docs/configuration.md).
 - **Credentials are not persisted or logged by Fascicle.** They live only in the
   engine config you construct and are handed to the underlying provider SDK.
@@ -55,16 +57,19 @@ output. That is a real trust boundary:
 
 - Under `auth_mode: 'oauth'` the adapter scrubs `ANTHROPIC_API_KEY` from the
   child environment so a stored session is used instead of leaking a key into the
-  subprocess. Under `api_key`/`auto` the child starts from an empty environment
-  and only caller-supplied values pass through.
+  subprocess. Under `api_key`/`auto` the child inherits only the standard keys
+  (`PATH`, `HOME`, `SHELL`, `USER`, `LOGNAME`, `LANG`, `TMPDIR`) plus the values
+  you pass, and `inherit_env: false` starts it from an empty environment.
 - Fascicle tools that carry an `execute` closure cannot run inside the
   subprocess. The default `tool_bridge: 'allowlist_only'` only adds tool *names*
   to the CLI's own allowlist and silently drops the closures; use
   `tool_bridge: 'forbid'` when you need a hard guarantee that no `execute` closure
   becomes a silent no-op.
 - For untrusted work, confine the subprocess with `sandbox: { kind: 'bwrap' |
-  'greywall', network_allowlist, additional_write_paths }`. An empty
-  `network_allowlist` means network-off. Full details in [docs/cli.md](./docs/cli.md).
+  'greywall', network_allowlist, additional_write_paths }`. Under `bwrap`, an
+  empty `network_allowlist` means network-off, and a non-empty one shares the
+  host network without filtering it. Under `greywall`, greyproxy enforces the
+  allowlist. Full details in [docs/cli.md](./docs/cli.md).
 
 Tools you pass to a model call run **in your process**, with whatever privileges
 your process holds. Validate their inputs and scope their side effects; Fascicle
@@ -129,7 +134,7 @@ yours small.
 ### What keeps the surface small
 
 - **No direct runtime dependencies, and zero mandatory peers.** Fascicle's
-  `package.json` has an empty `dependencies` field, and `ai`, `zod`, and every
+  `package.json` declares no `dependencies` at all, and `ai`, `zod`, and every
   provider SDK are *optional peer* dependencies you install explicitly, so
   `pnpm add fascicle` alone pulls in no transitive tree of its own. You choose
   and audit what actually gets added.

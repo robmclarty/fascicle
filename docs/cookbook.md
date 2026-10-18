@@ -45,8 +45,8 @@ Compose `timeout(...)` with `fallback(...)` when your primary has to answer insi
 ```ts
 import { fallback, timeout, step } from 'fascicle';
 
-const primary = step('model-1', async (q: string) => ask_model_a(q));
-const backup  = step('model-2', async (q: string) => ask_model_b(q));
+const primary = step('model_1', async (q: string) => ask_model_a(q));
+const backup  = step('model_2', async (q: string) => ask_model_b(q));
 
 const ask = fallback(timeout(primary, 10_000), backup);
 ```
@@ -128,7 +128,7 @@ const best_draft = ensemble_step({
 });
 ```
 
-`run(best_draft, brief)` hands you the winning draft, and if you omit `project` you get the full `{ winner_id, winner, winner_scored, scored }` envelope. [`examples/ensemble-judge/main.ts`](../examples/ensemble-judge/main.ts) is the runnable version. When quality is computable by a plain function (length, pass rate, a heuristic) rather than a model, plain `ensemble` does the same with less machinery — see [advanced-composition.md](./advanced-composition.md#ensemble-and-tournament-the-other-pick-bests).
+`run(best_draft, brief)` hands you the winning draft, and if you omit `project` you get the full `{ winner_id, winner, winner_scored, scored }` envelope. [`examples/newsroom/main.ts`](../examples/newsroom/main.ts) runs this shape as its drafting arm (`examples/ensemble-judge` is the plain-`ensemble` version). When quality is computable by a plain function (length, pass rate, a heuristic) rather than a model, plain `ensemble` does the same with less machinery — see [advanced-composition.md](./advanced-composition.md#ensemble-and-tournament-the-other-pick-bests).
 
 ## Build-and-Critique with `adversarial`
 
@@ -256,7 +256,7 @@ the shared input, then runs the pairwise `compare`s until one result remains.
 `checkpoint` memoizes by key, and you inject the store through `RunOptions`.
 
 ```ts
-import { checkpoint, step } from 'fascicle';
+import { checkpoint, run, step } from 'fascicle';
 import { filesystem_store } from 'fascicle/adapters';
 
 const build_index = checkpoint(
@@ -312,18 +312,22 @@ Give the model tools and it calls them; the engine runs the `execute` closures a
 
 ```ts
 import { model_step, run } from 'fascicle';
+import type { Tool } from 'fascicle';
 import { z } from 'zod';
 
-const get_weather = {
+const weather_input = z.object({ city: z.string() });
+
+const get_weather: Tool = {
   name: 'get_weather',
   description: 'Look up the current temperature in Celsius for a city.',
-  input_schema: z.object({ city: z.string() }),
-  execute: async ({ city }: { city: string }, ctx) => {
+  input_schema: weather_input,
+  execute: async (input, ctx) => {
+    const { city } = weather_input.parse(input);
     const res = await fetch(`https://wttr.in/${encodeURIComponent(city)}?format=j1`, {
       signal: ctx.abort,
     });
-    const body = await res.json();
-    return { temp_c: Number(body.current_condition[0].temp_C) };
+    const body = (await res.json()) as { current_condition: Array<{ temp_C: string }> };
+    return { temp_c: Number(body.current_condition[0]?.temp_C) };
   },
 };
 
@@ -338,14 +342,14 @@ const ask = model_step({
 const out = await run(ask, 'What is the temperature in Vancouver right now?');
 ```
 
-`ctx` inside `execute` is a `ToolExecContext` that carries `abort`, `trajectory`, `tool_call_id`, and `step_index`. Pass `ctx.abort` to `fetch` so the tool respects run cancellation. `out` is the model's final answer; when the harness wants the `ToolCallRecord`s, per-step usage, or finish reason, swap in `model_call` and read the envelope.
+A `Tool` hands `execute` its input as `unknown`, even though the engine has already validated it against `input_schema`, so parsing it again is what gives `city` its type. `ctx` inside `execute` is a `ToolExecContext` that carries `abort`, `trajectory`, `tool_call_id`, and `step_index`. Pass `ctx.abort` to `fetch` so the tool respects run cancellation. `out` is the model's final answer; when the harness wants the `ToolCallRecord`s, per-step usage, or finish reason, swap in `model_call` and read the envelope.
 
 Your tools can require approval:
 
 ```ts
 tools: [{
   ...get_weather,
-  needs_approval: (input) => input.city.startsWith('classified'),
+  needs_approval: (input) => weather_input.parse(input).city.startsWith('classified'),
 }],
 on_tool_approval: async (req) => {
   const yes = await ask_operator(req.tool_name, req.input);
@@ -353,16 +357,18 @@ on_tool_approval: async (req) => {
 },
 ```
 
-A denied approval throws `tool_approval_denied_error`.
+What a denied call does depends on `tool_error_policy`. Under the default, `'feed_back'`, it goes back to the model as a `tool_approval_denied` tool error and the loop keeps going, and under `'throw'` it throws `tool_approval_denied_error`. A tool that needs approval when no `on_tool_approval` is set throws either way.
 
 Your tools can also end the loop. By default it runs until the model emits a turn with no tool call, or until `max_steps` is hit, and a weak local model often does better with an explicit `finish` tool that it can call to signal it's done. Flag that tool `ends_turn: true` and a successful call ends the loop immediately, with no extra model turn:
 
 ```ts
-const finish = {
+const finish_input = z.object({ summary: z.string() });
+
+const finish: Tool = {
   name: 'finish',
   description: 'Call when the task is complete. Provide a short summary.',
-  input_schema: z.object({ summary: z.string() }),
-  execute: ({ summary }: { summary: string }) => summary,
+  input_schema: finish_input,
+  execute: (input) => finish_input.parse(input).summary,
   ends_turn: true,
 };
 ```
@@ -403,6 +409,7 @@ Plain `run` drops streaming events, and `run.stream` hands them to you:
 
 ```ts
 import { model_step, run } from 'fascicle';
+import type { StreamChunk } from 'fascicle';
 
 // A local model streams without an API key; any provider works the same way.
 const ask = model_step({ engine, provider: 'ollama', model: 'llama3.2:3b' });
@@ -410,16 +417,16 @@ const ask = model_step({ engine, provider: 'ollama', model: 'llama3.2:3b' });
 const handle = run.stream(ask, 'summarize Rust ownership');
 
 for await (const event of handle.events) {
-  if (event.kind === 'model_chunk' && event.chunk.kind === 'text') {
-    process.stdout.write(event.chunk.text);
-  }
+  if (event.kind !== 'model_chunk') continue;
+  const chunk = event['chunk'] as StreamChunk;
+  if (chunk.kind === 'text') process.stdout.write(chunk.text);
 }
 
 const final = await handle.result;
 process.stdout.write('\n');
 ```
 
-`model_chunk` events wrap `StreamChunk` values from the engine. Other chunk kinds worth watching are `reasoning`, `tool_call_start`, `tool_call_end`, `tool_result`, `step_finish`, `finish`.
+`model_chunk` events wrap `StreamChunk` values from the engine, and a trajectory event types its extra fields as `unknown`, which is why the loop casts `chunk` back. Other chunk kinds worth watching are `reasoning`, `tool_call_start`, `tool_call_end`, `tool_result`, `step_finish`, `finish`.
 
 `run.stream` streams the whole run, and everything it sees also goes to the run's trajectory logger, so a `filesystem_logger` would write every token chunk to disk. When all you want is to render one call live, give that call its own `on_chunk` instead. It streams under a plain `run`, it hands you the chunks of that call and no other, and the trajectory stays as lean as it was:
 

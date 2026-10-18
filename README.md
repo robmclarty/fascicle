@@ -255,10 +255,10 @@ This repo is a **single package**. The code is organized as deep modules under `
 ```bash
 pnpm install
 pnpm check        # types, lint, structural rules, dead-code, tests, docs, spell
-pnpm check:all    # adds Stryker mutation testing + the packaging gate (final gate)
+pnpm check:all    # adds Stryker mutation testing, the packaging gate, and Playwright e2e (final gate)
 ```
 
-`pnpm check` is the single source of truth for "is this done?". Output lands in `.check/` (one JSON per check). See [AGENTS.md](./AGENTS.md) for the full contract and [CLAUDE.md](./CLAUDE.md) for Claude-specific notes.
+`pnpm check:all` is the single source of truth for "is this done?", and `pnpm check` is the faster loop you run while you work. Output lands in `.check/` (one JSON per check). See [AGENTS.md](./AGENTS.md) for the full contract and [CLAUDE.md](./CLAUDE.md) for Claude-specific notes.
 
 ## License
 

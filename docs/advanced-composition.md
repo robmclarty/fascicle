@@ -101,8 +101,9 @@ export const preferred = tournament({
 });
 ```
 
-[examples/ensemble-judge/main.ts](../examples/ensemble-judge/main.ts) keeps both
-variants runnable side by side.
+[examples/ensemble-judge/main.ts](../examples/ensemble-judge/main.ts) runs the
+`ensemble` variant. No example runs `tournament`, so the snippet above is the
+reference for it.
 
 ## `improve` and `learn`: The Self-Improvement Pair
 
@@ -155,8 +156,8 @@ behavior.
 
 For something runnable, read [examples/improve/main.ts](../examples/improve/main.ts),
 [examples/learn/main.ts](../examples/learn/main.ts), and
-[examples/learn-reviewer/main.ts](../examples/learn-reviewer/main.ts) (a model
-analyzer that mines a reviewer's trajectories).
+[examples/learn-reviewer/main.ts](../examples/learn-reviewer/main.ts) (a
+pure-TypeScript analyzer step that mines a reviewer's trajectories).
 
 ## See Also
 

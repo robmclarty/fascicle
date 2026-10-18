@@ -21,7 +21,7 @@ nothing for you to build.
 pnpm exec tsx examples/viewer-demo/main.ts
 
 # terminal 2: point the viewer at the JSONL file
-pnpm exec fascicle-viewer .trajectory.jsonl
+pnpm fascicle-viewer .trajectory.jsonl
 # → http://127.0.0.1:4242
 ```
 
@@ -100,7 +100,7 @@ the newest event, and the run's running totals on the right,
 `T+130MS · 1 RETRY ABSORBED · SCARS 0 · $0.0000`. Cost under a cent shows four
 decimals, and a cent or more shows two.
 
-The marquee, the halo pulse, and the LIVE dot are the only motion, and each one
+The marquee, the halo pulse, and the LIVE dot are the only looping motion, and each one
 respects `prefers-reduced-motion`, so a reader who asks for less motion gets a
 static glow in place of the animation.
 

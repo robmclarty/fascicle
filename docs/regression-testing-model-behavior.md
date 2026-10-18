@@ -141,15 +141,20 @@ Mutation testing inverts the usual question. A unit test asks "does the code pas
 The config is [`stryker.config.mjs`](../stryker.config.mjs). It mutates `src/**/*.ts`, so `judges.ts`, `bench.ts`, and `regression.ts` are all in scope, scored by the vitest suite. It runs as the `mutation` step of `pnpm check:all`. The gate is a `break` threshold:
 
 ```javascript
-// stryker.config.mjs, excerpt
+// stryker.config.mjs, excerpt (comments abridged)
 thresholds: {
-  high: 85,
-  low: 78,
-  break: 78, // never lower it to make a failing run pass; bump it as coverage climbs
+  // `high` and `low` only color the report; `break` is the only gate that
+  // fails a run.
+  high: 90,
+  low: 86,
+  // Ratchet: the floor sits below the real score, with headroom sized from the
+  // measured flake surface. Bump further as coverage climbs; never lower it to
+  // make a failing run pass.
+  break: 86,
 },
 ```
 
-The `break` floor is a ratchet. It only moves up. The config's own comment records that the current score reflects, among other work, a mutation-hardening pass on the judges, and that the floor must never be lowered to make a failing run pass. That's the mechanism by which a judge earns trust: not by passing a few hand-picked examples, but by having tests strong enough that corrupting the judge's logic breaks at least one of them. A judge with weak tests is a judge you can't trust, because a weak test suite can't tell a working judge from a broken one. Mutation testing is what makes the difference observable, and the ratchet is what keeps it from eroding.
+The `break` floor is a ratchet. It only moves up. The config's own comment records the real score that the floor sits below, sizes the headroom from the timeout mutants that can flip on a slow run, and says the floor must never be lowered to make a failing run pass. That's the mechanism by which a judge earns trust: not by passing a few hand-picked examples, but by having tests strong enough that corrupting the judge's logic breaks at least one of them. A judge with weak tests is a judge you can't trust, because a weak test suite can't tell a working judge from a broken one. Mutation testing is what makes the difference observable, and the ratchet is what keeps it from eroding.
 
 So the meta-point is structural, not rhetorical. `bench` and `regression_compare` let you regression-test the model. The mutation gate regression-tests the judges that make that possible. The thing that tests your model also gets tested, by the same `pnpm check:all` that gates everything else. See [concepts.md](./concepts.md#the-check-contract) for the check contract that ties it together.
 

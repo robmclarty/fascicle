@@ -27,7 +27,7 @@ Every provider plugs into `generate` at one of three depths. The engine dispatch
 | `native`   | 1     | `invoke_turn(TurnRequest) -> TurnResult`        | request/response mapping over raw HTTP | retry, error classification, abort, plus everything below |
 | `external` | 2     | `generate(opts, resolved) -> GenerateResult`    | the entire loop                  | nothing below the call                              |
 
-- **Depth 1, `ai_sdk` kind.** The adapter builds an AI SDK model object and translates Fascicle parameters, and the actual `generateText` / `streamText` call lives in one engine-internal module (`src/engine/providers/ai_sdk/invoke.ts`), the only place in the tree that's allowed to import from `ai` (rule-enforced). `generate.ts` itself is SDK-agnostic.
+- **Depth 1, `ai_sdk` kind.** The adapter builds an AI SDK model object and translates Fascicle parameters, and the actual `generateText` / `streamText` call lives in one engine-internal module (`src/engine/providers/ai_sdk/invoke.ts`), the only place in the engine that's allowed to import from `ai` (rule-enforced). `generate.ts` itself is SDK-agnostic.
 - **Depth 1, `native` kind.** The adapter implements a single model turn against the provider's own API using global `fetch` and hand-rolled streaming, with zero `ai` / `@ai-sdk/*` imports (also rule-enforced). The engine wraps `invoke_turn` in retry, shared error classification, and abort; a native adapter must never retry internally. It may override classification via an optional `classify_error`, and may define `dispose` for connection teardown.
 - **Depth 2, `external` kind.** The adapter owns the whole generate call, including any looping. This is for backends that are themselves agents (the `claude_cli` subprocess today; an HTTP/A2A agent is the same shape). The engine's shared tool loop doesn't run, so loop-level options like `tool_call_repair_attempts` are ignored and recorded as `option_ignored`.
 
@@ -50,7 +50,7 @@ const engine = create_engine({
 
 The provider name stays stable across transports, so your pricing keys (`<provider>:<model-id>`), usage fields, and effort levels carry over unchanged, and only the wire implementation swaps. Each transport puts an effort level on the wire its own way, which [Effort Translation](#effort-translation) lays out. The default is `'ai_sdk'` and any other value throws `engine_config_error` at construction. Per-provider differences on the native transport (and the raw `provider_options.<provider>` wire-format passthrough each one accepts) are listed in that provider's section below.
 
-`openai`, `openrouter`, and `lmstudio` native all ride one shared OpenAI Chat Completions core, parameterized per dialect (auth, attribution headers, token-limit field, usage tolerance); `ollama` native is a separate adapter on its own `/api/chat` wire. `google` and `bedrock` remain `ai_sdk`-only (SigV4 and low leverage, respectively).
+`openai`, `openrouter`, and `lmstudio` native all ride one shared OpenAI Chat Completions core, parameterized per dialect (auth, attribution headers, token-limit field, usage tolerance, effort field, reasoning field, reported cost); `ollama` native is a separate adapter on its own `/api/chat` wire. `google` and `bedrock` remain `ai_sdk`-only (SigV4 and low leverage, respectively).
 
 ## OpenAI-Compatible Servers (the Compat Recipe)
 
@@ -74,7 +74,7 @@ await engine.generate({
 });
 ```
 
-The same recipe reaches vLLM, LiteLLM, or any other OpenAI-compatible gateway, and all you swap is the `base_url`. It rides the shared OpenAI-compatible core: the openai dialect's Bearer auth (hence the placeholder key), the streaming aggregator, and the usage math, all identical to the hosted `openai` transport. Ollama's compat endpoint reports token usage, so cost accounting works out of the box. For local backends that report approximate or no usage, the `lmstudio` provider (tolerant usage, no auth) is the better fit.
+The same recipe reaches vLLM, LiteLLM, or any other OpenAI-compatible gateway, and all you swap is the `base_url`. It rides the shared OpenAI-compatible core: the openai dialect's Bearer auth (hence the placeholder key), the streaming aggregator, and the usage math, all identical to the hosted `openai` transport. Ollama's compat endpoint reports token usage, so usage accounting works out of the box. A cost is another matter, because the call runs under the `openai` name, which isn't free the way `ollama` is, so it records `pricing_missing` until you add an `openai:<tag>` row to the engine's pricing table. For local backends that report approximate or no usage, the `lmstudio` provider (tolerant usage, no auth) is the better fit.
 
 ## The Agent-Layer Boundary
 
@@ -260,7 +260,7 @@ Everything call-facing carries over, with the same provider name, the same prici
 - **No image input.** `image_input` is unsupported on the native transport in v1.
 - **Schema always rides the repair loop.** The native adapter doesn't claim `structured_output`, so your `schema` requests are satisfied by the engine's prompt + parse + repair path.
 - **`provider_options.openai` is raw wire format (D9).** On the native transport, keys under `provider_options.openai` are Chat Completions fields exactly as OpenAI documents them (**snake_case**: `reasoning_effort`, `max_completion_tokens`, `top_p`, `stop`, `logprobs`, `response_format`, ...), shallow-merged last over the engine-computed body, so an explicit key beats every derived field (the effort-derived `reasoning_effort`, the token limit, sampling params). Keys do **not** port from the `ai_sdk` transport, which uses `@ai-sdk/openai`'s camelCase spellings — `reasoningEffort` there is `reasoning_effort` here, and the SDK's `maxOutputTokens` is `max_completion_tokens` on the wire. The merge is shallow and unreconciled: pass whole objects, and combinations that the API rejects are rejected by the API, not repaired by Fascicle.
-- **Retry belongs to the engine.** 401, 429 (honoring `Retry-After`), 5xx, and network failures are classified by the shared classifier and retried by the engine's policy, exactly as on `ai_sdk`.
+- **Retry belongs to the engine.** 429 (honoring `Retry-After`), 5xx, and network failures are classified by the shared classifier and retried by the engine's policy, exactly as on `ai_sdk`. A 401 throws `provider_auth_error` without a retry.
 
 The same core powers any OpenAI-compatible server via `base_url` — see [the compat recipe](#openai-compatible-servers-the-compat-recipe).
 
@@ -337,7 +337,7 @@ Same provider name, pricing keys, usage fields, and streamed-equals-non-streamed
 - **`provider_options.openrouter` is raw wire format (D9).** Keys are OpenRouter Chat Completions fields exactly as documented (**snake_case**: `reasoning`, `max_tokens`, `top_p`, `provider`, `models`, `transforms`, ...), shallow-merged last over the engine-computed body. Effort arrives as the **nested** `reasoning: { effort: 'high' }` object on both transports, and the shallow merge replaces it whole, so to override reasoning on native, pass the whole `reasoning` object.
 - **Reasoning streams, and it goes back.** Each `reasoning_details` entry that OpenRouter sends streams its text to `on_chunk` as `reasoning` chunks and becomes a reasoning part, with the entry itself under `provider_options.openrouter.detail`. Inside a tool loop the next request carries the turn's entries back as `reasoning_details`, all of them, once, and in order, which is what keeps a Claude loop's thinking and Gemini 3's thought signatures from one step to the next. An encrypted entry has no text to stream, and it goes back all the same.
 - **The cost is the one OpenRouter reports.** Each step records what OpenRouter charged for it, with no pricing row needed (see [Cost Estimation](#cost-estimation)).
-- **Retry belongs to the engine** (401 / 429 / 5xx / network), identical to `ai_sdk`. OpenRouter can report a failure inside a stream that has already begun, as a frame that carries an `error` object, and the core throws it with OpenRouter's message. Before the first chunk, a 429 or a 5xx code in that frame retries like the same HTTP status, and after it the turn fails as a stream interruption.
+- **Retry belongs to the engine** (429 / 5xx / network), identical to `ai_sdk`, and a 401 throws `provider_auth_error` without a retry. OpenRouter can report a failure inside a stream that has already begun, as a frame that carries an `error` object, and the core throws it with OpenRouter's message. Before the first chunk, a 429 or a 5xx code in that frame retries like the same HTTP status, and after it the turn fails as a stream interruption.
 
 ## `bedrock`
 
@@ -370,7 +370,7 @@ await engine.generate({
 });
 ```
 
-`region` is required (set it explicitly or via `BEDROCK_REGION` / `AWS_REGION`); the adapter throws `engine_config_error` without one. Credentials resolve down this ladder:
+`region` is required, and the adapter throws `engine_config_error` without one. It reads no environment variable itself, so a harness that wants `BEDROCK_REGION` or `AWS_REGION` passes it in, as the example above does. Credentials resolve down this ladder:
 
 | Config | Credential source |
 | --- | --- |
@@ -518,7 +518,7 @@ LM Studio exposes an OpenAI-compatible server on a local port.
 ```ts
 const engine = create_engine({
   providers: {
-    lmstudio: { base_url: 'http://localhost:1234' },
+    lmstudio: { base_url: 'http://localhost:1234/v1' },
   },
 });
 
@@ -538,7 +538,7 @@ Set `transport: 'native'` to talk to LM Studio's OpenAI-compatible server direct
 ```ts
 const engine = create_engine({
   providers: {
-    lmstudio: { base_url: 'http://localhost:1234', transport: 'native' },
+    lmstudio: { base_url: 'http://localhost:1234/v1', transport: 'native' },
   },
 });
 ```

@@ -42,7 +42,7 @@ Options:
 - `trajectory` receives every run's events, and it must never write to stdout.
 - `abort` (an `AbortSignal`) aborts every active run when it fires.
 
-`acp_agent` takes the same config and returns the SDK's agent app. Its handlers are registered but it isn't connected yet, so you can connect it to a transport of your own, or to an in-process client in a test. `serve_acp` is `acp_agent` plus the process: stdin, stdout, the console, and the signals.
+`acp_agent` takes the same config and returns a promise that resolves to the SDK's agent app. Its handlers are registered but it isn't connected yet, so you can connect it to a transport of your own, or to an in-process client in a test. `serve_acp` is `acp_agent` plus the process: stdin, stdout, the console, and the signals.
 
 ## What a Turn Carries
 
@@ -64,7 +64,7 @@ The agent tells the editor it accepts embedded context, so a file the user @-men
 
 ACP runs as newline-delimited JSON-RPC over stdin and stdout, which means stdout carries the protocol and nothing else. A single stray line from a flow or a dependency corrupts the stream.
 
-`serve_acp` sends `console.log`, `console.info`, and `console.debug` to stderr for the life of the process, which covers the usual offender. `acp_agent` leaves the console alone, because it doesn't own the process. Neither one can catch a write that goes straight to `process.stdout`.
+`serve_acp` sends `console.log`, `console.info`, `console.debug`, `console.dir`, and `console.dirxml` to stderr for the life of the process, which covers the usual offender. `acp_agent` leaves the console alone, because it doesn't own the process. Neither one can catch a write that goes straight to `process.stdout`.
 
 Key rules:
 

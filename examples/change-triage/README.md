@@ -12,7 +12,7 @@ call second, and a floor the model cannot undercut**.
 
 - **Deterministic + model hybrid.** Seven regex detectors run over every file
   for zero tokens and cannot hallucinate ([`signals.ts`](./src/signals.ts));
-  the single `model_call` corroborates and extends them.
+  the single `model_step` corroborates and extends them.
 - **The score floor.** Hard signals (auth change, secret material, migration)
   impose a minimum score in code ([`floor.ts`](./src/floor.ts)), and the band
   is always derived from the floored score, so the report can never disagree

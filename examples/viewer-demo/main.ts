@@ -6,7 +6,7 @@
  * an error. No engine layer, no network, no LLM calls.
  *
  *   pnpm exec tsx examples/viewer-demo/main.ts
- *   pnpm exec fascicle-viewer .trajectory.jsonl
+ *   pnpm fascicle-viewer .trajectory.jsonl
  */
 
 import {

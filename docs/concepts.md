@@ -104,7 +104,7 @@ All three entry points accept the same `RunOptions`:
 type RunOptions = {
   install_signal_handlers?: boolean;   // default true
   trajectory?: TrajectoryLogger;       // default noop
-  checkpoint_store?: CheckpointStore;  // required by checkpoint / suspend
+  checkpoint_store?: CheckpointStore;  // checkpoint memoizes here (uncached without one)
   resume_data?: Record<string, unknown>;
   abort?: AbortSignal;                 // caller-owned cancellation
 };
@@ -133,7 +133,7 @@ type RunContext = {
 These are the seams you'll actually use:
 
 - `ctx.abort` — the current run's abort signal. Pass it to `fetch`, `child_process`, or any abortable API. Check `ctx.abort.aborted` at loop boundaries.
-- `ctx.emit(event)` — record a streaming event. Your steps call this freely, and only `run.stream` delivers events to you, since plain `run` drops them.
+- `ctx.emit(event)` — record a streaming event. Your steps call this freely. Every entry point writes it to the run's trajectory logger as an `emit` event, and only `run.stream` also hands it to you as it happens.
 - `ctx.on_cleanup(fn)` — register teardown. Runs in LIFO order on success, failure, or abort.
 - `ctx.call(step, input)` — run another `Step` from inside a step body, with spans, abort, and error paths intact. The direct-style counterpart to composing, for control flow too dynamic to declare. (The `this` parameter pins it to the context it came from, so a destructured bare `call` is a compile error rather than a silently detached dispatch.)
 - `ctx.trajectory` — the structured-event sink. Either the logger you injected or a noop.
@@ -149,6 +149,7 @@ A trajectory is a structured record of what happened during your run. Every comp
 type TrajectoryEvent = {
   readonly kind: string;
   readonly span_id?: string;
+  readonly ts?: number;         // epoch ms, stamped by the runner
   readonly [key: string]: unknown;
 };
 
@@ -161,7 +162,7 @@ type TrajectoryLogger = {
 
 The `fascicle/adapters` subpath ships five trajectory loggers:
 
-- `noop_logger` — drops everything. The default when no `trajectory` is passed.
+- `noop_logger` — drops everything, which is also what `run` does on its own when no `trajectory` is passed.
 - `filesystem_logger({ output_path })` — appends JSON lines to a file.
 - `http_logger({ url })` — POSTs each event as NDJSON, and pairs with the viewer's `/api/ingest`.
 - `stderr_logger()` — JSONL to stderr, which keeps stdout clean when your process is somebody's child.
@@ -235,7 +236,7 @@ Underneath sits the raw state tier, where `scope` / `stash` / `use` bind values 
 `checkpoint(inner, { key })` memoizes an inner step by key, using a `CheckpointStore` injected via `RunOptions`.
 
 ```ts
-import { checkpoint, step } from 'fascicle';
+import { checkpoint, run, step } from 'fascicle';
 import { filesystem_store } from 'fascicle/adapters';
 
 const flow = checkpoint(
@@ -289,9 +290,9 @@ Typed errors live in `fascicle`:
 | `suspended_error`                | first pass through `suspend(...)`                     |
 | `resume_validation_error`        | `resume_data` doesn't match `resume_schema`          |
 | `describe_cycle_error`           | `describe` hitting a cyclic composition               |
-| `provider_error`                 | HTTP failures from AI SDK providers                   |
+| `provider_error`                 | HTTP failures from a provider, on either transport    |
 | `rate_limit_error`               | 429 responses after retry exhaustion                  |
-| `tool_error`                     | a tool's `execute` throws                             |
+| `tool_error`                     | a tool's `execute` throws, under `tool_error_policy: 'throw'` |
 | `schema_validation_error`        | `schema` parsing failed after repair attempts         |
 | `incomplete_generation_error`    | `schema` set and the call finished on a non-`stop` reason |
 | `engine_config_error`            | invalid `create_engine(config)`                       |
@@ -301,7 +302,7 @@ Typed errors live in `fascicle`:
 | `provider_not_configured_error`  | named provider missing from `providers`               |
 | `provider_capability_error`      | a provider refusing an option it can't honour        |
 | `provider_auth_error`            | auth failure detected mid-run                         |
-| `tool_approval_denied_error`     | `on_tool_approval` returned false                     |
+| `tool_approval_denied_error`     | a denied approval under `tool_error_policy: 'throw'`, or a tool that needs approval with no `on_tool_approval` set |
 | `on_chunk_error`                 | a caller's `on_chunk` handler threw                   |
 | `claude_cli_error`               | subprocess failure in the `claude_cli` provider       |
 
@@ -311,7 +312,7 @@ Every error bubbles out of `run(...)` as a normal promise rejection. Composition
 
 Not a runtime concept, but a project one. `pnpm check:all` is the single source of truth for "is this done". The pipeline runs types, lint, structural rules, dead-code analysis, tests, coverage, spelling, markdown, and mutation. Exit 0 means done. Exit non-zero means read `.check/summary.json` for which step failed and the per-tool JSON for diagnostics.
 
-`pnpm check` runs the default set, every slot except the opt-in ones. `pnpm check:all` adds the opt-in slots (Stryker `mutation`, plus the `build` and packaging gate slots: `publint`, `attw`, `pack`, `smoke`, `snippets`) and is the gate before declaring done. Use `pnpm check` during iteration. See [AGENTS.md](../AGENTS.md) for the full contract.
+`pnpm check` runs the default set, every slot except the opt-in ones. `pnpm check:all` adds the opt-in slots (Stryker `mutation`, the Playwright `e2e`, and the `build` and packaging gate slots: `publint`, `attw`, `pack`, `smoke`, `snippets`) and is the gate before declaring done. Use `pnpm check` during iteration. See [AGENTS.md](../AGENTS.md) for the full contract.
 
 ## Further Reading
 

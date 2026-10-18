@@ -18,6 +18,7 @@ import { /* stdio child contract */ } from 'fascicle/stdio';
 import { /* OpenTelemetry bridge */ } from 'fascicle/otel';
 import { /* stub + capture engines */ } from 'fascicle/testing';
 import { /* useChat stream adapters */ } from 'fascicle/ui';
+import { /* trajectory viewer server */ } from 'fascicle/viewer';
 ```
 
 Fascicle is ESM-only and needs Node >= 24. It has no default exports, and no
@@ -342,17 +343,18 @@ Types: `DefineAgentConfig`, `AgentBuiltPrompt`. See
 ## Providers
 
 Eight transports behind one `generate`. Provider SDKs are optional peers, loaded
-lazily on first use. Full notes in [providers.md](./providers.md).
+lazily on first use, and five providers need none on `transport: 'native'`.
+Full notes in [providers.md](./providers.md).
 
 | Provider | Peer dep | Auth |
 | --- | --- | --- |
-| `anthropic` | `@ai-sdk/anthropic` | API key |
-| `openai` | `@ai-sdk/openai` | API key |
-| `google` | `@ai-sdk/google` | API key |
-| `openrouter` | `@openrouter/ai-sdk-provider` | API key |
-| `bedrock` | `@ai-sdk/amazon-bedrock` | `region` + AWS credentials |
-| `ollama` | `ai-sdk-ollama` | local `base_url` |
-| `lmstudio` | `@ai-sdk/openai-compatible` | local `base_url` |
+| `anthropic` | `ai` + `@ai-sdk/anthropic`, or none with `transport: 'native'` | API key |
+| `openai` | `ai` + `@ai-sdk/openai`, or none with `transport: 'native'` | API key |
+| `google` | `ai` + `@ai-sdk/google` | API key |
+| `openrouter` | `ai` + `@openrouter/ai-sdk-provider`, or none with `transport: 'native'` | API key |
+| `bedrock` | `ai` + `@ai-sdk/amazon-bedrock` | `region` + AWS credentials |
+| `ollama` | `ai` + `ai-sdk-ollama`, or none with `transport: 'native'` | local `base_url` |
+| `lmstudio` | `ai` + `@ai-sdk/openai-compatible`, or none with `transport: 'native'` | local `base_url` |
 | `claude_cli` | none (spawns `claude`) | OAuth session or API key |
 
 As a helper, `forward_standard_env()` returns a minimal env (`PATH`, `HOME`, `SHELL`,
@@ -367,12 +369,12 @@ roll your own to target any sink.
 
 | Export | Kind | Notes |
 | --- | --- | --- |
-| `filesystem_logger(options)` | logger | synchronous JSONL; dev tools and short runs |
-| `http_logger(options)` | logger | POST events to an endpoint (pairs with the viewer) |
+| `filesystem_logger(config)` | logger | synchronous JSONL; dev tools and short runs |
+| `http_logger(config)` | logger | POST events to an endpoint (pairs with the viewer) |
 | `noop_logger()` | logger | discard all events |
 | `stderr_logger(options?)` | logger | JSONL to stderr; keeps stdout clean when your process is somebody's child |
 | `tee_logger(...loggers)` | logger | fan one event stream out to several loggers |
-| `filesystem_store(options)` | store | filesystem-backed `CheckpointStore` with scopes and claims, so it also backs `durable` |
+| `filesystem_store(config)` | store | filesystem-backed `CheckpointStore` with scopes and claims, so it also backs `durable` |
 
 ### Checkpoint Store Capabilities
 
@@ -466,7 +468,7 @@ an agent starts. See [acp.md](./acp.md).
 
 | Export | Kind | Notes |
 | --- | --- | --- |
-| `serve_acp(config)` | fn | serve the flow over stdin and stdout until the client disconnects, then dispose the engine; sends `console.log` to stderr, and SIGTERM or SIGINT aborts every run and exits |
+| `serve_acp(config)` | fn | serve the flow over stdin and stdout until the client disconnects, then dispose the engine; sends `console.log` and its siblings to stderr, and SIGTERM or SIGINT aborts every run and exits |
 | `acp_agent(config)` | fn | the same agent as the SDK's `AgentApp`, its handlers registered but not connected, for another transport or an in-process client |
 | `workspace_tools(session, options?)` | fn | the six tools of a coding session (`read_file`, `list_files`, `search`, `write_file`, `edit_file`, `run_command`) as plain `Tool` values; the file tools reach only paths whose real path lands under the session's roots, and the writes and `run_command` ask before they run as the session's mode says. `list_files` returns at most 1,000 paths a call. See [Coding Sessions](./acp.md#coding-sessions) |
 | `to_session_updates(event, state)` | fn | map one run event to zero or more ACP `SessionUpdate`s, with no I/O; the default `to_updates`, which a custom one can wrap as long as it passes every event through, since each `span_start` advances the state's run count |
@@ -498,6 +500,17 @@ Streamdown. Imports `ai` statically (see the peer note at the top).
 Types: `RunStreamLike` (the structural shape of a `run.stream(...)` handle, so
 no core import is needed to satisfy it), `ToUiStreamOptions`, `UiMapperState`.
 
+## OpenTelemetry Bridge (`fascicle/otel`)
+
+| Export | Purpose |
+| --- | --- |
+| `create_otel_trajectory_logger(options?)` | a `TrajectoryLogger` that turns a run's spans into OpenTelemetry spans, and records metrics too when you ask for them |
+
+Types: `OtelTrajectoryLoggerOptions`, `OtelMetricsOptions`. It needs the
+`@opentelemetry/api` peer. See
+[configuration.md](./configuration.md#opentelemetry) and
+[grafana.md](./grafana.md).
+
 ## Observability Viewer (`fascicle/viewer`)
 
 ```ts
@@ -506,11 +519,11 @@ import { start_viewer } from 'fascicle/viewer';
 
 | Export | Purpose |
 | --- | --- |
-| `start_viewer(options)` | start the embedded viewer server; returns a `ViewerHandle` (`.close()`) |
+| `start_viewer(options?)` | start the embedded viewer server; returns a `ViewerHandle` (`.close()`) |
 | `run_viewer_cli(argv)` | the `fascicle-viewer` bin entry point |
-| `create_broadcaster(options?)` | fan live trajectory events out to subscribers |
-| `start_server(options)` | the bare HTTP server underneath `start_viewer` |
-| `start_tail(options)` | follow a trajectory JSONL file as it grows |
+| `create_broadcaster(config)` | fan live trajectory events out to subscribers |
+| `start_server(config)` | the bare HTTP server underneath `start_viewer` |
+| `start_tail(config)` | follow a trajectory JSONL file as it grows |
 
 Types: `StartViewerOptions`, `ViewerHandle`, `Broadcaster`,
 `BroadcasterConfig`, `BroadcastEvent`, `Subscriber`, `ServerConfig`,
@@ -542,11 +555,10 @@ and fixes.
 
 ## Exported Types
 
-For full field-level detail, read the source `.d.ts` (a generated reference is on
-the roadmap). The public type exports:
+For full field-level detail, read the source `.d.ts`. The public type exports:
 
 **Composition.** `Step`, `AnyStep`, `StepMetadata`, `StepOptions`, `StepKind`,
-`RunContext`, `RunOutcome`, `Chain`, `ChainStepOptions`, `TrajectoryLogger`,
+`RunContext`, `RunOutcome`, `Chain`, `ChainOpen`, `ChainStepOptions`, `TrajectoryLogger`,
 `TrajectoryEvent`, `CheckpointStore`, `ScopedCheckpointStore`, `DescribeOptions`,
 `DiagramOptions`, `ReplayHint`, `FlowNode`, `FlowValue`, `LoopConfig`, `LoopOutcome`, `LoopGuardResult`,
 `LoopGuardPredicate`, plus the trajectory event shapes (`SpanStartEvent`,
@@ -556,7 +568,7 @@ the roadmap). The public type exports:
 The step-kind vocabulary also ships at runtime, where `STEP_KINDS` is the closed
 list and `is_step_kind` its narrowing guard. Every config a composer
 signature names is exported too: `SequenceOptions`, `ParallelOptions`,
-`BranchConfig`, `MapConfig`, `MapSettleConfig`, `PipeOptions`, `RetryConfig`, `FallbackOptions`,
+`ComposeConfig`, `BranchConfig`, `MapConfig`, `MapSettleConfig`, `PipeOptions`, `RetryConfig`, `FallbackOptions`,
 `TimeoutOptions`, `CheckpointConfig`, `SuspendConfig`, `ScopeOptions`,
 `StashOptions`, `UseOptions`, `GateConfig`, alongside `RunOptions`,
 the `project` envelopes and option shapes that `retry` and `fallback` take
@@ -596,12 +608,13 @@ The bench tier adds `BenchCase`, `BenchOptions`, `BenchReport`, `BenchSummary`,
 `StepTiming`, `GenerateTiming`, `Throughput`, `UsageTotals`,
 `ClaudeCliProviderReported`, `CostBreakdown`, `Pricing`, `PricingTable`,
 `EffortLevel`, `EffortTranslation`, `RawProviderUsage`, `PrepareStepContext`,
-`PrepareStepResult`, `RetryPolicy`, `RetryFailureKind`, `ProviderConfigMap`,
-`ProviderInit`, `ResolvedModel`.
+`PrepareStepResult`, `PrepareStepHook`, `RetryPolicy`, `RetryFailureKind`,
+`ProviderConfigMap`, `ProviderInit`, `ResolvedModel`, `AiSdkTelemetrySettings`,
+`ClaudeCliErrorReason`, `BedrockCredentialProvider`, `BedrockCredentials`.
 
 **Bridge.** `ModelCallConfig`, `ModelCallInput`. The viewer types live on the
 `fascicle/viewer` subpath.
 
 The provider-authoring types (`ProviderAdapter`, `ProviderFactory`,
 `NativeProviderAdapter`, `TurnRequest`, `TurnResult`, ...) are enumerated in
-[providers.md](./providers.md).
+[configuration.md](./configuration.md#custom-providers).

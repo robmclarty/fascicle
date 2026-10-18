@@ -32,7 +32,7 @@ type ProviderConfigMap = {
   ollama?:      { base_url: string; transport?: 'ai_sdk' | 'native' };
   lmstudio?:    { base_url: string; transport?: 'ai_sdk' | 'native' };
   openrouter?:  { api_key: string; base_url?: string; http_referer?: string; x_title?: string; transport?: 'ai_sdk' | 'native' };
-  bedrock?:     { region: string; api_key?: string; access_key_id?: string; secret_access_key?: string; session_token?: string; base_url?: string };
+  bedrock?:     { region: string; api_key?: string; access_key_id?: string; secret_access_key?: string; session_token?: string; base_url?: string; use_credential_chain?: boolean; credential_provider?: BedrockCredentialProvider };
   claude_cli?:  ClaudeCliProviderConfig;
 };
 ```
@@ -263,14 +263,14 @@ const result = await engine.generate({ prompt: 'hello' });
 Two-level merge for `provider_options` means the outer key is the provider name and each inner record is shallow-merged. Deeper structures replace wholesale.
 
 ```ts
-// defaults:    { anthropic: { thinking: { type: 'enabled', budget_tokens: 5000 } } }
+// defaults:    { anthropic: { thinking: { type: 'adaptive', display: 'summarized' } } }
 // per-call:    { anthropic: { extra_header: 'x' } }
-// effective:   { anthropic: { thinking: { type: 'enabled', budget_tokens: 5000 }, extra_header: 'x' } }
+// effective:   { anthropic: { thinking: { type: 'adaptive', display: 'summarized' }, extra_header: 'x' } }
 
 // per-call replacing an inner key:
-// defaults:    { anthropic: { thinking: { ... budget_tokens: 5000 } } }
-// per-call:    { anthropic: { thinking: { type: 'enabled', budget_tokens: 20000 } } }
-// effective:   { anthropic: { thinking: { type: 'enabled', budget_tokens: 20000 } } }  // wholesale replace of `thinking`
+// defaults:    { anthropic: { thinking: { type: 'adaptive', display: 'summarized' } } }
+// per-call:    { anthropic: { thinking: { type: 'disabled' } } }
+// effective:   { anthropic: { thinking: { type: 'disabled' } } }  // wholesale replace of `thinking`
 ```
 
 The legacy top-level `default_retry`, `default_effort`, and `default_max_steps` still work, but prefer `defaults: { ... }` for new code.
@@ -311,10 +311,10 @@ await engine.generate({
 
 The rules:
 
-- Backoff is exponential with jitter (`initial_delay_ms * 2^attempt + jitter`), capped at `max_delay_ms` — except when the server returns `Retry-After`, which always wins.
+- Backoff is exponential with jitter (`initial_delay_ms * 2^attempt + jitter`), capped at `max_delay_ms`. A 429's `Retry-After` outranks that cap, so the wait is the longer of the computed backoff and the server's value.
 - Abort interrupts backoff waits and throws `aborted_error`.
 - Streaming calls do **not** retry past the first delivered chunk. The orchestrator enforces that boundary.
-- Exhaustion throws `rate_limit_error` (for 429s) or `provider_error` (for 5xx / network). Both include `.attempts`.
+- Exhaustion throws `rate_limit_error` (for 429s), which carries `.attempts`, or `provider_error` (for 5xx / network), which carries `.status`, `.body`, and `.cause_kind`.
 
 ## Turn Timeout Budgets
 
@@ -396,7 +396,7 @@ type GenerateOptions<t = string> = {
 
 A few highlights:
 
-- `effort: 'none' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'` is translated per-provider. See [providers.md](./providers.md) for the per-provider mapping. Providers that don't support reasoning effort (for example, Ollama) silently drop it and record `effort_ignored` on the trajectory.
+- `effort: 'none' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'` is translated per-provider. See [providers.md](./providers.md) for the per-provider mapping. On the `ai_sdk` transport, a provider that doesn't support reasoning effort (for example, Ollama) drops it and records `effort_ignored` on the trajectory. Ollama's native transport drops it without recording anything.
 - `schema` is any [Standard Schema](https://standardschema.dev) that also carries a JSON Schema (zod, ArkType, Valibot, ...): the printed `ToolSchema<t>` is `StandardSchemaV1<unknown, t> & StandardJSONSchemaV1`. On failure, the engine attempts `schema_repair_attempts` repair passes (default 1) before throwing `schema_validation_error`. If the call instead finishes on a non-`stop` reason (content filter, token limit, step cap) no valid value can exist, so it throws `incomplete_generation_error` without attempting repair.
 - `tools` is the agentic tool-use surface; tools have a Standard Schema `input_schema` and an `execute` closure. See the cookbook for tool loops.
 - `turn_timeout_ms` bounds each model turn's wall-clock; expiry throws a retryable timeout. See [Turn timeout budgets](#turn-timeout-budgets).
@@ -542,7 +542,7 @@ Local-only, no network:
 const engine = create_engine({
   providers: {
     ollama:   { base_url: 'http://localhost:11434' },
-    lmstudio: { base_url: 'http://localhost:1234' },
+    lmstudio: { base_url: 'http://localhost:1234/v1' },
   },
   defaults: { provider: 'ollama', model: 'llama3.2:3b' },
 });

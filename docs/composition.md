@@ -103,9 +103,9 @@ from English specifications:
 - `sequence([a, b, c])` — run in order, thread output into input. Literal
   tuples are joint-checked at compile time, so each child must accept its
   predecessor's output, and a mismatch errors on the offending element
-  (arrays built at runtime degrade to `unknown` boundaries). A straight
-  pipe belongs in `sequence`; reach for `chain` when a step needs fan-in,
-  phases, or named per-joint types.
+  (an array built at runtime has to be a homogeneous `Step<t, t>[]`, and it
+  gives you a `Step<t, t>`). A straight pipe belongs in `sequence`; reach
+  for `chain` when a step needs fan-in, phases, or named per-joint types.
 - `parallel({ a, b, c })` — run concurrently, return `{ a, b, c }`.
 - `branch({ when, then, otherwise })` — route on `when(input)`. If your
   linter runs `unicorn/no-thenable`, it flags the `then` key, because an
@@ -299,8 +299,9 @@ Give the inner step an id and it goes away.
 
 Composers build trees, not graphs. A composer that references itself (or a
 flow variable that appears inside its own definition) causes infinite
-recursion during `describe` or execution. The framework doesn't guard
-against this; keep compositions acyclic.
+recursion when it runs. `describe` does catch the cycle and renders it as a
+`<cycle>` node (only `{ strict: true }` throws `describe_cycle_error`), but
+execution has no such guard, so keep compositions acyclic.
 
 ## YAML Representation
 
@@ -319,9 +320,9 @@ import { flow_schema } from 'fascicle';
 
 Runnable references live at the repo root in [`examples/`](../examples/),
 in two kinds. Single-file examples (each one
-`pnpm exec tsx examples/<name>.ts` away) sit beside seven full example apps in
-subdirectories. All of them import the published `fascicle` surface, so
-everything there is copy-pasteable into an npm consumer. Highlights among
+`pnpm exec tsx examples/<name>/main.ts` away) sit beside seven full example
+apps in subdirectories. All of them import the published `fascicle` surface,
+so everything there is copy-pasteable into an npm consumer. Highlights among
 the single files:
 
 - [`hello`](../examples/hello/main.ts), the smallest viable harness
@@ -361,10 +362,12 @@ example shows, is [`examples/README.md`](../examples/README.md).
 From the repo root:
 
 ```bash
-pnpm check
+pnpm check:all
 ```
 
 This is the single source of truth. If it exits 0, your work is complete.
+While you iterate, `pnpm check` runs the faster default set, which leaves out
+the opt-in slots.
 
 ## Further Reading
 

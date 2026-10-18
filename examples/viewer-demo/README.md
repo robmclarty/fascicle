@@ -31,7 +31,7 @@ sequence              a deterministic run with a varied span tree to view
 
 ```bash
 pnpm exec tsx examples/viewer-demo/main.ts
-pnpm exec fascicle-viewer .trajectory.jsonl
+pnpm fascicle-viewer .trajectory.jsonl
 ```
 
 The first command writes the trajectory; the second serves the viewer on

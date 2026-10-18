@@ -205,7 +205,7 @@ Whichever one fires kills the subprocess and throws `claude_cli_error` with `rea
 
 ## Sandboxing
 
-Opt in with `sandbox: { kind: 'bwrap' | 'greywall', network_allowlist?, additional_write_paths? }`.
+Opt in with `sandbox: { kind: 'bwrap' | 'greywall', network_allowlist?, additional_write_paths? }`. A `greywall` sandbox also takes `settings_path?`.
 
 ```ts
 const engine = create_engine({
@@ -222,7 +222,9 @@ const engine = create_engine({
 });
 ```
 
-The `bwrap` wrapper read-only binds `/usr`, `/bin`, `/lib`, `/lib64`, `/etc/resolv.conf`, mounts `/proc`, `/dev`, and a tmpfs at `/tmp`, unshares user/pid/ipc/uts/cgroup namespaces, and dies with the parent. `greywall` uses host allowlisting and `--rw` paths. Either way, `network_allowlist` drops you to only those hosts, and an empty array means the network is off.
+The `bwrap` wrapper read-only binds `/usr`, `/bin`, `/lib`, `/lib64`, `/etc/resolv.conf`, mounts `/proc`, `/dev`, and a tmpfs at `/tmp`, unshares user/pid/ipc/uts/cgroup namespaces, binds each of `additional_write_paths` read-write, and dies with the parent. An empty or absent `network_allowlist` unshares the network, so the network is off. A non-empty one shares the host network (`--share-net`) and only hands the hosts to the child in the `CLAUDE_CLI_NET_ALLOW` variable, so nothing filters the traffic and every host stays reachable.
+
+`greywall` takes its policy from a JSON settings file that's passed with `--settings`. The adapter writes one for each run, with `network_allowlist` as `network.allowHosts` and `additional_write_paths` as `filesystem.allowWrite`, or forwards your own file untouched when you set `settings_path`. `greywall` honors the write paths directly and ignores `network.allowHosts`, since greyproxy is what enforces host allowlisting.
 
 A missing sandbox binary triggers `claude_cli_error` with `reason: 'sandbox_unavailable'`.
 

@@ -19,12 +19,15 @@ their SDKs. See [providers.md](./providers.md#optional-peer-loading).
 
 ## `provider_not_configured_error`
 
-Two triggers share this error name; the timing tells them apart.
+The error itself fires at call time. A misspelled provider fails earlier with
+a different error, and the timing tells the two apart.
 
 - **At construction**, a key in your `create_engine({ providers })` matches no
   built-in provider and no `custom_providers` entry, so the engine can't
-  build an adapter for that name at all. Fix the spelling, or register the
-  custom provider factory under `custom_providers`.
+  build an adapter for that name at all. That throws `engine_config_error`
+  (`unknown provider '<name>'; built-in providers are: ...`) rather than this
+  error. Fix the spelling, or register the custom provider factory under
+  `custom_providers`.
 - **At call time**, the resolved `provider` for a `generate` call names an
   adapter that the engine wasn't configured with. Constructing an engine never
   fails for a *missing* provider; that failure is deferred to the first call
@@ -68,8 +71,9 @@ Seeing this error:
 Error [ERR_PACKAGE_PATH_NOT_EXPORTED]: No "exports" main defined in .../node_modules/fascicle/package.json
 ```
 
-means an older Fascicle (<= 0.12), whose exports map was import-only. Upgrade,
-or import it (`import { run } from 'fascicle'`) from an ES module.
+means an older Fascicle (0.12.0 or earlier), whose exports map was
+import-only. Upgrade, or import it (`import { run } from 'fascicle'`) from an
+ES module.
 
 - Check `node -v`. Fascicle requires Node >= 24; on an older Node you'll
   see syntax errors from modern language features long before anything
@@ -97,10 +101,12 @@ variable is set and passed into the config:
 | `bedrock`    | `region` (required) plus an AWS credential path              |
 | `ollama` / `lmstudio` | no key; a reachable local `base_url`               |
 
-`bedrock` throws `engine_config_error` if `region` is missing entirely (set it or
-`AWS_REGION`). Beyond that, supply an `api_key`, explicit SigV4 keys, or
-`use_credential_chain: true`. Omitting all three does *not* reach the AWS
-credential chain. `@ai-sdk/amazon-bedrock` reads `AWS_ACCESS_KEY_ID` /
+`bedrock` throws `engine_config_error` if `region` is missing entirely. The
+adapter never reads `AWS_REGION` itself, so pass it in from your config
+(`region: process.env.AWS_REGION`) if that's where it lives. Beyond that,
+supply an `api_key`, explicit SigV4 keys, or `use_credential_chain: true`.
+Omitting all three does *not* reach the AWS credential chain.
+`@ai-sdk/amazon-bedrock` reads `AWS_ACCESS_KEY_ID` /
 `AWS_SECRET_ACCESS_KEY` from the environment only and never opens
 `~/.aws/credentials`, so a working `aws` CLI profile still fails with a SigV4
 credentials error that looks like a missing IAM grant. Set

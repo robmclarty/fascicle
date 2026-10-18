@@ -425,7 +425,7 @@ rule:
     - pattern: import * as $NAME from "$PATH"
 constraints:
   PATH:
-    regex: '^fascicle$'
+    regex: '^fascicle(/|$)'
 ```
 
 Add a rule per boundary you care about; each is a few lines and turns an architecture review comment into a build failure.

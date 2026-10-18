@@ -98,13 +98,15 @@ Both adapter slots accept anything that conforms to `TrajectoryLogger` or `Check
 When your harness is behind an HTTP endpoint or a TUI, use `run.stream` and forward events incrementally:
 
 ```ts
+import type { StreamChunk } from 'fascicle';
+
 const handle = run.stream(flow, input);
 
 const pump = (async () => {
   for await (const event of handle.events) {
-    if (event.kind === 'model_chunk' && event.chunk.kind === 'text') {
-      process.stdout.write(event.chunk.text);
-    }
+    if (event.kind !== 'model_chunk') continue;
+    const chunk = event['chunk'] as StreamChunk;
+    if (chunk.kind === 'text') process.stdout.write(chunk.text);
   }
 })();
 
@@ -112,7 +114,7 @@ const final = await handle.result;
 await pump;
 ```
 
-`run.stream` is observational, and the underlying step graph is identical to `run(...)`. Turning streaming on flips `ctx.streaming` inside the run so `model_call` starts forwarding provider chunks into `ctx.emit`.
+`run.stream` is observational, and the underlying step graph is identical to `run(...)`. Turning streaming on flips `ctx.streaming` inside the run so `model_call` starts recording each provider chunk on `ctx.trajectory` as a `model_chunk` event that carries the engine's `StreamChunk`.
 
 ## Pause and Resume
 
@@ -174,7 +176,7 @@ pnpm exec tsx examples/hello/main.ts
 pnpm exec tsx examples/hello/main.ts "your custom input here"
 ```
 
-> **Layout note.** This repo is a single installable package (`fascicle`). All source lives under `src/` as deep modules (`core`, `engine`, `composites`, `agents`, `adapters`, `mcp`, `acp`, `stdio`, `ui`, `otel`, `policy`, `schema`, `testing`, `viewer`), each with a barrel `index.ts` that you reach only through its `#<module>` import alias. The aliases enforce architectural boundaries (for example, core can't import from adapters, engine can't reach into providers). The umbrella surface at the `src/` root is what bundles to npm — the published surface is the only public face.
+> **Layout note.** This repo is a single installable package (`fascicle`). All source lives under `src/` as deep modules (`core`, `engine`, `composites`, `agents`, `adapters`, `mcp`, `acp`, `stdio`, `ui`, `otel`, `policy`, `schema`, `testing`, `viewer`), each with a barrel `index.ts` that you reach only through its `#<module>` import alias (`mcp` and `otel` have none, because no sibling module imports them). The aliases enforce architectural boundaries (for example, core can't import from adapters, engine can't reach into providers). The umbrella surface at the `src/` root is what bundles to npm — the published surface is the only public face.
 
 ## Checklist
 

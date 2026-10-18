@@ -47,7 +47,7 @@ It runs in a fixed order: read stdin to EOF, `JSON.parse`, validate against `inp
 
 Options:
 
-- `input_schema` / `output_schema` (optional zod): a mismatch in either direction is a contract violation, exit 2. Schema transforms apply, so the flow receives the parsed input and the parent receives the validated output.
+- `input_schema` / `output_schema` (optional, any Standard Schema such as zod): a mismatch in either direction is a contract violation, exit 2. Schema transforms apply, so the flow receives the parsed input and the parent receives the validated output.
 - `engine` (optional, anything that has a `dispose(): Promise<void>`): disposed on every path before the process exits, success or failure.
 - `trajectory` (optional): defaults to `stderr_logger()`.
 - `abort` (optional `AbortSignal`): composes with the signal handlers, same as `RunOptions.abort`.
@@ -91,7 +91,7 @@ A parent that wants the detail takes the tail line (`tail -n 1` on captured stde
 
 ```bash
 echo '{"topic":"flaky tests"}' | pnpm exec tsx examples/stdio-agent/main.ts 2> events.jsonl
-pnpm exec fascicle-viewer events.jsonl
+pnpm fascicle-viewer events.jsonl
 ```
 
 To keep a durable copy alongside the live stream, tee:

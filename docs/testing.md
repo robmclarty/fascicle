@@ -21,14 +21,18 @@ import {
 } from 'fascicle/testing';
 ```
 
-All three factories return a full `Engine`. The non-`generate` members are
-inert, so pricing calls are no-ops, `dispose` resolves immediately, and
-`with_providers` throws. All three honor the engine contract at the seams your
-tests exercise, so a call whose `opts.abort` is already aborted throws the
-engine's `aborted_error`, a provided `opts.on_chunk` receives the content as a
-text chunk plus a finish chunk before the result resolves (so `model_chunk`
-trajectory events fire), and content is validated through the call's own
-schema, failing with the engine's `schema_validation_error`.
+All three factories build a full `Engine` (`make_capture_engine` hands it back
+inside `{ engine, calls }`). The non-`generate` members are inert, so pricing
+calls are no-ops, `dispose` resolves immediately, and `with_providers` throws.
+`make_stub_engine` and `make_script_engine` honor the engine contract at the
+seams your tests exercise, so a call whose `opts.abort` is already aborted
+throws the engine's `aborted_error`, a provided `opts.on_chunk` receives the
+content as a text chunk plus a finish chunk before the result resolves (so
+`model_chunk` trajectory events fire), and content is validated through the
+call's own schema, failing with the engine's `schema_validation_error`.
+`make_capture_engine` does none of that. It records the call and returns its
+canned result, and its `on_generate` hook is where you drive chunks or aborts
+yourself.
 
 ## `make_stub_engine`
 

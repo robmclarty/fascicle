@@ -16,12 +16,13 @@ different problems. Pick by whether you can afford to hold the process open:
 the run. Drive the flow with `run.until_suspended`, which reports the pause
 as a typed outcome instead of an exception. You get `{ kind: 'done', output }`
 when the flow completes, or `{ kind: 'suspended', id, payload, resume }` when a
-gate fires. `payload` carries the value that the suspend gate surfaced (the draft
-awaiting approval, say), so the harness can render what's being decided
-without re-deriving it. When the decision arrives, call `resume(data)`. That
-re-runs the flow with the decision keyed under the gate's id, the flow continues
-into `combine`, and the promise resolves to the next outcome, so you drive
-several gates by resuming repeatedly. Real errors still throw.
+gate fires. `payload` is `{ input }`, where `input` is the value that reached
+the suspend gate (the draft awaiting approval, say), so the harness can render
+what's being decided without re-deriving it. When the decision arrives, call
+`resume(data)`. That re-runs the flow with the decision keyed under the gate's
+id, the flow continues into `combine`, and the promise resolves to the next
+outcome, so you drive several gates by resuming repeatedly. Real errors still
+throw.
 
 <!-- snippet: check -->
 ```ts
@@ -99,11 +100,11 @@ const approved = gate(draft_step, { id: 'approve', store });
 ```
 
 `gate` runs the inner step, checkpoints its result under `gate:<id>`, then
-suspends with the result as the payload (`format` projects the approver's view,
-and the store always holds the raw result). A resume, or a fresh run after a
-restart with the same store, serves the inner result from the checkpoint instead
-of re-running it, so you don't pay for the model call twice, and approval passes
-the inner result through unchanged. Reach for raw `checkpoint` plus `suspend`
+suspends with `{ input: result }` as the payload (`format` projects the
+approver's view into `input`, and the store always holds the raw result). A
+resume, or a fresh run after a restart with the same store, serves the inner
+result from the checkpoint instead of re-running it, so you don't pay for the
+model call twice, and approval passes the inner result through unchanged. Reach for raw `checkpoint` plus `suspend`
 when the approval decision has to shape the output (`combine`).
 
 A complete server that runs this over HTTP (POST to start, GET the pending
@@ -257,5 +258,9 @@ same module, which resolves once the response has ended.
 
 When the decision is in-band and immediate, gate a tool instead of suspending.
 Flag the tool with `needs_approval` and pass an `on_tool_approval` handler to
-`model_call`, and a denied call throws `tool_approval_denied_error`. See the tool
+`model_call`. Under the default `tool_error_policy: 'feed_back'`, a denied call
+goes back to the model as a `tool_approval_denied` tool error and the loop
+carries on, and under `tool_error_policy: 'throw'` it throws
+`tool_approval_denied_error` instead. A flagged tool with no handler to ask
+always throws, so a missing handler fails closed. See the tool
 loop recipe in [docs/cookbook.md](./cookbook.md#tool-loops) for the full shape.
