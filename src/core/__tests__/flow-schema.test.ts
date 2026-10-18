@@ -43,7 +43,7 @@ const example_from_spec = [
       },
       {
         use: ['build'],
-        do: { step: { id: 'ship', fn: 'deploy_fn' } },
+        fn: 'deploy_fn',
       },
     ],
   },
@@ -70,6 +70,7 @@ type schema = {
   readonly allOf?: readonly schema[]
   readonly enum?: readonly json_value[]
   readonly minimum?: number
+  readonly minLength?: number
 }
 
 function resolve_ref(root: schema, ref: string): schema {
@@ -105,6 +106,18 @@ function validate(data: unknown, local: schema, root: schema): string[] {
       errors.push(`expected integer, got ${typeof data}`)
       return errors
     }
+    if (local.type === 'number' && typeof data !== 'number') {
+      errors.push(`expected number, got ${typeof data}`)
+      return errors
+    }
+    if (local.type === 'boolean' && typeof data !== 'boolean') {
+      errors.push(`expected boolean, got ${typeof data}`)
+      return errors
+    }
+  }
+
+  if (local.minimum !== undefined && typeof data === 'number' && data < local.minimum) {
+    errors.push(`${data} is below the minimum ${local.minimum}`)
   }
 
   if (local.enum && !local.enum.includes(data as json_value)) {
@@ -118,7 +131,9 @@ function validate(data: unknown, local: schema, root: schema): string[] {
     }
   }
 
-  if (local.type === 'object' && typeof data === 'object' && data !== null && !Array.isArray(data)) {
+  // As in JSON Schema, `required` and `properties` apply to any object, so the
+  // `node` def's bare `{ required: [...] }` alternatives check their key.
+  if (typeof data === 'object' && data !== null && !Array.isArray(data)) {
     const record = data as Record<string, unknown>
     for (const key of local.required ?? []) {
       if (!(key in record)) errors.push(`missing required property: ${key}`)
@@ -155,6 +170,126 @@ function validate(data: unknown, local: schema, root: schema): string[] {
   return errors
 }
 
+const every_new_field = [
+  {
+    compose: 'every_field',
+    sequence: [
+      {
+        step: {
+          id: 'draft',
+          fn: 'draft_fn',
+          name: 'Draft',
+          description: 'writes the first draft',
+          side_effect: false,
+          port_labels: { in: 'brief', out: 'draft' },
+          arm: [{ ref: 'helper' }],
+        },
+      },
+      {
+        retry: {
+          name: 'retry the call',
+          description: 'rides out rate limits',
+          do: { ref: 'call' },
+          max_attempts: 3,
+          backoff_ms: 100,
+          max_delay_ms: 2000,
+          jitter: true,
+          when: 'is_retryable',
+          on_error: 'log_attempt',
+          project: 'take_value',
+        },
+      },
+      {
+        fallback: {
+          primary: { ref: 'fast' },
+          backup: { ref: 'slow' },
+          when: 'is_overloaded',
+          handoff: 'carry_input',
+          project: 'take_value',
+        },
+      },
+      {
+        loop: {
+          description: 'refine until good',
+          init: 'seed',
+          body: { ref: 'refine' },
+          guard: 'is_good',
+          finish: 'unwrap',
+          max_rounds: 4,
+        },
+      },
+      {
+        branch: { name: 'route', when: 'is_long', then: { ref: 'a' }, otherwise: { ref: 'b' } },
+      },
+      { map: { description: 'per item', items: 'list', do: { ref: 'each' }, concurrency: 2 } },
+      { pipe: { name: 'shape', of: { ref: 'a' }, fn: 'reshape' } },
+      { timeout: { description: 'cap it', do: { ref: 'a' }, ms: 1000 } },
+      { compose_node: { name: 'named', description: 'a named step', do: { ref: 'a' } } },
+      { checkpoint: { name: 'cache', do: { ref: 'a' }, key: 'cache_key' } },
+      {
+        suspend: {
+          id: 'approve',
+          name: 'approval',
+          description: 'waits for a human',
+          on: 'notify',
+          resume_schema: 'approval_schema',
+          combine: 'merge',
+          deadline_ms: 60000,
+        },
+      },
+      {
+        ensemble: {
+          name: 'judges',
+          members: { a: { ref: 'a' } },
+          score: 'score_fn',
+          select: 'min',
+          project: 'winner_of',
+        },
+      },
+      {
+        tournament: { description: 'bracket', members: { a: { ref: 'a' } }, compare: 'cmp', project: 'winner_of' },
+      },
+      {
+        consensus: {
+          name: 'agree',
+          members: { a: { ref: 'a' } },
+          agree: 'all_same',
+          max_rounds: 2,
+          project: 'result_of',
+        },
+      },
+      {
+        adversarial: {
+          description: 'build and critique',
+          build: { ref: 'a' },
+          critique: { ref: 'b' },
+          accept: 'passes',
+          max_rounds: 2,
+          project: 'candidate_of',
+        },
+      },
+      {
+        scope: [
+          { stash: 'plan', name: 'plan', description: 'keeps the plan', do: { ref: 'plan' } },
+          { step: { fn: 'between_fn' } },
+          { use: ['plan'], name: 'ship', description: 'ships the plan', fn: 'ship_fn' },
+        ],
+      },
+      {
+        chain: {
+          input: 'brief',
+          steps: [
+            { step: 'outline', fn: 'outline_fn', name: 'Outline', arm: { ref: 'helper' } },
+            { step: 'review', arm: { ref: 'reviewer' }, select: 'pick_outline', description: 'reviews it' },
+            { stage: 'polish', project: 'keep_review' },
+          ],
+          output: 'final_fn',
+        },
+      },
+    ],
+  },
+]
+
 describe('flow_schema', () => {
   it('is exported as a valid JSON Schema document with a $defs table', () => {
     expect(flow_schema).toBeDefined()
@@ -190,5 +325,43 @@ describe('flow_schema', () => {
   it('validates the spec §5.17 example successfully', () => {
     const errors = validate(example_from_spec, flow_schema, flow_schema)
     expect(errors).toEqual([])
+  })
+
+  it('validates a flow that uses every field the configs gained', () => {
+    expect(validate(every_new_field, flow_schema, flow_schema)).toEqual([])
+  })
+
+  it('rejects a loop without init or finish', () => {
+    const loop_without = (missing: 'init' | 'finish') => {
+      const config: Record<string, unknown> = {
+        init: 'seed',
+        body: { ref: 'refine' },
+        finish: 'unwrap',
+        max_rounds: 2,
+      }
+      delete config[missing]
+      return [{ compose: 'bad', loop: config }]
+    }
+    expect(validate(loop_without('init'), flow_schema, flow_schema)).toContain(
+      '[0]: .loop: missing required property: init',
+    )
+    expect(validate(loop_without('finish'), flow_schema, flow_schema)).toContain(
+      '[0]: .loop: missing required property: finish',
+    )
+  })
+
+  it('rejects a use entry that names a node instead of a function', () => {
+    const flow = [{ compose: 'bad', scope: [{ use: ['plan'], do: { ref: 'ship' } }] }]
+    expect(validate(flow, flow_schema, flow_schema)).not.toEqual([])
+  })
+
+  it('rejects a chain arm entry without its select', () => {
+    const flow = [{ compose: 'bad', chain: { steps: [{ step: 'review', arm: { ref: 'r' } }], output: 'out' } }]
+    expect(validate(flow, flow_schema, flow_schema)).not.toEqual([])
+  })
+
+  it('rejects a field of the wrong type', () => {
+    const flow = [{ compose: 'bad', retry: { do: { ref: 'a' }, max_attempts: 2, jitter: 'yes' } }]
+    expect(validate(flow, flow_schema, flow_schema)).toContain('[0]: .retry: .jitter: expected boolean, got string')
   })
 })

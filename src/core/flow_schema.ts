@@ -73,8 +73,25 @@ export const flow_schema = {
       "required": ["fn"],
       "properties": {
         "id": { "type": "string" },
-        "fn": { "type": "string" }
+        "fn": { "type": "string" },
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "side_effect": { "type": "boolean" },
+        "port_labels": {
+          "type": "object",
+          "properties": {
+            "in": { "type": "string" },
+            "out": { "type": "string" }
+          }
+        },
+        "arm": { "$ref": "#/$defs/arms" }
       }
+    },
+    "arms": {
+      "anyOf": [
+        { "$ref": "#/$defs/node" },
+        { "type": "array", "items": { "$ref": "#/$defs/node" } }
+      ]
     },
     "sequence_config": {
       "type": "array",
@@ -88,6 +105,8 @@ export const flow_schema = {
       "type": "object",
       "required": ["when", "then", "otherwise"],
       "properties": {
+        "name": { "type": "string" },
+        "description": { "type": "string" },
         "when": { "type": "string" },
         "then": { "$ref": "#/$defs/node" },
         "otherwise": { "$ref": "#/$defs/node" }
@@ -97,6 +116,8 @@ export const flow_schema = {
       "type": "object",
       "required": ["items", "do"],
       "properties": {
+        "name": { "type": "string" },
+        "description": { "type": "string" },
         "items": { "type": "string" },
         "do": { "$ref": "#/$defs/node" },
         "concurrency": { "type": "integer", "minimum": 1 },
@@ -107,6 +128,8 @@ export const flow_schema = {
       "type": "object",
       "required": ["of", "fn"],
       "properties": {
+        "name": { "type": "string" },
+        "description": { "type": "string" },
         "of": { "$ref": "#/$defs/node" },
         "fn": { "type": "string" }
       }
@@ -115,23 +138,37 @@ export const flow_schema = {
       "type": "object",
       "required": ["do", "max_attempts"],
       "properties": {
+        "name": { "type": "string" },
+        "description": { "type": "string" },
         "do": { "$ref": "#/$defs/node" },
         "max_attempts": { "type": "integer", "minimum": 1 },
-        "backoff_ms": { "type": "integer", "minimum": 0 }
+        "backoff_ms": { "type": "integer", "minimum": 0 },
+        "max_delay_ms": { "type": "integer", "minimum": 0 },
+        "jitter": { "type": "boolean" },
+        "when": { "type": "string" },
+        "on_error": { "type": "string" },
+        "project": { "type": "string" }
       }
     },
     "fallback_config": {
       "type": "object",
       "required": ["primary", "backup"],
       "properties": {
+        "name": { "type": "string" },
+        "description": { "type": "string" },
         "primary": { "$ref": "#/$defs/node" },
-        "backup": { "$ref": "#/$defs/node" }
+        "backup": { "$ref": "#/$defs/node" },
+        "when": { "type": "string" },
+        "handoff": { "type": "string" },
+        "project": { "type": "string" }
       }
     },
     "timeout_config": {
       "type": "object",
       "required": ["do", "ms"],
       "properties": {
+        "name": { "type": "string" },
+        "description": { "type": "string" },
         "do": { "$ref": "#/$defs/node" },
         "ms": { "type": "integer", "minimum": 1 }
       }
@@ -141,17 +178,21 @@ export const flow_schema = {
       "required": ["name", "do"],
       "properties": {
         "name": { "type": "string", "minLength": 1 },
+        "description": { "type": "string" },
         "do": { "$ref": "#/$defs/node" }
       }
     },
     "loop_config": {
       "type": "object",
-      "required": ["body", "max_rounds"],
+      "required": ["init", "body", "finish", "max_rounds"],
       "properties": {
         "name": { "type": "string", "minLength": 1 },
+        "description": { "type": "string" },
         "init": { "type": "string" },
         "body": { "$ref": "#/$defs/node" },
-        "guard": { "$ref": "#/$defs/node" },
+        "guard": {
+          "anyOf": [{ "$ref": "#/$defs/node" }, { "type": "string" }]
+        },
         "finish": { "type": "string" },
         "max_rounds": { "type": "integer", "minimum": 1 }
       }
@@ -160,51 +201,65 @@ export const flow_schema = {
       "type": "object",
       "required": ["build", "critique", "accept", "max_rounds"],
       "properties": {
+        "name": { "type": "string" },
+        "description": { "type": "string" },
         "build": { "$ref": "#/$defs/node" },
         "critique": { "$ref": "#/$defs/node" },
         "accept": { "type": "string" },
-        "max_rounds": { "type": "integer", "minimum": 1 }
+        "max_rounds": { "type": "integer", "minimum": 1 },
+        "project": { "type": "string" }
       }
     },
     "ensemble_config": {
       "type": "object",
       "required": ["members", "score"],
       "properties": {
+        "name": { "type": "string" },
+        "description": { "type": "string" },
         "members": {
           "type": "object",
           "additionalProperties": { "$ref": "#/$defs/node" }
         },
         "score": { "type": "string" },
-        "select": { "type": "string", "enum": ["max", "min"] }
+        "select": { "type": "string", "enum": ["max", "min"] },
+        "project": { "type": "string" }
       }
     },
     "tournament_config": {
       "type": "object",
       "required": ["members", "compare"],
       "properties": {
+        "name": { "type": "string" },
+        "description": { "type": "string" },
         "members": {
           "type": "object",
           "additionalProperties": { "$ref": "#/$defs/node" }
         },
-        "compare": { "type": "string" }
+        "compare": { "type": "string" },
+        "project": { "type": "string" }
       }
     },
     "consensus_config": {
       "type": "object",
       "required": ["members", "agree", "max_rounds"],
       "properties": {
+        "name": { "type": "string" },
+        "description": { "type": "string" },
         "members": {
           "type": "object",
           "additionalProperties": { "$ref": "#/$defs/node" }
         },
         "agree": { "type": "string" },
-        "max_rounds": { "type": "integer", "minimum": 1 }
+        "max_rounds": { "type": "integer", "minimum": 1 },
+        "project": { "type": "string" }
       }
     },
     "checkpoint_config": {
       "type": "object",
       "required": ["do", "key"],
       "properties": {
+        "name": { "type": "string" },
+        "description": { "type": "string" },
         "do": { "$ref": "#/$defs/node" },
         "key": { "type": "string" }
       }
@@ -214,6 +269,8 @@ export const flow_schema = {
       "required": ["id", "on", "resume_schema", "combine"],
       "properties": {
         "id": { "type": "string" },
+        "name": { "type": "string" },
+        "description": { "type": "string" },
         "on": { "type": "string" },
         "resume_schema": { "type": "string" },
         "combine": { "type": "string" },
@@ -227,26 +284,33 @@ export const flow_schema = {
     "scope_entry": {
       "type": "object",
       "oneOf": [
-        {
-          "type": "object",
-          "required": ["stash", "do"],
-          "properties": {
-            "stash": { "type": "string" },
-            "do": { "$ref": "#/$defs/node" }
-          }
-        },
-        {
-          "type": "object",
-          "required": ["use", "do"],
-          "properties": {
-            "use": {
-              "type": "array",
-              "items": { "type": "string" }
-            },
-            "do": { "$ref": "#/$defs/node" }
-          }
-        }
+        { "$ref": "#/$defs/stash_entry" },
+        { "$ref": "#/$defs/use_entry" },
+        { "$ref": "#/$defs/node" }
       ]
+    },
+    "stash_entry": {
+      "type": "object",
+      "required": ["stash", "do"],
+      "properties": {
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "stash": { "type": "string" },
+        "do": { "$ref": "#/$defs/node" }
+      }
+    },
+    "use_entry": {
+      "type": "object",
+      "required": ["use", "fn"],
+      "properties": {
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "use": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "fn": { "type": "string" }
+      }
     },
     "chain_config": {
       "type": "object",
@@ -263,23 +327,40 @@ export const flow_schema = {
     "chain_entry": {
       "type": "object",
       "oneOf": [
-        {
-          "type": "object",
-          "required": ["step", "fn"],
-          "properties": {
-            "step": { "type": "string" },
-            "fn": { "type": "string" }
-          }
-        },
-        {
-          "type": "object",
-          "required": ["stage"],
-          "properties": {
-            "stage": { "type": "string" },
-            "project": { "type": "string" }
-          }
-        }
+        { "$ref": "#/$defs/chain_step_entry" },
+        { "$ref": "#/$defs/chain_arm_entry" },
+        { "$ref": "#/$defs/chain_stage_entry" }
       ]
+    },
+    "chain_step_entry": {
+      "type": "object",
+      "required": ["step", "fn"],
+      "properties": {
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "step": { "type": "string" },
+        "fn": { "type": "string" },
+        "arm": { "$ref": "#/$defs/arms" }
+      }
+    },
+    "chain_arm_entry": {
+      "type": "object",
+      "required": ["step", "arm", "select"],
+      "properties": {
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "step": { "type": "string" },
+        "arm": { "$ref": "#/$defs/node" },
+        "select": { "type": "string" }
+      }
+    },
+    "chain_stage_entry": {
+      "type": "object",
+      "required": ["stage"],
+      "properties": {
+        "stage": { "type": "string" },
+        "project": { "type": "string" }
+      }
     }
   }
 }

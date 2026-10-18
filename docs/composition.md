@@ -316,6 +316,15 @@ import { flow_schema } from 'fascicle';
 // draft-2020-12-aware validator (ajv, hyperjump, etc.)
 ```
 
+Each composer has a key of its own, and every field that its config takes
+has a key under it. A function is written as the name of a function
+(`when: is_retryable`), a step as a node, and a schema by its name. A
+`sequence`, a `parallel`, and a `scope` are a list or a map of members, so
+their `name` and `description` have no key to sit under, and a
+`compose_node` around one is how it gets a name. A test pins every key
+against the composer's config, so a field that a config gains fails the
+gate until the schema gains it too.
+
 ## Examples
 
 Runnable references live at the repo root in [`examples/`](../examples/),
