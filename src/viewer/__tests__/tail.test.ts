@@ -734,7 +734,8 @@ describe('start_tail', () => {
       const tail_a = spawn({ path: present, on_event: () => {} })
       const tail_b = spawn({ path: join(waiting, 'missing.jsonl'), on_event: () => {} })
       await Promise.all([tail_a.drain(), tail_b.drain()])
-      expect(open_watches()).toEqual([present, waiting])
+      // Either drain can settle first, so the two watches open in either order.
+      expect(open_watches().toSorted()).toEqual([present, waiting].toSorted())
 
       tail_a.stop()
       expect(open_watches()).toEqual([waiting])
