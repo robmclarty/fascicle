@@ -14,8 +14,7 @@
  *   sequential wrappers lay their children along it (`sequence`, `pipe`,
  *   `chain`, `compose`, `checkpoint`, `stash`, `scope`, `timeout`).
  * - fan: `parallel` and `branch` split into lanes that rejoin at a junction
- *   puck; the four composite kinds (`adversarial`, `ensemble`, `tournament`,
- *   `consensus`) run several members, so they read as fans too.
+ *   puck.
  * - loop: `retry` and `loop` around a single puck draw the artboard's
  *   circle in the line; around anything wider they draw a return line
  *   routed below, because attempts over a subtree traverse the subtree's
@@ -232,14 +231,7 @@ const LOOP_RETURN_CLEAR = 40
 /** Extent the return line itself adds below its floor. */
 const LOOP_RETURN_PAD = 8
 
-const FAN_KINDS = new Set([
-  'parallel',
-  'branch',
-  'adversarial',
-  'ensemble',
-  'tournament',
-  'consensus',
-])
+const FAN_KINDS = new Set(['parallel', 'branch'])
 
 const LOOP_KINDS = new Set(['retry', 'loop'])
 

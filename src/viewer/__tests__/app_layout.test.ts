@@ -203,7 +203,7 @@ describe('layout of every registered kind', () => {
     }
   }
 
-  const FANS = new Set(['parallel', 'branch', 'adversarial', 'ensemble', 'tournament', 'consensus'])
+  const FANS = new Set(['parallel', 'branch'])
 
   for (const kind of STEP_KINDS) {
     it(`maps ${kind} to drawn geometry`, () => {

@@ -4,9 +4,9 @@
  * The viewer (and any other consumer that needs to enumerate primitives:
  * palette, docs, code generation) can rely on this being the exhaustive set. New
  * primitives must add their kind here. `step_kinds.test.ts` pins the list
- * against the kinds core actually constructs, and
- * `composites/__tests__/coverage.test.ts` covers the four composite kinds
- * whose factories live outside core.
+ * against the kinds core actually constructs, in both directions. The
+ * composites (`ensemble`, `tournament`, and the rest) add no kinds of their
+ * own: each builds a `compose` step that carries its name as the display name.
  */
 
 export const STEP_KINDS = [
@@ -21,10 +21,6 @@ export const STEP_KINDS = [
   'timeout',
   'loop',
   'compose',
-  'adversarial',
-  'ensemble',
-  'tournament',
-  'consensus',
   'checkpoint',
   'suspend',
   'scope',

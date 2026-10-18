@@ -7,13 +7,13 @@ import { ensemble_step } from '../ensemble_step.js'
 import { gate } from '../gate.js'
 import { tournament } from '../tournament.js'
 
-const COMPOSITE_KINDS = ['adversarial', 'ensemble', 'tournament', 'consensus'] as const
+const COMPOSITE_NAMES = ['adversarial', 'ensemble', 'tournament', 'consensus'] as const
 
 describe('composites STEP_KINDS coverage', () => {
-  it('every composite kind is listed in STEP_KINDS', () => {
-    for (const k of COMPOSITE_KINDS) {
-      expect(STEP_KINDS).toContain(k)
-      expect(is_step_kind(k)).toBe(true)
+  it('no composite name is a step kind, since each builds a compose step', () => {
+    for (const name of COMPOSITE_NAMES) {
+      expect(STEP_KINDS).not.toContain(name)
+      expect(is_step_kind(name)).toBe(false)
     }
   })
 

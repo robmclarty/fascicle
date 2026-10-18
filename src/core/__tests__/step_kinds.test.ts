@@ -19,22 +19,14 @@ import { timeout } from '../timeout.js'
 
 const dummy = step('dummy', (n: number) => n)
 
-// Kinds whose factories live outside core (in composites).
-// Their constructor coverage is asserted in src/composites/__tests__/coverage.test.ts;
-// here we only verify they are still listed in STEP_KINDS.
-const COMPOSITE_KINDS = new Set<string>(['adversarial', 'ensemble', 'tournament', 'consensus'])
-
 describe('STEP_KINDS registry', () => {
   it('STEP_KINDS contains exactly the documented set', () => {
     expect([...STEP_KINDS].toSorted()).toEqual(
       [
-        'adversarial',
         'branch',
         'chain',
         'checkpoint',
         'compose',
-        'consensus',
-        'ensemble',
         'fallback',
         'loop',
         'map',
@@ -47,13 +39,12 @@ describe('STEP_KINDS registry', () => {
         'step',
         'suspend',
         'timeout',
-        'tournament',
         'use',
       ].toSorted(),
     )
   })
 
-  it('every constructed core primitive has a kind that STEP_KINDS recognizes', () => {
+  it('lists exactly the kinds that the core constructors produce', () => {
     const constructed = [
       dummy,
       sequence([dummy]),
@@ -90,11 +81,8 @@ describe('STEP_KINDS registry', () => {
       expect(is_step_kind(built.kind)).toBe(true)
     }
   
-    // Every kind in STEP_KINDS that's NOT a composite must be constructable from core.
-    // Composite kinds are covered by src/composites/__tests__/coverage.test.ts.
     const constructed_kinds = new Set(constructed.map((s) => s.kind))
     for (const kind of STEP_KINDS) {
-      if (COMPOSITE_KINDS.has(kind)) continue
       expect(constructed_kinds).toContain(kind)
     }
   })

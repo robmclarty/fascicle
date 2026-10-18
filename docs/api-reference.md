@@ -145,7 +145,7 @@ needs fan-in, phases, or named per-joint types.
 | `tournament({ members, compare, project? })` | single-elimination bracket |
 | `consensus({ members, agree, max_rounds, project? })` | run all members each round, accept when the `agree` predicate holds |
 
-Each of these returns a result envelope (`{ candidate, converged, rounds }`, `{ winner, scores }`, ...). The optional `project` maps that envelope into the step's output at the source (`project: (r) => r.candidate`), so downstream steps see the value instead of the wrapper; omitted, the envelope itself is the output. `ensemble_step` is the primary pick-best; plain `ensemble` and `tournament` are covered in [advanced-composition.md](./advanced-composition.md), as are `improve` / `learn` and the raw state trio.
+None of them adds a step kind of its own. Each builds a `compose` step that carries the composite's name as its display name, so its `kind` reads `compose`, and `STEP_KINDS` lists only the kinds that core constructs. Each of these returns a result envelope (`{ candidate, converged, rounds }`, `{ winner, scores }`, ...). The optional `project` maps that envelope into the step's output at the source (`project: (r) => r.candidate`), so downstream steps see the value instead of the wrapper; omitted, the envelope itself is the output. `ensemble_step` is the primary pick-best; plain `ensemble` and `tournament` are covered in [advanced-composition.md](./advanced-composition.md), as are `improve` / `learn` and the raw state trio.
 
 ### Self-Improvement
 
