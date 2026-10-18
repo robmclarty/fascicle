@@ -10,9 +10,10 @@
  * transports get traces without any AI-SDK involvement.
  *
  * `@opentelemetry/api` is imported ONLY under `src/otel/` (this module and
- * metrics.ts), outside `src/engine/` on purpose: the engine's `ai + zod`
- * npm-dep invariant holds unmodified, and an app that never imports
- * `fascicle/otel` pulls in zero OTel packages at runtime.
+ * metrics.ts), outside `src/engine/` on purpose: engine code outside
+ * `providers/` imports no npm package (rules/no-engine-npm-dep.yml), and an
+ * app that never imports `fascicle/otel` pulls in zero OTel packages at
+ * runtime.
  *
  * Nesting is resolved two ways, in order: an explicit `parent_span_id` on the
  * start meta (how the composition runner threads composer-span parenthood) wins;

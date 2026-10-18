@@ -122,6 +122,36 @@ describe('http_logger', () => {
     expect((errors[0] as Error).message).toContain('500')
   })
 
+  it('drops an event JSON cannot serialize and hands the error to on_error instead of throwing', async () => {
+    const { calls, fetch } = recording_fetch()
+    const errors: unknown[] = []
+    const logger = http_logger({ url: 'http://x/y', fetch, on_error: (err) => { errors.push(err) } })
+
+    expect(() => logger.record({ kind: 'emit', count: 1n })).not.toThrow()
+    await flush()
+
+    expect(calls).toHaveLength(0)
+    expect(errors).toHaveLength(1)
+    expect(errors[0]).toBeInstanceOf(TypeError)
+  })
+
+  it('hands a fetch that throws synchronously to on_error instead of throwing', async () => {
+    const errors: unknown[] = []
+    const fault = new Error('sync fault')
+    const logger = http_logger({
+      url: 'http://x/y',
+      fetch: () => {
+        throw fault
+      },
+      on_error: (err) => { errors.push(err) },
+    })
+
+    expect(() => logger.record({ kind: 'emit' })).not.toThrow()
+    await flush()
+
+    expect(errors).toEqual([fault])
+  })
+
   it('does not throw when on_error is omitted and the request fails', async () => {
     const logger = http_logger({
       url: 'http://x/y',

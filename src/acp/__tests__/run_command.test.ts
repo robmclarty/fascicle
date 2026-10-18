@@ -288,6 +288,23 @@ describe('run_command', () => {
     expect(getEventListeners(controller.signal, 'abort')).toHaveLength(0)
   })
 
+  it('leaves no timer behind when the shell exits after a cancelled call has settled', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    const controller = new AbortController()
+    const pid_file = join(cwd, 'cancelled-shell.pid')
+    const call = settled(
+      run({ command: `echo $$ > ${pid_file}.tmp; mv ${pid_file}.tmp ${pid_file}; sleep 30` }, { abort: controller.signal }),
+    )
+    const pid = await job_pid(pid_file)
+    const reason = new Error('the turn was cancelled')
+    controller.abort(reason)
+    expect(await call).toBe(reason)
+    // Node reaps the shell and emits its exit in the same callback, so once
+    // the pid is gone the exit handler has run.
+    await until(() => !alive(pid), 'the shell to be reaped')
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
   it('starts nothing when the turn is already cancelled', async () => {
     const controller = new AbortController()
     const reason = new Error('cancelled before the call')

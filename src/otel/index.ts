@@ -1,5 +1,6 @@
 /**
- * `fascicle/otel` — OpenTelemetry bridge subpath (D7, Layer 1).
+ * `fascicle/otel`: the OpenTelemetry trajectory bridge subpath, Layer 1 of
+ * the two OpenTelemetry layers in docs/configuration.md.
  *
  * Deliberately separate from the umbrella entry so the OTel peer stays optional:
  * importing `fascicle` pulls in no OTel packages; only `fascicle/otel` does.

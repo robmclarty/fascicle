@@ -64,7 +64,8 @@ export type McpClientHandle = {
  * the loop validates against and the provider receives back unchanged, and
  * `execute` forwards to `callTool`, propagating the run's abort signal. For the
  * `client` transport variant the caller keeps ownership of the connection, so
- * `close` is a no-op.
+ * `close` is a no-op. A connection this call opened is closed again when
+ * listing its tools fails.
  */
 export async function mcp_client(
   config: McpClientConfig,
@@ -74,7 +75,13 @@ export async function mcp_client(
   const client = await connect_client(config, options)
 
   const include = options.include !== undefined ? new Set(options.include) : undefined
-  const listed = await client.listTools()
+  const listed = await client.listTools().catch(async (err: unknown) => {
+    // A client this call connected has no other owner yet, so it closes here,
+    // taking a spawned stdio server with it. The listing failure is the one
+    // the caller sees, even if the close fails too.
+    if (owns_client) await client.close().catch(() => undefined)
+    throw err
+  })
   const tools: Tool[] = []
   for (const advertised of listed.tools) {
     if (include !== undefined && !include.has(advertised.name)) continue

@@ -26,9 +26,9 @@
  * Provider and model attributes come from the enclosing `engine.generate`
  * span's start meta, tracked on a stack with the same documented
  * approximation as the span bridge: concurrent generates sharing one logger
- * attribute to the innermost open call. The semantic conventions are still
- * experimental (mid-2026), so a semconv revision may rename instruments;
- * this module tracks the names at implementation time.
+ * attribute to the innermost open call. The GenAI semantic conventions are
+ * experimental, so a revision of them may rename an instrument this module
+ * records.
  */
 
 import {
@@ -132,9 +132,9 @@ export function create_metrics_recorder(options: OtelMetricsOptions): MetricsRec
     description: 'Provider turn attempts that failed and were retried',
   })
 
-  // Innermost open engine.generate call's identity, for metric attributes.
-  const generate_ids = new Set<string>()
-  const context_stack: Array<{ provider?: string; model?: string }> = []
+  // Open engine.generate calls in the order they started, each with the
+  // identity its metric attributes carry; the last one is the innermost.
+  const context_stack: Array<{ readonly id: string; readonly provider?: string; readonly model?: string }> = []
 
   const base_attributes = (): Attributes => {
     const attrs: Attributes = { 'gen_ai.operation.name': 'chat' }
@@ -165,17 +165,19 @@ export function create_metrics_recorder(options: OtelMetricsOptions): MetricsRec
   return {
     on_start_span(id, name, meta) {
       if (name !== 'engine.generate') return
-      generate_ids.add(id)
       const provider = meta?.['provider']
       const model = meta?.['model_id']
       context_stack.push({
+        id,
         ...(typeof provider === 'string' ? { provider } : {}),
         ...(typeof model === 'string' ? { model } : {}),
       })
     },
     on_end_span(id) {
-      if (!generate_ids.delete(id)) return
-      context_stack.pop()
+      // Removed by id, since interleaved generates need not end in the
+      // reverse of the order they started.
+      const idx = context_stack.findIndex((entry) => entry.id === id)
+      if (idx !== -1) context_stack.splice(idx, 1)
     },
     on_record(event) {
       if (event.kind === 'response_received') {

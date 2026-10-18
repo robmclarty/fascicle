@@ -2,8 +2,9 @@
  * No-op trajectory logger.
  *
  * Satisfies `TrajectoryLogger` from `core` without emitting any
- * output. Used as the default when no logger is supplied to `run(...)` and as
- * a cheap fallback in tests that do not care about trajectory output.
+ * output. A caller passes it where a logger is required and nothing should be
+ * recorded, such as a test that does not care about trajectory output.
+ * `run(...)` keeps its own private no-op for a run given no logger.
  */
 
 import { randomUUID } from 'node:crypto'

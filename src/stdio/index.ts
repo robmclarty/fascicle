@@ -4,7 +4,7 @@
  * `run_stdio` is the whole child contract in one call: JSON on stdin, exactly
  * one JSON result on stdout, trajectory and errors on stderr, exit code as the
  * verdict. It is a library function the author calls from their own entry
- * point; Fascicle still ships no generic runner CLI. For a stateful
+ * point; Fascicle ships no generic runner CLI. For a stateful
  * MCP-over-stdio session, use `serve_flow` from `fascicle/mcp` instead.
  *
  * `execute_stdio` is the same contract over injected io, for callers (and

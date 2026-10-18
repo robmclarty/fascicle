@@ -33,6 +33,9 @@ export type FileChange = ContainedPath & {
   readonly new_text: string
 }
 
+/** A file change as a card or a permission request shows it, with the line an edit lands on. */
+export type ShownChange = FileChange & { readonly line?: number }
+
 /**
  * The largest file a change reads, in bytes. A change is shown as a diff,
  * which carries the file's whole text twice, as its text before and after,
@@ -121,7 +124,7 @@ export async function apply_change(change: FileChange, abort: AbortSignal): Prom
 export function record_change(
   session: AcpSession,
   tool_call_id: string,
-  change: FileChange & { readonly line?: number },
+  change: ShownChange,
 ): void {
   record_preview(session, tool_call_id, {
     kind: 'change',

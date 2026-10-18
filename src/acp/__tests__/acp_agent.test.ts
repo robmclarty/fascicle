@@ -412,7 +412,7 @@ describe('acp_agent: prompt turns', () => {
     expect(recorded).toBe('Running the tests.\n\nAll pass.')
   })
 
-  it('records chunks with no card between them joined, as before', async () => {
+  it('records chunks with no card between them joined', async () => {
     const { recorded } = await recorded_reply([message('one '), message('two')])
     expect(recorded).toBe('one two')
   })

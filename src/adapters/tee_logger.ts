@@ -5,11 +5,13 @@
  * in registration order and exceptions in one sink do not prevent the others
  * from receiving the event.
  *
- * The first sink's `start_span` return value is treated as canonical and
- * returned to the caller; the tee remembers each sink's per-sink id so that
- * `end_span(canonical_id, ...)` translates back to the right id for each sink.
- * Within any one sink the wire format stays internally consistent; only the
- * across-sink ids may differ.
+ * The id from the first sink whose `start_span` returns is canonical and goes
+ * back to the caller, or `<name>:tee` when every sink throws. The tee
+ * remembers each sink's own id by its position, so that
+ * `end_span(canonical_id, ...)` translates back to the right id for each sink,
+ * and a sink that threw on `start_span` gets the canonical id. Within any one
+ * sink the wire format stays internally consistent; only the across-sink ids
+ * may differ.
  */
 
 import type { TrajectoryLogger } from '#core'
@@ -19,10 +21,12 @@ import type { TrajectoryLogger } from '#core'
  */
 export function tee_logger(...loggers: ReadonlyArray<TrajectoryLogger>): TrajectoryLogger {
   if (loggers.length === 0) {
-    throw new Error('tee_logger: at least one logger required')
+    throw new Error(
+      'tee_logger needs at least one logger: pass the sinks to fan out to, as in `tee_logger(stderr_logger(), http_logger(config))`',
+    )
   }
 
-  const id_map = new Map<string, ReadonlyArray<string>>()
+  const id_map = new Map<string, ReadonlyArray<string | undefined>>()
 
   const safe_each = (fn: (l: TrajectoryLogger, idx: number) => void): void => {
     for (let i = 0; i < loggers.length; i += 1) {
@@ -41,11 +45,11 @@ export function tee_logger(...loggers: ReadonlyArray<TrajectoryLogger>): Traject
       safe_each((l) => l.record(event))
     },
     start_span: (name, meta) => {
-      const ids: string[] = []
-      safe_each((l) => {
-        ids.push(l.start_span(name, meta))
+      const ids: Array<string | undefined> = loggers.map(() => undefined)
+      safe_each((l, idx) => {
+        ids[idx] = l.start_span(name, meta)
       })
-      const canonical = ids[0] ?? `${name}:tee`
+      const canonical = ids.find((sink_id) => sink_id !== undefined) ?? `${name}:tee`
       if (loggers.length > 1) id_map.set(canonical, ids)
       return canonical
     },

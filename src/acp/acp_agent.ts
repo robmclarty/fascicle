@@ -10,7 +10,7 @@
 
 import { randomUUID } from 'node:crypto'
 import type { AgentApp, AgentContext, ClientCapabilities, SessionUpdate } from '@agentclientprotocol/sdk'
-import { create_card_sync, session_approver } from './approve.js'
+import { create_card_sync, message_of, session_approver } from './approve.js'
 import type { PermissionAsker } from './approve.js'
 import {
   config_options,
@@ -32,13 +32,6 @@ type AcpSdk = Awaited<ReturnType<typeof load_acp_sdk>>
 
 /** A session as the agent holds it: what a turn needs, and its mode. */
 type AgentSession<i, o> = SessionRecord<i, o> & { readonly modes: SessionModes }
-
-/**
- * The message a failure carries, whatever was thrown.
- */
-function message_of(err: unknown): string {
-  return err instanceof Error ? err.message : String(err)
-}
 
 /**
  * Turn a failure inside a handler into a JSON-RPC error that carries its

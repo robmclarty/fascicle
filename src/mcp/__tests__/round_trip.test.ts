@@ -53,7 +53,7 @@ describe('mcp round trip (serve_flow -> wire -> mcp_client)', () => {
       .toBeDefined()
 
     // No round trip: what the server advertised is what a provider is handed,
-    // including the `minLength` the old Zod conversion dropped on the way through.
+    // keywords such as `minLength` included.
     const advertised = (await client.listTools()).tools.find((t) => t.name === 'shout')?.inputSchema
     expect(advertised).toMatchObject({ properties: { text: { minLength: 1 } } })
     expect(tool?.input_schema['~standard'].jsonSchema.input({ target: 'draft-2020-12' }))

@@ -42,7 +42,7 @@ import type { GatedAction, SessionModes } from './modes.js'
 import { input_fields, opening_fields } from './presentation.js'
 import { edit_file_change } from './tools/edit_file.js'
 import { write_file_change } from './tools/write_file.js'
-import type { FileChange } from './tools/write_file.js'
+import type { ShownChange } from './tools/write_file.js'
 import type { AcpSession } from './types.js'
 
 /**
@@ -97,16 +97,13 @@ export type ApproverDeps = {
 /** Answers the engine's approval requests for the calls in one session. */
 export type SessionApprover = (session: AcpSession, request: ToolApprovalRequest) => Promise<boolean>
 
-/** A file change the request shows, with the line an edit lands on. */
-type Change = FileChange & { readonly line?: number }
-
 /**
  * What a workspace tool that asks does, and for a write or an edit, how
  * to work out its change without making it.
  */
 type Gate = {
   readonly action: GatedAction
-  readonly change?: (session: AcpSession, input: unknown) => Promise<Change>
+  readonly change?: (session: AcpSession, input: unknown) => Promise<ShownChange>
 }
 
 const GATES: ReadonlyMap<string, Gate> = new Map<string, Gate>([
@@ -229,7 +226,7 @@ export function command_key(input: unknown): string | undefined {
 /**
  * The message a failure carries, whatever was thrown.
  */
-function message_of(err: unknown): string {
+export function message_of(err: unknown): string {
   return err instanceof Error ? err.message : String(err)
 }
 

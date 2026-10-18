@@ -4,8 +4,8 @@
  * Binds `serve_streams` to the real process: ndjson in on stdin, the
  * protocol out on stdout, and nothing else on stdout ever. A stray log line
  * from a flow or a dependency would corrupt the protocol stream, so
- * `console.log`, `console.info`, and `console.debug` go to stderr for the life
- * of the process.
+ * `console.log`, `console.info`, `console.debug`, `console.dir`, and
+ * `console.dirxml` go to stderr for the life of the process.
  *
  * SIGTERM and SIGINT abort every active run, dispose the engine, and exit.
  * A host that ends the agent with a signal instead of closing stdin would
@@ -18,8 +18,10 @@
  * the spawn tests in `__tests__/e2e/` exercise it for real.
  */
 
+import { Console } from 'node:console'
 import { constants } from 'node:os'
 import { Readable, Writable } from 'node:stream'
+import type { InspectOptions } from 'node:util'
 import { aborted_error } from '#core'
 import { serve_streams } from './serve_streams.js'
 import type { ServeAcpConfig } from './types.js'
@@ -29,8 +31,21 @@ import type { ServeAcpConfig } from './types.js'
  * protocol alone.
  */
 function route_console_to_stderr(): void {
+  // `dir` writes to its console's own stream rather than through `log`, so
+  // it comes from a console bound to stderr, which honors options such as
+  // `depth`.
+  const stderr_console = new Console(process.stderr)
   // oxlint-disable-next-line no-console
-  Object.assign(console, { log: console.error, info: console.error, debug: console.error })
+  const to_stderr = console.error
+  Object.assign(console, {
+    log: to_stderr,
+    info: to_stderr,
+    debug: to_stderr,
+    dirxml: to_stderr,
+    dir: (item: unknown, options?: InspectOptions) => {
+      stderr_console.dir(item, options)
+    },
+  })
 }
 
 /**

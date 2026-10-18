@@ -6,7 +6,7 @@
  * That `glob` steps through a symlinked directory whenever a pattern names
  * it, passes over its `exclude` callback for a pattern that names its
  * segments, swallows a directory it can't read, and, with an `exclude`
- * callback under Stryker's runner, dropped a whole directory it had already
+ * callback under Stryker's runner, can drop a whole directory it has already
  * listed. The walk here never follows a symlink and never enters an ignored
  * name, so every file it lists lies under the searched directory, which
  * `contain` has already placed inside a root, and its matches follow the

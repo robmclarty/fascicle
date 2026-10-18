@@ -109,6 +109,8 @@ describe('serve_acp (spawned)', () => {
       expect(JSON.parse(line)).toMatchObject({ jsonrpc: '2.0' })
     }
     expect(agent.stderr()).toContain('harness: console.log from the flow\n')
+    expect(agent.stderr()).toContain('{ harness: [Object] }\n')
+    expect(agent.stderr()).toContain('harness: console.dirxml from the flow\n')
     expect(agent.stderr()).toContain('harness: engine disposed\n')
   }, 30_000)
 

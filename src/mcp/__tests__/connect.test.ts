@@ -129,6 +129,42 @@ describe('mcp_client connect path', () => {
     expect(client.closed).toBe(true)
   })
 
+  it('closes a client it owns when listing its tools fails, then rethrows the failure', async () => {
+    const failure = new Error('tools/list failed')
+    class FailingListClient extends FakeClient {
+      override async listTools(): Promise<never> {
+        throw failure
+      }
+    }
+    vi.mocked(load_client_sdk).mockResolvedValue({ ...fake_sdk, Client: FailingListClient } as never)
+    await expect(mcp_client({ transport: 'stdio', command: 'x' })).rejects.toBe(failure)
+    expect(sole(captured.clients).closed).toBe(true)
+  })
+
+  it('rethrows the listing failure even when closing the client fails too', async () => {
+    const failure = new Error('tools/list failed')
+    class FailingClient extends FakeClient {
+      override async listTools(): Promise<never> {
+        throw failure
+      }
+      override async close(): Promise<never> {
+        throw new Error('close failed')
+      }
+    }
+    vi.mocked(load_client_sdk).mockResolvedValue({ ...fake_sdk, Client: FailingClient } as never)
+    await expect(mcp_client({ transport: 'stdio', command: 'x' })).rejects.toBe(failure)
+  })
+
+  it('leaves an injected client open when listing its tools fails', async () => {
+    const failure = new Error('tools/list failed')
+    const client = new FakeClient({ name: 'caller', version: '0.0.0' })
+    client.listTools = async () => {
+      throw failure
+    }
+    await expect(mcp_client({ transport: 'client', client: client as never })).rejects.toBe(failure)
+    expect(client.closed).toBe(false)
+  })
+
   it('forwards the tool name, arguments, and abort signal to callTool', async () => {
     const handle = await mcp_client({ transport: 'stdio', command: 'x' })
     const client = sole(captured.clients)

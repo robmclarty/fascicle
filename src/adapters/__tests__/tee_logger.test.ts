@@ -25,9 +25,20 @@ function recording_logger(prefix: string): {
   return { logger, events }
 }
 
+/** A sink whose every method throws. */
+function broken_logger(): TrajectoryLogger {
+  return {
+    record: () => { throw new Error('boom') },
+    start_span: () => { throw new Error('boom') },
+    end_span: () => { throw new Error('boom') },
+  }
+}
+
 describe('tee_logger', () => {
-  it('throws when no loggers are provided', () => {
-    expect(() => tee_logger()).toThrow(/at least one logger/)
+  it('throws when no loggers are provided, naming what to pass', () => {
+    expect(() => tee_logger()).toThrow(
+      'tee_logger needs at least one logger: pass the sinks to fan out to, as in `tee_logger(stderr_logger(), http_logger(config))`',
+    )
   })
 
   it('forwards record() to every sink', () => {
@@ -68,24 +79,38 @@ describe('tee_logger', () => {
   })
 
   it('keeps fanning out when one sink throws', () => {
-    const broken: TrajectoryLogger = {
-      record: () => { throw new Error('boom') },
-      start_span: () => { throw new Error('boom') },
-      end_span: () => { throw new Error('boom') },
-    }
     const good = recording_logger('good')
-    const tee = tee_logger(broken, good.logger)
+    const tee = tee_logger(broken_logger(), good.logger)
 
     tee.record({ kind: 'event', n: 1 })
     expect(good.events).toHaveLength(1)
 
     const id = tee.start_span('step', {})
-    // canonical id falls back to the synthetic placeholder when first sink threw
-    expect(id).toBeTypeOf('string')
-    expect(good.events[1]).toMatchObject({ kind: 'span_start', name: 'step' })
+    // The first sink threw, so the canonical id is the first one a sink returned.
+    expect(id).toBe('good:step:1')
+    expect(good.events[1]).toMatchObject({ kind: 'span_start', span_id: 'good:step:1', name: 'step' })
 
     tee.end_span(id, {})
-    expect(good.events[2]).toMatchObject({ kind: 'span_end' })
+    expect(good.events[2]).toMatchObject({ kind: 'span_end', span_id: 'good:step:1' })
+  })
+
+  it('ends each sink its own span when a sink ahead of them threw on start_span', () => {
+    const a = recording_logger('a')
+    const b = recording_logger('b')
+    const tee = tee_logger(broken_logger(), a.logger, b.logger)
+
+    const id = tee.start_span('step', {})
+    expect(id).toBe('a:step:1')
+
+    tee.end_span(id, {})
+    expect(a.events[1]).toMatchObject({ kind: 'span_end', span_id: 'a:step:1' })
+    expect(b.events[1]).toMatchObject({ kind: 'span_end', span_id: 'b:step:1' })
+  })
+
+  it('falls back to a synthetic id when every sink throws on start_span', () => {
+    const tee = tee_logger(broken_logger(), broken_logger())
+
+    expect(tee.start_span('step', {})).toBe('step:tee')
   })
 
   it('passes through unchanged with a single logger', () => {

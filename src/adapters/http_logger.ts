@@ -41,7 +41,8 @@ const default_fetch: HttpLoggerFetch = async (url, init) => {
  * Create a `TrajectoryLogger` that POSTs each event as NDJSON to
  * `config.url`.
  *
- * Never throws: a transport failure is dropped and reported through the
+ * Never throws: a transport failure, an event JSON can't serialize, and a
+ * custom `fetch` that throws are each dropped and reported through the
  * optional `on_error` callback, so a dev viewer being unreachable never
  * blocks the flow.
  */
@@ -50,12 +51,18 @@ export function http_logger(config: HttpLoggerConfig): TrajectoryLogger {
   const send = config.fetch ?? default_fetch
 
   const post = (event: Record<string, unknown>): void => {
-    const body = `${JSON.stringify(event)}\n`
-    void send(url, {
-      method: 'POST',
-      headers: { 'content-type': 'application/x-ndjson' },
-      body,
+    // The executor serializes the event as it is now, and a throw there or
+    // in `send` rejects into the catch below rather than into the flow.
+    void new Promise<string>((resolve) => {
+      resolve(`${JSON.stringify(event)}\n`)
     })
+      .then(async (body) =>
+        send(url, {
+          method: 'POST',
+          headers: { 'content-type': 'application/x-ndjson' },
+          body,
+        }),
+      )
       .then((res) => {
         if (!res.ok && on_error) on_error(new Error(`http_logger: POST ${url} -> ${res.status}`))
       })

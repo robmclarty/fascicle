@@ -236,6 +236,7 @@ async function run_shell(
   const { promise, resolve, reject } = Promise.withResolvers<Finished>()
   let timed_out = false
   let held = false
+  let settled = false
   let grace: NodeJS.Timeout | undefined
   const on_abort = (): void => {
     kill_group(child)
@@ -259,15 +260,24 @@ async function run_shell(
       }),
     )
   })
+  const stop_reading = (): void => {
+    child.stdout.destroy()
+    child.stderr.destroy()
+  }
   child.once('exit', () => {
     clearTimeout(timer)
     kill_group(child)
+    // A call the abort has already settled reads nothing more, so its output
+    // closes at once, rather than on a grace timer that would outlive it.
+    if (settled) {
+      stop_reading()
+      return
+    }
     // Stopping the reads closes the call even while something still holds
     // the other end of the output open.
     grace = setTimeout(() => {
       held = true
-      child.stdout.destroy()
-      child.stderr.destroy()
+      stop_reading()
     }, OUTPUT_GRACE_MS)
   })
   child.once('close', () => {
@@ -278,6 +288,7 @@ async function run_shell(
   try {
     return await promise
   } finally {
+    settled = true
     clearTimeout(timer)
     clearTimeout(grace)
     abort.removeEventListener('abort', on_abort)

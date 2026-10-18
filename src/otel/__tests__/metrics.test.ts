@@ -183,6 +183,33 @@ describe('create_otel_trajectory_logger metrics option', () => {
     expect(duration.dataPoints[0]?.attributes).toEqual({ 'gen_ai.operation.name': 'chat' })
   })
 
+  it('drops the context of the generate that ended, even when a later one is still open', async () => {
+    const { meter, flush } = harness()
+    const logger = create_otel_trajectory_logger({ tracer: tracer(), metrics: { meter } })
+
+    const a = logger.start_span('engine.generate', { provider: 'openai', model_id: 'gpt-a' })
+    logger.start_span('engine.generate', { provider: 'anthropic', model_id: 'claude-b' })
+    logger.end_span(a, {})
+    // Ending a span that is no generate leaves the open generate in place.
+    logger.end_span(logger.start_span('engine.generate.step', { index: 0 }), {})
+    logger.record({
+      kind: 'response_received',
+      step_index: 0,
+      input_tokens: 1,
+      output_tokens: 1,
+      finish_reason: 'stop',
+      duration_ms: 100,
+    })
+
+    const collected = await flush()
+    const duration = by_name(collected, 'gen_ai.client.operation.duration')
+    expect(duration.dataPoints[0]?.attributes).toEqual({
+      'gen_ai.operation.name': 'chat',
+      'gen_ai.provider.name': 'anthropic',
+      'gen_ai.request.model': 'claude-b',
+    })
+  })
+
   it('metrics: true resolves the global MeterProvider fascicle meter', async () => {
     const exporter = new InMemoryMetricExporter(AggregationTemporality.CUMULATIVE)
     const reader = new PeriodicExportingMetricReader({

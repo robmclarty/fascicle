@@ -6,9 +6,8 @@
  * and a line past LINE_WIDTH characters is cut with a marker, because a
  * minified bundle or a source map can be one line of megabytes and nothing
  * else keeps it out of the model's context. A file with a NUL byte in its
- * first 8 KB is refused as binary, the test `examples/pr-improve` uses. The
- * file streams line by line, so a window near the top of a huge file reads
- * only as far as it shows.
+ * first 8 KB is refused as binary. The file streams line by line, so a
+ * window near the top of a huge file reads only as far as it shows.
  */
 
 import { open, stat } from 'node:fs/promises'

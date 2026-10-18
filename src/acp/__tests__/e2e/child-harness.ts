@@ -9,7 +9,8 @@
  * The prompt's text picks what the flow does:
  *   - 'stall': write a ready marker, wait for the turn's abort, and record
  *     its reason in an aborted marker before the process can exit.
- *   - anything else: `console.log` a line, then echo the text.
+ *   - anything else: `console.log`, `console.dir`, and `console.dirxml` a
+ *     line each, then echo the text.
  *
  * Environment inputs:
  *   - MARKER_DIR: where 'stall' writes its markers.
@@ -26,6 +27,10 @@ const flow = step('harness', async (text: string, ctx) => {
   if (text !== 'stall') {
     // oxlint-disable-next-line no-console
     console.log('harness: console.log from the flow')
+    // oxlint-disable-next-line no-console
+    console.dir({ harness: { from: 'console.dir' } }, { depth: 0 })
+    // oxlint-disable-next-line no-console
+    console.dirxml('harness: console.dirxml from the flow')
     return `echo: ${text}`
   }
   writeFileSync(join(marker_dir, 'ready'), 'ready')
