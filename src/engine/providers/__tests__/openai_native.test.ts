@@ -4,7 +4,7 @@
  * dialect: Bearer auth, the OpenAI-Organization header, `max_completion_tokens`
  * as the token-limit field, `reasoning_effort` per Appendix A4, and
  * `provider_options.openai` wire passthrough merging last on both the stream
- * and non-stream paths (D9). The core's own mapping/parsing is covered by
+ * and non-stream paths. The core's own mapping/parsing is covered by
  * openai_compatible_native.test.ts; here the assertions target the dialect the
  * factory constructs. No live network; fetch is stubbed per test.
  */
@@ -189,7 +189,7 @@ describe('openai native cost', () => {
   })
 })
 
-describe('provider_options.openai passthrough (D9)', () => {
+describe('provider_options.openai passthrough', () => {
   it('merges wire keys last over derived fields on the non-stream path', async () => {
     const { body } = await sent_body(
       {},

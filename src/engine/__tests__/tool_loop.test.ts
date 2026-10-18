@@ -12,7 +12,6 @@ import type { TrajectoryLogger } from '#core'
 import {
   run_tool_loop,
   type InvokeOnce,
-  type InvokeOnceResult,
   type RawToolCall,
   type ToolLoopConfig,
 } from '../tool_loop.js'
@@ -21,6 +20,7 @@ import type {
   Message,
   StreamChunk,
   Tool,
+  TurnResult,
   UsageTotals,
 } from '../types.js'
 import { tool_error, tool_approval_denied_error, aborted_error } from '../errors.js'
@@ -51,9 +51,9 @@ function recording_trajectory(): {
   return { trajectory, events }
 }
 
-function make_invoke_once(results: ReadonlyArray<Partial<InvokeOnceResult>>): InvokeOnce {
+function make_invoke_once(results: ReadonlyArray<Partial<TurnResult>>): InvokeOnce {
   let call = 0
-  return async (): Promise<InvokeOnceResult> => {
+  return async (): Promise<TurnResult> => {
     const r = results[call]
     call += 1
     if (r === undefined) throw new Error(`invoke_once called ${call} times but only ${results.length} results supplied`)
@@ -85,7 +85,7 @@ function pricing_dedup_stub(): ReturnType<typeof create_pricing_missing_dedup> {
 }
 
 type BaseOverrides = Partial<Omit<ToolLoopConfig, 'invoke_once'>> & {
-  invoke: ReadonlyArray<Partial<InvokeOnceResult>>
+  invoke: ReadonlyArray<Partial<TurnResult>>
 }
 function base_config(overrides: BaseOverrides): ToolLoopConfig {
   const { invoke, ...rest } = overrides
@@ -697,6 +697,35 @@ describe('run_tool_loop detail', () => {
     expect(await err_msg(() => {
       throw circular
     })).toBe('[object Object]') // JSON.stringify throws -> String() fallback
+  })
+
+  it('records a tool that throws undefined or rejects bare as a failure, not a success', async () => {
+    const run = (
+      execute: Tool['execute'],
+      tool_error_policy: ToolLoopConfig['tool_error_policy'] = 'feed_back',
+    ): ReturnType<typeof run_tool_loop> =>
+      run_tool_loop(
+        base_config({
+          invoke: [{ tool_calls: [call('c1', 'boom', {})], finish_reason: 'tool_calls' }, { text: 'done' }],
+          tools: [make_tool({ name: 'boom', input_schema: z.object({}), execute })],
+          tool_error_policy,
+        }),
+      )
+
+    const thrown = await run(() => {
+      throw undefined
+    })
+    expect(thrown.tool_calls[0]?.error).toEqual({ message: 'undefined' })
+    expect(thrown.tool_calls[0]).not.toHaveProperty('output')
+
+    const rejected = await run(() => Promise.reject())
+    expect(rejected.tool_calls[0]?.error).toEqual({ message: 'undefined' })
+
+    await expect(
+      run(() => {
+        throw undefined
+      }, 'throw'),
+    ).rejects.toBeInstanceOf(tool_error)
   })
 
   it('wraps a thrown tool error under throw policy with tool metadata', async () => {
@@ -1885,7 +1914,7 @@ describe('run_tool_loop helpers (step 4)', () => {
     expect(cost_event?.['source']).toBe('engine_derived')
   })
 
-  it('records a reported cost split by token weight, with no pricing_missing (D9)', async () => {
+  it('records a reported cost split by token weight, with no pricing_missing', async () => {
     const { trajectory, events } = recording_trajectory()
     const emitted: string[] = []
     const usage = { input_tokens: 1000, output_tokens: 500, cached_input_tokens: 200 }
@@ -1913,7 +1942,7 @@ describe('run_tool_loop helpers (step 4)', () => {
     })
   })
 
-  it('takes a reported cost over a pricing row for the same model (D10)', async () => {
+  it('takes a reported cost over a pricing row for the same model', async () => {
     const { trajectory, events } = recording_trajectory()
     const resolve_pricing = vi.fn(() => ({ input_per_million: 3, output_per_million: 15 }))
     const usage = { input_tokens: 1000, output_tokens: 500 }
@@ -2421,7 +2450,7 @@ describe('run_tool_loop assistant content (reasoning and provider data)', () => 
       signed_call('c1', 'x'),
       thought('', 'sig_b'),
     ]
-    const results: InvokeOnceResult[] = [
+    const results: TurnResult[] = [
       {
         text: 'Checking.',
         tool_calls: [call('c1', 'echo', { value: 'x' })],

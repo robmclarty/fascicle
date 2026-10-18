@@ -12,6 +12,7 @@ import type { TrajectoryLogger } from '#core'
 import type {
   CostBreakdown,
   FinishReason,
+  SalvageFormat,
   StepTiming,
   UsageTotals,
 } from './types.js'
@@ -375,7 +376,7 @@ export function record_schema_validation_failed(
 export type SalvagedCallEventEntry = {
   tool_call_id: string
   name: string
-  format: 'hermes' | 'json' | 'qwen_xml'
+  format: SalvageFormat
 }
 
 /**

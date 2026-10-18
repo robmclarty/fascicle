@@ -94,7 +94,7 @@ export function pricing_key(provider: string, model_id: string): string {
  * Per-token rates produce long floating-point tails; 6 places keeps
  * sub-cent precision without leaking binary rounding noise into reports.
  */
-function round6(value: number): number {
+export function round6(value: number): number {
   return Math.round(value * 1e6) / 1e6
 }
 

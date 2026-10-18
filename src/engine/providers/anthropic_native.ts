@@ -44,7 +44,7 @@ import type { NativeProviderAdapter, ProviderCapability } from './types.js'
 
 /**
  * Effort level to the room native adds to its max_tokens default for
- * adaptive thinking. No transport sends these as a budget any more: native
+ * adaptive thinking. Neither transport sends these as a budget: native
  * sends `output_config.effort`, and the ai_sdk transport hands the level to
  * the SDK's `reasoning` option.
  */

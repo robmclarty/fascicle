@@ -182,6 +182,20 @@ describe('claude_cli adapter generate', () => {
     expect(argv.join(' ')).toContain('my_special_tool')
   })
 
+  it('forwards the provider config setting_sources and plugin_dirs into argv', async () => {
+    hooks.responses = [{ lines: success_lines('ok'), close: ZERO_CLOSE }]
+    const adapter = create_claude_cli_adapter({
+      setting_sources: ['project', 'local'],
+      plugin_dirs: ['/plugins/a', '/plugins/b'],
+    })
+    await adapter.generate(gen({}), RESOLVED)
+    const argv = (hooks.spawn_calls[0]?.['argv'] ?? []) as string[]
+    const sources_at = argv.indexOf('--setting-sources')
+    expect(argv[sources_at + 1]).toBe('project,local')
+    const plugin_dirs = argv.flatMap((a, i) => (a === '--plugin-dir' ? [argv[i + 1]] : []))
+    expect(plugin_dirs).toEqual(['/plugins/a', '/plugins/b'])
+  })
+
   it('forwards the system prompt and a caller output_json_schema into argv', async () => {
     hooks.responses = [{ lines: success_lines('ok'), close: ZERO_CLOSE }]
     const adapter = create_claude_cli_adapter({})

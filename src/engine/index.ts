@@ -15,6 +15,8 @@ export { create_engine } from './create_engine.js'
 export type {
   AiSdkTelemetrySettings,
   AssistantContentPart,
+  BedrockCredentialProvider,
+  BedrockCredentials,
   CostBreakdown,
   EffortLevel,
   Engine,

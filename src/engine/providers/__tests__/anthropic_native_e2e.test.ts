@@ -12,8 +12,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 import { create_engine } from '../../create_engine.js'
-import { tool_approval_denied_error } from '../../errors.js'
-import type { GenerateResult, StreamChunk, Tool } from '../../types.js'
+import { provider_capability_error, tool_approval_denied_error } from '../../errors.js'
+import type { GenerateResult, Message, StreamChunk, Tool } from '../../types.js'
 
 const MODEL = 'claude-sonnet-5'
 
@@ -462,4 +462,48 @@ describe('native anthropic e2e thinking round trip', () => {
       ])
     },
   )
+})
+
+describe('native anthropic e2e request mapping errors', () => {
+  it.each<[string, Message[], string]>([
+    [
+      'an image part',
+      [{ role: 'user', content: [{ type: 'image', image: 'aGk=', media_type: 'image/png' }] }],
+      'image_input',
+    ],
+    [
+      'a mid-conversation system message',
+      [
+        { role: 'user', content: 'hi' },
+        { role: 'assistant', content: 'hello' },
+        { role: 'system', content: 'late rule' },
+        { role: 'user', content: 'again' },
+      ],
+      'mid_conversation_system_messages',
+    ],
+  ])('surfaces the typed capability error for %s without a request or a retry', async (_label, prompt, capability) => {
+    const mock = stub_fetch_queue([])
+    const events: Array<Record<string, unknown>> = []
+    const caught = await make_engine()
+      .generate({
+        model: MODEL,
+        prompt,
+        // A network-retrying policy with no backoff, so a mapper error
+        // misread as a network failure would show up as turn_retry events.
+        retry: { max_attempts: 3, initial_delay_ms: 0, max_delay_ms: 0, retry_on: ['network'] },
+        trajectory: {
+          record: (e) => {
+            events.push(e)
+          },
+          start_span: () => 'span',
+          end_span: () => {},
+        },
+      })
+      .catch((e: unknown) => e)
+
+    expect(caught).toBeInstanceOf(provider_capability_error)
+    expect((caught as provider_capability_error).capability).toBe(capability)
+    expect(mock).not.toHaveBeenCalled()
+    expect(events.filter((e) => e['kind'] === 'turn_retry')).toEqual([])
+  })
 })

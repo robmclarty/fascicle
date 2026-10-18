@@ -297,7 +297,7 @@ describe('to_sdk_messages', () => {
     })
   })
 
-  // D3 (own-reasoning-only) and D26 (ai-sdk-metadata-key): only reasoning under
+  // Only reasoning under
   // the adapter's metadata key goes back.
   it('leaves behind reasoning keyed for another package or carrying no data', () => {
     const messages: Message[] = [
@@ -643,7 +643,7 @@ describe('ai_sdk part data round trip', () => {
     },
   )
 
-  // D26 (ai-sdk-metadata-key): a custom provider can't take a built-in name,
+  // A custom provider can't take a built-in name,
   // so a custom adapter over @ai-sdk/anthropic names its package's key.
   it('keeps the reasoning of a custom adapter named apart from its metadata_key', async () => {
     const keyed = await run_loop(
@@ -667,7 +667,7 @@ describe('ai_sdk part data round trip', () => {
     expect(content.map((part) => part.type)).toStrictEqual(['text', 'tool-call'])
   })
 
-  // D24 (openai-stored-round-trip): Responses parts carry their itemIds back,
+  // Responses parts carry their itemIds back,
   // which @ai-sdk/openai sends as item references while `store` is on.
   it("sends a Responses turn's itemIds back as providerOptions", async () => {
     const item = (id: string) => ({ openai: { itemId: id } })
@@ -706,7 +706,7 @@ describe('ai_sdk part data round trip', () => {
     ])
   })
 
-  // D18 (content-only-with-data): a turn with nothing to send back has no
+  // A turn with nothing to send back has no
   // content key at all, streamed and not.
   it.each([false, true])('leaves the content key off a plain turn (streamed: %s)', async (streamed) => {
     const model = new MockLanguageModelV4(

@@ -1,5 +1,5 @@
 /**
- * prepare_step loop hook (D6, Step 8).
+ * prepare_step loop hook.
  *
  * Two layers of proof, mirroring how turn-timeout was proven across both
  * depth-1 transports:
@@ -28,7 +28,6 @@ import {
   run_tool_loop,
   type InvokeOnce,
   type InvokeOnceArgs,
-  type InvokeOnceResult,
   type ToolLoopConfig,
 } from '../tool_loop.js'
 import { create_pricing_missing_dedup } from '../trajectory.js'
@@ -51,11 +50,11 @@ const zero_usage: UsageTotals = { input_tokens: 0, output_tokens: 0 }
 
 /** invoke_once that records the messages it was handed on each turn. */
 function capturing_invoke_once(
-  results: ReadonlyArray<Partial<InvokeOnceResult>>,
+  results: ReadonlyArray<Partial<TurnResult>>,
   captured: Array<ReadonlyArray<Message>>,
 ): InvokeOnce {
   let call = 0
-  return async (args: InvokeOnceArgs): Promise<InvokeOnceResult> => {
+  return async (args: InvokeOnceArgs): Promise<TurnResult> => {
     // Snapshot at send time: on a no-op the loop hands back the live canonical
     // array by reference and then grows it, so a snapshot is what "what was
     // sent this turn" means.

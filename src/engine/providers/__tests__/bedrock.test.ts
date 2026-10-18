@@ -5,7 +5,7 @@ import {
 } from '../bedrock.js'
 import { engine_config_error } from '../../errors.js'
 
-// D7 (sdk-reasoning-option): the level goes to the AI SDK's own `reasoning`
+// The level goes to the AI SDK's own `reasoning`
 // option, which @ai-sdk/amazon-bedrock maps per model, and no provider options are built.
 describe('bedrock ai_sdk effort translation', () => {
   const adapter = create_bedrock_adapter({ region: 'us-east-1' })

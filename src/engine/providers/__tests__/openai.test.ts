@@ -6,7 +6,7 @@ import {
 import { engine_config_error } from '../../errors.js'
 import { resolve_transport } from '../types.js'
 
-// D7 (sdk-reasoning-option): the level goes to the AI SDK's own `reasoning`
+// The level goes to the AI SDK's own `reasoning`
 // option, which @ai-sdk/openai maps per model, and no provider options are built.
 describe('openai ai_sdk effort translation', () => {
   const adapter = create_openai_adapter({ api_key: 'secret' })

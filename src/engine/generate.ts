@@ -50,7 +50,7 @@ import { format_schema_issues } from '#schema'
 import type { TrajectoryLogger } from '#core'
 import { split_leading_system_run } from './leading_system.js'
 import { merge_provider_options } from './merge_defaults.js'
-import { FREE_PROVIDERS, pricing_key } from './pricing.js'
+import { FREE_PROVIDERS, pricing_key, round6 } from './pricing.js'
 import { parse_retry_after, retry_with_policy } from './retry.js'
 import {
   build_repair_message,
@@ -75,7 +75,6 @@ import {
   run_tool_loop,
   type InvokeOnce,
   type InvokeOnceArgs,
-  type InvokeOnceResult,
   type ToolLoopConfig,
 } from './tool_loop.js'
 import { missing_peer_error } from './providers/types.js'
@@ -400,7 +399,7 @@ function build_step_timing(
  * StepTiming.first_chunk_ms).
  */
 function build_ai_sdk_invoke(cfg: AiSdkInvokeConfig): InvokeOnce {
-  return async (args: InvokeOnceArgs): Promise<InvokeOnceResult> => {
+  return async (args: InvokeOnceArgs): Promise<TurnResult> => {
     let first_chunk_at: number | undefined
     const call_once = (turn_abort: AbortSignal): Promise<TurnResult> =>
       cfg.invoke_turn({
@@ -712,8 +711,7 @@ async function build_ai_sdk_transport<T>(
   }
   // Effort translation is the lowest-precedence layer; engine defaults and
   // per-call provider_options (already merged into opts.provider_options, with
-  // per-call winning) override it. Without this merge the user's provider_options
-  // were computed then dropped, a silent no-op for every provider.
+  // per-call winning) override it.
   const combined_provider_options = merge_provider_options(
     effort_translation.provider_options,
     opts.provider_options,
@@ -728,11 +726,11 @@ async function build_ai_sdk_transport<T>(
   // gating, the generateText/streamText call) live behind create_ai_sdk_turn;
   // this builder only threads resolved options through the seam.
   //
-  // Imported here rather than at the top of the file because that static edge
-  // was the one thing that made `ai` mandatory for every consumer: loading it
-  // inside the ai_sdk branch keeps it off the graph of a native-transport
-  // install. The module resolves once per process and is cached thereafter,
-  // so the cost falls on the first ai_sdk call only. On failure this rethrows
+  // Imported here rather than at the top of the file because a static import
+  // would put `ai` on every consumer's module graph: loading it inside the
+  // ai_sdk branch keeps it off the graph of a native-transport install. The
+  // module resolves once per process and is cached thereafter, so the cost
+  // falls on the first ai_sdk call only. On failure this rethrows
   // via missing_peer_error naming `ai` (the peer this module's own static
   // `from 'ai'` import reaches for), not a raw module-resolution error
   // naming this local path.
@@ -1168,13 +1166,6 @@ export async function generate<T = string>(
  */
 function call_timing(started_at: number): GenerateTiming {
   return { started_at, duration_ms: Date.now() - started_at }
-}
-
-/**
- * Round `v` to 6 decimal places, the resolution used for the USD cost fields.
- */
-export function round6(v: number): number {
-  return Math.round(v * 1e6) / 1e6
 }
 
 /**

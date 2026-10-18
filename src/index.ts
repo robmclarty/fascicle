@@ -1,9 +1,10 @@
 /**
  * Umbrella entry point for Fascicle.
  *
- * Re-exports the full public surface of `core` (composition
- * layer) plus `engine` (AI engine layer) so downstream apps
- * can install a single package.
+ * Re-exports the full public surface of `core` (composition layer) and
+ * `composites` (built-in composites), plus `engine` (AI engine layer) and the
+ * `ToolSchema` type from `schema`, so downstream apps can install a single
+ * package.
  *
  * `aborted_error` lives in core and is re-exported by engine, so both
  * layers surface the same class.
@@ -40,6 +41,8 @@ export type {
   AiSdkProviderAdapter,
   AiSdkTelemetrySettings,
   AssistantContentPart,
+  BedrockCredentialProvider,
+  BedrockCredentials,
   ClaudeCliErrorReason,
   ClaudeCliProviderReported,
   CostBreakdown,

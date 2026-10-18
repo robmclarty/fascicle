@@ -1518,7 +1518,7 @@ describe('generate: provider_options merge', () => {
 })
 
 describe('generate: prepare_step (ai_sdk transport)', () => {
-  it('reshapes the messages the SDK receives without touching the transcript (D6)', async () => {
+  it('reshapes the messages the SDK receives without touching the transcript', async () => {
     enqueue_generate_text(make_text_result('ok'))
     const result = await basic_engine().generate({
       model: 'claude-opus-4-8',
@@ -1539,7 +1539,7 @@ describe('generate: prepare_step (ai_sdk transport)', () => {
   })
 })
 
-// D7 (sdk-reasoning-option): an adapter that translates effort through
+// An adapter that translates effort through
 // translate_effort_to_sdk_reasoning gets the level onto the SDK call's own
 // `reasoning` option, and builds no provider options of its own.
 describe('generate: the AI SDK reasoning option', () => {

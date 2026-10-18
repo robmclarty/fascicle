@@ -1,5 +1,5 @@
 /**
- * Unit tests for engine.with_providers (D8, spec §5.8).
+ * Unit tests for engine.with_providers.
  *
  * Derivation is the value-semantic answer to runtime registration: a new engine
  * from merged config, the parent left untouched. Mocks `ai` at the boundary but
@@ -210,7 +210,7 @@ describe('with_providers', () => {
     })
     const child = parent.with_providers({})
     // The runtime mutation stays on the parent; derivation is a pure function of
-    // the construction config (value semantics, D8).
+    // the construction config (value semantics).
     expect(parent.resolve_price('anthropic', 'claude-runtime')).toBeDefined()
     expect(child.resolve_price('anthropic', 'claude-runtime')).toBeUndefined()
   })

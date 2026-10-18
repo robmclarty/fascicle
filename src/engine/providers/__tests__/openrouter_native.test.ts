@@ -3,9 +3,8 @@
  * 'native'` routes through the shared OpenAI-compatible core with the openrouter
  * dialect: Bearer auth, the optional `HTTP-Referer`/`X-Title` attribution
  * headers, `max_tokens` as the token-limit field (not `max_completion_tokens`),
- * effort as the nested `reasoning: { effort }` per D4 (nested-effort-openrouter),
- * and `provider_options.openrouter` wire
- * passthrough merging last on both the stream and non-stream paths (D9). The
+ * effort as the nested `reasoning: { effort }`, and `provider_options.openrouter`
+ * wire passthrough merging last on both the stream and non-stream paths. The
  * core's own mapping/parsing is covered by openai_compatible_native.test.ts;
  * here the assertions target the dialect the factory constructs, and the
  * engine-level cases below drive the reported cost through generate. No live
@@ -197,7 +196,7 @@ describe('openrouter native dialect wiring', () => {
     expect(body).not.toHaveProperty('max_completion_tokens')
   })
 
-  // D4 (nested-effort-openrouter): every level passes through unclamped.
+  // Every level passes through unclamped.
   it.each(['low', 'medium', 'high', 'xhigh', 'max'] as const)(
     'sends effort %s as reasoning: { effort }, never the flat field',
     async (effort) => {
@@ -220,7 +219,7 @@ describe('openrouter native dialect wiring', () => {
   })
 })
 
-describe('provider_options.openrouter passthrough (D9)', () => {
+describe('provider_options.openrouter passthrough', () => {
   it('merges wire keys last over derived fields on the non-stream path', async () => {
     const { body } = await sent_body(
       {},
@@ -458,7 +457,7 @@ describe('the cost OpenRouter reports, through generate (the spec Part 2)', () =
     },
   )
 
-  it('takes the reported charge over a pricing row for the same model (D10)', async () => {
+  it('takes the reported charge over a pricing row for the same model', async () => {
     stub_fetch_queue([cost_turn(false, 0.0042)])
     const { trajectory, records } = record_trajectory()
     const result = await cost_engine({

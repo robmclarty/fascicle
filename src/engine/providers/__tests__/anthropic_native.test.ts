@@ -313,7 +313,7 @@ describe('to_anthropic_messages', () => {
     })
   })
 
-  // D3 (own-reasoning-only): another vendor's signature, or thinking with none,
+  // Another vendor's signature, or thinking with none,
   // would be refused.
   it('leaves behind reasoning keyed for another provider, with no data, or with non-string data', () => {
     expect(
@@ -398,7 +398,7 @@ describe('build_messages_body', () => {
     expect(body['max_tokens']).toBe(4096)
   })
 
-  // D5 (adaptive-no-sniff): a model older than 4.6 refuses adaptive, so its
+  // A model older than 4.6 refuses adaptive, so its
   // caller sets effort none and passes the budget through.
   it('lets a passthrough thinking budget stand alone under effort none', () => {
     const body = build_messages_body(
@@ -536,7 +536,7 @@ describe('map_anthropic_usage', () => {
   it('copies plain input/output tokens with no cache keys', () => {
     // toStrictEqual, not toEqual: toEqual ignores `key: undefined`, so it would
     // not catch a mutant that always writes cached_input_tokens/cache_write_tokens
-    // even when the source cache field is absent (D6).
+    // even when the source cache field is absent.
     expect(map_anthropic_usage({ input_tokens: 100, output_tokens: 20 })).toStrictEqual({
       input_tokens: 100,
       output_tokens: 20,
@@ -652,7 +652,7 @@ describe('parse_messages_response', () => {
     expect(result.text).toBe('')
   })
 
-  // D18 (content-only-with-data): a turn with no thinking stays exactly as it was.
+  // A turn with no thinking stays exactly as it was.
   it('leaves content out of a turn with no thinking block', () => {
     expect('content' in parse_messages_response(TEXT_FIXTURE)).toBe(false)
     expect('content' in parse_messages_response(TOOL_CALL_FIXTURE)).toBe(false)
@@ -1277,7 +1277,7 @@ describe('streaming invoke_turn', () => {
 
 /**
  * OpenRouter's Anthropic-compatible Messages endpoint closes every stream with
- * a chat-completions trailer after message_stop (D27). A stream that ends that
+ * a chat-completions trailer after message_stop. A stream that ends that
  * way has to give the same turn as one that doesn't, from the adapter and from
  * the engine above it.
  */
@@ -2163,7 +2163,7 @@ describe('thinking blocks on anthropic native', () => {
     expect(result.content).toStrictEqual([{ type: 'reasoning', text: '' }])
   })
 
-  // D23 (subscription-via-claude-code): the one first-party response this
+  // The one first-party response this
   // machine can get, captured through `claude -p --include-partial-messages`
   // on 2026-10-16. Its display was omitted, so the thinking text is empty and
   // only the signature carries the block.

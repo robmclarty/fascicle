@@ -110,11 +110,38 @@ function rethrow_network_failure(err: unknown, abort: AbortSignal, provider: str
 }
 
 /**
+ * Read a non-stream response body and parse it as JSON. A read that fails
+ * partway is a transport failure, wrapped as network the way a failed stream
+ * read is; a body that arrives whole but does not parse is a permanent
+ * provider_error naming what came back.
+ */
+async function read_json_body(
+  response: Response,
+  abort: AbortSignal,
+  provider: string,
+): Promise<unknown> {
+  let text: string
+  try {
+    text = await response.text()
+  } catch (err: unknown) {
+    rethrow_network_failure(err, abort, provider)
+  }
+  try {
+    return JSON.parse(text)
+  } catch {
+    throw new provider_error(
+      `${provider} native: response body is not valid JSON: check that base_url points at the ${provider} API (body: ${extract_error_message(text)})`,
+    )
+  }
+}
+
+/**
  * Run one native turn over HTTP: POST the dialect's body, map a non-2xx to
  * the retry stack's shapes, and hand the response to the dialect's stream or
- * JSON consumer. `build_body` is called inside the network try/catch on
- * purpose, so a mapper that throws surfaces as a retryable network failure
- * rather than escaping the turn unclassified.
+ * JSON consumer. `build_body` runs before the network try/catch, so a mapper
+ * that rejects the request (e.g., a provider_capability_error for a part the
+ * wire cannot carry) propagates unchanged instead of being retried as a
+ * network failure.
  */
 export async function invoke_http_turn(
   req: TurnRequest,
@@ -129,12 +156,13 @@ export async function invoke_http_turn(
     parse: (payload: unknown) => TurnResult
   },
 ): Promise<TurnResult> {
+  const body = JSON.stringify(request.build_body())
   let response: Response
   try {
     response = await fetch(request.url, {
       method: 'POST',
       headers: request.headers,
-      body: JSON.stringify(request.build_body()),
+      body,
       signal: req.abort,
     })
   } catch (err: unknown) {
@@ -142,8 +170,7 @@ export async function invoke_http_turn(
   }
   if (!response.ok) throw await response_error(response, provider)
   if (req.stream) return consume.stream(response)
-  const payload: unknown = await response.json()
-  return consume.parse(payload)
+  return consume.parse(await read_json_body(response, req.abort, provider))
 }
 
 /**

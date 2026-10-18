@@ -2,9 +2,9 @@
  * LM Studio provider, native transport wiring (Step 4). Proves `transport:
  * 'native'` routes through the shared OpenAI-compatible core with the lmstudio
  * dialect: no auth (no Authorization header), `max_tokens` as the token-limit
- * field, tolerant usage (D10) so a local server that omits token counts zeroes
+ * field, tolerant usage so a local server that omits token counts zeroes
  * them instead of throwing, and `provider_options.lmstudio` wire passthrough
- * merging last on both the stream and non-stream paths (D9). The core's own
+ * merging last on both the stream and non-stream paths. The core's own
  * mapping/parsing is covered by openai_compatible_native.test.ts; here the
  * assertions target the dialect the factory constructs. No live network; fetch
  * is stubbed per test.
@@ -190,7 +190,7 @@ describe('lmstudio native dialect wiring', () => {
   })
 })
 
-describe('tolerant usage (D10)', () => {
+describe('tolerant usage', () => {
   it('zeroes usage instead of throwing when the local server omits it', async () => {
     stub_fetch(json_response(NO_USAGE_FIXTURE))
     const result = await native_adapter().invoke_turn(make_req())
@@ -206,7 +206,7 @@ describe('tolerant usage (D10)', () => {
   })
 })
 
-describe('provider_options.lmstudio passthrough (D9)', () => {
+describe('provider_options.lmstudio passthrough', () => {
   it('merges wire keys last over derived fields on the non-stream path', async () => {
     const { body } = await sent_body(
       {},

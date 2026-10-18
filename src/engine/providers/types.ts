@@ -4,8 +4,9 @@
  * Each file under src/engine/providers/ exports a factory that accepts a
  * ProviderInit shape and returns a ProviderAdapter. Factories are
  * synchronous; build_model is async so SDK loading is deferred until a model
- * is actually needed. Missing peer dependencies surface as engine_config_error
- * on first build_model call with a clear message naming the missing peer.
+ * is actually needed. A missing peer dependency surfaces on the first
+ * build_model call as a plain Error naming the peer and its install command
+ * (see missing_peer_error).
  *
  * Only the ai_sdk transport module (providers/ai_sdk/invoke.ts) may import
  * from `ai` or invoke generateText/streamText. ai_sdk adapters build the
@@ -92,7 +93,7 @@ export type RawProviderUsage = {
   reasoning_tokens?: number
   cached_input_tokens?: number
   cache_write_tokens?: number
-  // Vercel AI SDK v6 also surfaces details via *Details containers; adapters
+  // The Vercel AI SDK also surfaces details via *Details containers; adapters
   // accept the flattened shape above for testability.
   input_token_details?: {
     cached_tokens?: number
@@ -108,7 +109,7 @@ export type AiSdkProviderAdapter = {
   readonly kind: 'ai_sdk'
   readonly name: string
   // The key the adapter's package writes providerMetadata under, which is
-  // the only key a reasoning part may carry to be sent back (D26). Defaults
+  // the only key a reasoning part may carry to be sent back. Defaults
   // to `name`; a custom adapter over a built-in package (@ai-sdk/anthropic on
   // Vertex, say) can't take the built-in name, so it sets the package's key.
   readonly metadata_key?: string

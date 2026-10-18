@@ -421,8 +421,8 @@ function parse_tool_call(raw: unknown, provider: string): TurnResult['tool_calls
 
 /**
  * The one response parser every path feeds: non-stream parses the payload
- * directly, and the streaming aggregator (next step) rebuilds this same
- * payload shape from deltas before calling it.
+ * directly, and the streaming aggregator (create_chat_stream_aggregator)
+ * rebuilds this same payload shape from deltas before calling it.
  */
 export function parse_chat_completion(
   payload: unknown,

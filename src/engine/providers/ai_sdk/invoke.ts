@@ -190,7 +190,8 @@ export function to_provider_reported(metadata: unknown): Record<string, unknown>
  * assistant part's provider_options go back as its providerOptions, which is
  * where the SDK reads a signature or a thought signature back from, and a
  * reasoning part goes back only when it carries data under `metadata_key`,
- * the key the adapter's package writes (D3 own-reasoning-only).
+ * the key the adapter's package writes, so a turn only ever sends back its
+ * own provider's reasoning.
  */
 export function to_sdk_messages(
   messages: ReadonlyArray<Message>,
@@ -334,7 +335,7 @@ function with_part_options<part extends AssistantContentPart>(
  * Map an SDK step's content to TurnResult.content: its text, reasoning, and
  * tool calls in the order the provider sent them, each with its
  * providerMetadata as provider_options. Undefined when no part is reasoning
- * or carries data, so every other turn stays exactly what it was (D18).
+ * or carries data, so every other turn stays exactly what it was.
  */
 export function to_turn_content(
   content: ReadonlyArray<ContentPart<ToolSet>>,

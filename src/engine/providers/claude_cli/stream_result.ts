@@ -129,7 +129,6 @@ function normalize_turns(parsed: ParsedStream): ReadonlyArray<TurnCollected> {
  * per-tool-call timing, so there's nothing to measure it against.
  */
 function tool_call_record(
-  step_index: number,
   call: { id: string; name: string; input: unknown },
   results: ReadonlyArray<{
     id: string
@@ -237,7 +236,7 @@ export function build_generate_result<T>(input: BuildResultInput<T>): GenerateRe
   const tool_calls_accum: ToolCallRecord[] = []
   turns.forEach((turn, i) => {
     const step_tool_calls: ToolCallRecord[] = turn.tool_calls.map((call) =>
-      tool_call_record(turn.step_index, call, turn.tool_results, now),
+      tool_call_record(call, turn.tool_results, now),
     )
     for (const tc of step_tool_calls) tool_calls_accum.push(tc)
     const record: StepRecord = {

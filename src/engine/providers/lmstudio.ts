@@ -7,7 +7,10 @@
  * the token-limit field, and tolerant usage, since a local server that omits
  * or approximates token counts is a fact of local-first running, not a broken
  * response. LM Studio exposes an OpenAI-compatible local server; base_url is
- * required on both transports. No reasoning support.
+ * required on both transports. Reasoning effort differs by transport: the
+ * ai_sdk branch drops it and records `effort_ignored`, while the native
+ * branch sends it as the flat `reasoning_effort` field through the shared
+ * core and leaves the server to honor or ignore it.
  */
 
 import type { EffortLevel, ProviderInit } from '../types.js'

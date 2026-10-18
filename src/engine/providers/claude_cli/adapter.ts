@@ -231,6 +231,7 @@ export function classify_close_error(
 
 type RunArgs = {
   readonly model_id: string
+  readonly provider_config: ClaudeCliProviderConfig
   readonly stdin_text: string
   readonly merged_system: string
   readonly merged_allowed_tools: ReadonlyArray<string>
@@ -270,7 +271,7 @@ async function run_cli(
 ): Promise<RunOutcome> {
   const argv = build_cli_argv({
     model_id: args.model_id,
-    provider_config: {},
+    provider_config: args.provider_config,
     call_opts: args.call_opts,
     merged_allowed_tools: args.merged_allowed_tools,
     merged_system: args.merged_system,
@@ -278,22 +279,16 @@ async function run_cli(
   })
   const full_argv: string[] = [...args.prefix_args, ...argv]
 
-  const spawn_args: Parameters<typeof spawn_runtime.spawn_cli>[0] = {
+  const session = await spawn_runtime.spawn_cli({
     cmd: args.spawn_cmd,
     argv: full_argv,
     env: args.env,
     stdin: args.stdin_text,
     startup_timeout_ms: args.startup_timeout_ms,
     stall_timeout_ms: args.stall_timeout_ms,
-  }
-  if (args.cwd !== undefined) {
-    (spawn_args as { cwd?: string }).cwd = args.cwd
-  }
-  if (args.abort !== undefined) {
-    (spawn_args as { abort?: AbortSignal }).abort = args.abort
-  }
-
-  const session = await spawn_runtime.spawn_cli(spawn_args)
+    ...(args.cwd !== undefined ? { cwd: args.cwd } : {}),
+    ...(args.abort !== undefined ? { abort: args.abort } : {}),
+  })
 
   const state = create_parser_state()
   const chunks: StreamChunk[] = []
@@ -773,6 +768,7 @@ export function create_claude_cli_adapter(init: ProviderInit): ExternalAgentAdap
 
       const base_args: RunArgs = {
         model_id: resolved.model_id,
+        provider_config: config,
         stdin_text: extract_prompt_text(opts.prompt),
         merged_system,
         merged_allowed_tools,

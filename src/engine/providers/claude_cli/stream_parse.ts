@@ -21,9 +21,9 @@
  * discriminated gate over the recognized CLI event types: a value must be a
  * non-array object whose `type` names a known event, and that event's own
  * fields must type-check, or the whole line is rejected as `cli_unknown_event`.
- * This mirrors the strictness of the `z.discriminatedUnion` it replaced: an
- * optional field carrying the wrong type rejects the event, unknown keys ride
- * along unused, and a sub-object (`usage`, `rate_limit_info`) is validated field
+ * The gate is as strict as a `z.discriminatedUnion` would be: an optional
+ * field carrying the wrong type rejects the event, unknown keys ride along
+ * unused, and a sub-object (`usage`, `rate_limit_info`) is validated field
  * by field. Per-entry content arrays are the one deliberately permissive layer:
  * `as_assistant_part` / `as_user_part` recognize a single entry at a time and
  * the collector drops the ones that don't match, so a content type a future CLI

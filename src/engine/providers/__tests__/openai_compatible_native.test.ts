@@ -361,7 +361,7 @@ describe('build_chat_completions_body', () => {
     expect(body).not.toHaveProperty('reasoning')
   })
 
-  // D20 (effort-field-knob): the nested shape takes every level unclamped.
+  // The nested shape takes every level unclamped.
   it.each(['low', 'medium', 'high', 'xhigh', 'max'] as const)(
     'maps effort %s to reasoning: { effort } under the nested effort_shape',
     (effort) => {
@@ -489,7 +489,7 @@ describe('map_chat_usage', () => {
     expect(() => map_chat_usage(null, make_dialect())).toThrow(/missing its usage/)
   })
 
-  it('returns zeroed totals on absent usage under a tolerant dialect (D10)', () => {
+  it('returns zeroed totals on absent usage under a tolerant dialect', () => {
     expect(map_chat_usage(undefined, make_dialect({ tolerant_usage: true }))).toEqual({
       input_tokens: 0,
       output_tokens: 0,
@@ -1024,7 +1024,7 @@ describe('streaming invoke_turn', () => {
     ])
   })
 
-  it('zeroes usage without throwing when a tolerant-dialect stream carries none (D10)', async () => {
+  it('zeroes usage without throwing when a tolerant-dialect stream carries none', async () => {
     const frames: StreamFrame[] = [
       { choices: [{ index: 0, delta: { content: 'hi from local' } }] },
       { choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] },
@@ -2163,7 +2163,7 @@ describe('the cost a reporting dialect reads (the spec Part 2)', () => {
     expect(result.reported_cost_usd).toBe(0.00042)
   })
 
-  it('adds the upstream charge on a BYOK request (D13)', () => {
+  it('adds the upstream charge on a BYOK request', () => {
     const result = parse_chat_completion(
       cost_payload({ cost: 0.0005, is_byok: true, cost_details: { upstream_inference_cost: 0.01 } }),
       COST_DIALECT,
@@ -2171,7 +2171,7 @@ describe('the cost a reporting dialect reads (the spec Part 2)', () => {
     expect(result.reported_cost_usd).toBeCloseTo(0.0105, 12)
   })
 
-  it('counts a null upstream charge on a BYOK request as nothing (D13)', () => {
+  it('counts a null upstream charge on a BYOK request as nothing', () => {
     const result = parse_chat_completion(
       cost_payload({ cost: 0.0005, is_byok: true, cost_details: { upstream_inference_cost: null } }),
       COST_DIALECT,

@@ -5,9 +5,9 @@ import {
   build_initial_messages,
   classify_provider_error,
   last_provider_reported,
-  round6,
   split_leading_system_messages,
 } from '../generate.js'
+import { round6 } from '../pricing.js'
 
 const opts = (o: Partial<GenerateOptions>): GenerateOptions => o as GenerateOptions
 

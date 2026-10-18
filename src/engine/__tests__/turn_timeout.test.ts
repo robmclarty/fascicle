@@ -1,5 +1,5 @@
 /**
- * Turn-timeout budgets (Step 7 / D5).
+ * Turn-timeout budgets.
  *
  * `turn_timeout_ms` composes a per-attempt deadline with the caller's abort
  * around every depth-1 turn, driven here through the real engine path

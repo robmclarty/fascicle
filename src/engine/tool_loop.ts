@@ -104,12 +104,6 @@ export type RawToolCall = {
   readonly input: unknown
 }
 
-/**
- * Retained alias of the neutral TurnResult (types.ts). Callers built against
- * the loop-local name keep working while TurnResult is the shared spelling.
- */
-export type InvokeOnceResult = TurnResult
-
 export type InvokeOnce = (args: InvokeOnceArgs) => Promise<TurnResult>
 
 export type ToolLoopConfig = {
@@ -840,7 +834,8 @@ async function execute_approved_call(
 
   const duration_ms = Date.now() - started_at
 
-  if (thrown !== undefined) {
+  // err_message, not thrown, marks the failure: a tool may throw undefined.
+  if (err_message !== undefined) {
     await record_execute_failure(ctx, tool, raw_call, input, {
       thrown,
       err_message,

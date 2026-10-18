@@ -220,7 +220,7 @@ export type Tool<i = unknown, o = unknown> = {
    * deterministically: the loop executes the call (recording its output and
    * trajectory events like any tool), then stops instead of running another
    * model turn. A denied, invalid, dropped, or throwing terminal call does NOT
-   * end the loop. undefined (the default) preserves the prior loop exactly.
+   * end the loop. undefined (the default) never ends the loop early.
    */
   ends_turn?: boolean
 }
@@ -492,7 +492,7 @@ export type ProviderConfigMap = {
 }
 
 /**
- * Opt-in OpenTelemetry for the `ai_sdk` transport (D7, Layer 2). When `enabled`,
+ * Opt-in OpenTelemetry for the `ai_sdk` transport (Layer 2). When `enabled`,
  * the transport constructs an `@ai-sdk/otel` integration strictly below the turn
  * seam and hands it to the SDK's telemetry, so generateText / streamText emit
  * turn-internal spans on the ai_sdk transport only. Native transports ignore it;
@@ -541,7 +541,7 @@ export type EngineDefaults = {
   readonly max_tool_calls_per_step?: number
   readonly provider_options?: Readonly<Record<string, Readonly<Record<string, unknown>>>>
   /**
-   * Opt-in OpenTelemetry for the `ai_sdk` transport (D7, Layer 2). Enabling it
+   * Opt-in OpenTelemetry for the `ai_sdk` transport (Layer 2). Enabling it
    * makes every ai_sdk-transport generate call emit turn-internal spans via
    * `@ai-sdk/otel`; native transports ignore it. See AiSdkTelemetrySettings.
    */

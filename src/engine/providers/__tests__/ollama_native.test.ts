@@ -1,10 +1,10 @@
 /**
- * Ollama native adapter (Step 5): the daemon's own /api/chat wire (D2).
+ * Ollama native adapter: the daemon's own /api/chat wire.
  * Covers the request mapping (messages, tools, `options` sampling bag, the
  * always-explicit stream flag, effort ignored, provider_options.ollama
- * passthrough per D9), the NDJSON stream aggregation feeding the one shared
+ * passthrough), the NDJSON stream aggregation feeding the one shared
  * parser (streamed equals non-streamed on shared fixtures, C4), done_reason /
- * eval-count mapping with always-tolerant usage (D10), synthesized tool-call
+ * eval-count mapping with always-tolerant usage, synthesized tool-call
  * ids (this wire has none), and the error ladder the shared classifier
  * expects. No live network; fetch is stubbed per test.
  */
@@ -379,7 +379,7 @@ describe('build_ollama_chat_body', () => {
     expect(build_ollama_chat_body(make_req())).not.toHaveProperty('options')
   })
 
-  it('ignores effort entirely: no reasoning or think field at any level (D2)', () => {
+  it('ignores effort entirely: no reasoning or think field at any level', () => {
     const body = build_ollama_chat_body(make_req({ effort: 'high' }))
     expect(body).not.toHaveProperty('reasoning_effort')
     expect(body).not.toHaveProperty('think')
@@ -387,7 +387,7 @@ describe('build_ollama_chat_body', () => {
   })
 })
 
-describe('provider_options.ollama passthrough (D9)', () => {
+describe('provider_options.ollama passthrough', () => {
   it('rides think and keep_alive through untouched', () => {
     const body = build_ollama_chat_body(
       make_req({ provider_options: { ollama: { think: true, keep_alive: '10m' } } }),
@@ -446,7 +446,7 @@ describe('map_ollama_finish_reason', () => {
   })
 })
 
-describe('map_ollama_usage (D10)', () => {
+describe('map_ollama_usage', () => {
   it('maps prompt_eval_count / eval_count to input / output tokens', () => {
     expect(map_ollama_usage({ prompt_eval_count: 12, eval_count: 6 })).toEqual({
       input_tokens: 12,
@@ -810,6 +810,15 @@ describe('streaming invoke_turn', () => {
     expect(err).toBeInstanceOf(provider_error)
     expect((err as Error).message).toBe(
       'ollama native: stream ended before its done frame; the result would be truncated',
+    )
+  })
+
+  it('surfaces a mid-stream error frame with the daemon message', async () => {
+    const frames = [TEXT_STREAM[0] ?? {}, { error: 'model runner has unexpectedly stopped' }]
+    const err: unknown = await invoke_streamed(frames).catch((e: unknown) => e)
+    expect(err).toBeInstanceOf(provider_error)
+    expect((err as Error).message).toBe(
+      'ollama native: the daemon reported an error mid-stream: model runner has unexpectedly stopped',
     )
   })
 
@@ -1255,6 +1264,51 @@ describe('response error mapping (mutation hardening)', () => {
   it('omits responseHeaders when a 5xx carries no retry-after header', async () => {
     const err = await invoke_error(json_response({ error: 'overloaded' }, 500))
     expect(Reflect.get(err as object, 'responseHeaders')).toBeUndefined()
+  })
+})
+
+describe('non-stream response body reading', () => {
+  async function invoke_ok(response: Response): Promise<unknown> {
+    stub_fetch(response)
+    const adapter = create_ollama_native_adapter({ base_url: BASE_URL })
+    return adapter.invoke_turn(make_req()).catch((e: unknown) => e)
+  }
+
+  it('wraps a body cut off mid-read as a retryable network failure', async () => {
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('{"message":'))
+        controller.error(new Error('socket hang up'))
+      },
+    })
+    const err = await invoke_ok(new Response(stream, { status: 200 }))
+    expect((err as Error).message).toBe('ollama native: network failure: socket hang up')
+    expect((classify_provider_error(err) as Record<string, unknown>)['kind']).toBe('network')
+  })
+
+  it('rethrows a body read the caller aborted untouched', async () => {
+    const controller = new AbortController()
+    const abort_err = new DOMException('aborted', 'AbortError')
+    const stream = new ReadableStream<Uint8Array>({
+      start(stream_controller) {
+        controller.abort()
+        stream_controller.error(abort_err)
+      },
+    })
+    stub_fetch(new Response(stream, { status: 200 }))
+    const adapter = create_ollama_native_adapter({ base_url: BASE_URL })
+    const err = await adapter
+      .invoke_turn(make_req({ abort: controller.signal }))
+      .catch((e: unknown) => e)
+    expect(err).toBe(abort_err)
+  })
+
+  it('throws a provider_error naming the body when a 200 response is not JSON', async () => {
+    const err = await invoke_ok(new Response('<html>proxy login</html>', { status: 200 }))
+    expect(err).toBeInstanceOf(provider_error)
+    expect((err as Error).message).toBe(
+      'ollama native: response body is not valid JSON: check that base_url points at the ollama API (body: <html>proxy login</html>)',
+    )
   })
 })
 

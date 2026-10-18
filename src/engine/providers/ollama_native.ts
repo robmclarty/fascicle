@@ -306,10 +306,12 @@ export function create_ndjson_decoder(): {
  * each call dispatches tool_call_start then tool_call_end with no input
  * deltas between. The `done: true` frame carries done_reason and the eval
  * counts and closes the turn (step_finish); frames after it are ignored. A
- * stream that ends without one is truncated output, so complete() fails
- * loud instead of returning a partial turn. complete() feeds the synthetic
- * payload through parse_ollama_chat, which is what makes the streamed
- * TurnResult equal the non-streamed one by construction.
+ * frame whose top-level `error` is a string is the daemon failing mid-stream
+ * and throws with its message. A stream that ends without a done frame is
+ * truncated output, so complete() fails loud instead of returning a partial
+ * turn. complete() feeds the synthetic payload through parse_ollama_chat,
+ * which is what makes the streamed TurnResult equal the non-streamed one by
+ * construction.
  */
 function create_ollama_stream_aggregator(
   step_index: number,
@@ -353,6 +355,10 @@ function create_ollama_stream_aggregator(
         throw new provider_error('ollama native: stream frame is not valid JSON')
       }
       if (frame === null || typeof frame !== 'object') return
+      const error: unknown = Reflect.get(frame, 'error')
+      if (typeof error === 'string') {
+        throw new provider_error(`ollama native: the daemon reported an error mid-stream: ${error}`)
+      }
       const message: unknown = Reflect.get(frame, 'message')
       if (message !== null && message !== undefined && typeof message === 'object') {
         await on_message(message)
