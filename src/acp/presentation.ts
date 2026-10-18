@@ -12,9 +12,12 @@
  * (`_meta.terminal_output`), and as a `console` code block otherwise.
  *
  * It's keyed by tool name, since nothing ACP-specific may reach the engine's
- * `Tool` type, and it does no I/O: the file reads behind a diff happen in
- * the tools, which leave each call's preview in the session's store for its
- * card to take when the call's result arrives.
+ * `Tool` type and a card opens with nothing but the name the model called.
+ * Only the names the session's `workspace_tools` built count, so in a
+ * session that never built them, a tool of the flow's own that shares a
+ * name gets the plain card. It does no I/O: the file reads behind a diff
+ * happen in the tools, which leave each call's preview in the session's
+ * store for its card to take when the call's result arrives.
  */
 
 import { resolve } from 'node:path'
@@ -25,6 +28,7 @@ import { shown_path } from './tools/containment.js'
 import { take_preview } from './tools/previews.js'
 import type { ChangePreview, CommandPreview, ToolPreview } from './tools/previews.js'
 import type { AcpSession } from './types.js'
+import { is_workspace_tool } from './workspace_tools.js'
 
 type ToolResultChunk = Extract<StreamChunk, { kind: 'tool_result' }>
 
@@ -148,6 +152,15 @@ const PRESENTERS = new Map<string | undefined, Presenter>([
 ])
 
 /**
+ * How the cards of the tool `name` look in `session`, when the session's
+ * `workspace_tools` built a tool of that name. Any other tool gets the
+ * plain card.
+ */
+function presenter_of(session: AcpSession, name: string | undefined): Presenter | undefined {
+  return is_workspace_tool(session, name) ? PRESENTERS.get(name) : undefined
+}
+
+/**
  * Whether the client draws a command's output in a terminal from Zed's
  * `_meta` extension, which it says in `initialize`.
  */
@@ -169,8 +182,10 @@ function terminal(card: string): ToolCallContent {
  * client that draws terminals, the terminal its output will land in.
  */
 export function opening_fields(session: AcpSession | undefined, name: string, card: string): Partial<ToolCall> {
-  const presenter = PRESENTERS.get(name)
-  if (session === undefined || presenter === undefined) return {}
+  // Stryker disable next-line ConditionalExpression: a missing session built no workspace tools, so presenter_of finds nothing for it either way; the check narrows the type.
+  if (session === undefined) return {}
+  const presenter = presenter_of(session, name)
+  if (presenter === undefined) return {}
   if (presenter.shows !== 'command' || !renders_terminals(session)) return { kind: presenter.kind }
   return { kind: presenter.kind, content: [terminal(card)], _meta: { terminal_info: { terminal_id: card } } }
 }
@@ -181,8 +196,10 @@ export function opening_fields(session: AcpSession | undefined, name: string, ca
  * opened.
  */
 export function input_fields(session: AcpSession | undefined, name: string | undefined, input: unknown): Partial<CardUpdate> {
-  const presenter = PRESENTERS.get(name)
-  if (session === undefined || presenter === undefined) return {}
+  // Stryker disable next-line ConditionalExpression: a missing session built no workspace tools, so presenter_of finds nothing for it either way; the check narrows the type.
+  if (session === undefined) return {}
+  const presenter = presenter_of(session, name)
+  if (presenter === undefined) return {}
   return presenter.describe(as_record(input) ?? {}, session) ?? {}
 }
 
@@ -288,8 +305,10 @@ export function closing_updates(
   chunk: ToolResultChunk,
   closing: CardUpdate,
 ): SessionUpdate[] {
-  const shows = PRESENTERS.get(name)?.shows
-  if (session === undefined || shows === undefined) return [closing]
+  // Stryker disable next-line ConditionalExpression: a missing session built no workspace tools, so presenter_of finds nothing for it either way; the check narrows the type.
+  if (session === undefined) return [closing]
+  const shows = presenter_of(session, name)?.shows
+  if (shows === undefined) return [closing]
   if (shows === 'text') return [close_text(closing, chunk)]
   const preview = chunk.error === undefined ? take_preview(session, chunk.id) : undefined
   if (shows === 'change') return [close_change(closing, preview)]

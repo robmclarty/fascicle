@@ -13,6 +13,11 @@
  * control syntax is never covered and never offered one, since anything
  * can follow a `;` or a `|`.
  *
+ * Only the session's own workspace tools get the diff and the "always",
+ * known by the input their `needs_approval` marked rather than by name. A
+ * tool of a flow's own or an MCP tool that shares a name gets the plain
+ * request, and no grant covers it.
+ *
  * A permission check that fails open isn't a check, so anything short of
  * an allow denies the call: a rejection, a `cancelled` outcome, an option
  * the request never offered, and a request that fails for any reason.
@@ -45,6 +50,7 @@ import { edit_file_change } from './tools/edit_file.js'
 import { write_file_change } from './tools/write_file.js'
 import type { ShownChange } from './tools/write_file.js'
 import type { AcpSession } from './types.js'
+import { is_workspace_call } from './workspace_tools.js'
 
 /**
  * What a session's turn tells its approvals: how far the turn's consumer
@@ -100,7 +106,8 @@ export type SessionApprover = (session: AcpSession, request: ToolApprovalRequest
 
 /**
  * What a workspace tool that asks does, and for a write or an edit, how
- * to work out its change without making it.
+ * to work out its change without making it. A gate goes by name, but only
+ * a call the session's own workspace tool marked ever reaches one.
  */
 type Gate = {
   readonly action: GatedAction
@@ -362,7 +369,7 @@ function options_for(always: Always | undefined): PermissionOption[] {
 export function session_approver({ modes, cards, ask }: ApproverDeps): SessionApprover {
   const granted = new Set<string>()
   return async (session, request) => {
-    const gate = GATES.get(request.tool_name)
+    const gate = is_workspace_call(session, request.input) ? GATES.get(request.tool_name) : undefined
     const key = gate?.action === 'command' ? command_key(request.input) : undefined
     // Stryker disable next-line ConditionalExpression: only keys are ever granted, so has() answers false for a missing key either way; the check narrows the type.
     if (key !== undefined && granted.has(key)) return true

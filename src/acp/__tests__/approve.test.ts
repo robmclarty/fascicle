@@ -85,6 +85,17 @@ function coder(engine: Engine, session: AcpSession, id = 'coder', extra: Readonl
   return model_step({ engine, id, tools: [...workspace_tools(session), ...extra], on_tool_approval: session.approve })
 }
 
+/** A tool of the flow's own named `name`, which asks before every call. */
+function asking_tool(name: string): Tool {
+  return {
+    name,
+    description: `The flow's own ${name}`,
+    input_schema: json_schema_to_standard({ type: 'object' }),
+    needs_approval: true,
+    execute: () => 'done by the flow',
+  }
+}
+
 /** How a test's client answers a permission request. */
 type Answer = (
   request: RequestPermissionRequest,
@@ -103,16 +114,21 @@ type WireRun = {
 
 /**
  * Run one prompt turn over the wire of a session whose flow is one model
- * call on `script`, with a client that answers each permission request
- * through `answer`.
+ * call on `script`, or the flow `options.flow` builds on it, with a client
+ * that answers each permission request through `answer`.
  */
 async function wire_run(
   script: ReadonlyArray<ScriptedTurn>,
   answer: Answer,
-  options: { readonly mode?: AcpMode; readonly extra?: ReadonlyArray<Tool> } = {},
+  options: {
+    readonly mode?: AcpMode
+    readonly extra?: ReadonlyArray<Tool>
+    readonly flow?: (engine: Engine, session: AcpSession) => Step<string, string>
+  } = {},
 ): Promise<WireRun> {
   const seen: TurnRequest[] = []
   const engine = scripted_engine(script, seen)
+  const build = options.flow ?? ((on: Engine, session: AcpSession) => coder(on, session, 'coder', options.extra))
   const asked: RequestPermissionRequest[] = []
   const client_app = client().onRequest('session/request_permission', (ctx) => {
     asked.push(ctx.params)
@@ -121,7 +137,7 @@ async function wire_run(
   const app = await acp_agent({
     name: 'approve',
     ...(options.mode === undefined ? {} : { default_mode: options.mode }),
-    flow: (session) => coder(engine, session, 'coder', options.extra),
+    flow: (session) => build(engine, session),
   })
   const { session } = await open_session(app, { client: client_app, session: { cwd } })
   await session.prompt('go')
@@ -290,6 +306,53 @@ describe('approve: what the request shows', () => {
     ])
     expect(tool_result(run.seen, 'd')).toBe('deployed')
   })
+})
+
+describe("approve: the session's own calls and a same-named tool's", () => {
+  it("gives the diff and Allow all edits to the session's own write_file, and the plain prompt to a write_file of the flow's", async () => {
+    const run = await wire_run(
+      [
+        [{ id: 'w1', name: 'write_file', input: { path: 'b.txt', content: 'b\n' } }],
+        'workspace done',
+        [{ id: 'w2', name: 'write_file', input: { path: 'c.txt', content: 'c\n' } }],
+        'own done',
+      ],
+      () => choose('allow_once'),
+      {
+        flow: (engine, session) =>
+          sequence([
+            coder(engine, session),
+            model_step({ engine, id: 'own', tools: [asking_tool('write_file')], on_tool_approval: session.approve }),
+          ]),
+      },
+    )
+    const path = join(cwd, 'b.txt')
+    expect(run.asked.map((request) => [request.toolCall.toolCallId, request.toolCall.content, request.options])).toEqual([
+      [card_id(run.updates, 'w1'), [{ type: 'diff', path, oldText: null, newText: 'b\n' }], [ALLOW, always('Allow all edits this session'), REJECT]],
+      [card_id(run.updates, 'w2', 'own'), undefined, [ALLOW, REJECT]],
+    ])
+    expect(await readFile(path, 'utf8')).toBe('b\n')
+    expect(tool_result(run.seen, 'w2')).toBe('done by the flow')
+    expect(await exists('c.txt')).toBe(false)
+  })
+
+  it.each(['read_file', 'list_files', 'search', 'write_file', 'edit_file', 'run_command'])(
+    "asks about the flow's own %s, in a session that never built the workspace tools, as about any tool of its own",
+    async (name) => {
+      const input = { path: 'a.txt', command: 'ls' }
+      const run = await wire_run([[{ id: 'o', name, input }], 'done'], () => choose('allow_once'), {
+        flow: (engine, session) => model_step({ engine, id: 'coder', tools: [asking_tool(name)], on_tool_approval: session.approve }),
+      })
+      expect(run.asked).toEqual([
+        {
+          sessionId: run.session_id,
+          toolCall: { toolCallId: card_id(run.updates, 'o'), title: name, kind: 'other', rawInput: input },
+          options: [ALLOW, REJECT],
+        },
+      ])
+      expect(tool_result(run.seen, 'o')).toBe('done by the flow')
+    },
+  )
 })
 
 describe('approve: what each answer does', () => {
@@ -632,9 +695,26 @@ async function manual_session(cards: CardSync, ask: PermissionAsker): Promise<Ac
   return session
 }
 
+/**
+ * An approval request for a call to the session's own workspace tool
+ * `name`, whose input that tool's `needs_approval` saw first, as the tool
+ * loop asks it before it asks the approval.
+ */
+async function own_request(
+  session: AcpSession,
+  name: string,
+  input: Record<string, unknown>,
+  abort = new AbortController().signal,
+): Promise<ToolApprovalRequest> {
+  const needs = workspace_tools(session).find((tool) => tool.name === name)?.needs_approval
+  if (typeof needs !== 'function') throw new Error(`${name} never asks`)
+  await needs(input)
+  return { tool_name: name, input, step_index: 0, tool_call_id: name, abort }
+}
+
 /** An approval request for running `command`, which the test answers without ever running it. */
-function command_request(command: string): ToolApprovalRequest {
-  return { tool_name: 'run_command', input: { command }, step_index: 0, tool_call_id: 'c', abort: new AbortController().signal }
+function command_request(session: AcpSession, command: string): Promise<ToolApprovalRequest> {
+  return own_request(session, 'run_command', { command })
 }
 
 describe('approve: what an "always" for a command covers', () => {
@@ -648,19 +728,40 @@ describe('approve: what an "always" for a command covers', () => {
       asked.push(request)
       return choose(asked.length === 1 ? 'allow_always' : 'reject_once')
     })
-    expect(await session.approve(command_request(granted))).toBe(true)
-    expect(await session.approve(command_request(same))).toBe(true)
-    expect(await session.approve(command_request(other))).toBe(false)
+    expect(await session.approve(await command_request(session, granted))).toBe(true)
+    expect(await session.approve(await command_request(session, same))).toBe(true)
+    expect(await session.approve(await command_request(session, other))).toBe(false)
     expect(asked.map((request) => [request.toolCall.title, request.options])).toEqual([
       [granted, [ALLOW, always(`Always allow \`${granted}\` this session`), REJECT]],
       [other, [ALLOW, always(`Always allow \`${other}\` this session`), REJECT]],
     ])
   })
+
+  it("covers no call of the same name that the session's own run_command never saw", async () => {
+    const asked: RequestPermissionRequest[] = []
+    const session = await manual_session(create_card_sync(), async (request) => {
+      asked.push(request)
+      return choose(asked.length === 1 ? 'allow_always' : 'reject_once')
+    })
+    expect(await session.approve(await command_request(session, 'echo one'))).toBe(true)
+    const same_name: ToolApprovalRequest = {
+      tool_name: 'run_command',
+      input: { command: 'echo one' },
+      step_index: 0,
+      tool_call_id: 'o',
+      abort: new AbortController().signal,
+    }
+    expect(await session.approve(same_name)).toBe(false)
+    expect(asked.map((request) => request.options)).toEqual([
+      [ALLOW, always('Always allow `echo one` this session'), REJECT],
+      [ALLOW, REJECT],
+    ])
+  })
 })
 
 /** An approval request for writing `b.txt`, under `abort`. */
-function write_request(abort: AbortSignal): ToolApprovalRequest {
-  return { tool_name: 'write_file', input: { path: 'b.txt', content: 'b\n' }, step_index: 0, tool_call_id: 'w', abort }
+function write_request(session: AcpSession, abort: AbortSignal): Promise<ToolApprovalRequest> {
+  return own_request(session, 'write_file', { path: 'b.txt', content: 'b\n' }, abort)
 }
 
 describe('approve: waiting for the client', () => {
@@ -703,7 +804,7 @@ describe('approve: waiting for the client', () => {
       asked.push(request)
       return choose('allow_once')
     })
-    expect(await session.approve(write_request(new AbortController().signal))).toBe(true)
+    expect(await session.approve(await write_request(session, new AbortController().signal))).toBe(true)
     const path = join(cwd, 'b.txt')
     expect(asked[0]?.toolCall).toStrictEqual({
       toolCallId: expect.stringMatching(/^[0-9a-f-]{36}$/),
@@ -718,13 +819,13 @@ describe('approve: waiting for the client', () => {
   it('refuses a cancelled outcome whatever else it carries', async () => {
     const outcome = { outcome: 'cancelled' as const, optionId: 'allow_once' }
     const session = await manual_session(create_card_sync(), async () => ({ outcome }))
-    expect(await session.approve(write_request(new AbortController().signal))).toBe(false)
+    expect(await session.approve(await write_request(session, new AbortController().signal))).toBe(false)
   })
 
   it('leaves no listener on the turn\'s signal once it has its answer', async () => {
     const session = await manual_session(create_card_sync(), async () => choose('allow_once'))
     const controller = new AbortController()
-    expect(await session.approve(write_request(controller.signal))).toBe(true)
+    expect(await session.approve(await write_request(session, controller.signal))).toBe(true)
     expect(getEventListeners(controller.signal, 'abort')).toEqual([])
   })
 
@@ -735,7 +836,7 @@ describe('approve: waiting for the client', () => {
     const session = await manual_session(cards, ask)
     const writes = capture_stderr()
     const controller = new AbortController()
-    const answer = Promise.resolve(session.approve(write_request(controller.signal)))
+    const answer = Promise.resolve(session.approve(await write_request(session, controller.signal)))
     expect(await has_settled(answer)).toBe(false)
     controller.abort(new Error('cancelled'))
     expect(await answer).toBe(false)
@@ -746,7 +847,7 @@ describe('approve: waiting for the client', () => {
   it('refuses without asking when the turn was cancelled already', async () => {
     const ask = vi.fn<PermissionAsker>(async () => choose('allow_once'))
     const session = await manual_session(create_card_sync(), ask)
-    expect(await session.approve(write_request(AbortSignal.abort()))).toBe(false)
+    expect(await session.approve(await write_request(session, AbortSignal.abort()))).toBe(false)
     expect(ask).not.toHaveBeenCalled()
   })
 
@@ -758,7 +859,7 @@ describe('approve: waiting for the client', () => {
     })
     const writes = capture_stderr()
     const controller = new AbortController()
-    const answer = session.approve(write_request(controller.signal))
+    const answer = session.approve(await write_request(session, controller.signal))
     expect(await asked).toBe(controller.signal)
     controller.abort(new Error('cancelled'))
     expect(await answer).toBe(false)

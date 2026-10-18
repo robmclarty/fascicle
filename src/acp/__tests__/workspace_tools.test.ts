@@ -9,7 +9,7 @@ import { to_json_schema, validate_schema } from '#schema'
 import { contain, resolve_roots, shown_path } from '../tools/containment.js'
 import { list_files_tool } from '../tools/list_files.js'
 import type { AcpSession, WorkspaceToolsOptions } from '../types.js'
-import { workspace_tools } from '../workspace_tools.js'
+import { is_workspace_call, is_workspace_tool, workspace_tools } from '../workspace_tools.js'
 
 /**
  * The fixture, under one scratch directory:
@@ -201,6 +201,52 @@ describe('workspace_tools', () => {
     const list = tool_named('list_files', session)
     expect((await validate_schema(list.input_schema, {})).ok).toBe(true)
     expect((await validate_schema(list.input_schema, { pattern: 3 })).ok).toBe(false)
+  })
+})
+
+/** Ask `tool` whether a call with `input` needs approval, the way the tool loop asks before it runs one. */
+async function asks_about(tool: Tool, input: unknown): Promise<boolean> {
+  const needs = tool.needs_approval
+  if (typeof needs !== 'function') throw new Error(`${tool.name} never asks`)
+  return needs(input)
+}
+
+describe('workspace_tools: what a session keeps of its own tools', () => {
+  const NAMES = ['read_file', 'list_files', 'search', 'write_file', 'edit_file', 'run_command']
+
+  it('reserves its six names in the session that built them, and in no other', async () => {
+    const own = await session_over(cwd)
+    expect(NAMES.filter((name) => is_workspace_tool(own, name))).toEqual([])
+    workspace_tools(own)
+    expect(NAMES.filter((name) => is_workspace_tool(own, name))).toEqual(NAMES)
+    expect(is_workspace_tool(own, 'lookup')).toBe(false)
+    expect(is_workspace_tool(own, undefined)).toBe(false)
+    expect(is_workspace_tool(await session_over(cwd), 'write_file')).toBe(false)
+  })
+
+  it("marks each input a write, an edit, or a command is asked about as the session's own, and only that object", async () => {
+    const own = await session_over(cwd)
+    const write = { path: 'a.ts', content: 'a' }
+    const edit = { path: 'a.ts', old_text: 'a', new_text: 'b' }
+    const command = { command: 'ls' }
+    expect(await asks_about(tool_named('write_file', own), write)).toBe(true)
+    expect(await asks_about(tool_named('edit_file', own), edit)).toBe(true)
+    expect(await asks_about(tool_named('run_command', own), command)).toBe(true)
+    expect([write, edit, command].map((input) => is_workspace_call(own, input))).toEqual([true, true, true])
+    expect(is_workspace_call(own, { ...write })).toBe(false)
+    expect(is_workspace_call(await session_over(cwd), write)).toBe(false)
+  })
+
+  it('leaves the reads without a question to ask, so nothing marks their input', () => {
+    expect(workspace_tools(session).map((tool) => tool.needs_approval !== undefined)).toEqual([false, false, false, true, true, true])
+  })
+
+  it("still answers as the session's mode says, and marks no input that isn't an object", async () => {
+    const accepting: AcpSession = { ...(await session_over(cwd)), mode: () => 'accept_edits' }
+    expect(await asks_about(tool_named('write_file', accepting), null)).toBe(false)
+    expect(await asks_about(tool_named('run_command', accepting), 'ls')).toBe(true)
+    expect(is_workspace_call(accepting, null)).toBe(false)
+    expect(is_workspace_call(accepting, 'ls')).toBe(false)
   })
 })
 

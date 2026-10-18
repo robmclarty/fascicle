@@ -195,6 +195,8 @@ The flow is a function of the session, because the tools and `session.approve` b
 
 They're plain `Tool` values, so a flow can filter them, set its own beside them, or wrap them. A read-only critic, say, takes `read_file`, `list_files`, and `search`, and leaves the writes and the shell alone.
 
+Within a session, `workspace_tools` reserves its six names. The permission prompt knows the session's own calls by more than their name, because each workspace tool marks the input that it's asked about, and only a marked call gets a diff, **Allow all edits this session**, or an "always" for its command. A tool of the flow's own under one of those names, one from an MCP server included, gets the plain prompt, and no grant ever covers it. A card opens with nothing but the name that the model called, though, so in a session that has built the workspace tools, a tool of your own under one of those names is drawn the way the workspace tool is. Give your own tools names of their own. A wrapper that keeps a workspace tool's `needs_approval` keeps its prompt, and one that replaces it gets the plain prompt.
+
 `workspace_tools` takes its options as a second argument:
 
 - `read_limit_lines` is the most lines one `read_file` call returns (default 2000).
@@ -267,6 +269,8 @@ Each workspace tool's card looks the way Claude Agent's do, with a kind that pic
 | `write_file` | `edit` | `Write src/a.ts` | the diff, with no old text for a new file |
 | `edit_file` | `edit` | `Edit src/a.ts` | the diff, and a location at the first line it changed |
 | `run_command` | `execute` | the command line | what it printed and how it ended |
+
+Only a session that has built the workspace tools draws these cards. In a session that never called `workspace_tools`, a tool under one of these names gets the plain card, with its name as its title.
 
 A write's or an edit's diff is worked out before the call runs, so the card keeps it in every mode, not only when a prompt asks. A command's output goes to a terminal on the card when the client advertises Zed's terminal extension (`_meta.terminal_output`), and into the card as a `console` code block otherwise. A read, a listing, or a search shows the text that the model read in a code block with no info string, so the `*`, `#`, or backtick in a matching line shows as it is rather than rendering as markdown. Each card keeps that text in `rawOutput` too, which is what hosts other than Zed read, and a failed call shows its error instead.
 

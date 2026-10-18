@@ -66,6 +66,22 @@ function coder(engine: Engine, session: AcpSession, id = 'coder'): Step<string, 
   return model_step({ engine, id, tools: workspace_tools(session) })
 }
 
+/** `session`, once its workspace tools are built, as a coding agent's flow builds them. */
+function with_workspace_tools(session: AcpSession): AcpSession {
+  workspace_tools(session)
+  return session
+}
+
+/** A tool of the flow's own named `name`, which returns `output`. */
+function own_tool(name: string, output = 'done by the flow'): Tool {
+  return {
+    name,
+    description: `The flow's own ${name}`,
+    input_schema: json_schema_to_standard({ type: 'object' }),
+    execute: () => output,
+  }
+}
+
 /**
  * Run one prompt turn of a session whose flow is one model call on
  * `script`, over the wire, and return every update the client was sent.
@@ -254,15 +270,9 @@ describe('presentation: each workspace tool over the real tool loop', () => {
 
   it('keeps a tool that is not a workspace tool on the plain card', async () => {
     const engine = scripted_engine([[{ id: 'k1', name: 'lookup', input: { q: 'x' } }], 'done'])
-    const lookup: Tool = {
-      name: 'lookup',
-      description: 'Look something up',
-      input_schema: json_schema_to_standard({ type: 'object' }),
-      execute: () => 'found',
-    }
     const app = await acp_agent({
       name: 'presentation',
-      flow: () => model_step({ engine, id: 'coder', tools: [lookup] }),
+      flow: () => model_step({ engine, id: 'coder', tools: [own_tool('lookup', 'found')] }),
     })
     const { session } = await open_session(app, { session: { cwd } })
     await session.prompt('go')
@@ -271,6 +281,23 @@ describe('presentation: each workspace tool over the real tool loop', () => {
       { sessionUpdate: 'tool_call', toolCallId: 'CARD', title: 'lookup', kind: 'other', status: 'pending' },
       { sessionUpdate: 'tool_call_update', toolCallId: 'CARD', status: 'in_progress', rawInput: { q: 'x' } },
       { sessionUpdate: 'tool_call_update', toolCallId: 'CARD', status: 'completed', rawOutput: 'found' },
+    ])
+  })
+
+  it("keeps a write_file of the flow's own on the plain card in a session that never built the workspace tools", async () => {
+    const input = { path: 'src/own.ts', content: 'x' }
+    const engine = scripted_engine([[{ id: 'w1', name: 'write_file', input }], 'done'])
+    const app = await acp_agent({
+      name: 'presentation',
+      flow: () => model_step({ engine, id: 'coder', tools: [own_tool('write_file')] }),
+    })
+    const { session } = await open_session(app, { session: { cwd } })
+    await session.prompt('go')
+    const { updates } = await read_turn(session)
+    expect(coder_card(updates, 'w1')).toEqual([
+      { sessionUpdate: 'tool_call', toolCallId: 'CARD', title: 'write_file', kind: 'other', status: 'pending' },
+      { sessionUpdate: 'tool_call_update', toolCallId: 'CARD', status: 'in_progress', rawInput: input },
+      { sessionUpdate: 'tool_call_update', toolCallId: 'CARD', status: 'completed', rawOutput: 'done by the flow' },
     ])
   })
 })
@@ -469,7 +496,7 @@ describe('presentation: previews that share a raw id', () => {
 })
 
 describe('presentation: titles and locations', () => {
-  const session: AcpSession = {
+  const session = with_workspace_tools({
     id: 's',
     cwd: '/work',
     additional_directories: ['/shared'],
@@ -477,7 +504,7 @@ describe('presentation: titles and locations', () => {
     client_capabilities: {},
     mode: () => 'manual',
     approve: () => false,
-  }
+  })
 
   function model_chunk(chunk: StreamChunk): TrajectoryEvent {
     return { kind: 'model_chunk', step_id: 'm', chunk }
@@ -555,7 +582,7 @@ describe('presentation: titles and locations', () => {
   it('opens no terminal for a tool that runs no command, whatever the client draws', () => {
     const state = create_acp_mapper_state({
       turn_id: 't',
-      session: { ...session, client_capabilities: { _meta: { terminal_output: true } } },
+      session: with_workspace_tools({ ...session, client_capabilities: { _meta: { terminal_output: true } } }),
     })
     const opened = to_session_updates(model_chunk({ kind: 'tool_call_start', id: 'c1', name: 'read_file', step_index: 0 }), state)
     expect(opened).toEqual([{ sessionUpdate: 'tool_call', toolCallId: 't:m:0:c1', title: 'read_file', kind: 'read', status: 'pending' }])
@@ -574,7 +601,7 @@ describe('presentation: titles and locations', () => {
 })
 
 describe('presentation: closing a card from the mapper', () => {
-  const session: AcpSession = {
+  const session = with_workspace_tools({
     id: 's',
     cwd: '/work',
     additional_directories: [],
@@ -582,8 +609,8 @@ describe('presentation: closing a card from the mapper', () => {
     client_capabilities: {},
     mode: () => 'manual',
     approve: () => false,
-  }
-  const terminals: AcpSession = { ...session, id: 't', client_capabilities: { _meta: { terminal_output: true } } }
+  })
+  const terminals = with_workspace_tools({ ...session, id: 't', client_capabilities: { _meta: { terminal_output: true } } })
 
   function model_chunk(chunk: StreamChunk): TrajectoryEvent {
     return { kind: 'model_chunk', step_id: 'm', chunk }
@@ -666,6 +693,44 @@ describe('presentation: closing a card from the mapper', () => {
       { sessionUpdate: 'tool_call_update', toolCallId: 't:m:0:w1', status: 'completed', rawOutput: 'created a.ts' },
     ])
   })
+})
+
+describe('presentation: a session that never built the workspace tools', () => {
+  const never_built: AcpSession = {
+    id: 'own',
+    cwd: '/work',
+    additional_directories: [],
+    roots: ['/work'],
+    client_capabilities: { _meta: { terminal_output: true } },
+    mode: () => 'manual',
+    approve: () => false,
+  }
+
+  function model_chunk(chunk: StreamChunk): TrajectoryEvent {
+    return { kind: 'model_chunk', step_id: 'm', chunk }
+  }
+
+  it.each(['read_file', 'list_files', 'search', 'write_file', 'edit_file', 'run_command'])(
+    "gives the flow's own %s the plain card, and takes no preview for it",
+    (name) => {
+      const preview: ToolPreview = { kind: 'change', path: '/work/a.ts', old_text: null, new_text: 'a', line: undefined }
+      reset_previews(never_built)
+      record_preview(never_built, 'c1', preview)
+      const state = create_acp_mapper_state({ turn_id: 't', session: never_built })
+      const input = { path: 'a.ts', pattern: '*', command: 'ls' }
+      const chunks: StreamChunk[] = [
+        { kind: 'tool_call_start', id: 'c1', name, step_index: 0 },
+        { kind: 'tool_call_end', id: 'c1', input, step_index: 0 },
+        { kind: 'tool_result', id: 'c1', output: 'ok', step_index: 0 },
+      ]
+      expect(chunks.flatMap((chunk) => to_session_updates(model_chunk(chunk), state))).toEqual([
+        { sessionUpdate: 'tool_call', toolCallId: 't:m:0:c1', title: name, kind: 'other', status: 'pending' },
+        { sessionUpdate: 'tool_call_update', toolCallId: 't:m:0:c1', status: 'in_progress', rawInput: input },
+        { sessionUpdate: 'tool_call_update', toolCallId: 't:m:0:c1', status: 'completed', rawOutput: 'ok' },
+      ])
+      expect(take_preview(never_built, 'c1')).toBe(preview)
+    },
+  )
 })
 
 describe('presentation: the preview store', () => {
