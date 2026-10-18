@@ -1,6 +1,8 @@
 import { EventEmitter } from 'node:events'
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { request } from 'node:http'
 import type { IncomingHttpHeaders, IncomingMessage, Server, ServerResponse } from 'node:http'
+import { connect } from 'node:net'
 import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
@@ -73,8 +75,15 @@ import {
  *     `extname`, not a branch a request can take.
  */
 
-const { parse_last_event_id, parse_since, handle_sse, handle_ingest, SSE_HEARTBEAT_MS } =
-  internals_for_test
+const {
+  parse_last_event_id,
+  parse_since,
+  handle_sse,
+  handle_ingest,
+  host_allowed,
+  SSE_HEARTBEAT_MS,
+  INGEST_LIMIT_BYTES,
+} = internals_for_test
 
 // Root reads a mode-000 file anyway, so the unreadable-file tests have nothing
 // to prove under it.
@@ -104,6 +113,9 @@ type FakeReq = EventEmitter & {
 
 const make_req = (headers: IncomingHttpHeaders = {}): FakeReq =>
   Object.assign(new EventEmitter(), { headers, setEncoding: () => {} })
+
+/** The content type every ingest request has to carry. */
+const NDJSON_HEADERS = { 'content-type': 'application/x-ndjson' }
 
 const as_req = (req: FakeReq): IncomingMessage => req as unknown as IncomingMessage
 
@@ -198,6 +210,37 @@ function with_live_server(): void {
 function url(path: string): string {
   if (!server) throw new Error('server not started')
   return server.url + path
+}
+
+type RawResponse = { readonly status: number; readonly headers: IncomingHttpHeaders; readonly body: string }
+
+/**
+ * Sends one request to the live server with exactly the headers given, so a
+ * test can choose its `Host` or leave it out, which `fetch` won't allow.
+ */
+function raw_request(
+  path: string,
+  options: { readonly method?: string; readonly headers?: Record<string, string>; readonly body?: string } = {},
+): Promise<RawResponse> {
+  if (!server) throw new Error('server not started')
+  const { port } = server
+  return new Promise((resolve_response, reject) => {
+    const req = request(
+      { host: '127.0.0.1', port, path, method: options.method ?? 'GET', headers: options.headers ?? {}, setHost: false },
+      (res) => {
+        let body = ''
+        res.setEncoding('utf8')
+        res.on('data', (chunk: string) => {
+          body += chunk
+        })
+        res.on('end', () => {
+          resolve_response({ status: res.statusCode ?? 0, headers: res.headers, body })
+        })
+      },
+    )
+    req.on('error', reject)
+    req.end(options.body)
+  })
 }
 
 describe('viewer http server', () => {
@@ -321,7 +364,7 @@ describe('viewer http server', () => {
     // No on_parse_error is wired here, so the schema-reject branch must guard
     // the optional callback rather than invoke it.
     const body = ['not json', '{"foo":"bar"}', JSON.stringify({ kind: 'emit' }), ''].join('\n')
-    const res = await fetch(url('/api/ingest'), { method: 'POST', body })
+    const res = await fetch(url('/api/ingest'), { method: 'POST', headers: NDJSON_HEADERS, body })
     const out = (await res.json()) as { accepted: number; rejected: number }
     expect(out.accepted).toBe(1)
     expect(out.rejected).toBe(2)
@@ -684,7 +727,7 @@ describe('viewer ingest details', () => {
 
   it('skips blank lines without counting them as rejected', async () => {
     const body = ['{"kind":"emit"}', '', '{"kind":"emit"}', ''].join('\n')
-    const res = await fetch(url('/api/ingest'), { method: 'POST', body })
+    const res = await fetch(url('/api/ingest'), { method: 'POST', headers: NDJSON_HEADERS, body })
     const out = (await res.json()) as { accepted: number; rejected: number }
     expect(out.accepted).toBe(2)
     expect(out.rejected).toBe(0)
@@ -692,7 +735,7 @@ describe('viewer ingest details', () => {
 
   it('flushes a final line that has no trailing newline', async () => {
     const body = '{"kind":"emit"}\n{"kind":"emit"}'
-    const res = await fetch(url('/api/ingest'), { method: 'POST', body })
+    const res = await fetch(url('/api/ingest'), { method: 'POST', headers: NDJSON_HEADERS, body })
     const out = (await res.json()) as { accepted: number; rejected: number }
     expect(out.accepted).toBe(2)
     expect(out.rejected).toBe(0)
@@ -709,7 +752,7 @@ describe('viewer ingest details', () => {
     })
     try {
       const body = ['not json', '{"foo":"bar"}', '{"kind":"emit"}', ''].join('\n')
-      const res = await fetch(srv.url + '/api/ingest', { method: 'POST', body })
+      const res = await fetch(srv.url + '/api/ingest', { method: 'POST', headers: NDJSON_HEADERS, body })
       const out = (await res.json()) as { accepted: number; rejected: number }
       expect(out.accepted).toBe(1)
       expect(out.rejected).toBe(2)
@@ -727,7 +770,7 @@ describe('ingest stream failure', () => {
   it('answers a request stream error with a 400 and reports it', () => {
     const bc = create_broadcaster({ buffer: 10 })
     const seen: Array<{ err: unknown; line: string }> = []
-    const req = make_req()
+    const req = make_req(NDJSON_HEADERS)
     const res = make_res()
     handle_ingest(as_req(req), as_res(res), bc, (err, line) => seen.push({ err, line }))
 
@@ -744,7 +787,7 @@ describe('ingest stream failure', () => {
 
   it('still answers 400 when no parse-error callback is wired', () => {
     const bc = create_broadcaster({ buffer: 10 })
-    const req = make_req()
+    const req = make_req(NDJSON_HEADERS)
     const res = make_res()
     handle_ingest(as_req(req), as_res(res), bc)
 
@@ -752,6 +795,206 @@ describe('ingest stream failure', () => {
 
     expect(res.statusCode).toBe(400)
     expect(JSON.parse(res.text())).toEqual({ error: 'bad_request' })
+  })
+})
+
+describe('the Host a server answers', () => {
+  it.each(['127.0.0.1', 'localhost', '::1'])('bound to %s, answers a Host that names loopback, whatever the port or case', (bound) => {
+    const allowed = ['localhost', 'localhost:4242', '127.0.0.1:1', '[::1]:4242', '[::1]', 'LOCALHOST:4242']
+    expect(allowed.filter((header) => !host_allowed(bound, header))).toEqual([])
+  })
+
+  it.each(['127.0.0.1', 'localhost', '::1'])('bound to %s, refuses any other Host, and a request with none', (bound) => {
+    const refused = [
+      undefined,
+      '',
+      'evil.example',
+      'evil.example:4242',
+      'localhost.evil.example:4242',
+      'evil.example@localhost',
+      '127.0.0.1.nip.io',
+      '[::1',
+      '::1',
+    ]
+    expect(refused.filter((header) => host_allowed(bound, header))).toEqual([])
+  })
+
+  it.each(['0.0.0.0', '::', '192.168.1.20'])('bound to %s, checks no Host at all', (bound) => {
+    expect([undefined, 'evil.example', 'evil.example:4242'].map((header) => host_allowed(bound, header))).toEqual([
+      true,
+      true,
+      true,
+    ])
+  })
+
+  describe('over the socket', () => {
+    with_live_server()
+
+    it('answers 403 to a rebound name, naming the names it answers, before any route runs', async () => {
+      if (!broadcaster) throw new Error('not initialized')
+      broadcaster.emit({ kind: 'emit', text: 'a prompt' })
+      const host = `evil.example:${server?.port ?? 0}`
+      const read = await raw_request('/api/trajectory', { headers: { host } })
+      expect(read.status).toBe(403)
+      expect(JSON.parse(read.body)).toEqual({
+        error: 'forbidden_host',
+        message:
+          'this viewer is bound to 127.0.0.1 and answers only a Host of localhost, 127.0.0.1, or ::1; open it by one of those names',
+      })
+      const post = await raw_request('/api/ingest', {
+        method: 'POST',
+        headers: { host, ...NDJSON_HEADERS },
+        body: `${JSON.stringify({ kind: 'emit', text: 'planted' })}\n`,
+      })
+      expect(post.status).toBe(403)
+      expect(broadcaster.snapshot().map((entry) => entry.event['text'])).toEqual(['a prompt'])
+    })
+
+    it('answers a loopback name on any port 200', async () => {
+      expect((await raw_request('/api/health', { headers: { host: 'localhost:1' } })).status).toBe(200)
+    })
+
+    it('answers 403 to an HTTP/1.0 request with no Host, which node lets through to the handler', async () => {
+      // Node answers an HTTP/1.1 request without a Host 400 on its own, so only
+      // HTTP/1.0, which has no Host requirement, reaches the check.
+      const socket = connect(server?.port ?? 0, '127.0.0.1')
+      socket.setEncoding('utf8')
+      socket.end('GET /api/health HTTP/1.0\r\n\r\n')
+      let reply = ''
+      for await (const chunk of socket) reply += String(chunk)
+      expect(reply.split('\r\n')[0]).toBe('HTTP/1.1 403 Forbidden')
+    })
+  })
+})
+
+describe('ingest content type and size', () => {
+  /** Hands `handle_ingest` a fake request with `headers`, returning its response and the broadcaster it feeds. */
+  function ingest_with(
+    headers: IncomingHttpHeaders,
+    on_parse_error?: (err: unknown, line: string) => void,
+  ): { req: FakeReq; res: FakeRes; bc: Broadcaster } {
+    const bc = create_broadcaster({ buffer: 10 })
+    const req = make_req(headers)
+    const res = make_res()
+    handle_ingest(as_req(req), as_res(res), bc, on_parse_error)
+    return { req, res, bc }
+  }
+
+  it.each(['application/x-ndjson', 'application/x-ndjson; charset=utf-8', 'application/x-ndjson ;charset=utf-8', 'Application/X-NDJSON'])(
+    'reads a body sent as %s',
+    (type) => {
+      const { req, res } = ingest_with({ 'content-type': type })
+      req.emit('data', '{"kind":"emit"}\n')
+      req.emit('end')
+      expect(res.statusCode).toBe(200)
+      expect(JSON.parse(res.text())).toEqual({ accepted: 1, rejected: 0 })
+    },
+  )
+
+  it.each([undefined, 'text/plain', 'application/json', 'application/x-ndjsonx', 'text/application/x-ndjson'])(
+    'answers 415 to a body sent as %s, before reading any of it',
+    (type) => {
+      const { req, res, bc } = ingest_with(type === undefined ? {} : { 'content-type': type })
+      expect(res.statusCode).toBe(415)
+      expect(req.listenerCount('data')).toBe(0)
+      expect(JSON.parse(res.text())).toEqual({
+        error: 'unsupported_media_type',
+        message: 'post trajectory events as application/x-ndjson, one JSON event to a line',
+      })
+      req.emit('data', '{"kind":"emit"}\n')
+      req.emit('end')
+      expect(res.statusCode).toBe(415)
+      expect(bc.snapshot()).toEqual([])
+    },
+  )
+
+  it('answers 413 to a declared length past the limit and closes, and reads one at the limit', () => {
+    const over = ingest_with({ ...NDJSON_HEADERS, 'content-length': String(INGEST_LIMIT_BYTES + 1) })
+    expect(over.res.statusCode).toBe(413)
+    expect(over.req.listenerCount('data')).toBe(0)
+    expect(over.res.headers.get('connection')).toBe('close')
+    expect(JSON.parse(over.res.text())).toEqual({
+      error: 'payload_too_large',
+      message: 'an ingest body holds at most 8000000 bytes; post the events in smaller batches',
+    })
+    const at = ingest_with({ ...NDJSON_HEADERS, 'content-length': String(INGEST_LIMIT_BYTES) })
+    at.req.emit('end')
+    expect(at.res.statusCode).toBe(200)
+  })
+
+  it('reads a streamed body of exactly the limit', () => {
+    const line = '{"kind":"emit"}\n'
+    const { req, res } = ingest_with(NDJSON_HEADERS)
+    req.emit('data', line)
+    req.emit('data', ' '.repeat(INGEST_LIMIT_BYTES - line.length))
+    req.emit('end')
+    expect(res.statusCode).toBe(200)
+    expect(JSON.parse(res.text())).toEqual({ accepted: 1, rejected: 1 })
+  })
+
+  it('answers 413 where a streamed body passes the limit, then reads and reports nothing more', () => {
+    const line = '{"kind":"emit"}\n'
+    const seen: unknown[] = []
+    const { req, res, bc } = ingest_with(NDJSON_HEADERS, (err) => seen.push(err))
+    req.emit('data', line)
+    req.emit('data', ' '.repeat(INGEST_LIMIT_BYTES - line.length + 1))
+    expect(res.statusCode).toBe(413)
+    expect(res.headers.get('connection')).toBe('close')
+    req.emit('data', `\n${line}`)
+    req.emit('end')
+    req.emit('error', new Error('ECONNRESET'))
+    expect(res.statusCode).toBe(413)
+    expect(JSON.parse(res.text())).toMatchObject({ error: 'payload_too_large' })
+    expect(bc.snapshot()).toHaveLength(1)
+    expect(seen).toEqual([])
+  })
+
+  describe('over the socket', () => {
+    with_live_server()
+
+    it('answers 415 to a text/plain post, which a web page can send without a preflight', async () => {
+      if (!broadcaster) throw new Error('not initialized')
+      const res = await fetch(url('/api/ingest'), {
+        method: 'POST',
+        headers: { 'content-type': 'text/plain' },
+        body: '{"kind":"emit"}\n',
+      })
+      expect(res.status).toBe(415)
+      expect(broadcaster.snapshot()).toEqual([])
+    })
+
+    it('answers 413 to a declared length past the limit without waiting for the body', async () => {
+      const res = await raw_request('/api/ingest', {
+        method: 'POST',
+        headers: {
+          host: `127.0.0.1:${server?.port ?? 0}`,
+          ...NDJSON_HEADERS,
+          'content-length': String(INGEST_LIMIT_BYTES + 1),
+        },
+      })
+      expect(res.status).toBe(413)
+      expect(res.headers['connection']).toBe('close')
+    })
+  })
+})
+
+describe('a server with ingest off', () => {
+  it('answers a post to /api/ingest 404, like any route the api does not claim, and serves the rest', async () => {
+    const bc = create_broadcaster({ buffer: 10 })
+    const srv = await start_server({ broadcaster: bc, host: '127.0.0.1', port: 0, ingest: false })
+    try {
+      const res = await fetch(`${srv.url}/api/ingest`, {
+        method: 'POST',
+        headers: NDJSON_HEADERS,
+        body: '{"kind":"emit"}\n',
+      })
+      expect(res.status).toBe(404)
+      expect(await res.json()).toEqual({ error: 'not_found', route: 'POST /api/ingest' })
+      expect(bc.snapshot()).toEqual([])
+      expect((await fetch(`${srv.url}/api/health`)).status).toBe(200)
+    } finally {
+      await srv.close()
+    }
   })
 })
 

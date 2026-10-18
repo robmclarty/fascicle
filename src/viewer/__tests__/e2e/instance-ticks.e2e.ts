@@ -33,7 +33,7 @@ test.afterEach(async () => {
 
 /** Ingest one scale's trajectory and wait for the canvas to draw it. */
 async function show(page: import('@playwright/test').Page, ndjson: string): Promise<void> {
-  const res = await fetch(`${viewer.url}/api/ingest`, { method: 'POST', body: ndjson })
+  const res = await fetch(`${viewer.url}/api/ingest`, { method: 'POST', headers: { 'content-type': 'application/x-ndjson' }, body: ndjson })
   if (res.status !== 200) throw new Error(`ingest failed: ${res.status}`)
   await page.goto(viewer.url)
   await expect(page.locator('.node[data-node-id="summarize"]')).toHaveCount(1)

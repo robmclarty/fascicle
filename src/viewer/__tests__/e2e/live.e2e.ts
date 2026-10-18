@@ -46,6 +46,7 @@ test.afterEach(async () => {
 async function ingest(from: number, to: number): Promise<void> {
   const res = await fetch(`${viewer.url}/api/ingest`, {
     method: 'POST',
+    headers: { 'content-type': 'application/x-ndjson' },
     body: `${lines.slice(from, to).join('\n')}\n`,
   })
   if (res.status !== 200) throw new Error(`fixture ingest failed: ${res.status}`)

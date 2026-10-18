@@ -519,7 +519,7 @@ import { start_viewer } from 'fascicle/viewer';
 
 | Export | Purpose |
 | --- | --- |
-| `start_viewer(options?)` | start the embedded viewer server; returns a `ViewerHandle` (`.close()`) |
+| `start_viewer(options?)` | start the embedded viewer server; returns a `ViewerHandle` (`.close()`). `ingest: false` leaves `POST /api/ingest` unmounted (default: mounted) |
 | `run_viewer_cli(argv)` | the `fascicle-viewer` bin entry point |
 | `create_broadcaster(config)` | fan live trajectory events out to subscribers |
 | `start_server(config)` | the bare HTTP server underneath `start_viewer` |

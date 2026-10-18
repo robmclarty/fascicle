@@ -15,6 +15,11 @@
  * `/api/events`, which replays anything past the cursor it names and streams
  * new events live. The ring is bounded memory by design, so history older than
  * it is served from the file the tail already reads (D7).
+ *
+ * A server bound to a loopback name answers only requests whose `Host` names
+ * loopback too, so a web page can't reach it by rebinding a domain of its own
+ * to 127.0.0.1. Ingest is mounted unless the config turns it off, reads only
+ * `application/x-ndjson`, and refuses a body past 8 MB.
  */
 
 import { createReadStream, statSync, type Stats } from 'node:fs'
@@ -55,6 +60,21 @@ const CONTENT_TYPES: Readonly<Record<string, string>> = {
 
 const FALLBACK_CONTENT_TYPE = 'application/octet-stream'
 
+/**
+ * The names that keep the viewer on this machine. A server bound to one of
+ * them answers only a request whose `Host` names one of them as well.
+ */
+const LOOPBACK_HOSTS: ReadonlySet<string> = new Set(['localhost', '127.0.0.1', '::1'])
+
+/** The one content type `/api/ingest` reads, which is what `http_logger` sends. */
+const NDJSON = 'application/x-ndjson'
+
+/**
+ * The most bytes one ingest body may carry. `http_logger` posts a single
+ * event per request, so only a runaway or hostile client comes near it.
+ */
+const INGEST_LIMIT_BYTES = 8_000_000
+
 export type ServerConfig = {
   readonly broadcaster: Broadcaster
   readonly host: string
@@ -71,6 +91,12 @@ export type ServerConfig = {
    * (D7). Threaded from the tailed `path` by `start_viewer`.
    */
   readonly trajectory_path?: string
+  /**
+   * Whether `POST /api/ingest` is mounted; default true. Off, the route is a
+   * 404 like any path the API doesn't claim, which is how the CLI keeps a
+   * viewer that only tails a file from taking posts.
+   */
+  readonly ingest?: boolean | undefined
   readonly on_parse_error?: (err: unknown, line: string) => void
 }
 
@@ -86,14 +112,18 @@ export type ViewerServer = {
  *
  * Wires the five API routes (health, snapshot, trajectory, SSE, ingest) plus
  * the compiled app's static files to a single request handler, and resolves
- * with the bound URL and port and a `close` that shuts the socket down. The API
- * routes are matched first and exactly, so no file the canvas ships can ever
- * shadow one.
+ * with the bound URL and port and a `close` that shuts the socket down. The
+ * `Host` check runs before anything else, then the API routes are matched
+ * first and exactly, so no file the canvas ships can ever shadow one.
  */
 export function start_server(config: ServerConfig): Promise<ViewerServer> {
-  const { broadcaster, host, port, app_dir, trajectory_path, on_parse_error } = config
+  const { broadcaster, host, port, app_dir, trajectory_path, ingest = true, on_parse_error } = config
 
   const handler = (req: IncomingMessage, res: ServerResponse): void => {
+    if (!host_allowed(host, req.headers.host)) {
+      send_forbidden_host(res, host)
+      return
+    }
     const route = resolve_route(req, host, port)
 
     if (route === 'GET /api/health') {
@@ -112,7 +142,7 @@ export function start_server(config: ServerConfig): Promise<ViewerServer> {
       handle_sse(req, res, broadcaster)
       return
     }
-    if (route === 'POST /api/ingest') {
+    if (ingest && route === 'POST /api/ingest') {
       handle_ingest(req, res, broadcaster, on_parse_error)
       return
     }
@@ -161,6 +191,52 @@ export function bound_port_of(addr: ReturnType<Server['address']>, fallback: num
  */
 function format_authority(host: string, port: number): string {
   return `${isIPv6(host) ? `[${host}]` : host}:${port}`
+}
+
+/**
+ * Whether `host` is a loopback name, which keeps a server bound to it on this
+ * machine.
+ */
+export function is_loopback_host(host: string): boolean {
+  return LOOPBACK_HOSTS.has(host)
+}
+
+/**
+ * The hostname a `Host` header names, lowercased, with an IPv6 literal's
+ * brackets and any port taken off.
+ */
+function host_name(header: string): string {
+  const host = header.toLowerCase()
+  if (host.startsWith('[')) return host.slice(1, host.indexOf(']'))
+  const colon = host.indexOf(':')
+  return colon === -1 ? host : host.slice(0, colon)
+}
+
+/**
+ * Whether a server bound to `bound` answers a request whose `Host` header is
+ * `header`.
+ *
+ * Bound to a loopback name, it answers only a `Host` that names loopback too,
+ * whatever the port, because a page that rebinds a domain of its own to
+ * 127.0.0.1 still sends that domain, and would otherwise read every prompt and
+ * output in the trajectory. A request with no `Host` is refused as well. Bound
+ * anywhere else, it checks nothing: whoever can reach it can read it, which
+ * is what the CLI warns about before it binds.
+ */
+function host_allowed(bound: string, header: string | undefined): boolean {
+  if (!is_loopback_host(bound)) return true
+  return header !== undefined && is_loopback_host(host_name(header))
+}
+
+/**
+ * Writes the 403 for a request whose `Host` a loopback-bound server won't
+ * answer, naming the names it will.
+ */
+function send_forbidden_host(res: ServerResponse, bound: string): void {
+  send_json(res, 403, {
+    error: 'forbidden_host',
+    message: `this viewer is bound to ${bound} and answers only a Host of localhost, 127.0.0.1, or ::1; open it by one of those names`,
+  })
 }
 
 /**
@@ -475,12 +551,61 @@ function write_event(res: ServerResponse, id: number, event: ParsedTrajectoryEve
 }
 
 /**
+ * Whether a `content-type` header names NDJSON, whatever its case and its
+ * parameters, so `application/x-ndjson; charset=utf-8` counts.
+ */
+function is_ndjson(header: string | undefined): boolean {
+  if (header === undefined) return false
+  const semicolon = header.indexOf(';')
+  const type = semicolon === -1 ? header : header.slice(0, semicolon)
+  return type.trim().toLowerCase() === NDJSON
+}
+
+/**
+ * Writes the 413 for an ingest body past the limit, closing the connection so
+ * the rest of the body is never read.
+ */
+function send_too_large(res: ServerResponse): void {
+  res.setHeader('connection', 'close')
+  send_json(res, 413, {
+    error: 'payload_too_large',
+    message: `an ingest body holds at most ${INGEST_LIMIT_BYTES} bytes; post the events in smaller batches`,
+  })
+}
+
+/**
+ * Answers an ingest request that won't be read, before any of its body is:
+ * a 415 for a body that isn't NDJSON, and a 413 for one whose declared length
+ * runs past the limit. Returns whether it answered.
+ *
+ * Requiring the content type is what keeps a web page out: a page can post a
+ * `text/plain` body to any origin without a preflight, but not an NDJSON one.
+ */
+function refuse_ingest(req: IncomingMessage, res: ServerResponse): boolean {
+  if (!is_ndjson(req.headers['content-type'])) {
+    send_json(res, 415, {
+      error: 'unsupported_media_type',
+      message: `post trajectory events as ${NDJSON}, one JSON event to a line`,
+    })
+    return true
+  }
+  if (Number(req.headers['content-length']) > INGEST_LIMIT_BYTES) {
+    send_too_large(res)
+    return true
+  }
+  return false
+}
+
+/**
  * Handles `POST /api/ingest`: parses newline-delimited trajectory events
  * from the request body and feeds valid ones into the broadcaster.
  *
  * Reports how many lines were accepted vs rejected in the response body;
  * a malformed line is skipped and reported via `on_parse_error`, not
- * treated as a fatal request error.
+ * treated as a fatal request error. A body sent without a length is counted
+ * as it streams, and one that runs past the limit gets its 413 there, after
+ * the lines before that point have gone out. Once a request is answered,
+ * nothing more it sends is read or reported.
  */
 function handle_ingest(
   req: IncomingMessage,
@@ -488,7 +613,9 @@ function handle_ingest(
   broadcaster: Broadcaster,
   on_parse_error?: (err: unknown, line: string) => void,
 ): void {
+  if (refuse_ingest(req, res)) return
   let buf = ''
+  let received = 0
   let accepted = 0
   let rejected = 0
 
@@ -514,6 +641,12 @@ function handle_ingest(
 
   req.setEncoding('utf8')
   req.on('data', (chunk: string) => {
+    if (res.writableEnded) return
+    received += Buffer.byteLength(chunk)
+    if (received > INGEST_LIMIT_BYTES) {
+      send_too_large(res)
+      return
+    }
     buf += chunk
     // Consume every complete line in the buffer so far; a trailing partial
     // line (no `\n` yet) stays in `buf` until a later chunk completes it.
@@ -525,11 +658,13 @@ function handle_ingest(
     }
   })
   req.on('end', () => {
+    if (res.writableEnded) return
     // Flush a final line that arrived without a trailing newline.
     if (buf.length > 0) consume_line(buf)
     send_json(res, 200, { accepted, rejected })
   })
   req.on('error', (err: unknown) => {
+    if (res.writableEnded) return
     if (on_parse_error) on_parse_error(err, '')
     send_json(res, 400, { error: 'bad_request' })
   })
@@ -538,6 +673,8 @@ function handle_ingest(
 export const internals_for_test = {
   SSE_HEARTBEAT_MS,
   CURSOR_HEADER,
+  INGEST_LIMIT_BYTES,
+  host_allowed,
   app_dir_candidates,
   resolve_app_dir,
   resolve_app_file,

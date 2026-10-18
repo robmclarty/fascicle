@@ -99,6 +99,7 @@ test.describe('the density dial', () => {
     await page.goto(viewer.url)
     const res = await fetch(`${viewer.url}/api/ingest`, {
       method: 'POST',
+      headers: { 'content-type': 'application/x-ndjson' },
       body: map_trajectory_ndjson({ count: 50, failed: [7, 23], run_id: 'dense-x50' }),
     })
     if (res.status !== 200) throw new Error(`fixture ingest failed: ${res.status}`)
@@ -146,6 +147,7 @@ test.describe('scrubbing off a live edge', () => {
     await expect(page.getByTestId('status')).toHaveText('LIVE')
     const res = await fetch(`${viewer.url}/api/ingest`, {
       method: 'POST',
+      headers: { 'content-type': 'application/x-ndjson' },
       body: `${lines.join('\n')}\n`,
     })
     if (res.status !== 200) throw new Error(`fixture ingest failed: ${res.status}`)

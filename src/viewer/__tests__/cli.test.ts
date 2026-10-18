@@ -133,6 +133,7 @@ describe('parse', () => {
     expect(parse_exit(['--help'])).toBe(0)
     expect(stdout_text).toContain('fascicle-viewer — minimal in-repo dashboard')
     expect(stdout_text).toContain('Usage:')
+    expect(stdout_text).toContain('--listen        accept HTTP push on /api/ingest (off unless set)')
     expect(stderr_text).toBe('')
   })
 
@@ -218,13 +219,13 @@ describe('run_viewer_cli', () => {
     })
   })
 
-  it('tails an existing path, logs, and opens the browser by default', async () => {
+  it('tails an existing path with ingest off, logs, and opens the browser by default', async () => {
     await run_viewer_cli([existing_file])
 
     expect(start_viewer_mock).toHaveBeenCalledTimes(1)
     const opts = start_viewer_mock.mock.calls[0]?.[0]
     if (!opts) throw new Error('expected start_viewer to be called')
-    expect(opts).toMatchObject({ path: existing_file, host: '127.0.0.1', port: 4242, buffer: 1000 })
+    expect(opts).toMatchObject({ path: existing_file, host: '127.0.0.1', port: 4242, buffer: 1000, ingest: false })
 
     expect(stderr_text).toContain(`fascicle-viewer: watching ${existing_file}`)
     expect(stderr_text).toContain(`fascicle-viewer: viewer at ${VIEWER_URL}`)
@@ -258,14 +259,25 @@ describe('run_viewer_cli', () => {
     expect(stderr_text).not.toContain('warning')
   })
 
-  it('logs the ingest endpoint and passes no path in listen mode', async () => {
+  it('mounts ingest, logs its endpoint, and passes no path in listen mode', async () => {
     await run_viewer_cli(['--listen', '--no-open'])
 
     const opts = start_viewer_mock.mock.calls[0]?.[0]
     if (!opts) throw new Error('expected start_viewer to be called')
     expect(opts.path).toBeUndefined()
+    expect(opts.ingest).toBe(true)
     expect(stderr_text).toContain(`fascicle-viewer: listening for HTTP push on ${VIEWER_URL}/api/ingest`)
     expect(stderr_text).not.toContain('watching')
+  })
+
+  it('mounts ingest beside a tailed path under --listen, logging both', async () => {
+    await run_viewer_cli([existing_file, '--listen', '--no-open'])
+
+    const opts = start_viewer_mock.mock.calls[0]?.[0]
+    if (!opts) throw new Error('expected start_viewer to be called')
+    expect(opts).toMatchObject({ path: existing_file, ingest: true })
+    expect(stderr_text).toContain(`fascicle-viewer: watching ${existing_file}`)
+    expect(stderr_text).toContain(`fascicle-viewer: listening for HTTP push on ${VIEWER_URL}/api/ingest`)
   })
 
   it('does not open the browser with --no-open', async () => {

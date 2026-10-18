@@ -48,7 +48,7 @@ test.afterEach(async () => {
 
 /** Ingest a wire body and wait for the canvas to draw the named node. */
 async function show(page: Page, body: string, node_id: string): Promise<void> {
-  const res = await fetch(`${viewer.url}/api/ingest`, { method: 'POST', body })
+  const res = await fetch(`${viewer.url}/api/ingest`, { method: 'POST', headers: { 'content-type': 'application/x-ndjson' }, body })
   if (res.status !== 200) throw new Error(`ingest failed: ${res.status}`)
   await page.goto(viewer.url)
   await expect(page.locator(`.node[data-node-id="${node_id}"]`)).toHaveCount(1)
@@ -147,6 +147,7 @@ test('the retry card rides attempt 2 and dismisses on resolve (Q4)', async ({
 
   const res = await fetch(`${viewer.url}/api/ingest`, {
     method: 'POST',
+    headers: { 'content-type': 'application/x-ndjson' },
     body: fixture_slice(MID_RUN, MID_RUN + 2),
   })
   if (res.status !== 200) throw new Error(`ingest failed: ${res.status}`)

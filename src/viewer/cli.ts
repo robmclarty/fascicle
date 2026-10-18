@@ -8,6 +8,9 @@
  *
  * Flags: --port <n> --host <h> --buffer <n> --no-open --help
  *
+ * `POST /api/ingest` is mounted only under `--listen`, so a viewer that only
+ * tails a file takes no posts from anything.
+ *
  * Defaults bind 127.0.0.1:4242 and open the user's default browser. SIGINT
  * shuts everything down cleanly. The CLI body is exposed as `run_viewer_cli`
  * so the `fascicle-viewer` bin shim can drive it from the bundled
@@ -18,6 +21,7 @@ import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { parseArgs } from 'node:util'
 import { fileURLToPath } from 'node:url'
+import { is_loopback_host } from './server.js'
 import { start_viewer } from './start_viewer.js'
 
 type CliArgs = {
@@ -29,9 +33,6 @@ type CliArgs = {
   readonly open: boolean
 }
 
-/** The hosts that keep the dashboard on this machine; binding any other warns. */
-const LOOPBACK_HOSTS: ReadonlySet<string> = new Set(['127.0.0.1', 'localhost', '::1'])
-
 const HELP = `\
 fascicle-viewer — minimal in-repo dashboard for fascicle trajectory streams.
 
@@ -41,6 +42,7 @@ Usage:
   fascicle-viewer <path> --listen    both producers feed the same broadcaster
 
 Options:
+  --listen        accept HTTP push on /api/ingest (off unless set)
   --port <n>      port (default 4242)
   --host <h>      bind host (default 127.0.0.1; a non-loopback host warns)
   --buffer <n>    ring-buffer size (default 1000)
@@ -140,7 +142,7 @@ export async function run_viewer_cli(argv: readonly string[]): Promise<void> {
       `fascicle-viewer: warning: ${args.path} does not exist yet — will pick up events once it is created\n`,
     )
   }
-  if (!LOOPBACK_HOSTS.has(args.host)) {
+  if (!is_loopback_host(args.host)) {
     process.stderr.write(
       `fascicle-viewer: warning: binding ${args.host} reaches beyond this machine, and the dashboard has no auth, so anyone who can reach it reads your trajectory stream; pass --host 127.0.0.1 to keep it local\n`,
     )
@@ -151,6 +153,7 @@ export async function run_viewer_cli(argv: readonly string[]): Promise<void> {
     host: args.host,
     port: args.port,
     buffer: args.buffer,
+    ingest: args.listen,
     on_parse_error: (err, line) => {
       const preview = line.length > 120 ? `${line.slice(0, 120)}…` : line
       process.stderr.write(
@@ -163,7 +166,7 @@ export async function run_viewer_cli(argv: readonly string[]): Promise<void> {
   })
 
   if (args.path !== undefined) process.stderr.write(`fascicle-viewer: watching ${args.path}\n`)
-  if (args.listen || args.path === undefined) process.stderr.write(`fascicle-viewer: listening for HTTP push on ${handle.url}/api/ingest\n`)
+  if (args.listen) process.stderr.write(`fascicle-viewer: listening for HTTP push on ${handle.url}/api/ingest\n`)
   process.stderr.write(`fascicle-viewer: viewer at ${handle.url}\n`)
 
   if (args.open) open_browser(handle.url)

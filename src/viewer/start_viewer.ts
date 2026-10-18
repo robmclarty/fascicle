@@ -15,6 +15,8 @@ export type StartViewerOptions = {
   readonly host?: string
   readonly port?: number
   readonly buffer?: number
+  /** Whether the server takes `POST /api/ingest`, which `http_logger` posts to; default true. */
+  readonly ingest?: boolean
   readonly on_parse_error?: (err: unknown, line: string) => void
   readonly on_io_error?: (err: unknown) => void
   readonly on_subscriber_error?: (err: unknown) => void
@@ -31,8 +33,9 @@ export type ViewerHandle = {
  * Starts the viewer: brings up the HTTP/SSE server and, if `options.path`
  * is set, a file tail that feeds the same broadcaster.
  *
- * Defaults to `127.0.0.1:4242` with a 1000-event ring buffer. HTTP ingest
- * and SSE are always available; tailing is opt-in via `path`.
+ * Defaults to `127.0.0.1:4242` with a 1000-event ring buffer. SSE is always
+ * available, HTTP ingest is on unless `ingest` is false, and tailing is opt-in
+ * via `path`.
  */
 export async function start_viewer(options: StartViewerOptions = {}): Promise<ViewerHandle> {
   const host = options.host ?? '127.0.0.1'
@@ -46,6 +49,7 @@ export async function start_viewer(options: StartViewerOptions = {}): Promise<Vi
     broadcaster,
     host,
     port,
+    ingest: options.ingest,
     // The tailed file is `/api/trajectory`'s full-history source (D7); an
     // ingest-only viewer leaves it unset and that route serves the ring.
     ...(options.path !== undefined ? { trajectory_path: options.path } : {}),

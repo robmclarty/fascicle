@@ -29,7 +29,7 @@ let viewer: ViewerHandle
 
 test.beforeAll(async () => {
   viewer = await start_viewer({ host: '127.0.0.1', port: 0 })
-  const res = await fetch(`${viewer.url}/api/ingest`, { method: 'POST', body: fixture })
+  const res = await fetch(`${viewer.url}/api/ingest`, { method: 'POST', headers: { 'content-type': 'application/x-ndjson' }, body: fixture })
   if (res.status !== 200) throw new Error(`fixture ingest failed: ${res.status}`)
 })
 

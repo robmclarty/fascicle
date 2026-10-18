@@ -10,6 +10,7 @@
  */
 
 import { appendFileSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { request } from 'node:http'
 import { networkInterfaces, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -116,11 +117,39 @@ describe('start_viewer', () => {
     handle = await start_viewer({ port: 0, buffer: 50 })
     await fetch(`${handle.url}/api/ingest`, {
       method: 'POST',
+      headers: { 'content-type': 'application/x-ndjson' },
       body: `${JSON.stringify({ kind: 'emit', text: 'pushed' })}\n`,
     })
     const res = await fetch(`${handle.url}/api/trajectory`)
     const lines = (await res.text()).split('\n').filter((line) => line.length > 0)
     expect(lines.map((line) => (JSON.parse(line) as { text: string }).text)).toEqual(['pushed'])
+  })
+
+  it('takes no posts with ingest off, answering /api/ingest 404', async () => {
+    handle = await start_viewer({ port: 0, ingest: false })
+    const res = await fetch(`${handle.url}/api/ingest`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-ndjson' },
+      body: `${JSON.stringify({ kind: 'emit', text: 'pushed' })}\n`,
+    })
+    expect(res.status).toBe(404)
+    expect(await snapshot(handle.url)).toEqual([])
+  })
+
+  it('answers 403 to a Host that names something other than loopback', async () => {
+    handle = await start_viewer({ port: 0 })
+    const res = await new Promise<number>((resolve_status, reject) => {
+      const req = request(
+        { host: '127.0.0.1', port: handle?.port, path: '/api/snapshot', headers: { host: 'evil.example' } },
+        (response) => {
+          response.resume()
+          resolve_status(response.statusCode ?? 0)
+        },
+      )
+      req.on('error', reject)
+      req.end()
+    })
+    expect(res).toBe(403)
   })
 
   it('routes malformed tail lines to on_parse_error', async () => {

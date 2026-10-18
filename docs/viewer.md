@@ -57,7 +57,9 @@ pnpm exec fascicle-viewer --listen
 ```
 
 `http_logger` drops events on a transport error, so your flow doesn't wait on
-the dev tool being up.
+the dev tool being up. Without `--listen`, the viewer doesn't mount
+`/api/ingest` at all, so one that only tails a file takes no posts. Pass a path
+and `--listen` together to take both.
 
 ## The Run Canvas
 
@@ -223,6 +225,7 @@ fascicle-viewer <path>             tail a JSONL file
 fascicle-viewer --listen           accept HTTP push only
 fascicle-viewer <path> --listen    both producers feed the same broadcaster
 
+  --listen        accept HTTP push on /api/ingest (off unless set)
   --port <n>      port (default 4242)
   --host <h>      bind host (default 127.0.0.1; --host 0.0.0.0 warns)
   --buffer <n>    ring-buffer size (default 1000)
@@ -241,6 +244,12 @@ fascicle-viewer <path> --listen    both producers feed the same broadcaster
 | `/api/ingest`     | POST   | newline-delimited events from `http_logger`    |
 | `/api/health`     | GET    | `{ ok: true }`                                 |
 
+`/api/ingest` exists only on a viewer that takes posts, which is the CLI under
+`--listen` and `start_viewer` unless you pass `ingest: false`. It reads
+`application/x-ndjson` and nothing else, so any other content type gets a 415,
+and a body over 8 MB gets a 413. `http_logger` sends one event a request with
+that content type, so it meets neither limit.
+
 SSE clients reconnect with `Last-Event-ID` and the server replays anything past
 their cursor that's still in the ring buffer. The canvas folds
 `/api/trajectory` for the whole run on load, then follows `/api/events` from the
@@ -256,6 +265,9 @@ const handle = await start_viewer({ path: '.trajectory.jsonl', port: 4242 })
 await handle.close()
 ```
 
+`start_viewer` mounts `/api/ingest` unless you pass `ingest: false`, which is
+what the CLI does when you leave off `--listen`.
+
 ## Metrics and Dashboards
 
 The viewer is the live picture of one run. For aggregates across many runs
@@ -269,3 +281,13 @@ stream, so nothing gets instrumented twice.
 Localhost only by default. `--host 0.0.0.0` is allowed, but the CLI warns you
 first, because the dashboard has no auth and shows whatever is in your
 trajectory stream. Don't bind it to a public interface.
+
+Bound to a loopback name (`127.0.0.1`, `localhost`, or `::1`), the server
+answers only a request whose `Host` header names one of those three, whatever
+the port, and answers 403 to anything else. That's what stops DNS rebinding,
+where a web page points a domain of its own at 127.0.0.1 and reads your prompts
+and outputs from inside your browser. So open the viewer by one of those names,
+not by another hostname that happens to reach your machine. A viewer bound to
+any other address checks no `Host`, since anyone who can reach it can read it
+anyway. Ingest takes only `application/x-ndjson`, which a page on another
+origin can't post without a preflight that the viewer never grants.

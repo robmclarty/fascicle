@@ -50,6 +50,7 @@ test('the header adopts the run id and folds the clock off the wire', async ({ p
   ]
   const res = await fetch(`${viewer.url}/api/ingest`, {
     method: 'POST',
+    headers: { 'content-type': 'application/x-ndjson' },
     body: `${lines.map((l) => JSON.stringify(l)).join('\n')}\n`,
   })
   expect(res.status).toBe(200)
