@@ -1,4 +1,4 @@
-import { For, Match, Show, Switch, createMemo, type JSX } from 'solid-js'
+import { For, Index, Match, Show, Switch, createMemo, type JSX } from 'solid-js'
 import { TOKENS, fit_viewport, layout } from './lib/layout'
 import {
   BLOOM_RADIUS,
@@ -21,6 +21,15 @@ import {
  * their type, the ember marks, and the annotation cards over it all. The
  * one-shot emit bloom is re-keyed off the fold's count so each increment
  * re-creates the element and restarts its animation.
+ *
+ * `build_scene` returns fresh records on every event, so a `<For>` over them
+ * would key on objects that never repeat and rebuild every element per event,
+ * restarting the march, the halo pulse, and the emit bloom each time. The
+ * scene's lists keep the layout's order for as long as the structure holds,
+ * so they render under `<Index>`, which keeps each element and updates it in
+ * place. The halo and the ambient bloom follow a filtered list whose order
+ * shifts, so they key on the layout's glyphs, which hold their identity for
+ * the same span.
  */
 
 export type Viewport = {
@@ -160,8 +169,10 @@ export function Stage(props: StageProps): JSX.Element {
   const structure = createMemo(() => props.session.structure)
   const flow = createMemo(() => layout(structure()))
   const scene = createMemo(() => build_scene(flow(), props.session))
-  const active_nodes = createMemo(() =>
-    scene().nodes.filter((node) => node.status === 'active'),
+  const active_glyphs = createMemo(() =>
+    scene()
+      .nodes.filter((node) => node.status === 'active')
+      .map((node) => node.glyph),
   )
   const fit = createMemo(() =>
     fit_viewport(flow(), props.viewport.width, props.viewport.height),
@@ -188,133 +199,131 @@ export function Stage(props: StageProps): JSX.Element {
       <g
         transform={`translate(${fit().offset_x} ${fit().offset_y}) scale(${fit().scale})`}
       >
-        <For each={active_nodes()}>
-          {(node) => (
-            <circle
-              class="bloom"
-              cx={node.glyph.center.x}
-              cy={node.glyph.center.y}
-              r={BLOOM_RADIUS}
-            />
+        <For each={active_glyphs()}>
+          {(glyph) => (
+            <circle class="bloom" cx={glyph.center.x} cy={glyph.center.y} r={BLOOM_RADIUS} />
           )}
         </For>
         <g class="scaffold" data-testid="scaffold">
-          <For each={scene().segments}>
+          <Index each={scene().segments}>
             {(scene_segment) => (
               <Show
-                when={scene_segment.state === 'live'}
+                when={scene_segment().state === 'live'}
                 fallback={
                   <path
                     class={
-                      scene_segment.state === 'traversed'
+                      scene_segment().state === 'traversed'
                         ? 'seg seg-traversed'
                         : 'seg seg-unbuilt'
                     }
-                    d={scene_segment.segment.path}
-                    data-role={scene_segment.segment.role}
-                    data-to={scene_segment.segment.to}
-                    data-state={scene_segment.state}
+                    d={scene_segment().segment.path}
+                    data-role={scene_segment().segment.role}
+                    data-to={scene_segment().segment.to}
+                    data-state={scene_segment().state}
                   />
                 }
               >
-                <LiveSegment scene_segment={scene_segment} />
+                <LiveSegment scene_segment={scene_segment()} />
               </Show>
             )}
-          </For>
+          </Index>
         </g>
-        <For each={scene().tick_lanes}>
+        <Index each={scene().tick_lanes}>
           {(lane) => (
-            <g class="tick-lane" data-owner={lane.owner} data-testid="tick-lane">
-              <For each={lane.ticks}>{(tick) => <Tick tick={tick} />}</For>
-              <For each={lane.decades}>
+            <g class="tick-lane" data-owner={lane().owner} data-testid="tick-lane">
+              <Index each={lane().ticks}>{(tick) => <Tick tick={tick()} />}</Index>
+              <Index each={lane().decades}>
                 {(decade) => (
-                  <text class="tick-decade" x={decade.x} y={decade.y}>
-                    {decade.value}
+                  <text class="tick-decade" x={decade().x} y={decade().y}>
+                    {decade().value}
                   </text>
                 )}
-              </For>
+              </Index>
             </g>
           )}
-        </For>
-        <For each={active_nodes()}>
-          {(node) => (
-            <circle
-              class="halo"
-              cx={node.glyph.center.x}
-              cy={node.glyph.center.y}
-              r={HALO_RADIUS}
-            />
+        </Index>
+        <For each={active_glyphs()}>
+          {(glyph) => (
+            <circle class="halo" cx={glyph.center.x} cy={glyph.center.y} r={HALO_RADIUS} />
           )}
         </For>
-        <For each={scene().nodes}>
+        <Index each={scene().nodes}>
           {(node) => (
             <g
               class="node"
-              data-status={node.status}
-              data-scar={node.scar === null ? undefined : 'true'}
-              data-node-id={node.glyph.id}
+              data-status={node().status}
+              data-scar={node().scar === null ? undefined : 'true'}
+              data-node-id={node().glyph.id}
               data-testid="node"
             >
               <Show
-                when={node.scar}
+                when={node().scar}
                 fallback={
                   <circle
                     class="puck"
-                    cx={node.glyph.center.x}
-                    cy={node.glyph.center.y}
+                    cx={node().glyph.center.x}
+                    cy={node().glyph.center.y}
                     r={
-                      node.status === 'active'
-                        ? node.glyph.radius + 0.5
-                        : node.glyph.radius
+                      node().status === 'active'
+                        ? node().glyph.radius + 0.5
+                        : node().glyph.radius
                     }
                   />
                 }
               >
-                {(mark) => <ScarPuck center={node.glyph.center} mark={mark()} />}
+                {(mark) => <ScarPuck center={node().glyph.center} mark={mark()} />}
               </Show>
-              <Show when={node.status === 'active'}>
+              <Show when={node().status === 'active'}>
                 <circle
                   class="puck-core"
-                  cx={node.glyph.center.x}
-                  cy={node.glyph.center.y}
+                  cx={node().glyph.center.x}
+                  cy={node().glyph.center.y}
                   r={2.5}
                 />
               </Show>
-              <Show when={node.status === 'suspended'}>
+              <Show when={node().status === 'suspended'}>
                 <For each={[-PAUSE_BAR_DX, PAUSE_BAR_DX]}>
                   {(dx) => (
                     <line
                       class="pause-bar"
-                      x1={node.glyph.center.x + dx}
-                      y1={node.glyph.center.y - PAUSE_BAR_HALF}
-                      x2={node.glyph.center.x + dx}
-                      y2={node.glyph.center.y + PAUSE_BAR_HALF}
+                      x1={node().glyph.center.x + dx}
+                      y1={node().glyph.center.y - PAUSE_BAR_HALF}
+                      x2={node().glyph.center.x + dx}
+                      y2={node().glyph.center.y + PAUSE_BAR_HALF}
                     />
                   )}
                 </For>
               </Show>
-              <Show keyed when={node.emits > 0 ? node.emits : null}>
+              <Show keyed when={node().emits > 0 ? node().emits : null}>
                 <circle
                   class="emit-bloom"
-                  cx={node.glyph.center.x}
-                  cy={node.glyph.center.y}
+                  cx={node().glyph.center.x}
+                  cy={node().glyph.center.y}
                   r={EMIT_BLOOM_RADIUS}
                 />
               </Show>
-              <Show when={node.glyph.terminus}>
+              <Show when={node().glyph.terminus}>
                 <circle
                   class="terminus-ring"
-                  cx={node.glyph.center.x}
-                  cy={node.glyph.center.y}
+                  cx={node().glyph.center.x}
+                  cy={node().glyph.center.y}
                   r={TOKENS.terminus_ring_radius}
                 />
               </Show>
-              <text class="node-name" x={node.glyph.name_anchor.x} y={node.glyph.name_anchor.y}>
-                {node.glyph.label}
+              <text
+                class="node-name"
+                x={node().glyph.name_anchor.x}
+                y={node().glyph.name_anchor.y}
+              >
+                {node().glyph.label}
               </text>
-              <text class="node-meta" x={node.glyph.meta_anchor.x} y={node.glyph.meta_anchor.y}>
-                {node.meta}
-                <Show when={node.meta_fail}>
+              <text
+                class="node-meta"
+                x={node().glyph.meta_anchor.x}
+                y={node().glyph.meta_anchor.y}
+              >
+                {node().meta}
+                <Show when={node().meta_fail}>
                   {(fail) => (
                     <>
                       <tspan> · </tspan>
@@ -322,78 +331,82 @@ export function Stage(props: StageProps): JSX.Element {
                     </>
                   )}
                 </Show>
-                <Show when={node.checkpoint}>
+                <Show when={node().checkpoint}>
                   <tspan class="meta-check"> ✓</tspan>
                 </Show>
               </text>
             </g>
           )}
-        </For>
-        <For each={scene().fail_marks}>
+        </Index>
+        <Index each={scene().fail_marks}>
           {(mark) => (
-            <path class="fail-mark" d={cross_path(mark.x, mark.y, MARK_ARM)} />
+            <path class="fail-mark" d={cross_path(mark().x, mark().y, MARK_ARM)} />
           )}
-        </For>
-        <For each={scene().junctions}>
+        </Index>
+        <Index each={scene().junctions}>
           {(junction) => (
-            <g class="junction" data-status={junction.status} data-testid="junction">
+            <g class="junction" data-status={junction().status} data-testid="junction">
               <circle
                 class="puck"
-                cx={junction.glyph.center.x}
-                cy={junction.glyph.center.y}
-                r={junction.glyph.radius}
+                cx={junction().glyph.center.x}
+                cy={junction().glyph.center.y}
+                r={junction().glyph.radius}
               />
               <text
                 class="junction-label"
-                x={junction.glyph.label_anchor.x}
-                y={junction.glyph.label_anchor.y}
+                x={junction().glyph.label_anchor.x}
+                y={junction().glyph.label_anchor.y}
               >
-                {junction.label}
+                {junction().label}
               </text>
             </g>
           )}
-        </For>
-        <For each={scene().group_labels}>
+        </Index>
+        <Index each={scene().group_labels}>
           {(label) => (
-            <g class="group-label" data-owner={label.anchor.owner} data-testid="group-label">
+            <g class="group-label" data-owner={label().anchor.owner} data-testid="group-label">
               <line
                 class="group-tick"
-                x1={label.anchor.tick.x}
-                y1={label.anchor.tick.y}
-                x2={label.anchor.tick.x + TOKENS.group_tick_length}
-                y2={label.anchor.tick.y}
+                x1={label().anchor.tick.x}
+                y1={label().anchor.tick.y}
+                x2={label().anchor.tick.x + TOKENS.group_tick_length}
+                y2={label().anchor.tick.y}
               />
-              <text class="group-text" x={label.anchor.text_anchor.x} y={label.anchor.text_anchor.y}>
-                {label.text}
+              <text
+                class="group-text"
+                x={label().anchor.text_anchor.x}
+                y={label().anchor.text_anchor.y}
+              >
+                {label().text}
               </text>
             </g>
           )}
-        </For>
-        <For each={scene().cards}>
+        </Index>
+        <Index each={scene().cards}>
           {(card) => (
-            <g class="card" data-owner={card.owner} data-testid="card">
-              <For each={card.lines}>
+            <g class="card" data-owner={card().owner} data-testid="card">
+              <Index each={card().lines}>
                 {(line) => (
                   <text
-                    class={line.role === 'title' ? 'card-title' : 'card-detail'}
-                    x={line.x}
-                    y={line.y}
+                    class={line().role === 'title' ? 'card-title' : 'card-detail'}
+                    x={line().x}
+                    y={line().y}
                   >
-                    <For each={line.spans}>
+                    <Index each={line().spans}>
                       {(span) => (
-                        <tspan class={span.ember ? 'card-fail' : undefined}>
-                          {span.text}
+                        <tspan class={span().ember ? 'card-fail' : undefined}>
+                          {span().text}
                         </tspan>
                       )}
-                    </For>
+                    </Index>
                   </text>
                 )}
-              </For>
-              <path class="card-leader" d={card.leader} />
-              <circle class="card-dot" cx={card.dot.x} cy={card.dot.y} r={2.5} />
+              </Index>
+              <path class="card-leader" d={card().leader} />
+              <circle class="card-dot" cx={card().dot.x} cy={card().dot.y} r={2.5} />
             </g>
           )}
-        </For>
+        </Index>
       </g>
     </svg>
   )

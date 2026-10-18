@@ -145,6 +145,87 @@ test('the finished run settles: all grey, counts final, clock frozen', async ({
   await expect(page.locator('.fail-mark')).toHaveCount(1)
 })
 
+/** Feed hand-written wire events to the live stream. */
+async function ingest_events(events: ReadonlyArray<Record<string, unknown>>): Promise<void> {
+  const res = await fetch(`${viewer.url}/api/ingest`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-ndjson' },
+    body: `${events.map((event) => JSON.stringify(event)).join('\n')}\n`,
+  })
+  if (res.status !== 200) throw new Error(`event ingest failed: ${res.status}`)
+}
+
+/** The fixture's run id and the span ids of its first two steps. */
+const RUN_ID = '42b20e54-41e6-47b2-8697-bda677867762'
+const FETCH_BRIEF_SPAN = 'step:8cfe50e6'
+const EXPLODE_SOURCES_SPAN = 'step:57e74a75'
+
+test('an event keeps every glyph element and blooms an emit once', async ({ page }) => {
+  await ingest(0, 3)
+  const fetch_node = page.locator('.node[data-node-id="fetch_brief"]')
+  await expect(fetch_node).toHaveAttribute('data-status', 'active')
+
+  // Count every emit bloom the stage creates from here on, whether it arrives
+  // alone or inside a rebuilt node, since each one restarts the animation.
+  // The count rides a data attribute that the stage itself never sets.
+  const stage = page.getByTestId('stage')
+  await stage.evaluate((element) => {
+    let count = 0
+    element.setAttribute('data-blooms', '0')
+    new MutationObserver((records) => {
+      for (const record of records) {
+        for (const added of record.addedNodes) {
+          if (!(added instanceof Element)) continue
+          if (added.matches('.emit-bloom')) count += 1
+          count += added.querySelectorAll('.emit-bloom').length
+        }
+      }
+      element.setAttribute('data-blooms', String(count))
+    }).observe(element, { childList: true, subtree: true })
+  })
+
+  await ingest_events([
+    { kind: 'emit', label: 'progress', span_id: FETCH_BRIEF_SPAN, run_id: RUN_ID, ts: 1787368870100 },
+  ])
+  await expect(fetch_node.locator('.emit-bloom')).toHaveCount(1)
+  await expect(stage).toHaveAttribute('data-blooms', '1')
+
+  const pending_node = await page.locator('.node[data-node-id="finalize"]').elementHandle()
+  const unbuilt_path = await page
+    .locator('[data-role="line"][data-to="finalize"]')
+    .elementHandle()
+  const emitted_node = await fetch_node.elementHandle()
+
+  // fetch_brief ends and explode_sources starts: nothing about finalize moves.
+  await ingest(3, 5)
+  await expect(fetch_node).toHaveAttribute('data-status', 'done')
+  await expect(page.locator('.node[data-node-id="explode_sources"]')).toHaveAttribute(
+    'data-status',
+    'active',
+  )
+
+  // The handles are the elements from before the event, and the selectors
+  // find the ones on the page now: the same element answers both.
+  const same = await page.evaluate(
+    ([node, path, emitted]) => [
+      node === document.querySelector('.node[data-node-id="finalize"]'),
+      path === document.querySelector('[data-role="line"][data-to="finalize"]'),
+      emitted === document.querySelector('.node[data-node-id="fetch_brief"]'),
+    ],
+    [pending_node, unbuilt_path, emitted_node] as const,
+  )
+  expect(same).toStrictEqual([true, true, true])
+  await expect(stage).toHaveAttribute('data-blooms', '1')
+
+  await ingest_events([
+    { kind: 'emit', label: 'progress', span_id: EXPLODE_SOURCES_SPAN, run_id: RUN_ID, ts: 1787368870130 },
+  ])
+  await expect(
+    page.locator('.node[data-node-id="explode_sources"] .emit-bloom'),
+  ).toHaveCount(1)
+  await expect(stage).toHaveAttribute('data-blooms', '2')
+})
+
 test.describe('reduced motion (C9)', () => {
   test.use({ contextOptions: { reducedMotion: 'reduce' } })
 

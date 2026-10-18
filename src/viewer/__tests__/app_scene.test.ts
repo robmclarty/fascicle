@@ -404,6 +404,35 @@ describe('build_scene', () => {
     expect(scene.group_labels.map((label) => label.text)).toEqual(['ZP'])
   })
 
+  it('keeps the layout order and glyphs from event to event, so the stage keys hold', () => {
+    const before = fold_fixture(3)
+    const after = events.slice(3, 5).reduce<Session>(apply_frame, before)
+    expect(after.structure).toBe(before.structure)
+    const flow = layout(before.structure)
+    const early = build_scene(flow, before)
+    const late = build_scene(flow, after)
+    expect(late.nodes.map((node) => node.status)).not.toEqual(
+      early.nodes.map((node) => node.status),
+    )
+    expect(early.nodes.map((node) => node.glyph)).toEqual(flow.nodes)
+    for (const [index, node] of late.nodes.entries()) {
+      expect(node.glyph).toBe(flow.nodes[index])
+    }
+    for (const [index, entry] of late.segments.entries()) {
+      expect(entry.segment).toBe(flow.segments[index])
+    }
+    for (const [index, junction] of late.junctions.entries()) {
+      expect(junction.glyph).toBe(flow.junctions[index])
+    }
+    for (const [index, label] of late.group_labels.entries()) {
+      expect(label.anchor).toBe(flow.group_labels[index])
+    }
+    expect(late.nodes).toHaveLength(flow.nodes.length)
+    expect(late.segments).toHaveLength(flow.segments.length)
+    expect(late.junctions).toHaveLength(flow.junctions.length)
+    expect(late.group_labels).toHaveLength(flow.group_labels.length)
+  })
+
   it('is empty before any structure arrives', () => {
     const scene = scene_of(EMPTY_SESSION)
     expect(scene.nodes).toEqual([])
