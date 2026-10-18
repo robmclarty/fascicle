@@ -1,11 +1,11 @@
 id: model-call-is-sole-bridge
-message: "model_call.ts is the only umbrella file allowed to import value symbols from #core and/or #engine. Re-exports (export ... from) are fine; direct value imports must be confined to model_call.ts so the bridge between the composition and engine layers stays in exactly one file. (files is an explicit list of the top-level umbrella files because ast-grep globs treat `*` as crossing `/`; model_call.ts is omitted as the sanctioned bridge.)"
+message: "This umbrella file imports a value from #core or #engine, but model_call.ts is the one file allowed to bridge the composition and engine layers. Re-export the symbol (export ... from) or move the code that needs it into model_call.ts. diagram_cli.ts is the one other exception and is left off the list on purpose: the fascicle-diagram command needs core's describe and is_step, and imports nothing from #engine. (files names each umbrella file because an ast-grep glob's `*` crosses `/`.)"
 severity: error
 language: typescript
 files:
   - src/index.ts
-  - src/adapters/index.ts
   - src/forward_standard_env.ts
+  - src/diagram_bin.ts
 rule:
   any:
     - pattern: import { $$$ } from '$PATH'
