@@ -35,6 +35,33 @@ export const CACHE_READ_MULTIPLIER = 0.1
 export const CACHE_WRITE_MULTIPLIER = 1.25
 
 export const DEFAULT_PRICING: PricingTable = Object.freeze({
+  // Anthropic list prices, checked 2026-10-18 against
+  // https://platform.claude.com/docs/en/about-claude/pricing. A cache write is
+  // the 5-minute write; the 1-hour write costs more and has no field here.
+  'anthropic:claude-fable-5-1': {
+    input_per_million: 10.0,
+    output_per_million: 50.0,
+    cached_input_per_million: 0.25,
+    cache_write_per_million: 12.5,
+  },
+  'anthropic:claude-fable-5': {
+    input_per_million: 10.0,
+    output_per_million: 50.0,
+    cached_input_per_million: 1.0,
+    cache_write_per_million: 12.5,
+  },
+  'anthropic:claude-opus-5-5': {
+    input_per_million: 4.0,
+    output_per_million: 20.0,
+    cached_input_per_million: 0.2,
+    cache_write_per_million: 5.0,
+  },
+  'anthropic:claude-opus-5': {
+    input_per_million: 5.0,
+    output_per_million: 25.0,
+    cached_input_per_million: 0.5,
+    cache_write_per_million: 6.25,
+  },
   'anthropic:claude-opus-4-8': {
     input_per_million: 5.0,
     output_per_million: 25.0,
@@ -53,11 +80,31 @@ export const DEFAULT_PRICING: PricingTable = Object.freeze({
     cached_input_per_million: 0.5,
     cache_write_per_million: 6.25,
   },
+  'anthropic:claude-sonnet-5-5': {
+    input_per_million: 2.0,
+    output_per_million: 10.0,
+    cached_input_per_million: 0.1,
+    cache_write_per_million: 2.5,
+  },
+  'anthropic:claude-sonnet-5': {
+    input_per_million: 2.0,
+    output_per_million: 10.0,
+    cached_input_per_million: 0.2,
+    cache_write_per_million: 2.5,
+  },
   'anthropic:claude-sonnet-4-6': {
     input_per_million: 3.0,
     output_per_million: 15.0,
     cached_input_per_million: 0.3,
     cache_write_per_million: 3.75,
+  },
+  // The base tier, for a prompt of 100,000 tokens or fewer. A longer prompt
+  // pays five times each rate, which this row under-counts.
+  'anthropic:claude-haiku-5-5': {
+    input_per_million: 0.1,
+    output_per_million: 0.5,
+    cached_input_per_million: 0.01,
+    cache_write_per_million: 0.125,
   },
   'anthropic:claude-haiku-4-5': {
     input_per_million: 1.0,
@@ -66,6 +113,28 @@ export const DEFAULT_PRICING: PricingTable = Object.freeze({
     cache_write_per_million: 1.25,
   },
 
+  // OpenAI Standard-tier list prices, checked 2026-10-18 against
+  // https://developers.openai.com/api/docs/pricing. The gpt-6 rows are the
+  // short-context base tier (272K input tokens or fewer); a longer prompt
+  // pays more, which these rows under-count.
+  'openai:gpt-6-astra': {
+    input_per_million: 10.0,
+    output_per_million: 50.0,
+    cached_input_per_million: 1.0,
+    cache_write_per_million: 12.5,
+  },
+  'openai:gpt-6.1-sol': {
+    input_per_million: 2.0,
+    output_per_million: 10.0,
+    cached_input_per_million: 0.1,
+    cache_write_per_million: 2.5,
+  },
+  'openai:gpt-6-luna': {
+    input_per_million: 0.1,
+    output_per_million: 0.5,
+    cached_input_per_million: 0.01,
+    cache_write_per_million: 0.125,
+  },
   'openai:gpt-4o': {
     input_per_million: 2.5,
     output_per_million: 10.0,
@@ -77,8 +146,40 @@ export const DEFAULT_PRICING: PricingTable = Object.freeze({
     cached_input_per_million: 0.075,
   },
 
-  'google:gemini-2.5-pro': { input_per_million: 1.25, output_per_million: 5.0 },
-  'google:gemini-2.5-flash': { input_per_million: 0.075, output_per_million: 0.3 },
+  // Gemini paid-tier list prices, checked 2026-10-18 against
+  // https://ai.google.dev/gemini-api/docs/pricing (last updated 2026-10-16).
+  // A cached token is the context-caching rate; the hourly storage charge has
+  // no field here. Text input rates, since audio costs more on some models.
+  // Gemini 4 Argon's rates hold through 2026-11-30 and double on 2026-12-01
+  // (4.00 / 20.00 / 0.20), and Gemini 3.8 Flash's hold through 2026-12-31 and
+  // double on 2027-01-01 (1.50 / 7.50 / 0.15).
+  'google:gemini-4-argon': {
+    input_per_million: 2.0,
+    output_per_million: 10.0,
+    cached_input_per_million: 0.1,
+  },
+  'google:gemini-3.8-flash': {
+    input_per_million: 0.75,
+    output_per_million: 3.75,
+    cached_input_per_million: 0.075,
+  },
+  'google:gemini-3.5-flash-lite': {
+    input_per_million: 0.3,
+    output_per_million: 2.5,
+    cached_input_per_million: 0.03,
+  },
+  // The base tier, for a prompt of 200,000 tokens or fewer. A longer prompt
+  // pays more, which this row under-counts.
+  'google:gemini-2.5-pro': {
+    input_per_million: 1.25,
+    output_per_million: 10.0,
+    cached_input_per_million: 0.125,
+  },
+  'google:gemini-2.5-flash': {
+    input_per_million: 0.3,
+    output_per_million: 2.5,
+    cached_input_per_million: 0.03,
+  },
 })
 
 /**

@@ -51,11 +51,54 @@ describe('DEFAULT_PRICING', () => {
     })
     expect(DEFAULT_PRICING['google:gemini-2.5-pro']).toEqual({
       input_per_million: 1.25,
-      output_per_million: 5.0,
+      output_per_million: 10.0,
+      cached_input_per_million: 0.125,
     })
     expect(DEFAULT_PRICING['google:gemini-2.5-flash']).toEqual({
-      input_per_million: 0.075,
-      output_per_million: 0.3,
+      input_per_million: 0.3,
+      output_per_million: 2.5,
+      cached_input_per_million: 0.03,
+    })
+  })
+
+  it('prices the current flagship of each provider at its checked list price', () => {
+    expect(DEFAULT_PRICING['anthropic:claude-opus-5-5']).toStrictEqual({
+      input_per_million: 4.0,
+      output_per_million: 20.0,
+      cached_input_per_million: 0.2,
+      cache_write_per_million: 5.0,
+    })
+    expect(DEFAULT_PRICING['openai:gpt-6.1-sol']).toStrictEqual({
+      input_per_million: 2.0,
+      output_per_million: 10.0,
+      cached_input_per_million: 0.1,
+      cache_write_per_million: 2.5,
+    })
+    expect(DEFAULT_PRICING['google:gemini-4-argon']).toStrictEqual({
+      input_per_million: 2.0,
+      output_per_million: 10.0,
+      cached_input_per_million: 0.1,
+    })
+  })
+
+  it.each(Object.entries(DEFAULT_PRICING))('%s prices input and output, with a cache read below input and a write at or above it', (_key, row) => {
+    expect(row.input_per_million).toBeGreaterThan(0)
+    expect(row.output_per_million).toBeGreaterThan(row.input_per_million)
+    if (row.cached_input_per_million !== undefined) {
+      expect(row.cached_input_per_million).toBeGreaterThan(0)
+      expect(row.cached_input_per_million).toBeLessThan(row.input_per_million)
+    }
+    if (row.cache_write_per_million !== undefined) {
+      expect(row.cache_write_per_million).toBeGreaterThanOrEqual(row.input_per_million)
+    }
+  })
+
+  it('prices a tiered model at its base tier', () => {
+    expect(DEFAULT_PRICING['anthropic:claude-haiku-5-5']).toStrictEqual({
+      input_per_million: 0.1,
+      output_per_million: 0.5,
+      cached_input_per_million: 0.01,
+      cache_write_per_million: 0.125,
     })
   })
 
