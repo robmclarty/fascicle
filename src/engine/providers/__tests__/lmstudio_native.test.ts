@@ -188,6 +188,11 @@ describe('lmstudio native dialect wiring', () => {
     const { body } = await sent_body({}, { effort: 'high' })
     expect(body['reasoning_effort']).toBe('high')
   })
+
+  it.each(['xhigh', 'max'] as const)('clamps effort %s to high, since a local server takes low, medium, and high', async (effort) => {
+    const { body } = await sent_body({}, { effort })
+    expect(body['reasoning_effort']).toBe('high')
+  })
 })
 
 describe('tolerant usage', () => {

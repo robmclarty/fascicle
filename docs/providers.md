@@ -124,7 +124,8 @@ On the `ai_sdk` transport, `anthropic`, `openai`, `google`, and `bedrock` hand t
 The table above is the `ai_sdk` mapping. On `transport: 'native'`:
 
 - **`openrouter`** sends OpenRouter's nested `reasoning: { effort }`, the same field that its `ai_sdk` row sends, with every level passed through, `xhigh` and `max` included.
-- **`openai` and `lmstudio`** send the flat `reasoning_effort` string (`low`/`medium`/`high`, with `xhigh`/`max` clamped to `high`), so `lmstudio` native forwards effort where its `ai_sdk` row drops it. A model that doesn't reason ignores the field server-side.
+- **`openai`** sends the flat `reasoning_effort` string with the level as it is, `xhigh` and `max` included, since OpenAI's Chat Completions reference lists every level from `none` through `max` for that field. Not every model takes every level, and OpenAI's reasoning guide says which ones each model takes, so check it before you reach for `xhigh` or `max`. A model that doesn't reason ignores the field server-side.
+- **`lmstudio`** sends the same flat field, with `xhigh` and `max` clamped to `high`, since a local server takes only `low`, `medium`, and `high`. So `lmstudio` native forwards effort where its `ai_sdk` row drops it.
 - **`anthropic`** turns `low` through `max` into adaptive thinking, `thinking: { type: 'adaptive', display: 'summarized' }`, plus `output_config: { effort }` with the level as it is, since the two scales match one for one. It reads no model id to do it. Every Claude model from 4.6 on takes adaptive thinking, and from 4.7 on they refuse the old `thinking: { type: 'enabled', budget_tokens }` with a 400. A model older than 4.6 refuses `adaptive`, so its caller sets `effort: 'none'` and passes a budget as `provider_options.anthropic.thinking`, or takes the `ai_sdk` transport, whose peer still sends that model a budget.
 - **`ollama`** ignores effort entirely (D2), and unlike its `ai_sdk` row it records no `effort_ignored` event, so nothing in the trajectory shows that the level was dropped. Thinking on that wire is opt-in through `provider_options.ollama.think`.
 
@@ -544,7 +545,7 @@ const engine = create_engine({
 ```
 
 - **No image input**, and **schema always rides the repair loop** (no `structured_output`).
-- **Reasoning is forwarded, not dropped.** Unlike the `ai_sdk` transport, the native core maps `effort` to the flat `reasoning_effort`, as it does for `openai`, so it's sent on the wire, and a model that doesn't reason simply ignores it server-side.
+- **Reasoning is forwarded, not dropped.** Unlike the `ai_sdk` transport, the native core maps `effort` to the flat `reasoning_effort`, as it does for `openai`, so it's sent on the wire, with `xhigh` and `max` clamped to `high`, and a model that doesn't reason simply ignores it server-side.
 - **`provider_options.lmstudio` is raw OpenAI-compatible wire format (D9).** Keys are Chat Completions fields (**snake_case**: `max_tokens`, `reasoning_effort`, `top_p`, `stop`, ...), shallow-merged last over the engine-computed body. As with `openai` native, these don't port from the camelCase `ai_sdk` spellings.
 
 ## `claude_cli`

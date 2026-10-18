@@ -168,9 +168,9 @@ describe('openai native dialect wiring', () => {
     ['low', 'low'],
     ['medium', 'medium'],
     ['high', 'high'],
-    ['xhigh', 'high'],
-    ['max', 'high'],
-  ] as const)('maps effort %s to reasoning_effort %s (A4)', async (effort, expected) => {
+    ['xhigh', 'xhigh'],
+    ['max', 'max'],
+  ] as const)('maps effort %s to reasoning_effort %s, as OpenAI documents it', async (effort, expected) => {
     const { body } = await sent_body({}, { effort })
     if (expected === undefined) {
       expect(body).not.toHaveProperty('reasoning_effort')

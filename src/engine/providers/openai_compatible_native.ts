@@ -59,7 +59,9 @@ import type { NativeProviderAdapter, ProviderCapability } from './types.js'
  * effort field: `'flat'` (the default) is OpenAI's `reasoning_effort`, and
  * `'nested'` is OpenRouter's `reasoning: { effort }`, kept apart from
  * `reasoning`, since a server's reasoning field doesn't decide its effort
- * field. `reasoning: 'reasoning_details'` reads OpenRouter's entries from a
+ * field. `clamp_effort` marks a server whose flat field takes only `low`,
+ * `medium`, and `high` (lmstudio), so `xhigh` and `max` send `high` there.
+ * `reasoning: 'reasoning_details'` reads OpenRouter's entries from a
  * response and sends a turn's own back; a dialect without it reads no
  * reasoning at all, and another server's field would be a new value here.
  * `reports_cost` reads the charge the server puts on its usage object as
@@ -76,16 +78,18 @@ export type OpenAICompatibleDialect = {
   readonly tolerant_usage: boolean
   readonly reports_cost: boolean
   readonly effort_shape?: 'flat' | 'nested'
+  readonly clamp_effort?: boolean
   readonly reasoning?: 'reasoning_details'
 }
 
 /**
- * The flat field's wire enum is `low | medium | high` only, so `xhigh` and
- * `max` clamp to `high`. The nested shape takes every level, so it skips this
- * table. Non-reasoning models ignore either field server-side; the adapter
- * does not model-sniff.
+ * The levels a `clamp_effort` server takes on the flat field: `low | medium |
+ * high` only, so `xhigh` and `max` clamp to `high`. OpenAI's own enum takes
+ * every level, so the openai dialect skips this table, as the nested shape
+ * does. Which levels a model honors is the server's call; the adapter does
+ * not model-sniff.
  */
-const OPENAI_COMPATIBLE_REASONING_EFFORT: Record<
+const CLAMPED_REASONING_EFFORT: Record<
   Exclude<EffortLevel, 'none'>,
   'low' | 'medium' | 'high'
 > = {
@@ -264,7 +268,8 @@ function apply_effort(
   if (dialect.effort_shape === 'nested') {
     body['reasoning'] = { effort }
   } else {
-    body['reasoning_effort'] = OPENAI_COMPATIBLE_REASONING_EFFORT[effort]
+    body['reasoning_effort'] =
+      dialect.clamp_effort === true ? CLAMPED_REASONING_EFFORT[effort] : effort
   }
 }
 

@@ -99,6 +99,7 @@ const create_lmstudio_native_adapter = (init: ProviderInit): NativeProviderAdapt
     stream_include_usage: true,
     tolerant_usage: true,
     reports_cost: false,
+    clamp_effort: true,
   }
   return create_openai_compatible_adapter(dialect)
 }

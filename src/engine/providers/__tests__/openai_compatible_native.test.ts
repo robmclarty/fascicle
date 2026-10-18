@@ -340,9 +340,9 @@ describe('build_chat_completions_body', () => {
     ['low', 'low'],
     ['medium', 'medium'],
     ['high', 'high'],
-    ['xhigh', 'high'],
-    ['max', 'high'],
-  ] as const)('maps effort %s to reasoning_effort %s (A4)', (effort, expected) => {
+    ['xhigh', 'xhigh'],
+    ['max', 'max'],
+  ] as const)('sends effort %s as reasoning_effort %s, every level OpenAI documents', (effort, expected) => {
     const body = build_chat_completions_body(make_req({ effort }), make_dialect())
     if (expected === undefined) {
       expect(body).not.toHaveProperty('reasoning_effort')
@@ -357,8 +357,38 @@ describe('build_chat_completions_body', () => {
       make_req({ effort: 'max' }),
       make_dialect({ effort_shape: 'flat' }),
     )
-    expect(body['reasoning_effort']).toBe('high')
+    expect(body['reasoning_effort']).toBe('max')
     expect(body).not.toHaveProperty('reasoning')
+  })
+
+  it.each([
+    ['low', 'low'],
+    ['medium', 'medium'],
+    ['high', 'high'],
+    ['xhigh', 'high'],
+    ['max', 'high'],
+  ] as const)('clamps effort %s to reasoning_effort %s under clamp_effort', (effort, expected) => {
+    const body = build_chat_completions_body(
+      make_req({ effort }),
+      make_dialect({ clamp_effort: true }),
+    )
+    expect(body['reasoning_effort']).toBe(expected)
+  })
+
+  it('writes no effort field for effort none under clamp_effort', () => {
+    const body = build_chat_completions_body(
+      make_req({ effort: 'none' }),
+      make_dialect({ clamp_effort: true }),
+    )
+    expect(body).not.toHaveProperty('reasoning_effort')
+  })
+
+  it('ignores clamp_effort under the nested effort_shape', () => {
+    const body = build_chat_completions_body(
+      make_req({ effort: 'max' }),
+      make_dialect({ effort_shape: 'nested', clamp_effort: true }),
+    )
+    expect(body['reasoning']).toStrictEqual({ effort: 'max' })
   })
 
   // The nested shape takes every level unclamped.
