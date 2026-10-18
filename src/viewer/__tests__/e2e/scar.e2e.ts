@@ -5,7 +5,7 @@ import { expect, test } from '@playwright/test'
 import { start_viewer, type ViewerHandle } from '../../index.js'
 
 /**
- * The scar study, artboard 04 in a real browser: the fixture's fallback fires
+ * The scar study in a real browser: the fixture's fallback fires
  * when its primary throws terminally, so `always_throws` scars while
  * `safe_default` carries the run. The ring breaks, an ember ✕ orbits it, the
  * name drops to 55%, the primary through-line is left dead, and the scar
@@ -55,7 +55,7 @@ test('the scar breaks the ring and orbits a single ember mark', async ({ page })
   await expect(scarred.locator('.scar-mark')).toHaveCount(1)
 
   // Ember is only ✕ glyphs: the scar's, the retry's spent attempt, and the
-  // scar card reading the wound aloud; never a fill or border (C4).
+  // scar card reading the wound aloud; never a fill or border.
   await expect(page.locator('.scar-mark')).toHaveCount(1)
   await expect(page.locator('.fail-mark')).toHaveCount(1)
   await expect(page.locator('.card-fail')).toHaveText('✕')

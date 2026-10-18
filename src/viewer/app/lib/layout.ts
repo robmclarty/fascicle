@@ -15,33 +15,37 @@
  *   `chain`, `compose`, `checkpoint`, `stash`, `scope`, `timeout`).
  * - fan: `parallel` and `branch` split into lanes that rejoin at a junction
  *   puck.
- * - loop: `retry` and `loop` around a single puck draw the artboard's
- *   circle in the line; around anything wider they draw a return line
+ * - loop: `retry` and `loop` around a single puck draw a circle in the
+ *   line; around anything wider they draw a return line
  *   routed below, because attempts over a subtree traverse the subtree's
  *   own geometry and only the repeat needs a path of its own.
  * - basin: `fallback` keeps its primary on the through line and routes each
  *   backup through a bypass basin below.
- * - tick lane: `map` collapses its instances onto one child (D6) and
- *   reserves a stretch of outgoing line where instance ticks accrete.
+ * - tick lane: `map` collapses its instances onto one child (the fold groups
+ *   them by span meta) and reserves a stretch of outgoing line where
+ *   instance ticks accrete.
  *
- * Unknown kinds render harmlessly (C7): with children they lay out as a
- * sequence, without they are a puck, and a `<cycle>` back-reference is a
- * puck that shares its target's id so the renderer lights both together.
+ * Unknown kinds render harmlessly, because the wire only grows additively and
+ * a kind this build has never heard of must not break the canvas: with
+ * children they lay out as a sequence, without they are a puck, and a
+ * `<cycle>` back-reference is a puck that shares its target's id so the
+ * renderer lights both together.
  *
- * The numbers come from the frozen artboards. Tokens named by the design
- * system (margin 72, branch pitch 92, corner radius 24, label clearance 16,
- * tick pitches 30/18 with decade gaps) are carried verbatim; the remaining
+ * The numbers are the frozen design's. Tokens named by the design system
+ * (margin 72, branch pitch 92, corner radius 24, label clearance 16, tick
+ * pitches 30/18 with decade gaps) are carried verbatim; the remaining
  * constants (node pitch 128, lane lead 56, junction gap 36, entry stub 28,
- * basin shoulder 108, tick reserve 160) are measured off artboards 01 and
- * 04 so the fixture flow reproduces their proportions. `TOKENS` is exported
- * as one frozen bag because it is the contract the tests pin.
+ * basin shoulder 108, tick reserve 160) give the design fixture's flow its
+ * proportions. `TOKENS` is exported as one frozen bag because it is the
+ * contract the tests pin.
  *
- * Overflow follows the Q3 ruling: `fit_viewport` scales the whole canvas to
- * fit, never above 1, and stops at `MIN_SCALE` (rendered Sora names must
- * stay at or above 11px of their 15px set size); past the floor the fit
- * reports pan instead. Label collision at fixed scale falls back to
- * truncation with a title, which is the renderer's job: the pitch a name
- * must fit inside is `TOKENS.node_pitch` less clearance.
+ * Overflow keeps names readable before it keeps the whole flow in view:
+ * `fit_viewport` scales the whole canvas to fit, never above 1, and stops at
+ * `MIN_SCALE` (rendered Sora names must stay at or above 11px of their 15px
+ * set size); past the floor the fit reports pan instead. Label collision at
+ * fixed scale falls back to truncation with a title, which is the renderer's
+ * job: the pitch a name must fit inside is `TOKENS.node_pitch` less
+ * clearance.
  *
  * Nothing is imported, not even the fold's types: the module is a leaf the
  * bundler, the mutation gate, and the tests can hold in isolation.
@@ -82,7 +86,7 @@ export type NodeGlyph = {
 }
 
 /**
- * The small puck where a fan's lanes rejoin (artboard 01's `merge`). It is
+ * The small puck where a fan's lanes rejoin, captioned `merge`. It is
  * synthetic geometry, not a structure node, so it carries its own id
  * (`<fan id>:junction`) plus the owning fan's id for runtime treatment.
  */
@@ -108,7 +112,8 @@ export type SegmentRole =
  * One drawn line. `to` names the structure node whose runtime activity
  * lights the segment; `from` is the node west of it (null only for the
  * entry stub). `path` is ready-to-render SVG path data because the
- * components stay thin (D4): every coordinate decision is made here.
+ * components stay markup: every coordinate decision is made here, where the
+ * mutation gate can hold it.
  */
 export type Segment = {
   readonly role: SegmentRole
@@ -152,11 +157,11 @@ export type FlowLayout = {
 }
 
 /**
- * The spacing system, frozen. The first group is named by artboard 05
- * verbatim; the second is measured off artboards 01, 03, and 04 (node
- * pitch is the spine's dominant puck rhythm, the entry stub is one dot-grid
- * cell, the basin shoulder is the flat approach either side of a fallback's
- * primary). Type sizes ride along because the Q3 scale floor derives from
+ * The spacing system, frozen. The first group is the design system's named
+ * tokens, verbatim; the second sets the canvas proportions (node pitch is
+ * the spine's dominant puck rhythm, the entry stub is one dot-grid cell, the
+ * basin shoulder is the flat approach either side of a fallback's primary).
+ * Type sizes ride along because the readability floor on scale derives from
  * them. Tests pin the whole bag: drift here is a design break, not a tune.
  */
 export const TOKENS = {
@@ -192,7 +197,7 @@ export const TOKENS = {
   min_name_px: 11,
 } as const
 
-/** Q3's readability floor: a 15px Sora name may shrink to 11px, no further. */
+/** The readability floor: a 15px Sora name may shrink to 11px, no further. */
 export const MIN_SCALE = TOKENS.min_name_px / TOKENS.name_px
 
 /** Vertical space a puck claims above its line (ring radius plus stroke). */
@@ -219,7 +224,7 @@ const LOOP_LABEL_ABOVE = TOKENS.label_clear + LABEL_CAP
 /** The junction caption's extent below the line. */
 const JUNCTION_BELOW = TOKENS.junction_label_drop + DESCENT
 
-/** The basin caption's extent below the basin floor (artboard 04). */
+/** The basin caption's extent below the basin floor. */
 const BASIN_LABEL_BELOW = TOKENS.basin_drop + GROUP_TICK_RISE + DESCENT
 
 /** The basin caption's tick starts this far east of the basin mouth. */
@@ -260,8 +265,8 @@ type Box = {
 }
 
 /**
- * Lay out a structure tree. `null` (a pre-structure file, C7) yields an
- * empty canvas of bare margins rather than a crash.
+ * Lay out a structure tree. `null` (a file recorded before runs logged
+ * their structure) yields an empty canvas of bare margins rather than a crash.
  */
 export function layout(root: LayoutNode | null): FlowLayout {
   const sink: Sink = {
@@ -302,7 +307,7 @@ export function layout(root: LayoutNode | null): FlowLayout {
  * Pick a subtree's geometry family. Order matters only where shapes
  * overlap: a fan or fallback without enough children degrades to the
  * sequential reading, and any kind without children ends as a puck, which
- * is what keeps foreign kinds harmless (C7).
+ * is what keeps foreign kinds harmless.
  */
 function measure(node: LayoutNode): Box {
   const children = (node.children ?? []).map(measure)
@@ -383,7 +388,7 @@ function run_box(children: ReadonlyArray<Box>): Omit<Box, 'id'> {
 /**
  * Nominal lane seats: multiples of the branch pitch centred on the through
  * line, with an even count skipping the centre row because the split and
- * join own it (artboard 01's two maps sit at plus and minus one pitch).
+ * join own it (the design fixture's two maps sit at plus and minus one pitch).
  */
 function fan_seats(count: number): number[] {
   const centre = (count - 1) / 2
@@ -452,8 +457,7 @@ function join_path(from_x: number, channel_x: number, lane_y: number, y: number)
 /**
  * A fan: lanes split off the through line, run the same horizontal span,
  * and rejoin at a junction puck. Lanes are left-aligned after a shared
- * lead so unequal children keep a common join channel, which is how the
- * artboard draws it.
+ * lead so unequal children keep a common join channel.
  */
 function fan_box(node: LayoutNode, children: ReadonlyArray<Box>): Box {
   const offsets = fan_offsets(children)
@@ -518,7 +522,7 @@ function fan_box(node: LayoutNode, children: ReadonlyArray<Box>): Box {
 }
 
 /**
- * A retry or loop. Around a single puck it is the artboard's circle: the
+ * A retry or loop. Around a single puck it is a circle in the line: the
  * puck at the west point, both attempt arcs to the east point, the caption
  * beside the top of the arc. Around a wider subtree the attempts traverse
  * the subtree itself, so only the repeat gets drawn: a return line routed
@@ -596,7 +600,7 @@ function loop_return_box(node: LayoutNode, inner: Omit<Box, 'id'>): Box {
   }
 }
 
-/** One bypass basin: down off the line, along the floor, back up (artboard 04). */
+/** One bypass basin: down off the line, along the floor, back up. */
 function basin_path(x: number, y: number, width: number, drop: number): string {
   const r = TOKENS.basin_radius
   const floor = y + drop
@@ -731,7 +735,7 @@ export type TickMarks = {
 /**
  * Instance tick positions inside a lane, as offsets from the lane's start.
  * Up to one decade of instances sits at the canvas pitch; past that the
- * ruler comb takes over (artboard 03): comb pitch, a gap after each
+ * ruler comb takes over: comb pitch, a gap after each
  * decade, and a faint numeral in each gap (or one pitch past the final
  * tick when the count closes a decade). A run longer than the lane
  * squeezes proportionally, keeping slots and gaps in ratio, because the
@@ -787,7 +791,7 @@ export type ViewportFit = {
 }
 
 /**
- * Q3's overflow ruling as arithmetic. Scale to fit the viewport but never
+ * The overflow rule as arithmetic. Scale to fit the viewport but never
  * above 1 (a small flow keeps its set sizes; the margins grow instead) and
  * never below the name floor; a canvas still larger than the viewport at
  * the floor pans instead, west and top aligned so the flow reads from its

@@ -4,10 +4,10 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
 /**
- * C3, on the sources. A localhost dev tool must fetch nothing at runtime, and
- * the cheapest way to reintroduce a fetch is a `<link>` to Google Fonts or a
- * CDN `src` pasted in from an artboard, which is what the artboards actually
- * carry at the top of every file.
+ * The offline rule, on the sources. A localhost dev tool must fetch nothing at
+ * runtime, and the cheapest way to reintroduce a fetch is a `<link>` to Google
+ * Fonts or a CDN `src` pasted in from a design mockup, which is what such
+ * mockups carry at the top of every file.
  *
  * The built bytes are checked separately, by `scripts/build.mjs` under the
  * `build` slot, because a bundler can add a remote reference no source names.
@@ -50,7 +50,7 @@ describe('the canvas app fetches nothing at runtime', () => {
     },
   )
 
-  it('vendors both font families beside their licenses (D9)', () => {
+  it('vendors both font families beside their licenses', () => {
     const fonts = readdirSync(join(APP_DIR, 'public', 'fonts'))
     expect(fonts).toContain('sora-latin.woff2')
     expect(fonts).toContain('sora-OFL.txt')

@@ -2,9 +2,10 @@
  * The scrubber's timeline: the run read as a spine of time, and the index math
  * a scrub position resolves through.
  *
- * The design fixture drives the reference domain (the same run the artboards
- * freeze): its span is 196ms and its two error closes sit at T+113 and T+185.
- * The purity contract is the one the scrubber leans on (C5): the elapsed offset
+ * The design fixture drives the reference domain (the same run the frozen
+ * design was drawn from): its span is 196ms and its two error closes sit at
+ * T+113 and T+185. The purity contract is the one the scrubber leans on, a
+ * fold with no wall-clock reads: the elapsed offset
  * the timeline stores for every event equals `t_plus_ms` of a fresh fold of that
  * prefix, and `session_at` equals incremental application, so the header the
  * playhead reads and the canvas the eye reads can never fall out of step.
@@ -140,7 +141,7 @@ describe('a log of two runs five minutes apart', () => {
   })
 })
 
-describe('build_timeline permissiveness (C7)', () => {
+describe('build_timeline permissiveness', () => {
   it('is an empty spine for an empty log', () => {
     const timeline = build_timeline([])
     expect(timeline).toEqual({ count: 0, span_ms: 0, times: [], failures: [] })
@@ -166,7 +167,7 @@ describe('build_timeline permissiveness (C7)', () => {
   })
 })
 
-describe('the purity contract (C5)', () => {
+describe('the purity contract', () => {
   it('stores the elapsed offset a fresh fold of the prefix reports', () => {
     const timeline = build_timeline(frames)
     for (let index = 0; index < frames.length; index += 1) {
@@ -331,7 +332,7 @@ describe('step_second', () => {
   })
 })
 
-describe('scrub_key (Q5)', () => {
+describe('scrub_key', () => {
   it('steps one event on a bare arrow', () => {
     expect(scrub_key(SPARSE, 1, 'ArrowRight', false)).toBe(2)
     expect(scrub_key(SPARSE, 1, 'ArrowLeft', false)).toBe(0)

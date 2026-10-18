@@ -6,17 +6,17 @@ import { start_viewer, type ViewerHandle } from '../../index.js'
 import { TREATMENTS_EMIT_CUT, treatments_ndjson } from '../fixtures/state-treatments.js'
 
 /**
- * The step-14 state treatments in a real browser: suspension, the emit
- * bloom, the checkpoint tick, and the annotation cards, all in the white
- * family with amber untouched (C4).
+ * The state treatments in a real browser: suspension, the emit bloom, the
+ * checkpoint tick, and the annotation cards, all in the white family with
+ * amber untouched, since amber marks only where the run is alive.
  *
- * The treatments fixture drives the states no artboard covers (the Q1
- * settle): a suspended run parks its node hollow with the double-bar and its
+ * The treatments fixture drives the states the main design fixture never
+ * reaches: a suspended run parks its node hollow with the double-bar and its
  * card, a checkpoint hit spares a node and wears the meta tick, and an emit
- * blooms the puck once. The main design fixture drives the Q4 card
- * lifecycle its retry and scar already exercise: the artboard-01 card while
- * attempt 2 is in flight, dismissed on resolve, and the scar's card
- * persisting at the end.
+ * blooms the puck once. The main design fixture drives the card lifecycle
+ * its retry and scar already exercise: the mid-run card while attempt 2 is
+ * in flight, dismissed on resolve, and the scar's card persisting at the
+ * end.
  *
  * The bloom is a one-shot 200ms animation, which `toHaveScreenshot` would
  * fast-forward to its invisible end state, so the baseline pins it through a
@@ -31,7 +31,7 @@ const lines = readFileSync(join(HERE, '..', 'fixtures', 'fixture.trajectory.json
   .split('\n')
   .filter((line) => line.length > 0)
 
-/** The design-fixture prefix whose fold is the artboard-01 moment. */
+/** The design-fixture prefix whose fold is the mid-run moment. */
 const MID_RUN = 29
 
 let viewer: ViewerHandle
@@ -128,7 +128,7 @@ test('an emit blooms the running puck once, leaving no persistent mark', async (
   await expect(page).toHaveScreenshot('emit-bloom.png')
 })
 
-test('the retry card rides attempt 2 and dismisses on resolve (Q4)', async ({
+test('the retry card rides attempt 2 and dismisses on resolve', async ({
   page,
 }) => {
   await show(page, fixture_slice(0, MID_RUN), 'flaky_enrich')

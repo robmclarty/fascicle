@@ -9,7 +9,7 @@ import { start_viewer, type ViewerHandle } from '../../index.js'
  * The schedule math is pinned in app_playback.test.ts; what only a browser can
  * prove is the wiring: that pressing play makes the animation-frame clock walk
  * the held index through the whole run with no further input, that Space is
- * the toggle (Q5), and that the recording posture works end to end, the 2x
+ * the toggle, and that the recording posture works end to end, the 2x
  * compressed loop performing while the idle fade clears every piece of
  * interaction chrome and a cursor twitch brings it back.
  *

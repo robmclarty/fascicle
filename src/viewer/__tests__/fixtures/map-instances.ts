@@ -1,5 +1,5 @@
 /**
- * Synthetic map-instance trajectories for the artboard-03 tick studies.
+ * Synthetic map-instance trajectories for the tick studies at x3, x12, and x50.
  *
  * A map over `count` items, wrapped in a sequence with a trailing step so the
  * mapped node stays a plain map child (not the terminus) and wears the instance

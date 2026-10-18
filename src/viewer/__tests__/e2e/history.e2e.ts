@@ -4,11 +4,12 @@ import { expect, test } from '@playwright/test'
 import { start_viewer, type ViewerHandle } from '../../index.js'
 
 /**
- * Opening a finished run from a file, D7's headline: the viewer tails a
- * completed `.trajectory.jsonl` with no live producer, and the canvas renders
- * the whole run from the first paint. This is the full-history path, not the
- * live one: nothing is ingested here, so the only way the run can appear is the
- * client folding `/api/trajectory` (the streamed file) before it follows SSE.
+ * Opening a finished run from a file, the reason `/api/trajectory` exists:
+ * the viewer tails a completed `.trajectory.jsonl` with no live producer, and
+ * the canvas renders the whole run from the first paint. This is the
+ * full-history path, not the live one: nothing is ingested here, so the only
+ * way the run can appear is the client folding `/api/trajectory` (the
+ * streamed file) before it follows SSE.
  *
  * The finished-run assertions mirror live.e2e's settled state, reached the
  * other way: there by feeding every line over ingest, here by loading the same

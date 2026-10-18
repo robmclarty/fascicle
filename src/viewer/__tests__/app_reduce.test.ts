@@ -2,10 +2,11 @@
  * The canvas fold: reduce(structure, events[0..t]) and its incremental form.
  *
  * The design fixture drives the reference expectations (the same run the
- * artboards freeze), synthetic streams pin the failure semantics the fixture
- * never reaches (retry exhaustion, nested absorption, engine-origin scars,
- * suspension), and the property test holds the purity contract: a fresh fold
- * of any prefix equals incremental application with retained snapshots (C5).
+ * frozen design was drawn from), synthetic streams pin the failure semantics
+ * the fixture never reaches (retry exhaustion, nested absorption,
+ * engine-origin scars, suspension), and the property test holds the purity
+ * contract: a fresh fold of any prefix equals incremental application with
+ * retained snapshots, because the fold reads no clock.
  */
 
 import { readFileSync } from 'node:fs'
@@ -224,7 +225,7 @@ describe('the fixture full fold', () => {
     expect(state.scars).toBe(1)
   })
 
-  it('groups map instances by their parent span (D6)', () => {
+  it('groups map instances by their parent span', () => {
     const state = fold()
     const instances = node_of(state, 'summarize').occurrences
     expect(instances).toHaveLength(3)
@@ -235,7 +236,7 @@ describe('the fixture full fold', () => {
     expect(node_of(state, 'score').occurrences).toHaveLength(3)
   })
 
-  it('groups retry attempts by their parent span, failure then success (D6)', () => {
+  it('groups retry attempts by their parent span, failure then success', () => {
     const attempts = node_of(fold(), 'flaky_enrich').occurrences
     expect(attempts.map((attempt) => attempt.status)).toEqual(['failed', 'done'])
     expect(attempts.map((attempt) => attempt.parent_span_id)).toEqual([
@@ -262,7 +263,7 @@ describe('the fixture full fold', () => {
   })
 })
 
-describe('the purity contract (C5)', () => {
+describe('the purity contract', () => {
   it('folds any prefix fresh to the state incremental application reached', () => {
     let state = initial_state(structure)
     const snapshots: CanvasState[] = [state]
@@ -286,7 +287,7 @@ describe('the purity contract (C5)', () => {
   })
 })
 
-describe('retry semantics (D12)', () => {
+describe('retry semantics', () => {
   const RETRY_FLOW: FlowNode = {
     kind: 'retry',
     id: 'retry_x',
@@ -585,7 +586,7 @@ describe('scar placement', () => {
     expect(node_of(state, 'fb').scarred).toBe(false)
   })
 
-  it('terminates on a malformed span parent cycle instead of hanging (C7)', () => {
+  it('terminates on a malformed span parent cycle instead of hanging', () => {
     const state = reduce(
       null,
       stream([
@@ -676,7 +677,7 @@ describe('emit marks', () => {
     start('s1', 'step', { id: 'work', parent_span_id: 's0' }),
   ]
 
-  it('lands a bare emit on the deepest open span, like a pre-E cost', () => {
+  it('lands a bare emit on the deepest open span, like a cost without a span_id', () => {
     const state = reduce(SEQ, stream([...open_work, { kind: 'emit', label: 'tick' }]))
     expect(node_of(state, 'work').emits).toBe(1)
     expect(node_of(state, 'seq').emits).toBe(0)
@@ -738,7 +739,7 @@ describe('checkpoint lookups', () => {
     expect(node_of(state, 'cp').checkpoint).toBe('hit')
   })
 
-  it('stays inert on an unknown status or a missing id (C7)', () => {
+  it('stays inert on an unknown status or a missing id', () => {
     const unknown = reduce(SEQ, stream([{ kind: 'checkpoint', status: 'warm', id: 'cp' }]))
     expect(node_of(unknown, 'cp').checkpoint).toBeNull()
     const nameless = reduce(SEQ, stream([{ kind: 'checkpoint', status: 'hit' }]))
@@ -746,7 +747,7 @@ describe('checkpoint lookups', () => {
     expect(nameless.nodes.size).toBe(3)
   })
 
-  it('accretes a node for a checkpoint the structure does not know (C7)', () => {
+  it('accretes a node for a checkpoint the structure does not know', () => {
     const state = reduce(null, stream([{ kind: 'checkpoint', status: 'hit', id: 'lone' }]))
     expect(node_of(state, 'lone').checkpoint).toBe('hit')
     expect(node_of(state, 'lone').status).toBe('pending')
@@ -766,7 +767,7 @@ describe('cost rollup', () => {
     start('e2', 'engine.generate.step', { parent_span_id: 'e1' }),
   ]
 
-  it('attributes exactly through the engine span chain (E)', () => {
+  it('attributes exactly through the engine span chain', () => {
     const state = reduce(
       SEQ,
       stream([...engine_spans, { kind: 'cost', span_id: 'e2', total_usd: 0.004 }]),
@@ -812,7 +813,7 @@ describe('cost rollup', () => {
     expect(node_of(state, 'right').cost_usd).toBe(0)
   })
 
-  it('drops a cost whose span chain cycles without reaching a node (C7)', () => {
+  it('drops a cost whose span chain cycles without reaching a node', () => {
     const state = reduce(
       null,
       stream([
@@ -885,7 +886,7 @@ describe('cost rollup', () => {
   })
 })
 
-describe('wire permissiveness (C7)', () => {
+describe('wire permissiveness', () => {
   it('advances only the clock on an unknown kind', () => {
     const before = reduce(structure, fixture)
     const after = apply_event(before, { kind: 'hologram', ts: 9_999_999_999_999 })

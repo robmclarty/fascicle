@@ -3,7 +3,7 @@
  * join, pinned against the frozen design.
  *
  * The fixture's `flow_structure` line drives the T+0 contract: folding that
- * one frame must yield every artboard-06 caption (`STEP`, `MAP` with no xN,
+ * one frame must yield every T+0 caption (`STEP`, `MAP` with no xN,
  * the retry budget, the fallback seats, `TERMINUS`) with every node pending.
  * Synthetic trees cover what the fixture never exercises: malformed wire
  * shapes, caption edges, and a scene built from a layout the session does
@@ -110,7 +110,7 @@ describe('apply_frame on the rest of the wire', () => {
     expect(t_plus_ms(next.state)).toBe(130)
   })
 
-  it('accretes spans into state before any structure exists (C7)', () => {
+  it('accretes spans into state before any structure exists', () => {
     const next = apply_frame(EMPTY_SESSION, {
       kind: 'span_start',
       span_id: 'step:1',
@@ -124,7 +124,7 @@ describe('apply_frame on the rest of the wire', () => {
     expect(next.state.nodes.get('lonely')?.status).toBe('active')
   })
 
-  it('starts over for a new run on the next structure line (Q7)', () => {
+  it('starts over for a new run on the next structure line', () => {
     const busy = apply_frame(fold_fixture(1), {
       kind: 'span_start',
       span_id: 'step:1',
@@ -234,7 +234,7 @@ describe('reading the structure tree off the wire', () => {
 })
 
 describe('node_captions', () => {
-  it('gives the fixture flow its artboard-06 meta lines', () => {
+  it('gives the fixture flow its T+0 meta lines', () => {
     const captions = node_captions(first_event.structure)
     expect(captions.get('fetch_brief')).toBe('STEP')
     expect(captions.get('explode_sources')).toBe('STEP')
@@ -296,7 +296,7 @@ describe('node_captions', () => {
     expect(captions.get('b2')).toBe('STEP · BACKUP')
   })
 
-  it('leaves children of a foreign kind wearing their own kind (C7)', () => {
+  it('leaves children of a foreign kind wearing their own kind', () => {
     const captions = node_captions({
       kind: 'quantum',
       id: 'q',
@@ -343,7 +343,7 @@ describe('build_scene', () => {
     ])
   })
 
-  it('labels the fixture junction and groups the way artboard 06 reads', () => {
+  it('labels the fixture junction and groups the way the T+0 scaffold reads', () => {
     const scene = scene_of(fold_fixture(1))
     expect(scene.junctions.map((junction) => [junction.glyph.id, junction.label, junction.status])).toEqual([
       ['parallel_1:junction', 'merge', 'pending'],
@@ -535,7 +535,7 @@ describe('segment states across the fixture run', () => {
     expect(states.get('line:to_topic>retry_1')).toBe('traversed')
   })
 
-  it('holds the artboard-01 loop through the backoff pause', () => {
+  it('holds the mid-run loop through the backoff pause', () => {
     const states = segment_states(fold_fixture(29))
     expect(states.get('loop_upper:retry_1>flaky_enrich')).toBe('live')
     expect(states.get('loop_lower:retry_1>flaky_enrich')).toBe('traversed')
@@ -604,7 +604,7 @@ describe('fail marks on the retry circle', () => {
     expect(scene_of(fold_fixture(28)).fail_marks).toEqual([])
   })
 
-  it('orbits one ember mark at the artboard seat after the first failure', () => {
+  it('orbits one ember mark at the southeast seat after the first failure', () => {
     const session = fold_fixture(29)
     const marks = scene_of(session).fail_marks
     expect(marks).toHaveLength(1)
@@ -618,7 +618,7 @@ describe('fail marks on the retry circle', () => {
     expect(marks[0]?.y).toBeCloseTo((glyph?.center.y ?? 0) + Math.SQRT1_2 * orbit)
   })
 
-  it('steps older marks onward so the newest keeps the artboard seat', () => {
+  it('steps older marks onward so the newest keeps the southeast seat', () => {
     const structure = {
       kind: 'retry',
       id: 'r',
@@ -660,7 +660,7 @@ describe('scar mark on a fallback primary', () => {
     const glyph = layout(session.structure).nodes.find(
       (node) => node.id === 'always_throws',
     )
-    // The artboard-04 seat: up and to the east of the puck centre.
+    // The scar seat: up and to the east of the puck centre.
     expect(scarred?.scar).toEqual({
       x: (glyph?.center.x ?? 0) + 14,
       y: (glyph?.center.y ?? 0) - 17,
@@ -689,7 +689,7 @@ describe('runtime metas and view status', () => {
     expect(metas.get('fetch_brief')).toBe('STEP · 42MS')
   })
 
-  it('pins the artboard-01 mid-run canvas: every meta and status', () => {
+  it('pins the mid-run canvas: every meta and status', () => {
     const scene = scene_of(fold_fixture(29))
     expect(scene.nodes.map((node) => [node.glyph.id, node.meta, node.status])).toEqual([
       ['fetch_brief', 'STEP · 42MS', 'done'],
@@ -869,7 +869,7 @@ describe('the wide loop return lane', () => {
 })
 
 describe('group label runtime', () => {
-  it('reads the artboard-01 line mid-run: span, plain, armed', () => {
+  it('reads the group line mid-run: span, plain, armed', () => {
     expect(
       scene_of(fold_fixture(29)).group_labels.map((label) => [
         label.anchor.owner,
@@ -907,7 +907,7 @@ describe('group label runtime', () => {
 })
 
 describe('the treatment radii', () => {
-  it('carries the artboard halo and bloom sizes', () => {
+  it('carries the design halo and bloom sizes', () => {
     expect(HALO_RADIUS).toBe(40)
     expect(BLOOM_RADIUS).toBe(215)
   })
@@ -938,7 +938,7 @@ function meta_of(session: Session, id: string): { text: string; fail: string | n
   return { text: node.meta, fail: node.meta_fail }
 }
 
-describe('map instance ticks (artboard 03)', () => {
+describe('map instance ticks', () => {
   it('draws no ticks before an instance opens, and the fixture maps at T+0', () => {
     const scene = scene_of(fold_fixture(1))
     expect(scene.tick_lanes.map((lane) => lane.owner)).toEqual(['map_1', 'map_2'])
@@ -1048,7 +1048,7 @@ describe('map instance ticks (artboard 03)', () => {
     expect(scene.tick_lanes.find((lane) => lane.owner === 'm')?.ticks).toEqual([])
   })
 
-  it('draws no ticks for a known map with no body, without crashing (C7)', () => {
+  it('draws no ticks for a known map with no body, without crashing', () => {
     const session = apply_frame(EMPTY_SESSION, {
       kind: 'flow_structure',
       structure: { kind: 'map', id: 'm' },
@@ -1084,7 +1084,7 @@ function scene_node(session: Session, id: string): ReturnType<typeof build_scene
   return node
 }
 
-describe('suspended treatment (Q1)', () => {
+describe('suspended treatment', () => {
   const GATED = {
     kind: 'sequence',
     id: 'seq',
@@ -1173,7 +1173,7 @@ describe('the checkpoint tick', () => {
     expect(scene_node(session, 'b').checkpoint).toBe(false)
   })
 
-  it('wears the tick on its own puck when the wrapper has no body (C7)', () => {
+  it('wears the tick on its own puck when the wrapper has no body', () => {
     const bare = {
       kind: 'sequence',
       id: 'seq',
@@ -1187,13 +1187,13 @@ describe('the checkpoint tick', () => {
   })
 })
 
-describe('annotation cards (Q4)', () => {
+describe('annotation cards', () => {
   it('shows no card at T+0 or through a first attempt in flight', () => {
     expect(scene_of(fold_fixture(1)).cards).toEqual([])
     expect(scene_of(fold_fixture(28)).cards).toEqual([])
   })
 
-  it('raises the artboard-01 card while attempt 2 is in flight', () => {
+  it('raises the mid-run card while attempt 2 is in flight', () => {
     const cards = scene_of(fold_fixture(29)).cards
     expect(cards).toHaveLength(1)
     expect(cards[0]?.owner).toBe('flaky_enrich')
@@ -1207,7 +1207,7 @@ describe('annotation cards (Q4)', () => {
       ['detail', 'ATT 1 ✕ TRANSIENT UPSTREAM ERROR'],
       ['detail', 'BACKOFF 25MS HONORED'],
     ])
-    // Ember wraps the ✕ alone, never the words around it (C4).
+    // Ember wraps the ✕ alone, never the words around it: it marks failure only.
     expect(cards[0]?.lines[1]?.spans).toEqual([
       { text: 'ATT 1 ', ember: false },
       { text: '✕', ember: true },
@@ -1220,10 +1220,10 @@ describe('annotation cards (Q4)', () => {
     expect(scene_of(fold_fixture(31)).cards).toEqual([])
   })
 
-  it('seats the block at the artboard offsets with the dot on the halo edge', () => {
+  it('seats the block up-left at the card offsets with the dot on the halo edge', () => {
     const session = fold_fixture(29)
     const card = scene_of(session).cards[0]
-    if (card === undefined) throw new Error('no card at the artboard-01 moment')
+    if (card === undefined) throw new Error('no card at the mid-run moment')
     const glyph = layout(session.structure).nodes.find((node) => node.id === 'flaky_enrich')
     const cx = glyph?.center.x ?? 0
     const cy = glyph?.center.y ?? 0

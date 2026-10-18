@@ -4,13 +4,13 @@ import { play_label, type Playback } from './lib/playback'
 /*
  * The playback controls: play mode's dials in the mono meta register, seated
  * under the time spine beside the scrubber, plus the spine's DENSITY dial in
- * the same register. The cluster is markup only (D4): every playback
+ * the same register. The cluster is markup only: every playback
  * transition a click can trigger is decided in `lib/playback.ts` and wired
  * through the app, and density is a view preference the app persists. Even
  * the leading chip's label is a decision the lib makes, because that chip
  * plays, pauses, or advances depending on the mode. An engaged toggle
  * brightens rather than colors, because hierarchy is opacity and amber
- * belongs to the canvas (C4).
+ * belongs to the canvas.
  */
 
 export type ControlsProps = {
@@ -36,7 +36,7 @@ type ChipProps = {
   readonly on_click: () => void
 }
 
-/** One chrome chip: engaged brightens via data-active, never color (C4). */
+/** One chrome chip: engaged brightens via data-active, never color. */
 function Chip(props: ChipProps): JSX.Element {
   return (
     <button

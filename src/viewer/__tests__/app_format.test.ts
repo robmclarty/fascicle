@@ -34,7 +34,7 @@ describe('RUN_ID_PLACEHOLDER', () => {
 })
 
 describe('header_stat_parts', () => {
-  it('tags the artboard-06 zero line with the roles the opacities key off', () => {
+  it('tags the T+0 zero line with the roles the opacities key off', () => {
     expect(
       header_stat_parts({ t_plus_ms: 0, retries_absorbed: 0, scars: 0, cost_usd: 0 }),
     ).toEqual([
@@ -50,7 +50,7 @@ describe('header_stat_parts', () => {
     ])
   })
 
-  it('draws the scar numeral in ember once a scar exists (artboard 04)', () => {
+  it('draws the scar numeral in ember once a scar exists', () => {
     const parts = header_stat_parts({
       t_plus_ms: 412,
       retries_absorbed: 1,
@@ -70,7 +70,7 @@ describe('header_stat_parts', () => {
     expect(zero.some((part) => part.role === 'scar')).toBe(false)
   })
 
-  it('carries the artboard-01 mid-run values through the same slots', () => {
+  it('carries the mid-run values through the same slots', () => {
     const texts = header_stat_parts({
       t_plus_ms: 130,
       retries_absorbed: 1,
@@ -117,7 +117,7 @@ describe('format_t_plus', () => {
 })
 
 describe('format_duration', () => {
-  it('names the artboard-01 node spans the way the metas print them', () => {
+  it('names the mid-run node spans the way the metas print them', () => {
     expect(format_duration(42)).toBe('42MS')
     expect(format_duration(0)).toBe('0MS')
     expect(format_duration(31)).toBe('31MS')
@@ -159,7 +159,7 @@ describe('retry_word', () => {
 })
 
 describe('format_header_stats', () => {
-  it('reproduces the artboard-01 reference line', () => {
+  it('reproduces the mid-run reference line', () => {
     expect(
       format_header_stats({
         t_plus_ms: 130,

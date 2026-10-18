@@ -2,18 +2,20 @@
  * The scene: the join of frozen geometry, structural captions, and folded run
  * state that the components draw verbatim.
  *
- * This module exists so the `.tsx` files can stay markup (D4). Every string
- * the canvas shows and every status a treatment keys off is decided here,
- * where the mutation gate can hold it; the renderer maps scene records to
- * elements one to one and never invents content.
+ * This module exists so the `.tsx` files can stay markup: every decision lives
+ * in a plain module under `app/lib/`, where the mutation gate can hold it.
+ * Every string the canvas shows and every status a treatment keys off is
+ * decided here; the renderer maps scene records to elements one to one and
+ * never invents content.
  *
  * It also owns the wire session, the one place a frame's meaning is decided.
  * A `flow_structure` with a readable tree starts the canvas over for that run
- * (a long-lived file appends many runs and the header names one, Q7, so the
+ * (a long-lived file appends many runs and the header names one, so the
  * newest wins); any other frame folds into the current state. The tree is
- * read permissively (C7): nodes that do not hold their shape are dropped
- * rather than crashing layout, and a frame whose tree is unreadable keeps the
- * canvas it has instead of blanking it.
+ * read permissively, because a frame the viewer can't read must never crash
+ * the canvas: nodes that do not hold their shape are dropped rather than
+ * crashing layout, and a frame whose tree is unreadable keeps the canvas it
+ * has instead of blanking it.
  *
  * Captions follow the T+0 honesty rule: the meta line says only what
  * structure already knows, and runtime facts join it strictly as they become
@@ -28,20 +30,21 @@
  * goes grey once that leaf has been entered, a segment that exits a
  * combinator earns its grey only when the combinator closes (the light is
  * still inside until then), and the join legs of a fan belong to the fan's
- * own completion. The retry circle is its own two-lane rule from artboard
- * 01: the upper arc is the live lane, amber while an attempt runs or a
- * re-attempt is owed, and the lower arc is the spent lane, grey with one
- * ember mark per failed attempt. Amber appears nowhere else (C4).
+ * own completion. The retry circle is its own two-lane rule: the upper arc is
+ * the live lane, amber while an attempt runs or a re-attempt is owed, and the
+ * lower arc is the spent lane, grey with one ember mark per failed attempt.
+ * Amber means the run is alive there right now, so it appears nowhere else.
  *
- * Three states have no artboard and follow the Q1 settle, all in the white
- * family (C4): a suspended node parks (hollow puck, paused double-bar, meta
- * `SUSPENDED`, its approach traversed rather than marching, because the
- * light is parked, not moving); an `emit` blooms the puck once per event
- * (the fold's count is the record, the renderer reacts to it changing); a
- * checkpoint hit is a small white tick in the meta line of the node the
- * store spared. Annotation cards follow the Q4 lifecycle: retry attempt 2+
- * while in flight (gone on resolve), scar and suspension while they hold,
- * one card per node with the newest trigger speaking.
+ * Suspension, emits, and checkpoint hits stay in the white family, because
+ * amber is reserved for the live run and ember for failure: a suspended node
+ * parks (hollow puck, paused double-bar, meta `SUSPENDED`, its approach
+ * traversed rather than marching, because the light is parked, not moving);
+ * an `emit` blooms the puck once per event (the fold's count is the record,
+ * the renderer reacts to it changing); a checkpoint hit is a small white tick
+ * in the meta line of the node the store spared. Annotation cards explain an
+ * event rather than decorate: retry attempt 2+ while in flight (gone on
+ * resolve), scar and suspension while they hold, one card per node with the
+ * newest trigger speaking.
  */
 
 import {
@@ -166,7 +169,7 @@ function collect_captions(node: LayoutNode, captions: Map<string, string>): void
  * frames nothing. Map and loop children carry the collapsed combinator name
  * (cardinality is runtime data), a retry child reads the attempt budget, and
  * fallback children are seats: primary on the through line, every later
- * child a backup in a basin (artboards 04 and 06).
+ * child a backup in a basin.
  */
 function framed_caption(parent: LayoutNode, child: LayoutNode, index: number): string | null {
   switch (parent.kind) {
@@ -204,8 +207,8 @@ function whole_count(value: unknown): number | null {
 }
 
 /**
- * A scar's ember ✕: the seat the mark orbits its broken puck, from artboard
- * 04. Null on `SceneNode.scar` for every node the run never scarred.
+ * A scar's ember ✕: the seat where the mark orbits its broken puck. Null on
+ * `SceneNode.scar` for every node the run never scarred.
  */
 export type ScarMark = {
   readonly x: number
@@ -219,7 +222,7 @@ export type SceneNode = {
    * A map child's failure tally, the ember clause the meta wears after its ink
    * text (`3 ✕`), null for every node without a permanent-failure count. Kept
    * apart from `meta` so the renderer can color it ember without splitting a
-   * string (C4).
+   * string, since ember marks a failure count and nothing else.
    */
   readonly meta_fail: string | null
   readonly status: NodeStatus
@@ -227,7 +230,8 @@ export type SceneNode = {
   /**
    * The fold's emit count for this node. The renderer re-keys the one-shot
    * white bloom off it, so each increment blooms once and a refold of the
-   * same prefix carries the same count (C5).
+   * same prefix carries the same count: the fold is pure, with no wall-clock
+   * reads.
    */
   readonly emits: number
   /** True when a checkpoint hit spared this node: the small white meta tick. */
@@ -282,7 +286,7 @@ export type SceneTickLane = {
   readonly decades: ReadonlyArray<DecadeTick>
 }
 
-/** One run of card text; ember only ever wraps the ✕ naming a failure (C4). */
+/** One run of card text; ember only ever wraps the ✕ naming a failure. */
 export type CardSpan = {
   readonly text: string
   readonly ember: boolean
@@ -290,7 +294,7 @@ export type CardSpan = {
 
 export type CardRole = 'title' | 'detail'
 
-/** One card line with its baseline, ready to draw (D4). */
+/** One card line with its baseline, ready for the markup to draw as is. */
 export type CardLine = {
   readonly x: number
   readonly y: number
@@ -299,7 +303,7 @@ export type CardLine = {
 }
 
 /**
- * One annotation card, artboard 01's bare variant: mono text lines, a 1px
+ * One annotation card, bare rather than boxed: mono text lines, a 1px
  * leader, and a 2.5px dot seated on the halo edge of the node it explains.
  */
 export type SceneCard = {
@@ -319,26 +323,26 @@ export type Scene = {
   readonly cards: ReadonlyArray<SceneCard>
 }
 
-/** The active-puck halo radius, from artboard 01. */
+/** The active-puck halo radius. */
 export const HALO_RADIUS = 40
 
-/** The ambient bloom radius around a live point, from artboard 01. */
+/** The ambient bloom radius around a live point. */
 export const BLOOM_RADIUS = 215
 
-/** A fail mark floats this far off the retry circle's arc (artboard 01). */
+/** A fail mark floats this far off the retry circle's arc. */
 const MARK_ORBIT = 14
 
-/** Newest mark at the artboard's southeast seat; older ones step onward. */
+/** The newest mark sits at the circle's southeast seat; older ones step onward. */
 const MARK_ANGLE = Math.PI / 4
 
-/** The scar ✕'s seat off its broken puck: up and to the east (artboard 04). */
+/** The scar ✕'s seat off its broken puck: up and to the east. */
 const SCAR_MARK_DX = 14
 const SCAR_MARK_DY = -17
 
-/** A decade numeral hangs this far below the tick line (artboard 03). */
+/** A decade numeral hangs this far below the tick line. */
 const DECADE_DROP = 30
 
-/** The card block's seat off its puck, measured from artboard 01's card. */
+/** The card block's seat off its puck: up and to the west. */
 const CARD_DX = -156
 const CARD_RISE = 279
 const CARD_LINE_PITCH = 22
@@ -347,7 +351,7 @@ const CARD_LINE_PITCH = 22
 const CARD_LEADER_DROP = 14
 const CARD_LEADER_INSET = 112
 
-/** The mirrored seat when the artboard's up-left block would cross the west margin. */
+/** The mirrored seat when the up-left block would cross the west margin. */
 const CARD_DX_EAST = 44
 const CARD_LEADER_INSET_EAST = 12
 
@@ -395,7 +399,7 @@ export function build_scene(flow: FlowLayout, session: Session): Scene {
         // A map child wears its failures as ✕ ticks in its lane, not as a
         // broken ring: the puck is a collapsed stand-in for N instances, so
         // scarring it would read as the whole node dying over one item that
-        // failed (artboard 03 keeps the puck whole).
+        // failed, so the puck stays whole.
         scar: is_map_child(ctx, glyph.id) ? null : node_scar(session.state, glyph),
         emits: session.state.nodes.get(glyph.id)?.emits ?? 0,
         checkpoint: ctx.checkpoint_hits.has(glyph.id),
@@ -421,13 +425,14 @@ export function build_scene(flow: FlowLayout, session: Session): Scene {
 }
 
 /**
- * Each map's instance ticks, artboard 03. Cardinality is the collapsed child's
- * occurrence count (D6), so ticks accrete as instances open and none exist at
- * T+0. `tick_marks` fits the count into the lane the layout reserved: the
- * canvas pitch up to a decade, the ruler comb beyond, squeezed proportionally
- * when the run outgrows the lane. Each instance paints its own slot, a failure
- * keeps that slot as an ember ✕, and only the still-open instances glow amber
- * (C4). A lane whose map the session does not know draws nothing.
+ * Each map's instance ticks. Cardinality is the collapsed child's occurrence
+ * count, grouped by span meta against the structure tree, so ticks accrete as
+ * instances open and none exist at T+0. `tick_marks` fits the count into the
+ * lane the layout reserved: the canvas pitch up to a decade, the ruler comb
+ * beyond, squeezed proportionally when the run outgrows the lane. Each
+ * instance paints its own slot, a failure keeps that slot as an ember ✕, and
+ * only the still-open instances glow amber, because amber marks only what is
+ * alive right now. A lane whose map the session does not know draws nothing.
  */
 function scene_tick_lanes(
   flow: FlowLayout,
@@ -602,7 +607,7 @@ function segment_state(ctx: SceneContext, segment: Segment): SegmentState {
  * re-entries belong to the arcs, a scarred fallback primary's through-line
  * is the dead segment past the scar, so it stays unbuilt while the light
  * reroutes through the basin, and a suspended leaf's approach greys rather
- * than marching, because the light is parked on the puck, not moving (Q1).
+ * than marching, because the light is parked on the puck, not moving.
  */
 function leaf_segment_state(ctx: SceneContext, segment: Segment): SegmentState {
   if (ctx.fallback_primaries.has(segment.to) && is_scarred(ctx.state, segment.to)) {
@@ -633,7 +638,8 @@ function is_suspended(state: CanvasState, id: string): boolean {
 
 /**
  * True when `from` sits inside `to`'s subtree, walked on the parent chain.
- * The hop cap guards a malformed shared-id chain that loops (C7).
+ * The hop cap guards a malformed shared-id chain that loops, since a frame
+ * the viewer can't read must never hang the canvas.
  */
 function inside(parents: ReadonlyMap<string, string>, from: string, to: string): boolean {
   let hops = parents.size + 1
@@ -647,7 +653,7 @@ function inside(parents: ReadonlyMap<string, string>, from: string, to: string):
 }
 
 /**
- * The upper arc, artboard 01's live lane: amber while the loop carries
+ * The upper arc, the live lane: amber while the loop carries
  * light, grey once any attempt has run, dashes until the first one does.
  */
 function live_lane_state(state: CanvasState, loop_id: string, leaf_id: string): SegmentState {
@@ -667,8 +673,8 @@ function spent_lane_state(state: CanvasState, leaf_id: string): SegmentState {
 /**
  * True while the loop is carrying light: an attempt runs right now, or the
  * last one failed and the still-open combinator owes another (the backoff
- * pause is part of the next attempt, which is how artboard 01 reads
- * `ATT 2/3` between spans).
+ * pause is part of the next attempt, which is why the meta reads `ATT 2/3`
+ * between spans).
  */
 function loop_engaged(
   state: CanvasState,
@@ -698,7 +704,7 @@ function return_lane_state(ctx: SceneContext, loop_id: string): SegmentState {
 
 /**
  * One ember ✕ per failed attempt on each retry circle, orbiting outside the
- * spent arc. The newest sits at the artboard's southeast seat; older marks
+ * spent arc. The newest sits at the circle's southeast seat; older marks
  * step onward around the circle and hold the last seat past three, since a
  * real budget never reaches it.
  */
@@ -726,7 +732,7 @@ function fail_marks(flow: FlowLayout, state: CanvasState): ReadonlyArray<FailMar
 }
 
 /**
- * A scarred node's ember ✕, seated off its broken puck (artboard 04), null
+ * A scarred node's ember ✕, seated off its broken puck, null
  * for every node the run never scarred. The scar reads off the fold's
  * permanent `scarred` record rather than the puck status, because a retry
  * that eventually healed reads `done` while a fallback's dead primary keeps
@@ -740,8 +746,8 @@ function node_scar(state: CanvasState, glyph: NodeGlyph): ScarMark | null {
 /**
  * The puck-level status a treatment keys off. One reading differs from the
  * fold's: a failed attempt whose retry is still open is about to run again,
- * so the light stays parked on the puck (artboard 01's halo during the
- * backoff pause) instead of flashing failed between spans.
+ * so the light stays parked on the puck (the halo holds through the backoff
+ * pause) instead of flashing failed between spans.
  */
 function view_status(ctx: SceneContext, id: string): NodeStatus {
   const status = ctx.state.nodes.get(id)?.status ?? 'pending'
@@ -767,12 +773,12 @@ type NodeMeta = {
 
 /**
  * A node's meta line: the structural caption, joined by what the run has
- * made true. Cardinality accretes as instances exist (D6), `RUNNING` while
+ * made true. Cardinality accretes as instances exist, `RUNNING` while
  * any span is open, and the group's span once everything ended, so
  * `MAP` becomes `MAP ×3 · 31MS` and `STEP` becomes `STEP · 42MS`. A retry
  * child trades the caption for the attempt ledger, and a map child for the
  * instance tally that reads its ticks aloud. A parked node trades its whole
- * line for `SUSPENDED` (Q1): the caption is a suspend leaf's own kind, so
+ * line for `SUSPENDED`: the caption is a suspend leaf's own kind, so
  * joining the two would say the same word twice.
  */
 function node_meta(
@@ -805,12 +811,12 @@ function is_map_child(ctx: SceneContext, id: string): boolean {
 }
 
 /**
- * A map child's meta, artboard 03: the collapsed instance count joined by the
+ * A map child's meta: the collapsed instance count joined by the
  * alive window and the failure tally as the run makes them true. A failure
  * always surfaces as its ember ✕ count, because a duration must never hide a
  * dead instance; the live count replaces a bare `RUNNING` only at scale, where
  * `8 of many` carries what `RUNNING` cannot. A clean cohort keeps the plain
- * `×N · span` the artboard's small maps wear, so the fixture's ×3 maps read
+ * `×N · span` a small map wears, so the design fixture's ×3 maps read
  * exactly as before.
  */
 function map_instance_meta(
@@ -832,7 +838,7 @@ function map_instance_meta(
 }
 
 /**
- * The attempt ledger, artboard 01's `RETRY · ATT 2/3`: the attempt the loop
+ * The attempt ledger, `RETRY · ATT 2/3`: the attempt the loop
  * is on (a failed last attempt under an open retry means the next one is
  * already owed), over the configured budget when the structure knows it,
  * with the loop's whole span appended once it settles.
@@ -860,8 +866,8 @@ function with_span(base: string, occurrences: ReadonlyArray<SpanOccurrence>): st
 }
 
 /**
- * A group's wall span: first start to last end, the number artboard 01
- * prints for a settled map (`31MS` spans all three instances). Null when a
+ * A group's wall span: first start to last end, the number a settled map
+ * prints (the design fixture's `31MS` spans all three instances). Null when a
  * permissive parse left either end unknown.
  */
 function group_span(occurrences: ReadonlyArray<SpanOccurrence>): number | null {
@@ -880,9 +886,9 @@ function group_span(occurrences: ReadonlyArray<SpanOccurrence>): number | null {
 
 /**
  * A group caption is the combinator's id in the caption register, wearing
- * its span once it settles (artboard 01's `PARALLEL_1 · 45MS`). A fallback
- * appends its readiness until then: ARMED, waiting, per artboards 01 and
- * 06; the scar reroute that changes it is step 12's territory.
+ * its span once it settles (`PARALLEL_1 · 45MS`). A fallback appends its
+ * readiness, ARMED, until it settles; a reroute after a scar shows in the
+ * geometry, never in this caption.
  */
 function group_text(ctx: SceneContext, owner: string): string {
   const base = owner.toUpperCase()
@@ -905,7 +911,7 @@ function card_line(role: CardRole, text: string): CardContent[number] {
 }
 
 /**
- * The annotation cards, one per node the Q4 lifecycle names: suspension and
+ * The annotation cards, one per node an event explains: suspension and
  * scars while they hold, a retry from its second attempt until it resolves.
  * The triggers are ranked, newest-news first, so a node never carries two
  * cards: a suspension is the current event, a scar outlives the retry story
@@ -927,7 +933,7 @@ function card_content(ctx: SceneContext, glyph: NodeGlyph): CardContent | null {
   if (node.suspended) {
     return [card_line('title', 'SUSPENDED'), card_line('detail', 'AWAITING RESUME')]
   }
-  // A map child's failures live in its tick lane (artboard 03); a card on the
+  // A map child's failures live in its tick lane; a card on the
   // collapsed puck would decorate, not explain.
   if (node.scarred && !is_map_child(ctx, glyph.id)) return scar_content(node)
   return retry_content(ctx, glyph.id, node.occurrences)
@@ -1014,7 +1020,7 @@ function error_clause(error: string | null): string | null {
 }
 
 /**
- * Seat a card at the artboard-01 offsets: the block up-left of its puck,
+ * Seat a card at its fixed offsets: the block up-left of its puck,
  * baselines at the card pitch, the leader leaving the block's bottom on the
  * side facing the node, and the dot on the halo circle facing the leader.
  * A puck too far west for the block mirrors to the up-right seat.

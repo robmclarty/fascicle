@@ -1,14 +1,14 @@
 /**
  * The header's live clock: which T+ the header names between events.
  *
- * Canvas state is a pure fold with no wall-clock reads (C5), so the fold's
+ * Canvas state is a pure fold with no wall-clock reads, so the fold's
  * elapsed time freezes at the newest event. A live run spends most of its
- * life between events (a model call is one long silence), and artboard 01's
- * `T+130MS` sits inside exactly such a gap, 17ms after the last span
- * closed: the design requires the header to keep counting while the run is
- * alive. This module is that one concession, kept out of the fold: the
- * displayed T+ is the fold's clock plus the real time since the newest
- * event arrived. State never reads a clock; the header's caption does.
+ * life between events (a model call is one long silence), and the design
+ * fixture's mid-run `T+130MS` sits inside exactly such a gap, 17ms after the
+ * last span closed: the design requires the header to keep counting while
+ * the run is alive. This module is that one concession, kept out of the
+ * fold: the displayed T+ is the fold's clock plus the real time since the
+ * newest event arrived. State never reads a clock; the header's caption does.
  *
  * The clock freezes back to the fold the moment the run has ended (the
  * final T+ is the run's true duration) or the stream is not live (a dead

@@ -2,7 +2,7 @@
  * The full-history load that runs once before the app follows the live tail.
  *
  * `/api/trajectory` hands back the whole run as NDJSON: the tailed file when the
- * server has one, the ring buffer when it is ingest-fed (D7). Folding it here,
+ * server has one, the ring buffer when it is ingest-fed. Folding it here,
  * then resuming SSE past the returned cursor, is what makes opening a finished
  * `.jsonl` the same code path as watching a live run, and what keeps the two
  * transports from folding the same event twice.

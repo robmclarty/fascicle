@@ -91,7 +91,7 @@ describe('parse_frame', () => {
     expect(parse_frame('{"kind":"emit","run_id":7}')).toEqual({ kind: 'emit', run_id: 7 })
   })
 
-  it('accepts a kind this build has never heard of (C7)', () => {
+  it('accepts a kind this build has never heard of', () => {
     expect(parse_frame('{"kind":"quantum_entanglement"}')).toEqual({
       kind: 'quantum_entanglement',
     })

@@ -6,9 +6,9 @@ import { start_viewer, type ViewerHandle } from '../../index.js'
  *
  * Two things can only be proved here. The build output has to actually mount
  * (a vite config that emits an unreachable entry still passes every unit
- * test), and C3 has to hold at runtime: the page is watched for requests that
- * leave the viewer's own origin, which is a stronger claim than grepping the
- * bytes for a hostname.
+ * test), and the offline rule has to hold at runtime: the page is watched
+ * for requests that leave the viewer's own origin, which is a stronger claim
+ * than grepping the bytes for a hostname.
  *
  * Needs `pnpm build` (or `pnpm viewer:app`) to have compiled the canvas first.
  */
@@ -60,7 +60,7 @@ test('the header adopts the run id and folds the clock off the wire', async ({ p
   await expect(page.getByTestId('stats').locator('span').first()).toHaveText('T+130MS')
 })
 
-test('the page fetches nothing off its own origin (C3)', async ({ page }) => {
+test('the page fetches nothing off its own origin', async ({ page }) => {
   const origin = new URL(viewer.url).origin
   const foreign: string[] = []
   page.on('request', (request) => {

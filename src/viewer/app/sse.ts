@@ -13,7 +13,7 @@
  *
  * Only `kind` is guaranteed by the wire contract. Everything else stays
  * untyped surplus on purpose: the fold reads each field permissively at the
- * point of use (C7), so narrowing here would only duplicate its guards.
+ * point of use, so narrowing here would only duplicate its guards.
  */
 export type ViewerFrame = Readonly<Record<string, unknown>> & {
   readonly kind: string
@@ -41,7 +41,7 @@ export type SseConnection = {
 /**
  * Decodes one SSE `data:` payload into a frame, or `null` when it is not one.
  *
- * Permissive by contract (C7): a frame whose kind this build has never heard
+ * Permissive by contract: a frame whose kind this build has never heard
  * of still parses and still counts, because the wire is allowed to grow new
  * kinds without the canvas being rebuilt. Only structurally broken input,
  * which no producer should ever send, is dropped.

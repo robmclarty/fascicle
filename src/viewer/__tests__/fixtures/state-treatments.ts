@@ -1,6 +1,6 @@
 /**
- * A synthetic trajectory for the step-14 state treatments: a checkpoint hit,
- * `emit` events mid-step, and a suspension that parks the run.
+ * A synthetic trajectory for the white-family state treatments: a checkpoint
+ * hit, `emit` events mid-step, and a suspension that parks the run.
  *
  * The flow is a plain spine so each treatment reads in isolation: a warm-up
  * step, a checkpointed step the store spares (the lookup hits, so

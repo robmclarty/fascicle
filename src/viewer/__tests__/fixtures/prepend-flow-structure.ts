@@ -1,12 +1,12 @@
 /**
  * Regenerate the `flow_structure` first line of the frozen viewer design
- * fixture (plumbbob D8, fixture-prepend).
+ * fixture.
  *
- * The six artboards and the viewer acceptance criteria pin one exact run:
- * `42b20e54...`, with its ids, timings, and header numbers. So the fixture is
- * stamped by hand rather than re-recorded: the 41 span/run_end lines stay
- * frozen, and this script only owns line one. It rebuilds the viewer-demo flow
- * (the same composition `examples/viewer-demo/main.ts` runs), takes its
+ * The canvas tests and screenshot baselines pin one exact run: `42b20e54...`,
+ * with its ids, timings, and header numbers. So the fixture is stamped by hand
+ * rather than re-recorded: the 41 span/run_end lines stay frozen, and this
+ * script only owns line one. It rebuilds the viewer-demo flow (the same
+ * composition `examples/viewer-demo/main.ts` runs), takes its
  * `describe.json` tree, and writes the `flow_structure` event that an observed
  * run of that flow now emits first (see `start_run` in `src/core/runner.ts`).
  *
@@ -17,8 +17,7 @@
  * Idempotent: an existing `flow_structure` line one is replaced, never stacked.
  *
  * The fixture is tracked rather than left in gitignored working notes because
- * the later canvas steps replay it inside `pnpm check`, which also runs in CI
- * (plumbbob D13, fixture-tracked-home).
+ * the canvas tests replay it inside `pnpm check`, which also runs in CI.
  *
  *   pnpm exec tsx src/viewer/__tests__/fixtures/prepend-flow-structure.ts
  */

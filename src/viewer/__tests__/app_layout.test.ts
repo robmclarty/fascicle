@@ -1,9 +1,9 @@
 /**
  * The metro-line layout: geometry pinned against the frozen design.
  *
- * The fixture flow (the run the artboards freeze) pins exact coordinates
- * for every geometry family at once; synthetic trees cover what the
- * fixture never exercises (deep nesting and lane repair, the wide-loop
+ * The fixture flow (the run the frozen design was drawn from) pins exact
+ * coordinates for every geometry family at once; synthetic trees cover what
+ * the fixture never exercises (deep nesting and lane repair, the wide-loop
  * return, stacked basins, every kind in the step registry, cycle
  * back-references, foreign kinds). The registry sweep iterates core's
  * STEP_KINDS so a new primitive fails here until layout maps it.
@@ -173,7 +173,7 @@ describe('layout of the fixture flow', () => {
     expect(result.segments).toHaveLength(18)
   })
 
-  it('anchors the three group labels where the artboards put them', () => {
+  it('anchors the three group labels where the design puts them', () => {
     expect(result.group_labels).toEqual([
       { owner: 'parallel_1', tick: { x: 380, y: 79 }, text_anchor: { x: 402, y: 83 } },
       { owner: 'retry_1', tick: { x: 1124, y: 161 }, text_anchor: { x: 1146, y: 165 } },

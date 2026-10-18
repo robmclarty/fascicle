@@ -11,7 +11,7 @@ import { map_trajectory_ndjson } from '../fixtures/map-instances.js'
  * Two claims can only be proved here. Scrubbing a loaded run walks the canvas
  * through the fold: opening the finished fixture with no live producer, the
  * keyboard alone drives the playhead from the T+0 scaffold, through the
- * artboard-01 mid-run moment, to the settled run, and the header T+ reduces
+ * mid-run reference moment, to the settled run, and the header T+ reduces
  * from the same prefix at every stop. And on a live run, scrubbing off the
  * newest event flips the chip from LIVE to REPLAY with a control that
  * re-attaches, which is a runtime interaction no unit test can reach.
@@ -35,7 +35,7 @@ const lines = readFileSync(FIXTURE, 'utf8')
   .split('\n')
   .filter((line) => line.length > 0)
 
-/** The event index whose fold is the artboard-01 moment: attempt 1's failure. */
+/** The event index whose fold is the mid-run moment: attempt 1's failure. */
 const MID_RUN_STEPS = 28
 
 let viewer: ViewerHandle

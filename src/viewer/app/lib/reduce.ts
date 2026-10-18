@@ -1,23 +1,25 @@
 /**
  * The pure fold that turns a trajectory prefix into canvas state.
  *
- * Everything the canvas draws at time T is `reduce(structure, events[0..t])`
- * (C5): no wall-clock reads, no hidden accumulation, so live mode is replay
- * pinned to the newest event and scrubbing is a refold of the prefix. The
- * incremental form `apply_event` is what live mode calls per frame; the
+ * Everything the canvas draws at time T is `reduce(structure, events[0..t])`,
+ * a pure fold: no wall-clock reads, no hidden accumulation, so live mode is
+ * replay pinned to the newest event and scrubbing is a refold of the prefix.
+ * The incremental form `apply_event` is what live mode calls per frame; the
  * property test in `app_reduce.test.ts` holds the two forms equal at every
  * prefix, which is the purity contract the scrubber and play mode lean on.
  *
- * Runtime joins structure by span meta (D6): a span's `id` field names its
- * `StructureNode`, and repeated same-id spans group as map/loop instances or retry
- * attempts depending on the parent span's kind. The kind comes from the
+ * Runtime joins structure by span meta, since those keys already ride the
+ * wire and need no new producer fields: a span's `id` field names its
+ * `StructureNode`, and repeated same-id spans group as map/loop instances or
+ * retry attempts depending on the parent span's kind. The kind comes from the
  * structure tree when the parent joins it, because span `name` is a display
  * name a user can shadow; the wire name is only a fallback for spans the
  * structure does not know.
  *
- * Failure semantics fold two layers (D12). A failed span with an open retry
- * ancestor is absorbed: the run will re-attempt it, so it feeds the header's
- * absorbed count and never scars. Without an absorbing retry, the failure
+ * Failure semantics fold two layers, kept apart so an engine retry never draws
+ * structural geometry. A failed span with an open retry ancestor is absorbed:
+ * the run will re-attempt it, so it feeds the header's absorbed count and
+ * never scars. Without an absorbing retry, the failure
  * scars the deepest structure-joined span in its chain; the enclosing spans
  * that relay the same error upward stay unscarred so one death is one scar.
  * Engine `turn_retry` events are the second layer: absorbed by definition,
@@ -30,8 +32,8 @@
  * `describe.json` FlowNode tree, only the fields the fold joins on; core's
  * type stays assignable to it, which the tests hold by folding the real
  * fixture tree. The wire reading is local and deliberately permissive for the
- * same reason, the stance `sse.ts` set: unknown kinds advance the clock and
- * change nothing else (C7).
+ * same reason, the stance `sse.ts` set: a kind this build has never heard of
+ * advances the clock and changes nothing else.
  */
 
 /**
@@ -73,9 +75,9 @@ export type CheckpointStatus = 'hit' | 'miss' | 'read_error'
  * puck-level rollup; `occurrences` carries the per-span detail (instance
  * slots, attempt history, failure timestamps) that ticks, loops, and the
  * scrubber's failure marks read directly. `emits` counts `ctx.emit` events
- * (the renderer blooms on each increment; the count is the pure record C5
- * requires); `checkpoint` keeps the newest store-lookup outcome so a hit can
- * explain a node the run never entered.
+ * (the renderer blooms on each increment; the count is the record a pure fold
+ * needs, since it reads no clock); `checkpoint` keeps the newest store-lookup
+ * outcome so a hit can explain a node the run never entered.
  */
 export type NodeRuntime = {
   readonly status: NodeStatus
@@ -136,9 +138,9 @@ const EMPTY_NODE: NodeRuntime = {
 /**
  * The state before any event: every structure node pre-seeded as pending, so
  * the T+0 scaffold draws the whole composition from the first event alone,
- * and the kind index that D6 classification joins against. `null` structure
- * still folds (a pre-structure file must not crash the canvas, C7); nodes
- * then accrete from span meta as spans arrive.
+ * and the kind index that span-meta grouping joins against. `null` structure
+ * still folds (a file recorded before runs logged their structure must not
+ * crash the canvas); nodes then accrete from span meta as spans arrive.
  */
 export function initial_state(structure: StructureNode | null): CanvasState {
   const kinds = new Map<string, string>()
@@ -482,7 +484,7 @@ function on_suspended(state: CanvasState, event: EventRecord): CanvasState {
  * attributed like cost (the event's own `span_id` when a producer stamps
  * one, else the open-stack heuristic, since core's emit rides bare). The
  * count is the whole record; the 200ms bloom is the renderer reacting to it
- * changing, so scrub and replay re-perform emits from pure state (C5).
+ * changing, so scrub and replay re-perform emits from pure state.
  */
 function on_emit(state: CanvasState, event: EventRecord): CanvasState {
   const node_id = attributed_node(state, str(event, 'span_id'))
@@ -502,7 +504,7 @@ function is_checkpoint_status(value: string): value is CheckpointStatus {
  * A checkpoint store lookup: the event names its own structure node (`id` is
  * stamped by the checkpoint step), so the join is direct like `suspended`'s.
  * Newest outcome wins because a resumed run can look the same key up again.
- * Unknown statuses stay inert (C7).
+ * Unknown statuses stay inert, since the wire only grows additively.
  */
 function on_checkpoint(state: CanvasState, event: EventRecord): CanvasState {
   const node_id = str(event, 'id')
@@ -515,8 +517,8 @@ function on_checkpoint(state: CanvasState, event: EventRecord): CanvasState {
 }
 
 /**
- * An engine-absorbed provider retry: always feeds the header count (D12), and
- * marks the node it attributes to so step 11 can draw the per-node tick.
+ * An engine-absorbed provider retry: always feeds the header count, and
+ * counts onto the node it attributes to, the per-node record a mark reads.
  */
 function on_turn_retry(state: CanvasState, event: EventRecord): CanvasState {
   const retries_absorbed = state.retries_absorbed + 1
@@ -530,8 +532,9 @@ function on_turn_retry(state: CanvasState, event: EventRecord): CanvasState {
 
 /**
  * Cost rolls into the run total unconditionally and onto a node when one can
- * be named: exactly via the event's `span_id` (E), else the open-stack
- * heuristic for pre-E files, else the legible unattributed bucket.
+ * be named: exactly via the event's `span_id`, else the open-stack heuristic
+ * for files recorded before cost carried one, else the legible unattributed
+ * bucket.
  */
 function on_cost(state: CanvasState, event: EventRecord): CanvasState {
   const total = num(event, 'total_usd')
@@ -598,7 +601,7 @@ function span_kind(state: CanvasState, span: SpanInfo): string {
  * True when a still-open ancestor is a retry combinator: the failure just
  * recorded will be caught and re-attempted, so it is absorbed rather than
  * permanent. Closed ancestors cannot re-attempt and do not count. The hop cap
- * keeps a malformed parent cycle from hanging the fold (C7).
+ * keeps a malformed parent cycle from hanging the fold.
  */
 function absorbed_by_retry(state: CanvasState, span: SpanInfo): boolean {
   let hops = state.spans.size + 1
@@ -615,10 +618,10 @@ function absorbed_by_retry(state: CanvasState, span: SpanInfo): boolean {
 
 /**
  * The node an unanchored event lands on: the event's own span when it names
- * one (exact attribution, E), else the deepest open span (the pre-E
- * open-stack heuristic), in both cases walked up to the nearest
- * structure-joined ancestor, since engine spans hang below the node that
- * should own the number.
+ * one (exact attribution), else the deepest open span (the open-stack
+ * heuristic for files recorded before events carried `span_id`), in both
+ * cases walked up to the nearest structure-joined ancestor, since engine
+ * spans hang below the node that should own the number.
  */
 function attributed_node(state: CanvasState, span_id: string | null): string | null {
   const start = span_id ?? state.open_spans[state.open_spans.length - 1] ?? null

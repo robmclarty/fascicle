@@ -91,7 +91,7 @@ describe('start_viewer', () => {
     expect(events.map((e) => e.event.kind)).toEqual(['emit'])
   })
 
-  it('serves the tailed file as full history over /api/trajectory (D7)', async () => {
+  it('serves the tailed file as full history over /api/trajectory', async () => {
     work_dir = mkdtempSync(join(tmpdir(), 'fascicle-viewer-start-'))
     const path = join(work_dir, 'events.jsonl')
     // The blank middle line is the tell: streaming the file returns it

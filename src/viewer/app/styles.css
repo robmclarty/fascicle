@@ -1,7 +1,7 @@
 /*
  * The run canvas ground and its header chrome.
  *
- * Every value here is a token from artboard 05 (the system spec), so the
+ * Every value here is a token from the frozen design system, so the
  * numbers are the design, not arbitrary taste: warm near-black ground, a 28px
  * dot grid at warm white 5%, an edge vignette, and a type ramp of Sora for
  * names and Spline Sans Mono for meta. Geometry that responds to run state
@@ -121,7 +121,7 @@ body {
 }
 
 /* The status dot is the only moving chrome at rest, and it is white, never
-   amber: amber is reserved for geometry the run is alive inside (C4). */
+   amber: amber is reserved for geometry the run is alive inside. */
 .status-dot {
   width: 5px;
   height: 5px;
@@ -148,8 +148,9 @@ body {
 }
 
 /* Scrubbed off the live edge: the chip reads REPLAY in the white family, never
-   amber (C4). The dot holds a static glow rather than the live pulse, because
-   nothing is arriving to pulse for. */
+   amber, since amber belongs to the geometry the run is alive inside. The dot
+   holds a static glow rather than the live pulse, because nothing is arriving
+   to pulse for. */
 .status-replay {
   color: rgb(246 243 234 / 88%);
 }
@@ -183,8 +184,8 @@ body {
   color: rgb(246 243 234 / 88%);
 }
 
-/* The gap approximates the artboard's non-breaking space between a numeral
-   and its word; the separators pad themselves out to the 11px the spec pins. */
+/* The gap approximates a non-breaking space between a numeral and its word;
+   the separators pad themselves out to the design's 11px. */
 .stats {
   display: flex;
   align-items: baseline;
@@ -209,7 +210,7 @@ body {
 }
 
 /* The one place ember reaches the header: a scar count above zero, the numeral
-   at full strength so the wound is legible at a glance (artboard 04). */
+   at full strength so the wound is legible at a glance. */
 .stats-scar {
   color: var(--ember);
   opacity: 1;
@@ -226,7 +227,7 @@ body {
 }
 
 /* The scaffold: metro lines in their unbuilt state, dashed and dim. The
-   values are artboard tokens (line 3 dash 4 9, round caps), not taste. */
+   values are design tokens (line 3 dash 4 9, round caps), not taste. */
 .seg {
   fill: none;
   stroke-linecap: round;
@@ -244,9 +245,10 @@ body {
   stroke-width: 3.5;
 }
 
-/* The live segment is three strokes of the same path (artboard 01): two
-   blurred amber washes for glow, then the marching dash carrying the light.
-   Amber appears only here and on the active puck (C4). */
+/* The live segment is three strokes of the same path: two blurred amber
+   washes for glow, then the marching dash carrying the light. Amber marks
+   where the run is alive right now, so it appears only here and on the
+   active puck. */
 .seg-live-outer {
   stroke: var(--amber);
   stroke-width: 11;
@@ -317,7 +319,7 @@ body {
   fill: var(--amber-core);
 }
 
-/* Suspended (Q1): the light is parked, not moving, and never amber (C4). The
+/* Suspended: the light is parked, not moving, so it is never amber. The
    ring goes hollow (the dot grid shows through where the ground fill was) and
    a small white double-bar parks inside it. */
 .node[data-status='suspended'] .puck {
@@ -331,11 +333,11 @@ body {
   stroke-linecap: round;
 }
 
-/* The emit bloom (Q1): one 200ms white brightness flash per emit event, no
+/* The emit bloom: one 200ms white brightness flash per emit event, no
    persistent mark. Base opacity is zero so the element leaves nothing behind
    once the flash ends; the renderer re-creates it per emit to restart the
    animation. A one-shot fade is not a looping animation, so it stays under
-   reduced motion (C9 gates the loops). */
+   reduced motion, which gates only the loops. */
 .emit-bloom {
   fill: var(--ink-bright);
   opacity: 0;
@@ -353,7 +355,7 @@ body {
   }
 }
 
-/* The checkpoint tick (Q1): a small white mark in the meta line, the note
+/* The checkpoint tick: a small white mark in the meta line, the note
    that the store's answer spared this node its run. */
 .meta-check {
   fill: var(--ink-bright);
@@ -365,8 +367,8 @@ body {
   stroke-linecap: round;
 }
 
-/* Map instance ticks (artboard 03): perpendicular marks on the outgoing line,
-   one per instance. Hierarchy is opacity and the amber discipline (C4): a done
+/* Map instance ticks: perpendicular marks on the outgoing line, one per
+   instance. Hierarchy is opacity, and amber marks only what is alive: a done
    instance is a line-family mark, the alive window the only amber, a failure a
    small ember ✕ that keeps its slot, and the decade numerals a faint ruler. */
 .tick {
@@ -374,7 +376,7 @@ body {
 }
 
 .tick-done {
-  stroke: #a79f8f; /* the warm tick grey of artboard 03, between line and ring */
+  stroke: #a79f8f; /* the design's warm tick grey, between line and ring */
   stroke-width: 2;
   opacity: 0.9;
 }
@@ -406,15 +408,15 @@ body {
 }
 
 /* The one place ember reaches a node meta: a map's permanent-failure count,
-   the ✕ tally read aloud beside its ticks (artboard 03, C4). */
+   the ✕ tally read aloud beside its ticks. */
 .meta-fail {
   fill: var(--ember);
 }
 
-/* The scar (artboard 04): the ring never fills, it breaks. The mask hides the
+/* The scar: the ring never fills, it breaks. The mask hides the
    dead line under the puck, the ring is the same puck-ring stroke split into
    dashed arcs, and ember is only the small ✕ orbiting it, never the ring
-   itself (C4). */
+   itself, because ember never fills or borders. */
 .scar-mask {
   fill: var(--ground);
   stroke: none;
@@ -434,7 +436,7 @@ body {
 }
 
 /* A scar drops its name to 55% and dims its meta, so the eye reads the run's
-   living path first and the wound second (artboard 04). */
+   living path first and the wound second. */
 .node[data-scar] .node-name {
   opacity: 0.55;
 }
@@ -443,9 +445,9 @@ body {
   opacity: 0.3;
 }
 
-/* Annotation cards, artboard 01's bare variant: mono text tied to a node by
-   a 1px leader ending in a 2.5px dot at the halo edge. Ember reaches a card
-   only as the ✕ naming a failure (C4). */
+/* Annotation cards, bare rather than boxed: mono text tied to a node by a
+   1px leader ending in a 2.5px dot at the halo edge. Ember reaches a card
+   only as the ✕ naming a failure. */
 .card-title {
   font: 500 11.5px var(--mono);
   letter-spacing: 0.1em;
@@ -495,7 +497,7 @@ body {
   stroke: var(--puck-ring);
 }
 
-/* Node typography. Hierarchy is opacity, never added color (C4): base
+/* Node typography. Hierarchy is opacity, never added color: base
    opacities are the lit values and pending drops below them. */
 .node-name {
   font: 600 15px var(--sans);
@@ -590,15 +592,16 @@ body {
   stroke-linecap: round;
 }
 
-/* The density band (Q5 at scale): event count shaded in the white family
-   behind the spine and under the ✕ marks, brightest where the log is busiest.
-   Per-bin strength rides each rect's own opacity attribute, so hierarchy stays
-   opacity and the playhead stays the strip's only amber (C4). */
+/* The density band, how map activity at scale reads on the timeline: event
+   count shaded in the white family behind the spine and under the ✕ marks,
+   brightest where the log is busiest. Per-bin strength rides each rect's own
+   opacity attribute, so hierarchy stays opacity and the playhead stays the
+   strip's only amber. */
 .scrub-density {
   fill: var(--ink);
 }
 
-/* Error closes, always drawn (Q5): the same ember ✕ the canvas marks a failure
+/* Error closes, always drawn: the same ember ✕ the canvas marks a failure
    with, seated on the spine at the moment it happened. */
 .scrub-fail {
   stroke: var(--ember);
@@ -607,12 +610,12 @@ body {
 }
 
 /* The playhead: the single amber point the timeline strip ever carries, so
-   amber never lives in two timelines at once (Q2). */
+   amber never lives in two timelines at once. */
 .scrub-playhead {
   fill: var(--amber);
 }
 
-/* The drawn line is thin; the hit target is the padded band around it (Q5). */
+/* The drawn line is thin; the hit target is the 24px band around it. */
 .scrub-band {
   fill: transparent;
   cursor: pointer;
@@ -620,7 +623,7 @@ body {
 
 /* The playback cluster: play mode's dials in the shared chrome-chip recipe,
    seated under the time spine. An engaged toggle brightens; hierarchy is
-   opacity, never added color (C4). The dials are the canvas's one set of
+   opacity, never added color. The dials are the canvas's one set of
    clicked-repeatedly controls, so they stand taller than the header's inline
    chip: a 28px target, stopping 4px short of the spine's strip above. */
 .playback {
@@ -650,8 +653,8 @@ body {
 
 /* Recording polish: while the run performs and the cursor has gone idle, the
    interaction chrome fades so a screen capture shows only the canvas and its
-   header story. A one-shot fade is not a looping animation (C9 gates the
-   loops), and pointer events die with it so nothing invisible stays
+   header story. A one-shot fade is not a looping animation, so reduced motion
+   leaves it alone, and pointer events die with it so nothing invisible stays
    clickable; any pointer or key activity brings the chrome back. */
 .scrubber,
 .playback,
@@ -668,10 +671,10 @@ body {
   pointer-events: none;
 }
 
-/* C9: every looping animation swaps to a static glow rather than stopping
-   mid-cycle, so a reduced-motion reader still sees the live state. The
-   marquee keeps its amber dashes and washes, just parked; the halo holds
-   its full glow. */
+/* Under reduced motion every looping animation (the marquee, the halo pulse,
+   the LIVE dot) swaps to a static glow rather than stopping mid-cycle, so a
+   reduced-motion reader still sees the live state. The marquee keeps its
+   amber dashes and washes, just parked; the halo holds its full glow. */
 @media (prefers-reduced-motion: reduce) {
   .status-live .status-dot,
   .seg-live-march,

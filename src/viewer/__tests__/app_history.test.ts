@@ -4,9 +4,10 @@
  * so the whole module runs here with no DOM and no server; the fetch that feeds
  * it is the Playwright suite's job.
  *
- * The fixture is the finished viewer-demo run (D8): folding its whole body must
+ * The fixture is the finished viewer-demo run: folding its whole body must
  * reproduce the completed run, which is exactly what a client does when it opens
- * a finished `.jsonl` with no live producer (D7).
+ * a finished `.jsonl` with no live producer, the same fold-then-follow path a
+ * live run takes.
  *
  * Equivalent-mutant ledger (survivors left after this suite, classified here
  * rather than chased):

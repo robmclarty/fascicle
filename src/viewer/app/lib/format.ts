@@ -1,11 +1,11 @@
 /**
  * Header formatting for the run canvas.
  *
- * Pure string work, kept out of the components so it can be mutation-gated
- * (D4). The full header stat line lives here:
- * `T+130MS · 1 RETRY ABSORBED · SCARS 0 · $0.0000` is the artboard-01
- * reference string, and `format_header_stats` is the one place its shape is
- * decided.
+ * Pure string work, kept out of the components so it can be mutation-gated,
+ * since the `.tsx` files stay markup. The full header stat line lives here:
+ * `T+130MS · 1 RETRY ABSORBED · SCARS 0 · $0.0000` is the design fixture's
+ * mid-run reference string, and `format_header_stats` is the one place its
+ * shape is decided.
  */
 
 const RUN_ID_CHARS = 8
@@ -17,8 +17,8 @@ export const RUN_ID_PLACEHOLDER = '\u00b7'.repeat(RUN_ID_CHARS)
  * Truncates a run id to the 8-char prefix the header shows.
  *
  * The wire carries a full UUID, which is unreadable at 17px and pushes the
- * LIVE chip off the header baseline. Eight characters is what artboard 01
- * pins and is still collision-free at any run count a human will scroll.
+ * LIVE chip off the header baseline. Eight characters fit the header and are
+ * still collision-free at any run count a human will scroll.
  */
 export function short_run_id(run_id: string): string {
   return run_id.slice(0, RUN_ID_CHARS)
@@ -72,10 +72,10 @@ export type HeaderStatsInput = {
 
 /**
  * One span of the header stat line. Values sit at 78%, words at 38%, and the
- * dot separators at 20% (artboard 05), so the renderer needs the line as
- * role-tagged parts rather than one string. The `scar` role is the one place
- * ember reaches the header: a scar count above zero is the numeral drawn in
- * ember (artboard 04), while a zero stays an ordinary value (C4).
+ * dot separators at 20%, so the renderer needs the line as role-tagged parts
+ * rather than one string. The `scar` role is the one place ember reaches the
+ * header: a scar count above zero is the numeral drawn in ember, while a zero
+ * stays an ordinary value, because ember marks a failure and nothing else.
  */
 export type HeaderStatPart = {
   readonly text: string
@@ -85,7 +85,7 @@ export type HeaderStatPart = {
 const STAT_SEP: HeaderStatPart = { text: '·', role: 'sep' }
 
 /**
- * The header's right-aligned stat line, artboard-01 order and separators,
+ * The header's right-aligned stat line, in its fixed order and separators,
  * as parts the component renders one span each. The caller chooses the T+
  * value (the fold's clock, or a scrub playhead) because which moment the
  * header names is a renderer decision, not a formatting one.
@@ -105,7 +105,7 @@ export function header_stat_parts(stats: HeaderStatsInput): ReadonlyArray<Header
 }
 
 /**
- * The stat line as one string: the parts joined the way the artboard reads
+ * The stat line as one string: the parts joined the way the header reads
  * aloud. Tests and logs want the sentence; the header wants the parts.
  */
 export function format_header_stats(stats: HeaderStatsInput): string {

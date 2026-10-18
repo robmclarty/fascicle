@@ -5,7 +5,7 @@
  * third idea. It is a schedule mapping each event's run-time offset to the
  * wall-clock moment playback should reach it, and a position lookup the app
  * samples once per animation frame to choose which prefix to refold. The fold
- * never reads this clock (C5): playback only moves the held index a scrub
+ * never reads this clock: playback only moves the held index a scrub
  * would move, so the canvas cannot tell a performance from a live run and the
  * easing (marquee, halo, state transitions) is identical by construction.
  *
@@ -38,7 +38,10 @@
 
 export type PlaySpeed = 1 | 2 | 3
 
-/** The spec's order-2s cap: the most wall-clock any inter-event gap may cost. */
+/**
+ * The gap cap: the most wall-clock any inter-event gap may cost, so the
+ * silence inside a long model call collapses to a beat.
+ */
 export const GAP_CAP_MS = 2000
 
 /**

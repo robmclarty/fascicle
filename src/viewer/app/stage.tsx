@@ -13,12 +13,13 @@ import {
 /*
  * The stage: the metro geometry drawn into the canvas's SVG layer.
  *
- * Everything here is a one-to-one mapping from scene records to elements
- * (D4): coordinates come from layout, text and status from the scene, and
- * treatment from CSS keyed off `data-status` and `data-state`. The scene
- * decides where the light is; this file only stacks the artboard's layers in
- * order: ambient bloom under everything, the line work, the halo, pucks and
- * their type, the ember marks, and the annotation cards over it all. The
+ * Everything here is a one-to-one mapping from scene records to elements,
+ * because every decision lives in the mutation-gated `lib/`: coordinates come
+ * from layout, text and status from the scene, and treatment from CSS keyed
+ * off `data-status` and `data-state`. The scene decides where the light is;
+ * this file only stacks the layers in order: ambient bloom under everything,
+ * the line work, the halo, pucks and their type, the ember marks, and the
+ * annotation cards over it all. The
  * one-shot emit bloom is re-keyed off the fold's count so each increment
  * re-creates the element and restarts its animation.
  *
@@ -42,20 +43,20 @@ export type StageProps = {
   readonly viewport: Viewport
 }
 
-/** The half-length of an ember ✕'s arms, from artboards 01 and 04. */
+/** The half-length of an ember ✕'s arms, on a retry circle and a scar alike. */
 const MARK_ARM = 4.5
 
-/** A map instance tick's half-height, the perpendicular mark on the line (03). */
+/** A map instance tick's half-height, the perpendicular mark on the line. */
 const TICK_HALF = 6
 
-/** A failed instance keeps its slot as this smaller ember ✕ (artboard 03). */
+/** A failed instance keeps its slot as this smaller ember ✕. */
 const TICK_MARK_ARM = 4
 
-/** The scar puck's broken ring radius and its ground mask, from artboard 04. */
+/** The scar puck's broken ring radius and its ground mask. */
 const SCAR_RING_RADIUS = 8.5
 const SCAR_MASK_RADIUS = 13
 
-/** Rotating the dashes off the cardinal axes reads as a shattered ring (04). */
+/** Rotating the dashes off the cardinal axes reads as a shattered ring. */
 const SCAR_RING_ROTATE = -32
 
 /** The paused double-bar inside a suspended puck: seat, height, and gap. */
@@ -74,7 +75,7 @@ function cross_path(x: number, y: number, arm: number): string {
 }
 
 /**
- * A scarred node's puck (artboard 04): a ground mask that hides the dead line
+ * A scarred node's puck: a ground mask that hides the dead line
  * beneath it, the broken ring in place of the whole one, and the ember ✕
  * orbiting its seat. The mask sits first so the ring and mark draw over clean
  * ground.
@@ -104,7 +105,7 @@ function ScarPuck(props: {
 }
 
 /**
- * One map instance tick (artboard 03): a done instance is a grey mark, an alive
+ * One map instance tick: a done instance is a grey mark, an alive
  * one the only amber on the lane (a crisp stroke over a blurred wash), and a
  * failed one keeps its slot as an ember ✕ rather than a line.
  */
@@ -148,7 +149,7 @@ function Tick(props: { readonly tick: InstanceTick }): JSX.Element {
   )
 }
 
-/** A live segment is the artboard's amber trio: two glow washes, one march. */
+/** A live segment is an amber trio: two glow washes, one march. */
 function LiveSegment(props: { readonly scene_segment: SceneSegment }): JSX.Element {
   return (
     <g

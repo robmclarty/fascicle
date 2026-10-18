@@ -14,7 +14,7 @@
  * on disk. A client folds `/api/trajectory` for the whole run and then follows
  * `/api/events`, which replays anything past the cursor it names and streams
  * new events live. The ring is bounded memory by design, so history older than
- * it is served from the file the tail already reads (D7).
+ * it is served from the file the tail already reads.
  *
  * A server bound to a loopback name answers only requests whose `Host` names
  * loopback too, so a web page can't reach it by rebinding a domain of its own
@@ -87,8 +87,8 @@ export type ServerConfig = {
   readonly app_dir?: string
   /**
    * The trajectory file `/api/trajectory` streams as full history. Absent when
-   * the server is ingest-fed only, where that route falls back to the ring
-   * (D7). Threaded from the tailed `path` by `start_viewer`.
+   * the server is ingest-fed only, where that route falls back to the ring.
+   * Threaded from the tailed `path` by `start_viewer`.
    */
   readonly trajectory_path?: string
   /**
@@ -308,7 +308,7 @@ function send_not_found(res: ServerResponse, route: string): void {
 /**
  * Handles `GET /api/trajectory` by streaming the whole run history as NDJSON,
  * one event per line, so the client folds the full run before it follows the
- * live tail (D7).
+ * live tail.
  *
  * The tailed file is the source of truth: its bytes stream straight through,
  * which keeps memory bounded no matter how long the run grew, and a finished
@@ -333,7 +333,7 @@ function serve_trajectory(
   // The two guards are nested rather than joined with `&&` on purpose: only a
   // present file reaches `createReadStream`, so a path that is undefined (ingest
   // mode) or set-but-uncreated (a run not yet started) falls through to the
-  // ring, the only history such a server holds (D7). `stat_file` returns null
+  // ring, the only history such a server holds. `stat_file` returns null
   // for a missing path either way, which keeps the fallthrough total.
   if (trajectory_path !== undefined) {
     if (stat_file(trajectory_path) !== null) {

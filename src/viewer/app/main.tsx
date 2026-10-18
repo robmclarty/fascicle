@@ -45,13 +45,13 @@ import './styles.css'
  * one fact: the header's live clock counts from the moment the newest frame
  * landed, and a stamp that could lag its session by a frame would make the
  * displayed T+ jump. The animation-frame loop only samples the clock; state
- * stays the pure fold (C5).
+ * stays a pure fold with no wall-clock reads.
  *
  * Replay rides the same fold. The frame log keeps every event in order, and a
  * held scrub index selects a prefix the app refolds with `session_at`; live
  * mode is that fold pinned to the newest event, which is what a null held index
  * means (follow the edge). The header, the canvas, and the scrubber all read
- * the one selected session, so amber never lives in two timelines at once (Q2).
+ * the one selected session, so amber never lives in two timelines at once.
  *
  * Play mode is the same held index on a clock: while playing, each animation
  * frame looks the elapsed wall time up in the schedule `lib/playback.ts`
@@ -66,7 +66,7 @@ import './styles.css'
  * control and one key cover performing and walking without a second grammar
  * to learn.
  *
- * The DENSITY dial's persistence lives here for the same D4 reason: storage is
+ * The DENSITY dial's persistence lives here for the same reason: storage is
  * a browser global, so localStorage is read once at startup and written on
  * toggle, and the lib stays clock-free and storage-free.
  */
@@ -175,7 +175,7 @@ function main(): void {
   }
 
   /*
-   * Route a keydown: Space moves the run forward (Q5), which is play, pause,
+   * Route a keydown: Space moves the run forward, which is play, pause,
    * or one beat depending on the mode; the rest goes to the scrub move
    * `scrub_key` decides, where `'live'` re-attaches to the edge and a number
    * holds that prefix (continuing a running performance from there). The
@@ -264,7 +264,7 @@ type FollowSinks = {
 }
 
 /**
- * Fold the full run history, then follow the live tail from its edge (D7).
+ * Fold the full run history, then follow the live tail from its edge.
  *
  * History arrives once over `/api/trajectory` (the whole file, or the ring when
  * the server is ingest-fed), so a finished `.jsonl` opened with no live producer

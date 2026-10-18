@@ -5,13 +5,13 @@ import { expect, test } from '@playwright/test'
 import { start_viewer, type ViewerHandle } from '../../index.js'
 
 /**
- * The live run, artboard 01 in a real browser: spans move light through the
+ * The live run in a real browser: spans move light through the
  * geometry, the retry circle carries its two lanes, and the header counts
  * between events.
  *
  * Every test freezes the page clock before load and feeds fixture lines by
  * hand, so each moment under test is an exact fold plus an exact amount of
- * silence. The artboard-01 reference state is the fold through the first
+ * silence. The mid-run reference state is the fold through the first
  * attempt's failure (T+113) plus 17ms of backoff pause: the header must read
  * `T+130MS` with amber only on the loop's live lane. The screenshot baseline
  * pins how it looks; a change to it is a design decision, not a refactor.
@@ -25,7 +25,7 @@ const lines = readFileSync(join(HERE, '..', 'fixtures', 'fixture.trajectory.json
   .split('\n')
   .filter((line) => line.length > 0)
 
-/** The prefix whose fold is the artboard-01 moment: through attempt 1's failure. */
+/** The prefix whose fold is the mid-run moment: through attempt 1's failure. */
 const MID_RUN = 29
 
 let viewer: ViewerHandle
@@ -81,11 +81,11 @@ test('a span moves light through its segment: pending, live, traversed', async (
   await expect(page.locator('.halo')).toHaveCount(0)
 })
 
-test('the mid-run fold reads artboard 01: header, loop, and light', async ({ page }) => {
+test('the mid-run fold reads its reference state: header, loop, and light', async ({ page }) => {
   await ingest(0, MID_RUN)
   await expect(page.locator('.fail-mark')).toHaveCount(1)
 
-  // The fold's own clock, then 17ms of backoff silence: the artboard moment.
+  // The fold's own clock, then 17ms of backoff silence: the reference moment.
   await expect(page.getByTestId('stats').locator('span').first()).toHaveText('T+113MS')
   await page.clock.fastForward(17)
   const parts = await page.getByTestId('stats').locator('span').allTextContents()
@@ -226,7 +226,7 @@ test('an event keeps every glyph element and blooms an emit once', async ({ page
   await expect(stage).toHaveAttribute('data-blooms', '2')
 })
 
-test.describe('reduced motion (C9)', () => {
+test.describe('reduced motion', () => {
   test.use({ contextOptions: { reducedMotion: 'reduce' } })
 
   test('the marquee, halo, and LIVE dot park as static glow', async ({ page }) => {

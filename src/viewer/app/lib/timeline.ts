@@ -1,7 +1,7 @@
 /**
  * The scrubber's timeline: the run's event log read as a spine of time.
  *
- * Replay is a fold, not a second engine (C5). The canvas at any instant is
+ * Replay is a pure fold, not a second engine. The canvas at any instant is
  * `reduce(structure, events[0..t])`, so the scrubber never needs its own state
  * machine: it needs a coordinate. This module is that coordinate. It reads the
  * frame log once into the run's time domain (first event to last), the elapsed
@@ -27,7 +27,7 @@
  * A degenerate domain (one event, or a run whose events all share a ts) has no
  * time to spread across, so positions fall back to the event index instead of
  * dividing by a zero span. The wire reading stays permissive for the reason the
- * fold does (C7): an event without a usable ts leaves the clock where it was.
+ * fold does: an event without a usable ts leaves the clock where it was.
  */
 
 import { EMPTY_SESSION, apply_frame, type Session } from './scene.js'
@@ -143,9 +143,10 @@ export function index_at_fraction(timeline: Timeline, fraction: number): number 
 }
 
 /**
- * The spine's event density, bucketed for the shading band (Q5 at scale):
- * every event lands in the bin its spine fraction falls in, and the counts
- * normalize to the busiest bin so the band always peaks at full strength.
+ * The spine's event density, bucketed for the shading band that shows map
+ * activity at scale: every event lands in the bin its spine fraction falls
+ * in, and the counts normalize to the busiest bin so the band always peaks at
+ * full strength.
  * Positions read through `fraction_at`, so the shading, the playhead, and the
  * failure marks share one coordinate, degenerate domains included: a zero-span
  * run spreads by event index exactly as the playhead walks it. An empty log
@@ -214,7 +215,7 @@ export function step_second(timeline: Timeline, index: number, direction: number
 }
 
 /**
- * The scrub move a keydown selects (Q5): the arrows step one event, held with
+ * The scrub move a keydown selects: the arrows step one event, held with
  * Shift they step one second, Home rewinds to T+0, and End returns to the live
  * edge (`'live'`). A run with no events, or any other key, is `'ignore'` so the
  * caller leaves the page's own key handling alone. The mapping lives here, with
@@ -244,9 +245,10 @@ export function scrub_key(
 
 /**
  * The session at an event index: fold `frames[0..=index]` from empty, the same
- * `apply_frame` the live tail applies per event. This is the whole of replay
- * (C5); the property test holds it equal to the state incremental application
- * reached, so live mode is only this fold pinned to the newest event.
+ * `apply_frame` the live tail applies per event. This is the whole of replay,
+ * a pure fold with no clock; the property test holds it equal to the state
+ * incremental application reached, so live mode is only this fold pinned to
+ * the newest event.
  */
 export function session_at(frames: ReadonlyArray<ViewerFrame>, index: number): Session {
   let session = EMPTY_SESSION

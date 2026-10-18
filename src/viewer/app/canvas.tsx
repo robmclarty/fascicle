@@ -14,7 +14,7 @@ import { Stage, type Viewport } from './stage'
  * The run canvas shell: ground, header chrome, the stage the metro geometry is
  * drawn into, and the time spine along the bottom.
  *
- * Components stay this thin on purpose (D4). Everything with a decision in it
+ * Components stay this thin on purpose. Everything with a decision in it
  * lives in `lib/`, mutation-gated; what is left here is markup the Playwright
  * suite photographs. Component names are PascalCase because Solid's JSX reads
  * a lowercase tag as an HTML element, which is the one place the codebase's
@@ -23,9 +23,10 @@ import { Stage, type Viewport } from './stage'
  * The header names which timeline is live. While the app follows the newest
  * event the chip is the SSE status and the clock counts real time between
  * frames; scrubbed off that edge the chip reads REPLAY in the white family
- * (never amber, C4), the clock freezes at the folded prefix's own T+, and a
- * return-to-live control re-attaches to the edge. During a performance the
- * play clock's interpolated T+ takes the stat line instead, and the
+ * (never amber, which marks only live geometry), the clock freezes at the
+ * folded prefix's own T+, and a return-to-live control re-attaches to the
+ * edge. During a performance the play clock's interpolated T+ takes the stat
+ * line instead, and the
  * `data-chrome` attribute lets the idle fade clear the interaction chrome
  * for a recording.
  */
@@ -71,7 +72,7 @@ export type CanvasProps = {
   readonly on_toggle_density: () => void
 }
 
-/** The status chip: a white dot and a word, never amber (C4). */
+/** The status chip: a white dot and a word, never amber. */
 function StatusChip(props: { readonly status: SseStatus }): JSX.Element {
   return (
     <span

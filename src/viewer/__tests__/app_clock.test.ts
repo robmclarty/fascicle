@@ -1,10 +1,10 @@
 /**
  * The header's live clock: the one place the displayed T+ leaves the fold.
  *
- * The contract under test is artboard 01's `T+130MS`, a moment that sits
- * between events: the clock advances by real time since the newest frame
- * while the run is live, and snaps back to the fold's truth the moment the
- * run ends, the stream drops, or nothing has arrived to count from.
+ * The contract under test is the design fixture's mid-run `T+130MS`, a
+ * moment that sits between events: the clock advances by real time since the
+ * newest frame while the run is live, and snaps back to the fold's truth the
+ * moment the run ends, the stream drops, or nothing has arrived to count from.
  */
 
 import { describe, expect, it } from 'vitest'

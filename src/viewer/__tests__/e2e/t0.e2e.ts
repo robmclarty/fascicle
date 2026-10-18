@@ -5,7 +5,7 @@ import { expect, test } from '@playwright/test'
 import { start_viewer, type ViewerHandle } from '../../index.js'
 
 /**
- * The T+0 scaffold, artboard 06 in a real browser: the fixture's
+ * The T+0 scaffold in a real browser: the fixture's
  * `flow_structure` line alone must draw the whole composition as dim
  * scaffold, dashed lines under grey pucks, every caption present and nothing
  * invented. The structural assertions pin what the canvas says; the
@@ -45,7 +45,7 @@ test.afterAll(async () => {
   await viewer.close()
 })
 
-test('the header reads the artboard-06 T+0 line', async ({ page }) => {
+test('the header reads the T+0 line', async ({ page }) => {
   await page.goto(viewer.url)
 
   await expect(page.getByTestId('run-id')).toHaveText('42b20e54')

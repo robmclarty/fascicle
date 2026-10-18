@@ -3,7 +3,7 @@ import { start_viewer, type ViewerHandle } from '../../index.js'
 import { map_trajectory_ndjson } from '../fixtures/map-instances.js'
 
 /**
- * Instance ticks at scale, artboard 03 in a real browser: a map's instances
+ * Instance ticks at scale in a real browser: a map's instances
  * render as perpendicular ticks on its outgoing line. At x3 they sit at the
  * canvas pitch; past a decade the ruler comb takes over with faint decade
  * numerals; a failure keeps its slot as an ember ✕; and only the still-open
@@ -11,10 +11,11 @@ import { map_trajectory_ndjson } from '../fixtures/map-instances.js'
  * `map_trajectory`, so the pixels here and the geometry the scene unit tests
  * pin come off one source.
  *
- * Per D14 the comb uses the frozen two-tier token (pitch 18 beyond a decade),
- * so x12 renders at 18 rather than artboard 03's per-row 24; the baselines are
- * approved at 18. The lane the layout reserves is compact, so the at-scale
- * combs read as a dense ruler rather than the artboard's didactic spread.
+ * The comb uses the frozen two-tier tick tokens (pitch 30 up to a decade,
+ * pitch 18 beyond), so x12 renders at 18 rather than stepping through an
+ * intermediate pitch; the baselines are approved at 18. The lane the layout
+ * reserves is compact, so the at-scale combs read as a dense ruler rather
+ * than a didactic spread.
  *
  * Needs `pnpm build` (or `pnpm viewer:app`) to have compiled the canvas first.
  */

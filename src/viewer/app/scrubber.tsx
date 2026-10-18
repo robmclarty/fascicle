@@ -5,31 +5,32 @@ import { density_bins, type Timeline } from './lib/timeline'
 /*
  * The time scrubber: the run's spine of time along the bottom margin.
  *
- * Drawn in the line grammar, not as a media player (spec track V): the run
- * behind the playhead is traversed grey, the run ahead is the same dim dashed
+ * Drawn in the canvas's line grammar, not as a media player: the run behind
+ * the playhead is traversed grey, the run ahead is the same dim dashed
  * scaffold the canvas draws for the unbuilt, error closes are ember crosses
  * always on the spine, and the playhead is a single amber point, the only amber
- * the timeline strip ever carries (Q2). The component stays markup (D4): the
- * time domain, the event positions, and the failure fractions are all decided
- * in `lib/timeline.ts`; this file maps them onto the spine and turns a drag into
- * a fraction the app resolves to an event.
+ * the timeline strip ever carries. The component stays markup: the time
+ * domain, the event positions, and the failure fractions are all decided in
+ * `lib/timeline.ts`, where the mutation gate holds them; this file maps them
+ * onto the spine and turns a drag into a fraction the app resolves to an
+ * event.
  *
  * The drawn line is thin, so the hit target is not: a transparent band gives
- * the pointer the padded reach Q5 asks for. Positions are in the canvas's own
+ * the pointer 24px of padded reach. Positions are in the canvas's own
  * pixel space (the strip spans the full width and shares the header's margins),
  * so a fraction reads straight off the pointer's x within the band.
  *
  * With the DENSITY dial on, `density_bins` shades the strip in the white
  * family behind the spine and under the ✕ marks, brightest where the log is
- * busiest, so map activity at scale reads off the timeline (Q5) while the
- * playhead stays the strip's only amber (Q2, C4).
+ * busiest, so map activity at scale reads off the timeline while the
+ * playhead stays the strip's only amber.
  */
 
 /** The strip's height; the visible spine sits on its centerline. */
 const STRIP_HEIGHT = 40
 const SPINE_Y = STRIP_HEIGHT / 2
 
-/** Q5's padded hit band: 24px of reach around the thin drawn line. */
+/** The padded hit band: 24px of reach around the thin drawn line. */
 const HIT_BAND = 24
 
 /** An error cross's half-arm on the spine. */
@@ -40,9 +41,9 @@ const PLAYHEAD_RADIUS = 3.5
 
 /**
  * The shading band's resolution and weight. 48 bins put one bin near the dot
- * grid's 28px pitch at the artboard width, coarse enough that a regular event
+ * grid's 28px pitch at a 1440px canvas, coarse enough that a regular event
  * comb reads as shading rather than stripes; the peak opacity keeps the band
- * under the spine's own weight, hierarchy by opacity alone (C4).
+ * under the spine's own weight, hierarchy by opacity alone.
  */
 const DENSITY_BINS = 48
 const DENSITY_PEAK_OPACITY = 0.3
