@@ -292,7 +292,7 @@ Match your reader's parameter type to how the state arrives, which differs by ca
 ## `tools/`: Capability Factories
 
 - One file per tool, exporting `make_<name>(root: string): Tool` (or a context object) so every tool closes over its confinement root instead of trusting the model's paths.
-- Declare a zod `input_schema` and **re-parse inside `execute`**: `const input = read_file_input.parse(raw)`. Fascicle's `Tool` is invariant on input, so the parse keeps the wiring cast-free while the declared schema still drives what the model sees.
+- Declare a zod `input_schema` and **build the tool with `define_tool`**: `define_tool({ name: 'read_file', input_schema: read_file_input, execute: async (input) => ... })`. It reads the input's type from the schema, and the engine validates every call against that schema before `execute` runs (a call that fails goes back to the model as a tool error), so `execute` gets a typed value and never parses its own input. What comes back is a plain `Tool`, so the factory's return type and the aggregator's array take it without a cast. It's also the one value import from `fascicle` that a tool file needs, and Rule 3 below lets it through.
 - Centralize limits (`MAX_FILE_BYTES`, timeouts, output caps) in `limits.ts` and interpolate them into tool descriptions, so the prompt text cannot drift from the enforcement.
 - Shared safety in one place: a `resolve_within(root, path)` confinement check that every path-taking tool calls, symlink refusal, argv-array-only shell with an allowlist.
 - **Error doctrine.** Mistakes that the model can correct (a failed edit match, a nonzero exit, a blocked URL) are *returned* as results for the model to read, pairing with `tool_error_policy: 'feed_back'`. Tools `throw` only on harness faults (containment violation, cap breach). Tools that must terminate a loop deterministically use `ends_turn: true`.
@@ -401,7 +401,7 @@ rule:
     - kind: do_statement
 ```
 
-Rule 3 — [`fascicle-value-imports-confined.yml`](../examples/pr-improve/rules/fascicle-value-imports-confined.yml): value imports from `fascicle` are allowed only in `engine.ts` (`create_engine`), `flow.ts` (composition), `main.ts` (`run`), and `stages/**` (`model_step` / `model_call`); everywhere else, `import type` stays free. The brace/default/namespace patterns match value imports without matching `import type { ... }`, so business logic files that need only Fascicle types are untouched. If your app uses subpath imports (`fascicle/adapters`, `fascicle/mcp`), widen the `$PATH` regex to `^fascicle(/|$)` and add `main.ts` / `tools/**` to the ignore list as appropriate.
+Rule 3 — [`fascicle-value-imports-confined.yml`](../examples/pr-improve/rules/fascicle-value-imports-confined.yml): value imports from `fascicle` are allowed only in `engine.ts` (`create_engine`), `flow.ts` (composition), `main.ts` (`run`), and `stages/**` (`model_step` / `model_call`); everywhere else, `import type` stays free. The brace/default/namespace patterns match value imports without matching `import type { ... }`, so business logic files that need only Fascicle types are untouched. A tool factory's one value import is `define_tool`, which hands back the spec it's given with a wider type and composes nothing, so the `not` clause lets `import { define_tool } from 'fascicle'` through when it's an import statement of its own, with the types in a separate `import type`; an import that names anything else beside it is still caught. If your app uses subpath imports (`fascicle/adapters`, `fascicle/mcp`), widen the `$PATH` regex to `^fascicle(/|$)` and add `main.ts` / `tools/**` to the ignore list as appropriate.
 
 ```yaml
 id: fascicle-value-imports-confined
@@ -416,13 +416,18 @@ ignores:
   - src/main.ts
   - src/stages/**/*.ts
 rule:
-  any:
-    - pattern: import { $$$ } from '$PATH'
-    - pattern: import { $$$ } from "$PATH"
-    - pattern: import $NAME from '$PATH'
-    - pattern: import $NAME from "$PATH"
-    - pattern: import * as $NAME from '$PATH'
-    - pattern: import * as $NAME from "$PATH"
+  all:
+    - any:
+        - pattern: import { $$$ } from '$PATH'
+        - pattern: import { $$$ } from "$PATH"
+        - pattern: import $NAME from '$PATH'
+        - pattern: import $NAME from "$PATH"
+        - pattern: import * as $NAME from '$PATH'
+        - pattern: import * as $NAME from "$PATH"
+    - not:
+        any:
+          - pattern: import { define_tool } from 'fascicle'
+          - pattern: import { define_tool } from "fascicle"
 constraints:
   PATH:
     regex: '^fascicle(/|$)'
@@ -439,7 +444,7 @@ Before calling an agent app done:
 - [ ] Every model boundary has a zod schema in `types.ts`; stages return `Step<In, Out>` from `model_step` (or the `GenerateResult` envelope from `model_call` where the flow needs usage or tool calls).
 - [ ] System prompts are markdown files with frontmatter; dynamic content is assembled in `messages.ts`.
 - [ ] Named state goes through `chain`; any raw scope-state casts live only in `state.ts` readers.
-- [ ] Tools re-parse inputs, share one confinement helper, and centralize limits.
+- [ ] Tools are built with `define_tool` and parse no input of their own, share one confinement helper, and centralize limits.
 - [ ] The flow runs end to end against a stub engine that validates fixtures through the real schemas.
 - [ ] Adapters are injected only at `run(...)`; side effects happen after `run` returns.
 - [ ] The boundaries are enforced by lint rules, not memory.

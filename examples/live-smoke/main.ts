@@ -47,12 +47,12 @@ import { z } from 'zod'
 
 import {
   create_engine,
+  define_tool,
   model_call,
   run,
   type GenerateResult,
   type ProviderConfigMap,
   type StreamChunk,
-  type Tool,
 } from 'fascicle'
 
 type SmokeTransport = 'ai_sdk' | 'native'
@@ -84,19 +84,14 @@ const is_main = import.meta.url === `file://${process.argv[1] ?? ''}`
 const PROMPT = 'What is the current temperature in Vancouver?'
 const EXPECTED_TEMP_C = 11
 
-const weather_input = z.object({ city: z.string() })
-
-const get_weather: Tool = {
+const get_weather = define_tool({
   name: 'get_weather',
   description: 'Look up the current temperature in Celsius for a city.',
-  input_schema: weather_input,
-  execute: (raw) => {
-    const { city } = weather_input.parse(raw)
-    return {
-      temp_c: city.toLowerCase().includes('vancouver') ? EXPECTED_TEMP_C : 12,
-    }
-  },
-}
+  input_schema: z.object({ city: z.string() }),
+  execute: ({ city }) => ({
+    temp_c: city.toLowerCase().includes('vancouver') ? EXPECTED_TEMP_C : 12,
+  }),
+})
 
 type Availability = { readonly ok: true } | { readonly ok: false; readonly reason: string }
 

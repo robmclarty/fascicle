@@ -10,6 +10,7 @@ import { mkdir, stat, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { z } from 'zod'
 
+import { define_tool } from 'fascicle'
 import type { Tool } from 'fascicle'
 
 import { MAX_FILE_BYTES } from './limits.js'
@@ -27,7 +28,7 @@ export type WriteFileOutput = {
 }
 
 export function make_write_file(root: string): Tool {
-  return {
+  return define_tool({
     name: 'write_file',
     description:
       'Write a utf-8 text file inside the PR worktree, overwriting if it exists. ' +
@@ -35,8 +36,7 @@ export function make_write_file(root: string): Tool {
       String(MAX_FILE_BYTES) +
       ' bytes.',
     input_schema: write_file_input,
-    execute: async (raw) => {
-      const input = write_file_input.parse(raw)
+    execute: async (input) => {
       const bytes = Buffer.byteLength(input.content, 'utf8')
       if (bytes > MAX_FILE_BYTES) {
         throw new Error(
@@ -57,7 +57,7 @@ export function make_write_file(root: string): Tool {
         created: existing === undefined,
       }
     },
-  }
+  })
 }
 
 async function maybe_stat(path: string): Promise<import('node:fs').Stats | undefined> {

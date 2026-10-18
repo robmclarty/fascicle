@@ -13,6 +13,7 @@
 import { lstat, readFile, writeFile } from 'node:fs/promises'
 import { z } from 'zod'
 
+import { define_tool } from 'fascicle'
 import type { Tool } from 'fascicle'
 
 import { MAX_FILE_BYTES } from './limits.js'
@@ -32,15 +33,14 @@ export type EditFileOutput = {
 }
 
 export function make_edit_file(root: string): Tool {
-  return {
+  return define_tool({
     name: 'edit_file',
     description:
       'String-replace within a file in the PR worktree. By default `find` must ' +
       'match exactly once; ambiguous or missing matches error. Pass ' +
       'replace_all: true to replace every occurrence.',
     input_schema: edit_file_input,
-    execute: async (raw) => {
-      const input = edit_file_input.parse(raw)
+    execute: async (input) => {
       const resolved = resolve_within(root, input.path)
       await assert_not_symlink(resolved, input.path)
       const target_stat = await lstat(resolved)
@@ -81,7 +81,7 @@ export function make_edit_file(root: string): Tool {
       await writeFile(resolved, after, { encoding: 'utf8' })
       return { path: input.path, replacements: occurrences, bytes_written: after_bytes }
     },
-  }
+  })
 }
 
 function count_occurrences(haystack: string, needle: string): number {

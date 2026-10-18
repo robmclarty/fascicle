@@ -7,6 +7,7 @@
  * `docker_sandbox`, not a host-level `/bin/sh -c`.
  */
 
+import { define_tool } from 'fascicle'
 import type { Tool } from 'fascicle'
 import { z } from 'zod'
 
@@ -19,12 +20,11 @@ const run_command_input = z.object({
 })
 
 export function make_run_command(sandbox: Sandbox): Tool {
-  return {
+  return define_tool({
     name: 'run_command',
     description: `Run a command inside the sandbox. Pass argv as an array (no shell). For pipelines or redirects, write the result to a file via write_file first. Default timeout is ${String(DEFAULT_COMMAND_TIMEOUT_MS)}ms.`,
     input_schema: run_command_input,
-    execute: async (raw) => {
-      const input = run_command_input.parse(raw)
+    execute: async (input) => {
       const timeout_ms = input.timeout_ms ?? DEFAULT_COMMAND_TIMEOUT_MS
       const result = await sandbox.exec(input.argv, { timeout_ms })
       return {
@@ -33,5 +33,5 @@ export function make_run_command(sandbox: Sandbox): Tool {
         exit_code: result.exit_code,
       }
     },
-  }
+  })
 }

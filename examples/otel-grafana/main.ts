@@ -35,9 +35,9 @@ import { MeterProvider, PeriodicExportingMetricReader } from '@opentelemetry/sdk
 import { BasicTracerProvider, BatchSpanProcessor } from '@opentelemetry/sdk-trace-base'
 import { z } from 'zod'
 
-import { chain, create_engine, model_step, run } from 'fascicle'
+import { chain, create_engine, define_tool, model_step, run } from 'fascicle'
 import { create_otel_trajectory_logger } from 'fascicle/otel'
-import type { ProviderFactory, Tool, TurnResult } from 'fascicle'
+import type { ProviderFactory, TurnResult } from 'fascicle'
 
 // Where the local collector listens. The exporters read the same variable
 // themselves; this copy only feeds the preflight check and the final hint.
@@ -70,18 +70,15 @@ otel_trace.setGlobalTracerProvider(tracer_provider)
 
 // --- A pretend model and one tool, so the example needs no API key --------
 
-const forecast_input = z.object({ city: z.string() })
-
-const fetch_forecast: Tool = {
+const fetch_forecast = define_tool({
   name: 'fetch_forecast',
   description: 'Look up the weather forecast for a city.',
-  input_schema: forecast_input,
-  execute: async (raw) => {
-    const { city } = forecast_input.parse(raw)
+  input_schema: z.object({ city: z.string() }),
+  execute: async ({ city }) => {
     await sleep(40 + Math.random() * 120)
     return { city, forecast: 'sunny, 24 C' }
   },
-}
+})
 
 let turn_count = 0
 

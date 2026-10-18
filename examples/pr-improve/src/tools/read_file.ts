@@ -9,6 +9,7 @@
 import { lstat, readFile } from 'node:fs/promises'
 import { z } from 'zod'
 
+import { define_tool } from 'fascicle'
 import type { Tool } from 'fascicle'
 
 import { MAX_FILE_BYTES } from './limits.js'
@@ -26,7 +27,7 @@ export type ReadFileOutput = {
 }
 
 export function make_read_file(root: string): Tool {
-  return {
+  return define_tool({
     name: 'read_file',
     description:
       'Read a utf-8 text file inside the PR worktree. Refuses symlinks and ' +
@@ -34,8 +35,7 @@ export function make_read_file(root: string): Tool {
       String(MAX_FILE_BYTES) +
       ' bytes are rejected.',
     input_schema: read_file_input,
-    execute: async (raw) => {
-      const input = read_file_input.parse(raw)
+    execute: async (input) => {
       const resolved = resolve_within(root, input.path)
       await assert_not_symlink(resolved, input.path)
       const target_stat = await lstat(resolved)
@@ -55,5 +55,5 @@ export function make_read_file(root: string): Tool {
       const lines = content.length === 0 ? 0 : content.split('\n').length
       return { path: input.path, content, bytes: buffer.byteLength, lines }
     },
-  }
+  })
 }

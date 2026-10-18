@@ -17,6 +17,7 @@
 import { spawn } from 'node:child_process'
 import { z } from 'zod'
 
+import { define_tool } from 'fascicle'
 import type { Tool, ToolExecContext } from 'fascicle'
 
 import { MAX_SHELL_OUT_BYTES, SHELL_TIMEOUT_MS } from './limits.js'
@@ -51,7 +52,7 @@ export class RunShellAllowlistError extends Error {
 }
 
 export function make_run_shell(root: string): Tool {
-  return {
+  return define_tool({
     name: 'run_shell',
     description:
       'Run an allowlisted command in the PR worktree. argv must be an array; ' +
@@ -62,8 +63,8 @@ export function make_run_shell(root: string): Tool {
       String(SHELL_TIMEOUT_MS) +
       ' ms.',
     input_schema: run_shell_input,
-    execute: (raw, ctx) => execute_run_shell(run_shell_input.parse(raw), ctx, root),
-  }
+    execute: (input, ctx) => execute_run_shell(input, ctx, root),
+  })
 }
 
 async function execute_run_shell(

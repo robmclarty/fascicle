@@ -10,6 +10,7 @@
 import { readdir, stat } from 'node:fs/promises'
 import { z } from 'zod'
 
+import { define_tool } from 'fascicle'
 import type { Tool } from 'fascicle'
 
 import { MAX_LIST_ENTRIES } from './limits.js'
@@ -33,7 +34,7 @@ export type ListDirOutput = {
 }
 
 export function make_list_dir(root: string): Tool {
-  return {
+  return define_tool({
     name: 'list_dir',
     description:
       'List the immediate entries of a directory inside the PR worktree. ' +
@@ -41,8 +42,7 @@ export function make_list_dir(root: string): Tool {
       String(MAX_LIST_ENTRIES) +
       ' entries; truncated: true means more were available.',
     input_schema: list_dir_input,
-    execute: async (raw) => {
-      const input = list_dir_input.parse(raw)
+    execute: async (input) => {
       const resolved = resolve_within(root, input.path)
       await assert_not_symlink(resolved, input.path)
       const target_stat = await stat(resolved)
@@ -65,5 +65,5 @@ export function make_list_dir(root: string): Tool {
       const out: ListDirOutput = { path: input.path, entries, truncated }
       return out
     },
-  }
+  })
 }
