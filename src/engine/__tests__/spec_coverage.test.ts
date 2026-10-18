@@ -1,8 +1,8 @@
 /**
- * Full spec coverage sweep — extends the core tests in generate.test.ts,
- * tool_loop.test.ts, and create_engine.test.ts to cover every success
- * criterion (spec §10) and failure mode (spec §9) end-to-end through
- * `generate`. See those files for the criteria already exercised.
+ * Engine behaviors end to end through `generate`, beyond what the core tests
+ * in generate.test.ts, tool_loop.test.ts, and create_engine.test.ts already
+ * exercise: the success paths in the first block and the failure modes in the
+ * second.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -86,8 +86,8 @@ function mk_net(): Error {
 beforeEach(() => reset_mock_state())
 afterEach(() => reset_mock_state())
 
-describe('spec §10: success criteria (remaining)', () => {
-  it('C7 multi-tool single-turn sequential order', async () => {
+describe('generate end to end: success paths', () => {
+  it('multi-tool single-turn sequential order', async () => {
     const order: string[] = []
     enqueue_generate_text({
       text: '',
@@ -127,7 +127,7 @@ describe('spec §10: success criteria (remaining)', () => {
     expect(result.tool_calls.map((c) => c.id)).toEqual(['c1', 'c2'])
   })
 
-  it('C8 malformed tool input fed back, next turn succeeds', async () => {
+  it('malformed tool input fed back, next turn succeeds', async () => {
     const exec_spy = vi.fn()
     enqueue_generate_text({
       text: '',
@@ -153,7 +153,7 @@ describe('spec §10: success criteria (remaining)', () => {
     expect(result.content).toBe('recovered')
   })
 
-  it('C9 tool execute error under feed_back continues loop', async () => {
+  it('tool execute error under feed_back continues loop', async () => {
     enqueue_generate_text({
       text: '',
       toolCalls: [{ toolCallId: 'c1', toolName: 'boom', input: {} }],
@@ -179,7 +179,7 @@ describe('spec §10: success criteria (remaining)', () => {
     expect(result.content).toBe('ok')
   })
 
-  it('C12 effort mapping forwards provider options; effort_ignored on Ollama', async () => {
+  it('effort mapping forwards provider options; effort_ignored on Ollama', async () => {
     enqueue_generate_text(make_text_result('ok'))
     await basic_engine().generate({
       model: 'claude-opus',
@@ -211,7 +211,7 @@ describe('spec §10: success criteria (remaining)', () => {
     expect(params_b.providerOptions).toBeUndefined()
   })
 
-  it('C14 streaming + tools emits tool_call_start / input_delta / end / tool_result / step_finish', async () => {
+  it('streaming + tools emits tool_call_start / input_delta / end / tool_result / step_finish', async () => {
     enqueue_stream([
       { type: 'tool-input-start', id: 't1', toolName: 'echo' },
       { type: 'tool-input-delta', id: 't1', delta: '{"v":' },
@@ -257,7 +257,7 @@ describe('spec §10: success criteria (remaining)', () => {
     expect(result.tool_calls[0]?.output).toBe('echoed:hi')
   })
 
-  it('C17 abort during streaming rejects with aborted_error', async () => {
+  it('abort during streaming rejects with aborted_error', async () => {
     enqueue_stream(
       [
         { type: 'text-delta', text: 'a' },
@@ -281,7 +281,7 @@ describe('spec §10: success criteria (remaining)', () => {
     await expect(promise).rejects.toBeInstanceOf(aborted_error)
   })
 
-  it('C18 abort during tool execute carries tool_call_in_flight metadata', async () => {
+  it('abort during tool execute carries tool_call_in_flight metadata', async () => {
     enqueue_generate_text({
       text: '',
       toolCalls: [{ toolCallId: 'c1', toolName: 'slow', input: {} }],
@@ -326,7 +326,7 @@ describe('spec §10: success criteria (remaining)', () => {
     expect(tool_ctx_abort.received?.aborted).toBe(true)
   })
 
-  it('C20 retry respects numeric Retry-After', async () => {
+  it('retry respects numeric Retry-After', async () => {
     enqueue_generate_text(mk_429_with_header())
     enqueue_generate_text(make_text_result('ok'))
     const t0 = Date.now()
@@ -345,7 +345,7 @@ describe('spec §10: success criteria (remaining)', () => {
     expect(elapsed).toBeGreaterThanOrEqual(40)
   })
 
-  it('C23 usage aggregation across a three-turn tool loop sums correctly', async () => {
+  it('usage aggregation across a three-turn tool loop sums correctly', async () => {
     enqueue_generate_text({
       text: '',
       toolCalls: [{ toolCallId: 'c1', toolName: 'step_tool', input: {} }],
@@ -382,7 +382,7 @@ describe('spec §10: success criteria (remaining)', () => {
     expect(result.steps).toHaveLength(3)
   })
 
-  it('C27 trajectory spans: engine.generate parent with engine.generate.step children', async () => {
+  it('trajectory spans: engine.generate parent with engine.generate.step children', async () => {
     const { logger, events, spans } = make_logger()
     enqueue_generate_text({
       text: '',
@@ -414,7 +414,7 @@ describe('spec §10: success criteria (remaining)', () => {
     expect(kinds).toContain('tool_call')
   })
 
-  it('C28 two engines resolve independent models under concurrent calls', async () => {
+  it('two engines resolve independent models under concurrent calls', async () => {
     const a = create_engine({ providers: { anthropic: { api_key: 'key_a' } } })
     const b = create_engine({ providers: { anthropic: { api_key: 'key_b' } } })
     enqueue_generate_text(make_text_result('a'))
@@ -427,7 +427,7 @@ describe('spec §10: success criteria (remaining)', () => {
     expect(ids).toEqual(new Set(['claude-opus-4-7', 'claude-haiku-4-5']))
   })
 
-  it('C30 cost aggregates across turns within tolerance', async () => {
+  it('cost aggregates across turns within tolerance', async () => {
     enqueue_generate_text({
       text: '',
       toolCalls: [{ toolCallId: 'c1', toolName: 'noop', input: {} }],
@@ -462,7 +462,7 @@ describe('spec §10: success criteria (remaining)', () => {
     expect(result.cost?.output_usd).toBeCloseTo(600 * 15 / 1e6, 9)
   })
 
-  it('C32 cost missing for unknown model emits exactly one pricing_missing event', async () => {
+  it('cost missing for unknown model emits exactly one pricing_missing event', async () => {
     const { logger, events } = make_logger()
     enqueue_generate_text({
       text: '',
@@ -491,15 +491,15 @@ describe('spec §10: success criteria (remaining)', () => {
   })
 })
 
-describe('spec §9: failure modes (remaining)', () => {
-  it('F2 unconfigured provider throws provider_not_configured_error at call time', async () => {
+describe('generate end to end: failure modes', () => {
+  it('unconfigured provider throws provider_not_configured_error at call time', async () => {
     const engine = create_engine({ providers: { anthropic: { api_key: 'k' } } })
     await expect(
       engine.generate({ model: 'gpt-4o', provider: 'openai', prompt: 'x' }),
     ).rejects.toBeInstanceOf(provider_not_configured_error)
   })
 
-  it('F6 provider_capability_error when streaming requested on non-streaming adapter (simulated)', async () => {
+  it('provider_capability_error when streaming requested on non-streaming adapter (simulated)', async () => {
     mock_state.capability_overrides['anthropic'] = { streaming: false }
     await expect(
       basic_engine().generate({
@@ -510,7 +510,7 @@ describe('spec §9: failure modes (remaining)', () => {
     ).rejects.toBeInstanceOf(provider_capability_error)
   })
 
-  it('F7 429 exhaustion throws rate_limit_error', async () => {
+  it('429 exhaustion throws rate_limit_error', async () => {
     enqueue_generate_text(mk_429())
     enqueue_generate_text(mk_429())
     await expect(
@@ -527,7 +527,7 @@ describe('spec §9: failure modes (remaining)', () => {
     ).rejects.toBeInstanceOf(rate_limit_error)
   })
 
-  it('F10 token limit without a schema returns finish_reason length with partial content', async () => {
+  it('token limit without a schema returns finish_reason length with partial content', async () => {
     enqueue_generate_text({
       text: 'partial response cut off',
       toolCalls: [],
@@ -542,7 +542,7 @@ describe('spec §9: failure modes (remaining)', () => {
     expect(result.content).toBe('partial response cut off')
   })
 
-  it('F10 token limit with a schema throws incomplete_generation_error instead of truncated text', async () => {
+  it('token limit with a schema throws incomplete_generation_error instead of truncated text', async () => {
     enqueue_generate_text({
       text: '{"v":42',
       toolCalls: [],
@@ -566,7 +566,7 @@ describe('spec §9: failure modes (remaining)', () => {
     expect(mock_state.generate_text_call_count).toBe(1)
   })
 
-  it('F12 abort during tool execute surfaces tool_call_in_flight metadata', async () => {
+  it('abort during tool execute surfaces tool_call_in_flight metadata', async () => {
     enqueue_generate_text({
       text: '',
       toolCalls: [{ toolCallId: 'c1', toolName: 'slow', input: {} }],
@@ -604,7 +604,7 @@ describe('spec §9: failure modes (remaining)', () => {
     })
   })
 
-  it('F13 content_filter finish reason without a schema is returned normally, not thrown', async () => {
+  it('content_filter finish reason without a schema is returned normally, not thrown', async () => {
     enqueue_generate_text({
       text: 'filtered response',
       toolCalls: [],
@@ -619,7 +619,7 @@ describe('spec §9: failure modes (remaining)', () => {
     expect(result.content).toBe('filtered response')
   })
 
-  it('F14 schema fallback succeeds for providers without native JSON mode (anthropic)', async () => {
+  it('schema fallback succeeds for providers without native JSON mode (anthropic)', async () => {
     enqueue_generate_text(make_text_result('{"v":42}'))
     const engine = create_engine({
       providers: { anthropic: { api_key: 'k' } },
@@ -645,7 +645,7 @@ describe('spec §9: failure modes (remaining)', () => {
     expect(String(params.instructions)).toMatch(/JSON/)
   })
 
-  it('F19 abort during on_tool_approval await rejects with aborted_error', async () => {
+  it('abort during on_tool_approval await rejects with aborted_error', async () => {
     enqueue_generate_text({
       text: '',
       toolCalls: [{ toolCallId: 'c1', toolName: 'danger', input: {} }],
@@ -674,7 +674,7 @@ describe('spec §9: failure modes (remaining)', () => {
     expect(exec_spy).not.toHaveBeenCalled()
   })
 
-  it('F20 needs_approval without on_tool_approval fails closed (redundant but explicit)', async () => {
+  it('needs_approval without on_tool_approval fails closed (redundant but explicit)', async () => {
     enqueue_generate_text({
       text: '',
       toolCalls: [{ toolCallId: 'c1', toolName: 'danger', input: {} }],
@@ -698,7 +698,7 @@ describe('spec §9: failure modes (remaining)', () => {
     ).rejects.toBeInstanceOf(tool_approval_denied_error)
   })
 
-  it('F22 network kind surfaces provider_error after retry exhaustion', async () => {
+  it('network kind surfaces provider_error after retry exhaustion', async () => {
     enqueue_generate_text(mk_net())
     enqueue_generate_text(mk_net())
     await expect(

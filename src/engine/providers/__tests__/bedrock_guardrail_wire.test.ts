@@ -16,7 +16,7 @@
  * `provider_reported`, so the suite asserts the trace lands under the `bedrock`
  * key against the real peer's own shape rather than a hand-built payload.
  *
- * No live network (C5): fetch is stubbed. The bearer-token auth path is used,
+ * No test reaches the network: fetch is stubbed. The bearer-token auth path is used,
  * so no SigV4 signing or ambient AWS credentials are involved, and the peer
  * loads lazily inside build_model, after the stub is installed.
  */

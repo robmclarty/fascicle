@@ -66,7 +66,7 @@ beforeEach(() => reset_mock_state())
 afterEach(() => reset_mock_state())
 
 describe('generate: plain paths', () => {
-  it('returns a plain completion (C1)', async () => {
+  it('returns a plain completion', async () => {
     enqueue_generate_text(make_text_result('hello'))
     const result = await basic_engine().generate({ model: 'claude-opus-4-8', prompt: 'hi' })
     expect(result.content).toBe('hello')
@@ -79,7 +79,7 @@ describe('generate: plain paths', () => {
     })
   })
 
-  it('accepts Message[] prompts and hoists leading system messages to the system option (C2)', async () => {
+  it('accepts Message[] prompts and hoists leading system messages to the system option', async () => {
     enqueue_generate_text(make_text_result('ok'))
     await basic_engine().generate({
       model: 'claude-opus',
@@ -133,7 +133,7 @@ describe('generate: plain paths', () => {
 })
 
 describe('generate: model + provider pass-through', () => {
-  it('passes the model verbatim as model_id to the chosen provider (C24)', async () => {
+  it('passes the model verbatim as model_id to the chosen provider', async () => {
     enqueue_generate_text(make_text_result('ok'))
     const result = await basic_engine().generate({ model: 'claude-sonnet-4-6', prompt: 'x' })
     expect(result.model_resolved).toEqual({
@@ -142,7 +142,7 @@ describe('generate: model + provider pass-through', () => {
     })
   })
 
-  it('does not parse a colon in the model id; it rides through verbatim (C25)', async () => {
+  it('does not parse a colon in the model id; it rides through verbatim', async () => {
     enqueue_generate_text(make_text_result('ok'))
     const engine = create_engine({
       providers: { ollama: { base_url: 'http://localhost:11434' } },
@@ -213,7 +213,7 @@ function make_recorder(): { logger: TrajectoryLogger; events: TrajectoryEvent[] 
   return { logger, events }
 }
 
-describe('generate: dispatch gating (step 2)', () => {
+describe('generate: dispatch gating', () => {
   it('rejects an already-aborted signal before starting a generate span', async () => {
     const controller = new AbortController()
     controller.abort(new Error('pre-aborted'))
@@ -503,14 +503,14 @@ describe('generate: dispatch gating (step 2)', () => {
 })
 
 describe('generate: structured output', () => {
-  it('parses valid JSON when schema is set (C3)', async () => {
+  it('parses valid JSON when schema is set', async () => {
     enqueue_generate_text(make_text_result('{"n": 42}'))
     const schema = z.object({ n: z.number() })
     const result = await basic_engine().generate({ model: 'claude-opus', prompt: 'x', schema })
     expect(result.content).toEqual({ n: 42 })
   })
 
-  it('runs one repair attempt and succeeds (C4)', async () => {
+  it('runs one repair attempt and succeeds', async () => {
     enqueue_generate_text(make_text_result('not json'))
     enqueue_generate_text(make_text_result('{"n": 7}'))
     const schema = z.object({ n: z.number() })
@@ -519,7 +519,7 @@ describe('generate: structured output', () => {
     expect(result.steps).toHaveLength(2)
   })
 
-  it('throws schema_validation_error when repair exhausts (C5)', async () => {
+  it('throws schema_validation_error when repair exhausts', async () => {
     enqueue_generate_text(make_text_result('not json'))
     enqueue_generate_text(make_text_result('still not json'))
     const schema = z.object({ n: z.number() })
@@ -706,7 +706,7 @@ const infinite = () => ({
 })
 
 describe('generate: tool loop', () => {
-  it('runs one tool round (C6)', async () => {
+  it('runs one tool round', async () => {
     enqueue_generate_text({
       text: '',
       toolCalls: [{ toolCallId: 'c1', toolName: 'echo', input: { v: 'hi' } }],
@@ -878,7 +878,7 @@ describe('generate: tool loop', () => {
     expect(seen).toEqual([{ v: 'one' }])
   })
 
-  it('hits max_steps with the attempted-but-unexecuted marker (C11)', async () => {
+  it('hits max_steps with the attempted-but-unexecuted marker', async () => {
     enqueue_generate_text_fn(infinite)
     enqueue_generate_text_fn(infinite)
     enqueue_generate_text_fn(infinite)
@@ -900,7 +900,7 @@ describe('generate: tool loop', () => {
     expect(last?.error?.message).toBe('max_steps_exceeded_before_execution')
   })
 
-  it('under throw policy, a tool error bubbles out (C10)', async () => {
+  it('under throw policy, a tool error bubbles out', async () => {
     enqueue_generate_text({
       text: '',
       toolCalls: [{ toolCallId: 'c1', toolName: 'boom', input: {} }],
@@ -951,7 +951,7 @@ function make_span_recorder(): {
   return { logger, events, starts, ends }
 }
 
-describe('generate: body B hardening (step 3)', () => {
+describe('generate: approval, schema repair, cost, and finish', () => {
   it('opens the generate span with the exact tools/schema/streaming flags', async () => {
     enqueue_stream([
       { type: 'text-delta', text: 'ok' },
@@ -1127,7 +1127,7 @@ describe('generate: body B hardening (step 3)', () => {
 })
 
 describe('generate: cost', () => {
-  it('computes cost from default pricing (C29)', async () => {
+  it('computes cost from default pricing', async () => {
     enqueue_generate_text({
       text: 'ok',
       toolCalls: [],
@@ -1140,7 +1140,7 @@ describe('generate: cost', () => {
     expect(result.cost?.total_usd).toBeCloseTo(0.0105, 6)
   })
 
-  it('zero-cost for ollama without pricing (C33)', async () => {
+  it('zero-cost for ollama without pricing', async () => {
     enqueue_generate_text({
       text: 'ok',
       toolCalls: [],
@@ -1160,7 +1160,7 @@ describe('generate: cost', () => {
     })
   })
 
-  it('user-overridden pricing applied (C34)', async () => {
+  it('user-overridden pricing applied', async () => {
     enqueue_generate_text({
       text: 'ok',
       toolCalls: [],
@@ -1176,7 +1176,7 @@ describe('generate: cost', () => {
     expect(result.cost?.total_usd).toBe(0)
   })
 
-  it('cost with cache hits (C31)', async () => {
+  it('cost with cache hits', async () => {
     enqueue_generate_text({
       text: 'ok',
       toolCalls: [],
@@ -1193,7 +1193,7 @@ describe('generate: cost', () => {
     expect(result.cost?.output_usd).toBeCloseTo(0.003, 6)
   })
 
-  it('partial usage fields omit cache keys (C35 / F17)', async () => {
+  it('partial usage fields omit cache keys', async () => {
     enqueue_generate_text({
       text: 'ok',
       toolCalls: [],
@@ -1212,7 +1212,7 @@ describe('generate: cost', () => {
 })
 
 describe('generate: streaming', () => {
-  it('dispatches chunks in order (C13)', async () => {
+  it('dispatches chunks in order', async () => {
     enqueue_stream([
       { type: 'text-delta', text: 'he' },
       { type: 'text-delta', text: 'llo' },
@@ -1241,7 +1241,7 @@ describe('generate: streaming', () => {
     expect(result.content).toBe('hello')
   })
 
-  it('aborts and wraps on_chunk failures (C15 / F11)', async () => {
+  it('aborts and wraps on_chunk failures', async () => {
     enqueue_stream([
       { type: 'text-delta', text: 'a' },
       { type: 'text-delta', text: 'b' },
@@ -1265,7 +1265,7 @@ describe('generate: streaming', () => {
     ).rejects.toBeInstanceOf(on_chunk_error)
   })
 
-  it('does not retry after a chunk was delivered (C22)', async () => {
+  it('does not retry after a chunk was delivered', async () => {
     enqueue_stream([
       { type: 'text-delta', text: 'partial' },
       { type: 'error', error: new Error('socket closed') },
@@ -1355,7 +1355,7 @@ describe('generate: streamed first chunk (ai_sdk transport)', () => {
 })
 
 describe('generate: retry', () => {
-  it('retries a 429 and succeeds on the third attempt (C19)', async () => {
+  it('retries a 429 and succeeds on the third attempt', async () => {
     enqueue_generate_text(mk_429_retry_after_0())
     enqueue_generate_text(mk_429_retry_after_0())
     enqueue_generate_text(make_text_result('ok'))
@@ -1373,7 +1373,7 @@ describe('generate: retry', () => {
     expect(mock_state.generate_text_call_count).toBe(3)
   })
 
-  it('exhausts and throws rate_limit_error (C21)', async () => {
+  it('exhausts and throws rate_limit_error', async () => {
     enqueue_generate_text(mk_429())
     enqueue_generate_text(mk_429())
     enqueue_generate_text(mk_429())
@@ -1392,7 +1392,7 @@ describe('generate: retry', () => {
     ).rejects.toBeInstanceOf(rate_limit_error)
   })
 
-  it('5xx retries and surfaces provider_error after exhaustion (F4)', async () => {
+  it('5xx retries and surfaces provider_error after exhaustion', async () => {
     enqueue_generate_text(mk_5xx())
     enqueue_generate_text(mk_5xx())
     enqueue_generate_text(mk_5xx())
@@ -1412,7 +1412,7 @@ describe('generate: retry', () => {
 })
 
 describe('generate: abort', () => {
-  it('throws aborted_error synchronously on a pre-aborted signal (C16)', async () => {
+  it('throws aborted_error synchronously on a pre-aborted signal', async () => {
     const controller = new AbortController()
     controller.abort(new Error('pre'))
     await expect(
@@ -1428,7 +1428,7 @@ describe('generate: abort', () => {
 })
 
 describe('generate: HITL', () => {
-  it('fails closed without on_tool_approval (F20)', async () => {
+  it('fails closed without on_tool_approval', async () => {
     enqueue_generate_text({
       text: '',
       toolCalls: [{ toolCallId: 'c1', toolName: 'do', input: {} }],
@@ -1452,7 +1452,7 @@ describe('generate: HITL', () => {
     ).rejects.toBeInstanceOf(tool_approval_denied_error)
   })
 
-  it('tool_approval_denied feeds back under feed_back policy (F18)', async () => {
+  it('tool_approval_denied feeds back under feed_back policy', async () => {
     enqueue_generate_text({
       text: '',
       toolCalls: [{ toolCallId: 'c1', toolName: 'do', input: {} }],

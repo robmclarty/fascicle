@@ -22,7 +22,7 @@ function memory_store(): CheckpointStore & { data: Map<string, unknown> } {
 }
 
 describe('checkpoint', () => {
-  it('returns cached value on hit and does not invoke inner (spec §10 test 13)', async () => {
+  it('returns cached value on hit and does not invoke inner', async () => {
     const spy = vi.fn((x: number) => x + 1)
     const inner = step('add_one', spy)
     const flow = checkpoint(inner, { key: 'k1' })
@@ -38,7 +38,7 @@ describe('checkpoint', () => {
     expect(spy).not.toHaveBeenCalled()
   })
 
-  it('runs inner and persists result on miss (spec §10 test 14)', async () => {
+  it('runs inner and persists result on miss', async () => {
     const inner = step('add_one', (x: number) => x + 1)
     const flow = checkpoint(inner, { key: 'k2' })
     const store = memory_store()
@@ -74,7 +74,7 @@ describe('checkpoint', () => {
     expect(result).toBe(6)
   })
 
-  it('throws synchronously when wrapping an anonymous step (F6)', () => {
+  it('throws synchronously when wrapping an anonymous step', () => {
     const anon = step((x: number) => x + 1)
     expect(() => checkpoint(anon, { key: 'k' })).toThrow(
       "checkpoint requires a named step, got anonymous — give the inner step an id with step('id', fn)",

@@ -1,13 +1,14 @@
 /**
  * OpenAI-compatible native end-to-end: the real adapter driven through
  * create_engine -> generate -> run_tool_loop on recorded chat/completions
- * fixtures (fetch stubbed, no live network per C5). Registered via
- * custom_providers because the built-in factories grow their `transport:
- * 'native'` branches in later steps; the loop behavior pinned here is what
- * those branches inherit. Pins the loop features the adapter inherits
- * (approval, salvage, Tool.ends_turn, cost) plus the wire shapes fed back to
- * the API mid-loop, and streamed == non-streamed parity across a full tool
- * loop (C4). Zero `ai` in this file's module graph, enforced by
+ * fixtures (fetch stubbed, so no test reaches the network). Registered via
+ * custom_providers with a bare dialect rather than through a built-in factory,
+ * so the loop behavior pinned here is the core's own, which the `openai`,
+ * `openrouter`, and `lmstudio` native branches inherit. Pins the loop
+ * features the adapter inherits (approval, salvage, Tool.ends_turn, cost)
+ * plus the wire shapes fed back to the API mid-loop, and streamed ==
+ * non-streamed parity across a full tool loop. Zero `ai` in this file's
+ * module graph, enforced by
  * rules/no-ai-sdk-in-native-providers.yml (the *native* glob covers it).
  */
 
@@ -272,7 +273,7 @@ describe('openai-compatible native e2e tool loop (non-streamed)', () => {
 })
 
 describe('openai-compatible native e2e tool loop (streamed)', () => {
-  it('produces a result equal to the non-streamed run of the same loop (C4)', async () => {
+  it('produces a result equal to the non-streamed run of the same loop', async () => {
     const non_streamed = await run_weather_loop(false)
     vi.unstubAllGlobals()
     const streamed = await run_weather_loop(true)
@@ -420,7 +421,7 @@ describe('openai-compatible native e2e fail-closed approval', () => {
 })
 
 // ---------------------------------------------------------------------------
-// Reasoning across the loop (the spec's 1.2): a reasoning_details dialect
+// Reasoning across the loop: a reasoning_details dialect
 // sends the first turn's entries back with the second request, once, in
 // order, unchanged, and never as a `reasoning` string.
 // ---------------------------------------------------------------------------

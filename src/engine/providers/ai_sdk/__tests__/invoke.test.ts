@@ -430,7 +430,7 @@ describe('map_stream_part_to_chunk', () => {
 })
 
 // ---------------------------------------------------------------------------
-// The part-data round trip (the spec's 1.4), on the real `ai` module with the
+// The part-data round trip, on the real `ai` module with the
 // SDK's own mock language model: each part's providerMetadata reaches
 // TurnResult.content, and the next request gives it back as providerOptions,
 // in order, streamed and not.

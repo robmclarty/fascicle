@@ -1,5 +1,5 @@
 /**
- * Streaming parity (spec §5.6, §10 / criterion 8).
+ * Streaming parity.
  *
  * For the same mocked provider response, `generate` must return a deeply equal
  * GenerateResult whether `on_chunk` is supplied (streaming) or omitted

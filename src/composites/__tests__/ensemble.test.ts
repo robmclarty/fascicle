@@ -11,7 +11,7 @@ function wait(ms: number): Promise<void> {
 describe('ensemble (composite)', () => {
   afterEach(remove_signal_listeners)
 
-  it('picks highest-score member as winner (spec §10 test 10)', async () => {
+  it('picks highest-score member as winner', async () => {
     const flow = ensemble({
       members: {
         a: step('a', () => ({ n: 3 })),
@@ -55,7 +55,7 @@ describe('ensemble (composite)', () => {
     expect(['a', 'b']).toContain(result.winner.id)
   })
 
-  it('propagates abort to in-flight members, awaits all, rethrows (criterion 26)', async () => {
+  it('propagates abort to in-flight members, awaits all, rethrows', async () => {
     let a_aborted = false
     let b_aborted = false
     let a_settled = false

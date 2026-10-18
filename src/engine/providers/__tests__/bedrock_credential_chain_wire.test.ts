@@ -19,7 +19,7 @@
  * the same environment must fail to authenticate — that is what proves the
  * env-var path is genuinely absent and the passing case is not masked.
  *
- * No live network (C5): fetch is stubbed, and the profile credentials are
+ * No test reaches the network: fetch is stubbed, and the profile credentials are
  * fabricated, so signing is exercised without an AWS account.
  */
 

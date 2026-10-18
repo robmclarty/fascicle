@@ -1,5 +1,5 @@
 /**
- * Subprocess lifecycle tests (spec §6, constraints §5.10, §12 #12, #13, #15).
+ * Subprocess lifecycle tests.
  *
  * Exercises create_spawn_runtime end-to-end with the mock binary:
  *   - mandatory spawn options (detached, stdio, shell: false, explicit env)
@@ -55,7 +55,7 @@ function is_alive(child: ChildProcess): boolean {
   return child.exitCode === null && child.signalCode === null
 }
 
-describe('create_spawn_runtime — spawn options (spec §6.1, §12 #1)', () => {
+describe('create_spawn_runtime: spawn options', () => {
   it('spawns with detached process group, pipe stdio, shell:false, and explicit env', async () => {
     const handle = await track(await write_mock_script(success_ops('ok')))
     const runtime = create_spawn_runtime()
@@ -191,7 +191,7 @@ describe('create_spawn_runtime — spawn options (spec §6.1, §12 #1)', () => {
   })
 })
 
-describe('live_children registry (spec §6, constraints §7 invariant 5)', () => {
+describe('live_children registry', () => {
   it('inserts on spawn; removes on close', async () => {
     const handle = await track(await write_mock_script(success_ops('ok')))
     const runtime = create_spawn_runtime()
@@ -260,7 +260,7 @@ describe('live_children registry (spec §6, constraints §7 invariant 5)', () =>
   })
 })
 
-describe('process.on("exit") reap (spec §6, §12 #15 constraints §5.10 #5)', () => {
+describe('process.on("exit") reap', () => {
   it('registers exactly one exit listener across many runtimes', () => {
     const before = process.listenerCount('exit')
     const a = create_spawn_runtime()
@@ -315,7 +315,7 @@ describe('process.on("exit") reap (spec §6, §12 #15 constraints §5.10 #5)', (
   })
 })
 
-describe('SIGTERM → SIGKILL escalator (spec §6.3, §12 #13)', () => {
+describe('SIGTERM → SIGKILL escalator', () => {
   it(
     'child that ignores SIGTERM is killed by SIGKILL after SIGKILL_ESCALATION_MS',
     async () => {
@@ -387,7 +387,7 @@ describe('SIGTERM → SIGKILL escalator (spec §6.3, §12 #13)', () => {
   })
 })
 
-describe('dispose_all (spec §6)', () => {
+describe('dispose_all', () => {
   it('terminates every live child and removes the registry', async () => {
     const handle = await track(
       await write_mock_script([{ op: 'hang' }]),
@@ -490,7 +490,7 @@ describe('dispose_all (spec §6)', () => {
   }, 10_000)
 })
 
-describe('cwd forwarding (spec §6.1)', () => {
+describe('cwd forwarding', () => {
   it('runs the child in the supplied cwd', async () => {
     const handle = await track(await write_mock_script(success_ops('ok')))
     const cwd = await realpath(handle.dir)
@@ -519,7 +519,7 @@ describe('cwd forwarding (spec §6.1)', () => {
   })
 })
 
-describe('startup and stall timers (spec §6.2)', () => {
+describe('startup and stall timers', () => {
   it('rejects with startup_timeout when no stdout arrives in the window', async () => {
     const handle = await track(await write_mock_script([{ op: 'hang' }]))
     const runtime = create_spawn_runtime()
@@ -608,7 +608,7 @@ describe('startup and stall timers (spec §6.2)', () => {
   }, 10_000)
 })
 
-describe('stdin delivery (spec §6)', () => {
+describe('stdin delivery', () => {
   it('writes the prompt to the child stdin and closes it', async () => {
     const handle = await track(
       await write_mock_script([{ op: 'echo_stdin' }, { op: 'exit', code: 0 }]),
@@ -633,7 +633,7 @@ describe('stdin delivery (spec §6)', () => {
   }, 10_000)
 })
 
-describe('stderr capture (spec §6)', () => {
+describe('stderr capture', () => {
   it('captures child stderr into the close outcome', async () => {
     const handle = await track(
       await write_mock_script([{ op: 'stderr', text: 'warning: heads up' }, ...success_ops('ok')]),
@@ -655,7 +655,7 @@ describe('stderr capture (spec §6)', () => {
   })
 })
 
-describe('abort during a run (spec §6.3)', () => {
+describe('abort during a run', () => {
   it('escalates via SIGTERM and rejects with aborted_error when the signal fires mid-run', async () => {
     const handle = await track(await write_mock_script([{ op: 'hang' }]))
     const runtime = create_spawn_runtime()
@@ -689,7 +689,7 @@ describe('abort during a run (spec §6.3)', () => {
   }, 10_000)
 })
 
-describe('termination reasons (spec §6.3)', () => {
+describe('termination reasons', () => {
   it('rejects with an engine-disposed error when terminated as disposed', async () => {
     const handle = await track(await write_mock_script([{ op: 'hang' }]))
     const runtime = create_spawn_runtime()
@@ -743,7 +743,7 @@ describe('termination reasons (spec §6.3)', () => {
   }, 10_000)
 })
 
-describe('stdout line framing (spec §6)', () => {
+describe('stdout line framing', () => {
   it('splits multiple newline-delimited lines from one chunk', async () => {
     const handle = await track(
       await write_mock_script([{ op: 'raw', text: 'one\ntwo\nthree\n' }, { op: 'exit', code: 0 }]),

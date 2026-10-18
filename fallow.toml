@@ -56,9 +56,9 @@ ignorePatterns = ["site/**"]
 
 # CLI/tooling deps used via command line or config files, not imported from source.
 # `fascicle` is examples' self-reference to the workspace package via
-# `workspace:*`, which fallow cannot resolve as a real import (D7). checkride's
+# `workspace:*`, which fallow cannot resolve as a real import. checkride's
 # `attw` slot invokes `@arethetypeswrong/cli` as a CLI, never an import, same as
-# publint above (D8).
+# publint above.
 ignoreDependencies = [
   "@ast-grep/cli",
   "@stryker-mutator/vitest-runner",
@@ -88,8 +88,8 @@ ignoreDependencies = [
 # `aborted_error` is defined in core and deliberately re-exported by engine so
 # that `instanceof aborted_error` holds regardless of which layer surfaced it
 # (src/engine/errors.ts); the engine's own modules import it from that barrel.
-# The duplicate-export is that re-export contract, not a copy, so it resolves in
-# config rather than the baseline (D1).
+# The duplicate-export is that re-export contract, not a copy, and a finding
+# that is false by design resolves in config rather than the baseline.
 ignoreExports = [
   { file = "src/core/errors.ts", exports = ["aborted_error"] },
   { file = "src/engine/errors.ts", exports = ["aborted_error"] },
@@ -119,7 +119,7 @@ maxCognitive = 15
 coverage = ".check/coverage/coverage-final.json"
 # Complexity thresholds are tuned for library internals; demo, tooling, and
 # test code is linear by design and its quality is guarded by the mutation
-# gate and blueprint rules instead (D3, health-is-production-metric).
+# gate and blueprint rules instead, so health measures library code only.
 ignore = ["examples/**", "scripts/**", "test/**", "src/**/__tests__/**"]
 
 # Architecture boundaries: directory-level DAG that replaces the old
@@ -225,7 +225,7 @@ allow = ["core", "adapters", "schema"]
 from = "ui"
 allow = ["core", "engine"]
 
-[[boundaries.rules]] # otel: core only (transport-neutral trajectory-to-OTel bridge; own subpath, C2)
+[[boundaries.rules]] # otel: core only (transport-neutral trajectory-to-OTel bridge; its own subpath keeps OTel peers out of the engine)
 from = "otel"
 allow = ["core"]
 

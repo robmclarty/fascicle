@@ -282,7 +282,7 @@ describe('loop', () => {
     expect(result).toEqual({ value: 3, converged: true, rounds: 3 })
   })
 
-  it('propagates abort between rounds (criterion: ctx.abort honored)', async () => {
+  it('propagates abort between rounds, honoring ctx.abort', async () => {
     const flow = loop<number, number, number>({
       init: (n) => n,
       body: step('slow', async (n: number, ctx) => {

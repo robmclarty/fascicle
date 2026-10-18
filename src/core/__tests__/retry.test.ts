@@ -10,7 +10,7 @@ import { recording_logger } from '../../../test/fixtures/trajectory.js'
 const noop_on_error = (): void => {}
 
 describe('retry', () => {
-  it('throws twice then succeeds with max_attempts 3 (spec §10 test 5)', async () => {
+  it('throws twice then succeeds with max_attempts 3', async () => {
     let calls = 0
     const errors: number[] = []
     const inner = step('flaky', (_: number) => {
@@ -99,7 +99,7 @@ describe('retry', () => {
     expect(retry_end).toBeDefined()
   })
 
-  it('accumulates cleanup handlers across attempts, LIFO (criterion 28, F11)', async () => {
+  it('accumulates cleanup handlers across attempts, LIFO', async () => {
     const fired: number[] = []
     let attempt = 0
     const inner = step('attempt', (_: number, ctx) => {
@@ -207,13 +207,13 @@ describe('retry', () => {
     expect(full?.['display_name']).toBe('my_retry')
   })
 
-  it('defaults max_delay_ms to 30s and jitter to on (D9) in resolved config metadata', () => {
+  it('defaults max_delay_ms to 30s and jitter to on in resolved config metadata', () => {
     const inner = step('x', (n: number) => n)
     const minimal = retry(inner, { max_attempts: 2 }).config
     expect(minimal?.['max_attempts']).toBe(2)
     expect(minimal?.['backoff_ms']).toBe(1000) // DEFAULT_BACKOFF_MS
     expect(minimal?.['max_delay_ms']).toBe(30_000) // DEFAULT_MAX_DELAY_MS
-    expect(minimal?.['jitter']).toBe(true) // jitter defaults on (D9)
+    expect(minimal?.['jitter']).toBe(true) // on by default, so concurrent retries don't stampede
     expect('on_error' in (minimal ?? {})).toBe(false)
     expect('display_name' in (minimal ?? {})).toBe(false)
   })
@@ -238,7 +238,7 @@ describe('retry', () => {
     }
   })
 
-  it('jitters backoff by default and clamps it to max_delay_ms (D9)', async () => {
+  it('jitters backoff by default and clamps it to max_delay_ms', async () => {
     vi.spyOn(Math, 'random').mockReturnValue(0.5)
     const real_set = globalThis.setTimeout
     const spy = vi

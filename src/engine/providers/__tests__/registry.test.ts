@@ -3,7 +3,7 @@ import { get_provider_factory, list_builtin_providers } from '../registry.js'
 import { engine_config_error } from '../../errors.js'
 
 describe('builtin provider registry', () => {
-  it('exposes all eight built-in provider factories per spec §5.9', () => {
+  it('exposes all eight built-in provider factories', () => {
     expect(list_builtin_providers()).toEqual([
       'anthropic',
       'openai',

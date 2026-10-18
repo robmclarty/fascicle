@@ -1,5 +1,5 @@
 /**
- * Unit tests for EngineConfig.custom_providers (spec S-P1).
+ * Unit tests for EngineConfig.custom_providers.
  *
  * Mocks `ai` at the boundary but uses the real registry and create_engine so
  * custom-first resolution, built-in shadowing, and unknown-name fallthrough

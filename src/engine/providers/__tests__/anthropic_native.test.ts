@@ -1,8 +1,8 @@
 /**
- * Native Anthropic adapter (S-P3.1..P3.5): request mapping, the non-stream
+ * Native Anthropic adapter: request mapping, the non-stream
  * and SSE-streamed invoke_turn against golden Messages-API fixtures, and
  * error classification. Streamed results are asserted equal to the
- * non-streamed parse of the same fixture (C4). No live network; fetch is
+ * non-streamed parse of the same fixture. No live network; fetch is
  * stubbed per test.
  */
 
@@ -461,8 +461,8 @@ describe('build_messages_body', () => {
     })
   })
 
-  // C3 (wire-identical-payloads). Serialized rather than structural, so key
-  // order is pinned too: these are the exact bytes the Messages API receives,
+  // Tool payloads stay byte-identical whichever schema emitter builds them.
+  // Serialized rather than structural, so key order is pinned too: these are the exact bytes the Messages API receives,
   // and the emission moved from `z.toJSONSchema` to the neutral `#schema`
   // zone underneath them. `$schema` is deliberately present, since only
   // `claude --json-schema` rejects it. `weather_tool` carries no defaulted
@@ -1096,7 +1096,7 @@ describe('streaming invoke_turn', () => {
     ['tool-call', TOOL_CALL_STREAM_EVENTS, TOOL_CALL_FIXTURE],
     ['mixed', MIXED_STREAM_EVENTS, MIXED_FIXTURE],
   ])(
-    'streamed %s result equals the non-streamed parse of the same fixture (C4)',
+    'streamed %s result equals the non-streamed parse of the same fixture',
     async (_label, stream_events, response_fixture) => {
       stub_fetch(stream_response(stream_events))
       const adapter = create_anthropic_native_adapter({ api_key: 'sk-test' })
@@ -1334,9 +1334,9 @@ describe("OpenRouter's [DONE] trailer", () => {
 
 /**
  * Boundary coverage for the streaming aggregator (create_stream_aggregator,
- * stream_event_error, read_block_index). The C4 equality tests above prove the
- * happy paths; these pin the exact error/status strings and drive every
- * malformed-event guard branch. The recurring trick: a guard of the form
+ * stream_event_error, read_block_index). The streamed-equals-non-streamed
+ * tests above prove the happy paths; these pin the exact error/status
+ * strings and drive every malformed-event guard branch. The recurring trick: a guard of the form
  * `x === null || typeof x !== 'object'` is exercised by feeding `undefined` (a
  * missing key), not null, because the guarded body then throws via
  * Reflect.get(undefined)/Object.entries(undefined), which distinguishes the
@@ -1984,7 +1984,7 @@ describe('create_anthropic_native_adapter config', () => {
 })
 
 // ---------------------------------------------------------------------------
-// Thinking blocks kept and sent back (the spec's 1.3). Every thinking and
+// Thinking blocks kept and sent back. Every thinking and
 // redacted_thinking block goes back complete and in block order, empty text
 // included, since Anthropic refuses a tool-use turn whose blocks moved.
 // ---------------------------------------------------------------------------

@@ -98,7 +98,7 @@ Fascicle uses the AI SDK strictly as a single-turn provider layer, so every AI S
 | lmstudio (native)   | ✅   | ✅    | ✅     | ✅        | —           | ✅        |
 | claude_cli          | ✅   | ✅    | ✅     | ✅        | —           | ✅        |
 
-Call `supports(capability)` on any adapter and you get this table back. Two things to read off the native rows. **No native transport claims `image_input`** (image parts throw `provider_capability_error`; use `transport: 'ai_sdk'` for vision in v1), and the OpenAI-compatible core (openai / openrouter / lmstudio native) always forwards effort, so those three report `reasoning` on native even where their `ai_sdk` row doesn't. A model that doesn't reason, a local one included, drops the field server-side. `ollama` native ignores effort entirely (D2). The table omits one more capability: `structured_output`, meaning the provider constrains decoding to the schema natively. Every provider satisfies `schema` (via the engine's prompt + parse + repair loop when the provider can't constrain the decode); no native transport claims `structured_output`, so schema requests there always ride the repair loop.
+Call `supports(capability)` on any adapter and you get this table back. Two things to read off the native rows. **No native transport claims `image_input`** (image parts throw `provider_capability_error`; use `transport: 'ai_sdk'` for vision in v1), and the OpenAI-compatible core (openai / openrouter / lmstudio native) always forwards effort, so those three report `reasoning` on native even where their `ai_sdk` row doesn't. A model that doesn't reason, a local one included, drops the field server-side. `ollama` native ignores effort entirely. The table omits one more capability: `structured_output`, meaning the provider constrains decoding to the schema natively. Every provider satisfies `schema` (via the engine's prompt + parse + repair loop when the provider can't constrain the decode); no native transport claims `structured_output`, so schema requests there always ride the repair loop.
 
 The `reasoning` column says that a provider takes `effort`. Seeing what the model reasoned is a separate matter. `openrouter` and `anthropic` on native stream it to `on_chunk` as `reasoning` chunks whenever the model sends some text, the way the `ai_sdk` transport does, and inside a tool loop they send it back to the model with the next request (see [Reasoning in a Tool Loop](#reasoning-in-a-tool-loop)). `openai` and `lmstudio` native read no reasoning field, so they stream none.
 
@@ -127,7 +127,7 @@ The table above is the `ai_sdk` mapping. On `transport: 'native'`:
 - **`openai`** sends the flat `reasoning_effort` string with the level as it is, `xhigh` and `max` included, since OpenAI's Chat Completions reference lists every level from `none` through `max` for that field. Not every model takes every level, and OpenAI's reasoning guide says which ones each model takes, so check it before you reach for `xhigh` or `max`. A model that doesn't reason ignores the field server-side.
 - **`lmstudio`** sends the same flat field, with `xhigh` and `max` clamped to `high`, since a local server takes only `low`, `medium`, and `high`. So `lmstudio` native forwards effort where its `ai_sdk` row drops it.
 - **`anthropic`** turns `low` through `max` into adaptive thinking, `thinking: { type: 'adaptive', display: 'summarized' }`, plus `output_config: { effort }` with the level as it is, since the two scales match one for one. It reads no model id to do it. Every Claude model from 4.6 on takes adaptive thinking, and from 4.7 on they refuse the old `thinking: { type: 'enabled', budget_tokens }` with a 400. A model older than 4.6 refuses `adaptive`, so its caller sets `effort: 'none'` and passes a budget as `provider_options.anthropic.thinking`, or takes the `ai_sdk` transport, whose peer still sends that model a budget.
-- **`ollama`** ignores effort entirely (D2), and unlike its `ai_sdk` row it records no `effort_ignored` event, so nothing in the trajectory shows that the level was dropped. Thinking on that wire is opt-in through `provider_options.ollama.think`.
+- **`ollama`** ignores effort entirely, and unlike its `ai_sdk` row it records no `effort_ignored` event, so nothing in the trajectory shows that the level was dropped. Thinking on that wire is opt-in through `provider_options.ollama.think`.
 
 `effort: 'none'` forwards nothing. The four providers that the AI SDK maps leave the `reasoning` option out, which is the SDK's provider default, and the OpenAI-compatible native core omits its effort field. `anthropic` native sends neither `thinking` nor `output_config`, so the model keeps its own default: the Claude 5 models think adaptively anyway, and older ones don't think at all. It asks for the thinking summary only when effort is set, because asking takes a `thinking` field, which would turn thinking on for 4.6 through 4.8.
 
@@ -241,7 +241,7 @@ Pass a concrete model id like `gpt-4o` or `gpt-4o-mini`, and your `model` string
 
 ### `transport: 'native'`
 
-Set `transport: 'native'` to talk to the Chat Completions API directly over `fetch`, with no `@ai-sdk/openai` peer and zero AI SDK code in the path. It rides the shared OpenAI-compatible core with the openai dialect: `Authorization: Bearer`, the optional `OpenAI-Organization` header, `max_completion_tokens` as the token-limit field, and `reasoning_effort` from `effort` (Appendix A4).
+Set `transport: 'native'` to talk to the Chat Completions API directly over `fetch`, with no `@ai-sdk/openai` peer and zero AI SDK code in the path. It rides the shared OpenAI-compatible core with the openai dialect: `Authorization: Bearer`, the optional `OpenAI-Organization` header, `max_completion_tokens` as the token-limit field, and `reasoning_effort` from `effort` (see [Effort Translation](#effort-translation)).
 
 ```ts
 const engine = create_engine({
@@ -260,7 +260,7 @@ Everything call-facing carries over, with the same provider name, the same prici
 
 - **No image input.** `image_input` is unsupported on the native transport in v1.
 - **Schema always rides the repair loop.** The native adapter doesn't claim `structured_output`, so your `schema` requests are satisfied by the engine's prompt + parse + repair path.
-- **`provider_options.openai` is raw wire format (D9).** On the native transport, keys under `provider_options.openai` are Chat Completions fields exactly as OpenAI documents them (**snake_case**: `reasoning_effort`, `max_completion_tokens`, `top_p`, `stop`, `logprobs`, `response_format`, ...), shallow-merged last over the engine-computed body, so an explicit key beats every derived field (the effort-derived `reasoning_effort`, the token limit, sampling params). Keys do **not** port from the `ai_sdk` transport, which uses `@ai-sdk/openai`'s camelCase spellings — `reasoningEffort` there is `reasoning_effort` here, and the SDK's `maxOutputTokens` is `max_completion_tokens` on the wire. The merge is shallow and unreconciled: pass whole objects, and combinations that the API rejects are rejected by the API, not repaired by Fascicle.
+- **`provider_options.openai` is raw wire format.** On the native transport, keys under `provider_options.openai` are Chat Completions fields exactly as OpenAI documents them (**snake_case**: `reasoning_effort`, `max_completion_tokens`, `top_p`, `stop`, `logprobs`, `response_format`, ...), shallow-merged last over the engine-computed body, so an explicit key beats every derived field (the effort-derived `reasoning_effort`, the token limit, sampling params). Keys do **not** port from the `ai_sdk` transport, which uses `@ai-sdk/openai`'s camelCase spellings: `reasoningEffort` there is `reasoning_effort` here, and the SDK's `maxOutputTokens` is `max_completion_tokens` on the wire. The merge is shallow and unreconciled: pass whole objects, and combinations that the API rejects are rejected by the API, not repaired by Fascicle.
 - **Retry belongs to the engine.** 429 (honoring `Retry-After`), 5xx, and network failures are classified by the shared classifier and retried by the engine's policy, exactly as on `ai_sdk`. A 401 throws `provider_auth_error` without a retry.
 
 The same core powers any OpenAI-compatible server via `base_url` — see [the compat recipe](#openai-compatible-servers-the-compat-recipe).
@@ -335,7 +335,7 @@ const engine = create_engine({
 Same provider name, pricing keys, usage fields, and streamed-equals-non-streamed guarantee as the `ai_sdk` transport. Differences and knobs:
 
 - **No image input**, and **schema always rides the repair loop** (no `structured_output`), as on every native transport.
-- **`provider_options.openrouter` is raw wire format (D9).** Keys are OpenRouter Chat Completions fields exactly as documented (**snake_case**: `reasoning`, `max_tokens`, `top_p`, `provider`, `models`, `transforms`, ...), shallow-merged last over the engine-computed body. Effort arrives as the **nested** `reasoning: { effort: 'high' }` object on both transports, and the shallow merge replaces it whole, so to override reasoning on native, pass the whole `reasoning` object.
+- **`provider_options.openrouter` is raw wire format.** Keys are OpenRouter Chat Completions fields exactly as documented (**snake_case**: `reasoning`, `max_tokens`, `top_p`, `provider`, `models`, `transforms`, ...), shallow-merged last over the engine-computed body. Effort arrives as the **nested** `reasoning: { effort: 'high' }` object on both transports, and the shallow merge replaces it whole, so to override reasoning on native, pass the whole `reasoning` object.
 - **Reasoning streams, and it goes back.** Each `reasoning_details` entry that OpenRouter sends streams its text to `on_chunk` as `reasoning` chunks and becomes a reasoning part, with the entry itself under `provider_options.openrouter.detail`. Inside a tool loop the next request carries the turn's entries back as `reasoning_details`, all of them, once, and in order, which is what keeps a Claude loop's thinking and Gemini 3's thought signatures from one step to the next. An encrypted entry has no text to stream, and it goes back all the same.
 - **The cost is the one OpenRouter reports.** Each step records what OpenRouter charged for it, with no pricing row needed (see [Cost Estimation](#cost-estimation)).
 - **Retry belongs to the engine** (429 / 5xx / network), identical to `ai_sdk`, and a 401 throws `provider_auth_error` without a retry. OpenRouter can report a failure inside a stream that has already begun, as a frame that carries an `error` object, and the core throws it with OpenRouter's message. Before the first chunk, a 429 or a 5xx code in that frame retries like the same HTTP status, and after it the turn fails as a stream interruption.
@@ -489,7 +489,7 @@ No API key; `base_url` is required (the adapter throws `engine_config_error` oth
 
 ### `transport: 'native'`
 
-Ollama's native transport targets its own `/api/chat` endpoint (NDJSON streaming), **not** the OpenAI-compatible core — because that endpoint exposes what the compat `/v1` tail hides: the `options` runtime bag (`num_predict`, `temperature`, `top_p`, and every other knob), `keep_alive`, and `think` (D2). If you only want OpenAI-compatible behavior against Ollama, the [compat recipe](#openai-compatible-servers-the-compat-recipe) via the `openai` provider is the simpler path; go native here when you need those raw Ollama knobs.
+Ollama's native transport targets its own `/api/chat` endpoint (NDJSON streaming), **not** the OpenAI-compatible core, because that endpoint exposes what the compat `/v1` tail hides: the `options` runtime bag (`num_predict`, `temperature`, `top_p`, and every other knob), `keep_alive`, and `think`. If you only want OpenAI-compatible behavior against Ollama, the [compat recipe](#openai-compatible-servers-the-compat-recipe) via the `openai` provider is the simpler path; go native here when you need those raw Ollama knobs.
 
 ```ts
 const engine = create_engine({
@@ -503,10 +503,10 @@ const engine = create_engine({
 ```
 
 - **No auth, `base_url` still required, no image input.** Same local-runtime constraints as the `ai_sdk` transport.
-- **Effort is ignored entirely (D2).** No effort-to-wire mapping exists; reasoning is opt-in purely through `provider_options.ollama.think`.
-- **Usage degrades gracefully (D10).** `prompt_eval_count` / `eval_count` map to input/output tokens; when the runtime omits them the totals are zeroed rather than throwing.
+- **Effort is ignored entirely.** No effort-to-wire mapping exists; reasoning is opt-in purely through `provider_options.ollama.think`.
+- **Usage degrades gracefully.** `prompt_eval_count` / `eval_count` map to input/output tokens; when the runtime omits them the totals are zeroed rather than throwing.
 - **The daemon's own timings pass through.** The nanosecond duration fields that `/api/chat` reports (`total_duration`, `load_duration`, `prompt_eval_duration`, `eval_duration`) land verbatim on `provider_reported.ollama`, so `eval_count` over `eval_duration` gives you the daemon's own decode rate, alongside the engine's transport-neutral [`timing` / `throughput()`](./api-reference.md#timing-and-tokens-per-second) view.
-- **`provider_options.ollama` is raw `/api/chat` wire format (D9).** Keys are Ollama's own native fields — `think`, `keep_alive`, `format`, and the nested `options` bag (`num_predict`, `temperature`, `top_p`, `num_ctx`, ...) — shallow-merged last over the engine-computed body. These are **not** OpenAI-compatible keys: there's no `max_tokens` or `reasoning_effort` here (the engine writes the token limit into `options.num_predict`); pass a whole `options` object, since the shallow merge replaces it wholesale rather than deep-merging derived sampling params.
+- **`provider_options.ollama` is raw `/api/chat` wire format.** Keys are Ollama's own native fields, shallow-merged last over the engine-computed body: `think`, `keep_alive`, `format`, and the nested `options` bag (`num_predict`, `temperature`, `top_p`, `num_ctx`, ...). These are **not** OpenAI-compatible keys: there's no `max_tokens` or `reasoning_effort` here (the engine writes the token limit into `options.num_predict`); pass a whole `options` object, since the shallow merge replaces it wholesale rather than deep-merging derived sampling params.
 
 ## `lmstudio`
 
@@ -534,7 +534,7 @@ Same constraints as Ollama, so no API key, `base_url` required, no reasoning, no
 
 ### `transport: 'native'`
 
-Set `transport: 'native'` to talk to LM Studio's OpenAI-compatible server directly over `fetch`, with no `@ai-sdk/openai-compatible` peer. It rides the shared OpenAI-compatible core with the lmstudio dialect: **no auth**, `max_tokens` as the token-limit field, and **tolerant usage** (D10) — LM Studio often omits or approximates token counts, so the mapper zeroes the totals instead of throwing.
+Set `transport: 'native'` to talk to LM Studio's OpenAI-compatible server directly over `fetch`, with no `@ai-sdk/openai-compatible` peer. It rides the shared OpenAI-compatible core with the lmstudio dialect: **no auth**, `max_tokens` as the token-limit field, and **tolerant usage**. LM Studio often omits or approximates token counts, so the mapper zeroes the totals instead of throwing.
 
 ```ts
 const engine = create_engine({
@@ -546,7 +546,7 @@ const engine = create_engine({
 
 - **No image input**, and **schema always rides the repair loop** (no `structured_output`).
 - **Reasoning is forwarded, not dropped.** Unlike the `ai_sdk` transport, the native core maps `effort` to the flat `reasoning_effort`, as it does for `openai`, so it's sent on the wire, with `xhigh` and `max` clamped to `high`, and a model that doesn't reason simply ignores it server-side.
-- **`provider_options.lmstudio` is raw OpenAI-compatible wire format (D9).** Keys are Chat Completions fields (**snake_case**: `max_tokens`, `reasoning_effort`, `top_p`, `stop`, ...), shallow-merged last over the engine-computed body. As with `openai` native, these don't port from the camelCase `ai_sdk` spellings.
+- **`provider_options.lmstudio` is raw OpenAI-compatible wire format.** Keys are Chat Completions fields (**snake_case**: `max_tokens`, `reasoning_effort`, `top_p`, `stop`, ...), shallow-merged last over the engine-computed body. As with `openai` native, these don't port from the camelCase `ai_sdk` spellings.
 
 ## `claude_cli`
 

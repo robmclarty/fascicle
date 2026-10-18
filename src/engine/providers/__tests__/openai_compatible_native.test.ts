@@ -3,7 +3,7 @@
  * against golden chat/completions fixtures, dialect auth strategies, error
  * classification asserted exactly as the Anthropic adapter's, and the SSE
  * streaming path — streamed results must equal non-streamed results on
- * shared fixtures (C4). No live network; fetch is stubbed per test.
+ * shared fixtures. No live network; fetch is stubbed per test.
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -281,7 +281,8 @@ describe('to_chat_tools', () => {
     })
   })
 
-  // C3 (wire-identical-payloads). Serialized so key order is pinned too:
+  // Tool payloads stay byte-identical whichever schema emitter builds them.
+  // Serialized so key order is pinned too:
   // these are the exact bytes Chat Completions receives, unchanged by the
   // move to the neutral `#schema` zone and unchanged again by that zone's
   // move to a composed input-direction emission, which only re-shapes
@@ -947,7 +948,7 @@ describe('streaming invoke_turn', () => {
     ['text', TEXT_FIXTURE, TEXT_STREAM],
     ['tool-call', TOOL_CALL_FIXTURE, TOOL_CALL_STREAM],
     ['mixed', MIXED_FIXTURE, MIXED_STREAM],
-  ] as const)('streamed %s result equals the non-streamed result on the shared fixture (C4)', async (_name, fixture, stream) => {
+  ] as const)('streamed %s result equals the non-streamed result on the shared fixture', async (_name, fixture, stream) => {
     stub_fetch(json_response(fixture))
     const adapter = create_openai_compatible_adapter(make_dialect())
     const non_streamed = await adapter.invoke_turn(make_req({ tools: [weather_tool] }))
@@ -1247,7 +1248,7 @@ describe('create_chat_stream_aggregator', () => {
 // Mutation hardening. Concrete-value and boundary assertions that pin the
 // dialect branches, finish/usage maps, tool-call parsing, error mapping, and
 // SSE edges the full-repo Stryker report flagged as survived / no-coverage on
-// this file (C7). Behavior is unchanged; these only tighten the assertions.
+// this file. Behavior is unchanged; these only tighten the assertions.
 // ---------------------------------------------------------------------------
 
 function tool_call_payload(entry: unknown): unknown {
@@ -1786,8 +1787,8 @@ describe('streaming invoke_turn (mutation hardening)', () => {
 })
 
 // ---------------------------------------------------------------------------
-// OpenRouter's reasoning_details on the native core (the spec's 1.2). The
-// fragment shapes follow the live captures under research/live/: Claude's text
+// OpenRouter's reasoning_details on the native core. The fragment shapes
+// follow the captures `live/live_reasoning.test.ts` saves: Claude's text
 // streams in pieces and its signature arrives last in a fragment of its own,
 // GPT streams summary pieces, and Gemini sends one encrypted entry.
 // ---------------------------------------------------------------------------
@@ -2169,7 +2170,7 @@ function cost_stream(extra: Record<string, unknown>): StreamFrame[] {
   ]
 }
 
-describe('the cost a reporting dialect reads (the spec Part 2)', () => {
+describe('the cost a reporting dialect reads', () => {
   it('reads usage.cost into reported_cost_usd with the raw fields under provider_reported', () => {
     const cost_details = { upstream_inference_cost: null, server_tool_cost: 0 }
     const result = parse_chat_completion(
@@ -2281,7 +2282,7 @@ function error_frame(error: Record<string, unknown>): Record<string, unknown> {
   return { error, choices: [{ index: 0, delta: { content: '' }, finish_reason: 'error' }] }
 }
 
-describe('an error frame mid-stream (the spec Part 3)', () => {
+describe('an error frame mid-stream', () => {
   it.each([
     ['openai', make_dialect()],
     ['openrouter', make_dialect({ name: 'openrouter', reports_cost: true, reasoning: 'reasoning_details' })],

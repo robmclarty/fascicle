@@ -1,5 +1,5 @@
 /**
- * Vendor neutrality: a tool defined with ArkType works end to end (Q4).
+ * Vendor neutrality: a tool defined with ArkType works end to end.
  *
  * Every other test in this repo defines schemas with zod, which is the one
  * vendor Fascicle is developed against — so they cannot tell a neutral seam

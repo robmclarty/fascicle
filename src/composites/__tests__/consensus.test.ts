@@ -11,7 +11,7 @@ function wait(ms: number): Promise<void> {
 describe('consensus (composite)', () => {
   afterEach(remove_signal_listeners)
 
-  it('converges when members agree on round 2 (spec §10 test 12)', async () => {
+  it('converges when members agree on round 2', async () => {
     let round = 0
     const flow = consensus({
       members: {
@@ -50,7 +50,7 @@ describe('consensus (composite)', () => {
     expect(result.result['b']).toBeDefined()
   })
 
-  it('propagates abort to in-flight members (criterion 26)', async () => {
+  it('propagates abort to in-flight members', async () => {
     const aborts: string[] = []
   
     const flow = consensus({

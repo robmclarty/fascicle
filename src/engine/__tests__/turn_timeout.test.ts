@@ -11,8 +11,10 @@
  *
  * The ladder ordering is the subtle part: an expiry with no chunk streamed is a
  * retryable typed timeout, but an expiry AFTER chunks flowed is a non-retryable
- * stream interruption (C4 parity). Assertions are concrete: the thrown type,
- * the exact attempt count, and the timeout_ms carried on the error.
+ * stream interruption, since a retry would deliver those chunks twice and the
+ * streamed result would no longer equal the non-streamed one. Assertions are
+ * concrete: the thrown type, the exact attempt count, and the timeout_ms
+ * carried on the error.
  */
 
 import { turn_timeout_error as public_turn_timeout_error } from 'fascicle'
@@ -239,7 +241,7 @@ describe('turn_timeout_ms: a fast turn does not fire', () => {
   })
 })
 
-describe('turn_timeout_ms: mid-stream expiry refuses retry (C4 parity)', () => {
+describe('turn_timeout_ms: mid-stream expiry refuses retry', () => {
   it('becomes a non-retryable stream interruption after a chunk has flowed', async () => {
     const log: NativeLog = { requests: [] }
     const engine = make_engine(log, { mode: 'stream_then_hang', chunk_text: 'partial' })

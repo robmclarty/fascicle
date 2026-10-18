@@ -1,8 +1,8 @@
 /**
- * The `ai` peer is named in the missing-peer message (plan step 7).
+ * The `ai` peer is named in the missing-peer message.
  *
  * generate.ts reaches providers/ai_sdk/invoke.ts through load_optional_peer
- * (plan step 6's lazy seam). When `ai` itself does not resolve, that failure
+ * (the lazy seam missing_ai_peer.test.ts pins). When `ai` itself does not resolve, that failure
  * must surface as the same `load_optional_peer` message every other optional
  * peer produces, naming `ai` and its install command, rather than a raw
  * module-resolution error naming the local invoke.ts path.

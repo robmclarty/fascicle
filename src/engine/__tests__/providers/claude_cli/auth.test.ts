@@ -1,5 +1,5 @@
 /**
- * Auth tests (spec §4, §6.1, §12 #20, #21, #31; F19, F20).
+ * Auth tests.
  *
  * Covers build_env semantics for every AuthMode, the synchronous validator for
  * auth_mode: 'api_key' missing api_key, stderr pattern matching against
@@ -48,11 +48,11 @@ const alias_target: ResolvedModel = {
 }
 
 describe('validate_auth_config', () => {
-  it('§12 #21 — api_key mode with missing api_key throws engine_config_error', () => {
+  it('api_key mode with missing api_key throws engine_config_error', () => {
     expect(() => validate_auth_config({ auth_mode: 'api_key' })).toThrow(engine_config_error)
   })
 
-  it('F20 — api_key mode with empty-string api_key throws', () => {
+  it('api_key mode with empty-string api_key throws', () => {
     expect(() => validate_auth_config({ auth_mode: 'api_key', api_key: '' })).toThrow(
       engine_config_error,
     )
@@ -84,7 +84,7 @@ describe('validate_auth_config', () => {
 })
 
 describe('build_env — auth_mode: oauth', () => {
-  it('§12 #20 — strips ANTHROPIC_API_KEY supplied via caller env', () => {
+  it('strips ANTHROPIC_API_KEY supplied via caller env', () => {
     const env = build_env(
       { api_key: 'config-key', inherit_env: false },
       { ANTHROPIC_API_KEY: 'caller-key', PATH: '/bin' },
@@ -280,7 +280,7 @@ describe('build_env — standard env keys are seeded across every auth mode (reg
   })
 })
 
-describe('stderr_is_auth_failure — F19 patterns', () => {
+describe('stderr_is_auth_failure patterns', () => {
   it('returns false for empty stderr', () => {
     expect(stderr_is_auth_failure('')).toBe(false)
   })
@@ -290,7 +290,7 @@ describe('stderr_is_auth_failure — F19 patterns', () => {
   })
 
   for (const pattern of CLI_AUTH_ERROR_PATTERNS) {
-    it(`F19 — matches '${pattern}' case-insensitively`, () => {
+    it(`matches '${pattern}' case-insensitively`, () => {
       expect(stderr_is_auth_failure(pattern)).toBe(true)
       expect(stderr_is_auth_failure(pattern.toUpperCase())).toBe(true)
       expect(
@@ -300,7 +300,7 @@ describe('stderr_is_auth_failure — F19 patterns', () => {
   }
 })
 
-describe('end-to-end auth-scrub through adapter spawn (§12 #20, F20, criterion 4/14)', () => {
+describe('end-to-end auth-scrub through adapter spawn', () => {
   it(
     'oauth mode strips ANTHROPIC_API_KEY from the spawned subprocess env',
     async () => {
@@ -376,7 +376,7 @@ describe('end-to-end auth-scrub through adapter spawn (§12 #20, F20, criterion 
   })
 })
 
-describe('frozen constants (§12 #31, architectural validation #15)', () => {
+describe('frozen constants', () => {
   it('CLI_AUTH_ERROR_PATTERNS is frozen; push throws in strict mode', () => {
     expect(Object.isFrozen(CLI_AUTH_ERROR_PATTERNS)).toBe(true)
     expect(() => {

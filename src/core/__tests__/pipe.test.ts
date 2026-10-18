@@ -7,7 +7,7 @@ import { recording_logger } from '../../../test/fixtures/trajectory.js'
 const double_fn = (n: number): number => n * 2
 
 describe('pipe', () => {
-  it('adapts output shape (spec §10 test 17)', async () => {
+  it('adapts output shape', async () => {
     const inner = step('count', (x: string) => x.length)
     const flow = pipe(inner, (n: number) => ({ count: n, doubled: n * 2 }))
   

@@ -1,10 +1,10 @@
 /**
- * JSON-lines stream parser tests (spec §7, §12 #3, #4, #5, #8, #9, #27, #28; F24).
+ * JSON-lines stream parser tests.
  *
  * Covers line buffering across partial chunks, malformed-JSON tolerance,
  * unknown event tolerance, step_index transitions on new assistant events
  * after tool_result, atomic tool_call_start + tool_call_end emission, and
- * the full event-to-StreamChunk mapping table from spec §7.2.
+ * the full event-to-StreamChunk mapping.
  */
 
 import { describe, expect, it } from 'vitest'
@@ -62,8 +62,8 @@ function result_event(extras: Record<string, unknown> = {}): unknown {
   }
 }
 
-describe('spec §7.2 — event-to-StreamChunk mapping', () => {
-  it('§12 #8 — assistant text yields a text chunk', async () => {
+describe('event-to-StreamChunk mapping', () => {
+  it('assistant text yields a text chunk', async () => {
     const { chunks } = await feed([
       jline(init_event),
       jline({
@@ -81,7 +81,7 @@ describe('spec §7.2 — event-to-StreamChunk mapping', () => {
     })
   })
 
-  it('§12 #3 — assistant tool_use emits tool_call_start followed by tool_call_end atomically', async () => {
+  it('assistant tool_use emits tool_call_start followed by tool_call_end atomically', async () => {
     const { chunks } = await feed([
       jline(init_event),
       jline({
@@ -201,7 +201,7 @@ describe('spec §7.2 — event-to-StreamChunk mapping', () => {
 })
 
 describe('step_index transitions', () => {
-  it('§12 #4 — new assistant after user tool_result emits step_finish and increments step_index', async () => {
+  it('new assistant after user tool_result emits step_finish and increments step_index', async () => {
     const { chunks } = await feed([
       jline(init_event),
       jline({
@@ -237,8 +237,8 @@ describe('step_index transitions', () => {
   })
 })
 
-describe('§7.4 — tolerance', () => {
-  it('§12 #9, F24 — malformed JSON lines record cli_parse_error and continue', async () => {
+describe('tolerance of malformed and unknown lines', () => {
+  it('malformed JSON lines record cli_parse_error and continue', async () => {
     const trajectory = create_captured_trajectory()
     const { parsed } = await feed(
       [
@@ -417,7 +417,7 @@ describe('result event durations', () => {
   })
 })
 
-describe('§7.3 — event-level strictness (a mistyped field rejects the whole event)', () => {
+describe('event-level strictness (a mistyped field rejects the whole event)', () => {
   // Characterization: each malformed event must be recorded as one
   // cli_unknown_event, never partially accepted. A trailing valid result event
   // keeps the stream well-formed so only the bad line is counted.
@@ -484,7 +484,7 @@ describe('§7.3 — event-level strictness (a mistyped field rejects the whole e
   })
 })
 
-describe('§7.4 — content entries drop individually without rejecting the event', () => {
+describe('content entries drop individually without rejecting the event', () => {
   const dropped_assistant: ReadonlyArray<readonly [string, unknown]> = [
     ['text with non-string text', { type: 'text', text: 1 }],
     ['tool_use missing id', { type: 'tool_use', name: 'n', input: {} }],
@@ -577,7 +577,7 @@ describe('§7.4 — content entries drop individually without rejecting the even
 })
 
 describe('line buffering across partial chunks', () => {
-  it('§12 #27 — accumulates partial JSON across multiple feed_chunk calls', async () => {
+  it('accumulates partial JSON across multiple feed_chunk calls', async () => {
     const state = create_parser_state()
     const chunks: StreamChunk[] = []
     const full = jline(init_event) + '\n' + jline(result_event()) + '\n'
@@ -606,7 +606,7 @@ describe('line buffering across partial chunks', () => {
 })
 
 describe('on_chunk dispatch ordering', () => {
-  it('§12 #5 — dispatches chunks to on_chunk in source order', async () => {
+  it('dispatches chunks to on_chunk in source order', async () => {
     const received: string[] = []
     const state = create_parser_state()
     const chunks: StreamChunk[] = []
@@ -629,7 +629,7 @@ describe('on_chunk dispatch ordering', () => {
 })
 
 describe('usage mapping', () => {
-  it('§12 #28 — maps cache_read_input_tokens -> cached_input_tokens and cache_creation_input_tokens -> cache_write_tokens', async () => {
+  it('maps cache_read_input_tokens -> cached_input_tokens and cache_creation_input_tokens -> cache_write_tokens', async () => {
     const { parsed } = await feed([
       jline(init_event),
       jline(

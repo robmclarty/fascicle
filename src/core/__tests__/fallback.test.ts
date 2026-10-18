@@ -8,7 +8,7 @@ import { suspend } from '../suspend.js'
 import { recording_logger } from '../../../test/fixtures/trajectory.js'
 
 describe('fallback', () => {
-  it('runs backup with the same input when primary throws (spec §10 test 6)', async () => {
+  it('runs backup with the same input when primary throws', async () => {
     let backup_input: number | undefined
     const primary = step('primary', (_: number) => {
       throw new Error('primary failed')

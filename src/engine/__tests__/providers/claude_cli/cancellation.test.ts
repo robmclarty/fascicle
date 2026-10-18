@@ -1,6 +1,5 @@
 /**
- * Cancellation, timeouts, dispose, and post-dispose semantics (spec §6, §8,
- * §11, §12 #7, #14, #18, #19, #25, #29).
+ * Cancellation, timeouts, dispose, and post-dispose semantics.
  *
  * Exercises the full adapter surface under:
  *   - opts.abort fired mid-stream (SIGTERM → SIGKILL if child ignores it)
@@ -55,7 +54,7 @@ function base_opts(env: Record<string, string>): GenerateOptions {
   }
 }
 
-describe('abort — caller signal (§12 #14, F27)', () => {
+describe('abort: caller signal', () => {
   it('aborting mid-stream rejects generate() with aborted_error', async () => {
     const handle = await track(
       await write_mock_script([
@@ -100,8 +99,8 @@ describe('abort — caller signal (§12 #14, F27)', () => {
   })
 })
 
-describe('timeouts (spec §6.3, §12 #18, F21, F22)', () => {
-  it('F21 — startup_timeout_ms fires when no stdout arrives in window', async () => {
+describe('timeouts', () => {
+  it('startup_timeout_ms fires when no stdout arrives in window', async () => {
     // Script never emits to stdout but keeps the process alive.
     const handle = await track(
       await write_mock_script([{ op: 'hang' }]),
@@ -121,7 +120,7 @@ describe('timeouts (spec §6.3, §12 #18, F21, F22)', () => {
     ).rejects.toMatchObject({ reason: 'startup_timeout' })
   })
 
-  it('F22 — stall_timeout_ms fires when stdout pauses after first byte', async () => {
+  it('stall_timeout_ms fires when stdout pauses after first byte', async () => {
     // Emit one line, then hang without another line.
     const handle = await track(
       await write_mock_script([
@@ -145,8 +144,8 @@ describe('timeouts (spec §6.3, §12 #18, F21, F22)', () => {
   })
 })
 
-describe('engine.dispose (spec §8, §12 #19, #25)', () => {
-  it('§12 #25 — dispose() aborts in-flight generate() with aborted_error engine_disposed', async () => {
+describe('engine.dispose', () => {
+  it('dispose() aborts in-flight generate() with aborted_error engine_disposed', async () => {
     const handle = await track(
       await write_mock_script([{ op: 'hang' }]),
     )
@@ -197,7 +196,7 @@ describe('engine.dispose (spec §8, §12 #19, #25)', () => {
   })
 })
 
-describe('independent adapter instances (constraints §7 invariant 5)', () => {
+describe('independent adapter instances', () => {
   it('disposing one adapter does not affect another adapter\'s in-flight calls', async () => {
     const handle_a = await track(await write_mock_script([{ op: 'hang' }]))
     const handle_b = await track(await write_mock_script(success_ops('b-done')))
@@ -231,7 +230,7 @@ describe('independent adapter instances (constraints §7 invariant 5)', () => {
   })
 })
 
-describe('classify_close_error path (§12 #17, F21)', () => {
+describe('classify_close_error path', () => {
   it('non-zero exit without abort surfaces claude_cli_error subprocess_exit', async () => {
     const handle = await track(
       await write_mock_script([
@@ -253,7 +252,7 @@ describe('classify_close_error path (§12 #17, F21)', () => {
     ).rejects.toThrow(claude_cli_error)
   })
 
-  it('§12 #7 — no_result_event error when CLI exits 0 without emitting a result', async () => {
+  it('no_result_event error when CLI exits 0 without emitting a result', async () => {
     // init only, then exit 0.
     const handle = await track(
       await write_mock_script([
@@ -276,7 +275,7 @@ describe('classify_close_error path (§12 #17, F21)', () => {
   })
 })
 
-describe('trajectory captured on cancellation (§12 #29)', () => {
+describe('trajectory captured on cancellation', () => {
   it('aborted generate still records chunks produced up to the cancel point', async () => {
     const handle = await track(
       await write_mock_script([

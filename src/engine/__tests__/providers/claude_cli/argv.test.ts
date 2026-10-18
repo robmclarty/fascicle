@@ -1,10 +1,9 @@
 /**
- * Argv construction tests (spec §6.1, §12 #2, #10, #11, #16, #30).
+ * Argv construction tests.
  *
  * These tests are pure and exercise build_cli_argv / merge_allowed_tools /
- * merge_system / build_sandbox_plan. They also run the argv-injection audit
- * (constraints §9): no option value must be constructed via template-literal
- * interpolation.
+ * merge_system / build_sandbox_plan. They also run the argv-injection audit:
+ * no option value is ever built by template-literal interpolation.
  */
 
 import { readFileSync } from 'node:fs'
@@ -48,7 +47,7 @@ function find_all_flag_values(argv: ReadonlyArray<string>, flag: string): string
 }
 
 describe('build_cli_argv — mandatory structure', () => {
-  it('§12 #1 — includes -p, --output-format stream-json, --model, --verbose, --setting-sources', () => {
+  it('includes -p, --output-format stream-json, --model, --verbose, --setting-sources', () => {
     const argv = build_cli_argv(minimal_input)
     expect(argv[0]).toBe('-p')
     expect(find_flag_value(argv, '--output-format')).toBe('stream-json')
@@ -78,7 +77,7 @@ describe('build_cli_argv — mandatory structure', () => {
 })
 
 describe('build_cli_argv — conditional flags', () => {
-  it('§12 #2 — adds --resume when session_id is non-empty', () => {
+  it('adds --resume when session_id is non-empty', () => {
     const argv = build_cli_argv({
       ...minimal_input,
       call_opts: { session_id: 'sess-xyz' },
@@ -93,7 +92,7 @@ describe('build_cli_argv — conditional flags', () => {
     expect(b).not.toContain('--resume')
   })
 
-  it('§12 #10 — adds --agents with serialized JSON when provided', () => {
+  it('adds --agents with serialized JSON when provided', () => {
     const agents = {
       planner: { description: 'plan', prompt: 'plan a step' },
       runner: { description: 'run', prompt: 'run it', model: 'claude-opus' },
@@ -105,7 +104,7 @@ describe('build_cli_argv — conditional flags', () => {
     expect(find_flag_value(argv, '--agents')).toBe(JSON.stringify(agents))
   })
 
-  it('§12 #11 — emits one --plugin-dir flag per configured directory', () => {
+  it('emits one --plugin-dir flag per configured directory', () => {
     const argv = build_cli_argv({
       ...minimal_input,
       provider_config: { plugin_dirs: ['/a', '/b', '/c'] },
@@ -114,7 +113,7 @@ describe('build_cli_argv — conditional flags', () => {
     expect(values).toEqual(['/a', '/b', '/c'])
   })
 
-  it('§12 #6 — adds --json-schema with compiled schema when supplied', () => {
+  it('adds --json-schema with compiled schema when supplied', () => {
     const argv = build_cli_argv({
       ...minimal_input,
       compiled_schema: '{"type":"string"}',
@@ -146,7 +145,7 @@ describe('build_cli_argv — conditional flags', () => {
     expect(vals).toEqual(['Read', 'Edit', 'Bash(git:*)', 'Write(/tmp/**)'])
   })
 
-  it('§12 #30 — extra_args are appended verbatim', () => {
+  it('extra_args are appended verbatim', () => {
     const argv = build_cli_argv({
       ...minimal_input,
       call_opts: { extra_args: ['--foo', 'bar', '--baz'] },
@@ -210,7 +209,7 @@ describe('build_sandbox_plan', () => {
     expect(plan.prefix_args).toEqual([])
   })
 
-  it('§12 #12 — bwrap plan: spawn_cmd is bwrap; binary appears after sandbox args', () => {
+  it('bwrap plan: spawn_cmd is bwrap; binary appears after sandbox args', () => {
     const plan = build_sandbox_plan('claude', { kind: 'bwrap' })
     expect(plan.spawn_cmd).toBe('bwrap')
     const idx = plan.prefix_args.indexOf('claude')
@@ -323,7 +322,7 @@ describe('build_sandbox_plan', () => {
   })
 })
 
-describe('argv-injection audit (§12 #16, architectural validation #16)', () => {
+describe('argv-injection audit', () => {
   it('argv.ts contains no template-literal option construction of --flag=${value}', async () => {
     const source = await readFile(
       join(here, '../../../providers/claude_cli/argv.ts'),

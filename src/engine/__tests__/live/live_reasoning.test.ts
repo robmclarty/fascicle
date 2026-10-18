@@ -294,8 +294,8 @@ type Outcome = {
 }
 
 /**
- * Run the loop once, streamed. A throw is kept as the outcome so the line for
- * the build log is printed before the case fails.
+ * Run the loop once, streamed. A throw is kept as the outcome so the case's
+ * summary line is printed before it fails.
  */
 async function run_loop(c: LiveCase, effort: EffortLevel | undefined, tools: Tool[]): Promise<Outcome> {
   const engine = create_engine({
@@ -339,7 +339,7 @@ function round_trip_exercised(tap: Tap): boolean {
 }
 
 /**
- * One line for the build log: finished, error, which turns came back with
+ * One summary line per case: finished, error, which turns came back with
  * reasoning, whether each next request carried it back, the reasoning chunks
  * seen, output tokens per step, the upstream per step, and the call's cost
  * beside the charges OpenRouter reported for it.
@@ -394,7 +394,7 @@ describe.skipIf(!enabled)('live reasoning check', () => {
 
             const outcome = await run_loop(c, effort, tools)
             await active.settle()
-            // The line is the build log's record, so it must reach the terminal
+            // The line is the case's record, so it must reach the terminal
             // whether the case passes or fails.
             // oxlint-disable-next-line no-console
             console.info(summary_line(label, outcome, active, ledger))

@@ -3,7 +3,7 @@
  * Covers the request mapping (messages, tools, `options` sampling bag, the
  * always-explicit stream flag, effort ignored, provider_options.ollama
  * passthrough), the NDJSON stream aggregation feeding the one shared
- * parser (streamed equals non-streamed on shared fixtures, C4), done_reason /
+ * parser (streamed equals non-streamed on shared fixtures), done_reason /
  * eval-count mapping with always-tolerant usage, synthesized tool-call
  * ids (this wire has none), and the error ladder the shared classifier
  * expects. No live network; fetch is stubbed per test.
@@ -582,7 +582,7 @@ describe('duration passthrough (provider_reported.ollama)', () => {
     expect(parse_ollama_chat(TEXT_FIXTURE, 0)).not.toHaveProperty('provider_reported')
   })
 
-  it('streamed result carries the done frame durations, equal to the non-streamed parse (C4)', async () => {
+  it('streamed result carries the done frame durations, equal to the non-streamed parse', async () => {
     const fixture = { ...TEXT_FIXTURE, ...DURATIONS }
     const stream = [
       ...TEXT_STREAM.slice(0, -1),
@@ -721,7 +721,7 @@ describe('streaming invoke_turn', () => {
     ['text', TEXT_FIXTURE, TEXT_STREAM],
     ['tool-call', TOOL_CALL_FIXTURE, TOOL_CALL_STREAM],
     ['mixed', MIXED_FIXTURE, MIXED_STREAM],
-  ] as const)('streamed %s result equals the non-streamed result on the shared fixture (C4)', async (_name, fixture, stream) => {
+  ] as const)('streamed %s result equals the non-streamed result on the shared fixture', async (_name, fixture, stream) => {
     stub_fetch(json_response(fixture))
     const adapter = create_ollama_native_adapter({ base_url: BASE_URL })
     const non_streamed = await adapter.invoke_turn(make_req({ tools: [weather_tool] }))
@@ -841,8 +841,8 @@ describe('streaming invoke_turn', () => {
 // Mutation hardening. Concrete-value and boundary assertions that pin the
 // request mapping, the NDJSON stream-drain / error-classification region
 // (~394-478), the done_reason / eval-count maps, and the tool-call parse paths
-// the full-repo Stryker report flagged as survived / no-coverage on this file
-// (C7). Behavior is unchanged; these only tighten the assertions.
+// the full-repo Stryker report flagged as survived / no-coverage on this
+// file. Behavior is unchanged; these only tighten the assertions.
 // ---------------------------------------------------------------------------
 
 function raw_stream_response(text: string, status = 200): Response {

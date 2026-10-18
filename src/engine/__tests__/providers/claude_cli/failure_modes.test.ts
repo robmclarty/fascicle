@@ -1,17 +1,16 @@
 /**
- * Failure-mode tests for claude_cli (spec §11 F23, F25, F26, F27, F30;
- * retry feedback criterion 10).
+ * Failure-mode tests for claude_cli, retry feedback included.
  *
- * - F23: subprocess exits non-zero and surfaces claude_cli_error under
- *        retry_policy='never' (one attempt, no retry).
- * - F25: tools with execute closures under tool_bridge='allowlist_only'
- *        produce a cli_tool_bridge_allowlist_only trajectory record.
- * - F26: tools with execute closures under tool_bridge='forbid' reject
- *        synchronously (pre-spawn) with provider_capability_error.
- * - F27: multi-user-message prompt without session_id throws
- *        provider_capability_error('multi_turn_history').
- * - F30: sandbox binary missing surfaces claude_cli_error that identifies
- *        the sandbox binary, not the claude binary.
+ * - subprocess exits non-zero and surfaces claude_cli_error under
+ *   retry_policy='never' (one attempt, no retry).
+ * - tools with execute closures under tool_bridge='allowlist_only'
+ *   produce a cli_tool_bridge_allowlist_only trajectory record.
+ * - tools with execute closures under tool_bridge='forbid' reject
+ *   synchronously (pre-spawn) with provider_capability_error.
+ * - multi-user-message prompt without session_id throws
+ *   provider_capability_error('multi_turn_history').
+ * - sandbox binary missing surfaces claude_cli_error that identifies
+ *   the sandbox binary, not the claude binary.
  */
 
 import { z } from 'zod'
@@ -65,7 +64,7 @@ function base_opts(env: Record<string, string>): GenerateOptions {
   }
 }
 
-describe('F23 — subprocess non-zero exit with retry per retry_policy', () => {
+describe('subprocess non-zero exit with retry per retry_policy', () => {
   it(
     'under retry_policy (max_attempts:1) non-zero exit surfaces claude_cli_error with no retry',
     async () => {
@@ -119,7 +118,7 @@ describe('F23 — subprocess non-zero exit with retry per retry_policy', () => {
   )
 })
 
-describe("F25 — tools with execute under tool_bridge='allowlist_only'", () => {
+describe("tools with execute under tool_bridge='allowlist_only'", () => {
   it(
     'drops execute closures and records cli_tool_bridge_allowlist_only to trajectory',
     async () => {
@@ -170,7 +169,7 @@ describe("F25 — tools with execute under tool_bridge='allowlist_only'", () => 
   )
 })
 
-describe("F26 — tools with execute under tool_bridge='forbid'", () => {
+describe("tools with execute under tool_bridge='forbid'", () => {
   it('rejects synchronously (pre-spawn) with provider_capability_error', async () => {
     // spawn_cmd points at a non-existent path; if the pre-spawn check misfires
     // we'd see ENOENT/binary_not_found instead of provider_capability_error.
@@ -206,7 +205,7 @@ describe("F26 — tools with execute under tool_bridge='forbid'", () => {
 
 })
 
-describe('F27 — multi-user-message prompt without session_id', () => {
+describe('multi-user-message prompt without session_id', () => {
   it('throws provider_capability_error(multi_turn_history) pre-spawn', async () => {
     const adapter = create_claude_cli_adapter({
       binary: MOCK_CLAUDE_PATH,
@@ -239,7 +238,7 @@ describe('F27 — multi-user-message prompt without session_id', () => {
   })
 })
 
-describe('F30 — sandbox binary missing', () => {
+describe('sandbox binary missing', () => {
   it(
     'rejection clearly identifies the sandbox binary, not the claude binary',
     async () => {

@@ -7,7 +7,7 @@ import type { RunContext } from '../types.js'
 import { recording_logger } from '../../../test/fixtures/trajectory.js'
 
 describe('timeout', () => {
-  it('throws timeout_error when inner exceeds the budget (spec §10 test 7)', async () => {
+  it('throws timeout_error when inner exceeds the budget', async () => {
     const slow = step('slow', async (_: number, ctx: RunContext) => {
       await new Promise<void>((resolve, reject) => {
         const t = setTimeout(resolve, 500)
@@ -41,7 +41,7 @@ describe('timeout', () => {
     await expect(run(flow, 0, { install_signal_handlers: false })).resolves.toBe('ok')
   })
 
-  it('inner step sees timeout_error as ctx.abort.reason (criterion 27)', async () => {
+  it('inner step sees timeout_error as ctx.abort.reason', async () => {
     let observed: unknown = undefined
   
     const slow = step('slow', async (_: number, ctx: RunContext) => {
@@ -98,7 +98,7 @@ describe('timeout', () => {
     expect(observed).toBeInstanceOf(aborted_error)
   })
 
-  it('fires timeout_error on schedule even when inner ignores abort (F4)', async () => {
+  it('fires timeout_error on schedule even when inner ignores abort', async () => {
     let inner_still_running = false
     const ignorant = step('ignorant', async () => {
       await new Promise((resolve) => setTimeout(resolve, 500))

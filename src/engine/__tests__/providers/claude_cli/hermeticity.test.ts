@@ -1,5 +1,5 @@
 /**
- * Subprocess-leak hermeticity (criterion 11).
+ * Subprocess-leak hermeticity.
  *
  * Creates an Engine via create_engine, fires N (=5) concurrent engine.generate
  * calls against hanging mock children, aborts a proper subset mid-stream, then
@@ -69,7 +69,7 @@ function pid_is_alive(pid: number): boolean {
   }
 }
 
-describe('subprocess-leak hermeticity (criterion 11, §6)', () => {
+describe('subprocess-leak hermeticity', () => {
   it(
     'engine.dispose() after aborting a subset of N=5 concurrent engine.generate calls reaps every child',
     async () => {

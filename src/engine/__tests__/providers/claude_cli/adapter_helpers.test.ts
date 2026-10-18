@@ -136,7 +136,8 @@ describe('compile_schema', () => {
     expect(json['required']).toEqual(['a'])
   })
 
-  // C3 (wire-identical-payloads) for the CLI's `--json-schema` argv value.
+  // The CLI's `--json-schema` argv value stays byte-identical whichever
+  // schema emitter builds it.
   // The strip moved from a bespoke rest-spread in this adapter to the
   // `strip_meta` option on the shared emitter; these are the bytes that
   // change if that option ever stops being passed. The schema carries no

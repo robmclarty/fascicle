@@ -9,7 +9,7 @@ import { remove_signal_listeners } from '../../../test/fixtures/signal_listeners
 describe('scope / stash / use', () => {
   afterEach(remove_signal_listeners)
 
-  it('reads two stashed values via a terminal use (criterion 16)', async () => {
+  it('reads two stashed values via a terminal use', async () => {
     const flow = scope([
       stash('a', step('source_a', () => 1)),
       stash('b', step('source_b', () => 2)),
@@ -64,14 +64,14 @@ describe('scope / stash / use', () => {
     expect(result).toBe('final')
   })
 
-  it('stash at top level throws the scope-marker error (F1)', async () => {
+  it('stash at top level throws the scope-marker error', async () => {
     const bare = stash('x', step('s', () => 1))
     await expect(run(bare, null, { install_signal_handlers: false })).rejects.toThrow(
       "stash('x') ran outside any scope(): wrap it and the steps that use() its key in scope([...])",
     )
   })
 
-  it('use at top level throws the scope-marker error (F1)', async () => {
+  it('use at top level throws the scope-marker error', async () => {
     const bare = use(['x', 'y'], () => 'ok')
     await expect(run(bare, null, { install_signal_handlers: false })).rejects.toThrow(
       "use(['x', 'y']) ran outside any scope(): wrap it and the stash() steps that set its keys in scope([...])",

@@ -1,5 +1,5 @@
 /**
- * Cross-layer integration (spec §10 / criterion 9).
+ * Cross-layer integration of core and engine.
  *
  * Composes `core.step` + `run` with `engine.generate`
  * to prove:

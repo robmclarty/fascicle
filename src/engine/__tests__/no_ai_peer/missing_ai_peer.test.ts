@@ -1,5 +1,5 @@
 /**
- * The ai_sdk turn seam is loaded lazily (plan step 6).
+ * The ai_sdk turn seam is loaded lazily.
  *
  * `generate.ts` reaches providers/ai_sdk/invoke.ts, the engine's only `ai`
  * importer, through `await import(...)`, so `ai` is on the module graph of an

@@ -1,5 +1,5 @@
 /**
- * OpenRouter provider, native transport wiring (Step 4). Proves `transport:
+ * OpenRouter provider, native transport wiring. Proves `transport:
  * 'native'` routes through the shared OpenAI-compatible core with the openrouter
  * dialect: Bearer auth, the optional `HTTP-Referer`/`X-Title` attribution
  * headers, `max_tokens` as the token-limit field (not `max_completion_tokens`),
@@ -268,7 +268,7 @@ describe('provider_options.openrouter passthrough', () => {
   })
 })
 
-describe('openrouter native reasoning (the spec 1.2)', () => {
+describe('openrouter native reasoning', () => {
   const ENTRY = {
     type: 'reasoning.text',
     text: 'think',
@@ -414,7 +414,7 @@ const lookup_tool: Tool = {
   execute: () => 'value',
 }
 
-describe('the cost OpenRouter reports, through generate (the spec Part 2)', () => {
+describe('the cost OpenRouter reports, through generate', () => {
   it.each([false, true])(
     'records the reported charge split by token weight, streamed %s, with no pricing_missing',
     async (streamed) => {

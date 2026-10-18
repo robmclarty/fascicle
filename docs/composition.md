@@ -268,7 +268,7 @@ await run(flow, input, {
 and await the final result. The underlying graph is identical to
 `run(flow, input)`, because streaming is purely observational.
 
-## Checkpoint Key Namespacing (F2)
+## Checkpoint Key Namespacing
 
 Your `checkpoint` keys share a single namespace across every flow that reuses
 the same `checkpoint_store`. Two unrelated flows that both write
@@ -284,7 +284,7 @@ Use a content hash when what you want is "if the input is the same, reuse the
 result." Use a scoped prefix when two flows share a store but should never
 collide.
 
-## Anonymous Steps Cannot Be Checkpointed (F6)
+## Anonymous Steps Cannot Be Checkpointed
 
 Anonymous steps (`step(fn)` with no id) throw at construction time when
 wrapped by `checkpoint`:
@@ -295,7 +295,7 @@ Error: checkpoint requires a named step, got anonymous — give the inner step a
 
 Give the inner step an id and it goes away.
 
-## No Circular Compositions (F7)
+## No Circular Compositions
 
 Composers build trees, not graphs. A composer that references itself (or a
 flow variable that appears inside its own definition) causes infinite

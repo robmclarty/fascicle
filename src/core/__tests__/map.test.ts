@@ -29,7 +29,7 @@ function tens_but_two(started: number[] = []) {
 describe('map', () => {
   afterEach(remove_signal_listeners)
 
-  it('never exceeds concurrency and preserves order (spec §10 test 18)', async () => {
+  it('never exceeds concurrency and preserves order', async () => {
     let in_flight = 0
     let peak = 0
   

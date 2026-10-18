@@ -7,7 +7,7 @@ import { recording_logger } from '../../../test/fixtures/trajectory.js'
 const route_when = (x: number): boolean => x > 0
 
 describe('branch', () => {
-  it('routes positive inputs to then (spec §10 test 4)', async () => {
+  it('routes positive inputs to then', async () => {
     const flow = branch({
       when: (x: number) => x > 0,
       then: step('pos', (x: number) => `pos:${x}`),

@@ -325,7 +325,7 @@ describe('cost from the v7 nested usage shape, end to end', () => {
 })
 
 describe('decompose_total_cost — component sum', () => {
-  it('§12 #23 — input_usd + output_usd ≈ total_usd within 1e-9 (no cache tokens)', () => {
+  it('input_usd + output_usd ≈ total_usd within 1e-9 (no cache tokens)', () => {
     const cost = decompose_total_cost(0.0127, { input_tokens: 1000, output_tokens: 200 })
     expect(cost.total_usd).toBe(0.0127)
     expect(cost.currency).toBe('USD')
@@ -338,7 +338,7 @@ describe('decompose_total_cost — component sum', () => {
     expect(Math.abs(sum - cost.total_usd)).toBeLessThan(EPS)
   })
 
-  it('§12 #23 — component sum holds with cache_read and cache_write tokens', () => {
+  it('component sum holds with cache_read and cache_write tokens', () => {
     const usage: UsageTotals = {
       input_tokens: 500,
       output_tokens: 100,

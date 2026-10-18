@@ -14,7 +14,7 @@ describe('translate_openrouter_effort', () => {
     })
   })
 
-  it('maps low/medium/high to reasoning.effort per spec §6.3', () => {
+  it('maps low/medium/high to reasoning.effort', () => {
     for (const effort of ['low', 'medium', 'high'] as const) {
       const translated = translate_openrouter_effort(effort)
       expect(

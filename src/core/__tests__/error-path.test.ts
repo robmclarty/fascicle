@@ -4,7 +4,7 @@ import { run } from '../runner.js'
 import { sequence } from '../sequence.js'
 import { step } from '../step.js'
 
-describe('error path propagation (spec §10 test 20)', () => {
+describe('error path propagation', () => {
   it('annotates errors with a root-to-leaf path array', async () => {
     const failing = step('fail_leaf', (_: number): number => {
       throw new Error('nope')

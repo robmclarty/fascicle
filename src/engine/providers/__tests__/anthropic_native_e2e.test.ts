@@ -1,11 +1,11 @@
 /**
- * Native Anthropic end-to-end (S-P3.7): the real adapter selected via
+ * Native Anthropic end-to-end: the real adapter selected via
  * `transport: 'native'` and driven through create_engine -> generate ->
- * run_tool_loop on recorded Messages-API fixtures (fetch stubbed, no live
- * network per C5). Pins the loop features the adapter inherits (approval,
+ * run_tool_loop on recorded Messages-API fixtures (fetch stubbed, so no test
+ * reaches the network). Pins the loop features the adapter inherits (approval,
  * salvage, Tool.ends_turn, cost) plus the wire shapes fed back to the API
- * mid-loop, and streamed == non-streamed parity across a full tool loop
- * (C4). Zero `ai` in this file's module graph, enforced by
+ * mid-loop, and streamed == non-streamed parity across a full tool loop.
+ * Zero `ai` in this file's module graph, enforced by
  * rules/no-ai-sdk-in-native-providers.yml (the *native* glob covers it).
  */
 
@@ -240,7 +240,7 @@ describe('native anthropic e2e tool loop (non-streamed)', () => {
 })
 
 describe('native anthropic e2e tool loop (streamed)', () => {
-  it('produces a result equal to the non-streamed run of the same loop (C4)', async () => {
+  it('produces a result equal to the non-streamed run of the same loop', async () => {
     const non_streamed = await run_weather_loop(false)
     vi.unstubAllGlobals()
     const streamed = await run_weather_loop(true)
@@ -386,7 +386,7 @@ describe('native anthropic e2e fail-closed approval', () => {
 })
 
 // ---------------------------------------------------------------------------
-// Thinking across the loop (the spec's 1.3): the second request carries the
+// Thinking across the loop: the second request carries the
 // first turn's thinking and redacted_thinking blocks exactly as received, in
 // block order, empty thinking text included.
 // ---------------------------------------------------------------------------

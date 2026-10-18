@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { flow_schema } from '../index.js'
 
-const example_from_spec = [
+const build_and_ship_example = [
   {
     compose: 'multi_judge',
     ensemble: {
@@ -322,8 +322,8 @@ describe('flow_schema', () => {
     }
   })
 
-  it('validates the spec §5.17 example successfully', () => {
-    const errors = validate(example_from_spec, flow_schema, flow_schema)
+  it('validates the multi-judge build_and_ship example', () => {
+    const errors = validate(build_and_ship_example, flow_schema, flow_schema)
     expect(errors).toEqual([])
   })
 

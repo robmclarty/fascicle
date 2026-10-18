@@ -1,8 +1,8 @@
 /**
- * Per-turn cost allocation tests (spec §10, §12 #22, #24).
+ * Per-turn cost allocation tests.
  *
  * Pure tests against allocate_cost_across_turns. decompose_total_cost's own
- * tests (§12 #23) live in pricing.test.ts beside it. Provider-reported
+ * tests live in pricing.test.ts beside it. Provider-reported
  * trajectory source verification lives in integration.test.ts.
  */
 
@@ -12,7 +12,7 @@ import { allocate_cost_across_turns } from '../../../providers/claude_cli/cost.j
 const EPS = 1e-9
 
 describe('allocate_cost_across_turns', () => {
-  it('§12 #24 — per-turn totals sum exactly to total_cost_usd', () => {
+  it('per-turn totals sum exactly to total_cost_usd', () => {
     const total = 0.0127
     const turns = [
       { output_tokens: 50, usage: { input_tokens: 200, output_tokens: 50 } },

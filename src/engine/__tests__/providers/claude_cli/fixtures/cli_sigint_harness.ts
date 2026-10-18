@@ -1,5 +1,5 @@
 /**
- * Cross-layer SIGINT harness (spec §12 #26 / §10 criterion 9).
+ * Cross-layer SIGINT harness.
  *
  * Spawns core.run(step(engine.generate)) where the engine has a
  * claude_cli adapter wired to the mock binary. The mock hangs until signalled.

@@ -15,7 +15,7 @@ function wait(ms: number): Promise<void> {
 describe('parallel', () => {
   afterEach(remove_signal_listeners)
 
-  it('runs two children concurrently (spec §10 test 3)', async () => {
+  it('runs two children concurrently', async () => {
     const flow = parallel({
       a: step('a', async (x: number) => {
         await wait(40)
@@ -48,7 +48,7 @@ describe('parallel', () => {
     expect(start).toBeDefined()
   })
 
-  it('propagates abort to in-flight children, awaits all, rethrows (criterion 26)', async () => {
+  it('propagates abort to in-flight children, awaits all, rethrows', async () => {
     let a_aborted = false
     let b_aborted = false
     let a_settled = false

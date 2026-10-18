@@ -8,7 +8,7 @@ import type { TrajectoryEvent } from '../types.js'
 import { recording_logger } from '../../../test/fixtures/trajectory.js'
 
 describe('suspend', () => {
-  it('calls on(input, ctx) and throws suspended_error on first encounter (criterion 15)', async () => {
+  it('calls on(input, ctx) and throws suspended_error on first encounter', async () => {
     const on_spy = vi.fn(async () => {})
     const flow = suspend({
       id: 'approve',
@@ -24,7 +24,7 @@ describe('suspend', () => {
     expect(on_spy).toHaveBeenCalledTimes(1)
   })
 
-  it('records suspended { suspend_id, step_id } on the wire before the span-end error (step 4)', async () => {
+  it('records suspended { suspend_id, step_id } on the wire before the span-end error', async () => {
     const flow = suspend({
       id: 'approve',
       on: async () => {},
@@ -89,7 +89,7 @@ describe('suspend', () => {
     expect(result).toBe('decision: yes')
   })
 
-  it('throws resume_validation_error with the vendor-neutral issue list on invalid resume (F5)', async () => {
+  it('throws resume_validation_error with the vendor-neutral issue list on invalid resume', async () => {
     const schema = z.object({ n: z.number(), s: z.string() })
     const combine_spy = vi.fn(() => 'never')
     const flow = suspend({
@@ -117,7 +117,7 @@ describe('suspend', () => {
     expect(combine_spy).not.toHaveBeenCalled()
   })
 
-  it('allows re-run with valid data after invalid resume (F5)', async () => {
+  it('allows re-run with valid data after invalid resume', async () => {
     const schema = z.object({ decision: z.string() })
     const flow = suspend({
       id: 'x',

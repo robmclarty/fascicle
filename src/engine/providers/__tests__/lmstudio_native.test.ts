@@ -1,5 +1,5 @@
 /**
- * LM Studio provider, native transport wiring (Step 4). Proves `transport:
+ * LM Studio provider, native transport wiring. Proves `transport:
  * 'native'` routes through the shared OpenAI-compatible core with the lmstudio
  * dialect: no auth (no Authorization header), `max_tokens` as the token-limit
  * field, tolerant usage so a local server that omits token counts zeroes

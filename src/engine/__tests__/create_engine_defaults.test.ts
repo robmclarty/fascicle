@@ -1,6 +1,6 @@
 /**
  * Mutation-hardening for the construction defaults create_engine folds into its
- * per-instance EngineInternals (the `get_internals` derivation, spec §5.8).
+ * per-instance EngineInternals (the `get_internals` derivation).
  *
  * Each `defaults.*` knob is set at construction and then OBSERVED flowing through
  * a real engine.generate call: the request-visible ones (system, provider_options,

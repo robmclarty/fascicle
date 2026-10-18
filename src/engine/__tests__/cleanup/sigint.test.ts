@@ -1,5 +1,5 @@
 /**
- * Engine SIGINT harness (spec §10 / criterion 10).
+ * Engine SIGINT harness.
  *
  * Spawns a child-process script that runs an engine-backed flow with a mocked
  * `ai` module (see ai-stub.mjs). The flow hangs inside `engine.generate`;

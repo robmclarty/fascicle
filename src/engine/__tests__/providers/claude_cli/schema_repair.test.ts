@@ -1,5 +1,5 @@
 /**
- * Schema repair-path tests (spec §5.8, §6.5).
+ * Schema repair-path tests.
  *
  * Exercises the four branches inside the `opts.schema !== undefined` block of
  * `create_claude_cli_adapter.generate`:

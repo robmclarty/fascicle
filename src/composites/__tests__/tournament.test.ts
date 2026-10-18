@@ -11,7 +11,7 @@ function wait(ms: number): Promise<void> {
 describe('tournament (composite)', () => {
   afterEach(remove_signal_listeners)
 
-  it('runs 3-match single-elimination bracket over four members (spec §10 test 11)', async () => {
+  it('runs 3-match single-elimination bracket over four members', async () => {
     const flow = tournament({
       members: {
         a: step('a', () => ({ score: 1 })),
@@ -48,7 +48,7 @@ describe('tournament (composite)', () => {
     expect(round_1_matches.length).toBe(2)
   })
 
-  it('propagates abort to in-flight members (criterion 26)', async () => {
+  it('propagates abort to in-flight members', async () => {
     const aborts = new Set<string>()
   
     const make_slow = (id: string): ReturnType<typeof step<number, { id: string }>> =>

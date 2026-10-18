@@ -1,5 +1,5 @@
 /**
- * Cross-layer integration (spec §12 #26, §10 criterion 9).
+ * Cross-layer integration.
  *
  * Exercises the full stack: core.run → step → engine.generate →
  * claude_cli adapter → mock binary. Proves:
@@ -63,7 +63,7 @@ function build_capture_logger(): {
   return { logger, events }
 }
 
-describe('claude_cli sonnetstep inside core.run (§12 #26)', () => {
+describe('claude_cli step inside core.run', () => {
   it('returns content and records provider_reported cost in the trajectory', async () => {
     const handle = await track(
       await write_mock_script(
@@ -151,7 +151,7 @@ describe('claude_cli sonnetMessage[] prompt extraction', () => {
   })
 })
 
-describe('claude_cli sonnettrajectory span tree under abort (criterion 7)', () => {
+describe('claude_cli trajectory span tree under abort', () => {
   it(
     'on abort, trajectory contains engine.generate span ended with { error } and at least one engine.generate.step child span',
     async () => {
@@ -211,7 +211,7 @@ describe('claude_cli sonnettrajectory span tree under abort (criterion 7)', () =
 })
 
 /* --------------------------------------------------------------------------
- * SIGINT propagation subprocess harness (§10 criterion 9 / §12 #26)
+ * SIGINT propagation subprocess harness
  * ------------------------------------------------------------------------*/
 
 async function wait_for_marker(path: string, timeout_ms: number): Promise<void> {

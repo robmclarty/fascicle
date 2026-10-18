@@ -21,7 +21,7 @@ function fake_model_leaf<T = string>(): Step<string | readonly string[], T> {
 describe('sequence', () => {
   afterEach(remove_signal_listeners)
 
-  it('chains three adders in declared order (spec §10 test 2)', async () => {
+  it('chains three adders in declared order', async () => {
     const flow = sequence([
       step('add1', (x: number) => x + 1),
       step('add2', (x: number) => x + 2),

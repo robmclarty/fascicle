@@ -4,7 +4,7 @@ import { adversarial } from '../adversarial.js'
 import { recording_logger } from '../../../test/fixtures/trajectory.js'
 
 describe('adversarial (composite)', () => {
-  it('converges when critique accepts on round 2 (spec §10 test 8)', async () => {
+  it('converges when critique accepts on round 2', async () => {
     let build_calls = 0
     const build = step(
       'build',

@@ -1708,7 +1708,7 @@ describe('run_tool_loop ends_turn (terminal tool)', () => {
   })
 })
 
-describe('run_tool_loop helpers (step 4)', () => {
+describe('run_tool_loop helpers', () => {
   it('aborts at a turn boundary with the exact message and no in-flight tool', async () => {
     const controller = new AbortController()
     controller.abort(new Error('boundary cancel'))
@@ -1996,7 +1996,7 @@ describe('run_tool_loop helpers (step 4)', () => {
 const span_error = (events: Array<Record<string, unknown>>): unknown =>
   events.find((e) => e['kind'] === 'span_end' && typeof e['error'] === 'string')?.['error']
 
-describe('run_tool_loop body (step 5)', () => {
+describe('run_tool_loop body', () => {
   it('ends the step span with the error when invoke_once throws', async () => {
     const { trajectory, events } = recording_trajectory()
     await expect(

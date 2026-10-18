@@ -1,5 +1,5 @@
 /**
- * build_generate_result tests (spec §5.4, §7.3, §10).
+ * build_generate_result tests.
  *
  * Exercises the internal helpers of stream_result.ts through the public
  * build_generate_result entry point — sum_usage (mixed cache/reasoning

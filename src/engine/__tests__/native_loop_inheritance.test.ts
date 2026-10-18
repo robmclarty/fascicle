@@ -1,5 +1,5 @@
 /**
- * Loop-inheritance proof for the native transport (spec S-P2.7).
+ * Loop-inheritance proof for the native transport.
  *
  * An in-memory fake native adapter (kind: 'native', no HTTP) is registered
  * through custom_providers and driven through the real engine.generate path:

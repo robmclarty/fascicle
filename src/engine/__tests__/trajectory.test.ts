@@ -253,8 +253,9 @@ describe('trajectory helpers', () => {
     expect(rr_span).toMatchObject({ kind: 'response_received', span_id: 'step-span' })
     expect(cost_span).toMatchObject({ kind: 'cost', span_id: 'step-span' })
     expect(retry_span).toMatchObject({ kind: 'turn_retry', span_id: 'step-span' })
-    // Omitted (not stamped as undefined) so a pre-E consumer sees no span_id key
-    // and falls back to the open-span-stack heuristic.
+    // Omitted (not stamped as undefined) so a consumer written before events
+    // carried span_id sees no span_id key and falls back to the open-span-stack
+    // heuristic.
     expect('span_id' in rr_none!).toBe(false)
     expect('span_id' in cost_none!).toBe(false)
     expect('span_id' in retry_none!).toBe(false)

@@ -69,7 +69,7 @@ describe('cross-composer substitutability', () => {
     expect(result.candidate).toBe('c_hello')
   })
 
-  it('ensemble as critique inside adversarial (taste.md exemplar pattern)', async () => {
+  it('ensemble as critique inside adversarial', async () => {
     const multi_judge = ensemble({
       members: {
         opus: step('judge_opus', () => ({ verdict: 'pass', confidence: 0.9, notes: 'opus' })),
@@ -96,7 +96,7 @@ describe('cross-composer substitutability', () => {
     expect(result.rounds).toBe(1)
   })
 
-  it('constructs and runs the full taste.md exemplar', async () => {
+  it('constructs and runs build_and_ship: plan, judged build, checkpoint, deploy', async () => {
     const plan_fn = vi.fn((i: { spec_hash: string; brief: string }) => ({
       spec_hash: i.spec_hash,
       plan: `plan-${i.brief}`,
@@ -150,7 +150,7 @@ describe('cross-composer substitutability', () => {
     expect(store.data.has('build:abc123')).toBe(true)
   })
 
-  it('describe renders multi-line tree with nesting for every composer kind (criterion 19)', () => {
+  it('describe renders multi-line tree with nesting for every composer kind', () => {
     const multi_judge = ensemble({
       members: {
         opus: step('judge_opus', () => ({ verdict: 'pass', confidence: 0.9, notes: 'x' })),

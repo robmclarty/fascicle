@@ -9,7 +9,7 @@
  * src/mcp/sdk_loader.ts.
  *
  * The package root is the SDK's stable protocol v1 entry; v2 sits under its
- * `experimental/` subpaths and stays out of this build. The SDK imports
+ * `experimental/` subpaths, which fascicle never imports. The SDK imports
  * `zod/v4` at runtime as its own peer, so a missing zod fails here too, and
  * the error names both installs.
  */
