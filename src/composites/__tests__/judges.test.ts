@@ -110,6 +110,14 @@ describe('judge_llm', () => {
     expect(await evaluate(j, { input: 'a', output: 'b' })).toEqual({ score: 4 })
   })
 
+  it('reads the score when prose follows the JSON', async () => {
+    const j = judge_llm<string, string>({
+      model: constant_model('{"score":0.8} That\'s my evaluation.'),
+      rubric: 'r',
+    })
+    expect(await evaluate(j, { input: 'a', output: 'b' })).toEqual({ score: 0.8 })
+  })
+
   it('clamps scores to the supplied scale', async () => {
     const j = judge_llm<string, string>({
       model: constant_model('{"score": 99}'),
@@ -268,26 +276,69 @@ describe('parse_score (internal)', () => {
   })
 
   it('abstains on malformed JSON (parse throws inside the try)', () => {
-    expect(parse_score('{bad json', scale01)).toBeUndefined()
+    expect(parse_score('{bad json}', scale01)).toBeUndefined()
   })
 
-  it('trims surrounding whitespace before extracting', () => {
+  it('ignores surrounding whitespace', () => {
     expect(parse_score('  {"score":0.3}  ', scale01)).toStrictEqual({ score: 0.3 })
   })
 
-  it('trim makes leading-ws + trailing-junk a strict parse failure', () => {
-    expect(parse_score(' {"score":0.5} trailing', scale01)).toBeUndefined()
+  it('parses JSON that prose follows, with or without leading whitespace', () => {
+    expect(parse_score('{"score":0.8} That\'s my evaluation.', scale01)).toStrictEqual({
+      score: 0.8,
+    })
+    expect(parse_score(' {"score":0.5} trailing', scale01)).toStrictEqual({ score: 0.5 })
+  })
+
+  it('parses JSON with prose on both sides', () => {
+    expect(
+      parse_score('My verdict: {"score":0.4,"reason":"thin"} Hope that helps!', scale01),
+    ).toStrictEqual({ score: 0.4, reason: 'thin' })
+  })
+
+  it('parses JSON inside a fenced block', () => {
+    const reply = 'Here you go:\n```json\n{"score":0.9,"reason":"solid"}\n```\nThanks.'
+    expect(parse_score(reply, scale01)).toStrictEqual({ score: 0.9, reason: 'solid' })
+  })
+
+  it('parses braces inside a string value', () => {
+    expect(
+      parse_score('{"score":0.7,"reason":"uses {x} and } oddly"} done {', scale01),
+    ).toStrictEqual({ score: 0.7, reason: 'uses {x} and } oddly' })
+  })
+
+  it('abstains on a reply with no object', () => {
+    expect(parse_score('I would give it a 0.8.', scale01)).toBeUndefined()
   })
 })
 
 describe('extract_json_object (internal)', () => {
-  it('returns the whole string when it already starts with a brace', () => {
+  it('returns a reply that is only the object', () => {
     expect(extract_json_object('{"a":1}')).toBe('{"a":1}')
-    expect(extract_json_object('{"a":1} after')).toBe('{"a":1} after')
   })
 
-  it('slices from the first brace to the last when wrapped in prose', () => {
+  it('drops prose after the object', () => {
+    expect(extract_json_object('{"a":1} after')).toBe('{"a":1}')
+  })
+
+  it('drops prose on both sides', () => {
     expect(extract_json_object('prefix {"a":1} suffix')).toBe('{"a":1}')
+  })
+
+  it('keeps nested objects whole', () => {
+    expect(extract_json_object('{"a":{"b":{}}} then {"c":2}')).toBe('{"a":{"b":{}}}')
+  })
+
+  it('skips braces and escaped quotes inside strings', () => {
+    expect(extract_json_object('{"r":"a \\" } b {"} tail}')).toBe('{"r":"a \\" } b {"}')
+  })
+
+  it('reads a backslash before the closing quote as part of the string', () => {
+    expect(extract_json_object('{"r":"\\\\"} tail}')).toBe('{"r":"\\\\"}')
+  })
+
+  it('takes the first balanced pair even when it is not JSON', () => {
+    expect(extract_json_object('use {x} like {"a":1}')).toBe('{x}')
   })
 
   it('abstains when there is no opening brace', () => {
@@ -297,6 +348,11 @@ describe('extract_json_object (internal)', () => {
 
   it('abstains when the closing brace precedes the opening brace', () => {
     expect(extract_json_object('} {')).toBeUndefined()
+  })
+
+  it('abstains when the first object never closes', () => {
+    expect(extract_json_object('{"a":{"b":1}')).toBeUndefined()
+    expect(extract_json_object('{"a":"open } string')).toBeUndefined()
   })
 })
 

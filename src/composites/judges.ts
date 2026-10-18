@@ -167,8 +167,7 @@ export function parse_score(
   reply: string,
   scale: { min: number; max: number },
 ): Score | undefined {
-  const trimmed = reply.trim()
-  const candidate = extract_json_object(trimmed)
+  const candidate = extract_json_object(reply)
   if (candidate === undefined) return undefined
   let parsed: unknown
   try {
@@ -186,14 +185,56 @@ export function parse_score(
 }
 
 /**
- * Pulls the outermost `{...}` slice out of a reply that may wrap the JSON
- * in prose or code fences. Returns the text as-is when it already starts
- * with `{`.
+ * Pulls the first balanced `{...}` slice out of a reply that may wrap the
+ * JSON in prose or code fences on either side. The scan starts at the first
+ * `{` and skips braces inside string literals, so a `}` in a reason doesn't
+ * end the object early and a `{` in trailing prose doesn't extend it.
+ * Returns `undefined` when the reply has no `{` or the first one never
+ * closes.
  */
 export function extract_json_object(text: string): string | undefined {
-  if (text.startsWith('{')) return text
   const start = text.indexOf('{')
-  const end = text.lastIndexOf('}')
-  if (start === -1 || end === -1 || end < start) return undefined
-  return text.slice(start, end + 1)
+  // Stryker disable next-line ConditionalExpression: text with no `{` never opens an object, so the scan returns undefined without this guard too.
+  if (start === -1) return undefined
+  const end = find_object_end(text, start)
+  return end === undefined ? undefined : text.slice(start, end + 1)
+}
+
+/**
+ * Index of the `}` that closes the object opened at `start`, counting only
+ * braces outside string literals, or `undefined` when the text ends first.
+ */
+function find_object_end(text: string, start: number): number | undefined {
+  let depth = 0
+  // Stryker disable next-line EqualityOperator: one index past the end reads undefined, which is no brace or quote.
+  for (let i = start; i < text.length; i += 1) {
+    const ch = text[i]
+    if (ch === '"') {
+      i = find_string_end(text, i)
+    } else if (ch === '{') {
+      depth += 1
+    } else if (ch === '}') {
+      depth -= 1
+      if (depth === 0) return i
+    }
+  }
+  return undefined
+}
+
+/**
+ * Index of the quote that closes the string literal opened at `open`,
+ * stepping over backslash escapes, or the text's length when the string
+ * never closes.
+ */
+function find_string_end(text: string, open: number): number {
+  // Stryker disable next-line EqualityOperator: one index past the end reads undefined, which is no backslash or quote.
+  for (let i = open + 1; i < text.length; i += 1) {
+    const ch = text[i]
+    if (ch === '\\') {
+      i += 1
+    } else if (ch === '"') {
+      return i
+    }
+  }
+  return text.length
 }
