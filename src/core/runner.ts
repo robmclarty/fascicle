@@ -10,6 +10,11 @@
  * optional caller-supplied `AbortSignal` into the run, and guarantees cleanup
  * handlers execute in LIFO order on success, failure, or abort.
  *
+ * A SIGINT or SIGTERM aborts only the runs that installed the handlers. A run
+ * started with `install_signal_handlers: false` keeps going through a signal,
+ * even while another run's handlers are installed, because opting out says
+ * the host forwards cancellation itself, through `abort`.
+ *
  * `run.stream(flow, input, options?)` is a secondary entry point returning
  * `{ events, result }`. Streaming is purely observational; the step graph is
  * identical to `run(...)`.
@@ -156,6 +161,8 @@ function error_meta(err: unknown): Record<string, unknown> {
 }
 
 export type RunOptions = {
+  // Default true. False keeps the run out of the set that a SIGINT or SIGTERM
+  // aborts, and leaves the process's signal handling to the host.
   readonly install_signal_handlers?: boolean
   readonly trajectory?: TrajectoryLogger
   readonly checkpoint_store?: CheckpointStore
@@ -172,18 +179,20 @@ export type StreamingRunHandle<o> = {
   readonly result: Promise<o>
 }
 
-const active_runs = new Set<AbortController>()
+// Only the runs that installed the signal handlers, so a signal never aborts
+// a run whose host opted out.
+const signal_runs = new Set<AbortController>()
 let signal_handler_installed = false
 let sigint_handler: (() => void) | null = null
 let sigterm_handler: (() => void) | null = null
 
 /**
- * Build the handler for one process signal: it aborts every active run with
- * an `aborted_error` that names the signal.
+ * Build the handler for one process signal: it aborts every run that installed
+ * the handlers with an `aborted_error` that names the signal.
  */
 function abort_all_on(signal_name: string): () => void {
   return () => {
-    for (const controller of active_runs) {
+    for (const controller of signal_runs) {
       controller.abort(new aborted_error(`received ${signal_name}`, { reason: { signal: signal_name } }))
     }
   }
@@ -192,8 +201,8 @@ function abort_all_on(signal_name: string): () => void {
 /**
  * Install process-wide SIGINT/SIGTERM handlers once.
  *
- * The handlers abort every active run with an `aborted_error` naming the
- * signal, so a Ctrl-C tears down all in-flight flows through the normal
+ * The handlers abort every run that installed them with an `aborted_error`
+ * naming the signal, so a Ctrl-C tears down those flows through the normal
  * abort/cleanup path instead of killing the process mid-step.
  */
 function ensure_signal_handlers(): void {
@@ -206,14 +215,15 @@ function ensure_signal_handlers(): void {
 }
 
 /**
- * Remove the process signal handlers once the last active run settles.
+ * Remove the process signal handlers once the last run that installed them
+ * settles.
  *
  * Keeps a library embed from leaving stray `process.on` listeners behind
  * after all runs complete.
  */
 function release_signal_handlers(): void {
   if (!signal_handler_installed) return
-  if (active_runs.size > 0) return
+  if (signal_runs.size > 0) return
   signal_handler_installed = false
   if (sigint_handler) process.off('SIGINT', sigint_handler)
   if (sigterm_handler) process.off('SIGTERM', sigterm_handler)
@@ -443,8 +453,8 @@ function start_run<i, o>(
   }
 
   track_resumed_gates(run_id, options.resume_data)
-  active_runs.add(controller)
   if (install_signal_handlers) {
+    signal_runs.add(controller)
     ensure_signal_handlers()
   }
 
@@ -479,7 +489,7 @@ function start_run<i, o>(
         logger.record(terminal)
         unreached_gates.delete(run_id)
         unlink_abort()
-        active_runs.delete(controller)
+        signal_runs.delete(controller)
         release_signal_handlers()
         if (close_stream) close_stream()
       }

@@ -85,6 +85,52 @@ describe('run()', () => {
     expect(cleanup_ran).toBe(true)
     expect(observed_reason).toBeInstanceOf(aborted_error)
   })
+
+  it('a SIGINT aborts the run that installed the handlers and leaves an opted-out run going', async () => {
+    const release = Promise.withResolvers<void>()
+    const waits_for_abort = step('opted_in', async (_: number, ctx) => {
+      await new Promise<void>((_resolve, reject) => {
+        ctx.abort.addEventListener(
+          'abort',
+          () => {
+            reject(ctx.abort.reason instanceof Error ? ctx.abort.reason : new Error('aborted'))
+          },
+          { once: true },
+        )
+      })
+      return 0
+    })
+    const bystander = step('opted_out', async (_: number, ctx) => {
+      await release.promise
+      return ctx.abort.aborted ? 'aborted' : 'finished'
+    })
+
+    const opted_in = run(waits_for_abort, 0)
+    const opted_out = run(bystander, 0, { install_signal_handlers: false })
+    process.emit('SIGINT')
+
+    await expect(opted_in).rejects.toBeInstanceOf(aborted_error)
+    release.resolve()
+    await expect(opted_out).resolves.toBe('finished')
+  })
+
+  it('keeps one SIGINT listener while opted-in runs overlap, and removes it after the last', async () => {
+    const baseline = process.listenerCount('SIGINT')
+    const first = Promise.withResolvers<void>()
+    const second = Promise.withResolvers<void>()
+
+    const a = run(step('a', async () => first.promise), 0)
+    const b = run(step('b', async () => second.promise), 0)
+    expect(process.listenerCount('SIGINT')).toBe(baseline + 1)
+
+    first.resolve()
+    await a
+    expect(process.listenerCount('SIGINT')).toBe(baseline + 1)
+
+    second.resolve()
+    await b
+    expect(process.listenerCount('SIGINT')).toBe(baseline)
+  })
 })
 
 describe('run() caller-supplied abort', () => {
@@ -142,6 +188,20 @@ describe('run() caller-supplied abort', () => {
     await expect(pending).rejects.toBe(cause)
     expect(cleanup_ran).toBe(true)
     expect(observed_reason).toBe(cause)
+  })
+
+  it("keeps a step's own aborted_error over the aborted_error the signal carries", async () => {
+    const controller = new AbortController()
+    const from_signal = new aborted_error('from the signal')
+    const from_step = new aborted_error('from the step', { step_index: 3 })
+    const s = step('s', (_: number) => {
+      controller.abort(from_signal)
+      throw from_step
+    })
+
+    await expect(
+      run(s, 0, { install_signal_handlers: false, abort: controller.signal }),
+    ).rejects.toBe(from_step)
   })
 
   it('removes its abort listener once the run settles, so a reused signal does not leak', async () => {
@@ -339,6 +399,31 @@ describe('flow_structure', () => {
 
     expect(first.done).toBe(false)
     expect(first.value?.kind).toBe('flow_structure')
+  })
+})
+
+describe('span and event stamping', () => {
+  it("leaves parent_span_id off the root span and puts the step's id on its span_end", async () => {
+    const { logger, events } = recording_logger()
+    await run(step('root', (n: number) => n), 0, { trajectory: logger, install_signal_handlers: false })
+
+    const start = events.find((e) => e.kind === 'span_start')
+    const end = events.find((e) => e.kind === 'span_end')
+    expect(start !== undefined && 'parent_span_id' in start).toBe(false)
+    expect(end?.['id']).toBe('root')
+  })
+
+  it('stamps ts on an event that carries its own run_id but no ts', async () => {
+    const { logger, events } = recording_logger()
+    const emits = step('emits', (n: number, ctx) => {
+      ctx.emit({ run_id: 'mine', note: 1 })
+      return n
+    })
+    await run(emits, 0, { trajectory: logger, install_signal_handlers: false })
+
+    const emitted = events.find((e) => e.kind === 'emit')
+    expect(emitted?.['run_id']).toBe('mine')
+    expect(typeof emitted?.['ts']).toBe('number')
   })
 })
 

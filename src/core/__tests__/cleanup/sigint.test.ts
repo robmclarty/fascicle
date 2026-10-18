@@ -31,7 +31,10 @@ async function wait_for_marker(path: string, timeout_ms: number): Promise<void> 
 
 type child_exit = { code: number | null; signal: NodeJS.Signals | null; stderr: string; stdout: string }
 
-async function spawn_child(marker_dir: string): Promise<{
+async function spawn_child(
+  marker_dir: string,
+  extra_env: Readonly<Record<string, string>> = {},
+): Promise<{
   pid: number
   exit: Promise<child_exit>
 }> {
@@ -40,7 +43,7 @@ async function spawn_child(marker_dir: string): Promise<{
     ['--import', register_script, child_script],
     {
       cwd: here,
-      env: { ...process.env, MARKER_DIR: marker_dir },
+      env: { ...process.env, MARKER_DIR: marker_dir, ...extra_env },
       stdio: ['ignore', 'pipe', 'pipe'],
     },
   )
@@ -103,6 +106,36 @@ describe('SIGINT child-process harness', () => {
       }
       expect(exit_reason.is_aborted_error).toBe(true)
       expect(exit_reason.name).toBe('aborted_error')
+    } finally {
+      await rm(marker_dir, { recursive: true, force: true })
+    }
+  }, 75_000)
+
+  it('a real SIGINT leaves a run started with install_signal_handlers: false going', async () => {
+    const marker_dir = await mkdtemp(join(tmpdir(), 'fascicle-sigint-'))
+
+    try {
+      const { pid, exit } = await spawn_child(marker_dir, { BYSTANDER: '1' })
+
+      await wait_for_marker(join(marker_dir, 'ready'), 45_000)
+      await wait_for_marker(join(marker_dir, 'bystander-ready'), 45_000)
+
+      process.kill(pid, 'SIGINT')
+
+      const result = await exit
+
+      const exit_is_non_zero = result.code !== 0 || result.signal !== null
+      expect(exit_is_non_zero, `child exit (code=${String(result.code)}, signal=${String(result.signal)}). stderr:\n${result.stderr}`).toBe(true)
+
+      const exit_reason = JSON.parse(await readFile(join(marker_dir, 'exit-reason.json'), 'utf8')) as {
+        is_aborted_error: boolean
+        message: string
+      }
+      expect(exit_reason.is_aborted_error).toBe(true)
+      expect(exit_reason.message).toMatch(/SIGINT/)
+
+      const bystander = JSON.parse(await readFile(join(marker_dir, 'bystander.json'), 'utf8')) as unknown
+      expect(bystander).toStrictEqual({ status: 'done', output: 'finished' })
     } finally {
       await rm(marker_dir, { recursive: true, force: true })
     }

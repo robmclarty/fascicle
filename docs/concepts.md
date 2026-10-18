@@ -194,7 +194,7 @@ Trajectory writes are never load-bearing, and a logger that throws doesn't fail 
 
 ## Cancellation
 
-Fascicle installs SIGINT/SIGTERM handlers the first time you call `run(...)` and removes them after your last run finishes. When a signal arrives, every active run's abort signal fires with an `aborted_error`.
+Fascicle installs SIGINT/SIGTERM handlers the first time you call `run(...)` and removes them after your last run finishes. When a signal arrives, the abort signal of every run that installed them fires with an `aborted_error`.
 
 Your steps cooperate by:
 
@@ -202,7 +202,7 @@ Your steps cooperate by:
 - Passing `ctx.abort` to `fetch`, child processes, and other abortable APIs.
 - Registering teardown with `ctx.on_cleanup(fn)`.
 
-For embedded runtimes (tests, Lambda, worker threads, anything that owns its own signal stack), opt out with `install_signal_handlers: false` and forward cancellation yourself.
+For embedded runtimes (tests, Lambda, worker threads, anything that owns its own signal stack), opt out with `install_signal_handlers: false` and forward cancellation yourself through `abort`. A run that opts out keeps going through a signal, even while another run's handlers are installed.
 
 **Abort reasons take one of two shapes, by layer.** Composition (`retry`, `timeout`, `parallel`, `map`, `bench`) propagates an `Error` abort reason verbatim and wraps anything else in `aborted_error`, so the cause you aborted with is the error you catch. A SIGINT surfaces as the runner's own `aborted_error('received SIGINT')`, and a `timeout` firing inside a retry still surfaces as `timeout_error`. The engine (`generate` and everything under it) always wraps, so a cancelled model call throws `aborted_error` with your reason on `.reason` and the engine's `step_index` attached. The split is deliberate: `abort()` with no reason sets `signal.reason` to a `DOMException`, and the engine's contract is that only Fascicle errors cross its boundary.
 

@@ -145,13 +145,13 @@ The resume closure re-runs the flow from the original input with the decision me
 
 ## Cancellation and Cleanup
 
-A harness that runs indefinitely, like a server or a long CLI, has to handle cancellation cleanly. Fascicle installs SIGINT/SIGTERM handlers by default and aborts every active run through `ctx.abort`. Your steps cooperate by:
+A harness that runs indefinitely, like a server or a long CLI, has to handle cancellation cleanly. Fascicle installs SIGINT/SIGTERM handlers by default and aborts every run that installed them through `ctx.abort`. Your steps cooperate by:
 
 - Checking `ctx.abort.aborted` at loop boundaries.
 - Passing `ctx.abort` to `fetch`, `child_process`, or any other abortable API.
 - Registering teardown with `ctx.on_cleanup(() => ...)`. Cleanup runs in LIFO order on success, failure, and abort.
 
-For embedded runtimes (tests, Lambda, worker threads), pass `install_signal_handlers: false` so Fascicle doesn't fight the host process for the signal.
+For embedded runtimes (tests, Lambda, worker threads), pass `install_signal_handlers: false` so Fascicle doesn't fight the host process for the signal. A signal then leaves that run alone, so forward cancellation through `abort`.
 
 ## Error Handling
 

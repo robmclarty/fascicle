@@ -12,8 +12,14 @@
  * in-flight operation observes `aborted_error` as its AbortSignal.reason, and
  * the process exits non-zero), an abort-aware Promise is equivalent I/O.
  *
+ * With BYSTANDER set, a second run starts beside the first with
+ * `install_signal_handlers: false`. It waits, abort-aware, until the first run
+ * settles, then writes `bystander.json` with how it ended, so the parent can
+ * assert that a signal aborts only the run that installed the handlers.
+ *
  * Environment inputs:
  *   - MARKER_DIR: directory where marker files are written.
+ *   - BYSTANDER: when set, also start the opted-out run.
  *
  * Exit codes:
  *   - 0: unexpected, the flow completed without aborting.
@@ -36,6 +42,7 @@ function require_marker_dir(): string {
 }
 
 const marker_dir = require_marker_dir()
+const with_bystander = process.env['BYSTANDER'] !== undefined
 
 async function write_marker(name: string, body: string): Promise<void> {
   await writeFile(join(marker_dir, name), body)
@@ -78,7 +85,38 @@ async function main(): Promise<void> {
     }
   })
 
-  await run(long_running, 0)
+  if (!with_bystander) {
+    await run(long_running, 0)
+    return
+  }
+
+  const released = Promise.withResolvers<void>()
+  const bystander = step('bystander', async (_: number, ctx) => {
+    await write_marker('bystander-ready', 'ready')
+    await new Promise<void>((resolve, reject) => {
+      ctx.abort.addEventListener(
+        'abort',
+        () => {
+          const reason = ctx.abort.reason
+          reject(reason instanceof Error ? reason : new Error(`aborted: ${String(reason)}`))
+        },
+        { once: true },
+      )
+      void released.promise.then(resolve)
+    })
+    return 'finished'
+  })
+
+  const opted_out = run(bystander, 0, { install_signal_handlers: false }).then(
+    (output) => ({ status: 'done', output }),
+    (error: unknown) => ({ status: 'failed', error: error instanceof Error ? error.name : typeof error }),
+  )
+  try {
+    await run(long_running, 0)
+  } finally {
+    released.resolve()
+    await write_marker('bystander.json', JSON.stringify(await opted_out))
+  }
 }
 
 async function write_exit_reason(error: unknown): Promise<void> {
