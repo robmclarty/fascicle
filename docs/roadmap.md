@@ -6,7 +6,7 @@ real usage lands, so pin an exact version and upgrade on purpose.
 
 ## Shipped
 
-The published surface as of v0.13.1:
+The published surface as of v0.15.0:
 
 - **Composition.** 23 primitives over a single `Step<i, o>` value type. You get
   the `chain` spine (`.step` / `.stage` / `.output`), `model_step` as the default
@@ -38,13 +38,56 @@ The published surface as of v0.13.1:
   `ollama` on `/api/chat`. `claude_cli` delegates to an external agent process, and
   `custom_providers` registers your own adapter without touching Fascicle.
   Model ids are opaque and sent verbatim.
+- **Reasoning that lasts a whole tool loop.** A tool loop hands each model its
+  own reasoning back on the next step, on the `ai_sdk` transport and on
+  `anthropic` and `openrouter` native, so a Claude loop keeps its thinking and a
+  Gemini 3 loop isn't refused. Each part of a turn carries the data that its
+  provider wants back (a thinking block's signature, an OpenRouter reasoning
+  entry, Gemini's thought signature on a tool call) under that provider's name,
+  so a `fallback` never hands one vendor's signature to another. On the native
+  transport, OpenRouter's reasoning also streams to `on_chunk`, so you can watch
+  what the model reasoned in Zed's thought block or a `useChat` UI. See
+  [providers.md](./providers.md#reasoning-in-a-tool-loop).
 - **Loop control.** Multi-step tool loops with tool-call salvage for models that
   emit calls as prose, approval gating, deterministic turn-ending, per-turn
-  timeout budgets, a `prepare_step` hook, and cost accounting.
+  timeout budgets, a `prepare_step` hook, and cost accounting. On OpenRouter's
+  native transport, the charge that OpenRouter reports for each response is the
+  step's cost, a BYOK request's upstream charge included, so `cost` events and
+  the budgets you build on them work there with no pricing row.
+- **Markdown-defined agents** (`fascicle/agents`). When an agent is just a
+  prompt and an output schema, `define_agent` folds a markdown file and a schema
+  into a `Step<i, o>`. The frontmatter names the agent and sets its model,
+  provider, effort, and sampling, the body is the prompt, and you can set every
+  one of those knobs on the config too, where code wins over frontmatter.
 - **MCP, both directions** (`fascicle/mcp`). `mcp_client()` turns an MCP
   server's tools into plain Fascicle `Tool[]` over stdio or streamable HTTP, and
   `serve_flow()` exposes your composed flows as MCP tools to external hosts.
   `@modelcontextprotocol/sdk` rides as an optional peer.
+- **Editor agents over ACP** (`fascicle/acp`). `serve_acp` serves a flow as an
+  [Agent Client Protocol](https://agentclientprotocol.com) agent over stdio, so
+  you can talk to it in Zed's agent panel beside Claude Code, Codex, and Gemini
+  CLI while its text, reasoning, and tool calls stream back into the thread.
+  `workspace_tools(session)` hands a coding agent the six tools it needs, which
+  read, list, search, write, and edit files on disk and run commands in a shell
+  of their own. A file tool reaches only paths inside the session's workspace,
+  the session asks before an edit or a command as often as its mode (Manual,
+  Accept edits, or Auto) says, and each tool card looks the way Claude Agent's
+  does. `@agentclientprotocol/sdk` rides as an optional peer,
+  [`examples/acp-coder/`](../examples/acp-coder/) is a working coding agent on
+  OpenRouter, and [acp.md](./acp.md) covers the rest.
+- **Chat UIs** (`fascicle/ui`). `to_ui_message_response` turns a `run.stream`
+  handle into the AI SDK's UI message stream, so you can back a `useChat`
+  endpoint with a flow, and `pipe_ui_message_stream_to_response` does the same
+  for a `node:http` server. It needs `ai` as a peer, and
+  [human-in-the-loop.md](./human-in-the-loop.md) pairs it with suspend and
+  resume over HTTP.
+- **Flows as child processes** (`fascicle/stdio`). `run_stdio(flow, options)`
+  runs a flow as a single-shot child that reads JSON on stdin, can check the
+  input and the result against a schema, writes one JSON result on stdout, and
+  keeps its trajectory on stderr. The exit code is the verdict (0 when the
+  result is authoritative, 1 for a flow failure, 2 for a broken contract), so a
+  parent that only speaks JSON over stdio can drive it. See
+  [embedding-under-a-harness.md](./embedding-under-a-harness.md).
 - **Observability.** A trajectory event stream with correct span trees under
   `parallel` and `map`, `TrajectoryLogger` / `CheckpointStore` contracts small
   enough to implement yourself, the run canvas viewer that draws a live run and
