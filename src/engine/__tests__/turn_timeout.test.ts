@@ -15,6 +15,7 @@
  * the exact attempt count, and the timeout_ms carried on the error.
  */
 
+import { turn_timeout_error as public_turn_timeout_error } from 'fascicle'
 import { describe, expect, it, vi } from 'vitest'
 import { create_engine } from '../create_engine.js'
 import {
@@ -194,6 +195,31 @@ describe('turn_timeout_ms: expiry with no chunk streamed', () => {
     expect(err).toBeInstanceOf(provider_error)
     expect((err as provider_error).cause_kind).toBe('network')
     expect(log.requests).toHaveLength(3)
+  })
+})
+
+describe('turn_timeout_error on the public surface', () => {
+  it('reaches a caller whose retry_on leaves out timeout, catchable by instanceof from fascicle', async () => {
+    const log: NativeLog = { requests: [] }
+    const engine = make_engine(log, { mode: 'hang' })
+    let err: unknown
+    try {
+      await engine.generate({
+        provider: PROVIDER,
+        model: MODEL,
+        prompt: 'hi',
+        turn_timeout_ms: 20,
+        retry: { max_attempts: 3, initial_delay_ms: 0, max_delay_ms: 0, retry_on: ['network'] },
+      })
+    } catch (e) {
+      err = e
+    }
+    expect(public_turn_timeout_error).toBe(turn_timeout_error)
+    expect(err).toBeInstanceOf(public_turn_timeout_error)
+    expect((err as InstanceType<typeof public_turn_timeout_error>).timeout_ms).toBe(20)
+    expect((err as Error).name).toBe('turn_timeout_error')
+    expect((err as Error).message).toBe('turn exceeded turn_timeout_ms budget of 20ms')
+    expect(log.requests).toHaveLength(1)
   })
 })
 

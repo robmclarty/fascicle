@@ -233,17 +233,12 @@ export class engine_disposed_error extends Error {
 
 export type ClaudeCliErrorReason =
   | 'binary_not_found'
-  | 'auth_missing'
-  | 'auth_expired'
-  | 'api_key_missing'
   | 'startup_timeout'
   | 'stall_timeout'
   | 'no_result_event'
   | 'result_error'
   | 'subprocess_exit'
   | 'sandbox_unavailable'
-  | 'engine_disposed'
-  | 'parse_error'
 
 export class claude_cli_error extends Error {
   readonly kind = 'claude_cli_error' as const;

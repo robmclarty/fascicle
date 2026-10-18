@@ -21,7 +21,6 @@ export type FinishReason =
   | 'tool_calls'
   | 'length'
   | 'content_filter'
-  | 'aborted'
   | 'max_steps'
 
 export type RetryFailureKind =

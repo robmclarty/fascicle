@@ -50,7 +50,6 @@ export type ClaudeCliProviderConfig = {
   readonly setting_sources?: ReadonlyArray<'user' | 'project' | 'local'>
   readonly plugin_dirs?: ReadonlyArray<string>
   readonly sandbox?: SandboxProviderConfig
-  readonly skip_probe?: boolean
 }
 
 export type AgentDef = {

@@ -333,7 +333,7 @@ await engine.generate({
 ```
 
 - **Scope is one turn, not the whole call.** A multi-step tool loop resets the budget for each turn; the option bounds any single model round-trip, not the aggregate run. Wrap the whole call in your own `AbortSignal` (or the `timeout` composer) if you need a call-level ceiling.
-- **Expiry is a typed, retryable timeout.** Before any chunk streams, expiry throws a timeout that the shared classifier treats as retryable, so the retry policy re-attempts it exactly like a 5xx.
+- **Expiry is a typed, retryable timeout.** Before any chunk streams, expiry throws `turn_timeout_error`, which the shared classifier treats as retryable, so the retry policy re-attempts it exactly like a 5xx. A `retry_on` that leaves out `'timeout'` lets it reach you as it is, so catch it by class, and a call whose every attempt timed out fails with a `provider_error`.
 - **Mid-stream expiry doesn't retry.** Once chunks have flowed, a timeout becomes a non-retryable stream interruption, matching the same first-chunk boundary that the retry policy enforces.
 - **Must be `> 0`.** `undefined` (the default) leaves turns unbounded; `defaults.turn_timeout_ms` sets the baseline and the per-call value wins via nullish coalesce.
 

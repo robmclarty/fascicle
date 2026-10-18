@@ -57,7 +57,6 @@ type ClaudeCliProviderConfig = {
   setting_sources?: ReadonlyArray<'user' | 'project' | 'local'>;   // default ['project', 'local']
   plugin_dirs?: ReadonlyArray<string>;
   sandbox?: SandboxProviderConfig;
-  skip_probe?: boolean;
 };
 ```
 
@@ -234,17 +233,19 @@ A missing sandbox binary triggers `claude_cli_error` with `reason: 'sandbox_unav
 | ------------------------ | --------------------------------------------------------------------------- |
 | `engine_config_error`    | `api_key` missing under `auth_mode: 'api_key'`.                             |
 | `provider_auth_error`    | Stderr matched an auth-failure pattern, so surface `refresh_command` to whoever is running this. |
-| `claude_cli_error`       | Subprocess failure. Check `.reason` for `binary_not_found`, `startup_timeout`, `stall_timeout`, `no_result_event`, `result_error`, `subprocess_exit`, `sandbox_unavailable`, `parse_error`, `auth_missing`, `auth_expired`, `api_key_missing`, `engine_disposed`. |
+| `claude_cli_error`       | Subprocess failure. Check `.reason` for `binary_not_found`, `startup_timeout`, `stall_timeout`, `no_result_event`, `result_error`, `subprocess_exit`, or `sandbox_unavailable`. |
+| `aborted_error`          | Your `abort` fired, or the engine was disposed while the call ran, in which case `.reason` is `'engine_disposed'`. |
+| `engine_disposed_error`  | `generate` was called after `engine.dispose()`.                             |
 | `provider_capability_error` | Multi-turn `prompt: Message[]` with two or more user messages, or `tool_bridge: 'forbid'` with a tool that has an `execute` closure. |
 | `schema_validation_error` | Zod parse failed after one repair attempt.                                 |
 
 ## Dispose Behaviour
 
-`engine.dispose()` aborts every in-flight subprocess with SIGTERM (escalating to SIGKILL after 2s) and rejects any outstanding `generate` promises with `engine_disposed_error`. Call it in a `finally`, or on process exit.
+`engine.dispose()` aborts every in-flight subprocess with SIGTERM (escalating to SIGKILL after 2s). A `generate` that was still running rejects with `aborted_error`, whose `reason` is `'engine_disposed'`, and a `generate` that starts after `dispose()` throws `engine_disposed_error`. Call it in a `finally`, or on process exit.
 
 ## Debugging
 
 - Set `trajectory` and watch for `cli_tool_bridge_allowlist_only` events — those list every tool that got dropped.
 - Read the `stderr_snippet` field on any `claude_cli_error`, because the adapter captures the first 512 bytes of stderr for you.
-- Turn on `skip_probe: true` to bypass the binary existence check if you have a custom PATH situation.
+- Set `binary` to an absolute path when `claude` isn't on the subprocess's `PATH`.
 - `--verbose` is always on in the CLI invocation; combine with a filesystem trajectory logger to see the full back-and-forth.

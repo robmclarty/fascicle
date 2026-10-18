@@ -160,14 +160,14 @@ describe('typed errors', () => {
   })
 
   it('claude_cli_error carries reason and optional status / stderr_snippet', () => {
-    const err = new claude_cli_error('auth_expired', 'login expired', {
-      status: 401,
-      stderr_snippet: 'token expired',
+    const err = new claude_cli_error('subprocess_exit', 'claude CLI exited with code 2', {
+      status: 2,
+      stderr_snippet: 'boom',
     })
     expect(err.kind).toBe('claude_cli_error')
-    expect(err.reason).toBe('auth_expired')
-    expect(err.status).toBe(401)
-    expect(err.stderr_snippet).toBe('token expired')
+    expect(err.reason).toBe('subprocess_exit')
+    expect(err.status).toBe(2)
+    expect(err.stderr_snippet).toBe('boom')
     const bare = new claude_cli_error('binary_not_found', 'no binary')
     expect(bare.reason).toBe('binary_not_found')
     expect(bare.status).toBeUndefined()

@@ -98,6 +98,7 @@ export {
   schema_validation_error,
   tool_approval_denied_error,
   tool_error,
+  turn_timeout_error,
 } from './errors.js'
 
 export type { ClaudeCliErrorReason } from './errors.js'
