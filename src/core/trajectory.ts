@@ -3,7 +3,7 @@
  *
  * `TrajectoryEvent` (in `types.ts`) is the loose internal type — any code that
  * calls `trajectory.record(event)` or `start_span(name, meta)` produces values
- * conforming to it. This file defines the *narrower* shapes that the studio
+ * conforming to it. This file defines the *narrower* shapes that the viewer
  * (and any other downstream consumer) can recognize in the wire stream:
  *
  *   span_start:  composer span open
@@ -27,8 +27,8 @@
  * the wire, just not a `SpanStartEvent`. Anything stricter would have a viewer
  * drop lines a newer producer emits, which is the opposite of what a
  * forward-compatible wire format is for. `is_custom_trajectory_event` therefore
- * answers `true` for well-known kinds too: it is the fallback shape, not a
- * fifth disjoint case.
+ * answers `true` for well-known kinds too: it is the fallback shape, not
+ * another disjoint case.
  *
  * Extra fields (`run_id`, `id`, provider-specific metadata) are neither
  * required nor stripped: a successful parse hands the value straight back, so a

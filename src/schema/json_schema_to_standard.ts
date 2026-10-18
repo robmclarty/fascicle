@@ -10,18 +10,15 @@
  * builds both directly over the schema it is given: emission hands that schema
  * back unchanged, and validation walks it.
  *
- * The old MCP bridge converted the advertised schema into Zod so the provider
- * path could convert it back, a round trip that was lossy by construction.
- * Verbatim emission is strictly higher fidelity: whatever the schema declares
- * is what the model is told, including the constraints (`minLength`, `format`,
- * `pattern`) the Zod conversion dropped.
+ * Emitting the schema verbatim keeps it lossless: whatever the schema declares
+ * is what the model is told, constraints (`minLength`, `format`, `pattern`)
+ * included, with no conversion through a validator library to drop them.
  *
- * Validation stays deliberately loose, unchanged from the Zod bridge's reach:
- * structure, types, enums, const, unions, and required keys are checked, value
- * constraints are not, extra keys pass through, and anything unrecognized
- * accepts. Whatever runs the call is the authority on its arguments (an MCP
- * server re-validates its own), so this check is a guard against an obviously
- * wrong call, not the contract.
+ * Validation is deliberately loose: structure, types, enums, const, unions,
+ * and required keys are checked, value constraints are not, extra keys pass
+ * through, and anything unrecognized accepts. Whatever runs the call is the
+ * authority on its arguments (an MCP server re-validates its own), so this
+ * check is a guard against an obviously wrong call, not the contract.
  */
 
 import { as_record, is_record } from './records.js'

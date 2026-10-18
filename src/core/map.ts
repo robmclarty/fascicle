@@ -3,8 +3,8 @@
  *
  * `map({ items, do, concurrency? })` extracts an array via `items(input)`,
  * runs `do` once per element, returns an array in the same order as inputs.
- * `concurrency` caps simultaneous in-flight items; omitted means full
- * parallelism.
+ * `concurrency` caps simultaneous in-flight items (rounded down, and never
+ * below 1); omitted means full parallelism, and NaN throws at construction.
  *
  * The first item that throws stops new items from starting, and its error
  * propagates once the in-flight items settle, so every result the other items
@@ -122,19 +122,28 @@ function build_map<input, item, result, slot>(
   fulfilled: (value: result) => slot,
   rejected?: (err: unknown, index: number, step_id: string, ctx: RunContext) => slot,
 ): Step<input, slot[]> {
-  const id = next_id()
   const { items, do: per_item, concurrency, name } = config
+  // A NaN concurrency would start zero workers and return an array of holes,
+  // so the misconfiguration fails at construction, not mid-run.
+  if (Number.isNaN(concurrency)) {
+    throw new TypeError(`map: concurrency must be a number, got ${concurrency}`)
+  }
+  const id = next_id()
+  const concurrency_cap = concurrency === undefined ? undefined : Math.max(1, Math.floor(concurrency))
 
   const run_fn = async (input: input, ctx: RunContext): Promise<slot[]> => {
     const list = await items(input)
     if (list.length === 0) return []
     const results: slot[] = Array.from({ length: list.length })
 
-    const limit = concurrency === undefined ? list.length : Math.max(1, concurrency)
+    const limit = concurrency_cap ?? list.length
     const controllers: AbortController[] = []
     const on_parent_abort = install_abort_fan_out(ctx, controllers)
 
     let cursor = 0
+    // A flag rather than an `undefined` sentinel, so an item that throws
+    // `undefined` still stops the map.
+    let has_worker_error = false
     let worker_error: unknown = undefined
 
     // Run one item into its slot. An error that stops the map is kept, the
@@ -155,7 +164,8 @@ function build_map<input, item, result, slot>(
         // throw the abort and the item failed because of it.
         if (rejected !== undefined && !is_control_flow_error(err) && !ctx.abort.aborted) {
           results[idx] = rejected(err, idx, id, ctx)
-        } else if (worker_error === undefined) {
+        } else if (!has_worker_error) {
+          has_worker_error = true
           worker_error = err
         }
       }
@@ -163,7 +173,7 @@ function build_map<input, item, result, slot>(
 
     const worker = async (): Promise<void> => {
       while (true) {
-        if (ctx.abort.aborted || worker_error !== undefined) return
+        if (ctx.abort.aborted || has_worker_error) return
         const idx = cursor
         cursor += 1
         if (idx >= list.length) return
@@ -180,7 +190,7 @@ function build_map<input, item, result, slot>(
       await Promise.all(workers)
 
       throw_if_aborted(ctx)
-      if (worker_error !== undefined) throw worker_error
+      if (has_worker_error) throw worker_error
 
       return results
     } finally {

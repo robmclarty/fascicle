@@ -1,8 +1,8 @@
 /**
  * Closed registry of every `Step.kind` produced by the composition layer.
  *
- * Studio (and any other consumer that needs to enumerate primitives: palette,
- * docs, code generation) can rely on this being the exhaustive set. New
+ * The viewer (and any other consumer that needs to enumerate primitives:
+ * palette, docs, code generation) can rely on this being the exhaustive set. New
  * primitives must add their kind here. `step_kinds.test.ts` pins the list
  * against the kinds core actually constructs, and
  * `composites/__tests__/coverage.test.ts` covers the four composite kinds

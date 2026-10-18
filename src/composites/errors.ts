@@ -1,9 +1,9 @@
 /**
  * Typed errors for the composites layer.
  *
- * Listed alongside src/core/errors.ts, src/engine/errors.ts, and
- * src/mcp/errors.ts in the `no-class` rule ignores: `instanceof` branching is
- * how a caller tells a benched flow's usage error apart from a case failure.
+ * Listed with the other modules' `errors.ts` files in the `no-class` rule
+ * ignores: `instanceof` branching is how a caller tells a benched flow's usage
+ * error apart from a case failure.
  */
 
 export class bench_suspend_error extends Error {

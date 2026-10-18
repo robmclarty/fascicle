@@ -258,6 +258,30 @@ describe('loop', () => {
     expect(result.value).toBe(1)
   })
 
+  it('rejects a NaN max_rounds at construction', () => {
+    const config = {
+      init: (n: number) => n,
+      body: step('inc', (n: number) => n + 1),
+      finish: envelope,
+      max_rounds: Number.NaN,
+    }
+    expect(() => loop(config)).toThrow(TypeError)
+    expect(() => loop(config)).toThrow('loop: max_rounds must be a number, got NaN')
+  })
+
+  it('accepts an Infinity max_rounds and stops on the guard', async () => {
+    const flow = loop({
+      init: (n: number) => n,
+      body: step('inc', (n: number) => n + 1),
+      guard: (n: number) => n >= 3,
+      finish: envelope,
+      max_rounds: Infinity,
+    })
+
+    const result = await run(flow, 0)
+    expect(result).toEqual({ value: 3, converged: true, rounds: 3 })
+  })
+
   it('propagates abort between rounds (criterion: ctx.abort honored)', async () => {
     const flow = loop<number, number, number>({
       init: (n) => n,

@@ -354,9 +354,10 @@ export function normalize_score(raw: unknown): Score | undefined {
 
 /**
  * Extracts the numeric value from a score-shaped entry, tolerating both bare
- * numbers and `{ score }` objects since `S` is caller-defined.
+ * numbers and `{ score }` objects since `S` is caller-defined. Anything else
+ * (missing, non-finite, non-numeric) has no value. Shared with `regression`.
  */
-function score_value_of(s: unknown): number | undefined {
+export function score_value_of(s: unknown): number | undefined {
   if (s === undefined || s === null) return undefined
   if (typeof s === 'number') return Number.isFinite(s) ? s : undefined
   if (typeof s === 'object' && 'score' in s) {
@@ -449,7 +450,7 @@ function resolve_concurrency(value: number | undefined, n_cases: number): number
  * the same way spans and `describe` do, then falling back to identity.
  */
 function describe_flow_name<I, O>(flow: Step<I, O>): string {
-  return resolve_display_name(flow, flow.id ?? flow.kind ?? 'flow')
+  return resolve_display_name(flow, flow.id)
 }
 
 /**

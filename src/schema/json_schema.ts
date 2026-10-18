@@ -16,6 +16,7 @@
  */
 
 import { schema_not_convertible_error } from './errors.js'
+import { is_record } from './records.js'
 import type { JsonSchemaOptions, ToolSchema } from './types.js'
 
 const DEFAULT_TARGET = 'draft-2020-12'
@@ -86,7 +87,7 @@ function close_nested(node: Record<string, unknown>): Record<string, unknown> {
   const closed: Record<string, unknown> = { ...node }
   for (const key of SCHEMA_BAGS) {
     const bag = closed[key]
-    if (is_node(bag)) closed[key] = close_bag(bag)
+    if (is_record(bag)) closed[key] = close_bag(bag)
   }
   for (const key of SCHEMA_SLOTS) {
     if (key in closed) closed[key] = close_value(closed[key])
@@ -104,7 +105,7 @@ function close_bag(bag: Record<string, unknown>): Record<string, unknown> {
 /** Recurse into a schema or a list of them, leaving anything else alone. */
 function close_value(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(close_value)
-  return is_node(value) ? close_objects(value) : value
+  return is_record(value) ? close_objects(value) : value
 }
 
 /** True for an object node listing its keys but not saying whether more are allowed. */
@@ -112,11 +113,6 @@ function needs_closing(node: Record<string, unknown>): boolean {
   if ('additionalProperties' in node || !('properties' in node)) return false
   const type = node['type']
   return type === 'object' || (Array.isArray(type) && type.includes('object'))
-}
-
-/** A JSON Schema node, as opposed to a boolean schema, a list, or a scalar. */
-function is_node(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
 /**

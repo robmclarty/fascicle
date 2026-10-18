@@ -400,14 +400,17 @@ describe('fallback project', () => {
     expect(backup_ran).toBe(false)
   })
 
-  it('records when, project, and the name in the step metadata only when set', () => {
+  it('records when, handoff, project, and the name in the step metadata only when set', () => {
     const double = step('d', (n: number) => n * 2)
+    const negate = (n: number): number => -n
     const full = fallback(double, double, {
       when: always_true,
+      handoff: negate,
       project: value_of,
       name: 'guarded',
     }).config
     expect(full?.['when']).toBe(always_true)
+    expect(full?.['handoff']).toBe(negate)
     expect(full?.['project']).toBe(value_of)
     expect(full?.['display_name']).toBe('guarded')
     expect(fallback(double, double).config).toBeUndefined()

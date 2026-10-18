@@ -1,11 +1,10 @@
 /**
  * Public surface for core.
  *
- * Side-effect imports ensure every composer registers itself with the runner
- * at module load. Importing anything from `core` populates the
- * dispatch table with the core primitives. Built-in composites
- * (adversarial, ensemble, tournament, consensus) live in composites
- * and surface through the umbrella package.
+ * Re-exporting each composer loads its module, which registers it with the
+ * runner, so importing anything from `core` populates the dispatch table with
+ * the core primitives. The built-in composites live in `composites` and
+ * surface through the umbrella package.
  */
 
 export { run } from './runner.js'

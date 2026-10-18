@@ -14,6 +14,46 @@ function wait(ms: number): Promise<void> {
 
 const trivial_flow = step('trivial', (x: unknown) => x)
 
+/**
+ * Run `learn` over two files, aborting with `reason` once the first file's
+ * malformed line is recorded, and report what the run rejected with and which
+ * files were read before it stopped.
+ */
+async function abort_after_first_file(
+  reason: unknown,
+): Promise<{ outcome: unknown; read: ReadonlyArray<string> }> {
+  const dir = await mkdtemp(join(tmpdir(), 'learn-abort-reason-'))
+  try {
+    const first = join(dir, 'a.jsonl')
+    const second = join(dir, 'b.jsonl')
+    await writeFile(first, 'not json\n')
+    await writeFile(second, 'not json either\n')
+    const controller = new AbortController()
+    const read: string[] = []
+    const flow = learn({
+      flow: trivial_flow,
+      source: { kind: 'paths', paths: [first, second] },
+      analyzer: step('a', () => 'done'),
+    })
+    const outcome = await run(flow, undefined, {
+      abort: controller.signal,
+      install_signal_handlers: false,
+      trajectory: {
+        record: (event) => {
+          if (event.kind !== 'learn.parse_error') return
+          read.push(String(event['path']))
+          controller.abort(reason)
+        },
+        start_span: () => 'span',
+        end_span: () => {},
+      },
+    }).catch((err: unknown) => err)
+    return { outcome, read }
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+}
+
 describe('learn (composite)', () => {
   afterEach(remove_signal_listeners)
 
@@ -344,6 +384,20 @@ describe('learn (composite)', () => {
     } finally {
       await rm(dir, { recursive: true, force: true })
     }
+  })
+
+  it('propagates an Error abort reason verbatim between file reads', async () => {
+    const cause = new Error('caller stopped the analysis')
+    const { outcome, read } = await abort_after_first_file(cause)
+    expect(outcome).toBe(cause)
+    expect(read).toHaveLength(1)
+  })
+
+  it('wraps a non-Error abort reason in aborted_error between file reads', async () => {
+    const { outcome, read } = await abort_after_first_file('stop-now')
+    expect(outcome).toBeInstanceOf(aborted_error)
+    expect(outcome).toMatchObject({ message: 'aborted', reason: 'stop-now' })
+    expect(read).toHaveLength(1)
   })
 
   it('propagates abort during analyzer execution', async () => {

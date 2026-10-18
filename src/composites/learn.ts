@@ -6,7 +6,7 @@
  * `describe(flow)`, and returns the analyzer's proposals plus summary metadata
  * (events considered, distinct run ids).
  *
- * The amplify example is the *online* counterpart of this pattern: propose →
+ * `improve` is the *online* counterpart of this pattern: propose →
  * score → accept/reject inside a single run. `learn` is the *offline*
  * counterpart: reflect on what already happened across one or many recorded
  * runs without an evaluator in the loop.
@@ -133,14 +133,16 @@ async function read_jsonl(file_path: string, ctx: RunContext): Promise<Trajector
 }
 
 /**
- * Throw the abort reason (wrapped in `aborted_error` if needed) when the run
- * has been cancelled.
+ * Throw the abort reason when the run has been cancelled.
+ *
+ * Mirrors core's abort shape: an `Error` reason propagates verbatim, anything
+ * else is wrapped in `aborted_error`, so a caller aborting with its own cause
+ * sees that instance rather than a copy.
  */
 function throw_if_aborted(ctx: RunContext): void {
   if (!ctx.abort.aborted) return
-  const reason = ctx.abort.reason
-  if (reason instanceof aborted_error) throw reason
-  throw new aborted_error('aborted', reason === undefined ? {} : { reason })
+  const reason: unknown = ctx.abort.reason
+  throw reason instanceof Error ? reason : new aborted_error('aborted', { reason })
 }
 
 /**

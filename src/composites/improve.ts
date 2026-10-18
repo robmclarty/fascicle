@@ -100,7 +100,7 @@ type ImproveState<c> = {
  * itself is the output.
  *
  * Implemented as a `compose`d `scope` of (seed) -> (init state) -> (loop) ->
- * (unwrap). The loop body is itself a small `scope` that snapshots prior
+ * (record stop). The loop body is itself a small `scope` that snapshots prior
  * state, builds a round input, dispatches the proposers + scorer via
  * `ensemble_step`, and merges the outcome back into state via `use`.
  * State threading is the entire job.
@@ -207,7 +207,8 @@ export function improve<i, c, projected = ImproveResult<c>>(
       const next_round = prior.round + 1
       const better = scored.score > prior.parent_score + epsilon
       const accepted = scored.accepted && better
-      const next_lessons = !accepted && scored.reason !== undefined
+      // A capacity of 0 skips the append, since `.slice(-0)` would keep every lesson.
+      const next_lessons = !accepted && scored.reason !== undefined && lessons_capacity > 0
         ? [
             ...prior.lessons,
             {

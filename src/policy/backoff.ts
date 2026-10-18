@@ -51,9 +51,8 @@ export function compute_backoff(policy: BackoffPolicy, attempt: number): number 
  * Sleep `ms`, rejecting the moment `signal` fires instead of serving out the
  * delay, so a pending abort never waits out a backoff.
  *
- * A non-positive `ms` resolves without arming a timer or consulting `signal`,
- * matching what both retry layers did before. The rejection value is
- * `to_error` applied to `signal.reason`.
+ * A non-positive `ms` resolves without arming a timer or consulting `signal`.
+ * The rejection value is `to_error` applied to `signal.reason`.
  */
 export function wait_with_abort(
   ms: number,

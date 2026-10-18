@@ -3,9 +3,9 @@
  *
  * The remaining members are inert: pricing calls are no-ops that resolve
  * nothing, `dispose` resolves immediately, and `with_providers` throws
- * because a canned engine has no provider registry to derive from. Both
- * testing factories share this shell so a test double differs from a real
- * engine only in how `generate` answers.
+ * because a canned engine has no provider registry to derive from. The stub,
+ * script, and capture factories share this shell so a test double differs
+ * from a real engine only in how `generate` answers.
  */
 
 import type { Engine } from '#engine'

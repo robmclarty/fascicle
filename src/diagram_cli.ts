@@ -84,7 +84,7 @@ export async function run_diagram_cli(argv: readonly string[], io: DiagramCliIo)
     io.err(`fascicle-diagram: could not load ${module}: ${message_of(err)}\n`)
     return 1
   }
-  if (!(export_name in exports)) {
+  if (!Object.hasOwn(exports, export_name)) {
     const names = Object.keys(exports).join(', ') || 'nothing'
     io.err(
       `fascicle-diagram: ${module} has no export named ${export_name}: pass --export <name> (it exports ${names})\n`,

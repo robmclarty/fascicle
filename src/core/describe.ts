@@ -10,7 +10,7 @@
  * place of the config line, rather than again among the children.
  *
  * `describe.json(step)` returns a `FlowNode` tree (kind, id, config, children)
- * for tooling (Studio UI, Mermaid renderers, diff tools). Function values
+ * for tooling (the viewer, Mermaid renderers, diff tools). Function values
  * serialize as `{ kind: '<fn>', name? }` and schemas as `{ kind: '<schema>' }`.
  *
  * `describe.diagram(step)` draws the `describe.json` tree as an annotated
@@ -20,8 +20,9 @@
  * `side_effect` that a resumed run can run again before it reaches a gate
  * (see replays.ts).
  *
- * Both forms detect cycles. Under the default (loose) mode, back-references
- * render as `<cycle>(id)` in text and `{ kind: '<cycle>', id }` in JSON. Under
+ * Every form detects cycles, since the diagram and the replay hints read the
+ * `describe.json` tree. Under the default (loose) mode, back-references render
+ * as `<cycle>(id)` in text and `{ kind: '<cycle>', id }` in JSON. Under
  * `{ strict: true }`, cycles throw `describe_cycle_error`.
  */
 

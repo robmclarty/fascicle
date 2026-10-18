@@ -97,6 +97,14 @@ describe('run_diagram_cli', () => {
     )
   })
 
+  it('treats an inherited member as a missing export, not a builder to call', async () => {
+    const result = await cli(['m.ts', '--export', 'toString'], async () => ({ flow: writer }))
+    expect(result.code).toBe(1)
+    expect(result.err).toBe(
+      'fascicle-diagram: m.ts has no export named toString: pass --export <name> (it exports flow)\n',
+    )
+  })
+
   it('says so when the module exports nothing at all', async () => {
     const result = await cli(['m.ts'], async () => ({}))
     expect(result.err).toBe(

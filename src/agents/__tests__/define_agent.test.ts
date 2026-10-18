@@ -266,6 +266,37 @@ describe('define_agent', () => {
     })
   })
 
+  it('carries the frontmatter description as step meta', async () => {
+    await with_tmp_md(
+      ['---', 'name: plain', 'description: answers questions', '---', '', 'body'].join('\n'),
+      async (path) => {
+        const { engine } = make_mock_engine({ ok: true })
+        const agent = define_agent({
+          md_path: path,
+          schema: z.object({ ok: z.boolean() }),
+          engine,
+        })
+        expect(agent.meta).toEqual({ description: 'answers questions' })
+      },
+    )
+  })
+
+  it('carries the description beside a display name that differs from the id', async () => {
+    await with_tmp_md(
+      ['---', 'name: Change Triage', 'description: sorts changes by risk', '---', '', 'body'].join('\n'),
+      async (path) => {
+        const { engine } = make_mock_engine({ ok: true })
+        const agent = define_agent({
+          md_path: path,
+          schema: z.object({ ok: z.boolean() }),
+          engine,
+          id: 'change_triage',
+        })
+        expect(agent.meta).toEqual({ name: 'Change Triage', description: 'sorts changes by risk' })
+      },
+    )
+  })
+
   it('records both the id and the display name on agent.call', async () => {
     await with_tmp_md(
       ['---', 'name: Change Triage', '---', '', 'body'].join('\n'),

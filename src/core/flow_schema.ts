@@ -9,7 +9,7 @@ export const flow_schema = {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://robmclarty.dev/schemas/flow-schema.json",
   "title": "fascicle Flow DSL",
-  "description": "YAML/JSON representation of a composition tree. Documentation-only in v1. See spec.md §5.17.",
+  "description": "YAML/JSON representation of a composition tree. Documentation-only in v1.",
   "type": "array",
   "items": { "$ref": "#/$defs/compose_entry" },
   "$defs": {

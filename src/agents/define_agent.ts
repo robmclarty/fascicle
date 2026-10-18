@@ -7,8 +7,9 @@
  *
  * - The markdown file is read once at factory time. Its YAML-style frontmatter
  *   (`name`, `description`, `model`, `provider`, `effort`, `temperature`,
- *   `max_tokens`, `top_p`) is parsed into the agent's step name and engine
- *   call defaults; the body is the system prompt.
+ *   `max_tokens`, `top_p`) is parsed into the agent's step name, its step
+ *   description, and its engine call defaults. The rest of the file is the
+ *   body, and `build_prompt` decides which prompt it becomes.
  * - Without `build_prompt`, the body (after `{{key}}` substitution against
  *   top-level string fields of the input) is the user prompt and no system is
  *   sent; the markdown carries the full instruction.
@@ -268,9 +269,9 @@ function substitute(template: string, input: unknown): string {
 
 /**
  * Fold the caller-shaped generation knobs onto `opts` with code config
- * winning over frontmatter (the precedence `model` has always used; the
- * engine default stays the last resort). Unset knobs leave their key off the
- * options object entirely rather than present-as-undefined.
+ * winning over frontmatter and the engine default as the last resort. Unset
+ * knobs leave their key off the options object entirely rather than
+ * present-as-undefined.
  */
 function apply_call_knobs<i, o>(
   opts: GenerateOptions<o>,
@@ -360,7 +361,8 @@ export function define_agent<i, o>(config: DefineAgentConfig<i, o>): Step<i, o> 
     return result.content
   }
 
-  return id === display_name
-    ? step<i, o>(id, run_agent)
-    : step<i, o>(id, run_agent, { name: display_name })
+  return step<i, o>(id, run_agent, {
+    ...(id === display_name ? {} : { name: display_name }),
+    ...(frontmatter.description === undefined ? {} : { description: frontmatter.description }),
+  })
 }

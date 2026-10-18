@@ -3,7 +3,7 @@
  *
  * Dispatches a step to its kind-specific handler. `runner.ts` contains no
  * composer-specific logic beyond a Map lookup on `step.kind`; each composer
- * file registers its handler at module load via `register_kind(...)`.
+ * file registers its handler at module load via `register_traced_kind(...)`.
  *
  * `run(flow, input, options?)` constructs a fresh `RunContext` per top-level
  * call, installs process signal handlers (opt-out via options), forwards an
@@ -231,7 +231,7 @@ const noop_logger: TrajectoryLogger = {
  * Wrap a logger so every emitted event automatically carries `run_id` and a
  * `ts` (epoch milliseconds) stamped at emission.
  *
- * Studios and other downstream consumers multiplex events across runs by
+ * The viewer and other downstream consumers multiplex events across runs by
  * `run_id` and reconstruct real timing from `ts` instead of fabricating it at
  * ingest. Either field already present on an event or its meta is preserved;
  * we never overwrite a caller-supplied value.

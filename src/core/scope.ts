@@ -137,7 +137,9 @@ export function stash<i, v>(
 
   const run_fn = async (input: i, ctx: RunContext): Promise<v> => {
     if (!is_scope_state(ctx.state)) {
-      throw new Error('stash() may only appear inside scope(); got: top-level')
+      throw new Error(
+        `stash('${key}') ran outside any scope(): wrap it and the steps that use() its key in scope([...])`,
+      )
     }
     const value = await dispatch_step(source, input, ctx)
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion
@@ -178,7 +180,10 @@ export function use<const keys extends readonly string[], i, o>(
 
   const run_fn = async (input: i, ctx: RunContext): Promise<o> => {
     if (!is_scope_state(ctx.state)) {
-      throw new Error('use() may only appear inside scope(); got: top-level')
+      const listed = keys.map((k) => `'${k}'`).join(', ')
+      throw new Error(
+        `use([${listed}]) ran outside any scope(): wrap it and the stash() steps that set its keys in scope([...])`,
+      )
     }
     const projection: Record<string, unknown> = {}
     for (const k of keys) {

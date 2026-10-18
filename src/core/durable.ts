@@ -32,6 +32,7 @@
  */
 
 import { createHash, randomUUID } from 'node:crypto'
+import { is_record } from '#schema'
 import { describe } from './describe.js'
 import { has_chosen_id } from './node_label.js'
 import {
@@ -203,17 +204,10 @@ function shape_of(node: FlowNode): unknown {
 }
 
 /**
- * True for a plain object, the only shape a stored record or entry takes.
- */
-function is_object(value: unknown): value is Readonly<Record<string, unknown>> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
-
-/**
  * Read a stored suspension back, or `null` when the value isn't one.
  */
 function as_suspension(value: unknown): Suspension | null {
-  if (!is_object(value)) return null
+  if (!is_record(value)) return null
   const { id, payload, deadline_at } = value
   if (typeof id !== 'string') return null
   return { id, payload, deadline_at: typeof deadline_at === 'number' ? deadline_at : null }
@@ -225,10 +219,10 @@ function as_suspension(value: unknown): Suspension | null {
  * the run again from its input, where its checkpoints still serve.
  */
 function as_record(value: unknown): RunRecord | undefined {
-  if (!is_object(value) || value['format'] !== 1) return undefined
+  if (!is_record(value) || value['format'] !== 1) return undefined
   const { revision, input, flow, resume_data, output, error, status } = value
   if (typeof revision !== 'number' || typeof flow !== 'string') return undefined
-  if (!is_object(resume_data) || !STATUSES.has(status)) return undefined
+  if (!is_record(resume_data) || !STATUSES.has(status)) return undefined
   const base: RunBase = {
     format: 1,
     revision,
@@ -382,7 +376,7 @@ async function read_inbox(
   gate_id: string,
 ): Promise<{ readonly data: unknown } | undefined> {
   const entry = await scope.scope(INBOX).get(gate_id)
-  return is_object(entry) && 'data' in entry ? { data: entry['data'] } : undefined
+  return is_record(entry) && 'data' in entry ? { data: entry['data'] } : undefined
 }
 
 /**

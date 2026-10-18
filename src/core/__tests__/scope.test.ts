@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { aborted_error } from '../errors.js'
+import { parallel } from '../parallel.js'
 import { run } from '../runner.js'
 import { scope, stash, use } from '../scope.js'
 import { step } from '../step.js'
@@ -66,14 +67,21 @@ describe('scope / stash / use', () => {
   it('stash at top level throws the scope-marker error (F1)', async () => {
     const bare = stash('x', step('s', () => 1))
     await expect(run(bare, null, { install_signal_handlers: false })).rejects.toThrow(
-      'stash() may only appear inside scope(); got: top-level',
+      "stash('x') ran outside any scope(): wrap it and the steps that use() its key in scope([...])",
     )
   })
 
   it('use at top level throws the scope-marker error (F1)', async () => {
-    const bare = use(['x'], () => 'ok')
+    const bare = use(['x', 'y'], () => 'ok')
     await expect(run(bare, null, { install_signal_handlers: false })).rejects.toThrow(
-      'use() may only appear inside scope(); got: top-level',
+      "use(['x', 'y']) ran outside any scope(): wrap it and the stash() steps that set its keys in scope([...])",
+    )
+  })
+
+  it('stash nested in a parallel outside any scope throws the same error', async () => {
+    const flow = parallel({ a: stash('x', step('s', () => 1)) })
+    await expect(run(flow, null, { install_signal_handlers: false })).rejects.toThrow(
+      "stash('x') ran outside any scope()",
     )
   })
 

@@ -128,6 +128,7 @@ export function fallback<i, o, projected = o>(
 
   const config_meta: Record<string, unknown> = {}
   if (when) config_meta['when'] = when
+  if (handoff) config_meta['handoff'] = handoff
   if (options?.project) config_meta['project'] = options.project
   if (options?.name !== undefined) config_meta['display_name'] = options.name
 

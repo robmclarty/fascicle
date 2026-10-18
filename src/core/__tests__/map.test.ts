@@ -185,6 +185,64 @@ describe('map', () => {
     expect(flow.config?.['display_name']).toBe('each')
   })
 
+  it('rejects a NaN concurrency at construction', () => {
+    const per = step('item', (v: number) => v)
+    expect(() => map({ items: identity_items, do: per, concurrency: Number.NaN })).toThrow(TypeError)
+    expect(() => map({ items: identity_items, do: per, concurrency: Number.NaN })).toThrow(
+      'map: concurrency must be a number, got NaN',
+    )
+  })
+
+  it('floors a fractional concurrency', async () => {
+    let in_flight = 0
+    let peak = 0
+    const flow = map({
+      items: identity_items,
+      concurrency: 1.5,
+      do: step('item', async (v: number) => {
+        in_flight += 1
+        if (in_flight > peak) peak = in_flight
+        await wait(5)
+        in_flight -= 1
+        return v
+      }),
+    })
+
+    await expect(run(flow, [1, 2, 3], QUIET)).resolves.toEqual([1, 2, 3])
+    expect(peak).toBe(1)
+  })
+
+  it('clamps a concurrency below 1 to one worker rather than none', async () => {
+    const flow = map({ items: identity_items, concurrency: 0, do: step('item', (v: number) => v * 2) })
+    await expect(run(flow, [1, 2, 3], QUIET)).resolves.toEqual([2, 4, 6])
+  })
+
+  it('accepts an Infinity concurrency as full parallelism', async () => {
+    const flow = map({ items: identity_items, concurrency: Infinity, do: step('item', (v: number) => v + 1) })
+    await expect(run(flow, [1, 2, 3], QUIET)).resolves.toEqual([2, 3, 4])
+  })
+
+  it('propagates an item that throws undefined instead of leaving a hole', async () => {
+    const started: number[] = []
+    const flow = map({
+      items: identity_items,
+      concurrency: 1,
+      do: step('item', (v: number) => {
+        started.push(v)
+        // oxlint-disable-next-line no-throw-literal, typescript/only-throw-error
+        if (v === 1) throw undefined
+        return v
+      }),
+    })
+
+    const outcome = await run(flow, [1, 2, 3], QUIET).then(
+      (value) => ({ settled: 'resolved', value }),
+      (err: unknown) => ({ settled: 'rejected', value: err }),
+    )
+    expect(outcome).toEqual({ settled: 'rejected', value: undefined })
+    expect(started).toEqual([1])
+  })
+
   it('omits concurrency and display_name when not provided', () => {
     const flow = map({ items: (x: number[]) => x, do: step('item', (v: number) => v) })
     expect(flow.config !== undefined && 'concurrency' in flow.config).toBe(false)

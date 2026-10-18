@@ -27,9 +27,10 @@ Run N children concurrently, return the first to resolve. Cancel the rest.
 
 - **Why someday:** fast-first responses (first-to-acknowledge polling,
   provider failover as an optimization rather than a fallback).
-- **User-land form today:** `ensemble` with a score of
-  `(_, _, t) => -t` gives first-to-finish semantics post-hoc but does not
-  short-circuit cancellation of slower siblings. `race` would differ in
+- **User-land form today:** an `ensemble` whose members return their finish
+  time beside the value (`{ value, at: performance.now() }`), scored by
+  `(r) => r.at` with `select: 'min'`, gives first-to-finish semantics post-hoc
+  but waits for every member and does not cancel slower siblings. `race` would differ in
   actually cancelling losers at the moment of the first resolve. (This is the
   same decision as the cancellation-granularity question in the roadmap.)
 
@@ -72,8 +73,9 @@ Call a step repeatedly until a predicate holds or a deadline elapses.
 
 - **Why someday:** long-running external operations that expose a
   "check status" endpoint (fine-tune jobs, deploy pipelines).
-- **User-land form today:** `retry` with an `on_error` that inspects the
-  state, or a loop inside a single `step` `fn`.
+- **User-land form today:** a `loop` whose `guard` checks the status, capped
+  by `max_rounds` and wrapped in `timeout` for the deadline, or a loop inside
+  a single `step` `fn`.
 
 ## Rejected
 

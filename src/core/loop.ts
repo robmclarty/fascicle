@@ -98,6 +98,12 @@ function wrap_guard<state>(
  */
 export function loop<i, state, o>(config: LoopConfig<i, state, o>): Step<i, o> {
   const { init, body, finish, name } = config
+  // A NaN max_rounds would make the loop run zero rounds, so the
+  // misconfiguration fails at construction, not mid-run. Infinity is a valid
+  // bound for a loop that only its guard stops.
+  if (Number.isNaN(config.max_rounds)) {
+    throw new TypeError(`loop: max_rounds must be a number, got ${config.max_rounds}`)
+  }
   const rounds_limit = Math.max(1, Math.floor(config.max_rounds))
   const id = next_id()
   const guard = wrap_guard(config.guard, id)

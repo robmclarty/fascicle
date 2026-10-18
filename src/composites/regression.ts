@@ -20,7 +20,7 @@
 
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
-import type { BenchReport, CaseResult } from './bench.js'
+import { score_value_of, type BenchReport, type CaseResult } from './bench.js'
 
 export type RegressionDelta = {
   readonly metric: string
@@ -151,8 +151,9 @@ function compute_per_case(
 
 /**
  * Compute per-judge score deltas for one case pair across the union of judge
- * names on both sides (a missing side scores 0), flagging a regression when
- * any judge's score drops beyond the threshold.
+ * names on both sides, flagging a regression when any judge's score drops
+ * beyond the threshold. A missing side, or an entry with no finite score,
+ * scores 0 so every delta stays well-defined.
  */
 function compute_score_deltas(
   c: CaseResult | undefined,
@@ -166,7 +167,7 @@ function compute_score_deltas(
     ...Object.keys(b?.scores ?? {}),
   ])
   for (const name of judge_names) {
-    const delta = score_value(c?.scores[name]) - score_value(b?.scores[name])
+    const delta = (score_value_of(c?.scores[name]) ?? 0) - (score_value_of(b?.scores[name]) ?? 0)
     score_deltas[name] = delta
     if (delta < -score_threshold) any_regression = true
   }
@@ -192,22 +193,6 @@ function compute_cost_regression(
       ? cost_delta / baseline_cost > cost_threshold
       : current_cost > 0 && baseline_cost === 0 && cost_threshold < Infinity
   return { cost_delta, is_regression }
-}
-
-/**
- * Extract a finite numeric score from a raw score entry.
- *
- * Accepts a bare number or an object with a numeric `score` field; anything
- * else (missing, NaN, non-numeric) counts as 0 so deltas stay well-defined.
- */
-function score_value(s: unknown): number {
-  if (s === undefined || s === null) return 0
-  if (typeof s === 'number') return Number.isFinite(s) ? s : 0
-  if (typeof s === 'object' && 'score' in s) {
-    const v = (s as Record<string, unknown>)['score']
-    return typeof v === 'number' && Number.isFinite(v) ? v : 0
-  }
-  return 0
 }
 
 /**

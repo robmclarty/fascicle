@@ -44,6 +44,10 @@ export function ensemble<i, o, projected = EnsembleResult<o>>(
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion
   const project = config.project ?? ((r: EnsembleResult<o>) => r as unknown as projected)
 
+  if (keys.length === 0) {
+    throw new Error('ensemble: at least one member required')
+  }
+
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion
   const fan_out = parallel(config.members) as Step<i, Record<string, o>>
 

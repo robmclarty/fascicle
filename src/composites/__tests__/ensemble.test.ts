@@ -160,4 +160,10 @@ describe('ensemble (composite)', () => {
     const result = await run(flow, 'input', { install_signal_handlers: false })
     expect(result).toEqual({ picked: 5, all: { a: 1, b: 5 } })
   })
+
+  it('throws when constructed with zero members', () => {
+    expect(() => ensemble<unknown, number>({ members: {}, score: (r) => r })).toThrow(
+      'ensemble: at least one member required',
+    )
+  })
 })

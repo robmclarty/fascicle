@@ -363,6 +363,31 @@ describe('improve (composite)', () => {
     expect(seen_lessons.at(-1)).toHaveLength(2)
   })
 
+  it('keeps no lessons when lessons_capacity is 0', async () => {
+    const seen_lessons: Array<ReadonlyArray<unknown>> = []
+    const flow = improve<unknown, number>({
+      seed: seed_zero,
+      propose: step('propose', (input: ImproveRoundInput<number>) => {
+        seen_lessons.push(input.lessons)
+        return { content: 0, proposer_id: 'p0' }
+      }),
+      score: step(
+        'score',
+        (c: Candidate<number>): ScoredCandidate<number> => ({
+          candidate: c,
+          score: 0,
+          accepted: true,
+          reason: 'fail',
+        }),
+      ),
+      budget: { max_rounds: 3, patience: 99 },
+      lessons_capacity: 0,
+    })
+
+    await run(flow, undefined, { install_signal_handlers: false })
+    expect(seen_lessons).toEqual([[], [], []])
+  })
+
   it('emits improve.round_start, improve.candidate, improve.accept/reject, improve.stop events', async () => {
     const { logger, events } = recording_logger()
     let n = 0
