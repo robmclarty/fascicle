@@ -167,9 +167,11 @@ describe('start_viewer', () => {
     expect(parse_errors).toEqual(['not json'])
   })
 
-  it('routes a missing tail path to on_io_error', async () => {
+  it('routes a tail io error to on_io_error', async () => {
+    // A missing file is a wait, not an error, but a missing directory is one:
+    // the tail can't watch it, so it could never see the file appear.
     work_dir = mkdtempSync(join(tmpdir(), 'fascicle-viewer-start-'))
-    const path = join(work_dir, 'does-not-exist.jsonl')
+    const path = join(work_dir, 'no-such-dir', 'run.jsonl')
     const io_errors: unknown[] = []
     handle = await start_viewer({ path, port: 0, on_io_error: (err) => io_errors.push(err) })
     const deadline = Date.now() + 2000

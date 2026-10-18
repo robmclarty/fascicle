@@ -139,7 +139,7 @@ export async function run_viewer_cli(argv: readonly string[]): Promise<void> {
 
   if (args.path !== undefined && !existsSync(args.path)) {
     process.stderr.write(
-      `fascicle-viewer: warning: ${args.path} does not exist yet — will pick up events once it is created\n`,
+      `fascicle-viewer: warning: ${args.path} does not exist yet, so the viewer will read it from its first line once it is created\n`,
     )
   }
   if (!is_loopback_host(args.host)) {
