@@ -238,7 +238,7 @@ When the mode says to ask, `session.approve` sends `session/request_permission` 
 
 - **Allow** runs this one call.
 - **Allow all edits this session**, offered for an edit, switches the session to Accept edits, the way Claude Agent's does. The agent tells the client, so Zed's mode picker follows.
-- **Always allow `pnpm test` this session**, offered for a command, covers the command's program and its first argument that isn't a flag. That grant covers a later `pnpm test --watch=false` but not `pnpm publish`, and `ls -la` gets a grant for plain `ls`.
+- **Always allow `pnpm test` this session**, offered for a command, covers that exact command line, and only the whitespace at its ends is ignored. A later `pnpm test` runs without asking, but `pnpm test --watch=false` asks again, since one flag can change what a command does: `find . -name '*.ts'` lists files, and `find . -delete` removes them. The whitespace inside a command counts too, because `rm "a  b"` and `rm "a b"` name different files.
 - **Reject** refuses the call.
 
 A command that holds shell control syntax (`;`, `&`, `|`, `>`, `<`, a backtick, `$(`, or a newline) is never offered "always", and no grant ever covers it, since anything can follow a `;` or a `|`. So `pnpm test && curl … | sh` asks every time, whatever the user has allowed before. A grant lives in the agent's memory and ends with the session.

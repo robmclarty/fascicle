@@ -4,6 +4,8 @@
 
 ### Fixed
 
+- **An "always allow" for a command covers that exact command and nothing else.** The grant used to key on the program and its first argument that wasn't a flag, so allowing `find . -name '*.ts'` also allowed `find . -delete` and `find . -exec rm`, and `pnpm --filter web test` keyed as `pnpm web`. A grant now covers the command line it was given, with the whitespace at its ends trimmed and everything between compared exactly, so `rm "a  b"` and `rm "a b"` are two grants. The option's label names the whole command. A re-run of the same command still runs without asking, and any variant asks again, so a user who relied on `pnpm test` covering `pnpm test --watch=false` grants each one.
+
 - **`write_file` and `edit_file` refuse writes into `.git` and `node_modules`.** In Accept edits, the model could write `.git/config` or a file in `node_modules/.bin`, and what it wrote would run on the user's next `git` or `pnpm` command without ever showing in `git diff`. Both tools now refuse, in every mode, a path that passes through a file or a directory named `.git` or `node_modules` anywhere under a root, a nested repository's `.git` and a worktree's `.git` file included, whether the path gets there as written or through a symlink. The error names the directory and points the model at `run_command`, and the permission prompt shows it in place of a diff. A flow that wrote there through the file tools uses `run_command` instead. `docs/acp.md` now says that an edit to any other file that git ignores never shows in `git diff` either, so Manual is the mode for a checkout whose ignored files matter.
 
 ## v0.15.0 — 2026-10-17

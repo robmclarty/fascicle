@@ -7,8 +7,9 @@
  * the diff itself. It offers Allow, Reject, and an "always" that lives in
  * memory for the session. For an edit, "always" switches the session to
  * Accept edits, as Claude Agent's does, and tells the client both ways so
- * its mode picker follows. For a command, it covers the program and its
- * first argument that isn't a flag (`pnpm test`). A command with shell
+ * its mode picker follows. For a command, it covers that exact command
+ * line and nothing else, since one flag can turn a listing into a delete
+ * (`find . -name '*.ts'` and `find . -delete`). A command with shell
  * control syntax is never covered and never offered one, since anything
  * can follow a `;` or a `|`.
  *
@@ -209,18 +210,17 @@ export function create_card_sync(): CardSync {
 }
 
 /**
- * What an "always" grant for a command covers: its program and its first
- * argument that isn't a flag (`git status`, `pnpm test`; `ls -la` is
- * `ls`). A command with shell control syntax has none, so no grant ever
- * covers it, and neither does one that isn't a string or names no program.
+ * What an "always" grant for a command covers: the command line itself,
+ * with the whitespace at its ends trimmed and everything between compared
+ * exactly, because `rm "a  b"` and `rm "a b"` name different files. A
+ * command with shell control syntax has none, so no grant ever covers it,
+ * and neither does one that isn't a string or is only whitespace.
  */
 export function command_key(input: unknown): string | undefined {
   const command = as_record(input)?.['command']
   if (typeof command !== 'string' || CONTROL_SYNTAX.test(command)) return undefined
-  const [program, ...args] = command.trim().split(/\s+/)
-  if (program === '') return undefined
-  const subject = args.find((arg) => !arg.startsWith('-'))
-  return subject === undefined ? program : [program, subject].join(' ')
+  const key = command.trim()
+  return key === '' ? undefined : key
 }
 
 /**

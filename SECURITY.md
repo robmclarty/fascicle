@@ -109,8 +109,8 @@ injection can reach too.
 - **Permission prompts fail closed.** A call that asks runs only when you
   choose an allow. A rejection, a cancelled prompt, and a request that fails
   for any reason all deny it. An "always" grant lives in memory for one session.
-  For a command, it covers the program and its first argument that isn't a flag
-  (`pnpm test`). A command with shell control syntax (`;`, `&`, `|`, `>`, `<`, a
+  For a command, it covers that exact command line, with only the whitespace at
+  its ends ignored. A command with shell control syntax (`;`, `&`, `|`, `>`, `<`, a
   backtick, `$(`, or a newline) is never covered and never offered a grant, so
   `pnpm test && curl … | sh` asks you every time.
 - **Auto asks for nothing.** It edits files and runs commands with nobody

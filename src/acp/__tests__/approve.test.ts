@@ -197,14 +197,14 @@ describe('approve: what the request shows', () => {
     ])
   })
 
-  it('shows a command as its command line, offering to always allow its program and first argument', async () => {
+  it('shows a command as its command line, offering to always allow that exact command', async () => {
     const input = { command: 'pnpm test --watch' }
     const run = await wire_run([[{ id: 'c', name: 'run_command', input }], 'done'], () => choose('reject_once'))
     expect(run.asked).toEqual([
       {
         sessionId: run.session_id,
         toolCall: { toolCallId: card_id(run.updates, 'c'), title: 'pnpm test --watch', kind: 'execute', rawInput: input },
-        options: [ALLOW, always('Always allow `pnpm test` this session'), REJECT],
+        options: [ALLOW, always('Always allow `pnpm test --watch` this session'), REJECT],
       },
     ])
   })
@@ -343,19 +343,20 @@ describe('approve: what each answer does', () => {
     expect(mode_switches(run.updates)).toEqual(['auto'])
   })
 
-  it('stops asking about a command once its key is always allowed, and asks about one with another key', async () => {
+  it('stops asking about a command once it is always allowed, and asks about any other command line', async () => {
     const run = await wire_run(
       [
         [{ id: 'c1', name: 'run_command', input: { command: 'echo one' } }],
-        [{ id: 'c2', name: 'run_command', input: { command: 'echo one two' } }],
-        [{ id: 'c3', name: 'run_command', input: { command: 'echo two' } }],
+        [{ id: 'c2', name: 'run_command', input: { command: '  echo one\t' } }],
+        [{ id: 'c3', name: 'run_command', input: { command: 'echo one two' } }],
         'done',
       ],
       () => choose('allow_always'),
     )
-    expect(titles(run.asked)).toEqual(['echo one', 'echo two'])
+    expect(titles(run.asked)).toEqual(['echo one', 'echo one two'])
     expect(tool_result(run.seen, 'c1')).toContain('one')
-    expect(tool_result(run.seen, 'c2')).toContain('one two')
+    expect(tool_result(run.seen, 'c2')).toContain('one')
+    expect(tool_result(run.seen, 'c3')).toContain('one two')
     expect(mode_switches(run.updates)).toEqual([])
   })
 
@@ -581,11 +582,16 @@ describe('approve: the card sync', () => {
 describe('approve: command_key', () => {
   it.each<[unknown, string | undefined]>([
     ['pnpm test', 'pnpm test'],
-    ['pnpm test --watch src', 'pnpm test'],
-    ['git status --short', 'git status'],
-    ['ls -la', 'ls'],
+    ['pnpm test --watch src', 'pnpm test --watch src'],
+    ['pnpm --filter web test', 'pnpm --filter web test'],
+    ["find . -name '*.ts'", "find . -name '*.ts'"],
+    ['find . -delete', 'find . -delete'],
+    ['git status --short', 'git status --short'],
+    ['ls -la', 'ls -la'],
     ['ls', 'ls'],
-    ['  git \t status  ', 'git status'],
+    ['  git \t status  ', 'git \t status'],
+    ['rm "a  b"', 'rm "a  b"'],
+    ['rm "a b"', 'rm "a b"'],
     ['$HOME/bin/tool run', '$HOME/bin/tool run'],
     ['', undefined],
     ['   ', undefined],
@@ -625,6 +631,32 @@ async function manual_session(cards: CardSync, ask: PermissionAsker): Promise<Ac
   }
   return session
 }
+
+/** An approval request for running `command`, which the test answers without ever running it. */
+function command_request(command: string): ToolApprovalRequest {
+  return { tool_name: 'run_command', input: { command }, step_index: 0, tool_call_id: 'c', abort: new AbortController().signal }
+}
+
+describe('approve: what an "always" for a command covers', () => {
+  it.each([
+    ["find . -name '*.ts'", "  find . -name '*.ts'\t", 'find . -delete'],
+    ['pnpm --filter web test', 'pnpm --filter web test ', 'pnpm --filter web publish'],
+    ['rm "a  b"', ' rm "a  b"', 'rm "a b"'],
+  ])('a grant on %j covers %j and asks again about %j', async (granted, same, other) => {
+    const asked: RequestPermissionRequest[] = []
+    const session = await manual_session(create_card_sync(), async (request) => {
+      asked.push(request)
+      return choose(asked.length === 1 ? 'allow_always' : 'reject_once')
+    })
+    expect(await session.approve(command_request(granted))).toBe(true)
+    expect(await session.approve(command_request(same))).toBe(true)
+    expect(await session.approve(command_request(other))).toBe(false)
+    expect(asked.map((request) => [request.toolCall.title, request.options])).toEqual([
+      [granted, [ALLOW, always(`Always allow \`${granted}\` this session`), REJECT]],
+      [other, [ALLOW, always(`Always allow \`${other}\` this session`), REJECT]],
+    ])
+  })
+})
 
 /** An approval request for writing `b.txt`, under `abort`. */
 function write_request(abort: AbortSignal): ToolApprovalRequest {
