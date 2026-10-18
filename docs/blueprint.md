@@ -156,20 +156,32 @@ Rules, in order of importance:
 
 ## `engine.ts`
 
-- **`create_engine` appears in exactly one file.** Everything else takes a ready-made `Engine`. This is the seam that makes provider swap a one-env-var change and tests trivial.
-- Provider comes from one env var (`FASCICLE_PROVIDER` or your own name), validated through a zod enum. Models are threaded as data (a `FlowModels` record of role to model id), not read from env at call sites.
+- **`create_engine` appears in exactly one file.** Everything else takes a ready-made `Engine`. This is the seam that makes provider swap a flag or an env change with no code, and tests trivial.
+- Provider comes from a `--provider` flag first, then one env var (`FASCICLE_PROVIDER` or your own name) validated through a zod enum that names only the API providers, then an API-provider default. `claude_cli` is reachable only through the flag, so a shell that exports the env var can't move every run onto the CLI without a flag that says so. Models are threaded as data (a `FlowModels` record of role to model id), not read from env at call sites.
 - **One source of truth for model defaults.** This bug keeps recurring. Defaults defined in `engine.ts`, redefined in `main.ts`, and env overrides that are parsed but never reach the flow. Define the role-to-model table once, resolve env overrides once, and pass the resolved record down.
 - Dispose in `finally`, always: `try { await run(flow, input, opts) } finally { await engine.dispose() }`.
 
 ```ts
-const ProviderSchema = z.enum(['anthropic', 'openrouter', 'claude_cli']);
+export const ProviderSchema = z.enum(['anthropic', 'openrouter', 'claude_cli']);
 export type Provider = z.infer<typeof ProviderSchema>;
+const EnvProviderSchema = z.enum(['anthropic', 'openrouter']);
+
+// main.ts parses `--provider` through ProviderSchema and passes it in as `flag`.
+export function resolve_provider(env: NodeJS.ProcessEnv, flag?: Provider): Provider {
+  if (flag !== undefined) return flag;
+  const from_env = env['FASCICLE_PROVIDER'];
+  if (from_env === undefined || from_env === '') return 'openrouter';
+  return EnvProviderSchema.parse(from_env);
+}
 
 export function create_app_engine(cfg: AppEngineConfig): Engine {
   if (cfg.provider === 'claude_cli') {
     return create_engine({ providers: { claude_cli: { auth_mode: 'oauth' } } });
   }
-  return create_engine({ providers: { [cfg.provider]: { api_key: cfg.api_key } } });
+  if (cfg.provider === 'openrouter') {
+    return create_engine({ providers: { openrouter: { api_key: cfg.api_key, transport: 'native' } } });
+  }
+  return create_engine({ providers: { anthropic: { api_key: cfg.api_key } } });
 }
 ```
 
@@ -440,7 +452,7 @@ Add a rule per boundary you care about; each is a few lines and turns an archite
 Before calling an agent app done:
 
 - [ ] One composition layer exists and contains only Fascicle vocabulary; the header diagram matches the code.
-- [ ] `create_engine` appears in exactly one file, provider swap is one env var, and disposal is in `finally`.
+- [ ] `create_engine` appears in exactly one file, the provider comes from `--provider`, then one env var whose enum names only API providers, then an API-provider default, `claude_cli` runs only behind the flag, and disposal is in `finally`.
 - [ ] Every model boundary has a zod schema in `types.ts`; stages return `Step<In, Out>` from `model_step` (or the `GenerateResult` envelope from `model_call` where the flow needs usage or tool calls).
 - [ ] System prompts are markdown files with frontmatter; dynamic content is assembled in `messages.ts`.
 - [ ] Named state goes through `chain`; any raw scope-state casts live only in `state.ts` readers.
