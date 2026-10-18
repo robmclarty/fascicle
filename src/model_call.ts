@@ -303,11 +303,13 @@ export function model_call<T = string, projected = GenerateResult<T>>(
   if (cfg.turn_timeout_ms !== undefined) describe_config.turn_timeout_ms = cfg.turn_timeout_ms
 
   const inner = step<ModelCallInput, projected>(step_id, async (input, ctx) => {
+    // Core's throw_if_aborted contract: the caller's own Error surfaces as is,
+    // and anything else rides on aborted_error without a tool-loop position.
     if (ctx.abort.aborted) {
-      throw new aborted_error('aborted before model_call', {
-        reason: { signal: 'abort' },
-        step_index: 0,
-      })
+      const reason: unknown = ctx.abort.reason
+      throw reason instanceof Error
+        ? reason
+        : new aborted_error('aborted before model_call', { reason })
     }
 
     const prompt: Message[] =

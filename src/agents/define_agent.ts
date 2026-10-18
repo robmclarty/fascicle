@@ -313,8 +313,11 @@ export function define_agent<i, o>(config: DefineAgentConfig<i, o>): Step<i, o> 
   )
 
   const run_agent = async (input: i, ctx: RunContext): Promise<o> => {
+    // Core's throw_if_aborted contract: the caller's own Error surfaces as is,
+    // and anything else rides on aborted_error as its reason.
     if (ctx.abort.aborted) {
-      throw new aborted_error('aborted before agent call')
+      const reason: unknown = ctx.abort.reason
+      throw reason instanceof Error ? reason : new aborted_error('aborted before agent call', { reason })
     }
   
     let user_prompt: string

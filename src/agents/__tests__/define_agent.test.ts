@@ -63,6 +63,41 @@ async function with_tmp_md(
   }
 }
 
+/**
+ * Run a fresh agent on a context whose signal was aborted with `reason`, and
+ * return what it threw with the number of engine calls it made.
+ */
+async function run_pre_aborted(reason: unknown): Promise<{ err: unknown; calls: number }> {
+  let outcome: { err: unknown; calls: number } = { err: undefined, calls: -1 }
+  await with_tmp_md('Body.', async (path) => {
+    const { engine, calls } = make_mock_engine('ok')
+    const agent = define_agent({ md_path: path, schema: z.string(), engine })
+    const { logger } = recording_logger()
+    const controller = new AbortController()
+    controller.abort(reason)
+    const ctx: RunContext = {
+      run_id: 'r1',
+      trajectory: logger,
+      state: new Map(),
+      abort: controller.signal,
+      emit: () => {},
+      on_cleanup: () => {},
+      call: () => {
+        throw new Error('bare ctx does not dispatch')
+      },
+      streaming: false,
+    }
+    let err: unknown
+    try {
+      await agent.run({}, ctx)
+    } catch (e) {
+      err = e
+    }
+    outcome = { err, calls: calls.length }
+  })
+  return outcome
+}
+
 describe('define_agent', () => {
   afterEach(remove_signal_listeners)
 
@@ -1037,30 +1072,20 @@ describe('define_agent', () => {
       })
     })
 
-    it('throws aborted_error before calling the engine when the signal is already aborted', async () => {
-      await with_tmp_md('Body.', async (path) => {
-        const { engine, calls } = make_mock_engine('ok')
-        const agent = define_agent({ md_path: path, schema: z.string(), engine })
-        const { logger } = recording_logger()
-        const controller = new AbortController()
-        controller.abort()
-        const ctx: RunContext = {
-          run_id: 'r1',
-          trajectory: logger,
-          state: new Map(),
-          abort: controller.signal,
-          emit: () => {},
-          on_cleanup: () => {},
-          call: () => {
-            throw new Error('bare ctx does not dispatch')
-          },
-          streaming: false,
-        }
-        const pending = Promise.resolve(agent.run({}, ctx))
-        await expect(pending).rejects.toBeInstanceOf(aborted_error)
-        await expect(pending).rejects.toThrow('aborted before agent call')
-        expect(calls.length).toBe(0)
-      })
+    it("rethrows the caller's own Error before calling the engine when the signal is already aborted", async () => {
+      const cause = new Error('client went away')
+      const { err, calls } = await run_pre_aborted(cause)
+      expect(err).toBe(cause)
+      expect(calls).toBe(0)
+    })
+
+    it('wraps a non-Error abort reason in aborted_error with that reason and no step index', async () => {
+      const { err, calls } = await run_pre_aborted('queue drained')
+      expect(err).toBeInstanceOf(aborted_error)
+      expect((err as aborted_error).message).toBe('aborted before agent call')
+      expect((err as aborted_error).reason).toBe('queue drained')
+      expect((err as aborted_error).step_index).toBeUndefined()
+      expect(calls).toBe(0)
     })
   })
 })

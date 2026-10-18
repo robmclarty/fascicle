@@ -197,11 +197,12 @@ vdescribe('model_call', () => {
     expect(b.id).toBe('generate_plan')
   })
 
-  it('raises aborted_error before engine.generate when ctx.abort is pre-aborted', async () => {
+  it("rethrows the caller's own Error before engine.generate when ctx.abort is pre-aborted", async () => {
     const { engine, calls } = make_mock_engine()
     const s = model_call({ engine, model: 'x' })
     const controller = new AbortController()
-    controller.abort()
+    const cause = new Error('client went away')
+    controller.abort(cause)
     const logger = {
       record: () => {},
       start_span: () => 'span',
@@ -219,7 +220,7 @@ vdescribe('model_call', () => {
       },
       streaming: false,
     }
-    await expect(s.run('hi', ctx)).rejects.toBeInstanceOf(aborted_error)
+    await expect(s.run('hi', ctx)).rejects.toBe(cause)
     expect(calls.length).toBe(0)
   })
 
@@ -538,11 +539,12 @@ vdescribe('model_call', () => {
     ).toBe(true)
   })
 
-  it('the pre-abort error carries the model_call message, reason, and step index', async () => {
+  it('wraps a non-Error abort reason in aborted_error with that reason and no step index', async () => {
     const { engine, calls } = make_mock_engine()
     const s = model_call({ engine, model: 'x' })
     const controller = new AbortController()
-    controller.abort()
+    const reason = { shutdown: 'queue drained' }
+    controller.abort(reason)
     let err: unknown
     try {
       await s.run('hi', bare_ctx({ abort: controller.signal }))
@@ -551,8 +553,19 @@ vdescribe('model_call', () => {
     }
     expect(err).toBeInstanceOf(aborted_error)
     expect((err as aborted_error).message).toBe('aborted before model_call')
-    expect((err as aborted_error).reason).toEqual({ signal: 'abort' })
-    expect((err as aborted_error).step_index).toBe(0)
+    expect((err as aborted_error).reason).toBe(reason)
+    expect((err as aborted_error).step_index).toBeUndefined()
+    expect(calls).toHaveLength(0)
+  })
+
+  it('rethrows the default AbortError of a bare abort() as is', async () => {
+    const { engine, calls } = make_mock_engine()
+    const s = model_call({ engine, model: 'x' })
+    const controller = new AbortController()
+    controller.abort()
+    await expect(s.run('hi', bare_ctx({ abort: controller.signal }))).rejects.toBe(
+      controller.signal.reason,
+    )
     expect(calls).toHaveLength(0)
   })
 
