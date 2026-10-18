@@ -285,6 +285,66 @@ describe('durable: one drive at a time', () => {
     expect(await runs.resume('r', flow, {}, QUIET)).toEqual({ kind: 'done', run_id: 'r', output: 'pr+ci' })
   })
 
+  it('gives a gate the first datum when two resumes race for it', async () => {
+    const base = memory_store()
+    // An inbox read answers late with what it saw, so two resumes that read
+    // before they write both see an empty inbox before either one writes.
+    const store: DurableStore = {
+      scope: (prefix) => {
+        const scope = base.scope(prefix)
+        return {
+          ...scope,
+          scope: (inner) => {
+            const nested = scope.scope(inner)
+            return {
+              ...nested,
+              get: async (key) => {
+                const value = await nested.get(key)
+                await sleep(20)
+                return value
+              },
+            }
+          },
+        }
+      },
+    }
+    const runs = durable({ store })
+    const flow = sequence([gate('ci')])
+    await runs.start('r', flow, 'pr', QUIET)
+    await base.scope('r').claim('lease', 'someone else', 60_000)
+    const raced = await Promise.all([
+      runs.resume('r', flow, { ci: { ok: true } }, QUIET),
+      runs.resume('r', flow, { ci: { ok: false } }, QUIET),
+    ])
+    expect(raced).toEqual([
+      { kind: 'busy', run_id: 'r' },
+      { kind: 'busy', run_id: 'r' },
+    ])
+    expect(await base.scope('r').scope('inbox').get('ci')).toEqual({ data: { ok: true } })
+    await base.scope('r').release('lease', 'someone else')
+    expect(await runs.resume('r', flow, {}, QUIET)).toEqual({ kind: 'done', run_id: 'r', output: 'pr+ci' })
+  })
+
+  it("holds a gate's data back until the claim of a resume that died lapses", async () => {
+    let clock = 0
+    const store = memory_store({ now: () => clock })
+    const runs = durable({ store, lease_ms: 1_000 })
+    const flow = sequence([gate('ci')])
+    await runs.start('r', flow, 'pr', QUIET)
+    await store.scope('r').claim('inbox/ci', 'a resume that died', 1_000)
+    expect(await runs.resume('r', flow, { ci: { ok: true } }, QUIET)).toMatchObject({
+      kind: 'suspended',
+      id: 'ci',
+    })
+    expect(await store.scope('r').scope('inbox').get('ci')).toBeNull()
+    clock += 1_000
+    expect(await runs.resume('r', flow, { ci: { ok: true } }, QUIET)).toEqual({
+      kind: 'done',
+      run_id: 'r',
+      output: 'pr+ci',
+    })
+  })
+
   it('reports a finished run as done even while another call holds it', async () => {
     const store = memory_store()
     const runs = durable({ store })

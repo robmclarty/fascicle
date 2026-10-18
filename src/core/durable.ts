@@ -380,6 +380,28 @@ async function read_inbox(
 }
 
 /**
+ * Leave `data` in the run's inbox for `gate_id`, unless a datum already waits
+ * there or another resume is leaving one.
+ *
+ * The read and the write happen under a claim on the gate's inbox key, so of
+ * two resumes that race for one gate, only the first to claim it writes, and
+ * the other drops its datum as it would on finding one there. The claim lasts
+ * `lease_ms` and comes off right after the write.
+ */
+async function deliver<i, o>(drive: Drive<i, o>, gate_id: string, data: unknown): Promise<void> {
+  const key = `${INBOX}/${gate_id}`
+  const owner = randomUUID()
+  if (!(await drive.scope.claim(key, owner, drive.lease_ms))) return
+  try {
+    if ((await read_inbox(drive.scope, gate_id)) === undefined) {
+      await drive.scope.scope(INBOX).set(gate_id, { data })
+    }
+  } finally {
+    await drive.scope.release(key, owner)
+  }
+}
+
+/**
  * Move the resume data waiting at the run's gate into the run, or resolve
  * `undefined` when none has arrived.
  *
@@ -600,9 +622,14 @@ async function start_run<i, o>(
  * call that finds the run busy still leaves its data where the holder takes
  * it up. Data for a gate the run already passed is dropped, because changing
  * it would change the replay, and so is data for a gate whose inbox already
- * holds some: the first datum to reach a gate is the one it gets. `undefined`
- * resumes nothing. A call with no new data still drives a run that failed,
- * or whose drive died, once more.
+ * holds some: the first datum to reach a gate is the one it gets. That holds
+ * when two calls race for one gate, because each writes only under a claim
+ * on the gate's inbox key, and the call that loses the claim drops its datum.
+ * The claim lasts the driver's `lease_ms` and comes off right after the
+ * write, so a call that dies between the two holds that gate's data back
+ * until the claim lapses, and data sent for the gate in that window is
+ * dropped. `undefined` resumes nothing. A call with no new data still drives
+ * a run that failed, or whose drive died, once more.
  */
 async function resume_run<i, o>(
   driver: Driver,
@@ -617,12 +644,7 @@ async function resume_run<i, o>(
   const fresh = Object.entries(resume_data).filter(
     ([id, data]) => data !== undefined && !Object.hasOwn(record.resume_data, id),
   )
-  const inbox = drive.scope.scope(INBOX)
-  await Promise.all(
-    fresh.map(async ([id, data]) => {
-      if ((await read_inbox(drive.scope, id)) === undefined) await inbox.set(id, { data })
-    }),
-  )
+  await Promise.all(fresh.map(([id, data]) => deliver(drive, id, data)))
   return bring_to_rest(drive, () => existing_record(run_id, drive.scope))
 }
 
