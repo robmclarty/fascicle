@@ -45,13 +45,13 @@ export default {
     // until then, outside `src/**/*.ts`, and it is still data: mutating its
     // strings would score the document's wording, not any decision.
     '!src/core/flow_schema.ts',
-    // The viewer canvas app splits along D4: `app/lib/*.ts` and `app/sse.ts`
-    // hold every decision and are mutated like any other module, while the
-    // `.tsx` components are markup and fall outside `src/**/*.ts` by
-    // construction. Mutating DOM structure under jsdom would be slow noise
-    // that the Playwright screenshot suite covers better; the file extension
-    // is the exclusion, and this is the ledger entry for it. The Playwright
-    // specs themselves are already excluded as `src/**/__tests__/**`.
+    // The viewer canvas app keeps its logic out of its components:
+    // `app/lib/*.ts` and `app/sse.ts` hold every decision and are mutated like
+    // any other module, while the `.tsx` components are markup and fall outside
+    // `src/**/*.ts` by construction. Mutating DOM structure under jsdom would
+    // be slow noise that the Playwright screenshot suite covers better; the file
+    // extension is the exclusion, and this is the ledger entry for it. The
+    // Playwright specs themselves are already excluded as `src/**/__tests__/**`.
   ],
   coverageAnalysis: 'perTest',
   // No such file, on purpose. Stryker rewrites the tsconfig chain in its sandbox

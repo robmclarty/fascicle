@@ -22,8 +22,8 @@ export default defineConfig({
   outputDir: '.check/e2e',
   use: {
     ...devices['Desktop Chrome'],
-    // The artboards are drawn at 1440x900; matching it keeps a screenshot
-    // baseline comparable to the frozen visual direction.
+    // The canvas design is drawn at 1440x900 and every screenshot baseline is
+    // taken at that size, so another viewport would fail them all.
     viewport: { width: 1440, height: 900 },
     trace: 'retain-on-failure',
   },

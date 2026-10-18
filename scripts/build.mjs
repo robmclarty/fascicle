@@ -56,14 +56,14 @@ const DIST_DIAGRAM_BIN_JS = join(DIST_DIR, 'diagram_bin.js');
 const DIST_BIN_DIAGRAM = join(DIST_BIN_DIR, 'fascicle-diagram.js');
 const VIEWER_APP_CONFIG = 'vite.viewer.config.ts';
 
-// D10: the compiled canvas rides every npm install, so its size is a gate and
-// not a hope. Source maps are already off in the vite config; the filter is
+// The compiled canvas rides every npm install, so its 350KB on disk is a gate
+// and not a hope. Source maps are already off in the vite config; the filter is
 // belt and braces for the day someone turns them back on.
 const APP_BUDGET_BYTES = 350 * 1024;
 
-// C3: a localhost dev tool fetches nothing at runtime. Anything that looks
-// like an absolute URL in a built asset is a font CDN, an analytics beacon, or
-// a source map host that slipped back in.
+// The canvas is a localhost dev tool, so it fetches nothing at runtime.
+// Anything that looks like an absolute URL in a built asset is a font CDN, an
+// analytics beacon, or a source map host that slipped back in.
 const EXTERNAL_URL_RE = /(?:https?:)?\/\/(?!\/)[a-z0-9.-]+\.[a-z]{2,}[^\s"'`)]*/gi;
 
 // XML namespace URIs are identifiers, not addresses: no browser ever fetches
@@ -526,10 +526,11 @@ async function list_files(dir) {
 }
 
 /**
- * Hold the compiled canvas to its two published promises: the D10 size budget
- * and the C3 offline rule. Both are checked on the built bytes rather than the
- * sources, because a bundler is exactly the thing that can reintroduce a
- * remote font or inflate a chunk without any source changing.
+ * Hold the compiled canvas to its two published promises: it stays within its
+ * 350KB budget, and it fetches nothing at runtime. Both are checked on the
+ * built bytes rather than the sources, because a bundler is exactly the thing
+ * that can reintroduce a remote font or inflate a chunk without any source
+ * changing.
  */
 async function verify_app_bundle(files) {
   const sized = files.filter((f) => !f.endsWith('.map'));

@@ -1,22 +1,24 @@
 /**
- * live-smoke: the manual release gate against real provider wires (V-P3.8,
- * step-12 final gate).
+ * live-smoke: the manual release gate against real provider wires.
  *
- * Runs one tool-loop flow, streamed and non-streamed, across the three native
- * transports the native-expansion build shipped:
+ * Runs one tool-loop flow, streamed and non-streamed, across three native
+ * transports:
  *
- *   - openrouter  native: hosted OpenAI-compatible chat/completions (the
- *                           step-6 gate, re-run here).
- *   - ollama      native: the daemon's own /api/chat NDJSON endpoint (D2),
- *                           NOT the /v1 compat tail.
- *   - lmstudio    native: LM Studio's OpenAI-compatible server (D10 tolerant
- *                           usage), on the raw-HTTP transport.
+ *   - openrouter  native: hosted OpenAI-compatible chat/completions.
+ *   - ollama      native: the daemon's own /api/chat NDJSON endpoint, NOT the
+ *                           /v1 compat tail, because /api/chat carries the
+ *                           `options`, `keep_alive`, and `think` knobs that
+ *                           compat hides.
+ *   - lmstudio    native: LM Studio's OpenAI-compatible server on the raw-HTTP
+ *                           transport, with tolerant usage: a response that
+ *                           omits its usage counts as zeroed totals rather
+ *                           than failing the call.
  *
  * The tool itself is a deterministic in-memory lookup, so the only network
  * under test is the provider wire: request mapping, the tool-call round trip,
- * stream chunk shapes, and usage/cost accounting. Live network keeps this out
- * of the test suite (constraint C5); re-run it manually after any provider-seam
- * change.
+ * stream chunk shapes, and usage/cost accounting. The test suite never reaches
+ * the network, so this stays out of it; re-run it manually after any
+ * provider-seam change.
  *
  * Each backend is availability-gated: a backend whose key is absent or whose
  * daemon is unreachable is SKIPPED and reported not-run, never a failure: the
@@ -67,7 +69,7 @@ const openrouter_model = process.env['SMOKE_OPENROUTER_MODEL'] ?? 'openai/gpt-4o
 const openrouter_transport = parse_transport(process.env['SMOKE_OPENROUTER_TRANSPORT'], 'native')
 const ollama_base_url = process.env['SMOKE_OLLAMA_BASE_URL'] ?? 'http://localhost:11434'
 const ollama_model = process.env['SMOKE_OLLAMA_MODEL'] ?? 'qwen3.6:latest'
-// Ollama's native leg is the /api/chat path by definition (D2); transport is
+// Ollama's native leg is the /api/chat path by definition, so its transport is
 // fixed, unlike the openrouter/lmstudio legs which the ai_sdk flip can re-run.
 const ollama_transport: SmokeTransport = 'native'
 const lmstudio_base_url = process.env['SMOKE_LMSTUDIO_BASE_URL'] ?? 'http://localhost:1234/v1'

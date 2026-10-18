@@ -1,9 +1,9 @@
 /**
  * End-to-end wiring tests across core + adapters.
  *
- * These exercise the public value contracts that cross package boundaries
- * (spec.md §6): the filesystem trajectory logger, the filesystem checkpoint
- * store, and `run` / `run.stream` equivalence on identical inputs.
+ * These exercise the public value contracts that cross module boundaries:
+ * the filesystem trajectory logger, the filesystem checkpoint store, and
+ * `run` / `run.stream` equivalence on identical inputs.
  */
 
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'

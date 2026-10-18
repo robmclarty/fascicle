@@ -2,8 +2,8 @@
  * streaming-chat: observe token-like events through run.stream().
  *
  * A step emits a small sequence of chunks via `ctx.emit`; the caller
- * iterates the event stream as the flow runs. Final result equals what
- * plain `run(...)` would return (spec.md §6.7 invariant).
+ * iterates the event stream as the flow runs. Streaming only observes the
+ * run, so the final result equals what plain `run(...)` would return.
  *
  * Deterministic stub `fn` bodies: no engine layer, no network, no LLM calls.
  *
