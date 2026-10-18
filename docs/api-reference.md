@@ -376,6 +376,15 @@ roll your own to target any sink.
 | `tee_logger(...loggers)` | logger | fan one event stream out to several loggers |
 | `filesystem_store(config)` | store | filesystem-backed `CheckpointStore` with scopes and claims, so it also backs `durable` |
 
+No adapter logger throws into a flow. A logger that can't write an event
+drops it and keeps going. `filesystem_logger` hands the error to its
+`on_error` callback, or writes one line to stderr when it has none, and
+`http_logger` hands a failed post to its own `on_error`, while
+`stderr_logger` and `tee_logger` drop the failure without a word.
+`http_logger` is best effort in one more way, since it posts in the
+background, so a process that exits as soon as its run settles may drop
+its last few events.
+
 ### Checkpoint Store Capabilities
 
 `checkpoint` only needs `get`, `set`, and `delete`. The other three are optional,

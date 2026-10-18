@@ -1,7 +1,8 @@
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { run, step } from '#core'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { filesystem_logger } from '../filesystem_logger.js'
 
 let work_dir = ''
@@ -103,5 +104,92 @@ describe('filesystem_logger', () => {
   
     expect(read_lines(path_a)).toEqual([{ kind: 'from_a' }])
     expect(read_lines(path_b)).toEqual([{ kind: 'from_b' }])
+  })
+
+  it('hands an event it cannot serialize to on_error and keeps logging', () => {
+    const output_path = join(work_dir, 'trajectory.jsonl')
+    const errors: unknown[] = []
+    const logger = filesystem_logger({ output_path, on_error: (err) => errors.push(err) })
+
+    expect(() => logger.record({ kind: 'emit', count: 1n })).not.toThrow()
+    logger.record({ kind: 'emit', text: 'after' })
+
+    expect(errors).toHaveLength(1)
+    expect(errors[0]).toBeInstanceOf(TypeError)
+    expect(read_lines(output_path)).toEqual([{ kind: 'emit', text: 'after' }])
+  })
+
+  it('hands a failed append to on_error', () => {
+    const errors: unknown[] = []
+    const logger = filesystem_logger({ output_path: work_dir, on_error: (err) => errors.push(err) })
+
+    expect(() => logger.record({ kind: 'emit', text: 'lost' })).not.toThrow()
+    expect(errors).toHaveLength(1)
+    expect(errors[0]).toMatchObject({ code: 'EISDIR' })
+  })
+
+  it('writes one stderr line per failure without an on_error', () => {
+    const spy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+    try {
+      const logger = filesystem_logger({ output_path: work_dir })
+      logger.record({ kind: 'emit', text: 'lost' })
+      logger.record({ kind: 'emit', count: 1n })
+
+      expect(spy).toHaveBeenCalledTimes(2)
+      const [append_line, serialize_line] = spy.mock.calls.map((c) => String(c[0]))
+      expect(append_line).toMatch(
+        new RegExp(`^filesystem_logger: dropped an event it could not write to ${work_dir} \\(EISDIR`),
+      )
+      expect(append_line).toContain(
+        'Check that the path is a writable file and that every emitted value is JSON-serializable.\n',
+      )
+      expect(serialize_line).toContain('(Do not know how to serialize a BigInt)')
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
+  it('reports a thrown non-Error as its string', () => {
+    const spy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+    try {
+      const logger = filesystem_logger({ output_path: join(work_dir, 'trajectory.jsonl') })
+      logger.record({
+        kind: 'emit',
+        value: {
+          toJSON: () => {
+            throw 'not an error'
+          },
+        },
+      })
+      expect(String(spy.mock.calls[0]?.[0])).toContain('(not an error)')
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
+  it('drops the failure when on_error itself throws', () => {
+    const logger = filesystem_logger({
+      output_path: work_dir,
+      on_error: () => {
+        throw new Error('reporter down')
+      },
+    })
+    expect(() => logger.record({ kind: 'emit', text: 'lost' })).not.toThrow()
+  })
+
+  it('lets a run finish when an emitted value cannot be written', async () => {
+    const errors: unknown[] = []
+    const logger = filesystem_logger({
+      output_path: join(work_dir, 'trajectory.jsonl'),
+      on_error: (err) => errors.push(err),
+    })
+    const flow = step('emit_bigint', (n: number, ctx) => {
+      ctx.emit({ count: 1n })
+      return n + 1
+    })
+
+    await expect(run(flow, 1, { trajectory: logger, install_signal_handlers: false })).resolves.toBe(2)
+    expect(errors).toHaveLength(1)
+    expect(errors[0]).toBeInstanceOf(TypeError)
   })
 })
