@@ -92,7 +92,7 @@ That one invariant buys you the rest:
 - **No coupling.** Steps are values, not registered entities. Two
   unrelated flows share no state unless you inject it.
 
-## The 22 Primitives
+## The 23 Primitives
 
 Copy these one-liners into an LLM's system prompt and it will write you flows
 from English specifications:
@@ -187,7 +187,7 @@ from English specifications:
 - `learn({ flow, source, analyzer })` — offline reflection over recorded
   trajectories; returns the analyzer's proposals plus summary metadata.
 
-Not all 22 are peers. The primary vocabulary and the decision rules for
+Not all 23 are peers. The primary vocabulary and the decision rules for
 choosing at each layer live in [leaf-arm-spine.md](./leaf-arm-spine.md);
 the advanced tier (`scope`/`stash`/`use`, plain `ensemble`, `tournament`,
 `improve`/`learn`) is covered in

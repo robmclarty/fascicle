@@ -8,7 +8,7 @@ real usage lands, so pin an exact version and upgrade on purpose.
 
 The published surface as of v0.13.1:
 
-- **Composition.** 22 primitives over a single `Step<i, o>` value type. You get
+- **Composition.** 23 primitives over a single `Step<i, o>` value type. You get
   the `chain` spine (`.step` / `.stage` / `.output`), `model_step` as the default
   model boundary, `ctx.call` for direct-style sub-steps, a `project` option on
   the envelope composites, a `settle` mode that lets `map` keep every item's

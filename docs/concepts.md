@@ -6,7 +6,7 @@ The mental model behind Fascicle. Read it once, because the rest of the docs ass
 
 Fascicle ships two independently useful layers, re-exported from one package.
 
-- **Composition layer** (the `core` + `composites` modules, surfaced via `fascicle`). 22 primitives for composing work out of plain values. No network, no LLM calls, no ambient state.
+- **Composition layer** (the `core` + `composites` modules, surfaced via `fascicle`). 23 primitives for composing work out of plain values. No network, no LLM calls, no ambient state.
 - **Engine layer** (the `engine` module, surfaced via `fascicle`). `create_engine(config)` returns a unified `generate` surface over eight provider adapters. No composition, no step plumbing.
 
 They are glued by exactly one value, `model_call`, at the umbrella `src/` root. That's the only file that's allowed to import values from both layers — an ast-grep rule in `rules/` enforces it. Everything else either composes or generates, never both.

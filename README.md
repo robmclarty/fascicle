@@ -2,7 +2,7 @@
 
 ![A substrate for agents — three mushrooms (model_call, step, tool) fruit from a shared mycelium network; every mushroom is a Step<i, o>, every thread is a composition](./mycelium.svg)
 
-Compose agents out of LLM calls, tool calls, and plain functions. Everything is a `Step<i, o>`. Wire steps together with 22 primitives (`sequence`, `parallel`, `chain`, `branch`, `retry`, `loop`, `ensemble_step`, `checkpoint`, …) and run them as plain values. One `generate` surface fronts eight provider adapters: Anthropic, OpenAI, Google, OpenRouter, AWS Bedrock, Ollama, LM Studio, and a `claude_cli` subprocess that drives the Claude Code CLI.
+Compose agents out of LLM calls, tool calls, and plain functions. Everything is a `Step<i, o>`. Wire steps together with 23 primitives (`sequence`, `parallel`, `chain`, `branch`, `retry`, `loop`, `ensemble_step`, `checkpoint`, …) and run them as plain values. One `generate` surface fronts eight provider adapters: Anthropic, OpenAI, Google, OpenRouter, AWS Bedrock, Ollama, LM Studio, and a `claude_cli` subprocess that drives the Claude Code CLI.
 
 No framework lifecycle. No ambient state. No decorators. Adapters are passed in per run.
 
@@ -74,7 +74,7 @@ try {
 | `model_step` | the model's answer as a step (`model_call` projected to its content) |
 | `chain` | named steps over a typed record: `.step` binds, `.stage` concludes a phase, `.output` projects |
 
-The remaining primitives are specialized composers with the same contract, so they drop into any flow when the task calls for them: control flow (`loop`, `fallback`, `timeout`, `compose`), multi-model orchestration (`adversarial`, `ensemble_step`, `consensus`), and durability (`checkpoint`, `suspend`). Behind those sits an advanced tier — the pick-best variants `ensemble` and `tournament`, the raw named-state primitives `scope` / `stash` / `use` underlying `chain`, and the self-improvement pair `improve` / `learn` — covered in [docs/advanced-composition.md](./docs/advanced-composition.md), each entry paired with the primary primitive to try first. One-liners for all of them live in [docs/composition.md](./docs/composition.md), full shapes in [docs/api-reference.md](./docs/api-reference.md), and [docs/leaf-arm-spine.md](./docs/leaf-arm-spine.md) is the decision guide for which layer each belongs to.
+The remaining primitives are specialized composers with the same contract, so they drop into any flow when the task calls for them: control flow (`loop`, `fallback`, `timeout`, `compose`), multi-model orchestration (`adversarial`, `ensemble_step`, `consensus`), and durability (`checkpoint`, `suspend`, `gate`). Behind those sits an advanced tier — the pick-best variants `ensemble` and `tournament`, the raw named-state primitives `scope` / `stash` / `use` underlying `chain`, and the self-improvement pair `improve` / `learn` — covered in [docs/advanced-composition.md](./docs/advanced-composition.md), each entry paired with the primary primitive to try first. One-liners for all of them live in [docs/composition.md](./docs/composition.md), full shapes in [docs/api-reference.md](./docs/api-reference.md), and [docs/leaf-arm-spine.md](./docs/leaf-arm-spine.md) is the decision guide for which layer each belongs to.
 
 Plus `run`, `run.stream`, and `describe`. And inside any step body, `ctx.call(step, input)` runs another Step with spans, abort, and error paths intact: the direct-style counterpart to composing, for control flow too dynamic to declare.
 
@@ -221,7 +221,7 @@ The canonical worked example is [examples/pr-improve/](./examples/pr-improve/), 
 - [docs/blueprint.md](./docs/blueprint.md) — **the agent blueprint**: the standard app architecture (start here when building an app)
 - [docs/getting-started.md](./docs/getting-started.md) — install and run your first flow
 - [docs/concepts.md](./docs/concepts.md) — step-as-value, trajectories, cancellation
-- [docs/composition.md](./docs/composition.md) — full composition surface: the 22 primitives, run/stream, checkpointing
+- [docs/composition.md](./docs/composition.md) — full composition surface: the 23 primitives, run/stream, checkpointing
 - [docs/leaf-arm-spine.md](./docs/leaf-arm-spine.md) — the three-layer shape of a Fascicle flow and how to choose the right primitive at each layer
 - [docs/advanced-composition.md](./docs/advanced-composition.md) — the primitives to reach for last (`scope`/`stash`/`use`, `ensemble`, `tournament`, `improve`/`learn`) and when they earn their keep
 - [docs/api-reference.md](./docs/api-reference.md) — the public surface at a glance

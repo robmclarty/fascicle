@@ -86,12 +86,12 @@ copy quickly:
    local runtime can be driven over raw HTTP with neither the AI SDK nor a provider
    package in the dependency tree.
 2. **A composition algebra of substitutable values.** The AI SDK gives you one
-   agent loop. Fascicle gives you 22 primitives, each a `Step` that nests inside
+   agent loop. Fascicle gives you 23 primitives, each a `Step` that nests inside
    any other. The spine is `chain`, which threads a typed record through a flow.
    Around it sit four sets: control flow (`sequence`, `parallel`, `branch`, `map`,
    `pipe`, `retry`, `fallback`, `timeout`, `loop`, `compose`), durability
-   (`checkpoint`, `suspend`, with the raw state trio `scope`/`stash`/`use` as the
-   advanced tier under `chain`), deliberation (`ensemble_step`, `ensemble`,
+   (`checkpoint`, `suspend`, `gate`, with the raw state trio `scope`/`stash`/`use`
+   as the advanced tier under `chain`), deliberation (`ensemble_step`, `ensemble`,
    `tournament`, `consensus`, `adversarial`), and self-improvement (`improve` for
    an online propose-score-accept loop, `learn` for offline reflection over
    recorded trajectories). "Fan this across an ensemble, pipe it

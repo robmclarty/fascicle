@@ -197,7 +197,7 @@ None of these is unprecedented alone; the concentration is the point.
    the path, and `custom_providers` accepts an adapter that Fascicle knows
    nothing about. The tool loop, salvage, approval, retry, cost, and trajectory
    above them are identical.
-5. **A small, hand-picked surface.** 22 composition primitives and one `generate`
+5. **A small, hand-picked surface.** 23 composition primitives and one `generate`
    function, shipped as a single npm package — no "pick four packages and align
    their versions" tax. The primitives are layered instead of flat, and
    [leaf-arm-spine.md](./leaf-arm-spine.md) names the leaf / arm / spine roles

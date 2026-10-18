@@ -62,7 +62,7 @@ node --experimental-strip-types index.ts
 
 `pnpm exec tsx` is what every example in this repo uses, and plain `node` works too, because Node >= 24 strips TypeScript types natively.
 
-## The 22 Primitives
+## The 23 Primitives
 
 The composition layer is small on purpose, and here is all of it:
 
@@ -84,6 +84,7 @@ The composition layer is small on purpose, and here is all of it:
 | `consensus`           | Run N, accept once your `agree(results)` predicate holds.   |
 | `checkpoint`          | Memoize a step's output in a `CheckpointStore`.             |
 | `suspend`             | Pause the flow; drive with `run.until_suspended` and resume. |
+| `gate`                | Persist a step's paid work, then pause for approval.        |
 | `chain`               | Named steps over a growing typed record; one per flow, the spine. |
 | `ensemble`            | Pick-best scored by a plain function (advanced).            |
 | `tournament`          | Pairwise compare members, pick the bracket winner (advanced). |
