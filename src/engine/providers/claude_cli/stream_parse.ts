@@ -378,19 +378,23 @@ export function create_parser_state(): ParserState {
  * `cache_read_input_tokens` maps to `cached_input_tokens` and
  * `cache_creation_input_tokens` maps to `cache_write_tokens`; both are
  * omitted when the CLI didn't report them.
+ *
+ * The CLI reports `input_tokens` exclusive of its cache reads and writes, as
+ * the Messages API does, while `UsageTotals.input_tokens` is inclusive and
+ * cost decomposition subtracts both back out to find the fresh input. So the
+ * inclusive total is the sum of all three; a straight copy would leave fresh
+ * input with too small a share of a reported cost.
  */
 function map_usage(raw: CliUsageRaw | undefined): UsageTotals {
   if (raw === undefined) return { input_tokens: 0, output_tokens: 0 }
+  const cache_read = raw.cache_read_input_tokens
+  const cache_write = raw.cache_creation_input_tokens
   const out: UsageTotals = {
-    input_tokens: typeof raw.input_tokens === 'number' ? raw.input_tokens : 0,
-    output_tokens: typeof raw.output_tokens === 'number' ? raw.output_tokens : 0,
+    input_tokens: (raw.input_tokens ?? 0) + (cache_read ?? 0) + (cache_write ?? 0),
+    output_tokens: raw.output_tokens ?? 0,
   }
-  if (typeof raw.cache_read_input_tokens === 'number') {
-    out.cached_input_tokens = raw.cache_read_input_tokens
-  }
-  if (typeof raw.cache_creation_input_tokens === 'number') {
-    out.cache_write_tokens = raw.cache_creation_input_tokens
-  }
+  if (cache_read !== undefined) out.cached_input_tokens = cache_read
+  if (cache_write !== undefined) out.cache_write_tokens = cache_write
   return out
 }
 

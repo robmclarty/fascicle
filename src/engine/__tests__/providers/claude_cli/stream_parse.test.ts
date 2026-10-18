@@ -8,6 +8,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
+import { allocate_cost_across_turns } from '../../../providers/claude_cli/cost.js'
 import {
   create_parser_state,
   feed_chunk,
@@ -636,16 +637,51 @@ describe('usage mapping', () => {
           usage: {
             input_tokens: 100,
             output_tokens: 20,
-            cache_read_input_tokens: 50,
-            cache_creation_input_tokens: 10,
+            cache_read_input_tokens: 40,
+            cache_creation_input_tokens: 20,
           },
         }),
       ),
     ])
-    expect(parsed.final_usage.input_tokens).toBe(100)
-    expect(parsed.final_usage.output_tokens).toBe(20)
-    expect(parsed.final_usage.cached_input_tokens).toBe(50)
-    expect(parsed.final_usage.cache_write_tokens).toBe(10)
+    expect(parsed.final_usage).toStrictEqual({
+      input_tokens: 160,
+      output_tokens: 20,
+      cached_input_tokens: 40,
+      cache_write_tokens: 20,
+    })
+  })
+
+  it('counts cache reads and writes into input_tokens, so a reported cost gives fresh input its share', async () => {
+    const { parsed } = await feed([
+      jline(init_event),
+      jline(
+        result_event({
+          total_cost_usd: 1.49,
+          usage: {
+            input_tokens: 100,
+            output_tokens: 20,
+            cache_read_input_tokens: 40,
+            cache_creation_input_tokens: 20,
+          },
+        }),
+      ),
+    ])
+    const [cost] = allocate_cost_across_turns(1.49, [
+      { output_tokens: parsed.final_usage.output_tokens, usage: parsed.final_usage },
+    ])
+    // weights: fresh 100, output 20, cache read 40 * 0.1, cache write 20 * 1.25
+    expect(cost?.input_usd).toBeCloseTo(1, 10)
+    expect(cost?.output_usd).toBeCloseTo(0.2, 10)
+    expect(cost?.cached_input_usd).toBeCloseTo(0.04, 10)
+    expect(cost?.cache_write_usd).toBeCloseTo(0.25, 10)
+  })
+
+  it('leaves input_tokens as reported when the CLI sends no cache fields', async () => {
+    const { parsed } = await feed([
+      jline(init_event),
+      jline(result_event({ usage: { input_tokens: 100, output_tokens: 20 } })),
+    ])
+    expect(parsed.final_usage).toStrictEqual({ input_tokens: 100, output_tokens: 20 })
   })
 
   it('treats missing usage fields as zero (input_tokens, output_tokens)', async () => {
