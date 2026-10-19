@@ -296,6 +296,7 @@ async function take_lease(scope: RunScope, lease_ms: number): Promise<Lease | un
   let timer: ReturnType<typeof setInterval> | undefined
   const lose = (): aborted_error => {
     lost = true
+    // Stryker disable next-line CallExpression: a tick after a loss finds `renew` short-circuit on `lost` and only aborts an aborted controller again, and `end` clears the timer anyway.
     clearInterval(timer)
     const err = new aborted_error('another drive took over this run')
     controller.abort(err)
@@ -381,21 +382,33 @@ async function read_inbox(
 
 /**
  * Leave `data` in the run's inbox for `gate_id`, unless a datum already waits
- * there or another resume is leaving one.
+ * there, another resume is leaving one, the run has already passed the gate,
+ * or the run is gone.
  *
- * The read and the write happen under a claim on the gate's inbox key, so of
+ * The reads and the write happen under a claim on the gate's inbox key, so of
  * two resumes that race for one gate, only the first to claim it writes, and
- * the other drops its datum as it would on finding one there. The claim lasts
- * `lease_ms` and comes off right after the write.
+ * the other drops its datum as it would on finding one there. The inbox is
+ * read before the record because `take_up` saves a gate's datum into the
+ * record before it deletes the inbox entry, so a datum that's taken up between
+ * the two reads still shows in the record. The claim lasts `lease_ms` and
+ * comes off right after the write.
+ *
+ * Two windows stay open, because the store contract has no compare-and-set to
+ * close them with. A resume that stalls past its claim, after its reads and
+ * before its write, can still write once another resume has moved the run
+ * past the gate. And a `delete` that lands between the record read and the
+ * write leaves the datum in the cleared scope, where a new run under the same
+ * id takes it up.
  */
 async function deliver<i, o>(drive: Drive<i, o>, gate_id: string, data: unknown): Promise<void> {
   const key = `${INBOX}/${gate_id}`
   const owner = randomUUID()
   if (!(await drive.scope.claim(key, owner, drive.lease_ms))) return
   try {
-    if ((await read_inbox(drive.scope, gate_id)) === undefined) {
-      await drive.scope.scope(INBOX).set(gate_id, { data })
-    }
+    if ((await read_inbox(drive.scope, gate_id)) !== undefined) return
+    const record = as_record(await drive.scope.get(RECORD))
+    if (record === undefined || Object.hasOwn(record.resume_data, gate_id)) return
+    await drive.scope.scope(INBOX).set(gate_id, { data })
   } finally {
     await drive.scope.release(key, owner)
   }
@@ -620,15 +633,20 @@ async function start_run<i, o>(
  *
  * Each datum is written to the run's inbox before the lease is taken, so a
  * call that finds the run busy still leaves its data where the holder takes
- * it up. Data for a gate the run already passed is dropped, because changing
- * it would change the replay, and so is data for a gate whose inbox already
- * holds some: the first datum to reach a gate is the one it gets. That holds
- * when two calls race for one gate, because each writes only under a claim
- * on the gate's inbox key, and the call that loses the claim drops its datum.
- * The claim lasts the driver's `lease_ms` and comes off right after the
- * write, so a call that dies between the two holds that gate's data back
- * until the claim lapses, and data sent for the gate in that window is
- * dropped. `undefined` resumes nothing. A call with no new data still drives
+ * it up. Data for a gate the run has already passed is dropped, because
+ * changing it would change the replay, and so is data for a run that's gone,
+ * and data for a gate whose inbox already holds some: the first datum to
+ * reach a gate is the one it gets. Each of those checks happens under a claim
+ * on the gate's inbox key, so it holds when two calls race for one gate, and
+ * when another call moves the run past the gate or deletes the run before
+ * this one claims. The claim lasts the driver's `lease_ms` and comes off
+ * right after the write, so a call that dies between the two holds that
+ * gate's data back until the claim lapses, and data sent for the gate in that
+ * window is dropped. Without a compare-and-set in the store contract, two
+ * windows stay open: a call that stalls past its claim can still write data
+ * for a gate the run has passed since, and a `delete` that lands between the
+ * call's record read and its write leaves the data for a new run under the
+ * same id. `undefined` resumes nothing. A call with no new data still drives
  * a run that failed, or whose drive died, once more.
  */
 async function resume_run<i, o>(
@@ -641,9 +659,7 @@ async function resume_run<i, o>(
   const drive = drive_for(driver, run_id, flow, options)
   const record = await existing_record(run_id, drive.scope)
   if (record.status === 'done') return done_view(drive, record)
-  const fresh = Object.entries(resume_data).filter(
-    ([id, data]) => data !== undefined && !Object.hasOwn(record.resume_data, id),
-  )
+  const fresh = Object.entries(resume_data).filter(([, data]) => data !== undefined)
   await Promise.all(fresh.map(([id, data]) => deliver(drive, id, data)))
   return bring_to_rest(drive, () => existing_record(run_id, drive.scope))
 }

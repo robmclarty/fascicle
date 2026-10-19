@@ -51,6 +51,32 @@ function record_of(store: MemoryStore, run_id: string): Promise<unknown> {
   return store.scope(run_id).get('record')
 }
 
+// A store whose first claim on `key` waits until `release` is called, so a
+// test can hold one resume between its record read and its inbox write while
+// other calls move the run on. `held` settles once that claim is waiting.
+function holding_claim(base: MemoryStore, key: string) {
+  const held = Promise.withResolvers<void>()
+  const go = Promise.withResolvers<void>()
+  let waiting = false
+  const store: DurableStore = {
+    scope: (prefix) => {
+      const scope = base.scope(prefix)
+      return {
+        ...scope,
+        claim: async (claimed, owner, ttl_ms) => {
+          if (claimed === key && !waiting) {
+            waiting = true
+            held.resolve()
+            await go.promise
+          }
+          return scope.claim(claimed, owner, ttl_ms)
+        },
+      }
+    },
+  }
+  return { store, held: held.promise, release: () => go.resolve() }
+}
+
 afterEach(() => {
   remove_signal_listeners()
   vi.useRealTimers()
@@ -323,6 +349,42 @@ describe('durable: one drive at a time', () => {
     expect(await base.scope('r').scope('inbox').get('ci')).toEqual({ data: { ok: true } })
     await base.scope('r').release('lease', 'someone else')
     expect(await runs.resume('r', flow, {}, QUIET)).toEqual({ kind: 'done', run_id: 'r', output: 'pr+ci' })
+  })
+
+  it('drops a datum that reaches its gate after another resume moved the run past it', async () => {
+    const base = memory_store()
+    const { store, held, release } = holding_claim(base, 'inbox/first')
+    const runs = durable({ store })
+    const flow = sequence([gate('first'), gate('second')])
+    await runs.start('r', flow, 'go', QUIET)
+    const late = runs.resume('r', flow, { first: { ok: false } }, QUIET)
+    await held
+    expect(await runs.resume('r', flow, { first: { ok: true } }, QUIET)).toMatchObject({
+      kind: 'suspended',
+      id: 'second',
+    })
+    release()
+    expect(await late).toMatchObject({ kind: 'suspended', id: 'second', payload: { input: 'go+first' } })
+    expect(await base.scope('r').scope('inbox').get('first')).toBeNull()
+  })
+
+  it('drops a datum whose run was deleted while it waited, so a new run under the id starts clean', async () => {
+    const base = memory_store()
+    const { store, held, release } = holding_claim(base, 'inbox/first')
+    const runs = durable({ store })
+    const flow = sequence([gate('first'), gate('second')])
+    await runs.start('r', flow, 'old', QUIET)
+    const late = runs.resume('r', flow, { first: { ok: true } }, QUIET)
+    await held
+    expect(await runs.delete('r')).toBe(true)
+    release()
+    await expect(late).rejects.toBeInstanceOf(run_not_found_error)
+    expect(await runs.start('r', flow, 'new', QUIET)).toStrictEqual({
+      kind: 'suspended',
+      run_id: 'r',
+      id: 'first',
+      payload: { input: 'new' },
+    })
   })
 
   it("holds a gate's data back until the claim of a resume that died lapses", async () => {
@@ -611,6 +673,33 @@ describe('durable: leases', () => {
     await durable({ store, lease_ms: 30 }).start('r', flow, null, QUIET)
     await sleep(100)
     expect(await base.scope('r').claim('lease', 'next', 60_000)).toBe(true)
+  })
+
+  it('stops renewing the lease once the drive lets the run go', async () => {
+    const base = memory_store()
+    let settled = false
+    let late_claims = 0
+    const store: DurableStore = {
+      scope: (prefix) => {
+        const scope = base.scope(prefix)
+        return {
+          ...scope,
+          claim: async (key, owner, ttl_ms) => {
+            if (settled) late_claims += 1
+            return scope.claim(key, owner, ttl_ms)
+          },
+        }
+      },
+    }
+    // The drive outlasts a few renewals, so the timer is running when it ends.
+    const flow = step('brief', async () => {
+      await sleep(25)
+      return 'finished'
+    })
+    await durable({ store, lease_ms: 30 }).start('r', flow, null, QUIET)
+    settled = true
+    await sleep(50)
+    expect(late_claims).toBe(0)
   })
 })
 

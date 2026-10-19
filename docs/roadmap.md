@@ -133,11 +133,6 @@ The published surface as of v0.15.0:
 These are the bugs that I know about and haven't fixed yet, with the ones most
 likely to bite you first.
 
-- **A late `resume` can leave its data behind.** A resume that arrives just
-  after another one has moved the run past a gate can still write its datum
-  into that gate's inbox, where nothing reads it until you delete the run. If
-  you delete the run in that window and then start a new one under the same id,
-  the new run picks the stale datum up.
 - **Pick-best composites misread `undefined` and NaN.** `ensemble`,
   `ensemble_step`, and `tournament` treat a member that returns `undefined` as
   one that returned nothing at all, and `ensemble` and `ensemble_step` let a NaN
