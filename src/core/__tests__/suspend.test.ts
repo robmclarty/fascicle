@@ -226,3 +226,28 @@ describe('suspend deadlines', () => {
     expect((err as resume_validation_error).message).toBe('resume data for ci failed validation')
   })
 })
+
+describe('suspend ids', () => {
+  it.each([
+    ['', '_'],
+    ['approve draft', 'approve_draft'],
+  ])('refuses the id %j when it is built, since resume data is keyed by it', (id, suggested) => {
+    const build = () =>
+      suspend({ id, on: () => {}, resume_schema: z.object({}), combine: (input: string) => input })
+    expect(build).toThrow(TypeError)
+    expect(build).toThrow(
+      `suspend id ${JSON.stringify(id)} is not a valid identifier: ids are read back as property names, so use ${suggested} and put the label in name`,
+    )
+  })
+
+  it('carries a prose label in name, where the id rule does not reach', () => {
+    const labelled = suspend({
+      id: 'approve_draft',
+      name: 'approve draft',
+      on: () => {},
+      resume_schema: z.object({}),
+      combine: (input: string) => input,
+    })
+    expect(labelled.config).toStrictEqual({ id: 'approve_draft', display_name: 'approve draft' })
+  })
+})

@@ -137,8 +137,10 @@ likely to bite you first.
   `ensemble_step`, and `tournament` treat a member that returns `undefined` as
   one that returned nothing at all, and `ensemble` and `ensemble_step` let a NaN
   score win when it comes first.
-- **`suspend` and `gate` don't check their ids.** An empty id, or one that isn't
-  an identifier, gets through, though `step` and `chain` refuse both.
+- **A repeated suspend id goes unchecked.** Resume data is keyed by id, so a
+  second `suspend` or `gate` that reuses an id finds the first one's datum and
+  passes without pausing. Nothing checks repeated ids for any step yet, since
+  catching them needs a walk over the whole flow when the run starts.
 - **`claude_cli` turns a structured `null` into the string `"null"`.** When you
   pass a `schema` and the reply parses to `null`, `content` holds the raw text.
 - **OpenRouter's cache writes go uncounted.** On `transport: 'native'`, usage

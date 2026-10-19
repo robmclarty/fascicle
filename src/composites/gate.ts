@@ -37,7 +37,7 @@
  *   `run.until_suspended` already hands it the payload to render.
  */
 
-import { checkpoint, compose, scope, stash, step, suspend, use } from '#core'
+import { assert_valid_step_id, checkpoint, compose, scope, stash, step, suspend, use } from '#core'
 import type { CheckpointStore, RunContext, Step } from '#core'
 
 export type GateConfig<o> = {
@@ -84,7 +84,9 @@ function bind_store<i, o>(persisted: Step<i, o>, store: CheckpointStore): Step<i
  * unchanged; the decision itself is discarded. On a re-run against the same
  * store, the checkpoint absorbs the replay so `inner` never re-executes.
  * Throws at construction time when `inner` is anonymous, because the cached
- * result must map back to a stable step.
+ * result must map back to a stable step, and when `config.id` isn't an
+ * identifier, which it checks under its own name before its `suspend` sees
+ * the id.
  *
  * Implemented as a `compose`d `scope`: the checkpointed result is stashed,
  * projected into the approver's view, and handed to `suspend`; the suspend's
@@ -98,6 +100,7 @@ export function gate<i, o>(inner: Step<i, o>, config: GateConfig<o>): Step<i, o>
     )
   }
   const { id, store, format } = config
+  assert_valid_step_id(id, 'gate id', 'put the label in name')
 
   const checkpointed = checkpoint(inner, { key: `gate:${id}` })
   const persisted = store === undefined ? checkpointed : bind_store(checkpointed, store)

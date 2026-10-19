@@ -23,6 +23,7 @@ import { description_meta } from './display_name.js'
 import { resume_validation_error, suspended_error } from './errors.js'
 import { is_step } from './is_step.js'
 import { dispatch_step, mark_gates_reached, register_traced_kind } from './runner.js'
+import { assert_valid_step_id } from './step_id.js'
 import type { RunContext, Step } from './types.js'
 
 export type SuspendConfig<i, o, resume> = {
@@ -57,9 +58,11 @@ function resume_value_for(ctx: RunContext, suspend_id: string): unknown {
  * First run fires the `on` side effect and throws `suspended_error`; a resume
  * run validates `resume_data[id]` against `resume_schema` and feeds it to
  * `combine`. The step's id is the user-supplied suspend id so resume data can
- * be addressed to it.
+ * be addressed to it, which is why it's held to the step id rule and throws
+ * a `TypeError` when it's built if it isn't an identifier.
  */
 export function suspend<i, o, resume>(config: SuspendConfig<i, o, resume>): Step<i, o> {
+  assert_valid_step_id(config.id, 'suspend id', 'put the label in name')
   const suspend_id = config.id
   const deadline_ms = config.deadline_ms
   const on_fn = config.on

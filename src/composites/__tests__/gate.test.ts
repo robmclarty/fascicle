@@ -271,6 +271,17 @@ describe('gate (composite)', () => {
     expect(labels).not.toContain('gate')
   })
 
+  it.each([
+    ['', '_'],
+    ['approve draft', 'approve_draft'],
+  ])('refuses the id %j under its own name, before its suspend sees it', (id, suggested) => {
+    const build = () => gate(step('draft', (n: number) => n), { id })
+    expect(build).toThrow(TypeError)
+    expect(build).toThrow(
+      `gate id ${JSON.stringify(id)} is not a valid identifier: ids are read back as property names, so use ${suggested} and put the label in name`,
+    )
+  })
+
   it('throws at construction when the inner step is anonymous', () => {
     expect(() => gate(step((n: number) => n), { id: 'x' })).toThrow(
       "gate requires a named inner step, got anonymous — give the inner step an id with step('id', fn)",

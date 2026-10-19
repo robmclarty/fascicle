@@ -265,8 +265,10 @@ rejects non-Step children at construction — wrap plain functions with `step(fn
 Every id in a flow has to be readable back as a property name, because ids are
 keys: a `chain` binding merges its result into the growing record under its
 name, and a name you cannot destructure is a name the record cannot offer. So
-`step`, `chain.step`, `chain`'s input name, and `define_agent` all hold ids to
-the same rule, and all four throw at construction when it is broken.
+`step`, `chain.step`, `chain`'s input name, `define_agent`, `suspend`, and
+`gate` all hold ids to the same rule, and all six throw at construction when it
+is broken. A `suspend` or `gate` id is a key as well, since that's the name its
+resume data arrives under, and its label goes in `name`.
 
 ```text
 step id "fetch the manifest" is not a valid identifier: ids are read back as
