@@ -4,10 +4,11 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { aborted_error, sequence, step, suspend } from '#core'
 import type { Step, TrajectoryEvent } from '#core'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, expectTypeOf, it } from 'vitest'
 import { z } from 'zod'
 import {
   bench,
+  type BenchReport,
   type CaseResult,
   type JudgeArgs,
   normalize_score,
@@ -643,5 +644,14 @@ describe('normalize_score', () => {
     const r = normalize_score({ score: 2 })
     expect(r).toEqual({ score: 2 })
     expect('reason' in (r ?? {})).toBe(false)
+  })
+})
+
+describe('bench report types', () => {
+  it('reads a one-argument BenchReport as the output type, with no input on a case', () => {
+    type Out = { readonly answer: string }
+    expectTypeOf<BenchReport<Out>['cases'][number]['output']>().toEqualTypeOf<Out | undefined>()
+    expectTypeOf<BenchReport<Out>['cases'][number]>().toEqualTypeOf<CaseResult<Out>>()
+    expectTypeOf<CaseResult>().not.toHaveProperty('_input')
   })
 })

@@ -59,7 +59,7 @@ function make_run_id(): string {
   return `${String(d.getFullYear())}${pad2(d.getMonth() + 1)}${pad2(d.getDate())}-${pad2(d.getHours())}${pad2(d.getMinutes())}${pad2(d.getSeconds())}`
 }
 
-function predictions_from_report(report: BenchReport<SweBenchInstance, Prediction>): ReadonlyArray<Prediction> {
+function predictions_from_report(report: BenchReport<Prediction>): ReadonlyArray<Prediction> {
   const predictions: Prediction[] = []
   for (const case_result of report.cases) {
     if (!case_result.ok || case_result.output === undefined) continue
@@ -146,7 +146,7 @@ export async function run_swebench_smoke(): Promise<void> {
   )
   console.log(`run dir: ${run_dir}`)
 
-  let report: BenchReport<SweBenchInstance, Prediction>
+  let report: BenchReport<Prediction>
   try {
     report = await bench<SweBenchInstance, Prediction>(
       flow,

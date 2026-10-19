@@ -152,8 +152,6 @@ likely to bite you first.
   step runs again (and you pay for it again), and the run goes on with a result
   that the approver never saw. A hand-built `checkpoint` before a `suspend` has
   the same gap.
-- **`bench`'s `CaseResult` has an `_input` field that's never set.** It exists
-  only to give the input type parameter a use.
 - **The viewer slows down on long runs and clips large flows.** Holding or
   playing the scrubber refolds the run from its first event at every position,
   so a long run lags. A flow that's still bigger than the window at the

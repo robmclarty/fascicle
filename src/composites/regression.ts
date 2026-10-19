@@ -198,10 +198,10 @@ function compute_cost_regression(
 /**
  * Index case results by their `case_id` for pairwise lookup.
  */
-function index_by_case_id<I, O, S>(
-  cases: ReadonlyArray<CaseResult<I, O, S>>,
-): Map<string, CaseResult<I, O, S>> {
-  const m = new Map<string, CaseResult<I, O, S>>()
+function index_by_case_id<O, S>(
+  cases: ReadonlyArray<CaseResult<O, S>>,
+): Map<string, CaseResult<O, S>> {
+  const m = new Map<string, CaseResult<O, S>>()
   for (const c of cases) m.set(c.case_id, c)
   return m
 }

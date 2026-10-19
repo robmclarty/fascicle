@@ -29,7 +29,7 @@ export type JudgeArgs<I, O> = {
 
 export type Judge<I, O, S = Score> = Step<JudgeArgs<I, O>, S | undefined>
 
-export type CaseResult<I = unknown, O = unknown, S = Score> = {
+export type CaseResult<O = unknown, S = Score> = {
   readonly case_id: string
   readonly ok: boolean
   readonly output?: O
@@ -38,7 +38,6 @@ export type CaseResult<I = unknown, O = unknown, S = Score> = {
   readonly duration_ms: number
   readonly cost_usd: number
   readonly trajectory_path?: string
-  readonly _input?: I
 }
 
 export type BenchSummary = {
@@ -49,10 +48,10 @@ export type BenchSummary = {
   readonly mean_cost_usd: number
 }
 
-export type BenchReport<I = unknown, O = unknown, S = Score> = {
+export type BenchReport<O = unknown, S = Score> = {
   readonly flow_name: string
   readonly run_id: string
-  readonly cases: ReadonlyArray<CaseResult<I, O, S>>
+  readonly cases: ReadonlyArray<CaseResult<O, S>>
   readonly summary: BenchSummary
 }
 
@@ -97,7 +96,7 @@ export async function bench<I, O, S = Score>(
   cases: ReadonlyArray<BenchCase<I>>,
   judges: Record<string, Judge<I, O, S>>,
   options: BenchOptions = {},
-): Promise<BenchReport<I, O, S>> {
+): Promise<BenchReport<O, S>> {
   const run_id = options.run_id ?? `bench-${String(Date.now())}-${random_suffix()}`
   const flow_name = describe_flow_name(flow)
   const concurrency = resolve_concurrency(options.concurrency, cases.length)
@@ -112,7 +111,7 @@ export async function bench<I, O, S = Score>(
 
   const judge_entries = Object.entries(judges)
 
-  const run_one = async (bc: BenchCase<I>): Promise<CaseResult<I, O, S>> => {
+  const run_one = async (bc: BenchCase<I>): Promise<CaseResult<O, S>> => {
     const { trajectory_path, case_logger, cost_tracker } = build_case_logging(options, bc.id)
     const ctx: CaseRunContext = { case_logger, install_signal_handlers, run_options }
 
@@ -139,7 +138,7 @@ export async function bench<I, O, S = Score>(
         : {}
 
     const duration_ms = Date.now() - start
-    const result: CaseResult<I, O, S> = {
+    const result: CaseResult<O, S> = {
       case_id: bc.id,
       ok,
       ...(output !== undefined ? { output } : {}),
@@ -296,8 +295,8 @@ function throw_if_aborted(signal: AbortSignal | undefined): void {
  * abstained cases do not drag the mean down, and a judge that never scored
  * is omitted from `mean_scores` entirely.
  */
-function summarize<I, O, S>(
-  cases: ReadonlyArray<CaseResult<I, O, S>>,
+function summarize<O, S>(
+  cases: ReadonlyArray<CaseResult<O, S>>,
   judge_names: ReadonlyArray<string>,
 ): BenchSummary {
   const total_duration_ms = cases.reduce((acc, c) => acc + c.duration_ms, 0)
