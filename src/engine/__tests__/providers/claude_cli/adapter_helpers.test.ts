@@ -167,6 +167,21 @@ describe('classify_close_error', () => {
     expect((err as claude_cli_error).stderr_snippet).toBe('bwrap: command not found')
   })
 
+  it('blames the claude binary, not bwrap, when bwrap cannot exec it in the sandbox', () => {
+    const stderr = 'bwrap: execvp /home/me/.local/bin/claude: No such file or directory\n'
+    const err = classify_close_error(1, null, stderr)
+    expect(err).toBeInstanceOf(claude_cli_error)
+    expect((err as claude_cli_error).reason).toBe('binary_not_found')
+    expect(err.message).toContain(`'/home/me/.local/bin/claude' inside its sandbox`)
+    expect(err.message).toContain('additional_write_paths')
+    expect((err as claude_cli_error).stderr_snippet).toBe(stderr)
+  })
+
+  it('leaves other bwrap exec failures to the later classifications', () => {
+    const err = classify_close_error(1, null, 'bwrap: execvp /usr/bin/claude: Permission denied')
+    expect((err as claude_cli_error).reason).toBe('subprocess_exit')
+  })
+
   it('requires both sandbox and not-found markers for the sandbox classification', () => {
     // "not found" alone (no sandbox/bwrap/greywall token) is an ordinary exit.
     const err = classify_close_error(1, null, 'config file not found')

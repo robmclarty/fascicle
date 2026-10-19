@@ -225,7 +225,7 @@ The `bwrap` wrapper read-only binds `/usr`, `/bin`, `/lib`, `/lib64`, `/etc/reso
 
 `greywall` takes its policy from a JSON settings file that's passed with `--settings`. The adapter writes one for each run, with `network_allowlist` as `network.allowHosts` and `additional_write_paths` as `filesystem.allowWrite`, or forwards your own file untouched when you set `settings_path`. `greywall` honors the write paths directly and ignores `network.allowHosts`, since greyproxy is what enforces host allowlisting.
 
-A missing sandbox binary triggers `claude_cli_error` with `reason: 'sandbox_unavailable'`.
+A missing sandbox binary triggers `claude_cli_error` with `reason: 'sandbox_unavailable'`. A `claude` binary outside the paths that `bwrap` binds, such as one in your home directory, isn't there inside the sandbox, so `bwrap` can't run it, and the error has `reason: 'binary_not_found'` and names the binary.
 
 ## Errors You May Hit
 

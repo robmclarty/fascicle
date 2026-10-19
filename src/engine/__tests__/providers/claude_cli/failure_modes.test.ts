@@ -242,9 +242,9 @@ describe('sandbox binary missing', () => {
   it(
     'rejection clearly identifies the sandbox binary, not the claude binary',
     async () => {
-      // Configure a bwrap sandbox. The test environment will almost never
-      // have bwrap on macOS / GitHub Actions Linux without explicit install,
-      // so spawn fails with ENOENT pointing at bwrap (not the claude binary).
+      // The spawn looks bwrap up on the child env's PATH, so a PATH holding
+      // only the mock's temp dir makes bwrap missing even on a host that has
+      // it installed (ubuntu-latest has since 26.04).
       const handle = await track(await write_mock_script(success_ops('ok')))
       const adapter = create_claude_cli_adapter({
         binary: MOCK_CLAUDE_PATH,
@@ -252,32 +252,33 @@ describe('sandbox binary missing', () => {
         sandbox: { kind: 'bwrap', network_allowlist: ['api.anthropic.com'] },
       })
       cleanup_stack.push(() => adapter.dispose())
-  
+
       try {
-        await adapter.generate(
-          {
-            ...base_opts(
-              build_mock_env({ MOCK_CLAUDE_SCRIPT: handle.script_path }),
-            ),
-          },
-          alias_target,
-        )
+        await adapter.generate(base_opts({ PATH: handle.dir }), alias_target)
         throw new Error('unexpected resolve')
       } catch (err) {
-        // If the host actually has bwrap installed, we can't force this
-        // failure — skip the assertion. The mock CLI path is still valid so
-        // the call would succeed. Probe by inspecting the error shape.
-        if (!(err instanceof claude_cli_error)) {
-          // Host has bwrap installed; the test can't exercise the missing
-          // path here. Mark as inconclusive by resolving.
-          return
-        }
         expect(err).toBeInstanceOf(claude_cli_error)
-        // Message identifies the sandbox binary (bwrap), not the mock claude.
-        expect(err.message.toLowerCase()).toContain('bwrap')
-        expect(err.message).not.toContain(MOCK_CLAUDE_PATH)
+        if (err instanceof claude_cli_error) {
+          expect(err.reason).toBe('sandbox_unavailable')
+          expect(err.message.toLowerCase()).toContain('bwrap')
+          expect(err.message).not.toContain(MOCK_CLAUDE_PATH)
+        }
       }
     },
     10_000,
   )
+
+  it('an unsandboxed run with no claude binary still blames the claude binary', async () => {
+    const adapter = create_claude_cli_adapter({
+      binary: '/nonexistent/path/to/claude-binary-xyz',
+      auth_mode: 'oauth',
+    })
+    cleanup_stack.push(() => adapter.dispose())
+
+    const err = await adapter
+      .generate(base_opts(build_mock_env({})), alias_target)
+      .catch((e: unknown) => e)
+    expect(err).toBeInstanceOf(claude_cli_error)
+    if (err instanceof claude_cli_error) expect(err.reason).toBe('binary_not_found')
+  })
 })

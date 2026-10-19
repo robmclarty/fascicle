@@ -92,6 +92,11 @@ const SUPPORTED: ReadonlySet<ProviderCapability> = new Set<ProviderCapability>([
 
 const PROVIDER_NAME = 'claude_cli'
 
+// bubblewrap reports a failed exec of its target as
+// `bwrap: execvp <target>: <strerror>`, and the target is always the claude
+// binary, since the sandbox plan puts it right after `--`.
+const BWRAP_EXEC_MISSING = /^bwrap: execvp (.+): No such file or directory$/m
+
 // Map Fascicle's EffortLevel to Claude Code's CLAUDE_CODE_EFFORT_LEVEL env var.
 // The CLI supports `low | medium | high | xhigh | max | auto`; we expose all
 // non-`none` levels of Fascicle's EffortLevel and let the user opt out via
@@ -197,9 +202,14 @@ export function compile_schema<T>(schema: ToolSchema<T>): string {
  * Turn a closed CLI subprocess's exit code, signal, and stderr into an
  * `Error`.
  *
- * Checks stderr for an auth failure first, then for a missing sandbox
- * binary, then falls back to a generic exit-code error. The stderr
+ * Checks stderr for an auth failure first, then for a claude binary that
+ * bwrap started but couldn't find inside its sandbox, then for a missing
+ * sandbox binary, then falls back to a generic exit-code error. The stderr
  * snippet attached to each error is truncated to 512 bytes.
+ *
+ * The bwrap check has to come before the sandbox check: bwrap's own
+ * "execvp <binary>: No such file or directory" names bwrap and says the file
+ * is missing, so the sandbox check would blame bwrap for the claude binary.
  */
 export function classify_close_error(
   code: number | null,
@@ -212,6 +222,14 @@ export function classify_close_error(
       PROVIDER_NAME,
       `claude CLI reported an auth failure: ${snippet}`,
       { refresh_command: 'claude login' },
+    )
+  }
+  const sandboxed_binary = BWRAP_EXEC_MISSING.exec(stderr)?.[1]
+  if (sandboxed_binary !== undefined) {
+    return new claude_cli_error(
+      'binary_not_found',
+      `bwrap ran but found no claude binary at '${sandboxed_binary}' inside its sandbox, which binds only /usr, /bin, /lib, /lib64, and additional_write_paths: ${snippet}`,
+      { stderr_snippet: snippet },
     )
   }
   if (/bwrap|greywall|sandbox/i.test(stderr) && /not found|no such file|enoent/i.test(stderr)) {
@@ -288,6 +306,9 @@ async function run_cli(
     stall_timeout_ms: args.stall_timeout_ms,
     ...(args.cwd !== undefined ? { cwd: args.cwd } : {}),
     ...(args.abort !== undefined ? { abort: args.abort } : {}),
+    ...(args.provider_config.sandbox !== undefined
+      ? { spawn_failure_reason: 'sandbox_unavailable' as const }
+      : {}),
   })
 
   const state = create_parser_state()

@@ -154,6 +154,12 @@ likely to bite you first.
   a session when the editor closes its thread, so an agent that runs for a long
   time holds the history of every session that it has opened until its process
   ends. [acp.md](./acp.md#what-a-turn-carries) has the details.
+- **The `bwrap` sandbox can't run a `claude` installed in your home directory.**
+  The sandbox binds only `/usr`, `/bin`, `/lib`, `/lib64`, and
+  `additional_write_paths`, so a binary under `~/.local/bin`, or a Node from a
+  version manager, isn't there when `bwrap` goes to run it, and the call fails
+  with `binary_not_found`. Your home directory isn't bound either, so an
+  `auth_mode: 'oauth'` run couldn't reach its login even with the binary there.
 - **Some provider errors don't say what to do.** Many name what went wrong but
   not the fix, such as the config key to set or the `base_url` to check.
 - **Housekeeping.** Engine code that only tests call (`normalize_chunk` and

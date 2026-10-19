@@ -143,6 +143,24 @@ describe('create_spawn_runtime: spawn options', () => {
     await runtime.dispose_all()
   })
 
+  it('reports a failed spawn under the spawn_failure_reason it was given', async () => {
+    const runtime = create_spawn_runtime()
+    const session = await runtime.spawn_cli({
+      cmd: '/nonexistent/path/to/bwrap-xyz',
+      argv: [],
+      env: {},
+      stdin: '',
+      startup_timeout_ms: 0,
+      stall_timeout_ms: 0,
+      spawn_failure_reason: 'sandbox_unavailable',
+    })
+    for await (const _ of session.stdout_lines) void _
+    const err = await session.wait_close().catch((e: unknown) => e)
+    expect(err).toBeInstanceOf(claude_cli_error)
+    if (err instanceof claude_cli_error) expect(err.reason).toBe('sandbox_unavailable')
+    await runtime.dispose_all()
+  })
+
   it('throws binary_not_found synchronously when spawn() rejects the command', async () => {
     const runtime = create_spawn_runtime()
     // A null byte in the command makes node:child_process.spawn throw

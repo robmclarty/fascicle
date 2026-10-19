@@ -36,6 +36,10 @@ export type SpawnArgs = {
   readonly startup_timeout_ms: number
   readonly stall_timeout_ms: number
   readonly abort?: AbortSignal
+  // A sandboxed run spawns the sandbox wrapper as `cmd`, so a failed spawn is
+  // the wrapper's and reports `sandbox_unavailable`. Defaults to
+  // `binary_not_found`.
+  readonly spawn_failure_reason?: 'binary_not_found' | 'sandbox_unavailable'
 }
 
 export type SpawnCloseOutcome = {
@@ -110,6 +114,7 @@ export function create_spawn_runtime(): SpawnRuntime {
     if (args.abort?.aborted === true) {
       throw new aborted_error('aborted', { reason: args.abort.reason })
     }
+    const spawn_failure_reason = args.spawn_failure_reason ?? 'binary_not_found'
   
     let child: ChildProcess
     try {
@@ -123,7 +128,7 @@ export function create_spawn_runtime(): SpawnRuntime {
       child = node_spawn(args.cmd, [...args.argv], spawn_opts)
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err)
-      throw new claude_cli_error('binary_not_found', `failed to spawn '${args.cmd}': ${message}`)
+      throw new claude_cli_error(spawn_failure_reason, `failed to spawn '${args.cmd}': ${message}`)
     }
   
     live_children.add(child)
@@ -244,7 +249,7 @@ export function create_spawn_runtime(): SpawnRuntime {
         const outcome = await close_promise
         if (spawn_error !== undefined) {
           const message = spawn_error.message
-          throw new claude_cli_error('binary_not_found', message)
+          throw new claude_cli_error(spawn_failure_reason, message)
         }
         if (startup_error !== undefined) throw startup_error
         if (stall_error !== undefined) throw stall_error
