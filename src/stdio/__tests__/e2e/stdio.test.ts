@@ -89,6 +89,16 @@ describe('stdio agent contract (spawned)', () => {
     }
   }, 30_000)
 
+  it('exit 0: a flow that logs leaves stdout to the result and its console lines to stderr', async () => {
+    const result = await spawn_agent(JSON.stringify({ topic: 'tests' }), { MODE: 'log' }).exit
+
+    expect(result.code, `stderr:\n${result.stderr}`).toBe(0)
+    expect(result.stdout.trim().split('\n')).toEqual([JSON.stringify({ headline: 'about tests' })])
+    expect(stderr_lines(result.stderr)).toEqual(
+      expect.arrayContaining(['log line', 'info line', 'debug line', "{ dir: 'line' }"]),
+    )
+  }, 30_000)
+
   it('exit 2 on garbage stdin: empty stdout, last stderr line is a StdioFailure', async () => {
     const result = await spawn_agent('not json').exit
 

@@ -15,13 +15,13 @@ When your process is somebody's child, the streams have fixed jobs:
 | stderr | trajectory, progress, errors (JSONL) |
 | exit code | the verdict |
 
-A stray `console.log` inside a step silently corrupts the parent's parse. Route everything that a human or a log collector should see to stderr or to a file, because the result is the only bytes on stdout.
+A stray line on stdout corrupts the parent's parse, and the run still exits 0. So `run_stdio` moves `console.log`, `console.info`, `console.debug`, `console.dir`, and `console.dirxml` to stderr for the life of the process, as `serve_acp` does. `execute_stdio` leaves the console alone, because it doesn't own the process. Neither one can catch a write that goes straight to `process.stdout`, so route everything else that a human or a log collector should see to stderr or to a file, because the result is the only bytes on stdout.
 
 Key rules:
 
-- Never `console.log` from flow code. Use `ctx.emit` for observable progress and let the trajectory logger carry it to stderr.
+- Prefer `ctx.emit` to `console.log` in flow code. A console line lands on stderr between the trajectory's events, where a reader of that trajectory skips it (see [Trajectory on Stderr](#trajectory-on-stderr)), so `ctx.emit` is how a flow reports what a trajectory reader should see.
 - Trajectory defaults to `stderr_logger()` under `run_stdio`; you don't have to wire anything to be stream-clean.
-- If a dependency prints to stdout, that's a bug in this context. Wrap or silence it.
+- If a dependency writes straight to `process.stdout`, that's a bug in this context. Wrap or silence it.
 
 ## `run_stdio`
 
@@ -93,6 +93,8 @@ A parent that wants the detail takes the tail line (`tail -n 1` on captured stde
 echo '{"topic":"flaky tests"}' | pnpm exec tsx examples/stdio-agent/main.ts 2> events.jsonl
 pnpm fascicle-viewer events.jsonl
 ```
+
+The console shares that stream. A line that the flow logs lands between the events, and the viewer skips each one with a `skipped malformed line` warning, so a chatty flow's capture still loads but floods your terminal. That's why `ctx.emit`, which travels as an event, is the way to report what you want to see in the trajectory.
 
 To keep a durable copy alongside the live stream, tee:
 

@@ -7,8 +7,9 @@
  * code as the verdict.
  *
  * Environment inputs:
- *   - MODE: 'ok' (echo the input), 'throw' (flow fails), or 'slow' (wait
- *     abort-aware for a forwarded SIGINT).
+ *   - MODE: 'ok' (echo the input), 'throw' (flow fails), 'slow' (wait
+ *     abort-aware for a forwarded SIGINT), or 'log' (echo the input after
+ *     writing through the console methods that print to stdout by default).
  *   - MARKER_DIR: where 'slow' mode writes its ready marker.
  */
 
@@ -29,6 +30,17 @@ const flows = {
   })),
   throw: step('boom', (_input: { readonly topic: string }): { headline: string } => {
     throw new Error('kaboom')
+  }),
+  log: step('chatty', (input: { readonly topic: string }) => {
+    // oxlint-disable-next-line no-console
+    console.log('log line')
+    // oxlint-disable-next-line no-console
+    console.info('info line')
+    // oxlint-disable-next-line no-console
+    console.debug('debug line')
+    // oxlint-disable-next-line no-console
+    console.dir({ dir: 'line' })
+    return { headline: `about ${input.topic}` }
   }),
   slow: step('slow_io', async (_input: { readonly topic: string }, ctx) => {
     const marker_dir = process.env['MARKER_DIR']
@@ -53,6 +65,7 @@ const flows = {
   }),
 }
 
-const flow = mode === 'throw' ? flows.throw : mode === 'slow' ? flows.slow : flows.ok
+const flow =
+  mode === 'throw' ? flows.throw : mode === 'slow' ? flows.slow : mode === 'log' ? flows.log : flows.ok
 
 void run_stdio(flow, { input_schema, output_schema })

@@ -18,35 +18,12 @@
  * the spawn tests in `__tests__/e2e/` exercise it for real.
  */
 
-import { Console } from 'node:console'
 import { constants } from 'node:os'
 import { Readable, Writable } from 'node:stream'
-import type { InspectOptions } from 'node:util'
 import { aborted_error } from '#core'
+import { route_console_to_stderr } from '#process'
 import { serve_streams } from './serve_streams.js'
 import type { ServeAcpConfig } from './types.js'
-
-/**
- * Route the console's stdout methods to stderr, leaving stdout to the
- * protocol alone.
- */
-function route_console_to_stderr(): void {
-  // `dir` writes to its console's own stream rather than through `log`, so
-  // it comes from a console bound to stderr, which honors options such as
-  // `depth`.
-  const stderr_console = new Console(process.stderr)
-  // oxlint-disable-next-line no-console
-  const to_stderr = console.error
-  Object.assign(console, {
-    log: to_stderr,
-    info: to_stderr,
-    debug: to_stderr,
-    dirxml: to_stderr,
-    dir: (item: unknown, options?: InspectOptions) => {
-      stderr_console.dir(item, options)
-    },
-  })
-}
 
 /**
  * Serve a flow as an ACP agent over stdin and stdout until the client
@@ -54,7 +31,8 @@ function route_console_to_stderr(): void {
  * A SIGTERM or SIGINT does the same, then exits with the signal's code.
  */
 export async function serve_acp<i, o>(config: ServeAcpConfig<i, o>): Promise<void> {
-  route_console_to_stderr()
+  // Leave stdout to the protocol alone.
+  route_console_to_stderr(console, process.stderr)
   const shutdown = new AbortController()
   let received: NodeJS.Signals | null = null
   const on_signal = (signal: NodeJS.Signals): void => {

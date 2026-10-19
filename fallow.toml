@@ -178,6 +178,10 @@ name = "policy"
 patterns = ["src/policy/**"]
 
 [[boundaries.zones]]
+name = "process"
+patterns = ["src/process/**"]
+
+[[boundaries.zones]]
 name = "schema"
 patterns = ["src/schema/**"]
 
@@ -213,13 +217,13 @@ allow = ["core", "engine", "composites", "schema"]
 from = "mcp"
 allow = ["core", "engine", "schema"]
 
-[[boundaries.rules]] # acp: core + engine + schema (serves a flow as an ACP agent); testing for its lifecycle tests' stub engine
+[[boundaries.rules]] # acp: core + engine + schema (serves a flow as an ACP agent), process for the console reroute; testing for its lifecycle tests' stub engine
 from = "acp"
-allow = ["core", "engine", "schema", "testing"]
+allow = ["core", "engine", "schema", "process", "testing"]
 
-[[boundaries.rules]] # stdio: core + adapters + schema (single-shot child-process entry helper)
+[[boundaries.rules]] # stdio: core + adapters + schema (single-shot child-process entry helper), process for the console reroute
 from = "stdio"
-allow = ["core", "adapters", "schema"]
+allow = ["core", "adapters", "schema", "process"]
 
 [[boundaries.rules]] # ui: core + engine only (bridges the run stream to the AI SDK UI wire)
 from = "ui"
@@ -231,6 +235,10 @@ allow = ["core"]
 
 [[boundaries.rules]] # policy: bottom of the DAG; core and engine import it, so it imports nothing
 from = "policy"
+allow = []
+
+[[boundaries.rules]] # process: bottom of the DAG; acp and stdio import it, so it imports nothing
+from = "process"
 allow = []
 
 [[boundaries.rules]] # schema: bottom of the DAG; core, engine, acp, mcp, stdio, and agents import it, so it imports nothing

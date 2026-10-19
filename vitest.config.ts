@@ -15,6 +15,7 @@ export default defineConfig({
       { find: /^#acp$/, replacement: fileURLToPath(new URL('./src/acp/index.ts', import.meta.url)) },
       { find: /^#ui$/, replacement: fileURLToPath(new URL('./src/ui/index.ts', import.meta.url)) },
       { find: /^#policy$/, replacement: fileURLToPath(new URL('./src/policy/index.ts', import.meta.url)) },
+      { find: /^#process$/, replacement: fileURLToPath(new URL('./src/process/index.ts', import.meta.url)) },
       { find: /^#schema$/, replacement: fileURLToPath(new URL('./src/schema/index.ts', import.meta.url)) },
       { find: /^#testing$/, replacement: fileURLToPath(new URL('./src/testing/index.ts', import.meta.url)) },
       // Published surface (examples + doc snippets import these names).

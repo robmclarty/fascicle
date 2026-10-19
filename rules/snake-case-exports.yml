@@ -6,6 +6,7 @@ files:
   - src/core/**/*.ts
   - src/engine/**/*.ts
   - src/policy/**/*.ts
+  - src/process/**/*.ts
   - src/schema/**/*.ts
 ignores:
   - src/**/__tests__/**

@@ -11,7 +11,9 @@
  * Final writes await the write callback before `process.exit`: on pipes,
  * exiting with buffered data truncates it, and a large JSON result is exactly
  * the risk case. Signal handlers stay at the runner's default (installed): a
- * single-shot child must die when the parent forwards SIGINT.
+ * single-shot child must die when the parent forwards SIGINT. The console's
+ * stdout methods go to stderr for the life of the process, as under
+ * `serve_acp`, so a stray log can't land ahead of the result.
  *
  * Excluded from mutation testing as process/IO glue (see stryker.config.mjs);
  * the spawn-based contract tests in `__tests__/e2e/` exercise it for real.
@@ -19,6 +21,7 @@
 
 import { text } from 'node:stream/consumers'
 import type { Step } from '#core'
+import { route_console_to_stderr } from '#process'
 import { execute_stdio } from './execute_stdio.js'
 import type { RunStdioOptions } from './execute_stdio.js'
 
@@ -34,6 +37,9 @@ export async function run_stdio<i, o>(
   flow: Step<i, o>,
   options: RunStdioOptions<i, o> = {},
 ): Promise<void> {
+  // Leave stdout to the one result document, so a stray log can't land ahead
+  // of it while the run still exits 0.
+  route_console_to_stderr(console, process.stderr)
   const outcome = await execute_stdio(flow, options, {
     read_input: () => text(process.stdin),
     write_output: (chunk) => write_flushed(process.stdout, chunk),

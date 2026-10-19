@@ -43,6 +43,7 @@
       "#acp": ["./src/acp/index.ts"],
       "#ui": ["./src/ui/index.ts"],
       "#policy": ["./src/policy/index.ts"],
+      "#process": ["./src/process/index.ts"],
       "#schema": ["./src/schema/index.ts"],
       "#testing": ["./src/testing/index.ts"]
     }

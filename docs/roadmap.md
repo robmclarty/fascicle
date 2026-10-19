@@ -154,9 +154,6 @@ likely to bite you first.
   with the server, so a tab that reconnects asks for the events after its old
   id and gets nothing until the new ids pass it, then folds the run from the
   middle. Reload the tab after you restart the viewer.
-- **`run_stdio` leaves the console on stdout.** A stray `console.log` in your
-  flow lands ahead of the result, and the run still exits 0, so log to stderr
-  under `run_stdio`. `serve_acp` moves the console off stdout for you.
 - **A long-running ACP agent keeps every session's history.** Nothing releases
   a session when the editor closes its thread, so an agent that runs for a long
   time holds the history of every session that it has opened until its process
