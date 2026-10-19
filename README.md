@@ -186,9 +186,9 @@ Full details: [docs/providers.md](./docs/providers.md). The `claude_cli` adapter
 
 ## Live dev viewer
 
-![fascicle-viewer running against an amplify trajectory: span tree on the left, event log on the right, $2.55 cost rolled up in the header](./screenshot.png)
+![fascicle-viewer run canvas rendering the viewer-demo trajectory: the flow laid out left to right as a span timeline, from fetch_brief through a parallel summarize/score fan-out, a retry that recovers, a fallback past a failed primary, to the finalize terminus, with elapsed time, absorbed retry, scars, and rolled-up cost in the header](./screenshot.png)
 
-The `fascicle-viewer` bin ships with the umbrella package (there is no separate `fascicle-viewer` package). Point it at a trajectory file and it opens a browser tree of spans, errors, and emits as the run executes:
+The `fascicle-viewer` bin ships with the umbrella package (there is no separate `fascicle-viewer` package). Point it at a trajectory file and it opens a browser run canvas that lays out spans, retries, errors, and emits left to right as the run executes:
 
 ```bash
 # installed locally:

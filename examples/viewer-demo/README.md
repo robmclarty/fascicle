@@ -5,7 +5,7 @@ exercises nested sequences, parallel branches, a retry that fails once before
 succeeding, a map over a list, and a fallback that recovers from an error. No
 engine layer, no network, no LLM calls.
 
-![fascicle-viewer rendering the demo trajectory: the span tree on the left, the event log on the right](./screenshot.png)
+![fascicle-viewer run canvas rendering the demo trajectory: the flow laid out left to right as a span timeline, with the parallel summarize/score fan-out, the retry that recovers, the fallback past a failed primary, and the finalize terminus](./screenshot.png)
 
 ## Flow
 
