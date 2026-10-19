@@ -268,8 +268,14 @@ export function build_generate_result<T>(input: BuildResultInput<T>): GenerateRe
     provider_reported['claude_cli'] = reported
   }
 
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion
-  const content_raw = input.parsed_content ?? (parsed.final_text as T)
+  // A schema's value is the content even when it parses to `null`, so the
+  // final text stands in only for a call that asked for no structure.
+  const content_raw =
+    input.schema === undefined
+      ? // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion
+        (parsed.final_text as T)
+      : // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion
+        (input.parsed_content as T)
 
   const result: GenerateResult<T> = {
     content: content_raw,

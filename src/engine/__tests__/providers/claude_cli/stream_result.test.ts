@@ -10,6 +10,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { z } from 'zod'
 import type { ResolvedModel } from '../../../types.js'
 import { build_generate_result } from '../../../providers/claude_cli/stream_result.js'
 import { claude_cli_reported } from '../../../providers/claude_cli/reported.js'
@@ -47,6 +48,20 @@ describe('is_error result', () => {
   it('falls back to a default message when final_text is empty', () => {
     const parsed = make_parsed({ is_error: true })
     expect(() => build_generate_result({ parsed, resolved })).toThrow(claude_cli_error)
+  })
+})
+
+describe('structured content', () => {
+  it('takes content from the parsed value whenever a schema is set, null included', () => {
+    const parsed = make_parsed({ final_text: 'null' })
+    const schema = z.object({ answer: z.string() }).nullable()
+    const result = build_generate_result({ parsed, resolved, schema, parsed_content: null })
+    expect(result.content).toBeNull()
+  })
+
+  it('takes content from the final text when no schema is set', () => {
+    const parsed = make_parsed({ final_text: 'plain reply' })
+    expect(build_generate_result({ parsed, resolved }).content).toBe('plain reply')
   })
 })
 

@@ -137,8 +137,6 @@ likely to bite you first.
   second `suspend` or `gate` that reuses an id finds the first one's datum and
   passes without pausing. Nothing checks repeated ids for any step yet, since
   catching them needs a walk over the whole flow when the run starts.
-- **`claude_cli` turns a structured `null` into the string `"null"`.** When you
-  pass a `schema` and the reply parses to `null`, `content` holds the raw text.
 - **OpenRouter's cache writes go uncounted.** On `transport: 'native'`, usage
   reads the `cached_tokens` that OpenRouter reports but not its
   `cache_write_tokens`, so a model with explicit caching shows no cache writes.

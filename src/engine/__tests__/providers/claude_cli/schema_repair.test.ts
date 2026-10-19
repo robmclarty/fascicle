@@ -110,6 +110,31 @@ describe('claude_cli schema repair path', () => {
     ).rejects.toThrow()
   })
 
+  it('keeps a reply that parses to null as null under a nullable schema', async () => {
+    const first = await track(await write_mock_script(result_ops({ text: 'null' })))
+
+    const engine = create_engine({
+      providers: { claude_cli: { binary: MOCK_CLAUDE_PATH, auth_mode: 'oauth' } },
+    })
+    cleanup_stack.push(() => engine.dispose())
+
+    const result = await engine.generate({
+      model: 'claude_cli:sonnet',
+      prompt: 'q',
+      schema: schema.nullable(),
+      provider_options: {
+        claude_cli: {
+          env: build_mock_env({
+            MOCK_CLAUDE_SCRIPT: first.script_path,
+            MOCK_CLAUDE_RECORD: first.record_path,
+          }),
+        },
+      },
+    })
+
+    expect(result.content).toBeNull()
+  })
+
   it('throws schema_validation_error when first attempt fails and no session_id is available', async () => {
     const first = await track(
       await write_mock_script(result_ops({ text: 'not json' })),
