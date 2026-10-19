@@ -1,8 +1,9 @@
 # Roadmap
 
-What has shipped, what I'm considering, and what Fascicle won't do. Read this as
-a direction and not a commitment. Fascicle is pre-1.0, and the sequence changes as
-real usage lands, so pin an exact version and upgrade on purpose.
+What has shipped, what I know is broken, what I'm considering, and what Fascicle
+won't do. Read this as a direction and not a commitment. Fascicle is pre-1.0,
+and the sequence changes as real usage lands, so pin an exact version and
+upgrade on purpose.
 
 ## Shipped
 
@@ -119,6 +120,63 @@ The published surface as of v0.15.0:
   first bridge.
 - **`claude_cli` on the Agent SDK.** Rebasing the subprocess adapter onto
   Anthropic's Agent SDK, slotted in wherever provider metering forces it.
+- **ACP sessions that last, and the rest of Zed's thread.** A thread that you
+  can reopen after the agent restarts, from sessions that a `CheckpointStore`
+  keeps. Around it, usage and cost for Zed's context ring, a model picker,
+  thread titles, a stop reason for a turn that runs out of steps, the MCP
+  servers that the editor sends, and the auth method that the ACP registry asks
+  for. [acp.md](./acp.md#whats-missing-in-zed) lists what you'll notice is
+  missing today.
+
+## Known Issues
+
+These are the bugs that I know about and haven't fixed yet, with the ones most
+likely to bite you first.
+
+- **A late `resume` can leave its data behind.** A resume that arrives just
+  after another one has moved the run past a gate can still write its datum
+  into that gate's inbox, where nothing reads it until you delete the run. If
+  you delete the run in that window and then start a new one under the same id,
+  the new run picks the stale datum up.
+- **Pick-best composites misread `undefined` and NaN.** `ensemble`,
+  `ensemble_step`, and `tournament` treat a member that returns `undefined` as
+  one that returned nothing at all, and `ensemble` and `ensemble_step` let a NaN
+  score win when it comes first.
+- **`suspend` and `gate` don't check their ids.** An empty id, or one that isn't
+  an identifier, gets through, though `step` and `chain` refuse both.
+- **`claude_cli` turns a structured `null` into the string `"null"`.** When you
+  pass a `schema` and the reply parses to `null`, `content` holds the raw text.
+- **OpenRouter's cache writes go uncounted.** On `transport: 'native'`, usage
+  reads the `cached_tokens` that OpenRouter reports but not its
+  `cache_write_tokens`, so a model with explicit caching shows no cache writes.
+  The cost that OpenRouter reports, which is what the step records, is right.
+- **`checkpoint` fails the run when its write fails.** A failed read counts as a
+  miss and the run goes on, but a failed write fails the run after the step that
+  it wraps has finished, and after you've paid for that step.
+- **`bench`'s `CaseResult` has an `_input` field that's never set.** It exists
+  only to give the input type parameter a use.
+- **The viewer slows down on long runs and clips large flows.** Holding or
+  playing the scrubber refolds the run from its first event at every position,
+  so a long run lags. A flow that's still bigger than the window at the
+  smallest zoom loses its right and bottom edges, with no way to pan to them.
+- **An open tab misses events after the viewer restarts.** Event ids start over
+  with the server, so a tab that reconnects asks for the events after its old
+  id and gets nothing until the new ids pass it, then folds the run from the
+  middle. Reload the tab after you restart the viewer.
+- **`run_stdio` leaves the console on stdout.** A stray `console.log` in your
+  flow lands ahead of the result, and the run still exits 0, so log to stderr
+  under `run_stdio`. `serve_acp` moves the console off stdout for you.
+- **An `acp_agent` app serves one connection.** A transport of your own builds
+  an app for each connection, and an agent that runs for a long time holds the
+  history of every session that it has opened. [acp.md](./acp.md#serve_acp) has
+  the details.
+- **Some provider errors don't say what to do.** Many name what went wrong but
+  not the fix, such as the config key to set or the `base_url` to check.
+- **Housekeeping.** Engine code that only tests call (`normalize_chunk` and
+  `record_request_sent`), a schema-issue formatter that `fascicle/testing`
+  repeats, a viewer test that runs before the build that it checks, tsdown
+  options that are dead or deprecated, four devDependencies on caret ranges, and
+  a mutation-ratchet comment with stale numbers.
 
 ## Under Consideration
 

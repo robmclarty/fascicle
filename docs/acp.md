@@ -44,6 +44,8 @@ Options:
 
 `acp_agent` takes the same config and returns a promise that resolves to the SDK's agent app. Its handlers are registered but it isn't connected yet, so you can connect it to a transport of your own, or to an in-process client in a test. `serve_acp` is `acp_agent` plus the process: stdin, stdout, the console, and the signals.
 
+An app serves one connection. It keeps one set of sessions and the capabilities that the last client announced, so a second client that connects to the same app overwrites the first one's capabilities and can reach its sessions by id. Build an app for each connection that you accept, as `serve_acp` does for its one connection over stdio.
+
 ## What a Turn Carries
 
 A flow that wants the whole turn sets `to_input: (turn) => turn` and receives an `AcpTurn`:
@@ -58,7 +60,7 @@ A flow that wants the whole turn sets `to_input: (turn) => turn` and receives an
 
 The agent tells the editor it accepts embedded context, so a file the user @-mentions in Zed arrives with its text, rather than as a bare URI the flow has no way to read.
 
-`history` is a copy, so a flow can't change the session's own, and it holds what the user actually saw. Reply text on either side of a tool call is recorded as two paragraphs with a blank line between them, because the client shows it as two messages and a flow that reads the history shouldn't see the sentences run together. A cancelled turn still records the prompt, along with any reply text that had already streamed before the stop, so the next turn's "as I said above" points at something. Its last entry carries `cancelled: true`, which a flow should pass on to its model. A model that reads a stopped request with nothing to mark it takes the request as still waiting, and carries it out at the next prompt. Sessions live in the process's memory, and the agent doesn't offer `session/load`, so a session ends when the process does.
+`history` is a copy, so a flow can't change the session's own, and it holds what the user actually saw. Reply text on either side of a tool call is recorded as two paragraphs with a blank line between them, because the client shows it as two messages and a flow that reads the history shouldn't see the sentences run together. A cancelled turn still records the prompt, along with any reply text that had already streamed before the stop, so the next turn's "as I said above" points at something. Its last entry carries `cancelled: true`, which a flow should pass on to its model. A model that reads a stopped request with nothing to mark it takes the request as still waiting, and carries it out at the next prompt. Sessions live in the process's memory, and the agent doesn't offer `session/load`, so a session ends when the process does. Until then, nothing releases a session when the editor closes its thread, so an agent that runs for a long time holds the history of every session that it has opened.
 
 ## Stdout Belongs to the Protocol
 
@@ -285,6 +287,17 @@ Each card's id carries the turn, the model call's `step_id`, and how many times 
 [`examples/acp-agent/`](../examples/acp-agent/) is the reference agent. It's keyless by default, so you can check the wiring between Zed and your agent before you spend a token, and `--model` switches it to a real engine. Its README has the `agent_servers` entry for Zed's `settings.json`, and the steps that check each part of the wiring.
 
 [`examples/acp-coder/`](../examples/acp-coder/) is the coding agent from [Coding Sessions](#coding-sessions). Its README has the entry with `PATH` set, and an eight-step test that covers the cards, the prompts, the modes, a cancel, and a model from another vendor.
+
+### What's Missing in Zed
+
+A turn works as this page describes, but Zed draws more around a thread than the agent sends it yet. You'll notice that:
+
+- a thread can't be reopened once the agent restarts, because sessions live in memory and the agent offers neither `session/load` nor `session/resume`
+- Zed shows no context ring and no cost, because the agent sends no `usage_update`
+- there's no model dropdown, so a session runs on whatever model the flow's engine was built with
+- a thread keeps a generic title, because the agent sends no `session_info_update`
+- a turn that stops at `max_steps` ends as if it had finished, because every turn that isn't cancelled reports `end_turn`
+- the MCP servers that you've configured in Zed don't reach the flow (see [MCP Servers Are Ignored for Now](#mcp-servers-are-ignored-for-now))
 
 ## Checklist
 
