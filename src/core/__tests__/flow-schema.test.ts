@@ -290,6 +290,59 @@ const every_new_field = [
   },
 ]
 
+const the_four_composites = [
+  {
+    compose: 'every_composite',
+    sequence: [
+      {
+        gate: {
+          id: 'approve_draft',
+          name: 'approval',
+          description: 'holds the paid draft for a human',
+          do: { ref: 'draft' },
+          store: 'job_store',
+          format: 'summarize_draft',
+        },
+      },
+      {
+        ensemble_step: {
+          name: 'pick',
+          members: { a: { ref: 'a' }, b: { ref: 'b' } },
+          score: { step: { id: 'judge', fn: 'judge_fn' } },
+          rank_by: 'confidence_of',
+          select: 'max',
+          project: 'winner_of',
+        },
+      },
+      {
+        improve: {
+          description: 'refines the prompt',
+          seed: { ref: 'seed' },
+          propose: { ref: 'propose' },
+          score: { ref: 'score' },
+          budget: { max_rounds: 5, max_wallclock_ms: 60000, patience: 2 },
+          epsilon: 0.01,
+          proposers_per_round: 2,
+          lessons_capacity: 5,
+          project: 'best_of',
+        },
+      },
+      {
+        learn: {
+          name: 'from events',
+          flow: { ref: 'agent' },
+          source: { kind: 'events', events: [{ kind: 'span_start', span_id: 's1' }] },
+          analyzer: { ref: 'analyze' },
+          filter: 'is_error',
+          max_events: 500,
+        },
+      },
+      { learn: { flow: { ref: 'agent' }, source: { kind: 'paths', paths: ['runs/a.jsonl'] }, analyzer: { ref: 'analyze' } } },
+      { learn: { flow: { ref: 'agent' }, source: { kind: 'dir', dir: 'runs' }, analyzer: { ref: 'analyze' } } },
+    ],
+  },
+]
+
 describe('flow_schema', () => {
   it('is exported as a valid JSON Schema document with a $defs table', () => {
     expect(flow_schema).toBeDefined()
@@ -316,6 +369,10 @@ describe('flow_schema', () => {
       'checkpoint_config',
       'suspend_config',
       'scope_config',
+      'ensemble_step_config',
+      'gate_config',
+      'improve_config',
+      'learn_config',
     ]
     for (const k of composer_defs) {
       expect(s.$defs?.[k]).toBeDefined()
@@ -329,6 +386,36 @@ describe('flow_schema', () => {
 
   it('validates a flow that uses every field the configs gained', () => {
     expect(validate(every_new_field, flow_schema, flow_schema)).toEqual([])
+  })
+
+  it('validates a flow that uses gate, ensemble_step, improve, and learn', () => {
+    expect(validate(the_four_composites, flow_schema, flow_schema)).toEqual([])
+  })
+
+  it('rejects a gate without its id', () => {
+    const flow = [{ compose: 'bad', gate: { do: { ref: 'draft' } } }]
+    expect(validate(flow, flow_schema, flow_schema)).toContain('[0]: .gate: missing required property: id')
+  })
+
+  it('rejects an improve budget without its patience', () => {
+    const flow = [
+      {
+        compose: 'bad',
+        improve: { seed: { ref: 's' }, propose: { ref: 'p' }, score: { ref: 'c' }, budget: { max_rounds: 3 } },
+      },
+    ]
+    expect(validate(flow, flow_schema, flow_schema)).toContain(
+      '[0]: .improve: .budget: missing required property: patience',
+    )
+  })
+
+  it('rejects a learn source of a kind that learn lacks', () => {
+    const flow = [
+      { compose: 'bad', learn: { flow: { ref: 'a' }, source: { kind: 'url', url: 'x' }, analyzer: { ref: 'b' } } },
+    ]
+    expect(validate(flow, flow_schema, flow_schema)).toContain(
+      '[0]: .learn: .source: expected exactly 1 oneOf match, got 0',
+    )
   })
 
   it('rejects a loop without init or finish', () => {

@@ -39,6 +39,10 @@ export const flow_schema = {
         { "required": ["ensemble"] },
         { "required": ["tournament"] },
         { "required": ["consensus"] },
+        { "required": ["ensemble_step"] },
+        { "required": ["gate"] },
+        { "required": ["improve"] },
+        { "required": ["learn"] },
         { "required": ["checkpoint"] },
         { "required": ["suspend"] },
         { "required": ["scope"] },
@@ -61,6 +65,10 @@ export const flow_schema = {
         "ensemble": { "$ref": "#/$defs/ensemble_config" },
         "tournament": { "$ref": "#/$defs/tournament_config" },
         "consensus": { "$ref": "#/$defs/consensus_config" },
+        "ensemble_step": { "$ref": "#/$defs/ensemble_step_config" },
+        "gate": { "$ref": "#/$defs/gate_config" },
+        "improve": { "$ref": "#/$defs/improve_config" },
+        "learn": { "$ref": "#/$defs/learn_config" },
         "checkpoint": { "$ref": "#/$defs/checkpoint_config" },
         "suspend": { "$ref": "#/$defs/suspend_config" },
         "scope": { "$ref": "#/$defs/scope_config" },
@@ -252,6 +260,114 @@ export const flow_schema = {
         "agree": { "type": "string" },
         "max_rounds": { "type": "integer", "minimum": 1 },
         "project": { "type": "string" }
+      }
+    },
+    "ensemble_step_config": {
+      "type": "object",
+      "required": ["members", "score", "rank_by"],
+      "properties": {
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "members": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/node" }
+        },
+        "score": { "$ref": "#/$defs/node" },
+        "rank_by": { "type": "string" },
+        "select": { "type": "string", "enum": ["max", "min"] },
+        "project": { "type": "string" }
+      }
+    },
+    "gate_config": {
+      "type": "object",
+      "required": ["do", "id"],
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "do": { "$ref": "#/$defs/node" },
+        "store": { "type": "string" },
+        "format": { "type": "string" }
+      }
+    },
+    "improve_config": {
+      "type": "object",
+      "required": ["seed", "propose", "score", "budget"],
+      "properties": {
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "seed": { "$ref": "#/$defs/node" },
+        "propose": { "$ref": "#/$defs/node" },
+        "score": { "$ref": "#/$defs/node" },
+        "budget": { "$ref": "#/$defs/improve_budget" },
+        "epsilon": { "type": "number" },
+        "proposers_per_round": { "type": "integer", "minimum": 1 },
+        "lessons_capacity": { "type": "integer", "minimum": 0 },
+        "project": { "type": "string" }
+      }
+    },
+    "improve_budget": {
+      "type": "object",
+      "required": ["max_rounds", "patience"],
+      "properties": {
+        "max_rounds": { "type": "integer", "minimum": 1 },
+        "max_wallclock_ms": { "type": "integer", "minimum": 0 },
+        "patience": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "learn_config": {
+      "type": "object",
+      "required": ["flow", "source", "analyzer"],
+      "properties": {
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "flow": { "$ref": "#/$defs/node" },
+        "source": { "$ref": "#/$defs/learn_source" },
+        "analyzer": { "$ref": "#/$defs/node" },
+        "filter": { "type": "string" },
+        "max_events": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "learn_source": {
+      "type": "object",
+      "oneOf": [
+        { "$ref": "#/$defs/learn_events_source" },
+        { "$ref": "#/$defs/learn_paths_source" },
+        { "$ref": "#/$defs/learn_dir_source" }
+      ]
+    },
+    "learn_events_source": {
+      "type": "object",
+      "required": ["kind", "events"],
+      "properties": {
+        "kind": { "type": "string", "enum": ["events"] },
+        "events": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["kind"],
+            "properties": { "kind": { "type": "string" } }
+          }
+        }
+      }
+    },
+    "learn_paths_source": {
+      "type": "object",
+      "required": ["kind", "paths"],
+      "properties": {
+        "kind": { "type": "string", "enum": ["paths"] },
+        "paths": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "learn_dir_source": {
+      "type": "object",
+      "required": ["kind", "dir"],
+      "properties": {
+        "kind": { "type": "string", "enum": ["dir"] },
+        "dir": { "type": "string" }
       }
     },
     "checkpoint_config": {

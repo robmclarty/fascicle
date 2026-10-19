@@ -21,6 +21,10 @@ import { describe, expect, it } from 'vitest'
 import type { AdversarialConfig } from '../adversarial.js'
 import type { ConsensusConfig } from '../consensus.js'
 import type { EnsembleConfig } from '../ensemble.js'
+import type { EnsembleStepConfig } from '../ensemble_step.js'
+import type { GateConfig } from '../gate.js'
+import type { ImproveBudget, ImproveConfig } from '../improve.js'
+import type { LearnConfig, LearnInput, TrajectorySource } from '../learn.js'
 import type { TournamentConfig } from '../tournament.js'
 
 // These pins live with the composites, not beside flow_schema in core,
@@ -123,6 +127,37 @@ const pins: Record<string, Pin> = {
     ['name', 'description', 'members', 'agree', 'max_rounds', 'project'],
     ['members', 'agree', 'max_rounds'],
   ),
+  ensemble_step_config: pin<EnsembleStepConfig<unknown, unknown, unknown>>()(
+    ['name', 'description', 'members', 'score', 'rank_by', 'select', 'project'],
+    ['members', 'score', 'rank_by'],
+  ),
+  gate_config: pin<GateConfig<unknown>, 'do', 'do'>()(
+    ['id', 'name', 'description', 'do', 'store', 'format'],
+    ['id', 'do'],
+  ),
+  improve_config: pin<ImproveConfig<unknown, unknown>>()(
+    [
+      'name',
+      'description',
+      'seed',
+      'propose',
+      'score',
+      'budget',
+      'epsilon',
+      'proposers_per_round',
+      'lessons_capacity',
+      'project',
+    ],
+    ['seed', 'propose', 'score', 'budget'],
+  ),
+  improve_budget: pin<ImproveBudget>()(['max_rounds', 'max_wallclock_ms', 'patience'], ['max_rounds', 'patience']),
+  learn_config: pin<LearnConfig<LearnInput, unknown>>()(
+    ['name', 'description', 'flow', 'source', 'analyzer', 'filter', 'max_events'],
+    ['flow', 'source', 'analyzer'],
+  ),
+  learn_events_source: pin<Extract<TrajectorySource, { kind: 'events' }>>()(['kind', 'events'], ['kind', 'events']),
+  learn_paths_source: pin<Extract<TrajectorySource, { kind: 'paths' }>>()(['kind', 'paths'], ['kind', 'paths']),
+  learn_dir_source: pin<Extract<TrajectorySource, { kind: 'dir' }>>()(['kind', 'dir'], ['kind', 'dir']),
   checkpoint_config: pin<CheckpointConfig<unknown>, 'do', 'do'>()(
     ['name', 'description', 'do', 'key'],
     ['do', 'key'],
@@ -158,7 +193,17 @@ type SchemaDef = { readonly properties?: Record<string, unknown>; readonly requi
 
 // The defs that hold no composer's fields: the entry and node wrappers, the
 // list and member-map configs named above, and the unions that pick a form.
-const UNPINNED = ['compose_entry', 'node', 'sequence_config', 'parallel_config', 'scope_config', 'scope_entry', 'chain_entry', 'arms']
+const UNPINNED = [
+  'compose_entry',
+  'node',
+  'sequence_config',
+  'parallel_config',
+  'scope_config',
+  'scope_entry',
+  'chain_entry',
+  'arms',
+  'learn_source',
+]
 
 describe('flow_schema pins', () => {
   it('pins every def that holds a composer config', () => {

@@ -318,12 +318,14 @@ import { flow_schema } from 'fascicle';
 
 Each composer has a key of its own, and every field that its config takes
 has a key under it. A function is written as the name of a function
-(`when: is_retryable`), a step as a node, and a schema by its name. A
-`sequence`, a `parallel`, and a `scope` are a list or a map of members, so
-their `name` and `description` have no key to sit under, and a
-`compose_node` around one is how it gets a name. A test pins every key
-against the composer's config, so a field that a config gains fails the
-gate until the schema gains it too.
+(`when: is_retryable`), a step as a node, and a schema by its name, as is a
+`gate`'s `store`. `improve`'s `budget` is an object of its own, and
+`learn`'s `source` is an object whose `kind` (`events`, `paths`, or `dir`)
+says which of its three forms it takes. A `sequence`, a `parallel`, and a
+`scope` are a list or a map of members, so their `name` and `description`
+have no key to sit under, and a `compose_node` around one is how it gets a
+name. A test pins every key against the composer's config, so a field that
+a config gains fails the gate until the schema gains it too.
 
 ## Examples
 
