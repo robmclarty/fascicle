@@ -91,8 +91,16 @@ injection can reach too.
   points out of the workspace is refused, and so is a new file whose nearest
   existing parent sits outside it. Inside the workspace the reads see
   everything you keep there, `.env` files included, since nothing reads
-  `.gitignore`. If you find a file tool that reaches a path outside the
-  workspace, that's a Fascicle vulnerability, so please report it.
+  `.gitignore`. The writes stay out of two places. In every mode, `write_file`
+  and `edit_file` refuse any path that passes through a file or a directory
+  named `.git` or `node_modules`. Git runs what its directory holds, a package
+  manager runs what `node_modules` holds, and a change in either never shows in
+  `git diff`, so an edit there would be code that runs on your next command
+  without your ever seeing it. Every other file that git ignores stays
+  writable, and an edit to one is just as invisible to `git diff`, so Manual is
+  the mode for a checkout whose ignored files matter. If you find a file tool
+  that reaches a path outside the workspace, that's a Fascicle vulnerability,
+  so please report it.
 - **Containment binds the file tools only.** `run_command` hands its string to
   `/bin/sh`, and a shell can read and write anything you can, including
   `~/.ssh`, `~/.aws`, your other repositories, and the network. The workspace
