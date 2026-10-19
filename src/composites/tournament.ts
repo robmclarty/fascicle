@@ -92,20 +92,23 @@ async function play_round<o>(
   bracket: BracketRecord[],
 ): Promise<string[]> {
   const next_round: string[] = []
+  // Stryker disable next-line EqualityOperator: one lap past the end reads an undefined `a_id`, which the guard below skips.
   for (let i = 0; i < current.length; i += 2) {
     const a_id = current[i]
     const b_id = current[i + 1]
+    // Stryker disable next-line ConditionalExpression: `i < current.length` keeps `a_id` defined, and the check is only there because indexed access types it as possibly undefined.
     if (a_id === undefined) continue
     if (b_id === undefined) {
       next_round.push(a_id)
       continue
     }
-    const a_val = results[a_id]
-    const b_val = results[b_id]
-    if (a_val === undefined || b_val === undefined) {
+    // Stryker disable all: parallel throws unless every member settles, so each key has a result, even an undefined one, and this guard never fires.
+    if (!Object.hasOwn(results, a_id) || !Object.hasOwn(results, b_id)) {
       throw new Error('tournament: missing result for match')
     }
-    const pick = await compare(a_val, b_val)
+    // Stryker restore all
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+    const pick = await compare(results[a_id] as o, results[b_id] as o)
     const winner_id = pick === 'a' ? a_id : b_id
     bracket.push({ round, a_id, b_id, winner_id })
     next_round.push(winner_id)
@@ -119,12 +122,14 @@ async function play_round<o>(
  */
 function winner_of<o>(current: ReadonlyArray<string>, results: Record<string, o>): o {
   const final_id = current[0]
+  // Stryker disable all: a tournament has at least one member and every round keeps a survivor, and parallel throws unless every member settles, so neither guard fires.
   if (final_id === undefined) {
     throw new Error('tournament: no winner')
   }
-  const winner = results[final_id]
-  if (winner === undefined) {
+  if (!Object.hasOwn(results, final_id)) {
     throw new Error('tournament: winner missing from results')
   }
-  return winner
+  // Stryker restore all
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+  return results[final_id] as o
 }

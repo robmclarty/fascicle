@@ -136,3 +136,30 @@ describe('tournament (composite)', () => {
     expect(result).toEqual({ top: 2, matches: 1 })
   })
 })
+
+describe('tournament: construction', () => {
+  it('throws when constructed with zero members', () => {
+    expect(() => tournament({ members: {}, compare: () => 'a' })).toThrow(
+      'tournament: at least one member required',
+    )
+  })
+})
+
+describe('tournament: undefined results', () => {
+  afterEach(remove_signal_listeners)
+
+  it('plays a member that returns undefined through its matches, and lets it win', async () => {
+    const flow = tournament<string, number | undefined>({
+      members: { a: step('a', () => undefined), b: step('b', () => 1), c: step('c', () => 2) },
+      compare: (x, y) => (x === undefined || (y !== undefined && x > y) ? 'a' : 'b'),
+    })
+    const result = await run(flow, 'input', { install_signal_handlers: false })
+    expect(result).toStrictEqual({
+      winner: undefined,
+      bracket: [
+        { round: 1, a_id: 'a', b_id: 'b', winner_id: 'a' },
+        { round: 2, a_id: 'a', b_id: 'c', winner_id: 'a' },
+      ],
+    })
+  })
+})

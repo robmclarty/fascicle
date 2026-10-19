@@ -167,3 +167,55 @@ describe('ensemble (composite)', () => {
     )
   })
 })
+
+describe('ensemble: undefined results and NaN scores', () => {
+  it('scores a member that returns undefined, and lets it win', async () => {
+    const flow = ensemble<string, number | undefined>({
+      members: { a: step('a', () => undefined), b: step('b', () => 1) },
+      score: (r) => r ?? 10,
+    })
+    const result = await run(flow, 'input', { install_signal_handlers: false })
+    expect(result).toStrictEqual({ winner: undefined, scores: { a: 10, b: 1 } })
+  })
+
+  // Each order puts the NaN somewhere else, the first slot included.
+  it.each([
+    ['max', ['nan', 3, 7], 7],
+    ['max', [3, 'nan', 7], 7],
+    ['max', [3, 7, 'nan'], 7],
+    ['min', ['nan', 3, 7], 3],
+    ['min', [3, 'nan', 7], 3],
+    ['min', [3, 7, 'nan'], 3],
+    ['min', [7, 'nan', 3], 3],
+  ] as const)('never lets a NaN score win under select %s, from %j', async (select, values, best) => {
+    const [a, b, c] = values
+    const flow = ensemble<string, number | 'nan'>({
+      members: { a: step('a', () => a), b: step('b', () => b), c: step('c', () => c) },
+      score: (r) => (r === 'nan' ? Number.NaN : r),
+      select,
+    })
+    const result = await run(flow, 'input', { install_signal_handlers: false })
+    expect(result.winner).toBe(best)
+    expect(Object.values(result.scores).filter(Number.isNaN)).toHaveLength(1)
+  })
+
+  it.each(['max', 'min'] as const)('gives a tie under select %s to the first member in key order', async (select) => {
+    const flow = ensemble({
+      members: { a: step('a', () => 'a'), b: step('b', () => 'b'), c: step('c', () => 'c') },
+      score: () => 5,
+      select,
+    })
+    const result = await run(flow, 'input', { install_signal_handlers: false })
+    expect(result.winner).toBe('a')
+  })
+
+  it('throws when every score is NaN, since none of them can win', async () => {
+    const flow = ensemble({
+      members: { a: step('a', () => 1), b: step('b', () => 2) },
+      score: () => Number.NaN,
+    })
+    await expect(run(flow, 'input', { install_signal_handlers: false })).rejects.toThrow(
+      'ensemble: every score was NaN, so no member can win; make score return a number for each result',
+    )
+  })
+})

@@ -171,3 +171,78 @@ describe('ensemble_step (composite)', () => {
     expect(result).toBe('b:15:15')
   })
 })
+
+describe('ensemble_step: undefined results and NaN ranks', () => {
+  it('scores a member that returns undefined, and lets it win', async () => {
+    const flow = ensemble_step<unknown, number | undefined, number>({
+      members: { a: step('a', () => undefined), b: step('b', () => 1) },
+      score: step('score', (value: number | undefined) => value ?? 10),
+      rank_by: (s) => s,
+    })
+    const result = await run(flow, undefined, { install_signal_handlers: false })
+    expect(result).toStrictEqual({
+      winner_id: 'a',
+      winner: undefined,
+      winner_scored: 10,
+      scored: { a: 10, b: 1 },
+    })
+  })
+
+  it('keeps a winner whose structured score is undefined', async () => {
+    const flow = ensemble_step<unknown, number, number | undefined>({
+      members: { a: step('a', () => 1), b: step('b', () => 2) },
+      score: step('score', (value: number) => (value === 1 ? undefined : value)),
+      rank_by: (s) => s ?? 10,
+    })
+    const result = await run(flow, undefined, { install_signal_handlers: false })
+    expect(result).toStrictEqual({
+      winner_id: 'a',
+      winner: 1,
+      winner_scored: undefined,
+      scored: { a: undefined, b: 2 },
+    })
+  })
+
+  // Each order puts the NaN somewhere else, the first slot included.
+  it.each([
+    ['max', [Number.NaN, 3, 7], 'c'],
+    ['max', [3, Number.NaN, 7], 'c'],
+    ['max', [3, 7, Number.NaN], 'b'],
+    ['min', [Number.NaN, 3, 7], 'b'],
+    ['min', [3, Number.NaN, 7], 'a'],
+    ['min', [3, 7, Number.NaN], 'a'],
+    ['min', [7, Number.NaN, 3], 'c'],
+  ] as const)('never lets a NaN rank win under select %s, from %s', async (select, values, best) => {
+    const [a, b, c] = values
+    const flow = ensemble_step<unknown, number, number>({
+      members: { a: step('a', () => a), b: step('b', () => b), c: step('c', () => c) },
+      score: step('score', (value: number) => value),
+      rank_by: (s) => s,
+      select,
+    })
+    const result = await run(flow, undefined, { install_signal_handlers: false })
+    expect(result.winner_id).toBe(best)
+  })
+
+  it.each(['max', 'min'] as const)('gives a tie under select %s to the first member in key order', async (select) => {
+    const flow = ensemble_step<unknown, string, number>({
+      members: { a: step('a', () => 'a'), b: step('b', () => 'b'), c: step('c', () => 'c') },
+      score: step('score', () => 5),
+      rank_by: (s) => s,
+      select,
+    })
+    const result = await run(flow, undefined, { install_signal_handlers: false })
+    expect(result.winner_id).toBe('a')
+  })
+
+  it('throws when every rank is NaN, since none of them can win', async () => {
+    const flow = ensemble_step<unknown, number, number>({
+      members: { a: step('a', () => 1), b: step('b', () => 2) },
+      score: step('score', (value: number) => value),
+      rank_by: () => Number.NaN,
+    })
+    await expect(run(flow, undefined, { install_signal_handlers: false })).rejects.toThrow(
+      'ensemble_step: every score ranked NaN, so no member can win; make rank_by return a number for each score',
+    )
+  })
+})

@@ -24,7 +24,9 @@ export type EnsembleStepResult<o, ranked> = {
 
 // Scope variable keys, underscore-prefixed to avoid colliding with any
 // stashes a user-supplied step might set in the same scope chain.
+// Stryker disable next-line StringLiteral: this composite reads each key back through the same constant, so any spelling works but one that a user's stash might take.
 const RESULTS_KEY = '__ensemble_step_results'
+// Stryker disable next-line StringLiteral: this composite reads each key back through the same constant, so any spelling works but one that a user's stash might take.
 const ITEM_KEY = '__ensemble_step_item'
 
 type Pair<o> = { readonly id: string; readonly value: o }
@@ -38,7 +40,9 @@ type ScoredPair<ranked> = { readonly id: string; readonly scored: ranked }
  * example, a separate model call, a sub-flow, anything that wants its own
  * trajectory span and abort routing). The `score` step is dispatched once per
  * member result; `rank_by` projects a number out of the structured scored output;
- * `select` picks the highest (`'max'`, default) or lowest (`'min'`) rank.
+ * `select` picks the highest (`'max'`, default) or lowest (`'min'`) rank. A
+ * member that returns `undefined` is scored like any other, and a NaN rank
+ * never wins, so a field whose every rank is NaN throws.
  *
  * The result carries `winner_scored`, the structured output from the round's
  * scoring run preserved verbatim, so callers never pay to re-score the
@@ -85,7 +89,8 @@ export function ensemble_step<i, o, ranked, projected = EnsembleStepResult<o, ra
     (results: Record<string, o>): ReadonlyArray<Pair<o>> => {
       const out: Pair<o>[] = []
       for (const id of keys) {
-        if (id in results) {
+        // Stryker disable next-line ConditionalExpression: parallel throws unless every member settles, so each key has a result, even an undefined one.
+        if (Object.hasOwn(results, id)) {
           // oxlint-disable-next-line typescript/no-unsafe-type-assertion
           out.push({ id, value: results[id] as o })
         }
@@ -105,32 +110,28 @@ export function ensemble_step<i, o, ranked, projected = EnsembleStepResult<o, ra
       // oxlint-disable-next-line typescript/no-unsafe-type-assertion
       const results = vars[RESULTS_KEY] as Record<string, o>
       const scored: Record<string, ranked> = {}
-      let winner_id: string | undefined
-      let winner_rank: number | undefined
-      let winner_scored: ranked | undefined
+      // The winning pair rather than its parts, so a result or a score that
+      // is itself undefined still wins.
+      let best: ScoredPair<ranked> | undefined
+      let best_rank = Number.NaN
       for (const pair of scored_pairs) {
         scored[pair.id] = pair.scored
         const rank = rank_by(pair.scored)
-        const better =
-          winner_rank === undefined
-            ? true
-            : select === 'max'
-              ? rank > winner_rank
-              : rank < winner_rank
-        if (better) {
-          winner_id = pair.id
-          winner_rank = rank
-          winner_scored = pair.scored
+        // A NaN rank never wins, wherever it falls.
+        if (Number.isNaN(rank)) continue
+        if (best === undefined || (select === 'max' ? rank > best_rank : rank < best_rank)) {
+          best = pair
+          best_rank = rank
         }
       }
-      if (winner_id === undefined || winner_scored === undefined) {
-        throw new Error('ensemble_step: no members produced a result')
+      if (best === undefined) {
+        throw new Error(
+          'ensemble_step: every score ranked NaN, so no member can win; make rank_by return a number for each score',
+        )
       }
-      const winner = results[winner_id]
-      if (winner === undefined) {
-        throw new Error('ensemble_step: winner missing from results')
-      }
-      return project({ winner_id, winner, winner_scored, scored })
+      // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+      const winner = results[best.id] as o
+      return project({ winner_id: best.id, winner, winner_scored: best.scored, scored })
     },
   )
 

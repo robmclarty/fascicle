@@ -133,10 +133,6 @@ The published surface as of v0.15.0:
 These are the bugs that I know about and haven't fixed yet, with the ones most
 likely to bite you first.
 
-- **Pick-best composites misread `undefined` and NaN.** `ensemble`,
-  `ensemble_step`, and `tournament` treat a member that returns `undefined` as
-  one that returned nothing at all, and `ensemble` and `ensemble_step` let a NaN
-  score win when it comes first.
 - **A repeated suspend id goes unchecked.** Resume data is keyed by id, so a
   second `suspend` or `gate` that reuses an id finds the first one's datum and
   passes without pausing. Nothing checks repeated ids for any step yet, since

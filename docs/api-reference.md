@@ -140,8 +140,8 @@ needs fan-in, phases, or named per-joint types.
 | Primitive | Shape |
 | --- | --- |
 | `adversarial({ build, critique, accept, max_rounds, project? })` | build, critique, repeat until accept or `max_rounds` |
-| `ensemble({ members, score, select?, project? })` | run named members, pick the highest-scoring result |
-| `ensemble_step({ members, score, rank_by, select?, project? })` | pick-best where the scorer is itself a `Step`; returns the winner plus its structured score |
+| `ensemble({ members, score, select?, project? })` | run named members, pick the highest-scoring result (or the lowest under `select: 'min'`). A NaN score never wins, and a field whose every score is NaN throws |
+| `ensemble_step({ members, score, rank_by, select?, project? })` | pick-best where the scorer is itself a `Step`; returns the winner plus its structured score. A NaN rank never wins, and a field whose every rank is NaN throws |
 | `tournament({ members, compare, project? })` | single-elimination bracket |
 | `consensus({ members, agree, max_rounds, project? })` | run all members each round, accept when the `agree` predicate holds |
 

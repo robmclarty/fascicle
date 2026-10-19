@@ -25,7 +25,9 @@ export type EnsembleResult<o> = {
  *
  * `select` picks the highest (`'max'`, the default) or lowest (`'min'`)
  * score. Tie-breaking is "any tied result is acceptable": the first member
- * (in `members` key order) holding the best score wins. `project` maps the
+ * (in `members` key order) holding the best score wins. A member that
+ * returns `undefined` is scored like any other, and a NaN score stays in the
+ * score map but never wins, so a field whose every score is NaN throws. `project` maps the
  * `{ winner, scores }` envelope into the step's output (for example, `(r) =>
  * r.winner`); omitted, the envelope itself is the output.
  *
@@ -53,40 +55,42 @@ export function ensemble<i, o, projected = EnsembleResult<o>>(
 
   const pick = step('pick_winner', async (results: Record<string, o>) => {
     const scores: Record<string, number> = {}
+    const ranked: Array<readonly [string, number]> = []
     for (const k of keys) {
-      const value = results[k]
-      if (value === undefined) continue
-      scores[k] = await score_fn(value, k)
+      // Stryker disable next-line ConditionalExpression: parallel throws unless every member settles, so each key has a result, even an undefined one.
+      if (!Object.hasOwn(results, k)) continue
+      // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+      const score = await score_fn(results[k] as o, k)
+      scores[k] = score
+      ranked.push([k, score])
     }
-  
-    let winner_key: string | undefined = undefined
-    let winner_score: number | undefined = undefined
-    for (const k of keys) {
-      const current = scores[k]
-      if (current === undefined) continue
-      if (winner_score === undefined) {
-        winner_key = k
-        winner_score = current
-        continue
-      }
-      const better = select === 'max' ? current > winner_score : current < winner_score
-      if (better) {
-        winner_key = k
-        winner_score = current
-      }
-    }
-  
+
+    const winner_key = best_of(ranked, select)
     if (winner_key === undefined) {
-      throw new Error('ensemble: no members produced a result')
+      throw new Error(
+        'ensemble: every score was NaN, so no member can win; make score return a number for each result',
+      )
     }
-    const winner = results[winner_key]
-    if (winner === undefined) {
-      throw new Error('ensemble: winner missing from results')
-    }
-    return project({ winner, scores })
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+    return project({ winner: results[winner_key] as o, scores })
   })
 
   const inner = sequence([fan_out, pick])
 
   return compose(inner, { name: config.name ?? 'ensemble', description: config.description })
+}
+
+/**
+ * The member whose score is best under `select`, the first in `ranked` order
+ * on a tie, or `undefined` when every score is NaN. A NaN score never wins,
+ * wherever it falls, because no reading of "best" includes it.
+ */
+function best_of(ranked: ReadonlyArray<readonly [string, number]>, select: 'max' | 'min'): string | undefined {
+  let best: readonly [string, number] | undefined
+  for (const entry of ranked) {
+    const score = entry[1]
+    if (Number.isNaN(score)) continue
+    if (best === undefined || (select === 'max' ? score > best[1] : score < best[1])) best = entry
+  }
+  return best?.[0]
 }
