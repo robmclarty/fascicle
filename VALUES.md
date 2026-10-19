@@ -79,10 +79,12 @@ discovering them the hard way later.
 
 Your agent should outlive any one vendor's decisions. Model ids are opaque and passed
 verbatim, providers are swappable by config, and local models are first-class rather
-than an afterthought. Fascicle sits on top of vendor SDKs but keeps the load-bearing
-logic (the loop, tool handling, cost, the audit trail) on your side of a thin seam, so
-a breaking change, a price change, or a strategy change from a commercial provider is a
-contained edit instead of a rewrite. You keep the right to change direction.
+than an afterthought. Fascicle leans on a vendor SDK only when you choose one, since
+most providers also run on a native transport that talks to the API directly. Either
+way it keeps the load-bearing logic (the loop, tool handling, cost, the audit trail) on
+your side of a thin seam, so a breaking change, a price change, or a strategy change
+from a commercial provider is a contained edit instead of a rewrite. You keep the right
+to change direction.
 
 ## Security and privacy
 
@@ -125,11 +127,13 @@ never locked. The rope is the point, for the people who want to tie their own kn
 
 ### "Narrow means missing batteries: no RAG, no memory, no evals."
 
-On purpose. Those are applications you build on the substrate, or separate tools you
+Evals ship, as composition: `bench` scores a flow over fixtures with the stock judges
+and diffs the result against a committed baseline. RAG and memory are the deliberate
+omissions. They are applications you build on the substrate, or separate tools you
 compose in, not things baked into the material. Baking them in would make Fascicle
 heavier, more opinionated, and coupled to one way of doing retrieval or memory, which is
 exactly the lock-in it exists to avoid. The bet is that a good substrate plus the tool
-you actually want beats a big framework plus the three tools it chose for you.
+you actually want beats a big framework plus the tools it chose for you.
 
 ### "No registry and no ambient state means more manual wiring."
 
@@ -169,8 +173,10 @@ exit cheap.
 
 ### "You are reinventing libraries that already exist."
 
-Fascicle does not replace the vendor SDKs; it is built on them. It owns the layer above
-the single model call: the loop, tool handling, composition, cost, and the trajectory.
+Fascicle does not replace the vendor SDKs; it uses them when you want one and runs
+without them when you don't, since most providers also have a native transport. It owns
+the layer above the single model call: the loop, tool handling, composition, cost, and
+the trajectory.
 That layer is where the values live, and it is a different layer from the provider
 plumbing underneath. Where an existing tool already gives you what you need, use it.
 Fascicle is for when you want that seam to be yours.

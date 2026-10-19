@@ -184,7 +184,7 @@ await serve_acp({
 
 Full details: [docs/providers.md](./docs/providers.md). The `claude_cli` adapter has its own guide: [docs/cli.md](./docs/cli.md).
 
-## Live dev dashboard
+## Live dev viewer
 
 ![fascicle-viewer running against an amplify trajectory: span tree on the left, event log on the right, $2.55 cost rolled up in the header](./screenshot.png)
 
