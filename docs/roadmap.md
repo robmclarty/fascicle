@@ -147,6 +147,11 @@ likely to bite you first.
   reads the `cached_tokens` that OpenRouter reports but not its
   `cache_write_tokens`, so a model with explicit caching shows no cache writes.
   The cost that OpenRouter reports, which is what the step records, is right.
+- **A gate's failed read on resume runs its step again.** When a gate's store
+  fails the read as the run resumes, the lookup counts as a miss, so the inner
+  step runs again (and you pay for it again), and the run goes on with a result
+  that the approver never saw. A hand-built `checkpoint` before a `suspend` has
+  the same gap.
 - **`bench`'s `CaseResult` has an `_input` field that's never set.** It exists
   only to give the input type parameter a use.
 - **The viewer slows down on long runs and clips large flows.** Holding or

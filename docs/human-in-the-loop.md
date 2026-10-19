@@ -77,6 +77,11 @@ Two things to know before you ship this:
 > model calls. The provider bills the replay like any other call. Wrap your paid
 > leaves in `checkpoint(...)` with a `checkpoint_store` before any `suspend`
 > gate, and a resume reads the memoized result instead of buying it again.
+> When the gate shows that result to an approver, pass
+> `on_write_error: 'fail'` to the `checkpoint`, so a failed write fails the run
+> before anyone is asked. By default it's only recorded, so the run would go
+> on, and a resume would run the step again and carry on with a result that
+> nobody approved.
 >
 > Every `model_call` counts as a side effect, and so does any step you mark with
 > `{ side_effect: true }`. When a resumed run runs one of them again before it
@@ -104,8 +109,11 @@ suspends with `{ input: result }` as the payload (`format` projects the
 approver's view into `input`, and the store always holds the raw result). A
 resume, or a fresh run after a restart with the same store, serves the inner
 result from the checkpoint instead of re-running it, so you don't pay for the
-model call twice, and approval passes the inner result through unchanged. Reach for raw `checkpoint` plus `suspend`
-when the approval decision has to shape the output (`combine`).
+model call twice, and approval passes the inner result through unchanged. A
+store that fails the write fails the run before it suspends, since `gate` passes
+`on_write_error: 'fail'` to its checkpoint. Reach for raw `checkpoint` plus
+`suspend` when the approval decision has to shape the output (`combine`), and
+pass `on_write_error: 'fail'` there too.
 
 A complete server that runs this over HTTP (POST to start, GET the pending
 approval, POST the decision to resume) is in

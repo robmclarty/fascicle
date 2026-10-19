@@ -271,6 +271,29 @@ describe('gate (composite)', () => {
     expect(labels).not.toContain('gate')
   })
 
+  it('fails the run before it suspends when its store fails the write', async () => {
+    const failure = new Error('disk full')
+    const store: CheckpointStore = {
+      async get() {
+        return null
+      },
+      async set() {
+        throw failure
+      },
+      async delete() {
+        // noop
+      },
+    }
+    const on_suspend = vi.fn()
+    const flow = gate(step('draft', (n: number) => n + 1), { id: 'approve', store })
+    // An approval has to refer to a result that the store kept, or a resume
+    // would run the inner step again and go on with one nobody saw.
+    await expect(
+      run.until_suspended(flow, 1, { install_signal_handlers: false }).then(on_suspend),
+    ).rejects.toBe(failure)
+    expect(on_suspend).not.toHaveBeenCalled()
+  })
+
   it.each([
     ['', '_'],
     ['approve draft', 'approve_draft'],

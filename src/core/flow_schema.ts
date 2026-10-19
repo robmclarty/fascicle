@@ -377,7 +377,8 @@ export const flow_schema = {
         "name": { "type": "string" },
         "description": { "type": "string" },
         "do": { "$ref": "#/$defs/node" },
-        "key": { "type": "string" }
+        "key": { "type": "string" },
+        "on_write_error": { "type": "string", "enum": ["record", "fail"] }
       }
     },
     "suspend_config": {

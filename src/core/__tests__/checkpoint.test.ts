@@ -21,6 +21,21 @@ function memory_store(): CheckpointStore & { data: Map<string, unknown> } {
   }
 }
 
+// A store that misses every lookup and throws `thrown` on every write.
+function failing_writes(thrown: unknown): CheckpointStore {
+  return {
+    async get() {
+      return null
+    },
+    async set() {
+      throw thrown
+    },
+    async delete() {
+      // noop
+    },
+  }
+}
+
 describe('checkpoint', () => {
   it('returns cached value on hit and does not invoke inner', async () => {
     const spy = vi.fn((x: number) => x + 1)
@@ -192,20 +207,9 @@ describe('checkpoint', () => {
     async (_, thrown, message) => {
       const { logger, events } = recording_logger()
       const flow = checkpoint(step('add_one', (x: number) => x + 1), { key: 'k_write' })
-      const store: CheckpointStore = {
-        async get() {
-          return null
-        },
-        async set() {
-          throw thrown
-        },
-        async delete() {
-          // noop
-        },
-      }
 
       const result = await run(flow, 5, {
-        checkpoint_store: store,
+        checkpoint_store: failing_writes(thrown),
         trajectory: logger,
         install_signal_handlers: false,
       })
@@ -224,6 +228,49 @@ describe('checkpoint', () => {
       ])
     },
   )
+
+  it('returns the inner result after a failed write under on_write_error: record', async () => {
+    const { logger, events } = recording_logger()
+    const flow = checkpoint(step('add_one', (x: number) => x + 1), {
+      key: 'k_record',
+      on_write_error: 'record',
+    })
+
+    const result = await run(flow, 5, {
+      checkpoint_store: failing_writes(new Error('disk full')),
+      trajectory: logger,
+      install_signal_handlers: false,
+    })
+
+    expect(result).toBe(6)
+    const statuses = events.filter((e) => e.kind === 'checkpoint').map((e) => e['status'])
+    expect(statuses).toEqual(['miss', 'write_error'])
+  })
+
+  it('records write_error and then throws the store error under on_write_error: fail', async () => {
+    const { logger, events } = recording_logger()
+    const failure = new Error('disk full')
+    const flow = checkpoint(step('add_one', (x: number) => x + 1), {
+      key: 'k_fail',
+      on_write_error: 'fail',
+    })
+
+    await expect(
+      run(flow, 5, {
+        checkpoint_store: failing_writes(failure),
+        trajectory: logger,
+        install_signal_handlers: false,
+      }),
+    ).rejects.toBe(failure)
+    const recorded = events.filter((e) => e.kind === 'checkpoint')
+    expect(recorded.map((e) => e['status'])).toEqual(['miss', 'write_error'])
+    expect(recorded[1]?.['error']).toBe('disk full')
+  })
+
+  it('keeps on_write_error out of its config, so describe shows the same step', () => {
+    const strict = checkpoint(step('a', (n: number) => n), { key: 'k', on_write_error: 'fail' })
+    expect(strict.config).toStrictEqual({ key: 'k' })
+  })
 
   it('counts a stored undefined as a miss and runs inner', async () => {
     const { logger, events } = recording_logger()

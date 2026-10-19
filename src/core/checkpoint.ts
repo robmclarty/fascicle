@@ -12,7 +12,9 @@
  * records a `checkpoint` event with `status: 'write_error'` and returns the
  * inner result, because `inner` has already run and been paid for, and a
  * checkpoint is a cache, not the result. The next run with the same key
- * misses and runs `inner` again.
+ * misses and runs `inner` again. `on_write_error: 'fail'` records the same
+ * event and then throws the store's error, for a result that a `suspend`
+ * hands to an approver, which has to be the one the store kept.
  *
  * Wrapping an anonymous inner step throws synchronously at construction time
  * with the message `checkpoint requires a named step, got anonymous`, because
@@ -31,6 +33,14 @@ export type CheckpointConfig<i> = {
   readonly name?: string
   readonly description?: string
   readonly key: string | ((input: i) => string)
+  /**
+   * What a failed `store.set` does. `'record'` (the default) records a
+   * `write_error` event and returns the inner result. `'fail'` records the
+   * same event and then throws the store's error, which is what a step whose
+   * result a `suspend` hands to an approver wants, so the approval never
+   * refers to a result that the store didn't keep.
+   */
+  readonly on_write_error?: 'record' | 'fail'
 }
 
 let checkpoint_counter = 0
@@ -114,7 +124,8 @@ async function look_up(
 /**
  * Write `result` to `store` at `key`. A throwing `store.set` records
  * `status: 'write_error'` and leaves the result to the caller, since the
- * inner step that produced it has already run.
+ * inner step that produced it has already run, unless `fail_on_write` says
+ * to throw the store's error once the event is recorded.
  */
 async function keep(
   store: CheckpointStore,
@@ -122,11 +133,13 @@ async function keep(
   result: unknown,
   meta: EventMeta,
   ctx: RunContext,
+  fail_on_write: boolean,
 ): Promise<void> {
   try {
     await store.set(key, result)
   } catch (err) {
     ctx.trajectory.record(store_failure('write_error', err, meta))
+    if (fail_on_write) throw err
   }
 }
 
@@ -148,6 +161,7 @@ export function checkpoint<i, o>(inner: Step<i, o>, config: CheckpointConfig<i>)
 
   const id = next_id()
   const key_spec = config.key
+  const fail_on_write = config.on_write_error === 'fail'
   const gates = gates_within(inner)
 
   const run_fn = async (input: i, ctx: RunContext): Promise<o> => {
@@ -164,7 +178,7 @@ export function checkpoint<i, o>(inner: Step<i, o>, config: CheckpointConfig<i>)
     }
 
     const result = await dispatch_step(inner, input, ctx)
-    await keep(store, key, result, meta, ctx)
+    await keep(store, key, result, meta, ctx, fail_on_write)
     return result
   }
 

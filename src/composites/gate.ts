@@ -16,6 +16,11 @@
  *   checkpoint and resume docs make for fixed string keys). Inherited from
  *   `checkpoint`: a stored `null`/`undefined` counts as a miss, and the inner
  *   step must be named.
+ * - A failed write fails the run: the checkpoint takes
+ *   `on_write_error: 'fail'`, so the run stops before it suspends rather than
+ *   ask for approval of a result that the store never kept, which a resume
+ *   would replace by running `inner` again. A hand-built checkpoint before a
+ *   `suspend` that shows its result should pass `'fail'` for the same reason.
  * - Suspend payload: follows the library's suspend contract, which raises
  *   `{ input }` on the `suspended_error`. Here that `input` is
  *   `format(result)` when `format` is given and the raw result otherwise, so
@@ -102,7 +107,7 @@ export function gate<i, o>(inner: Step<i, o>, config: GateConfig<o>): Step<i, o>
   const { id, store, format } = config
   assert_valid_step_id(id, 'gate id', 'put the label in name')
 
-  const checkpointed = checkpoint(inner, { key: `gate:${id}` })
+  const checkpointed = checkpoint(inner, { key: `gate:${id}`, on_write_error: 'fail' })
   const persisted = store === undefined ? checkpointed : bind_store(checkpointed, store)
 
   const restore = use(['result'], (vars) => {

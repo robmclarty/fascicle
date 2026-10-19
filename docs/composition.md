@@ -162,7 +162,9 @@ from English specifications:
   Each of these five returns a result envelope; the optional `project` maps
   it into the step's output at the source (`project: (r) => r.winner`), so
   no downstream unwrap step is needed.
-- `checkpoint(inner, { key })` — memoize `inner` by key.
+- `checkpoint(inner, { key, on_write_error? })` — memoize `inner` by key.
+  Pass `on_write_error: 'fail'` when a `suspend` shows its result to an
+  approver, so a failed write fails the run instead of being recorded.
 - `suspend({ id, on, resume_schema, combine })` — pause for external input.
 - `gate(inner, { id, store?, format?, name? })` — persist paid work, then
   pause for approval; resume returns the inner result unchanged.
