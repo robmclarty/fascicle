@@ -137,10 +137,6 @@ likely to bite you first.
   second `suspend` or `gate` that reuses an id finds the first one's datum and
   passes without pausing. Nothing checks repeated ids for any step yet, since
   catching them needs a walk over the whole flow when the run starts.
-- **OpenRouter's cache writes go uncounted.** On `transport: 'native'`, usage
-  reads the `cached_tokens` that OpenRouter reports but not its
-  `cache_write_tokens`, so a model with explicit caching shows no cache writes.
-  The cost that OpenRouter reports, which is what the step records, is right.
 - **A gate's failed read on resume runs its step again.** When a gate's store
   fails the read as the run resumes, the lookup counts as a miss, so the inner
   step runs again (and you pay for it again), and the run goes on with a result

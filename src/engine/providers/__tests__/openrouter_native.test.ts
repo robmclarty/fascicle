@@ -382,13 +382,23 @@ function cost_engine(pricing?: PricingTable): ReturnType<typeof create_engine> {
 
 const COST_USAGE = { prompt_tokens: 1000, completion_tokens: 200, prompt_tokens_details: { cached_tokens: 400 } }
 
+// The usage OpenRouter returned for a cache write on 2026-10-19, from a live
+// request to anthropic/claude-sonnet-5.5 through Google Vertex: prompt_tokens
+// counts the 16,299 tokens written, and the request was charged $0.0420055.
+const CACHE_WRITE_USAGE = {
+  prompt_tokens: 16358,
+  completion_tokens: 114,
+  prompt_tokens_details: { cached_tokens: 0, cache_write_tokens: 16299 },
+}
+
 /** One turn, whole or streamed, whose usage reports `cost` (or none when undefined). */
 function cost_turn(
   streamed: boolean,
   cost: number | undefined,
   tool_call?: { id: string; arguments: string },
+  base_usage: Record<string, unknown> = COST_USAGE,
 ): Response {
-  const usage = cost === undefined ? COST_USAGE : { ...COST_USAGE, cost, is_byok: false, cost_details: { upstream_inference_cost: null } }
+  const usage = cost === undefined ? base_usage : { ...base_usage, cost, is_byok: false, cost_details: { upstream_inference_cost: null } }
   const finish_reason = tool_call === undefined ? 'stop' : 'tool_calls'
   const calls =
     tool_call === undefined
@@ -484,5 +494,38 @@ describe('the cost OpenRouter reports, through generate', () => {
     expect('cost' in result).toBe(false)
     expect(records.filter((e) => e.kind === 'cost')).toStrictEqual([])
     expect(records.filter((e) => e.kind === 'pricing_missing')).toHaveLength(1)
+  })
+})
+
+describe('the cache writes OpenRouter reports, through generate', () => {
+  it.each([false, true])(
+    'counts the writes and gives the reported charge a cache-write share, streamed %s',
+    async (streamed) => {
+      stub_fetch_queue([cost_turn(streamed, 0.0420055, undefined, CACHE_WRITE_USAGE)])
+      const result = await cost_engine().generate({
+        model: COST_MODEL,
+        prompt: 'hi',
+        ...(streamed ? { on_chunk: (_chunk: StreamChunk) => {} } : {}),
+      })
+      const usage = { input_tokens: 16358, output_tokens: 114, cached_input_tokens: 0, cache_write_tokens: 16299 }
+      expect(result.steps[0]?.usage).toStrictEqual(usage)
+      expect(result.steps[0]?.cost).toStrictEqual(decompose_total_cost(0.0420055, usage))
+      // 59 fresh, 114 output, and 16,299 writes weighted at 1.25.
+      expect(result.steps[0]?.cost?.cache_write_usd).toBeCloseTo((0.0420055 * 20373.75) / 20546.75, 12)
+    },
+  )
+
+  it('prices the writes at the cache-write rate when no charge is reported', async () => {
+    stub_fetch_queue([cost_turn(false, undefined, undefined, CACHE_WRITE_USAGE)])
+    const result = await cost_engine({
+      [`openrouter:${COST_MODEL}`]: {
+        input_per_million: 2,
+        output_per_million: 10,
+        cached_input_per_million: 0.1,
+        cache_write_per_million: 2.5,
+      },
+    }).generate({ model: COST_MODEL, prompt: 'hi' })
+    expect(result.cost?.total_usd).toBeCloseTo(0.0420055, 5)
+    expect(result.cost?.cache_write_usd).toBeCloseTo(0.0407475, 5)
   })
 })

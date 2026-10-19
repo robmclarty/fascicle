@@ -506,6 +506,38 @@ describe('map_chat_usage', () => {
     })
   })
 
+  it.each([
+    ['write', { cached_tokens: 0, cache_write_tokens: 16299 }, 0, 16299],
+    ['read', { cached_tokens: 16299, cache_write_tokens: 0 }, 16299, 0],
+  ])(
+    'maps an OpenRouter cache %s from the details, keeping prompt_tokens inclusive',
+    (_label, details, cached, written) => {
+      expect(
+        map_chat_usage(
+          { prompt_tokens: 16358, completion_tokens: 114, prompt_tokens_details: details },
+          make_dialect({ name: 'openrouter', reports_cost: true }),
+        ),
+      ).toStrictEqual({
+        input_tokens: 16358,
+        output_tokens: 114,
+        cached_input_tokens: cached,
+        cache_write_tokens: written,
+      })
+    },
+  )
+
+  it.each([
+    ['openai', make_dialect()],
+    ['lmstudio', make_dialect({ name: 'lmstudio', auth: { kind: 'none' }, tolerant_usage: true })],
+  ])('leaves cache_write_tokens off a %s response without the field', (_name, dialect) => {
+    expect(
+      map_chat_usage(
+        { prompt_tokens: 140, completion_tokens: 32, prompt_tokens_details: { cached_tokens: 100 } },
+        dialect,
+      ),
+    ).toStrictEqual({ input_tokens: 140, output_tokens: 32, cached_input_tokens: 100 })
+  })
+
   it('zeroes non-numeric token fields without inventing detail fields', () => {
     expect(
       map_chat_usage(

@@ -339,12 +339,32 @@ function read_number(source: object, key: string): number | undefined {
 }
 
 /**
+ * Copy the cache counts in a usage object's prompt_tokens_details onto
+ * totals, `cached_tokens` as reads and `cache_write_tokens` as writes,
+ * leaving off any count that isn't a number.
+ */
+function read_prompt_details(raw: object, totals: UsageTotals): void {
+  const details: unknown = Reflect.get(raw, 'prompt_tokens_details')
+  if (details === null || typeof details !== 'object') return
+  const cached = read_number(details, 'cached_tokens')
+  if (cached !== undefined) totals.cached_input_tokens = cached
+  const cache_write = read_number(details, 'cache_write_tokens')
+  if (cache_write !== undefined) totals.cache_write_tokens = cache_write
+}
+
+/**
  * Map the Chat Completions usage object to UsageTotals. prompt_tokens is
  * already INCLUSIVE of cached tokens on this API, unlike Anthropic's
  * exclusive accounting, so a straight copy is correct; compute_cost
- * subtracts the cached portion back out. No cache-write concept exists on
- * this wire. A missing usage object throws under a strict dialect (a hosted
- * API omitting usage is a broken response) and zeroes under a tolerant one.
+ * subtracts the cached portion back out. OpenRouter adds
+ * `prompt_tokens_details.cache_write_tokens` for a model with explicit
+ * caching, and prompt_tokens counts those too: a live request to
+ * anthropic/claude-sonnet-5.5 through Google Vertex on 2026-10-19 reported
+ * prompt_tokens 16,358 with 16,299 cache writes, then 16,358 with 16,299
+ * cache reads on the same request repeated, and its charge matched pricing
+ * that subtracts both from prompt_tokens. A missing usage object throws
+ * under a strict dialect (a hosted API omitting usage is a broken response)
+ * and zeroes under a tolerant one.
  */
 export function map_chat_usage(raw: unknown, dialect: OpenAICompatibleDialect): UsageTotals {
   if (raw === null || typeof raw !== 'object') {
@@ -357,11 +377,7 @@ export function map_chat_usage(raw: unknown, dialect: OpenAICompatibleDialect): 
     input_tokens: read_number(raw, 'prompt_tokens') ?? 0,
     output_tokens: read_number(raw, 'completion_tokens') ?? 0,
   }
-  const prompt_details: unknown = Reflect.get(raw, 'prompt_tokens_details')
-  if (prompt_details !== null && typeof prompt_details === 'object') {
-    const cached = read_number(prompt_details, 'cached_tokens')
-    if (cached !== undefined) totals.cached_input_tokens = cached
-  }
+  read_prompt_details(raw, totals)
   const completion_details: unknown = Reflect.get(raw, 'completion_tokens_details')
   if (completion_details !== null && typeof completion_details === 'object') {
     const reasoning = read_number(completion_details, 'reasoning_tokens')
