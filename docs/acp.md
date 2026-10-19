@@ -44,7 +44,7 @@ Options:
 
 `acp_agent` takes the same config and returns a promise that resolves to the SDK's agent app. Its handlers are registered but it isn't connected yet, so you can connect it to a transport of your own, or to an in-process client in a test. `serve_acp` is `acp_agent` plus the process: stdin, stdout, the console, and the signals.
 
-An app serves one connection. It keeps one set of sessions and the capabilities that the last client announced, so a second client that connects to the same app overwrites the first one's capabilities and can reach its sessions by id. Build an app for each connection that you accept, as `serve_acp` does for its one connection over stdio.
+An app serves one connection for its life, because it keeps one set of sessions and one client's capabilities. It refuses a second connection on either path that one could take. A second `connect` throws, and a second `initialize` gets an error back before it can replace the first client's capabilities, which is how a second client reaches an app that a server shares among its clients, such as the SDK's `AcpServer`, since that server runs `initialize` before any connect hook. Build an app for each connection that you accept, as `serve_acp` does for its one connection over stdio.
 
 ## What a Turn Carries
 

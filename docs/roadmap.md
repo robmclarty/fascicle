@@ -157,10 +157,10 @@ likely to bite you first.
 - **`run_stdio` leaves the console on stdout.** A stray `console.log` in your
   flow lands ahead of the result, and the run still exits 0, so log to stderr
   under `run_stdio`. `serve_acp` moves the console off stdout for you.
-- **An `acp_agent` app serves one connection.** A transport of your own builds
-  an app for each connection, and an agent that runs for a long time holds the
-  history of every session that it has opened. [acp.md](./acp.md#serve_acp) has
-  the details.
+- **A long-running ACP agent keeps every session's history.** Nothing releases
+  a session when the editor closes its thread, so an agent that runs for a long
+  time holds the history of every session that it has opened until its process
+  ends. [acp.md](./acp.md#what-a-turn-carries) has the details.
 - **Some provider errors don't say what to do.** Many name what went wrong but
   not the fix, such as the config key to set or the `base_url` to check.
 - **Housekeeping.** Engine code that only tests call (`normalize_chunk` and

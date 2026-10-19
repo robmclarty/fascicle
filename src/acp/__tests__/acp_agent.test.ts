@@ -201,11 +201,10 @@ describe('acp_agent: initialize and sessions', () => {
     const first = await open_session(app, { client_capabilities: { terminal: true }, session: { cwd: a } })
     await first.session.prompt('one')
     await first.session.prompt('two')
-    const second = await open_session(app, { session: { cwd: b } })
+    const second = await first.agent.buildSession({ cwd: b, mcpServers: [] }).start()
     expect(built).toHaveLength(2)
     expect(built[0]).toMatchObject({ id: first.session.sessionId, cwd: a, client_capabilities: { terminal: true } })
-    expect(built[1]).toMatchObject({ id: second.session.sessionId, cwd: b })
-    expect(built[1]?.client_capabilities.terminal).not.toBe(true)
+    expect(built[1]).toMatchObject({ id: second.sessionId, cwd: b })
   })
 
   it("fails session/new with the builder's own message when building the flow throws", async () => {
@@ -220,6 +219,40 @@ describe('acp_agent: initialize and sessions', () => {
     const failure = agent.request('session/new', { cwd: tmpdir(), mcpServers: [] })
     await expect(failure).rejects.toBeInstanceOf(RequestError)
     await expect(failure).rejects.toThrow('Internal error: no flow for this workspace')
+  })
+})
+
+describe('acp_agent: one connection per app', () => {
+  const REFUSAL =
+    'acp_agent: this app already serves a connection; build an app for each connection, as serve_acp does'
+
+  it('refuses a second connection, and keeps serving the first', async () => {
+    const app = await acp_agent({ name: 'test-agent', flow: reply_step() })
+    const first = await open_session(app)
+    expect(() => connect_client(app)).toThrow(REFUSAL)
+    await first.session.prompt('hi')
+    expect(await read_turn(first.session)).toEqual({ updates: [message('hello there')], stop_reason: 'end_turn' })
+  })
+
+  // A second client that a server routes to a shared app reaches `initialize`
+  // before any connect hook runs, so the handler is where it has to stop.
+  it('refuses an initialize after the first, so the first client keeps its capabilities', async () => {
+    const built: AcpSession[] = []
+    const app = await acp_agent({
+      name: 'test-agent',
+      flow: (session) => {
+        built.push(session)
+        return reply_step()
+      },
+    })
+    const first = await open_session(app, { client_capabilities: { terminal: true } })
+    const again: unknown = await first.agent
+      .request('initialize', { protocolVersion: PROTOCOL_VERSION, clientCapabilities: {} })
+      .catch((caught: unknown) => caught)
+    expect(again).toBeInstanceOf(RequestError)
+    expect(again).toMatchObject({ code: -32600, message: `Invalid request: ${REFUSAL}` })
+    await first.agent.buildSession({ cwd: tmpdir(), mcpServers: [] }).start()
+    expect(built.map((session) => session.client_capabilities.terminal)).toEqual([true, true])
   })
 })
 

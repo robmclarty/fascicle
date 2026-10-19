@@ -33,6 +33,9 @@ type AcpSdk = Awaited<ReturnType<typeof load_acp_sdk>>
 /** A session as the agent holds it: what a turn needs, and its mode. */
 type AgentSession<i, o> = SessionRecord<i, o> & { readonly modes: SessionModes }
 
+const ONE_CONNECTION =
+  'acp_agent: this app already serves a connection; build an app for each connection, as serve_acp does'
+
 /**
  * Turn a failure inside a handler into a JSON-RPC error that carries its
  * message. The SDK reports a plain thrown `Error` as a bare "Internal error",
@@ -71,11 +74,19 @@ function requested_mode(sdk: AcpSdk, id: unknown, field: 'modeId' | 'value'): Ac
 /**
  * Build the ACP agent app that answers each prompt turn by running the
  * config's flow, with its handlers registered and not yet connected.
+ *
+ * An app serves one connection for its life, since its sessions and the
+ * client's capabilities aren't scoped to a connection. A second `connect`
+ * throws, and so, for a server that routes a second client to the same app
+ * and runs `initialize` before any connect hook, does a second `initialize`,
+ * before it can overwrite the first client's capabilities.
  */
 export async function acp_agent<i, o>(config: ServeAcpConfig<i, o>): Promise<AgentApp> {
   const sdk = await load_acp_sdk()
   const sessions = new Map<string, AgentSession<i, o>>()
   let client_capabilities: ClientCapabilities = {}
+  let connected = false
+  let initialized = false
   const session_of = (sessionId: string): AgentSession<i, o> => {
     const record = sessions.get(sessionId)
     if (record !== undefined) return record
@@ -83,7 +94,13 @@ export async function acp_agent<i, o>(config: ServeAcpConfig<i, o>): Promise<Age
   }
   return sdk
     .agent()
+    .onConnect(() => {
+      if (connected) throw new Error(ONE_CONNECTION)
+      connected = true
+    })
     .onRequest('initialize', (ctx) => {
+      if (initialized) throw sdk.RequestError.invalidRequest(undefined, ONE_CONNECTION)
+      initialized = true
       client_capabilities = ctx.params.clientCapabilities ?? {}
       return {
         protocolVersion: sdk.PROTOCOL_VERSION,

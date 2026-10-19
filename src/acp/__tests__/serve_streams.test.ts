@@ -30,9 +30,19 @@ function serve(config: ServeAcpConfig<string, string>, shutdown?: AbortSignal): 
   return { client_connection, hang_up: () => client_to_agent.writable.close(), served }
 }
 
-async function open(connection: ClientConnection): Promise<ActiveSession> {
+// A client initializes its connection once, then opens as many sessions on
+// it as it likes.
+async function initialize(connection: ClientConnection): Promise<void> {
   await connection.agent.request('initialize', { protocolVersion: PROTOCOL_VERSION, clientCapabilities: {} })
+}
+
+function start_session(connection: ClientConnection): Promise<ActiveSession> {
   return connection.agent.buildSession({ cwd: tmpdir(), mcpServers: [] }).start()
+}
+
+async function open(connection: ClientConnection): Promise<ActiveSession> {
+  await initialize(connection)
+  return start_session(connection)
 }
 
 /**
@@ -112,7 +122,8 @@ describe('serve_streams', () => {
     const { flow, started } = stalled_flow(log)
     const { engine, release } = held_engine(log)
     const { client_connection, hang_up, served } = serve({ name: 'test-agent', flow, engine })
-    const [first, second] = await Promise.all([open(client_connection), open(client_connection)])
+    await initialize(client_connection)
+    const [first, second] = await Promise.all([start_session(client_connection), start_session(client_connection)])
     send_prompt(first, 'a')
     send_prompt(second, 'b')
     await started
@@ -137,7 +148,8 @@ describe('serve_streams', () => {
     const { engine, release } = held_engine(log)
     const shutdown = new AbortController()
     const { client_connection, served } = serve({ name: 'test-agent', flow, engine }, shutdown.signal)
-    const [first, second] = await Promise.all([open(client_connection), open(client_connection)])
+    await initialize(client_connection)
+    const [first, second] = await Promise.all([start_session(client_connection), start_session(client_connection)])
     send_prompt(first, 'a')
     send_prompt(second, 'b')
     await started

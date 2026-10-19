@@ -501,7 +501,7 @@ an agent starts. See [acp.md](./acp.md).
 | Export | Kind | Notes |
 | --- | --- | --- |
 | `serve_acp(config)` | fn | serve the flow over stdin and stdout until the client disconnects, then dispose the engine; sends `console.log` and its siblings to stderr, and SIGTERM or SIGINT aborts every run and exits |
-| `acp_agent(config)` | fn | the same agent as the SDK's `AgentApp`, its handlers registered but not connected, for another transport or an in-process client |
+| `acp_agent(config)` | fn | the same agent as the SDK's `AgentApp`, its handlers registered but not connected, for another transport or an in-process client. It serves one connection, so build one for each connection that you accept |
 | `workspace_tools(session, options?)` | fn | the six tools of a coding session (`read_file`, `list_files`, `search`, `write_file`, `edit_file`, `run_command`) as plain `Tool` values; the file tools reach only paths whose real path lands under the session's roots, and the writes and `run_command` ask before they run as the session's mode says. `list_files` returns at most 1,000 paths a call. See [Coding Sessions](./acp.md#coding-sessions) |
 | `to_session_updates(event, state)` | fn | map one run event to zero or more ACP `SessionUpdate`s, with no I/O; the default `to_updates`, which a custom one can wrap as long as it passes every event through, since each `span_start` advances the state's run count |
 | `create_acp_mapper_state(options?)` | fn | fresh per-turn mapper state for the low-level API: `turn_id`, `stream`, `runs` (the count that keeps a model call's cards apart when it runs again), `tools` (each card's tool), and `session`, which gives the workspace tools' cards their titles, diffs, and command output |
