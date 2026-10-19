@@ -721,7 +721,7 @@ describe('checkpoint lookups', () => {
   }
 
   it('records each known outcome on the node the event names', () => {
-    for (const status of ['hit', 'miss', 'read_error'] as const) {
+    for (const status of ['hit', 'miss', 'read_error', 'write_error'] as const) {
       const state = reduce(SEQ, stream([{ kind: 'checkpoint', status, id: 'cp' }]))
       expect(node_of(state, 'cp').checkpoint).toBe(status)
       expect(node_of(state, 'work').checkpoint).toBeNull()

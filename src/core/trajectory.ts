@@ -12,7 +12,8 @@
  *   run_end:     terminal run event carrying the run's status, so a consumer
  *                distinguishes done / failed / aborted / suspended without
  *                inferring from silence
- *   checkpoint:  checkpoint store lookup outcome (hit / miss / read_error)
+ *   checkpoint:  checkpoint store outcome (hit / miss / read_error /
+ *                write_error)
  *   step_replayed: a step marked `side_effect` re-running before a resumed
  *                run reached the gates it was resumed at
  *   map_item_failed: an item of a `map` that settles threw, and its slot
@@ -57,7 +58,7 @@ export type RunEndEvent = {
   readonly status: RunEndStatus
 } & { readonly [key: string]: unknown }
 
-export type CheckpointStatus = 'hit' | 'miss' | 'read_error'
+export type CheckpointStatus = 'hit' | 'miss' | 'read_error' | 'write_error'
 
 export type CheckpointEvent = {
   readonly kind: 'checkpoint'
@@ -140,12 +141,12 @@ export function is_run_end_event(value: unknown): value is RunEndEvent {
   return typeof status === 'string' && RUN_END_STATUSES.has(status)
 }
 
-const CHECKPOINT_STATUSES: ReadonlySet<string> = new Set(['hit', 'miss', 'read_error'])
+const CHECKPOINT_STATUSES: ReadonlySet<string> = new Set(['hit', 'miss', 'read_error', 'write_error'])
 
 /**
- * A checkpoint lookup event: `status` must be a known lookup outcome and `key`
- * the store key that was consulted, for the same truthful-narrowing reason as
- * `is_run_end_event`.
+ * A checkpoint event: `status` must be a known outcome of the store lookup or
+ * of the write after a miss, and `key` the store key that was consulted, for
+ * the same truthful-narrowing reason as `is_run_end_event`.
  */
 export function is_checkpoint_event(value: unknown): value is CheckpointEvent {
   if (!is_custom_trajectory_event(value)) return false

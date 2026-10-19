@@ -81,6 +81,15 @@ describe('checkpoint', () => {
     )
   })
 
+  it('numbers each checkpoint it builds and shows its key and label in its config', () => {
+    const first = checkpoint(step('a', (n: number) => n), { key: 'k_a' })
+    const second = checkpoint(step('b', (n: number) => n), { key: 'k_b', name: 'cache b' })
+    expect(first.id).toMatch(/^checkpoint_\d+$/)
+    expect(Number(second.id.slice('checkpoint_'.length))).toBe(Number(first.id.slice('checkpoint_'.length)) + 1)
+    expect(first.config).toStrictEqual({ key: 'k_a' })
+    expect(second.config).toStrictEqual({ key: 'k_b', display_name: 'cache b' })
+  })
+
   it('invokes the key function with the input to derive the key', async () => {
     const inner = step('build', (i: { spec_hash: string }) => i.spec_hash)
     const flow = checkpoint(inner, { key: (i: { spec_hash: string }) => `build:${i.spec_hash}` })
@@ -173,6 +182,72 @@ describe('checkpoint', () => {
     expect(lookups[0]?.['status']).toBe('read_error')
     expect(lookups[0]?.['key']).toBe('k_err')
     expect(lookups[0]?.['error']).toBe('corrupted')
+  })
+
+  it.each([
+    ['an Error', new Error('disk full'), 'disk full'],
+    ['a bare value', 'quota exceeded', 'quota exceeded'],
+  ])(
+    'records write_error and returns the inner result when the store fails the write with %s',
+    async (_, thrown, message) => {
+      const { logger, events } = recording_logger()
+      const flow = checkpoint(step('add_one', (x: number) => x + 1), { key: 'k_write' })
+      const store: CheckpointStore = {
+        async get() {
+          return null
+        },
+        async set() {
+          throw thrown
+        },
+        async delete() {
+          // noop
+        },
+      }
+
+      const result = await run(flow, 5, {
+        checkpoint_store: store,
+        trajectory: logger,
+        install_signal_handlers: false,
+      })
+
+      // The inner step already ran and was paid for, so a cache that can't
+      // keep its result doesn't take the result away.
+      expect(result).toBe(6)
+      const start = events.find((e) => e.kind === 'span_start' && e['name'] === 'checkpoint')
+      const meta = { id: flow.id, key: 'k_write', span_id: start?.['span_id'] }
+      const recorded = events
+        .filter((e) => e.kind === 'checkpoint')
+        .map(({ run_id: _run_id, ts: _ts, ...rest }) => rest)
+      expect(recorded).toStrictEqual([
+        { kind: 'checkpoint', status: 'miss', ...meta },
+        { kind: 'checkpoint', status: 'write_error', error: message, ...meta },
+      ])
+    },
+  )
+
+  it('counts a stored undefined as a miss and runs inner', async () => {
+    const { logger, events } = recording_logger()
+    const flow = checkpoint(step('add_one', (x: number) => x + 1), { key: 'k_undefined' })
+    const store: CheckpointStore = {
+      async get() {
+        return undefined
+      },
+      async set() {
+        // noop
+      },
+      async delete() {
+        // noop
+      },
+    }
+
+    const result = await run(flow, 5, {
+      checkpoint_store: store,
+      trajectory: logger,
+      install_signal_handlers: false,
+    })
+
+    expect(result).toBe(6)
+    expect(events.filter((e) => e.kind === 'checkpoint').map((e) => e['status'])).toEqual(['miss'])
   })
 
   it('records no checkpoint event when no store is configured', async () => {

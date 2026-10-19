@@ -251,6 +251,7 @@ Key rules:
 
 - Keys share a single namespace across every flow that uses the same store. Prefix with a flow name or content hash to avoid collisions.
 - Anonymous steps (`step(fn)` with no id) throw at construction when wrapped by `checkpoint`. Give the inner step an id.
+- A store that fails doesn't fail your run. When its `get` throws, the lookup records a `checkpoint` event with `status: 'read_error'` and counts as a miss. When its `set` throws, the step records `status: 'write_error'` and you still get the inner result, since you've already paid for the step that produced it. Your next run with that key misses and runs the step again.
 - Compositions build trees, not graphs. A composer that references itself causes infinite recursion.
 
 ## Suspend and Resume

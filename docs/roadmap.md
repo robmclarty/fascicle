@@ -147,9 +147,6 @@ likely to bite you first.
   reads the `cached_tokens` that OpenRouter reports but not its
   `cache_write_tokens`, so a model with explicit caching shows no cache writes.
   The cost that OpenRouter reports, which is what the step records, is right.
-- **`checkpoint` fails the run when its write fails.** A failed read counts as a
-  miss and the run goes on, but a failed write fails the run after the step that
-  it wraps has finished, and after you've paid for that step.
 - **`bench`'s `CaseResult` has an `_input` field that's never set.** It exists
   only to give the input type parameter a use.
 - **The viewer slows down on long runs and clips large flows.** Holding or

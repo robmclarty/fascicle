@@ -435,7 +435,7 @@ newer producer emits. The guards are how you narrow one.
 | `is_span_end_event(value)` | guard | `span_end` with a string `span_id` |
 | `is_emit_event(value)` | guard | a `ctx.emit` event; the payload is the caller's |
 | `is_run_end_event(value)` | guard | the terminal `run_end` event, emitted once per run, where `status` is `'done' \| 'failed' \| 'aborted' \| 'suspended'`; failures carry `error` plus `error_name` / `error_kind` / `error_path` when known |
-| `is_checkpoint_event(value)` | guard | a `checkpoint` store lookup, where `status` is `'hit' \| 'miss' \| 'read_error'`, with the step `id` and store `key` |
+| `is_checkpoint_event(value)` | guard | a `checkpoint` store event, where `status` is `'hit' \| 'miss' \| 'read_error' \| 'write_error'`, with the step `id` and store `key`. A write that fails after a miss records `write_error`, and the step returns the inner result anyway |
 | `is_step_replayed_event(value)` | guard | a step marked `side_effect` that ran again before its resumed run reached its gates, with the `step_id` and the `suspend_ids` still ahead |
 | `is_map_item_failed_event(value)` | guard | an item of a `map` that settles threw, with the map's `step_id`, the item's `index`, the `error` message, and `error_kind` when the error had one |
 | `is_custom_trajectory_event(value)` | guard | the fallback shape, meaning any string `kind`, well-known ones included |

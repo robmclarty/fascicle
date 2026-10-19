@@ -68,7 +68,7 @@ export type SpanOccurrence = {
 
 export type NodeStatus = 'pending' | 'active' | 'done' | 'failed' | 'suspended'
 
-export type CheckpointStatus = 'hit' | 'miss' | 'read_error'
+export type CheckpointStatus = 'hit' | 'miss' | 'read_error' | 'write_error'
 
 /**
  * Everything the run has taught us about one structure node. `status` is the
@@ -76,8 +76,9 @@ export type CheckpointStatus = 'hit' | 'miss' | 'read_error'
  * slots, attempt history, failure timestamps) that ticks, loops, and the
  * scrubber's failure marks read directly. `emits` counts `ctx.emit` events
  * (the renderer blooms on each increment; the count is the record a pure fold
- * needs, since it reads no clock); `checkpoint` keeps the newest store-lookup
- * outcome so a hit can explain a node the run never entered.
+ * needs, since it reads no clock); `checkpoint` keeps the newest store
+ * outcome (a lookup, or a write that failed after a miss) so a hit can
+ * explain a node the run never entered.
  */
 export type NodeRuntime = {
   readonly status: NodeStatus
@@ -495,9 +496,9 @@ function on_emit(state: CanvasState, event: EventRecord): CanvasState {
   return { ...state, nodes }
 }
 
-/** Narrow a wire status string to the known checkpoint lookup outcomes. */
+/** Narrow a wire status string to the known checkpoint outcomes. */
 function is_checkpoint_status(value: string): value is CheckpointStatus {
-  return value === 'hit' || value === 'miss' || value === 'read_error'
+  return value === 'hit' || value === 'miss' || value === 'read_error' || value === 'write_error'
 }
 
 /**

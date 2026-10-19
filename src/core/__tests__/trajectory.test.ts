@@ -216,7 +216,7 @@ describe('is_run_end_event', () => {
 
 describe('is_checkpoint_event', () => {
   it('accepts each lookup status with a string key', () => {
-    for (const status of ['hit', 'miss', 'read_error']) {
+    for (const status of ['hit', 'miss', 'read_error', 'write_error']) {
       expect(is_checkpoint_event({ kind: 'checkpoint', status, key: 'k1' })).toBe(true)
     }
   })
