@@ -122,6 +122,7 @@ async function wire_run(
   answer: Answer,
   options: {
     readonly mode?: AcpMode
+    readonly modes?: ReadonlyArray<AcpMode>
     readonly extra?: ReadonlyArray<Tool>
     readonly flow?: (engine: Engine, session: AcpSession) => Step<string, string>
   } = {},
@@ -137,6 +138,7 @@ async function wire_run(
   const app = await acp_agent({
     name: 'approve',
     ...(options.mode === undefined ? {} : { default_mode: options.mode }),
+    modes: options.modes,
     flow: (session) => build(engine, session),
   })
   const { session } = await open_session(app, { client: client_app, session: { cwd } })
@@ -212,6 +214,25 @@ describe('approve: what the request shows', () => {
       },
     ])
   })
+
+  it.each<[ReadonlyArray<AcpMode>]>([[['manual']], [['manual', 'auto']]])(
+    'offers an edit no "always" in an agent with modes %j, which leaves Accept edits out, while a command keeps its own',
+    async (modes) => {
+      const run = await wire_run(
+        [
+          [{ id: 'e', name: 'edit_file', input: { path: 'a.txt', old_text: 'two', new_text: 'TWO' } }],
+          [{ id: 'c', name: 'run_command', input: { command: 'echo one' } }],
+          'done',
+        ],
+        () => choose('allow_once'),
+        { modes },
+      )
+      expect(run.asked.map(({ options }) => options)).toEqual([
+        [ALLOW, REJECT],
+        [ALLOW, always('Always allow `echo one` this session'), REJECT],
+      ])
+    },
+  )
 
   it('shows a command as its command line, offering to always allow that exact command', async () => {
     const input = { command: 'pnpm test --watch' }

@@ -7,11 +7,12 @@
  * the diff itself. It offers Allow, Reject, and an "always" that lives in
  * memory for the session. For an edit, "always" switches the session to
  * Accept edits, as Claude Agent's does, and tells the client both ways so
- * its mode picker follows. For a command, it covers that exact command
- * line and nothing else, since one flag can turn a listing into a delete
- * (`find . -name '*.ts'` and `find . -delete`). A command with shell
- * control syntax is never covered and never offered one, since anything
- * can follow a `;` or a `|`.
+ * its mode picker follows. An edit is offered one only when the agent
+ * offers Accept edits, since that's the mode it switches to. For a
+ * command, it covers that exact command line and nothing else, since one
+ * flag can turn a listing into a delete (`find . -name '*.ts'` and
+ * `find . -delete`). A command with shell control syntax is never covered
+ * and never offered one, since anything can follow a `;` or a `|`.
  *
  * Only the session's own workspace tools get the diff and the "always",
  * known by the input their `needs_approval` marked rather than by name. A
@@ -325,10 +326,10 @@ function warn_failed(tool_name: string, err: unknown): void {
 }
 
 /**
- * The "always" a call is offered: Accept edits for an edit, and a grant of
- * its key for a command that has one. Any other call gets none. Choosing
- * Accept edits leaves a session that has moved past Manual since the call
- * asked where it is.
+ * The "always" a call is offered: Accept edits for an edit, when the agent
+ * offers that mode, and a grant of its key for a command that has one. Any
+ * other call gets none. Choosing Accept edits leaves a session that has
+ * moved past Manual since the call asked where it is.
  */
 function always_for(
   gate: Gate | undefined,
@@ -337,6 +338,7 @@ function always_for(
   granted: Set<string>,
 ): Always | undefined {
   if (gate?.action === 'edit') {
+    if (!modes.offers('accept_edits')) return undefined
     return {
       name: 'Allow all edits this session',
       grant: async () => {
