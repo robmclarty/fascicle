@@ -5,10 +5,12 @@
  * complete line. Handles these pathological cases:
  *
  *   - A file that doesn't exist yet: a missing file is a wait, not an
- *     error. The tail reads it from its first line once it appears.
+ *     error. The tail reads it from its first line once it appears, and the
+ *     directories above it can be missing too.
  *   - Rotation: a file renamed away and recreated under the same name is a
  *     new inode, so the tail starts the new file from its first line rather
- *     than at the old file's offset.
+ *     than at the old file's offset. A file whose directory is moved away,
+ *     and a new directory made in its place, rotates the same way.
  *   - Truncation: a stat shorter than the current offset means the file
  *     shrank in place. Reset offset to 0 and re-stream.
  *   - Partial last line: if the trailing chunk has no `\n`, buffer it and
@@ -18,14 +20,17 @@
  *
  * Two fs.watch watchers drive the reads. A watch on the file itself carries
  * every append, but it follows the file's inode, so it can't see a file
- * appear and after a rename it reports on the old one. So while the file is
- * missing, and from the moment that watch reports a rename, a second watch
- * on the parent directory waits for the file's name, and the first pass that
- * finds a file there moves the file watch onto it and drops the directory
- * watch. Appends never ride the directory watch, because macOS serves a
- * directory through FSEvents, whose stream starts asynchronously and drops
- * what happens before it is live, while a file watch is kqueue's and holds
- * from the moment it is made. Reads are serialized, and change events that arrive mid-read are coalesced
+ * appear, after a rename it reports on the old one, and it reports nothing
+ * when the file's directory moves away with the file inside. A second watch,
+ * on a directory, covers those. While the file is missing, it sits on the
+ * closest directory above the path that exists and waits for the next name
+ * down, so it moves down a level each time a directory on the path appears.
+ * Once a pass finds the file, the file watch moves onto it, and the directory
+ * watch stays on the file's own directory, where it reports that directory
+ * moving or going away. Appends never depend on the directory watch, because
+ * macOS serves a directory through FSEvents, whose stream starts
+ * asynchronously and drops what happens before it is live, while a file watch
+ * is kqueue's and holds from the moment it is made. Reads are serialized, and change events that arrive mid-read are coalesced
  * into one extra pass rather than dropped, so a burst of appends never starts
  * overlapping reads. Each pass re-stats and re-reads from the saved offset,
  * which also covers platforms where fs.watch misses some append
@@ -33,9 +38,9 @@
  * regardless.
  */
 
-import { type FSWatcher, type WatchListener, watch as fs_watch } from 'node:fs'
+import { type FSWatcher, type WatchListener, statSync, watch as fs_watch } from 'node:fs'
 import { open, stat } from 'node:fs/promises'
-import { basename, dirname } from 'node:path'
+import { basename, dirname, relative, sep } from 'node:path'
 import { parse_trajectory_event, type ParsedTrajectoryEvent } from '#core'
 
 export type TailConfig = {
@@ -51,11 +56,59 @@ export type Tail = {
 }
 
 /**
- * True for the error a stat or an open throws when nothing is at the path,
+ * True for the errors a stat or an open throws when no file is at the path,
  * which the tail reads as waiting for the file rather than as a failure.
+ *
+ * Nothing at the path is one (ENOENT), and a file where a directory on the
+ * path should be is the other (ENOTDIR), since the file can appear once a
+ * directory takes that file's place.
  */
 function is_missing(err: unknown): boolean {
-  return Reflect.get(Object(err), 'code') === 'ENOENT'
+  const code = Reflect.get(Object(err), 'code')
+  return code === 'ENOENT' || code === 'ENOTDIR'
+}
+
+/**
+ * The inode of the directory at `dir`, or null when no directory is there.
+ *
+ * An entry that isn't a directory counts as none, since a watch on it could
+ * never report the next name down the path.
+ */
+function dir_inode(dir: string): number | null {
+  try {
+    const st = statSync(dir)
+    return st.isDirectory() ? st.ino : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * The closest directory at or above `dir` that exists, with its inode.
+ *
+ * Every walk up ends at a root, which exists, so this comes back empty only
+ * when even a root can't be read.
+ */
+function nearest_dir(dir: string): { readonly path: string; readonly ino: number } | null {
+  let at = dir
+  let ino = dir_inode(at)
+  while (ino === null) {
+    const up = dirname(at)
+    if (up === at) return null
+    at = up
+    ino = dir_inode(at)
+  }
+  return { path: at, ino }
+}
+
+/**
+ * The first name on the way down from `dir` to `path`: the next directory
+ * that has to appear, or the file's own name when `dir` holds the file.
+ */
+function next_name(dir: string, path: string): string {
+  const rest = relative(dir, path)
+  const cut = rest.indexOf(sep)
+  return cut === -1 ? rest : rest.slice(0, cut)
 }
 
 /**
@@ -63,15 +116,14 @@ function is_missing(err: unknown): boolean {
  *
  * Watches the file with `fs.watch` and re-reads from the last known offset
  * on every change, buffering an incomplete trailing line until the rest
- * arrives. A missing file is waited for through a watch on its directory,
- * and a new file at the path (a different inode) is read from its first
- * line. Overlapping change events are coalesced: a read already in flight
+ * arrives. A missing file is waited for through a watch on the closest
+ * directory above it that exists, and a new file at the path (a different
+ * inode) is read from its first line. Overlapping change events are coalesced: a read already in flight
  * absorbs any events that fire while it runs instead of starting a second
  * concurrent read.
  */
 export function start_tail(config: TailConfig): Tail {
   const { path, on_event, on_parse_error, on_io_error } = config
-  const name = basename(path)
   let inode: number | null = null
   let offset = 0
   let buffer = ''
@@ -80,6 +132,8 @@ export function start_tail(config: TailConfig): Tail {
   let closed = false
   let file_watcher: FSWatcher | null = null
   let dir_watcher: FSWatcher | null = null
+  let watched_dir: string | null = null
+  let watched_ino: number | null = null
   let last_drain: Promise<void> = Promise.resolve()
 
   // A stat or open that finds nothing at the path is the wait for the file,
@@ -119,34 +173,59 @@ export function start_tail(config: TailConfig): Tail {
     }
   }
 
-  // Waits on the directory for the file's name. Arming the watch schedules
-  // one more pass, which catches a file that appeared between the last stat
-  // and the watch. A watch that fails to arm (its directory is missing too)
-  // schedules nothing, or every pass would retry it and spin. A platform
-  // that can't name the file in an event passes null, which schedules a pass
-  // rather than risk missing one.
-  const await_file = (): void => {
-    if (dir_watcher !== null) return
-    dir_watcher = watch(dirname(path), (_event, filename) => {
-      if (filename === null || filename === name) schedule()
+  // Keeps the one directory watch on `dir`, whose inode is `ino`, and returns
+  // true when it armed a new one. A watch already on that directory stays.
+  // Any other is replaced, including one on an older directory at the same
+  // path, because a watch that follows an inode (inotify's) goes on
+  // reporting the old directory wherever it moved. An event for the next
+  // name down the path starts a pass, and so does one for the directory's
+  // own name, which is how a platform reports the directory itself moving
+  // or going away. A platform that can't name the entry in an event passes
+  // null, which starts a pass rather than risk missing one.
+  const watch_dir = (dir: string, ino: number): boolean => {
+    if (dir_watcher !== null && watched_dir === dir && watched_ino === ino) return false
+    dir_watcher?.close()
+    watched_dir = dir
+    watched_ino = ino
+    const next = next_name(dir, path)
+    const own = basename(dir)
+    dir_watcher = watch(dir, (_event, filename) => {
+      if (filename === null || filename === next || filename === own) schedule()
     })
-    if (dir_watcher !== null) schedule()
+    return dir_watcher !== null
+  }
+
+  // Points the directory watch at the closest directory above the path that
+  // exists, and returns true when that armed a new watch.
+  const watch_nearest = (): boolean => {
+    const dir = nearest_dir(dirname(path))
+    return dir !== null && watch_dir(dir.path, dir.ino)
+  }
+
+  // Waits for the file through a watch on the closest directory above the
+  // path that exists. Each pass that still finds no file comes back here, so
+  // the watch moves down a level each time the next directory on the path
+  // appears. Arming a watch schedules one more pass, which catches whatever
+  // appeared between the last stat and the watch. A watch that stays where
+  // it was, or fails to arm, schedules nothing, or every pass would start
+  // another and spin.
+  const await_file = (): void => {
+    if (watch_nearest()) schedule()
   }
 
   // Follows the file now at the path from its first line. The file watch
-  // moves onto it, and a rename it reports (the file moved away or was
-  // deleted) sends the tail back to waiting on the directory.
+  // moves onto it, and whatever it reports starts a pass, which goes back to
+  // waiting when the file moved away or was deleted. The directory watch
+  // moves onto the file's own directory and stays there while the file is
+  // followed, because a directory that moves away takes the file with it,
+  // and the file watch reports nothing for that.
   const adopt = (ino: number): void => {
     inode = ino
     offset = 0
     buffer = ''
     file_watcher?.close()
-    file_watcher = watch(path, (event) => {
-      if (event === 'rename') await_file()
-      schedule()
-    })
-    dir_watcher?.close()
-    dir_watcher = null
+    file_watcher = watch(path, schedule)
+    watch_nearest()
   }
 
   // Stats the path and returns the size to read up to, or null when nothing

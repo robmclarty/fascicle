@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- **`fascicle-viewer` follows a file whose directory doesn't exist yet, or moves away mid-run.** The viewer waited for a missing file through a watch on the file's directory, so a path whose directory didn't exist yet failed that watch with an io error, and the canvas never filled, even after the file appeared. A file watch follows the file rather than the path, so when the file's directory was moved away with the file inside, nothing reported it, and the viewer never saw a new file made at the old path. Volley's `.volley/trajectory.jsonl` does both, since its directory appears when a run starts, and a harness that keeps each run's record moves it away when the run ends. The viewer now watches the closest directory above the path that exists and moves down a level each time the next directory appears, and while it follows the file it keeps a watch on the file's directory, which reports that directory moving or going away. A file made at the path afterwards is read from its first line, as a rotated file is. A file that stands where a directory on the path should be is a wait as well, not an io error.
+
 ## v0.16.2 — 2026-10-19
 
 ### Added

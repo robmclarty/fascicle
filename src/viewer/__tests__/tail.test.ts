@@ -46,15 +46,14 @@ import { start_tail, type Tail } from '../tail.js'
  *     so an over-large length reads the same bytes.
  *   - the `finally { await fh.close() }` block: dropping the close leaks a
  *     descriptor with no behavioural signature under test.
+ *   - `up === at` -> `false` in `nearest_dir`, and `dir !== null` -> `true` in
+ *     `watch_nearest`: the walk up always reaches a root, which exists, so it
+ *     never runs out of directories and never comes back empty.
+ *   - `watched_dir === dir` -> `true` in `watch_dir`: two directories on one
+ *     device never share an inode, so only a directory on another mount with
+ *     the same inode number could tell the path check apart.
  *   - `fs.watch` options `{ persistent: true }` -> `{}` / `{ persistent: false }`:
  *     the watcher still delivers appends in-process either way.
- *
- * Phantom survivor (killed when applied by hand, reported as survived, and
- * left un-annotated so the killed mutants on its line still count): the
- * directory watch's name filter `filename === null || filename === name` ->
- * `false`. Applied by hand it times out three of the path-following tests,
- * the same whole-condition guard misreport that Stryker gives other async
- * tests in this repo.
  */
 
 type Deferred<T = void> = {
@@ -195,10 +194,29 @@ const open_watches = (): string[] =>
  * stream that starts asynchronously, so a write made just after the watch can
  * precede the stream and never be reported.
  */
-const fire = (target: string, event: 'rename' | 'change', filename: string): void => {
+const fire = (target: string, event: 'rename' | 'change', filename: string | null): void => {
   const record = gate.watches.findLast((candidate) => candidate.target === target)
   if (record === undefined) throw new Error(`no watch on ${target}`)
   record.watcher.emit('change', event, filename)
+}
+
+/** Parks the next stat, so a test can tell whether an event started a pass. */
+const park = (): StatArm => {
+  const arm: StatArm = { entered: deferred(), release: deferred() }
+  gate.stat_arm = arm
+  return arm
+}
+
+/**
+ * Runs `act`, which fires a watch, and settles once the pass it starts has
+ * reached its stat and gone on. A filter that drops the event leaves the
+ * stat parked, so the test times out rather than pass on a drain's pass.
+ */
+const by_event = async (act: () => void): Promise<void> => {
+  const arm = park()
+  act()
+  await arm.entered.promise
+  arm.release.resolve()
 }
 
 type Collector = {
@@ -542,13 +560,14 @@ describe('start_tail', () => {
       writeFileSync(path, emit_line('one') + emit_line('two'))
       fire(work_dir, 'rename', 'late.jsonl')
       await seen.reach(2)
-      expect(open_watches()).toEqual([path])
+      // The directory watch stays on the file's directory while the file is
+      // followed, and the file watch joins it.
+      expect(open_watches()).toEqual([work_dir, path])
       appendFileSync(path, emit_line('three'))
       await seen.reach(3)
       expect(seen.texts).toEqual(['one', 'two', 'three'])
       expect(errors).toEqual([])
-      // An append is a change, not a rename, so the directory stays unwatched.
-      expect(open_watches()).toEqual([path])
+      expect(open_watches()).toEqual([work_dir, path])
     })
 
     it('reads a file that appears between a stat and the directory watch', async () => {
@@ -598,10 +617,10 @@ describe('start_tail', () => {
       })
       await tail.drain()
       expect(seen.texts).toEqual(['one'])
-      expect(open_watches()).toEqual([path])
+      expect(open_watches()).toEqual([path, work_dir])
 
-      // The file watch reports the rename, which puts a watch back on the
-      // directory for whatever takes the name next.
+      // The file watch reports the rename, and the directory watch already
+      // on the file's directory waits for whatever takes the name next.
       renameSync(path, `${path}.1`)
       fire(path, 'rename', 'rotate.jsonl')
       expect(open_watches()).toEqual([path, work_dir])
@@ -611,14 +630,14 @@ describe('start_tail', () => {
       writeFileSync(path, emit_line('two') + emit_line('three'))
       fire(work_dir, 'rename', 'rotate.jsonl')
       await seen.reach(3)
-      expect(open_watches()).toEqual([path])
+      expect(open_watches()).toEqual([work_dir, path])
       appendFileSync(path, emit_line('four'))
       await seen.reach(4)
       expect(seen.texts).toEqual(['one', 'two', 'three', 'four'])
       expect(errors).toEqual([])
     })
 
-    it('waits on the directory again each time the file moves away', async () => {
+    it('keeps one directory watch while the file comes and goes', async () => {
       const path = join(work_dir, 'again.jsonl')
       const seen = collector()
       const tail = spawn({ path, on_event: seen.on_event })
@@ -632,18 +651,160 @@ describe('start_tail', () => {
         fire(path, 'rename', 'again.jsonl')
       }
       expect(seen.texts).toEqual(['one', 'two'])
-      expect(gate.watches.filter((record) => record.target === work_dir)).toHaveLength(3)
+      expect(gate.watches.filter((record) => record.target === work_dir)).toHaveLength(1)
+      expect(open_watches()).toContain(work_dir)
     })
 
-    it('tries the directory watch once a pass when the directory is missing too', async () => {
-      const path = join(work_dir, 'no-such-dir', 'run.jsonl')
+    it('tries the directory watch once a pass when it fails to arm', async () => {
+      const path = join(work_dir, 'unwatchable.jsonl')
       const errors: unknown[] = []
+      gate.watch_fails = true
       const tail = spawn({ path, on_event: () => {}, on_io_error: (err) => errors.push(err) })
       // A watch that can't arm schedules nothing, so the drain settles rather
       // than spin: one try for the pass the tail starts with, one for drain's.
       await tail.drain()
-      expect(errors.map((err) => Reflect.get(Object(err), 'code'))).toEqual(['ENOENT', 'ENOENT'])
+      expect(errors.map((err) => (err as Error).message)).toEqual([
+        'mock watch failure',
+        'mock watch failure',
+      ])
       expect(open_watches()).toEqual([])
+    })
+
+    it('waits for the directories above a missing file, a level at a time', async () => {
+      // Only fire() reaches a watch's listener, so each event the test relies on is one it sent.
+      gate.quiet_dir = mkdtempSync(join(work_dir, 'quiet-'))
+      const outer = join(work_dir, 'outer')
+      const inner = join(outer, 'inner')
+      const path = join(inner, 'run.jsonl')
+      const seen = collector()
+      const errors: unknown[] = []
+      const tail = spawn({ path, on_event: seen.on_event, on_io_error: (err) => errors.push(err) })
+      await tail.drain()
+      expect(open_watches()).toEqual([work_dir])
+
+      // Each directory that appears is the next name down from the watch
+      // above it, so the event alone starts the pass that moves the watch.
+      mkdirSync(outer)
+      await by_event(() => fire(work_dir, 'rename', 'outer'))
+      await tail.drain()
+      expect(open_watches()).toEqual([outer])
+      mkdirSync(inner)
+      await by_event(() => fire(outer, 'rename', 'inner'))
+      await tail.drain()
+      expect(open_watches()).toEqual([inner])
+
+      writeFileSync(path, emit_line('one') + emit_line('two'))
+      fire(inner, 'rename', 'run.jsonl')
+      await seen.reach(2)
+      expect(seen.texts).toEqual(['one', 'two'])
+      expect(open_watches()).toEqual([inner, path])
+      expect(errors).toEqual([])
+    })
+
+    it('ignores an event for another name in a directory above the file', async () => {
+      const path = join(work_dir, 'outer', 'run.jsonl')
+      const tail = spawn({ path, on_event: () => {} })
+      await tail.drain()
+
+      const arm = park()
+      fire(work_dir, 'rename', 'run.jsonl')
+      fire(work_dir, 'rename', 'other')
+      expect(gate.stat_arm).toBe(arm)
+    })
+
+    it('takes an event that names nothing as one that might be the file', async () => {
+      // Only fire() reaches a watch's listener, so each event the test relies on is one it sent.
+      gate.quiet_dir = mkdtempSync(join(work_dir, 'quiet-'))
+      const path = join(work_dir, 'unnamed.jsonl')
+      const seen = collector()
+      const tail = spawn({ path, on_event: seen.on_event })
+      await tail.drain()
+
+      // A platform that can't name the entry passes null, which starts a pass
+      // rather than risk missing the file.
+      writeFileSync(path, emit_line('one'))
+      fire(work_dir, 'rename', null)
+      await seen.reach(1)
+      expect(seen.texts).toEqual(['one'])
+    })
+
+    it('waits, with no io error, while a file stands where a directory on the path should be', async () => {
+      // Only fire() reaches a watch's listener, so each event the test relies on is one it sent.
+      gate.quiet_dir = mkdtempSync(join(work_dir, 'quiet-'))
+      const blocker = join(work_dir, 'blocker')
+      const path = join(blocker, 'run.jsonl')
+      writeFileSync(blocker, '')
+      const seen = collector()
+      const errors: unknown[] = []
+      const tail = spawn({ path, on_event: seen.on_event, on_io_error: (err) => errors.push(err) })
+      await tail.drain()
+      // A watch on the file in the way could never report the name below it.
+      expect(open_watches()).toEqual([work_dir])
+
+      unlinkSync(blocker)
+      mkdirSync(blocker)
+      writeFileSync(path, emit_line('one'))
+      fire(work_dir, 'rename', 'blocker')
+      await seen.reach(1)
+      expect(seen.texts).toEqual(['one'])
+      expect(errors).toEqual([])
+    })
+
+    it("goes back to waiting when the file's directory moves away, then reads the new file from its first line", async () => {
+      // Only fire() reaches a watch's listener, so each event the test relies on is one it sent.
+      gate.quiet_dir = mkdtempSync(join(work_dir, 'quiet-'))
+      const dir = join(work_dir, '.volley')
+      const path = join(dir, 'trajectory.jsonl')
+      mkdirSync(dir)
+      writeFileSync(path, emit_line('one'))
+      const seen = collector()
+      const errors: unknown[] = []
+      const tail = spawn({ path, on_event: seen.on_event, on_io_error: (err) => errors.push(err) })
+      await tail.drain()
+      expect(open_watches()).toEqual([path, dir])
+
+      // The file moves with its directory, so its own watch reports nothing.
+      // The directory watch reports the directory by its own name, and the
+      // pass that event starts finds the path empty and waits a level up.
+      renameSync(dir, join(work_dir, 'moved'))
+      await by_event(() => fire(dir, 'change', '.volley'))
+      await tail.drain()
+      expect(open_watches()).toEqual([path, work_dir])
+
+      mkdirSync(dir)
+      writeFileSync(path, emit_line('two'))
+      fire(work_dir, 'rename', '.volley')
+      await seen.reach(2)
+      expect(seen.texts).toEqual(['one', 'two'])
+      expect(open_watches()).toEqual([path, dir])
+      expect(errors).toEqual([])
+    })
+
+    it('moves the directory watch onto a new directory made at the old path', async () => {
+      // Only fire() reaches a watch's listener, so each event the test relies on is one it sent.
+      gate.quiet_dir = mkdtempSync(join(work_dir, 'quiet-'))
+      const dir = join(work_dir, 'runs')
+      const path = join(dir, 'run.jsonl')
+      mkdirSync(dir)
+      const seen = collector()
+      const tail = spawn({ path, on_event: seen.on_event })
+      await tail.drain()
+      expect(open_watches()).toEqual([dir])
+
+      // A watch that follows an inode, as inotify's does, reports the old
+      // directory moving and then nothing about a new one at the path, so
+      // the pass that event starts replaces the watch.
+      renameSync(dir, join(work_dir, 'runs.1'))
+      mkdirSync(dir)
+      await by_event(() => fire(dir, 'rename', 'runs'))
+      await tail.drain()
+      expect(gate.watches.filter((record) => record.target === dir)).toHaveLength(2)
+      expect(open_watches()).toEqual([dir])
+
+      writeFileSync(path, emit_line('one'))
+      fire(dir, 'rename', 'run.jsonl')
+      await seen.reach(1)
+      expect(seen.texts).toEqual(['one'])
     })
 
     it('reads a deleted and recreated file from the top when its inode number comes back', async () => {
@@ -726,7 +887,7 @@ describe('start_tail', () => {
       expect(events).toHaveLength(0)
     })
 
-    it('closes the file watch, and the directory watch while it waits', async () => {
+    it('closes the file watch, and the directory watch it keeps beside it', async () => {
       const present = join(work_dir, 'present.jsonl')
       writeFileSync(present, '')
       const waiting = join(work_dir, 'nested')
@@ -734,8 +895,8 @@ describe('start_tail', () => {
       const tail_a = spawn({ path: present, on_event: () => {} })
       const tail_b = spawn({ path: join(waiting, 'missing.jsonl'), on_event: () => {} })
       await Promise.all([tail_a.drain(), tail_b.drain()])
-      // Either drain can settle first, so the two watches open in either order.
-      expect(open_watches().toSorted()).toEqual([present, waiting].toSorted())
+      // Either drain can settle first, so the watches open in either order.
+      expect(open_watches().toSorted()).toEqual([present, work_dir, waiting].toSorted())
 
       tail_a.stop()
       expect(open_watches()).toEqual([waiting])

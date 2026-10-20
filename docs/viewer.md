@@ -36,6 +36,11 @@ The viewer tails the file with `fs.watch`, parses each new line through
 events to your browser over SSE. It works on a finished run too, so point it at
 any old `.jsonl` and you get the whole file folded into the completed run.
 
+The path doesn't have to exist when the viewer starts, and neither do the
+directories above it, so you can start the viewer before the run that writes
+the file. When something replaces the file, by renaming it away or by moving
+its whole directory, the viewer reads the new file from its first line.
+
 ### HTTP Push (Low-Latency, Opt-In)
 
 Use this when you want a live attach with no latency at all, when you're

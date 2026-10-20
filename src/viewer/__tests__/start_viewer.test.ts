@@ -9,7 +9,7 @@
  * a clean `close()`.
  */
 
-import { appendFileSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { appendFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { request } from 'node:http'
 import { networkInterfaces, tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -168,10 +168,12 @@ describe('start_viewer', () => {
   })
 
   it('routes a tail io error to on_io_error', async () => {
-    // A missing file is a wait, not an error, but a missing directory is one:
-    // the tail can't watch it, so it could never see the file appear.
+    // A missing file is a wait, not an error, and so are missing directories
+    // above it. A path that holds a directory is an error: it stats and
+    // opens, and then refuses the read.
     work_dir = mkdtempSync(join(tmpdir(), 'fascicle-viewer-start-'))
-    const path = join(work_dir, 'no-such-dir', 'run.jsonl')
+    const path = join(work_dir, 'a-directory')
+    mkdirSync(path)
     const io_errors: unknown[] = []
     handle = await start_viewer({ path, port: 0, on_io_error: (err) => io_errors.push(err) })
     const deadline = Date.now() + 2000
