@@ -7,7 +7,7 @@ upgrade on purpose.
 
 ## Shipped
 
-The published surface as of v0.15.0:
+The published surface as of v0.16.0:
 
 - **Composition.** 23 primitives over a single `Step<i, o>` value type. You get
   the `chain` spine (`.step` / `.stage` / `.output`), `model_step` as the default
@@ -51,10 +51,12 @@ The published surface as of v0.15.0:
   [providers.md](./providers.md#reasoning-in-a-tool-loop).
 - **Loop control.** Multi-step tool loops with tool-call salvage for models that
   emit calls as prose, approval gating, deterministic turn-ending, per-turn
-  timeout budgets, a `prepare_step` hook, and cost accounting. On OpenRouter's
-  native transport, the charge that OpenRouter reports for each response is the
-  step's cost, a BYOK request's upstream charge included, so `cost` events and
-  the budgets you build on them work there with no pricing row.
+  timeout budgets, a `prepare_step` hook, and cost accounting. `define_tool`
+  hands a tool's `execute` the type that its input schema validates to, so a
+  tool no longer parses its input a second time. On OpenRouter's native
+  transport, the charge that OpenRouter reports for each response is the step's
+  cost, a BYOK request's upstream charge included, so `cost` events and the
+  budgets you build on them work there with no pricing row.
 - **Markdown-defined agents** (`fascicle/agents`). When an agent is just a
   prompt and an output schema, `define_agent` folds a markdown file and a schema
   into a `Step<i, o>`. The frontmatter names the agent and sets its model,
@@ -115,6 +117,15 @@ The published surface as of v0.15.0:
 
 ## Near-Term
 
+- **Durable runs across hosts.** This one comes first, since it's the gap most
+  likely to stop a server-side app that builds on `durable` today.
+  `filesystem_store` claims a run safely between processes on one machine, but
+  its claims lean on a local filesystem, so a run that more than one host drives
+  needs a store that you write yourself, with
+  [`examples/object-store/`](../examples/object-store/) as the pattern to
+  follow. I want to ship a store that holds across hosts. The store contract
+  gains a compare-and-set in the same pass, and the first three bugs under
+  Known Issues, which are all about suspend and resume, get fixed with it.
 - **MCP hardening.** Auth on the HTTP transport, MCP `sampling`, per-tool
   approval gating, and `resources` subscriptions were all deferred out of the
   first bridge.
@@ -142,6 +153,12 @@ likely to bite you first.
   step runs again (and you pay for it again), and the run goes on with a result
   that the approver never saw. A hand-built `checkpoint` before a `suspend` has
   the same gap.
+- **A late resume can leave its datum behind.** A resume that stalls past its
+  claim between reading the run and writing its datum, or whose run is deleted
+  in that gap, can still write into the inbox of a gate that the run has passed.
+  Nothing reads it there unless the run comes back to that gate or a new run
+  under the same id reaches it. Closing both windows needs a compare-and-set
+  that the store contract doesn't have yet.
 - **The viewer slows down on long runs and clips large flows.** Holding or
   playing the scrubber refolds the run from its first event at every position,
   so a long run lags. A flow that's still bigger than the window at the
@@ -160,6 +177,12 @@ likely to bite you first.
   version manager, isn't there when `bwrap` goes to run it, and the call fails
   with `binary_not_found`. Your home directory isn't bound either, so an
   `auth_mode: 'oauth'` run couldn't reach its login even with the binary there.
+- **`throughput()` reads far too high on Ollama.** A turn that's only a tool
+  call sends nothing until it has finished generating, on either transport, and
+  the native transport sends nothing while the model thinks, so the window that
+  `throughput()` times misses most of the work. The rate can come out 100 to
+  1,600 times Ollama's own. The native transport drops `message.thinking`
+  outright, so that reasoning never reaches `on_chunk` or the trajectory either.
 - **Some provider errors don't say what to do.** Many name what went wrong but
   not the fix, such as the config key to set or the `base_url` to check.
 - **Housekeeping.** Engine code that only tests call (`normalize_chunk` and
