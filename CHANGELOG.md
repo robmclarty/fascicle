@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **`ServeAcpConfig` takes `additional_directories`, so an agent can keep each session to `cwd`.** An agent always advertised `sessionCapabilities.additionalDirectories` and took every directory that a client sent with `session/new`, so an agent whose tools and checks look at `cwd` alone had to narrow the session itself, and a narrowed copy of the session lost the diffs, the terminals, and the "always" that 0.16.0 gave its cards and prompts. With `additional_directories: false`, `initialize` leaves the capability out, so a client that follows the protocol sends no additional directories. A `session/new` that sends some anyway is refused with invalid params that carry the list as it was sent, before the agent resolves a root or builds a flow, and an empty list counts as none. Every session then has `cwd` as its one root, and the file tools, the prompts, and the cards follow from the session with no change. A config that leaves the option out, or sets `true`, behaves as it did.
+
 ## v0.16.1 — 2026-10-19
 
 ### Internal

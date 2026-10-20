@@ -257,20 +257,71 @@ describe('acp_agent: one connection per app', () => {
 })
 
 describe('acp_agent: workspace roots', () => {
+  const CWD_ALONE =
+    'Invalid params: this agent works in cwd alone and takes no additional directories; send session/new without additionalDirectories'
+
   /** An agent whose flow builder records each session it's handed. */
-  async function recording_agent() {
+  async function recording_agent(options: { additional_directories?: boolean } = {}) {
     const built: AcpSession[] = []
     const app = await acp_agent({
       name: 'test-agent',
+      additional_directories: options.additional_directories,
       flow: (session) => {
         built.push(session)
         return reply_step()
       },
     })
     const { agent } = connect_client(app)
-    await agent.request('initialize', { protocolVersion: PROTOCOL_VERSION })
-    return { agent, built }
+    const initialized = await agent.request('initialize', { protocolVersion: PROTOCOL_VERSION })
+    return { agent, built, initialized }
   }
+
+  it('advertises no additional directories when the config sets additional_directories to false', async () => {
+    const { initialized } = await recording_agent({ additional_directories: false })
+    expect(initialized).toStrictEqual({
+      protocolVersion: PROTOCOL_VERSION,
+      agentInfo: { name: 'test-agent', version: '0.0.0' },
+      agentCapabilities: {
+        loadSession: false,
+        promptCapabilities: { embeddedContext: true },
+        sessionCapabilities: {},
+      },
+      authMethods: [],
+    })
+  })
+
+  it('refuses a session/new that sends additional directories to an agent that works in cwd alone, and builds no flow', async () => {
+    const cwd = await scratch()
+    const shared = await scratch()
+    const { agent, built } = await recording_agent({ additional_directories: false })
+    await expect(
+      agent.request('session/new', { cwd, additionalDirectories: [shared], mcpServers: [] }),
+    ).rejects.toMatchObject({ code: -32602, message: CWD_ALONE, data: { additionalDirectories: [shared] } })
+    expect(built).toEqual([])
+  })
+
+  it('refuses additional directories before the roots resolve, so one that does not exist gets the same refusal', async () => {
+    const cwd = await scratch()
+    const missing = join(cwd, 'gone')
+    const { agent } = await recording_agent({ additional_directories: false })
+    const failure: unknown = await agent
+      .request('session/new', { cwd, additionalDirectories: [missing], mcpServers: [] })
+      .catch((caught: unknown) => caught)
+    expect(failure).toBeInstanceOf(RequestError)
+    expect(failure).toMatchObject({ code: -32602, message: CWD_ALONE })
+    expect((failure as RequestError).data).toStrictEqual({ additionalDirectories: [missing] })
+  })
+
+  it('starts a session on cwd alone in an agent that works in cwd alone, with an empty list or none', async () => {
+    const [a, b] = await Promise.all([scratch(), scratch()])
+    const { agent, built } = await recording_agent({ additional_directories: false })
+    await agent.request('session/new', { cwd: a, additionalDirectories: [], mcpServers: [] })
+    await agent.request('session/new', { cwd: b, mcpServers: [] })
+    expect(built.map((session) => [session.additional_directories, session.roots])).toEqual([
+      [[], [await realpath(a)]],
+      [[], [await realpath(b)]],
+    ])
+  })
 
   it('hands the flow the roots as the client sent them and as real paths, a cwd behind a symlink included', async () => {
     const base = await scratch()

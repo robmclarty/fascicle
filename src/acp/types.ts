@@ -163,6 +163,13 @@ type ServeAcpCommon<i, o> = {
   /** The mode each session starts in, until the client picks another; default: `'manual'`. */
   readonly default_mode?: AcpMode | undefined
   /**
+   * Whether a client may widen a session's workspace past `cwd`, which the
+   * agent advertises as `sessionCapabilities.additionalDirectories`; default:
+   * `true`. An agent that works in `cwd` alone sets `false`, and a
+   * `session/new` that sends additional directories anyway is refused.
+   */
+  readonly additional_directories?: boolean | undefined
+  /**
    * The turn's reply when the flow streamed no message text; default: a
    * string as-is, anything else as JSON.
    */

@@ -72,6 +72,27 @@ function requested_mode(sdk: AcpSdk, id: unknown, field: 'modeId' | 'value'): Ac
 }
 
 /**
+ * The additional directories a client sent with a session request, or, from
+ * an agent whose config sets `additional_directories: false`, an
+ * invalid-params error refusing them. Every session request that carries
+ * `additionalDirectories` goes through this check before its roots resolve,
+ * so each one refuses them the same way. The protocol reads an empty list as
+ * none, so an empty list passes.
+ */
+function requested_directories(
+  sdk: AcpSdk,
+  config: { readonly additional_directories?: boolean | undefined },
+  method: string,
+  directories: ReadonlyArray<string> = [],
+): ReadonlyArray<string> {
+  if (config.additional_directories !== false || directories.length === 0) return directories
+  throw sdk.RequestError.invalidParams(
+    { additionalDirectories: directories },
+    `this agent works in cwd alone and takes no additional directories; send ${method} without additionalDirectories`,
+  )
+}
+
+/**
  * Build the ACP agent app that answers each prompt turn by running the
  * config's flow, with its handlers registered and not yet connected.
  *
@@ -106,12 +127,14 @@ export async function acp_agent<i, o>(config: ServeAcpConfig<i, o>): Promise<Age
         protocolVersion: sdk.PROTOCOL_VERSION,
         agentInfo: { name: config.name, version: config.version ?? '0.0.0' },
         // Embedded context lets a file the user @-mentions arrive with its
-        // text, rather than as a bare URI the flow has no way to read.
-        // Additional directories let a client widen the workspace past `cwd`.
+        // text, rather than as a bare URI the flow has no way to read. The
+        // agent advertises additional directories, which let a client widen
+        // the workspace past `cwd`, unless the config sets
+        // `additional_directories: false`.
         agentCapabilities: {
           loadSession: false,
           promptCapabilities: { embeddedContext: true },
-          sessionCapabilities: { additionalDirectories: {} },
+          sessionCapabilities: config.additional_directories === false ? {} : { additionalDirectories: {} },
         },
         // Providers authenticate with what the launched process can see;
         // ACP v1 gives the client no way to hand the agent credentials.
@@ -125,7 +148,8 @@ export async function acp_agent<i, o>(config: ServeAcpConfig<i, o>): Promise<Age
     )
     .onRequest('session/new', async (ctx) => {
       // `mcpServers` is accepted and ignored until a flow can be handed them.
-      const { cwd, additionalDirectories: additional_directories = [] } = ctx.params
+      const { cwd } = ctx.params
+      const additional_directories = requested_directories(sdk, config, 'session/new', ctx.params.additionalDirectories)
       // The roots resolve once, here, so every containment check compares
       // against the same real paths for the life of the session.
       const roots = await resolve_roots([cwd, ...additional_directories]).catch((err: unknown) => {

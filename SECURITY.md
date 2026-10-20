@@ -87,7 +87,9 @@ injection can reach too.
 
 - **The file tools stay inside the workspace.** A path is allowed only when its
   real path, with every symlink resolved, lands under the session's `cwd` or
-  under one of the additional directories that the client sent. A symlink that
+  under one of the additional directories that the client sent. An agent can
+  refuse additional directories with `additional_directories: false` in its
+  config, which keeps each session's file tools to `cwd` alone. A symlink that
   points out of the workspace is refused, and so is a new file whose nearest
   existing parent sits outside it. Inside the workspace the reads see
   everything you keep there, `.env` files included, since nothing reads
