@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.16.1 — 2026-10-19
+
+### Internal
+
+- The roadmap's Shipped list is up to date with v0.16.0. Near-Term now starts with durable runs across hosts, which covers a shipped store that holds across hosts, a compare-and-set in the store contract, and fixes for the suspend and resume bugs under Known Issues. Known Issues gains two entries: the late-resume windows that v0.16.0 left open, and `throughput()` reading far too high on Ollama.
+- checkride moved to 0.15.0, whose `security` slot counts the advisories that the audit report lists rather than its per-severity totals. The braces advisory, which is patched and ignored, no longer keeps `pnpm check:security` red on pnpm 11.
+
 ## v0.16.0 — 2026-10-19
 
 ### Added
