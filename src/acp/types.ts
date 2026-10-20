@@ -160,7 +160,18 @@ type ServeAcpCommon<i, o> = {
   readonly name: string
   /** Reported to the client as `agentInfo.version`; default: `'0.0.0'`. */
   readonly version?: string | undefined
-  /** The mode each session starts in, until the client picks another; default: `'manual'`. */
+  /**
+   * The modes a session offers, which the client's mode picker lists in the
+   * order Manual, Accept edits, Auto, whatever order they're given in; default:
+   * all three. An agent that runs on the host, outside a container or a
+   * throwaway worktree, leaves out `'auto'`.
+   */
+  readonly modes?: ReadonlyArray<AcpMode> | undefined
+  /**
+   * The mode each session starts in until the client picks another, one of
+   * `modes`; default: the first mode the agent offers, which is `'manual'`
+   * whenever it offers Manual.
+   */
   readonly default_mode?: AcpMode | undefined
   /**
    * Whether a client may widen a session's workspace past `cwd`, which the

@@ -681,7 +681,7 @@ describe('approve: command_key', () => {
  */
 async function manual_session(cards: CardSync, ask: PermissionAsker): Promise<AcpSession> {
   const roots = await resolve_roots([cwd])
-  const modes = session_modes('manual', async () => {})
+  const modes = session_modes({ modes: ['manual', 'accept_edits', 'auto'], default_mode: 'manual' }, async () => {})
   const approver = session_approver({ modes, cards, ask })
   const session: AcpSession = {
     id: 'session-1',

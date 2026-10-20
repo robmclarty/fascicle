@@ -1,8 +1,9 @@
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
-import type { SessionConfigOption, SessionUpdate } from '@agentclientprotocol/sdk'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { client } from '@agentclientprotocol/sdk'
+import type { RequestPermissionRequest, SessionConfigOption, SessionUpdate } from '@agentclientprotocol/sdk'
 import { model_step } from 'fascicle'
 import { make_stub_engine } from '#testing'
 import type { Tool, ToolApprovalRequest } from '#engine'
@@ -11,10 +12,13 @@ import { is_acp_mode, session_modes } from '../modes.js'
 import { open_session, read_turn, read_until } from '../test/connect_client.js'
 import type { OpenSession } from '../test/connect_client.js'
 import { scripted_engine } from '../test/scripted_provider.js'
-import type { AcpMode, AcpSession } from '../types.js'
+import type { AcpMode, AcpSession, ServeAcpConfig } from '../types.js'
 import { workspace_tools } from '../workspace_tools.js'
 
-const MODES = [
+/** A mode as a client sees it listed. */
+type ListedMode = { readonly id: AcpMode; readonly name: string; readonly description: string }
+
+const MODES: ReadonlyArray<ListedMode> = [
   { id: 'manual', name: 'Manual', description: 'Ask before every edit and every command' },
   { id: 'accept_edits', name: 'Accept edits', description: 'Edit files without asking, and ask before every command' },
   {
@@ -24,8 +28,13 @@ const MODES = [
   },
 ]
 
-/** The mode config option as the client should see it with `current` selected. */
-function mode_option(current: AcpMode): SessionConfigOption {
+/** The modes `ids` names as a client should see them listed, in the table's order. */
+function listed(...ids: AcpMode[]): ListedMode[] {
+  return MODES.filter(({ id }) => ids.includes(id))
+}
+
+/** The mode config option as the client should see it with `current` selected among `offered`. */
+function mode_option(current: AcpMode, offered: ReadonlyArray<ListedMode> = MODES): SessionConfigOption {
   return {
     id: 'mode',
     name: 'Mode',
@@ -33,15 +42,15 @@ function mode_option(current: AcpMode): SessionConfigOption {
     category: 'mode',
     type: 'select',
     currentValue: current,
-    options: MODES.map(({ id, name, description }) => ({ value: id, name, description })),
+    options: offered.map(({ id, name, description }) => ({ value: id, name, description })),
   }
 }
 
-/** The two updates a switch to `mode` sends, in order. */
-function switched_to(mode: AcpMode): SessionUpdate[] {
+/** The two updates a switch to `mode` sends, in order, from an agent that offers `offered`. */
+function switched_to(mode: AcpMode, offered: ReadonlyArray<ListedMode> = MODES): SessionUpdate[] {
   return [
     { sessionUpdate: 'current_mode_update', currentModeId: mode },
-    { sessionUpdate: 'config_option_update', configOptions: [mode_option(mode)] },
+    { sessionUpdate: 'config_option_update', configOptions: [mode_option(mode, offered)] },
   ]
 }
 
@@ -54,7 +63,7 @@ function is_config_update(update: SessionUpdate): boolean {
  * `AcpSession` its builder was handed so a test can read its mode.
  */
 async function open(
-  options: { readonly default_mode?: AcpMode } = {},
+  options: { readonly default_mode?: AcpMode; readonly modes?: ReadonlyArray<AcpMode> } = {},
 ): Promise<OpenSession & { readonly built: AcpSession }> {
   const built: AcpSession[] = []
   const reply = model_step({ engine: make_stub_engine([{ prefix: '', content: 'ok' }]), model: 'stub-model' })
@@ -122,7 +131,7 @@ describe('modes: switching', () => {
 
   it('switches before the client hears of it, so each update goes out with the new mode in force', async () => {
     const seen: AcpMode[] = []
-    const modes = session_modes('manual', async () => {
+    const modes = session_modes({ modes: ['manual', 'accept_edits', 'auto'], default_mode: 'manual' }, async () => {
       seen.push(modes.current())
     })
     await modes.switch_to('auto')
@@ -195,6 +204,117 @@ describe('modes: refusals', () => {
     [['auto'], false],
   ])('takes %j as a mode: %s', (id, expected) => {
     expect(is_acp_mode(id)).toBe(expected)
+  })
+})
+
+describe('modes: the modes an agent offers', () => {
+  const offered = listed('manual', 'accept_edits')
+
+  it("reports only the offered modes both ways, in the table's order, a mode listed twice counted once", async () => {
+    const { session, built } = await open({ modes: ['auto', 'manual', 'auto'] })
+    expect(session.modes).toEqual({ currentModeId: 'manual', availableModes: listed('manual', 'auto') })
+    expect(session.newSessionResponse.configOptions).toEqual([mode_option('manual', listed('manual', 'auto'))])
+    expect(built.mode()).toBe('manual')
+  })
+
+  it('starts in the first offered mode when the config leaves Manual out and sets no default_mode', async () => {
+    const { session, built } = await open({ modes: ['auto', 'accept_edits'] })
+    expect(session.modes).toEqual({ currentModeId: 'accept_edits', availableModes: listed('accept_edits', 'auto') })
+    expect(session.newSessionResponse.configOptions).toEqual([
+      mode_option('accept_edits', listed('accept_edits', 'auto')),
+    ])
+    expect(built.mode()).toBe('accept_edits')
+  })
+
+  it('starts in a default_mode the agent offers', async () => {
+    const { session, built } = await open({ modes: ['manual', 'accept_edits'], default_mode: 'accept_edits' })
+    expect(session.modes).toEqual({ currentModeId: 'accept_edits', availableModes: offered })
+    expect(built.mode()).toBe('accept_edits')
+  })
+
+  it('refuses a mode it does not offer from either setter as one it does not know, sends nothing, and keeps the mode', async () => {
+    const { agent, session, built } = await open({ modes: ['manual', 'accept_edits'] })
+    const { sessionId } = session
+    const message = 'Invalid params: unknown mode "auto"; choose one of manual, accept_edits'
+    await expect(agent.request('session/set_mode', { sessionId, modeId: 'auto' })).rejects.toMatchObject({
+      code: -32602,
+      message,
+      data: { modeId: 'auto' },
+    })
+    await expect(
+      agent.request('session/set_config_option', { sessionId, configId: 'mode', value: 'auto' }),
+    ).rejects.toMatchObject({ code: -32602, message, data: { value: 'auto' } })
+    expect(built.mode()).toBe('manual')
+    // The first updates after the refusals are the next switch's, so the refusals sent none.
+    await agent.request('session/set_mode', { sessionId, modeId: 'accept_edits' })
+    expect(await read_until(session, is_config_update)).toEqual(switched_to('accept_edits', offered))
+  })
+
+  it("lists only the offered modes in set_config_option's answer and in a switch's update", async () => {
+    const { agent, session } = await open({ modes: ['manual', 'accept_edits'] })
+    const response = await agent.request('session/set_config_option', {
+      sessionId: session.sessionId,
+      configId: 'mode',
+      value: 'accept_edits',
+    })
+    expect(response).toEqual({ configOptions: [mode_option('accept_edits', offered)] })
+    expect(await read_until(session, is_config_update)).toEqual(switched_to('accept_edits', offered))
+  })
+})
+
+describe('modes: a config that offers no mode it can run', () => {
+  /** The config's modes and default_mode as a caller with no types might pass them. */
+  type Untyped = { readonly modes?: unknown; readonly default_mode?: unknown }
+
+  /** Build an agent on `untyped`, as a caller whose config no type checked. */
+  function build_with(untyped: Untyped, build: typeof acp_agent = acp_agent) {
+    const config = untyped as Pick<ServeAcpConfig<string, string>, 'modes' | 'default_mode'>
+    return build({ ...config, name: 'modes', flow: model_step({ engine: make_stub_engine([]), model: 'stub-model' }) })
+  }
+
+  afterEach(() => {
+    vi.doUnmock('@agentclientprotocol/sdk')
+    vi.resetModules()
+  })
+
+  it.each<[string, Untyped, string]>([
+    [
+      'an empty modes',
+      { modes: [] },
+      'acp_agent: modes is empty; list at least one of manual, accept_edits, auto, or leave modes out to offer all three',
+    ],
+    [
+      'a modes that lists toString',
+      { modes: ['manual', 'toString'] },
+      `acp_agent: modes lists "toString", which isn't a mode; use one of manual, accept_edits, auto`,
+    ],
+    [
+      'a default_mode outside modes',
+      { modes: ['manual', 'accept_edits'], default_mode: 'auto' },
+      `acp_agent: default_mode "auto" isn't one of the modes this agent offers (manual, accept_edits); add it to modes or leave default_mode out`,
+    ],
+    [
+      'a default_mode that is no mode at all',
+      { default_mode: 'plan' },
+      `acp_agent: default_mode "plan" isn't one of the modes this agent offers (manual, accept_edits, auto); add it to modes or leave default_mode out`,
+    ],
+  ])('rejects %s as acp_agent is built', async (_, untyped, message) => {
+    const failure: unknown = await build_with(untyped).catch((caught: unknown) => caught)
+    expect(failure).toBeInstanceOf(Error)
+    expect(failure).toMatchObject({ message })
+  })
+
+  it('rejects a bad config before it loads the SDK, so the error names the config and not the missing SDK', async () => {
+    vi.resetModules()
+    vi.doMock('@agentclientprotocol/sdk', () => {
+      throw new Error('module not found (test)')
+    })
+    const { acp_agent: build } = await import('../acp_agent.js')
+    await expect(build_with({}, build)).rejects.toMatchObject({ kind: 'acp_sdk_missing_error' })
+    await expect(build_with({ modes: [] }, build)).rejects.toMatchObject({
+      message:
+        'acp_agent: modes is empty; list at least one of manual, accept_edits, auto, or leave modes out to offer all three',
+    })
   })
 })
 
@@ -291,5 +411,43 @@ describe('modes: over the real tool loop', () => {
     const { stop_reason } = await read_turn(session)
     expect(stop_reason).toBe('end_turn')
     expect(asked).toEqual(expected)
+  })
+
+  it('asks before every command in an agent that leaves Auto out, until the client allows a command line always', async () => {
+    const cwd = await mkdtemp(join(tmpdir(), 'fascicle-acp-modes-'))
+    made.push(cwd)
+    const engine = scripted_engine([
+      [{ id: 'c1', name: 'run_command', input: { command: 'echo one' } }],
+      'done',
+      [{ id: 'c2', name: 'run_command', input: { command: 'echo two' } }],
+      [{ id: 'c3', name: 'run_command', input: { command: 'echo one' } }],
+      'done',
+    ])
+    const asked: Array<[AcpMode, string]> = []
+    let mode: AcpMode = 'manual'
+    const client_app = client().onRequest('session/request_permission', (ctx) => {
+      const { toolCall, options }: RequestPermissionRequest = ctx.params
+      asked.push([mode, toolCall.title ?? ''])
+      const always = options.find((option) => option.kind === 'allow_always')
+      return { outcome: { outcome: 'selected', optionId: always?.optionId ?? 'allow_once' } }
+    })
+    const app = await acp_agent({
+      name: 'modes',
+      modes: ['manual', 'accept_edits'],
+      flow: (session) =>
+        model_step({ engine, id: 'coder', tools: workspace_tools(session), on_tool_approval: session.approve }),
+    })
+    const { agent, session } = await open_session(app, { client: client_app, session: { cwd } })
+    expect(session.modes?.availableModes.map(({ id }) => id)).toEqual(['manual', 'accept_edits'])
+    await session.prompt('first')
+    expect((await read_turn(session)).stop_reason).toBe('end_turn')
+    mode = 'accept_edits'
+    await agent.request('session/set_mode', { sessionId: session.sessionId, modeId: mode })
+    await session.prompt('second')
+    expect((await read_turn(session)).stop_reason).toBe('end_turn')
+    expect(asked).toEqual([
+      ['manual', 'echo one'],
+      ['accept_edits', 'echo two'],
+    ])
   })
 })

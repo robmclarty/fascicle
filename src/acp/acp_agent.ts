@@ -12,16 +12,8 @@ import { randomUUID } from 'node:crypto'
 import type { AgentApp, AgentContext, ClientCapabilities, SessionUpdate } from '@agentclientprotocol/sdk'
 import { create_card_sync, message_of, session_approver } from './approve.js'
 import type { PermissionAsker } from './approve.js'
-import {
-  config_options,
-  DEFAULT_MODE,
-  is_acp_mode,
-  MODE_CONFIG_ID,
-  mode_state,
-  session_modes,
-  unknown_mode_message,
-} from './modes.js'
-import type { SessionModes } from './modes.js'
+import { config_options, MODE_CONFIG_ID, mode_offer, mode_state, session_modes, unknown_mode_message } from './modes.js'
+import type { ModeOffer, SessionModes } from './modes.js'
 import { cancel_turn, prompt_turn } from './prompt_turn.js'
 import type { SessionRecord } from './prompt_turn.js'
 import { load_acp_sdk } from './sdk_loader.js'
@@ -64,11 +56,18 @@ function permission_asker(sdk: AcpSdk, client: AgentContext): PermissionAsker {
 
 /**
  * The mode a client asked for, or an invalid-params error naming the modes
- * there are. `field` is the param the id arrived in, for the error's data.
+ * the agent offers, for a mode it doesn't know and one it leaves out alike.
+ * `field` is the param the id arrived in, for the error's data.
  */
-function requested_mode(sdk: AcpSdk, id: unknown, field: 'modeId' | 'value'): AcpMode {
-  if (is_acp_mode(id)) return id
-  throw sdk.RequestError.invalidParams({ [field]: id }, unknown_mode_message(id))
+function requested_mode(
+  sdk: AcpSdk,
+  offer: ModeOffer,
+  modes: SessionModes,
+  id: unknown,
+  field: 'modeId' | 'value',
+): AcpMode {
+  if (modes.offers(id)) return id
+  throw sdk.RequestError.invalidParams({ [field]: id }, unknown_mode_message(id, offer))
 }
 
 /**
@@ -103,6 +102,8 @@ function requested_directories(
  * before it can overwrite the first client's capabilities.
  */
 export async function acp_agent<i, o>(config: ServeAcpConfig<i, o>): Promise<AgentApp> {
+  // A bad config fails here, before the SDK loads, so the error names it.
+  const offer = mode_offer(config)
   const sdk = await load_acp_sdk()
   const sessions = new Map<string, AgentSession<i, o>>()
   let client_capabilities: ClientCapabilities = {}
@@ -156,7 +157,7 @@ export async function acp_agent<i, o>(config: ServeAcpConfig<i, o>): Promise<Age
         throw sdk.RequestError.invalidParams({ cwd, additionalDirectories: additional_directories }, message_of(err))
       })
       const id = randomUUID()
-      const modes = session_modes(config.default_mode ?? DEFAULT_MODE, sender(sdk, ctx.client, id))
+      const modes = session_modes(offer, sender(sdk, ctx.client, id))
       const cards = create_card_sync()
       const approver = session_approver({ modes, cards, ask: permission_asker(sdk, ctx.client) })
       const session: AcpSession = {
@@ -174,7 +175,11 @@ export async function acp_agent<i, o>(config: ServeAcpConfig<i, o>): Promise<Age
       } catch (err: unknown) {
         throw internal_error(sdk, err)
       }
-      return { sessionId: id, modes: mode_state(modes.current()), configOptions: config_options(modes.current()) }
+      return {
+        sessionId: id,
+        modes: mode_state(offer, modes.current()),
+        configOptions: config_options(offer, modes.current()),
+      }
     })
     .onRequest('session/prompt', async (ctx) => {
       const { sessionId, prompt } = ctx.params
@@ -188,7 +193,7 @@ export async function acp_agent<i, o>(config: ServeAcpConfig<i, o>): Promise<Age
     .onRequest('session/set_mode', async (ctx) => {
       const { sessionId, modeId } = ctx.params
       const { modes } = session_of(sessionId)
-      await modes.switch_to(requested_mode(sdk, modeId, 'modeId'))
+      await modes.switch_to(requested_mode(sdk, offer, modes, modeId, 'modeId'))
       return {}
     })
     .onRequest('session/set_config_option', async (ctx) => {
@@ -200,8 +205,8 @@ export async function acp_agent<i, o>(config: ServeAcpConfig<i, o>): Promise<Age
           `unknown config option ${configId}; the only one is ${MODE_CONFIG_ID}`,
         )
       }
-      await modes.switch_to(requested_mode(sdk, value, 'value'))
-      return { configOptions: config_options(modes.current()) }
+      await modes.switch_to(requested_mode(sdk, offer, modes, value, 'value'))
+      return { configOptions: config_options(offer, modes.current()) }
     })
     .onNotification('session/cancel', (ctx) => {
       const record = sessions.get(ctx.params.sessionId)
