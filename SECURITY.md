@@ -126,7 +126,11 @@ injection can reach too.
 - **Auto asks for nothing.** It edits files and runs commands with nobody
   watching, so run it in a container or a throwaway worktree that holds no
   credentials you'd mind a command reading. A container doesn't hide the
-  provider key that the agent itself needs, so pair it with `command_env`.
+  provider key that the agent itself needs, so pair it with `command_env`. An
+  agent that runs on the host can leave Auto out with
+  `modes: ['manual', 'accept_edits']` in its config. No client can then switch
+  a session into Auto, and every command asks before it runs unless you've
+  allowed that exact command line for the session.
 
 [docs/acp.md](./docs/acp.md#coding-sessions) covers the tools, the modes, and
 the prompts in full.

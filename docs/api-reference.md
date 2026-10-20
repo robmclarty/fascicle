@@ -507,13 +507,16 @@ an agent starts. See [acp.md](./acp.md).
 | `create_acp_mapper_state(options?)` | fn | fresh per-turn mapper state for the low-level API: `turn_id`, `stream`, `runs` (the count that keeps a model call's cards apart when it runs again), `tools` (each card's tool), and `session`, which gives the workspace tools' cards their titles, diffs, and command output |
 | `acp_sdk_missing_error` | error | missing optional peer |
 
-Types: `ServeAcpConfig` (`to_input` is required unless the flow takes a
-string), `AcpSession`, `AcpTurn`, `AcpHistoryEntry`, `AcpStreamRoute`,
-`AcpMapperState`, `AcpMapperOptions`, `AcpMode` (`manual`, the default, asks
-before edits and commands, `accept_edits` only before commands, and `auto`
-never), `WorkspaceToolsOptions` (`read_limit_lines`, `ignore`,
-`search_timeout_ms`, `command_timeout_ms`, `output_limit_bytes`, and
-`command_env`).
+Types: `ServeAcpConfig`, `AcpSession`, `AcpTurn`, `AcpHistoryEntry`,
+`AcpStreamRoute`, `AcpMapperState`, `AcpMapperOptions`, `AcpMode`,
+`WorkspaceToolsOptions`. In `ServeAcpConfig`, `to_input` is required unless the
+flow takes a string, `modes` and `default_mode` set the modes that a session
+offers and the one it starts in, and `additional_directories: false` keeps each
+session to `cwd`. `AcpMode` is one of `manual`, which asks before edits and
+commands and is the default whenever an agent offers it, `accept_edits`, which
+asks only before commands, and `auto`, which never asks. `WorkspaceToolsOptions`
+holds `read_limit_lines`, `ignore`, `search_timeout_ms`, `command_timeout_ms`,
+`output_limit_bytes`, and `command_env`.
 
 ## UI Message Streams (`fascicle/ui`)
 
