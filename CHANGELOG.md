@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.16.0 — 2026-10-19
 
 ### Added
 
@@ -105,6 +105,14 @@
 - **`fascicle-diagram --export` reads only the module's own exports.** It checked the name with `in`, so a name such as `toString` matched a member of `Object.prototype` instead of failing as a missing export. A name that the module doesn't export now fails as any other missing export does.
 
 - **Three errors say what to do.** `stash()` and `use()` outside a `scope` named neither the key nor the fix, and now each one names its keys and says to wrap it in `scope([...])` with the steps that share them. `tee_logger` with no loggers now shows how to pass the sinks.
+
+### Internal
+
+- The docs now say that a `fascicle/ui` stream doesn't stop its run when the client disconnects, and `docs/human-in-the-loop.md` shows how to pass `run.stream` an `abort` that fires with the client, both from a route handler and from `node:http`.
+- A sweep brought the docs, the site, and `VALUES.md` back in line with the code, and swapped the opaque decision tags in the source, scripts, configs, and rules for the rules that they name.
+- `examples/pr-improve` defaults to OpenRouter, the examples build their tools with `define_tool`, and the smoke suite runs the six examples that need no key.
+- The configs, rules, and scripts match the current layout. A new ast-grep rule checks doc comments in `.tsx` files, the `tunnel` override is gone, and `.mcp.json` pins `ast-grep-mcp`.
+- The `claude_cli` sandbox test hides `bwrap` from the child's `PATH`, so it passes on GitHub's Ubuntu 26.04 runners, which ship `bwrap`.
 
 ## v0.15.0 — 2026-10-17
 
