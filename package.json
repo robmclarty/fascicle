@@ -229,7 +229,7 @@
     "@vvago/vale": "3.24.0",
     "ai": "7.0.138",
     "arktype": "2.2.8",
-    "checkride": "0.14.0",
+    "checkride": "0.15.0",
     "cspell": "10.3.6",
     "fallow": "3.33.1",
     "markdownlint-cli2": "0.23.3",

@@ -97,11 +97,10 @@ patchedDependencies:
   braces@3.0.3: patches/braces@3.0.3.patch
 
 # pnpm audit matches advisories by version, so it can't see a patch. This
-# tells it the braces advisory is handled above, and `pnpm audit` passes.
-# pnpm 11 still counts an ignored advisory in the report's per-severity
-# totals, though, and those totals are what checkride's `security` slot
-# gates on, so the slot stays red on braces until pnpm 12.4, which leaves
-# ignored advisories out of them.
+# tells it the braces advisory is handled above, so `pnpm audit` passes, and
+# so does checkride's `security` slot from 0.15 on. That slot counts the
+# advisories that the report lists rather than its per-severity totals, which
+# pnpm 11 still fills with ignored advisories.
 audit:
   ignore:
     - GHSA-vfj7-8cjw-p6xm # braces 3.0.3, patched above
