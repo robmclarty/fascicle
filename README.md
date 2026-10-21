@@ -214,6 +214,8 @@ For zero-latency streaming from inside a long-running flow, pair it with `http_l
 
 **[docs/blueprint.md](./docs/blueprint.md) is the recommended architecture for apps built on Fascicle** — distilled from the reference apps and production consumers. One composition layer (`flow.ts`) that holds the whole topology, `create_engine` confined to one file, prompts as markdown with frontmatter, zod schemas as the stage contracts, stub-engine testing, and [ast-grep rules](./examples/pr-improve/rules/) that turn each boundary into a build failure. If you are a coding agent scaffolding a new Fascicle app, follow the blueprint and its checklist.
 
+**Coding agents get a primer of their own.** The package ships `dist/AGENTS.md`, written for an agent whose training data holds little or nothing about Fascicle: the vocabulary, the rules that bite, each with the error message it produces, and the checks to run before calling a flow done. Point your agent at `node_modules/fascicle/dist/AGENTS.md`, or import it into a `CLAUDE.md` with `@node_modules/fascicle/dist/AGENTS.md`.
+
 The canonical worked example is [examples/pr-improve/](./examples/pr-improve/), with its design rationale in [examples/pr-improve/docs/architecture.md](./examples/pr-improve/docs/architecture.md).
 
 ## Where to go next

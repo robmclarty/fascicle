@@ -8,6 +8,8 @@
  *   3. Verify ./dist/index.js and ./dist/index.d.ts exist and are non-empty.
  *   3b. Compile the viewer canvas app with vite into ./dist/viewer-app/, and
  *      hold it to the size budget and the no-external-hosts rule.
+ *   3c. Copy the agent primer to ./dist/AGENTS.md, with its links pointed at
+ *      this version's docs on GitHub.
  *   4. Dynamic-import the built bundle and assert the composition
  *      primitives plus `create_engine`, `model_call`, `describe`, and
  *      `describe.json` are exported, then smoke-import every subpath.
@@ -54,7 +56,14 @@ const DIST_BIN_DIR = join(DIST_DIR, 'bin');
 const DIST_BIN_VIEWER = join(DIST_BIN_DIR, 'fascicle-viewer.js');
 const DIST_DIAGRAM_BIN_JS = join(DIST_DIR, 'diagram_bin.js');
 const DIST_BIN_DIAGRAM = join(DIST_BIN_DIR, 'fascicle-diagram.js');
+const DIST_PRIMER = join(DIST_DIR, 'AGENTS.md');
+const PRIMER_SOURCE = 'docs/learn/agent-primer.md';
 const VIEWER_APP_CONFIG = 'vite.viewer.config.ts';
+
+// Every relative link in the docs starts with ./ or ../, and nothing in a
+// TypeScript sample reads as `](./`, so this finds the primer's links into the
+// repository without parsing the markdown.
+const RELATIVE_LINK_RE = /\]\((\.\.?\/[^)\s]*)\)/g;
 
 // The compiled canvas rides every npm install, so its 350KB on disk is a gate
 // and not a hope. Source maps are already off in the vite config; the filter is
@@ -309,6 +318,9 @@ async function main() {
 
   process.stderr.write(`▸ build: writing fascicle-diagram bin shim\n`);
   await write_diagram_bin_shim(DIST_BIN_DIAGRAM);
+
+  process.stderr.write(`▸ build: writing the agent primer to dist/AGENTS.md\n`);
+  await write_agent_primer(DIST_PRIMER);
 
   process.stderr.write(`▸ build: smoke-importing ${DIST_JS}\n`);
   const mod = await import(pathToFileURL(DIST_JS).href);
@@ -595,6 +607,21 @@ await mod.run_diagram_bin(process.argv.slice(2));
 `;
   await writeFile(path, shim, 'utf8');
   await chmod(path, 0o755);
+}
+
+/**
+ * Ship the agent primer, so an agent in a project that installs fascicle can
+ * read it from node_modules without the repository. The docs it links to
+ * don't ship, so each link becomes the same file on GitHub at this version's
+ * tag, which exists by the time anyone installs it: the publish workflow runs
+ * on the tag's push.
+ */
+async function write_agent_primer(path) {
+  const { version } = JSON.parse(await readFile(join(REPO_ROOT, 'package.json'), 'utf8'));
+  const base = new URL(`https://github.com/robmclarty/fascicle/blob/v${version}/${PRIMER_SOURCE}`);
+  const primer = await readFile(join(REPO_ROOT, PRIMER_SOURCE), 'utf8');
+  const shipped = primer.replace(RELATIVE_LINK_RE, (_, target) => `](${new URL(target, base).href})`);
+  await writeFile(path, shipped, 'utf8');
 }
 
 main().catch((err) => {
