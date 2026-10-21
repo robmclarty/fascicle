@@ -229,9 +229,13 @@ function structural_shares(text) {
   };
 }
 
-/** Every file in the corpus, repo-relative, in a stable order. */
+/**
+ * Every file in the corpus, repo-relative, in a stable order. The walk
+ * through docs/ takes in its subfolders, so the course in docs/learn is held
+ * to its own past like every other doc.
+ */
 function corpus_files() {
-  const docs = readdirSync(join(REPO_ROOT, 'docs'))
+  const docs = readdirSync(join(REPO_ROOT, 'docs'), { recursive: true })
     .filter((f) => f.endsWith('.md'))
     .sort()
     .map((f) => `docs/${f}`);
