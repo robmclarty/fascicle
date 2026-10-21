@@ -12,7 +12,7 @@ change as the project matures.
 
 `pnpm check` runs the default fast set against mocked providers, so it never
 touches the network; `pnpm check:all` adds mutation testing, the packaging
-gate, and the viewer's Playwright e2e, and it's the final gate. A separate opt-in smoke suite under
+gate, a walk through the course in `docs/learn/`, and the viewer's Playwright e2e, and it's the final gate. A separate opt-in smoke suite under
 `src/engine/__tests__/live/` exercises the real provider SDKs to catch
 wire-format regressions the mocks cannot see. It is skipped unless
 `LIVE_TESTS=1` and the matching API key are set:

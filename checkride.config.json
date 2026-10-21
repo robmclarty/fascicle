@@ -104,6 +104,14 @@
     "pack": { "use": "pack", "optIn": true, "order": 20 },
     "smoke": { "use": "smoke", "optIn": true, "order": 20 },
     "snippets": { "use": "snippets-dist", "optIn": true, "order": 20 },
+    "learn": {
+      "command": "node",
+      "args": ["scripts/check-learn.mjs"],
+      "description": "the course in docs/learn, walked lesson by lesson against dist/, every output held to the lesson's text",
+      "note": "Opt-in because it needs dist/, which the build slot makes first in `check:all`. It writes each lesson's files into a temp workbench that links dist/ as `fascicle` and borrows the dev tools from node_modules, so it runs offline, in about twenty seconds. A block added to or taken out of a lesson stops it with the index to update in the script.",
+      "optIn": true,
+      "order": 20
+    },
     "attw": {
       "use": "attw",
       "profile": "esm-only",
