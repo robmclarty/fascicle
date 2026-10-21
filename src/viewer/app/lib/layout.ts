@@ -58,12 +58,14 @@
  * The slice of the `flow_structure` tree layout reads: kinds to pick a
  * geometry family, ids to key glyphs, children to recurse, and `config` and
  * `meta` only for the display name a user may have set. `step_id` is the
- * step's own id where `id` is a key that tells two places apart.
+ * step's own id where `id` is a key that tells two places apart, and
+ * `anonymous` marks a step whose id was made up for it.
  */
 export type LayoutNode = {
   readonly kind: string
   readonly id: string
   readonly step_id?: string
+  readonly anonymous?: boolean
   readonly config?: Readonly<Record<string, unknown>>
   readonly meta?: Readonly<Record<string, unknown>>
   readonly children?: ReadonlyArray<LayoutNode>
@@ -312,30 +314,38 @@ export function layout(root: LayoutNode | null): FlowLayout {
  * sequential reading, and any kind without children ends as a puck, which
  * is what keeps foreign kinds harmless.
  */
-function measure(node: LayoutNode): Box {
-  const children = (node.children ?? []).map(measure)
+function measure(node: LayoutNode, role?: string): Box {
+  const children = (node.children ?? []).map((child, index) => measure(child, role_in(node, index)))
   if (FAN_KINDS.has(node.kind) && children.length > 0) return fan_box(node, children)
   if (LOOP_KINDS.has(node.kind)) return loop_box(node, children)
   if (node.kind === 'fallback' && children.length >= 2) return basin_box(node, children)
   if (node.kind === 'map') return map_box(node, children)
   if (children.length > 0) return { id: node.id, ...run_box(children) }
-  return point_box(node)
+  return point_box(node, role)
+}
+
+/** The role a parent gives its child at `index`: a loop's second child is its guard. */
+function role_in(parent: LayoutNode, index: number): string | undefined {
+  return parent.kind === 'loop' && index === 1 ? 'guard' : undefined
 }
 
 /**
  * A user-set display name wins over the id, in core's order: a composer's
  * `name` (`config.display_name`), then a step's (`meta.name`), then the
- * step's own id.
+ * step's own id. An anonymous step's id was made up for it (a loop wraps a
+ * guard function as `loop_1_guard`), so like `describe.diagram`, it reads as
+ * the role its parent gives it, or else as its kind.
  */
-export function display_label(node: LayoutNode): string {
+export function display_label(node: LayoutNode, role?: string): string {
   for (const name of [node.config?.['display_name'], node.meta?.['name']]) {
     if (typeof name === 'string' && name.length > 0) return name
   }
+  if (node.anonymous === true) return role ?? node.kind
   return node.step_id ?? node.id
 }
 
 /** A leaf: one puck on the line, name and meta baselines below. */
-function point_box(node: LayoutNode): Box {
+function point_box(node: LayoutNode, role?: string): Box {
   return {
     id: node.id,
     width: 0,
@@ -347,7 +357,7 @@ function point_box(node: LayoutNode): Box {
       sink.nodes.push({
         id: node.id,
         kind: node.kind,
-        label: display_label(node),
+        label: display_label(node, role),
         center: { x, y },
         radius: TOKENS.puck_radius,
         terminus: false,

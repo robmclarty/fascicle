@@ -79,6 +79,10 @@ const maybe_divide = branch<Pair, number | null>({
 })
 ```
 
+That's required on 0.16.3 and earlier, which reject arms that don't agree.
+Later releases work the combination out for you, `number | null` here, so
+spelling it out becomes optional, though it still says what you meant.
+
 ## Repeat with `map`
 
 Add one more:

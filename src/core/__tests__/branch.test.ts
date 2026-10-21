@@ -19,6 +19,29 @@ describe('branch', () => {
     await expect(run(flow, 0)).resolves.toBe('neg:0')
   })
 
+  it('returns the union of two arms that return different types', async () => {
+    type Pair = { a: number; b: number }
+    const maybe_divide = branch({
+      when: ({ b }: Pair) => b === 0,
+      then: step('nothing', () => null),
+      otherwise: step('divide', ({ a, b }: Pair) => a / b),
+    })
+    const answer: number | null = await run(maybe_divide, { a: 6, b: 3 }, { install_signal_handlers: false })
+    expect(answer).toBe(2)
+    expect(await run(maybe_divide, { a: 6, b: 0 }, { install_signal_handlers: false })).toBeNull()
+    // @ts-expect-error the union holds a null, so the output isn't always a number
+    const as_number: number = await run(maybe_divide, { a: 6, b: 3 }, { install_signal_handlers: false })
+    void as_number
+
+    // Naming one output type still holds both arms to it.
+    branch<Pair, string>({
+      when: ({ b }) => b === 0,
+      then: step('words', () => 'nothing to divide'),
+      // @ts-expect-error the otherwise arm returns a number, not the named string
+      otherwise: step('divide', ({ a, b }: Pair) => a / b),
+    })
+  })
+
   it('supports async when predicates', async () => {
     const flow = branch({
       when: async (x: number) => Promise.resolve(x > 0),

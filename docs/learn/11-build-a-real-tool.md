@@ -282,12 +282,13 @@ so a bad question fails loudly.
 That's the stub's second draft, the one that passed the checks. Open the
 trajectory in the viewer (`pnpm exec fascicle-viewer .trajectory.jsonl`) and
 you'll see the loop drawn as a box around the steps that it repeated, with
-`write` marked `×2`, because it ran twice. On 0.16.3 and earlier, the box is
-labelled `LOOP_1`, the loop's id, and both `output` steps show the runs of the
-two added together. Later releases label it `DRAFT_UNTIL_CLEAN`, from its
-`name`, and count each step on its own. The puck called `loop_1_guard` is the
-loop's guard, the check that decides whether to go round again. The guard is a
-plain function with no id of its own, so Fascicle made one up.
+`write` marked `×2`, because it ran twice. The last puck in the box is the
+loop's guard, the check that decides whether to go round again. On 0.16.3 and
+earlier, the box is labelled `LOOP_1`, the loop's id, and the guard
+`loop_1_guard`, an id that Fascicle made up for a plain function, and both
+`output` steps show the runs of the two added together. Later releases label
+them `DRAFT_UNTIL_CLEAN`, from the loop's `name`, and `guard`, and count each
+step on its own.
 
 Now run it live, on your real changes:
 

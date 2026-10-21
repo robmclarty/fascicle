@@ -200,6 +200,16 @@ describe('reading the structure tree off the wire', () => {
     expect(read({ kind: 'step', id: 'a', meta: [1] })).toStrictEqual({ kind: 'step', id: 'a' })
   })
 
+  it('keeps the anonymous flag only when it is true', () => {
+    expect(read({ kind: 'step', id: 'loop_1_guard', anonymous: true })).toStrictEqual({
+      kind: 'step',
+      id: 'loop_1_guard',
+      anonymous: true,
+    })
+    expect(read({ kind: 'step', id: 'a', anonymous: false })).toStrictEqual({ kind: 'step', id: 'a' })
+    expect(read({ kind: 'step', id: 'a', anonymous: 'yes' })).toStrictEqual({ kind: 'step', id: 'a' })
+  })
+
   it('keys each later place that a step id sits at apart, keeping the id as step_id', () => {
     expect(
       read({
@@ -1042,7 +1052,7 @@ describe('steps that share an id', () => {
     expect(scene.nodes.map((node) => [node.glyph.label, node.meta.replace(/ · \d+MS$/, '')])).toEqual([
       ['Add one', 'STEP ×3'],
       ['output', 'STEP ×3'],
-      [expect.stringMatching(/_guard$/), 'LOOP ×3'],
+      ['guard', 'LOOP ×3'],
       ['output', 'TERMINUS'],
     ])
     expect(scene.group_labels.map((label) => label.text)).toEqual([

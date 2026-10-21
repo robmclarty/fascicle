@@ -115,9 +115,10 @@ function is_record(value: unknown): value is Readonly<Record<string, unknown>> {
 /**
  * Read a wire value as a structure tree. A node must be a non-array object
  * with string `kind` and `id`; children that fail the test vanish, config and
- * meta survive only as records, and anything else is dropped whole. Absent
- * children, config, and meta are omitted rather than set empty, so a
- * sanitized tree of a well-formed wire line is equal to the line's own.
+ * meta survive only as records, the anonymous flag only as `true`, and
+ * anything else is dropped whole. Absent children, config, meta, and flag are
+ * omitted rather than set empty, so a sanitized tree of a well-formed wire
+ * line is equal to the line's own.
  */
 function read_structure(value: unknown): LayoutNode | null {
   if (!is_record(value)) return null
@@ -135,6 +136,7 @@ function read_structure(value: unknown): LayoutNode | null {
   return {
     kind,
     id,
+    ...(value['anonymous'] === true ? { anonymous: true } : {}),
     ...(is_record(config) ? { config } : {}),
     ...(is_record(meta) ? { meta } : {}),
     ...(children.length === 0 ? {} : { children }),

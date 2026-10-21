@@ -98,7 +98,9 @@ error TS2345: Argument of type '{ a: number; b: number; }' is not assignable to 
 ```
 
 When you see `never` in an error about a chain, the fix is almost always to say
-what goes in. You'll also see chains opened the other way in Fascicle's own
+what goes in. That's what 0.16.3 and earlier print. Later releases put the fix
+in the type itself, as in
+`Property 'a' does not exist on type 'ChainInputUndeclared<"call .input<T>() on the chain to say what it takes">'`. You'll also see chains opened the other way in Fascicle's own
 docs, as `chain<Pair, 'pair'>('pair')`, which means exactly the same thing, and
 as `chain<Pair>()`, which names the input `input` instead of `pair`.
 

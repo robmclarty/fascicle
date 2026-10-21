@@ -107,7 +107,8 @@ from English specifications:
   gives you a `Step<t, t>`). A straight pipe belongs in `sequence`; reach
   for `chain` when a step needs fan-in, phases, or named per-joint types.
 - `parallel({ a, b, c })` — run concurrently, return `{ a, b, c }`.
-- `branch({ when, then, otherwise })` — route on `when(input)`. If your
+- `branch({ when, then, otherwise })` — route on `when(input)`. The output
+  type is the union of the two arms' outputs. If your
   linter runs `unicorn/no-thenable`, it flags the `then` key, because an
   object with a `then` method looks like a promise. You never await the
   config, so the warning is a false positive here. Turn the rule off for

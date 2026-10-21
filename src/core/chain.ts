@@ -4,8 +4,9 @@
  * `chain<i>(input_name?)` opens a builder whose threaded value is a record of
  * named outputs rather than a single value. The input type must be stated,
  * either as the type argument or via `.input<t>()` on the freshly opened
- * chain; an unannotated `chain()` defaults to `never` so the omission fails
- * at the `run` call site instead of accepting anything. `.step(name, fn)`
+ * chain. An unannotated `chain()` takes a branded type that nothing satisfies,
+ * so the omission fails at the first field read or the `run` call site, with
+ * the fix spelled out in the message, instead of accepting anything. `.step(name, fn)`
  * runs `fn` over the record and merges its output back in under `name`;
  * `.stage(name, project?)` concludes a phase: it opens a grouping span in
  * the trajectory and, when `project` is given, replaces the record with the
@@ -55,6 +56,15 @@ export type ChainStepOptions = {
   readonly name?: string
   /** What the binding is for, carried to `describe` as `meta.description`. */
   readonly description?: string
+}
+
+// The input type of a chain that wasn't told what it takes. No value is
+// assignable to it by accident, and an error that meets it prints the fix,
+// where `never` printed nothing to act on. `chain` names the instantiation
+// itself rather than through an alias, because the compiler prints an alias
+// by its name and would leave the fix out.
+interface ChainInputUndeclared<fix extends string> {
+  readonly chain_input_undeclared: fix
 }
 
 export type Chain<i, acc> = {
@@ -286,16 +296,19 @@ function make_chain(
 /**
  * Open a chain builder whose record starts as `{ [input_name]: input }`.
  *
- * `input_name` defaults to `'input'`. The input type defaults to `never`, so
- * a chain that never states it produces a `Step<never, o>` that no real
- * input satisfies at `run`; state it as the type argument or, when the
+ * `input_name` defaults to `'input'`. The input type defaults to a branded
+ * `ChainInputUndeclared` that no real input satisfies at `run`, and whose
+ * name in an error says what to do; state it as the type argument or, when the
  * binding is renamed, once via `.input<t>()` on the fresh builder. Each
  * `.step` narrows subsequent callbacks to the record accumulated so far, and
  * `.stage` with a projection re-types the record to the projection's
  * return, so binding names and views are checked at compile time with no
  * declared state shape.
  */
-export function chain<i = never, k extends string = 'input'>(
+export function chain<
+  i = ChainInputUndeclared<'call .input<T>() on the chain to say what it takes'>,
+  k extends string = 'input',
+>(
   input_name?: k,
 ): ChainOpen<i, k, { readonly [p in k]: i }> {
   const name = input_name ?? 'input'

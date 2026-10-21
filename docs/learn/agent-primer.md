@@ -70,7 +70,7 @@ await run(flow, input, { install_signal_handlers: false })  // tests and long-ru
 
 sequence([a, b, c])                          // each step gets the previous output
 parallel({ sum: add, product: multiply })    // same input to all; returns { sum, product }
-branch({ when: (x: X) => boolean, then: step_a, otherwise: step_b })  // arms share an output type
+branch({ when: (x: X) => boolean, then: step_a, otherwise: step_b })  // either arm's output
 map({ items: (input: In) => list, do: per_item, concurrency: 4 })    // array out, in order
 pipe(step_a, (value) => reshape(value))      // one step and one plain function, no more
 
@@ -129,18 +129,20 @@ messages are the real ones.
    meta.name`. Put prose in `{ name }`.
 2. **A step takes one input.** Bundle several values into an object.
 3. **Open a chain with its input type**, `chain('name').input<T>()` or the
-   equivalent `chain<T, 'name'>('name')`. Without it the input type is `never`,
-   and you'll see `Property 'a' does not exist on type 'never'`.
+   equivalent `chain<T, 'name'>('name')`. Without it, through 0.16.3 the input
+   type is `never`, and you'll see `Property 'a' does not exist on type 'never'`.
+   Later releases type it as `ChainInputUndeclared<"call .input<T>() on the chain to say what it takes">`, which says the same thing outright.
 4. **A mis-wired literal `sequence`** reports `TS2769: No overload matches this
    call`. Through 0.16.3 it reports it on more than one element, so read the
    last `Type 'X' is not assignable to type 'Y'` line, which names the joint.
    Later releases report it once, on the step that can't take its input, and
    the type names the joint, what arrives there, and what the step accepts, as
    in `SequenceJointMismatch<"after children[1]", string, number>`.
-5. **`branch` arms must share an output type.** Otherwise you'll get
-   `Type 'Step<Pair, number>' is not assignable to type 'Step<Pair, string>'`.
-   For different outputs, state the union, as in
-   `branch<Pair, number | null>({ ... })`.
+5. **Through 0.16.3, `branch` arms must share an output type.** Otherwise
+   you'll get `Type 'Step<Pair, number>' is not assignable to type 'Step<Pair, string>'`,
+   so state the union, as in `branch<Pair, number | null>({ ... })`. Later
+   releases return the union of the arms' outputs, and naming one output type
+   still holds both arms to it.
 6. **`model_step`'s input type is `string | readonly Message[]`.** Annotate a
    model leaf as `Step<string, T>` before you combine it. Through 0.16.3, an
    unannotated model leaf beside a string step in a `parallel` makes the input

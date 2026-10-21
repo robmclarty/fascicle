@@ -81,11 +81,12 @@ ES module.
 
 ## `not assignable to parameter of type 'never'` at `run()`
 
-An unannotated `chain()` types its input as `never`, so your first
-`run(flow, input)` fails with TS2345: `Argument of type '...' is not
-assignable to parameter of type 'never'`. State the input type when opening
-the chain, with `chain<Input>()`, or `chain('name').input<Input>()` when the
-input binding is renamed.
+An unannotated `chain()` can't know its input type, so your first
+`run(flow, input)` fails. Through 0.16.3 the type is `never`, and the error is
+TS2345: `Argument of type '...' is not assignable to parameter of type 'never'`.
+Later releases type it as `ChainInputUndeclared<"call .input<T>() on the chain to say what it takes">`, so the error says what to do. Either way,
+state the input type when opening the chain, with `chain<Input>()`, or
+`chain('name').input<Input>()` when the input binding is renamed.
 
 ## Provider Auth Failures (401 / 403)
 

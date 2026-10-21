@@ -131,7 +131,7 @@ needs fan-in, phases, or named per-joint types.
 
 | Primitive | Shape |
 | --- | --- |
-| `branch({ when, then, otherwise })` | route on `when(input)` |
+| `branch({ when, then, otherwise })` | route on `when(input)`; the output is either arm's, so its type is the union of the two, and `branch<i, o>` holds both arms to `o` |
 | `map({ items, do, concurrency?, settle? })` | run `do` per item of `items(input)`, optional in-flight cap; with `settle: true` every item runs and each slot is a `Settled` entry, `{ ok: true, value }` or `{ ok: false, error }` |
 | `parallel({ a, b })` | run a named map of steps concurrently; the step's input is the intersection of the members' inputs |
 | `loop({ init, body, guard?, finish, max_rounds })` | bounded iteration with carry-state and an optional convergence guard (a `Step` or a bare `(state) => boolean` predicate); returns `finish(state, { converged, rounds })` |

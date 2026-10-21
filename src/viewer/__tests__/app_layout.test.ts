@@ -371,6 +371,31 @@ describe('layout under nesting and hostile shapes', () => {
     const keyed = layout({ kind: 'step', id: 'output#2', step_id: 'output' })
     expect(node_of(keyed, 'output#2').label).toBe('output')
   })
+
+  it('labels an anonymous step by the role its parent gives it, or else by its kind', () => {
+    const looped = layout({
+      kind: 'loop',
+      id: 'loop_1',
+      children: [
+        { kind: 'step', id: 'step_3', anonymous: true },
+        { kind: 'step', id: 'loop_1_guard', anonymous: true },
+      ],
+    })
+    expect(node_of(looped, 'step_3').label).toBe('step')
+    expect(node_of(looped, 'loop_1_guard').label).toBe('guard')
+    const loose = layout({
+      kind: 'sequence',
+      id: 's',
+      children: [
+        { kind: 'step', id: 'b' },
+        { kind: 'step', id: 'step_7', anonymous: true },
+      ],
+    })
+    expect(node_of(loose, 'b').label).toBe('b')
+    expect(node_of(loose, 'step_7').label).toBe('step')
+    const named = layout({ kind: 'step', id: 'step_7', anonymous: true, meta: { name: 'tidy up' } })
+    expect(node_of(named, 'step_7').label).toBe('tidy up')
+  })
 })
 
 describe('tick_marks', () => {

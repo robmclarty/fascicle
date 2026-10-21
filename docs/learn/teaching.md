@@ -142,9 +142,10 @@ the learner when they're close:
 - **Up to 0.16.3, a wrongly ordered `sequence` gives a noisy error.** It's
   `No overload matches this call`, twice. Teach the habit of reading from the
   last line up. Later releases print it once, on the step that doesn't fit.
-- **A chain needs its input type**, and without it the errors talk about
-  `never`.
-- **`branch` arms must return the same type.**
+- **A chain needs its input type.** Without it, the errors talk about `never`
+  up to 0.16.3, and later releases say to call `.input<T>()`.
+- **Up to 0.16.3, `branch` arms must return the same type.** Later releases
+  return the union of the two.
 - **Up to 0.16.3, a model step in a `parallel` needs its type annotated** as
   `Step<string, T>`, or the input type becomes odd.
 - **Prompts must show the JSON shape, up to 0.16.3.** On those versions the
@@ -159,5 +160,6 @@ the learner when they're close:
   steps show the total of the two.
 - **Up to 0.16.3, `adversarial` draws its scopes and stashes**, which is why
   lesson 11 builds its loop with `loop`.
-- **The viewer labels a loop's guard `loop_1_guard`**, an id that Fascicle
-  makes up for a plain function, so say what it is before the learner asks.
+- **Up to 0.16.3, the viewer labels a loop's guard `loop_1_guard`**, an id
+  that Fascicle makes up for a plain function, so say what it is before the
+  learner asks. Later releases label it `guard`.
