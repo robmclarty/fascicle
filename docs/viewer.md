@@ -76,6 +76,12 @@ hasn't executed, a puck and a name for each node, and the group labels that sit
 over the composites. A run that has produced nothing yet still shows its full
 shape.
 
+A name is the one that you gave the step or the composer, in its `name`
+option, and the id when you gave none, and a group label reads the same way in
+capitals, so a loop named `draft_until_clean` is labelled `DRAFT_UNTIL_CLEAN`.
+Each place in the flow keeps its own count, even where two steps share an id,
+as the `output` step that closes every chain does.
+
 From there the spans move the light. A span that opens lights its puck amber and
 marches a dashed marquee along the segment that's being traversed, and a span
 that closes leaves that segment a traversed grey. Amber is the one accent, and

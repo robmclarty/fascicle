@@ -49,6 +49,7 @@
 
 import {
   TOKENS,
+  display_label,
   tick_marks,
   type FlowLayout,
   type GroupLabel,
@@ -91,8 +92,9 @@ export const EMPTY_SESSION: Session = { structure: null, state: initial_state(nu
  */
 export function apply_frame(session: Session, value: unknown): Session {
   if (is_structure_frame(value)) {
-    const structure = read_structure(value['structure'])
-    if (structure !== null) {
+    const read = read_structure(value['structure'])
+    if (read !== null) {
+      const structure = keyed_by_place(read)
       return { structure, state: apply_event(initial_state(structure), value) }
     }
   }
@@ -112,10 +114,10 @@ function is_record(value: unknown): value is Readonly<Record<string, unknown>> {
 
 /**
  * Read a wire value as a structure tree. A node must be a non-array object
- * with string `kind` and `id`; children that fail the test vanish, config
- * survives only as a record, and anything else is dropped whole. Absent
- * children and config are omitted rather than set empty, so a sanitized tree
- * of a well-formed wire line is equal to the line's own.
+ * with string `kind` and `id`; children that fail the test vanish, config and
+ * meta survive only as records, and anything else is dropped whole. Absent
+ * children, config, and meta are omitted rather than set empty, so a
+ * sanitized tree of a well-formed wire line is equal to the line's own.
  */
 function read_structure(value: unknown): LayoutNode | null {
   if (!is_record(value)) return null
@@ -129,12 +131,52 @@ function read_structure(value: unknown): LayoutNode | null {
         .filter((child): child is LayoutNode => child !== null)
     : []
   const config = value['config']
+  const meta = value['meta']
   return {
     kind,
     id,
     ...(is_record(config) ? { config } : {}),
+    ...(is_record(meta) ? { meta } : {}),
     ...(children.length === 0 ? {} : { children }),
   }
+}
+
+/**
+ * Give every place in the tree its own key, because a step id can sit in more
+ * than one: every chain closes on a step called `output`, a chain binding
+ * often shares the id of the step it wraps, and a step used twice appears at
+ * both places. Joined by id alone, those places would pool their runs. The
+ * first place keeps the id and each later one becomes `<id>#<n>`, which no
+ * step id can be, since ids are identifiers, with `step_id` keeping the id
+ * for the fold's join and the label. A `<cycle>` back-reference takes the key
+ * of the ancestor it names, because it is that node.
+ */
+function keyed_by_place(root: LayoutNode): LayoutNode {
+  return key_node(root, new Map(), new Map())
+}
+
+/** Key one node and its subtree, given the keys of its ancestors by step id. */
+function key_node(
+  node: LayoutNode,
+  ancestors: ReadonlyMap<string, string>,
+  counts: Map<string, number>,
+): LayoutNode {
+  const key = (node.kind === '<cycle>' ? ancestors.get(node.id) : undefined) ?? next_key(node.id, counts)
+  const inner = new Map(ancestors).set(node.id, key)
+  const children = node.children?.map((child) => key_node(child, inner, counts))
+  return {
+    ...node,
+    id: key,
+    ...(key === node.id ? {} : { step_id: node.id }),
+    ...(children === undefined ? {} : { children }),
+  }
+}
+
+/** The key for the next place that a step id is seen at, in document order. */
+function next_key(id: string, counts: Map<string, number>): string {
+  const count = (counts.get(id) ?? 0) + 1
+  counts.set(id, count)
+  return count === 1 ? id : `${id}#${count}`
 }
 
 /**
@@ -885,13 +927,15 @@ function group_span(occurrences: ReadonlyArray<SpanOccurrence>): number | null {
 }
 
 /**
- * A group caption is the combinator's id in the caption register, wearing
- * its span once it settles (`PARALLEL_1 · 45MS`). A fallback appends its
- * readiness, ARMED, until it settles; a reroute after a scar shows in the
+ * A group caption is the combinator's name, else its id, in the caption
+ * register, wearing its span once it settles (`PARALLEL_1 · 45MS`, or
+ * `DRAFT_UNTIL_CLEAN · 3.2S` for a loop given that name). A fallback appends
+ * its readiness, ARMED, until it settles; a reroute after a scar shows in the
  * geometry, never in this caption.
  */
 function group_text(ctx: SceneContext, owner: string): string {
-  const base = owner.toUpperCase()
+  const node = ctx.nodes_by_id.get(owner)
+  const base = (node === undefined ? owner : display_label(node)).toUpperCase()
   const armed = ctx.state.kinds.get(owner) === 'fallback' ? ' · ARMED' : ''
   const occurrences = occurrences_of(ctx.state, owner)
   if (occurrences.length === 0 || is_running(occurrences)) return `${base}${armed}`

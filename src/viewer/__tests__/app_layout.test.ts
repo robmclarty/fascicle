@@ -350,6 +350,27 @@ describe('layout under nesting and hostile shapes', () => {
     const wrong_type = layout({ kind: 'step', id: 'step_9', config: { display_name: 4 } })
     expect(node_of(wrong_type, 'step_9').label).toBe('step_9')
   })
+
+  it("labels a step by its meta name after a composer's display_name, as core resolves them", () => {
+    const named = layout({ kind: 'step', id: 'add', meta: { name: 'Add one' } })
+    expect(node_of(named, 'add').label).toBe('Add one')
+    const both = layout({
+      kind: 'step',
+      id: 'add',
+      config: { display_name: 'triage' },
+      meta: { name: 'Add one' },
+    })
+    expect(node_of(both, 'add').label).toBe('triage')
+    const empty = layout({ kind: 'step', id: 'add', meta: { name: '' } })
+    expect(node_of(empty, 'add').label).toBe('add')
+    const wrong_type = layout({ kind: 'step', id: 'add', meta: { name: 4 } })
+    expect(node_of(wrong_type, 'add').label).toBe('add')
+  })
+
+  it('labels a place keyed apart by the step id it shares', () => {
+    const keyed = layout({ kind: 'step', id: 'output#2', step_id: 'output' })
+    expect(node_of(keyed, 'output#2').label).toBe('output')
+  })
 })
 
 describe('tick_marks', () => {

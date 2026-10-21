@@ -25,6 +25,8 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
+import { chain, loop, run, step } from '#core'
+import { recording_logger } from '../../../test/fixtures/trajectory.js'
 import { TOKENS, layout, type LayoutNode } from '../app/lib/layout.js'
 import { reduce, t_plus_ms, type StructureNode } from '../app/lib/reduce.js'
 import {
@@ -185,6 +187,76 @@ describe('reading the structure tree off the wire', () => {
     expect(read({ kind: 'step', id: 'a', config: [1] })).toStrictEqual({
       kind: 'step',
       id: 'a',
+    })
+  })
+
+  it('keeps a record meta, which holds a step name, and drops any other shape', () => {
+    expect(read({ kind: 'step', id: 'add', meta: { name: 'Add one' } })).toStrictEqual({
+      kind: 'step',
+      id: 'add',
+      meta: { name: 'Add one' },
+    })
+    expect(read({ kind: 'step', id: 'a', meta: 'loud' })).toStrictEqual({ kind: 'step', id: 'a' })
+    expect(read({ kind: 'step', id: 'a', meta: [1] })).toStrictEqual({ kind: 'step', id: 'a' })
+  })
+
+  it('keys each later place that a step id sits at apart, keeping the id as step_id', () => {
+    expect(
+      read({
+        kind: 'sequence',
+        id: 's',
+        children: [
+          { kind: 'step', id: 'extract', children: [{ kind: 'step', id: 'extract' }] },
+          { kind: 'step', id: 'output' },
+          {
+            kind: 'parallel',
+            id: 'p',
+            children: [
+              { kind: 'step', id: 'output' },
+              { kind: 'step', id: 'output' },
+            ],
+          },
+        ],
+      }),
+    ).toStrictEqual({
+      kind: 'sequence',
+      id: 's',
+      children: [
+        {
+          kind: 'step',
+          id: 'extract',
+          children: [{ kind: 'step', id: 'extract#2', step_id: 'extract' }],
+        },
+        { kind: 'step', id: 'output' },
+        {
+          kind: 'parallel',
+          id: 'p',
+          children: [
+            { kind: 'step', id: 'output#2', step_id: 'output' },
+            { kind: 'step', id: 'output#3', step_id: 'output' },
+          ],
+        },
+      ],
+    })
+  })
+
+  it('gives a <cycle> back-reference the key of the ancestor it names', () => {
+    expect(
+      read({
+        kind: 'sequence',
+        id: 'r',
+        children: [
+          { kind: 'step', id: 'r' },
+          { kind: 'loop', id: 'l', children: [{ kind: '<cycle>', id: 'r' }] },
+        ],
+      }),
+    ).toStrictEqual({
+      kind: 'sequence',
+      id: 'r',
+      children: [
+        { kind: 'step', id: 'r#2', step_id: 'r' },
+        { kind: 'loop', id: 'l', children: [{ kind: '<cycle>', id: 'r' }] },
+      ],
     })
   })
 
@@ -903,6 +975,79 @@ describe('group label runtime', () => {
       { kind: 'span_start', span_id: 'p2', name: 'parallel', id: 'p', ts: 20 },
     ])
     expect(scene_of(session).group_labels[0]?.text).toBe('P')
+  })
+
+  it('captions a named group by its name and an unnamed one by its id', () => {
+    const session = fold_events(
+      {
+        kind: 'sequence',
+        id: 's',
+        children: [
+          {
+            kind: 'loop',
+            id: 'loop_1',
+            config: { max_rounds: 3, display_name: 'draft_until_clean' },
+            children: [{ kind: 'step', id: 'draft' }],
+          },
+          {
+            kind: 'parallel',
+            id: 'parallel_1',
+            children: [
+              { kind: 'step', id: 'a' },
+              { kind: 'step', id: 'b' },
+            ],
+          },
+        ],
+      },
+      [
+        { kind: 'span_start', span_id: 'l1', name: 'draft_until_clean', id: 'loop_1', ts: 0 },
+        { kind: 'span_end', span_id: 'l1', id: 'loop_1', ts: 45 },
+      ],
+    )
+    expect(scene_of(session).group_labels.map((label) => label.text)).toEqual([
+      'DRAFT_UNTIL_CLEAN · 45MS',
+      'PARALLEL_1',
+    ])
+  })
+})
+
+describe('steps that share an id', () => {
+  it('counts the runs of each place apart and labels both by the id, from a real run', async () => {
+    // The course's commit tool in miniature: a named loop whose body is a
+    // chain, inside a chain, so two steps called `output` sit in the tree.
+    const { logger, events: wire } = recording_logger()
+    const add = step('add', (n: number) => n + 1, { name: 'Add one' })
+    const one_round = chain('round')
+      .input<number>()
+      .step('draft', add, ({ round }) => round)
+      .output(({ draft }) => draft)
+    const redraft = loop({
+      name: 'draft_until_clean',
+      init: (n: number) => n,
+      body: one_round,
+      guard: (n) => n >= 3,
+      finish: (n) => n,
+      max_rounds: 5,
+    })
+    const flow = chain('repo')
+      .input<number>()
+      .step('message', redraft, ({ repo }) => repo)
+      .output(({ message }) => message)
+    await run(flow, 0, { trajectory: logger, install_signal_handlers: false })
+
+    const session = wire.reduce<Session>(apply_frame, EMPTY_SESSION)
+    expect(session.state.nodes.get('output')?.occurrences).toHaveLength(3)
+    expect(session.state.nodes.get('output#2')?.occurrences).toHaveLength(1)
+    const scene = scene_of(session)
+    expect(scene.nodes.map((node) => [node.glyph.label, node.meta.replace(/ · \d+MS$/, '')])).toEqual([
+      ['Add one', 'STEP ×3'],
+      ['output', 'STEP ×3'],
+      [expect.stringMatching(/_guard$/), 'LOOP ×3'],
+      ['output', 'TERMINUS'],
+    ])
+    expect(scene.group_labels.map((label) => label.text)).toEqual([
+      expect.stringMatching(/^DRAFT_UNTIL_CLEAN · \d+MS$/),
+    ])
   })
 })
 

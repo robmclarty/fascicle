@@ -9,9 +9,11 @@
  * prefix, which is the purity contract the scrubber and play mode lean on.
  *
  * Runtime joins structure by span meta, since those keys already ride the
- * wire and need no new producer fields: a span's `id` field names its
- * `StructureNode`, and repeated same-id spans group as map/loop instances or
- * retry attempts depending on the parent span's kind. The kind comes from the
+ * wire and need no new producer fields: a span's `id` field names its step,
+ * and its parent span's node says which seat of that step it is, because a
+ * step id can sit in more than one place (every chain closes on a step called
+ * `output`). Repeated spans in one seat group as map/loop instances or retry
+ * attempts depending on the parent span's kind. The kind comes from the
  * structure tree when the parent joins it, because span `name` is a display
  * name a user can shadow; the wire name is only a fallback for spans the
  * structure does not know.
@@ -40,10 +42,14 @@
  * The slice of the `flow_structure` tree the fold reads: ids to join spans
  * against and kinds to classify parents (which combinator absorbs, which
  * groups instances). Config and metadata stay untyped surplus for layout.
+ * Once the scene has read a tree off the wire, `id` is the node's key, unique
+ * to its place, and `step_id` is the id its spans carry, set only where the
+ * two differ.
  */
 export type StructureNode = {
   readonly kind: string
   readonly id: string
+  readonly step_id?: string
   readonly children?: ReadonlyArray<StructureNode>
 }
 
@@ -97,10 +103,13 @@ export type NodeRuntime = {
  * the two failure flags are how a scar lands exactly once. `failed_descendant`
  * makes a span a relay for the absorbed count; `failed_joined_descendant`
  * makes it a relay for scar placement, which differ because engine spans fail
- * below the node that should wear the scar.
+ * below the node that should wear the scar. `step_id` is the id the span
+ * carried and `node_id` the node it joined, which differ for a step whose id
+ * sits in more than one place.
  */
 export type SpanInfo = {
   readonly name: string
+  readonly step_id: string | null
   readonly node_id: string | null
   readonly parent_span_id: string | null
   readonly open: boolean
@@ -121,6 +130,9 @@ export type CanvasState = {
   readonly spans: ReadonlyMap<string, SpanInfo>
   readonly open_spans: ReadonlyArray<string>
   readonly kinds: ReadonlyMap<string, string>
+  // The join's index from the structure: each node's children, grouped by
+  // the step id their spans carry.
+  readonly seats: ReadonlyMap<string, ReadonlyMap<string, ReadonlyArray<string>>>
 }
 
 type EventRecord = Readonly<Record<string, unknown>>
@@ -144,9 +156,8 @@ const EMPTY_NODE: NodeRuntime = {
  * crash the canvas); nodes then accrete from span meta as spans arrive.
  */
 export function initial_state(structure: StructureNode | null): CanvasState {
-  const kinds = new Map<string, string>()
-  const nodes = new Map<string, NodeRuntime>()
-  if (structure !== null) collect(structure, kinds, nodes)
+  const index: StructureIndex = { kinds: new Map(), nodes: new Map(), seats: new Map() }
+  if (structure !== null) collect(structure, index)
   return {
     run_id: null,
     run_status: null,
@@ -156,28 +167,43 @@ export function initial_state(structure: StructureNode | null): CanvasState {
     scars: 0,
     cost_usd: 0,
     unattributed_usd: 0,
-    nodes,
+    nodes: index.nodes,
     spans: new Map(),
     open_spans: [],
-    kinds,
+    kinds: index.kinds,
+    seats: index.seats,
   }
 }
 
+type StructureIndex = {
+  readonly kinds: Map<string, string>
+  readonly nodes: Map<string, NodeRuntime>
+  readonly seats: Map<string, ReadonlyMap<string, ReadonlyArray<string>>>
+}
+
 /**
- * Walk the structure tree into the kind index and the pending node map. First
- * id wins: a `<cycle>` back-reference or a shared (diamond) step repeats an
- * id already seen, and both must keep joining the node that owns it.
+ * Walk the structure tree into the kind index, the pending node map, and the
+ * join's seats. First id wins: a `<cycle>` back-reference repeats the key of
+ * the node it points at, and so does a shared step in a tree that nobody
+ * keyed by place, and each must keep joining the node that owns it.
  */
-function collect(
-  node: StructureNode,
-  kinds: Map<string, string>,
-  nodes: Map<string, NodeRuntime>,
-): void {
-  if (!kinds.has(node.id)) {
-    kinds.set(node.id, node.kind)
-    nodes.set(node.id, EMPTY_NODE)
+function collect(node: StructureNode, index: StructureIndex): void {
+  if (!index.kinds.has(node.id)) {
+    index.kinds.set(node.id, node.kind)
+    index.nodes.set(node.id, EMPTY_NODE)
+    if (node.children !== undefined) index.seats.set(node.id, seats_of(node.children))
   }
-  for (const child of node.children ?? []) collect(child, kinds, nodes)
+  for (const child of node.children ?? []) collect(child, index)
+}
+
+/** A node's children, in order, grouped by the step id their spans carry. */
+function seats_of(children: ReadonlyArray<StructureNode>): ReadonlyMap<string, ReadonlyArray<string>> {
+  const seats = new Map<string, ReadonlyArray<string>>()
+  for (const child of children) {
+    const step_id = child.step_id ?? child.id
+    seats.set(step_id, [...(seats.get(step_id) ?? []), child.id])
+  }
+  return seats
 }
 
 /**
@@ -275,11 +301,13 @@ function on_span_start(
   const name = str(event, 'name')
   if (span_id === null || name === null) return state
   const parent_span_id = str(event, 'parent_span_id')
-  const node_id = str(event, 'id')
+  const step_id = str(event, 'id')
+  const node_id = step_id === null ? null : joined_node(state, step_id, parent_span_id)
 
   const spans = new Map(state.spans)
   spans.set(span_id, {
     name,
+    step_id,
     node_id,
     parent_span_id,
     open: true,
@@ -312,6 +340,30 @@ function on_span_start(
     }),
   )
   return { ...opened, nodes }
+}
+
+/**
+ * The node that a span carrying `step_id` joins: a seat of its parent span's
+ * node, so two steps that share an id in different places keep their own
+ * runs. When the parent seats more than one child with the id (a sequence
+ * that runs one step twice), each span under one parent span takes the next
+ * seat in turn. A span that names no parent, as in a file recorded before
+ * spans carried one, takes the deepest open span for its parent, the reading
+ * that cost attribution makes. A span with no seat, because its parent joins
+ * no node or the id isn't among that node's children, joins the node keyed by
+ * the bare id: the first place that the id sits at, since the scene keys the
+ * later ones apart, or a node of its own for an id the structure doesn't
+ * hold, so a file recorded without a structure still accretes nodes.
+ */
+function joined_node(state: CanvasState, step_id: string, parent_span_id: string | null): string {
+  const parent = attributed_node(state, parent_span_id)
+  const seats = parent === null ? undefined : state.seats.get(parent)?.get(step_id)
+  if (seats === undefined) return step_id
+  let taken = 0
+  for (const span of state.spans.values()) {
+    if (span.parent_span_id === parent_span_id && span.step_id === step_id) taken += 1
+  }
+  return seats[taken % seats.length] ?? step_id
 }
 
 /**
@@ -474,10 +526,23 @@ function convert_exhausted_retry(
 function on_suspended(state: CanvasState, event: EventRecord): CanvasState {
   const step_id = str(event, 'step_id')
   if (step_id === null) return state
-  const node = state.nodes.get(step_id) ?? EMPTY_NODE
+  const node_id = named_node(state, step_id)
+  const node = state.nodes.get(node_id) ?? EMPTY_NODE
   const nodes = new Map(state.nodes)
-  nodes.set(step_id, with_status({ ...node, suspended: true }))
+  nodes.set(node_id, with_status({ ...node, suspended: true }))
   return { ...state, nodes }
+}
+
+/**
+ * The node that an event naming its step by id, not by span, lands on. The
+ * step records it while its span is open, so an open span that carries the
+ * id knows the step's place; with none, the node keyed by the bare id.
+ */
+function named_node(state: CanvasState, step_id: string): string {
+  for (const span of state.spans.values()) {
+    if (span.open && span.step_id === step_id) return span.node_id ?? step_id
+  }
+  return step_id
 }
 
 /**
@@ -502,15 +567,16 @@ function is_checkpoint_status(value: string): value is CheckpointStatus {
 }
 
 /**
- * A checkpoint store lookup: the event names its own structure node (`id` is
- * stamped by the checkpoint step), so the join is direct like `suspended`'s.
+ * A checkpoint store lookup: the event names its own step (`id` is stamped by
+ * the checkpoint step), so it joins by name like `suspended`'s.
  * Newest outcome wins because a resumed run can look the same key up again.
  * Unknown statuses stay inert, since the wire only grows additively.
  */
 function on_checkpoint(state: CanvasState, event: EventRecord): CanvasState {
-  const node_id = str(event, 'id')
+  const step_id = str(event, 'id')
   const status = str(event, 'status')
-  if (node_id === null || status === null || !is_checkpoint_status(status)) return state
+  if (step_id === null || status === null || !is_checkpoint_status(status)) return state
+  const node_id = named_node(state, step_id)
   const node = state.nodes.get(node_id) ?? EMPTY_NODE
   const nodes = new Map(state.nodes)
   nodes.set(node_id, { ...node, checkpoint: status })

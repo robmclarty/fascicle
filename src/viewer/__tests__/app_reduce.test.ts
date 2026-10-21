@@ -7,6 +7,15 @@
  * engine-origin scars, suspension), and the property test holds the purity
  * contract: a fresh fold of any prefix equals incremental application with
  * retained snapshots, because the fold reads no clock.
+ *
+ * Equivalent-mutant ledger:
+ *   - `step_id === null ? null :` -> `false` in `on_span_start`: a span
+ *     without an id then reaches `joined_node` with a null step id, finds
+ *     no seat for it, and returns the id it was given, so it joins no node
+ *     either way. The guard narrows the type that the call needs.
+ *   - `parent === null ? undefined :` -> `false` in `joined_node`: a null
+ *     parent finds no seats in a map keyed by node ids, so the guard changes
+ *     no outcome. It narrows the key's type.
  */
 
 import { readFileSync } from 'node:fs'
@@ -21,6 +30,7 @@ import {
   t_plus_ms,
   type CanvasState,
   type NodeRuntime,
+  type StructureNode,
 } from '../app/lib/reduce.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -61,6 +71,11 @@ function node_of(state: CanvasState, id: string): NodeRuntime {
   const node = state.nodes.get(id)
   if (node === undefined) throw new Error(`no node ${id} in state`)
   return node
+}
+
+/** The spans a node's occurrences came from, in start order. */
+function spans_on(state: CanvasState, id: string): string[] {
+  return node_of(state, id).occurrences.map((occurrence) => occurrence.span_id)
 }
 
 function statuses(state: CanvasState): Record<string, string> {
@@ -751,6 +766,181 @@ describe('checkpoint lookups', () => {
     const state = reduce(null, stream([{ kind: 'checkpoint', status: 'hit', id: 'lone' }]))
     expect(node_of(state, 'lone').checkpoint).toBe('hit')
     expect(node_of(state, 'lone').status).toBe('pending')
+  })
+})
+
+describe('places that share a step id', () => {
+  // Two chains that each close on a step called `output`, keyed by place the
+  // way the scene keys a tree it reads off the wire.
+  const CHAINS: StructureNode = {
+    kind: 'sequence',
+    id: 'seq',
+    children: [
+      { kind: 'chain', id: 'chain_1', children: [{ kind: 'step', id: 'output' }] },
+      {
+        kind: 'chain',
+        id: 'chain_2',
+        children: [{ kind: 'step', id: 'output#2', step_id: 'output' }],
+      },
+    ],
+  }
+
+  it('joins each span to the place that its parent span seats it in', () => {
+    const state = reduce(
+      CHAINS,
+      stream([
+        start('s0', 'sequence', { id: 'seq' }),
+        start('c1', 'chain', { id: 'chain_1', parent_span_id: 's0' }),
+        start('o1', 'step', { id: 'output', parent_span_id: 'c1' }),
+        end('o1', { id: 'output' }),
+        end('c1', { id: 'chain_1' }),
+        start('c2', 'chain', { id: 'chain_2', parent_span_id: 's0' }),
+        start('o2', 'step', { id: 'output', parent_span_id: 'c2' }),
+        end('o2', { id: 'output' }),
+        end('c2', { id: 'chain_2' }),
+      ]),
+    )
+    expect(spans_on(state, 'seq')).toEqual(['s0'])
+    expect(spans_on(state, 'output')).toEqual(['o1'])
+    expect(spans_on(state, 'output#2')).toEqual(['o2'])
+    expect(node_of(state, 'output#2').status).toBe('done')
+  })
+
+  it('takes the next seat in turn when one node seats a step twice, counting under each parent span', () => {
+    const TWICE: StructureNode = {
+      kind: 'map',
+      id: 'map_1',
+      children: [
+        {
+          kind: 'sequence',
+          id: 'seq',
+          children: [
+            { kind: 'step', id: 'w' },
+            { kind: 'step', id: 'x' },
+            { kind: 'step', id: 'x#2', step_id: 'x' },
+          ],
+        },
+      ],
+    }
+    // The first instance stops after its first `x`, so the second instance
+    // counts its own `x` spans from zero, and `w` beside them never counts.
+    const state = reduce(
+      TWICE,
+      stream([
+        start('m', 'map', { id: 'map_1' }),
+        start('q1', 'sequence', { id: 'seq', parent_span_id: 'm' }),
+        start('w1', 'step', { id: 'w', parent_span_id: 'q1' }),
+        start('a1', 'step', { id: 'x', parent_span_id: 'q1' }),
+        start('q2', 'sequence', { id: 'seq', parent_span_id: 'm' }),
+        start('w2', 'step', { id: 'w', parent_span_id: 'q2' }),
+        start('a2', 'step', { id: 'x', parent_span_id: 'q2' }),
+        start('b2', 'step', { id: 'x', parent_span_id: 'q2' }),
+        start('c2', 'step', { id: 'x', parent_span_id: 'q2' }),
+      ]),
+    )
+    expect(spans_on(state, 'x')).toEqual(['a1', 'a2', 'c2'])
+    expect(spans_on(state, 'x#2')).toEqual(['b2'])
+  })
+
+  it('reads the deepest open span as the parent of a span that names none, as an older file records them', () => {
+    const state = reduce(
+      CHAINS,
+      stream([
+        start('s0', 'sequence', { id: 'seq' }),
+        start('c1', 'chain', { id: 'chain_1' }),
+        start('o1', 'step', { id: 'output' }),
+        end('o1', { id: 'output' }),
+        end('c1', { id: 'chain_1' }),
+        start('c2', 'chain', { id: 'chain_2' }),
+        start('o2', 'step', { id: 'output' }),
+      ]),
+    )
+    expect(spans_on(state, 'seq')).toEqual(['s0'])
+    expect(spans_on(state, 'output')).toEqual(['o1'])
+    expect(spans_on(state, 'output#2')).toEqual(['o2'])
+  })
+
+  it('joins a span that its parent node does not seat to the first place with the id', () => {
+    const state = reduce(
+      CHAINS,
+      stream([
+        start('s0', 'sequence', { id: 'seq' }),
+        start('o1', 'step', { id: 'output', parent_span_id: 's0' }),
+      ]),
+    )
+    expect(spans_on(state, 'output')).toEqual(['o1'])
+    expect(spans_on(state, 'output#2')).toEqual([])
+  })
+
+  it('finds the seat through a parent span that joins no node', () => {
+    // A step that a tool runs inside a model call hangs below the engine's span.
+    const state = reduce(
+      CHAINS,
+      stream([
+        start('s0', 'sequence', { id: 'seq' }),
+        start('c2', 'chain', { id: 'chain_2', parent_span_id: 's0' }),
+        start('e1', 'engine.generate', { parent_span_id: 'c2' }),
+        start('o2', 'step', { id: 'output', parent_span_id: 'e1' }),
+      ]),
+    )
+    expect(spans_on(state, 'output#2')).toEqual(['o2'])
+    expect(spans_on(state, 'output')).toEqual([])
+  })
+
+  it('parks a suspension at the place whose span is open, or at the first place when none is', () => {
+    const GATES: StructureNode = {
+      kind: 'sequence',
+      id: 'seq',
+      children: [
+        { kind: 'step', id: 'a', children: [{ kind: 'suspend', id: 'gate' }] },
+        { kind: 'step', id: 'b', children: [{ kind: 'suspend', id: 'gate#2', step_id: 'gate' }] },
+      ],
+    }
+    const suspended = { kind: 'suspended', suspend_id: 'gate', step_id: 'gate' }
+    const open = reduce(
+      GATES,
+      stream([
+        start('s0', 'sequence', { id: 'seq' }),
+        start('b1', 'step', { id: 'b', parent_span_id: 's0' }),
+        start('g1', 'suspend', { id: 'gate', parent_span_id: 'b1' }),
+        suspended,
+      ]),
+    )
+    expect(node_of(open, 'gate#2').suspended).toBe(true)
+    expect(node_of(open, 'gate').suspended).toBe(false)
+    expect(node_of(open, 'seq').suspended).toBe(false)
+    const none = reduce(GATES, stream([suspended]))
+    expect(node_of(none, 'gate').suspended).toBe(true)
+    expect(node_of(none, 'gate#2').suspended).toBe(false)
+  })
+
+  it('records a checkpoint outcome at the place whose span is open', () => {
+    const CHECKPOINTS: StructureNode = {
+      kind: 'sequence',
+      id: 'seq',
+      children: [
+        { kind: 'checkpoint', id: 'cp', children: [{ kind: 'step', id: 'work' }] },
+        {
+          kind: 'checkpoint',
+          id: 'cp#2',
+          step_id: 'cp',
+          children: [{ kind: 'step', id: 'work#2', step_id: 'work' }],
+        },
+      ],
+    }
+    const state = reduce(
+      CHECKPOINTS,
+      stream([
+        start('s0', 'sequence', { id: 'seq' }),
+        start('k1', 'checkpoint', { id: 'cp', parent_span_id: 's0' }),
+        { kind: 'checkpoint', status: 'miss', id: 'cp' },
+        end('k1', { id: 'cp' }),
+        start('k2', 'checkpoint', { id: 'cp', parent_span_id: 's0' }),
+        { kind: 'checkpoint', status: 'hit', id: 'cp' },
+      ]),
+    )
+    expect(node_of(state, 'cp').checkpoint).toBe('miss')
+    expect(node_of(state, 'cp#2').checkpoint).toBe('hit')
   })
 })
 

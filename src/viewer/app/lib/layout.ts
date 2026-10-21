@@ -56,13 +56,16 @@
 
 /**
  * The slice of the `flow_structure` tree layout reads: kinds to pick a
- * geometry family, ids to key glyphs, children to recurse, and `config`
- * only for the optional `display_name` a user may have set.
+ * geometry family, ids to key glyphs, children to recurse, and `config` and
+ * `meta` only for the display name a user may have set. `step_id` is the
+ * step's own id where `id` is a key that tells two places apart.
  */
 export type LayoutNode = {
   readonly kind: string
   readonly id: string
+  readonly step_id?: string
   readonly config?: Readonly<Record<string, unknown>>
+  readonly meta?: Readonly<Record<string, unknown>>
   readonly children?: ReadonlyArray<LayoutNode>
 }
 
@@ -319,10 +322,16 @@ function measure(node: LayoutNode): Box {
   return point_box(node)
 }
 
-/** A user-set display name wins over the id, matching core's resolution. */
-function display_label(node: LayoutNode): string {
-  const name = node.config?.['display_name']
-  return typeof name === 'string' && name.length > 0 ? name : node.id
+/**
+ * A user-set display name wins over the id, in core's order: a composer's
+ * `name` (`config.display_name`), then a step's (`meta.name`), then the
+ * step's own id.
+ */
+export function display_label(node: LayoutNode): string {
+  for (const name of [node.config?.['display_name'], node.meta?.['name']]) {
+    if (typeof name === 'string' && name.length > 0) return name
+  }
+  return node.step_id ?? node.id
 }
 
 /** A leaf: one puck on the line, name and meta baselines below. */
