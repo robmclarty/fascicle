@@ -95,4 +95,33 @@ describe('compose', () => {
     expect(compose_idx).toBeGreaterThanOrEqual(0)
     expect(parallel_idx).toBeGreaterThan(compose_idx)
   })
+
+  it('records each part as the path of child indices that leads to it', () => {
+    const first = step('first', (n: number) => n)
+    const second = step('second', (n: number) => n)
+    const flow = compose(sequence([first, second]), { name: 'pair', parts: { lead: first, tail: second } })
+    expect(flow.config).toStrictEqual({ display_name: 'pair', parts: { lead: [0, 0], tail: [0, 1] } })
+  })
+
+  it('records no parts when none are given', () => {
+    expect(compose(step('only', (n: number) => n), { name: 'one' }).config).toStrictEqual({ display_name: 'one' })
+  })
+
+  it('refuses a part that is not inside the inner step, naming its role', () => {
+    const inner = sequence([step('a', (n: number) => n)])
+    const stray = step('stray', (n: number) => n)
+    expect(() => compose(inner, { name: 'x', parts: { lost: stray } })).toThrow(
+      'compose(inner, { parts }): part "lost" (step stray) is not inside inner, so the diagram would have nothing to draw for it',
+    )
+  })
+
+  it('finds a shared step at its first path, and ends the search in a tree that contains itself', () => {
+    const shared = step('shared', (n: number) => n)
+    const twice = compose(sequence([shared, shared]), { name: 'twice', parts: { it: shared } })
+    expect(twice.config?.['parts']).toStrictEqual({ it: [0, 0] })
+    const looped = { id: 'looped', kind: 'step', run: (n: number) => n, children: [] as unknown[] }
+    looped.children.push(looped)
+    const stray = step('stray', (n: number) => n)
+    expect(() => compose(looped as never, { name: 'x', parts: { lost: stray } })).toThrow('part "lost"')
+  })
 })

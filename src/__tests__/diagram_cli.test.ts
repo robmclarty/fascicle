@@ -1,7 +1,7 @@
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
-import { sequence, step, suspend } from '#core'
+import { compose, sequence, step, suspend } from '#core'
 import { run_diagram_cli } from '../diagram_cli.js'
 
 const writer = sequence(
@@ -27,6 +27,17 @@ const MODULE: Readonly<Record<string, unknown>> = {
     ],
     { name: 'review' },
   ),
+  composite: composite_pair(),
+}
+
+/**
+ * A named composite over two steps that records only the first as a part, so
+ * the drawing with parts and the one with internals differ.
+ */
+function composite_pair() {
+  const first = step('first', (x: number) => x, { description: 'the part a reader should see' })
+  const second = step('second', (x: number) => x, { description: 'plumbing' })
+  return compose(sequence([first, second]), { name: 'pair', parts: { lead: first } })
 }
 
 type Result = {
@@ -139,6 +150,19 @@ describe('run_diagram_cli', () => {
     expect(failed.code).toBe(1)
     expect(failed.err).toBe('fascicle-diagram: could not load m.ts: Cannot find module\n')
     expect(odd.err).toContain('could not load m.ts: plain string\n')
+  })
+
+  it('draws a named composite as its parts, and its insides with --internals', async () => {
+    const parts = ['pair            compose', '└─ lead  first  the part a reader should see', '']
+    expect((await cli(['m.ts', '--export', 'composite'])).out).toBe(parts.join('\n'))
+    const insides = [
+      'pair          compose',
+      '└─ sequence',
+      '   ├─ first   the part a reader should see',
+      '   └─ second  plumbing',
+      '',
+    ]
+    expect((await cli(['m.ts', '--export', 'composite', '--internals'])).out).toBe(insides.join('\n'))
   })
 
   it('marks the steps a resume would replay with --replays, and only then', async () => {

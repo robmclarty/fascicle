@@ -187,6 +187,7 @@ export const flow_schema = {
       "properties": {
         "name": { "type": "string", "minLength": 1 },
         "description": { "type": "string" },
+        "parts": { "type": "object", "additionalProperties": { "$ref": "#/$defs/node" } },
         "do": { "$ref": "#/$defs/node" }
       }
     },

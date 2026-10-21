@@ -30,11 +30,20 @@ export type DiagramOptions = {
   readonly prefix?: string
   /** Mark each step that `describe.replays` finds with the gates it can run again before. */
   readonly replays?: boolean
+  /** Draw a named composite's internal steps instead of only the parts it was built from. */
+  readonly internals?: boolean
 }
 
 // The gates each marked node can run before, by node, as `replay_gates`
 // finds them.
 type Marks = ReadonlyMap<FlowNode, ReadonlyArray<string>>
+
+// What every row of one drawing shares: the replay marks, and whether a
+// composite's internals are drawn in place of its parts.
+type Draw = {
+  readonly marks: Marks
+  readonly internals: boolean
+}
 
 type Item = {
   readonly head: string
@@ -61,8 +70,11 @@ const COLUMN_GAP = 2
  */
 export function render_diagram(root: FlowNode, options?: DiagramOptions): string {
   const rows: Row[] = []
-  const marks: Marks = options?.replays === true ? replay_gates(root) : new Map()
-  flatten(to_item(root, undefined, marks), '', '', rows)
+  const draw: Draw = {
+    marks: options?.replays === true ? replay_gates(root) : new Map(),
+    internals: options?.internals === true,
+  }
+  flatten(to_item(root, undefined, draw), '', '', rows)
   const column = Math.max(...rows.map((row) => row.lead.length + row.head.length)) + COLUMN_GAP
   const prefix = options?.prefix ?? ''
   const limit =
@@ -126,12 +138,12 @@ function wrap(words: ReadonlyArray<string>, limit: number): ReadonlyArray<string
  * Convert one node into the item the layout draws. `role` is the name the
  * parent gives this child, and it is dropped when it only repeats the label.
  */
-function to_item(node: FlowNode, role: string | undefined, marks: Marks): Item {
+function to_item(node: FlowNode, role: string | undefined, draw: Draw): Item {
   const { label, by_kind } = label_of(node)
   return {
     head: role === undefined || role === label ? label : `${role}  ${label}`,
-    note: [...note_of(node, by_kind), ...replay_note(marks.get(node))],
-    children: child_items(node, marks),
+    note: [...note_of(node, by_kind), ...replay_note(draw.marks.get(node))],
+    children: child_items(node, draw),
   }
 }
 
@@ -162,18 +174,63 @@ function note_of(node: FlowNode, by_kind: boolean): ReadonlyArray<string> {
  * Convert a node's children, naming each by the role its parent's kind gives
  * it.
  */
-function child_items(node: FlowNode, marks: Marks): ReadonlyArray<Item> {
+function child_items(node: FlowNode, draw: Draw): ReadonlyArray<Item> {
   const children = node.children ?? []
-  if (node.kind === 'branch') return children.map((child, i) => to_item(child, BRANCH_ROLES[i], marks))
+  const parts = draw.internals ? [] : part_nodes(node)
+  if (parts.length > 0) return parts.map(([role, part]) => to_item(part, role, draw))
+  if (node.kind === 'branch') return children.map((child, i) => to_item(child, BRANCH_ROLES[i], draw))
   if (node.kind === 'loop') {
-    return children.map((child, i) => to_item(child, i === 1 ? 'guard' : undefined, marks))
+    return children.map((child, i) => to_item(child, i === 1 ? 'guard' : undefined, draw))
   }
   if (node.kind === 'parallel') {
     const keys = string_list(node.config?.['keys'])
-    return children.map((child, i) => to_item(child, keys[i], marks))
+    return children.map((child, i) => to_item(child, keys[i], draw))
   }
-  if (node.kind === 'chain') return staged_items(children, string_list(node.config?.['plan']), marks)
-  return children.map((child) => to_item(child, undefined, marks))
+  if (node.kind === 'chain') return staged_items(children, string_list(node.config?.['plan']), draw)
+  return children.map((child) => to_item(child, undefined, draw))
+}
+
+/**
+ * The parts that a named composite records, by role, each resolved to the
+ * node its path leads to. A composite that records none, or a path that leads
+ * nowhere (a hand-edited tree, say), reads as no parts, and the composite's
+ * own children are drawn instead.
+ */
+function part_nodes(node: FlowNode): ReadonlyArray<readonly [string, FlowNode]> {
+  const parts = node.config?.['parts']
+  if (node.kind !== 'compose' || !is_flow_record(parts)) return []
+  const resolved: Array<readonly [string, FlowNode]> = []
+  for (const [role, path] of Object.entries(parts)) {
+    const part = follow(node, path)
+    if (part === undefined) return []
+    resolved.push([role, part])
+  }
+  return resolved
+}
+
+/**
+ * The node that a path of child indices leads to from `from`, or `undefined`
+ * when the path isn't a list of indices that each name a child.
+ */
+function follow(from: FlowNode, path: FlowValue): FlowNode | undefined {
+  if (!Array.isArray(path)) return undefined
+  const steps: ReadonlyArray<unknown> = path
+  let current: FlowNode | undefined = from
+  for (const index of steps) {
+    if (typeof index !== 'number') return undefined
+    current = current?.children?.[index]
+  }
+  return current === from ? undefined : current
+}
+
+/**
+ * True for a config value that's a record rather than a list or a scalar. A
+ * marker such as a function's reads as a record too, and `follow` turns it
+ * away, since none of its values is a path.
+ */
+function is_flow_record(value: FlowValue | undefined): value is Readonly<{ [key: string]: FlowValue }> {
+  if (value === null || Array.isArray(value)) return false
+  return typeof value === 'object'
 }
 
 /**
@@ -185,7 +242,7 @@ function child_items(node: FlowNode, marks: Marks): ReadonlyArray<Item> {
 function staged_items(
   children: ReadonlyArray<FlowNode>,
   plan: ReadonlyArray<string>,
-  marks: Marks,
+  draw: Draw,
 ): ReadonlyArray<Item> {
   const top: Item[] = []
   let target = top
@@ -198,10 +255,10 @@ function staged_items(
     } else {
       const child = children[next]
       next += 1
-      if (child !== undefined) target.push(to_item(child, undefined, marks))
+      if (child !== undefined) target.push(to_item(child, undefined, draw))
     }
   }
-  for (const child of children.slice(next)) target.push(to_item(child, undefined, marks))
+  for (const child of children.slice(next)) target.push(to_item(child, undefined, draw))
   return top
 }
 

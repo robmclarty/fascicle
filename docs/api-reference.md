@@ -57,7 +57,11 @@ an id that a counter generated, so the same flow always renders to the same
 bytes, and a test can hold a hand-kept copy of the diagram to the code.
 `options.width` wraps the descriptions and `options.prefix` starts every line,
 so `{ prefix: ' * ' }` gives you a block that's ready to paste into a doc
-comment.
+comment. A named composite (`adversarial`, `consensus`, `ensemble_step`,
+`gate`, `improve`, or a `compose` that you give `parts`) draws as one row over
+the steps that it was built from, each under its role, and
+`{ internals: true }`, or `--internals` on the bin, draws the scopes and loops
+inside it instead. `describe.json` keeps the whole tree either way.
 
 <!-- snippet: check -->
 ```ts
@@ -118,7 +122,7 @@ optional `name`, which labels its span and its `describe` line, and an optional
 | `step(id?, fn, options?)` | lift a plain function into `Step<i, o>`; `id` is identity and must be a valid identifier, `options.name` is the free-prose display label, `options.arm` declares the steps that the body runs through `ctx.call` (one or a list), which `describe` shows as children and the step never runs itself, and `options.side_effect` marks a step that isn't free to run twice, so a resumed run that runs it again before its gate records a `step_replayed` event (every `model_call` is marked) |
 | `sequence([a, b, c])` | run in order, threading the value; literal tuples are joint-checked at compile time (each child must accept its predecessor's output) |
 | `pipe(inner, fn)` | post-process an inner step's output |
-| `compose(inner, { name, description? })` | label a composite so it shows up by intent in trajectories; the label is display only and the id is `compose_<n>` |
+| `compose(inner, { name, description?, parts? })` | label a composite so it shows up by intent in trajectories; the label is display only and the id is `compose_<n>`. `parts` names, by role, the steps inside `inner` that `describe.diagram` draws in place of the composite's internals, and a part that isn't inside `inner` throws |
 
 A straight pipe belongs in `sequence`, and you reach for `chain` when a step
 needs fan-in, phases, or named per-joint types.

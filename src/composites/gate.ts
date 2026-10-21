@@ -44,6 +44,7 @@
 
 import { assert_valid_step_id, checkpoint, compose, scope, stash, step, suspend, use } from '#core'
 import type { CheckpointStore, RunContext, Step } from '#core'
+import { name_parts } from './parts.js'
 
 export type GateConfig<o> = {
   readonly id: string
@@ -130,5 +131,12 @@ export function gate<i, o>(inner: Step<i, o>, config: GateConfig<o>): Step<i, o>
     approval,
   ])
 
-  return compose(body, { name: config.name ?? 'gate', description: config.description })
+  return compose(body, {
+    name: config.name ?? 'gate',
+    description: config.description,
+    parts: name_parts([
+      [inner.id, inner],
+      [id, approval],
+    ]),
+  })
 }

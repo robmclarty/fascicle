@@ -106,7 +106,7 @@ const pins: Record<string, Pin> = {
     ['name', 'description', 'do', 'ms'],
     ['do', 'ms'],
   ),
-  compose_node_config: pin<ComposeConfig, 'do', 'do'>()(['name', 'description', 'do'], ['name', 'do']),
+  compose_node_config: pin<ComposeConfig, 'do', 'do'>()(['name', 'description', 'parts', 'do'], ['name', 'do']),
   loop_config: pin<LoopConfig<unknown, unknown, unknown>>()(
     ['name', 'description', 'init', 'body', 'guard', 'finish', 'max_rounds'],
     ['init', 'body', 'finish', 'max_rounds'],

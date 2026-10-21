@@ -301,5 +301,9 @@ export function improve<i, c, projected = ImproveResult<c>>(
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion
   ]) as Step<i, projected>
 
-  return compose(inner, { name: config.name ?? 'improve', description: config.description })
+  return compose(inner, {
+    name: config.name ?? 'improve',
+    description: config.description,
+    parts: { seed, propose, score },
+  })
 }

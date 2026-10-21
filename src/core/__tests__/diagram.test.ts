@@ -2,6 +2,7 @@ import { describe as vdescribe, expect, it } from 'vitest'
 import { z } from 'zod'
 import { branch } from '../branch.js'
 import { chain } from '../chain.js'
+import { compose } from '../compose.js'
 import { describe } from '../describe.js'
 import { render_diagram } from '../diagram.js'
 import { describe_cycle_error } from '../errors.js'
@@ -13,7 +14,7 @@ import { retry } from '../retry.js'
 import { sequence } from '../sequence.js'
 import { step } from '../step.js'
 import { suspend } from '../suspend.js'
-import type { AnyStep, Step } from '../types.js'
+import type { AnyStep, FlowNode, FlowValue, Step } from '../types.js'
 
 function leaf(id: string, description?: string): Step<number, number> {
   return description === undefined
@@ -379,4 +380,72 @@ vdescribe('describe.diagram', () => {
     expect(describe.diagram(as_step(root))).toBe(['root        k', '└─ <cycle>'].join('\n'))
     expect(() => describe.diagram(as_step(root), { strict: true })).toThrow(describe_cycle_error)
   })
+
+  it('draws a named composite as its parts, dropping a role that repeats the label', () => {
+    const first = step('first', (n: number) => n, { description: 'what a reader sees' })
+    const flow = compose(sequence([first, step('second', (n: number) => n, { description: 'plumbing' })]), {
+      name: 'pair',
+      parts: { lead: first, first },
+    })
+    expect(describe.diagram(flow)).toBe(PAIR_PARTS)
+    expect(describe.diagram(flow, { internals: true })).toBe(PAIR_INSIDES)
+  })
+
+  it('draws a named composite without parts as its insides', () => {
+    const flow = compose(
+      sequence([
+        step('first', (n: number) => n, { description: 'what a reader sees' }),
+        step('second', (n: number) => n, { description: 'plumbing' }),
+      ]),
+      { name: 'pair' },
+    )
+    expect(describe.diagram(flow)).toBe(PAIR_INSIDES)
+  })
+
+  it('draws the children instead when a parts record is malformed', () => {
+    const inner: FlowNode = {
+      kind: 'sequence',
+      id: 'sequence_1',
+      children: [
+        { kind: 'step', id: 'first', meta: { description: 'what a reader sees' } },
+        { kind: 'step', id: 'second', meta: { description: 'plumbing' } },
+      ],
+    }
+    const composite = (parts: FlowValue, kind = 'compose'): FlowNode => ({
+      kind,
+      id: 'compose_1',
+      config: { display_name: 'pair', parts },
+      children: [inner],
+    })
+    const malformed: FlowValue[] = [
+      'nope',
+      5,
+      null,
+      [[0, 0]],
+      { lead: 'nope' },
+      { lead: 5 },
+      { lead: { at: 0 } },
+      { lead: [0, 'x'] },
+      { lead: [0, '0'] },
+      { lead: [0, 9] },
+      { lead: [5, 0] },
+      { lead: [0, 0, 0] },
+      { lead: [] },
+    ]
+    for (const parts of malformed) {
+      expect(render_diagram(composite(parts))).toBe(PAIR_INSIDES)
+    }
+    expect(render_diagram(composite({ lead: [0, 0] }, 'sequence'))).toBe(
+      ['pair          sequence', '└─ sequence', '   ├─ first   what a reader sees', '   └─ second  plumbing'].join('\n'),
+    )
+  })
 })
+
+const PAIR_PARTS = ['pair            compose', '├─ lead  first  what a reader sees', '└─ first        what a reader sees'].join('\n')
+
+const PAIR_INSIDES = [
+  'pair          compose',
+  '└─ sequence',
+  '   ├─ first   what a reader sees',
+  '   └─ second  plumbing',
+].join('\n')

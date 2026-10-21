@@ -128,5 +128,9 @@ export function adversarial<input, candidate, projected = AdversarialResult<cand
     max_rounds,
   })
 
-  return compose(inner, { name: config.name ?? 'adversarial', description: config.description })
+  return compose(inner, {
+    name: config.name ?? 'adversarial',
+    description: config.description,
+    parts: { build, critique },
+  })
 }

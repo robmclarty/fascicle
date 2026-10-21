@@ -4,6 +4,7 @@
 
 import { compose, map, parallel, scope, stash, step, use } from '#core'
 import type { Step } from '#core'
+import { name_parts } from './parts.js'
 
 export type EnsembleStepConfig<i, o, ranked, projected = EnsembleStepResult<o, ranked>> = {
   readonly name?: string
@@ -143,5 +144,9 @@ export function ensemble_step<i, o, ranked, projected = EnsembleStepResult<o, ra
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion
   ]) as Step<i, projected>
 
-  return compose(inner, { name: config.name ?? 'ensemble_step', description: config.description })
+  return compose(inner, {
+    name: config.name ?? 'ensemble_step',
+    description: config.description,
+    parts: name_parts([...Object.entries(members), ['score', score]]),
+  })
 }

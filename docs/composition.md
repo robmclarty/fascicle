@@ -147,9 +147,10 @@ from English specifications:
   projection folds in as much or as little of the outcome as it needs
   (`finish: (s) => s` to carry the state straight out,
   `finish: (s, outcome) => ({ value: s, ...outcome })` for the whole thing).
-- `compose(inner, { name })` — label a composite step so it shows up by
+- `compose(inner, { name, parts? })` — label a composite step so it shows up by
   intent in trajectories and `describe` output. The label is free prose and
-  stays out of the id, which is `compose_<n>`.
+  stays out of the id, which is `compose_<n>`. `parts` names the steps inside
+  `inner` that `describe.diagram` draws in the composite's place.
 - `adversarial({ build, critique, accept, max_rounds, project? })` — propose,
   critique, loop.
 - `ensemble({ members, score, select?, project? })` — pick the best of several.

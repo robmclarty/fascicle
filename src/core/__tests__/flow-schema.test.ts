@@ -224,7 +224,7 @@ const every_new_field = [
       { map: { description: 'per item', items: 'list', do: { ref: 'each' }, concurrency: 2 } },
       { pipe: { name: 'shape', of: { ref: 'a' }, fn: 'reshape' } },
       { timeout: { description: 'cap it', do: { ref: 'a' }, ms: 1000 } },
-      { compose_node: { name: 'named', description: 'a named step', do: { ref: 'a' } } },
+      { compose_node: { name: 'named', description: 'a named step', parts: { main: { ref: 'a' } }, do: { ref: 'a' } } },
       { checkpoint: { name: 'cache', do: { ref: 'a' }, key: 'cache_key' } },
       {
         suspend: {
