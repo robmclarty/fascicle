@@ -61,6 +61,11 @@ const engine = make_stub_engine([
 ]);
 ```
 
+A function written inline like that takes its parameter types from
+`StubContentFn`, so `opts` is a `GenerateOptions` and `i` is a number, with
+nothing to annotate, and `content` still accepts any other value, one typed
+`unknown` included.
+
 For options, `make_stub_engine(canned, { usage, model_id })` sets the usage totals
 reported on every result (default `{ input_tokens: 40, output_tokens: 20 }`)
 and `model_resolved.model_id` (default `'stub'`).

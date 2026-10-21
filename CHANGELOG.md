@@ -9,6 +9,7 @@
 ### Fixed
 
 - **`parallel` takes an input that every member accepts, even when a member accepts a union.** The input type pooled every member's input into one union and then intersected its parts, so a member that took `string | readonly Message[]`, as a `model_step` does, beside a member that took a `string` made the input `string & readonly Message[]`, which no string satisfies, and a member that took either of two object shapes demanded both. Each member's input now stays whole while the intersection is taken across the members, so the first case takes a `string`, and the second takes either shape along with the other member's fields. A member whose input reads as `never`, which is what a zero-parameter function's becomes once a generic wrapper loses it, still constrains nothing.
+- **A stub's inline `content` function gets its parameter types.** `StubResponse['content']` was typed `unknown`, which absorbs a function type, so `content: (opts, call_index) => ...` written inline failed strict mode with an implicit `any` on both parameters, the example in docs/testing.md included, and every function needed `(opts: GenerateOptions, call_index: number)` by hand. `content` is now a `StubContent`, which is `StubContentFn` alongside any other value, so an inline function takes its parameter types from `StubContentFn`, and a value typed `unknown` is still accepted. `StubContent` is exported from `fascicle/testing`.
 
 ## v0.16.3 — 2026-10-19
 

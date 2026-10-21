@@ -94,9 +94,23 @@ describe('make_stub_engine', () => {
     ])
   })
 
+  it('types an inline content function from StubContentFn and still takes a value typed unknown', async () => {
+    // Neither parameter is annotated: under strict mode they compile only
+    // because content's type carries StubContentFn's signature.
+    const loaded: unknown = { verdict: 'ship' }
+    const engine = make_stub_engine([
+      { prefix: 'app/echo', content: (opts, call_index) => `${opts.system ?? ''} #${call_index.toFixed(0)}` },
+      { prefix: 'app/loaded', content: loaded },
+    ])
+    const echoed = await engine.generate({ prompt: 'x', system: 'app/echo' })
+    expect(echoed.content).toBe('app/echo #0')
+    const answered = await engine.generate({ prompt: 'x', system: 'app/loaded' })
+    expect(answered.content).toEqual({ verdict: 'ship' })
+  })
+
   it('validates function content through the caller schema like static content', async () => {
     const engine = make_stub_engine([
-      { prefix: '', content: (_opts: unknown, call_index: number) => ({ round: call_index }) },
+      { prefix: '', content: (_opts, call_index) => ({ round: call_index }) },
     ])
     const result = await engine.generate({
       prompt: 'x',

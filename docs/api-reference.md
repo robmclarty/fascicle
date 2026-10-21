@@ -456,7 +456,7 @@ the pattern is worked through in
 | `engine_from_generate(generate)` | fn | wrap a bare `generate` into a full `Engine`; the shell the factories build on, for rolling your own double |
 | `checkpoint_store_conformance(make_store, options?)` | fn | check a `CheckpointStore` you wrote against the contract, one fresh store per check, and resolve `{ passed, failed, skipped }`; see [testing.md](./testing.md#checkpoint_store_conformance) |
 
-Types: `StubEngineOptions`, `StubResponse`, `StubContentFn`,
+Types: `StubEngineOptions`, `StubResponse`, `StubContent`, `StubContentFn`,
 `ScriptResponse`, `ScriptEngineOptions`, `CaptureEngine`,
 `CaptureEngineOptions`, `StoreConformanceOptions`, `StoreConformanceReport`,
 `StoreConformanceFailure`.

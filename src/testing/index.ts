@@ -30,5 +30,5 @@ export type { CaptureEngine, CaptureEngineOptions } from './make_capture_engine.
 export { make_script_engine } from './make_script_engine.js'
 export type { ScriptEngineOptions, ScriptResponse } from './make_script_engine.js'
 export { make_stub_engine } from './make_stub_engine.js'
-export type { StubContentFn, StubEngineOptions, StubResponse } from './make_stub_engine.js'
+export type { StubContent, StubContentFn, StubEngineOptions, StubResponse } from './make_stub_engine.js'
 export { text_of } from './text_of.js'

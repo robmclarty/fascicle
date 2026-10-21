@@ -37,10 +37,24 @@ import { engine_from_generate } from './engine_from_generate.js'
  */
 export type StubContentFn = (opts: GenerateOptions, call_index: number) => unknown
 
+/**
+ * Canned content: a value to answer with as it is, or a `StubContentFn` to call
+ * on each matched call.
+ *
+ * Spelled out as a union rather than `unknown`, which would absorb the function
+ * type, so that a function written inline takes its parameter types from
+ * `StubContentFn` instead of failing strict mode as implicitly `any`. The
+ * empty object type that the lint rule below objects to is the point, since
+ * with `null` and `undefined` it reads as any value, so a value typed `unknown`
+ * stays assignable while the function type stays visible.
+ */
+// oxlint-disable-next-line typescript/no-generated-empty-object-type
+export type StubContent = StubContentFn | NonNullable<unknown> | null | undefined
+
 export type StubResponse = {
   readonly prefix: string
   /** Static content, or a `StubContentFn` invoked per matched call. */
-  readonly content: unknown
+  readonly content: StubContent
 }
 
 export type StubEngineOptions = {
