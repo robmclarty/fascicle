@@ -220,6 +220,7 @@ The canonical worked example is [examples/pr-improve/](./examples/pr-improve/), 
 
 - [docs/blueprint.md](./docs/blueprint.md) — **the agent blueprint**: the standard app architecture (start here when building an app)
 - [docs/getting-started.md](./docs/getting-started.md) — install and run your first flow
+- [docs/learn/](./docs/learn/README.md) is a course in fourteen short lessons that starts from a single step and ends with designing your own flows, with notes written for your coding agent as well
 - [docs/concepts.md](./docs/concepts.md) — step-as-value, trajectories, cancellation
 - [docs/composition.md](./docs/composition.md) — full composition surface: the 23 primitives, run/stream, checkpointing
 - [docs/leaf-arm-spine.md](./docs/leaf-arm-spine.md) — the three-layer shape of a Fascicle flow and how to choose the right primitive at each layer

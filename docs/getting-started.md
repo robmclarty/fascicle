@@ -2,6 +2,8 @@
 
 A 10-minute tour. You install it, compose your first flow, run it, and see what happened.
 
+If you'd rather go one idea at a time, with your coding agent alongside, [the course in docs/learn](./learn/README.md) starts from a single step and builds up to tools that you'll use every day.
+
 ## Install
 
 From npm (as a consumer):
@@ -168,6 +170,7 @@ The [examples index](../examples/README.md) tells you which examples are keyless
 
 ## Where to Go Next
 
+- [docs/learn/](./learn/README.md) is a step-by-step course that takes this page further, one lesson at a time.
 - [docs/leaf-arm-spine.md](./leaf-arm-spine.md) — the three-layer shape of a flow and which primitive belongs at each layer.
 - [docs/writing-a-harness.md](./writing-a-harness.md) — build a runner around Fascicle.
 - [docs/blueprint.md](./blueprint.md) — the standard app architecture for a real Fascicle app.
