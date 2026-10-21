@@ -417,6 +417,33 @@ describe('result event durations', () => {
   })
 })
 
+describe('a message the CLI writes in the model\'s place', () => {
+  it('carries the assistant event\'s error code into the snapshot', async () => {
+    const not_logged_in = 'Not logged in · Please run /login'
+    const { parsed } = await feed([
+      jline(init_event),
+      jline({
+        type: 'assistant',
+        error: 'authentication_failed',
+        message: { content: [{ type: 'text', text: not_logged_in }] },
+      }),
+      jline(result_event({ is_error: true, result: not_logged_in })),
+    ])
+    expect(parsed.api_error).toBe('authentication_failed')
+    expect(parsed.is_error).toBe(true)
+    expect(parsed.final_text).toBe(not_logged_in)
+  })
+
+  it('leaves api_error off the snapshot when no event carries one', async () => {
+    const { parsed } = await feed([
+      jline(init_event),
+      jline({ type: 'assistant', message: { content: [{ type: 'text', text: 'hi' }] } }),
+      jline(result_event()),
+    ])
+    expect('api_error' in parsed).toBe(false)
+  })
+})
+
 describe('event-level strictness (a mistyped field rejects the whole event)', () => {
   // Characterization: each malformed event must be recorded as one
   // cli_unknown_event, never partially accepted. A trailing valid result event
@@ -448,6 +475,7 @@ describe('event-level strictness (a mistyped field rejects the whole event)', ()
     ['rate_limit info overageResetsAt non-number', { type: 'rate_limit_event', rate_limit_info: { overageResetsAt: 'x' } }],
     ['rate_limit info isUsingOverage non-boolean', { type: 'rate_limit_event', rate_limit_info: { isUsingOverage: 'x' } }],
     ['assistant message null', { type: 'assistant', message: null }],
+    ['assistant error non-string', { type: 'assistant', message: { content: [] }, error: 1 }],
     ['user message null', { type: 'user', message: null }],
     ['user message non-object', { type: 'user', message: 'x' }],
     ['user message content non-array', { type: 'user', message: { content: 'x' } }],

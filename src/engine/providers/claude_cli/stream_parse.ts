@@ -61,6 +61,11 @@ type CliSystemEvent = {
 type CliAssistantEvent = {
   type: 'assistant'
   message: { content: CliAssistantContent[] }
+  /**
+   * Set when the CLI writes the message itself in the model's place, to say
+   * why the call failed (`authentication_failed` for a logged-out session).
+   */
+  error?: string
 }
 
 type CliUserEvent = {
@@ -262,13 +267,18 @@ function gate<T extends CliEvent>(
 
 /**
  * Normalize an `assistant` event: its `message` must be an object and its
- * `content` an array, whose recognized parts are kept and the rest dropped.
+ * `content` an array, whose recognized parts are kept and the rest dropped. An
+ * `error` code, when present, must be a string.
  */
 function as_assistant_event(raw: Record<string, unknown>): CliEvent | undefined {
   const message = raw['message']
-  if (!is_record(message)) return undefined
+  if (!is_record(message) || !opt_string(raw, 'error')) return undefined
   const content = collect_parts(message['content'], as_assistant_part)
-  return content === undefined ? undefined : { type: 'assistant', message: { content } }
+  if (content === undefined) return undefined
+  const error = raw['error']
+  return typeof error === 'string'
+    ? { type: 'assistant', message: { content }, error }
+    : { type: 'assistant', message: { content } }
 }
 
 /** Normalize a `user` event, under the same rule as `as_assistant_event`. */
@@ -327,6 +337,8 @@ export type ParsedStream = {
   readonly turns: ReadonlyArray<TurnCollected>
   readonly is_error: boolean
   readonly received_result: boolean
+  /** The error code on a message that the CLI wrote in the model's place. */
+  readonly api_error?: string
 }
 
 type ParserState = {
@@ -350,6 +362,7 @@ type ParserState = {
   turn_usage: UsageTotals
   is_error: boolean
   received_result: boolean
+  api_error?: string
 }
 
 /**
@@ -507,6 +520,7 @@ async function handle_assistant(
     flush_turn(state)
     state.current_step_index += 1
   }
+  if (event.error !== undefined) state.api_error = event.error
 
   for (const part of event.message.content) {
     if (part.type === 'text') {
@@ -729,6 +743,7 @@ export function snapshot(state: ParserState): ParsedStream {
     total_cost_usd?: number
     duration_ms?: number
     duration_api_ms?: number
+    api_error?: string
   } = {
     final_text: state.final_text,
     final_usage: { ...state.final_usage },
@@ -740,5 +755,6 @@ export function snapshot(state: ParserState): ParsedStream {
   if (state.total_cost_usd !== undefined) base.total_cost_usd = state.total_cost_usd
   if (state.duration_ms !== undefined) base.duration_ms = state.duration_ms
   if (state.duration_api_ms !== undefined) base.duration_api_ms = state.duration_api_ms
+  if (state.api_error !== undefined) base.api_error = state.api_error
   return base
 }

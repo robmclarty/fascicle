@@ -11,6 +11,8 @@
  *   provider_capability_error('multi_turn_history').
  * - sandbox binary missing surfaces claude_cli_error that identifies
  *   the sandbox binary, not the claude binary.
+ * - a logged-out session, which the CLI reports on stdout alone, surfaces
+ *   provider_auth_error with the CLI's own message.
  */
 
 import { z } from 'zod'
@@ -20,6 +22,7 @@ import { create_claude_cli_adapter } from '../../../providers/claude_cli/index.j
 import { create_engine } from '../../../create_engine.js'
 import {
   claude_cli_error,
+  provider_auth_error,
   provider_capability_error,
 } from '../../../errors.js'
 import type {
@@ -280,5 +283,43 @@ describe('sandbox binary missing', () => {
       .catch((e: unknown) => e)
     expect(err).toBeInstanceOf(claude_cli_error)
     if (err instanceof claude_cli_error) expect(err.reason).toBe('binary_not_found')
+  })
+})
+
+describe('a logged-out session', () => {
+  it('surfaces provider_auth_error with the CLI\'s own words, though stderr is empty', async () => {
+    const not_logged_in = 'Not logged in · Please run /login'
+    // The stream a logged-out `claude -p` writes, trimmed to the fields the
+    // adapter reads: a stand-in assistant message with the error code, then an
+    // error result, then exit 1 with nothing on stderr.
+    const handle = await track(
+      await write_mock_script([
+        { op: 'line', data: { type: 'system', subtype: 'init', session_id: 's', model: 'm' } },
+        {
+          op: 'line',
+          data: {
+            type: 'assistant',
+            error: 'authentication_failed',
+            message: { model: '<synthetic>', content: [{ type: 'text', text: not_logged_in }] },
+          },
+        },
+        {
+          op: 'line',
+          data: { type: 'result', subtype: 'success', is_error: true, result: not_logged_in, total_cost_usd: 0 },
+        },
+        { op: 'exit', code: 1 },
+      ]),
+    )
+    const adapter = create_claude_cli_adapter({ binary: MOCK_CLAUDE_PATH, auth_mode: 'oauth' })
+    cleanup_stack.push(() => adapter.dispose())
+
+    const err = await adapter
+      .generate(base_opts(build_mock_env({ MOCK_CLAUDE_SCRIPT: handle.script_path })), alias_target)
+      .catch((e: unknown) => e)
+    expect(err).toBeInstanceOf(provider_auth_error)
+    if (err instanceof provider_auth_error) {
+      expect(err.message).toBe(`claude CLI reported an auth failure: ${not_logged_in}`)
+      expect(err.refresh_command).toBe('claude auth login')
+    }
   })
 })

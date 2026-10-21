@@ -54,6 +54,7 @@ import {
 } from './stream_parse.js'
 import { build_generate_result } from './stream_result.js'
 import {
+  CLI_AUTH_FAILED_ERROR,
   CLI_BINARY_DEFAULT,
   DEFAULT_STALL_TIMEOUT_MS,
   DEFAULT_STARTUP_TIMEOUT_MS,
@@ -199,13 +200,19 @@ export function compile_schema<T>(schema: ToolSchema<T>): string {
 }
 
 /**
- * Turn a closed CLI subprocess's exit code, signal, and stderr into an
- * `Error`.
+ * Turn a closed CLI subprocess's exit code, signal, stderr, and what its
+ * stream reported into an `Error`.
  *
- * Checks stderr for an auth failure first, then for a claude binary that
- * bwrap started but couldn't find inside its sandbox, then for a missing
- * sandbox binary, then falls back to a generic exit-code error. The stderr
- * snippet attached to each error is truncated to 512 bytes.
+ * Checks for an auth failure first, then for a claude binary that bwrap
+ * started but couldn't find inside its sandbox, then for a missing sandbox
+ * binary, then falls back to a generic exit-code error. The stderr snippet
+ * attached to each error is truncated to 512 bytes.
+ *
+ * A logged-out CLI says so on stdout and leaves stderr empty: it writes an
+ * assistant message with the `authentication_failed` error code and an error
+ * result that reads "Not logged in · Please run /login". So the auth check
+ * reads the stream's error code as well as stderr, and when stderr is empty,
+ * an error result's text stands in for it in the message.
  *
  * The bwrap check has to come before the sandbox check: bwrap's own
  * "execvp <binary>: No such file or directory" names bwrap and says the file
@@ -215,13 +222,17 @@ export function classify_close_error(
   code: number | null,
   signal: NodeJS.Signals | null,
   stderr: string,
+  parsed?: Pick<ParsedStream, 'is_error' | 'final_text' | 'api_error'>,
 ): Error {
   const snippet = stderr.slice(0, 512)
-  if (stderr_is_auth_failure(stderr)) {
+  // Text from a run that reported no error is the model's, not a reason.
+  const reported = parsed?.is_error === true ? parsed.final_text.slice(0, 512) : ''
+  const detail = snippet.length > 0 ? snippet : reported
+  if (stderr_is_auth_failure(stderr) || parsed?.api_error === CLI_AUTH_FAILED_ERROR) {
     return new provider_auth_error(
       PROVIDER_NAME,
-      `claude CLI reported an auth failure: ${snippet}`,
-      { refresh_command: 'claude login' },
+      `claude CLI reported an auth failure: ${detail}`,
+      { refresh_command: 'claude auth login' },
     )
   }
   const sandboxed_binary = BWRAP_EXEC_MISSING.exec(stderr)?.[1]
@@ -239,7 +250,7 @@ export function classify_close_error(
   }
   const status = typeof code === 'number' ? code : undefined
   const signal_part = signal !== null ? ` (signal ${signal})` : ''
-  const message = `claude CLI exited with code ${String(code)}${signal_part}: ${snippet}`
+  const message = `claude CLI exited with code ${String(code)}${signal_part}: ${detail}`
   const metadata: { status?: number; stderr_snippet?: string } = {
     stderr_snippet: snippet,
   }
@@ -336,7 +347,7 @@ async function run_cli(
   const parsed = snapshot(state)
 
   if (close_outcome.code !== 0) {
-    throw classify_close_error(close_outcome.code, close_outcome.signal, close_outcome.stderr)
+    throw classify_close_error(close_outcome.code, close_outcome.signal, close_outcome.stderr, parsed)
   }
   if (!parsed.received_result) {
     throw new claude_cli_error(

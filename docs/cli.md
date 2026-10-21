@@ -6,7 +6,7 @@ A subprocess provider that spawns the `claude` binary and parses its streaming J
 
 Three good reasons, and they're all about what you already have:
 
-1. **Piggyback on your CLI login.** Run `claude login` once, and every Fascicle harness you write uses that session.
+1. **Piggyback on your CLI login.** Run `claude auth login` once, and every Fascicle harness you write uses that session.
 2. **Use CLI-only features.** Sub-agents via `--agents`, per-invocation tool allowlisting, setting source control, plugin dirs, schema-constrained output via `--json-schema`.
 3. **Sandboxable.** `bwrap` and `greywall` wrappers let you confine the subprocess to an allowlist.
 
@@ -15,7 +15,7 @@ It does **not** replace the `anthropic` AI SDK adapter. Use `anthropic` for dire
 ## Prerequisites
 
 - `claude` on PATH. Install from [claude.com/claude-code](https://claude.com/claude-code).
-- A session (`claude login`) or an `ANTHROPIC_API_KEY`.
+- A session (`claude auth login`) or an `ANTHROPIC_API_KEY`.
 
 ## Minimal Setup
 
@@ -93,7 +93,7 @@ await engine.generate({
 
 ### Auth Failures
 
-If stderr matches any of the frozen `CLI_AUTH_ERROR_PATTERNS` (`authentication`, `unauthorized`, `forbidden`, `oauth token has expired`, `invalid_api_key`), the adapter throws `provider_auth_error` with `refresh_command: 'claude login'` so your harness can tell the operator what to do.
+If stderr matches any of the frozen `CLI_AUTH_ERROR_PATTERNS` (`authentication`, `unauthorized`, `forbidden`, `oauth token has expired`, `invalid_api_key`), the adapter throws `provider_auth_error` with `refresh_command: 'claude auth login'` so your harness can tell the operator what to do. If you haven't logged in, the CLI leaves stderr empty and says so in its stream instead, as an assistant message with the `authentication_failed` error code, and you get the same error in the CLI's own words: `claude CLI reported an auth failure: Not logged in · Please run /login`. When any other run fails with nothing on stderr, you get the text of the CLI's error result in the message.
 
 ## Per-Call Options
 

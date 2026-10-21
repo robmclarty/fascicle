@@ -240,11 +240,11 @@ along on every call, so that comes to a few tenths of a cent a run.
 | `provider_error: ollama native: network failure: fetch failed`, after a pause | Ollama isn't running, so the engine retried a few times and gave up. Start it with `ollama serve`. |
 | `schema_validation_error` from a live model | The model couldn't produce the shape, even after one try at fixing it. Try a bigger model, or make the example in the prompt clearer. |
 | `claude_cli_error: spawn claude ENOENT` | Claude Code isn't installed, or `claude` isn't on your `PATH`. |
-| `claude_cli_error: claude CLI exited with code 1:`, with nothing after it | Claude Code isn't logged in. Run `claude`, and log in with `/login`. |
+| `claude_cli_error: claude CLI exited with code 1:`, with nothing after it | Claude Code isn't logged in. Run `claude auth login`. Releases after 0.16.4 say so, as `provider_auth_error: claude CLI reported an auth failure: Not logged in · Please run /login`. |
 
 Every one of those messages but the last says what went wrong and what to do
-about it. Fascicle's errors are written that way on purpose, and it's a good
-standard for your own.
+about it, and releases after 0.16.4 fix the last one. Fascicle's errors are
+written that way on purpose, and it's a good standard for your own.
 
 ## With Your Agent
 

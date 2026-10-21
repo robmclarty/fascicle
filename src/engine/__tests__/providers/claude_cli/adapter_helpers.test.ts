@@ -156,7 +156,7 @@ describe('classify_close_error', () => {
     const err = classify_close_error(1, null, 'Error: unauthorized request')
     expect(err).toBeInstanceOf(provider_auth_error)
     expect(err.message).toContain('auth failure')
-    expect((err as provider_auth_error).refresh_command).toBe('claude login')
+    expect((err as provider_auth_error).refresh_command).toBe('claude auth login')
   })
 
   it('classifies a missing sandbox binary', () => {
@@ -209,5 +209,47 @@ describe('classify_close_error', () => {
     const long = 'x'.repeat(600)
     const err = classify_close_error(1, null, long)
     expect((err as claude_cli_error).stderr_snippet).toHaveLength(512)
+  })
+
+  it('classifies a logged-out session from the stream, in the CLI\'s own words', () => {
+    const err = classify_close_error(1, null, '', {
+      is_error: true,
+      final_text: 'Not logged in · Please run /login',
+      api_error: 'authentication_failed',
+    })
+    expect(err).toBeInstanceOf(provider_auth_error)
+    expect(err.message).toBe('claude CLI reported an auth failure: Not logged in · Please run /login')
+    expect((err as provider_auth_error).refresh_command).toBe('claude auth login')
+  })
+
+  it('leaves any other stream error code to the later classifications', () => {
+    const err = classify_close_error(1, null, '', {
+      is_error: true,
+      final_text: 'API Error: 529 overloaded',
+      api_error: 'server_error',
+    })
+    expect((err as claude_cli_error).reason).toBe('subprocess_exit')
+  })
+
+  it('carries an error result\'s text when stderr is empty', () => {
+    const err = classify_close_error(1, null, '', { is_error: true, final_text: 'API Error: 529 overloaded' })
+    expect((err as claude_cli_error).reason).toBe('subprocess_exit')
+    expect(err.message).toBe('claude CLI exited with code 1: API Error: 529 overloaded')
+    expect((err as claude_cli_error).stderr_snippet).toBe('')
+  })
+
+  it('prefers stderr over the error result\'s text', () => {
+    const err = classify_close_error(1, null, 'boom', { is_error: true, final_text: 'reported' })
+    expect(err.message).toBe('claude CLI exited with code 1: boom')
+  })
+
+  it('leaves out the text of a run that reported no error', () => {
+    const err = classify_close_error(1, null, '', { is_error: false, final_text: 'half an answer' })
+    expect(err.message).toBe('claude CLI exited with code 1: ')
+  })
+
+  it('truncates the error result\'s text to 512 characters', () => {
+    const err = classify_close_error(1, null, '', { is_error: true, final_text: 'y'.repeat(600) })
+    expect(err.message).toBe(`claude CLI exited with code 1: ${'y'.repeat(512)}`)
   })
 })

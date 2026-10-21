@@ -120,7 +120,7 @@ use the profile. For the per-provider notes, read [providers.md](./providers.md)
 | -------------------------------------------------- | ----------------------------------------------------------------------------- |
 | `claude_cli_error` with `reason: 'binary_not_found'` | The `claude` binary isn't on `PATH`. Install Claude Code, or set `binary`. |
 | `binary_not_found` whose message says `bwrap` found no binary | The `claude` binary sits outside the paths that the `bwrap` sandbox binds, such as in your home directory. The [roadmap](./roadmap.md#known-issues) tracks this. |
-| `provider_auth_error` with `refresh_command: 'claude login'` | The CLI session is missing or expired. Run `claude login`.          |
+| `provider_auth_error` with `refresh_command: 'claude auth login'` | The CLI session is missing or expired. Run `claude auth login`. |
 | `claude_cli_error` with `reason: 'startup_timeout' \| 'stall_timeout'` | No first chunk within 120s, or a 300s gap mid-stream. Check connectivity; raise `startup_timeout_ms` / `stall_timeout_ms`. |
 | `claude_cli_error` with `reason: 'sandbox_unavailable'` | A `sandbox` was requested but `bwrap`/`greywall` isn't installed.       |
 | Your tools silently do nothing                     | Default `tool_bridge: 'allowlist_only'` drops `execute` closures and records a `cli_tool_bridge_allowlist_only` trajectory event. Use `tool_bridge: 'forbid'` to turn that into an error. |

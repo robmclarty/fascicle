@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- **A `claude_cli` session that isn't logged in says so.** A `claude -p` with no session to call with writes its reason to stdout, as a message in the model's place with the `authentication_failed` error code and an error result that reads "Not logged in · Please run /login", and it leaves stderr empty. The adapter read only stderr, so the call failed as `claude_cli_error: claude CLI exited with code 1:` with nothing after the colon. It reads the stream's error code as well now and throws `provider_auth_error` in the CLI's own words, `claude CLI reported an auth failure: Not logged in · Please run /login`, and any other failed exit with nothing on stderr carries the text of the CLI's error result. The error's `refresh_command` is `claude auth login`, since the CLI reads `claude login` as a prompt and opens a session.
+
 ## v0.16.4 — 2026-10-21
 
 ### Added
