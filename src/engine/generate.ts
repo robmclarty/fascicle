@@ -46,7 +46,8 @@ import {
   provider_required_error,
   turn_timeout_error,
 } from './errors.js'
-import { format_schema_issues } from '#schema'
+import { format_schema_issues, to_json_schema } from '#schema'
+import type { ToolSchema } from '#schema'
 import type { TrajectoryLogger } from '#core'
 import { split_leading_system_run } from './leading_system.js'
 import { merge_provider_options } from './merge_defaults.js'
@@ -771,10 +772,7 @@ async function build_ai_sdk_transport<T>(
  * prompt came from.
  */
 function build_prompt_messages<T>(opts: GenerateOptions<T>): Message[] {
-  const schema_prefix =
-    opts.schema !== undefined
-      ? 'You must respond with a single JSON value that conforms to the expected schema. Return ONLY the JSON value, with no markdown or commentary.'
-      : undefined
+  const schema_prefix = opts.schema !== undefined ? schema_instruction(opts.schema) : undefined
   const initial_messages = build_initial_messages(opts)
   if (schema_prefix !== undefined) {
     const idx = initial_messages.findIndex((m) => m.role === 'system')
@@ -792,6 +790,31 @@ function build_prompt_messages<T>(opts: GenerateOptions<T>): Message[] {
     }
   }
   return initial_messages
+}
+
+const JSON_ONLY = 'Return ONLY the JSON value, with no markdown or commentary.'
+
+/**
+ * The instruction that asks for a JSON reply, with the schema that the reply has to fit.
+ *
+ * The instruction is the only place where most transports show the model the
+ * schema. Only an `ai_sdk` adapter with the `structured_output` capability
+ * hands the schema to the provider, and only on a call without tools, so
+ * everywhere else a bare request would leave the model guessing the field
+ * names while the repair loop taught them one failed reply at a time.
+ *
+ * A schema that can't be emitted keeps the bare request. A vendor without
+ * Standard JSON Schema throws, and so does zod for a type that JSON Schema
+ * can't express (a `Date`), and both of those schemas validate replies without
+ * it, so a failed emission must not fail the call.
+ */
+function schema_instruction(schema: ToolSchema): string {
+  try {
+    const shown = JSON.stringify(to_json_schema(schema, { strip_meta: true }))
+    return `You must respond with a single JSON value that conforms to this JSON Schema:\n\n${shown}\n\n${JSON_ONLY}`
+  } catch {
+    return `You must respond with a single JSON value that conforms to the expected schema. ${JSON_ONLY}`
+  }
 }
 
 type LoopConfigInputs<T> = {

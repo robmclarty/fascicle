@@ -26,6 +26,7 @@ vi.mock('ai', async () => build_mock_ai_module())
 vi.mock('../providers/registry.js', async () => build_mock_registry_module())
 
 import type { TrajectoryEvent, TrajectoryLogger } from '#core'
+import type { ToolSchema } from '#schema'
 import { create_engine } from '../create_engine.js'
 import { default_normalize_usage, translate_effort_to_sdk_reasoning } from '../providers/types.js'
 import {
@@ -42,6 +43,14 @@ import {
   tool_approval_denied_error,
   tool_error,
 } from '../errors.js'
+
+const SHOWN_N_SCHEMA =
+  'You must respond with a single JSON value that conforms to this JSON Schema:\n\n' +
+  '{"type":"object","properties":{"n":{"type":"number"}},"required":["n"],"additionalProperties":false}\n\n' +
+  'Return ONLY the JSON value, with no markdown or commentary.'
+
+const BARE_SCHEMA_REQUEST =
+  'You must respond with a single JSON value that conforms to the expected schema. Return ONLY the JSON value, with no markdown or commentary.'
 
 function basic_engine() {
   return create_engine({ providers: { anthropic: { api_key: 'k' } } })
@@ -1032,9 +1041,7 @@ describe('generate: approval, schema repair, cost, and finish', () => {
     const params = mock_state.last_generate_text_params as { instructions?: string }
     // The prefix is appended to the existing system run, not prepended as a new
     // system message; find-index + the append block must both fire.
-    expect(params.instructions).toBe(
-      'be brief\n\nYou must respond with a single JSON value that conforms to the expected schema. Return ONLY the JSON value, with no markdown or commentary.',
-    )
+    expect(params.instructions).toBe(`be brief\n\n${SHOWN_N_SCHEMA}`)
   })
 
   it('prepends a system message with the schema prefix when the call has none', async () => {
@@ -1045,9 +1052,31 @@ describe('generate: approval, schema repair, cost, and finish', () => {
       schema: z.object({ n: z.number() }),
     })
     const params = mock_state.last_generate_text_params as { instructions?: string }
-    expect(params.instructions).toBe(
-      'You must respond with a single JSON value that conforms to the expected schema. Return ONLY the JSON value, with no markdown or commentary.',
-    )
+    expect(params.instructions).toBe(SHOWN_N_SCHEMA)
+  })
+
+  it('keeps the bare request when JSON Schema cannot express the schema', async () => {
+    enqueue_generate_text(make_text_result('{"when": "2026-10-20"}'))
+    const result = await basic_engine().generate({
+      model: 'claude-opus',
+      prompt: 'hi',
+      schema: z.object({ when: z.coerce.date() }),
+    })
+    const params = mock_state.last_generate_text_params as { instructions?: string }
+    // zod refuses to emit a Date, and the call still validates the reply.
+    expect(params.instructions).toBe(BARE_SCHEMA_REQUEST)
+    expect(result.content.when).toBeInstanceOf(Date)
+  })
+
+  it('keeps the bare request for a vendor without Standard JSON Schema', async () => {
+    enqueue_generate_text(make_text_result('{"n": 1}'))
+    const validate_only = {
+      '~standard': { version: 1, vendor: 'validate-only', validate: (value: unknown) => ({ value }) },
+    } as unknown as ToolSchema<{ n: number }>
+    const result = await basic_engine().generate({ model: 'claude-opus', prompt: 'hi', schema: validate_only })
+    const params = mock_state.last_generate_text_params as { instructions?: string }
+    expect(params.instructions).toBe(BARE_SCHEMA_REQUEST)
+    expect(result.content).toEqual({ n: 1 })
   })
 
   it('rejects a negative tool_call_repair_attempts with the exact message', async () => {

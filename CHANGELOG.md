@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- **A call with a `schema` shows the model the schema.** The engine asked for "a single JSON value that conforms to the expected schema" and never said what the schema was. Only an `ai_sdk` adapter with the `structured_output` capability hands the schema to the provider, and only on a call without tools, so everywhere else the model guessed the field names, and the repair loop taught them one failed reply at a time. The instruction now carries the schema as compact JSON Schema, closed with `additionalProperties: false` as a tool's schema is, so the first reply can fit. On OpenRouter's Claude Haiku 5.5, a three-field extraction with no example in its prompt took two round trips before and one after, at about half the cost, and a 4B model on Ollama that never found the right fields now does. A schema that JSON Schema can't express, such as one that holds a `Date`, keeps the bare request and still validates its replies. The `.describe()` text on a zod field reaches the model the same way, which is what the blueprint's advice to keep field rules there assumed.
+
 ## v0.16.3 — 2026-10-19
 
 ### Fixed
