@@ -10,7 +10,7 @@ and the first lesson that costs money (a small fraction of a cent).
 ## Pick a Provider
 
 A provider is whoever runs the model for you. Fascicle talks to several, and
-these four need nothing beyond the `fascicle` package you already installed:
+these five need nothing beyond the `fascicle` package you already installed:
 
 | Provider | What you need | Why you'd pick it |
 | --- | --- | --- |
@@ -18,10 +18,16 @@ these four need nothing beyond the `fascicle` package you already installed:
 | Anthropic | an API key | Claude models, straight from the source |
 | OpenAI | an API key | GPT models, straight from the source |
 | Ollama | Ollama installed, and a model pulled | free and private, since it runs on your own machine |
+| Claude Code | Claude Code, logged in to a Claude plan | no key, since the plan you already pay for runs the model |
 
 If you're not sure, choose OpenRouter. A few dollars of credit covers this whole
 course many times over. If you'd rather spend nothing at all, choose Ollama, and
 expect it to be slower than the others.
+
+Claude Code works differently from the rest. Fascicle starts a copy of `claude`
+for every model call, so each call takes a few seconds longer, and each one
+carries Claude Code's own long instructions along with yours. A run uses more of
+your plan's limits than its size would suggest.
 
 ## Keep Your Key out of Your Code
 
@@ -42,8 +48,9 @@ pnpm exec tsx --env-file=.env solver/main.ts
 
 Node loads each line of `.env` into `process.env` for that one run, and your
 code reads it from there. (With Anthropic or OpenAI, the line is
-`ANTHROPIC_API_KEY=...` or `OPENAI_API_KEY=...` instead, and Ollama needs no key
-at all.)
+`ANTHROPIC_API_KEY=...` or `OPENAI_API_KEY=...` instead.) Ollama and Claude Code
+need no key at all. If you have no `.env`, leave `--env-file=.env` off the
+command, because Node won't start when the file that it names is missing.
 
 ## One File Makes Engines
 
@@ -85,7 +92,10 @@ export function engine_from_env(make_stub: () => Engine, env = process.env): Cho
     const base_url = env['OLLAMA_BASE_URL'] ?? 'http://localhost:11434'
     return { engine: create_engine({ providers: { ollama: { base_url, transport: 'native' } } }), model: model ?? 'qwen3:4b-instruct-2507-q4_K_M' }
   }
-  throw new Error(`unknown FASCICLE_PROVIDER "${provider}": use stub, openrouter, anthropic, openai, or ollama`)
+  if (provider === 'claude_cli') {
+    return { engine: create_engine({ providers: { claude_cli: { auth_mode: 'oauth', setting_sources: [] } } }), model: model ?? 'claude-haiku-5-5' }
+  }
+  throw new Error(`unknown FASCICLE_PROVIDER "${provider}": use stub, openrouter, anthropic, openai, ollama, or claude_cli`)
 }
 
 function need(env: NodeJS.ProcessEnv, name: string): string {
@@ -103,6 +113,11 @@ A few things in there are worth slowing down for.
   hold several providers, but each one that this file builds holds just one, so
   every call goes there. `transport: 'native'` means Fascicle speaks to the
   provider over plain HTTP, with no extra packages to install.
+- **`claude_cli` is Claude Code.** It runs `claude -p` for each call, on the
+  session that Claude Code is already logged in to. `auth_mode: 'oauth'` keeps
+  the calls on your plan even when your shell sets an `ANTHROPIC_API_KEY`.
+  `setting_sources: []` keeps your workbench's `CLAUDE.md`, which is written for
+  your coding agent, out of the model's instructions.
 - **The provider and the model come from settings.** `FASCICLE_PROVIDER` picks
   the provider and `FASCICLE_MODEL` overrides the model. With nothing set, the
   stub answers, so every lesson so far still runs for free, and so will your
@@ -110,8 +125,8 @@ A few things in there are worth slowing down for.
 - **Model names go to the provider exactly as you write them.** Each provider
   names its models its own way, which is why the same Claude model is
   `anthropic/claude-haiku-5.5` on OpenRouter and `claude-haiku-5-5` on
-  Anthropic. Fascicle doesn't translate between them, and when a name is wrong,
-  the provider says so.
+  Anthropic and Claude Code. Fascicle doesn't translate between them, and when
+  a name is wrong, the provider says so.
 - **This is the only file that calls `create_engine`.** Everything else is
   handed an engine. That one rule is what turns changing providers into a
   setting.
@@ -193,6 +208,10 @@ FASCICLE_PROVIDER=ollama pnpm exec tsx solver/main.ts "A baker made 24 muffins a
 Each box has 4 muffins.
 ```
 
+Or hand it to Claude Code, on your Claude plan, by running the same command
+with `FASCICLE_PROVIDER=claude_cli`. The `4` comes back the same, a few seconds
+later.
+
 Stop and notice what you didn't do. You didn't open `flow.ts`. The flow
 describes the job, the engine decides who does the thinking, and the two meet
 in exactly one place, so you can change either one without the other knowing.
@@ -206,6 +225,10 @@ A live run of the solver makes two model calls, one to read the question and
 one to explain the answer. On Claude Haiku 5.5 through OpenRouter, a run measured at a hundredth or two of a cent. The next lesson shows you where to
 see the cost of every run, without doing any arithmetic yourself.
 
+On Claude Code your plan pays, and the cost that Fascicle shows is what the same
+calls would have cost on Anthropic's API. Claude Code's own instructions ride
+along on every call, so that comes to a few tenths of a cent a run.
+
 ## When It Doesn't Work
 
 | What you see | What it means |
@@ -216,10 +239,12 @@ see the cost of every run, without doing any arithmetic yourself.
 | `unknown FASCICLE_PROVIDER "open-router"` | A typo in the setting. |
 | `provider_error: ollama native: network failure: fetch failed`, after a pause | Ollama isn't running, so the engine retried a few times and gave up. Start it with `ollama serve`. |
 | `schema_validation_error` from a live model | The model couldn't produce the shape, even after one try at fixing it. Try a bigger model, or make the example in the prompt clearer. |
+| `claude_cli_error: spawn claude ENOENT` | Claude Code isn't installed, or `claude` isn't on your `PATH`. |
+| `claude_cli_error: claude CLI exited with code 1:`, with nothing after it | Claude Code isn't logged in. Run `claude`, and log in with `/login`. |
 
-Every one of those messages says what went wrong and what to do about it.
-Fascicle's errors are written that way on purpose, and it's a good standard for
-your own.
+Every one of those messages but the last says what went wrong and what to do
+about it. Fascicle's errors are written that way on purpose, and it's a good
+standard for your own.
 
 ## With Your Agent
 
