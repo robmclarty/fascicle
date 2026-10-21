@@ -21,17 +21,21 @@ import { suspended_error } from './errors.js'
 import { dispatch_step, install_abort_fan_out, register_traced_kind, throw_if_aborted } from './runner.js'
 import type { AnyStep, RunContext, Step, StepInput, StepOutput } from './types.js'
 
-// Distributes the union of member inputs into an intersection: the parallel
-// step's input must satisfy every child, since each receives it verbatim.
-type UnionToIntersection<u> = (u extends unknown ? (x: u) => void : never) extends (
-  x: infer i,
-) => void
+// Intersects the members' inputs: the parallel step's input must satisfy every
+// child, since each receives it verbatim. Each member's input sits in a
+// parameter position before the intersection is inferred, so a member that
+// accepts a union keeps it whole, where pooling every input into one union
+// first would intersect that member's alternatives with each other.
+type ParallelInput<children extends Record<string, AnyStep>> = {
+  [k in keyof children]: (input: Accepted<StepInput<children[k]>>) => void
+}[keyof children] extends (input: infer i) => void
   ? i
   : never
 
-type ParallelInput<children extends Record<string, AnyStep>> = UnionToIntersection<
-  StepInput<children[keyof children]>
->
+// A member whose input reads as `never` constrains nothing. That's what a
+// zero-parameter function infers once a generic wrapper (`stash`, a `branch`
+// arm) loses its input type, and the pooled union that came before dropped it.
+type Accepted<i> = [i] extends [never] ? unknown : i
 
 type ParallelOutputs<children extends Record<string, AnyStep>> = {
   [k in keyof children]: StepOutput<children[k]>

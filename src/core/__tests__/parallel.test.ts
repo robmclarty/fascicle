@@ -15,6 +15,33 @@ function wait(ms: number): Promise<void> {
 describe('parallel', () => {
   afterEach(remove_signal_listeners)
 
+  it('takes an input that every member accepts, keeping a member union whole', async () => {
+    // Mimics model_step beside a plain string step: one member takes a string,
+    // the other a string or a list. The parallel's input must be a string.
+    const by_text = step('by_text', (text: string) => text.length)
+    const by_text_or_list = step('by_text_or_list', (input: string | readonly string[]) =>
+      typeof input === 'string' ? input : input.join(' '),
+    )
+    const both = parallel({ length: by_text, joined: by_text_or_list })
+    expect(await run(both, 'text', { install_signal_handlers: false })).toEqual({
+      length: 4,
+      joined: 'text',
+    })
+    // @ts-expect-error a list satisfies only one of the two members
+    const rejects_list = () => run(both, ['a', 'b'])
+
+    // One member accepts either of two shapes, the other wants a flag. Any
+    // input with the flag and either shape satisfies both.
+    const either = step('either', (input: { a: number } | { b: string }) => ('a' in input ? input.a : input.b))
+    const flagged = step('flagged', (input: { flag: boolean }) => input.flag)
+    const pair = parallel({ either, flagged })
+    expect(await run(pair, { a: 1, flag: true }, { install_signal_handlers: false })).toEqual({
+      either: 1,
+      flagged: true,
+    })
+    void rejects_list
+  })
+
   it('runs two children concurrently', async () => {
     const flow = parallel({
       a: step('a', async (x: number) => {
