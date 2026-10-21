@@ -958,6 +958,28 @@ describe('checkpoint_store_conformance', () => {
       }
     })
 
+    it("doesn't judge a renewal when the second owner's claim runs past its lifetime", async () => {
+      vi.useFakeTimers({ toFake: ['Date'] })
+      vi.setSystemTime(1_000_000)
+      try {
+        const report = await checkpoint_store_conformance(
+          broken((base) => ({
+            claim: async (key, owner, ttl_ms) => {
+              // The clock leaps past the renewed lifetime as the second owner
+              // asks, the way a machine that stalled inside that claim would
+              // see it, so the store rightly finds the claim free.
+              if (key === 'k' && owner === 'second') vi.setSystemTime(Date.now() + 10 * ttl_ms)
+              return base.claim(key, owner, ttl_ms)
+            },
+          })),
+          { ttl_ms: 20 },
+        )
+        expect(report.passed).toContain('renewing restarts the clock')
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
     it('fails a store that hands an expired claim to every racer', async () => {
       const failures = await failures_of(
         broken(() => {

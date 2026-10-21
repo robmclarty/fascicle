@@ -551,10 +551,12 @@ const CLAIM_CHECKS: ReadonlyArray<Check> = [
       const renewed = Date.now()
       ensure(await claims.claim(KEY, FIRST, env.ttl_ms), RENEWAL_REFUSED)
       await sleep(Math.max(0, started + env.ttl_ms * 1.2 - Date.now()))
-      // A machine slow enough to oversleep the renewed lifetime can't tell a
-      // renewal from none, so the check only judges a wake inside it.
-      if (Date.now() >= renewed + env.ttl_ms) return
       const second = await claims.claim(KEY, SECOND, HELD_MS)
+      // A machine slow enough to reach the end of the renewed lifetime before
+      // the second claim returns, oversleeping or stalling inside the claim,
+      // can't tell a renewal from none, so the check judges only a claim that
+      // finished inside it.
+      if (Date.now() >= renewed + env.ttl_ms) return
       ensure(!second, 'a renewed claim expired on its original schedule')
     },
   },
