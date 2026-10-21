@@ -159,3 +159,5 @@ the learner when they're close:
   steps show the total of the two.
 - **Up to 0.16.3, `adversarial` draws its scopes and stashes**, which is why
   lesson 11 builds its loop with `loop`.
+- **The viewer labels a loop's guard `loop_1_guard`**, an id that Fascicle
+  makes up for a plain function, so say what it is before the learner asks.
