@@ -139,17 +139,18 @@ messages are the real ones.
    model leaf as `Step<string, T>` before you combine it. In a `parallel`, the
    input type is the intersection of the members' inputs, and an unannotated
    model leaf beside a string step produces `string & readonly Message[]`.
-7. **On `transport: 'native'`, the schema never reaches the model.** The engine
-   asks for JSON that matches "the expected schema," validates the reply, and
-   repairs once after a failure (`schema_repair_attempts`, default 1). So put an
-   example of the exact JSON shape, with its field names, in the system prompt:
+7. **Through 0.16.3, the schema never reaches the model on the native
+   transport.** The engine asks for JSON that matches "the expected schema,"
+   validates the reply, and repairs once after a failure
+   (`schema_repair_attempts`, default 1). So on those versions, put an example
+   of the exact JSON shape, with its field names, in the system prompt:
    `Reply with JSON only, shaped like this: {"a": 10, "b": 2, "op": "subtract"}`.
    Without one, the first reply usually fails and costs a second round trip, and
    small local models may never recover. Text in a zod `.describe()` doesn't
-   reach the model on this transport either. `docs/blueprint.md` advises
-   keeping field rules in `.describe()` and out of the prompt, which holds only
-   where the transport sends the schema, so on native keep the example in the
-   prompt.
+   reach the model on those versions either. Releases after 0.16.3 put the JSON
+   Schema itself in that instruction, so the example becomes optional and the
+   advice in `docs/blueprint.md` to keep field rules in `.describe()` holds.
+   The installed version is in `node_modules/fascicle/package.json`.
 8. **The system prompt's first line is a stable role id**, like
    `solver/extract`. `make_stub_engine` routes canned answers by prefix on it,
    and an unmatched system prompt throws

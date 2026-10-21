@@ -147,9 +147,9 @@ the learner when they're close:
 - **`branch` arms must return the same type.**
 - **A model step in a `parallel` needs its type annotated** as
   `Step<string, T>`, or the input type becomes odd.
-- **Prompts must show the JSON shape.** On the native transport the schema
-  never reaches the model, so a prompt without an example costs an extra round
-  trip, and a small local model may fail outright.
+- **Prompts must show the JSON shape, up to 0.16.3.** On those versions the
+  native transport never shows the model the schema, so a prompt without an
+  example costs an extra round trip, and a small local model may fail outright.
 - **A stub's `content` function needs typed parameters.**
 - **Vitest and Fascicle both export `describe`.**
 - **The viewer on 0.15** gets confused by a trajectory file that holds more than

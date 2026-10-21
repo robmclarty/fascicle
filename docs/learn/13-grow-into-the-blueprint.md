@@ -71,10 +71,10 @@ friendly sentence. Use the answer you are given and do no math of your own.
 The block at the top, between the `---` lines, is frontmatter, a few labels
 about the prompt that sit beside it. The role id stays on the first line of the
 prompt itself, where the stub looks for it. One piece of the blueprint's advice
-doesn't fit the native transport. It suggests keeping field rules in
-`.describe()` on the schema and out of the prompt, which works only where the
-transport sends the schema to the model. The native transport doesn't, so keep
-the example JSON in the prompt. Reading a prompt back takes a few
+depends on your version. It suggests keeping field rules in `.describe()` on
+the schema and out of the prompt, which works once the model sees the schema.
+Fascicle 0.16.3 and earlier never show it on the native transport, so on those
+versions keep the example JSON in the prompt. Reading a prompt back takes a few
 lines of code. Create `solver/prompts/load.ts`:
 
 ```ts
