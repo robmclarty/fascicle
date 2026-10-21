@@ -282,7 +282,10 @@ so a bad question fails loudly.
 That's the stub's second draft, the one that passed the checks. Open the
 trajectory in the viewer (`pnpm exec fascicle-viewer .trajectory.jsonl`) and
 you'll see the loop drawn as a box around the steps that it repeated, with
-`write` marked `×2`, because it ran twice.
+`write` marked `×2`, because it ran twice. On 0.16.3 and earlier, the box is
+labelled `LOOP_1`, the loop's id, and both `output` steps show the runs of the
+two added together. Later releases label it `DRAFT_UNTIL_CLEAN`, from its
+`name`, and count each step on its own.
 
 Now run it live, on your real changes:
 
@@ -335,8 +338,10 @@ const draft = adversarial({
 ```
 
 It does the same job, and the critic can be a model instead of code, which is
-where it really earns its keep. Its diagram shows more of its inner machinery
-than the `loop` version does, which is why this lesson started with `loop`.
+where it really earns its keep. On 0.16.3 and earlier, its diagram also shows
+the scopes and stashes that it's built from, which is why this lesson started
+with `loop`. Later releases draw it as its `build` and its `critique`, and
+`describe.diagram(draft, { internals: true })` shows the rest.
 
 ## With Your Agent
 

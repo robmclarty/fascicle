@@ -114,6 +114,11 @@ If your agent isn't Claude Code and doesn't follow `@` imports, paste the two
 files into its own instructions file instead, or ask it to read them at the
 start of each session.
 
+Releases after 0.16.3 ship the primer inside the package, too, so in a project
+of your own that installs Fascicle, without the clone beside it, the import is
+`@node_modules/fascicle/dist/AGENTS.md`. The tutoring notes are only in the
+clone, since they're for the course.
+
 ## Say Hello
 
 Create `hello.ts`:
@@ -153,7 +158,8 @@ Last, see which version of Fascicle you got:
 pnpm list fascicle
 ```
 
-These lessons were written against 0.16.3 and checked against 0.15.0. If your
+These lessons were written against 0.16.3 and checked against 0.15.0, and
+where a later release changes what you'll see, the lesson says so. If your
 pnpm is set to wait a day or two before it installs a brand-new release (its
 `minimumReleaseAge` setting), you might be a release behind the newest, and
 that's fine.

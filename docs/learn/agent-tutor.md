@@ -83,8 +83,9 @@ with spaces in them.
 **2. Steps in a row.** *Goal:* compose with `sequence`, and look at flows
 before running them. *Introduces:* `sequence`, `describe`, `describe.diagram`,
 descriptions, and `pipe`. *Keep out:* `chain`. *Check:* they predict a diagram
-before printing it. *Stumbles:* the noise of a `TS2769` error, which they should
-read from the bottom line up.
+before printing it. *Stumbles:* the noise of a `TS2769` error on 0.16.3 and earlier,
+which they should read from the bottom line up. Later releases print one error
+that names the joint.
 
 **3. Fan out, choose, repeat.** *Goal:* `parallel`, `branch`, and `map`, and
 nesting them. *Keep out:* `chain` and the hardening arms. *Check:* they hear
@@ -139,7 +140,9 @@ tests pass with no key and no network.
 *Introduces:* a step that does input and output with a stop signal, and `loop`
 with `init`, `body`, `guard`, `finish`, and `max_rounds`. *Check:* they can say
 what the loop carries from round to round, and when it stops. Remind them that
-the tool proposes and they decide, with `git commit --edit`.
+the tool proposes and they decide, with `git commit --edit`. *Stumbles:* on
+0.16.3 and earlier, the viewer labels the loop `LOOP_1` instead of its name and
+adds the runs of both `output` steps together.
 
 **12. From a thought to a flow.** *Goal:* the six moves. This lesson is where
 you matter most. Run the design session that the lesson describes: underline

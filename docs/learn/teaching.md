@@ -139,18 +139,23 @@ the learner when they're close:
   pnpm wait a day or two before it installs a brand-new version. The lessons
   work on 0.15.0 and later, so it doesn't matter, but it can confuse someone
   who just read the release notes.
-- **A wrongly ordered `sequence` gives a noisy error.** It's
+- **Up to 0.16.3, a wrongly ordered `sequence` gives a noisy error.** It's
   `No overload matches this call`, twice. Teach the habit of reading from the
-  last line up.
+  last line up. Later releases print it once, on the step that doesn't fit.
 - **A chain needs its input type**, and without it the errors talk about
   `never`.
 - **`branch` arms must return the same type.**
-- **A model step in a `parallel` needs its type annotated** as
+- **Up to 0.16.3, a model step in a `parallel` needs its type annotated** as
   `Step<string, T>`, or the input type becomes odd.
 - **Prompts must show the JSON shape, up to 0.16.3.** On those versions the
   native transport never shows the model the schema, so a prompt without an
   example costs an extra round trip, and a small local model may fail outright.
-- **A stub's `content` function needs typed parameters.**
+- **Up to 0.16.3, a stub's `content` function needs typed parameters.**
 - **Vitest and Fascicle both export `describe`.**
 - **The viewer on 0.15** gets confused by a trajectory file that holds more than
   one run, so delete the file between runs there.
+- **Up to 0.16.3, the viewer labels a loop by its id**, as `LOOP_1`, and adds
+  together the runs of steps that share an id, so in lesson 11 both `output`
+  steps show the total of the two.
+- **Up to 0.16.3, `adversarial` draws its scopes and stashes**, which is why
+  lesson 11 builds its loop with `loop`.

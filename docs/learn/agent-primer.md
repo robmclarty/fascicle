@@ -4,7 +4,8 @@ This file is for a coding agent (Claude Code, Codex, Cursor, or another) that's
 working in a project which uses the published `fascicle` package. A person who
 is learning Fascicle will usually import it from their `CLAUDE.md`, as
 [lesson 0](./00-set-up.md) shows. Every shape, rule, and error message below
-was checked against `fascicle` 0.16.3, and against 0.15.0 where the two differ.
+was checked against `fascicle` 0.16.3, and against 0.15.0 where the two differ,
+and a rule that a later release changes says what changed.
 
 Your training data probably holds little or nothing about Fascicle, so treat
 this file and the installed type declarations as the truth, and don't fill gaps
@@ -20,7 +21,9 @@ from other agent frameworks.
   `RunContext` (which holds `ctx.call` and `ctx.abort`), and `StepOptions` live
   in files with generated names like `dist/types-<hash>.d.ts`, so search
   `dist/*.d.ts` for a name when `index.d.ts` only re-exports it.
-- **The package README** ships at `node_modules/fascicle/README.md`.
+- **The package README** ships at `node_modules/fascicle/README.md`, and
+  releases after 0.16.3 ship this primer too, at
+  `node_modules/fascicle/dist/AGENTS.md`, with its links pointed at GitHub.
 - **The repository**, when the person has it cloned (often at `../fascicle`),
   holds the docs and the runnable examples. `docs/blueprint.md` is the app
   architecture, and `docs/composition.md` has one line on every composer.
@@ -51,7 +54,7 @@ Two commands ship in the package: `fascicle-viewer <trajectory.jsonl>` and
 `fascicle-diagram <module.ts>`, both run with `pnpm exec`. `fascicle-diagram`
 reads the module's `flow` export, which is either a Step or a function with no
 arguments that builds one, and it takes `--prefix ' * '`, `--width <n>`, and
-`--export <name>`.
+`--export <name>`, plus `--internals` after 0.16.3.
 
 ## The Core Vocabulary
 
@@ -129,16 +132,21 @@ messages are the real ones.
    equivalent `chain<T, 'name'>('name')`. Without it the input type is `never`,
    and you'll see `Property 'a' does not exist on type 'never'`.
 4. **A mis-wired literal `sequence`** reports `TS2769: No overload matches this
-   call` on more than one element. Read the last
-   `Type 'X' is not assignable to type 'Y'` line, which names the joint.
+   call`. Through 0.16.3 it reports it on more than one element, so read the
+   last `Type 'X' is not assignable to type 'Y'` line, which names the joint.
+   Later releases report it once, on the step that can't take its input, and
+   the type names the joint, what arrives there, and what the step accepts, as
+   in `SequenceJointMismatch<"after children[1]", string, number>`.
 5. **`branch` arms must share an output type.** Otherwise you'll get
    `Type 'Step<Pair, number>' is not assignable to type 'Step<Pair, string>'`.
    For different outputs, state the union, as in
    `branch<Pair, number | null>({ ... })`.
 6. **`model_step`'s input type is `string | readonly Message[]`.** Annotate a
-   model leaf as `Step<string, T>` before you combine it. In a `parallel`, the
-   input type is the intersection of the members' inputs, and an unannotated
-   model leaf beside a string step produces `string & readonly Message[]`.
+   model leaf as `Step<string, T>` before you combine it. Through 0.16.3, an
+   unannotated model leaf beside a string step in a `parallel` makes the input
+   `string & readonly Message[]`, which no value satisfies. Later releases take
+   the input that every member accepts, a `string` there, and the annotation
+   still keeps the types easy to read.
 7. **Through 0.16.3, the schema never reaches the model on the native
    transport.** The engine asks for JSON that matches "the expected schema,"
    validates the reply, and repairs once after a failure
@@ -155,9 +163,10 @@ messages are the real ones.
    `solver/extract`. `make_stub_engine` routes canned answers by prefix on it,
    and an unmatched system prompt throws
    `make_stub_engine: no canned response for system: ...`.
-9. **A stub's `content` function has no inferred parameter types**, because
-   `content` is typed `unknown`. Annotate them:
-   `(opts: GenerateOptions, call_index: number) => ...`.
+9. **Through 0.16.3, a stub's `content` function has no inferred parameter
+   types**, because `content` is typed `unknown`, so annotate them:
+   `(opts: GenerateOptions, call_index: number) => ...`. Later releases infer
+   them for a function written inline.
 10. **Inside a step body, run other steps with `ctx.call(step, input)`**, never
     `step.run(...)`, which loses the span and cancellation. Declare what the body
     calls with `{ arm: step }` or `{ arm: [a, b] }`, so `describe` shows it.
@@ -186,9 +195,12 @@ messages are the real ones.
     file as sensitive. Beyond that it records spans, timings, token counts,
     cost, and how the run ended. For a model's reply, read `raw_text` and
     `schema_issues` on a `schema_validation_error`.
-19. **`adversarial` draws its inner machinery** (`scope` and `stash` nodes, and internal steps such as `snapshot`)
-    in a diagram. For a draft, check, and redraft loop that a person has to
-    read, a `loop` with a code guard draws more simply.
+19. **Through 0.16.3, `adversarial` draws its inner machinery** in a diagram:
+    `scope` and `stash` nodes, and internal steps such as `snapshot`. For a
+    draft, check, and redraft loop that a person has to read, a `loop` with a
+    code guard draws more simply there. Later releases draw a named composite
+    as the steps that it was built from (`build` and `critique`), and
+    `describe.diagram(flow, { internals: true })` draws the rest.
 20. **The `then` key in `branch`** can trip the `unicorn/no-thenable` lint rule.
     It's a false positive.
 21. **The engine retries some network failures itself**, inside a model call.

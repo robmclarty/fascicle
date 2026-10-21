@@ -112,7 +112,11 @@ error TS2769: No overload matches this call.
 
 That's noisy, so read it from the bottom up. The last line says it all: a string
 showed up where a number was expected. `say` hands `double` a sentence, and
-`double` can only double numbers. TypeScript checks every joint in a sequence
+`double` can only double numbers. (That's what 0.16.3 and earlier print. Later
+releases print one error, on `double`, and its type names the joint:
+`SequenceJointMismatch<"after children[1]", string, number>` says that a string
+arrives after the second step, where `double` takes a number.) TypeScript
+checks every joint in a sequence
 that you write out as a list of steps, which means a flow that type-checks is a
 flow whose pieces fit together. Put the
 order back before you go on.
