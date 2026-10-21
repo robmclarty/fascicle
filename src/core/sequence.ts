@@ -224,6 +224,12 @@ export type SequenceOptions = {
  * every element up front so a non-Step (usually a bare function) fails at
  * construction with a pointed message rather than at run time. Checks
  * `ctx.abort` before each child so aborts land on step boundaries.
+ *
+ * The checked signature comes again after the array one. A call that matches
+ * no overload is reported against the last one, so repeating the checked
+ * signature there puts its `SequenceJointMismatch`, which names the joint, in
+ * the error, where the array overload would only say that every step must be
+ * a `Step<T, T>`. A call that does match still resolves in the order above.
  */
 export function sequence<const children extends readonly unknown[]>(
   children: children & CheckedChildren<children>,
@@ -233,6 +239,10 @@ export function sequence<t>(
   children: ReadonlyArray<Step<t, t>>,
   options?: SequenceOptions,
 ): Step<t, t>
+export function sequence<const children extends readonly unknown[]>(
+  children: children & CheckedChildren<children>,
+  options?: SequenceOptions,
+): Step<FirstInput<children>, LastOutput<children>>
 export function sequence(children: readonly unknown[], options?: SequenceOptions): AnyStep {
   if (!Array.isArray(children)) {
     throw new TypeError(
