@@ -3,7 +3,7 @@
  *
  * Uses the `claude_cli` subprocess provider, which spawns the `claude` binary
  * and piggybacks on your existing authenticated session. No API key required
- * as long as `claude` is on PATH and you have run `claude login`.
+ * as long as `claude` is on PATH and you have run `claude auth login`.
  *
  * Under `auth_mode: 'oauth'` the subprocess env inherits from `process.env`
  * automatically (opt out with `inherit_env: false`). Engine-level `defaults`

@@ -45,7 +45,7 @@ Everything except the build `sequence` and the `critic` step is plumbing that
 ## Run
 
 No API key is required: the `claude_cli` provider piggybacks on your existing
-`claude login` session. Make sure `claude` is on PATH.
+`claude auth login` session. Make sure `claude` is on PATH.
 
 ```bash
 pnpm exec tsx examples/adversarial-claude-cli/main.ts

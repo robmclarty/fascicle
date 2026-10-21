@@ -109,7 +109,7 @@ Pick one via `SWEBENCH_PROVIDER`:
 
 ## Prereqs
 
-- For `claude_cli`: `claude` on PATH and authenticated (`claude login`).
+- For `claude_cli`: `claude` on PATH and authenticated (`claude auth login`).
 - For `anthropic`: `ANTHROPIC_API_KEY` in your environment.
 - For `SWEBENCH_SANDBOX=local`: `git` on PATH and network access for clone.
 - For real eval: `sb-cli` installed and configured (or the local

@@ -7,7 +7,7 @@
  *
  * Prerequisites:
  *   - `claude` CLI on PATH
- *   - authenticated session (`claude login`) — uses OAuth, no API key
+ *   - authenticated session (`claude auth login`) — uses OAuth, no API key
  *
  * Usage:
  *   pnpm --filter @repo/example-amplify amplify

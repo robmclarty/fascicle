@@ -20,7 +20,7 @@
  *     failure throws `schema_validation_error`.
  *
  * No API key required: the `claude_cli` provider piggybacks on your
- * existing `claude login` session. Make sure `claude` is on PATH.
+ * existing `claude auth login` session. Make sure `claude` is on PATH.
  *
  * Run directly:
  *   pnpm exec tsx examples/adversarial-claude-cli/main.ts

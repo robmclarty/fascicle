@@ -3,7 +3,7 @@
 Your first Fascicle harness that calls a real model. It uses the `claude_cli`
 subprocess provider, which spawns the `claude` binary and piggybacks on your
 existing authenticated session. No API key is required as long as `claude` is
-on PATH and you have run `claude login`.
+on PATH and you have run `claude auth login`.
 
 ![terminal output of the hello-claude-cli example: the input prompt and the model's one-line greeting](./screenshot.png)
 

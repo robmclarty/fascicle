@@ -104,7 +104,7 @@ examples/amplify/
 ## Prerequisites
 
 - `claude` CLI on PATH
-- An authenticated session (`claude login`) — uses OAuth, no API key required
+- An authenticated session (`claude auth login`) — uses OAuth, no API key required
 - pnpm + Node 24+
 
 ## Running
