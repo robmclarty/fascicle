@@ -83,8 +83,12 @@ export type SalvageFormat = 'hermes' | 'json' | 'qwen_xml'
  * `first_chunk_ms` is present only on streamed turns: milliseconds from the
  * attempt start to the first StreamChunk the turn dispatched (a token, a
  * reasoning delta, or a tool-call part, never the transport's stream-open
- * framing), so `duration_ms - first_chunk_ms` is the window the model spent
- * emitting output. See `throughput()` for the derived tokens-per-second view.
+ * framing). `duration_ms - first_chunk_ms` is the window the model spent
+ * emitting output, as long as the turn streams output while it generates it.
+ * A provider that sends a tool call whole once it has generated it leaves
+ * that window at the turn's last few milliseconds, which is why `throughput()`,
+ * the derived tokens-per-second view, prefers a decode time the provider
+ * reports itself.
  */
 export type StepTiming = {
   /** Epoch ms when the successful provider attempt started. */

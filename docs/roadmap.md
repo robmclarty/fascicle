@@ -177,12 +177,6 @@ likely to bite you first.
   version manager, isn't there when `bwrap` goes to run it, and the call fails
   with `binary_not_found`. Your home directory isn't bound either, so an
   `auth_mode: 'oauth'` run couldn't reach its login even with the binary there.
-- **`throughput()` reads far too high on Ollama.** A turn that's only a tool
-  call sends nothing until it has finished generating, on either transport, and
-  the native transport sends nothing while the model thinks, so the window that
-  `throughput()` times misses most of the work. The rate can come out 100 to
-  1,600 times Ollama's own. The native transport drops `message.thinking`
-  outright, so that reasoning never reaches `on_chunk` or the trajectory either.
 - **Some provider errors don't say what to do.** Many name what went wrong but
   not the fix, such as the config key to set or the `base_url` to check.
 - **Housekeeping.** Engine code that only tests call (`normalize_chunk` and

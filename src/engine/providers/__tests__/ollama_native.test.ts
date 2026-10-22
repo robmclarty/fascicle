@@ -3,15 +3,19 @@
  * Covers the request mapping (messages, tools, `options` sampling bag, the
  * always-explicit stream flag, effort ignored, provider_options.ollama
  * passthrough), the NDJSON stream aggregation feeding the one shared
- * parser (streamed equals non-streamed on shared fixtures), done_reason /
- * eval-count mapping with always-tolerant usage, synthesized tool-call
- * ids (this wire has none), and the error ladder the shared classifier
- * expects. No live network; fetch is stubbed per test.
+ * parser (streamed equals non-streamed on shared fixtures), the daemon's
+ * thinking streamed as reasoning, done_reason / eval-count mapping with
+ * always-tolerant usage, synthesized tool-call ids (this wire has none), the
+ * error ladder the shared classifier expects, and, through the engine, what
+ * streamed thinking does to retries and what the daemon's own timing does to
+ * throughput(). No live network; fetch is stubbed per test.
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
-import type { Message, StreamChunk, Tool, TurnRequest } from '../../types.js'
+import { create_engine } from '../../create_engine.js'
+import { throughput } from '../../throughput.js'
+import type { GenerateResult, Message, RetryPolicy, StreamChunk, Tool, TurnRequest } from '../../types.js'
 import {
   build_ollama_chat_body,
   create_ndjson_decoder,
@@ -165,6 +169,46 @@ const MIXED_STREAM: Array<Record<string, unknown>> = [
     done_reason: 'stop',
     prompt_eval_count: 140,
     eval_count: 32,
+  },
+]
+
+// A thinking model's tool-call turn: the daemon sends the thinking frame by
+// frame, then the call whole. The non-stream payload carries the same
+// thinking as one string, which the parser reads none of.
+const THINKING_FIXTURE = {
+  model: 'qwen3:8b',
+  created_at: '2026-07-11T00:00:00Z',
+  message: {
+    role: 'assistant',
+    content: '',
+    thinking: 'The user wants the weather.',
+    tool_calls: [{ function: { name: 'get_weather', arguments: { city: 'Ottawa' } } }],
+  },
+  done: true,
+  done_reason: 'stop',
+  prompt_eval_count: 30,
+  eval_count: 18,
+}
+
+const THINKING_STREAM: Array<Record<string, unknown>> = [
+  { model: 'qwen3:8b', message: { role: 'assistant', content: '', thinking: 'The user wants ' }, done: false },
+  { model: 'qwen3:8b', message: { role: 'assistant', content: '', thinking: 'the weather.' }, done: false },
+  {
+    model: 'qwen3:8b',
+    message: {
+      role: 'assistant',
+      content: '',
+      tool_calls: [{ function: { name: 'get_weather', arguments: { city: 'Ottawa' } } }],
+    },
+    done: false,
+  },
+  {
+    model: 'qwen3:8b',
+    message: { role: 'assistant', content: '' },
+    done: true,
+    done_reason: 'stop',
+    prompt_eval_count: 30,
+    eval_count: 18,
   },
 ]
 
@@ -721,6 +765,7 @@ describe('streaming invoke_turn', () => {
     ['text', TEXT_FIXTURE, TEXT_STREAM],
     ['tool-call', TOOL_CALL_FIXTURE, TOOL_CALL_STREAM],
     ['mixed', MIXED_FIXTURE, MIXED_STREAM],
+    ['thinking', THINKING_FIXTURE, THINKING_STREAM],
   ] as const)('streamed %s result equals the non-streamed result on the shared fixture', async (_name, fixture, stream) => {
     stub_fetch(json_response(fixture))
     const adapter = create_ollama_native_adapter({ base_url: BASE_URL })
@@ -759,6 +804,43 @@ describe('streaming invoke_turn', () => {
       finish_reason: 'tool_calls',
       usage: { input_tokens: 140, output_tokens: 32 },
     })
+  })
+
+  it("streams the daemon's thinking as reasoning ahead of the call, and keeps none of it", async () => {
+    const { result, chunks } = await invoke_streamed(THINKING_STREAM)
+    expect(chunks.map((c) => c.kind)).toEqual([
+      'reasoning',
+      'reasoning',
+      'tool_call_start',
+      'tool_call_end',
+      'step_finish',
+    ])
+    expect(chunks[0]).toEqual({ kind: 'reasoning', text: 'The user wants ', step_index: 0 })
+    expect(chunks[1]).toEqual({ kind: 'reasoning', text: 'the weather.', step_index: 0 })
+    expect(result).not.toHaveProperty('content')
+  })
+
+  it("streams a frame's thinking before its text", async () => {
+    const frames: Array<Record<string, unknown>> = [
+      { message: { role: 'assistant', content: 'Sunny.', thinking: 'Easy one.' }, done: false },
+      { message: { role: 'assistant', content: '' }, done: true, done_reason: 'stop' },
+    ]
+    const { chunks } = await invoke_streamed(frames)
+    expect(chunks.slice(0, 2)).toEqual([
+      { kind: 'reasoning', text: 'Easy one.', step_index: 0 },
+      { kind: 'text', text: 'Sunny.', step_index: 0 },
+    ])
+  })
+
+  it('streams nothing for thinking that is empty or not a string', async () => {
+    const frames: Array<Record<string, unknown>> = [
+      { message: { role: 'assistant', content: '', thinking: '' }, done: false },
+      { message: { role: 'assistant', content: '', thinking: ['hmm'] }, done: false },
+      { message: { role: 'assistant', content: '', thinking: null }, done: false },
+      { message: { role: 'assistant', content: 'Sunny.' }, done: true, done_reason: 'stop' },
+    ]
+    const { chunks } = await invoke_streamed(frames)
+    expect(chunks.map((c) => c.kind)).toEqual(['text', 'step_finish'])
   })
 
   it('gives calls across frames sequential ordinals matching the non-stream parse', async () => {
@@ -834,6 +916,107 @@ describe('streaming invoke_turn', () => {
     const err: unknown = await invoke_streamed([], response).catch((e: unknown) => e)
     expect(err).toBeInstanceOf(provider_error)
     expect((err as Error).message).toBe('ollama native: stream frame is not valid JSON')
+  })
+})
+
+/** No backoff waits, so the retry cases run at once. */
+const INSTANT_RETRY: RetryPolicy = {
+  max_attempts: 3,
+  initial_delay_ms: 0,
+  max_delay_ms: 0,
+  retry_on: ['rate_limit', 'provider_5xx', 'network'],
+}
+
+/** Answer each fetch with the next response in line. */
+function stub_fetch_queue(responses: Response[]): ReturnType<typeof vi.fn> {
+  const mock = vi.fn(async (_input: string | URL | Request, _init?: RequestInit) => {
+    const next = responses.shift()
+    if (next === undefined) throw new Error('fetch queue exhausted')
+    return next
+  })
+  vi.stubGlobal('fetch', mock)
+  return mock
+}
+
+/**
+ * A body that sends `frames` and then fails its next read, the way a
+ * connection that drops mid-turn does. The frames go out from `pull`, since
+ * a `controller.error()` inside `start` throws away whatever is queued.
+ */
+function dropped_stream_response(frames: ReadonlyArray<Record<string, unknown>>): Response {
+  const lines = frames.map((frame) => new TextEncoder().encode(`${JSON.stringify(frame)}\n`))
+  let sent = 0
+  const stream = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      const line = lines[sent]
+      sent += 1
+      if (line === undefined) {
+        controller.error(new TypeError('terminated'))
+        return
+      }
+      controller.enqueue(line)
+    },
+  })
+  return new Response(stream, { status: 200, headers: { 'content-type': 'application/x-ndjson' } })
+}
+
+/** Stream one prompt through an engine on the native transport, keeping the chunks it dispatched. */
+async function generate_streamed(
+  tools: Tool[] = [],
+): Promise<{ result?: GenerateResult; thrown?: unknown; chunks: StreamChunk[] }> {
+  const engine = create_engine({ providers: { ollama: { base_url: BASE_URL, transport: 'native' } } })
+  const chunks: StreamChunk[] = []
+  try {
+    const result = await engine.generate({
+      model: 'qwen3:8b',
+      prompt: 'hi',
+      tools,
+      retry: INSTANT_RETRY,
+      on_chunk: (chunk: StreamChunk) => {
+        chunks.push(chunk)
+      },
+    })
+    return { result, chunks }
+  } catch (err: unknown) {
+    return { thrown: err, chunks }
+  }
+}
+
+describe('ollama native through the engine', () => {
+  it('fails a turn whose connection drops mid-thinking as an interruption, without a retry', async () => {
+    const mock = stub_fetch_queue([dropped_stream_response(THINKING_STREAM.slice(0, 1)), ndjson_response(TEXT_STREAM)])
+    const { thrown, chunks } = await generate_streamed()
+    expect(thrown).toBeInstanceOf(provider_error)
+    expect((thrown as Error).message).toBe('stream interrupted: ollama native: network failure: terminated')
+    expect(chunks.filter((chunk) => chunk.kind === 'reasoning')).toEqual([
+      { kind: 'reasoning', text: 'The user wants ', step_index: 0 },
+    ])
+    expect(mock).toHaveBeenCalledTimes(1)
+  })
+
+  it('retries the same drop when the model had streamed nothing yet', async () => {
+    const silent = { model: 'qwen3:8b', message: { role: 'assistant', content: '' }, done: false }
+    const mock = stub_fetch_queue([dropped_stream_response([silent]), ndjson_response(TEXT_STREAM)])
+    const { result, thrown } = await generate_streamed()
+    expect(thrown).toBeUndefined()
+    expect(result?.content).toBe('Hello there')
+    expect(mock).toHaveBeenCalledTimes(2)
+  })
+
+  it("rates a tool-call turn by the daemon's eval_duration, not by when the whole call arrived", async () => {
+    const eval_duration = 1_325_948_000
+    const done = { ...TOOL_CALL_STREAM[TOOL_CALL_STREAM.length - 1], eval_duration }
+    stub_fetch_queue([ndjson_response([...TOOL_CALL_STREAM.slice(0, -1), done])])
+    const { result, thrown } = await generate_streamed([{ ...weather_tool, ends_turn: true }])
+    expect(thrown).toBeUndefined()
+    expect(result?.steps).toHaveLength(1)
+    const measured_ms = eval_duration / 1e6
+    expect(throughput(result as GenerateResult)).toEqual({
+      tokens_per_second: (18 * 1000) / measured_ms,
+      basis: 'decode',
+      output_tokens: 18,
+      measured_ms,
+    })
   })
 })
 

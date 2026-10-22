@@ -100,7 +100,7 @@ Fascicle uses the AI SDK strictly as a single-turn provider layer, so every AI S
 
 Call `supports(capability)` on any adapter and you get this table back. Two things to read off the native rows. **No native transport claims `image_input`** (image parts throw `provider_capability_error`; use `transport: 'ai_sdk'` for vision in v1), and the OpenAI-compatible core (openai / openrouter / lmstudio native) always forwards effort, so those three report `reasoning` on native even where their `ai_sdk` row doesn't. A model that doesn't reason, a local one included, drops the field server-side. `ollama` native ignores effort entirely. The table omits one more capability: `structured_output`, meaning the provider constrains decoding to the schema natively. Every provider satisfies `schema` (via the engine's prompt + parse + repair loop when the provider can't constrain the decode); no native transport claims `structured_output`, so schema requests there always ride the repair loop.
 
-The `reasoning` column says that a provider takes `effort`. Seeing what the model reasoned is a separate matter. `openrouter` and `anthropic` on native stream it to `on_chunk` as `reasoning` chunks whenever the model sends some text, the way the `ai_sdk` transport does, and inside a tool loop they send it back to the model with the next request (see [Reasoning in a Tool Loop](#reasoning-in-a-tool-loop)). `openai` and `lmstudio` native read no reasoning field, so they stream none.
+The `reasoning` column says that a provider takes `effort`. Seeing what the model reasoned is a separate matter. `openrouter` and `anthropic` on native stream it to `on_chunk` as `reasoning` chunks whenever the model sends some text, the way the `ai_sdk` transport does, and inside a tool loop they send it back to the model with the next request (see [Reasoning in a Tool Loop](#reasoning-in-a-tool-loop)). `openai` and `lmstudio` native read no reasoning field, so they stream none. `ollama` native streams the daemon's `message.thinking` as `reasoning` chunks and sends none of it back.
 
 ## Effort Translation
 
@@ -485,7 +485,7 @@ await engine.generate({
 });
 ```
 
-No API key; `base_url` is required (the adapter throws `engine_config_error` otherwise). No reasoning support — `effort` is silently dropped and the trajectory records `effort_ignored`. No image input in v1. Cache tokens are stripped from usage — local models don't report them.
+No API key; `base_url` is required (the adapter throws `engine_config_error` otherwise). No reasoning support — `effort` is silently dropped and the trajectory records `effort_ignored`. No image input in v1. Cache tokens are stripped from usage — local models don't report them. The daemon's own `eval_duration` reaches `provider_reported.ollama` from the provider's metadata, and `throughput()` takes it as each step's window.
 
 ### `transport: 'native'`
 
@@ -503,9 +503,9 @@ const engine = create_engine({
 ```
 
 - **No auth, `base_url` still required, no image input.** Same local-runtime constraints as the `ai_sdk` transport.
-- **Effort is ignored entirely.** No effort-to-wire mapping exists; reasoning is opt-in purely through `provider_options.ollama.think`.
+- **Effort is ignored entirely.** No effort-to-wire mapping exists; reasoning is opt-in purely through `provider_options.ollama.think`. What the model thinks streams to `on_chunk` as `reasoning` chunks, so it reaches the trajectory too, and it isn't sent back with the next request.
 - **Usage degrades gracefully.** `prompt_eval_count` / `eval_count` map to input/output tokens; when the runtime omits them the totals are zeroed rather than throwing.
-- **The daemon's own timings pass through.** The nanosecond duration fields that `/api/chat` reports (`total_duration`, `load_duration`, `prompt_eval_duration`, `eval_duration`) land verbatim on `provider_reported.ollama`, so `eval_count` over `eval_duration` gives you the daemon's own decode rate, alongside the engine's transport-neutral [`timing` / `throughput()`](./api-reference.md#timing-and-tokens-per-second) view.
+- **The daemon's own timings pass through.** The nanosecond duration fields that `/api/chat` reports (`total_duration`, `load_duration`, `prompt_eval_duration`, `eval_duration`) land verbatim on `provider_reported.ollama`, so `eval_count` over `eval_duration` gives you the daemon's own decode rate. [`throughput()`](./api-reference.md#timing-and-tokens-per-second) takes `eval_duration` as an Ollama step's window for the same reason.
 - **`provider_options.ollama` is raw `/api/chat` wire format.** Keys are Ollama's own native fields, shallow-merged last over the engine-computed body: `think`, `keep_alive`, `format`, and the nested `options` bag (`num_predict`, `temperature`, `top_p`, `num_ctx`, ...). These are **not** OpenAI-compatible keys: there's no `max_tokens` or `reasoning_effort` here (the engine writes the token limit into `options.num_predict`); pass a whole `options` object, since the shallow merge replaces it wholesale rather than deep-merging derived sampling params.
 
 ## `lmstudio`

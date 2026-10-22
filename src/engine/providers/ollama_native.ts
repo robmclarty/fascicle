@@ -21,6 +21,8 @@
  * retried here. Schema requests ride the engine's prompt + parse + repair
  * loop, so `TurnRequest.schema` is intentionally unread; effort is ignored
  * entirely, since thinking is opt-in via `provider_options.ollama.think`.
+ * What the model thinks streams as reasoning chunks and joins no content
+ * part, because this wire takes no reasoning back on a later request.
  * Usage is always tolerant: a local daemon that omits eval counts zeroes the
  * totals instead of throwing. The NDJSON aggregator rebuilds the non-stream
  * payload shape and feeds it through the same parse_ollama_chat, so streamed
@@ -91,7 +93,8 @@ function to_user_content(content: string | UserContentPart[]): string {
  * Map assistant message content to this wire's message shape: text parts
  * join into `content`, and tool-call parts become `tool_calls` entries with
  * structured (not JSON-string) arguments. Reasoning parts are never sent:
- * this adapter maps no `thinking` field in either direction.
+ * this adapter maps no `thinking` field onto a request, and the thinking it
+ * reads off a response only streams.
  */
 function to_assistant_message(content: string | AssistantContentPart[]): OllamaChatMessage {
   if (typeof content === 'string') return { role: 'assistant', content }
@@ -304,7 +307,9 @@ export function create_ndjson_decoder(): {
  * accumulates into the turn text, and `message.tool_calls` entries arrive
  * whole per frame, since arguments are complete objects on this wire, so
  * each call dispatches tool_call_start then tool_call_end with no input
- * deltas between. The `done: true` frame carries done_reason and the eval
+ * deltas between. `message.thinking` dispatches as reasoning ahead of the
+ * frame's text and rebuilds into nothing, the way the non-stream parse reads
+ * none of it. The `done: true` frame carries done_reason and the eval
  * counts and closes the turn (step_finish); frames after it are ignored. A
  * frame whose top-level `error` is a string is the daemon failing mid-stream
  * and throws with its message. A stream that ends without a done frame is
@@ -328,6 +333,12 @@ function create_ollama_stream_aggregator(
   let reported: Record<string, number> | undefined
 
   const on_message = async (message: object): Promise<void> => {
+    // A frame that carries both streams its thinking first, the order the
+    // model produced them in.
+    const thinking: unknown = Reflect.get(message, 'thinking')
+    if (typeof thinking === 'string' && thinking.length > 0) {
+      await dispatch({ kind: 'reasoning', text: thinking, step_index })
+    }
     const content: unknown = Reflect.get(message, 'content')
     if (typeof content === 'string' && content.length > 0) {
       text += content
@@ -422,8 +433,9 @@ async function consume_ndjson_response(response: Response, req: TurnRequest): Pr
 // 'structured_output' is intentionally absent: schema rides the prompt +
 // parse + repair loop, parity with native Anthropic, though the daemon's
 // `format` field stays reachable via provider_options.ollama.format.
-// 'reasoning' is absent because effort is ignored on this wire; image parts
-// are unmapped on this transport.
+// 'reasoning' is absent because effort is ignored on this wire (the daemon's
+// thinking still streams as reasoning chunks); image parts are unmapped on
+// this transport.
 const SUPPORTED: ReadonlySet<ProviderCapability> = new Set([
   'text',
   'tools',

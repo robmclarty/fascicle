@@ -267,10 +267,20 @@ const rate = throughput(result);
 (output tokens over the window that excludes time to first chunk, the
 benchmark-style rate), while a non-streamed turn can only measure
 `'blended'` (the whole round trip, network and prefill included), which
-understates the model on a long prompt with a short answer. You get
-`undefined` back when no step carries timing, which is the case for
-test doubles and for external adapters other than `claude_cli`, or when
-the measured window is zero.
+understates the model on a long prompt with a short answer.
+
+Ollama is the exception, because the daemon times its own decode. It
+reports the nanoseconds it spent generating each step's output as
+`eval_duration`, on either transport, and `throughput()` takes that as an
+Ollama step's window, so the step measures `'decode'` whether it streamed
+or not. That matters most for a turn that's only a tool call. Ollama sends
+the call whole once it has generated it, so the first chunk arrives as the
+turn ends, and a window that started there would cover only its last few
+milliseconds.
+
+You get `undefined` back when no step carries timing, which is the case
+for test doubles and for external adapters other than `claude_cli`, or
+when the measured window is zero.
 
 `claude_cli` runs its own tool loop on the far side of a subprocess, so
 the engine never sees its turns start and stop. What the CLI does report
