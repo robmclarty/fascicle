@@ -147,15 +147,18 @@ body {
   animation: none;
 }
 
-/* Scrubbed off the live edge: the chip reads REPLAY in the white family, never
-   amber, since amber belongs to the geometry the run is alive inside. The dot
-   holds a static glow rather than the live pulse, because nothing is arriving
-   to pulse for. */
-.status-replay {
+/* Scrubbed off the live edge the chip reads REPLAY, and once a run has ended it
+   says how (DONE, FAILED, ABORTED, or SUSPENDED). Both stay in the white family,
+   never amber, since amber belongs to the geometry the run is alive inside. The
+   dot holds a static glow rather than the live pulse, because nothing is
+   arriving to pulse for. */
+.status-replay,
+.status-ended {
   color: rgb(246 243 234 / 88%);
 }
 
-.status-replay .status-dot {
+.status-replay .status-dot,
+.status-ended .status-dot {
   animation: none;
 }
 

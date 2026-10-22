@@ -91,6 +91,9 @@ test('suspension parks the node: hollow puck, double-bar, SUSPENDED, its card', 
   await expect(card.locator('.card-detail')).toHaveText('AWAITING RESUME')
   await expect(card.locator('.card-leader')).toHaveCount(1)
   await expect(card.locator('.card-dot')).toHaveCount(1)
+
+  // The run ended suspended, so the header's chip says so too.
+  await expect(page.getByTestId('status')).toHaveText('SUSPENDED')
 })
 
 test('a checkpoint hit spares its node and wears the white meta tick', async ({

@@ -129,6 +129,8 @@ test('the finished run settles: all grey, counts final, clock frozen', async ({
     'data-status',
     'done',
   )
+  // The stream stays open, but the chip says the run is over.
+  await expect(page.getByTestId('status')).toHaveText('DONE')
   // `run_end` freezes the header at the run's true duration; no mock needed.
   const parts = await page.getByTestId('stats').locator('span').allTextContents()
   expect(parts.join(' ')).toBe('T+196MS · 1 RETRY ABSORBED · SCARS 1 · $0.0000')

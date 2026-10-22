@@ -1,9 +1,9 @@
 import { For, Show, createMemo, type JSX } from 'solid-js'
 import { Controls } from './controls'
 import { live_t_plus_ms } from './lib/clock'
-import { RUN_ID_PLACEHOLDER, header_stat_parts, short_run_id } from './lib/format'
+import { RUN_ID_PLACEHOLDER, header_stat_parts, short_run_id, status_chip } from './lib/format'
 import type { Playback } from './lib/playback'
-import { t_plus_ms } from './lib/reduce'
+import { t_plus_ms, type RunStatus } from './lib/reduce'
 import type { Session } from './lib/scene'
 import type { Timeline } from './lib/timeline'
 import { Scrubber } from './scrubber'
@@ -21,8 +21,9 @@ import { Stage, type Viewport } from './stage'
  * snake_case export rule cannot reach.
  *
  * The header names which timeline is live. While the app follows the newest
- * event the chip is the SSE status and the clock counts real time between
- * frames; scrubbed off that edge the chip reads REPLAY in the white family
+ * event the chip is the SSE status, or how the run ended once its `run_end`
+ * folds on an open stream, and the clock counts real time between frames
+ * until then; scrubbed off that edge the chip reads REPLAY in the white family
  * (never amber, which marks only live geometry), the clock freezes at the
  * folded prefix's own T+, and a return-to-live control re-attaches to the
  * edge. During a performance the play clock's interpolated T+ takes the stat
@@ -30,12 +31,6 @@ import { Stage, type Viewport } from './stage'
  * `data-chrome` attribute lets the idle fade clear the interaction chrome
  * for a recording.
  */
-
-const STATUS_LABEL: Record<SseStatus, string> = {
-  connecting: 'CONNECTING',
-  live: 'LIVE',
-  offline: 'OFFLINE',
-}
 
 export type CanvasProps = {
   readonly session: Session
@@ -73,14 +68,15 @@ export type CanvasProps = {
 }
 
 /** The status chip: a white dot and a word, never amber. */
-function StatusChip(props: { readonly status: SseStatus }): JSX.Element {
+function StatusChip(props: {
+  readonly status: SseStatus
+  readonly run_status: RunStatus | null
+}): JSX.Element {
+  const chip = createMemo(() => status_chip(props.status, props.run_status))
   return (
-    <span
-      class={props.status === 'live' ? 'status status-live' : 'status status-offline'}
-      data-testid="status"
-    >
+    <span class={`status status-${chip().tone}`} data-testid="status">
       <i class="status-dot" />
-      {STATUS_LABEL[props.status]}
+      {chip().label}
     </span>
   )
 }
@@ -122,7 +118,7 @@ export function Canvas(props: CanvasProps): JSX.Element {
               </span>
             }
           >
-            <StatusChip status={props.status} />
+            <StatusChip status={props.status} run_status={props.session.state.run_status} />
           </Show>
           <Show when={!props.following}>
             <button

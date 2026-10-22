@@ -40,6 +40,8 @@ test('the finished fixture folds from the file with no live producer', async ({ 
     'data-status',
     'done',
   )
+  // A finished file never reads LIVE, even with the stream open.
+  await expect(page.getByTestId('status')).toHaveText('DONE')
 
   // `run_end` is the last line, so the clock is frozen at the true duration
   // with no page-clock mock: the header reduces from the folded prefix alone.

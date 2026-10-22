@@ -154,8 +154,9 @@ test.describe('scrubbing off a live edge', () => {
     await expect(page.getByTestId('run-id')).toHaveText('42b20e54')
   })
 
-  test('LIVE flips to REPLAY when held, and returns on the affordance', async ({ page }) => {
-    await expect(page.getByTestId('status')).toHaveText('LIVE')
+  test('DONE flips to REPLAY when held, and returns on the affordance', async ({ page }) => {
+    // The fixture ends in `run_end`, so the edge says how the run ended.
+    await expect(page.getByTestId('status')).toHaveText('DONE')
     await expect(page.getByTestId('return-to-live')).toHaveCount(0)
 
     await page.keyboard.press('Home')
@@ -163,7 +164,7 @@ test.describe('scrubbing off a live edge', () => {
     await expect(page.getByTestId('stats').locator('span').first()).toHaveText('T+0MS')
 
     await page.getByTestId('return-to-live').click()
-    await expect(page.getByTestId('status')).toHaveText('LIVE')
+    await expect(page.getByTestId('status')).toHaveText('DONE')
     await expect(page.getByTestId('return-to-live')).toHaveCount(0)
     await expect(page.getByTestId('stats').locator('span').first()).toHaveText('T+196MS')
   })

@@ -8,6 +8,9 @@
  * shape is decided.
  */
 
+import type { SseStatus } from '../sse.js'
+import type { RunStatus } from './reduce.js'
+
 const RUN_ID_CHARS = 8
 
 /** The header's id slot before any event has named the run. */
@@ -22,6 +25,47 @@ export const RUN_ID_PLACEHOLDER = '\u00b7'.repeat(RUN_ID_CHARS)
  */
 export function short_run_id(run_id: string): string {
   return run_id.slice(0, RUN_ID_CHARS)
+}
+
+/**
+ * The status chip's look. `live` pulses its dot, `ended` holds a static
+ * glow, and `offline` dims the whole chip, for a stream still connecting as
+ * much as for one that dropped. Every tone is in the white family, never
+ * amber, which marks only the geometry a run is alive inside.
+ */
+export type ChipTone = 'live' | 'ended' | 'offline'
+
+/** What the header's status chip shows: its word and its look. */
+export type StatusChip = {
+  readonly label: string
+  readonly tone: ChipTone
+}
+
+const CLOSED_STREAM_LABEL: Record<Exclude<SseStatus, 'live'>, string> = {
+  connecting: 'CONNECTING',
+  offline: 'OFFLINE',
+}
+
+const RUN_END_LABEL: Record<RunStatus, string> = {
+  done: 'DONE',
+  failed: 'FAILED',
+  aborted: 'ABORTED',
+  suspended: 'SUSPENDED',
+}
+
+/**
+ * The status chip while the app follows the newest event.
+ *
+ * A stream that isn't open says so whatever the run did, because nothing
+ * new reaches the canvas until it is, and a suspended run can still resume
+ * into the same file. An open stream reads LIVE until the run's `run_end`
+ * folds, then says how the run ended, so a finished run never reads as a
+ * live one.
+ */
+export function status_chip(status: SseStatus, run_status: RunStatus | null): StatusChip {
+  if (status !== 'live') return { label: CLOSED_STREAM_LABEL[status], tone: 'offline' }
+  if (run_status === null) return { label: 'LIVE', tone: 'live' }
+  return { label: RUN_END_LABEL[run_status], tone: 'ended' }
 }
 
 /**

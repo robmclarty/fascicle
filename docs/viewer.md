@@ -108,10 +108,16 @@ A few shapes carry their own grammar:
 Ember `#E2503E` shows up only as those small failure marks and counts.
 Everything that isn't alive-now amber or failure ember is drawn in the white
 family, and hierarchy is opacity rather than added color. The header names the
-run (its id truncated to eight characters), a LIVE chip while the app follows
+run (its id truncated to eight characters), a status chip while the app follows
 the newest event, and the run's running totals on the right,
 `T+130MS · 1 RETRY ABSORBED · SCARS 0 · $0.0000`. Cost under a cent shows four
 decimals, and a cent or more shows two.
+
+The chip reads LIVE while the run is going. Once the run's `run_end` arrives,
+it says how the run ended (DONE, FAILED, ABORTED, or SUSPENDED), so a finished
+run never looks like it's still live. Whatever the run did, the chip reads
+CONNECTING or OFFLINE while the event stream isn't open, because nothing new
+can reach the canvas until the stream is back.
 
 The marquee, the halo pulse, and the LIVE dot are the only looping motion, and each one
 respects `prefers-reduced-motion`, so a reader who asks for less motion gets a
@@ -155,7 +161,8 @@ sessions.
 Opening a finished `.trajectory.jsonl` with no live producer is the same path.
 The client folds the whole file over `/api/trajectory`, renders the completed
 run, and then follows SSE, which has nothing left to add for a file that's
-done.
+done. The chip says how that run ended rather than LIVE, even though the
+stream stays open.
 
 ## Play Mode
 

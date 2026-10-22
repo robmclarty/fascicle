@@ -8,6 +8,7 @@ import {
   header_stat_parts,
   retry_word,
   short_run_id,
+  status_chip,
 } from '../app/lib/format.js'
 
 describe('short_run_id', () => {
@@ -180,4 +181,27 @@ describe('format_header_stats', () => {
       }),
     ).toBe('T+1.23S · 2 RETRIES ABSORBED · SCARS 1 · $0.01')
   })
+})
+
+describe('status_chip', () => {
+  it('reads LIVE on an open stream until the run ends', () => {
+    expect(status_chip('live', null)).toEqual({ label: 'LIVE', tone: 'live' })
+  })
+
+  it.each([
+    ['done', 'DONE'],
+    ['failed', 'FAILED'],
+    ['aborted', 'ABORTED'],
+    ['suspended', 'SUSPENDED'],
+  ] as const)('says how a %s run ended once its run_end folds on an open stream', (run_status, label) => {
+    expect(status_chip('live', run_status)).toEqual({ label, tone: 'ended' })
+  })
+
+  it.each([null, 'done', 'failed', 'aborted', 'suspended'] as const)(
+    'names a stream that is not open whatever the run did (run status %s)',
+    (run_status) => {
+      expect(status_chip('connecting', run_status)).toEqual({ label: 'CONNECTING', tone: 'offline' })
+      expect(status_chip('offline', run_status)).toEqual({ label: 'OFFLINE', tone: 'offline' })
+    },
+  )
 })

@@ -5,6 +5,7 @@
 ### Fixed
 
 - **An ACP permission request leaves the kind of a card it didn't draw alone.** The request sent its call's card with `kind: 'other'` for any tool that the session's workspace tools don't cover, such as a check that a flow runs itself and opens as an `execute` card from its own `to_updates`. Zed applies a request's fields to the card that it already drew, so the moment the check asked, its card lost the terminal look and kept the plain one from then on, since nothing sent the kind again. A request names a kind only for a workspace tool now, and for any other tool it sends none, which leaves the card as its opening drew it.
+- **`fascicle-viewer` says how a run ended instead of reading LIVE.** The header's chip showed the event stream's state and nothing else, so once a run's `run_end` arrived the clock froze but the chip kept reading LIVE for as long as the stream stayed open, and a finished trajectory read `● LIVE` from the moment it opened. The chip reads LIVE only while the run is going now. Once `run_end` arrives it reads DONE, FAILED, ABORTED, or SUSPENDED, in the white family like REPLAY, and CONNECTING and OFFLINE still show whenever the stream isn't open.
 
 ## v0.16.5 — 2026-10-21
 
