@@ -286,6 +286,26 @@ await handle.close()
 `start_viewer` mounts `/api/ingest` unless you pass `ingest: false`, which is
 what the CLI does when you leave off `--listen`.
 
+## Serving under a Path
+
+The canvas asks for its assets, its history, and its event stream relative to
+the page, so it works at any path that ends in a slash, not only at `/`. A host
+that frames the canvas inside an app of its own can serve it under a path such
+as `/viewer/<id>/`, behind that app's own auth, by proxying that path, with the
+prefix stripped, to a viewer that's bound to loopback. The viewer never sees
+the prefix, so the proxy owns two things.
+
+- **The trailing slash.** A page at `/viewer/<id>` resolves its relative URLs
+  against `/viewer/`, one level too high, so redirect it to `/viewer/<id>/`.
+- **The `Host` header.** A viewer that's bound to loopback answers only a
+  loopback `Host` (see [Security](#security)), so the proxy has to send the
+  viewer's own address, such as `127.0.0.1:4242`, rather than the name that the
+  browser used.
+
+The proxy should also pass `/api/events` through as it arrives, since a proxy
+that buffers the response holds the live tail back. The viewer sends
+`x-accel-buffering: no`, which is enough for nginx.
+
 ## Metrics and Dashboards
 
 The viewer is the live picture of one run. For aggregates across many runs
@@ -305,7 +325,9 @@ answers only a request whose `Host` header names one of those three, whatever
 the port, and answers 403 to anything else. That's what stops DNS rebinding,
 where a web page points a domain of its own at 127.0.0.1 and reads your prompts
 and outputs from inside your browser. So open the viewer by one of those names,
-not by another hostname that happens to reach your machine. A viewer bound to
+not by another hostname that happens to reach your machine. A proxy that serves
+the canvas under a path of its own has to send one of those names too, as
+[Serving under a Path](#serving-under-a-path) describes. A viewer bound to
 any other address checks no `Host`, since anyone who can reach it can read it
 anyway. Ingest takes only `application/x-ndjson`, which a page on another
 origin can't post without a preflight that the viewer never grants.

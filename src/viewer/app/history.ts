@@ -87,7 +87,11 @@ export function read_cursor_header(value: string | null): number {
  * The `/api/events` url that resumes the live tail past `cursor`. A zero cursor
  * (nothing folded, empty history) opens the plain stream with no `since`
  * query.
+ *
+ * The url is relative, and `EventSource` resolves it against the page, so a
+ * canvas that a host serves under a path of its own reaches the stream under
+ * that same path.
  */
 export function events_url(cursor: number): string {
-  return cursor > 0 ? `/api/events?since=${cursor}` : '/api/events'
+  return cursor > 0 ? `api/events?since=${cursor}` : 'api/events'
 }

@@ -121,10 +121,17 @@ describe('read_cursor_header', () => {
 
 describe('events_url', () => {
   it('appends the since cursor once history has been folded', () => {
-    expect(events_url(42)).toBe('/api/events?since=42')
+    expect(events_url(42)).toBe('api/events?since=42')
   })
 
   it('opens the plain stream when nothing was folded', () => {
-    expect(events_url(0)).toBe('/api/events')
+    expect(events_url(0)).toBe('api/events')
+  })
+
+  it('resolves under the path the page is served at', () => {
+    expect(new URL(events_url(7), 'http://board.test/viewer/abc/').href).toBe(
+      'http://board.test/viewer/abc/api/events?since=7',
+    )
+    expect(new URL(events_url(0), 'http://127.0.0.1:4242/').href).toBe('http://127.0.0.1:4242/api/events')
   })
 })

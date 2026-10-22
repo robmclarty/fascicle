@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Added
+
+- **The run canvas works under a path of its own.** The canvas was built with an absolute base and asked for `/api/trajectory` and `/api/events` by absolute path, so served at `/viewer/<id>/` behind a host's proxy, its scripts, its styles, its fonts, and both API requests all missed. Its assets and its API requests resolve against the page now, so a host can frame the canvas under any path that ends in a slash by proxying that path to a loopback viewer with the prefix stripped. The proxy sends the viewer a loopback `Host`, and [viewer.md](./docs/viewer.md#serving-under-a-path) has the details. Served at `/`, nothing changes.
+
 ### Fixed
 
 - **An ACP permission request leaves the kind of a card it didn't draw alone.** The request sent its call's card with `kind: 'other'` for any tool that the session's workspace tools don't cover, such as a check that a flow runs itself and opens as an `execute` card from its own `to_updates`. Zed applies a request's fields to the card that it already drew, so the moment the check asked, its card lost the terminal look and kept the plain one from then on, since nothing sent the kind again. A request names a kind only for a workspace tool now, and for any other tool it sends none, which leaves the card as its opening drew it.

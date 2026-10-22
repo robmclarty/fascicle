@@ -281,7 +281,8 @@ async function follow_run(sinks: FollowSinks): Promise<void> {
   let cursor = 0
   let log: RunLog = { session: EMPTY_SESSION, frames: [] }
   try {
-    const res = await fetch('/api/trajectory')
+    // Relative, like events_url, so the canvas works under any path.
+    const res = await fetch('api/trajectory')
     const history = fold_history(await res.text(), read_cursor_header(res.headers.get(CURSOR_HEADER)))
     cursor = history.cursor
     if (history.count > 0) {
