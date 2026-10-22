@@ -321,7 +321,7 @@ describe('approve: what the request shows', () => {
     expect(run.asked).toEqual([
       {
         sessionId: run.session_id,
-        toolCall: { toolCallId: card_id(run.updates, 'd'), title: 'deploy', kind: 'other', rawInput: input },
+        toolCall: { toolCallId: card_id(run.updates, 'd'), title: 'deploy', rawInput: input },
         options: [ALLOW, REJECT],
       },
     ])
@@ -367,7 +367,7 @@ describe("approve: the session's own calls and a same-named tool's", () => {
       expect(run.asked).toEqual([
         {
           sessionId: run.session_id,
-          toolCall: { toolCallId: card_id(run.updates, 'o'), title: name, kind: 'other', rawInput: input },
+          toolCall: { toolCallId: card_id(run.updates, 'o'), title: name, rawInput: input },
           options: [ALLOW, REJECT],
         },
       ])
@@ -834,6 +834,28 @@ describe('approve: waiting for the client', () => {
       rawInput: { path: 'b.txt', content: 'b\n' },
       locations: [{ path }],
       content: [{ type: 'diff', path, oldText: null, newText: 'b\n' }],
+    })
+  })
+
+  it('names no kind for a tool with no presenter, so the card keeps the one its opening gave it', async () => {
+    const asked: RequestPermissionRequest[] = []
+    const session = await manual_session(create_card_sync(), async (request) => {
+      asked.push(request)
+      return choose('allow_once')
+    })
+    workspace_tools(session)
+    const check: ToolApprovalRequest = {
+      tool_name: 'pnpm check',
+      input: { command: 'pnpm check' },
+      step_index: 0,
+      tool_call_id: 'check',
+      abort: new AbortController().signal,
+    }
+    expect(await session.approve(check)).toBe(true)
+    expect(asked[0]?.toolCall).toStrictEqual({
+      toolCallId: expect.stringMatching(/^[0-9a-f-]{36}$/),
+      title: 'pnpm check',
+      rawInput: { command: 'pnpm check' },
     })
   })
 

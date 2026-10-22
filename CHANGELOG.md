@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- **An ACP permission request leaves the kind of a card it didn't draw alone.** The request sent its call's card with `kind: 'other'` for any tool that the session's workspace tools don't cover, such as a check that a flow runs itself and opens as an `execute` card from its own `to_updates`. Zed applies a request's fields to the card that it already drew, so the moment the check asked, its card lost the terminal look and kept the plain one from then on, since nothing sent the kind again. A request names a kind only for a workspace tool now, and for any other tool it sends none, which leaves the card as its opening drew it.
+
 ## v0.16.5 — 2026-10-21
 
 ### Fixed

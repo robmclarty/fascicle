@@ -284,6 +284,10 @@ async function change_fields(
  * The card a request shows: the one the client already draws for the call
  * under `card`, as its tool's presentation describes it, with the change
  * for a write or an edit.
+ *
+ * A tool with no presenter names no kind. The client applies a request's
+ * fields to the card it already drew, so a kind sent here would replace the
+ * one the card's own opening gave it, and an absent kind leaves it as it was.
  */
 async function permission_card(
   session: AcpSession,
@@ -292,10 +296,11 @@ async function permission_card(
   gate: Gate | undefined,
 ): Promise<ToolCallUpdate> {
   const { tool_name: name, input } = request
+  const { kind } = opening_fields(session, name, card)
   const fields: ToolCallUpdate = {
     toolCallId: card,
     title: name,
-    kind: opening_fields(session, name, card).kind ?? 'other',
+    ...(kind === undefined ? {} : { kind }),
     rawInput: input,
     ...input_fields(session, name, input),
   }
