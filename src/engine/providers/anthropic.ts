@@ -6,9 +6,11 @@
  * adapter from anthropic_native.ts. On the AI SDK, effort goes through the
  * SDK's own `reasoning` option, which @ai-sdk/anthropic maps per model:
  * adaptive thinking with `effort` from Claude 4.6 on, a budget before that.
+ * A cache setting goes through the call-level `cacheControl`, which the
+ * package sends as the top-level `cache_control`.
  */
 
-import type { ProviderInit, UsageTotals } from '../types.js'
+import type { CacheSetting, ProviderInit, UsageTotals } from '../types.js'
 import {
   default_normalize_usage,
   load_optional_peer,
@@ -35,6 +37,32 @@ type AnthropicSdk = {
  */
 export function normalize_anthropic_usage(raw: RawProviderUsage | undefined): UsageTotals {
   return default_normalize_usage(raw)
+}
+
+/**
+ * Turn a cache setting into the call-level `cacheControl` that
+ * @ai-sdk/anthropic sends as the top-level `cache_control`. A caller's own
+ * `cacheControl` under `anthropic` wins, so nothing is derived beside it. A
+ * caller's `cache_control` there, which the package drops from the call
+ * options, comes back as `cacheControl` instead, so that spelling still
+ * caches. With neither, `'off'` adds nothing.
+ */
+export function translate_anthropic_cache(
+  cache: CacheSetting,
+  provider_options: Readonly<Record<string, unknown>> | undefined,
+): Record<string, Record<string, unknown>> {
+  const own: unknown = provider_options?.['anthropic']
+  const read = (key: string): unknown =>
+    typeof own === 'object' && own !== null ? Reflect.get(own, key) : undefined
+  if (read('cacheControl') !== undefined) return {}
+  const raw = read('cache_control')
+  if (raw !== undefined) return { anthropic: { cacheControl: raw } }
+  if (cache === 'off') return {}
+  return {
+    anthropic: {
+      cacheControl: cache === '1h' ? { type: 'ephemeral', ttl: '1h' } : { type: 'ephemeral' },
+    },
+  }
 }
 
 const SUPPORTED: ReadonlySet<ProviderCapability> = new Set([
@@ -85,5 +113,7 @@ const create_anthropic_ai_sdk_adapter = (init: ProviderInit): AiSdkProviderAdapt
     translate_effort: translate_effort_to_sdk_reasoning,
     normalize_usage: normalize_anthropic_usage,
     supports: (capability) => SUPPORTED.has(capability),
+    prompt_cache: 'with_tools',
+    translate_cache: translate_anthropic_cache,
   }
 }

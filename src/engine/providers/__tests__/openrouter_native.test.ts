@@ -542,3 +542,52 @@ describe('openrouter native through generate', () => {
     expect(result.steps[0]?.timing?.first_chunk_ms).toBeGreaterThanOrEqual(0)
   })
 })
+
+describe('openrouter native prompt caching', () => {
+  const tool: Tool = {
+    name: 'sum',
+    description: 'add the numbers up',
+    input_schema: z.object({}),
+    execute: () => 3,
+  }
+
+  /** Send one call through a native openrouter engine and parse the body it sent. */
+  async function cached_body(cache?: 'off' | '5m' | '1h'): Promise<Record<string, unknown>> {
+    const mock = stub_fetch(sse_response(TEXT_STREAM))
+    await create_engine({
+      providers: { openrouter: { api_key: 'sk-test', transport: 'native' } },
+    }).generate({
+      model: 'anthropic/claude-sonnet-5.5',
+      prompt: 'hi',
+      tools: [tool],
+      ...(cache === undefined ? {} : { cache }),
+    })
+    return JSON.parse((mock.mock.calls[0] as [string, RequestInit])[1].body as string) as Record<
+      string,
+      unknown
+    >
+  }
+
+  it('sends no cache_control by default, even on a call with tools', async () => {
+    expect(await cached_body()).not.toHaveProperty('cache_control')
+    expect(await cached_body('off')).not.toHaveProperty('cache_control')
+  })
+
+  it("sends a top-level cache_control for an explicit '5m' or '1h'", async () => {
+    expect((await cached_body('5m'))['cache_control']).toStrictEqual({ type: 'ephemeral' })
+    expect((await cached_body('1h'))['cache_control']).toStrictEqual({ type: 'ephemeral', ttl: '1h' })
+  })
+
+  it("lets a caller's own cache_control win over the derived one", async () => {
+    const body = await sent_body(
+      {},
+      { cache: '1h', provider_options: { openrouter: { cache_control: { type: 'ephemeral' } } } },
+    )
+    expect(body.body['cache_control']).toStrictEqual({ type: 'ephemeral' })
+  })
+
+  it('sets cache_control from the request on the whole-body path too', async () => {
+    const { body } = await sent_body({}, { cache: '5m' })
+    expect(body['cache_control']).toStrictEqual({ type: 'ephemeral' })
+  })
+})

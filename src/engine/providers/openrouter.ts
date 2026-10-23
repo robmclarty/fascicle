@@ -103,8 +103,9 @@ export const create_openrouter_adapter = (init: ProviderInit): ProviderAdapter =
  * core: Bearer auth, the optional `HTTP-Referer`/`X-Title` attribution
  * headers, the `max_tokens` token-limit field, the nested effort shape,
  * reasoning read from and sent back as `reasoning_details`, strict usage,
- * and the cost OpenRouter reports on every response. The empty-api_key guard
- * rides on the core, which throws the same
+ * the cost OpenRouter reports on every response, and caching only when the
+ * call or the engine asks for it, since only Claude models take the field.
+ * The empty-api_key guard rides on the core, which throws the same
  * `openrouter provider requires a non-empty api_key` engine_config_error.
  */
 const create_openrouter_native_adapter = (init: ProviderInit): NativeProviderAdapter => {
@@ -124,6 +125,7 @@ const create_openrouter_native_adapter = (init: ProviderInit): NativeProviderAda
     reports_cost: true,
     effort_shape: 'nested',
     reasoning: 'reasoning_details',
+    prompt_cache: 'opt_in',
     // Stryker disable next-line ConditionalExpression,EqualityOperator: the core
     // spreads extra_headers into its own headers, so an empty object and no key
     // send the same request.

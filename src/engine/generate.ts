@@ -694,6 +694,20 @@ type CacheResolution = {
 }
 
 /**
+ * Read the caching an adapter declares. An `ai_sdk` adapter that declares
+ * `'with_tools'` or `'opt_in'` but has no `translate_cache` has no way to put
+ * the setting on the call, so it counts as declaring nothing.
+ */
+function declared_caching(
+  adapter: AiSdkProviderAdapter | NativeProviderAdapter,
+): NativeProviderAdapter['prompt_cache'] {
+  if (adapter.kind === 'ai_sdk' && adapter.prompt_cache !== 'automatic' && adapter.translate_cache === undefined) {
+    return undefined
+  }
+  return adapter.prompt_cache
+}
+
+/**
  * Resolve a call's cache setting from the caching its adapter declares and
  * the setting the call or the engine asked for. `'with_tools'` caches for
  * five minutes by default on a call with tools, `'opt_in'` only when asked,
@@ -737,7 +751,7 @@ function resolve_turn_config<T>(
     throw new engine_config_error(`turn_timeout_ms must be > 0, got ${String(turn_timeout_ms)}`)
   }
   const { cache, ignored_reason } = resolve_cache(
-    call.adapter.prompt_cache,
+    declared_caching(call.adapter),
     opts.cache ?? engine.default_cache,
     call.tools.length > 0,
   )
@@ -809,11 +823,25 @@ function resolve_loop_limits<T>(
   }
 }
 
+/**
+ * Merge two of an adapter's translations into call-level provider options,
+ * key by key under each provider, with `over` winning where both set a key.
+ */
+function merge_translations(
+  base: Readonly<Record<string, Readonly<Record<string, unknown>>>>,
+  over: Readonly<Record<string, Readonly<Record<string, unknown>>>>,
+): Record<string, Record<string, unknown>> {
+  const out: Record<string, Record<string, unknown>> = { ...base }
+  for (const [provider, inner] of Object.entries(over)) out[provider] = { ...base[provider], ...inner }
+  return out
+}
+
 type AiSdkTransportConfig<T> = {
   readonly adapter: AiSdkProviderAdapter
   readonly target: ResolvedModel
   readonly opts: GenerateOptions<T>
   readonly effort: EffortLevel
+  readonly cache: CacheSetting
   readonly retry_policy: RetryPolicy
   readonly turn_timeout_ms: number | undefined
   readonly dispatcher: ChunkDispatcher
@@ -824,9 +852,9 @@ type AiSdkTransportConfig<T> = {
 }
 
 /**
- * Build the ai_sdk-transport InvokeOnce for one call: translate effort, merge
- * provider options, load the SDK seam, and wrap it in the engine-owned retry
- * via build_ai_sdk_invoke.
+ * Build the ai_sdk-transport InvokeOnce for one call: translate effort and
+ * the cache setting, merge provider options, load the SDK seam, and wrap it
+ * in the engine-owned retry via build_ai_sdk_invoke.
  */
 async function build_ai_sdk_transport<T>(
   cfg: AiSdkTransportConfig<T>,
@@ -837,11 +865,12 @@ async function build_ai_sdk_transport<T>(
   if (effort !== 'none' && effort_translation.effort_ignored) {
     record_effort_ignored(cfg.trajectory, cfg.target.model_id)
   }
-  // Effort translation is the lowest-precedence layer; engine defaults and
-  // per-call provider_options (already merged into opts.provider_options, with
-  // per-call winning) override it.
+  // The effort and cache translations are the lowest-precedence layer;
+  // engine defaults and per-call provider_options (already merged into
+  // opts.provider_options, with per-call winning) override them.
+  const cache_options = adapter.translate_cache?.(cfg.cache, opts.provider_options) ?? {}
   const combined_provider_options = merge_provider_options(
-    effort_translation.provider_options,
+    merge_translations(effort_translation.provider_options, cache_options),
     opts.provider_options,
   )
   const provider_options =
@@ -1227,6 +1256,7 @@ export async function generate<T = string>(
       target,
       opts,
       effort: turn.effort,
+      cache: turn.cache,
       retry_policy: turn.retry_policy,
       turn_timeout_ms: turn.turn_timeout_ms,
       dispatcher,

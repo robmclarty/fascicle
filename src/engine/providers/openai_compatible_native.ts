@@ -306,9 +306,15 @@ export function build_chat_completions_body(
     // backends that ignore the flag fall under tolerant_usage.
     if (dialect.stream_include_usage) body['stream_options'] = { include_usage: true }
   }
+  // OpenRouter takes Anthropic's top-level cache_control for a Claude model.
+  // Only a dialect that declares prompt_cache ever gets a cache setting.
+  if (req.cache !== undefined) {
+    body['cache_control'] = req.cache === '1h' ? { type: 'ephemeral', ttl: '1h' } : { type: 'ephemeral' }
+  }
   // provider_options.<name> is raw wire-format passthrough (snake_case
   // chat/completions keys), shallow-merged last so an explicit user key beats
-  // every derived field: the effort field, the token limit, sampling params. Wire keys are the user asserting they know the
+  // every derived field: the effort field, the token limit, sampling params,
+  // the cache_control. Wire keys are the user asserting they know the
   // wire; the adapter does not reconcile interactions the API rejects.
   const passthrough = req.provider_options?.[dialect.name]
   return passthrough === undefined ? body : { ...body, ...passthrough }

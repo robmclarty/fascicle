@@ -241,9 +241,9 @@ while streaming. See [providers.md](./providers.md#bedrock).
 
 ## A 400 That Names `cache_control`
 
-An Anthropic tool loop on the native transport caches by default, so its
-request carries a top-level `cache_control`, and a few setups refuse that field
-with a 400 whose message names it:
+An Anthropic tool loop caches by default on either transport, so its request
+carries a top-level `cache_control`, and a few setups refuse that field with a
+400 whose message names it:
 
 - **The legacy Amazon Bedrock integration.** A gateway that routes the request
   to Bedrock's older integration of Claude (Opus 4.6 and earlier) rejects the

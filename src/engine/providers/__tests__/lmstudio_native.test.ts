@@ -264,3 +264,36 @@ describe('lmstudio native through generate', () => {
     expect(result.steps[0]?.timing?.first_chunk_ms).toBeGreaterThanOrEqual(0)
   })
 })
+
+describe('lmstudio native prompt caching', () => {
+  it("sends no cache_control for an explicit '5m', and records why", async () => {
+    const mock = stub_fetch(sse_response(TEXT_STREAM))
+    const events: Array<Record<string, unknown>> = []
+    await create_engine({
+      providers: { lmstudio: { base_url: BASE_URL, transport: 'native' } },
+    }).generate({
+      model: 'local-model',
+      prompt: 'hi',
+      cache: '5m',
+      trajectory: {
+        record: (event) => events.push(event),
+        start_span: () => 'span',
+        end_span: () => {},
+      },
+    })
+    const body = JSON.parse((mock.mock.calls[0] as [string, RequestInit])[1].body as string) as Record<
+      string,
+      unknown
+    >
+    expect(body).not.toHaveProperty('cache_control')
+    expect(events.filter((e) => e['kind'] === 'option_ignored')).toStrictEqual([
+      {
+        kind: 'option_ignored',
+        option: 'cache',
+        provider: 'lmstudio',
+        reason: "this adapter doesn't request prompt caching",
+        ts: expect.any(Number),
+      },
+    ])
+  })
+})

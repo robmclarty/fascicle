@@ -53,9 +53,8 @@ The published surface as of v0.16.0:
   emit calls as prose, approval gating, deterministic turn-ending, per-turn
   timeout budgets, a `prepare_step` hook, and cost accounting. Prompt caching
   is one option, `cache`, that every adapter answers the way it declares, and
-  an Anthropic tool loop on the native transport caches by default, so each
-  turn after the first reads the conversation back instead of paying for it
-  again. `define_tool`
+  an Anthropic tool loop caches by default, so each turn after the first reads
+  the conversation back instead of paying for it again. `define_tool`
   hands a tool's `execute` the type that its input schema validates to, so a
   tool no longer parses its input a second time. On OpenRouter's native
   transport, the charge that OpenRouter reports for each response is the step's

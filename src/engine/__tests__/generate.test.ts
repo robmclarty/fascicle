@@ -2048,11 +2048,11 @@ describe('generate: the cache setting', () => {
 describe('generate: the caching each built-in adapter declares', () => {
   it.each<[string, 'with_tools' | 'opt_in' | 'automatic' | undefined, ProviderFactory, ProviderInit]>([
     ['anthropic native', 'with_tools', create_anthropic_adapter, { api_key: 'k', transport: 'native' }],
-    ['anthropic ai_sdk', undefined, create_anthropic_adapter, { api_key: 'k' }],
+    ['anthropic ai_sdk', 'with_tools', create_anthropic_adapter, { api_key: 'k' }],
     ['openai native', 'automatic', create_openai_adapter, { api_key: 'k', transport: 'native' }],
     ['openai ai_sdk', 'automatic', create_openai_adapter, { api_key: 'k' }],
     ['google', 'automatic', create_google_adapter, { api_key: 'k' }],
-    ['openrouter native', undefined, create_openrouter_adapter, { api_key: 'k', transport: 'native' }],
+    ['openrouter native', 'opt_in', create_openrouter_adapter, { api_key: 'k', transport: 'native' }],
     ['openrouter ai_sdk', undefined, create_openrouter_adapter, { api_key: 'k' }],
     ['bedrock', undefined, create_bedrock_adapter, { region: 'us-east-1', api_key: 'k' }],
     ['ollama native', undefined, create_ollama_adapter, { base_url: 'http://x', transport: 'native' }],

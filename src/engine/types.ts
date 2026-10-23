@@ -469,8 +469,8 @@ export type GenerateOptions<t = string> = {
   prepare_step?: PrepareStepHook
   /**
    * Prompt caching for this call. Left unset, an adapter that caches with
-   * tools (native Anthropic) caches for five minutes when the call has tools,
-   * and every other adapter asks for no cache. `'off'` turns it off. An
+   * tools (Anthropic, on either transport) caches for five minutes when the
+   * call has tools, and every other adapter asks for no cache. `'off'` turns it off. An
    * adapter that can't honor an explicit `'5m'` or `'1h'` records
    * `option_ignored`. Any other value throws `engine_config_error`.
    */

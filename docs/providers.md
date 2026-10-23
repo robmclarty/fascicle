@@ -182,6 +182,8 @@ await engine.generate({
 });
 ```
 
+A call with tools caches for five minutes by default on both transports, and `cache: 'off'` turns that off (see [Prompt Caching](#prompt-caching)).
+
 Effort goes to the AI SDK's `reasoning` option, and `@ai-sdk/anthropic` maps it per model: adaptive thinking at that effort for Claude 4.6 and later, and a thinking budget for older models. `none` sends neither, and the model keeps its own default. [Effort Translation](#effort-translation) covers `xhigh` and `max`, and [Reasoning in a Tool Loop](#reasoning-in-a-tool-loop) covers how to see a current model's thinking text.
 
 Current Claude models refuse a non-default `temperature`, `top_p`, or `top_k`. Claude 4.7 and every later model return a 400 for one, on either transport, and Fascicle reads no model id, so it can't drop them for you. Leave `temperature` and `top_p` unset for those models, and keep `top_k` out of `provider_options.anthropic`.
@@ -342,6 +344,7 @@ Same provider name, pricing keys, usage fields, and streamed-equals-non-streamed
 - **`provider_options.openrouter` is raw wire format.** Keys are OpenRouter Chat Completions fields exactly as documented (**snake_case**: `reasoning`, `max_tokens`, `top_p`, `provider`, `models`, `transforms`, ...), shallow-merged last over the engine-computed body. Effort arrives as the **nested** `reasoning: { effort: 'high' }` object on both transports, and the shallow merge replaces it whole, so to override reasoning on native, pass the whole `reasoning` object.
 - **Reasoning streams, and it goes back.** Each `reasoning_details` entry that OpenRouter sends streams its text to `on_chunk` as `reasoning` chunks and becomes a reasoning part, with the entry itself under `provider_options.openrouter.detail`. Inside a tool loop the next request carries the turn's entries back as `reasoning_details`, all of them, once, and in order, which is what keeps a Claude loop's thinking and Gemini 3's thought signatures from one step to the next. An encrypted entry has no text to stream, and it goes back all the same.
 - **The cost is the one OpenRouter reports.** Each step records what OpenRouter charged for it, with no pricing row needed (see [Cost Estimation](#cost-estimation)).
+- **Caching is opt-in, and it's meant for Claude.** OpenRouter takes Anthropic's top-level `cache_control` for a Claude model, wherever it routes the model, so a call that sets `cache: '5m'` or `'1h'` sends that field, and a call that sets none sends nothing. The engine reads no model id, so set `cache` on the calls that go to a Claude model, rather than as an engine default that would reach every model. See [Prompt Caching](#prompt-caching). The `ai_sdk` transport doesn't request a cache.
 - **Retry belongs to the engine** (429 / 5xx / network, with a 429's or a 5xx's `Retry-After` honored), identical to `ai_sdk`, and a 401 throws `provider_auth_error` without a retry. OpenRouter can report a failure inside a stream that has already begun, as a frame that carries an `error` object, and the core throws it with OpenRouter's message. A 429 or a 5xx code in that frame retries like the same HTTP status, unless a chunk has already reached your `on_chunk`, in which case the turn fails as a stream interruption.
 
 ## `bedrock`
@@ -666,15 +669,16 @@ The built-in adapters declare this:
 
 | Provider | How it caches |
 | --- | --- |
-| `anthropic` | `transport: 'native'` declares `'with_tools'` and sends a top-level `cache_control`. The `ai_sdk` transport declares nothing. |
+| `anthropic` | Both transports declare `'with_tools'`. The native one sends a top-level `cache_control`, and the `ai_sdk` one sets the call-level `cacheControl`, which `@ai-sdk/anthropic` sends as that same field. |
 | `openai` | Both transports declare `'automatic'`, since OpenAI caches a long prompt on its own. |
 | `google` | Declares `'automatic'`, since Gemini 2.5 and later cache on their own. |
-| `openrouter`, `bedrock`, `ollama`, `lmstudio` | Declare nothing on either transport. |
+| `openrouter` | `transport: 'native'` declares `'opt_in'` and sends the same top-level `cache_control` that Anthropic takes, which is meant for Claude models (see [`openrouter`](#openrouter)). The `ai_sdk` transport declares nothing. |
+| `bedrock`, `ollama`, `lmstudio` | Declare nothing on either transport. |
 | `claude_cli` | Claude Code caches its own prompts, so a per-call `cache`, `'off'` included, records `option_ignored` with the reason "the provider caches on its own". |
 
-A custom adapter can declare any of the three values (see [Writing Your Own](#writing-your-own)), and one that declares nothing asks for no cache.
+A custom adapter can declare any of the three values (see [Writing Your Own](#writing-your-own)), and one that declares nothing asks for no cache. An `ai_sdk` adapter that declares `'with_tools'` or `'opt_in'` also needs a `translate_cache`, which turns the setting into call-level provider options, since the engine can't know where a provider package reads one. Without it, the adapter counts as declaring nothing.
 
-On Anthropic's native transport, a setting of `'5m'` sends `cache_control: { type: 'ephemeral' }` at the top of the request, and `'1h'` adds `ttl: '1h'`. That one field turns on Anthropic's automatic caching, which puts the breakpoint on the last block that the request can cache and moves it forward as the conversation grows. A `cache_control` of your own under `provider_options.anthropic` wins over the one that the setting derives, since an explicit wire key always does. If the API answers with a 400 that names `cache_control`, see [troubleshooting](./troubleshooting.md#a-400-that-names-cache_control).
+On Anthropic's native transport, a setting of `'5m'` sends `cache_control: { type: 'ephemeral' }` at the top of the request, and `'1h'` adds `ttl: '1h'`. That one field turns on Anthropic's automatic caching, which puts the breakpoint on the last block that the request can cache and moves it forward as the conversation grows. A `cache_control` of your own under `provider_options.anthropic` wins over the one that the setting derives, since an explicit wire key always does. The `ai_sdk` transport sends the same field through `@ai-sdk/anthropic`'s `cacheControl`, and a `cacheControl` of your own under `provider_options.anthropic` wins there. That package drops a call-level `cache_control`, so if you spell it that way, the adapter sends it as `cacheControl` for you. OpenRouter's native transport sends the same field, and a `cache_control` under `provider_options.openrouter` wins over it. If the API answers with a 400 that names `cache_control`, see [troubleshooting](./troubleshooting.md#a-400-that-names-cache_control).
 
 A prompt shorter than the model's minimum doesn't cache, and nothing fails to say so. Anthropic's minimum runs from 512 to 4,096 tokens, depending on the model, and below it the request goes through uncached, with no write and no read in its usage. A short system prompt and a first question often fall under it, so a loop starts caching only once its conversation grows past the minimum.
 

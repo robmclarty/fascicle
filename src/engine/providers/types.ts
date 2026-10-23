@@ -14,6 +14,7 @@
  */
 
 import type {
+  CacheSetting,
   ResolvedModel,
   EffortLevel,
   GenerateOptions,
@@ -127,6 +128,17 @@ export type AiSdkProviderAdapter = {
   readonly normalize_usage: (raw: RawProviderUsage | undefined) => UsageTotals
   readonly supports: (capability: ProviderCapability) => boolean
   readonly prompt_cache?: PromptCacheDeclaration
+  /**
+   * Turn the call's resolved cache setting into call-level provider options,
+   * given the caller's own (engine defaults merged with the call's). The
+   * engine merges the result beneath the caller's options, where effort's
+   * translation goes. An adapter that declares `'with_tools'` or `'opt_in'`
+   * without this hook asks for no cache, as one that declares nothing.
+   */
+  readonly translate_cache?: (
+    cache: CacheSetting,
+    provider_options: Readonly<Record<string, unknown>> | undefined,
+  ) => Record<string, Record<string, unknown>>
 }
 
 /**
