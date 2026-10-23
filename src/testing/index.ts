@@ -7,11 +7,14 @@
  * consumes a response queue in strict call order; `make_capture_engine`
  * records what each call sent to the engine; `make_loop_engine` plays a
  * script under the engine's own tool loop, so tools run and every request
- * the model was sent is kept; `text_of` reads the user-visible prompt text
- * back out of a captured call.
+ * the model was sent is kept; `assert_prefix_stable` checks that those
+ * requests only ever append, so a provider's prompt cache can hold; `text_of`
+ * reads the user-visible prompt text back out of a captured call.
  * `checkpoint_store_conformance` proves a store you wrote keeps the
  * `CheckpointStore` contract.
  */
+
+export { assert_prefix_stable } from './assert_prefix_stable.js'
 
 /**
  * The shell for rolling your own double: a custom double must implement only

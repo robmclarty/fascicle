@@ -12,6 +12,7 @@ runs for real. The pattern is worked through in
 
 ```ts
 import {
+  assert_prefix_stable,
   checkpoint_store_conformance,
   engine_from_generate,
   make_capture_engine,
@@ -270,6 +271,49 @@ expect(result.content).toBe('recovered');
 expect(requests.map((request) => request.step_index)).toEqual([0, 0]);
 ```
 
+## `assert_prefix_stable`
+
+A provider's prompt cache matches each request by its prefix, which is the
+system prompt, the tools, and the messages, in the order the wire sends them. A
+tool loop that only appends keeps that prefix whole, so from the second turn
+on, each turn can read the one before it from the cache. A loop that rewrites
+the prefix misses the cache on every turn, and nothing fails to tell you. A
+`prepare_step` sliding window does it, and so does a tool list that you rebuild
+in another order, or a system prompt that carries the time.
+
+`assert_prefix_stable(requests)` reads the requests that `make_loop_engine`
+recorded and checks each turn against the turn before it in the same call. The
+system prompt has to match, the tools have to match in the same order (their
+names, descriptions, and input schemas), and the later turn has to send every
+earlier message again before any new one. Messages are compared as JSON text,
+because that's what the wire sends, so a message whose keys you rebuilt in
+another order counts as a change. A schema counts as unchanged when it's the
+same object or when it converts to the same JSON Schema, and a new object that
+has no JSON Schema to compare counts as a change.
+
+```ts
+import { assert_prefix_stable, make_loop_engine } from 'fascicle/testing';
+
+const { engine, requests } = make_loop_engine(turns);
+await run(build_flow(engine), input);
+
+assert_prefix_stable(requests);
+```
+
+It throws a plain `Error` at the first difference, so it works under any test
+runner. The message names the call (counted from 1), the step (its
+`step_index`), and the difference, as in `call 1, step 2: message 3 differs
+from step 1`, where message and tool positions count from 0 the way the
+request's arrays hold them. It ends by saying that the check reads calls that
+ran one at a time, for the reason below.
+
+Requests carry no call id, so the check starts a new call wherever a
+`step_index` doesn't go up, and two things follow from that. A retried turn
+repeats its `step_index`, so it starts a new call in the check, and the turn
+after it is compared with the retry. And the check reads calls that ran one at
+a time. Calls that run at once on one engine interleave their requests, so a
+`parallel` flow takes one double per branch.
+
 ## `engine_from_generate`
 
 The 12-line shell that the three canned factories build on, for when you roll your own double.
@@ -341,7 +385,7 @@ it through the suite before `durable` keeps a run in it.
 
 ## Recipes
 
-All four run keyless and network-free in the default test suite, so you can paste any of
+All five run keyless and network-free in the default test suite, so you can paste any of
 them straight into yours.
 
 ### Testing a Retry Path
@@ -403,6 +447,52 @@ const outcome = await run.until_suspended(flow, input, { install_signal_handlers
 if (outcome.kind !== 'suspended') throw new Error('expected the gate to suspend');
 
 const resumed = await outcome.resume({ approved: true });
+```
+
+### Testing a Tool Loop Keyless
+
+`make_loop_engine` and `assert_prefix_stable` test a tool loop end to end with
+no key. The script plays the model, the engine runs your real tools and feeds
+their results back, and the check proves that each turn only appended, which is
+what keeps a provider's cache warm across the loop:
+
+<!-- snippet: check -->
+```ts
+import { define_tool, model_step, run } from 'fascicle';
+import { assert_prefix_stable, make_loop_engine } from 'fascicle/testing';
+import { expect, it } from 'vitest';
+import { z } from 'zod';
+
+const search = define_tool({
+  name: 'search',
+  description: 'Find the files that mention a pattern.',
+  input_schema: z.object({ pattern: z.string() }),
+  execute: ({ pattern }) => [`src/a.ts: ${pattern}`],
+});
+
+const read_file = define_tool({
+  name: 'read_file',
+  description: 'Read a file from the workspace.',
+  input_schema: z.object({ path: z.string() }),
+  execute: ({ path }) => `// TODO: tidy ${path}`,
+});
+
+it('finds the TODO in two tool turns, appending each time', async () => {
+  const { engine, requests } = make_loop_engine([
+    [{ name: 'search', input: { pattern: 'TODO' } }],
+    [{ name: 'read_file', input: { path: 'src/a.ts' } }],
+    'src/a.ts has one TODO.',
+  ]);
+  const ask = model_step({
+    engine,
+    system: 'You answer questions about the workspace.',
+    tools: [search, read_file],
+  });
+
+  expect(await run(ask, 'where are the TODOs?')).toBe('src/a.ts has one TODO.');
+  expect(requests).toHaveLength(3);
+  assert_prefix_stable(requests);
+});
 ```
 
 ### Testing Timeout Behavior

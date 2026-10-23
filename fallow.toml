@@ -245,6 +245,6 @@ allow = []
 from = "schema"
 allow = []
 
-[[boundaries.rules]] # testing: engine and core, type-only (canned Engine doubles, the CheckpointStore contract the store conformance suite checks); no src module imports it back
+[[boundaries.rules]] # testing: engine and core (the Engine doubles, the CheckpointStore contract the store conformance suite checks), and schema, since assert_prefix_stable compares tool schemas as the JSON Schema a provider is sent and schema imports nothing; no src module imports it back
 from = "testing"
-allow = ["engine", "core"]
+allow = ["engine", "core", "schema"]
