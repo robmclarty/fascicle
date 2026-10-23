@@ -433,7 +433,7 @@ async function main() {
     process.exit(1);
   }
   const testing_mod = await import(pathToFileURL(DIST_TESTING_JS).href);
-  const EXPECTED_TESTING = ['make_stub_engine', 'make_capture_engine'];
+  const EXPECTED_TESTING = ['make_stub_engine', 'make_capture_engine', 'make_loop_engine'];
   const missing_testing = EXPECTED_TESTING.filter((name) => typeof testing_mod[name] === 'undefined');
   if (missing_testing.length > 0) {
     console.error(`\nbuild: testing smoke test missing exports: ${missing_testing.join(', ')}`);

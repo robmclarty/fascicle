@@ -233,7 +233,7 @@ The canonical worked example is [examples/pr-improve/](./examples/pr-improve/), 
 - [docs/cli.md](./docs/cli.md) — the `claude_cli` subprocess adapter
 - [docs/cookbook.md](./docs/cookbook.md) — retries, fan-out, judges, HITL, tool loops
 - [docs/deliberation-as-composition.md](./docs/deliberation-as-composition.md) — how ensembles, tournaments, consensus, and adversarial loops decompose into the primitives
-- [docs/testing.md](./docs/testing.md) — testing flows with stub, script, and capture engines
+- [docs/testing.md](./docs/testing.md) — testing flows with stub, script, capture, and loop engines
 - [docs/regression-testing-model-behavior.md](./docs/regression-testing-model-behavior.md) — regression-testing model behavior with mutation-tested judges and a committed score baseline
 - [docs/human-in-the-loop.md](./docs/human-in-the-loop.md) — suspend/resume approval over HTTP and streaming to a `useChat` UI via `fascicle/ui`
 - [docs/writing-a-harness.md](./docs/writing-a-harness.md) — building a runner around Fascicle

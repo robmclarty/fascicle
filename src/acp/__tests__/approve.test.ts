@@ -16,14 +16,14 @@ import { sequence } from '#core'
 import type { Step, TrajectoryEvent, TrajectoryLogger } from '#core'
 import type { Engine, Tool, ToolApprovalRequest, TurnRequest } from '#engine'
 import { json_schema_to_standard } from '#schema'
+import { make_loop_engine } from '#testing'
+import type { LoopTurn } from '#testing'
 import { acp_agent } from '../acp_agent.js'
 import { command_key, create_card_sync, session_approver } from '../approve.js'
 import type { CardSync, PermissionAsker } from '../approve.js'
 import { session_modes } from '../modes.js'
 import { prompt_turn } from '../prompt_turn.js'
 import { open_session, read_turn } from '../test/connect_client.js'
-import { scripted_engine } from '../test/scripted_provider.js'
-import type { ScriptedTurn } from '../test/scripted_provider.js'
 import { resolve_roots } from '../tools/containment.js'
 import type { AcpMode, AcpSession } from '../types.js'
 import { workspace_tools } from '../workspace_tools.js'
@@ -109,7 +109,7 @@ type WireRun = {
   readonly updates: ReadonlyArray<SessionUpdate>
   readonly stop_reason: StopReason
   /** Every request the model was sent, its tool results included. */
-  readonly seen: ReadonlyArray<TurnRequest>
+  readonly requests: ReadonlyArray<TurnRequest>
 }
 
 /**
@@ -118,7 +118,7 @@ type WireRun = {
  * that answers each permission request through `answer`.
  */
 async function wire_run(
-  script: ReadonlyArray<ScriptedTurn>,
+  script: ReadonlyArray<LoopTurn>,
   answer: Answer,
   options: {
     readonly mode?: AcpMode
@@ -127,8 +127,7 @@ async function wire_run(
     readonly flow?: (engine: Engine, session: AcpSession) => Step<string, string>
   } = {},
 ): Promise<WireRun> {
-  const seen: TurnRequest[] = []
-  const engine = scripted_engine(script, seen)
+  const { engine, requests } = make_loop_engine(script)
   const build = options.flow ?? ((on: Engine, session: AcpSession) => coder(on, session, 'coder', options.extra))
   const asked: RequestPermissionRequest[] = []
   const client_app = client().onRequest('session/request_permission', (ctx) => {
@@ -144,7 +143,7 @@ async function wire_run(
   const { session } = await open_session(app, { client: client_app, session: { cwd } })
   await session.prompt('go')
   const { updates, stop_reason } = await read_turn(session)
-  return { session_id: session.sessionId, asked, updates, stop_reason, seen }
+  return { session_id: session.sessionId, asked, updates, stop_reason, requests }
 }
 
 /** The id of the card the client was sent for raw call `raw` of model call `step`. */
@@ -156,8 +155,8 @@ function card_id(updates: ReadonlyArray<SessionUpdate>, raw: string, step = 'cod
 }
 
 /** What the model read back for raw call `raw`, from the last request it was sent. */
-function tool_result(seen: ReadonlyArray<TurnRequest>, raw: string): string | undefined {
-  for (const message of seen.at(-1)?.messages ?? []) {
+function tool_result(requests: ReadonlyArray<TurnRequest>, raw: string): string | undefined {
+  for (const message of requests.at(-1)?.messages ?? []) {
     if (message.role === 'tool' && message.tool_call_id === raw) return message.content
   }
   return undefined
@@ -252,7 +251,7 @@ describe('approve: what the request shows', () => {
       () => choose('allow_once'),
     )
     expect(run.asked.map((request) => request.options)).toEqual([[ALLOW, REJECT]])
-    expect(tool_result(run.seen, 'c')).toContain('one\ntwo')
+    expect(tool_result(run.requests, 'c')).toContain('one\ntwo')
   })
 
   it("shows why an edit can't be worked out instead of a diff, and the call fails with it once allowed", async () => {
@@ -261,7 +260,7 @@ describe('approve: what the request shows', () => {
     const why = "old_text doesn't appear in a.txt; it has to match the file exactly"
     const [request] = run.asked
     expect(request?.toolCall.content).toEqual([{ type: 'content', content: { type: 'text', text: expect.stringContaining(why) } }])
-    expect(tool_result(run.seen, 'e')).toContain(why)
+    expect(tool_result(run.requests, 'e')).toContain(why)
   })
 
   it('shows the change limit in place of a diff for a file one byte over, and a diff for one at the limit', async () => {
@@ -285,7 +284,7 @@ describe('approve: what the request shows', () => {
       [{ type: 'content', content: { type: 'text', text: why } }],
       [{ type: 'diff', path, oldText: `x\n${'a'.repeat(999_998)}`, newText: `y\n${'a'.repeat(999_998)}` }],
     ])
-    expect(tool_result(run.seen, 'o')).toContain(why)
+    expect(tool_result(run.requests, 'o')).toContain(why)
   })
 
   it('shows the refusal of a write into .git in place of a diff, and refuses it without asking in the modes that never ask', async () => {
@@ -293,11 +292,11 @@ describe('approve: what the request shows', () => {
     const why = `.git/config reaches .git, where write_file never writes, since what's there can run on the user's next command without showing in git diff; if it has to change, use run_command`
     const asked = await wire_run([[{ id: 'w', name: 'write_file', input }], 'done'], () => choose('allow_once'))
     expect(asked.asked.map((request) => request.toolCall.content)).toEqual([[{ type: 'content', content: { type: 'text', text: why } }]])
-    expect(tool_result(asked.seen, 'w')).toContain(why)
+    expect(tool_result(asked.requests, 'w')).toContain(why)
     for (const mode of ['accept_edits', 'auto'] as const) {
       const run = await wire_run([[{ id: 'w', name: 'write_file', input }], 'done'], () => choose('allow_once'), { mode })
       expect(run.asked).toEqual([])
-      expect(tool_result(run.seen, 'w')).toContain(why)
+      expect(tool_result(run.requests, 'w')).toContain(why)
     }
     expect(await exists('.git')).toBe(false)
   })
@@ -325,7 +324,7 @@ describe('approve: what the request shows', () => {
         options: [ALLOW, REJECT],
       },
     ])
-    expect(tool_result(run.seen, 'd')).toBe('deployed')
+    expect(tool_result(run.requests, 'd')).toBe('deployed')
   })
 })
 
@@ -353,7 +352,7 @@ describe("approve: the session's own calls and a same-named tool's", () => {
       [card_id(run.updates, 'w2', 'own'), undefined, [ALLOW, REJECT]],
     ])
     expect(await readFile(path, 'utf8')).toBe('b\n')
-    expect(tool_result(run.seen, 'w2')).toBe('done by the flow')
+    expect(tool_result(run.requests, 'w2')).toBe('done by the flow')
     expect(await exists('c.txt')).toBe(false)
   })
 
@@ -371,7 +370,7 @@ describe("approve: the session's own calls and a same-named tool's", () => {
           options: [ALLOW, REJECT],
         },
       ])
-      expect(tool_result(run.seen, 'o')).toBe('done by the flow')
+      expect(tool_result(run.requests, 'o')).toBe('done by the flow')
     },
   )
 })
@@ -438,9 +437,9 @@ describe('approve: what each answer does', () => {
       () => choose('allow_always'),
     )
     expect(titles(run.asked)).toEqual(['echo one', 'echo one two'])
-    expect(tool_result(run.seen, 'c1')).toContain('one')
-    expect(tool_result(run.seen, 'c2')).toContain('one')
-    expect(tool_result(run.seen, 'c3')).toContain('one two')
+    expect(tool_result(run.requests, 'c1')).toContain('one')
+    expect(tool_result(run.requests, 'c2')).toContain('one')
+    expect(tool_result(run.requests, 'c3')).toContain('one two')
     expect(mode_switches(run.updates)).toEqual([])
   })
 
@@ -454,7 +453,7 @@ describe('approve: what each answer does', () => {
       (request) => choose(request.options.length === 3 ? 'allow_always' : 'reject_once'),
     )
     expect(titles(run.asked)).toEqual(['echo one', 'echo one; echo two'])
-    expect(tool_result(run.seen, 'c2')).toBe(REFUSED)
+    expect(tool_result(run.requests, 'c2')).toBe(REFUSED)
   })
 
   it.each<[string, RequestPermissionResponse]>([
@@ -465,7 +464,7 @@ describe('approve: what each answer does', () => {
     const run = await wire_run([[{ id: 'w', name: 'write_file', input: { path: 'b.txt', content: 'b\n' } }], 'done'], () => answer)
     expect(run.stop_reason).toBe('end_turn')
     expect(await exists('b.txt')).toBe(false)
-    expect(tool_result(run.seen, 'w')).toBe(REFUSED)
+    expect(tool_result(run.requests, 'w')).toBe(REFUSED)
     expect(run.updates.at(-2)).toEqual({
       sessionUpdate: 'tool_call_update',
       toolCallId: card_id(run.updates, 'w'),
@@ -480,7 +479,7 @@ describe('approve: what each answer does', () => {
       [[{ id: 'c', name: 'run_command', input: { command: 'echo one | cat' } }], 'done'],
       () => choose('allow_always'),
     )
-    expect(tool_result(run.seen, 'c')).toBe(REFUSED)
+    expect(tool_result(run.requests, 'c')).toBe(REFUSED)
     expect(writes).toEqual([])
   })
 
@@ -491,7 +490,7 @@ describe('approve: what each answer does', () => {
     })
     expect(run.stop_reason).toBe('end_turn')
     expect(await exists('b.txt')).toBe(false)
-    expect(tool_result(run.seen, 'w')).toBe(REFUSED)
+    expect(tool_result(run.requests, 'w')).toBe(REFUSED)
     expect(writes).toEqual([
       expect.stringMatching(
         /^fascicle\/acp: asking the client to approve write_file failed \(.+\), so the call was refused; check that the client answers session\/request_permission\n$/,
@@ -513,14 +512,14 @@ describe('approve: what each answer does', () => {
       { mode: 'auto' },
     )
     expect(run.asked).toEqual([])
-    expect(tool_result(run.seen, 'c')).toContain('ran')
+    expect(tool_result(run.requests, 'c')).toContain('ran')
     expect(await readFile(join(cwd, 'a.txt'), 'utf8')).toBe('one\nTWO\n')
   })
 })
 
 describe('approve: a turn cancelled while the request is open', () => {
   it('withdraws the request, refuses the call, and ends the turn cancelled', async () => {
-    const engine = scripted_engine([[{ id: 'w', name: 'write_file', input: { path: 'b.txt', content: 'b\n' } }], 'done'])
+    const { engine } = make_loop_engine([[{ id: 'w', name: 'write_file', input: { path: 'b.txt', content: 'b\n' } }], 'done'])
     const { promise: asked, resolve: on_ask } = Promise.withResolvers<void>()
     const { promise: withdrawn, resolve: on_withdraw } = Promise.withResolvers<void>()
     const client_app = client().onRequest('session/request_permission', async (ctx) => {
@@ -787,7 +786,7 @@ function write_request(session: AcpSession, abort: AbortSignal): Promise<ToolApp
 
 describe('approve: waiting for the client', () => {
   it('asks only once the client has every update the run recorded, and points at the card each call opened', async () => {
-    const engine = scripted_engine([
+    const { engine } = make_loop_engine([
       [{ id: 'ollama_call_0_0', name: 'write_file', input: { path: 'b.txt', content: 'b\n' } }],
       'first done',
       [{ id: 'ollama_call_0_0', name: 'write_file', input: { path: 'c.txt', content: 'c\n' } }],

@@ -4,9 +4,9 @@ import { join } from 'node:path'
 import { client } from '@agentclientprotocol/sdk'
 import { describe, expect, it, vi } from 'vitest'
 import { describe as describe_flow } from 'fascicle'
-import type { TurnRequest } from 'fascicle'
 import { acp_agent } from 'fascicle/acp'
 import type { AcpTurn } from 'fascicle/acp'
+import { make_loop_engine } from 'fascicle/testing'
 import { keyless_agent, to_messages } from '../examples/acp-agent/main.js'
 import { coder_agent, command_env, parse_effort } from '../examples/acp-coder/main.js'
 import { run_adversarial_build } from '../examples/adversarial-build/main.js'
@@ -31,7 +31,6 @@ import { run_streaming_chat } from '../examples/streaming-chat/main.js'
 import { run_suspend_resume } from '../examples/suspend-resume/main.js'
 import { run_trajectory_logger } from '../examples/trajectory-logger/main.js'
 import { open_session, read_turn } from '../src/acp/test/connect_client.js'
-import { scripted_engine } from '../src/acp/test/scripted_provider.js'
 
 describe('examples smoke', () => {
   it('hello reverses the input words and preserves the input string', async () => {
@@ -79,23 +78,19 @@ describe('examples smoke', () => {
   it('acp_coder writes and runs commands behind permission requests, with the provider keys kept from commands', async () => {
     const cwd = await realpath(await mkdtemp(join(tmpdir(), 'acp-coder-')))
     const command = 'echo "key: ${OPENROUTER_API_KEY:-unset}"'
-    const seen: TurnRequest[] = []
-    const engine = scripted_engine(
-      [
-        [{ id: 'w', name: 'write_file', input: { path: 'note.txt', content: 'hello\n' } }],
-        [{ id: 'r', name: 'run_command', input: { command } }],
-        'wrote note.txt',
-        'you are welcome',
-      ],
-      seen,
-    )
+    const { engine, requests } = make_loop_engine([
+      [{ id: 'w', name: 'write_file', input: { path: 'note.txt', content: 'hello\n' } }],
+      [{ id: 'r', name: 'run_command', input: { command } }],
+      'wrote note.txt',
+      'you are welcome',
+    ])
     const asked: unknown[] = []
     const client_app = client().onRequest('session/request_permission', (ctx) => {
       asked.push(ctx.params.toolCall.title)
       return { outcome: { outcome: 'selected', optionId: 'allow_once' } }
     })
     const env = command_env({ PATH: process.env['PATH'], OPENROUTER_API_KEY: 'sk-secret', UNSET: undefined })
-    const app = await acp_agent(coder_agent({ engine, model: 'script', command_env: env }))
+    const app = await acp_agent(coder_agent({ engine, model: 'loop', command_env: env }))
     try {
       const { session } = await open_session(app, { client: client_app, session: { cwd } })
       const stops: unknown[] = []
@@ -106,9 +101,9 @@ describe('examples smoke', () => {
       expect(stops).toEqual(['end_turn', 'end_turn'])
       expect(asked).toEqual(['Write note.txt', command])
       expect(await readFile(join(cwd, 'note.txt'), 'utf8')).toBe('hello\n')
-      expect(seen[2]?.messages.at(-1)).toMatchObject({ role: 'tool', content: expect.stringContaining('key: unset') })
-      expect(seen[0]?.system).toContain(`The workspace root is ${cwd}, and relative paths start there.`)
-      expect(seen[0]?.tools.map((tool) => tool.name)).toEqual([
+      expect(requests[2]?.messages.at(-1)).toMatchObject({ role: 'tool', content: expect.stringContaining('key: unset') })
+      expect(requests[0]?.system).toContain(`The workspace root is ${cwd}, and relative paths start there.`)
+      expect(requests[0]?.tools.map((tool) => tool.name)).toEqual([
         'read_file',
         'list_files',
         'search',
@@ -116,7 +111,7 @@ describe('examples smoke', () => {
         'edit_file',
         'run_command',
       ])
-      expect(seen[3]?.messages).toEqual([
+      expect(requests[3]?.messages).toEqual([
         { role: 'user', content: 'write a note, then show the key' },
         { role: 'assistant', content: 'wrote note.txt' },
         { role: 'user', content: 'thanks' },
@@ -161,13 +156,12 @@ describe('examples smoke', () => {
   it('acp_coder hands --effort to the model call, and leaves the default alone without it', async () => {
     const efforts: unknown[] = []
     for (const effort of [undefined, 'high'] as const) {
-      const seen: TurnRequest[] = []
-      const engine = scripted_engine(['hi'], seen)
-      const config = { engine, model: 'script', command_env: {}, ...(effort === undefined ? {} : { effort }) }
+      const { engine, requests } = make_loop_engine(['hi'])
+      const config = { engine, model: 'loop', command_env: {}, ...(effort === undefined ? {} : { effort }) }
       const { session } = await open_session(await acp_agent(coder_agent(config)))
       await session.prompt('hello')
       await read_turn(session)
-      efforts.push(seen[0]?.effort)
+      efforts.push(requests[0]?.effort)
     }
     expect(efforts).toEqual(['none', 'high'])
   })

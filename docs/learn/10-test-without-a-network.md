@@ -110,9 +110,9 @@ test of your own.
   normal run listens for Ctrl-C so it can stop cleanly, which is right for a
   program and wrong inside a test runner that owns the process.
 
-## Three Engines for Tests
+## Four Engines for Tests
 
-`fascicle/testing` gives you three stand-in engines, and each one answers a
+`fascicle/testing` gives you four stand-in engines, and each one answers a
 different testing question:
 
 - **`make_stub_engine`** answers by system prompt, the way you've used it all
@@ -126,6 +126,11 @@ different testing question:
 - **`make_capture_engine`** records the full options of every call, so you can
   check exactly what was sent, including the model, the system prompt, and the
   schema.
+- **`make_loop_engine`** keeps the real engine and scripts only the model, so
+  the tools you hand a model call really run, and it keeps every request that
+  the model was sent. The solver's model calls use no tools, so none of these
+  tests needs it. It ships from 0.17.0, and [testing.md](../testing.md#make_loop_engine)
+  shows it at work.
 
 ## What the Tests Prove
 

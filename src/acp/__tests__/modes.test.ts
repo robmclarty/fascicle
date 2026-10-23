@@ -5,13 +5,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { client } from '@agentclientprotocol/sdk'
 import type { RequestPermissionRequest, SessionConfigOption, SessionUpdate } from '@agentclientprotocol/sdk'
 import { model_step } from 'fascicle'
-import { make_stub_engine } from '#testing'
+import { make_loop_engine, make_stub_engine } from '#testing'
 import type { Tool, ToolApprovalRequest } from '#engine'
 import { acp_agent } from '../acp_agent.js'
 import { is_acp_mode, session_modes } from '../modes.js'
 import { open_session, read_turn, read_until } from '../test/connect_client.js'
 import type { OpenSession } from '../test/connect_client.js'
-import { scripted_engine } from '../test/scripted_provider.js'
 import type { AcpMode, AcpSession, ServeAcpConfig } from '../types.js'
 import { workspace_tools } from '../workspace_tools.js'
 
@@ -385,7 +384,7 @@ describe('modes: over the real tool loop', () => {
     const cwd = await mkdtemp(join(tmpdir(), 'fascicle-acp-modes-'))
     made.push(cwd)
     await writeFile(join(cwd, 'a.txt'), 'one\n')
-    const engine = scripted_engine([
+    const { engine } = make_loop_engine([
       [
         { id: 'r', name: 'read_file', input: { path: 'a.txt' } },
         { id: 'l', name: 'list_files', input: {} },
@@ -416,7 +415,7 @@ describe('modes: over the real tool loop', () => {
   it('asks before every command in an agent that leaves Auto out, until the client allows a command line always', async () => {
     const cwd = await mkdtemp(join(tmpdir(), 'fascicle-acp-modes-'))
     made.push(cwd)
-    const engine = scripted_engine([
+    const { engine } = make_loop_engine([
       [{ id: 'c1', name: 'run_command', input: { command: 'echo one' } }],
       'done',
       [{ id: 'c2', name: 'run_command', input: { command: 'echo two' } }],

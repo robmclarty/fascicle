@@ -15,15 +15,21 @@ import {
   checkpoint_store_conformance,
   engine_from_generate,
   make_capture_engine,
+  make_loop_engine,
   make_script_engine,
   make_stub_engine,
   text_of,
 } from 'fascicle/testing';
 ```
 
-All three factories build a full `Engine` (`make_capture_engine` hands it back
-inside `{ engine, calls }`). The non-`generate` members are inert, so pricing
-calls are no-ops, `dispose` resolves immediately, and `with_providers` throws.
+All four factories build a full `Engine` (`make_capture_engine` and
+`make_loop_engine` hand it back inside an object, beside what they record). The
+three that are built on `engine_from_generate` keep their non-`generate`
+members inert, so pricing calls are no-ops, `dispose` resolves immediately, and
+`with_providers` throws. `make_loop_engine` is a whole engine that
+`create_engine` built, with a provider that plays your script. It registers no
+pricing, so when you pass a trajectory, a call on it records `pricing_missing`,
+once for each provider and model it reached.
 `make_stub_engine` and `make_script_engine` honor the engine contract at the
 seams your tests exercise, so a call whose `opts.abort` is already aborted
 throws the engine's `aborted_error`, a provided `opts.on_chunk` receives the
@@ -172,9 +178,101 @@ and hooks each call after it's recorded. `on_generate` is awaited before the
 result resolves, which is where you drive chunks or aborts against the captured
 options.
 
+## `make_loop_engine`
+
+The other three doubles stand in for the whole engine, so no tool loop runs
+under them, and a tool you hand a model call never runs. `make_loop_engine`
+keeps the real engine and swaps only the model. It registers a provider that
+plays your script, and the engine runs its own tool loop around it. Your tools
+run, your approval handler is asked, tool results are fed back, and your
+`on_chunk` sees chunks the way it would with a model behind the call. Every
+request that the model was sent lands in a live `requests` array, so you can
+read what the loop sent, tool results included.
+
+```ts
+import { define_tool, model_step, run } from 'fascicle';
+import { make_loop_engine } from 'fascicle/testing';
+import { z } from 'zod';
+
+const get_weather = define_tool({
+  name: 'get_weather',
+  description: 'Look up the weather for a city.',
+  input_schema: z.object({ city: z.string() }),
+  execute: ({ city }) => `sunny in ${city}`,
+});
+
+const { engine, requests } = make_loop_engine([
+  [{ name: 'get_weather', input: { city: 'Oslo' } }],
+  'It is sunny in Oslo.',
+]);
+
+const ask = model_step({ engine, tools: [get_weather] });
+
+expect(await run(ask, 'weather in Oslo?')).toBe('It is sunny in Oslo.');
+expect(requests[1]?.messages.at(-1)).toMatchObject({
+  role: 'tool',
+  tool_call_id: 'call_0_0',
+  content: 'sunny in Oslo',
+});
+```
+
+Each entry is one model turn, and each time the loop asks the model for a turn,
+the next entry plays. A string is a final answer that ends with `'stop'`. An
+array is the calls a turn makes, and it ends with `'tool_calls'`. When you need
+more than that, an object spells the turn out as
+`{ text?, tool_calls?, content?, finish_reason?, usage?, throw? }`. Its `text`
+and `tool_calls` default to the text parts and the `tool_call` parts of its
+`content`, which the loop sends back as the assistant message, and its `finish_reason` defaults to `'tool_calls'` when the turn makes
+calls and `'stop'` when it doesn't. A turn streams its text as one chunk, and
+then each call as a start and an end.
+
+A call that you give no `id` gets `call_<turn>_<n>`, where `<turn>` is the
+entry's place in the script and `<n>` is the call's place in the turn, both
+counted from 0. The script runs across every call you make through the engine,
+so your second `generate` call picks up where the first one left off. A request
+lands in `requests` before its turn plays, so a turn that throws, and a turn
+past the end of the script, still leave their request behind for you to read.
+A turn past the end throws and names how many turns you scripted and which one
+was asked for, so a loop that goes round one more time than you planned fails
+loudly.
+
+The provider and the default model are both `'loop'`, and the options are
+`{ model_id, usage }`. `model_id` changes the default model, and `usage` is
+what a turn reports when you set none on it (default `{ input_tokens: 40,
+output_tokens: 20 }`). Per-turn `usage` wins over the option.
+
+### Scripting a Provider Failure
+
+`throw` raises your error for that turn before anything streams, and the engine
+reads it the way it reads an error that a provider threw. That's what makes it
+useful, and it's also the catch. An error that the engine counts as retryable,
+like a `provider_error` with a 5xx `status`, is retried by the engine's own
+retry policy, and the retry asks for a turn again, so it uses up the next entry
+in your script under the same `step_index`. A plain `Error` is never retried,
+and your call rejects with it. Give the call a retry policy that doesn't wait,
+or your test sits through the default backoff:
+
+```ts
+import { provider_error } from 'fascicle';
+import { make_loop_engine } from 'fascicle/testing';
+
+const { engine, requests } = make_loop_engine([
+  { throw: new provider_error('overloaded', { status: 503 }) },
+  'recovered',
+]);
+
+const result = await engine.generate({
+  prompt: 'hello',
+  retry: { max_attempts: 2, initial_delay_ms: 0, max_delay_ms: 0, retry_on: ['provider_5xx'] },
+});
+
+expect(result.content).toBe('recovered');
+expect(requests.map((request) => request.step_index)).toEqual([0, 0]);
+```
+
 ## `engine_from_generate`
 
-The 12-line shell that every factory builds on, for when you roll your own double.
+The 12-line shell that the three canned factories build on, for when you roll your own double.
 Your double only has to implement `generate`, which accepts `GenerateOptions`
 and resolves a complete `GenerateResult` (`content`, `tool_calls`, `steps`,
 `usage`, `finish_reason`, `model_resolved`). Honoring `opts.abort`,

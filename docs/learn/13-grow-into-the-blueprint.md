@@ -310,7 +310,7 @@ read differently than they would have this morning.
   primitive at each layer.
 - [cookbook.md](../cookbook.md) has worked patterns for retries, fan-out,
   judges, tool loops, and people in the loop.
-- [testing.md](../testing.md) covers the three stand-in engines in depth.
+- [testing.md](../testing.md) covers the four stand-in engines in depth.
 - [troubleshooting.md](../troubleshooting.md) maps errors to their causes.
 - [examples/release-notes/](../../examples/release-notes/) is a whole agent in
   one file, and [examples/pr-improve/](../../examples/pr-improve/) is the full

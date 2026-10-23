@@ -46,7 +46,7 @@ An engine (`create_engine`) talks to model providers, and `model_step` or
 | --- | --- |
 | `fascicle` | `run`, `step`, `sequence`, `parallel`, `branch`, `map`, `pipe`, `chain`, `loop`, `retry`, `fallback`, `timeout`, `compose`, `adversarial`, `ensemble_step`, `consensus`, `checkpoint`, `suspend`, `gate`, `describe`, `model_step`, `model_call`, `create_engine`, `define_tool`, `error_path`, the error classes, and the types (`Step`, `Engine`, `RunContext`, `GenerateOptions`, ...) |
 | `fascicle/adapters` | `filesystem_logger`, `http_logger`, `stderr_logger`, `tee_logger`, `noop_logger`, `filesystem_store` |
-| `fascicle/testing` | `make_stub_engine`, `make_script_engine`, `make_capture_engine`, `text_of`, `engine_from_generate` |
+| `fascicle/testing` | `make_stub_engine`, `make_script_engine`, `make_capture_engine`, `make_loop_engine` (0.17.0 and later), `text_of`, `engine_from_generate` |
 | `fascicle/agents` | `define_agent` |
 | `fascicle/viewer` | `start_viewer` |
 

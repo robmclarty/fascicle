@@ -109,7 +109,9 @@ The published surface as of v0.16.0:
   responses by system-prompt prefix and validates them through the call's schema,
   `make_script_engine` plays responses back in a strict call order, and
   `make_capture_engine` records every call's `GenerateOptions` so you can
-  assert on them. `checkpoint_store_conformance` checks that a store you wrote
+  assert on them. `make_loop_engine` scripts only the model, so the engine's own
+  tool loop runs the tools and keeps every request that the model was sent.
+  `checkpoint_store_conformance` checks that a store you wrote
   keeps the `CheckpointStore` contract, scopes and claims included.
 - **Supply-chain posture.** Releases publish from CI with npm Trusted Publishing
   (OIDC) and a signed provenance attestation, and you can verify one with

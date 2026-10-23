@@ -8,12 +8,12 @@ import { sequence, step } from '#core'
 import type { Step, TrajectoryEvent } from '#core'
 import type { Engine, StreamChunk, Tool } from '#engine'
 import { json_schema_to_standard } from '#schema'
+import { make_loop_engine } from '#testing'
+import type { LoopTurn } from '#testing'
 import { acp_agent } from '../acp_agent.js'
 import { create_card_sync } from '../approve.js'
 import { prompt_turn } from '../prompt_turn.js'
 import { open_session, read_turn } from '../test/connect_client.js'
-import { scripted_engine } from '../test/scripted_provider.js'
-import type { ScriptedTurn } from '../test/scripted_provider.js'
 import { create_acp_mapper_state, to_session_updates } from '../to_session_updates.js'
 import { resolve_roots } from '../tools/containment.js'
 import { record_preview, reset_previews, take_preview } from '../tools/previews.js'
@@ -87,10 +87,10 @@ function own_tool(name: string, output = 'done by the flow'): Tool {
  * `script`, over the wire, and return every update the client was sent.
  */
 async function wire_turn(
-  script: ReadonlyArray<ScriptedTurn>,
+  script: ReadonlyArray<LoopTurn>,
   capabilities: ClientCapabilities = {},
 ): Promise<ReadonlyArray<SessionUpdate>> {
-  const engine = scripted_engine(script)
+  const { engine } = make_loop_engine(script)
   const app = await acp_agent({ name: 'presentation', default_mode: 'auto', flow: (session) => coder(engine, session) })
   const { session } = await open_session(app, { client_capabilities: capabilities, session: { cwd } })
   await session.prompt('go')
@@ -269,7 +269,7 @@ describe('presentation: each workspace tool over the real tool loop', () => {
   })
 
   it('keeps a tool that is not a workspace tool on the plain card', async () => {
-    const engine = scripted_engine([[{ id: 'k1', name: 'lookup', input: { q: 'x' } }], 'done'])
+    const { engine } = make_loop_engine([[{ id: 'k1', name: 'lookup', input: { q: 'x' } }], 'done'])
     const app = await acp_agent({
       name: 'presentation',
       flow: () => model_step({ engine, id: 'coder', tools: [own_tool('lookup', 'found')] }),
@@ -286,7 +286,7 @@ describe('presentation: each workspace tool over the real tool loop', () => {
 
   it("keeps a write_file of the flow's own on the plain card in a session that never built the workspace tools", async () => {
     const input = { path: 'src/own.ts', content: 'x' }
-    const engine = scripted_engine([[{ id: 'w1', name: 'write_file', input }], 'done'])
+    const { engine } = make_loop_engine([[{ id: 'w1', name: 'write_file', input }], 'done'])
     const app = await acp_agent({
       name: 'presentation',
       flow: () => model_step({ engine, id: 'coder', tools: [own_tool('write_file')] }),
@@ -448,7 +448,7 @@ describe('presentation: previews that share a raw id', () => {
     await mkdir(join(cwd, 'pair'), { recursive: true })
     await writeFile(join(cwd, 'pair', 'two.ts'), 'two\n')
     const session = await fixture_session()
-    const engine = scripted_engine([
+    const { engine } = make_loop_engine([
       [{ id: 'ollama_call_0_0', name: 'write_file', input: { path: 'pair/one.ts', content: 'one\n' } }],
       'first done',
       [{ id: 'ollama_call_0_0', name: 'edit_file', input: { path: 'pair/two.ts', old_text: 'two', new_text: 'TWO' } }],
@@ -468,7 +468,7 @@ describe('presentation: previews that share a raw id', () => {
 
   it("never lets a call that failed take a later call's preview", async () => {
     const session = await fixture_session()
-    const engine = scripted_engine([
+    const { engine } = make_loop_engine([
       [{ id: 'ollama_call_0_0', name: 'write_file', input: { path: '../escape.ts', content: 'x' } }],
       'first done',
       [{ id: 'ollama_call_0_0', name: 'write_file', input: { path: 'pair/three.ts', content: 'three\n' } }],
@@ -487,7 +487,7 @@ describe('presentation: previews that share a raw id', () => {
   it('starts each turn with an empty store, so an earlier turn cannot hand over a preview', async () => {
     const session = await fixture_session()
     record_preview(session, 'w1', { kind: 'change', path: '/stale.ts', old_text: null, new_text: 'stale', line: undefined })
-    const engine = scripted_engine([[{ id: 'w1', name: 'write_file', input: { path: 'pair/four.ts', content: 'four\n' } }], 'done'])
+    const { engine } = make_loop_engine([[{ id: 'w1', name: 'write_file', input: { path: 'pair/four.ts', content: 'four\n' } }], 'done'])
     const updates = await slow_turn(session, (release) => sequence([coder(engine, session), release]))
     expect(closing(updates, 'coder:1:w1')).toMatchObject({
       content: [{ type: 'diff', path: join(cwd, 'pair', 'four.ts'), oldText: null, newText: 'four\n' }],

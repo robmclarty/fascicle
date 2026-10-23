@@ -16,7 +16,7 @@ import { /* MCP bridge */ } from 'fascicle/mcp';
 import { /* ACP agent server */ } from 'fascicle/acp';
 import { /* stdio child contract */ } from 'fascicle/stdio';
 import { /* OpenTelemetry bridge */ } from 'fascicle/otel';
-import { /* stub + capture engines */ } from 'fascicle/testing';
+import { /* stub, script, capture, and loop engines */ } from 'fascicle/testing';
 import { /* useChat stream adapters */ } from 'fascicle/ui';
 import { /* trajectory viewer server */ } from 'fascicle/viewer';
 ```
@@ -466,13 +466,15 @@ the pattern is worked through in
 | `make_stub_engine(canned, options?)` | fn | routes canned responses by system-prompt prefix, validates canned content through the call's schema, and throws on an unmatched system; `content` may be a function `(opts, call_index) => value` |
 | `make_script_engine(responses, options?)` | fn | a strict call-order queue whose entries are plain content values or `{ content?, tool_calls?, finish_reason?, usage?, throw? }`; exhaustion throws with the scripted vs received counts |
 | `make_capture_engine(options?)` | fn | records every call's `GenerateOptions` into a live `calls` array, answers with a canned result |
+| `make_loop_engine(turns, options?)` | fn | a real engine whose one provider, `'loop'`, plays `turns` under the engine's own tool loop, so tools run and approvals are asked for, and returns `{ engine, requests }`, where `requests` keeps every `TurnRequest` the model was sent. A turn is a final-answer string, an array of `LoopCall`s, or `{ text?, tool_calls?, content?, finish_reason?, usage?, throw? }`, and a call without an `id` gets `call_<turn>_<n>`. Exhaustion throws with the scripted turn count, and since it registers no pricing, a traced call records `pricing_missing`. See [testing.md](./testing.md#make_loop_engine) |
 | `text_of(opts)` | fn | the user-visible prompt text of a captured `GenerateOptions`, whatever the prompt shape |
-| `engine_from_generate(generate)` | fn | wrap a bare `generate` into a full `Engine`; the shell the factories build on, for rolling your own double |
+| `engine_from_generate(generate)` | fn | wrap a bare `generate` into a full `Engine`; the shell the three canned factories build on, for rolling your own double |
 | `checkpoint_store_conformance(make_store, options?)` | fn | check a `CheckpointStore` you wrote against the contract, one fresh store per check, and resolve `{ passed, failed, skipped }`; see [testing.md](./testing.md#checkpoint_store_conformance) |
 
 Types: `StubEngineOptions`, `StubResponse`, `StubContent`, `StubContentFn`,
 `ScriptResponse`, `ScriptEngineOptions`, `CaptureEngine`,
-`CaptureEngineOptions`, `StoreConformanceOptions`, `StoreConformanceReport`,
+`CaptureEngineOptions`, `LoopCall`, `LoopTurn`, `LoopEngineOptions`,
+`LoopEngine`, `StoreConformanceOptions`, `StoreConformanceReport`,
 `StoreConformanceFailure`.
 
 ## MCP Bridge (`fascicle/mcp`)

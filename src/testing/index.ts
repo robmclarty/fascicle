@@ -1,12 +1,14 @@
 /**
  * Public surface for testing.
  *
- * Published as `fascicle/testing`: canned engine doubles for driving real
+ * Published as `fascicle/testing`: engine doubles for driving real
  * flows through the real `run()` with zero network. `make_stub_engine`
  * scripts responses routed by system-prompt prefix; `make_script_engine`
  * consumes a response queue in strict call order; `make_capture_engine`
- * records what each call sent to the engine; `text_of` reads the
- * user-visible prompt text back out of a captured call.
+ * records what each call sent to the engine; `make_loop_engine` plays a
+ * script under the engine's own tool loop, so tools run and every request
+ * the model was sent is kept; `text_of` reads the user-visible prompt text
+ * back out of a captured call.
  * `checkpoint_store_conformance` proves a store you wrote keeps the
  * `CheckpointStore` contract.
  */
@@ -27,6 +29,8 @@ export type {
 } from './checkpoint_store_conformance.js'
 export { make_capture_engine } from './make_capture_engine.js'
 export type { CaptureEngine, CaptureEngineOptions } from './make_capture_engine.js'
+export { make_loop_engine } from './make_loop_engine.js'
+export type { LoopCall, LoopEngine, LoopEngineOptions, LoopTurn } from './make_loop_engine.js'
 export { make_script_engine } from './make_script_engine.js'
 export type { ScriptEngineOptions, ScriptResponse } from './make_script_engine.js'
 export { make_stub_engine } from './make_stub_engine.js'
