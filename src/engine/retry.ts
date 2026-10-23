@@ -26,7 +26,13 @@ export const DEFAULT_RETRY: RetryPolicy = {
 
 type RetryableError =
   | { kind: 'rate_limit'; retry_after_ms?: number; status?: number; message?: string }
-  | { kind: 'provider_5xx'; status?: number; body?: string; message?: string }
+  | {
+      kind: 'provider_5xx'
+      retry_after_ms?: number
+      status?: number
+      body?: string
+      message?: string
+    }
   | { kind: 'network'; message?: string }
   | { kind: 'timeout'; message?: string }
 
@@ -135,10 +141,20 @@ function build_exhaustion_error(
 }
 
 /**
- * Compute the pre-retry backoff for `attempt`. A rate-limit `Retry-After`
- * outranks the local cap (`Math.max`), so a server instruction longer than
- * `max_delay_ms` is honored; the honored value is returned so the caller can
- * carry it onto a later failure that omits its own.
+ * The server's `Retry-After`, in milliseconds, that a 429 or a 5xx carried,
+ * or `undefined` for a failure that carries none.
+ */
+function server_retry_after(retryable: RetryableError): number | undefined {
+  return retryable.kind === 'rate_limit' || retryable.kind === 'provider_5xx'
+    ? retryable.retry_after_ms
+    : undefined
+}
+
+/**
+ * Compute the pre-retry backoff for `attempt`. A server's `Retry-After`, on a
+ * 429 or a 5xx, outranks the local cap (`Math.max`), so a server instruction
+ * longer than `max_delay_ms` is honored; the honored value is returned so the
+ * caller can carry a rate limit's onto a later failure that omits its own.
  */
 function next_backoff(
   retryable: RetryableError,
@@ -146,17 +162,31 @@ function next_backoff(
   attempt: number,
 ): { delay: number; retry_after_ms?: number } {
   const delay = compute_backoff(backoff_policy, attempt - 1)
-  if (retryable.kind === 'rate_limit' && retryable.retry_after_ms !== undefined) {
-    return { delay: Math.max(delay, retryable.retry_after_ms), retry_after_ms: retryable.retry_after_ms }
+  const retry_after_ms = server_retry_after(retryable)
+  if (retry_after_ms !== undefined) {
+    return { delay: Math.max(delay, retry_after_ms), retry_after_ms }
   }
   return { delay }
 }
 
 /**
+ * The `Retry-After` that a rate limit's exhaustion error falls back on: this
+ * failure's own when it is a rate limit that carried one, and otherwise the
+ * last one a rate limit carried. A 5xx's value never carries onto it.
+ */
+function carry_rate_limit_after(
+  retryable: RetryableError,
+  backoff: { retry_after_ms?: number },
+  last: number | undefined,
+): number | undefined {
+  return retryable.kind === 'rate_limit' ? (backoff.retry_after_ms ?? last) : last
+}
+
+/**
  * One failed-then-retried attempt, as reported through `on_retry`. `attempt`
  * is the 1-based count of failures so far, `delay_ms` the backoff this retry
- * will wait (a rate-limit `Retry-After` already folded in), and `status` /
- * `retry_after_ms` copy what the failure itself carried when it did.
+ * will wait (a 429's or a 5xx's `Retry-After` already folded in), and
+ * `status` / `retry_after_ms` copy what the failure itself carried when it did.
  */
 export type RetryAttemptInfo = {
   attempt: number
@@ -179,9 +209,8 @@ function build_attempt_info(
   if (retryable.kind === 'rate_limit' || retryable.kind === 'provider_5xx') {
     if (retryable.status !== undefined) info.status = retryable.status
   }
-  if (retryable.kind === 'rate_limit' && retryable.retry_after_ms !== undefined) {
-    info.retry_after_ms = retryable.retry_after_ms
-  }
+  const retry_after_ms = server_retry_after(retryable)
+  if (retry_after_ms !== undefined) info.retry_after_ms = retry_after_ms
   return info
 }
 
@@ -227,7 +256,7 @@ export async function retry_with_policy<t>(
         throw build_exhaustion_error(retryable, attempt, last_rate_limit_after)
       }
       const backoff = next_backoff(retryable, backoff_policy, attempt)
-      last_rate_limit_after = backoff.retry_after_ms ?? last_rate_limit_after
+      last_rate_limit_after = carry_rate_limit_after(retryable, backoff, last_rate_limit_after)
       on_retry?.(build_attempt_info(retryable, attempt, backoff.delay))
       await wait_with_abort(backoff.delay, signal, to_abort_error)
     }
@@ -251,32 +280,41 @@ function read_number(err: object, key: string): number | undefined {
 }
 
 /**
+ * Read the fields that a retryable status carries (`retry_after_ms`,
+ * `status`, and `message`), keeping each only when it is present.
+ */
+function read_status_fields(err: object): {
+  retry_after_ms?: number
+  status?: number
+  message?: string
+} {
+  const fields: { retry_after_ms?: number; status?: number; message?: string } = {}
+  const retry_after = read_number(err, 'retry_after_ms')
+  if (retry_after !== undefined) fields.retry_after_ms = retry_after
+  const status = read_number(err, 'status')
+  if (status !== undefined) fields.status = status
+  const message = read_string(err, 'message')
+  if (message !== undefined) fields.message = message
+  return fields
+}
+
+/**
  * Assemble the `rate_limit` retryable shape, copying the optional
  * `retry_after_ms`, `status`, and `message` fields when each is present.
  */
 function build_retryable_rate_limit(err: object): RetryableError {
-  const base: RetryableError = { kind: 'rate_limit' }
-  const retry_after = read_number(err, 'retry_after_ms')
-  if (retry_after !== undefined) base.retry_after_ms = retry_after
-  const status = read_number(err, 'status')
-  if (status !== undefined) base.status = status
-  const message = read_string(err, 'message')
-  if (message !== undefined) base.message = message
-  return base
+  return { kind: 'rate_limit', ...read_status_fields(err) }
 }
 
 /**
- * Assemble the `provider_5xx` retryable shape, copying the optional `status`,
- * `body`, and `message` fields when each is present.
+ * Assemble the `provider_5xx` retryable shape, copying the optional
+ * `retry_after_ms`, `status`, `body`, and `message` fields when each is
+ * present.
  */
 function build_retryable_5xx(err: object): RetryableError {
-  const base: RetryableError = { kind: 'provider_5xx' }
-  const status = read_number(err, 'status')
-  if (status !== undefined) base.status = status
+  const base: RetryableError = { kind: 'provider_5xx', ...read_status_fields(err) }
   const body = read_string(err, 'body')
   if (body !== undefined) base.body = body
-  const message = read_string(err, 'message')
-  if (message !== undefined) base.message = message
   return base
 }
 

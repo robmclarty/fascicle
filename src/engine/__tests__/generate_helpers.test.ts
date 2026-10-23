@@ -8,6 +8,7 @@ import {
   split_leading_system_messages,
 } from '../generate.js'
 import { round6 } from '../pricing.js'
+import { retry_with_policy } from '../retry.js'
 
 const opts = (o: Partial<GenerateOptions>): GenerateOptions => o as GenerateOptions
 
@@ -94,6 +95,62 @@ describe('classify_provider_error', () => {
     for (const code of ['ECONNRESET', 'ETIMEDOUT', 'ENOTFOUND', 'ECONNREFUSED']) {
       const out = classify_provider_error({ code, message: 'net' }) as Record<string, unknown>
       expect(out).toMatchObject({ kind: 'network', message: 'net' })
+    }
+  })
+
+  it('reads a 5xx Retry-After header into retry_after_ms', () => {
+    expect(
+      classify_provider_error({
+        statusCode: 503,
+        message: 'overloaded',
+        responseHeaders: { 'retry-after': '2' },
+      }),
+    ).toStrictEqual({ kind: 'provider_5xx', status: 503, message: 'overloaded', retry_after_ms: 2000 })
+  })
+
+  it("classifies undici's codes and ECONNRESET, on the error and on its cause, as network", () => {
+    for (const code of ['UND_ERR_HEADERS_TIMEOUT', 'UND_ERR_BODY_TIMEOUT', 'UND_ERR_SOCKET', 'ECONNRESET']) {
+      expect(classify_provider_error({ code, message: 'net' }), code).toStrictEqual({
+        kind: 'network',
+        message: 'net',
+      })
+      // The AI SDK's APICallError for a failed fetch keeps undici's error as its cause.
+      const wrapped = new Error('Cannot connect to API: Headers Timeout Error', {
+        cause: Object.assign(new Error('Headers Timeout Error'), { code }),
+      })
+      expect(classify_provider_error(wrapped), `cause ${code}`).toStrictEqual({
+        kind: 'network',
+        message: 'Cannot connect to API: Headers Timeout Error',
+      })
+    }
+
+    // A cause with no network code, or none at all, leaves the error alone.
+    const plain = new Error('boom', { cause: new Error('inner') })
+    expect(classify_provider_error(plain)).toBe(plain)
+    const coded = new Error('boom', { cause: Object.assign(new Error('inner'), { code: 'EACCES' }) })
+    expect(classify_provider_error(coded)).toBe(coded)
+    const primitive = new Error('boom', { cause: 'ECONNRESET' })
+    expect(classify_provider_error(primitive)).toBe(primitive)
+    const nulled = new Error('boom', { cause: null })
+    expect(classify_provider_error(nulled)).toBe(nulled)
+  })
+
+  it('retries each of those failures, on the error or wrapped in its cause', async () => {
+    for (const code of ['UND_ERR_HEADERS_TIMEOUT', 'UND_ERR_BODY_TIMEOUT', 'UND_ERR_SOCKET', 'ECONNRESET']) {
+      const coded = Object.assign(new Error('other side closed'), { code })
+      const failures = [coded, new Error('Cannot connect to API: other side closed', { cause: coded })]
+      let attempts = 0
+      const result = await retry_with_policy(
+        async () => {
+          attempts += 1
+          const failure = failures[attempts - 1]
+          if (failure !== undefined) throw classify_provider_error(failure)
+          return 'ok'
+        },
+        { max_attempts: 3, initial_delay_ms: 0, max_delay_ms: 0, retry_on: ['network'] },
+      )
+      expect(result, code).toBe('ok')
+      expect(attempts, code).toBe(3)
     }
   })
 

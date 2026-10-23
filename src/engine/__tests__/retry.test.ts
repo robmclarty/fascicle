@@ -469,7 +469,7 @@ describe('retry_with_policy on_retry reporting', () => {
       undefined,
       on_retry,
     )
-    expect(infos).toEqual([
+    expect(infos).toStrictEqual([
       { attempt: 1, failure_kind: 'provider_5xx', delay_ms: 0, status: 503 },
     ])
   })
@@ -488,7 +488,7 @@ describe('retry_with_policy on_retry reporting', () => {
       undefined,
       on_retry,
     )
-    expect(infos).toEqual([
+    expect(infos).toStrictEqual([
       { attempt: 1, failure_kind: 'network', delay_ms: 0 },
       { attempt: 2, failure_kind: 'timeout', delay_ms: 0 },
     ])
@@ -525,5 +525,88 @@ describe('retry_with_policy on_retry reporting', () => {
     ).rejects.toThrow(provider_error)
     // Two attempts ran, but only the first failure retried; the second threw.
     expect(infos).toEqual([{ attempt: 1, failure_kind: 'network', delay_ms: 0 }])
+  })
+})
+
+describe('retry_with_policy honors a 5xx Retry-After', () => {
+  const ZERO_DELAY: RetryPolicy = {
+    max_attempts: 3,
+    initial_delay_ms: 0,
+    max_delay_ms: 0,
+    retry_on: ['rate_limit', 'provider_5xx', 'network'],
+  }
+
+  it('waits at least the server\'s two seconds before retrying a 503', async () => {
+    vi.useFakeTimers()
+    try {
+      let attempts = 0
+      const infos: RetryAttemptInfo[] = []
+      const pending = retry_with_policy(
+        async () => {
+          attempts += 1
+          if (attempts === 1) throw { kind: 'provider_5xx', status: 503, retry_after_ms: 2000 }
+          return 'ok'
+        },
+        ZERO_DELAY,
+        undefined,
+        (info) => infos.push(info),
+      )
+      await vi.advanceTimersByTimeAsync(1999)
+      expect(attempts).toBe(1)
+      await vi.advanceTimersByTimeAsync(1)
+      await expect(pending).resolves.toBe('ok')
+      expect(attempts).toBe(2)
+      expect(infos).toEqual([
+        { attempt: 1, failure_kind: 'provider_5xx', delay_ms: 2000, status: 503, retry_after_ms: 2000 },
+      ])
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('lets an abort interrupt the wait', async () => {
+    vi.useFakeTimers()
+    try {
+      const controller = new AbortController()
+      let attempts = 0
+      const pending = retry_with_policy(
+        async () => {
+          attempts += 1
+          throw { kind: 'provider_5xx', status: 503, retry_after_ms: 2000 }
+        },
+        ZERO_DELAY,
+        controller.signal,
+      )
+      const settled = expect(pending).rejects.toBeInstanceOf(aborted_error)
+      await vi.advanceTimersByTimeAsync(500)
+      controller.abort()
+      await settled
+      expect(attempts).toBe(1)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('reports a 5xx Retry-After but keeps it off a later rate limit that carries none', async () => {
+    let attempts = 0
+    const failures = [
+      { kind: 'provider_5xx', status: 503, retry_after_ms: 1 },
+      { kind: 'rate_limit', status: 429 },
+    ]
+    const infos: RetryAttemptInfo[] = []
+    const error = await retry_with_policy(
+      async () => {
+        attempts += 1
+        throw failures[attempts - 1]
+      },
+      { ...ZERO_DELAY, max_attempts: 2 },
+      undefined,
+      (info) => infos.push(info),
+    ).catch((err: unknown) => err)
+    expect(infos).toEqual([
+      { attempt: 1, failure_kind: 'provider_5xx', delay_ms: 1, status: 503, retry_after_ms: 1 },
+    ])
+    expect(error).toBeInstanceOf(rate_limit_error)
+    expect((error as rate_limit_error).retry_after_ms).toBeUndefined()
   })
 })

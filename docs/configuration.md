@@ -311,7 +311,8 @@ await engine.generate({
 
 The rules:
 
-- Backoff is exponential with jitter (`initial_delay_ms * 2^attempt + jitter`), capped at `max_delay_ms`. A 429's `Retry-After` outranks that cap, so the wait is the longer of the computed backoff and the server's value.
+- Backoff is exponential with jitter (`initial_delay_ms * 2^attempt + jitter`), capped at `max_delay_ms`. A `Retry-After` on a 429 or a 5xx outranks that cap, so you wait the longer of the computed backoff and the server's value. HTTP defines the header for a 503 as well as a 429, and a server that's shedding load uses it to tell you when to come back.
+- A network failure is one whose error, or whose `cause`, carries the code of a connection that was refused, reset, or timed out, or of a host that didn't resolve, with undici's `UND_ERR_HEADERS_TIMEOUT`, `UND_ERR_BODY_TIMEOUT`, and `UND_ERR_SOCKET` among them. The AI SDK wraps a failed fetch in an error that keeps undici's as its `cause`, so when your `ai_sdk` turn times out waiting for headers, it retries the way a native one does.
 - Abort interrupts backoff waits and throws `aborted_error`.
 - Streaming calls do **not** retry past the first delivered chunk. The orchestrator enforces that boundary.
 - Exhaustion throws `rate_limit_error` (for 429s), which carries `.attempts`, or `provider_error` (for 5xx / network), which carries `.status`, `.body`, and `.cause_kind`.

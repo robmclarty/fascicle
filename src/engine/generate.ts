@@ -145,7 +145,15 @@ export function split_leading_system_messages(messages: ReadonlyArray<Message>):
 }
 
 const RETRY_CLASSIFIED_KINDS = new Set(['rate_limit', 'provider_5xx', 'network', 'timeout'])
-const NETWORK_ERROR_CODES = new Set(['ECONNRESET', 'ETIMEDOUT', 'ENOTFOUND', 'ECONNREFUSED'])
+const NETWORK_ERROR_CODES = new Set([
+  'ECONNRESET',
+  'ETIMEDOUT',
+  'ENOTFOUND',
+  'ECONNREFUSED',
+  'UND_ERR_HEADERS_TIMEOUT',
+  'UND_ERR_BODY_TIMEOUT',
+  'UND_ERR_SOCKET',
+])
 
 /**
  * True when `err` already carries a `kind` this layer treats as retryable, so
@@ -190,23 +198,38 @@ function retry_after_from_error(err: object): number | undefined {
 }
 
 /**
- * Build the `rate_limit` classification for a 429, attaching the message and a
- * parsed `Retry-After` when either is present.
+ * Build the classification for a retryable status (`rate_limit` for a 429,
+ * `provider_5xx` for a 5xx), attaching the message and a parsed `Retry-After`
+ * when either is present. HTTP defines the header for a 503 as well as a 429,
+ * so a server's wait counts on both.
  */
-function classify_rate_limit(err: object): Record<string, unknown> {
-  const out = with_error_message(err, { kind: 'rate_limit', status: 429 })
+function classify_status(
+  err: object,
+  kind: 'rate_limit' | 'provider_5xx',
+  status: number,
+): Record<string, unknown> {
+  const out = with_error_message(err, { kind, status })
   const retry_after_ms = retry_after_from_error(err)
   if (retry_after_ms !== undefined) out['retry_after_ms'] = retry_after_ms
   return out
 }
 
 /**
- * Build the `network` classification when `err.code` is a known network error
- * code, or `undefined` when it is not.
+ * True when `value` carries a `code` that names a known network failure.
+ */
+function has_network_code(value: unknown): boolean {
+  if (value === null || typeof value !== 'object') return false
+  const code = Reflect.get(value, 'code')
+  return typeof code === 'string' && NETWORK_ERROR_CODES.has(code)
+}
+
+/**
+ * Build the `network` classification when the error or its `cause` carries a
+ * known network error code, or `undefined` when neither does. The AI SDK
+ * wraps a failed fetch in an `APICallError` whose `cause` holds undici's code.
  */
 function classify_network_error(err: object): Record<string, unknown> | undefined {
-  const code = Reflect.get(err, 'code')
-  if (typeof code !== 'string' || !NETWORK_ERROR_CODES.has(code)) return undefined
+  if (!has_network_code(err) && !has_network_code(Reflect.get(err, 'cause'))) return undefined
   return with_error_message(err, { kind: 'network' })
 }
 
@@ -215,19 +238,21 @@ function classify_network_error(err: object): Record<string, unknown> | undefine
  * understands.
  *
  * Passes through anything that already carries a recognized `kind`.
- * Otherwise inspects `statusCode`/`status`: 429 becomes `rate_limit`
- * (reading `Retry-After` off `responseHeaders` when present), 5xx becomes
- * `provider_5xx`, and a known `ECONNRESET`/`ETIMEDOUT`/`ENOTFOUND`/
- * `ECONNREFUSED` error code becomes `network`. Anything else passes through
- * unclassified, which `retry_with_policy` treats as non-retryable.
+ * Otherwise inspects `statusCode`/`status`: 429 becomes `rate_limit` and 5xx
+ * becomes `provider_5xx`, each reading `Retry-After` off `responseHeaders`
+ * when present, and a known network error code (`ECONNRESET`, `ETIMEDOUT`,
+ * `ENOTFOUND`, `ECONNREFUSED`, or undici's `UND_ERR_HEADERS_TIMEOUT`,
+ * `UND_ERR_BODY_TIMEOUT`, and `UND_ERR_SOCKET`), on the error or on its
+ * `cause`, becomes `network`. Anything else passes through unclassified,
+ * which `retry_with_policy` treats as non-retryable.
  */
 export function classify_provider_error(err: unknown): unknown {
   if (err === null || typeof err !== 'object') return err
   if (has_retry_kind(err)) return err
   const status = resolve_error_status(err)
-  if (status === 429) return classify_rate_limit(err)
+  if (status === 429) return classify_status(err, 'rate_limit', status)
   if (status !== undefined && status >= 500 && status < 600) {
-    return with_error_message(err, { kind: 'provider_5xx', status })
+    return classify_status(err, 'provider_5xx', status)
   }
   return classify_network_error(err) ?? err
 }
