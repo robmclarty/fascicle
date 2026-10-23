@@ -209,11 +209,13 @@ export function create_engine(config: EngineConfig): Engine {
   assert_cache_setting(config.defaults?.cache, 'defaults.cache')
   assert_capture_level(config.defaults?.capture, 'defaults.capture')
 
-  const get_internals = (): EngineInternals =>
-    build_internals(
+  const get_internals = (): EngineInternals => ({
+    ...build_internals(
       { pricing, adapters, default_retry, default_effort, default_max_steps },
       config.defaults,
-    )
+    ),
+    redact_capture: config.redact_capture,
+  })
 
   let disposed = false
   let dispose_promise: Promise<void> | undefined

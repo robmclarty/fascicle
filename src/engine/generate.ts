@@ -19,6 +19,7 @@ import type {
   AiSdkTelemetrySettings,
   CacheSetting,
   CaptureLevel,
+  CapturePayload,
   CostBreakdown,
   EffortLevel,
   FinishReason,
@@ -112,6 +113,7 @@ export type EngineInternals = {
   readonly default_tool_call_repair_attempts?: number
   readonly default_max_tool_calls_per_step?: number
   readonly default_provider_options?: Readonly<Record<string, Readonly<Record<string, unknown>>>>
+  readonly redact_capture?: ((payload: CapturePayload) => unknown) | undefined
 }
 
 /**
@@ -1375,6 +1377,7 @@ export async function generate<T = string>(
       level: opts.capture ?? engine.default_capture ?? 'off',
       call_span_id: generate_span,
       settings: () => capture_settings(opts, target, turn),
+      redact: engine.redact_capture,
     },
   })
 

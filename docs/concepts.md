@@ -200,9 +200,11 @@ A captured `request` takes one of three shapes:
 | --- | --- | --- |
 | A call's first | `{ settings, tools, messages }` | The provider, the model, and the call's settings, each tool as `{ name, description, input_schema }`, and every message that the turn sent, system prompts included |
 | One that extends the last | `{ appended }` | The messages that the turn added after everything the turn before it sent |
-| Any other | `{ messages, reshaped: true }` | The whole array, after a `prepare_step` that changed what an earlier turn sent, or after a turn whose payload was dropped |
+| Any other | `{ messages, reshaped: true }` | The whole array, whenever it doesn't extend the last turn that was recorded: after a `prepare_step` that changed what an earlier turn sent, or after a turn whose payload was dropped |
 
 Each payload is a copy that JSON can hold, taken as the turn goes out, so what you read is what the turn sent, whatever the loop did to the conversation afterward. An image's bytes become their base64 text beside its `media_type`. `settings` holds `provider`, `model_id`, `effort`, and whichever of `cache`, `temperature`, `max_tokens`, `top_p`, `provider_options`, and `schema` your call had. Its `provider_options` are the ones that you and the engine defaults set, before an adapter adds the keys that it derives from `effort` or `cache`, and `schema` and each `input_schema` are JSON Schema, left out when a schema can't be written as one. A value that JSON can't hold, such as a BigInt, drops that turn's payload and leaves your call running.
+
+An engine's `redact_capture` (see [configuration.md](./configuration.md#the-config-shape)) sees each payload before the trajectory does, and records what it returns. When a payload can't be built, or the redactor throws or returns a promise, nothing is recorded for it, and the turn records `{ kind: 'capture_redaction_failed', step_index, span_id, payload_kind }` instead, where `payload_kind` is `'request'` or `'response'` and `span_id` is the turn's step span.
 
 Trajectory writes are never load-bearing, and a logger that throws doesn't fail the run. Keep your own loggers equally forgiving.
 

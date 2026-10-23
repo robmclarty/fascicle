@@ -20,6 +20,7 @@ export type {
   BedrockCredentials,
   CacheSetting,
   CaptureLevel,
+  CapturePayload,
   CostBreakdown,
   EffortLevel,
   Engine,

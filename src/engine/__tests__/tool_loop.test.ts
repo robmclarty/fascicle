@@ -18,6 +18,8 @@ import {
 } from '../tool_loop.js'
 import type {
   AssistantContentPart,
+  CapturePayload,
+  Engine,
   Message,
   StreamChunk,
   Tool,
@@ -25,6 +27,7 @@ import type {
   UsageTotals,
 } from '../types.js'
 import { tool_error, tool_approval_denied_error, aborted_error } from '../errors.js'
+import { create_engine } from '../create_engine.js'
 import { create_pricing_missing_dedup } from '../trajectory.js'
 import { decompose_total_cost } from '../pricing.js'
 import { to_chat_messages } from '../providers/openai_compatible_native.js'
@@ -3091,7 +3094,7 @@ describe('capture', () => {
     expect(third?.['appended']).toHaveLength(2)
   })
 
-  it('drops a payload that holds a BigInt, and the call goes on', async () => {
+  it('drops a payload that holds a BigInt, says so, and the call goes on', async () => {
     const big: Tool = { ...sum, input_schema: z.object({ n: z.bigint() }) }
     const { engine } = make_loop_engine([[{ name: 'sum', input: { n: 1n } }], 'three'])
     const { trajectory, of_kind } = recorder()
@@ -3103,6 +3106,10 @@ describe('capture', () => {
     const received = of_kind('response_received')
     expect('content' in (received[0] ?? {})).toBe(false)
     expect(received[1]?.['content']).toStrictEqual([{ type: 'text', text: 'three' }])
+    expect(of_kind('capture_redaction_failed').map(({ ts: _ts, ...rest }) => rest)).toStrictEqual([
+      { kind: 'capture_redaction_failed', step_index: 0, span_id: 'engine.generate.step-2', payload_kind: 'response' },
+      { kind: 'capture_redaction_failed', step_index: 1, span_id: 'engine.generate.step-3', payload_kind: 'request' },
+    ])
   })
 
   it('records the whole array, marked reshaped, on the turn after a dropped one', async () => {
@@ -3307,5 +3314,170 @@ describe('capture', () => {
     })
     expect(requests_of(wire_events.of_kind)).toStrictEqual(requests_of(turns_events.of_kind))
     expect(requests_of(wire_events.of_kind)[0]).toBeDefined()
+  })
+})
+
+describe('redact_capture', () => {
+  const sum: Tool = {
+    name: 'sum',
+    description: 'add the numbers up',
+    input_schema: z.object({ n: z.number() }),
+    execute: () => 3,
+  }
+  const call_turn: TurnResult = {
+    text: '',
+    tool_calls: [{ id: 'c1', name: 'sum', input: { n: 1 } }],
+    finish_reason: 'tool_calls',
+    usage: zero_usage,
+  }
+  const done_turn: TurnResult = { text: 'three', tool_calls: [], finish_reason: 'stop', usage: zero_usage }
+
+  /** An engine whose one provider plays `turns` in order, with `redact_capture` set. */
+  function redacting_engine(redact_capture: (payload: CapturePayload) => unknown, turns: ReadonlyArray<TurnResult>): Engine {
+    let played = 0
+    return create_engine({
+      providers: { loop: {} },
+      custom_providers: {
+        loop: () => ({
+          kind: 'native',
+          name: 'loop',
+          supports: () => true,
+          invoke_turn: async () => {
+            const turn = turns[played]
+            played += 1
+            if (turn === undefined) throw new Error('script exhausted')
+            return turn
+          },
+        }),
+      },
+      defaults: { provider: 'loop', model: 'loop' },
+      redact_capture,
+    })
+  }
+
+  /** Run one captured call and return its events, stamps left off. */
+  async function run_captured(
+    engine: Engine,
+    capture: 'off' | 'turns' = 'turns',
+    prompt: string | Message[] = 'add',
+  ): Promise<Array<Record<string, unknown>>> {
+    const events: Array<Record<string, unknown>> = []
+    let spans = 0
+    await engine.generate({
+      prompt,
+      tools: [sum],
+      capture,
+      trajectory: {
+        record: (e) => {
+          const { ts: _ts, ...rest } = e
+          events.push(rest)
+        },
+        start_span: (name) => {
+          spans += 1
+          return `${name}-${String(spans)}`
+        },
+        end_span: () => {},
+      },
+    })
+    return events
+  }
+
+  const of_kind = (events: Array<Record<string, unknown>>, kind: string): Array<Record<string, unknown>> =>
+    events.filter((e) => e['kind'] === kind)
+
+  it('records what the redactor returns in place of each payload, and hands it the JSON copy', async () => {
+    const seen: CapturePayload[] = []
+    const engine = redacting_engine((payload) => {
+      seen.push(payload)
+      return { scrubbed: payload.kind }
+    }, [call_turn, done_turn])
+    const image = new Uint8Array([137, 80, 78, 71])
+    const events = await run_captured(engine, 'turns', [
+      { role: 'user', content: [{ type: 'image', image, media_type: 'image/png' }] },
+    ])
+    expect(of_kind(events, 'request_sent').map((e) => e['request'])).toStrictEqual([
+      { scrubbed: 'request' },
+      { scrubbed: 'request' },
+    ])
+    expect(of_kind(events, 'response_received').map((e) => e['content'])).toStrictEqual([
+      { scrubbed: 'response' },
+      { scrubbed: 'response' },
+    ])
+    expect(seen.map((p) => [p.kind, p.step_index])).toStrictEqual([
+      ['request', 0],
+      ['response', 0],
+      ['request', 1],
+      ['response', 1],
+    ])
+    expect(seen[0]?.data).toMatchObject({
+      messages: [{ role: 'user', content: [{ type: 'image', image: 'iVBORw==', media_type: 'image/png' }] }],
+    })
+    expect(seen[1]?.data).toStrictEqual([{ type: 'tool_call', id: 'c1', name: 'sum', input: { n: 1 } }])
+    expect(of_kind(events, 'capture_redaction_failed')).toStrictEqual([])
+  })
+
+  it('records nothing for a payload the redactor drops, and the next turn records its whole array', async () => {
+    const engine = redacting_engine(
+      (payload) => (payload.kind === 'request' && payload.step_index === 0 ? undefined : payload.data),
+      [call_turn, done_turn],
+    )
+    const events = await run_captured(engine)
+    const sent = of_kind(events, 'request_sent')
+    expect('request' in (sent[0] ?? {})).toBe(false)
+    const second = sent[1]?.['request'] as { messages: unknown[]; reshaped: boolean } | undefined
+    expect(second?.reshaped).toBe(true)
+    expect(second?.messages).toHaveLength(3)
+    expect(of_kind(events, 'capture_redaction_failed')).toStrictEqual([])
+  })
+
+  it('fails closed when the redactor throws: nothing recorded, and capture_redaction_failed names the payload', async () => {
+    const engine = redacting_engine((payload) => {
+      if (payload.kind === 'response') throw new Error('redactor broke')
+      return payload.data
+    }, [call_turn, done_turn])
+    const events = await run_captured(engine)
+    expect(of_kind(events, 'response_received').filter((e) => 'content' in e)).toStrictEqual([])
+    expect(of_kind(events, 'capture_redaction_failed')).toStrictEqual([
+      { kind: 'capture_redaction_failed', step_index: 0, span_id: 'engine.generate.step-2', payload_kind: 'response' },
+      { kind: 'capture_redaction_failed', step_index: 1, span_id: 'engine.generate.step-3', payload_kind: 'response' },
+    ])
+    expect(of_kind(events, 'request_sent').map((e) => 'request' in e)).toStrictEqual([true, true])
+  })
+
+  it('fails closed on a redactor that returns a thenable, and leaves no rejection unhandled', async () => {
+    const engine = redacting_engine((payload) => (payload.kind === 'request' ? Promise.reject(new Error('async')) : Promise.resolve(payload.data)), [
+      call_turn,
+      done_turn,
+    ])
+    const events = await run_captured(engine)
+    expect(of_kind(events, 'request_sent').filter((e) => 'request' in e)).toStrictEqual([])
+    expect(of_kind(events, 'response_received').filter((e) => 'content' in e)).toStrictEqual([])
+    expect(of_kind(events, 'capture_redaction_failed').map((e) => [e['step_index'], e['payload_kind']])).toStrictEqual([
+      [0, 'request'],
+      [0, 'response'],
+      [1, 'request'],
+      [1, 'response'],
+    ])
+  })
+
+  it('records a null the redactor returns, as it records any value but undefined', async () => {
+    const events = await run_captured(redacting_engine(() => null, [done_turn]))
+    expect(of_kind(events, 'request_sent').map((e) => e['request'])).toStrictEqual([null])
+    expect(of_kind(events, 'response_received').map((e) => e['content'])).toStrictEqual([null])
+    expect(of_kind(events, 'capture_redaction_failed')).toStrictEqual([])
+  })
+
+  it('runs a capture with no trajectory attached, a payload that fails included', async () => {
+    const { engine } = make_loop_engine([[{ name: 'sum', input: { n: 1n } }], 'three'])
+    const big: Tool = { ...sum, input_schema: z.object({ n: z.bigint() }) }
+    const result = await engine.generate({ prompt: 'add', tools: [big], capture: 'turns' })
+    expect(result.content).toBe('three')
+  })
+
+  it('never calls the redactor when the call captures nothing', async () => {
+    const redactor = vi.fn((payload: CapturePayload) => payload.data)
+    const events = await run_captured(redacting_engine(redactor, [call_turn, done_turn]), 'off')
+    expect(redactor).not.toHaveBeenCalled()
+    expect(of_kind(events, 'capture_redaction_failed')).toStrictEqual([])
   })
 })

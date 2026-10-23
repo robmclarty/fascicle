@@ -51,6 +51,7 @@ import type { TrajectoryLogger } from '#core'
 import type {
   AssistantContentPart,
   CaptureLevel,
+  CapturePayload,
   CostBreakdown,
   FinishReason,
   Message,
@@ -74,6 +75,7 @@ import {
 } from './errors.js'
 import {
   record_cache_miss,
+  record_capture_redaction_failed,
   record_cost,
   record_request_sent,
   record_response_received,
@@ -171,13 +173,15 @@ export type CallMemory = {
 
 /**
  * How a generate call captures its turns: the level, the `engine.generate`
- * span every request_sent names, and the call's settings as its first turn
- * records them, built only when a turn asks for them.
+ * span every request_sent names, the call's settings as its first turn
+ * records them, built only when a turn asks for them, and the engine's
+ * redactor, which every payload passes through on its way to the trajectory.
  */
 export type LoopCapture = {
   readonly level: CaptureLevel
   readonly call_span_id: string | undefined
   readonly settings: () => Readonly<Record<string, unknown>>
+  readonly redact?: ((payload: CapturePayload) => unknown) | undefined
 }
 
 export type ToolLoopResult = {
@@ -746,6 +750,57 @@ function capture_response(turn: TurnResult): unknown {
   return content
 }
 
+const REDACTION_FAILED: unique symbol = Symbol('redaction_failed')
+
+/**
+ * True for a promise, or any other object with a `then` method.
+ */
+function is_thenable(value: unknown): value is PromiseLike<unknown> {
+  return typeof value === 'object' && value !== null && typeof Reflect.get(value, 'then') === 'function'
+}
+
+/**
+ * Hand a payload to the redactor, and return what it returned, or
+ * REDACTION_FAILED when it threw or returned a thenable. The engine records
+ * synchronously, so it can't wait for a thenable, and a rejection it leaves
+ * behind is swallowed rather than left unhandled.
+ */
+function apply_redactor(redact: (payload: CapturePayload) => unknown, payload: CapturePayload): unknown {
+  try {
+    const recorded = redact(payload)
+    if (!is_thenable(recorded)) return recorded
+    Promise.resolve(recorded).catch(() => undefined)
+  } catch {
+    // A redactor that throws fails closed, below.
+  }
+  return REDACTION_FAILED
+}
+
+/**
+ * What the trajectory records for a captured payload: the payload itself,
+ * or what the engine's redactor returned in its place, `undefined` recording
+ * nothing. A payload that couldn't be built (`data` undefined), and a
+ * redactor that failed, record nothing and say so with
+ * `capture_redaction_failed`, so nothing the redactor would have scrubbed is
+ * written.
+ */
+function redact_payload(
+  config: ToolLoopConfig,
+  capture: LoopCapture,
+  payload: CapturePayload,
+  span_id: string | undefined,
+): unknown {
+  const recorded =
+    payload.data === undefined
+      ? REDACTION_FAILED
+      : capture.redact === undefined
+        ? payload.data
+        : apply_redactor(capture.redact, payload)
+  if (recorded !== REDACTION_FAILED) return recorded
+  record_capture_redaction_failed(config.trajectory, { step_index: payload.step_index, span_id, payload_kind: payload.kind })
+  return undefined
+}
+
 /**
  * Invoke the transport seam once for one turn, bracketed by request_sent /
  * response_received events, which carry the request and the reply under
@@ -761,14 +816,22 @@ async function invoke_turn(
   try {
     const request_messages = await apply_prepare_step(config, step_index)
     const capture = active_capture(config)
+    const request =
+      capture !== undefined
+        ? redact_payload(
+            config,
+            capture,
+            { kind: 'request', step_index, data: capture_request(config, capture, memory, step_index, request_messages) },
+            step_span,
+          )
+        : undefined
+    // The turn after a request that went unrecorded records its whole array.
+    if (request === undefined) memory.captured_messages = undefined
     record_request_sent(config.trajectory, {
       step_index,
       span_id: step_span,
       call_span_id: config.capture?.call_span_id,
-      request:
-        capture !== undefined
-          ? capture_request(config, capture, memory, step_index, request_messages)
-          : undefined,
+      request,
     })
     const turn = await config.invoke_once({
       step_index,
@@ -783,7 +846,9 @@ async function invoke_turn(
       step_index,
       turn,
       step_span,
-      capture !== undefined ? capture_response(turn) : undefined,
+      capture !== undefined
+        ? redact_payload(config, capture, { kind: 'response', step_index, data: capture_response(turn) }, step_span)
+        : undefined,
     )
     note_cache_traffic(config, memory, turn.usage, {
       step_index,

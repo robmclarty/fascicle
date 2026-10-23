@@ -396,3 +396,76 @@ describe('create_otel_trajectory_logger', () => {
     expect(span?.events.map((e) => e.name)).toEqual(['event'])
   })
 })
+
+describe('captured payloads on the OTel bridge', () => {
+  /** The attributes of every span event the logger added, by event name. */
+  function events_of(exporter: InMemorySpanExporter): Array<{ name: string; attributes: Record<string, unknown> }> {
+    return exporter
+      .getFinishedSpans()
+      .flatMap((span) => span.events.map((e) => ({ name: e.name, attributes: { ...e.attributes } })))
+  }
+
+  it('records the size of a captured payload in place of the payload', () => {
+    const { tracer, exporter } = harness()
+    const logger = create_otel_trajectory_logger({ tracer })
+    const span = logger.start_span('engine.generate.step', { index: 0 })
+    const request = { messages: [{ role: 'user', content: 'café' }] }
+    const content = [{ type: 'text', text: 'ok' }]
+    const body = { model: 'm', messages: [] }
+    logger.record({ kind: 'request_sent', step_index: 0, span_id: span, call_span_id: 'g', request })
+    logger.record({ kind: 'response_received', step_index: 0, span_id: span, input_tokens: 3, content })
+    logger.record({ kind: 'request_wire', step_index: 0, span_id: span, url: 'https://x', body })
+    logger.end_span(span)
+    expect(events_of(exporter)).toStrictEqual([
+      {
+        name: 'request_sent',
+        attributes: {
+          'fascicle.step_index': 0,
+          'fascicle.call_span_id': 'g',
+          'fascicle.capture.bytes': Buffer.byteLength(JSON.stringify(request), 'utf8'),
+        },
+      },
+      {
+        name: 'response_received',
+        attributes: {
+          'fascicle.step_index': 0,
+          'fascicle.input_tokens': 3,
+          'fascicle.capture.bytes': JSON.stringify(content).length,
+        },
+      },
+      {
+        name: 'request_wire',
+        attributes: {
+          'fascicle.step_index': 0,
+          'fascicle.url': 'https://x',
+          'fascicle.capture.bytes': JSON.stringify(body).length,
+        },
+      },
+    ])
+    expect(Buffer.byteLength(JSON.stringify(request), 'utf8')).toBe(JSON.stringify(request).length + 1)
+  })
+
+  it('names the size under its attribute_prefix, and adds none to an event without a payload', () => {
+    const { tracer, exporter } = harness()
+    const logger = create_otel_trajectory_logger({ tracer, attribute_prefix: 'fx.' })
+    const span = logger.start_span('engine.generate.step', { index: 0 })
+    logger.record({ kind: 'request_sent', step_index: 0, span_id: span, request: 'redacted' })
+    logger.record({ kind: 'request_sent', step_index: 1, span_id: span })
+    logger.end_span(span)
+    expect(events_of(exporter).map((e) => e.attributes)).toStrictEqual([
+      { 'fx.step_index': 0, 'fx.capture.bytes': 10 },
+      { 'fx.step_index': 1 },
+    ])
+  })
+
+  it("keeps an emitted event's own content and body", () => {
+    const { tracer, exporter } = harness()
+    const logger = create_otel_trajectory_logger({ tracer })
+    const span = logger.start_span('step', {})
+    logger.record({ kind: 'emit', span_id: span, content: 'hello', body: 'world' })
+    logger.end_span(span)
+    expect(events_of(exporter)).toStrictEqual([
+      { name: 'emit', attributes: { 'fascicle.content': 'hello', 'fascicle.body': 'world' } },
+    ])
+  })
+})

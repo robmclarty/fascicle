@@ -9,6 +9,7 @@ import {
   end_step_span,
   record_cost,
   record_effort_ignored,
+  record_capture_redaction_failed,
   record_request_sent,
   record_response_received,
   record_schema_validation_failed,
@@ -171,6 +172,17 @@ describe('trajectory helpers', () => {
         finish_reason: 'stop',
         content: [{ type: 'text', text: 'ok' }],
       },
+    ])
+  })
+
+  it('records capture_redaction_failed with the step span only when there is one', () => {
+    const { trajectory, events } = create_recorder()
+    record_capture_redaction_failed(trajectory, { step_index: 2, span_id: 's3', payload_kind: 'request' })
+    record_capture_redaction_failed(trajectory, { step_index: 3, span_id: undefined, payload_kind: 'response' })
+    record_capture_redaction_failed(undefined, { step_index: 4, span_id: 's5', payload_kind: 'wire' })
+    expect(events.filter((e) => e.kind === 'record').map((e) => e.payload)).toStrictEqual([
+      { kind: 'capture_redaction_failed', step_index: 2, span_id: 's3', payload_kind: 'request' },
+      { kind: 'capture_redaction_failed', step_index: 3, payload_kind: 'response' },
     ])
   })
 

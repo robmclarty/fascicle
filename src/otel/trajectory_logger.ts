@@ -156,6 +156,33 @@ function to_attributes(
   return attrs
 }
 
+/**
+ * The engine events that carry a captured payload, and the field that holds
+ * it: a turn's request, the reply's parts, and the body that went on the
+ * wire. A `ctx.emit` event carries its own keys and isn't one of them.
+ */
+const CAPTURED_FIELDS: ReadonlyMap<string, string> = new Map([
+  ['request_sent', 'request'],
+  ['response_received', 'content'],
+  ['request_wire', 'body'],
+])
+
+/**
+ * A recorded event's attributes. A captured payload, which grows with the
+ * conversation, is left out and recorded as `<prefix>capture.bytes`, the
+ * UTF-8 length of its JSON, since an attribute has to stay small.
+ */
+function event_attributes(event: TrajectoryEvent, prefix: string): Attributes {
+  const field = CAPTURED_FIELDS.get(event.kind)
+  // Stryker disable next-line ConditionalExpression: with the first test gone, `undefined in event` looks for a key named "undefined", which no event of another kind carries, so it returns here all the same.
+  if (field === undefined || !(field in event)) return to_attributes(event, prefix)
+  const { [field]: payload, ...rest } = event
+  return {
+    ...to_attributes(rest, prefix),
+    [`${prefix}capture.bytes`]: Buffer.byteLength(safe_json(payload)),
+  }
+}
+
 type OpenSpan = { readonly span: Span; readonly context: Context }
 
 /**
@@ -237,7 +264,7 @@ export function create_otel_trajectory_logger(
       const span = target_for_event(event)
       if (span === undefined) return
       const name = typeof event.kind === 'string' ? event.kind : 'event'
-      span.addEvent(name, to_attributes(event, prefix))
+      span.addEvent(name, event_attributes(event, prefix))
     },
   }
 }

@@ -96,7 +96,7 @@ export function record_request_sent(
     readonly step_index: number
     readonly span_id: string | undefined
     readonly call_span_id: string | undefined
-    readonly request?: Record<string, unknown> | undefined
+    readonly request?: unknown
   },
 ): void {
   if (trajectory === undefined) return
@@ -388,6 +388,28 @@ export function create_pricing_missing_dedup(
       trajectory.record({ kind: 'pricing_missing', provider, model_id })
     },
   }
+}
+
+/**
+ * Record that a captured payload went unrecorded because it couldn't be
+ * built, or because the engine's redactor threw or returned a thenable:
+ * the turn's step index, its step span, and the payload's kind.
+ */
+export function record_capture_redaction_failed(
+  trajectory: TrajectoryLogger | undefined,
+  meta: {
+    readonly step_index: number
+    readonly span_id: string | undefined
+    readonly payload_kind: 'request' | 'response' | 'wire'
+  },
+): void {
+  if (trajectory === undefined) return
+  trajectory.record({
+    kind: 'capture_redaction_failed',
+    step_index: meta.step_index,
+    ...(meta.span_id !== undefined ? { span_id: meta.span_id } : {}),
+    payload_kind: meta.payload_kind,
+  })
 }
 
 /**

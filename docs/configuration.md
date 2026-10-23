@@ -10,6 +10,7 @@ type EngineConfig = {
   custom_providers?: Record<string, ProviderFactory>;
   pricing?: PricingTable;
   defaults?: EngineDefaults;
+  redact_capture?: (payload: CapturePayload) => unknown;   // scrub what `capture` records; see below
 
   // Legacy top-level defaults; prefer `defaults: { ... }`.
   default_retry?: RetryPolicy;
@@ -19,6 +20,17 @@ type EngineConfig = {
 ```
 
 Only `providers` is required.
+
+`redact_capture` sees every payload that `capture` records before the trajectory does, for every call on the engine. That's each turn's `request_sent.request` and each reply's `response_received.content`, handed over as `{ kind: 'request' | 'response', step_index, data }`, where `data` is a fresh copy that you can change in place. Return what to record in its place, or `undefined` to record nothing:
+
+```ts
+const engine = create_engine({
+  providers,
+  redact_capture: ({ kind, data }) => (kind === 'request' ? scrub_emails(data) : data),
+});
+```
+
+It fails closed. A redactor that throws, or that returns a promise, records nothing for that payload, and the turn records `capture_redaction_failed` with the payload's kind, so nothing that it would have scrubbed gets written. It runs synchronously because the engine records as the turn goes out. It covers only what `capture` adds. A run's `model_chunk` events, a tool call's `input` and its result's `output`, and the `raw_text` that `schema_validation_failed` and `tool_call_salvaged` carry are recorded whether or not you capture, and never pass through it.
 
 ## Providers
 
@@ -459,7 +471,7 @@ await engine.generate({ prompt: '...', trajectory });
 
 The bridge maps the `engine.generate` span to an OTel root span, each step to a child span, and every recorded event (tool_call, tool_result, cost, ...) to a span event on the open span. `dispose()` isn't required; spans end as the trajectory closes them.
 
-The span attributes stay flat on purpose. Object-valued span metadata (the per-step and per-call `usage`, `model_resolved`) spreads one level into dotted keys such as `fascicle.usage.input_tokens`, so a dashboard can aggregate the numbers directly; event payloads that carry arbitrary structure (a tool call's input) stay JSON strings, since attribute-per-key over user data would explode cardinality. Every turn lands a `response_received` span event that carries flat token counts and the engine-measured timing (`duration_ms`, plus `first_chunk_ms` when the turn streamed, as every `ai_sdk` and native turn does), every absorbed retry lands a `turn_retry` event with the classified failure kind, HTTP status, and honored backoff delay, and the closing `engine.generate` span reports `step_count` and `tool_call_count` for the call.
+The span attributes stay flat on purpose. Object-valued span metadata (the per-step and per-call `usage`, `model_resolved`) spreads one level into dotted keys such as `fascicle.usage.input_tokens`, so a dashboard can aggregate the numbers directly; event payloads that carry arbitrary structure (a tool call's input) stay JSON strings, since attribute-per-key over user data would explode cardinality. A payload that `capture` records reaches OTel only as its size: the bridge leaves `request_sent.request` and `response_received.content` off the span event and records `fascicle.capture.bytes` (under your `attribute_prefix`), the UTF-8 length of the payload's JSON, so a captured conversation never lands in your tracing backend. Every turn lands a `response_received` span event that carries flat token counts and the engine-measured timing (`duration_ms`, plus `first_chunk_ms` when the turn streamed, as every `ai_sdk` and native turn does), every absorbed retry lands a `turn_retry` event with the classified failure kind, HTTP status, and honored backoff delay, and the closing `engine.generate` span reports `step_count` and `tool_call_count` for the call.
 
 Pass `metrics` to record OTel metric instruments from the same stream, which is what a Grafana or Prometheus pipeline reads without any spans-to-metrics processing:
 

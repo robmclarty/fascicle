@@ -33,6 +33,19 @@ export type CacheSetting = 'off' | '5m' | '1h'
  */
 export type CaptureLevel = 'off' | 'turns' | 'wire'
 
+/**
+ * One captured payload, as `EngineConfig.redact_capture` receives it before
+ * the trajectory does: `'request'` is what a turn's `request_sent` would
+ * carry as `request`, and `'response'` what its `response_received` would
+ * carry as `content`. `data` is a fresh JSON-safe copy, so a redactor may
+ * change it in place, and an image in it is already its base64 text.
+ */
+export type CapturePayload = {
+  readonly kind: 'request' | 'response' | 'wire'
+  readonly step_index: number
+  readonly data: unknown
+}
+
 export type FinishReason =
   | 'stop'
   | 'tool_calls'
@@ -659,6 +672,17 @@ export type EngineConfig = {
   default_effort?: EffortLevel
   default_max_steps?: number
   defaults?: EngineDefaults
+  /**
+   * Scrub or drop each captured payload before the trajectory records it,
+   * for every call on this engine. It returns what to record in the
+   * payload's place, and `undefined` records nothing. A redactor that
+   * throws, or that returns a promise or any other thenable, records
+   * nothing either, and the turn records `capture_redaction_failed` naming
+   * the payload's kind, so nothing that it would have scrubbed is written. It
+   * covers only what `capture` adds, never `model_chunk`, `tool_call.input`,
+   * `tool_result.output`, or the `raw_text` fields. See CapturePayload.
+   */
+  redact_capture?: (payload: CapturePayload) => unknown
 }
 
 export type Engine = {
