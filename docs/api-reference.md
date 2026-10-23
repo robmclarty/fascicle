@@ -335,6 +335,56 @@ delay, and the closing `engine.generate` span carries `step_count` and
 record OTel metric instruments from the same stream; see
 [configuration.md](./configuration.md#layer-1-the-fascicleotel-trajectory-bridge-transport-neutral).
 
+### Rebuilding and Replaying a Captured Turn
+
+```ts
+import { captured_turns, replay_turn } from 'fascicle';
+
+const turn = captured_turns(events).at(-1);      // the last turn a captured run sent
+if (turn !== undefined) {
+  const reply = await replay_turn(engine, turn, {
+    edit: (t) => ({ ...t, messages: [...t.messages, nudge] }),
+  });
+}
+```
+
+A call that captured its turns (`capture: 'turns'` or `'wire'`) wrote each
+turn's request as a delta, so `captured_turns(events)` folds them back into
+the request that each turn sent. It returns a `CapturedTurn` for each one,
+holding the `call_span_id`, the `step_index`, the call's `settings` (a
+`CapturedSettings`) and `tools` (each a `CapturedTool`, `{ name,
+description, input_schema }`), the whole `messages` array with its system
+prompts, and the `response` that the provider returned when the trajectory
+holds it. The events can come in any order. A turn whose request was
+dropped, or that a redactor turned into something that isn't a request, is
+left out until the call's next whole array, and a call whose first turn is
+missing, as in a truncated log, is left out whole.
+
+`replay_turn(engine, turn, options?)` sends one turn again through
+`engine.generate`, as one turn that can't act: `max_steps: 1`, `cache:
+'off'`, `capture: 'off'`, and `system: ''`, so the engine's own default
+system prompt doesn't add a second one. Each tool is rebuilt with an
+`execute` that throws, so a model that calls one comes back with the call
+listed and unexecuted, under `finish_reason: 'max_steps'`. `edit` changes
+the turn before it goes, and `provider` and `model` send it somewhere
+else. A few things to know before you trust a replay:
+
+- **Captured provider options go as they were.** A raw `cache_control`
+  that the call set under `provider_options` still goes out, so use `edit`
+  to drop it when the replay shouldn't cache.
+- **Your engine's defaults fill what the turn left unset.** A captured turn
+  carries only the settings that its call had, so a replaying engine with a
+  default `temperature` sends it.
+- **The schema stays behind.** The captured `settings.schema` isn't sent,
+  so you get the raw reply, and a provider that constrains decoding to a
+  schema doesn't get its response format back.
+- **Tool schemas are JSON Schema draft 2020-12.** They're captured with
+  `to_json_schema`'s defaults, where the AI SDK sends draft-07, so a replay
+  on the `ai_sdk` transport can describe a tool a little differently.
+- **A replay is inert only on the `ai_sdk` and native transports.** An
+  external provider such as `claude_cli` runs its own loop and its own
+  tools, so never replay a turn to one.
+
 ### `model_call` — The Bridge into a Flow
 
 ```ts
@@ -693,7 +743,8 @@ The bench tier adds `BenchCase`, `BenchOptions`, `BenchReport`, `BenchSummary`,
 `ToolCallRecord`, `ToolApprovalHandler`, `ToolApprovalRequest`, `StepRecord`,
 `StepTiming`, `GenerateTiming`, `Throughput`, `UsageTotals`,
 `ClaudeCliProviderReported`, `CostBreakdown`, `Pricing`, `PricingTable`,
-`EffortLevel`, `CacheSetting`, `CaptureLevel`, `CapturePayload`, `EffortTranslation`, `RawProviderUsage`,
+`EffortLevel`, `CacheSetting`, `CaptureLevel`, `CapturePayload`, `CapturedTurn`,
+`CapturedSettings`, `CapturedTool`, `EffortTranslation`, `RawProviderUsage`,
 `PrepareStepContext`, `PrepareStepResult`, `PrepareStepHook`, `RetryPolicy`,
 `RetryFailureKind`, `ProviderConfigMap`, `ProviderInit`, `ResolvedModel`,
 `AiSdkTelemetrySettings`, `ClaudeCliErrorReason`, `BedrockCredentialProvider`,

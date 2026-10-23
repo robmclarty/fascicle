@@ -5,8 +5,9 @@
  * every public type and typed error, plus the provider-authoring surface
  * (`ProviderFactory`, the adapter union, the neutral turn types
  * `TurnRequest`/`TurnResult`, and `default_normalize_usage`) for
- * `custom_providers`, and `claude_cli_reported` for reading the claude CLI's
- * `provider_reported` entry. Built-in adapters and internal orchestration
+ * `custom_providers`, `claude_cli_reported` for reading the claude CLI's
+ * `provider_reported` entry, and `captured_turns`/`replay_turn` for reading
+ * and resending captured turns. Built-in adapters and internal orchestration
  * helpers are not re-exported.
  */
 
@@ -72,6 +73,9 @@ export { default_normalize_usage } from './providers/types.js'
 
 export { throughput } from './throughput.js'
 export type { Throughput } from './throughput.js'
+
+export { captured_turns, replay_turn } from './replay.js'
+export type { CapturedSettings, CapturedTool, CapturedTurn } from './replay.js'
 
 export type {
   AgentDef,

@@ -320,6 +320,24 @@ still ignores it, the model is the problem, and a clearer instruction, a
 schema, or a different model is the fix. See
 [concepts.md](./concepts.md#what-gets-recorded) for the shapes.
 
+To try a fix without running the whole loop again, rebuild the turn and
+send it once more. `captured_turns(events)` folds the trajectory's deltas
+back into each turn's full request, and `replay_turn` sends one of them as a
+single turn that can't run a tool, with an `edit` that rewords the
+instruction:
+
+```ts
+const turn = captured_turns(events).find((t) => t.step_index === 3);
+if (turn !== undefined) {
+  const reply = await replay_turn(engine, turn, {
+    edit: (t) => ({ ...t, messages: [...t.messages.slice(0, -1), reworded] }),
+  });
+}
+```
+
+See [api-reference.md](./api-reference.md#rebuilding-and-replaying-a-captured-turn)
+for what a replay sends.
+
 ## `schema_validation_error`
 
 The model returned text that failed your `schema` after the repair passes

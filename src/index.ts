@@ -47,6 +47,9 @@ export type {
   CacheSetting,
   CaptureLevel,
   CapturePayload,
+  CapturedSettings,
+  CapturedTool,
+  CapturedTurn,
   ClaudeCliErrorReason,
   ClaudeCliProviderReported,
   CostBreakdown,
@@ -93,7 +96,13 @@ export type {
   UserContentPart,
 } from '#engine'
 
-export { claude_cli_reported, default_normalize_usage, throughput } from '#engine'
+export {
+  captured_turns,
+  claude_cli_reported,
+  default_normalize_usage,
+  replay_turn,
+  throughput,
+} from '#engine'
 
 export { model_call, model_step } from './model_call.js'
 export type { ModelCallConfig, ModelCallInput } from './model_call.js'
