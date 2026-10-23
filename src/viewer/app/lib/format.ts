@@ -112,6 +112,15 @@ export type HeaderStatsInput = {
   readonly retries_absorbed: number
   readonly scars: number
   readonly cost_usd: number
+  /** The run's summed input and cache traffic; absent, the header shows no cache stat. */
+  readonly cache?: CacheStatsInput
+}
+
+export type CacheStatsInput = {
+  readonly input_tokens: number
+  readonly cached_input_tokens: number
+  readonly cache_write_tokens: number
+  readonly misses: number
 }
 
 /**
@@ -129,6 +138,38 @@ export type HeaderStatPart = {
 const STAT_SEP: HeaderStatPart = { text: '·', role: 'sep' }
 
 /**
+ * The run's cache hit ratio as a whole percent: the share of its input read
+ * from the prompt cache, or undefined when no turn had cache traffic (reads
+ * plus writes of zero), so a run that only wrote reads 0%.
+ */
+export function format_cache_ratio(cache: CacheStatsInput): string | undefined {
+  if (cache.cached_input_tokens + cache.cache_write_tokens <= 0) return undefined
+  const ratio = cache.input_tokens > 0 ? cache.cached_input_tokens / cache.input_tokens : 0
+  return `${String(Math.round(ratio * 100))}%`
+}
+
+/** The pluralized word for the cache-miss stat. */
+export function miss_word(count: number): string {
+  return count === 1 ? 'MISS' : 'MISSES'
+}
+
+/**
+ * The header's cache parts: `CACHE 87%` once any turn had cache traffic, and
+ * then `2 MISSES` when the run recorded any `cache_miss`, each behind its own
+ * separator. A miss is no failure, so its numeral stays an ordinary value.
+ */
+function cache_stat_parts(cache: CacheStatsInput | undefined): ReadonlyArray<HeaderStatPart> {
+  if (cache === undefined) return []
+  const ratio = format_cache_ratio(cache)
+  if (ratio === undefined) return []
+  const parts: HeaderStatPart[] = [STAT_SEP, { text: 'CACHE', role: 'word' }, { text: ratio, role: 'value' }]
+  if (cache.misses > 0) {
+    parts.push(STAT_SEP, { text: String(cache.misses), role: 'value' }, { text: miss_word(cache.misses), role: 'word' })
+  }
+  return parts
+}
+
+/**
  * The header's right-aligned stat line, in its fixed order and separators,
  * as parts the component renders one span each. The caller chooses the T+
  * value (the fold's clock, or a scrub playhead) because which moment the
@@ -143,6 +184,7 @@ export function header_stat_parts(stats: HeaderStatsInput): ReadonlyArray<Header
     STAT_SEP,
     { text: 'SCARS', role: 'word' },
     { text: String(stats.scars), role: stats.scars > 0 ? 'scar' : 'value' },
+    ...cache_stat_parts(stats.cache),
     STAT_SEP,
     { text: format_cost(stats.cost_usd), role: 'value' },
   ]

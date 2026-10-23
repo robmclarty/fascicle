@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import {
   RUN_ID_PLACEHOLDER,
+  format_cache_ratio,
   format_cost,
   format_duration,
   format_header_stats,
   format_t_plus,
   header_stat_parts,
+  miss_word,
   retry_word,
   short_run_id,
   status_chip,
@@ -204,4 +206,69 @@ describe('status_chip', () => {
       expect(status_chip('offline', run_status)).toEqual({ label: 'OFFLINE', tone: 'offline' })
     },
   )
+})
+
+describe('the cache stat', () => {
+  const base = { t_plus_ms: 130, retries_absorbed: 0, scars: 0, cost_usd: 0.0012 }
+  const cache = (input: number, read: number, written: number, misses = 0) => ({
+    input_tokens: input,
+    cached_input_tokens: read,
+    cache_write_tokens: written,
+    misses,
+  })
+
+  it('reads the run ratio as a whole percent', () => {
+    expect(format_cache_ratio(cache(3300, 900, 2100))).toBe('27%')
+    expect(format_cache_ratio(cache(1000, 995, 0))).toBe('100%')
+    expect(format_cache_ratio(cache(1000, 994, 0))).toBe('99%')
+  })
+
+  it('reads 0% for a run that only wrote, and for traffic with no input', () => {
+    expect(format_cache_ratio(cache(1000, 0, 900))).toBe('0%')
+    expect(format_cache_ratio(cache(0, 5, 0))).toBe('0%')
+  })
+
+  it('has no ratio for a run with no cache traffic, zero counts included', () => {
+    expect(format_cache_ratio(cache(1000, 0, 0))).toBeUndefined()
+    expect(format_cache_ratio(cache(0, 0, 0))).toBeUndefined()
+  })
+
+  it('puts CACHE and the ratio before the cost, and the misses after them', () => {
+    expect(header_stat_parts({ ...base, cache: cache(3300, 900, 2100, 2) })).toEqual([
+      { text: 'T+130MS', role: 'value' },
+      { text: '·', role: 'sep' },
+      { text: '0', role: 'value' },
+      { text: 'RETRIES ABSORBED', role: 'word' },
+      { text: '·', role: 'sep' },
+      { text: 'SCARS', role: 'word' },
+      { text: '0', role: 'value' },
+      { text: '·', role: 'sep' },
+      { text: 'CACHE', role: 'word' },
+      { text: '27%', role: 'value' },
+      { text: '·', role: 'sep' },
+      { text: '2', role: 'value' },
+      { text: 'MISSES', role: 'word' },
+      { text: '·', role: 'sep' },
+      { text: '$0.0012', role: 'value' },
+    ])
+    expect(format_header_stats({ ...base, cache: cache(1000, 0, 900, 1) })).toBe(
+      'T+130MS · 0 RETRIES ABSORBED · SCARS 0 · CACHE 0% · 1 MISS · $0.0012',
+    )
+  })
+
+  it('shows no cache stat without traffic, and no misses without a miss', () => {
+    const plain = 'T+130MS · 0 RETRIES ABSORBED · SCARS 0 · $0.0012'
+    expect(format_header_stats(base)).toBe(plain)
+    expect(format_header_stats({ ...base, cache: cache(1000, 0, 0) })).toBe(plain)
+    expect(format_header_stats({ ...base, cache: cache(1000, 0, 0, 3) })).toBe(plain)
+    expect(format_header_stats({ ...base, cache: cache(1000, 800, 0) })).toBe(
+      'T+130MS · 0 RETRIES ABSORBED · SCARS 0 · CACHE 80% · $0.0012',
+    )
+  })
+
+  it('pluralizes the miss word', () => {
+    expect(miss_word(1)).toBe('MISS')
+    expect(miss_word(0)).toBe('MISSES')
+    expect(miss_word(4)).toBe('MISSES')
+  })
 })

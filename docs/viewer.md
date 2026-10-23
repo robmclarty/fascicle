@@ -113,6 +113,16 @@ the newest event, and the run's running totals on the right,
 `T+130MS · 1 RETRY ABSORBED · SCARS 0 · $0.0000`. Cost under a cent shows four
 decimals, and a cent or more shows two.
 
+A run whose model turns used a prompt cache gets one more stat before the
+cost, `CACHE 87%`, the share of the run's input tokens that came back from the
+cache, summed from every turn's `response_received`. It appears once any turn
+read or wrote cache tokens, so a run that only wrote reads `CACHE 0%`, and a
+run that never cached shows none. When the run recorded a `cache_miss` (a turn
+that read nothing from the cache right after one that had cached), the count
+follows it as `2 MISSES`. A miss isn't a failure, so its numeral stays in the
+white family. [providers.md](./providers.md#prompt-caching) says what causes
+one.
+
 The chip reads LIVE while the run is going. Once the run's `run_end` arrives,
 it says how the run ended (DONE, FAILED, ABORTED, or SUSPENDED), so a finished
 run never looks like it's still live. Whatever the run did, the chip reads

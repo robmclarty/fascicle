@@ -1190,3 +1190,48 @@ describe('wire permissiveness', () => {
     )
   })
 })
+
+describe('cache traffic', () => {
+  const ONE: FlowNode = { kind: 'step', id: 'ask' }
+  const turn = (usage: Record<string, unknown>): Record<string, unknown> => ({
+    kind: 'response_received',
+    step_index: 0,
+    output_tokens: 5,
+    finish_reason: 'stop',
+    ...usage,
+  })
+
+  it('sums input, reads, and writes from response_received, and counts cache_miss', () => {
+    const state = reduce(
+      ONE,
+      stream([
+        turn({ input_tokens: 1000, cached_input_tokens: 0, cache_write_tokens: 900 }),
+        turn({ input_tokens: 1100, cached_input_tokens: 900, cache_write_tokens: 100 }),
+        turn({ input_tokens: 1200, cached_input_tokens: 0, cache_write_tokens: 1100 }),
+        { kind: 'cache_miss', step_index: 2, previous_cached_tokens: 1000, input_tokens: 1200, after_prepare_step: false },
+      ]),
+    )
+    expect(state.input_tokens).toBe(3300)
+    expect(state.cached_input_tokens).toBe(900)
+    expect(state.cache_write_tokens).toBe(2100)
+    expect(state.cache_misses).toBe(1)
+  })
+
+  it('counts a missing or unusable field as zero', () => {
+    const state = reduce(
+      ONE,
+      stream([turn({ input_tokens: 40 }), turn({ input_tokens: 'many', cached_input_tokens: null })]),
+    )
+    expect(state.input_tokens).toBe(40)
+    expect(state.cached_input_tokens).toBe(0)
+    expect(state.cache_write_tokens).toBe(0)
+    expect(state.cache_misses).toBe(0)
+  })
+
+  it('starts every sum at zero', () => {
+    const state = initial_state(ONE)
+    expect([state.input_tokens, state.cached_input_tokens, state.cache_write_tokens, state.cache_misses]).toEqual([
+      0, 0, 0, 0,
+    ])
+  })
+})

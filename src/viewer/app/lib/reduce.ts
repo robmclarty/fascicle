@@ -126,6 +126,15 @@ export type CanvasState = {
   readonly scars: number
   readonly cost_usd: number
   readonly unattributed_usd: number
+  /**
+   * The run's model input, summed from every `response_received`: all of it,
+   * the part read from the prompt cache, and the part written to it, which
+   * is what the header's cache stat reads.
+   */
+  readonly input_tokens: number
+  readonly cached_input_tokens: number
+  readonly cache_write_tokens: number
+  readonly cache_misses: number
   readonly nodes: ReadonlyMap<string, NodeRuntime>
   readonly spans: ReadonlyMap<string, SpanInfo>
   readonly open_spans: ReadonlyArray<string>
@@ -167,6 +176,10 @@ export function initial_state(structure: StructureNode | null): CanvasState {
     scars: 0,
     cost_usd: 0,
     unattributed_usd: 0,
+    input_tokens: 0,
+    cached_input_tokens: 0,
+    cache_write_tokens: 0,
+    cache_misses: 0,
     nodes: index.nodes,
     spans: new Map(),
     open_spans: [],
@@ -261,6 +274,10 @@ export function apply_event(state: CanvasState, value: unknown): CanvasState {
       return on_turn_retry(next, event)
     case 'cost':
       return on_cost(next, event)
+    case 'response_received':
+      return on_response_received(next, event)
+    case 'cache_miss':
+      return { ...next, cache_misses: next.cache_misses + 1 }
     case 'run_end':
       return on_run_end(next, event)
     default:
@@ -615,6 +632,20 @@ function on_cost(state: CanvasState, event: EventRecord): CanvasState {
   const nodes = new Map(state.nodes)
   nodes.set(node_id, { ...node, cost_usd: node.cost_usd + total })
   return { ...state, cost_usd, nodes }
+}
+
+/**
+ * A model turn's usage rolls into the run's input totals, a field the event
+ * leaves out counting as zero. The header reads the cache stat from these
+ * sums, so the reducer keeps the raw counts and the formatter the ratio.
+ */
+function on_response_received(state: CanvasState, event: EventRecord): CanvasState {
+  return {
+    ...state,
+    input_tokens: state.input_tokens + (num(event, 'input_tokens') ?? 0),
+    cached_input_tokens: state.cached_input_tokens + (num(event, 'cached_input_tokens') ?? 0),
+    cache_write_tokens: state.cache_write_tokens + (num(event, 'cache_write_tokens') ?? 0),
+  }
 }
 
 /** Narrow a wire status string to the known run outcomes, without a cast. */

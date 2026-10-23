@@ -97,6 +97,12 @@ export function Canvas(props: CanvasProps): JSX.Element {
       retries_absorbed: props.session.state.retries_absorbed,
       scars: props.session.state.scars,
       cost_usd: props.session.state.cost_usd,
+      cache: {
+        input_tokens: props.session.state.input_tokens,
+        cached_input_tokens: props.session.state.cached_input_tokens,
+        cache_write_tokens: props.session.state.cache_write_tokens,
+        misses: props.session.state.cache_misses,
+      },
     }),
   )
   return (
