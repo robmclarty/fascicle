@@ -6,12 +6,15 @@
  * hour"), which want real OTel metric instruments rather than a
  * spans-to-metrics pipeline. This recorder listens to the same trajectory
  * events the span bridge mirrors and records the GenAI semantic-convention
- * client histograms, plus two Fascicle-named instruments for the data the
- * conventions do not cover yet (cost, absorbed retries).
+ * client histograms, plus three Fascicle-named instruments for the data the
+ * conventions do not cover yet (cost, absorbed retries, cache traffic).
  *
  * Instruments and sources:
  * - `gen_ai.client.token.usage` ({token}) from `response_received`, one
  *   point per direction via `gen_ai.token.type`.
+ * - `fascicle.client.cache.token.usage` ({token}) from `response_received`'s
+ *   `cached_input_tokens` and `cache_write_tokens`, one point per direction
+ *   above zero via `fascicle.cache.direction` (`read` or `write`).
  * - `gen_ai.client.operation.duration` (s) from `response_received`
  *   `duration_ms`, the model-only round trip.
  * - `gen_ai.client.operation.time_to_first_chunk` (s) from
@@ -123,6 +126,11 @@ export function create_metrics_recorder(options: OtelMetricsOptions): MetricsRec
     description: 'Tool execution duration',
     advice: { explicitBucketBoundaries: DURATION_BOUNDARIES },
   })
+  const cache_token_usage: Histogram = meter.createHistogram('fascicle.client.cache.token.usage', {
+    unit: '{token}',
+    description: 'Number of input tokens read from or written to the prompt cache per model turn',
+    advice: { explicitBucketBoundaries: TOKEN_BOUNDARIES },
+  })
   const cost: Histogram = meter.createHistogram('fascicle.client.operation.cost', {
     unit: 'usd',
     description: 'Estimated cost per model turn',
@@ -144,8 +152,18 @@ export function create_metrics_recorder(options: OtelMetricsOptions): MetricsRec
     return attrs
   }
 
+  // A provider that caches reports zero counts on a turn that didn't, so a
+  // direction records a point only above zero.
+  const record_cache_tokens = (event: TrajectoryEvent, base: Attributes): void => {
+    const reads = event_number(event, 'cached_input_tokens') ?? 0
+    if (reads > 0) cache_token_usage.record(reads, { ...base, 'fascicle.cache.direction': 'read' })
+    const writes = event_number(event, 'cache_write_tokens') ?? 0
+    if (writes > 0) cache_token_usage.record(writes, { ...base, 'fascicle.cache.direction': 'write' })
+  }
+
   const on_response_received = (event: TrajectoryEvent): void => {
     const base = base_attributes()
+    record_cache_tokens(event, base)
     const input = event_number(event, 'input_tokens')
     if (input !== undefined) {
       token_usage.record(input, { ...base, 'gen_ai.token.type': 'input' })

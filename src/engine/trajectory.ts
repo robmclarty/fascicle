@@ -145,12 +145,57 @@ export function record_response_received(
   if (usage.cache_write_1h_tokens !== undefined) {
     event['cache_write_1h_tokens'] = usage.cache_write_1h_tokens
   }
+  const ratio = cache_hit_ratio(usage)
+  if (ratio !== undefined) event['cache_hit_ratio'] = ratio
   if (timing !== undefined) {
     event['started_at'] = timing.started_at
     event['duration_ms'] = timing.duration_ms
     if (timing.first_chunk_ms !== undefined) event['first_chunk_ms'] = timing.first_chunk_ms
   }
   trajectory.record({ kind: 'response_received', ...event })
+}
+
+/**
+ * The share of a turn's input that it read from the cache,
+ * `cached_input_tokens / input_tokens` rounded to three decimals, since
+ * `input_tokens` counts the cache reads and writes too. Undefined on a turn
+ * with no cache traffic (reads plus writes of zero), because the providers
+ * that cache report zero counts on a turn that didn't, and undefined when
+ * the turn reported no input.
+ */
+export function cache_hit_ratio(usage: UsageTotals): number | undefined {
+  const reads = usage.cached_input_tokens ?? 0
+  if (reads + (usage.cache_write_tokens ?? 0) <= 0 || usage.input_tokens <= 0) return undefined
+  return Math.round((reads / usage.input_tokens) * 1000) / 1000
+}
+
+/**
+ * Record a `cache_miss`: a turn that read nothing from the cache right after
+ * a turn of the same generate call that read or wrote some. It names how
+ * many tokens the previous turn cached (`previous_cached_tokens`, its reads
+ * plus its writes), this turn's input, and whether `prepare_step` replaced
+ * this turn's messages, which is the commonest way to change the top of the
+ * array.
+ */
+export function record_cache_miss(
+  trajectory: TrajectoryLogger | undefined,
+  meta: {
+    readonly step_index: number
+    readonly span_id: string | undefined
+    readonly previous_cached_tokens: number
+    readonly input_tokens: number
+    readonly after_prepare_step: boolean
+  },
+): void {
+  if (trajectory === undefined) return
+  trajectory.record({
+    kind: 'cache_miss',
+    step_index: meta.step_index,
+    ...(meta.span_id !== undefined ? { span_id: meta.span_id } : {}),
+    previous_cached_tokens: meta.previous_cached_tokens,
+    input_tokens: meta.input_tokens,
+    after_prepare_step: meta.after_prepare_step,
+  })
 }
 
 /**

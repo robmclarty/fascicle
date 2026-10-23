@@ -140,6 +140,57 @@ describe('create_otel_trajectory_logger metrics option', () => {
     expect(retries.dataPoints[0]?.attributes['gen_ai.provider.name']).toBe('openai')
   })
 
+  it('records cache reads and writes as fascicle.client.cache.token.usage, a point per direction above zero', async () => {
+    const { meter, flush } = harness()
+    const logger = create_otel_trajectory_logger({ tracer: tracer(), metrics: { meter } })
+    const g = logger.start_span('engine.generate', { provider: 'anthropic', model_id: 'claude-x' })
+    const turn = (cached: number | undefined, written: number | undefined): void => {
+      logger.record({
+        kind: 'response_received',
+        step_index: 0,
+        input_tokens: 1000,
+        output_tokens: 5,
+        finish_reason: 'stop',
+        ...(cached === undefined ? {} : { cached_input_tokens: cached }),
+        ...(written === undefined ? {} : { cache_write_tokens: written }),
+      })
+    }
+    turn(0, 900)
+    turn(900, 0)
+    turn(0, 0)
+    turn(undefined, undefined)
+    logger.end_span(g, {})
+
+    const cache = by_name(await flush(), 'fascicle.client.cache.token.usage')
+    expect(cache.descriptor.unit).toBe('{token}')
+    expect(cache.descriptor.description).toBe(
+      'Number of input tokens read from or written to the prompt cache per model turn',
+    )
+    const boundaries = (point: (typeof cache.dataPoints)[number] | undefined): unknown =>
+      point !== undefined && typeof point.value === 'object'
+        ? (point.value as { buckets?: { boundaries?: unknown } }).buckets?.boundaries
+        : undefined
+    expect(boundaries(cache.dataPoints[0])).toStrictEqual([
+      1, 4, 16, 64, 256, 1024, 4096, 16384, 65536, 262144, 1048576, 4194304,
+    ])
+    const read = cache.dataPoints.find((p) => p.attributes['fascicle.cache.direction'] === 'read')
+    const write = cache.dataPoints.find((p) => p.attributes['fascicle.cache.direction'] === 'write')
+    expect(cache.dataPoints).toHaveLength(2)
+    expect(read?.attributes).toEqual({
+      'gen_ai.operation.name': 'chat',
+      'gen_ai.provider.name': 'anthropic',
+      'gen_ai.request.model': 'claude-x',
+      'fascicle.cache.direction': 'read',
+    })
+    expect(point_sum(read)).toBe(900)
+    expect(point_sum(write)).toBe(900)
+    // One point each: the zero counts and the uncached turn recorded nothing.
+    const count = (point: (typeof cache.dataPoints)[number] | undefined): unknown =>
+      point !== undefined && typeof point.value === 'object' ? (point.value as { count?: number }).count : undefined
+    expect(count(read)).toBe(1)
+    expect(count(write)).toBe(1)
+  })
+
   it('drops provider/model attributes outside an open engine.generate span', async () => {
     const { meter, flush } = harness()
     const logger = create_otel_trajectory_logger({ tracer: tracer(), metrics: { meter } })

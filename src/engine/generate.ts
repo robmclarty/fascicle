@@ -990,8 +990,9 @@ type LoopConfigInputs<T> = {
 /**
  * Assemble the ToolLoopConfig base shared by every loop invocation of one
  * generate call. Everything here is per-call state: the mutable transcript,
- * the pricing lookup, and the pricing_missing dedup all live for exactly one
- * call, which is what lets schema-repair re-invocations share them. The
+ * the pricing lookup, the pricing_missing dedup, and the call memory that
+ * carries the previous turn's cache traffic all live for exactly one call,
+ * which is what lets schema-repair re-invocations share them. The
  * conditional spreads keep optional fields absent rather than undefined for
  * exactOptionalPropertyTypes.
  */
@@ -1026,6 +1027,8 @@ function build_loop_config<T>(
     model_id: target.model_id,
     resolve_pricing,
     pricing_dedup: create_pricing_missing_dedup(cfg.trajectory),
+    // Stryker disable next-line ObjectLiteral: an empty holder reads previous_cache_traffic as undefined, which the loop's `> 0` test treats as 0.
+    call_memory: { previous_cache_traffic: 0 },
     ...(limits.salvage_budget !== undefined
       ? { salvage_budget: limits.salvage_budget }
       : {}),

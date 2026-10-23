@@ -148,7 +148,7 @@ batch would die with the process.
 ## What the Numbers Mean
 
 The bridge records the OpenTelemetry community's standard instruments for
-model calls (the GenAI semantic conventions), plus two Fascicle-named ones
+model calls (the GenAI semantic conventions), plus three Fascicle-named ones
 for data the conventions do not cover yet. Prometheus stores each under a
 flattened name:
 
@@ -158,6 +158,7 @@ flattened name:
 | `gen_ai_client_operation_duration_seconds` | wall-clock time of one successful model round trip, with retries and tool time excluded |
 | `gen_ai_client_operation_time_to_first_chunk_seconds` | how long the first streamed chunk took to arrive (recorded on every turn that streamed, which every `ai_sdk` and native turn does) |
 | `gen_ai_execute_tool_duration_seconds` | how long each tool ran, labelled with `gen_ai_tool_name` |
+| `fascicle_client_cache_token_usage` | input tokens per model turn that the provider's prompt cache served or stored, split by the `fascicle_cache_direction` label into `read` and `write`, with a point only for a direction above zero |
 | `fascicle_client_operation_cost_usd` | cost per turn, from each `cost` event (an estimate from the engine's pricing table, or the charge that OpenRouter reports on `transport: 'native'`) |
 | `fascicle_client_turn_retries_total` | provider failures the engine retried past, labelled with `error_type` (`rate_limit`, `provider_5xx`, `network`, `timeout`) |
 

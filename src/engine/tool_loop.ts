@@ -63,6 +63,7 @@ import type {
   ToolCallRecord,
   ToolExecContext,
   TurnResult,
+  UsageTotals,
 } from './types.js'
 import { salvage_tool_calls, type SalvageOutcome } from './tool_call_salvage.js'
 import {
@@ -71,6 +72,7 @@ import {
   tool_error,
 } from './errors.js'
 import {
+  record_cache_miss,
   record_cost,
   record_response_received,
   record_tool_approval,
@@ -138,6 +140,20 @@ export type ToolLoopConfig = {
    */
   readonly salvage_budget?: { remaining: number }
   readonly max_tool_calls_per_step?: number
+  /**
+   * What the loop remembers from one turn to the next across a whole
+   * generate call, schema-repair re-invocations included, held the way
+   * salvage_budget is. Absent, each run_tool_loop starts its own.
+   */
+  readonly call_memory?: CallMemory
+}
+
+/**
+ * The state a generate call's turns share: the previous turn's cache reads
+ * plus writes, which tells a cache miss from a turn that never cached.
+ */
+export type CallMemory = {
+  previous_cache_traffic: number
 }
 
 export type ToolLoopResult = {
@@ -472,6 +488,8 @@ type LoopAccumulator = {
    * text joins with the final turn's, as one response's text blocks join.
    */
   readonly paused_texts: string[]
+  /** The call's memory across turns: config.call_memory, or this run's own. */
+  readonly memory: CallMemory
 }
 
 /**
@@ -549,12 +567,37 @@ function continue_paused_turn(
 }
 
 /**
+ * Record a `cache_miss` when the previous turn read or wrote cache tokens
+ * and this one read none, then remember this turn's reads plus writes for
+ * the next. The rule needs no table of model minimums and no knowledge of
+ * the provider.
+ */
+function note_cache_traffic(
+  config: ToolLoopConfig,
+  memory: CallMemory,
+  usage: UsageTotals,
+  turn: { readonly step_index: number; readonly span_id: string | undefined; readonly after_prepare_step: boolean },
+): void {
+  const reads = usage.cached_input_tokens ?? 0
+  if (memory.previous_cache_traffic > 0 && reads === 0) {
+    record_cache_miss(config.trajectory, {
+      ...turn,
+      previous_cached_tokens: memory.previous_cache_traffic,
+      input_tokens: usage.input_tokens,
+    })
+  }
+  memory.previous_cache_traffic = reads + (usage.cache_write_tokens ?? 0)
+}
+
+/**
  * Invoke the transport seam once for one turn, bracketed by request_sent /
- * response_received events. A thrown invoke (or prepare_step) closes the
- * step span with the error before rethrowing.
+ * response_received events, and note its cache traffic in `memory`. A thrown
+ * invoke (or prepare_step) closes the step span with the error before
+ * rethrowing.
  */
 async function invoke_turn(
   config: ToolLoopConfig,
+  memory: CallMemory,
   step_index: number,
   step_span: string | undefined,
 ): Promise<TurnResult> {
@@ -570,6 +613,11 @@ async function invoke_turn(
       step_span,
     })
     record_response_received(config.trajectory, step_index, turn, step_span)
+    note_cache_traffic(config, memory, turn.usage, {
+      step_index,
+      span_id: step_span,
+      after_prepare_step: request_messages !== config.messages,
+    })
     return turn
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err)
@@ -1096,7 +1144,7 @@ async function run_loop_step(
   step_index: number,
 ): Promise<ToolLoopResult | undefined> {
   const step_span = start_step_span(config.trajectory, step_index)
-  const turn = await invoke_turn(config, step_index, step_span)
+  const turn = await invoke_turn(config, acc.memory, step_index, step_span)
   if (turn.paused === true) {
     record_turn_paused(config.trajectory, step_index, step_span)
     // A paused turn with calls runs them as a tool turn, below.
@@ -1165,7 +1213,13 @@ async function run_loop_step(
  * until the model stops, a terminal tool fires, or `max_steps` is reached.
  */
 export async function run_tool_loop(config: ToolLoopConfig): Promise<ToolLoopResult> {
-  const acc: LoopAccumulator = { steps: [], tool_calls: [], paused_texts: [] }
+  const acc: LoopAccumulator = {
+    steps: [],
+    tool_calls: [],
+    paused_texts: [],
+    // Stryker disable next-line ObjectLiteral: an empty holder reads previous_cache_traffic as undefined, which the `> 0` test treats as 0, so the first turn sees the same nothing either way.
+    memory: config.call_memory ?? { previous_cache_traffic: 0 },
+  }
   const tool_map = new Map<string, Tool>()
   for (const t of config.tools) tool_map.set(t.name, t)
 

@@ -236,11 +236,46 @@
       }
     },
     {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Prompt cache tokens per minute",
+      "description": "Input tokens read back from the provider's prompt cache, and the ones written to it. In a long tool loop, reads should track the input line; a drop in reads while writes keep coming means the cache is missing.",
+      "gridPos": { "x": 0, "y": 23, "w": 24, "h": 9 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (fascicle_cache_direction) (rate(fascicle_client_cache_token_usage_sum[$__rate_interval])) * 60",
+          "legendFormat": "{{fascicle_cache_direction}}"
+        }
+      ],
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": { "lineWidth": 2, "fillOpacity": 0, "showPoints": "never" }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "read" },
+            "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "#3987e5" } }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "write" },
+            "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "#d95926" } }]
+          }
+        ]
+      }
+    },
+    {
       "id": 9,
       "type": "table",
       "title": "Recent runs (traces)",
       "description": "One row per run. Click a trace ID to see the whole run as a tree: each step, each model turn, each tool call, with timings.",
-      "gridPos": { "x": 0, "y": 23, "w": 24, "h": 10 },
+      "gridPos": { "x": 0, "y": 32, "w": 24, "h": 10 },
       "datasource": { "type": "tempo", "uid": "tempo" },
       "targets": [
         {

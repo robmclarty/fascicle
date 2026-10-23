@@ -2817,3 +2817,140 @@ describe('run_tool_loop continues a paused turn', () => {
     expect(JSON.stringify(ollama)).toContain('Hello.')
   })
 })
+
+describe('cache_miss', () => {
+  const sum: Tool = {
+    name: 'sum',
+    description: 'add the numbers up',
+    input_schema: z.object({}),
+    execute: () => 3,
+  }
+  const sum_call = [{ name: 'sum', input: {} }] as const
+
+  /** Record every event of one call, and return the cache misses among them. */
+  function recorder(): { trajectory: TrajectoryLogger; misses: () => Array<Record<string, unknown>> } {
+    const events: Array<Record<string, unknown>> = []
+    return {
+      trajectory: { record: (e) => events.push(e), start_span: (name) => `${name}-span`, end_span: () => {} },
+      misses: () =>
+        events.filter((e) => e['kind'] === 'cache_miss').map(({ ts: _ts, ...rest }) => rest),
+    }
+  }
+
+  it('fires on a cold read after a turn that only wrote, sized by the writes', async () => {
+    const { engine } = make_loop_engine([
+      { tool_calls: sum_call, usage: { input_tokens: 1000, output_tokens: 5, cached_input_tokens: 0, cache_write_tokens: 900 } },
+      { tool_calls: sum_call, usage: { input_tokens: 1100, output_tokens: 5, cached_input_tokens: 0, cache_write_tokens: 0 } },
+      { text: 'done', usage: { input_tokens: 1200, output_tokens: 5, cached_input_tokens: 0, cache_write_tokens: 1100 } },
+    ])
+    const { trajectory, misses } = recorder()
+    await engine.generate({ prompt: 'go', tools: [sum], trajectory })
+    expect(misses()).toStrictEqual([
+      {
+        kind: 'cache_miss',
+        step_index: 1,
+        span_id: 'engine.generate.step-span',
+        previous_cached_tokens: 900,
+        input_tokens: 1100,
+        after_prepare_step: false,
+      },
+    ])
+  })
+
+  it("counts the previous turn's reads and writes, and stays quiet while reads continue", async () => {
+    const { engine } = make_loop_engine([
+      { tool_calls: sum_call, usage: { input_tokens: 1000, output_tokens: 5, cache_write_tokens: 900 } },
+      { tool_calls: sum_call, usage: { input_tokens: 1100, output_tokens: 5, cached_input_tokens: 900, cache_write_tokens: 100 } },
+      { text: 'done', usage: { input_tokens: 1200, output_tokens: 5 } },
+    ])
+    const { trajectory, misses } = recorder()
+    await engine.generate({ prompt: 'go', tools: [sum], trajectory })
+    expect(misses().map((m) => [m['step_index'], m['previous_cached_tokens']])).toStrictEqual([[2, 1000]])
+  })
+
+  it('never fires on a first turn, or in a loop that never cached', async () => {
+    const zero = { input_tokens: 1000, output_tokens: 5, cached_input_tokens: 0, cache_write_tokens: 0 }
+    const { engine } = make_loop_engine([
+      { tool_calls: sum_call, usage: zero },
+      { tool_calls: sum_call, usage: { input_tokens: 1000, output_tokens: 5 } },
+      { text: 'done', usage: zero },
+    ])
+    const { trajectory, misses } = recorder()
+    await engine.generate({ prompt: 'go', tools: [sum], trajectory })
+    expect(misses()).toStrictEqual([])
+    const first = make_loop_engine([{ text: 'done', usage: zero }])
+    const first_recorder = recorder()
+    await first.engine.generate({ prompt: 'go', trajectory: first_recorder.trajectory })
+    expect(first_recorder.misses()).toStrictEqual([])
+  })
+
+  it('says when prepare_step replaced the messages of the turn that missed', async () => {
+    const { engine } = make_loop_engine([
+      { tool_calls: sum_call, usage: { input_tokens: 1000, output_tokens: 5, cache_write_tokens: 900 } },
+      { text: 'done', usage: { input_tokens: 400, output_tokens: 5, cached_input_tokens: 0 } },
+    ])
+    const { trajectory, misses } = recorder()
+    await engine.generate({
+      prompt: 'go',
+      tools: [sum],
+      trajectory,
+      prepare_step: ({ step_index, messages }) => (step_index === 1 ? { messages: messages.slice(-1) } : undefined),
+    })
+    expect(misses()).toStrictEqual([
+      {
+        kind: 'cache_miss',
+        step_index: 1,
+        span_id: 'engine.generate.step-span',
+        previous_cached_tokens: 900,
+        input_tokens: 400,
+        after_prepare_step: true,
+      },
+    ])
+  })
+
+  it('fires across a schema-repair turn, which re-enters the loop', async () => {
+    const { engine } = make_loop_engine([
+      { text: 'not json', usage: { input_tokens: 1000, output_tokens: 5, cache_write_tokens: 800 } },
+      { text: '{"n":1}', usage: { input_tokens: 1050, output_tokens: 5, cached_input_tokens: 0 } },
+    ])
+    const { trajectory, misses } = recorder()
+    const result = await engine.generate({ prompt: 'go', schema: z.object({ n: z.number() }), trajectory })
+    expect(result.content).toStrictEqual({ n: 1 })
+    expect(misses().map((m) => [m['step_index'], m['previous_cached_tokens'], m['input_tokens']])).toStrictEqual([
+      [1, 800, 1050],
+    ])
+  })
+
+  it('keeps its own memory when run_tool_loop gets no call_memory', async () => {
+    const usages = [
+      { input_tokens: 1000, output_tokens: 5, cache_write_tokens: 900 },
+      { input_tokens: 1000, output_tokens: 5, cached_input_tokens: 0 },
+    ]
+    let turn = 0
+    const events: Array<Record<string, unknown>> = []
+    await run_tool_loop({
+      invoke_once: async () => {
+        const usage = usages[turn] ?? usages[0]!
+        turn += 1
+        return turn === 1
+          ? { text: '', tool_calls: [{ id: 'c1', name: 'sum', input: {} }], finish_reason: 'tool_calls', usage }
+          : { text: 'done', tool_calls: [], finish_reason: 'stop', usage }
+      },
+      messages: [{ role: 'user', content: 'go' }],
+      tools: [sum],
+      max_steps: 5,
+      step_index_start: 0,
+      tool_error_policy: 'feed_back',
+      abort: new AbortController().signal,
+      on_tool_approval: undefined,
+      trajectory: { record: (e) => events.push(e), start_span: () => 's', end_span: () => {} },
+      stream: false,
+      dispatch_chunk: undefined,
+      provider: 'p',
+      model_id: 'm',
+      resolve_pricing: () => undefined,
+      pricing_dedup: create_pricing_missing_dedup(undefined),
+    })
+    expect(events.filter((e) => e['kind'] === 'cache_miss')).toHaveLength(1)
+  })
+})

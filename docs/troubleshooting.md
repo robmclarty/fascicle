@@ -239,6 +239,32 @@ A 403 is never retried, so the first turn fails at once. If the model works
 until you hand it tools, check AWS's list of which models support tool use
 while streaming. See [providers.md](./providers.md#bedrock).
 
+## A Turn Cost Far More Than the One Before
+
+In a cached tool loop, every turn after the first should read most of its
+input back from the provider's cache. A turn whose cost jumps back up to the
+full input price read nothing, and the trajectory says so with a
+`cache_miss` event, whose `previous_cached_tokens` is the size of the prefix
+that the turn expected to find. The usual reasons:
+
+- **The cache expired.** A five-minute entry counts its lifetime from the
+  start of the request that last read or wrote it, so a long generation
+  shortens the time that the next request has to start in, and so does a slow
+  tool or a person who takes a while to reply. `cache: '1h'` gives a slow
+  loop an hour.
+- **Something changed the top of the array.** The cache matches by prefix,
+  so a system prompt that changed, a tool list that changed, or an earlier
+  message that was rewritten sends everything after it at the full price.
+  When `after_prepare_step` is `true`, look at your `prepare_step` first: a
+  sliding window rewrites the prefix on every turn once it engages.
+  `assert_prefix_stable` in `fascicle/testing` catches this in a test.
+- **The prefix fell out of the window that the cache checks.** Anthropic checks at most 20
+  positions back from the breakpoint. Only the Claude API promises to count a
+  run of tool calls, or of tool results, as one position, so on Vertex AI or
+  Bedrock a wide parallel turn can push the cached prefix out of reach.
+
+See [providers.md](./providers.md#prompt-caching).
+
 ## A 400 That Names `cache_control`
 
 An Anthropic tool loop caches by default on either transport, so its request

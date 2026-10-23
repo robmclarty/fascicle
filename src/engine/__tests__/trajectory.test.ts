@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import type { TrajectoryEvent, TrajectoryLogger } from '#core'
 import {
+  cache_hit_ratio,
   create_option_ignored_dedup,
+  record_cache_miss,
   create_pricing_missing_dedup,
   end_generate_span,
   end_step_span,
@@ -147,7 +149,69 @@ describe('trajectory helpers', () => {
       output_tokens: 2,
       cache_write_tokens: 40,
       cache_write_1h_tokens: 30,
+      cache_hit_ratio: 0,
       finish_reason: 'stop',
+    })
+  })
+
+  describe('cache_hit_ratio', () => {
+    it('is the share of the input read from the cache, rounded to three decimals', () => {
+      expect(cache_hit_ratio({ input_tokens: 3, output_tokens: 0, cached_input_tokens: 2 })).toBe(0.667)
+      expect(cache_hit_ratio({ input_tokens: 3000, output_tokens: 0, cached_input_tokens: 1 })).toBe(0)
+      expect(
+        cache_hit_ratio({ input_tokens: 2000, output_tokens: 0, cached_input_tokens: 1999, cache_write_tokens: 1 }),
+      ).toBe(1)
+    })
+
+    it('reads 0 on a turn that only wrote', () => {
+      expect(cache_hit_ratio({ input_tokens: 500, output_tokens: 0, cache_write_tokens: 400 })).toBe(0)
+    })
+
+    it('is absent when nothing was reported, when every count is zero, or with no input', () => {
+      expect(cache_hit_ratio({ input_tokens: 500, output_tokens: 9 })).toBeUndefined()
+      expect(
+        cache_hit_ratio({ input_tokens: 500, output_tokens: 9, cached_input_tokens: 0, cache_write_tokens: 0 }),
+      ).toBeUndefined()
+      expect(cache_hit_ratio({ input_tokens: 0, output_tokens: 0, cached_input_tokens: 4 })).toBeUndefined()
+      expect(cache_hit_ratio({ input_tokens: -1, output_tokens: 0, cached_input_tokens: 4 })).toBeUndefined()
+    })
+
+    it('rides response_received only when the turn had traffic', () => {
+      const { trajectory, events } = create_recorder()
+      record_response_received(trajectory, 0, {
+        usage: { input_tokens: 10, output_tokens: 1, cached_input_tokens: 0, cache_write_tokens: 0 },
+        finish_reason: 'stop',
+      })
+      const records = events.filter((e) => e.kind === 'record').map((e) => e.payload)
+      expect('cache_hit_ratio' in (records[0] as object)).toBe(false)
+    })
+  })
+
+  describe('record_cache_miss', () => {
+    it('records the miss with its span, and leaves the span out when there is none', () => {
+      const { trajectory, events } = create_recorder()
+      const meta = { step_index: 2, previous_cached_tokens: 900, input_tokens: 1000, after_prepare_step: true }
+      record_cache_miss(trajectory, { ...meta, span_id: 'span-3' })
+      record_cache_miss(trajectory, { ...meta, span_id: undefined, after_prepare_step: false })
+      record_cache_miss(undefined, { ...meta, span_id: 'span-3' })
+      const records = events.filter((e) => e.kind === 'record').map((e) => e.payload)
+      expect(records).toStrictEqual([
+        {
+          kind: 'cache_miss',
+          step_index: 2,
+          span_id: 'span-3',
+          previous_cached_tokens: 900,
+          input_tokens: 1000,
+          after_prepare_step: true,
+        },
+        {
+          kind: 'cache_miss',
+          step_index: 2,
+          previous_cached_tokens: 900,
+          input_tokens: 1000,
+          after_prepare_step: false,
+        },
+      ])
     })
   })
 
@@ -175,6 +239,7 @@ describe('trajectory helpers', () => {
       reasoning_tokens: 8,
       cached_input_tokens: 60,
       cache_write_tokens: 30,
+      cache_hit_ratio: 0.6,
       finish_reason: 'stop',
       started_at: 1000,
       duration_ms: 250,

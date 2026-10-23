@@ -685,6 +685,15 @@ Cost estimation prices each kind of cache traffic at its own rate. A read costs 
 
 A prompt shorter than the model's minimum doesn't cache, and nothing fails to say so. Anthropic's minimum runs from 512 to 4,096 tokens, depending on the model, and below it the request goes through uncached, with no write and no read in its usage. A short system prompt and a first question often fall under it, so a loop starts caching only once its conversation grows past the minimum.
 
+Two things in the trajectory say whether the cache is working. Each turn's `response_received` carries `cache_hit_ratio`, the share of its input that it read from the cache (`cached_input_tokens / input_tokens`, to three decimals), on every turn that had cache traffic, so a turn that only wrote reads 0, and a loop that caches well climbs toward 1 from its second turn on. When a turn reads nothing from the cache right after a turn of the same call that read or wrote some, the loop also records `{ kind: 'cache_miss', step_index, span_id, previous_cached_tokens, input_tokens, after_prepare_step }`. `previous_cached_tokens` is the previous turn's reads plus its writes, the prefix that this turn expected to find, and `after_prepare_step` says whether a `prepare_step` hook replaced this turn's messages. The rule needs no model's minimum and no knowledge of the provider, so a miss is worth reading wherever it fires.
+
+A miss usually has one of four causes:
+
+- **The cache expired.** A five-minute entry lives five minutes from the start of the request that last wrote or read it, not from the end of its response, so a long generation eats into the time that the next request has, and so does a slow tool or a human's reply. `'1h'` gives a slow loop more room.
+- **Something changed the top of the array.** The cache matches a request by its prefix, so a new system prompt, a tool list that changed, or an earlier message rewritten sends the whole prefix again. A `prepare_step` that keeps a sliding window does this on every turn once it engages, and `assert_prefix_stable` in `fascicle/testing` catches it in a test.
+- **The prefix fell out of the window that the cache checks.** Anthropic checks at most 20 positions back from the breakpoint for an earlier entry. Its docs promise to count a run of tool calls, or of tool results, as one position only on the Claude API, so on Vertex AI or Bedrock, a wide parallel turn's calls and results can push the cached prefix out of reach.
+- **The request went somewhere else.** A cache lives with the upstream that wrote it, so a router that sends the next turn to a different upstream (OpenRouter can) finds nothing there.
+
 ## Cost Estimation
 
 `GenerateResult.cost` is populated when the resolved `provider:model_id` has a pricing row in the engine's `PricingTable`, or when the provider reports what the call cost. Missing rows simply omit `cost`, and the run doesn't fail. `is_estimate: true` is always set; pricing tables drift, treat the number as a budget signal, not an invoice.
