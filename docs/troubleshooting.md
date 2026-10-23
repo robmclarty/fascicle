@@ -262,6 +262,13 @@ that the turn expected to find. The usual reasons:
   positions back from the breakpoint. Only the Claude API promises to count a
   run of tool calls, or of tool results, as one position, so on Vertex AI or
   Bedrock a wide parallel turn can push the cached prefix out of reach.
+- **A different upstream served the turn.** A cache lives with the upstream
+  that wrote it, and a router such as OpenRouter can send each request of a
+  loop somewhere else, so a turn that lands on a new upstream finds nothing
+  to read. On OpenRouter, a top-level `session_id` under
+  `provider_options.openrouter` (or `provider_options.anthropic` through its
+  Messages endpoint) keeps a session's requests on one upstream, and
+  `provider: { order: [name], allow_fallbacks: false }` pins one.
 
 See [providers.md](./providers.md#prompt-caching).
 

@@ -44,4 +44,21 @@ can compare what it prints:
 LIVE_TESTS=1 OPENROUTER_API_KEY=... pnpm exec vitest run src/engine/__tests__/live/live_reasoning.test.ts
 ```
 
+A third, `live_cache.test.ts`, checks prompt caching. It runs a three-turn
+tool loop on Claude with a system prompt over 4,096 tokens and asserts that
+the first turn writes the cache, the next two read it, and no `cache_miss`
+fires, then prints the hit ratio and the cost beside the same loop with
+`cache: 'off'`. With `OPENROUTER_API_KEY` it runs the `anthropic` provider
+through OpenRouter's Messages endpoint and the `openrouter` provider on its
+native transport, and it also sends `cache: '5m'` to a model from another
+vendor and prints whether OpenRouter ignored the field or refused it. With
+`ANTHROPIC_API_KEY` it runs the `anthropic` case against the API directly.
+A run costs a few cents. `LIVE_CACHE_MODEL`, `LIVE_CACHE_API_MODEL`, and
+`LIVE_CACHE_OTHER_MODEL` pick the models, and `LIVE_CACHE_PIN` pins the
+Claude runs on OpenRouter to one upstream if a turn lands somewhere else:
+
+```bash
+LIVE_TESTS=1 OPENROUTER_API_KEY=... pnpm exec vitest run src/engine/__tests__/live/live_cache.test.ts
+```
+
 — Rob

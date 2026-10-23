@@ -28,7 +28,7 @@
 
 import { readFileSync } from 'node:fs'
 import { model_step, sequence, step } from 'fascicle'
-import type { EffortLevel, Engine, Step } from 'fascicle'
+import type { CacheSetting, EffortLevel, Engine, Step } from 'fascicle'
 import { serve_acp, workspace_tools } from 'fascicle/acp'
 import type { AcpSession, AcpTurn, ServeAcpConfig } from 'fascicle/acp'
 import { API_KEYS, engine_for, flag } from '../acp-agent/engines.js'
@@ -94,6 +94,8 @@ export type CoderConfig = {
   readonly model: string
   /** How hard the model thinks. Left out, the model keeps its own default. */
   readonly effort?: EffortLevel
+  /** Prompt caching for the coder's model call. Left out, the provider's default applies. */
+  readonly cache?: CacheSetting
   /** The whole environment the model's commands run with. */
   readonly command_env: Readonly<Record<string, string>>
 }
@@ -116,6 +118,7 @@ export function coder_agent(config: CoderConfig): ServeAcpConfig<AcpTurn, string
           engine: config.engine,
           model: config.model,
           ...(config.effort === undefined ? {} : { effort: config.effort }),
+          ...(config.cache === undefined ? {} : { cache: config.cache }),
           system: system_for(session),
           tools: workspace_tools(session, { command_env: config.command_env }),
           max_steps: 100,
@@ -138,15 +141,29 @@ function chosen_model(provider: string): string {
   throw new Error(`--provider ${provider} needs --model too: ${DEFAULT_MODEL} is an OpenRouter model id`)
 }
 
+/**
+ * The cache a session asks for: five minutes for a Claude model, which takes
+ * Anthropic's cache on the anthropic provider and through OpenRouter, where
+ * caching is opt-in. A coding turn sends the whole session and the workspace
+ * tools again on every step, so every step after the first reads that prefix
+ * back. Other models get the provider's default, since OpenAI and Gemini
+ * cache on their own.
+ */
+function cache_for(provider: string, model: string): CacheSetting | undefined {
+  return provider === 'anthropic' || model.startsWith('anthropic/') ? '5m' : undefined
+}
+
 if (import.meta.url === `file://${process.argv[1] ?? ''}`) {
   const provider = flag('--provider') ?? 'openrouter'
   const model = chosen_model(provider)
   const effort = parse_effort(flag('--effort'))
+  const cache = cache_for(provider, model)
   await serve_acp(
     coder_agent({
       engine: engine_for(provider),
       model,
       ...(effort === undefined ? {} : { effort }),
+      ...(cache === undefined ? {} : { cache }),
       command_env: command_env(process.env),
     }),
   )

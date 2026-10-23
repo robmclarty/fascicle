@@ -56,6 +56,19 @@ to think less.
 
 To set it in Zed, add `"--effort", "high"` to the `args` of the entry below.
 
+## Prompt caching
+
+Every step of a coding turn sends the whole session back to the model,
+system prompt and workspace tools included, so a long turn pays for the same
+prefix again and again unless the provider caches it. When the model is
+Claude, which is any `--model` that starts with `anthropic/` or any model on
+`--provider anthropic`, `main.ts` sets `cache: '5m'` on the coder's model
+call. On OpenRouter, where caching is opt-in, that's what turns it on, and
+every step after the first reads the prefix back at a fraction of the input
+price. A model from another vendor gets its provider's default, since OpenAI
+and Gemini cache on their own. [docs/providers.md](../../docs/providers.md#prompt-caching)
+has the details, and the run's trajectory shows each turn's `cache_hit_ratio`.
+
 ## Run in Zed
 
 Add a custom agent server to Zed's `settings.json`, the same way as for
