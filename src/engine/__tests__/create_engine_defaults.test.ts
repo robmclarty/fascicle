@@ -395,6 +395,43 @@ describe('create_engine folds the capture default into generate', () => {
   })
 })
 
+describe("capture: 'wire' on the ai_sdk transport", () => {
+  it("records option_ignored once and captures as 'turns'", async () => {
+    enqueue_generate_text(make_text_result('ok'))
+    enqueue_generate_text(make_text_result('ok'))
+    const engine = create_engine({
+      providers: { fake_ai_sdk: {} },
+      custom_providers: { fake_ai_sdk: make_ai_sdk_factory() },
+      defaults: { capture: 'wire' },
+    })
+    const events: Array<Record<string, unknown>> = []
+    const trajectory: TrajectoryLogger = {
+      record: (e) => {
+        const { ts: _ts, ...rest } = e
+        events.push(rest)
+      },
+      start_span: (name) => name,
+      end_span: () => {},
+    }
+    await engine.generate({ model: 'm', provider: 'fake_ai_sdk', prompt: 'hi', trajectory })
+    expect(events.filter((e) => e['kind'] === 'option_ignored')).toStrictEqual([
+      { kind: 'option_ignored', option: 'capture', provider: 'fake_ai_sdk', reason: 'wire capture needs a native transport' },
+    ])
+    expect(events.find((e) => e['kind'] === 'request_sent')).toHaveProperty('request')
+    expect(events.filter((e) => e['kind'] === 'request_wire')).toStrictEqual([])
+
+    const quiet: Array<Record<string, unknown>> = []
+    await engine.generate({
+      model: 'm',
+      provider: 'fake_ai_sdk',
+      prompt: 'hi',
+      capture: 'turns',
+      trajectory: { record: (e) => quiet.push(e), start_span: (name) => name, end_span: () => {} },
+    })
+    expect(quiet.filter((e) => e['kind'] === 'option_ignored')).toStrictEqual([])
+  })
+})
+
 describe('create_engine folds loop-knob defaults into generate', () => {
   it('caps the loop at defaults.max_steps', async () => {
     const log: NativeLog = { requests: [] }

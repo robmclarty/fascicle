@@ -413,6 +413,33 @@ export function record_capture_redaction_failed(
 }
 
 /**
+ * Record the exact body a native adapter sent on one attempt, under capture
+ * at `'wire'`: the turn's step index and step span, the provider, and the
+ * `url` and `body` of what the redactor returned, each left out when it
+ * dropped them. Headers are never recorded, since they carry the key.
+ */
+export function record_request_wire(
+  trajectory: TrajectoryLogger | undefined,
+  meta: {
+    readonly step_index: number
+    readonly span_id: string | undefined
+    readonly provider: string
+    readonly recorded: Readonly<Record<string, unknown>>
+  },
+): void {
+  if (trajectory === undefined) return
+  const { recorded } = meta
+  trajectory.record({
+    kind: 'request_wire',
+    step_index: meta.step_index,
+    ...(meta.span_id !== undefined ? { span_id: meta.span_id } : {}),
+    provider: meta.provider,
+    ...('url' in recorded ? { url: recorded['url'] } : {}),
+    ...('body' in recorded ? { body: recorded['body'] } : {}),
+  })
+}
+
+/**
  * Record that the provider paused a turn partway through its response
  * (Anthropic's `pause_turn`), which the loop continues with another turn.
  */

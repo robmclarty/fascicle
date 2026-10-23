@@ -28,7 +28,8 @@ export type CacheSetting = 'off' | '5m' | '1h'
  * What a call records of the requests it sends and the replies it gets:
  * `'off'` records neither, `'turns'` records each turn's request (the
  * first turn whole, a later one as what it changed) on `request_sent` and
- * the reply on `response_received`, and `'wire'` records the same, for now.
+ * the reply on `response_received`, and `'wire'` records all that and, on a
+ * native transport, the exact body each attempt sends, as `request_wire`.
  * See `docs/concepts.md`'s What Gets Recorded.
  */
 export type CaptureLevel = 'off' | 'turns' | 'wire'
@@ -36,9 +37,12 @@ export type CaptureLevel = 'off' | 'turns' | 'wire'
 /**
  * One captured payload, as `EngineConfig.redact_capture` receives it before
  * the trajectory does: `'request'` is what a turn's `request_sent` would
- * carry as `request`, and `'response'` what its `response_received` would
- * carry as `content`. `data` is a fresh JSON-safe copy, so a redactor may
- * change it in place, and an image in it is already its base64 text.
+ * carry as `request`, `'response'` what its `response_received` would carry
+ * as `content`, and `'wire'` is `{ url, body }`, what a native adapter is
+ * about to send, whose `request_wire` records the `url` and `body` of the
+ * object the redactor returns. `data` is a fresh JSON-safe copy, so a
+ * redactor may change it in place without touching what goes out, and an
+ * image in it is already its base64 text.
  */
 export type CapturePayload = {
   readonly kind: 'request' | 'response' | 'wire'
@@ -418,6 +422,12 @@ export type TurnRequest = {
    */
   readonly cache?: Exclude<CacheSetting, 'off'>
   readonly dispatch_chunk?: (chunk: StreamChunk) => Promise<void>
+  /**
+   * Present when the call captures at `'wire'`. An adapter that builds an
+   * HTTP body calls it with the URL and the body object just before it
+   * serializes the body, once per attempt, and never with a header.
+   */
+  readonly on_wire?: (wire: { readonly url: string; readonly body: Record<string, unknown> }) => void
 }
 
 /**

@@ -11,6 +11,7 @@ import {
   record_effort_ignored,
   record_capture_redaction_failed,
   record_request_sent,
+  record_request_wire,
   record_response_received,
   record_schema_validation_failed,
   record_tool_approval,
@@ -172,6 +173,22 @@ describe('trajectory helpers', () => {
         finish_reason: 'stop',
         content: [{ type: 'text', text: 'ok' }],
       },
+    ])
+  })
+
+  it('records request_wire with the url and body it was given, each only when present', () => {
+    const { trajectory, events } = create_recorder()
+    record_request_wire(trajectory, {
+      step_index: 0,
+      span_id: 's1',
+      provider: 'anthropic',
+      recorded: { url: 'https://api', body: { model: 'm' }, extra: 1 },
+    })
+    record_request_wire(trajectory, { step_index: 1, span_id: undefined, provider: 'ollama', recorded: {} })
+    record_request_wire(undefined, { step_index: 2, span_id: 's3', provider: 'x', recorded: {} })
+    expect(events.filter((e) => e.kind === 'record').map((e) => e.payload)).toStrictEqual([
+      { kind: 'request_wire', step_index: 0, span_id: 's1', provider: 'anthropic', url: 'https://api', body: { model: 'm' } },
+      { kind: 'request_wire', step_index: 1, provider: 'ollama' },
     ])
   })
 

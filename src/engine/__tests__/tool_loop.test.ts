@@ -3315,6 +3315,14 @@ describe('capture', () => {
     expect(requests_of(wire_events.of_kind)).toStrictEqual(requests_of(turns_events.of_kind))
     expect(requests_of(wire_events.of_kind)[0]).toBeDefined()
   })
+
+  it("hands the adapter on_wire only at 'wire'", async () => {
+    for (const [capture, handed] of [['off', false], ['turns', false], ['wire', true]] as const) {
+      const { engine, requests } = make_loop_engine([add_one, 'three'])
+      await engine.generate({ prompt: 'add', tools: [sum], capture, trajectory: recorder().trajectory })
+      expect(requests.map((r) => 'on_wire' in r)).toStrictEqual([handed, handed])
+    }
+  })
 })
 
 describe('redact_capture', () => {

@@ -161,7 +161,9 @@ async function read_json_body(
  * cut-off stream. `build_body` runs before the network try/catch, so a mapper
  * that rejects the request (e.g., a provider_capability_error for a part the
  * wire cannot carry) propagates unchanged instead of being retried as a
- * network failure.
+ * network failure. `req.on_wire`, when the call captures the wire, sees the
+ * URL and the body object just before the body is serialized, and never a
+ * header.
  */
 export async function invoke_http_turn(
   req: TurnRequest,
@@ -178,7 +180,9 @@ export async function invoke_http_turn(
     stream_media_type: string
   },
 ): Promise<TurnResult> {
-  const body = JSON.stringify(request.build_body())
+  const built = request.build_body()
+  req.on_wire?.({ url: request.url, body: built })
+  const body = JSON.stringify(built)
   let response: Response
   try {
     response = await fetch(request.url, {

@@ -530,6 +530,7 @@ function build_native_invoke(cfg: NativeInvokeConfig): InvokeOnce {
         ...(cfg.max_tokens !== undefined ? { max_tokens: cfg.max_tokens } : {}),
         ...(cfg.top_p !== undefined ? { top_p: cfg.top_p } : {}),
         ...(streams ? { dispatch_chunk } : {}),
+        ...(args.on_wire !== undefined ? { on_wire: args.on_wire } : {}),
       }
       try {
         return await cfg.adapter.invoke_turn(req)
@@ -704,6 +705,7 @@ function assert_capabilities<T>(
 type TurnConfig = {
   readonly effort: EffortLevel
   readonly cache: CacheSetting
+  readonly capture: CaptureLevel
   readonly retry_policy: RetryPolicy
   readonly turn_timeout_ms: number | undefined
 }
@@ -758,8 +760,21 @@ function resolve_cache(
 }
 
 /**
- * Resolve the per-turn knobs (effort, cache, retry policy, turn timeout)
- * against engine defaults. Validated here, before any transport is built, so
+ * Resolve the capture level a call's loop runs at: the call's, else the
+ * engine default, else `'off'`. On the ai_sdk transport the SDK builds the
+ * body, so `'wire'` records `option_ignored` and runs as `'turns'`.
+ */
+function resolve_capture<T>(opts: GenerateOptions<T>, engine: EngineInternals, call: CallShape): CaptureLevel {
+  const level = opts.capture ?? engine.default_capture ?? 'off'
+  if (level !== 'wire' || call.adapter.kind !== 'ai_sdk') return level
+  create_option_ignored_dedup(call.trajectory).emit('capture', call.adapter.name, 'wire capture needs a native transport')
+  // Stryker disable next-line StringLiteral: the loop reads a level only against 'off' and 'wire', so any other string captures as 'turns' does.
+  return 'turns'
+}
+
+/**
+ * Resolve the per-turn knobs (effort, cache, capture, retry policy, turn
+ * timeout) against engine defaults. Validated here, before any transport is built, so
  * a bad budget fails as a config error, never as a spurious timeout. A cache
  * setting the adapter can't honor records `option_ignored` with its reason.
  */
@@ -784,7 +799,7 @@ function resolve_turn_config<T>(
   if (ignored_reason !== undefined) {
     create_option_ignored_dedup(call.trajectory).emit('cache', call.adapter.name, ignored_reason)
   }
-  return { effort, cache, retry_policy, turn_timeout_ms }
+  return { effort, cache, capture: resolve_capture(opts, engine, call), retry_policy, turn_timeout_ms }
 }
 
 type LoopLimits = {
@@ -1374,7 +1389,7 @@ export async function generate<T = string>(
     on_chunk_provided,
     limits,
     capture: {
-      level: opts.capture ?? engine.default_capture ?? 'off',
+      level: turn.capture,
       call_span_id: generate_span,
       settings: () => capture_settings(opts, target, turn),
       redact: engine.redact_capture,

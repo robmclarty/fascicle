@@ -46,7 +46,7 @@
  * invoke_turn); tests inject a mock seam directly.
  */
 
-import { format_schema_issues, to_json_schema, validate_schema, type ToolSchema } from '#schema'
+import { format_schema_issues, is_record, to_json_schema, validate_schema, type ToolSchema } from '#schema'
 import type { TrajectoryLogger } from '#core'
 import type {
   AssistantContentPart,
@@ -64,6 +64,7 @@ import type {
   ToolApprovalHandler,
   ToolCallRecord,
   ToolExecContext,
+  TurnRequest,
   TurnResult,
   UsageTotals,
 } from './types.js'
@@ -78,6 +79,7 @@ import {
   record_capture_redaction_failed,
   record_cost,
   record_request_sent,
+  record_request_wire,
   record_response_received,
   record_tool_approval,
   record_tool_call,
@@ -103,6 +105,12 @@ export type InvokeOnceArgs = {
    * event emitted below the loop, inside retry_turn).
    */
   readonly step_span: string | undefined
+  /**
+   * Present when the call captures at `'wire'`: the native transport hands
+   * it to the adapter as `TurnRequest.on_wire`, and the ai_sdk transport,
+   * whose SDK builds the body, never calls it.
+   */
+  readonly on_wire?: TurnRequest['on_wire']
 }
 
 export type RawToolCall = {
@@ -802,6 +810,47 @@ function redact_payload(
 }
 
 /**
+ * Record the exact body a native adapter is about to send, from a fresh copy
+ * of `{ url, body }` that goes through the redactor, so nothing the redactor
+ * does reaches the wire. The event carries the `url` and `body` of the object
+ * the redactor returns, leaving out either one it dropped. A redactor that
+ * returns anything other than an object fails closed.
+ */
+function record_wire(
+  config: ToolLoopConfig,
+  capture: LoopCapture,
+  turn: { readonly step_index: number; readonly span_id: string | undefined },
+  wire: { readonly url: string; readonly body: Record<string, unknown> },
+): void {
+  let data: unknown
+  try {
+    data = capture_copy({ url: wire.url, body: wire.body })
+  } catch {
+    // A body that JSON can't hold fails closed, in redact_payload.
+  }
+  const recorded = redact_payload(config, capture, { kind: 'wire', step_index: turn.step_index, data }, turn.span_id)
+  if (recorded === undefined) return
+  if (!is_record(recorded)) {
+    record_capture_redaction_failed(config.trajectory, { ...turn, payload_kind: 'wire' })
+    return
+  }
+  record_request_wire(config.trajectory, { ...turn, provider: config.provider, recorded })
+}
+
+/**
+ * The `on_wire` a turn hands its adapter under capture at `'wire'`.
+ */
+function wire_recorder(
+  config: ToolLoopConfig,
+  capture: LoopCapture,
+  turn: { readonly step_index: number; readonly span_id: string | undefined },
+): NonNullable<TurnRequest['on_wire']> {
+  return (wire) => {
+    record_wire(config, capture, turn, wire)
+  }
+}
+
+/**
  * Invoke the transport seam once for one turn, bracketed by request_sent /
  * response_received events, which carry the request and the reply under
  * capture, and note its cache traffic in `memory`. A thrown invoke (or
@@ -840,6 +889,9 @@ async function invoke_turn(
       abort: config.abort,
       stream: config.stream,
       step_span,
+      ...(capture?.level === 'wire'
+        ? { on_wire: wire_recorder(config, capture, { step_index, span_id: step_span }) }
+        : {}),
     })
     record_response_received(
       config.trajectory,
