@@ -26,6 +26,12 @@ import type {
 import { tool_error, tool_approval_denied_error, aborted_error } from '../errors.js'
 import { create_pricing_missing_dedup } from '../trajectory.js'
 import { decompose_total_cost } from '../pricing.js'
+import { to_chat_messages } from '../providers/openai_compatible_native.js'
+import { build_ollama_chat_body } from '../providers/ollama_native.js'
+// The engine zone may not import testing, since testing imports the engine;
+// a test may, since nothing in the engine imports a test.
+// fallow-ignore-next-line boundary-violation
+import { make_loop_engine } from '#testing'
 
 const zero_usage: UsageTotals = { input_tokens: 0, output_tokens: 0 }
 
@@ -2604,5 +2610,93 @@ describe('run_tool_loop assistant content (reasoning and provider data)', () => 
       ],
     })
     expect(messages[3]).toStrictEqual({ role: 'assistant', content: 'done' })
+  })
+})
+
+describe('run_tool_loop fed-back errors carry is_error', () => {
+  /** One turn that makes every kind of call, then a final answer. */
+  async function run_every_failure(): Promise<ReadonlyArray<Message>> {
+    const boom = make_tool({
+      name: 'boom',
+      execute: () => {
+        throw new Error('kaput')
+      },
+    })
+    const guarded = make_tool({ name: 'guarded', needs_approval: true })
+    const { engine, requests } = make_loop_engine([
+      [
+        { id: 'c1', name: 'echo', input: { value: 'fine' } },
+        { id: 'c2', name: 'missing', input: {} },
+        { id: 'c3', name: 'echo', input: { value: 3 } },
+        { id: 'c4', name: 'guarded', input: { value: 'x' } },
+        { id: 'c5', name: 'boom', input: { value: 'x' } },
+      ],
+      'done',
+    ])
+    await engine.generate({
+      model: 'loop',
+      prompt: 'go',
+      tools: [make_tool(), boom, guarded],
+      on_tool_approval: () => false,
+    })
+    expect(requests).toHaveLength(2)
+    const second = requests[1]
+    if (second === undefined) throw new Error('no second request')
+    return second.messages
+  }
+
+  it('flags an unknown tool, invalid input, a denial, and a thrown error, and leaves a success unflagged', async () => {
+    const messages = await run_every_failure()
+    const fed = messages.filter((m) => m.role === 'tool')
+    expect(fed).toStrictEqual([
+      { role: 'tool', tool_call_id: 'c1', name: 'echo', content: 'ok' },
+      {
+        role: 'tool',
+        tool_call_id: 'c2',
+        name: 'missing',
+        content: `{"error":"unknown tool 'missing'"}`,
+        is_error: true,
+      },
+      {
+        role: 'tool',
+        tool_call_id: 'c3',
+        name: 'echo',
+        content: expect.stringMatching(/^\{"error":"invalid tool input: /),
+        is_error: true,
+      },
+      {
+        role: 'tool',
+        tool_call_id: 'c4',
+        name: 'guarded',
+        content: '{"error":"tool_approval_denied"}',
+        is_error: true,
+      },
+      {
+        role: 'tool',
+        tool_call_id: 'c5',
+        name: 'boom',
+        content: '{"error":"kaput"}',
+        is_error: true,
+      },
+    ])
+  })
+
+  it('keeps the flag off the OpenAI-compatible and Ollama bodies, whose formats have no such field', async () => {
+    const messages = await run_every_failure()
+    expect(messages.filter((m) => m.role === 'tool' && m.is_error === true)).toHaveLength(4)
+    const chat = to_chat_messages(messages, 'openai')
+    const ollama = build_ollama_chat_body({
+      step_index: 1,
+      messages,
+      tools: [],
+      abort: new AbortController().signal,
+      stream: false,
+      model_id: 'llama',
+      effort: 'none',
+    })
+    expect(chat.filter((m) => m.role === 'tool')).toHaveLength(5)
+    expect(JSON.stringify(chat)).not.toContain('is_error')
+    expect(JSON.stringify(ollama)).toContain('tool_approval_denied')
+    expect(JSON.stringify(ollama)).not.toContain('is_error')
   })
 })

@@ -203,7 +203,20 @@ export type Message =
   | { role: 'system'; content: string }
   | { role: 'user'; content: string | UserContentPart[] }
   | { role: 'assistant'; content: string | AssistantContentPart[] }
-  | { role: 'tool'; tool_call_id: string; name: string; content: string }
+  | {
+      role: 'tool'
+      tool_call_id: string
+      name: string
+      content: string
+      /**
+       * True when the call failed (an unknown tool, invalid input, a denied
+       * approval, or a thrown error) and `content` is its `{"error": "…"}`
+       * text; absent on a success. The native Anthropic transport sends it as
+       * the `tool_result`'s `is_error`, and the ai_sdk transport as an
+       * `error-text` output; the other wire formats have no such field.
+       */
+      is_error?: boolean
+    }
 
 export type ToolExecContext = {
   abort: AbortSignal

@@ -246,6 +246,17 @@ whose tools take any input. The widening is safe because the engine validates
 every call against `input_schema` first and hands `execute` the value that
 passed, and a call that fails goes back to the model as a tool error.
 
+A tool error is a `role: 'tool'` message whose `content` is `{"error": "…"}`
+and whose `is_error` is `true`. It marks the four ways a call can fail under
+`tool_error_policy: 'feed_back'`: the model named a tool that isn't in `tools`,
+its input failed `input_schema`, its approval was denied, or `execute` threw.
+A success carries no `is_error`. Only the two Anthropic wires carry the flag.
+The native Anthropic transport sends it as the `tool_result`'s `is_error`, and
+the `ai_sdk` transport sends an `error-text` output, which `@ai-sdk/anthropic`
+turns into the same field. The OpenAI-compatible and Ollama formats have no
+such field, and the Bedrock peer sends the text alone, even for Claude, so a
+model on any of those reads the error from `content`.
+
 ### Timing and Tokens per Second
 
 Every step that the engine loop produces carries a `timing` block

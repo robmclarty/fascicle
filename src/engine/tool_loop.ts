@@ -283,12 +283,14 @@ async function dispatch_tool_result_chunk(
 
 /**
  * Build the `role: 'tool'` message that feeds a tool's result back to the
- * model, JSON-serializing non-string content.
+ * model, JSON-serializing non-string content. A failed call's message carries
+ * `is_error: true`; a success's carries no such key.
  */
 function build_tool_result_message(
   tool_call_id: string,
   tool_name: string,
   content: unknown,
+  is_error = false,
 ): Message {
   const serialized =
     typeof content === 'string' ? content : safe_json_stringify(content)
@@ -297,6 +299,7 @@ function build_tool_result_message(
     tool_call_id,
     name: tool_name,
     content: serialized,
+    ...(is_error ? { is_error: true } : {}),
   }
 }
 
@@ -665,7 +668,7 @@ async function record_failed_call(
   ctx.records.push(record)
   ctx.all_records.push(record)
   ctx.feed.push(
-    build_tool_result_message(call.id, call.name, { error: message }),
+    build_tool_result_message(call.id, call.name, { error: message }, true),
   )
   record_tool_call(ctx.config.trajectory, {
     step_index: ctx.step_index,

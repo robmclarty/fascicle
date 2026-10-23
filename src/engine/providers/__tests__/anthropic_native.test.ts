@@ -226,6 +226,39 @@ describe('to_anthropic_messages', () => {
     })
   })
 
+  it('sends is_error: true on a failed call\'s tool_result alone', () => {
+    const messages: Message[] = [
+      { role: 'user', content: 'compare two cities' },
+      {
+        role: 'assistant',
+        content: [
+          { type: 'tool_call', id: 'toolu_01', name: 'get_weather', input: { city: 'Ottawa' } },
+          { type: 'tool_call', id: 'toolu_02', name: 'get_weather', input: { city: 7 } },
+        ],
+      },
+      { role: 'tool', tool_call_id: 'toolu_01', name: 'get_weather', content: 'sunny' },
+      {
+        role: 'tool',
+        tool_call_id: 'toolu_02',
+        name: 'get_weather',
+        content: '{"error":"invalid tool input: city: expected string"}',
+        is_error: true,
+      },
+    ]
+    expect(to_anthropic_messages(messages).messages[2]).toStrictEqual({
+      role: 'user',
+      content: [
+        { type: 'tool_result', tool_use_id: 'toolu_01', content: 'sunny' },
+        {
+          type: 'tool_result',
+          tool_use_id: 'toolu_02',
+          content: '{"error":"invalid tool input: city: expected string"}',
+          is_error: true,
+        },
+      ],
+    })
+  })
+
   it('merges a user message following tool results into the same turn', () => {
     const messages: Message[] = [
       { role: 'user', content: 'weather?' },

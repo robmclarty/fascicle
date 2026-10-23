@@ -204,6 +204,36 @@ describe('to_sdk_messages', () => {
     ])
   })
 
+  it('sends a failed call\'s result as error-text and a success\'s as text', () => {
+    const messages: Message[] = [
+      { role: 'tool', tool_call_id: 't1', name: 'search', content: 'result' },
+      {
+        role: 'tool',
+        tool_call_id: 't2',
+        name: 'search',
+        content: '{"error":"tool_approval_denied"}',
+        is_error: true,
+      },
+    ]
+    expect(to_sdk_messages(messages, 'anthropic')).toStrictEqual([
+      {
+        role: 'tool',
+        content: [{ type: 'tool-result', toolCallId: 't1', toolName: 'search', output: { type: 'text', value: 'result' } }],
+      },
+      {
+        role: 'tool',
+        content: [
+          {
+            type: 'tool-result',
+            toolCallId: 't2',
+            toolName: 'search',
+            output: { type: 'error-text', value: '{"error":"tool_approval_denied"}' },
+          },
+        ],
+      },
+    ])
+  })
+
   it('maps user text and image parts (with optional mediaType)', () => {
     const messages: Message[] = [
       {
@@ -755,6 +785,58 @@ describe('ai_sdk part data round trip', () => {
     ).toStrictEqual([
       { type: 'reasoning', text: 'bare' },
       { type: 'text', text: 'hi' },
+    ])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// A failed call reaches the SDK's mock model as error-text, a denial included,
+// so @ai-sdk/anthropic can flag it; a success stays text.
+// ---------------------------------------------------------------------------
+
+describe('ai_sdk fed-back tool errors', () => {
+  const calls_turn: MockStreamPart[] = [
+    { type: 'stream-start', warnings: [] },
+    { type: 'tool-call', toolCallId: 'c1', toolName: 'get_weather', input: '{"city":"Ottawa"}' },
+    { type: 'tool-call', toolCallId: 'c2', toolName: 'missing', input: '{}' },
+    { type: 'tool-call', toolCallId: 'c3', toolName: 'guarded', input: '{"city":"Ottawa"}' },
+    { type: 'tool-call', toolCallId: 'c4', toolName: 'boom', input: '{"city":"Ottawa"}' },
+    { type: 'finish', finishReason: { unified: 'tool-calls', raw: 'tool_use' }, usage: USAGE_V4 },
+  ]
+
+  it('sends every failure as error-text and a success as text', async () => {
+    const model = new MockLanguageModelV4({
+      doStream: [stream_of(calls_turn), stream_of(FINAL_TURN_STREAM)],
+    })
+    const engine = create_engine({
+      providers: { anthropic_mock: {} },
+      custom_providers: { anthropic_mock: () => mock_adapter(model, 'anthropic_mock', 'anthropic') },
+    })
+    const guarded: Tool = { ...weather, name: 'guarded', needs_approval: true }
+    const boom: Tool = {
+      ...weather,
+      name: 'boom',
+      execute: () => {
+        throw new Error('kaput')
+      },
+    }
+    await engine.generate({
+      model: 'mock-model',
+      prompt: 'weather in Ottawa?',
+      tools: [weather, guarded, boom],
+      on_tool_approval: () => false,
+      on_chunk: () => {},
+    })
+
+    const outputs = model.doStreamCalls[1]?.prompt
+      .filter((message) => message.role === 'tool')
+      .flatMap((message) => message.content)
+      .map((part) => (part.type === 'tool-result' ? [part.toolCallId, part.output] : [part.type]))
+    expect(outputs).toStrictEqual([
+      ['c1', { type: 'text', value: 'sunny' }],
+      ['c2', { type: 'error-text', value: `{"error":"unknown tool 'missing'"}` }],
+      ['c3', { type: 'error-text', value: '{"error":"tool_approval_denied"}' }],
+      ['c4', { type: 'error-text', value: '{"error":"kaput"}' }],
     ])
   })
 })

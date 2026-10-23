@@ -252,11 +252,12 @@ describe('native adapter inherits fail-closed approval', () => {
       name: 'echo',
       error: { message: 'tool_approval_denied' },
     })
-    expect(log.requests[1]?.messages.at(-1)).toEqual({
+    expect(log.requests[1]?.messages.at(-1)).toStrictEqual({
       role: 'tool',
       tool_call_id: 'c1',
       name: 'echo',
       content: '{"error":"tool_approval_denied"}',
+      is_error: true,
     })
   })
 

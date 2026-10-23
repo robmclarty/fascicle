@@ -76,7 +76,7 @@ const DEFAULT_MAX_TOKENS = 4096
 type AnthropicContentBlock =
   | { type: 'text'; text: string }
   | { type: 'tool_use'; id: string; name: string; input: unknown }
-  | { type: 'tool_result'; tool_use_id: string; content: string }
+  | { type: 'tool_result'; tool_use_id: string; content: string; is_error?: true }
   | { type: 'thinking'; thinking: string; signature: string }
   | { type: 'redacted_thinking'; data: string }
 
@@ -207,7 +207,12 @@ export function to_anthropic_messages(messages: ReadonlyArray<Message>): {
       }
       case 'tool': {
         push_blocks('user', [
-          { type: 'tool_result', tool_use_id: message.tool_call_id, content: message.content },
+          {
+            type: 'tool_result',
+            tool_use_id: message.tool_call_id,
+            content: message.content,
+            ...(message.is_error === true ? { is_error: true } : {}),
+          },
         ])
         break
       }

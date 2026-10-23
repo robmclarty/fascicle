@@ -186,6 +186,26 @@ export function to_provider_reported(metadata: unknown): Record<string, unknown>
 }
 
 /**
+ * Map a tool result to the SDK's tool message. A failed call's result goes as
+ * `error-text`, a denial included, since @ai-sdk/anthropic turns `error-text`
+ * into `is_error` and drops the flag for `execution-denied`; a success's goes
+ * as `text`.
+ */
+function to_sdk_tool_message(m: Extract<Message, { role: 'tool' }>): ModelMessage {
+  return {
+    role: 'tool',
+    content: [
+      {
+        type: 'tool-result',
+        toolCallId: m.tool_call_id,
+        toolName: m.name,
+        output: { type: m.is_error === true ? 'error-text' : 'text', value: m.content },
+      },
+    ],
+  }
+}
+
+/**
  * Map Fascicle's Message[] to the AI SDK's ModelMessage[] shape. Each
  * assistant part's provider_options go back as its providerOptions, which is
  * where the SDK reads a signature or a thought signature back from, and a
@@ -220,17 +240,7 @@ export function to_sdk_messages(
       continue
     }
     if (m.role === 'tool') {
-      out.push({
-        role: 'tool',
-        content: [
-          {
-            type: 'tool-result',
-            toolCallId: m.tool_call_id,
-            toolName: m.name,
-            output: { type: 'text', value: m.content },
-          },
-        ],
-      })
+      out.push(to_sdk_tool_message(m))
       continue
     }
     // assistant

@@ -131,10 +131,11 @@ async function run_native_turn(
   adapter: NativeProviderAdapter,
   model_id: string,
   stream: boolean,
+  messages: ReadonlyArray<Message> = MESSAGES,
 ): Promise<TurnResult> {
   const req: TurnRequest = {
     step_index: 0,
-    messages: MESSAGES,
+    messages,
     tools: [weather_tool],
     abort: new AbortController().signal,
     stream,
@@ -149,6 +150,7 @@ async function run_ai_sdk_turn(
   adapter: AiSdkProviderAdapter,
   model_id: string,
   stream: boolean,
+  messages: ReadonlyArray<Message> = MESSAGES,
 ): Promise<TurnResult> {
   const turn = create_ai_sdk_turn({
     adapter,
@@ -165,7 +167,7 @@ async function run_ai_sdk_turn(
   })
   return turn({
     step_index: 0,
-    messages: MESSAGES,
+    messages,
     abort: new AbortController().signal,
     stream,
     on_first_chunk: () => {},
@@ -547,5 +549,87 @@ describe('transport parity: known usage-normalization divergence', () => {
     })
     expect(ai_sdk_result.text).toBe(native_result.text)
     expect(ai_sdk_result.finish_reason).toBe(native_result.finish_reason)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// A fed-back error on both Anthropic wires
+// ---------------------------------------------------------------------------
+
+describe('transport parity: a fed-back tool error', () => {
+  const FED_BACK: ReadonlyArray<Message> = [
+    { role: 'user', content: 'weather in Ottawa and Kingston?' },
+    {
+      role: 'assistant',
+      content: [
+        { type: 'tool_call', id: 'toolu_01', name: 'get_weather', input: { city: 'Ottawa' } },
+        { type: 'tool_call', id: 'toolu_02', name: 'get_weather', input: { city: 'Kingston' } },
+      ],
+    },
+    { role: 'tool', tool_call_id: 'toolu_01', name: 'get_weather', content: 'sunny' },
+    {
+      role: 'tool',
+      tool_call_id: 'toolu_02',
+      name: 'get_weather',
+      content: '{"error":"tool_approval_denied"}',
+      is_error: true,
+    },
+  ]
+
+  /** Serve the recorded SSE turn and keep each request's parsed body. */
+  function capture_bodies(): Array<Record<string, unknown>> {
+    const bodies: Array<Record<string, unknown>> = []
+    const respond = sse_factory(anthropic_sse(ANTHROPIC_TEXT_SSE))
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_url: unknown, init?: RequestInit) => {
+        bodies.push(JSON.parse(typeof init?.body === 'string' ? init.body : '{}') as Record<string, unknown>)
+        return respond()
+      }),
+    )
+    return bodies
+  }
+
+  /** The tool_result blocks of the last user message a body sent. */
+  function tool_results(body: Record<string, unknown> | undefined): unknown {
+    const messages = body?.['messages'] as Array<{ role: string; content: unknown }> | undefined
+    const last = messages?.at(-1)?.content as Array<Record<string, unknown>> | undefined
+    return last?.filter((block) => block['type'] === 'tool_result')
+  }
+
+  it('reaches the Messages API as is_error: true from the native adapter and from @ai-sdk/anthropic', async () => {
+    const bodies = capture_bodies()
+    await run_native_turn(
+      as_native(create_anthropic_adapter({ api_key: 'sk-test', transport: 'native' })),
+      ANTHROPIC_MODEL,
+      true,
+      FED_BACK,
+    )
+    await run_ai_sdk_turn(
+      as_ai_sdk(create_anthropic_adapter({ api_key: 'sk-test' })),
+      ANTHROPIC_MODEL,
+      true,
+      FED_BACK,
+    )
+    expect(bodies).toHaveLength(2)
+
+    expect(tool_results(bodies[0]), 'native').toStrictEqual([
+      { type: 'tool_result', tool_use_id: 'toolu_01', content: 'sunny' },
+      {
+        type: 'tool_result',
+        tool_use_id: 'toolu_02',
+        content: '{"error":"tool_approval_denied"}',
+        is_error: true,
+      },
+    ])
+    expect(tool_results(bodies[1]), 'ai_sdk').toStrictEqual([
+      { type: 'tool_result', tool_use_id: 'toolu_01', content: 'sunny' },
+      {
+        type: 'tool_result',
+        tool_use_id: 'toolu_02',
+        content: '{"error":"tool_approval_denied"}',
+        is_error: true,
+      },
+    ])
   })
 })
