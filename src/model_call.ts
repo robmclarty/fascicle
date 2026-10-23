@@ -19,6 +19,7 @@ import { createHash } from 'node:crypto'
 import { aborted_error, step } from '#core'
 import type { RunContext, Step, StepMetadata, TrajectoryLogger } from '#core'
 import type {
+  CacheSetting,
   EffortLevel,
   Engine,
   GenerateOptions,
@@ -60,6 +61,11 @@ export type ModelCallConfig<T = string, projected = GenerateResult<T>> = {
   readonly tools?: ReadonlyArray<Tool>
   readonly schema?: ToolSchema<T>
   readonly effort?: EffortLevel
+  /**
+   * Prompt caching for the call, forwarded to the engine. See
+   * `GenerateOptions.cache`.
+   */
+  readonly cache?: CacheSetting
   readonly temperature?: number
   readonly max_tokens?: number
   readonly top_p?: number
@@ -220,6 +226,7 @@ function build_generate_options<T, projected>(
   if (cfg.tools !== undefined) opts.tools = [...cfg.tools]
   assign_if_present(opts, 'schema', cfg.schema)
   assign_if_present(opts, 'effort', cfg.effort)
+  assign_if_present(opts, 'cache', cfg.cache)
   assign_if_present(opts, 'temperature', cfg.temperature)
   assign_if_present(opts, 'max_tokens', cfg.max_tokens)
   assign_if_present(opts, 'top_p', cfg.top_p)

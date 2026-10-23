@@ -44,6 +44,7 @@ export type {
   AssistantContentPart,
   BedrockCredentialProvider,
   BedrockCredentials,
+  CacheSetting,
   ClaudeCliErrorReason,
   ClaudeCliProviderReported,
   CostBreakdown,

@@ -31,7 +31,7 @@ vi.mock('ai', async () => build_mock_ai_module())
 vi.mock('@ai-sdk/otel', () => ({ OpenTelemetry: vi.fn() }))
 
 import { create_engine } from '../create_engine.js'
-import { provider_not_configured_error, tool_error } from '../errors.js'
+import { engine_config_error, provider_not_configured_error, tool_error } from '../errors.js'
 import {
   default_normalize_usage,
   type ProviderAdapter,
@@ -213,6 +213,52 @@ describe('create_engine folds request-visible defaults into the turn', () => {
     expect('temperature' in req).toBe(false)
     expect('max_tokens' in req).toBe(false)
     expect('top_p' in req).toBe(false)
+  })
+})
+
+describe('create_engine folds the cache default into generate', () => {
+  /** A native factory that declares opt-in caching, so only a setting turns it on. */
+  function opt_in_factory(log: NativeLog): ProviderFactory {
+    const base = make_native_factory(log, [text_turn('ok')])
+    return (init) => ({ ...base(init), prompt_cache: 'opt_in' }) as ProviderAdapter
+  }
+
+  it('applies defaults.cache when the call sets none', async () => {
+    const log: NativeLog = { requests: [] }
+    const engine = create_engine({
+      providers: { [PROVIDER]: {} },
+      custom_providers: { [PROVIDER]: opt_in_factory(log) },
+      defaults: { cache: '1h' },
+    })
+
+    await engine.generate({ model: MODEL, provider: PROVIDER, prompt: 'hi' })
+
+    expect(log.requests[0]?.cache).toBe('1h')
+  })
+
+  it("lets a call's cache win over defaults.cache", async () => {
+    const log: NativeLog = { requests: [] }
+    const engine = create_engine({
+      providers: { [PROVIDER]: {} },
+      custom_providers: { [PROVIDER]: opt_in_factory(log) },
+      defaults: { cache: '1h' },
+    })
+
+    await engine.generate({ model: MODEL, provider: PROVIDER, prompt: 'hi', cache: 'off' })
+
+    expect('cache' in (log.requests[0] ?? {})).toBe(false)
+  })
+
+  it('throws engine_config_error at construction for an unknown defaults.cache', () => {
+    const build = (): unknown =>
+      create_engine({
+        providers: { [PROVIDER]: {} },
+        custom_providers: { [PROVIDER]: opt_in_factory({ requests: [] }) },
+        // eslint-disable-next-line typescript-eslint/no-unsafe-type-assertion
+        defaults: { cache: '10m' as unknown as '5m' },
+      })
+    expect(build).toThrow(engine_config_error)
+    expect(build).toThrow(`defaults.cache must be one of 'off', '5m', '1h', got "10m"`)
   })
 })
 

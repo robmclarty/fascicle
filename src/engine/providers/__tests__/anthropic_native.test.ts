@@ -548,6 +548,92 @@ describe('build_messages_body', () => {
     expect(body['top_p']).toBe(0.8)
     expect(body).not.toHaveProperty('temperature')
   })
+
+  it('sets a top-level five-minute cache_control for cache 5m', () => {
+    const body = build_messages_body(make_req({ cache: '5m' }))
+    expect(body['cache_control']).toStrictEqual({ type: 'ephemeral' })
+  })
+
+  it("sets a one-hour cache_control for cache 1h", () => {
+    const body = build_messages_body(make_req({ cache: '1h' }))
+    expect(body['cache_control']).toStrictEqual({ type: 'ephemeral', ttl: '1h' })
+  })
+
+  it('sets no cache_control when the request carries no cache', () => {
+    expect(build_messages_body(make_req())).not.toHaveProperty('cache_control')
+  })
+
+  it("lets a caller's own cache_control beat the derived one", () => {
+    const body = build_messages_body(
+      make_req({
+        cache: '1h',
+        provider_options: { anthropic: { cache_control: { type: 'ephemeral', ttl: '5m' } } },
+      }),
+    )
+    expect(body['cache_control']).toStrictEqual({ type: 'ephemeral', ttl: '5m' })
+  })
+})
+
+describe('prompt caching through the engine on the native transport', () => {
+  const tool: Tool = { ...weather_tool, execute: () => 'sunny' }
+
+  /** Send one call through a native anthropic engine and parse the body it sent. */
+  async function sent_body(
+    call: { tools?: Tool[]; cache?: 'off' | '5m' | '1h'; provider_options?: Record<string, unknown> },
+    defaults: { cache?: 'off' | '5m' | '1h' } = {},
+  ): Promise<Record<string, unknown>> {
+    const mock = stub_fetch(json_response(TEXT_FIXTURE))
+    const engine = create_engine({
+      providers: { anthropic: { api_key: 'k', transport: 'native' } },
+      defaults,
+    })
+    await engine.generate({ model: 'claude-sonnet-5', prompt: 'hi', ...call })
+    const init = (mock.mock.calls[0] as [string, RequestInit])[1]
+    return JSON.parse(init.body as string) as Record<string, unknown>
+  }
+
+  it('caches for five minutes by default on a call with tools', async () => {
+    const body = await sent_body({ tools: [tool] })
+    expect(body['cache_control']).toStrictEqual({ type: 'ephemeral' })
+  })
+
+  it('sends no cache_control by default on a call without tools', async () => {
+    expect(await sent_body({})).not.toHaveProperty('cache_control')
+  })
+
+  it("sends a one-hour cache_control for cache '1h', with tools or without", async () => {
+    expect((await sent_body({ cache: '1h' }))['cache_control']).toStrictEqual({
+      type: 'ephemeral',
+      ttl: '1h',
+    })
+    expect((await sent_body({ tools: [tool], cache: '1h' }))['cache_control']).toStrictEqual({
+      type: 'ephemeral',
+      ttl: '1h',
+    })
+  })
+
+  it("sends no cache_control for cache 'off' on a call with tools", async () => {
+    expect(await sent_body({ tools: [tool], cache: 'off' })).not.toHaveProperty('cache_control')
+  })
+
+  it("lets a caller's own cache_control win on a call with tools", async () => {
+    const body = await sent_body({
+      tools: [tool],
+      provider_options: { anthropic: { cache_control: { type: 'ephemeral', ttl: '1h' } } },
+    })
+    expect(body['cache_control']).toStrictEqual({ type: 'ephemeral', ttl: '1h' })
+  })
+
+  it("takes the engine's default cache, and a call's own setting over it", async () => {
+    expect((await sent_body({}, { cache: '1h' }))['cache_control']).toStrictEqual({
+      type: 'ephemeral',
+      ttl: '1h',
+    })
+    expect(await sent_body({ tools: [tool], cache: 'off' }, { cache: '1h' })).not.toHaveProperty(
+      'cache_control',
+    )
+    expect(await sent_body({ tools: [tool] }, { cache: 'off' })).not.toHaveProperty('cache_control')
+  })
 })
 
 describe('map_anthropic_stop_reason', () => {

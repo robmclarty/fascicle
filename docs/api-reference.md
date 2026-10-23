@@ -351,8 +351,8 @@ streaming chunks. Like the envelope composites, the config takes an optional
 inside the step, so `describe` and the trajectory gain no wrapper node.
 Omitted, the envelope is the output. The config also carries the caller-shaped
 generation knobs (`temperature`, `max_tokens`, `top_p`, `turn_timeout_ms`,
-`prepare_step`) alongside `model` / `provider` / `system` / `schema` / `tools`
-/ `effort` / `retry`; `abort` and `trajectory` stay runner-owned and are
+`prepare_step`, `cache`) alongside `model` / `provider` / `system` / `schema` /
+`tools` / `effort` / `retry`; `abort` and `trajectory` stay runner-owned and are
 threaded automatically. An `on_chunk` in the config is an observer: it sees
 every chunk of the call as it streams, which suits a live terminal renderer,
 and it runs beside the `model_chunk` forwarding that `run.stream` sets up
@@ -379,7 +379,11 @@ wants the answer, and use `model_call` when you need the `GenerateResult`
 envelope (usage, cost, tool calls, finish reason), or its `project` option
 for a slice of it. Implemented as `model_call` with `project` preset to
 `(r) => r.content`, so the leaf is a single node in `describe` and the
-trajectory.
+trajectory. The config's `cache` (a `CacheSetting`, `'off' | '5m' | '1h'`)
+passes through to the engine like every other knob, so a flow can set prompt
+caching step by step, as in `model_step({ engine, tools, cache: '5m' })` for a
+long tool loop on a provider where caching is opt-in. See
+[providers.md](./providers.md#prompt-caching).
 
 ### `define_agent` — Markdown-Driven Agents
 
@@ -686,10 +690,11 @@ The bench tier adds `BenchCase`, `BenchOptions`, `BenchReport`, `BenchSummary`,
 `ToolCallRecord`, `ToolApprovalHandler`, `ToolApprovalRequest`, `StepRecord`,
 `StepTiming`, `GenerateTiming`, `Throughput`, `UsageTotals`,
 `ClaudeCliProviderReported`, `CostBreakdown`, `Pricing`, `PricingTable`,
-`EffortLevel`, `EffortTranslation`, `RawProviderUsage`, `PrepareStepContext`,
-`PrepareStepResult`, `PrepareStepHook`, `RetryPolicy`, `RetryFailureKind`,
-`ProviderConfigMap`, `ProviderInit`, `ResolvedModel`, `AiSdkTelemetrySettings`,
-`ClaudeCliErrorReason`, `BedrockCredentialProvider`, `BedrockCredentials`.
+`EffortLevel`, `CacheSetting`, `EffortTranslation`, `RawProviderUsage`,
+`PrepareStepContext`, `PrepareStepResult`, `PrepareStepHook`, `RetryPolicy`,
+`RetryFailureKind`, `ProviderConfigMap`, `ProviderInit`, `ResolvedModel`,
+`AiSdkTelemetrySettings`, `ClaudeCliErrorReason`, `BedrockCredentialProvider`,
+`BedrockCredentials`.
 
 **Bridge.** `ModelCallConfig`, `ModelCallInput`. The viewer types live on the
 `fascicle/viewer` subpath.

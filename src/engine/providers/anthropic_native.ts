@@ -306,11 +306,17 @@ export function build_messages_body(req: TurnRequest): Record<string, unknown> {
     body['thinking'] = { type: 'adaptive', display: 'summarized' }
     body['output_config'] = { effort: req.effort }
   }
+  // One top-level cache_control turns on Anthropic's automatic caching, which
+  // puts the breakpoint on the request's last cacheable block and moves it
+  // forward as the conversation grows.
+  if (req.cache !== undefined) {
+    body['cache_control'] = req.cache === '1h' ? { type: 'ephemeral', ttl: '1h' } : { type: 'ephemeral' }
+  }
   // provider_options.anthropic is raw wire-format passthrough (snake_case
   // Messages-API keys, not the ai_sdk transport's camelCase spellings),
   // shallow-merged last so an explicit user key beats every derived field:
   // the thinking and output_config the effort sets, the max_tokens default,
-  // sampling params. The adapter does not reconcile interactions the API
+  // the cache_control the cache setting sets, sampling params. The adapter does not reconcile interactions the API
   // rejects (for example, a passthrough temperature alongside thinking);
   // wire keys are the user asserting they know the wire.
   const passthrough = req.provider_options?.['anthropic']
@@ -873,6 +879,7 @@ export const create_anthropic_native_adapter = (
   return {
     kind: 'native',
     name: 'anthropic',
+    prompt_cache: 'with_tools',
     async invoke_turn(req: TurnRequest): Promise<TurnResult> {
       return invoke_http_turn(
         req,

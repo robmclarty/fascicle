@@ -291,6 +291,23 @@ describe('trajectory helpers', () => {
     })
   })
 
+  it('adds a reason to option_ignored only when the emit passes one', () => {
+    const { trajectory, events } = create_recorder()
+    const dedup = create_option_ignored_dedup(trajectory)
+    dedup.emit('cache', 'openai', 'the provider caches on its own')
+    dedup.emit('max_steps', 'claude_cli')
+    const records = events.filter((e) => e.kind === 'record').map((e) => e.payload)
+    expect(records).toStrictEqual([
+      {
+        kind: 'option_ignored',
+        option: 'cache',
+        provider: 'openai',
+        reason: 'the provider caches on its own',
+      },
+      { kind: 'option_ignored', option: 'max_steps', provider: 'claude_cli' },
+    ])
+  })
+
   it('option_ignored dedup is a no-op when trajectory is undefined', () => {
     const dedup = create_option_ignored_dedup(undefined)
     dedup.emit('max_steps', 'claude_cli')

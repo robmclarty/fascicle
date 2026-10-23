@@ -16,6 +16,14 @@ import type { ProviderFactory, ProviderTransport } from './providers/types.js'
 
 export type EffortLevel = 'none' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
 
+/**
+ * Prompt caching for a call: `'off'` asks for none, `'5m'` for a five-minute
+ * cache, and `'1h'` for a one-hour one. What a provider does with it depends
+ * on the caching its adapter declares; see `docs/providers.md`'s Prompt
+ * Caching.
+ */
+export type CacheSetting = 'off' | '5m' | '1h'
+
 export type FinishReason =
   | 'stop'
   | 'tool_calls'
@@ -372,6 +380,11 @@ export type TurnRequest = {
   readonly temperature?: number
   readonly max_tokens?: number
   readonly top_p?: number
+  /**
+   * The cache lifetime the engine resolved for this call, absent when caching
+   * is off. An adapter that declares `prompt_cache` maps it onto its wire.
+   */
+  readonly cache?: Exclude<CacheSetting, 'off'>
   readonly dispatch_chunk?: (chunk: StreamChunk) => Promise<void>
 }
 
@@ -454,6 +467,14 @@ export type GenerateOptions<t = string> = {
    * PrepareStepHook.
    */
   prepare_step?: PrepareStepHook
+  /**
+   * Prompt caching for this call. Left unset, an adapter that caches with
+   * tools (native Anthropic) caches for five minutes when the call has tools,
+   * and every other adapter asks for no cache. `'off'` turns it off. An
+   * adapter that can't honor an explicit `'5m'` or `'1h'` records
+   * `option_ignored`. Any other value throws `engine_config_error`.
+   */
+  cache?: CacheSetting
   provider_options?: Record<string, unknown>
 }
 
@@ -554,7 +575,7 @@ export type AiSdkTelemetrySettings = {
  * | --------------------------------------------------------------------- | ----------------------------------------- |
  * | `model`                                                               | per-call wins; else default; else model_required_error is thrown |
  * | `provider`                                                            | per-call wins; else default; else sole configured provider; else provider_required_error is thrown |
- * | `system`, `effort`, `max_steps`, `turn_timeout_ms`, `tool_error_policy`, `schema_repair_attempts`, `tool_call_repair_attempts`, `max_tool_calls_per_step` | per-call wins (nullish coalesce) |
+ * | `system`, `effort`, `cache`, `max_steps`, `turn_timeout_ms`, `tool_error_policy`, `schema_repair_attempts`, `tool_call_repair_attempts`, `max_tool_calls_per_step` | per-call wins (nullish coalesce) |
  * | `temperature`, `max_tokens`, `top_p`                                  | per-call wins (nullish coalesce)          |
  * | `retry_policy`                                                        | per-call replaces wholesale                |
  * | `provider_options`                                                    | two-level: per-provider-key shallow merge  |
@@ -565,6 +586,11 @@ export type EngineDefaults = {
   readonly provider?: string
   readonly system?: string
   readonly effort?: EffortLevel
+  /**
+   * Prompt caching for every call that sets none. An unknown value throws
+   * `engine_config_error` at `create_engine`. See `GenerateOptions.cache`.
+   */
+  readonly cache?: CacheSetting
   readonly temperature?: number
   readonly max_tokens?: number
   readonly top_p?: number

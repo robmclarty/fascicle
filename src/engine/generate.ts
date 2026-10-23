@@ -17,6 +17,7 @@
 
 import type {
   AiSdkTelemetrySettings,
+  CacheSetting,
   CostBreakdown,
   EffortLevel,
   FinishReason,
@@ -63,6 +64,7 @@ import {
   type ChunkDispatcher,
 } from './streaming.js'
 import {
+  create_option_ignored_dedup,
   create_pricing_missing_dedup,
   end_generate_span,
   record_effort_ignored,
@@ -91,6 +93,7 @@ export type EngineInternals = {
   readonly adapters: ReadonlyMap<string, ProviderAdapter>
   readonly default_retry: RetryPolicy
   readonly default_effort: EffortLevel
+  readonly default_cache?: CacheSetting
   readonly default_max_steps: number
   readonly default_turn_timeout_ms?: number
   readonly default_ai_sdk_telemetry?: AiSdkTelemetrySettings
@@ -273,6 +276,7 @@ type NativeInvokeConfig = {
   readonly trajectory: TrajectoryLogger | undefined
   readonly dispatcher: ChunkDispatcher
   readonly effort: EffortLevel
+  readonly cache: CacheSetting
   readonly schema: TurnRequest['schema']
   readonly provider_options: TurnRequest['provider_options']
   readonly temperature: number | undefined
@@ -510,6 +514,7 @@ function build_native_invoke(cfg: NativeInvokeConfig): InvokeOnce {
         stream: streams,
         model_id: cfg.model_id,
         effort: cfg.effort,
+        ...(cfg.cache !== 'off' ? { cache: cfg.cache } : {}),
         ...(system !== undefined ? { system } : {}),
         ...(cfg.schema !== undefined ? { schema: cfg.schema } : {}),
         ...(cfg.provider_options !== undefined
@@ -560,6 +565,22 @@ function assert_unique_tool_names(tools: ReadonlyArray<Tool> | undefined): void 
   const listed = duplicates.map(([name, count]) => `${name} (${String(count)})`).join(', ')
   throw new engine_config_error(
     `duplicate tool names: ${listed}; give each tool its own name, or pass \`name_prefix\` to mcp_client for one server's tools`,
+  )
+}
+
+const CACHE_SETTINGS: Readonly<Record<CacheSetting, true>> = { off: true, '5m': true, '1h': true }
+
+/**
+ * Throw `engine_config_error` when a cache setting is set to anything but a
+ * `CacheSetting`, naming the field, the value, and the values it takes.
+ * `create_engine` checks `defaults.cache` with it, and `generate` a call's
+ * `cache`.
+ */
+export function assert_cache_setting(value: string | undefined, field: string): void {
+  if (value === undefined || Object.hasOwn(CACHE_SETTINGS, value)) return
+  const allowed = Object.keys(CACHE_SETTINGS).map((key) => `'${key}'`).join(', ')
+  throw new engine_config_error(
+    `${field} must be one of ${allowed}, got ${JSON.stringify(value)}`,
   )
 }
 
@@ -656,18 +677,56 @@ function assert_capabilities<T>(
 
 type TurnConfig = {
   readonly effort: EffortLevel
+  readonly cache: CacheSetting
   readonly retry_policy: RetryPolicy
   readonly turn_timeout_ms: number | undefined
 }
 
+type CallShape = {
+  readonly adapter: AiSdkProviderAdapter | NativeProviderAdapter
+  readonly tools: ReadonlyArray<Tool>
+  readonly trajectory: TrajectoryLogger | undefined
+}
+
+type CacheResolution = {
+  readonly cache: CacheSetting
+  readonly ignored_reason?: string
+}
+
 /**
- * Resolve the per-turn knobs (effort, retry policy, turn timeout) against
- * engine defaults. Validated here, before any transport is built, so a bad
- * budget fails as a config error, never as a spurious timeout.
+ * Resolve a call's cache setting from the caching its adapter declares and
+ * the setting the call or the engine asked for. `'with_tools'` caches for
+ * five minutes by default on a call with tools, `'opt_in'` only when asked,
+ * and an `'automatic'` or undeclared adapter never, with a reason for
+ * ignoring an explicit `'5m'` or `'1h'`.
+ */
+function resolve_cache(
+  declared: NativeProviderAdapter['prompt_cache'],
+  explicit: CacheSetting | undefined,
+  has_tools: boolean,
+): CacheResolution {
+  if (declared === 'with_tools') return { cache: explicit ?? (has_tools ? '5m' : 'off') }
+  if (declared === 'opt_in') return { cache: explicit ?? 'off' }
+  if (explicit === undefined || explicit === 'off') return { cache: 'off' }
+  return {
+    cache: 'off',
+    ignored_reason:
+      declared === 'automatic'
+        ? 'the provider caches on its own'
+        : "this adapter doesn't request prompt caching",
+  }
+}
+
+/**
+ * Resolve the per-turn knobs (effort, cache, retry policy, turn timeout)
+ * against engine defaults. Validated here, before any transport is built, so
+ * a bad budget fails as a config error, never as a spurious timeout. A cache
+ * setting the adapter can't honor records `option_ignored` with its reason.
  */
 function resolve_turn_config<T>(
   opts: GenerateOptions<T>,
   engine: EngineInternals,
+  call: CallShape,
 ): TurnConfig {
   const effort: EffortLevel = opts.effort ?? engine.default_effort
   const retry_policy = opts.retry ?? engine.default_retry
@@ -677,7 +736,15 @@ function resolve_turn_config<T>(
     // starts; reject rather than silently disable or hang.
     throw new engine_config_error(`turn_timeout_ms must be > 0, got ${String(turn_timeout_ms)}`)
   }
-  return { effort, retry_policy, turn_timeout_ms }
+  const { cache, ignored_reason } = resolve_cache(
+    call.adapter.prompt_cache,
+    opts.cache ?? engine.default_cache,
+    call.tools.length > 0,
+  )
+  if (ignored_reason !== undefined) {
+    create_option_ignored_dedup(call.trajectory).emit('cache', call.adapter.name, ignored_reason)
+  }
+  return { effort, cache, retry_policy, turn_timeout_ms }
 }
 
 type LoopLimits = {
@@ -1134,6 +1201,7 @@ export async function generate<T = string>(
     throw new provider_not_configured_error(target.provider, [...engine.adapters.keys()])
   }
   assert_unique_tool_names(opts.tools)
+  assert_cache_setting(opts.cache, 'cache')
 
   if (adapter.kind === 'external') {
     const external = await adapter.generate<T>(opts, target)
@@ -1149,7 +1217,7 @@ export async function generate<T = string>(
 
   assert_capabilities(adapter, target.provider, opts, tools_list, on_chunk_provided)
 
-  const turn = resolve_turn_config(opts, engine)
+  const turn = resolve_turn_config(opts, engine, { adapter, tools: tools_list, trajectory })
   const dispatcher = create_chunk_dispatcher(opts.on_chunk)
 
   let invoke_once: InvokeOnce
@@ -1179,6 +1247,7 @@ export async function generate<T = string>(
       trajectory,
       dispatcher,
       effort: turn.effort,
+      cache: turn.cache,
       schema: opts.schema,
       // The merge produces the two-level per-provider shape TurnRequest
       // declares; GenerateOptions types it loosely as Record<string, unknown>.

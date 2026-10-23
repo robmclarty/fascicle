@@ -69,5 +69,6 @@ export const create_google_adapter = (init: ProviderInit): AiSdkProviderAdapter 
     translate_effort: translate_effort_to_sdk_reasoning,
     normalize_usage: normalize_google_usage,
     supports: (capability) => SUPPORTED.has(capability),
+    prompt_cache: 'automatic',
   }
 }

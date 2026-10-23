@@ -87,6 +87,15 @@ export type ProviderCapability =
   // only some constrain the decode to it.
   | 'structured_output'
 
+/**
+ * How an adapter caches prompts, which decides what a call's `cache` setting
+ * does on it. `'with_tools'` caches for five minutes by default on a call
+ * with tools, `'opt_in'` caches only when the call or the engine asks, and
+ * `'automatic'` marks a provider that caches on its own, so an explicit
+ * setting is ignored. An adapter that declares nothing requests no caching.
+ */
+type PromptCacheDeclaration = 'with_tools' | 'opt_in' | 'automatic'
+
 export type RawProviderUsage = {
   input_tokens?: number
   output_tokens?: number
@@ -117,6 +126,7 @@ export type AiSdkProviderAdapter = {
   readonly translate_effort: (effort: EffortLevel) => EffortTranslation
   readonly normalize_usage: (raw: RawProviderUsage | undefined) => UsageTotals
   readonly supports: (capability: ProviderCapability) => boolean
+  readonly prompt_cache?: PromptCacheDeclaration
 }
 
 /**
@@ -132,6 +142,7 @@ export type NativeProviderAdapter = {
   readonly name: string
   readonly invoke_turn: (req: TurnRequest) => Promise<TurnResult>
   readonly supports: (capability: ProviderCapability) => boolean
+  readonly prompt_cache?: PromptCacheDeclaration
   readonly dispose?: () => Promise<void>
   readonly classify_error?: (err: unknown) => unknown
 }

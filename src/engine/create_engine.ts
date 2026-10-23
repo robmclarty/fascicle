@@ -25,7 +25,7 @@ import {
 } from './errors.js'
 import { get_provider_factory, list_builtin_providers } from './providers/registry.js'
 import type { ProviderAdapter, ProviderFactory } from './providers/types.js'
-import { generate, type EngineInternals } from './generate.js'
+import { assert_cache_setting, generate, type EngineInternals } from './generate.js'
 
 /**
  * Build the provider-name to adapter map from `providers`, resolving each
@@ -165,6 +165,7 @@ function build_internals(
     assign_if_present(internals, 'default_model', defaults.model)
     assign_if_present(internals, 'default_provider', defaults.provider)
     assign_if_present(internals, 'default_system', defaults.system)
+    assign_if_present(internals, 'default_cache', defaults.cache)
     assign_if_present(internals, 'default_temperature', defaults.temperature)
     assign_if_present(internals, 'default_max_tokens', defaults.max_tokens)
     assign_if_present(internals, 'default_top_p', defaults.top_p)
@@ -199,6 +200,7 @@ export function create_engine(config: EngineConfig): Engine {
   const pricing = merge_pricing(config.pricing)
   const { default_retry, default_effort, default_max_steps } = resolve_default_scalars(config)
   validate_numeric_defaults(config.defaults)
+  assert_cache_setting(config.defaults?.cache, 'defaults.cache')
 
   const get_internals = (): EngineInternals =>
     build_internals(

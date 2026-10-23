@@ -8,7 +8,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
-import type { StreamChunk, Tool, TurnRequest, TurnResult } from '../types.js'
+import type { ProviderInit, StreamChunk, Tool, TurnRequest, TurnResult } from '../types.js'
 import {
   build_mock_ai_module,
   build_mock_registry_module,
@@ -32,7 +32,18 @@ import type { ToolSchema } from '#schema'
 import { make_loop_engine } from '#testing'
 import { create_engine } from '../create_engine.js'
 import { create_claude_cli_adapter } from '../providers/claude_cli/index.js'
-import { default_normalize_usage, translate_effort_to_sdk_reasoning } from '../providers/types.js'
+import {
+  default_normalize_usage,
+  translate_effort_to_sdk_reasoning,
+  type ProviderFactory,
+} from '../providers/types.js'
+import { create_anthropic_adapter } from '../providers/anthropic.js'
+import { create_bedrock_adapter } from '../providers/bedrock.js'
+import { create_google_adapter } from '../providers/google.js'
+import { create_lmstudio_adapter } from '../providers/lmstudio.js'
+import { create_ollama_adapter } from '../providers/ollama.js'
+import { create_openai_adapter } from '../providers/openai.js'
+import { create_openrouter_adapter } from '../providers/openrouter.js'
 import {
   aborted_error,
   engine_config_error,
@@ -1919,5 +1930,138 @@ describe('generate: ai_sdk turn timing across a retry', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+})
+
+describe('generate: the cache setting', () => {
+  const sum: Tool = {
+    name: 'sum',
+    description: 'add the numbers up',
+    input_schema: z.object({}),
+    execute: () => 3,
+  }
+  type Declared = 'with_tools' | 'opt_in' | 'automatic' | undefined
+  type Row = {
+    readonly declared: Declared
+    readonly tools: boolean
+    readonly cache: 'off' | '5m' | '1h' | undefined
+    readonly sent: '5m' | '1h' | undefined
+  }
+
+  /** Run one call on a double that declares `declared`, and read each request's `cache`. */
+  async function sent_cache(row: Row): Promise<{ requests: TurnRequest[]; events: TrajectoryEvent[] }> {
+    const { engine, requests } = make_loop_engine(
+      row.tools ? [[{ name: 'sum', input: {} }], 'done'] : ['done'],
+      row.declared === undefined ? {} : { prompt_cache: row.declared },
+    )
+    const recorder = make_recorder()
+    await engine.generate({
+      prompt: 'go',
+      trajectory: recorder.logger,
+      ...(row.tools ? { tools: [sum] } : {}),
+      ...(row.cache === undefined ? {} : { cache: row.cache }),
+    })
+    return { requests, events: recorder.events }
+  }
+
+  it.each<Row>([
+    { declared: 'with_tools', tools: true, cache: undefined, sent: '5m' },
+    { declared: 'with_tools', tools: false, cache: undefined, sent: undefined },
+    { declared: 'with_tools', tools: false, cache: '1h', sent: '1h' },
+    { declared: 'with_tools', tools: true, cache: '1h', sent: '1h' },
+    { declared: 'with_tools', tools: true, cache: 'off', sent: undefined },
+    { declared: 'opt_in', tools: true, cache: undefined, sent: undefined },
+    { declared: 'opt_in', tools: false, cache: '5m', sent: '5m' },
+    { declared: 'opt_in', tools: true, cache: '1h', sent: '1h' },
+    { declared: 'opt_in', tools: true, cache: 'off', sent: undefined },
+    { declared: 'automatic', tools: true, cache: undefined, sent: undefined },
+    { declared: 'automatic', tools: true, cache: '5m', sent: undefined },
+    { declared: undefined, tools: true, cache: undefined, sent: undefined },
+    { declared: undefined, tools: true, cache: '1h', sent: undefined },
+  ])('declared $declared, tools $tools, cache $cache: every request carries $sent', async (row) => {
+    const { requests } = await sent_cache(row)
+    expect(requests).toHaveLength(row.tools ? 2 : 1)
+    for (const req of requests) {
+      if (row.sent === undefined) expect('cache' in req).toBe(false)
+      else expect(req.cache).toBe(row.sent)
+    }
+  })
+
+  it.each<[Declared, string]>([
+    ['automatic', 'the provider caches on its own'],
+    [undefined, "this adapter doesn't request prompt caching"],
+  ])('declared %s: an explicit setting records option_ignored once per call, with its reason', async (declared, reason) => {
+    for (const cache of ['5m', '1h'] as const) {
+      const { events } = await sent_cache({ declared, tools: true, cache, sent: undefined })
+      const ignored = events.filter((e) => e.kind === 'option_ignored')
+      expect(ignored).toStrictEqual([
+        { kind: 'option_ignored', option: 'cache', provider: 'loop', reason, ts: expect.any(Number) },
+      ])
+    }
+  })
+
+  it.each<Declared>(['automatic', undefined, 'with_tools', 'opt_in'])(
+    'declared %s: no explicit setting, or off, records nothing',
+    async (declared) => {
+      for (const cache of [undefined, 'off'] as const) {
+        const { events } = await sent_cache({ declared, tools: true, cache, sent: undefined })
+        expect(events.filter((e) => e.kind === 'option_ignored')).toStrictEqual([])
+      }
+    },
+  )
+
+  it('records a declared adapter honoring an explicit setting as nothing ignored', async () => {
+    const { events } = await sent_cache({ declared: 'opt_in', tools: true, cache: '5m', sent: '5m' })
+    expect(events.filter((e) => e.kind === 'option_ignored')).toStrictEqual([])
+  })
+
+  it('throws engine_config_error for an unknown cache before any request', async () => {
+    const { engine, requests } = make_loop_engine(['never sent'], { prompt_cache: 'with_tools' })
+    // eslint-disable-next-line typescript-eslint/no-unsafe-type-assertion
+    const call = engine.generate({ prompt: 'go', cache: '5min' as unknown as '5m' })
+    await expect(call).rejects.toBeInstanceOf(engine_config_error)
+    await expect(call).rejects.toThrow(`cache must be one of 'off', '5m', '1h', got "5min"`)
+    expect(requests).toStrictEqual([])
+  })
+
+  it('throws engine_config_error for an unknown cache on claude_cli before any subprocess starts', async () => {
+    // As in the duplicate-name test above, a spawn of this binary would fail
+    // as claude_cli_error, so the config error proves the check ran first.
+    const engine = create_engine({
+      providers: { cli: { binary: '/nonexistent/fascicle-test/claude' } },
+      custom_providers: { cli: create_claude_cli_adapter },
+    })
+    // eslint-disable-next-line typescript-eslint/no-unsafe-type-assertion
+    const call = engine.generate({ model: 'sonnet', prompt: 'go', cache: 'on' as unknown as '5m' })
+    await expect(call).rejects.toBeInstanceOf(engine_config_error)
+    await expect(call).rejects.toThrow(`cache must be one of 'off', '5m', '1h', got "on"`)
+  })
+
+  it('takes an inherited key such as toString as unknown', async () => {
+    const { engine } = make_loop_engine(['never sent'])
+    // eslint-disable-next-line typescript-eslint/no-unsafe-type-assertion
+    const call = engine.generate({ prompt: 'go', cache: 'toString' as unknown as '5m' })
+    await expect(call).rejects.toThrow(`cache must be one of 'off', '5m', '1h', got "toString"`)
+  })
+})
+
+describe('generate: the caching each built-in adapter declares', () => {
+  it.each<[string, 'with_tools' | 'opt_in' | 'automatic' | undefined, ProviderFactory, ProviderInit]>([
+    ['anthropic native', 'with_tools', create_anthropic_adapter, { api_key: 'k', transport: 'native' }],
+    ['anthropic ai_sdk', undefined, create_anthropic_adapter, { api_key: 'k' }],
+    ['openai native', 'automatic', create_openai_adapter, { api_key: 'k', transport: 'native' }],
+    ['openai ai_sdk', 'automatic', create_openai_adapter, { api_key: 'k' }],
+    ['google', 'automatic', create_google_adapter, { api_key: 'k' }],
+    ['openrouter native', undefined, create_openrouter_adapter, { api_key: 'k', transport: 'native' }],
+    ['openrouter ai_sdk', undefined, create_openrouter_adapter, { api_key: 'k' }],
+    ['bedrock', undefined, create_bedrock_adapter, { region: 'us-east-1', api_key: 'k' }],
+    ['ollama native', undefined, create_ollama_adapter, { base_url: 'http://x', transport: 'native' }],
+    ['ollama ai_sdk', undefined, create_ollama_adapter, { base_url: 'http://x' }],
+    ['lmstudio native', undefined, create_lmstudio_adapter, { base_url: 'http://x', transport: 'native' }],
+    ['lmstudio ai_sdk', undefined, create_lmstudio_adapter, { base_url: 'http://x' }],
+  ])('%s declares %s', (_label, declared, factory, init) => {
+    const adapter = factory(init)
+    if (declared === undefined) expect('prompt_cache' in adapter).toBe(false)
+    else expect(Reflect.get(adapter, 'prompt_cache')).toBe(declared)
   })
 })

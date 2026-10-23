@@ -241,9 +241,14 @@ was asked for, so a loop that goes round one more time than you planned fails
 loudly.
 
 The provider and the default model are both `'loop'`, and the options are
-`{ model_id, usage }`. `model_id` changes the default model, and `usage` is
-what a turn reports when you set none on it (default `{ input_tokens: 40,
-output_tokens: 20 }`). Per-turn `usage` wins over the option.
+`{ model_id, usage, prompt_cache }`. `model_id` changes the default model, and
+`usage` is what a turn reports when you set none on it (default `{
+input_tokens: 40, output_tokens: 20 }`). Per-turn `usage` wins over the option.
+`prompt_cache` declares the caching that the double's provider does
+(`'with_tools'`, `'opt_in'`, or `'automatic'`), so a test can read the `cache`
+that each request carries. Left out, the provider declares nothing, and no
+request carries one (see
+[providers.md](./providers.md#prompt-caching)).
 
 ### Scripting a Provider Failure
 

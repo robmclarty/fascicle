@@ -213,6 +213,7 @@ Everything call-facing carries over, with the same provider name, the same prici
 - **Blocks it doesn't read go back as they came.** A server tool's call and result (`server_tool_use`, `web_search_tool_result`, and the like), and any block type the adapter doesn't know, become an `opaque` part that holds the block whole under `provider_options.anthropic.block`, and the next request sends the block back unchanged and in its place. A streamed opaque block starts from its `content_block_start` payload, takes its `input` from the deltas that spell it out, and dispatches no chunk. Every other transport skips an opaque part. Today you reach server tools only by setting `tools` through `provider_options.anthropic`, so what this buys is a transcript that keeps the server tool's state.
 - **Citations stay with their text.** A text block's `citations` ride its text part as `provider_options.anthropic.citations`, read from a whole response or built up from a stream's `citations_delta` events, and go back on the block. A multi-turn web search needs that, since each citation's `encrypted_index` has to come back.
 - **A paused turn continues.** When a long server-tool turn stops with `pause_turn`, the turn keeps `finish_reason: 'stop'` and sets `paused`, and the loop sends its assistant message back with nothing after it, which is how Anthropic says to resume, and asks for another turn. That turn counts toward `max_steps`, a pause on the last allowed step ends with `'max_steps'` and the paused turn's text, and the call's text joins the paused turns' texts with the final one's. The `ai_sdk` transport doesn't continue a paused turn, so there a pause still ends the call.
+- **A tool loop caches by default.** A call with tools sends a top-level `cache_control: { type: 'ephemeral' }`, so every turn after the first reads the conversation back from Anthropic's cache instead of paying the full input price for it again. A call without tools asks for no cache unless you set `cache`. [Prompt Caching](#prompt-caching) covers the option, and `cache: 'off'` turns it off.
 - **`max_tokens` defaults to 4096, plus room for thinking.** The Messages API requires `max_tokens` on every request, and thinking spends from it, so with effort set the default adds that level's room on top: 1024 for `low`, 5000 for `medium`, 20000 for `high`, 32000 for `xhigh`, and 64000 for `max`. Pass `max_tokens` explicitly to override.
 - **`provider_options.anthropic` is raw wire format.** On the native transport, keys under `provider_options.anthropic` are Messages-API fields as Anthropic documents them (snake_case: `thinking`, `max_tokens`, `top_k`, `stop_sequences`, ...), shallow-merged last over the engine-computed request body. An explicit key beats every derived field, including the `thinking` and `output_config` that effort sets and the `max_tokens` default. Keys don't port verbatim from the `ai_sdk` transport, which uses `@ai-sdk/anthropic`'s camelCase spellings — `budgetTokens` there is `thinking: { type: 'enabled', budget_tokens: n }` here. The merge is shallow and unreconciled: pass a whole `thinking` object, not a fragment, and combinations that the API rejects (say, `temperature` alongside thinking) are rejected by the API, not repaired by Fascicle.
 - **Auth headers are `x-api-key` plus `anthropic-version`.** OAuth isn't supported here, and that's `claude_cli` territory.
@@ -634,6 +635,48 @@ Two properties are worth knowing:
 For an `ai_sdk` provider this is the SDK's `providerMetadata` passed through, so it works for every provider on that transport, including custom ones, with no per-provider code. A `native` adapter fills the same field by setting `provider_reported` on the `TurnResult` it returns. The `claude_cli` provider, which owns its whole loop, reports `session_id`, `duration_ms`, and (when the CLI reports it) `duration_api_ms` under a `claude_cli` key, and `claude_cli_reported(result)` reads that entry back already typed (see [cli.md](./cli.md#multi-turn-is-via-session_id)).
 
 One gap is worth naming. When the AI SDK rejects a structured-output response before Fascicle's own schema repair sees it, the recovered turn has no payload to report, because the SDK's error doesn't carry one. The repair turn that follows reports normally. This affects only the providers that declare the `structured_output` capability (`ollama`, `lmstudio`); everywhere else the schema rides the prompt and the turn reports as usual. On those two, if the recovered turn also carries a non-`stop` finish reason there's no repair turn at all — the call throws `incomplete_generation_error` with `provider_reported` undefined for the same reason.
+
+## Prompt Caching
+
+A model API keeps nothing between requests, so every turn of a tool loop sends the whole conversation again. Without a cache, a long loop pays the full input price for the same prefix on every turn, and its input cost grows with the square of its length. The `cache` option asks the provider to keep that prefix for a while, so the next turn reads it back at a fraction of the price. It takes `'off'`, `'5m'` (a five-minute lifetime), or `'1h'` (a one-hour one), on a call or as an engine default, and a call's own value wins over the default:
+
+```ts
+const engine = create_engine({
+  providers: { anthropic: { api_key: process.env.ANTHROPIC_API_KEY!, transport: 'native' } },
+  defaults: { cache: '1h' },
+});
+
+await engine.generate({ model: 'claude-sonnet-5-5', prompt: 'hi', cache: 'off' });
+```
+
+Any other value throws `engine_config_error`, at `create_engine` for a default and at `generate` for a call.
+
+What the setting does depends on how the provider caches, which its adapter declares in a `prompt_cache` field. The engine reads that declaration beside the setting the call asked for (its own `cache`, or the engine's default when it sets none):
+
+| The adapter declares | What the call gets |
+| --- | --- |
+| `'with_tools'` | the setting it asked for, or else a five-minute cache when it has tools and none when it doesn't |
+| `'opt_in'` | the setting it asked for, or else no cache |
+| `'automatic'` | no cache request, and an explicit `'5m'` or `'1h'` records `option_ignored` with the reason "the provider caches on its own" |
+| nothing | no cache request, and an explicit `'5m'` or `'1h'` records `option_ignored` with the reason "this adapter doesn't request prompt caching" |
+
+The default follows the price. A cache write costs more than reading the same tokens plainly (1.25 times the input price for a five-minute write on Anthropic), and it pays back only when a later request reads it. A one-shot call never does, so it doesn't cache unless it asks. A tool loop reads its prefix back on every turn after the first, which is why tools turn caching on where the adapter declares `'with_tools'`.
+
+The built-in adapters declare this:
+
+| Provider | How it caches |
+| --- | --- |
+| `anthropic` | `transport: 'native'` declares `'with_tools'` and sends a top-level `cache_control`. The `ai_sdk` transport declares nothing. |
+| `openai` | Both transports declare `'automatic'`, since OpenAI caches a long prompt on its own. |
+| `google` | Declares `'automatic'`, since Gemini 2.5 and later cache on their own. |
+| `openrouter`, `bedrock`, `ollama`, `lmstudio` | Declare nothing on either transport. |
+| `claude_cli` | Claude Code caches its own prompts, so a per-call `cache`, `'off'` included, records `option_ignored` with the reason "the provider caches on its own". |
+
+A custom adapter can declare any of the three values (see [Writing Your Own](#writing-your-own)), and one that declares nothing asks for no cache.
+
+On Anthropic's native transport, a setting of `'5m'` sends `cache_control: { type: 'ephemeral' }` at the top of the request, and `'1h'` adds `ttl: '1h'`. That one field turns on Anthropic's automatic caching, which puts the breakpoint on the last block that the request can cache and moves it forward as the conversation grows. A `cache_control` of your own under `provider_options.anthropic` wins over the one that the setting derives, since an explicit wire key always does. If the API answers with a 400 that names `cache_control`, see [troubleshooting](./troubleshooting.md#a-400-that-names-cache_control).
+
+A prompt shorter than the model's minimum doesn't cache, and nothing fails to say so. Anthropic's minimum runs from 512 to 4,096 tokens, depending on the model, and below it the request goes through uncached, with no write and no read in its usage. A short system prompt and a first question often fall under it, so a loop starts caching only once its conversation grows past the minimum.
 
 ## Cost Estimation
 

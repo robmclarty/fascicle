@@ -471,25 +471,33 @@ export function record_tool_approval(
  * Deduplication helper for `option_ignored`. The event fires at most once per
  * generate call per option key. External adapters whose transports do not
  * honor a caller-supplied option (max_steps, tool_error_policy,
- * on_tool_approval) route the emit through this dedup.
+ * on_tool_approval), and `generate` for a `cache` setting an adapter can't
+ * honor, route the emit through this dedup. A `reason`, when given, says why
+ * the option was ignored.
  */
 export type OptionIgnoredDedup = {
-  emit: (option: string, provider: string) => void
+  emit: (option: string, provider: string, reason?: string) => void
 }
 
 /**
- * Build the per-call dedup that emits `option_ignored` once per option key.
+ * Build the per-call dedup that emits `option_ignored` once per option key,
+ * with a `reason` field only when the emit passes one.
  */
 export function create_option_ignored_dedup(
   trajectory: TrajectoryLogger | undefined,
 ): OptionIgnoredDedup {
   const seen = new Set<string>()
   return {
-    emit(option: string, provider: string): void {
+    emit(option: string, provider: string, reason?: string): void {
       if (trajectory === undefined) return
       if (seen.has(option)) return
       seen.add(option)
-      trajectory.record({ kind: 'option_ignored', option, provider })
+      trajectory.record({
+        kind: 'option_ignored',
+        option,
+        provider,
+        ...(reason !== undefined ? { reason } : {}),
+      })
     },
   }
 }

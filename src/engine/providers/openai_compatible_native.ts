@@ -67,7 +67,7 @@ import type { NativeProviderAdapter, ProviderCapability } from './types.js'
  * reasoning at all, and another server's field would be a new value here.
  * `reports_cost` reads the charge the server puts on its usage object as
  * `usage.cost` (OpenRouter's), which the loop records in place of a pricing
- * row.
+ * row. `prompt_cache` is the caching the adapter declares, copied onto it.
  */
 export type OpenAICompatibleDialect = {
   readonly name: string
@@ -81,6 +81,7 @@ export type OpenAICompatibleDialect = {
   readonly effort_shape?: 'flat' | 'nested'
   readonly clamp_effort?: boolean
   readonly reasoning?: 'reasoning_details'
+  readonly prompt_cache?: NativeProviderAdapter['prompt_cache']
 }
 
 /**
@@ -847,6 +848,7 @@ export const create_openai_compatible_adapter = (
   return {
     kind: 'native',
     name: dialect.name,
+    ...(dialect.prompt_cache !== undefined ? { prompt_cache: dialect.prompt_cache } : {}),
     async invoke_turn(req: TurnRequest): Promise<TurnResult> {
       return invoke_http_turn(
         req,

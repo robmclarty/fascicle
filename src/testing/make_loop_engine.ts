@@ -26,6 +26,7 @@ import type {
   AssistantContentPart,
   Engine,
   FinishReason,
+  NativeProviderAdapter,
   TurnRequest,
   TurnResult,
   UsageTotals,
@@ -73,6 +74,11 @@ export type LoopEngineOptions = {
   readonly model_id?: string
   /** The usage a turn reports when it sets none (default `{ input_tokens: 40, output_tokens: 20 }`). */
   readonly usage?: UsageTotals
+  /**
+   * The caching the double's provider declares, which decides the `cache`
+   * each request carries (default: none, so no request carries one).
+   */
+  readonly prompt_cache?: NativeProviderAdapter['prompt_cache']
 }
 
 export type LoopEngine = {
@@ -146,9 +152,10 @@ async function play(
  * turn each time any call through the engine asks the model for one, and
  * the array that records every request it was sent.
  *
- * `options.model_id` sets the default model (default `'loop'`), and
+ * `options.model_id` sets the default model (default `'loop'`),
  * `options.usage` the usage a turn reports when it sets none (default
- * `{ input_tokens: 40, output_tokens: 20 }`).
+ * `{ input_tokens: 40, output_tokens: 20 }`), and `options.prompt_cache` the
+ * caching its provider declares (default: none).
  */
 export function make_loop_engine(
   turns: ReadonlyArray<LoopTurn>,
@@ -165,6 +172,8 @@ export function make_loop_engine(
         kind: 'native',
         name: PROVIDER,
         supports: () => true,
+        // Stryker disable next-line ConditionalExpression: the engine reads `prompt_cache` as a value, so a key set to undefined reads the same as no key.
+        ...(options.prompt_cache !== undefined ? { prompt_cache: options.prompt_cache } : {}),
         invoke_turn: async (req) => {
           requests.push(req)
           const position = played

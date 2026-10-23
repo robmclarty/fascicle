@@ -18,6 +18,7 @@ export type {
   AssistantContentPart,
   BedrockCredentialProvider,
   BedrockCredentials,
+  CacheSetting,
   CostBreakdown,
   EffortLevel,
   Engine,

@@ -824,6 +824,16 @@ vdescribe('model_step', () => {
     ])
   })
 
+  it('passes a cache setting through to engine.generate, and none when unset', async () => {
+    const { engine, calls } = make_mock_engine()
+    await run(model_step({ engine, model: 'mx', cache: '1h' }), 'ping', {
+      install_signal_handlers: false,
+    })
+    await run(model_step({ engine, model: 'mx' }), 'ping', { install_signal_handlers: false })
+    expect(calls[0]?.opts.cache).toBe('1h')
+    expect('cache' in (calls[1]?.opts ?? {})).toBe(false)
+  })
+
   it('inherits the caller-shaped generation knobs from ModelCallConfig', async () => {
     const { engine, calls } = make_mock_engine()
     const s = model_step({

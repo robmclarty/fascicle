@@ -92,6 +92,7 @@ const create_openai_native_adapter = (init: ProviderInit): NativeProviderAdapter
     stream_include_usage: true,
     tolerant_usage: false,
     reports_cost: false,
+    prompt_cache: 'automatic',
     ...(organization !== undefined
       ? { extra_headers: { 'OpenAI-Organization': organization } }
       : {}),
@@ -130,5 +131,6 @@ const create_openai_ai_sdk_adapter = (init: ProviderInit): AiSdkProviderAdapter 
     translate_effort: translate_effort_to_sdk_reasoning,
     normalize_usage: normalize_openai_usage,
     supports: (capability) => SUPPORTED.has(capability),
+    prompt_cache: 'automatic',
   }
 }

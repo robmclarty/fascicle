@@ -239,6 +239,30 @@ A 403 is never retried, so the first turn fails at once. If the model works
 until you hand it tools, check AWS's list of which models support tool use
 while streaming. See [providers.md](./providers.md#bedrock).
 
+## A 400 That Names `cache_control`
+
+An Anthropic tool loop on the native transport caches by default, so its
+request carries a top-level `cache_control`, and a few setups refuse that field
+with a 400 whose message names it:
+
+- **The legacy Amazon Bedrock integration.** A gateway that routes the request
+  to Bedrock's older integration of Claude (Opus 4.6 and earlier) rejects the
+  top-level field outright.
+- **Four explicit breakpoints.** Automatic caching takes one of the four
+  breakpoint slots that a request has, so a request whose blocks you already
+  marked four times through `provider_options.anthropic` has none left for it.
+- **A one-hour entry after a five-minute one.** A block that you marked with
+  `ttl: '1h'` can't come after one marked with the five-minute default.
+- **A lifetime that disagrees.** When the last block that the request can cache
+  carries an explicit `cache_control` of its own, its lifetime has to match the
+  top-level one.
+
+Set `cache: 'off'` on the call, or as the engine default, and the engine sends
+no `cache_control` of its own. A raw top-level `cache_control` that you put
+under `provider_options.anthropic` still goes out, because an explicit wire key
+always wins over the setting, so drop that key too. See
+[providers.md](./providers.md#prompt-caching).
+
 ## `schema_validation_error`
 
 The model returned text that failed your `schema` after the repair passes

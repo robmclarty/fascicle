@@ -135,6 +135,34 @@ describe('claude_cli adapter generate', () => {
     )
   })
 
+  it.each(['off', '5m', '1h'] as const)(
+    "records option_ignored for a per-call cache %s, with the reason that Claude Code caches on its own",
+    async (cache) => {
+      hooks.responses = [{ lines: success_lines('ok'), close: ZERO_CLOSE }]
+      const traj = create_captured_trajectory()
+      const adapter = create_claude_cli_adapter({})
+      await adapter.generate(gen({ cache, trajectory: traj.logger }), RESOLVED)
+      const ignored = traj.events.filter((e) => e.kind === 'option_ignored')
+      expect(ignored).toStrictEqual([
+        {
+          kind: 'option_ignored',
+          option: 'cache',
+          provider: 'claude_cli',
+          reason: 'the provider caches on its own',
+          ts: expect.any(Number),
+        },
+      ])
+    },
+  )
+
+  it('records no option_ignored for cache when the call sets none', async () => {
+    hooks.responses = [{ lines: success_lines('ok'), close: ZERO_CLOSE }]
+    const traj = create_captured_trajectory()
+    const adapter = create_claude_cli_adapter({})
+    await adapter.generate(gen({ trajectory: traj.logger }), RESOLVED)
+    expect(traj.events.filter((e) => e.kind === 'option_ignored')).toStrictEqual([])
+  })
+
   it('rejects a multi-turn user prompt', async () => {
     const adapter = create_claude_cli_adapter({})
     const prompt: Message[] = [
