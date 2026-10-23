@@ -7,9 +7,14 @@
  * Cost math formula:
  *   input_usd        = (input_tokens - cached - cache_write) * input_per_million / 1e6
  *   cached_input_usd = cached                                * (cached_per_million ?? input_per_million) / 1e6
- *   cache_write_usd  = cache_write                           * (cache_write_per_million ?? input_per_million) / 1e6
+ *   cache_write_usd  = (cache_write - write_1h)              * (cache_write_per_million ?? input_per_million) / 1e6
+ *                    + write_1h                              * (cache_write_1h_per_million ?? input_per_million * 2) / 1e6
  *   reasoning_usd    = reasoning                             * (reasoning_per_million   ?? output_per_million) / 1e6
  *   output_usd       = (output_tokens - reasoning)           * output_per_million / 1e6
+ *
+ * where write_1h = min(cache_write, cache_write_1h): the one-hour part of the
+ * writes, priced at its own rate, or at twice the input rate
+ * (CACHE_WRITE_1H_MULTIPLIER) when the row sets none.
  *
  * If reasoning_per_million is absent (the common case), reasoning tokens are
  * billed at the output rate and rolled into output_usd rather than surfacing
@@ -34,10 +39,13 @@ export const CACHE_READ_MULTIPLIER = 0.1
 
 export const CACHE_WRITE_MULTIPLIER = 1.25
 
+export const CACHE_WRITE_1H_MULTIPLIER = 2
+
 export const DEFAULT_PRICING: PricingTable = Object.freeze({
   // Anthropic list prices, checked 2026-10-18 against
   // https://platform.claude.com/docs/en/about-claude/pricing. A cache write is
-  // the 5-minute write; the 1-hour write costs more and has no field here.
+  // the 5-minute write. A 1-hour write costs twice the input rate, which is
+  // what compute_cost charges when a row sets no cache_write_1h_per_million.
   'anthropic:claude-fable-5-1': {
     input_per_million: 10.0,
     output_per_million: 50.0,
@@ -264,16 +272,20 @@ export function compute_cost(
 
   const cached = usage.cached_input_tokens ?? 0
   const cache_write = usage.cache_write_tokens ?? 0
+  const write_1h = Math.min(cache_write, usage.cache_write_1h_tokens ?? 0)
   const reasoning = usage.reasoning_tokens ?? 0
 
   const fresh_input = Math.max(0, usage.input_tokens - cached - cache_write)
   const cached_rate = pricing.cached_input_per_million ?? pricing.input_per_million
   const cache_write_rate = pricing.cache_write_per_million ?? pricing.input_per_million
+  const cache_write_1h_rate =
+    pricing.cache_write_1h_per_million ?? pricing.input_per_million * CACHE_WRITE_1H_MULTIPLIER
   const reasoning_rate = pricing.reasoning_per_million ?? pricing.output_per_million
 
   const input_usd_raw = (fresh_input * pricing.input_per_million) / 1e6
   const cached_usd_raw = (cached * cached_rate) / 1e6
-  const cache_write_usd_raw = (cache_write * cache_write_rate) / 1e6
+  const cache_write_usd_raw =
+    ((cache_write - write_1h) * cache_write_rate + write_1h * cache_write_1h_rate) / 1e6
   const reasoning_usd_raw = (reasoning * reasoning_rate) / 1e6
   const plain_output_tokens = Math.max(0, usage.output_tokens - reasoning)
   const plain_output_usd_raw = (plain_output_tokens * pricing.output_per_million) / 1e6
@@ -311,7 +323,8 @@ export function compute_cost(
  *
  * Cache-read and cache-write tokens are cheaper and pricier respectively
  * than base input tokens, so they're weighted by `CACHE_READ_MULTIPLIER`
- * and `CACHE_WRITE_MULTIPLIER` before the total is distributed
+ * and `CACHE_WRITE_MULTIPLIER` (`CACHE_WRITE_1H_MULTIPLIER` for the
+ * one-hour part of the writes) before the total is distributed
  * proportionally across all weighted components. The total is what the
  * provider charged and the split is estimated, so the breakdown keeps
  * `is_estimate: true`. Returns an all-zero estimate when there's no usage or
@@ -325,13 +338,15 @@ export function decompose_total_cost(
   const output = Math.max(0, usage.output_tokens)
   const cached = Math.max(0, usage.cached_input_tokens ?? 0)
   const cache_write = Math.max(0, usage.cache_write_tokens ?? 0)
+  const write_1h = Math.min(cache_write, Math.max(0, usage.cache_write_1h_tokens ?? 0))
 
   const base_input = Math.max(0, input - cached - cache_write)
 
   const input_weight = base_input
   const output_weight = output
   const cached_weight = cached * CACHE_READ_MULTIPLIER
-  const cache_write_weight = cache_write * CACHE_WRITE_MULTIPLIER
+  const cache_write_weight =
+    (cache_write - write_1h) * CACHE_WRITE_MULTIPLIER + write_1h * CACHE_WRITE_1H_MULTIPLIER
 
   const total_weight = input_weight + output_weight + cached_weight + cache_write_weight
 

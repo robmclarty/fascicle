@@ -37,7 +37,6 @@ import type {
   StreamChunk,
   Tool,
   TurnResult,
-  UsageTotals,
 } from '../../types.js'
 import { aborted_error } from '../../errors.js'
 import { split_leading_system_run } from '../../leading_system.js'
@@ -378,11 +377,14 @@ export function to_sdk_tools(tools: ReadonlyArray<Tool>): ToolSet | undefined {
 
 /**
  * Map one AI SDK stream part to the engine's StreamChunk shape, or undefined
- * for a part kind the engine does not model.
+ * for a part kind the engine does not model. A finish-step's usage goes
+ * through `normalize_usage` with the step's providerMetadata, the adapter's
+ * own mapper on a turn, so the step_finish chunk and the step record agree.
  */
 export function map_stream_part_to_chunk(
   part: TextStreamPart<ToolSet>,
   step_index: number,
+  normalize_usage: AiSdkProviderAdapter['normalize_usage'] = default_normalize_usage,
 ): StreamChunk | undefined {
   switch (part.type) {
     case 'text-delta':
@@ -415,7 +417,7 @@ export function map_stream_part_to_chunk(
         kind: 'step_finish',
         step_index,
         finish_reason: map_finish_reason(part.finishReason),
-        usage: default_usage_from_sdk(part.usage),
+        usage: normalize_usage(to_raw_provider_usage(part.usage), part.providerMetadata),
       }
     default:
       // v7 parts with no engine StreamChunk kind (file, reasoning-file,
@@ -423,18 +425,6 @@ export function map_stream_part_to_chunk(
       // text, reasoning, and tool traffic, not generated files.
       return undefined
   }
-}
-
-/**
- * Normalize a raw AI SDK usage object into UsageTotals for a streamed
- * step_finish chunk.
- */
-export function default_usage_from_sdk(usage: unknown): UsageTotals {
-  // Streamed step_finish chunks must carry the same cache/reasoning
-  // granularity the step record gets via adapter.normalize_usage; every
-  // built-in adapter routes through default_normalize_usage, so this keeps
-  // the chunk surface consistent with the non-streamed result.
-  return default_normalize_usage(to_raw_provider_usage(usage))
 }
 
 /**
@@ -520,7 +510,7 @@ async function collect_stream(
     if (part.type === 'abort') {
       throw new aborted_error('aborted', { step_index })
     }
-    const chunk = map_stream_part_to_chunk(part, step_index)
+    const chunk = map_stream_part_to_chunk(part, step_index, adapter.normalize_usage)
     if (chunk === undefined) continue
     // Stamped on the first dispatched chunk, not the first stream part: the
     // SDK opens every stream with `start` and `start-step` framing before the
@@ -552,7 +542,9 @@ async function collect_stream(
     text: acc.text,
     tool_calls: acc.tool_calls,
     finish_reason: acc.finish_reason,
-    usage: adapter.normalize_usage(acc.raw_usage),
+    // provider_reported is the step's providerMetadata, copied key by key,
+    // which is what the step_finish chunk's usage was normalized against.
+    usage: adapter.normalize_usage(acc.raw_usage, acc.provider_reported),
     // Stryker disable next-line ConditionalExpression: an always-true spread only adds an explicit `provider_reported: undefined` key, which every reader of TurnResult treats identically to the absent key.
     ...(acc.provider_reported !== undefined ? { provider_reported: acc.provider_reported } : {}),
     ...(content !== undefined ? { content } : {}),

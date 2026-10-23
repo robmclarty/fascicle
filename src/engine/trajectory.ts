@@ -142,6 +142,9 @@ export function record_response_received(
   if (usage.cache_write_tokens !== undefined) {
     event['cache_write_tokens'] = usage.cache_write_tokens
   }
+  if (usage.cache_write_1h_tokens !== undefined) {
+    event['cache_write_1h_tokens'] = usage.cache_write_1h_tokens
+  }
   if (timing !== undefined) {
     event['started_at'] = timing.started_at
     event['duration_ms'] = timing.duration_ms

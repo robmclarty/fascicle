@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   CACHE_READ_MULTIPLIER,
+  CACHE_WRITE_1H_MULTIPLIER,
   CACHE_WRITE_MULTIPLIER,
   compute_cost,
   decompose_total_cost,
@@ -156,6 +157,45 @@ describe('compute_cost', () => {
     expect(cost?.total_usd).toBe(0.0048)
     expect(cost?.currency).toBe('USD')
     expect(cost?.is_estimate).toBe(true)
+  })
+
+  it('prices one-hour writes at twice the input rate and the rest at the write rate', () => {
+    expect(CACHE_WRITE_1H_MULTIPLIER).toBe(2)
+    // 1,000,000 writes, 400,000 of them for an hour: 600,000 * 3.75 / 1e6 = 2.25,
+    // plus 400,000 * (3 * 2) / 1e6 = 2.4, so cache_write_usd is 4.65.
+    const cost = compute_cost(
+      { input_tokens: 1_000_000, output_tokens: 0, cache_write_tokens: 1_000_000, cache_write_1h_tokens: 400_000 },
+      fixture_sonnet,
+      'anthropic',
+    )
+    expect(cost?.cache_write_usd).toBe(4.65)
+    expect(cost?.input_usd).toBe(0)
+    expect(cost?.total_usd).toBe(4.65)
+  })
+
+  it("uses a row's own one-hour rate when it sets one", () => {
+    const cost = compute_cost(
+      { input_tokens: 1_000_000, output_tokens: 0, cache_write_tokens: 1_000_000, cache_write_1h_tokens: 1_000_000 },
+      { ...fixture_sonnet, cache_write_1h_per_million: 7 },
+      'anthropic',
+    )
+    expect(cost?.cache_write_usd).toBe(7)
+  })
+
+  it('caps the one-hour part at the writes, and prices a missing split at the write rate', () => {
+    const capped = compute_cost(
+      { input_tokens: 100_000, output_tokens: 0, cache_write_tokens: 100_000, cache_write_1h_tokens: 900_000 },
+      fixture_sonnet,
+      'anthropic',
+    )
+    // All 100,000 writes are one-hour writes: 100,000 * 6 / 1e6 = 0.6.
+    expect(capped?.cache_write_usd).toBe(0.6)
+    const unsplit = compute_cost(
+      { input_tokens: 100_000, output_tokens: 0, cache_write_tokens: 100_000 },
+      fixture_sonnet,
+      'anthropic',
+    )
+    expect(unsplit?.cache_write_usd).toBe(0.375)
   })
 
   it('omits cache fields when the corresponding usage was zero', () => {
@@ -464,5 +504,34 @@ describe('decompose_total_cost weights', () => {
     expect(cost.output_usd).toBeCloseTo(0.05, 12)
     expect(cost.cached_input_usd).toBeCloseTo(0.02, 12)
     expect(cost.cache_write_usd).toBeCloseTo(0.05, 12)
+  })
+
+  it('weights one-hour writes by CACHE_WRITE_1H_MULTIPLIER, capped at the writes', () => {
+    // base input 100, cache writes 40 with 20 for an hour: 20 * 1.25 + 20 * 2 = 65,
+    // a total weight of 165, so the writes take 65/165 of 0.33, which is 0.13.
+    const cost = decompose_total_cost(0.33, {
+      input_tokens: 140,
+      output_tokens: 0,
+      cache_write_tokens: 40,
+      cache_write_1h_tokens: 20,
+    })
+    expect(cost.input_usd).toBeCloseTo(0.2, 12)
+    expect(cost.cache_write_usd).toBeCloseTo(0.13, 12)
+    // A split larger than the writes counts as all of them: 40 * 2 = 80 of 180.
+    const capped = decompose_total_cost(0.18, {
+      input_tokens: 140,
+      output_tokens: 0,
+      cache_write_tokens: 40,
+      cache_write_1h_tokens: 400,
+    })
+    expect(capped.cache_write_usd).toBeCloseTo(0.08, 12)
+    // A negative split counts as none: 40 * 1.25 = 50 of 150.
+    const negative = decompose_total_cost(0.15, {
+      input_tokens: 140,
+      output_tokens: 0,
+      cache_write_tokens: 40,
+      cache_write_1h_tokens: -5,
+    })
+    expect(negative.cache_write_usd).toBeCloseTo(0.05, 12)
   })
 })

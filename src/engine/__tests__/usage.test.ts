@@ -30,6 +30,22 @@ describe('sum_usage', () => {
     expect('reasoning_tokens' in total).toBe(false)
     expect('cached_input_tokens' in total).toBe(false)
     expect('cache_write_tokens' in total).toBe(false)
+    expect('cache_write_1h_tokens' in total).toBe(false)
+  })
+
+  it('sums the one-hour writes only when some step reports them', () => {
+    const total = sum_usage([
+      step(0, { input_tokens: 10, output_tokens: 1, cache_write_tokens: 8, cache_write_1h_tokens: 5 }),
+      step(1, { input_tokens: 10, output_tokens: 1, cached_input_tokens: 8 }),
+      step(2, { input_tokens: 10, output_tokens: 1, cache_write_tokens: 4, cache_write_1h_tokens: 4 }),
+    ])
+    expect(total).toStrictEqual({
+      input_tokens: 30,
+      output_tokens: 3,
+      cached_input_tokens: 8,
+      cache_write_tokens: 12,
+      cache_write_1h_tokens: 9,
+    })
   })
 
   it('sums optional fields when present on some steps, treating absent as 0', () => {

@@ -370,7 +370,20 @@ export function map_anthropic_usage(raw: unknown): UsageTotals {
   }
   if (cache_read !== undefined) totals.cached_input_tokens = cache_read
   if (cache_write !== undefined) totals.cache_write_tokens = cache_write
+  const cache_write_1h = read_one_hour_writes(Reflect.get(raw, 'cache_creation'))
+  if (cache_write_1h !== undefined) totals.cache_write_1h_tokens = cache_write_1h
   return totals
+}
+
+/**
+ * Read the one-hour part of a cache write from Anthropic's `cache_creation`
+ * split (`ephemeral_1h_input_tokens`), or undefined when the usage carries
+ * no split.
+ */
+export function read_one_hour_writes(cache_creation: unknown): number | undefined {
+  if (cache_creation === null || typeof cache_creation !== 'object') return undefined
+  const value: unknown = Reflect.get(cache_creation, 'ephemeral_1h_input_tokens')
+  return typeof value === 'number' ? value : undefined
 }
 
 /**
@@ -602,17 +615,21 @@ function create_stream_aggregator(
   const open_opaque = new Map<number, { block: Record<string, unknown>; json: string }>()
   const open_thinking = new Map<number, SyntheticThinking>()
   const open_tools = new Map<number, { block: SyntheticToolUse; json: string }>()
-  const usage: Record<string, number> = {}
+  const usage: Record<string, unknown> = {}
   let stop_reason: string | undefined
   let stopped = false
 
   // message_delta usage (cumulative output_tokens) overlays message_start
-  // usage (input + cache fields); nested non-numeric containers are skipped.
+  // usage (input + cache fields). Of the nested containers, only a
+  // cache_creation split that carries the one-hour writes is kept, so a later
+  // event's null or partial split never erases one.
   const merge_usage = (raw: unknown): void => {
     if (raw === null || typeof raw !== 'object') return
     for (const [key, value] of Object.entries(raw)) {
       if (typeof value === 'number') usage[key] = value
     }
+    const split: unknown = Reflect.get(raw, 'cache_creation')
+    if (read_one_hour_writes(split) !== undefined) usage['cache_creation'] = split
   }
 
   // Thinking blocks sit in `content` beside the text and tool_use blocks, in

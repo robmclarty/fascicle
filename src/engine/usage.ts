@@ -8,18 +8,21 @@ type OptionalFieldKey =
   | 'reasoning_tokens'
   | 'cached_input_tokens'
   | 'cache_write_tokens'
+  | 'cache_write_1h_tokens'
 
 const OPTIONAL_FIELDS: ReadonlyArray<OptionalFieldKey> = [
   'reasoning_tokens',
   'cached_input_tokens',
   'cache_write_tokens',
+  'cache_write_1h_tokens',
 ]
 
 /**
  * Sum token usage across every step of a generate call.
  *
  * `input_tokens` and `output_tokens` always total. The optional fields
- * (`reasoning_tokens`, `cached_input_tokens`, `cache_write_tokens`) stay
+ * (`reasoning_tokens`, `cached_input_tokens`, `cache_write_tokens`,
+ * `cache_write_1h_tokens`) stay
  * absent on the result unless at least one step reported them; once
  * present, every step contributes to the sum, with steps that omit the
  * field counting as 0.
@@ -31,11 +34,13 @@ export function sum_usage(steps: ReadonlyArray<StepRecord>): UsageTotals {
     reasoning_tokens: false,
     cached_input_tokens: false,
     cache_write_tokens: false,
+    cache_write_1h_tokens: false,
   }
   const sums: Record<OptionalFieldKey, number> = {
     reasoning_tokens: 0,
     cached_input_tokens: 0,
     cache_write_tokens: 0,
+    cache_write_1h_tokens: 0,
   }
   for (const step of steps) {
     input_tokens += step.usage.input_tokens

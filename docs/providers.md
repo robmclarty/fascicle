@@ -614,10 +614,11 @@ type UsageTotals = {
   reasoning_tokens?: number;
   cached_input_tokens?: number;
   cache_write_tokens?: number;
+  cache_write_1h_tokens?: number; // the part of cache_write_tokens written for an hour
 };
 ```
 
-Fields that a provider can't report are absent from the result (not zero). `GenerateResult.usage` is the sum across all steps; per-step totals live in `steps[i].usage`.
+Fields that a provider can't report are absent from the result (not zero). `cache_write_1h_tokens` comes from Anthropic's `cache_creation` split, on the native transport and, through the raw usage that `@ai-sdk/anthropic` keeps in its metadata, on the `ai_sdk` transport too. A write that no provider splits out counts as a five-minute write. `GenerateResult.usage` is the sum across all steps; per-step totals live in `steps[i].usage`.
 
 ## Provider-Reported Detail
 
@@ -663,7 +664,7 @@ What the setting does depends on how the provider caches, which its adapter decl
 | `'automatic'` | no cache request, and an explicit `'5m'` or `'1h'` records `option_ignored` with the reason "the provider caches on its own" |
 | nothing | no cache request, and an explicit `'5m'` or `'1h'` records `option_ignored` with the reason "this adapter doesn't request prompt caching" |
 
-The default follows the price. A cache write costs more than reading the same tokens plainly (1.25 times the input price for a five-minute write on Anthropic), and it pays back only when a later request reads it. A one-shot call never does, so it doesn't cache unless it asks. A tool loop reads its prefix back on every turn after the first, which is why tools turn caching on where the adapter declares `'with_tools'`.
+The default follows the price. A cache write costs more than reading the same tokens plainly (1.25 times the input price for a five-minute write on Anthropic, and twice the input price for a one-hour one), and it pays back only when a later request reads it. A one-shot call never does, so it doesn't cache unless it asks. A tool loop reads its prefix back on every turn after the first, which is why tools turn caching on where the adapter declares `'with_tools'`.
 
 The built-in adapters declare this:
 
@@ -679,6 +680,8 @@ The built-in adapters declare this:
 A custom adapter can declare any of the three values (see [Writing Your Own](#writing-your-own)), and one that declares nothing asks for no cache. An `ai_sdk` adapter that declares `'with_tools'` or `'opt_in'` also needs a `translate_cache`, which turns the setting into call-level provider options, since the engine can't know where a provider package reads one. Without it, the adapter counts as declaring nothing.
 
 On Anthropic's native transport, a setting of `'5m'` sends `cache_control: { type: 'ephemeral' }` at the top of the request, and `'1h'` adds `ttl: '1h'`. That one field turns on Anthropic's automatic caching, which puts the breakpoint on the last block that the request can cache and moves it forward as the conversation grows. A `cache_control` of your own under `provider_options.anthropic` wins over the one that the setting derives, since an explicit wire key always does. The `ai_sdk` transport sends the same field through `@ai-sdk/anthropic`'s `cacheControl`, and a `cacheControl` of your own under `provider_options.anthropic` wins there. That package drops a call-level `cache_control`, so if you spell it that way, the adapter sends it as `cacheControl` for you. OpenRouter's native transport sends the same field, and a `cache_control` under `provider_options.openrouter` wins over it. If the API answers with a 400 that names `cache_control`, see [troubleshooting](./troubleshooting.md#a-400-that-names-cache_control).
+
+Cost estimation prices each kind of cache traffic at its own rate. A read costs the row's `cached_input_per_million`, a five-minute write its `cache_write_per_million`, and a one-hour write its `cache_write_1h_per_million`, or twice `input_per_million` when the row sets none, which is Anthropic's rate. The one-hour part is `usage.cache_write_1h_tokens`, so on a provider that doesn't report the split, every write prices at the five-minute rate. A one-hour cache pays for itself when a loop's turns come more than five minutes apart, as a human's replies often do.
 
 A prompt shorter than the model's minimum doesn't cache, and nothing fails to say so. Anthropic's minimum runs from 512 to 4,096 tokens, depending on the model, and below it the request goes through uncached, with no write and no read in its usage. A short system prompt and a first question often fall under it, so a loop starts caching only once its conversation grows past the minimum.
 

@@ -21,7 +21,7 @@ import {
   type ProviderCapability,
   type RawProviderUsage,
 } from './types.js'
-import { create_anthropic_native_adapter } from './anthropic_native.js'
+import { create_anthropic_native_adapter, read_one_hour_writes } from './anthropic_native.js'
 import { engine_config_error } from '../errors.js'
 
 type AnthropicSdk = {
@@ -32,11 +32,30 @@ type AnthropicSdk = {
 }
 
 /**
- * Normalize Anthropic usage via the shared default mapper; the AI SDK already
- * reports cache and reasoning tokens in the fields the default reads.
+ * Normalize Anthropic usage via the shared default mapper, since the AI SDK
+ * already reports cache and reasoning tokens in the fields the default reads.
+ * The one-hour part of a cache write comes from the raw usage that
+ * @ai-sdk/anthropic keeps in `providerMetadata.anthropic.usage`, and stays
+ * out when the metadata carries no split.
  */
-export function normalize_anthropic_usage(raw: RawProviderUsage | undefined): UsageTotals {
-  return default_normalize_usage(raw)
+export function normalize_anthropic_usage(
+  raw: RawProviderUsage | undefined,
+  provider_metadata?: unknown,
+): UsageTotals {
+  const totals = default_normalize_usage(raw)
+  const cache_write_1h = read_one_hour_writes(read_path(provider_metadata, ['anthropic', 'usage', 'cache_creation']))
+  if (cache_write_1h !== undefined) totals.cache_write_1h_tokens = cache_write_1h
+  return totals
+}
+
+/** Follow `keys` down through nested objects, or undefined where one is missing. */
+function read_path(value: unknown, keys: ReadonlyArray<string>): unknown {
+  let current = value
+  for (const key of keys) {
+    if (current === null || typeof current !== 'object') return undefined
+    current = Reflect.get(current, key)
+  }
+  return current
 }
 
 /**

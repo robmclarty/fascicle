@@ -58,6 +58,11 @@ export type Pricing = {
   output_per_million: number
   cached_input_per_million?: number
   cache_write_per_million?: number
+  /**
+   * The rate for a one-hour cache write. Unset, a one-hour write costs twice
+   * `input_per_million`, which is Anthropic's rate.
+   */
+  cache_write_1h_per_million?: number
   reasoning_per_million?: number
 }
 
@@ -69,6 +74,11 @@ export type UsageTotals = {
   reasoning_tokens?: number
   cached_input_tokens?: number
   cache_write_tokens?: number
+  /**
+   * The part of `cache_write_tokens` written with a one-hour lifetime, when
+   * the provider reports the split.
+   */
+  cache_write_1h_tokens?: number
 }
 
 export type CostBreakdown = {

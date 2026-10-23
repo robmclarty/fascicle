@@ -125,7 +125,11 @@ export type AiSdkProviderAdapter = {
   readonly metadata_key?: string
   readonly build_model: (model_id: string) => Promise<unknown>
   readonly translate_effort: (effort: EffortLevel) => EffortTranslation
-  readonly normalize_usage: (raw: RawProviderUsage | undefined) => UsageTotals
+  /**
+   * Map the SDK's usage to UsageTotals. The engine also hands it the step's
+   * `providerMetadata`, for a split that the SDK's usage object leaves out.
+   */
+  readonly normalize_usage: (raw: RawProviderUsage | undefined, provider_metadata?: unknown) => UsageTotals
   readonly supports: (capability: ProviderCapability) => boolean
   readonly prompt_cache?: PromptCacheDeclaration
   /**
@@ -215,6 +219,7 @@ export function normalize_local_usage(raw: RawProviderUsage | undefined): UsageT
   const base = default_normalize_usage(raw)
   delete base.cached_input_tokens
   delete base.cache_write_tokens
+  delete base.cache_write_1h_tokens
   delete base.reasoning_tokens
   return base
 }

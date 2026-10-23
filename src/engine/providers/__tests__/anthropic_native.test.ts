@@ -16,6 +16,7 @@ import {
   map_anthropic_stop_reason,
   map_anthropic_usage,
   parse_messages_response,
+  read_one_hour_writes,
   to_anthropic_messages,
 } from '../anthropic_native.js'
 import { classify_provider_error } from '../../generate.js'
@@ -689,6 +690,36 @@ describe('map_anthropic_usage', () => {
 
   it('returns zero totals for a missing usage object', () => {
     expect(map_anthropic_usage(undefined)).toStrictEqual({ input_tokens: 0, output_tokens: 0 })
+  })
+
+  it('reads the one-hour part of the writes from the cache_creation split', () => {
+    expect(
+      map_anthropic_usage({
+        input_tokens: 10,
+        output_tokens: 5,
+        cache_read_input_tokens: 0,
+        cache_creation_input_tokens: 300,
+        cache_creation: { ephemeral_5m_input_tokens: 100, ephemeral_1h_input_tokens: 200 },
+      }),
+    ).toStrictEqual({
+      input_tokens: 310,
+      output_tokens: 5,
+      cached_input_tokens: 0,
+      cache_write_tokens: 300,
+      cache_write_1h_tokens: 200,
+    })
+  })
+
+  it('leaves the one-hour field out when the split is absent or unreadable', () => {
+    expect(map_anthropic_usage({ input_tokens: 1, output_tokens: 1, cache_creation: null })).toStrictEqual({
+      input_tokens: 1,
+      output_tokens: 1,
+    })
+    expect(read_one_hour_writes(undefined)).toBeUndefined()
+    expect(read_one_hour_writes('split')).toBeUndefined()
+    expect(read_one_hour_writes({ ephemeral_5m_input_tokens: 4 })).toBeUndefined()
+    expect(read_one_hour_writes({ ephemeral_1h_input_tokens: '4' })).toBeUndefined()
+    expect(read_one_hour_writes({ ephemeral_1h_input_tokens: 0 })).toBe(0)
   })
 
   it('ignores non-numeric usage fields', () => {
@@ -2463,4 +2494,50 @@ describe('anthropic native web search: opaque blocks and citations', () => {
     ).rejects.toThrow('anthropic native: server_tool_use input is not valid JSON')
   })
 
+})
+
+describe('one-hour cache writes on a streamed turn', () => {
+  const start_usage = {
+    input_tokens: 4,
+    output_tokens: 1,
+    cache_read_input_tokens: 0,
+    cache_creation_input_tokens: 500,
+    cache_creation: { ephemeral_5m_input_tokens: 0, ephemeral_1h_input_tokens: 500 },
+  }
+
+  /** The text stream with its message_start usage swapped for `usage`. */
+  function events_with(usage: Record<string, unknown>): Array<Record<string, unknown>> {
+    const [first, ...rest] = TEXT_STREAM_EVENTS
+    const message = (first as { message: Record<string, unknown> }).message
+    return [{ type: 'message_start', message: { ...message, usage } }, ...rest]
+  }
+
+  it('keeps the cache_creation split, so a stream folds to what its whole body does', async () => {
+    stub_fetch(stream_response(events_with(start_usage)))
+    const { dispatch_chunk } = chunk_collector()
+    const adapter = create_anthropic_native_adapter({ api_key: 'k' })
+    const streamed = await adapter.invoke_turn(make_req({ stream: true, dispatch_chunk }))
+    expect(streamed.usage).toStrictEqual({
+      input_tokens: 504,
+      output_tokens: 6,
+      cached_input_tokens: 0,
+      cache_write_tokens: 500,
+      cache_write_1h_tokens: 500,
+    })
+    expect(streamed.usage).toStrictEqual(map_anthropic_usage({ ...start_usage, output_tokens: 6 }))
+  })
+
+  it("keeps the start's split when a message_delta carries a null one", async () => {
+    const [first, ...rest] = events_with(start_usage)
+    const delta = {
+      type: 'message_delta',
+      delta: { stop_reason: 'end_turn', stop_sequence: null },
+      usage: { output_tokens: 6, cache_creation: null },
+    }
+    stub_fetch(stream_response([first as Record<string, unknown>, ...rest.slice(0, -2), delta, { type: 'message_stop' }]))
+    const { dispatch_chunk } = chunk_collector()
+    const adapter = create_anthropic_native_adapter({ api_key: 'k' })
+    const streamed = await adapter.invoke_turn(make_req({ stream: true, dispatch_chunk }))
+    expect(streamed.usage.cache_write_1h_tokens).toBe(500)
+  })
 })

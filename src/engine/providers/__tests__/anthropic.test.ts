@@ -9,7 +9,7 @@ import {
 import { create_engine } from '../../create_engine.js'
 import { engine_config_error } from '../../errors.js'
 import type { AiSdkProviderAdapter } from '../types.js'
-import type { GenerateOptions, Tool } from '../../types.js'
+import type { GenerateOptions, StreamChunk, Tool } from '../../types.js'
 
 // The level goes to the AI SDK's own `reasoning`
 // option, which @ai-sdk/anthropic maps per model, and no provider options are built.
@@ -50,6 +50,34 @@ describe('normalize_anthropic_usage', () => {
       cached_input_tokens: 1000,
       cache_write_tokens: 200,
     })
+  })
+
+  it("reads the one-hour writes from providerMetadata.anthropic.usage's split", () => {
+    const usage = normalize_anthropic_usage(
+      { input_tokens: 900, output_tokens: 5, cache_write_tokens: 800 },
+      { anthropic: { usage: { cache_creation: { ephemeral_5m_input_tokens: 300, ephemeral_1h_input_tokens: 500 } } } },
+    )
+    expect(usage).toStrictEqual({
+      input_tokens: 900,
+      output_tokens: 5,
+      cache_write_tokens: 800,
+      cache_write_1h_tokens: 500,
+    })
+  })
+
+  it('leaves the one-hour field out when the metadata carries no split', () => {
+    const raw = { input_tokens: 9, output_tokens: 1 }
+    for (const metadata of [
+      undefined,
+      null,
+      'metadata',
+      {},
+      { anthropic: null },
+      { anthropic: { usage: 'raw' } },
+      { anthropic: { usage: { cache_creation: { ephemeral_5m_input_tokens: 3 } } } },
+    ]) {
+      expect(normalize_anthropic_usage(raw, metadata)).toStrictEqual({ input_tokens: 9, output_tokens: 1 })
+    }
   })
 
   it('reads input_token_details when flattened fields are absent', () => {
@@ -235,6 +263,38 @@ describe('prompt caching on the ai_sdk transport, on the wire', () => {
     const init = (mock.mock.calls[0] as [string, RequestInit])[1]
     return { body: JSON.parse(init.body as string) as Record<string, unknown>, events }
   }
+
+  it('reports the one-hour writes on the step and on its step_finish chunk alike', async () => {
+    const usage = {
+      input_tokens: 3,
+      output_tokens: 1,
+      cache_read_input_tokens: 0,
+      cache_creation_input_tokens: 600,
+      cache_creation: { ephemeral_5m_input_tokens: 0, ephemeral_1h_input_tokens: 600 },
+    }
+    const body = SSE.replace('"usage":{"input_tokens":10,"output_tokens":1}', `"usage":${JSON.stringify(usage)}`)
+    expect(body).not.toBe(SSE)
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(body, { status: 200, headers: { 'content-type': 'text/event-stream' } })),
+    )
+    const chunks: StreamChunk[] = []
+    const events: TrajectoryEvent[] = []
+    const result = await create_engine({ providers: { anthropic: { api_key: 'sk-test' } } }).generate({
+      model: 'claude-sonnet-5-5',
+      prompt: 'hi',
+      cache: '1h',
+      on_chunk: (chunk) => {
+        chunks.push(chunk)
+      },
+      trajectory: { record: (e) => events.push(e), start_span: () => 'span', end_span: () => {} },
+    })
+    expect(result.steps[0]?.usage.cache_write_1h_tokens).toBe(600)
+    expect(result.usage.cache_write_1h_tokens).toBe(600)
+    const step_finish = chunks.find((c) => c.kind === 'step_finish')
+    expect(step_finish?.kind === 'step_finish' ? step_finish.usage : undefined).toStrictEqual(result.steps[0]?.usage)
+    expect(events.find((e) => e.kind === 'response_received')?.['cache_write_1h_tokens']).toBe(600)
+  })
 
   it('sends a top-level cache_control by default on a call with tools', async () => {
     const { body } = await wire_body({ tools: [tool] })

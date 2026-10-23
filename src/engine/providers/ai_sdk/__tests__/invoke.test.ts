@@ -8,7 +8,6 @@ import type { Message, Tool } from '../../../types.js'
 import { default_normalize_usage, type AiSdkProviderAdapter } from '../../types.js'
 import {
   create_ai_sdk_turn,
-  default_usage_from_sdk,
   map_finish_reason,
   map_stream_part_to_chunk,
   split_leading_system,
@@ -117,38 +116,6 @@ describe('to_raw_provider_usage', () => {
       output_tokens: 1,
       input_token_details: {},
       output_token_details: {},
-    })
-  })
-})
-
-describe('default_usage_from_sdk', () => {
-  it('fills missing input/output with zero', () => {
-    expect(default_usage_from_sdk(undefined)).toMatchObject({ input_tokens: 0, output_tokens: 0 })
-    expect(default_usage_from_sdk({ inputTokens: 3 })).toMatchObject({ input_tokens: 3, output_tokens: 0 })
-  })
-
-  it('carries cache and reasoning granularity through from the v7 nested shape', () => {
-    expect(
-      default_usage_from_sdk({
-        inputTokens: 1300,
-        inputTokenDetails: { noCacheTokens: 100, cacheReadTokens: 1000, cacheWriteTokens: 200 },
-        outputTokens: 550,
-        outputTokenDetails: { textTokens: 400, reasoningTokens: 150 },
-        totalTokens: 1850,
-      }),
-    ).toStrictEqual({
-      input_tokens: 1300,
-      output_tokens: 550,
-      reasoning_tokens: 150,
-      cached_input_tokens: 1000,
-      cache_write_tokens: 200,
-    })
-  })
-
-  it('omits granular fields when the nested details are absent', () => {
-    expect(default_usage_from_sdk({ inputTokens: 5, outputTokens: 3 })).toStrictEqual({
-      input_tokens: 5,
-      output_tokens: 3,
     })
   })
 })
@@ -394,6 +361,48 @@ const m = (part: Record<string, unknown>) =>
   map_stream_part_to_chunk(part as never, 2)
 
 describe('map_stream_part_to_chunk', () => {
+  it("normalizes a finish-step's usage with the adapter's mapper and the step's providerMetadata", () => {
+    const seen: unknown[] = []
+    const chunk = map_stream_part_to_chunk(
+      {
+        type: 'finish-step',
+        finishReason: 'stop',
+        usage: { inputTokens: 9, outputTokens: 4 },
+        providerMetadata: { anthropic: { usage: { cache_creation: { ephemeral_1h_input_tokens: 7 } } } },
+      } as never,
+      1,
+      (raw, provider_metadata) => {
+        seen.push(raw, provider_metadata)
+        return { input_tokens: 99, output_tokens: 1 }
+      },
+    )
+    expect(chunk).toStrictEqual({
+      kind: 'step_finish',
+      step_index: 1,
+      finish_reason: 'stop',
+      usage: { input_tokens: 99, output_tokens: 1 },
+    })
+    expect(seen).toStrictEqual([
+      { input_tokens: 9, output_tokens: 4 },
+      { anthropic: { usage: { cache_creation: { ephemeral_1h_input_tokens: 7 } } } },
+    ])
+  })
+
+  it('fills a missing input or output count with zero on a finish-step', () => {
+    expect(m({ type: 'finish-step', finishReason: 'stop', usage: { inputTokens: 3 } })).toStrictEqual({
+      kind: 'step_finish',
+      step_index: 2,
+      finish_reason: 'stop',
+      usage: { input_tokens: 3, output_tokens: 0 },
+    })
+    expect(m({ type: 'finish-step', finishReason: 'stop', usage: { outputTokens: 4 } })).toStrictEqual({
+      kind: 'step_finish',
+      step_index: 2,
+      finish_reason: 'stop',
+      usage: { input_tokens: 0, output_tokens: 4 },
+    })
+  })
+
   it('maps each known stream part type', () => {
     expect(m({ type: 'text-delta', text: 'hi' })).toEqual({ kind: 'text', text: 'hi', step_index: 2 })
     expect(m({ type: 'reasoning-delta', text: 'why' })).toEqual({ kind: 'reasoning', text: 'why', step_index: 2 })

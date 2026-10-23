@@ -133,6 +133,24 @@ describe('trajectory helpers', () => {
     })
   })
 
+  it('response_received carries the one-hour writes only when the usage reports them', () => {
+    const { trajectory, events } = create_recorder()
+    record_response_received(trajectory, 1, {
+      usage: { input_tokens: 50, output_tokens: 2, cache_write_tokens: 40, cache_write_1h_tokens: 30 },
+      finish_reason: 'stop',
+    })
+    const records = events.filter((e) => e.kind === 'record').map((e) => e.payload)
+    expect(records[0]).toStrictEqual({
+      kind: 'response_received',
+      step_index: 1,
+      input_tokens: 50,
+      output_tokens: 2,
+      cache_write_tokens: 40,
+      cache_write_1h_tokens: 30,
+      finish_reason: 'stop',
+    })
+  })
+
   it('response_received flattens usage splits and timing when present', () => {
     const { trajectory, events } = create_recorder()
     record_response_received(trajectory, 2, {
