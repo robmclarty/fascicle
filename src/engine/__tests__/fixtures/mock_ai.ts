@@ -96,6 +96,71 @@ function derive_stream_content(parts: ReadonlyArray<FakeStreamPart>): FakeConten
   return content
 }
 
+/**
+ * The stream parts that a generateText result streams as: the opening
+ * framing, its content in order (a text or reasoning delta for each text or
+ * reasoning part, and a tool call's input start, delta, and call), then the
+ * step's finish carrying the result's finish reason, usage, and metadata.
+ */
+function stream_parts_of(
+  result: FakeGenerateTextResult,
+  content: ReadonlyArray<FakeContentPart>,
+): FakeStreamPart[] {
+  const parts: FakeStreamPart[] = [{ type: 'start' }, { type: 'start-step' }]
+  for (const part of content) {
+    if (part.type === 'text') parts.push({ type: 'text-delta', text: part.text })
+    else if (part.type === 'reasoning') parts.push({ type: 'reasoning-delta', text: part.text })
+    else if (part.type === 'tool-call') {
+      parts.push(
+        { type: 'tool-input-start', id: part.toolCallId, toolName: part.toolName },
+        { type: 'tool-input-delta', id: part.toolCallId, delta: JSON.stringify(part.input) },
+        { type: 'tool-call', toolCallId: part.toolCallId, toolName: part.toolName, input: part.input },
+      )
+    }
+  }
+  parts.push({
+    type: 'finish-step',
+    finishReason: result.finishReason,
+    usage: result.usage,
+    ...(result.providerMetadata !== undefined ? { providerMetadata: result.providerMetadata } : {}),
+  })
+  return parts
+}
+
+/**
+ * Serve a streamText call from the generateText queue, counting it as the
+ * generateText call it stands in for, so a test written against generateText
+ * reads the same counts and params once its turn streams. The entry resolves
+ * inside the generator, as generateText would await it, and an Error entry,
+ * or a function entry that rejects, surfaces as the stream's error part.
+ */
+function stream_from_generate_queue(
+  params: { abortSignal?: AbortSignal },
+  next: MockState['generate_text_responses'][number],
+): {
+  stream: AsyncIterable<FakeStreamPart>
+  content: Promise<FakeContentPart[]>
+} {
+  mock_state.generate_text_call_count += 1
+  mock_state.last_generate_text_params = params
+  mock_state.last_abort_signal = params.abortSignal
+  const content = Promise.withResolvers<FakeContentPart[]>()
+  async function* gen(): AsyncIterable<FakeStreamPart> {
+    let result: FakeGenerateTextResult
+    try {
+      if (next instanceof Error) throw next
+      result = typeof next === 'function' ? await next() : next
+    } catch (err: unknown) {
+      yield { type: 'error', error: err }
+      return
+    }
+    const parts_content = result.content ?? derive_generate_content(result)
+    yield* stream_parts_of(result, parts_content)
+    content.resolve(parts_content)
+  }
+  return { stream: gen(), content: content.promise }
+}
+
 export type MockState = {
   generate_text_responses: Array<
     | (() => FakeGenerateTextResult | Promise<FakeGenerateTextResult>)
@@ -225,6 +290,12 @@ export async function build_mock_ai_module(): Promise<Record<string, unknown>> {
       return { ...result, content: result.content ?? derive_generate_content(result) }
     },
     streamText: (params: { abortSignal?: AbortSignal }) => {
+      // With no script of its own queued, a turn streams the next generateText
+      // response, so a test written for generateText holds once its turn streams.
+      if (mock_state.stream_text_scripts.length === 0) {
+        const next = mock_state.generate_text_responses.shift()
+        if (next !== undefined) return stream_from_generate_queue(params, next)
+      }
       mock_state.stream_text_call_count += 1
       mock_state.last_stream_text_params = params
       mock_state.last_abort_signal = params.abortSignal

@@ -25,6 +25,10 @@
 - **`fascicle-viewer` says how a run ended instead of reading LIVE.** The header's chip showed the event stream's state and nothing else, so once a run's `run_end` arrived the clock froze but the chip kept reading LIVE for as long as the stream stayed open, and a finished trajectory read `● LIVE` from the moment it opened. The chip reads LIVE only while the run is going now. Once `run_end` arrives it reads DONE, FAILED, ABORTED, or SUSPENDED, in the white family like REPLAY, and CONNECTING and OFFLINE still show whenever the stream isn't open.
 - **`throughput()` reads Ollama's own decode rate.** A step's window was `duration_ms - first_chunk_ms` whenever the turn streamed, and on Ollama a turn can finish generating before it dispatches anything. Ollama sends a tool call whole once it's generated, on either transport, and the native transport dispatched nothing while the model thought, so the window covered the last few milliseconds and the rate came out 100 to 1,600 times the daemon's own. Ollama reports the time it spent generating each step's output as `eval_duration` on both transports, and `throughput()` takes that as an Ollama step's window now, so the step measures `'decode'` exactly, streamed or not.
 
+### Internal
+
+- **The test doubles for the `ai` module and the Bedrock peer can serve streams.** The `ai` mock's `streamText` serves a response that a test queued for `generateText` whenever no stream of its own is queued. It streams the result as the parts it would stream as, carries its metadata and content parts across, and counts the call as the `generateText` call it stands in for, so a test written for a whole-body turn holds once that turn streams. A ConverseStream framer under `src/engine/providers/__tests__/fixtures/` encodes Bedrock's binary event stream, CRCs included, with `node:zlib`, and `bedrock_stream_wire.test.ts` drives the real `@ai-sdk/amazon-bedrock` peer through `on_chunk` with it. The framer has a decoder that fails loud, because the peer's own decoder turns a frame it can't read into an empty turn.
+
 ## v0.16.5 — 2026-10-21
 
 ### Fixed

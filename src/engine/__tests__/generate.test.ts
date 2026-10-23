@@ -1777,3 +1777,114 @@ describe('generate: the native retry rule across the first chunk', () => {
     expect(watched.attempts()).toBe(1)
   })
 })
+
+describe('the ai mock serves a queued generateText response to a streamed turn', () => {
+  const lookup: Tool = {
+    name: 'lookup',
+    description: 'look a key up',
+    input_schema: z.object({ key: z.string() }),
+    execute: () => 'value',
+  }
+
+  /** Queue a tool-call turn and a final answer, then run the loop. */
+  async function run(on_chunk: ((chunk: StreamChunk) => void) | undefined) {
+    reset_mock_state()
+    enqueue_generate_text({
+      text: 'Looking.',
+      toolCalls: [{ toolCallId: 'call_1', toolName: 'lookup', input: { key: 'a' } }],
+      finishReason: 'tool-calls',
+      usage: { inputTokens: 11, outputTokens: 7 },
+    })
+    enqueue_generate_text_fn(async () => make_text_result('found it', { input_tokens: 20, output_tokens: 4 }))
+    const result = await basic_engine().generate({
+      model: 'claude-opus-4-8',
+      prompt: 'look a up',
+      tools: [lookup],
+      ...(on_chunk !== undefined ? { on_chunk } : {}),
+    })
+    return {
+      result,
+      generate_calls: mock_state.generate_text_call_count,
+      stream_calls: mock_state.stream_text_call_count,
+      tools: (mock_state.last_generate_text_params as { tools?: Record<string, unknown> }).tools,
+    }
+  }
+
+  it('gives the call with on_chunk the text, tool calls, usage, and finish reason the call without one gets', async () => {
+    const whole = await run(undefined)
+    const chunks: StreamChunk[] = []
+    const streamed = await run((chunk) => {
+      chunks.push(chunk)
+    })
+
+    const view = (r: typeof whole.result): unknown => ({
+      content: r.content,
+      finish_reason: r.finish_reason,
+      usage: r.usage,
+      tool_calls: r.tool_calls.map(({ id, name, input, output }) => ({ id, name, input, output })),
+      steps: r.steps.map((step) => [step.text, step.finish_reason, step.usage]),
+    })
+    expect(view(streamed.result)).toStrictEqual(view(whole.result))
+    expect(streamed.result.content).toBe('found it')
+    expect(streamed.result.usage).toStrictEqual({ input_tokens: 31, output_tokens: 11 })
+
+    // The fallback counts as the generateText calls it stands in for.
+    expect([streamed.generate_calls, streamed.stream_calls]).toStrictEqual([2, 0])
+    expect(Object.keys(streamed.tools ?? {})).toStrictEqual(['lookup'])
+    expect(chunks.map((c) => c.kind)).toStrictEqual([
+      'text',
+      'tool_call_start',
+      'tool_call_input_delta',
+      'tool_call_end',
+      'step_finish',
+      'tool_result',
+      'text',
+      'step_finish',
+      'finish',
+    ])
+  })
+
+  it('carries a queued result\'s providerMetadata to the step and its content parts to the turn', async () => {
+    enqueue_generate_text({
+      text: '',
+      toolCalls: [{ toolCallId: 'call_1', toolName: 'lookup', input: { key: 'a' } }],
+      finishReason: 'tool-calls',
+      usage: { inputTokens: 5, outputTokens: 3 },
+      providerMetadata: { anthropic: { cacheCreationInputTokens: 3 } },
+      content: [
+        { type: 'reasoning', text: 'think', providerMetadata: { anthropic: { signature: 'sig' } } },
+        { type: 'tool-call', toolCallId: 'call_1', toolName: 'lookup', input: { key: 'a' } },
+      ],
+    })
+    enqueue_generate_text(make_text_result('found it'))
+    const result = await basic_engine().generate({
+      model: 'claude-opus-4-8',
+      prompt: 'look a up',
+      tools: [lookup],
+      on_chunk: () => {},
+    })
+    expect(result.steps[0]?.provider_reported).toStrictEqual({ anthropic: { cacheCreationInputTokens: 3 } })
+    expect(mock_state.stream_text_call_count).toBe(0)
+    // The reasoning part, signature and all, goes back with the next request.
+    const sent = (mock_state.last_generate_text_params as { messages: Array<{ role: string; content: unknown }> })
+      .messages
+    expect(sent.find((m) => m.role === 'assistant')?.content).toMatchObject([
+      { type: 'reasoning', text: 'think', providerOptions: { anthropic: { signature: 'sig' } } },
+      { type: 'tool-call', toolCallId: 'call_1', toolName: 'lookup' },
+    ])
+  })
+
+  it('surfaces a queued error, or a function entry that rejects, as the stream failing', async () => {
+    enqueue_generate_text(Object.assign(new Error('bad request'), { statusCode: 400 }))
+    await expect(
+      basic_engine().generate({ model: 'claude-opus-4-8', prompt: 'hi', on_chunk: () => {} }),
+    ).rejects.toThrow('bad request')
+
+    enqueue_generate_text_fn(async () => {
+      throw new Error('rejected later')
+    })
+    await expect(
+      basic_engine().generate({ model: 'claude-opus-4-8', prompt: 'hi', on_chunk: () => {} }),
+    ).rejects.toThrow('rejected later')
+  })
+})
