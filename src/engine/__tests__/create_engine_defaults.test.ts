@@ -30,7 +30,9 @@ import {
 vi.mock('ai', async () => build_mock_ai_module())
 vi.mock('@ai-sdk/otel', () => ({ OpenTelemetry: vi.fn() }))
 
+import type { TrajectoryLogger } from '#core'
 import { create_engine } from '../create_engine.js'
+import { create_claude_cli_adapter } from '../providers/claude_cli/index.js'
 import { engine_config_error, provider_not_configured_error, tool_error } from '../errors.js'
 import {
   default_normalize_usage,
@@ -259,6 +261,137 @@ describe('create_engine folds the cache default into generate', () => {
       })
     expect(build).toThrow(engine_config_error)
     expect(build).toThrow(`defaults.cache must be one of 'off', '5m', '1h', got "10m"`)
+  })
+})
+
+describe('create_engine folds the capture default into generate', () => {
+  /** Record every event, and read back what each request_sent carried. */
+  function recorder(): { trajectory: TrajectoryLogger; requests: () => unknown[] } {
+    const events: Array<Record<string, unknown>> = []
+    return {
+      trajectory: { record: (e) => events.push(e), start_span: (name) => name, end_span: () => {} },
+      requests: () => events.filter((e) => e['kind'] === 'request_sent').map((e) => e['request']),
+    }
+  }
+
+  function native_engine(log: NativeLog, capture?: 'off' | 'turns'): ReturnType<typeof create_engine> {
+    return create_engine({
+      providers: { [PROVIDER]: {} },
+      custom_providers: { [PROVIDER]: make_native_factory(log, [text_turn('ok')]) },
+      ...(capture === undefined ? {} : { defaults: { capture } }),
+    })
+  }
+
+  it('applies defaults.capture when the call sets none', async () => {
+    const { trajectory, requests } = recorder()
+    await native_engine({ requests: [] }, 'turns').generate({ model: MODEL, provider: PROVIDER, prompt: 'hi', trajectory })
+    expect(requests()).toStrictEqual([
+      {
+        settings: { provider: PROVIDER, model_id: MODEL, effort: 'none' },
+        tools: [],
+        messages: [{ role: 'user', content: 'hi' }],
+      },
+    ])
+  })
+
+  it("lets a call's capture win over defaults.capture", async () => {
+    const { trajectory, requests } = recorder()
+    await native_engine({ requests: [] }, 'off').generate({
+      model: MODEL,
+      provider: PROVIDER,
+      prompt: 'hi',
+      capture: 'turns',
+      trajectory,
+    })
+    const quiet = recorder()
+    await native_engine({ requests: [] }, 'turns').generate({
+      model: MODEL,
+      provider: PROVIDER,
+      prompt: 'hi',
+      capture: 'off',
+      trajectory: quiet.trajectory,
+    })
+    expect(requests()).toHaveLength(1)
+    expect(requests()[0]).toBeDefined()
+    expect(quiet.requests()).toStrictEqual([undefined])
+  })
+
+  it('throws engine_config_error at construction for an unknown defaults.capture', () => {
+    const build = (): unknown =>
+      create_engine({
+        providers: { [PROVIDER]: {} },
+        custom_providers: { [PROVIDER]: make_native_factory({ requests: [] }, []) },
+        // eslint-disable-next-line typescript-eslint/no-unsafe-type-assertion
+        defaults: { capture: 'all' as unknown as 'turns' },
+      })
+    expect(build).toThrow(engine_config_error)
+    expect(build).toThrow(`defaults.capture must be one of 'off', 'turns', 'wire', got "all"`)
+  })
+
+  it('throws engine_config_error at generate for an unknown capture, before any request', async () => {
+    const log: NativeLog = { requests: [] }
+    // eslint-disable-next-line typescript-eslint/no-unsafe-type-assertion
+    const call = native_engine(log).generate({ model: MODEL, provider: PROVIDER, prompt: 'hi', capture: 'full' as unknown as 'turns' })
+    await expect(call).rejects.toBeInstanceOf(engine_config_error)
+    await expect(call).rejects.toThrow(`capture must be one of 'off', 'turns', 'wire', got "full"`)
+    expect(log.requests).toStrictEqual([])
+  })
+
+  it('throws engine_config_error for an unknown capture on claude_cli before any subprocess starts', async () => {
+    // A spawn of this binary would fail as claude_cli_error, so the config
+    // error proves the check ran ahead of the external adapter.
+    const engine = create_engine({
+      providers: { cli: { binary: '/nonexistent/fascicle-test/claude' } },
+      custom_providers: { cli: create_claude_cli_adapter },
+    })
+    // eslint-disable-next-line typescript-eslint/no-unsafe-type-assertion
+    const call = engine.generate({ model: 'sonnet', prompt: 'go', capture: 'on' as unknown as 'turns' })
+    await expect(call).rejects.toBeInstanceOf(engine_config_error)
+    await expect(call).rejects.toThrow(`capture must be one of 'off', 'turns', 'wire', got "on"`)
+  })
+
+  it("captures the caller's provider_options on ai_sdk, without the keys effort and cache derive", async () => {
+    enqueue_generate_text(make_text_result('ok'))
+    const engine = create_engine({
+      providers: { fake_ai_sdk: {} },
+      custom_providers: {
+        fake_ai_sdk: (init) => ({
+          ...(make_ai_sdk_factory()(init) as Extract<ProviderAdapter, { kind: 'ai_sdk' }>),
+          prompt_cache: 'opt_in',
+          translate_effort: () => ({ provider_options: { fake_ai_sdk: { thinking: 'deep' } }, effort_ignored: false }),
+          translate_cache: () => ({ fake_ai_sdk: { cacheControl: { type: 'ephemeral' } } }),
+        }),
+      },
+      defaults: { provider_options: { fake_ai_sdk: { from_defaults: 1 } } },
+    })
+    const { trajectory, requests } = recorder()
+
+    await engine.generate({
+      model: 'm',
+      provider: 'fake_ai_sdk',
+      prompt: 'hi',
+      effort: 'high',
+      cache: '5m',
+      provider_options: { fake_ai_sdk: { from_call: 2 } },
+      capture: 'turns',
+      trajectory,
+    })
+
+    const sent = mock_state.last_generate_text_params as { providerOptions?: Record<string, unknown> }
+    expect(sent.providerOptions).toStrictEqual({
+      fake_ai_sdk: { thinking: 'deep', cacheControl: { type: 'ephemeral' }, from_defaults: 1, from_call: 2 },
+    })
+    expect(requests()[0]).toMatchObject({
+      settings: {
+        provider: 'fake_ai_sdk',
+        model_id: 'm',
+        effort: 'high',
+        cache: '5m',
+        provider_options: { fake_ai_sdk: { from_defaults: 1, from_call: 2 } },
+      },
+    })
+    const settings = (requests()[0] as { settings: { provider_options: Record<string, Record<string, unknown>> } }).settings
+    expect(settings.provider_options).toStrictEqual({ fake_ai_sdk: { from_defaults: 1, from_call: 2 } })
   })
 })
 

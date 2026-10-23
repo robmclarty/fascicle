@@ -351,7 +351,7 @@ streaming chunks. Like the envelope composites, the config takes an optional
 inside the step, so `describe` and the trajectory gain no wrapper node.
 Omitted, the envelope is the output. The config also carries the caller-shaped
 generation knobs (`temperature`, `max_tokens`, `top_p`, `turn_timeout_ms`,
-`prepare_step`, `cache`) alongside `model` / `provider` / `system` / `schema` /
+`prepare_step`, `cache`, `capture`) alongside `model` / `provider` / `system` / `schema` /
 `tools` / `effort` / `retry`; `abort` and `trajectory` stay runner-owned and are
 threaded automatically. An `on_chunk` in the config is an observer: it sees
 every chunk of the call as it streams, which suits a live terminal renderer,
@@ -383,7 +383,10 @@ trajectory. The config's `cache` (a `CacheSetting`, `'off' | '5m' | '1h'`)
 passes through to the engine like every other knob, so a flow can set prompt
 caching step by step, as in `model_step({ engine, tools, cache: '5m' })` for a
 long tool loop on a provider where caching is opt-in. See
-[providers.md](./providers.md#prompt-caching).
+[providers.md](./providers.md#prompt-caching). Its `capture` (a `CaptureLevel`,
+`'off' | 'turns' | 'wire'`) passes through the same way, so one step can record
+what its turns sent and got back while the rest of the flow records nothing. See
+[concepts.md](./concepts.md#what-gets-recorded).
 
 ### `define_agent` — Markdown-Driven Agents
 
@@ -690,7 +693,7 @@ The bench tier adds `BenchCase`, `BenchOptions`, `BenchReport`, `BenchSummary`,
 `ToolCallRecord`, `ToolApprovalHandler`, `ToolApprovalRequest`, `StepRecord`,
 `StepTiming`, `GenerateTiming`, `Throughput`, `UsageTotals`,
 `ClaudeCliProviderReported`, `CostBreakdown`, `Pricing`, `PricingTable`,
-`EffortLevel`, `CacheSetting`, `EffortTranslation`, `RawProviderUsage`,
+`EffortLevel`, `CacheSetting`, `CaptureLevel`, `EffortTranslation`, `RawProviderUsage`,
 `PrepareStepContext`, `PrepareStepResult`, `PrepareStepHook`, `RetryPolicy`,
 `RetryFailureKind`, `ProviderConfigMap`, `ProviderInit`, `ResolvedModel`,
 `AiSdkTelemetrySettings`, `ClaudeCliErrorReason`, `BedrockCredentialProvider`,

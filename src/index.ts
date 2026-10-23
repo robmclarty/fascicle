@@ -45,6 +45,7 @@ export type {
   BedrockCredentialProvider,
   BedrockCredentials,
   CacheSetting,
+  CaptureLevel,
   ClaudeCliErrorReason,
   ClaudeCliProviderReported,
   CostBreakdown,

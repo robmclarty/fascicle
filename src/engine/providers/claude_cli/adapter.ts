@@ -369,8 +369,9 @@ type GenerateSpans = {
 /**
  * Emit `option_ignored` events for the loop-control options this provider
  * cannot honor: the CLI runs its own tool loop on the far side of the
- * subprocess boundary, and Claude Code caches its own prompts, so a per-call
- * `cache`, `'off'` included, is ignored too.
+ * subprocess boundary, and Claude Code caches its own prompts and builds its
+ * own requests, so a per-call `cache` or `capture`, `'off'` included, is
+ * ignored too.
  */
 function emit_ignored_options<T>(
   opts: GenerateOptions<T>,
@@ -394,6 +395,9 @@ function emit_ignored_options<T>(
   }
   if (opts.cache !== undefined) {
     option_ignored.emit('cache', PROVIDER_NAME, 'the provider caches on its own')
+  }
+  if (opts.capture !== undefined) {
+    option_ignored.emit('capture', PROVIDER_NAME, 'Claude Code builds its own requests')
   }
 }
 

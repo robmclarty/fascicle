@@ -296,6 +296,30 @@ under `provider_options.anthropic` still goes out, because an explicit wire key
 always wins over the setting, so drop that key too. See
 [providers.md](./providers.md#prompt-caching).
 
+## The Model Ignored an Instruction
+
+Before you blame the model, read the request that it answered. An
+instruction can fail to reach a turn in ways that the code doesn't make
+obvious: a `prepare_step` window that dropped the message that held it, a
+system prompt that came from the engine's `defaults` when you expected the
+call's own, or a tool description that says something else. Turn on
+`capture: 'turns'` for the call, run it again with a trajectory attached, and
+read each turn's request:
+
+```ts
+await engine.generate({ prompt, tools, capture: 'turns', trajectory });
+```
+
+The first turn's `request_sent` carries the call's `settings`, its `tools`,
+and every message that it sent, the system prompt included, and each later
+turn carries the messages that it added. A turn marked `reshaped` sent a
+whole array that didn't extend the turn before it, which is the sign that a
+`prepare_step` changed what the model saw. `response_received.content` holds
+what the model said back. If the instruction is in the request and the reply
+still ignores it, the model is the problem, and a clearer instruction, a
+schema, or a different model is the fix. See
+[concepts.md](./concepts.md#what-gets-recorded) for the shapes.
+
 ## `schema_validation_error`
 
 The model returned text that failed your `schema` after the repair passes

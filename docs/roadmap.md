@@ -99,6 +99,8 @@ The published surface as of v0.16.0:
   enough to implement yourself, the run canvas viewer that draws a live run and
   replays a finished one over one pure fold, and a transport-neutral
   `fascicle/otel` bridge (see [configuration.md](./configuration.md#opentelemetry)).
+  A call's `capture` option records what each turn sent the model and what came
+  back (see [concepts.md](./concepts.md#what-gets-recorded)).
   `describe.diagram` draws a flow as an annotated tree, and the
   `fascicle-diagram` bin prints the same diagram from a terminal.
 - **An app architecture.** [`docs/blueprint.md`](./blueprint.md) standardizes the
@@ -186,8 +188,8 @@ likely to bite you first.
   `auth_mode: 'oauth'` run couldn't reach its login even with the binary there.
 - **Some provider errors don't say what to do.** Many name what went wrong but
   not the fix, such as the config key to set or the `base_url` to check.
-- **Housekeeping.** Engine code that only tests call (`normalize_chunk` and
-  `record_request_sent`), a schema-issue formatter that `fascicle/testing`
+- **Housekeeping.** Engine code that only tests call (`normalize_chunk`), a
+  schema-issue formatter that `fascicle/testing`
   repeats, a viewer test that runs before the build that it checks, tsdown
   options that are dead or deprecated, four devDependencies on caret ranges, and
   a mutation-ratchet comment with stale numbers.

@@ -18,6 +18,7 @@
 import type {
   AiSdkTelemetrySettings,
   CacheSetting,
+  CaptureLevel,
   CostBreakdown,
   EffortLevel,
   FinishReason,
@@ -75,9 +76,11 @@ import {
 } from './trajectory.js'
 import { sum_usage } from './usage.js'
 import {
+  json_schema_or_undefined,
   run_tool_loop,
   type InvokeOnce,
   type InvokeOnceArgs,
+  type LoopCapture,
   type ToolLoopConfig,
 } from './tool_loop.js'
 import { missing_peer_error } from './providers/types.js'
@@ -94,6 +97,7 @@ export type EngineInternals = {
   readonly default_retry: RetryPolicy
   readonly default_effort: EffortLevel
   readonly default_cache?: CacheSetting
+  readonly default_capture?: CaptureLevel
   readonly default_max_steps: number
   readonly default_turn_timeout_ms?: number
   readonly default_ai_sdk_telemetry?: AiSdkTelemetrySettings
@@ -569,19 +573,39 @@ function assert_unique_tool_names(tools: ReadonlyArray<Tool> | undefined): void 
 }
 
 const CACHE_SETTINGS: Readonly<Record<CacheSetting, true>> = { off: true, '5m': true, '1h': true }
+// Stryker disable next-line BooleanLiteral: assert_allowed reads only the keys, through Object.hasOwn, so a value of false allows the same levels.
+const CAPTURE_LEVELS: Readonly<Record<CaptureLevel, true>> = { off: true, turns: true, wire: true }
 
 /**
- * Throw `engine_config_error` when a cache setting is set to anything but a
- * `CacheSetting`, naming the field, the value, and the values it takes.
- * `create_engine` checks `defaults.cache` with it, and `generate` a call's
- * `cache`.
+ * Throw `engine_config_error` when `value` is set to anything but a key of
+ * `allowed`, naming the field, the value, and the values it takes.
+ */
+function assert_allowed(
+  allowed: Readonly<Record<string, true>>,
+  value: string | undefined,
+  field: string,
+): void {
+  if (value === undefined || Object.hasOwn(allowed, value)) return
+  const listed = Object.keys(allowed).map((key) => `'${key}'`).join(', ')
+  throw new engine_config_error(`${field} must be one of ${listed}, got ${JSON.stringify(value)}`)
+}
+
+/**
+ * Throw `engine_config_error` for a cache setting that isn't a
+ * `CacheSetting`. `create_engine` checks `defaults.cache` with it, and
+ * `generate` a call's `cache`.
  */
 export function assert_cache_setting(value: string | undefined, field: string): void {
-  if (value === undefined || Object.hasOwn(CACHE_SETTINGS, value)) return
-  const allowed = Object.keys(CACHE_SETTINGS).map((key) => `'${key}'`).join(', ')
-  throw new engine_config_error(
-    `${field} must be one of ${allowed}, got ${JSON.stringify(value)}`,
-  )
+  assert_allowed(CACHE_SETTINGS, value, field)
+}
+
+/**
+ * Throw `engine_config_error` for a capture level that isn't a
+ * `CaptureLevel`. `create_engine` checks `defaults.capture` with it, and
+ * `generate` a call's `capture`.
+ */
+export function assert_capture_level(value: string | undefined, field: string): void {
+  assert_allowed(CAPTURE_LEVELS, value, field)
 }
 
 /**
@@ -985,13 +1009,15 @@ type LoopConfigInputs<T> = {
   readonly dispatcher: ChunkDispatcher
   readonly on_chunk_provided: boolean
   readonly limits: LoopLimits
+  readonly capture: LoopCapture
 }
 
 /**
  * Assemble the ToolLoopConfig base shared by every loop invocation of one
  * generate call. Everything here is per-call state: the mutable transcript,
  * the pricing lookup, the pricing_missing dedup, and the call memory that
- * carries the previous turn's cache traffic all live for exactly one call,
+ * carries the previous turn's cache traffic and captured messages all live
+ * for exactly one call,
  * which is what lets schema-repair re-invocations share them. The
  * conditional spreads keep optional fields absent rather than undefined for
  * exactOptionalPropertyTypes.
@@ -1029,6 +1055,7 @@ function build_loop_config<T>(
     pricing_dedup: create_pricing_missing_dedup(cfg.trajectory),
     // Stryker disable next-line ObjectLiteral: an empty holder reads previous_cache_traffic as undefined, which the loop's `> 0` test treats as 0.
     call_memory: { previous_cache_traffic: 0 },
+    capture: cfg.capture,
     ...(limits.salvage_budget !== undefined
       ? { salvage_budget: limits.salvage_budget }
       : {}),
@@ -1196,6 +1223,33 @@ function assemble_result<T>(
 }
 
 /**
+ * The settings a call's first captured turn records: the provider and the
+ * model, the resolved effort and cache (left out when off), the sampling
+ * knobs it set, its provider options as the engine defaults and the call
+ * merged them, before an adapter's translation of effort or cache adds to
+ * them, and its schema as JSON Schema, left out when it can't be written as
+ * one. An unset field stays undefined, which the loop's JSON copy leaves out.
+ */
+function capture_settings<T>(
+  opts: GenerateOptions<T>,
+  target: ResolvedModel,
+  turn: TurnConfig,
+): Record<string, unknown> {
+  return {
+    provider: target.provider,
+    model_id: target.model_id,
+    effort: turn.effort,
+    cache: turn.cache === 'off' ? undefined : turn.cache,
+    temperature: opts.temperature,
+    max_tokens: opts.max_tokens,
+    top_p: opts.top_p,
+    provider_options: opts.provider_options,
+    // Stryker disable next-line ConditionalExpression: without the guard, to_json_schema throws on an undefined schema, which json_schema_or_undefined reads as undefined too.
+    schema: opts.schema === undefined ? undefined : json_schema_or_undefined(opts.schema),
+  }
+}
+
+/**
  * Resolve a `generate` call's options against engine defaults, run the tool
  * loop, and return the aggregated result.
  *
@@ -1234,6 +1288,7 @@ export async function generate<T = string>(
   }
   assert_unique_tool_names(opts.tools)
   assert_cache_setting(opts.cache, 'cache')
+  assert_capture_level(opts.capture, 'capture')
 
   if (adapter.kind === 'external') {
     const external = await adapter.generate<T>(opts, target)
@@ -1316,6 +1371,11 @@ export async function generate<T = string>(
     dispatcher,
     on_chunk_provided,
     limits,
+    capture: {
+      level: opts.capture ?? engine.default_capture ?? 'off',
+      call_span_id: generate_span,
+      settings: () => capture_settings(opts, target, turn),
+    },
   })
 
   try {

@@ -57,7 +57,7 @@ describe('trajectory helpers', () => {
     const id = start_step_span(undefined, 0)
     expect(id).toBeUndefined()
     end_step_span(undefined, undefined, { finish_reason: 'stop' })
-    record_request_sent(undefined, 0, 10)
+    record_request_sent(undefined, { step_index: 0, span_id: 's1', call_span_id: 'g1' })
     record_response_received(undefined, 0, {
       usage: { input_tokens: 2, output_tokens: 5 },
       finish_reason: 'stop',
@@ -113,16 +113,17 @@ describe('trajectory helpers', () => {
 
   it('records request_sent / response_received with the right shape', () => {
     const { trajectory, events } = create_recorder()
-    record_request_sent(trajectory, 0, 42)
+    record_request_sent(trajectory, { step_index: 0, span_id: 's1', call_span_id: 'g1' })
     record_response_received(trajectory, 0, {
       usage: { input_tokens: 12, output_tokens: 5 },
       finish_reason: 'stop',
     })
     const records = events.filter((e) => e.kind === 'record').map((e) => e.payload)
-    expect(records[0]).toMatchObject({
+    expect(records[0]).toStrictEqual({
       kind: 'request_sent',
       step_index: 0,
-      prompt_tokens_estimated: 42,
+      span_id: 's1',
+      call_span_id: 'g1',
     })
     // Exact equality pins the optional usage splits and timing fields ABSENT
     // when the turn carried none.
@@ -133,6 +134,44 @@ describe('trajectory helpers', () => {
       output_tokens: 5,
       finish_reason: 'stop',
     })
+  })
+
+  it('request_sent carries a request, and response_received content, only when given one', () => {
+    const { trajectory, events } = create_recorder()
+    record_request_sent(trajectory, {
+      step_index: 1,
+      span_id: 's2',
+      call_span_id: 'g1',
+      request: { appended: [{ role: 'user', content: 'go on' }] },
+    })
+    record_request_sent(trajectory, { step_index: 2, span_id: undefined, call_span_id: undefined })
+    record_response_received(
+      trajectory,
+      1,
+      { usage: { input_tokens: 3, output_tokens: 1 }, finish_reason: 'stop' },
+      's2',
+      [{ type: 'text', text: 'ok' }],
+    )
+    const records = events.filter((e) => e.kind === 'record').map((e) => e.payload)
+    expect(records).toStrictEqual([
+      {
+        kind: 'request_sent',
+        step_index: 1,
+        span_id: 's2',
+        call_span_id: 'g1',
+        request: { appended: [{ role: 'user', content: 'go on' }] },
+      },
+      { kind: 'request_sent', step_index: 2 },
+      {
+        kind: 'response_received',
+        step_index: 1,
+        span_id: 's2',
+        input_tokens: 3,
+        output_tokens: 1,
+        finish_reason: 'stop',
+        content: [{ type: 'text', text: 'ok' }],
+      },
+    ])
   })
 
   it('response_received carries the one-hour writes only when the usage reports them', () => {

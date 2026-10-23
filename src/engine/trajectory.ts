@@ -85,23 +85,28 @@ export function end_step_span(
 }
 
 /**
- * Record that a provider request went out, with an optional prompt-token
- * estimate for providers that report one before the response arrives.
+ * Record that a turn's request went out: its step index, the turn's
+ * `engine.generate.step` span (`span_id`), the call's `engine.generate` span
+ * (`call_span_id`), and, under capture, the `request` itself, which is the
+ * whole request on a call's first turn and what changed on a later one.
  */
 export function record_request_sent(
   trajectory: TrajectoryLogger | undefined,
-  step_index: number,
-  prompt_tokens_estimated: number | undefined,
+  meta: {
+    readonly step_index: number
+    readonly span_id: string | undefined
+    readonly call_span_id: string | undefined
+    readonly request?: Record<string, unknown> | undefined
+  },
 ): void {
   if (trajectory === undefined) return
-  const event: Record<string, unknown> = {
+  trajectory.record({
     kind: 'request_sent',
-    step_index,
-  }
-  if (prompt_tokens_estimated !== undefined) {
-    event['prompt_tokens_estimated'] = prompt_tokens_estimated
-  }
-  trajectory.record({ kind: 'request_sent', ...event })
+    step_index: meta.step_index,
+    ...(meta.span_id !== undefined ? { span_id: meta.span_id } : {}),
+    ...(meta.call_span_id !== undefined ? { call_span_id: meta.call_span_id } : {}),
+    ...(meta.request !== undefined ? { request: meta.request } : {}),
+  })
 }
 
 /**
@@ -113,7 +118,8 @@ export function record_request_sent(
  * `first_chunk_ms` directly, where a nested usage object would arrive as an
  * opaque JSON string. This is the one per-turn event a metrics dashboard
  * needs: tokens by direction, the cache and reasoning splits when the
- * provider reports them, and the model-only latency window.
+ * provider reports them, and the model-only latency window. Under capture it
+ * also carries `content`, the parts the provider returned.
  */
 export function record_response_received(
   trajectory: TrajectoryLogger | undefined,
@@ -124,6 +130,7 @@ export function record_response_received(
     timing?: StepTiming | undefined
   },
   span_id?: string,
+  content?: unknown,
 ): void {
   if (trajectory === undefined) return
   const { usage, timing } = turn
@@ -152,6 +159,7 @@ export function record_response_received(
     event['duration_ms'] = timing.duration_ms
     if (timing.first_chunk_ms !== undefined) event['first_chunk_ms'] = timing.first_chunk_ms
   }
+  if (content !== undefined) event['content'] = content
   trajectory.record({ kind: 'response_received', ...event })
 }
 

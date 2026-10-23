@@ -9,6 +9,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 import type { TrajectoryLogger } from '#core'
+import { to_json_schema, type ToolSchema } from '#schema'
 import {
   run_tool_loop,
   type InvokeOnce,
@@ -2952,5 +2953,359 @@ describe('cache_miss', () => {
       pricing_dedup: create_pricing_missing_dedup(undefined),
     })
     expect(events.filter((e) => e['kind'] === 'cache_miss')).toHaveLength(1)
+  })
+})
+
+describe('capture', () => {
+  const sum: Tool = {
+    name: 'sum',
+    description: 'add the numbers up',
+    input_schema: z.object({ n: z.number() }),
+    execute: () => 3,
+  }
+  const add_one = [{ name: 'sum', input: { n: 1 } }] as const
+
+  /** Record every event of one call, with span ids that say which span they are. */
+  function recorder(): {
+    trajectory: TrajectoryLogger
+    of_kind: (kind: string) => Array<Record<string, unknown>>
+  } {
+    const events: Array<Record<string, unknown>> = []
+    let spans = 0
+    return {
+      trajectory: {
+        record: (e) => events.push(e),
+        start_span: (name) => {
+          spans += 1
+          return `${name}-${String(spans)}`
+        },
+        end_span: () => {},
+      },
+      of_kind: (kind) => events.filter((e) => e['kind'] === kind),
+    }
+  }
+
+  /** The `request` each `request_sent` carried, in order. */
+  function requests_of(of_kind: (kind: string) => Array<Record<string, unknown>>): unknown[] {
+    return of_kind('request_sent').map((e) => e['request'])
+  }
+
+  it("records a call's first turn whole: its settings, its tools as JSON Schema, and every message", async () => {
+    const { engine } = make_loop_engine([add_one, 'three'])
+    const { trajectory, of_kind } = recorder()
+    await engine.generate({
+      prompt: 'add',
+      system: 'be brief',
+      tools: [sum],
+      temperature: 0.2,
+      max_tokens: 64,
+      top_p: 0.9,
+      provider_options: { loop: { seed: 7 } },
+      capture: 'turns',
+      trajectory,
+    })
+    expect(requests_of(of_kind)[0]).toStrictEqual({
+      settings: {
+        provider: 'loop',
+        model_id: 'loop',
+        effort: 'none',
+        temperature: 0.2,
+        max_tokens: 64,
+        top_p: 0.9,
+        provider_options: { loop: { seed: 7 } },
+      },
+      tools: [{ name: 'sum', description: 'add the numbers up', input_schema: to_json_schema(sum.input_schema) }],
+      messages: [
+        { role: 'system', content: 'be brief' },
+        { role: 'user', content: 'add' },
+      ],
+    })
+  })
+
+  it('records a later turn as the messages it appended', async () => {
+    const { engine } = make_loop_engine([add_one, { text: 'adding again', tool_calls: [{ name: 'sum', input: { n: 2 } }] }, 'three'])
+    const { trajectory, of_kind } = recorder()
+    await engine.generate({ prompt: 'add', tools: [sum], capture: 'turns', trajectory })
+    expect(requests_of(of_kind).slice(1)).toStrictEqual([
+      {
+        appended: [
+          { role: 'assistant', content: [{ type: 'tool_call', id: 'call_0_0', name: 'sum', input: { n: 1 } }] },
+          { role: 'tool', tool_call_id: 'call_0_0', name: 'sum', content: '3' },
+        ],
+      },
+      {
+        appended: [
+          {
+            role: 'assistant',
+            content: [
+              { type: 'text', text: 'adding again' },
+              { type: 'tool_call', id: 'call_1_0', name: 'sum', input: { n: 2 } },
+            ],
+          },
+          { role: 'tool', tool_call_id: 'call_1_0', name: 'sum', content: '3' },
+        ],
+      },
+    ])
+  })
+
+  it('captures an image as base64 beside its media_type, and leaves the request it sent alone', async () => {
+    const image = new Uint8Array([137, 80, 78, 71])
+    const { engine, requests } = make_loop_engine(['a png'])
+    const { trajectory, of_kind } = recorder()
+    await engine.generate({
+      prompt: [
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: 'what is this?' },
+            { type: 'image', image, media_type: 'image/png' },
+            { type: 'image', image: Buffer.from([255, 216, 255]), media_type: 'image/jpeg' },
+          ],
+        },
+      ],
+      capture: 'turns',
+      trajectory,
+    })
+    expect(requests_of(of_kind)[0]).toMatchObject({
+      messages: [
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: 'what is this?' },
+            { type: 'image', image: 'iVBORw==', media_type: 'image/png' },
+            { type: 'image', image: '/9j/', media_type: 'image/jpeg' },
+          ],
+        },
+      ],
+    })
+    expect(requests[0]?.messages[0]?.content).toContainEqual({ type: 'image', image, media_type: 'image/png' })
+  })
+
+  it("keeps each turn's payload as it was once later turns run", async () => {
+    const { engine } = make_loop_engine([add_one, add_one, 'three'])
+    const { trajectory, of_kind } = recorder()
+    await engine.generate({ prompt: 'add', tools: [sum], capture: 'turns', trajectory })
+    const [first, second, third] = requests_of(of_kind) as Array<Record<string, unknown[]>>
+    expect(first?.['messages']).toStrictEqual([{ role: 'user', content: 'add' }])
+    expect(second?.['appended']).toHaveLength(2)
+    expect(third?.['appended']).toHaveLength(2)
+  })
+
+  it('drops a payload that holds a BigInt, and the call goes on', async () => {
+    const big: Tool = { ...sum, input_schema: z.object({ n: z.bigint() }) }
+    const { engine } = make_loop_engine([[{ name: 'sum', input: { n: 1n } }], 'three'])
+    const { trajectory, of_kind } = recorder()
+    const result = await engine.generate({ prompt: 'add', tools: [big], capture: 'turns', trajectory })
+    expect(result.content).toBe('three')
+    const sent = of_kind('request_sent')
+    expect('request' in (sent[0] ?? {})).toBe(true)
+    expect('request' in (sent[1] ?? {})).toBe(false)
+    const received = of_kind('response_received')
+    expect('content' in (received[0] ?? {})).toBe(false)
+    expect(received[1]?.['content']).toStrictEqual([{ type: 'text', text: 'three' }])
+  })
+
+  it('records the whole array, marked reshaped, on the turn after a dropped one', async () => {
+    const { engine } = make_loop_engine([add_one, 'three'])
+    const { trajectory, of_kind } = recorder()
+    await engine.generate({
+      prompt: 'add',
+      tools: [sum],
+      provider_options: { loop: { budget: 10n } },
+      capture: 'turns',
+      trajectory,
+    })
+    const sent = of_kind('request_sent')
+    expect('request' in (sent[0] ?? {})).toBe(false)
+    expect(sent[1]?.['request']).toStrictEqual({
+      messages: [
+        { role: 'user', content: 'add' },
+        { role: 'assistant', content: [{ type: 'tool_call', id: 'call_0_0', name: 'sum', input: { n: 1 } }] },
+        { role: 'tool', tool_call_id: 'call_0_0', name: 'sum', content: '3' },
+      ],
+      reshaped: true,
+    })
+  })
+
+  it('picks the deltas up again with a whole array after a turn whose payload dropped', async () => {
+    const odd: Message = { role: 'user', content: [{ type: 'text', text: 'aside', provider_options: { loop: { n: 1n } } }] }
+    const { engine } = make_loop_engine([add_one, add_one, add_one, 'three'])
+    const { trajectory, of_kind } = recorder()
+    await engine.generate({
+      prompt: 'add',
+      tools: [sum],
+      capture: 'turns',
+      trajectory,
+      prepare_step: ({ step_index, messages }) => (step_index === 1 ? { messages: [...messages, odd] } : undefined),
+    })
+    const shapes = of_kind('request_sent').map((e) => {
+      const request = e['request'] as Record<string, unknown[]> | undefined
+      return request === undefined ? 'dropped' : Object.keys(request).join(',')
+    })
+    expect(shapes).toStrictEqual(['settings,tools,messages', 'dropped', 'messages,reshaped', 'appended'])
+    const third = of_kind('request_sent')[2]?.['request'] as Record<string, unknown[]>
+    expect(third['messages']).toHaveLength(5)
+  })
+
+  it("records the call's schema as JSON Schema in its settings", async () => {
+    const schema = z.object({ n: z.number() })
+    const { engine } = make_loop_engine(['{"n":3}'])
+    const { trajectory, of_kind } = recorder()
+    await engine.generate({ prompt: 'add', schema, capture: 'turns', trajectory })
+    expect(requests_of(of_kind)[0]).toMatchObject({ settings: { schema: to_json_schema(schema) } })
+  })
+
+  it("leaves out a schema it can't write as JSON Schema, and records the rest", async () => {
+    const bare = {
+      '~standard': { version: 1, vendor: 'bare', validate: (value: unknown) => ({ value }) },
+      // eslint-disable-next-line typescript-eslint/no-unsafe-type-assertion
+    } as unknown as ToolSchema
+    const { engine } = make_loop_engine(['{"n":3}'])
+    const { trajectory, of_kind } = recorder()
+    await engine.generate({
+      prompt: 'add',
+      schema: bare,
+      tools: [{ ...sum, input_schema: bare }],
+      capture: 'turns',
+      trajectory,
+    })
+    const request = requests_of(of_kind)[0] as Record<string, Record<string, unknown>>
+    expect('schema' in (request['settings'] ?? {})).toBe(false)
+    expect(request['tools']).toStrictEqual([{ name: 'sum', description: 'add the numbers up' }])
+  })
+
+  it('records a reshaped turn after a sliding window, and appended ones after a per-message rewrite', async () => {
+    const turns = [add_one, add_one, 'three'] as const
+    const windowed = make_loop_engine(turns)
+    const windowed_events = recorder()
+    await windowed.engine.generate({
+      prompt: 'add',
+      tools: [sum],
+      capture: 'turns',
+      trajectory: windowed_events.trajectory,
+      prepare_step: ({ messages }) => ({ messages: messages.slice(-2) }),
+    })
+    const windowed_requests = requests_of(windowed_events.of_kind) as Array<Record<string, unknown>>
+    expect(windowed_requests.map((r) => r['reshaped'])).toStrictEqual([undefined, true, true])
+    expect(windowed_requests[1]?.['messages']).toHaveLength(2)
+
+    const anchored = make_loop_engine(turns)
+    const anchored_events = recorder()
+    await anchored.engine.generate({
+      prompt: 'add',
+      tools: [sum],
+      capture: 'turns',
+      trajectory: anchored_events.trajectory,
+      prepare_step: ({ messages }) => {
+        const [first] = messages
+        return first === undefined ? undefined : { messages: [first, ...messages.slice(1).slice(-2)] }
+      },
+    })
+    const anchored_requests = requests_of(anchored_events.of_kind) as Array<Record<string, unknown>>
+    expect(anchored_requests.map((r) => Object.keys(r))).toStrictEqual([
+      ['settings', 'tools', 'messages'],
+      ['appended'],
+      ['messages', 'reshaped'],
+    ])
+
+    const rewritten = make_loop_engine(turns)
+    const rewritten_events = recorder()
+    await rewritten.engine.generate({
+      prompt: 'add',
+      tools: [sum],
+      capture: 'turns',
+      trajectory: rewritten_events.trajectory,
+      prepare_step: ({ messages }) => ({
+        messages: messages.map((m) => (m.role === 'tool' ? { ...m, content: `result: ${m.content}` } : m)),
+      }),
+    })
+    const rewritten_requests = requests_of(rewritten_events.of_kind) as Array<Record<string, unknown>>
+    expect(rewritten_requests.map((r) => Object.keys(r))).toStrictEqual([
+      ['settings', 'tools', 'messages'],
+      ['appended'],
+      ['appended'],
+    ])
+    expect(rewritten_requests[1]?.['appended']).toContainEqual({
+      role: 'tool',
+      tool_call_id: 'call_0_0',
+      name: 'sum',
+      content: 'result: 3',
+    })
+  })
+
+  it("records what the provider returned on response_received: the turn's own parts, or its text and calls", async () => {
+    const reasoning: AssistantContentPart[] = [
+      { type: 'reasoning', text: 'add them', provider_options: { loop: { signature: 'sig' } } },
+      { type: 'text', text: 'three' },
+    ]
+    const { engine } = make_loop_engine([{ text: 'adding', tool_calls: add_one }, add_one, { content: reasoning }])
+    const { trajectory, of_kind } = recorder()
+    await engine.generate({ prompt: 'add', tools: [sum], capture: 'turns', trajectory })
+    expect(of_kind('response_received').map((e) => e['content'])).toStrictEqual([
+      [
+        { type: 'text', text: 'adding' },
+        { type: 'tool_call', id: 'call_0_0', name: 'sum', input: { n: 1 } },
+      ],
+      [{ type: 'tool_call', id: 'call_1_0', name: 'sum', input: { n: 1 } }],
+      reasoning,
+    ])
+  })
+
+  it('records no request and no content without capture, or with it off', async () => {
+    for (const capture of [undefined, 'off'] as const) {
+      const { engine } = make_loop_engine([add_one, 'three'])
+      const { trajectory, of_kind } = recorder()
+      await engine.generate({ prompt: 'add', tools: [sum], trajectory, ...(capture === undefined ? {} : { capture }) })
+      expect(of_kind('request_sent').filter((e) => 'request' in e)).toStrictEqual([])
+      expect(of_kind('response_received').filter((e) => 'content' in e)).toStrictEqual([])
+    }
+  })
+
+  it("puts the turn's step span and the call's span on every request_sent, capture or not", async () => {
+    for (const capture of ['off', 'turns'] as const) {
+      const { engine } = make_loop_engine([add_one, 'three'])
+      const { trajectory, of_kind } = recorder()
+      await engine.generate({ prompt: 'add', tools: [sum], capture, trajectory })
+      expect(of_kind('request_sent').map((e) => [e['step_index'], e['span_id'], e['call_span_id']])).toStrictEqual([
+        [0, 'engine.generate.step-2', 'engine.generate-1'],
+        [1, 'engine.generate.step-3', 'engine.generate-1'],
+      ])
+    }
+  })
+
+  it('records a schema-repair turn as a later turn of the same call', async () => {
+    const { engine, requests } = make_loop_engine(['not json', '{"n":3}'])
+    const { trajectory, of_kind } = recorder()
+    const result = await engine.generate({
+      prompt: 'add',
+      schema: z.object({ n: z.number() }),
+      capture: 'turns',
+      trajectory,
+    })
+    expect(result.content).toStrictEqual({ n: 3 })
+    const sent = of_kind('request_sent')
+    expect(sent.map((e) => e['call_span_id'])).toStrictEqual(['engine.generate-1', 'engine.generate-1'])
+    expect(sent[1]?.['request']).toStrictEqual({
+      appended: [{ role: 'assistant', content: 'not json' }, requests[1]?.messages.at(-1)],
+    })
+  })
+
+  it("records 'wire' as it records 'turns' on a native transport", async () => {
+    const turns_events = recorder()
+    await make_loop_engine([add_one, 'three']).engine.generate({
+      prompt: 'add',
+      tools: [sum],
+      capture: 'turns',
+      trajectory: turns_events.trajectory,
+    })
+    const wire_events = recorder()
+    await make_loop_engine([add_one, 'three']).engine.generate({
+      prompt: 'add',
+      tools: [sum],
+      capture: 'wire',
+      trajectory: wire_events.trajectory,
+    })
+    expect(requests_of(wire_events.of_kind)).toStrictEqual(requests_of(turns_events.of_kind))
+    expect(requests_of(wire_events.of_kind)[0]).toBeDefined()
   })
 })

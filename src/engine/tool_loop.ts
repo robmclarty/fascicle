@@ -46,10 +46,11 @@
  * invoke_turn); tests inject a mock seam directly.
  */
 
-import { format_schema_issues, validate_schema } from '#schema'
+import { format_schema_issues, to_json_schema, validate_schema, type ToolSchema } from '#schema'
 import type { TrajectoryLogger } from '#core'
 import type {
   AssistantContentPart,
+  CaptureLevel,
   CostBreakdown,
   FinishReason,
   Message,
@@ -74,6 +75,7 @@ import {
 import {
   record_cache_miss,
   record_cost,
+  record_request_sent,
   record_response_received,
   record_tool_approval,
   record_tool_call,
@@ -146,14 +148,36 @@ export type ToolLoopConfig = {
    * salvage_budget is. Absent, each run_tool_loop starts its own.
    */
   readonly call_memory?: CallMemory
+  /**
+   * What the loop records of each turn's request and reply. Its
+   * `call_span_id` rides every request_sent; absent, the loop records no
+   * request and no reply, and request_sent names no call span.
+   */
+  readonly capture?: LoopCapture
 }
 
 /**
  * The state a generate call's turns share: the previous turn's cache reads
- * plus writes, which tells a cache miss from a turn that never cached.
+ * plus writes, which tells a cache miss from a turn that never cached, and
+ * the JSON text of each message the last captured request held, which tells
+ * a turn that extends it from one that doesn't. `captured_messages` is
+ * undefined before the first captured turn and after a payload that was
+ * dropped.
  */
 export type CallMemory = {
   previous_cache_traffic: number
+  captured_messages?: ReadonlyArray<string> | undefined
+}
+
+/**
+ * How a generate call captures its turns: the level, the `engine.generate`
+ * span every request_sent names, and the call's settings as its first turn
+ * records them, built only when a turn asks for them.
+ */
+export type LoopCapture = {
+  readonly level: CaptureLevel
+  readonly call_span_id: string | undefined
+  readonly settings: () => Readonly<Record<string, unknown>>
 }
 
 export type ToolLoopResult = {
@@ -453,8 +477,8 @@ async function validate_tool_input(
  * config.messages unchanged. The replacement is ephemeral; it is fed ONLY to
  * invoke_once for this turn, never pushed onto config.messages, so the loop's
  * salvage/approval/ends_turn/schema-repair machinery keeps reading the real
- * transcript. A step_prepared event (recorded inline, as request_sent is)
- * makes the mid-loop mutation legible with the before/after message counts.
+ * transcript. A step_prepared event makes the mid-loop mutation legible
+ * with the before/after message counts.
  */
 async function apply_prepare_step(
   config: ToolLoopConfig,
@@ -590,10 +614,143 @@ function note_cache_traffic(
 }
 
 /**
+ * The call's capture when it records its turns' requests and replies, and
+ * undefined when it records neither.
+ */
+function active_capture(config: ToolLoopConfig): LoopCapture | undefined {
+  const capture = config.capture
+  return capture !== undefined && capture.level !== 'off' ? capture : undefined
+}
+
+/**
+ * JSON.stringify's replacer for a captured value: a `Uint8Array`, a Node
+ * `Buffer` included, becomes its base64 text, read off the holder because a
+ * Buffer's own toJSON has already run by the time the replacer sees it.
+ */
+function capture_replacer(this: Readonly<Record<string, unknown>>, key: string, value: unknown): unknown {
+  const raw = this[key]
+  return raw instanceof Uint8Array ? Buffer.from(raw).toString('base64') : value
+}
+
+/**
+ * The JSON text a captured value is recorded as. Throws on a value that JSON
+ * can't hold, a BigInt or a cycle.
+ */
+function capture_text(value: unknown): string {
+  return JSON.stringify(value, capture_replacer)
+}
+
+/**
+ * A fresh, JSON-safe copy of a value, as capture records it.
+ */
+function capture_copy(value: unknown): unknown {
+  return JSON.parse(capture_text(value))
+}
+
+/**
+ * A schema as JSON Schema with `to_json_schema`'s defaults, or undefined when
+ * it can't be written as one.
+ */
+export function json_schema_or_undefined(schema: ToolSchema): Record<string, unknown> | undefined {
+  let json: Record<string, unknown> | undefined
+  try {
+    json = to_json_schema(schema)
+  } catch {
+    // A schema that can't be written as JSON Schema stays undefined.
+  }
+  return json
+}
+
+/**
+ * A tool as capture records it: its name, its description, and its input
+ * schema as JSON Schema. A schema that can't be written as one stays
+ * undefined, which the JSON copy leaves out.
+ */
+function captured_tool(tool: Tool): Record<string, unknown> {
+  return {
+    name: tool.name,
+    description: tool.description,
+    input_schema: json_schema_or_undefined(tool.input_schema),
+  }
+}
+
+/**
+ * A later turn's request: the messages it appended when it starts with
+ * every message the previous captured turn held, and its whole array marked
+ * `reshaped` otherwise, or when the previous turn's payload was dropped.
+ */
+function later_request(
+  previous: ReadonlyArray<string> | undefined,
+  texts: ReadonlyArray<string>,
+  copies: ReadonlyArray<unknown>,
+): Record<string, unknown> {
+  if (previous?.every((text, n) => texts[n] === text) === true) {
+    return { appended: copies.slice(previous.length) }
+  }
+  return { messages: copies, reshaped: true }
+}
+
+/**
+ * The `request` a turn's request_sent carries under capture, built from
+ * fresh JSON-safe copies of what the turn sends, so the loop's later pushes
+ * never reach it. A call's first turn records its settings, its tools, and
+ * every message; a later one records what changed (see later_request). The
+ * messages' JSON text is remembered for the next turn. A value JSON can't
+ * hold drops the payload, and the call goes on.
+ */
+function capture_request(
+  config: ToolLoopConfig,
+  capture: LoopCapture,
+  memory: CallMemory,
+  step_index: number,
+  messages: ReadonlyArray<Message>,
+): Record<string, unknown> | undefined {
+  const previous = memory.captured_messages
+  memory.captured_messages = undefined
+  let request: Record<string, unknown> | undefined
+  try {
+    const texts = messages.map(capture_text)
+    const copies = texts.map((text): unknown => JSON.parse(text))
+    request =
+      step_index === 0
+        ? {
+            settings: capture_copy(capture.settings()),
+            tools: capture_copy(config.tools.map(captured_tool)),
+            messages: copies,
+          }
+        : later_request(previous, texts, copies)
+    memory.captured_messages = texts
+  } catch {
+    // A value that JSON can't hold drops the payload, and the call goes on.
+  }
+  return request
+}
+
+/**
+ * The parts a turn returned, as response_received records them under
+ * capture: the turn's own parts when its adapter set them, and otherwise its
+ * text, when it has any, followed by its calls. A value JSON can't hold
+ * drops them.
+ */
+function capture_response(turn: TurnResult): unknown {
+  const parts = turn.content ?? [
+    ...(turn.text.length > 0 ? [{ type: 'text', text: turn.text }] : []),
+    ...turn.tool_calls.map(tool_call_part),
+  ]
+  let content: unknown
+  try {
+    content = capture_copy(parts)
+  } catch {
+    // A value that JSON can't hold drops the parts, and the call goes on.
+  }
+  return content
+}
+
+/**
  * Invoke the transport seam once for one turn, bracketed by request_sent /
- * response_received events, and note its cache traffic in `memory`. A thrown
- * invoke (or prepare_step) closes the step span with the error before
- * rethrowing.
+ * response_received events, which carry the request and the reply under
+ * capture, and note its cache traffic in `memory`. A thrown invoke (or
+ * prepare_step) closes the step span with the error before rethrowing.
  */
 async function invoke_turn(
   config: ToolLoopConfig,
@@ -603,7 +760,16 @@ async function invoke_turn(
 ): Promise<TurnResult> {
   try {
     const request_messages = await apply_prepare_step(config, step_index)
-    config.trajectory?.record({ kind: 'request_sent', step_index })
+    const capture = active_capture(config)
+    record_request_sent(config.trajectory, {
+      step_index,
+      span_id: step_span,
+      call_span_id: config.capture?.call_span_id,
+      request:
+        capture !== undefined
+          ? capture_request(config, capture, memory, step_index, request_messages)
+          : undefined,
+    })
     const turn = await config.invoke_once({
       step_index,
       messages: request_messages,
@@ -612,7 +778,13 @@ async function invoke_turn(
       stream: config.stream,
       step_span,
     })
-    record_response_received(config.trajectory, step_index, turn, step_span)
+    record_response_received(
+      config.trajectory,
+      step_index,
+      turn,
+      step_span,
+      capture !== undefined ? capture_response(turn) : undefined,
+    )
     note_cache_traffic(config, memory, turn.usage, {
       step_index,
       span_id: step_span,

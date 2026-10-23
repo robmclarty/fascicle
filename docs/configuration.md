@@ -215,6 +215,7 @@ type EngineDefaults = {
   system?: string;
   effort?: EffortLevel;
   cache?: 'off' | '5m' | '1h';                  // prompt caching; see "generate Options" below
+  capture?: 'off' | 'turns' | 'wire';           // what a call records of its requests; see "generate Options" below
   temperature?: number;
   max_tokens?: number;
   top_p?: number;
@@ -256,7 +257,7 @@ const result = await engine.generate({ prompt: 'hello' });
 | ---------------------------------------------------------------------------------- | ----------------------------------------------- |
 | `model`                                                                            | per-call wins, else default, else throws `model_required_error` |
 | `provider`                                                                         | per-call wins, else default, else sole provider, else throws `provider_required_error` |
-| `system`, `effort`, `cache`, `temperature`, `max_tokens`, `top_p`, `max_steps`, `turn_timeout_ms`, `tool_error_policy`, `schema_repair_attempts`, `tool_call_repair_attempts`, `max_tool_calls_per_step` | per-call wins via nullish coalesce |
+| `system`, `effort`, `cache`, `capture`, `temperature`, `max_tokens`, `top_p`, `max_steps`, `turn_timeout_ms`, `tool_error_policy`, `schema_repair_attempts`, `tool_call_repair_attempts`, `max_tool_calls_per_step` | per-call wins via nullish coalesce |
 | `retry`                                                                            | per-call replaces wholesale                     |
 | `provider_options`                                                                 | two-level, so a per-provider key, shallow-merged     |
 | `prepare_step`, `prompt`, `tools`, `schema`, `abort`, `trajectory`, `on_chunk`     | not defaultable; always call-supplied           |
@@ -377,6 +378,7 @@ type GenerateOptions<t = string> = {
   tools?: Tool[];
   effort?: EffortLevel;
   cache?: CacheSetting;   // 'off' | '5m' | '1h'
+  capture?: CaptureLevel; // 'off' | 'turns' | 'wire'
   temperature?: number;
   max_tokens?: number;
   top_p?: number;
@@ -402,6 +404,7 @@ A few highlights:
 
 - `effort: 'none' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'` is translated per-provider. See [providers.md](./providers.md) for the per-provider mapping. On the `ai_sdk` transport, a provider that doesn't support reasoning effort (for example, Ollama) drops it and records `effort_ignored` on the trajectory. Ollama's native transport drops it without recording anything.
 - `cache: 'off' | '5m' | '1h'` asks the provider to cache the prompt for five minutes or an hour, so the next turn of a tool loop reads the conversation back instead of paying for it again. Left unset, Anthropic caches for five minutes on a call that has tools, on either transport, and every other adapter asks for no cache. `'off'` turns it off, and any other value throws `engine_config_error`. A provider that caches on its own, or an adapter that can't ask for a cache, records `option_ignored` with the reason. See [providers.md](./providers.md#prompt-caching).
+- `capture: 'off' | 'turns' | 'wire'` records what each turn sent the model and what came back, so you can read the request that the model answered instead of guessing at it. `'turns'` puts the request on each turn's `request_sent` event, the first turn whole and each later turn as the messages that it added, and puts the reply on `response_received` as its `content`. `'wire'` records what `'turns'` does, for now. Capture is off by default, because a request carries everything your users typed, so turn it on where the trajectory can hold that data. Any other value throws `engine_config_error`, and `claude_cli`, which builds its own requests, records `option_ignored`. Under `'turns'` a captured trajectory grows with the conversation, since each message is written once, while a level that recorded each turn's whole body would grow with the square of the conversation, since every body repeats the whole array. See [concepts.md](./concepts.md#what-gets-recorded) for the shapes.
 - `schema` is any [Standard Schema](https://standardschema.dev) that also carries a JSON Schema (zod, ArkType, Valibot, ...): the printed `ToolSchema<t>` is `StandardSchemaV1<unknown, t> & StandardJSONSchemaV1`. The engine shows the model that JSON Schema in its instruction to reply with JSON, so a field's `.describe()` text reaches the model, and a schema that JSON Schema can't express (one that holds a `Date`, say) gets the instruction without it and still validates the reply. On failure, the engine attempts `schema_repair_attempts` repair passes (default 1) before throwing `schema_validation_error`. If the call instead finishes on a non-`stop` reason (content filter, token limit, step cap) no valid value can exist, so it throws `incomplete_generation_error` without attempting repair.
 - `tools` is the agentic tool-use surface; tools have a Standard Schema `input_schema` and an `execute` closure. See the cookbook for tool loops.
 - `turn_timeout_ms` bounds each model turn's wall-clock; expiry throws a retryable timeout. See [Turn timeout budgets](#turn-timeout-budgets).

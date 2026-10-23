@@ -155,6 +155,25 @@ describe('claude_cli adapter generate', () => {
     },
   )
 
+  it.each(['off', 'turns', 'wire'] as const)(
+    'records option_ignored for a per-call capture %s, since Claude Code builds its own requests',
+    async (capture) => {
+      hooks.responses = [{ lines: success_lines('ok'), close: ZERO_CLOSE }]
+      const traj = create_captured_trajectory()
+      const adapter = create_claude_cli_adapter({})
+      await adapter.generate(gen({ capture, trajectory: traj.logger }), RESOLVED)
+      expect(traj.events.filter((e) => e.kind === 'option_ignored')).toStrictEqual([
+        {
+          kind: 'option_ignored',
+          option: 'capture',
+          provider: 'claude_cli',
+          reason: 'Claude Code builds its own requests',
+          ts: expect.any(Number),
+        },
+      ])
+    },
+  )
+
   it('records no option_ignored for cache when the call sets none', async () => {
     hooks.responses = [{ lines: success_lines('ok'), close: ZERO_CLOSE }]
     const traj = create_captured_trajectory()

@@ -24,6 +24,15 @@ export type EffortLevel = 'none' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
  */
 export type CacheSetting = 'off' | '5m' | '1h'
 
+/**
+ * What a call records of the requests it sends and the replies it gets:
+ * `'off'` records neither, `'turns'` records each turn's request (the
+ * first turn whole, a later one as what it changed) on `request_sent` and
+ * the reply on `response_received`, and `'wire'` records the same, for now.
+ * See `docs/concepts.md`'s What Gets Recorded.
+ */
+export type CaptureLevel = 'off' | 'turns' | 'wire'
+
 export type FinishReason =
   | 'stop'
   | 'tool_calls'
@@ -485,6 +494,14 @@ export type GenerateOptions<t = string> = {
    * `option_ignored`. Any other value throws `engine_config_error`.
    */
   cache?: CacheSetting
+  /**
+   * What this call records of each turn's request and reply. Left unset,
+   * the engine's `defaults.capture` applies, and with neither set nothing is
+   * recorded. A captured request carries user data, so keep it off where
+   * the trajectory goes somewhere that data mustn't. Any other value throws
+   * `engine_config_error`. See CaptureLevel.
+   */
+  capture?: CaptureLevel
   provider_options?: Record<string, unknown>
 }
 
@@ -585,7 +602,7 @@ export type AiSdkTelemetrySettings = {
  * | --------------------------------------------------------------------- | ----------------------------------------- |
  * | `model`                                                               | per-call wins; else default; else model_required_error is thrown |
  * | `provider`                                                            | per-call wins; else default; else sole configured provider; else provider_required_error is thrown |
- * | `system`, `effort`, `cache`, `max_steps`, `turn_timeout_ms`, `tool_error_policy`, `schema_repair_attempts`, `tool_call_repair_attempts`, `max_tool_calls_per_step` | per-call wins (nullish coalesce) |
+ * | `system`, `effort`, `cache`, `capture`, `max_steps`, `turn_timeout_ms`, `tool_error_policy`, `schema_repair_attempts`, `tool_call_repair_attempts`, `max_tool_calls_per_step` | per-call wins (nullish coalesce) |
  * | `temperature`, `max_tokens`, `top_p`                                  | per-call wins (nullish coalesce)          |
  * | `retry_policy`                                                        | per-call replaces wholesale                |
  * | `provider_options`                                                    | two-level: per-provider-key shallow merge  |
@@ -601,6 +618,12 @@ export type EngineDefaults = {
    * `engine_config_error` at `create_engine`. See `GenerateOptions.cache`.
    */
   readonly cache?: CacheSetting
+  /**
+   * What every call that sets none records of its requests and replies. An
+   * unknown value throws `engine_config_error` at `create_engine`. See
+   * `GenerateOptions.capture`.
+   */
+  readonly capture?: CaptureLevel
   readonly temperature?: number
   readonly max_tokens?: number
   readonly top_p?: number
