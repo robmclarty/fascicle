@@ -8,7 +8,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
-import type { StreamChunk } from '../types.js'
+import type { StreamChunk, Tool } from '../types.js'
 import {
   build_mock_ai_module,
   build_mock_registry_module,
@@ -27,7 +27,12 @@ vi.mock('../providers/registry.js', async () => build_mock_registry_module())
 
 import type { TrajectoryEvent, TrajectoryLogger } from '#core'
 import type { ToolSchema } from '#schema'
+// The engine zone may not import testing, since testing imports the engine;
+// a test may, since nothing in the engine imports a test.
+// fallow-ignore-next-line boundary-violation
+import { make_loop_engine } from '#testing'
 import { create_engine } from '../create_engine.js'
+import { create_claude_cli_adapter } from '../providers/claude_cli/index.js'
 import { default_normalize_usage, translate_effort_to_sdk_reasoning } from '../providers/types.js'
 import {
   aborted_error,
@@ -1629,5 +1634,46 @@ describe('generate: the AI SDK reasoning option', () => {
     expect(params['providerOptions']).toStrictEqual({
       anthropic: { thinking: { type: 'adaptive', display: 'summarized' } },
     })
+  })
+})
+
+describe('generate: duplicate tool names', () => {
+  const tool = (name: string): Tool => ({
+    name,
+    description: `the ${name} tool`,
+    input_schema: z.object({}),
+    execute: () => 'ok',
+  })
+  const tools = ['search', 'read_file', 'search', 'list_files', 'read_file', 'read_file'].map(tool)
+  const message =
+    "duplicate tool names: search (2), read_file (3); give each tool its own name, or pass `name_prefix` to mcp_client for one server's tools"
+
+  it('throws engine_config_error on native before any request', async () => {
+    const { engine, requests } = make_loop_engine(['never sent'])
+    const call = engine.generate({ model: 'loop', prompt: 'go', tools })
+    await expect(call).rejects.toBeInstanceOf(engine_config_error)
+    await expect(call).rejects.toThrow(message)
+    expect(requests).toStrictEqual([])
+  })
+
+  it('throws engine_config_error on ai_sdk before the SDK is called', async () => {
+    const call = basic_engine().generate({ model: 'claude-opus-4-8', prompt: 'go', tools })
+    await expect(call).rejects.toBeInstanceOf(engine_config_error)
+    await expect(call).rejects.toThrow(message)
+    expect(mock_state.generate_text_call_count).toBe(0)
+    expect(mock_state.stream_text_call_count).toBe(0)
+  })
+
+  it('throws engine_config_error on claude_cli before any subprocess starts', async () => {
+    // This file's registry mock lists no claude_cli, so the real adapter is
+    // registered under a custom name. A spawn of this path would fail as
+    // claude_cli_error, so the config error proves the check ran first.
+    const engine = create_engine({
+      providers: { cli: { binary: '/nonexistent/fascicle-test/claude' } },
+      custom_providers: { cli: create_claude_cli_adapter },
+    })
+    const call = engine.generate({ model: 'sonnet', prompt: 'go', tools })
+    await expect(call).rejects.toBeInstanceOf(engine_config_error)
+    await expect(call).rejects.toThrow(message)
   })
 })

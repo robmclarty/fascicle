@@ -47,6 +47,10 @@ export type McpClientOptions = {
   include?: ReadonlyArray<string>
   // Supplies a description for tools that advertise none.
   default_description?: (tool_name: string) => string
+  // Prepended, as written, to each surfaced tool's name, so two servers'
+  // tools can share a call without colliding. The server is still called by
+  // its own name, and `include` and `default_description` see that name too.
+  name_prefix?: string
 }
 
 export type McpClientHandle = {
@@ -136,7 +140,9 @@ function build_transport(
 
 /**
  * Wraps one advertised MCP tool as a Fascicle `Tool` whose `execute` forwards
- * to `callTool` on the shared client.
+ * to `callTool` on the shared client. Only the `Tool`'s name carries
+ * `name_prefix`; the call, the fallback description, and the errors use the
+ * server's own name.
  *
  * An already-aborted signal short-circuits before the wire call; otherwise the
  * signal is passed through so cancelling the run cancels the remote call.
@@ -150,7 +156,7 @@ function to_fascicle_tool(
   const description =
     advertised.description ?? options.default_description?.(name) ?? `MCP tool ${name}`
   return {
-    name,
+    name: `${options.name_prefix ?? ''}${name}`,
     description,
     input_schema: json_schema_to_standard(advertised.inputSchema),
     execute: async (input: unknown, ctx: ToolExecContext) => {

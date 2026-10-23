@@ -58,6 +58,26 @@ inference profile, an Ollama tag). The one exception is `claude_cli`, where the
 bare tokens `opus`/`sonnet`/`haiku` are resolved by the CLI itself. See
 [configuration.md](./configuration.md#model-and-provider-two-axes).
 
+## Duplicate Tool Names (`engine_config_error`)
+
+A call passed two or more tools under one name, and the engine threw
+`engine_config_error` before it sent anything. The message names each
+duplicate and how many times it appears:
+
+```text
+duplicate tool names: search (2), read_file (3); give each tool its own name, or pass `name_prefix` to mcp_client for one server's tools
+```
+
+The loop and every transport look a tool up by its name, so a second tool
+under the same name used to replace the first without a word, and the model
+could never call the one that disappeared. Give one of them a name of its own.
+Two MCP servers that advertise the same tool are the usual cause, and
+`mcp_client(config, { name_prefix: 'gh_' })` puts a prefix on one server's
+tools, exactly as you write it, so the model sees `gh_search` while the server
+is still called with `search`. In an ACP session, a tool of your own under a
+workspace tool's name throws the same way when both sit in one call (see
+[acp.md](./acp.md#the-workspace-tools)).
+
 ## `ERR_PACKAGE_PATH_NOT_EXPORTED` — `require()` from CommonJS
 
 Fascicle ships ESM only, but its `exports` map carries a `default` condition,

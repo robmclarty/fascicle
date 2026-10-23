@@ -505,6 +505,24 @@ function build_native_invoke(cfg: NativeInvokeConfig): InvokeOnce {
 }
 
 /**
+ * Throw `engine_config_error` before any request when two or more of a call's
+ * tools share a name, naming each duplicate with its count. The loop and
+ * every transport key tools by name, so a duplicate would silently replace
+ * the tool before it.
+ */
+function assert_unique_tool_names(tools: ReadonlyArray<Tool> | undefined): void {
+  if (tools === undefined) return
+  const counts = new Map<string, number>()
+  for (const tool of tools) counts.set(tool.name, (counts.get(tool.name) ?? 0) + 1)
+  const duplicates = [...counts].filter(([, count]) => count > 1)
+  if (duplicates.length === 0) return
+  const listed = duplicates.map(([name, count]) => `${name} (${String(count)})`).join(', ')
+  throw new engine_config_error(
+    `duplicate tool names: ${listed}; give each tool its own name, or pass \`name_prefix\` to mcp_client for one server's tools`,
+  )
+}
+
+/**
  * Resolve the provider name: per-call, then the engine default, then the sole
  * configured adapter. With several providers configured and neither a per-call
  * provider nor a default, there is no sane guess, so this throws
@@ -1072,6 +1090,7 @@ export async function generate<T = string>(
   if (adapter === undefined) {
     throw new provider_not_configured_error(target.provider, [...engine.adapters.keys()])
   }
+  assert_unique_tool_names(opts.tools)
 
   if (adapter.kind === 'external') {
     const external = await adapter.generate<T>(opts, target)
