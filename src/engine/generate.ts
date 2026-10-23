@@ -262,6 +262,7 @@ type AiSdkInvokeConfig = {
   readonly retry_policy: RetryPolicy
   readonly turn_timeout_ms: number | undefined
   readonly trajectory: TrajectoryLogger | undefined
+  readonly on_chunk_provided: boolean
 }
 
 type NativeInvokeConfig = {
@@ -424,25 +425,26 @@ function build_step_timing(
 /**
  * Build the ai_sdk-transport InvokeOnce: the SDK turn built by
  * providers/ai_sdk/invoke.ts behind the same engine-owned retry_turn wrapper
- * the native path uses. The SDK call body lives behind the seam; this builder
- * owns only retry and the streamed-output tracking that makes a failure after
- * a chunk reached a consumer a non-retryable interruption (the same
- * first-chunk stamp doubles as StepTiming.first_chunk_ms). This transport
- * streams only when a consumer is attached.
+ * the native path uses. The SDK call body lives behind the seam, and every
+ * turn streams; this builder owns only retry and the first-chunk stamp, which
+ * it clears as each attempt starts, and which both makes a failure after a
+ * chunk reached a consumer a non-retryable interruption and doubles as
+ * StepTiming.first_chunk_ms.
  */
 function build_ai_sdk_invoke(cfg: AiSdkInvokeConfig): InvokeOnce {
   return async (args: InvokeOnceArgs): Promise<TurnResult> => {
     let first_chunk_at: number | undefined
-    const call_once = (turn_abort: AbortSignal): Promise<TurnResult> =>
-      cfg.invoke_turn({
+    const call_once = (turn_abort: AbortSignal): Promise<TurnResult> => {
+      first_chunk_at = undefined
+      return cfg.invoke_turn({
         step_index: args.step_index,
         messages: args.messages,
         abort: turn_abort,
-        stream: args.stream,
         on_first_chunk: () => {
           first_chunk_at ??= Date.now()
         },
       })
+    }
 
     return await retry_turn(
       call_once,
@@ -452,8 +454,7 @@ function build_ai_sdk_invoke(cfg: AiSdkInvokeConfig): InvokeOnce {
       classify_provider_error,
       cfg.turn_timeout_ms,
       cfg.trajectory,
-      // This transport streams only for a consumer, so a streamed turn always has one.
-      args.stream,
+      cfg.on_chunk_provided,
     )
   }
 }
@@ -752,6 +753,7 @@ type AiSdkTransportConfig<T> = {
   readonly tools_list: ReadonlyArray<Tool>
   readonly trajectory: TrajectoryLogger | undefined
   readonly telemetry: AiSdkTelemetrySettings | undefined
+  readonly on_chunk_provided: boolean
 }
 
 /**
@@ -782,7 +784,7 @@ async function build_ai_sdk_transport<T>(
       : undefined
 
   // All SDK specifics (message/tool mapping, Output.object structured-output
-  // gating, the generateText/streamText call) live behind create_ai_sdk_turn;
+  // gating, the streamText call) live behind create_ai_sdk_turn;
   // this builder only threads resolved options through the seam.
   //
   // Imported here rather than at the top of the file because a static import
@@ -820,6 +822,7 @@ async function build_ai_sdk_transport<T>(
     retry_policy: cfg.retry_policy,
     turn_timeout_ms: cfg.turn_timeout_ms,
     trajectory: cfg.trajectory,
+    on_chunk_provided: cfg.on_chunk_provided,
   })
 }
 
@@ -1162,6 +1165,7 @@ export async function generate<T = string>(
       tools_list,
       trajectory,
       telemetry: engine.default_ai_sdk_telemetry,
+      on_chunk_provided,
     })
   } else {
     // No effort translation here: a native adapter receives the resolved

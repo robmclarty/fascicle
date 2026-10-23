@@ -239,28 +239,6 @@ export function make_text_result(
   }
 }
 
-// Marker mirroring the real SDK's NoObjectGeneratedError, which detects
-// instances via a Symbol marker rather than `instanceof`. The mock's
-// `isInstance` checks this property so generate.ts's recovery branch can be
-// exercised without the real `ai` module.
-const NO_OBJECT_MARKER = '__mock_no_object_generated__'
-
-export function make_no_object_generated_error(opts: {
-  message?: string
-  text?: string
-  usage?: { inputTokens: number; outputTokens: number } & Record<string, unknown>
-  finishReason?: string
-}): Error {
-  const err = new Error(opts.message ?? 'No object generated.')
-  Object.assign(err, {
-    [NO_OBJECT_MARKER]: true,
-    text: opts.text,
-    usage: opts.usage,
-    finishReason: opts.finishReason,
-  })
-  return err
-}
-
 export async function build_mock_ai_module(): Promise<Record<string, unknown>> {
   return {
     isStepCount: (n: number) => ({ isStepCount: n }),
@@ -274,10 +252,6 @@ export async function build_mock_ai_module(): Promise<Record<string, unknown>> {
         name: 'object' as const,
         schema: cfg.schema,
       }),
-    },
-    NoObjectGeneratedError: {
-      isInstance: (e: unknown): boolean =>
-        typeof e === 'object' && e !== null && Reflect.get(e, NO_OBJECT_MARKER) === true,
     },
     generateText: async (params: { abortSignal?: AbortSignal }): Promise<FakeGenerateTextResult> => {
       mock_state.generate_text_call_count += 1

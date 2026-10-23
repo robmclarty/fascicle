@@ -463,15 +463,14 @@ describe('map_stream_part_to_chunk', () => {
 // The part-data round trip, on the real `ai` module with the
 // SDK's own mock language model: each part's providerMetadata reaches
 // TurnResult.content, and the next request gives it back as providerOptions,
-// in order, streamed and not.
+// in order, with a chunk consumer and without one. Every turn streams, so the
+// mock model offers doStream alone.
 // ---------------------------------------------------------------------------
 
 // The mock model's own option types, so the fixtures below are checked
 // against the V4 content and stream-part shapes the SDK reads.
 type MockModelOptions = NonNullable<ConstructorParameters<typeof MockLanguageModelV4>[0]>
-type MockGenerateResult = Extract<NonNullable<MockModelOptions['doGenerate']>, readonly unknown[]>[number]
 type MockStreamResult = Extract<NonNullable<MockModelOptions['doStream']>, readonly unknown[]>[number]
-type MockContent = MockGenerateResult['content'][number]
 type MockStreamPart = MockStreamResult['stream'] extends ReadableStream<infer part> ? part : never
 
 const USAGE_V4 = {
@@ -489,21 +488,6 @@ const weather: Tool = {
   execute: () => 'sunny',
 }
 
-const SIGNED_CALL: MockContent = {
-  type: 'tool-call',
-  toolCallId: 'call_1',
-  toolName: 'get_weather',
-  input: '{"city":"Ottawa"}',
-  providerMetadata: THOUGHT,
-}
-
-/** The first turn's content: signed reasoning, text, and a signed tool call. */
-const TOOL_TURN_CONTENT: MockContent[] = [
-  { type: 'reasoning', text: 'need the city', providerMetadata: SIGNATURE },
-  { type: 'text', text: 'Checking.' },
-  SIGNED_CALL,
-]
-
 const EXPECTED_CONTENT = [
   { type: 'reasoning', text: 'need the city', provider_options: SIGNATURE },
   { type: 'text', text: 'Checking.' },
@@ -515,18 +499,6 @@ const EXPECTED_CONTENT = [
     provider_options: THOUGHT,
   },
 ]
-
-function generate_results(content: MockContent[]): MockGenerateResult[] {
-  return [
-    { content, finishReason: { unified: 'tool-calls', raw: 'tool_use' }, usage: USAGE_V4, warnings: [] },
-    {
-      content: [{ type: 'text', text: 'Sunny.' }],
-      finishReason: { unified: 'stop', raw: 'end_turn' },
-      usage: USAGE_V4,
-      warnings: [],
-    },
-  ]
-}
 
 function stream_of(parts: MockStreamPart[]): MockStreamResult {
   return { stream: simulateReadableStream({ chunks: parts }) }
@@ -576,10 +548,15 @@ function mock_adapter(
   }
 }
 
+/** A mock model whose first turn is `first` and whose second answers. */
+function two_turn_model(first: MockStreamPart[] = TOOL_TURN_STREAM): MockLanguageModelV4 {
+  return new MockLanguageModelV4({ doStream: [stream_of(first), stream_of(FINAL_TURN_STREAM)] })
+}
+
 /** Run a two-turn tool loop through the engine and return the mock model. */
 async function run_loop(
   model: MockLanguageModelV4,
-  streamed: boolean,
+  consumer: boolean,
   name: string,
   metadata_key?: string,
 ): Promise<MockLanguageModelV4> {
@@ -591,44 +568,18 @@ async function run_loop(
     model: 'mock-model',
     prompt: 'weather in Ottawa?',
     tools: [weather],
-    ...(streamed ? { on_chunk: () => {} } : {}),
+    ...(consumer ? { on_chunk: () => {} } : {}),
   })
   return model
 }
 
 /** The assistant message the second request carried, as the model saw it. */
-function second_assistant(model: MockLanguageModelV4, streamed: boolean): unknown {
-  const calls = streamed ? model.doStreamCalls : model.doGenerateCalls
-  return calls[1]?.prompt.find((message) => message.role === 'assistant')
+function second_assistant(model: MockLanguageModelV4): unknown {
+  return model.doStreamCalls[1]?.prompt.find((message) => message.role === 'assistant')
 }
 
 describe('ai_sdk part data round trip', () => {
-  it("builds TurnResult.content from a generateText step, with each part's metadata", async () => {
-    const model = new MockLanguageModelV4({ doGenerate: generate_results(TOOL_TURN_CONTENT) })
-    const turn = create_ai_sdk_turn({
-      adapter: mock_adapter(model, 'anthropic_mock', 'anthropic'),
-      model_id: 'mock-model',
-      dispatcher: create_chunk_dispatcher(undefined),
-      tools: [weather],
-      schema: undefined,
-      provider_options: undefined,
-      temperature: undefined,
-      max_tokens: undefined,
-      top_p: undefined,
-      reasoning: undefined,
-      telemetry: undefined,
-    })
-    const result = await turn({
-      step_index: 0,
-      messages: [{ role: 'user', content: 'weather in Ottawa?' }],
-      abort: new AbortController().signal,
-      stream: false,
-      on_first_chunk: () => {},
-    })
-    expect(result.content).toStrictEqual(EXPECTED_CONTENT)
-  })
-
-  it('builds the same TurnResult.content from a streamText step once it drains', async () => {
+  it("builds TurnResult.content from a streamed step once it drains, with each part's metadata", async () => {
     const model = new MockLanguageModelV4({ doStream: [stream_of(TOOL_TURN_STREAM)] })
     const turn = create_ai_sdk_turn({
       adapter: mock_adapter(model, 'anthropic_mock', 'anthropic'),
@@ -647,22 +598,18 @@ describe('ai_sdk part data round trip', () => {
       step_index: 0,
       messages: [{ role: 'user', content: 'weather in Ottawa?' }],
       abort: new AbortController().signal,
-      stream: true,
       on_first_chunk: () => {},
     })
     expect(result.content).toStrictEqual(EXPECTED_CONTENT)
   })
 
   it.each([false, true])(
-    'gives every part its data back on the next request, in order (streamed: %s)',
-    async (streamed) => {
-      const model = new MockLanguageModelV4(
-        streamed
-          ? { doStream: [stream_of(TOOL_TURN_STREAM), stream_of(FINAL_TURN_STREAM)] }
-          : { doGenerate: generate_results(TOOL_TURN_CONTENT) },
-      )
-      await run_loop(model, streamed, 'anthropic_mock', 'anthropic')
-      expect(second_assistant(model, streamed)).toMatchObject({
+    'gives every part its data back on the next request, in order (consumer: %s)',
+    async (consumer) => {
+      const model = two_turn_model()
+      await run_loop(model, consumer, 'anthropic_mock', 'anthropic')
+      expect(model.doGenerateCalls).toStrictEqual([])
+      expect(second_assistant(model)).toMatchObject({
         role: 'assistant',
         content: [
           { type: 'reasoning', text: 'need the city', providerOptions: SIGNATURE },
@@ -676,24 +623,15 @@ describe('ai_sdk part data round trip', () => {
   // A custom provider can't take a built-in name,
   // so a custom adapter over @ai-sdk/anthropic names its package's key.
   it('keeps the reasoning of a custom adapter named apart from its metadata_key', async () => {
-    const keyed = await run_loop(
-      new MockLanguageModelV4({ doGenerate: generate_results(TOOL_TURN_CONTENT) }),
-      false,
-      'vertex_claude',
-      'anthropic',
-    )
-    expect(second_assistant(keyed, false)).toMatchObject({
+    const keyed = await run_loop(two_turn_model(), false, 'vertex_claude', 'anthropic')
+    expect(second_assistant(keyed)).toMatchObject({
       content: [{ type: 'reasoning', text: 'need the city', providerOptions: SIGNATURE }, {}, {}],
     })
 
     // Without the key, the adapter's name is the key, and the anthropic-keyed
     // reasoning stays behind.
-    const unkeyed = await run_loop(
-      new MockLanguageModelV4({ doGenerate: generate_results(TOOL_TURN_CONTENT) }),
-      false,
-      'vertex_claude',
-    )
-    const content = (second_assistant(unkeyed, false) as { content: Array<{ type: string }> }).content
+    const unkeyed = await run_loop(two_turn_model(), false, 'vertex_claude')
+    const content = (second_assistant(unkeyed) as { content: Array<{ type: string }> }).content
     expect(content.map((part) => part.type)).toStrictEqual(['text', 'tool-call'])
   })
 
@@ -701,15 +639,18 @@ describe('ai_sdk part data round trip', () => {
   // which @ai-sdk/openai sends as item references while `store` is on.
   it("sends a Responses turn's itemIds back as providerOptions", async () => {
     const item = (id: string) => ({ openai: { itemId: id } })
-    const model = new MockLanguageModelV4({
-      doGenerate: generate_results([
-        { type: 'reasoning', text: '', providerMetadata: { openai: { itemId: 'rs_1', reasoningEncryptedContent: 'enc' } } },
-        { type: 'text', text: 'Checking.', providerMetadata: item('msg_1') },
-        { type: 'tool-call', toolCallId: 'call_1', toolName: 'get_weather', input: '{"city":"Ottawa"}', providerMetadata: item('fc_1') },
-      ]),
-    })
+    const model = two_turn_model([
+      { type: 'stream-start', warnings: [] },
+      { type: 'reasoning-start', id: 'rs_1' },
+      { type: 'reasoning-end', id: 'rs_1', providerMetadata: { openai: { itemId: 'rs_1', reasoningEncryptedContent: 'enc' } } },
+      { type: 'text-start', id: 'msg_1' },
+      { type: 'text-delta', id: 'msg_1', delta: 'Checking.' },
+      { type: 'text-end', id: 'msg_1', providerMetadata: item('msg_1') },
+      { type: 'tool-call', toolCallId: 'call_1', toolName: 'get_weather', input: '{"city":"Ottawa"}', providerMetadata: item('fc_1') },
+      { type: 'finish', finishReason: { unified: 'tool-calls', raw: 'tool_calls' }, usage: USAGE_V4 },
+    ])
     await run_loop(model, false, 'openai_mock', 'openai')
-    expect(second_assistant(model, false)).toMatchObject({
+    expect(second_assistant(model)).toMatchObject({
       content: [
         { type: 'reasoning', providerOptions: { openai: { itemId: 'rs_1', reasoningEncryptedContent: 'enc' } } },
         { type: 'text', providerOptions: item('msg_1') },
@@ -738,16 +679,12 @@ describe('ai_sdk part data round trip', () => {
 
   // A turn with nothing to send back has no
   // content key at all, streamed and not.
-  it.each([false, true])('leaves the content key off a plain turn (streamed: %s)', async (streamed) => {
-    const model = new MockLanguageModelV4(
-      streamed
-        ? { doStream: [stream_of(FINAL_TURN_STREAM)] }
-        : { doGenerate: generate_results([{ type: 'text', text: 'Sunny.' }]).slice(0, 1) },
-    )
+  it.each([false, true])('leaves the content key off a plain turn (consumer: %s)', async (consumer) => {
+    const model = new MockLanguageModelV4({ doStream: [stream_of(FINAL_TURN_STREAM)] })
     const turn = create_ai_sdk_turn({
       adapter: mock_adapter(model, 'anthropic_mock', 'anthropic'),
       model_id: 'mock-model',
-      dispatcher: create_chunk_dispatcher(undefined),
+      dispatcher: create_chunk_dispatcher(consumer ? () => {} : undefined),
       tools: [],
       schema: undefined,
       provider_options: undefined,
@@ -761,7 +698,6 @@ describe('ai_sdk part data round trip', () => {
       step_index: 0,
       messages: [{ role: 'user', content: 'hi' }],
       abort: new AbortController().signal,
-      stream: streamed,
       on_first_chunk: () => {},
     })
     expect(result.text).toBe('Sunny.')
@@ -838,5 +774,57 @@ describe('ai_sdk fed-back tool errors', () => {
       ['c3', { type: 'error-text', value: '{"error":"tool_approval_denied"}' }],
       ['c4', { type: 'error-text', value: '{"error":"kaput"}' }],
     ])
+  })
+})
+
+describe('ai_sdk turns always stream', () => {
+  it("streams with no on_chunk, even for an adapter whose supports('streaming') is false", async () => {
+    const model = two_turn_model()
+    const engine = create_engine({
+      providers: { plain_mock: {} },
+      custom_providers: {
+        plain_mock: () => ({
+          ...mock_adapter(model, 'plain_mock', 'anthropic'),
+          supports: (capability) => capability !== 'streaming' && capability !== 'structured_output',
+        }),
+      },
+    })
+    const result = await engine.generate({ model: 'mock-model', prompt: 'weather in Ottawa?', tools: [weather] })
+    expect(result.content).toBe('Sunny.')
+    expect(model.doStreamCalls).toHaveLength(2)
+    expect(model.doGenerateCalls).toStrictEqual([])
+    // The capability still gates on_chunk, so asking for chunks is refused.
+    await expect(
+      engine.generate({ model: 'mock-model', prompt: 'hi', on_chunk: () => {} }),
+    ).rejects.toThrow(/streaming/)
+  })
+})
+
+describe('ai_sdk structured output on a streamed turn', () => {
+  /** A one-turn text stream. */
+  const text_stream = (text: string): MockStreamPart[] => [
+    { type: 'stream-start', warnings: [] },
+    { type: 'text-start', id: 't' },
+    { type: 'text-delta', id: 't', delta: text },
+    { type: 'text-end', id: 't' },
+    { type: 'finish', finishReason: { unified: 'stop', raw: 'stop' }, usage: USAGE_V4 },
+  ]
+
+  it('hands a reply that misses the schema to the repair loop, since the SDK never parses it', async () => {
+    const model = new MockLanguageModelV4({
+      doStream: [stream_of(text_stream('not json at all')), stream_of(text_stream('{"n": 5}'))],
+    })
+    const engine = create_engine({
+      providers: { local_mock: {} },
+      custom_providers: {
+        local_mock: () => ({ ...mock_adapter(model, 'local_mock'), supports: () => true }),
+      },
+    })
+    const result = await engine.generate({ model: 'mock-model', prompt: 'n?', schema: z.object({ n: z.number() }) })
+    expect(result.content).toStrictEqual({ n: 5 })
+    expect(result.steps).toHaveLength(2)
+    // The schema still reached the provider as its response format.
+    expect(model.doStreamCalls[0]?.responseFormat).toMatchObject({ type: 'json' })
+    expect(model.doGenerateCalls).toStrictEqual([])
   })
 })

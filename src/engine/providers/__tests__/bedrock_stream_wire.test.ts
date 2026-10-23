@@ -7,10 +7,12 @@
  * its framer (`fixtures/converse_stream.ts`): a frame decodes to what it
  * encoded, and a flipped CRC fails. That check matters because the peer's
  * own decoder swallows a frame that fails to decode and ends the stream
- * there, so a framer bug would read as an empty turn rather than an error.
- * It then drives one turn with tool calls through `on_chunk` against a fetch
- * stub that serves the framed stream, and shows it folding to the text, tool
- * calls, and usage that the same turn gives as a JSON Converse response.
+ * there, so a framer bug would read as a stream cut off before its step
+ * finished rather than as a bad frame.
+ * It then drives one turn with tool calls through the peer against a fetch
+ * stub that serves the framed stream, with a chunk consumer and without one,
+ * and shows both folding to the text, tool calls, and usage that the same turn
+ * gave as a JSON Converse response before every turn streamed.
  *
  * No test reaches the network: fetch is stubbed. The bearer-token auth path is
  * used, so no SigV4 signing or ambient AWS credentials are involved.
@@ -40,23 +42,10 @@ const weather_tool: Tool = {
   execute: () => 'sunny',
 }
 
-/** A Converse response with text and a tool call, the turn the stream below delivers. */
-const TOOL_TURN_JSON = {
-  output: {
-    message: {
-      role: 'assistant',
-      content: [
-        { text: 'Checking the weather.' },
-        { toolUse: { toolUseId: 'tooluse_01', name: 'get_weather', input: { city: 'Ottawa' } } },
-      ],
-    },
-  },
-  stopReason: 'tool_use',
-  usage: { inputTokens: 120, outputTokens: 40, totalTokens: 160 },
-  metrics: { latencyMs: 410 },
-}
-
-/** The same turn as ConverseStream events, the tool input split across two deltas. */
+/**
+ * A turn with text and a tool call as ConverseStream events, the text and the
+ * tool input each split across two deltas.
+ */
 const TOOL_TURN_EVENTS: ReadonlyArray<ConverseStreamEvent> = [
   ['messageStart', { role: 'assistant' }],
   ['contentBlockDelta', { contentBlockIndex: 0, delta: { text: 'Checking ' } }],
@@ -86,7 +75,7 @@ function stub_fetch(response: () => Response): string[] {
   return urls
 }
 
-/** Drive one bedrock turn through the real peer, streamed through `on_chunk` or whole. */
+/** Drive one bedrock turn through the real peer, with a chunk consumer or without one. */
 async function run_turn(on_chunk: ((chunk: StreamChunk) => void) | undefined): Promise<TurnResult> {
   const turn = create_ai_sdk_turn({
     adapter: create_bedrock_adapter({ region: 'us-east-1', api_key: 'test-bearer-token' }),
@@ -105,7 +94,6 @@ async function run_turn(on_chunk: ((chunk: StreamChunk) => void) | undefined): P
     step_index: 0,
     messages: MESSAGES,
     abort: new AbortController().signal,
-    stream: on_chunk !== undefined,
     on_first_chunk: () => {},
   })
 }
@@ -145,45 +133,45 @@ describe('the ConverseStream framer', () => {
     expect(() => decode_event_stream(message)).toThrow(/^frame at \d+ has a bad message CRC$/)
   })
 
-  it('shows why: the peer turns a frame it cannot decode into an empty turn, with no error', async () => {
+  it('shows why: the peer stops at a frame it cannot decode, which the transport reads as a cut-off stream', async () => {
     const bytes = encode_converse_stream(TOOL_TURN_EVENTS)
     const first_frame_end = new DataView(bytes.buffer).getUint32(0, false)
     bytes[first_frame_end - 1] = (bytes[first_frame_end - 1] ?? 0) ^ 0xff
-    // The decoder stops at the first frame that fails and drops every frame after it.
+    // The peer's decoder drops the bad frame and every frame after it without
+    // an error, so its step finishes as 'other' with no raw reason, which the
+    // transport throws in the network shape rather than return an empty turn.
     stub_fetch(() => new Response(bytes, { status: 200, headers: { 'content-type': 'application/vnd.amazon.eventstream' } }))
-    const result = await run_turn(() => {})
-    expect([result.text, result.tool_calls, result.usage]).toStrictEqual(['', [], { input_tokens: 0, output_tokens: 0 }])
+    const caught = await run_turn(() => {}).catch((e: unknown) => e)
+    expect(caught).toMatchObject({
+      kind: 'network',
+      message: 'bedrock stream ended before the step finished; the result would be truncated',
+    })
   })
 })
 
 describe('bedrock ConverseStream through the real peer', () => {
-  it('folds a framed stream to the text, tool calls, and usage that the JSON Converse response gives', async () => {
-    const whole_urls = stub_fetch(
-      () => new Response(JSON.stringify(TOOL_TURN_JSON), { status: 200, headers: { 'content-type': 'application/json' } }),
-    )
-    const whole = await run_turn(undefined)
-    vi.unstubAllGlobals()
-
-    const stream_urls = stub_fetch(() => converse_stream_response(TOOL_TURN_EVENTS))
+  it('folds a framed stream, consumer or not, to what the JSON Converse response gave', async () => {
+    const urls = stub_fetch(() => converse_stream_response(TOOL_TURN_EVENTS))
+    const without = await run_turn(undefined)
     const chunks: StreamChunk[] = []
-    const streamed = await run_turn((chunk) => {
+    const watched = await run_turn((chunk) => {
       chunks.push(chunk)
     })
 
-    expect(whole_urls).toStrictEqual([
-      `https://bedrock-runtime.us-east-1.amazonaws.com/model/${encodeURIComponent(MODEL_ID)}/converse`,
-    ])
-    expect(stream_urls).toStrictEqual([
+    expect(urls).toStrictEqual([
+      `https://bedrock-runtime.us-east-1.amazonaws.com/model/${encodeURIComponent(MODEL_ID)}/converse-stream`,
       `https://bedrock-runtime.us-east-1.amazonaws.com/model/${encodeURIComponent(MODEL_ID)}/converse-stream`,
     ])
-    expect(folded(whole)).toStrictEqual({
+    // The fold that the JSON Converse response for this turn gave through the
+    // peer, before every turn streamed. The peer reports cache counts as zeros
+    // when the wire carries none.
+    expect(folded(without)).toStrictEqual({
       text: 'Checking the weather.',
       tool_calls: [{ id: 'tooluse_01', name: 'get_weather', input: { city: 'Ottawa' } }],
       finish_reason: 'tool_calls',
-      // The peer reports cache counts as zeros when the wire carries none.
       usage: { input_tokens: 120, output_tokens: 40, cached_input_tokens: 0, cache_write_tokens: 0 },
     })
-    expect(folded(streamed)).toStrictEqual(folded(whole))
+    expect(folded(watched)).toStrictEqual(folded(without))
     expect(chunks.map((c) => c.kind)).toStrictEqual([
       'text',
       'text',

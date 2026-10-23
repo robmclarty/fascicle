@@ -9,9 +9,9 @@
  *
  *   1. The keys and payloads ride through untranslated, so plumbing it once
  *      serves every ai_sdk provider.
- *   2. A streamed run and a plain run of the same turn report identically
- *      (`run`'s parity contract), since the SDK carries the metadata on the
- *      streamed finish-step as well as the generateText result.
+ *   2. A run with a chunk consumer and a run without one report identically
+ *      (`run`'s parity contract): every turn streams, and the SDK carries the
+ *      metadata on the streamed finish-step, so a consumer changes nothing.
  *   3. Multi-step calls keep every turn's payload on its step record, and the
  *      call-level field names the last turn that reported one.
  *   4. A schema call that ends on a non-`stop` finish throws rather than
@@ -33,6 +33,7 @@ import {
   enqueue_generate_text,
   enqueue_stream,
   make_text_result,
+  mock_state,
   reset_mock_state,
 } from './fixtures/mock_ai.js'
 
@@ -122,13 +123,14 @@ describe('provider_reported on a single-turn call', () => {
   })
 })
 
-describe('provider_reported stream/non-stream parity', () => {
-  it('reports identically for a streamed and a plain run of the same turn', async () => {
-    enqueue_generate_text({ ...make_text_result('hello'), providerMetadata: CACHE_METADATA })
-    enqueue_stream([
-      { type: 'text-delta', text: 'hello' },
-      { type: 'finish-step', finishReason: 'stop', usage: USAGE, providerMetadata: CACHE_METADATA },
-    ])
+describe('provider_reported with a consumer and without', () => {
+  it('reports identically for a run with on_chunk and one without, both streaming', async () => {
+    const parts = [
+      { type: 'text-delta' as const, text: 'hello' },
+      { type: 'finish-step' as const, finishReason: 'stop', usage: USAGE, providerMetadata: CACHE_METADATA },
+    ]
+    enqueue_stream(parts)
+    enqueue_stream(parts)
 
     const eng = engine()
     const plain = await eng.generate({ model: 'claude-opus-4-8', prompt: 'hi' })
@@ -138,12 +140,13 @@ describe('provider_reported stream/non-stream parity', () => {
       on_chunk: () => {},
     })
 
+    expect(mock_state.stream_text_call_count).toBe(2)
+    expect(plain.provider_reported).toStrictEqual(CACHE_METADATA)
     expect(streamed.provider_reported).toStrictEqual(plain.provider_reported)
-    expect(streamed.provider_reported).toStrictEqual(CACHE_METADATA)
     expect(streamed.steps[0]?.provider_reported).toStrictEqual(CACHE_METADATA)
   })
 
-  it('omits the field on a streamed run whose finish-step reports nothing', async () => {
+  it('omits the field on a run whose finish-step reports nothing', async () => {
     enqueue_stream([
       { type: 'text-delta', text: 'hello' },
       { type: 'finish-step', finishReason: 'stop', usage: USAGE },
@@ -158,20 +161,17 @@ describe('provider_reported stream/non-stream parity', () => {
     expect('provider_reported' in result).toBe(false)
   })
 
-  it('carries the payload alongside a content_filter finish on both paths', async () => {
-    enqueue_generate_text({
-      ...make_text_result('blocked'),
-      finishReason: 'content-filter',
-      providerMetadata: CACHE_METADATA,
-    })
-    enqueue_stream([
+  it('carries the payload alongside a content_filter finish, consumer or not', async () => {
+    const parts = [
       {
-        type: 'finish-step',
+        type: 'finish-step' as const,
         finishReason: 'content-filter',
         usage: USAGE,
         providerMetadata: CACHE_METADATA,
       },
-    ])
+    ]
+    enqueue_stream(parts)
+    enqueue_stream(parts)
 
     const eng = engine()
     const plain = await eng.generate({ model: 'claude-opus-4-8', prompt: 'hi' })
@@ -181,6 +181,7 @@ describe('provider_reported stream/non-stream parity', () => {
       on_chunk: () => {},
     })
 
+    expect(mock_state.stream_text_call_count).toBe(2)
     expect(plain.finish_reason).toBe('content_filter')
     expect(streamed.finish_reason).toBe('content_filter')
     expect(plain.provider_reported).toStrictEqual(CACHE_METADATA)

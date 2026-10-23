@@ -31,6 +31,7 @@ import { create_bedrock_adapter } from '../bedrock.js'
 import { create_ai_sdk_turn } from '../ai_sdk/invoke.js'
 import { create_chunk_dispatcher } from '../../streaming.js'
 import type { Message, ProviderInit, TurnResult } from '../../types.js'
+import { converse_stream_response } from './fixtures/converse_stream.js'
 
 const MODEL_ID = 'us.anthropic.claude-sonnet-4-20250514-v1:0'
 const REGION = 'us-east-1'
@@ -70,16 +71,15 @@ type CapturedRequest = {
   readonly headers: Record<string, string>
 }
 
-/** Minimal Converse response the SDK's response schema accepts. */
+/** A minimal ConverseStream reply, the wire every bedrock turn now takes. */
 function converse_response(): Response {
-  return new Response(
-    JSON.stringify({
-      output: { message: { role: 'assistant', content: [{ text: 'hello' }] } },
-      stopReason: 'end_turn',
-      usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
-    }),
-    { status: 200, headers: { 'content-type': 'application/json' } },
-  )
+  return converse_stream_response([
+    ['messageStart', { role: 'assistant' }],
+    ['contentBlockDelta', { contentBlockIndex: 0, delta: { text: 'hello' } }],
+    ['contentBlockStop', { contentBlockIndex: 0 }],
+    ['messageStop', { stopReason: 'end_turn' }],
+    ['metadata', { usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 }, metrics: { latencyMs: 1 } }],
+  ])
 }
 
 /** Lower-case every header key so assertions do not depend on SDK casing. */
@@ -112,7 +112,7 @@ function stub_capturing_fetch(): CapturedRequest[] {
   return captured
 }
 
-/** Drive one non-streamed bedrock turn through the real peer. */
+/** Drive one bedrock turn, which streams over ConverseStream, through the real peer. */
 async function run_turn(init: ProviderInit): Promise<TurnResult> {
   const adapter = create_bedrock_adapter(init)
   const turn = create_ai_sdk_turn({
@@ -132,7 +132,6 @@ async function run_turn(init: ProviderInit): Promise<TurnResult> {
     step_index: 0,
     messages: MESSAGES,
     abort: new AbortController().signal,
-    stream: false,
     on_first_chunk: () => {},
   })
 }
@@ -192,7 +191,7 @@ describe('bedrock ambient credential chain wire contract', () => {
     await run_turn({ region: REGION, use_credential_chain: true })
 
     const request = single_request(captured)
-    expect(request.url).toContain('/converse')
+    expect(request.url).toMatch(/\/converse-stream$/)
     const authorization = request.headers['authorization'] ?? ''
     // The credential scope names the access key the signature was derived from.
     // Only the profile file could have supplied it.

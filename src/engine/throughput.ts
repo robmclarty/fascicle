@@ -7,9 +7,9 @@
  * the model spent emitting them. A provider that measures that time itself
  * gives it exactly, and Ollama reports it on every step. Anywhere else a
  * streamed turn's first-chunk stamp isolates it, as long as the turn streams
- * its output while it generates it, and every native turn streams, so those
- * measure 'decode'. Without streaming (claude_cli, an ai_sdk turn with no
- * consumer, or a native adapter that doesn't stream), the only measurable
+ * its output while it generates it, and every depth-1 turn streams, so those
+ * measure 'decode'. Without streaming (claude_cli, or a native adapter that
+ * doesn't stream), the only measurable
  * window is the whole round-trip, which folds in network, provider queueing,
  * and prompt prefill; that blended rate understates the model on long prompts
  * with short answers. The result names which one it is rather than letting

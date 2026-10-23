@@ -169,8 +169,8 @@ of any loop that doesn't otherwise await something abortable. See
 - Retries don't resume past the first chunk that reached your `on_chunk`. Once
   you've seen part of a stream, a failure partway through it isn't retried,
   since a retry would hand you that part again; the orchestrator enforces that
-  boundary. With no `on_chunk`, nothing reached you, so a native turn that
-  fails mid-stream retries the whole turn. See
+  boundary. With no `on_chunk`, nothing reached you, so a turn that fails
+  mid-stream retries the whole turn. See
   [configuration.md](./configuration.md#retry-policy).
 - The bundled `filesystem_logger` writes synchronously, so it's meant for dev
   tools and short runs; roll your own `TrajectoryLogger` for a long-running
@@ -225,6 +225,19 @@ expect `finish_reason: 'content_filter'` and the guardrail's own block message a
 the content. With a `schema` set the same block throws
 `incomplete_generation_error` instead, carrying that message on `raw_text` and
 the trace on `provider_reported`. See [providers.md](./providers.md#bedrock).
+
+## A Bedrock Turn Fails with a 403 That Names `InvokeModelWithResponseStream`
+
+Every turn streams, so the Bedrock peer calls ConverseStream, and AWS checks
+the IAM action `bedrock:InvokeModelWithResponseStream` for that, not the
+`bedrock:InvokeModel` that Converse takes. A least-privilege role that a
+whole-body turn ran under answers every turn with a 403 `AccessDeniedException`
+that says the caller isn't authorized to perform
+`bedrock:InvokeModelWithResponseStream` on the model's resource. Add that
+action to the role's policy for the same models, beside `bedrock:InvokeModel`.
+A 403 is never retried, so the first turn fails at once. If the model works
+until you hand it tools, check AWS's list of which models support tool use
+while streaming. See [providers.md](./providers.md#bedrock).
 
 ## `schema_validation_error`
 

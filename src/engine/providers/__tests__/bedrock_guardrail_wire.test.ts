@@ -16,6 +16,10 @@
  * `provider_reported`, so the suite asserts the trace lands under the `bedrock`
  * key against the real peer's own shape rather than a hand-built payload.
  *
+ * Every turn streams, so the peer sends a ConverseStream command, whose body
+ * has the Converse command's shape, and the stub answers with the framed event
+ * stream from `fixtures/converse_stream.ts`.
+ *
  * No test reaches the network: fetch is stubbed. The bearer-token auth path is used,
  * so no SigV4 signing or ambient AWS credentials are involved, and the peer
  * loads lazily inside build_model, after the stub is installed.
@@ -29,6 +33,7 @@ import { create_chunk_dispatcher } from '../../streaming.js'
 import { merge_provider_options } from '../../merge_defaults.js'
 import type { Message, TurnResult } from '../../types.js'
 import type { EffortTranslation } from '../types.js'
+import { converse_stream_response } from './fixtures/converse_stream.js'
 
 const MODEL_ID = 'us.anthropic.claude-sonnet-4-20250514-v1:0'
 
@@ -68,17 +73,25 @@ const GUARDRAIL_TRACE = {
   },
 }
 
-/** Minimal Converse response the SDK's response schema accepts. */
+/**
+ * A minimal ConverseStream reply, the wire every bedrock turn now takes. The
+ * guardrail trace rides the closing metadata event, as AWS sends it.
+ */
 function converse_response(stop_reason: string, trace?: unknown): Response {
-  return new Response(
-    JSON.stringify({
-      output: { message: { role: 'assistant', content: [{ text: 'hello' }] } },
-      stopReason: stop_reason,
-      usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
-      ...(trace !== undefined ? { trace } : {}),
-    }),
-    { status: 200, headers: { 'content-type': 'application/json' } },
-  )
+  return converse_stream_response([
+    ['messageStart', { role: 'assistant' }],
+    ['contentBlockDelta', { contentBlockIndex: 0, delta: { text: 'hello' } }],
+    ['contentBlockStop', { contentBlockIndex: 0 }],
+    ['messageStop', { stopReason: stop_reason }],
+    [
+      'metadata',
+      {
+        usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
+        metrics: { latencyMs: 1 },
+        ...(trace !== undefined ? { trace } : {}),
+      },
+    ],
+  ])
 }
 
 /**
@@ -100,9 +113,10 @@ function stub_capturing_fetch(stop_reason: string, trace?: unknown): CapturedReq
 }
 
 /**
- * Drive one non-streamed bedrock turn through the real @ai-sdk/amazon-bedrock
- * peer with the given already-merged provider options and, optionally, the
- * effort translation's level for the SDK's `reasoning` option.
+ * Drive one bedrock turn, which streams over ConverseStream, through the real
+ * @ai-sdk/amazon-bedrock peer with the given already-merged provider options
+ * and, optionally, the effort translation's level for the SDK's `reasoning`
+ * option.
  */
 async function run_turn(
   provider_options: Readonly<Record<string, Readonly<Record<string, unknown>>>> | undefined,
@@ -126,7 +140,6 @@ async function run_turn(
     step_index: 0,
     messages: MESSAGES,
     abort: new AbortController().signal,
-    stream: false,
     on_first_chunk: () => {},
   })
 }
@@ -150,7 +163,7 @@ describe('bedrock guardrail wire contract', () => {
     await run_turn({ bedrock: { guardrailConfig: GUARDRAIL_CONFIG } })
 
     const request = single_request(captured)
-    expect(request.url).toContain('/converse')
+    expect(request.url).toMatch(/\/converse-stream$/)
     expect(request.body['guardrailConfig']).toEqual(GUARDRAIL_CONFIG)
   })
 

@@ -16,7 +16,6 @@ import {
   enqueue_generate_text_fn,
   enqueue_stream,
   enqueue_stream_script,
-  make_no_object_generated_error,
   make_text_result,
   mock_state,
   reset_mock_state,
@@ -662,14 +661,8 @@ describe('generate: native structured output', () => {
     expect('output' in params).toBe(false)
   })
 
-  it('recovers the raw text from NoObjectGeneratedError and parses it in one step', async () => {
-    enqueue_generate_text(
-      make_no_object_generated_error({
-        text: '{"n": 9}',
-        finishReason: 'stop',
-        usage: { inputTokens: 4, outputTokens: 2 },
-      }),
-    )
+  it('parses a streamed structured reply itself, in one step', async () => {
+    enqueue_generate_text(make_text_result('{"n": 9}', { input_tokens: 4, output_tokens: 2 }))
     const schema = z.object({ n: z.number() })
     const result = await ollama_engine().generate({
       model: 'qwen2.5-coder:7b',
@@ -678,17 +671,14 @@ describe('generate: native structured output', () => {
     })
     expect(result.content).toEqual({ n: 9 })
     expect(result.steps).toHaveLength(1)
+    expect(result.usage).toStrictEqual({ input_tokens: 4, output_tokens: 2 })
     expect(mock_state.generate_text_call_count).toBe(1)
   })
 
-  it('recovers from NoObjectGeneratedError into the repair loop', async () => {
-    enqueue_generate_text(
-      make_no_object_generated_error({
-        text: 'garbage that the SDK could not parse',
-        finishReason: 'stop',
-        usage: { inputTokens: 4, outputTokens: 2 },
-      }),
-    )
+  it('sends a streamed reply that misses the schema to the repair loop', async () => {
+    // The SDK parses `output` only when it is read, and the transport never
+    // reads it, so the reply reaches the engine's own parse and repair.
+    enqueue_generate_text(make_text_result('garbage that misses the schema'))
     enqueue_generate_text(make_text_result('{"n": 5}'))
     const schema = z.object({ n: z.number() })
     const result = await ollama_engine().generate({
@@ -699,9 +689,15 @@ describe('generate: native structured output', () => {
     expect(result.content).toEqual({ n: 5 })
     expect(result.steps).toHaveLength(2)
     expect(mock_state.generate_text_call_count).toBe(2)
+    const repair = mock_state.last_generate_text_params as {
+      messages: Array<{ role: string; content: unknown }>
+      output?: { name?: string }
+    }
+    expect(repair.output?.name).toBe('object')
+    expect(repair.messages.at(-2)).toMatchObject({ role: 'assistant', content: 'garbage that misses the schema' })
   })
 
-  it('surfaces non-NoObjectGeneratedError failures unchanged', async () => {
+  it('surfaces a failed structured turn unchanged', async () => {
     enqueue_generate_text(new Error('boom'))
     const schema = z.object({ n: z.number() })
     await expect(
@@ -1886,5 +1882,42 @@ describe('the ai mock serves a queued generateText response to a streamed turn',
     await expect(
       basic_engine().generate({ model: 'claude-opus-4-8', prompt: 'hi', on_chunk: () => {} }),
     ).rejects.toThrow('rejected later')
+  })
+})
+
+describe('generate: ai_sdk turn timing across a retry', () => {
+  it("measures a retried turn's first_chunk_ms from its own attempt, with no consumer", async () => {
+    const T0 = 1_700_000_000_000
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(T0)
+    try {
+      const advance = (ms: number): void => {
+        vi.setSystemTime(Date.now() + ms)
+      }
+      enqueue_stream_script({
+        parts: [
+          { type: 'text-delta', text: 'a' },
+          { type: 'error', error: Object.assign(new Error('connection reset'), { kind: 'network' }) },
+        ],
+        beforePart: (index) => advance(index === 0 ? 100 : 300),
+      })
+      enqueue_stream_script({
+        parts: [
+          { type: 'text-delta', text: 'a' },
+          { type: 'finish-step', finishReason: 'stop', usage: { inputTokens: 2, outputTokens: 1 } },
+        ],
+        beforePart: (index) => advance(index === 0 ? 40 : 10),
+      })
+      const result = await basic_engine().generate({
+        model: 'claude-opus-4-8',
+        prompt: 'hi',
+        retry: { max_attempts: 2, initial_delay_ms: 0, max_delay_ms: 0, retry_on: ['network'] },
+      })
+      expect(mock_state.stream_text_call_count).toBe(2)
+      // The first attempt's chunk, 400 ms before this attempt began, counts for nothing.
+      expect(result.steps[0]?.timing).toEqual({ started_at: T0 + 400, duration_ms: 50, first_chunk_ms: 40 })
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

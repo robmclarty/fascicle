@@ -1,7 +1,8 @@
 /**
  * The ai_sdk transport: the engine's only Vercel AI SDK call site.
  *
- * Only this module imports from `ai` or invokes generateText / streamText.
+ * Only this module imports from `ai` or invokes streamText, which every
+ * turn takes, whether or not a consumer is attached.
  * generate.ts drives this transport through create_ai_sdk_turn and stays
  * SDK-agnostic; run_tool_loop sees the same neutral TurnResult a native
  * adapter produces. Enforced by rules/no-ai-import-outside-ai-sdk-provider.yml.
@@ -12,8 +13,6 @@
  */
 
 import {
-  generateText,
-  NoObjectGeneratedError,
   Output,
   isStepCount,
   streamText,
@@ -50,7 +49,7 @@ import {
   type EffortTranslation,
   type RawProviderUsage,
 } from '../types.js'
-import { is_own_reasoning } from '../native_shared.js'
+import { is_own_reasoning, network_failure } from '../native_shared.js'
 import { build_ai_sdk_telemetry, type AiSdkTelemetryPassthrough } from './telemetry.js'
 
 // The SDK exports no name for an assistant reasoning part, so it is read off
@@ -447,15 +446,18 @@ type StreamAccumulator = {
   finish_reason: FinishReason
   raw_usage: RawProviderUsage
   provider_reported: Record<string, unknown> | undefined
+  /** True when the step finished as 'other' with no raw reason: a cut-off stream. */
+  cut_off: boolean
 }
 
 /**
  * Fold one stream part's accumulated state into `acc`: text deltas append,
  * tool-call parts push a RawToolCall, and the finish-step overwrites finish
- * reason, usage, and provider_reported. The finish-step's providerMetadata is
- * the same value generateText returns on its result, which is what keeps a
- * streamed run's provider_reported identical to a plain run's. Parts with no
- * accumulated state (error, abort, stream framing) are the caller's to handle.
+ * reason, usage, and provider_reported. A finish-step of 'other' with no raw
+ * finish reason is what a provider package reports when its stream ended
+ * before the provider said why, so it marks the stream as cut off. Parts with
+ * no accumulated state (error, abort, stream framing) are the caller's to
+ * handle.
  */
 function accumulate_stream_part(part: TextStreamPart<ToolSet>, acc: StreamAccumulator): void {
   if (part.type === 'text-delta') {
@@ -474,12 +476,20 @@ function accumulate_stream_part(part: TextStreamPart<ToolSet>, acc: StreamAccumu
     acc.finish_reason = map_finish_reason(part.finishReason)
     acc.raw_usage = to_raw_provider_usage(part.usage)
     acc.provider_reported = to_provider_reported(part.providerMetadata)
+    acc.cut_off = part.finishReason === 'other' && part.rawFinishReason === undefined
   }
 }
 
 /**
  * Run one streamText call, dispatching StreamChunks as parts arrive and
- * accumulating them into a TurnResult once the stream completes.
+ * accumulating them into a TurnResult once the stream completes. Every turn
+ * takes this path, so the dispatcher passes chunks on only when a consumer
+ * is attached. A failure reaches the engine through the stream's error part,
+ * so `onError` stays quiet rather than writing each one to console.error. A
+ * stream cut off before the step finished throws the network shape, which
+ * the engine retries when nothing consumed the chunks. Structured output is
+ * parsed by the engine's own schema loop, since streamText parses `output`
+ * only when it is read, which this never does.
  */
 async function collect_stream(
   params: Parameters<typeof streamText>[0],
@@ -489,13 +499,14 @@ async function collect_stream(
   internal_controller: AbortController,
   adapter: AiSdkProviderAdapter,
 ): Promise<TurnResult> {
-  const stream_result = streamText(params)
+  const stream_result = streamText({ ...params, onError: () => {} })
   const acc: StreamAccumulator = {
     text: '',
     tool_calls: [],
     finish_reason: 'stop',
     raw_usage: {},
     provider_reported: undefined,
+    cut_off: false,
   }
   let first = true
 
@@ -527,6 +538,11 @@ async function collect_stream(
     }
   }
 
+  if (acc.cut_off) {
+    throw network_failure(
+      `${adapter.name} stream ended before the step finished; the result would be truncated`,
+    )
+  }
   // The step's content settles once the stream has drained, so it is read
   // only after the loop and never on a failed stream.
   const content = to_turn_content(await stream_result.content)
@@ -541,80 +557,7 @@ async function collect_stream(
   }
 }
 
-/**
- * Run one generateText call and map its result into a TurnResult, recovering
- * a schema-validation failure from the SDK via recover_no_object_generated
- * instead of letting it throw.
- */
-async function collect_non_stream(
-  params: Parameters<typeof generateText>[0],
-  adapter: AiSdkProviderAdapter,
-): Promise<TurnResult> {
-  let result: Awaited<ReturnType<typeof generateText>>
-  try {
-    result = await generateText(params)
-  } catch (err: unknown) {
-    const recovered = recover_no_object_generated(err, adapter)
-    if (recovered !== undefined) return recovered
-    throw err
-  }
-  const tool_calls: RawToolCall[] = []
-  for (const tc of result.toolCalls) {
-    tool_calls.push({
-      id: tc.toolCallId,
-      name: tc.toolName,
-      input: tc.input,
-    })
-  }
-  const raw_usage = to_raw_provider_usage(result.usage)
-  // result.providerMetadata rather than result.finalStep.providerMetadata: the
-  // two are the same value under stopWhen isStepCount(1), and the flat field
-  // exists across the whole `ai` ^7 peer range this package declares.
-  const provider_reported = to_provider_reported(result.providerMetadata)
-  const content = to_turn_content(result.content)
-  return {
-    text: result.text,
-    tool_calls,
-    finish_reason: map_finish_reason(result.finishReason),
-    usage: adapter.normalize_usage(raw_usage),
-    // Stryker disable next-line ConditionalExpression: see collect_stream; the always-true spread is unobservable through every TurnResult reader.
-    ...(provider_reported !== undefined ? { provider_reported } : {}),
-    ...(content !== undefined ? { content } : {}),
-  }
-}
-
-/**
- * When `output` (structured output) is in play, `generateText` eagerly parses the
- * model's text against the schema and throws `NoObjectGeneratedError` if it
- * does not conform. That parse is the SDK's, not Fascicle's: turning it into a
- * thrown error would skip the engine's own schema-parse + repair loop (and the
- * error is not a retryable transient, so it would surface raw). Instead we
- * recover the model's raw text from the error and hand it back as a normal
- * turn result, so `parse_with_schema` re-validates it and the repair loop
- * engages exactly as it does for the prompt-based path. Returns undefined for
- * any other error so the caller rethrows.
- *
- * The recovered turn carries no provider_reported: the SDK's error exposes
- * text, usage, finishReason and response metadata, but not providerMetadata,
- * so there is nothing to read. The repair turn that follows reports normally.
- */
-function recover_no_object_generated(
-  err: unknown,
-  adapter: AiSdkProviderAdapter,
-): TurnResult | undefined {
-  if (!NoObjectGeneratedError.isInstance(err)) return undefined
-  const text_field = Reflect.get(err, 'text')
-  const finish_field = Reflect.get(err, 'finishReason')
-  const raw_usage = to_raw_provider_usage(Reflect.get(err, 'usage'))
-  return {
-    text: typeof text_field === 'string' ? text_field : '',
-    tool_calls: [],
-    finish_reason: map_finish_reason(typeof finish_field === 'string' ? finish_field : undefined),
-    usage: adapter.normalize_usage(raw_usage),
-  }
-}
-
-type AiSdkCallParams = Parameters<typeof streamText>[0] & Parameters<typeof generateText>[0]
+type AiSdkCallParams = Parameters<typeof streamText>[0]
 
 export type AiSdkTurnConfig = {
   readonly adapter: AiSdkProviderAdapter
@@ -634,16 +577,15 @@ export type AiSdkTurnArgs = {
   readonly step_index: number
   readonly messages: ReadonlyArray<Message>
   readonly abort: AbortSignal
-  readonly stream: boolean
   readonly on_first_chunk: () => void
 }
 
 export type AiSdkTurn = (args: AiSdkTurnArgs) => Promise<TurnResult>
 
 /**
- * Build the single-attempt SDK turn for one generate call: the
- * generateText/streamText call body behind the same neutral seam a native
- * adapter's invoke_turn implements. The built model is memoized across steps
+ * Build the single-attempt SDK turn for one generate call: the streamText
+ * call body behind the same neutral seam a native adapter's invoke_turn
+ * implements. The built model is memoized across steps
  * of one generate call. No retry here: generate.ts wraps the returned turn in
  * the engine-owned retry_turn.
  */
@@ -692,7 +634,7 @@ export function create_ai_sdk_turn(cfg: AiSdkTurnConfig): AiSdkTurn {
   ) {
     // Output.object<T> is not structurally assignable to the SDK's default
     // Output<string, string> param slot, but the runtime shape is exactly
-    // what generateText/streamText consume to set responseFormat.
+    // what streamText consumes to set responseFormat.
     // eslint-disable-next-line typescript-eslint/no-unsafe-type-assertion
     output_spec = Output.object({ schema: cfg.schema }) as NonNullable<
       AiSdkCallParams['output']
@@ -750,17 +692,14 @@ export function create_ai_sdk_turn(cfg: AiSdkTurnConfig): AiSdkTurn {
     }
 
     try {
-      if (args.stream) {
-        return await collect_stream(
-          base_params,
-          args.step_index,
-          cfg.dispatcher,
-          args.on_first_chunk,
-          internal_controller,
-          cfg.adapter,
-        )
-      }
-      return await collect_non_stream(base_params, cfg.adapter)
+      return await collect_stream(
+        base_params,
+        args.step_index,
+        cfg.dispatcher,
+        args.on_first_chunk,
+        internal_controller,
+        cfg.adapter,
+      )
     } finally {
       args.abort.removeEventListener('abort', cancel_on_user_abort)
     }

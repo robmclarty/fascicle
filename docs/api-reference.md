@@ -263,9 +263,9 @@ Every step that the engine loop produces carries a `timing` block
 (`StepTiming`). `started_at` and `duration_ms` bracket the successful
 provider attempt alone, so failed attempts, retry backoff, and tool
 execution never inflate the number, and a streamed turn adds
-`first_chunk_ms` (time to first token). Every native turn streams when
-its adapter supports streaming, whether or not you pass `on_chunk`, so a
-native step always has one. When someone asks you how many
+`first_chunk_ms` (time to first token). Every `ai_sdk` and native turn
+streams, whether or not you pass `on_chunk` (a native one when its adapter
+supports streaming), so those steps always have one. When someone asks you how many
 tokens per second your agent does, `throughput()` is the answer. Hand it
 a `GenerateResult`, a step array, or a single step:
 
@@ -280,9 +280,9 @@ const rate = throughput(result);
 (output tokens over the window that excludes time to first chunk, the
 benchmark-style rate), while a whole-body turn can only measure
 `'blended'` (the whole round trip, network and prefill included), which
-understates the model on a long prompt with a short answer. Native turns
-stream, so they measure `'decode'`, while `claude_cli` stays `'blended'`,
-and so does an `ai_sdk` turn with nothing consuming its chunks.
+understates the model on a long prompt with a short answer. `ai_sdk` and
+native turns stream, so they measure `'decode'`, while `claude_cli` stays
+`'blended'`.
 
 Ollama is the exception, because the daemon times its own decode. It
 reports the nanoseconds it spent generating each step's output as

@@ -83,10 +83,10 @@ export type SalvageFormat = 'hermes' | 'json' | 'qwen_xml'
  * `first_chunk_ms` is present on every turn that dispatched a chunk:
  * milliseconds from the attempt start to the first StreamChunk the turn
  * dispatched (a token, a reasoning delta, or a tool-call part, never the
- * transport's stream-open framing). A native turn streams whenever its
- * adapter supports streaming, consumer or not, so it carries one, while a
- * whole-body turn (an ai_sdk turn with no consumer, or a native adapter that
- * doesn't stream) has none. `duration_ms - first_chunk_ms` is the window the model spent
+ * transport's stream-open framing). Every depth-1 turn streams, consumer or
+ * not (an ai_sdk turn always, a native one whenever its adapter supports
+ * streaming), so it carries one, while a whole-body turn from a native
+ * adapter that doesn't stream has none. `duration_ms - first_chunk_ms` is the window the model spent
  * emitting output, as long as the turn streams output while it generates it.
  * A provider that sends a tool call whole once it has generated it leaves
  * that window at the turn's last few milliseconds, which is why `throughput()`,
@@ -516,8 +516,8 @@ export type ProviderConfigMap = {
 /**
  * Opt-in OpenTelemetry for the `ai_sdk` transport (Layer 2). When `enabled`,
  * the transport constructs an `@ai-sdk/otel` integration strictly below the turn
- * seam and hands it to the SDK's telemetry, so generateText / streamText emit
- * turn-internal spans on the ai_sdk transport only. Native transports ignore it;
+ * seam and hands it to the SDK's telemetry, so streamText, which every turn
+ * takes, emits turn-internal spans on the ai_sdk transport only. Native transports ignore it;
  * loop-level, transport-neutral tracing is the `fascicle/otel` bridge's job
  * (Layer 1). `tracer` is an `@opentelemetry/api` Tracer, typed `unknown` here so
  * the engine's public type surface stays free of the optional OTel peer.

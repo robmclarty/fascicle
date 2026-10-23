@@ -27,7 +27,7 @@ Every provider plugs into `generate` at one of three depths. The engine dispatch
 | `native`   | 1     | `invoke_turn(TurnRequest) -> TurnResult`        | request/response mapping over raw HTTP | retry, error classification, abort, plus everything below |
 | `external` | 2     | `generate(opts, resolved) -> GenerateResult`    | the entire loop                  | nothing below the call                              |
 
-- **Depth 1, `ai_sdk` kind.** The adapter builds an AI SDK model object and translates Fascicle parameters, and the actual `generateText` / `streamText` call lives in one engine-internal module (`src/engine/providers/ai_sdk/invoke.ts`), the only place in the engine that's allowed to import from `ai` (rule-enforced). `generate.ts` itself is SDK-agnostic.
+- **Depth 1, `ai_sdk` kind.** The adapter builds an AI SDK model object and translates Fascicle parameters, and the actual `streamText` call, which every turn makes, lives in one engine-internal module (`src/engine/providers/ai_sdk/invoke.ts`), the only place in the engine that's allowed to import from `ai` (rule-enforced). `generate.ts` itself is SDK-agnostic.
 - **Depth 1, `native` kind.** The adapter implements a single model turn against the provider's own API using global `fetch` and hand-rolled streaming, with zero `ai` / `@ai-sdk/*` imports (also rule-enforced). The engine wraps `invoke_turn` in retry, shared error classification, and abort; a native adapter must never retry internally. It may override classification via an optional `classify_error`, and may define `dispose` for connection teardown.
 - **Depth 2, `external` kind.** The adapter owns the whole generate call, including any looping. This is for backends that are themselves agents (the `claude_cli` subprocess today; an HTTP/A2A agent is the same shape). The engine's shared tool loop doesn't run, so loop-level options like `tool_call_repair_attempts` are ignored and recorded as `option_ignored`.
 
@@ -78,7 +78,7 @@ The same recipe reaches vLLM, LiteLLM, or any other OpenAI-compatible gateway, a
 
 ## The Agent-Layer Boundary
 
-Fascicle uses the AI SDK strictly as a single-turn provider layer, so every AI SDK call is `generateText` / `streamText` pinned to one step, issued from the one `ai_sdk` transport module, and the loop above it (multi-step execution, tool approval, salvage, `ends_turn`, cost, retry, trajectory) is Fascicle's own. The SDK's agent layer (`ToolLoopAgent`, `WorkflowAgent`, `HarnessAgent`, `toolApproval`, scoped tool context, `@ai-sdk/otel`) is declined by design; the litmus test is that a framework must let you call one turn below its own loop. Anything the agent layer would own belongs above the seam, in Fascicle's composition surface, so that swapping a provider never means swapping a loop.
+Fascicle uses the AI SDK strictly as a single-turn provider layer, so every AI SDK call is a `streamText` pinned to one step, issued from the one `ai_sdk` transport module, and the loop above it (multi-step execution, tool approval, salvage, `ends_turn`, cost, retry, trajectory) is Fascicle's own. The SDK's agent layer (`ToolLoopAgent`, `WorkflowAgent`, `HarnessAgent`, `toolApproval`, scoped tool context, `@ai-sdk/otel`) is declined by design; the litmus test is that a framework must let you call one turn below its own loop. Anything the agent layer would own belongs above the seam, in Fascicle's composition surface, so that swapping a provider never means swapping a loop.
 
 ## Capability Matrix
 
@@ -387,6 +387,8 @@ await engine.generate({
 pnpm add @aws-sdk/credential-providers   # only needed for use_credential_chain
 ```
 
+Every turn streams, so the peer calls Bedrock's ConverseStream, and the IAM role or user behind your credentials needs `bedrock:InvokeModelWithResponseStream` on the model, not only the `bedrock:InvokeModel` that Converse takes. Without it every turn fails with a 403 (see [troubleshooting.md](./troubleshooting.md#a-bedrock-turn-fails-with-a-403-that-names-invokemodelwithresponsestream)). AWS lists, model by model, which models support tool use while streaming, so check that list before you hand a model tools.
+
 `use_credential_chain` is a fallback rather than an override, so it's safe to set unconditionally. On a laptop it picks up your profile, and in Lambda the execution role's env-var credentials take precedence if you forward them. Setting both `use_credential_chain` and `credential_provider` is an `engine_config_error` — they're two answers to the same question, not a fallback pair.
 
 Model ids are AWS Bedrock ids passed verbatim — on-demand ids like `anthropic.claude-3-5-sonnet-20241022-v2:0` or cross-region inference profiles like `us.anthropic.claude-sonnet-4-20250514-v1:0`. The trailing `:0` version suffix rides through untouched. Effort goes to the AI SDK's `reasoning` option, which the Bedrock peer turns into a `reasoningConfig` per model: adaptive thinking with an effort for Claude 4.6 and later, a thinking budget for older Claude models, and an effort for the other models that reason. Models without reasoning drop it.
@@ -586,7 +588,7 @@ Every peer is loaded lazily on first `generate` against that provider. Missing p
 missing peer dependency '@ai-sdk/anthropic'. Install it with your package manager, e.g., `pnpm add @ai-sdk/anthropic` or `npm install @ai-sdk/anthropic`. Cause: …
 ```
 
-This means constructing an engine with all eight providers doesn't force you to install their seven SDKs — only the ones you actually call. `ai`, the package that the `ai_sdk` kind calls `generateText` / `streamText` on, is itself an optional peer for the same reason: it's only imported from the one `ai_sdk` turn seam, so a `transport: 'native'` or `claude_cli` call never loads it. Missing it reports the same way:
+This means constructing an engine with all eight providers doesn't force you to install their seven SDKs — only the ones you actually call. `ai`, the package that the `ai_sdk` kind calls `streamText` on, is itself an optional peer for the same reason: it's only imported from the one `ai_sdk` turn seam, so a `transport: 'native'` or `claude_cli` call never loads it. Missing it reports the same way:
 
 ```text
 missing peer dependency 'ai'. Install it with your package manager, e.g., `pnpm add ai` or `npm install ai`. Cause: …
@@ -651,6 +653,8 @@ Pick the kind by how much of the loop you want to inherit (see [Three integratio
 Implement `build_model` (return the SDK's model object, loading the SDK lazily inside it), `translate_effort`, `normalize_usage` (the exported `default_normalize_usage` covers the standard v7 usage shape), and `supports`. A complete worked example lives in [configuration.md](./configuration.md#custom-providers).
 
 `translate_effort` returns an `EffortTranslation`. When your provider package reads the AI SDK's `reasoning` option, put the level in the translation's `reasoning` field and leave `provider_options` empty, as the built-in `anthropic`, `bedrock`, `google`, and `openai` adapters do, and the package maps it per model. When the package doesn't read the option, build the level into `provider_options` yourself, as `openrouter` does.
+
+The transport calls `streamText` for every turn, whatever your adapter's `supports('streaming')` says, so the model your `build_model` returns has to implement `doStream`, as every AI SDK model does. On this kind, `supports('streaming')` decides only whether a caller may pass `on_chunk`.
 
 The transport keeps each part's `providerMetadata` as its `provider_options` and gives it back on the next request, with no code of yours. It sends a reasoning part back only when the part carries data under the adapter's `metadata_key`, which defaults to its `name`. A custom provider can't take a built-in name, so if yours wraps `@ai-sdk/anthropic` (on Vertex, say) under a name of its own, set `metadata_key: 'anthropic'`, the key that the package writes under, or every turn's reasoning stays behind.
 

@@ -314,8 +314,8 @@ The rules:
 - Backoff is exponential with jitter (`initial_delay_ms * 2^attempt + jitter`), capped at `max_delay_ms`. A `Retry-After` on a 429 or a 5xx outranks that cap, so you wait the longer of the computed backoff and the server's value. HTTP defines the header for a 503 as well as a 429, and a server that's shedding load uses it to tell you when to come back.
 - A network failure is one whose error, or whose `cause`, carries the code of a connection that was refused, reset, or timed out, or of a host that didn't resolve, with undici's `UND_ERR_HEADERS_TIMEOUT`, `UND_ERR_BODY_TIMEOUT`, and `UND_ERR_SOCKET` among them. The AI SDK wraps a failed fetch in an error that keeps undici's as its `cause`, so when your `ai_sdk` turn times out waiting for headers, it retries the way a native one does.
 - Abort interrupts backoff waits and throws `aborted_error`.
-- A turn doesn't retry once a chunk has reached your `on_chunk`, since a retry would hand you output that you already have. The orchestrator enforces that boundary. With no `on_chunk`, nothing reached you, so a native turn that fails partway through its stream retries like any other failure, and a stream that ends before its closing event counts as a network failure.
-- Every native turn asks for a stream when its adapter supports streaming, whether or not you pass `on_chunk`. Node's `fetch` gives up on a response whose headers take more than 300 seconds, and a turn that streams sends its headers at once, so a long turn outlives that limit. undici still allows 300 seconds of silence between chunks, which a model that's generating doesn't come near.
+- A turn doesn't retry once a chunk has reached your `on_chunk`, since a retry would hand you output that you already have. The orchestrator enforces that boundary. With no `on_chunk`, nothing reached you, so a turn that fails partway through its stream retries like any other failure, and a stream that ends before its closing event counts as a network failure.
+- Every `ai_sdk` and native turn asks for a stream, whether or not you pass `on_chunk` (a native one when its adapter supports streaming). Node's `fetch` gives up on a response whose headers take more than 300 seconds, and a turn that streams sends its headers at once, so a long turn outlives that limit. undici still allows 300 seconds of silence between chunks, which a model that's generating doesn't come near.
 - Exhaustion throws `rate_limit_error` (for 429s), which carries `.attempts`, or `provider_error` (for 5xx / network), which carries `.status`, `.body`, and `.cause_kind`.
 
 ## Turn Timeout Budgets
@@ -336,7 +336,7 @@ await engine.generate({
 
 - **Scope is one turn, not the whole call.** A multi-step tool loop resets the budget for each turn; the option bounds any single model round-trip, not the aggregate run. Wrap the whole call in your own `AbortSignal` (or the `timeout` composer) if you need a call-level ceiling.
 - **Expiry is a typed, retryable timeout.** Unless a chunk has reached your `on_chunk`, expiry throws `turn_timeout_error`, which the shared classifier treats as retryable, so the retry policy re-attempts it exactly like a 5xx. A `retry_on` that leaves out `'timeout'` lets it reach you as it is, so catch it by class, and a call whose every attempt timed out fails with a `provider_error`.
-- **Expiry after your `on_chunk` saw a chunk doesn't retry.** Once a chunk has reached a consumer, a timeout becomes a non-retryable stream interruption, matching the same first-chunk boundary that the retry policy enforces. With no consumer, a native turn that times out partway through its stream retries.
+- **Expiry after your `on_chunk` saw a chunk doesn't retry.** Once a chunk has reached a consumer, a timeout becomes a non-retryable stream interruption, matching the same first-chunk boundary that the retry policy enforces. With no consumer, a turn that times out partway through its stream retries.
 - **Must be `> 0`.** `undefined` (the default) leaves turns unbounded; `defaults.turn_timeout_ms` sets the baseline and the per-call value wins via nullish coalesce.
 
 ## Reshaping Each Turn: `prepare_step`
@@ -453,7 +453,7 @@ await engine.generate({ prompt: '...', trajectory });
 
 The bridge maps the `engine.generate` span to an OTel root span, each step to a child span, and every recorded event (tool_call, tool_result, cost, ...) to a span event on the open span. `dispose()` isn't required; spans end as the trajectory closes them.
 
-The span attributes stay flat on purpose. Object-valued span metadata (the per-step and per-call `usage`, `model_resolved`) spreads one level into dotted keys such as `fascicle.usage.input_tokens`, so a dashboard can aggregate the numbers directly; event payloads that carry arbitrary structure (a tool call's input) stay JSON strings, since attribute-per-key over user data would explode cardinality. Every turn lands a `response_received` span event that carries flat token counts and the engine-measured timing (`duration_ms`, plus `first_chunk_ms` when the turn streamed, as every native turn does), every absorbed retry lands a `turn_retry` event with the classified failure kind, HTTP status, and honored backoff delay, and the closing `engine.generate` span reports `step_count` and `tool_call_count` for the call.
+The span attributes stay flat on purpose. Object-valued span metadata (the per-step and per-call `usage`, `model_resolved`) spreads one level into dotted keys such as `fascicle.usage.input_tokens`, so a dashboard can aggregate the numbers directly; event payloads that carry arbitrary structure (a tool call's input) stay JSON strings, since attribute-per-key over user data would explode cardinality. Every turn lands a `response_received` span event that carries flat token counts and the engine-measured timing (`duration_ms`, plus `first_chunk_ms` when the turn streamed, as every `ai_sdk` and native turn does), every absorbed retry lands a `turn_retry` event with the classified failure kind, HTTP status, and honored backoff delay, and the closing `engine.generate` span reports `step_count` and `tool_call_count` for the call.
 
 Pass `metrics` to record OTel metric instruments from the same stream, which is what a Grafana or Prometheus pipeline reads without any spans-to-metrics processing:
 
@@ -469,7 +469,7 @@ The instruments follow the GenAI semantic conventions where the conventions cove
 
 ### Layer 2: `ai_sdk` Transport Telemetry (Turn-Internal)
 
-For turn-internal detail on the `ai_sdk` transport only, opt into `@ai-sdk/otel` via `defaults.ai_sdk_telemetry`. This instruments the single `generateText` / `streamText` call below the turn seam; native transports ignore it (their loop-level story is Layer 1).
+For turn-internal detail on the `ai_sdk` transport only, opt into `@ai-sdk/otel` via `defaults.ai_sdk_telemetry`. This instruments the single `streamText` call below the turn seam, so its spans read `ai.streamText`; native transports ignore it (their loop-level story is Layer 1).
 
 ```bash
 pnpm add @ai-sdk/otel

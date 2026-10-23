@@ -9,10 +9,13 @@
  * mapping, tool-call shape) versus the hand-rolled native mapper turns this
  * suite red — which is the whole reason the seam exists.
  *
+ * The `ai_sdk` transport streams every turn, so its legs read the SSE bodies,
+ * while the native legs read both the JSON and the SSE ones.
+ *
  * `provider_reported` sits outside the golden and is pinned on its own: the SDK
- * legs must report under the provider's own key and must report the same
- * payload streamed and non-streamed, while the native legs report nothing. See
- * `neutral` for why the two transports are not expected to match there.
+ * leg must report under the provider's own key, while the native legs report
+ * nothing. See `neutral` for why the two transports are not expected to match
+ * there.
  *
  * Wire sharing per provider:
  *   - anthropic: one Messages-API (`/v1/messages`) fixture feeds both legs; the
@@ -33,6 +36,8 @@
 import { createOpenAI } from '@ai-sdk/openai'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
+import { create_engine } from '../../create_engine.js'
+import { provider_error } from '../../errors.js'
 import { create_anthropic_adapter } from '../anthropic.js'
 import { create_openai_adapter, normalize_openai_usage } from '../openai.js'
 import { create_ai_sdk_turn } from '../ai_sdk/invoke.js'
@@ -146,10 +151,10 @@ async function run_native_turn(
   return adapter.invoke_turn(req)
 }
 
+/** Drive one ai_sdk turn, which streams whether or not a consumer is attached. */
 async function run_ai_sdk_turn(
   adapter: AiSdkProviderAdapter,
   model_id: string,
-  stream: boolean,
   messages: ReadonlyArray<Message> = MESSAGES,
 ): Promise<TurnResult> {
   const turn = create_ai_sdk_turn({
@@ -169,7 +174,6 @@ async function run_ai_sdk_turn(
     step_index: 0,
     messages,
     abort: new AbortController().signal,
-    stream,
     on_first_chunk: () => {},
   })
 }
@@ -215,32 +219,22 @@ function declare_parity_suite(make_spec: () => ParitySpec): void {
       ['tool-call turn', spec.tool],
     ]
     for (const [case_label, fixtures] of cases) {
-      it(`${case_label}: ai_sdk and native agree with the golden, streamed and non-streamed`, async () => {
+      it(`${case_label}: ai_sdk (streamed) and native (whole and streamed) agree with the golden`, async () => {
         stub_fetch(fixtures.json)
         const native_ns = await run_native_turn(spec.native, spec.model_id, false)
-        stub_fetch(fixtures.json)
-        const ai_sdk_ns = await run_ai_sdk_turn(spec.ai_sdk, spec.model_id, false)
         stub_fetch(fixtures.sse)
         const native_s = await run_native_turn(spec.native, spec.model_id, true)
         stub_fetch(fixtures.sse)
-        const ai_sdk_s = await run_ai_sdk_turn(spec.ai_sdk, spec.model_id, true)
+        const ai_sdk_s = await run_ai_sdk_turn(spec.ai_sdk, spec.model_id)
 
         expect(neutral(native_ns), 'native non-streamed').toEqual(fixtures.golden)
-        expect(neutral(ai_sdk_ns), 'ai_sdk non-streamed').toEqual(fixtures.golden)
         expect(neutral(native_s), 'native streamed').toEqual(fixtures.golden)
         expect(neutral(ai_sdk_s), 'ai_sdk streamed').toEqual(fixtures.golden)
 
         // The SDK keys its metadata by provider name, which is what lets
-        // provider_reported ride through untranslated, and it reports the same
-        // payload from the recorded JSON and SSE bodies. Pinning that here
-        // proves the stream/non-stream parity against the real peers rather
-        // than a mocked finish-step.
-        expect(ai_sdk_ns.provider_reported, 'ai_sdk non-streamed').toHaveProperty(
-          spec.reported_key,
-        )
-        expect(ai_sdk_s.provider_reported, 'ai_sdk streamed').toEqual(
-          ai_sdk_ns.provider_reported,
-        )
+        // provider_reported ride through untranslated, read here off the
+        // real peer's streamed finish-step rather than a mocked one.
+        expect(ai_sdk_s.provider_reported, 'ai_sdk streamed').toHaveProperty(spec.reported_key)
 
         // The native mappers report nothing: they read the wire, not the SDK's
         // synthesized metadata. Asserted so the asymmetry stays deliberate.
@@ -532,8 +526,17 @@ describe('transport parity: known usage-normalization divergence', () => {
 
     stub_fetch(json_factory(bare))
     const native_result = await run_native_turn(native, OPENAI_MODEL, false)
-    stub_fetch(json_factory(bare))
-    const ai_sdk_result = await run_ai_sdk_turn(ai_sdk, OPENAI_MODEL, false)
+    stub_fetch(
+      sse_factory(
+        openai_sse([
+          { choices: [{ index: 0, delta: { role: 'assistant', content: 'no details' } }] },
+          { choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] },
+          { choices: [], usage: bare.usage },
+          '[DONE]',
+        ]),
+      ),
+    )
+    const ai_sdk_result = await run_ai_sdk_turn(ai_sdk, OPENAI_MODEL)
 
     // Core totals agree; the ai_sdk leg additionally surfaces zero-valued cache
     // and reasoning fields the native mapper leaves absent. The difference is
@@ -605,12 +608,7 @@ describe('transport parity: a fed-back tool error', () => {
       true,
       FED_BACK,
     )
-    await run_ai_sdk_turn(
-      as_ai_sdk(create_anthropic_adapter({ api_key: 'sk-test' })),
-      ANTHROPIC_MODEL,
-      true,
-      FED_BACK,
-    )
+    await run_ai_sdk_turn(as_ai_sdk(create_anthropic_adapter({ api_key: 'sk-test' })), ANTHROPIC_MODEL, FED_BACK)
     expect(bodies).toHaveLength(2)
 
     expect(tool_results(bodies[0]), 'native').toStrictEqual([
@@ -631,5 +629,85 @@ describe('transport parity: a fed-back tool error', () => {
         is_error: true,
       },
     ])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// A cut-off stream and a failed turn on the ai_sdk transport, through the
+// real @ai-sdk/anthropic peer
+// ---------------------------------------------------------------------------
+
+describe('ai_sdk anthropic: a stream cut off before the step finished', () => {
+  const NO_WAIT = { max_attempts: 3, initial_delay_ms: 0, max_delay_ms: 0, retry_on: ['network' as const] }
+  // The text stream up to its last delta: no message_delta, no message_stop.
+  const CUT = ANTHROPIC_TEXT_SSE.slice(0, 4)
+
+  /** Serve each response in order, counting the requests. */
+  function stub_queue(responses: Array<() => Response>): { calls: () => number } {
+    let calls = 0
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        const next = responses[calls]
+        calls += 1
+        if (next === undefined) throw new Error('fetch queue exhausted')
+        return next()
+      }),
+    )
+    return { calls: () => calls }
+  }
+
+  const engine = (): ReturnType<typeof create_engine> =>
+    create_engine({ providers: { anthropic: { api_key: 'sk-test' } } })
+
+  it('retries the whole turn when nothing consumes the chunks, and fails as stream interrupted when something does', async () => {
+    const quiet = stub_queue([sse_factory(anthropic_sse(CUT)), sse_factory(anthropic_sse(ANTHROPIC_TEXT_SSE))])
+    const result = await engine().generate({ model: ANTHROPIC_MODEL, prompt: 'hi', retry: NO_WAIT })
+    expect(result.content).toBe('Hello from Anthropic.')
+    expect(quiet.calls()).toBe(2)
+
+    vi.unstubAllGlobals()
+    const watched = stub_queue([sse_factory(anthropic_sse(CUT)), sse_factory(anthropic_sse(ANTHROPIC_TEXT_SSE))])
+    const caught = await engine()
+      .generate({ model: ANTHROPIC_MODEL, prompt: 'hi', retry: NO_WAIT, on_chunk: () => {} })
+      .catch((e: unknown) => e)
+    expect(caught).toBeInstanceOf(provider_error)
+    expect((caught as Error).message).toBe(
+      'stream interrupted: anthropic stream ended before the step finished; the result would be truncated',
+    )
+    expect(watched.calls()).toBe(1)
+  })
+
+  it('surfaces an exhausted cut-off stream as a network provider_error', async () => {
+    stub_queue([1, 2, 3].map(() => sse_factory(anthropic_sse(CUT))))
+    const caught = await engine()
+      .generate({ model: ANTHROPIC_MODEL, prompt: 'hi', retry: NO_WAIT })
+      .catch((e: unknown) => e)
+    expect(caught).toMatchObject({
+      cause_kind: 'network',
+      message: 'anthropic stream ended before the step finished; the result would be truncated',
+    })
+  })
+
+  it('writes nothing to console.error when a turn fails, consumer or not', async () => {
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const bad_request = (): Response =>
+      new Response(JSON.stringify({ type: 'error', error: { type: 'invalid_request_error', message: 'bad' } }), {
+        status: 400,
+        headers: { 'content-type': 'application/json' },
+      })
+    try {
+      for (const consumer of [false, true]) {
+        vi.unstubAllGlobals()
+        stub_queue([bad_request])
+        const caught = await engine()
+          .generate({ model: ANTHROPIC_MODEL, prompt: 'hi', retry: NO_WAIT, ...(consumer ? { on_chunk: () => {} } : {}) })
+          .catch((e: unknown) => e)
+        expect((caught as Error).message, `consumer: ${String(consumer)}`).toMatch(/bad/)
+      }
+      expect(logged).not.toHaveBeenCalled()
+    } finally {
+      logged.mockRestore()
+    }
   })
 })
