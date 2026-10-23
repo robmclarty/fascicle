@@ -262,6 +262,8 @@ export function to_sdk_messages(
           ),
         ]
       }
+      // A block only its provider understands has no SDK part to ride.
+      if (p.type === 'opaque') return []
       return [
         with_provider_options<ToolCallPart>(
           { type: 'tool-call', toolCallId: p.id, toolName: p.name, input: p.input },

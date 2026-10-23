@@ -221,11 +221,14 @@ Each entry is one model turn, and each time the loop asks the model for a turn,
 the next entry plays. A string is a final answer that ends with `'stop'`. An
 array is the calls a turn makes, and it ends with `'tool_calls'`. When you need
 more than that, an object spells the turn out as
-`{ text?, tool_calls?, content?, finish_reason?, usage?, throw? }`. Its `text`
+`{ text?, tool_calls?, content?, finish_reason?, usage?, paused?, throw? }`. Its `text`
 and `tool_calls` default to the text parts and the `tool_call` parts of its
 `content`, which the loop sends back as the assistant message, and its `finish_reason` defaults to `'tool_calls'` when the turn makes
-calls and `'stop'` when it doesn't. A turn streams its text as one chunk, and
-then each call as a start and an end.
+calls and `'stop'` when it doesn't. `paused: true` plays a turn that the
+provider paused partway through, as Anthropic's `pause_turn` does, so the loop
+sends it back and asks the next entry to continue it, and the call's text joins
+the two turns' texts. A turn streams its text as one chunk, and then each call
+as a start and an end.
 
 A call that you give no `id` gets `call_<turn>_<n>`, where `<turn>` is the
 entry's place in the script and `<n>` is the call's place in the turn, both

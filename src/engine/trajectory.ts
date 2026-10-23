@@ -335,6 +335,23 @@ export function create_pricing_missing_dedup(
 }
 
 /**
+ * Record that the provider paused a turn partway through its response
+ * (Anthropic's `pause_turn`), which the loop continues with another turn.
+ */
+export function record_turn_paused(
+  trajectory: TrajectoryLogger | undefined,
+  step_index: number,
+  span_id: string | undefined,
+): void {
+  if (trajectory === undefined) return
+  trajectory.record({
+    kind: 'turn_paused',
+    step_index,
+    ...(span_id !== undefined ? { span_id } : {}),
+  })
+}
+
+/**
  * Record that a requested reasoning-effort setting was ignored because the
  * model does not support it.
  */

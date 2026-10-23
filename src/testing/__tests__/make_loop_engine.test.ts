@@ -142,6 +142,19 @@ describe('make_loop_engine', () => {
     expect(result.content).toBe('')
   })
 
+  it('plays a paused turn, which the loop sends back and continues', async () => {
+    const events: TrajectoryEvent[] = []
+    const { engine, requests } = make_loop_engine([{ text: 'Looking, ', paused: true }, 'found.'])
+    const result = await engine.generate({ prompt: 'go', trajectory: recorder(events) })
+    expect(result.content).toBe('Looking, found.')
+    expect(requests).toHaveLength(2)
+    expect(requests[1]?.messages.at(-1)).toStrictEqual({ role: 'assistant', content: 'Looking, ' })
+    expect(events.filter((e) => e.kind === 'turn_paused')).toHaveLength(1)
+    // A turn that sets no `paused` plays as one that wasn't paused.
+    const plain = make_loop_engine([{ text: 'Looking, ', paused: false }, 'found.'])
+    expect((await plain.engine.generate({ prompt: 'go' })).content).toBe('Looking, ')
+  })
+
   it('streams each turn to on_chunk: its text, then each call opening and closing', async () => {
     const chunks: StreamChunk[] = []
     const { engine } = make_loop_engine([

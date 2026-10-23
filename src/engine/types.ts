@@ -184,7 +184,9 @@ export type UserContentPart =
  * request (a thinking block's signature, Gemini's thought signature on a tool
  * call), keyed by provider name. Each adapter sends back only the reasoning
  * parts carrying its own key, so a `fallback` never hands one vendor's
- * signature to another.
+ * signature to another. An `opaque` part is a block that only its provider
+ * understands (a server tool's call or result, say), carried back verbatim
+ * under that provider's key and skipped by every other adapter.
  */
 export type AssistantContentPart =
   | { type: 'text'; text: string; provider_options?: ProviderOptions }
@@ -200,6 +202,11 @@ export type AssistantContentPart =
       /** The thinking the model showed, or '' when it showed none (encrypted, redacted, or omitted). */
       text: string
       provider_options?: ProviderOptions
+    }
+  | {
+      type: 'opaque'
+      /** The block as its provider sent it, under that provider's key (`{ anthropic: { block } }`). */
+      provider_options: ProviderOptions
     }
 
 export type Message =
@@ -307,6 +314,13 @@ export type TurnResult = {
    * else reads.
    */
   readonly content?: ReadonlyArray<AssistantContentPart>
+  /**
+   * True when the provider paused the turn partway through its response
+   * (Anthropic's `pause_turn`, which a long server-tool turn can hit), with
+   * `finish_reason` left at `'stop'`. The loop sends the turn back as it is
+   * and asks for another turn to continue it. Absent on every other turn.
+   */
+  readonly paused?: boolean
   /**
    * What the provider says this turn cost, in US dollars, for a provider that
    * reports its charge on the response (OpenRouter does). The loop records it

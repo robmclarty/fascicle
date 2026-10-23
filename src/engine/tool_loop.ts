@@ -78,6 +78,7 @@ import {
   record_tool_call_salvaged,
   record_tool_calls_dropped,
   record_tool_result,
+  record_turn_paused,
   end_step_span,
   start_step_span,
   type PricingMissingDedup,
@@ -466,6 +467,11 @@ async function apply_prepare_step(
 type LoopAccumulator = {
   readonly steps: StepRecord[]
   readonly tool_calls: ToolCallRecord[]
+  /**
+   * The texts of the paused turns since the last tool turn, which the call's
+   * text joins with the final turn's, as one response's text blocks join.
+   */
+  readonly paused_texts: string[]
 }
 
 /**
@@ -500,6 +506,8 @@ type SalvageView = {
 
 /**
  * Assemble the loop's return value from the accumulated steps and records.
+ * The text is the final turn's, after the texts of any paused turns that it
+ * continued.
  */
 function loop_result(
   acc: LoopAccumulator,
@@ -507,7 +515,37 @@ function loop_result(
   finish_reason: FinishReason,
   max_steps_reached: boolean,
 ): ToolLoopResult {
-  return { text, steps: acc.steps, tool_calls: acc.tool_calls, finish_reason, max_steps_reached }
+  return {
+    text: [...acc.paused_texts, text].join(''),
+    steps: acc.steps,
+    tool_calls: acc.tool_calls,
+    finish_reason,
+    max_steps_reached,
+  }
+}
+
+/**
+ * Continue a turn the provider paused without calls: send its assistant
+ * message back as it is, with nothing after it, which is how a paused
+ * response resumes, and ask for another turn, which counts toward
+ * `max_steps`. A pause on the last allowed step ends the loop with
+ * `'max_steps'` and the paused turn's text. Salvage and the clamp never see a
+ * paused turn.
+ */
+function continue_paused_turn(
+  config: ToolLoopConfig,
+  acc: LoopAccumulator,
+  step_index: number,
+  step_span: string | undefined,
+  turn: TurnResult,
+): ToolLoopResult | undefined {
+  const view: SalvageView = { calls: [], history_text: turn.text, formats: new Map(), outcome: undefined }
+  config.messages.push(build_assistant_message(turn, view, []))
+  const at_cap = step_index + 1 >= config.max_steps
+  push_step_record(config, acc, step_index, turn, [], at_cap ? 'max_steps' : turn.finish_reason, step_span)
+  if (at_cap) return loop_result(acc, turn.text, 'max_steps', true)
+  acc.paused_texts.push(turn.text)
+  return undefined
 }
 
 /**
@@ -1059,6 +1097,13 @@ async function run_loop_step(
 ): Promise<ToolLoopResult | undefined> {
   const step_span = start_step_span(config.trajectory, step_index)
   const turn = await invoke_turn(config, step_index, step_span)
+  if (turn.paused === true) {
+    record_turn_paused(config.trajectory, step_index, step_span)
+    // A paused turn with calls runs them as a tool turn, below.
+    if (turn.tool_calls.length === 0) {
+      return continue_paused_turn(config, acc, step_index, step_span, turn)
+    }
+  }
 
   const view = await salvage_turn(config, turn, tool_map, step_index)
   const { kept, dropped } = clamp_calls(config, view.calls, step_index)
@@ -1106,6 +1151,8 @@ async function run_loop_step(
   // full step is already recorded, so the result stays complete.
   if (ctx.terminal_fired) return loop_result(acc, turn.text, 'stop', false)
   if (ctx.would_exceed_after) return loop_result(acc, turn.text, 'max_steps', true)
+  // A tool turn ends the response that any paused turns before it began.
+  acc.paused_texts.length = 0
   return undefined
 }
 
@@ -1118,7 +1165,7 @@ async function run_loop_step(
  * until the model stops, a terminal tool fires, or `max_steps` is reached.
  */
 export async function run_tool_loop(config: ToolLoopConfig): Promise<ToolLoopResult> {
-  const acc: LoopAccumulator = { steps: [], tool_calls: [] }
+  const acc: LoopAccumulator = { steps: [], tool_calls: [], paused_texts: [] }
   const tool_map = new Map<string, Tool>()
   for (const t of config.tools) tool_map.set(t.name, t)
 

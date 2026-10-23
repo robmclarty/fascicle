@@ -19,7 +19,7 @@
  * construction rather than by parallel code paths.
  */
 
-import { to_json_schema } from '#schema'
+import { is_record, to_json_schema } from '#schema'
 import type {
   AssistantContentPart,
   EffortLevel,
@@ -73,12 +73,19 @@ const DEFAULT_BASE_URL = 'https://api.anthropic.com/v1'
  */
 const DEFAULT_MAX_TOKENS = 4096
 
+/**
+ * A block this adapter carries back as it arrived without reading it: a
+ * server tool's call or result, or any block type it doesn't know.
+ */
+type OpaqueBlock = { readonly type: string; readonly [key: string]: unknown }
+
 type AnthropicContentBlock =
-  | { type: 'text'; text: string }
+  | { type: 'text'; text: string; citations?: unknown }
   | { type: 'tool_use'; id: string; name: string; input: unknown }
   | { type: 'tool_result'; tool_use_id: string; content: string; is_error?: true }
   | { type: 'thinking'; thinking: string; signature: string }
   | { type: 'redacted_thinking'; data: string }
+  | OpaqueBlock
 
 type ReasoningPart = Extract<AssistantContentPart, { type: 'reasoning' }>
 
@@ -134,11 +141,32 @@ function reasoning_blocks(part: ReasoningPart): AnthropicContentBlock[] {
 }
 
 /**
+ * Map a text part back to its block, writing the citations it came with (under
+ * `anthropic`) back onto it, since a multi-turn web search has to send each
+ * citation's `encrypted_index` back. A blank text maps to no block.
+ */
+function text_part_blocks(part: Extract<AssistantContentPart, { type: 'text' }>): AnthropicContentBlock[] {
+  const citations: unknown = part.provider_options?.['anthropic']?.['citations']
+  const blocks = text_blocks(part.text)
+  return citations === undefined ? blocks : blocks.map((block) => ({ ...block, citations }))
+}
+
+/**
+ * Map an opaque part back to the block it came from, when it carries one
+ * under `anthropic`; another provider's opaque part maps to no block.
+ */
+function opaque_blocks(part: Extract<AssistantContentPart, { type: 'opaque' }>): AnthropicContentBlock[] {
+  const block: unknown = part.provider_options['anthropic']?.['block']
+  return is_record(block) && typeof block['type'] === 'string' ? [{ ...block, type: block['type'] }] : []
+}
+
+/**
  * Map assistant message content to Messages-API blocks in part order: text
- * parts become text blocks (empties dropped), tool-call parts become tool_use
- * blocks, and Anthropic's own reasoning parts become the thinking and
- * redacted_thinking blocks they came from. Order is kept because Anthropic
- * refuses a tool-use turn whose thinking blocks moved.
+ * parts become text blocks (empties dropped, citations kept), tool-call parts
+ * become tool_use blocks, Anthropic's own reasoning parts become the thinking
+ * and redacted_thinking blocks they came from, and its opaque parts become
+ * the blocks they carry. Order is kept because Anthropic refuses a tool-use
+ * turn whose thinking blocks moved.
  */
 function to_assistant_blocks(
   content: string | AssistantContentPart[],
@@ -147,9 +175,11 @@ function to_assistant_blocks(
   const blocks: AnthropicContentBlock[] = []
   for (const part of content) {
     if (part.type === 'text') {
-      blocks.push(...text_blocks(part.text))
+      blocks.push(...text_part_blocks(part))
     } else if (part.type === 'tool_call') {
       blocks.push({ type: 'tool_use', id: part.id, name: part.name, input: part.input })
+    } else if (part.type === 'opaque') {
+      blocks.push(...opaque_blocks(part))
     } else {
       blocks.push(...reasoning_blocks(part))
     }
@@ -303,7 +333,8 @@ export function map_anthropic_stop_reason(raw: unknown): FinishReason {
     case 'refusal':
       return 'content_filter'
     // end_turn, stop_sequence, pause_turn, and anything unrecognized all
-    // mean "the model stopped on its own".
+    // mean "the model stopped on its own"; a pause_turn also sets the turn's
+    // `paused`, which is what tells the loop to continue it.
     default:
       return 'stop'
   }
@@ -384,19 +415,26 @@ function read_reasoning_block(block: object, type: unknown): ReasoningPart | und
 
 /**
  * Fold one response `content` block into the accumulators. Text blocks append
- * their string; tool_use blocks contribute a call whose id and name are
- * validated by read_tool_use_identity; thinking and redacted_thinking blocks
- * become reasoning parts. Every kept block also lands in `parts`, in block
+ * their string, keeping any citations under `anthropic`; tool_use blocks
+ * contribute a call whose id and name are validated by read_tool_use_identity;
+ * thinking and redacted_thinking blocks become reasoning parts; and every
+ * other block type becomes an opaque part that carries the block as it came,
+ * keyed `anthropic.block`. Every kept block also lands in `parts`, in block
  * order, for TurnResult.content.
  */
 function push_content_block(block: unknown, acc: ContentAccumulators): void {
-  if (block === null || typeof block !== 'object') return
-  const type: unknown = Reflect.get(block, 'type')
+  if (!is_record(block)) return
+  const type: unknown = block['type']
   if (type === 'text') {
-    const text: unknown = Reflect.get(block, 'text')
+    const text: unknown = block['text']
+    const citations: unknown = block['citations']
     if (typeof text === 'string') {
       acc.text_parts.push(text)
-      acc.parts.push({ type: 'text', text })
+      acc.parts.push({
+        type: 'text',
+        text,
+        ...(Array.isArray(citations) ? { provider_options: { anthropic: { citations } } } : {}),
+      })
     }
     return
   }
@@ -409,6 +447,7 @@ function push_content_block(block: unknown, acc: ContentAccumulators): void {
   }
   const reasoning = read_reasoning_block(block, type)
   if (reasoning !== undefined) acc.parts.push(reasoning)
+  else if (typeof type === 'string') acc.parts.push({ type: 'opaque', provider_options: { anthropic: { block } } })
 }
 
 /**
@@ -426,23 +465,40 @@ function collect_content_blocks(content: unknown): ContentAccumulators {
 }
 
 /**
+ * True when a turn's parts carry something its provider wants back: a
+ * reasoning part, an opaque block, or a text part with citations.
+ */
+function carries_provider_data(parts: ReadonlyArray<AssistantContentPart>): boolean {
+  return parts.some(
+    (part) =>
+      part.type === 'reasoning' ||
+      part.type === 'opaque' ||
+      (part.type === 'text' && part.provider_options !== undefined),
+  )
+}
+
+/**
  * Parse a non-stream Messages-API response payload into a TurnResult. The
  * stream aggregator rebuilds this same payload shape and feeds it here too,
- * so both paths share one parser. A turn with a thinking block gets
- * `content`, every block in order, and any other turn stays as it was.
+ * so both paths share one parser. A turn that carries provider data (see
+ * carries_provider_data) gets `content`, every block in order, and any other
+ * turn stays as it was. A `pause_turn` stop sets `paused` beside its
+ * `'stop'` finish, so the loop continues the turn.
  */
 export function parse_messages_response(payload: unknown): TurnResult {
   if (payload === null || typeof payload !== 'object') {
     throw new provider_error('anthropic native: response payload is not a JSON object')
   }
   const { text_parts, tool_calls, parts } = collect_content_blocks(Reflect.get(payload, 'content'))
+  const stop_reason: unknown = Reflect.get(payload, 'stop_reason')
   const result: TurnResult = {
     text: text_parts.join(''),
     tool_calls,
-    finish_reason: map_anthropic_stop_reason(Reflect.get(payload, 'stop_reason')),
+    finish_reason: map_anthropic_stop_reason(stop_reason),
     usage: map_anthropic_usage(Reflect.get(payload, 'usage')),
+    ...(stop_reason === 'pause_turn' ? { paused: true } : {}),
   }
-  return parts.some((part) => part.type === 'reasoning') ? { ...result, content: parts } : result
+  return carries_provider_data(parts) ? { ...result, content: parts } : result
 }
 
 /**
@@ -503,9 +559,12 @@ function parse_stream_event(data: string): unknown {
 /**
  * Consume parsed Messages-stream events, dispatching StreamChunks as they
  * arrive and rebuilding the non-stream response payload as it goes: text
- * deltas accumulate into synthetic text blocks, tool_use input arrives as raw
+ * deltas accumulate into synthetic text blocks (with any citations, from the
+ * start payload and each citations_delta), tool_use input arrives as raw
  * JSON text (input_json_delta) held per open block and parsed at
- * content_block_stop. complete() feeds the synthetic payload through
+ * content_block_stop, and a block of any other type starts from its start
+ * payload, folds its own input_json_delta into `input` the same way, and
+ * dispatches no chunk. complete() feeds the synthetic payload through
  * parse_messages_response, which is what makes the streamed TurnResult equal
  * the non-streamed one by construction. A stream that ends without
  * message_stop is truncated output, so complete() fails loud instead of
@@ -523,15 +582,18 @@ function create_stream_aggregator(
   // replaces it, so a block that never got one parses as the same block
   // without one would in a whole response.
   type SyntheticThinking = { type: 'thinking'; thinking: string; signature: unknown }
+  type SyntheticText = { type: 'text'; text: string; citations?: unknown[] }
   type SyntheticBlock =
-    | { type: 'text'; text: string }
+    | SyntheticText
     | SyntheticToolUse
     | SyntheticThinking
     | { type: 'redacted_thinking'; data: unknown }
+    | Record<string, unknown>
   // Stryker disable next-line ArrayDeclaration: a seeded initial element is dropped by
   // parse_messages_response's block guard, so a non-empty content array is unobservable.
   const content: SyntheticBlock[] = []
-  const open_text = new Map<number, { type: 'text'; text: string }>()
+  const open_text = new Map<number, SyntheticText>()
+  const open_opaque = new Map<number, { block: Record<string, unknown>; json: string }>()
   const open_thinking = new Map<number, SyntheticThinking>()
   const open_tools = new Map<number, { block: SyntheticToolUse; json: string }>()
   const usage: Record<string, number> = {}
@@ -548,8 +610,10 @@ function create_stream_aggregator(
   }
 
   // Thinking blocks sit in `content` beside the text and tool_use blocks, in
-  // block order, so each one goes back exactly where it came from.
-  const start_reasoning_block = (index: number, block: object, type: unknown): void => {
+  // block order, so each one goes back exactly where it came from, and so
+  // does a block of a type this adapter doesn't read, starting from its start
+  // payload.
+  const start_other_block = (index: number, block: Record<string, unknown>, type: unknown): void => {
     if (type === 'thinking') {
       const initial: unknown = Reflect.get(block, 'thinking')
       const synthetic: SyntheticThinking = {
@@ -561,19 +625,25 @@ function create_stream_aggregator(
       open_thinking.set(index, synthetic)
     } else if (type === 'redacted_thinking') {
       content.push({ type: 'redacted_thinking', data: Reflect.get(block, 'data') })
+    } else if (typeof type === 'string') {
+      const opaque = { ...block }
+      content.push(opaque)
+      open_opaque.set(index, { block: opaque, json: '' })
     }
   }
 
   const on_block_start = async (event: object): Promise<void> => {
     const index = read_block_index(event)
     const block: unknown = Reflect.get(event, 'content_block')
-    if (block === null || typeof block !== 'object') return
-    const type: unknown = Reflect.get(block, 'type')
+    if (!is_record(block)) return
+    const type: unknown = block['type']
     if (type === 'text') {
-      const initial: unknown = Reflect.get(block, 'text')
-      const synthetic = {
-        type: 'text' as const,
+      const initial: unknown = block['text']
+      const citations: unknown = block['citations']
+      const synthetic: SyntheticText = {
+        type: 'text',
         text: typeof initial === 'string' ? initial : '',
+        ...(Array.isArray(citations) ? { citations: [...citations] } : {}),
       }
       content.push(synthetic)
       open_text.set(index, synthetic)
@@ -592,7 +662,7 @@ function create_stream_aggregator(
       await dispatch({ kind: 'tool_call_start', id, name, step_index })
       return
     }
-    start_reasoning_block(index, block, type)
+    start_other_block(index, block, type)
   }
 
   // A thinking delta streams as a reasoning chunk whether or not its block
@@ -611,36 +681,68 @@ function create_stream_aggregator(
     await dispatch({ kind: 'reasoning', text: thinking, step_index })
   }
 
+  // A text delta grows its block and streams as a text chunk; a citations
+  // delta adds one citation to its block and streams nothing.
+  const on_text_delta = async (index: number, delta: object, type: unknown): Promise<void> => {
+    const open = open_text.get(index)
+    if (open === undefined) return
+    if (type === 'citations_delta') {
+      open.citations = [...(open.citations ?? []), Reflect.get(delta, 'citation')]
+      return
+    }
+    const text: unknown = Reflect.get(delta, 'text')
+    if (typeof text !== 'string') return
+    open.text += text
+    await dispatch({ kind: 'text', text, step_index })
+  }
+
+  // Input JSON grows a tool_use block, streaming as an input delta, or an
+  // opaque block, streaming nothing.
+  const on_input_json_delta = async (index: number, delta: object): Promise<void> => {
+    const partial: unknown = Reflect.get(delta, 'partial_json')
+    if (typeof partial !== 'string') return
+    const opaque = open_opaque.get(index)
+    if (opaque !== undefined) opaque.json += partial
+    const open = open_tools.get(index)
+    if (open === undefined) return
+    open.json += partial
+    await dispatch({
+      kind: 'tool_call_input_delta',
+      id: open.block.id,
+      delta: partial,
+      step_index,
+    })
+  }
+
   const on_block_delta = async (event: object): Promise<void> => {
     const index = read_block_index(event)
     const delta: unknown = Reflect.get(event, 'delta')
     if (delta === null || typeof delta !== 'object') return
     const type: unknown = Reflect.get(delta, 'type')
-    if (type === 'text_delta') {
-      const text: unknown = Reflect.get(delta, 'text')
-      const open = open_text.get(index)
-      if (typeof text !== 'string' || open === undefined) return
-      open.text += text
-      await dispatch({ kind: 'text', text, step_index })
-      return
-    }
-    if (type === 'thinking_delta' || type === 'signature_delta') {
+    if (type === 'text_delta' || type === 'citations_delta') {
+      await on_text_delta(index, delta, type)
+    } else if (type === 'thinking_delta' || type === 'signature_delta') {
       await on_thinking_delta(index, delta, type)
-      return
+    } else if (type === 'input_json_delta') {
+      await on_input_json_delta(index, delta)
     }
-    if (type === 'input_json_delta') {
-      const partial: unknown = Reflect.get(delta, 'partial_json')
-      const open = open_tools.get(index)
-      if (typeof partial !== 'string' || open === undefined) return
-      open.json += partial
-      await dispatch({
-        kind: 'tool_call_input_delta',
-        id: open.block.id,
-        delta: partial,
-        step_index,
-      })
+    // Future delta kinds have no engine chunk, and an opaque block's other
+    // deltas have no field to fold into; both are dropped.
+  }
+
+  // An opaque block's input is the JSON its deltas spelled out, when any came.
+  const stop_opaque_block = (index: number): void => {
+    const opaque = open_opaque.get(index)
+    if (opaque === undefined) return
+    open_opaque.delete(index)
+    if (opaque.json.length === 0) return
+    try {
+      opaque.block['input'] = JSON.parse(opaque.json)
+    } catch {
+      throw new provider_error(
+        `anthropic native: ${String(opaque.block['type'])} input is not valid JSON`,
+      )
     }
-    // Future delta kinds have no engine chunk; dropped.
   }
 
   const on_block_stop = async (event: object): Promise<void> => {
@@ -648,6 +750,7 @@ function create_stream_aggregator(
     const open = open_tools.get(index)
     open_text.delete(index)
     open_thinking.delete(index)
+    stop_opaque_block(index)
     if (open === undefined) return
     open_tools.delete(index)
     if (open.json.length > 0) {

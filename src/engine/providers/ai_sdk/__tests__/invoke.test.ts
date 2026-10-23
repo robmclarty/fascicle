@@ -828,3 +828,22 @@ describe('ai_sdk structured output on a streamed turn', () => {
     expect(model.doGenerateCalls).toStrictEqual([])
   })
 })
+
+describe('to_sdk_messages and opaque parts', () => {
+  it('sends no SDK part for an opaque part, which only its provider can read', () => {
+    expect(
+      to_sdk_messages(
+        [
+          {
+            role: 'assistant',
+            content: [
+              { type: 'opaque', provider_options: { anthropic: { block: { type: 'server_tool_use', id: 'srv' } } } },
+              { type: 'text', text: 'Hello.' },
+            ],
+          },
+        ],
+        'anthropic',
+      ),
+    ).toStrictEqual([{ role: 'assistant', content: [{ type: 'text', text: 'Hello.' }] }])
+  })
+})

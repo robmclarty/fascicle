@@ -257,6 +257,13 @@ turns into the same field. The OpenAI-compatible and Ollama formats have no
 such field, and the Bedrock peer sends the text alone, even for Claude, so a
 model on any of those reads the error from `content`.
 
+An assistant message's parts (`AssistantContentPart`) are `text`, `tool_call`,
+`reasoning`, and `opaque`. An `opaque` part is a block that only its provider
+reads, such as an Anthropic server tool's call or result. It holds the block
+under that provider's key in `provider_options` (`{ anthropic: { block } }`)
+and goes back to the provider unchanged, while every other transport skips it.
+A `switch` over the parts that's meant to be exhaustive needs an `opaque` case.
+
 ### Timing and Tokens per Second
 
 Every step that the engine loop produces carries a `timing` block

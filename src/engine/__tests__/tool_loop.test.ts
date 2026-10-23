@@ -2700,3 +2700,120 @@ describe('run_tool_loop fed-back errors carry is_error', () => {
     expect(JSON.stringify(ollama)).not.toContain('is_error')
   })
 })
+
+describe('run_tool_loop continues a paused turn', () => {
+  /** A trajectory that keeps every event. */
+  function recorder(): { trajectory: TrajectoryLogger; events: Array<Record<string, unknown>> } {
+    const events: Array<Record<string, unknown>> = []
+    let n = 0
+    return {
+      events,
+      trajectory: {
+        record: (e) => {
+          events.push(e)
+        },
+        start_span: () => {
+          n += 1
+          return `span-${String(n)}`
+        },
+        end_span: () => {},
+      },
+    }
+  }
+
+  it('sends a paused turn back with nothing after it, joins the texts, and records turn_paused', async () => {
+    const { engine, requests } = make_loop_engine([{ text: 'Searching. ', paused: true }, 'Found it.'])
+    const { trajectory, events } = recorder()
+    const result = await engine.generate({ model: 'loop', prompt: 'find it', trajectory })
+
+    expect(result.content).toBe('Searching. Found it.')
+    expect(result.finish_reason).toBe('stop')
+    expect(result.steps.map((step) => [step.text, step.finish_reason])).toStrictEqual([
+      ['Searching. ', 'stop'],
+      ['Found it.', 'stop'],
+    ])
+    expect(requests[1]?.messages).toStrictEqual([
+      { role: 'user', content: 'find it' },
+      { role: 'assistant', content: 'Searching. ' },
+    ])
+    const paused = events.filter((e) => e['kind'] === 'turn_paused')
+    expect(paused).toStrictEqual([{ kind: 'turn_paused', step_index: 0, span_id: 'span-2', ts: expect.any(Number) }])
+  })
+
+  it('ends a pause on the last allowed step with max_steps and the paused texts', async () => {
+    const { engine, requests } = make_loop_engine([
+      { text: 'One. ', paused: true },
+      { text: 'Two.', paused: true },
+    ])
+    const result = await engine.generate({ model: 'loop', prompt: 'go', max_steps: 2 })
+    expect(requests).toHaveLength(2)
+    expect(result.finish_reason).toBe('max_steps')
+    expect(result.content).toBe('One. Two.')
+    expect(result.steps.map((step) => step.finish_reason)).toStrictEqual(['stop', 'max_steps'])
+  })
+
+  it('runs the calls of a paused turn as a tool turn, recording the pause', async () => {
+    const echo = make_tool()
+    const { engine, requests } = make_loop_engine([
+      { text: 'Checking.', tool_calls: [{ id: 'c1', name: 'echo', input: { value: 'x' } }], paused: true },
+      'done',
+    ])
+    const { trajectory, events } = recorder()
+    const result = await engine.generate({ model: 'loop', prompt: 'go', tools: [echo], trajectory })
+    expect(result.content).toBe('done')
+    expect(result.tool_calls.map((c) => [c.id, c.output])).toStrictEqual([['c1', 'ok']])
+    expect(requests[1]?.messages.at(-1)).toStrictEqual({ role: 'tool', tool_call_id: 'c1', name: 'echo', content: 'ok' })
+    expect(events.filter((e) => e['kind'] === 'turn_paused').map((e) => e['step_index'])).toStrictEqual([0])
+  })
+
+  it('never salvages a paused turn, whatever its text holds', async () => {
+    const echo = make_tool()
+    const executed: unknown[] = []
+    const watched: Tool = {
+      ...echo,
+      execute: (input) => {
+        executed.push(input)
+        return 'ok'
+      },
+    }
+    const { engine } = make_loop_engine([
+      { text: '<tool_call>{"name":"echo","arguments":{"value":"x"}}</tool_call>', paused: true },
+      'done',
+    ])
+    const result = await engine.generate({
+      model: 'loop',
+      prompt: 'go',
+      tools: [watched],
+      tool_call_repair_attempts: 1,
+    })
+    expect(executed).toStrictEqual([])
+    expect(result.tool_calls).toStrictEqual([])
+    expect(result.content).toBe('<tool_call>{"name":"echo","arguments":{"value":"x"}}</tool_call>done')
+  })
+
+  it("sends a paused turn's opaque part back, which the OpenAI-compatible and Ollama wires leave out", async () => {
+    const opaque: AssistantContentPart = {
+      type: 'opaque',
+      provider_options: { anthropic: { block: { type: 'server_tool_use', id: 'srv' } } },
+    }
+    const { engine, requests } = make_loop_engine([
+      { content: [opaque, { type: 'text', text: 'Hello.' }], paused: true },
+      'done',
+    ])
+    await engine.generate({ model: 'loop', prompt: 'hi' })
+    const messages = requests[1]?.messages ?? []
+    expect(messages.at(-1)).toStrictEqual({ role: 'assistant', content: [opaque, { type: 'text', text: 'Hello.' }] })
+    expect(to_chat_messages(messages, 'openai')[1]).toStrictEqual({ role: 'assistant', content: 'Hello.' })
+    const ollama = build_ollama_chat_body({
+      step_index: 1,
+      messages,
+      tools: [],
+      abort: new AbortController().signal,
+      stream: false,
+      model_id: 'llama',
+      effort: 'none',
+    })
+    expect(JSON.stringify(ollama)).not.toContain('server_tool_use')
+    expect(JSON.stringify(ollama)).toContain('Hello.')
+  })
+})

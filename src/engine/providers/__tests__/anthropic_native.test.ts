@@ -9,7 +9,7 @@
 import { readFileSync } from 'node:fs'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
-import type { Message, StreamChunk, Tool, TurnRequest } from '../../types.js'
+import type { AssistantContentPart, Message, StreamChunk, Tool, TurnRequest } from '../../types.js'
 import {
   build_messages_body,
   create_anthropic_native_adapter,
@@ -26,6 +26,7 @@ import {
   provider_capability_error,
   provider_error,
 } from '../../errors.js'
+import { web_search_json, web_search_sse_response } from './fixtures/anthropic_web_search.js'
 
 const weather_tool: Tool = {
   name: 'get_weather',
@@ -661,7 +662,7 @@ describe('parse_messages_response', () => {
     })
   })
 
-  it('reads redacted and empty thinking blocks, and keeps a block missing its data as a bare part', () => {
+  it('reads redacted and empty thinking blocks, keeps a block missing its data as a bare part, and keeps an unknown block opaque', () => {
     const result = parse_messages_response({
       ...TOOL_CALL_FIXTURE,
       content: [
@@ -680,6 +681,7 @@ describe('parse_messages_response', () => {
       { type: 'reasoning', text: '', provider_options: { anthropic: { signature: 'sig_no_text' } } },
       { type: 'reasoning', text: 'unsigned' },
       { type: 'reasoning', text: '' },
+      { type: 'opaque', provider_options: { anthropic: { block: { type: 'server_tool_use', id: 'srv_1' } } } },
       { type: 'tool_call', id: 'toolu_01', name: 'get_weather', input: { city: 'Ottawa' } },
     ])
     expect(result.text).toBe('')
@@ -2165,9 +2167,9 @@ describe('thinking blocks on anthropic native', () => {
     ])
   })
 
-  it('keeps no block for a start of a type it does not read', async () => {
+  it('keeps a start of a type it does not read as an opaque part, dispatching nothing for it', async () => {
     const start = INTERLEAVED_STREAM_EVENTS[0] as Record<string, unknown>
-    const { result } = await stream_turn([
+    const { result, chunks } = await stream_turn([
       start,
       { type: 'content_block_start', index: 0, content_block: { type: 'server_tool_use', id: 'srv_1' } },
       { type: 'content_block_stop', index: 0 },
@@ -2181,7 +2183,12 @@ describe('thinking blocks on anthropic native', () => {
       tool_calls: [],
       finish_reason: 'stop',
       usage: { input_tokens: 20, output_tokens: 1 },
+      content: [
+        { type: 'opaque', provider_options: { anthropic: { block: { type: 'server_tool_use', id: 'srv_1' } } } },
+        { type: 'text', text: 'hi' },
+      ],
     })
+    expect(chunks.map((c) => c.kind)).toStrictEqual(['step_finish'])
   })
 
   it('reads a redacted block whose data is missing as a part with no data', async () => {
@@ -2237,4 +2244,137 @@ describe('thinking blocks on anthropic native', () => {
       },
     ])
   })
+})
+
+// ---------------------------------------------------------------------------
+// Server tools: blocks the adapter doesn't read ride back as opaque parts,
+// cited text keeps its citations, and a pause_turn continues. The fixtures are
+// transcribed from the web search example in Anthropic's streaming docs, with
+// a citations_delta added (see fixtures/anthropic_web_search.ts).
+// ---------------------------------------------------------------------------
+
+describe('anthropic native web search: opaque blocks and citations', () => {
+  const CONTENT = (web_search_json()['content'] as Array<Record<string, unknown>>)
+
+  /** The assistant blocks a turn's content maps back to on the next request. */
+  function sent_back(content: ReadonlyArray<AssistantContentPart> | undefined): unknown {
+    return to_anthropic_messages([
+      { role: 'user', content: 'weather in NYC?' },
+      { role: 'assistant', content: [...(content ?? [])] },
+    ]).messages[1]?.content
+  }
+
+  it('reads the whole response into text, opaque, and cited parts, and skips an opaque part not its own', () => {
+    const whole = parse_messages_response(web_search_json())
+    expect(whole.text).toBe(
+      "I'll check the current weather in New York City for you." +
+        "Here's the current weather information for New York City:\n\n# Weather in New York City\n\n" +
+        'It is mild and clear today.',
+    )
+    expect(whole.tool_calls).toStrictEqual([])
+    expect(whole.content).toStrictEqual([
+      { type: 'text', text: CONTENT[0]?.['text'] },
+      { type: 'opaque', provider_options: { anthropic: { block: CONTENT[1] } } },
+      { type: 'opaque', provider_options: { anthropic: { block: CONTENT[2] } } },
+      { type: 'text', text: CONTENT[3]?.['text'] },
+      { type: 'text', text: CONTENT[4]?.['text'], provider_options: { anthropic: { citations: CONTENT[4]?.['citations'] } } },
+    ])
+    expect('paused' in whole).toBe(false)
+
+    // An opaque part that carries another provider's block, or none, maps to no block.
+    expect(
+      sent_back([
+        { type: 'opaque', provider_options: { openai: { block: { type: 'web_search_call' } } } },
+        { type: 'opaque', provider_options: { anthropic: { block: 'not a block' } } },
+        { type: 'opaque', provider_options: { anthropic: {} } },
+        { type: 'text', text: 'hi' },
+      ]),
+    ).toStrictEqual([{ type: 'text', text: 'hi' }])
+  })
+
+  it('round-trips every block byte for byte, whole and streamed, and streams no chunk for an opaque block', async () => {
+    const whole = parse_messages_response(web_search_json())
+    stub_fetch(web_search_sse_response())
+    const { chunks, dispatch_chunk } = chunk_collector()
+    const streamed = await create_anthropic_native_adapter({ api_key: 'sk-test' }).invoke_turn(
+      make_req({ stream: true, dispatch_chunk }),
+    )
+
+    expect(streamed).toStrictEqual(whole)
+    expect(JSON.stringify(sent_back(whole.content))).toBe(JSON.stringify(CONTENT))
+    expect(JSON.stringify(sent_back(streamed.content))).toBe(JSON.stringify(CONTENT))
+    expect(new Set(chunks.map((c) => c.kind))).toStrictEqual(new Set(['text', 'step_finish']))
+  })
+
+  it('sets paused on a pause_turn, beside a stop finish', async () => {
+    const whole = parse_messages_response(web_search_json('pause_turn'))
+    expect([whole.finish_reason, whole.paused]).toStrictEqual(['stop', true])
+    stub_fetch(web_search_sse_response('pause_turn'))
+    const { dispatch_chunk } = chunk_collector()
+    const streamed = await create_anthropic_native_adapter({ api_key: 'sk-test' }).invoke_turn(
+      make_req({ stream: true, dispatch_chunk }),
+    )
+    expect(streamed).toStrictEqual(whole)
+  })
+
+  it('continues a paused turn through the loop, sending its blocks back as they came with nothing after them', async () => {
+    const final = {
+      ...web_search_json(),
+      content: [{ type: 'text', text: ' It stays mild tonight.' }],
+      usage: { input_tokens: 20, output_tokens: 6 },
+    }
+    const responses = [
+      web_search_sse_response('pause_turn'),
+      new Response(JSON.stringify(final), { status: 200, headers: { 'content-type': 'application/json' } }),
+    ]
+    const mock = vi.fn(async () => {
+      const next = responses.shift()
+      if (next === undefined) throw new Error('fetch queue exhausted')
+      return next
+    })
+    vi.stubGlobal('fetch', mock)
+    const events: Array<Record<string, unknown>> = []
+    const result = await create_engine({
+      providers: { anthropic: { api_key: 'sk-test', transport: 'native' } },
+    }).generate({
+      model: 'claude-opus-5-5',
+      prompt: 'weather in NYC?',
+      trajectory: {
+        record: (e) => {
+          events.push(e)
+        },
+        start_span: () => 'span-step',
+        end_span: () => {},
+      },
+    })
+
+    expect(mock).toHaveBeenCalledTimes(2)
+    const second = JSON.parse((mock.mock.calls[1] as unknown as [string, RequestInit])[1].body as string) as {
+      messages: Array<{ role: string; content: unknown }>
+    }
+    expect(second.messages.map((m) => m.role)).toStrictEqual(['user', 'assistant'])
+    expect(JSON.stringify(second.messages[1]?.content)).toBe(JSON.stringify(CONTENT))
+    expect(result.content).toBe(`${parse_messages_response(web_search_json()).text} It stays mild tonight.`)
+    expect(result.steps.map((step) => step.finish_reason)).toStrictEqual(['stop', 'stop'])
+    expect(events.filter((e) => e['kind'] === 'turn_paused')).toStrictEqual([
+      { kind: 'turn_paused', step_index: 0, span_id: 'span-step', ts: expect.any(Number) },
+    ])
+  })
+
+  it('fails loud on an opaque block whose streamed input is not JSON', async () => {
+    const events = [
+      { type: 'message_start', message: { usage: { input_tokens: 1, output_tokens: 1 } } },
+      { type: 'content_block_start', index: 0, content_block: { type: 'server_tool_use', id: 'srv', name: 'web_search', input: {} } },
+      { type: 'content_block_delta', index: 0, delta: { type: 'input_json_delta', partial_json: '{"query' } },
+      { type: 'content_block_stop', index: 0 },
+      { type: 'message_delta', delta: { stop_reason: 'end_turn' }, usage: { output_tokens: 1 } },
+      { type: 'message_stop' },
+    ]
+    stub_fetch(stream_response(events))
+    const { dispatch_chunk } = chunk_collector()
+    await expect(
+      create_anthropic_native_adapter({ api_key: 'sk-test' }).invoke_turn(make_req({ stream: true, dispatch_chunk })),
+    ).rejects.toThrow('anthropic native: server_tool_use input is not valid JSON')
+  })
+
 })

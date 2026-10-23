@@ -369,7 +369,9 @@ export function is_own_reasoning(part: ReasoningPart, key: string): boolean {
 /**
  * Partition assistant content parts into the text runs, tool calls, and
  * reasoning the wire mappers serialize separately. `reasoning` holds only
- * the parts `provider` may send back, in order (see is_own_reasoning).
+ * the parts `provider` may send back, in order (see is_own_reasoning). An
+ * opaque part belongs to the provider that sent it, and these formats carry
+ * no such block, so it is skipped.
  */
 export function split_assistant_parts(
   parts: ReadonlyArray<AssistantContentPart>,
@@ -385,7 +387,7 @@ export function split_assistant_parts(
   for (const part of parts) {
     if (part.type === 'text') texts.push(part.text)
     else if (part.type === 'tool_call') tool_parts.push(part)
-    else if (is_own_reasoning(part, provider)) reasoning.push(part)
+    else if (part.type === 'reasoning' && is_own_reasoning(part, provider)) reasoning.push(part)
   }
   return { texts, tool_parts, reasoning }
 }

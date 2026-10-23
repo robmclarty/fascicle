@@ -53,6 +53,11 @@ type LoopTurnFields = {
   readonly finish_reason?: FinishReason
   /** Default: the engine's `usage` option. */
   readonly usage?: UsageTotals
+  /**
+   * True to play a turn the provider paused partway through (Anthropic's
+   * `pause_turn`), which the loop sends back and continues with another turn.
+   */
+  readonly paused?: boolean
   /** An error to throw for this turn instead of answering. */
   readonly throw?: Error
 }
@@ -118,16 +123,19 @@ async function play(
   const text = text_of_turn(fields)
   const tool_calls = calls_of_turn(fields, position)
   const step_index = req.step_index
+  // Stryker disable OptionalChaining: this provider supports streaming, so the engine hands every turn a dispatch_chunk and the guard can't be seen through the engine; it covers a request that carries none.
   if (text !== '') await req.dispatch_chunk?.({ kind: 'text', text, step_index })
   for (const call of tool_calls) {
     await req.dispatch_chunk?.({ kind: 'tool_call_start', id: call.id, name: call.name, step_index })
     await req.dispatch_chunk?.({ kind: 'tool_call_end', id: call.id, input: call.input, step_index })
   }
+  // Stryker restore OptionalChaining
   const result: TurnResult = {
     text,
     tool_calls,
     finish_reason: fields.finish_reason ?? (tool_calls.length > 0 ? 'tool_calls' : 'stop'),
     usage: fields.usage ?? default_usage,
+    ...(fields.paused === true ? { paused: true } : {}),
   }
   // Stryker disable next-line ConditionalExpression: the loop reads `content: undefined` as no content (`tool_loop.ts` checks `!== undefined`), so always spreading it is unobservable.
   return fields.content === undefined ? result : { ...result, content: fields.content }
