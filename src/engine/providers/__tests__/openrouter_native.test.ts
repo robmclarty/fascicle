@@ -391,9 +391,8 @@ const CACHE_WRITE_USAGE = {
   prompt_tokens_details: { cached_tokens: 0, cache_write_tokens: 16299 },
 }
 
-/** One turn, whole or streamed, whose usage reports `cost` (or none when undefined). */
+/** One streamed turn whose usage reports `cost` (or none when undefined). */
 function cost_turn(
-  streamed: boolean,
   cost: number | undefined,
   tool_call?: { id: string; arguments: string },
   base_usage: Record<string, unknown> = COST_USAGE,
@@ -404,10 +403,6 @@ function cost_turn(
     tool_call === undefined
       ? undefined
       : [{ id: tool_call.id, type: 'function', function: { name: 'lookup', arguments: tool_call.arguments } }]
-  if (!streamed) {
-    const message = { role: 'assistant', content: tool_call === undefined ? 'done' : null, ...(calls !== undefined ? { tool_calls: calls } : {}) }
-    return json_response({ choices: [{ index: 0, message, finish_reason }], usage })
-  }
   const delta = calls !== undefined ? { tool_calls: calls.map((c, index) => ({ index, ...c })) } : { content: 'done' }
   return sse_response([
     { choices: [{ index: 0, delta: { role: 'assistant', ...delta } }] },
@@ -426,15 +421,15 @@ const lookup_tool: Tool = {
 
 describe('the cost OpenRouter reports, through generate', () => {
   it.each([false, true])(
-    'records the reported charge split by token weight, streamed %s, with no pricing_missing',
-    async (streamed) => {
-      stub_fetch_queue([cost_turn(streamed, 0.0042)])
+    'records the reported charge split by token weight, consumer %s, with no pricing_missing',
+    async (consumer) => {
+      stub_fetch_queue([cost_turn(0.0042)])
       const { trajectory, records } = record_trajectory()
       const result = await cost_engine().generate({
         model: COST_MODEL,
         prompt: 'hi',
         trajectory,
-        ...(streamed ? { on_chunk: (_chunk: StreamChunk) => {} } : {}),
+        ...(consumer ? { on_chunk: (_chunk: StreamChunk) => {} } : {}),
       })
       const usage = { input_tokens: 1000, output_tokens: 200, cached_input_tokens: 400 }
       expect(result.steps[0]?.cost).toStrictEqual(decompose_total_cost(0.0042, usage))
@@ -450,17 +445,17 @@ describe('the cost OpenRouter reports, through generate', () => {
   )
 
   it.each([false, true])(
-    "sums a two-step tool loop's reported charges into GenerateResult.cost, streamed %s",
-    async (streamed) => {
+    "sums a two-step tool loop's reported charges into GenerateResult.cost, consumer %s",
+    async (consumer) => {
       stub_fetch_queue([
-        cost_turn(streamed, 0.003, { id: 'call_1', arguments: '{"key":"a"}' }),
-        cost_turn(streamed, 0.0015),
+        cost_turn(0.003, { id: 'call_1', arguments: '{"key":"a"}' }),
+        cost_turn(0.0015),
       ])
       const result = await cost_engine().generate({
         model: COST_MODEL,
         prompt: 'look a up',
         tools: [lookup_tool],
-        ...(streamed ? { on_chunk: (_chunk: StreamChunk) => {} } : {}),
+        ...(consumer ? { on_chunk: (_chunk: StreamChunk) => {} } : {}),
       })
       expect(result.steps.map((step) => step.cost?.total_usd)).toStrictEqual([0.003, 0.0015])
       expect(result.cost?.total_usd).toBeCloseTo(0.0045, 12)
@@ -468,7 +463,7 @@ describe('the cost OpenRouter reports, through generate', () => {
   )
 
   it('takes the reported charge over a pricing row for the same model', async () => {
-    stub_fetch_queue([cost_turn(false, 0.0042)])
+    stub_fetch_queue([cost_turn(0.0042)])
     const { trajectory, records } = record_trajectory()
     const result = await cost_engine({
       [`openrouter:${COST_MODEL}`]: { input_per_million: 100, output_per_million: 100 },
@@ -481,8 +476,8 @@ describe('the cost OpenRouter reports, through generate', () => {
 
   it('emits pricing_missing once and records no cost when no charge is reported', async () => {
     stub_fetch_queue([
-      cost_turn(false, undefined, { id: 'call_1', arguments: '{"key":"a"}' }),
-      cost_turn(false, undefined),
+      cost_turn(undefined, { id: 'call_1', arguments: '{"key":"a"}' }),
+      cost_turn(undefined),
     ])
     const { trajectory, records } = record_trajectory()
     const result = await cost_engine().generate({
@@ -499,13 +494,13 @@ describe('the cost OpenRouter reports, through generate', () => {
 
 describe('the cache writes OpenRouter reports, through generate', () => {
   it.each([false, true])(
-    'counts the writes and gives the reported charge a cache-write share, streamed %s',
-    async (streamed) => {
-      stub_fetch_queue([cost_turn(streamed, 0.0420055, undefined, CACHE_WRITE_USAGE)])
+    'counts the writes and gives the reported charge a cache-write share, consumer %s',
+    async (consumer) => {
+      stub_fetch_queue([cost_turn(0.0420055, undefined, CACHE_WRITE_USAGE)])
       const result = await cost_engine().generate({
         model: COST_MODEL,
         prompt: 'hi',
-        ...(streamed ? { on_chunk: (_chunk: StreamChunk) => {} } : {}),
+        ...(consumer ? { on_chunk: (_chunk: StreamChunk) => {} } : {}),
       })
       const usage = { input_tokens: 16358, output_tokens: 114, cached_input_tokens: 0, cache_write_tokens: 16299 }
       expect(result.steps[0]?.usage).toStrictEqual(usage)
@@ -516,7 +511,7 @@ describe('the cache writes OpenRouter reports, through generate', () => {
   )
 
   it('prices the writes at the cache-write rate when no charge is reported', async () => {
-    stub_fetch_queue([cost_turn(false, undefined, undefined, CACHE_WRITE_USAGE)])
+    stub_fetch_queue([cost_turn(undefined, undefined, CACHE_WRITE_USAGE)])
     const result = await cost_engine({
       [`openrouter:${COST_MODEL}`]: {
         input_per_million: 2,
@@ -527,5 +522,23 @@ describe('the cache writes OpenRouter reports, through generate', () => {
     }).generate({ model: COST_MODEL, prompt: 'hi' })
     expect(result.cost?.total_usd).toBeCloseTo(0.0420055, 5)
     expect(result.cost?.cache_write_usd).toBeCloseTo(0.0407475, 5)
+  })
+})
+
+describe('openrouter native through generate', () => {
+  it('asks for a stream with no on_chunk and folds it into the result', async () => {
+    const mock = stub_fetch(sse_response(TEXT_STREAM))
+    const result = await create_engine({
+      providers: { openrouter: { api_key: 'sk-test', transport: 'native' } },
+    }).generate({ model: 'openai/gpt-test', prompt: 'hi' })
+    const body = JSON.parse((mock.mock.calls[0] as [string, RequestInit])[1].body as string) as Record<
+      string,
+      unknown
+    >
+    expect(body['stream']).toBe(true)
+    expect(body['stream_options']).toStrictEqual({ include_usage: true })
+    expect(result.content).toBe('hi')
+    expect(result.usage).toStrictEqual({ input_tokens: 1, output_tokens: 1 })
+    expect(result.steps[0]?.timing?.first_chunk_ms).toBeGreaterThanOrEqual(0)
   })
 })

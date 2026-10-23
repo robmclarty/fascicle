@@ -48,6 +48,7 @@ import {
   consume_framed_stream,
   create_line_splitter,
   invoke_http_turn,
+  network_failure,
   map_messages_by_role,
   parse_tool_call_arguments,
   split_assistant_parts,
@@ -389,7 +390,7 @@ function create_ollama_stream_aggregator(
     },
     complete(): TurnResult {
       if (!done) {
-        throw new provider_error(
+        throw network_failure(
           'ollama native: stream ended before its done frame; the result would be truncated',
         )
       }
@@ -472,6 +473,7 @@ export const create_ollama_native_adapter = (init: ProviderInit): NativeProvider
         {
           stream: (response) => consume_ndjson_response(response, req),
           parse: (payload) => parse_ollama_chat(payload, req.step_index),
+          stream_media_type: 'application/x-ndjson',
         },
       )
     },

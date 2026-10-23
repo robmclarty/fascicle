@@ -15,6 +15,7 @@ import type { ProviderInit, TurnRequest } from '../../types.js'
 import { create_lmstudio_adapter } from '../lmstudio.js'
 import type { NativeProviderAdapter } from '../types.js'
 import { engine_config_error } from '../../errors.js'
+import { create_engine } from '../../create_engine.js'
 
 const BASE_URL = 'http://localhost:1234/v1'
 
@@ -242,5 +243,24 @@ describe('provider_options.lmstudio passthrough', () => {
   it('ignores provider_options keyed to other providers', async () => {
     const { body } = await sent_body({}, { provider_options: { openai: { logprobs: true } } })
     expect(body).not.toHaveProperty('logprobs')
+  })
+})
+
+describe('lmstudio native through generate', () => {
+  it('asks for a stream with no on_chunk and folds it into the result', async () => {
+    const mock = stub_fetch(sse_response(TEXT_STREAM))
+    const result = await create_engine({
+      providers: { lmstudio: { base_url: BASE_URL, transport: 'native' } },
+    }).generate({ model: 'local-model', prompt: 'hi' })
+    const body = JSON.parse((mock.mock.calls[0] as [string, RequestInit])[1].body as string) as Record<
+      string,
+      unknown
+    >
+    expect(body['stream']).toBe(true)
+    expect(body['stream_options']).toStrictEqual({ include_usage: true })
+    expect(result.content).toBe('hi')
+    // This stream reports no usage, which the tolerant dialect zeroes.
+    expect(result.usage).toStrictEqual({ input_tokens: 0, output_tokens: 0 })
+    expect(result.steps[0]?.timing?.first_chunk_ms).toBeGreaterThanOrEqual(0)
   })
 })

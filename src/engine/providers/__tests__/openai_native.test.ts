@@ -15,6 +15,7 @@ import type { TurnRequest } from '../../types.js'
 import { create_openai_adapter } from '../openai.js'
 import type { NativeProviderAdapter } from '../types.js'
 import { engine_config_error } from '../../errors.js'
+import { create_engine } from '../../create_engine.js'
 
 function make_req(overrides: Partial<TurnRequest> = {}): TurnRequest {
   return {
@@ -227,5 +228,23 @@ describe('provider_options.openai passthrough', () => {
   it('ignores provider_options keyed to other providers', async () => {
     const { body } = await sent_body({}, { provider_options: { anthropic: { top_k: 40 } } })
     expect(body).not.toHaveProperty('top_k')
+  })
+})
+
+describe('openai native through generate', () => {
+  it('asks for a stream with no on_chunk and folds it into the result', async () => {
+    const mock = stub_fetch(sse_response(TEXT_STREAM))
+    const result = await create_engine({
+      providers: { openai: { api_key: 'sk-test', transport: 'native' } },
+    }).generate({ model: 'gpt-test', prompt: 'hi' })
+    const body = JSON.parse((mock.mock.calls[0] as [string, RequestInit])[1].body as string) as Record<
+      string,
+      unknown
+    >
+    expect(body['stream']).toBe(true)
+    expect(body['stream_options']).toStrictEqual({ include_usage: true })
+    expect(result.content).toBe('hi')
+    expect(result.usage).toStrictEqual({ input_tokens: 1, output_tokens: 1 })
+    expect(result.steps[0]?.timing?.first_chunk_ms).toBeGreaterThanOrEqual(0)
   })
 })

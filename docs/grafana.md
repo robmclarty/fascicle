@@ -156,7 +156,7 @@ flattened name:
 | --- | --- |
 | `gen_ai_client_token_usage` | tokens per model turn, split by the `gen_ai_token_type` label into `input` and `output` |
 | `gen_ai_client_operation_duration_seconds` | wall-clock time of one successful model round trip, with retries and tool time excluded |
-| `gen_ai_client_operation_time_to_first_chunk_seconds` | how long the first streamed chunk took to arrive (recorded only on streamed turns) |
+| `gen_ai_client_operation_time_to_first_chunk_seconds` | how long the first streamed chunk took to arrive (recorded on every turn that streamed, which every native turn does) |
 | `gen_ai_execute_tool_duration_seconds` | how long each tool ran, labelled with `gen_ai_tool_name` |
 | `fascicle_client_operation_cost_usd` | cost per turn, from each `cost` event (an estimate from the engine's pricing table, or the charge that OpenRouter reports on `transport: 'native'`) |
 | `fascicle_client_turn_retries_total` | provider failures the engine retried past, labelled with `error_type` (`rate_limit`, `provider_5xx`, `network`, `timeout`) |

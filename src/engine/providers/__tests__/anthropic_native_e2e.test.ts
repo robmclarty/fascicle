@@ -4,7 +4,10 @@
  * run_tool_loop on recorded Messages-API fixtures (fetch stubbed, so no test
  * reaches the network). Pins the loop features the adapter inherits (approval,
  * salvage, Tool.ends_turn, cost) plus the wire shapes fed back to the API
- * mid-loop, and streamed == non-streamed parity across a full tool loop.
+ * mid-loop. Every turn asks for a stream, so the stubs serve SSE, and a run
+ * with a chunk consumer folds to the same result as a run without one. A JSON
+ * reply to a streamed request, a reply that is neither, and a stream cut off
+ * before message_stop are pinned at the end.
  * Zero `ai` in this file's module graph, enforced by
  * rules/no-ai-sdk-in-native-providers.yml (the *native* glob covers it).
  */
@@ -12,8 +15,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 import { create_engine } from '../../create_engine.js'
-import { provider_capability_error, tool_approval_denied_error } from '../../errors.js'
-import type { GenerateResult, Message, StreamChunk, Tool } from '../../types.js'
+import { provider_capability_error, provider_error, tool_approval_denied_error } from '../../errors.js'
+import type { GenerateResult, Message, RetryPolicy, StreamChunk, Tool } from '../../types.js'
 
 const MODEL = 'claude-sonnet-5'
 
@@ -137,6 +140,43 @@ const FINAL_TURN_STREAM = [
   { type: 'message_stop' },
 ]
 
+/**
+ * The SSE events that deliver a whole Messages response's text and tool_use
+ * blocks, for a fixture that has no hand-written stream of its own.
+ */
+function message_stream(message: {
+  id: string
+  content: ReadonlyArray<Record<string, unknown>>
+  stop_reason: string
+  usage: { input_tokens: number; output_tokens: number }
+}): Array<Record<string, unknown>> {
+  const events: Array<Record<string, unknown>> = [
+    {
+      type: 'message_start',
+      message: { id: message.id, type: 'message', role: 'assistant', model: MODEL, content: [], stop_reason: null, usage: { input_tokens: message.usage.input_tokens, output_tokens: 1 } },
+    },
+  ]
+  message.content.forEach((block, index) => {
+    if (block['type'] === 'text') {
+      events.push(
+        { type: 'content_block_start', index, content_block: { type: 'text', text: '' } },
+        { type: 'content_block_delta', index, delta: { type: 'text_delta', text: block['text'] } },
+      )
+    } else {
+      events.push(
+        { type: 'content_block_start', index, content_block: { ...block, input: {} } },
+        { type: 'content_block_delta', index, delta: { type: 'input_json_delta', partial_json: JSON.stringify(block['input']) } },
+      )
+    }
+    events.push({ type: 'content_block_stop', index })
+  })
+  events.push(
+    { type: 'message_delta', delta: { stop_reason: message.stop_reason, stop_sequence: null }, usage: { output_tokens: message.usage.output_tokens } },
+    { type: 'message_stop' },
+  )
+  return events
+}
+
 /** ToolCallRecords carry wall-clock timing; drop it so runs compare deeply. */
 function strip_timing(records: GenerateResult['tool_calls']): unknown {
   return records.map(({ duration_ms: _d, started_at: _s, ...rest }) => rest)
@@ -155,18 +195,17 @@ function without_timing({ timing: _call, ...result }: GenerateResult): unknown {
   }
 }
 
-async function run_weather_loop(streamed: boolean): Promise<{
+async function run_weather_loop(
+  consumer: boolean,
+  responses: Response[] = [sse_response(TOOL_TURN_STREAM), sse_response(FINAL_TURN_STREAM)],
+): Promise<{
   result: GenerateResult
   chunks: StreamChunk[]
   mock: ReturnType<typeof vi.fn>
   weather: Tool & { calls: unknown[] }
   approvals: Array<{ tool_name: string; input: unknown }>
 }> {
-  const mock = stub_fetch_queue(
-    streamed
-      ? [sse_response(TOOL_TURN_STREAM), sse_response(FINAL_TURN_STREAM)]
-      : [json_response(TOOL_TURN_FIXTURE), json_response(FINAL_TURN_FIXTURE)],
-  )
+  const mock = stub_fetch_queue(responses)
   const weather = make_weather_tool({ needs_approval: true })
   const approvals: Array<{ tool_name: string; input: unknown }> = []
   const chunks: StreamChunk[] = []
@@ -179,7 +218,7 @@ async function run_weather_loop(streamed: boolean): Promise<{
       approvals.push({ tool_name: req.tool_name, input: req.input })
       return true
     },
-    ...(streamed
+    ...(consumer
       ? {
           on_chunk: (chunk: StreamChunk) => {
             chunks.push(chunk)
@@ -190,7 +229,14 @@ async function run_weather_loop(streamed: boolean): Promise<{
   return { result, chunks, mock, weather, approvals }
 }
 
-describe('native anthropic e2e tool loop (non-streamed)', () => {
+/** Each request body the stubbed fetch was sent, parsed. */
+function request_bodies(mock: ReturnType<typeof vi.fn>): Array<Record<string, unknown>> {
+  return mock.mock.calls.map(
+    (call) => JSON.parse((call as [string, RequestInit])[1].body as string) as Record<string, unknown>,
+  )
+}
+
+describe('native anthropic e2e tool loop (no consumer)', () => {
   it('runs the approval-gated loop with cost and feeds wire-shape tool results back', async () => {
     const { result, mock, weather, approvals } = await run_weather_loop(false)
 
@@ -220,6 +266,8 @@ describe('native anthropic e2e tool loop (non-streamed)', () => {
     // The second request carries the whole loop on the wire: the assistant
     // tool_use turn and the fed-back tool_result block.
     expect(mock).toHaveBeenCalledTimes(2)
+    // Every turn asks for a stream, though nothing consumes the chunks.
+    expect(request_bodies(mock).map((body) => body['stream'])).toStrictEqual([true, true])
     const second_call = mock.mock.calls[1] as [string, RequestInit]
     expect(second_call[0]).toBe('https://api.anthropic.com/v1/messages')
     const second_body = JSON.parse(second_call[1].body as string) as Record<string, unknown>
@@ -239,14 +287,14 @@ describe('native anthropic e2e tool loop (non-streamed)', () => {
   })
 })
 
-describe('native anthropic e2e tool loop (streamed)', () => {
-  it('produces a result equal to the non-streamed run of the same loop', async () => {
-    const non_streamed = await run_weather_loop(false)
+describe('native anthropic e2e tool loop (with a consumer)', () => {
+  it('produces a result equal to the run without one', async () => {
+    const without = await run_weather_loop(false)
     vi.unstubAllGlobals()
-    const streamed = await run_weather_loop(true)
+    const with_consumer = await run_weather_loop(true)
 
-    expect(without_timing(streamed.result)).toEqual(without_timing(non_streamed.result))
-    expect(streamed.weather.calls).toEqual([{ city: 'Ottawa' }])
+    expect(without_timing(with_consumer.result)).toEqual(without_timing(without.result))
+    expect(with_consumer.weather.calls).toEqual([{ city: 'Ottawa' }])
   })
 
   it('dispatches loop-ordered chunks: tool traffic, results, step and final finishes', async () => {
@@ -304,8 +352,8 @@ describe('native anthropic e2e salvage', () => {
       usage: { input_tokens: 100, output_tokens: 50 },
     }
     const mock = stub_fetch_queue([
-      json_response(salvage_fixture),
-      json_response(FINAL_TURN_FIXTURE),
+      sse_response(message_stream(salvage_fixture)),
+      sse_response(FINAL_TURN_STREAM),
     ])
     const weather = make_weather_tool()
     const engine = make_engine()
@@ -352,7 +400,7 @@ describe('native anthropic e2e salvage', () => {
 
 describe('native anthropic e2e ends_turn', () => {
   it('stops after a successful terminal tool call without another request', async () => {
-    const mock = stub_fetch_queue([json_response(TOOL_TURN_FIXTURE)])
+    const mock = stub_fetch_queue([sse_response(TOOL_TURN_STREAM)])
     const weather = make_weather_tool({ ends_turn: true })
     const engine = make_engine()
 
@@ -372,7 +420,7 @@ describe('native anthropic e2e ends_turn', () => {
 
 describe('native anthropic e2e fail-closed approval', () => {
   it('denies a needs_approval tool without a handler and never executes it', async () => {
-    const mock = stub_fetch_queue([json_response(TOOL_TURN_FIXTURE)])
+    const mock = stub_fetch_queue([sse_response(TOOL_TURN_STREAM)])
     const weather = make_weather_tool({ needs_approval: true })
     const engine = make_engine()
 
@@ -390,17 +438,6 @@ describe('native anthropic e2e fail-closed approval', () => {
 // first turn's thinking and redacted_thinking blocks exactly as received, in
 // block order, empty thinking text included.
 // ---------------------------------------------------------------------------
-
-const THINKING_TOOL_TURN_FIXTURE = {
-  ...TOOL_TURN_FIXTURE,
-  content: [
-    { type: 'thinking', thinking: 'Ottawa needs a lookup.', signature: 'sig_1' },
-    { type: 'redacted_thinking', data: 'opaque' },
-    { type: 'text', text: 'Checking.' },
-    { type: 'thinking', thinking: '', signature: 'sig_2' },
-    ...TOOL_TURN_FIXTURE.content,
-  ],
-}
 
 const THINKING_TOOL_TURN_STREAM = [
   TOOL_TURN_STREAM[0],
@@ -424,19 +461,18 @@ const THINKING_TOOL_TURN_STREAM = [
 
 describe('native anthropic e2e thinking round trip', () => {
   it.each([false, true])(
-    "sends the first turn's blocks back exactly as received (streamed: %s)",
-    async (streamed) => {
-      const mock = stub_fetch_queue(
-        streamed
-          ? [sse_response(THINKING_TOOL_TURN_STREAM as Array<Record<string, unknown>>), sse_response(FINAL_TURN_STREAM)]
-          : [json_response(THINKING_TOOL_TURN_FIXTURE), json_response(FINAL_TURN_FIXTURE)],
-      )
+    "sends the first turn's blocks back exactly as received (consumer: %s)",
+    async (consumer) => {
+      const mock = stub_fetch_queue([
+        sse_response(THINKING_TOOL_TURN_STREAM as Array<Record<string, unknown>>),
+        sse_response(FINAL_TURN_STREAM),
+      ])
       const weather = make_weather_tool()
       const result = await make_engine().generate({
         model: MODEL,
         prompt: 'weather in Ottawa?',
         tools: [weather],
-        ...(streamed ? { on_chunk: () => {} } : {}),
+        ...(consumer ? { on_chunk: () => {} } : {}),
       })
 
       expect(weather.calls).toEqual([{ city: 'Ottawa' }])
@@ -505,5 +541,107 @@ describe('native anthropic e2e request mapping errors', () => {
     expect((caught as provider_capability_error).capability).toBe(capability)
     expect(mock).not.toHaveBeenCalled()
     expect(events.filter((e) => e['kind'] === 'turn_retry')).toEqual([])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// The replies a streamed request can get back: whole JSON, something that
+// isn't JSON, and a stream cut off before message_stop.
+// ---------------------------------------------------------------------------
+
+const NO_WAIT: RetryPolicy = { max_attempts: 3, initial_delay_ms: 0, max_delay_ms: 0, retry_on: ['network'] }
+
+/** The weather stream with its closing message_stop dropped. */
+const CUT_TOOL_TURN_STREAM = TOOL_TURN_STREAM.slice(0, -1)
+
+describe('native anthropic e2e reply shapes', () => {
+  it('reads a JSON reply to a streamed request as a whole body, and fails one that is neither with the base_url hint', async () => {
+    const streamed = await run_weather_loop(false)
+    vi.unstubAllGlobals()
+    const whole = await run_weather_loop(false, [
+      json_response(TOOL_TURN_FIXTURE),
+      json_response(FINAL_TURN_FIXTURE),
+    ])
+
+    expect(request_bodies(whole.mock).map((body) => body['stream'])).toStrictEqual([true, true])
+    expect(without_timing(whole.result)).toEqual(without_timing(streamed.result))
+
+    // A media type compares without its parameters and its case.
+    vi.unstubAllGlobals()
+    const odd = [sse_response(TOOL_TURN_STREAM), sse_response(FINAL_TURN_STREAM)]
+    for (const response of odd) response.headers.set('content-type', ' Text/Event-Stream ; charset=UTF-8')
+    const parameterized = await run_weather_loop(false, odd)
+    expect(without_timing(parameterized.result)).toEqual(without_timing(streamed.result))
+
+    vi.unstubAllGlobals()
+    stub_fetch_queue([
+      new Response('<html>not the API</html>', { status: 200, headers: { 'content-type': 'text/html' } }),
+    ])
+    const caught = await make_engine()
+      .generate({ model: MODEL, prompt: 'hi', retry: NO_WAIT })
+      .catch((e: unknown) => e)
+    expect(caught).toBeInstanceOf(provider_error)
+    expect((caught as Error).message).toMatch(
+      /^anthropic native: response body is not valid JSON: check that base_url points at the anthropic API/,
+    )
+  })
+
+  it('retries a stream cut off before message_stop with no consumer, and fails it as stream interrupted with one', async () => {
+    const retries: Array<Record<string, unknown>> = []
+    const mock = stub_fetch_queue([
+      sse_response(CUT_TOOL_TURN_STREAM),
+      sse_response(TOOL_TURN_STREAM),
+      sse_response(FINAL_TURN_STREAM),
+    ])
+    const result = await make_engine().generate({
+      model: MODEL,
+      prompt: 'weather in Ottawa?',
+      tools: [make_weather_tool()],
+      retry: NO_WAIT,
+      trajectory: {
+        record: (e) => {
+          if (e.kind === 'turn_retry') retries.push(e)
+        },
+        start_span: () => 'span',
+        end_span: () => {},
+      },
+    })
+
+    expect(mock).toHaveBeenCalledTimes(3)
+    expect(result.content).toBe('The weather in Ottawa is sunny.')
+    expect(retries).toMatchObject([{ step_index: 0, failure_kind: 'network' }])
+
+    vi.unstubAllGlobals()
+    const watched = stub_fetch_queue([sse_response(CUT_TOOL_TURN_STREAM), sse_response(TOOL_TURN_STREAM)])
+    const caught = await make_engine()
+      .generate({
+        model: MODEL,
+        prompt: 'hi',
+        tools: [make_weather_tool()],
+        retry: NO_WAIT,
+        on_chunk: () => {},
+      })
+      .catch((e: unknown) => e)
+    expect(caught).toBeInstanceOf(provider_error)
+    expect((caught as Error).message).toBe(
+      'stream interrupted: anthropic native: stream ended before message_stop; the result would be truncated',
+    )
+    expect(watched).toHaveBeenCalledTimes(1)
+  })
+
+  it('surfaces an exhausted cut-off stream as a network provider_error', async () => {
+    stub_fetch_queue([
+      sse_response(CUT_TOOL_TURN_STREAM),
+      sse_response(CUT_TOOL_TURN_STREAM),
+      sse_response(CUT_TOOL_TURN_STREAM),
+    ])
+    const caught = await make_engine()
+      .generate({ model: MODEL, prompt: 'hi', tools: [make_weather_tool()], retry: NO_WAIT })
+      .catch((e: unknown) => e)
+    expect(caught).toBeInstanceOf(provider_error)
+    expect(caught).toMatchObject({
+      cause_kind: 'network',
+      message: 'anthropic native: stream ended before message_stop; the result would be truncated',
+    })
   })
 })

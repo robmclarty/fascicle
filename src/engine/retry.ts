@@ -7,9 +7,11 @@
  * retry wraps the whole generate call; this module retries a single provider
  * call between tool-loop turns.
  *
- * Once a streaming response has delivered a chunk, the caller must not retry
- * it: this helper is never wrapped around a streaming call past its first
- * chunk, and the orchestrator enforces that boundary.
+ * Once a streaming response has delivered a chunk to an `on_chunk` consumer,
+ * the caller must not retry it: this helper is never wrapped around such a
+ * call past its first chunk, and the orchestrator enforces that boundary.
+ * With no consumer attached, nothing was delivered that a retry would repeat,
+ * so a failure partway through a stream retries like any other.
  */
 
 import type { RetryFailureKind, RetryPolicy } from './types.js'

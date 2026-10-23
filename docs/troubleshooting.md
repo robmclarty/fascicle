@@ -166,9 +166,12 @@ of any loop that doesn't otherwise await something abortable. See
 
 ## Streaming Stops Retrying / Logs Look out of Order
 
-- Retries don't resume past the first delivered chunk. Once a stream has started,
-  a mid-stream failure isn't retried; the orchestrator enforces that boundary.
-  See [configuration.md](./configuration.md#retry-policy).
+- Retries don't resume past the first chunk that reached your `on_chunk`. Once
+  you've seen part of a stream, a failure partway through it isn't retried,
+  since a retry would hand you that part again; the orchestrator enforces that
+  boundary. With no `on_chunk`, nothing reached you, so a native turn that
+  fails mid-stream retries the whole turn. See
+  [configuration.md](./configuration.md#retry-policy).
 - The bundled `filesystem_logger` writes synchronously, so it's meant for dev
   tools and short runs; roll your own `TrajectoryLogger` for a long-running
   server. Span parentage is threaded by the runner (`parent_span_id`), so span

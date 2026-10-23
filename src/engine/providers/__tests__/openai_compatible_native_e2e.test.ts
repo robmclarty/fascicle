@@ -6,8 +6,11 @@
  * so the loop behavior pinned here is the core's own, which the `openai`,
  * `openrouter`, and `lmstudio` native branches inherit. Pins the loop
  * features the adapter inherits (approval, salvage, Tool.ends_turn, cost)
- * plus the wire shapes fed back to the API mid-loop, and streamed ==
- * non-streamed parity across a full tool loop. Zero `ai` in this file's
+ * plus the wire shapes fed back to the API mid-loop. Every turn asks for a
+ * stream, so the stubs serve SSE, and a run with a chunk consumer folds to the
+ * same result as a run without one. A JSON reply to a streamed request, a
+ * reply that is neither, and a stream cut off before [DONE] are pinned at the
+ * end. Zero `ai` in this file's
  * module graph, enforced by
  * rules/no-ai-sdk-in-native-providers.yml (the *native* glob covers it).
  */
@@ -168,6 +171,23 @@ const FINAL_TURN_STREAM: Array<Record<string, unknown> | '[DONE]'> = [
   '[DONE]',
 ]
 
+/**
+ * The SSE frames that deliver a whole chat completion whose message is text,
+ * for a fixture that has no hand-written stream of its own.
+ */
+function completion_stream(completion: {
+  choices: ReadonlyArray<{ message: { content: string }; finish_reason: string }>
+  usage: Record<string, number>
+}): Array<Record<string, unknown> | '[DONE]'> {
+  const choice = completion.choices[0]
+  return [
+    { choices: [{ index: 0, delta: { role: 'assistant', content: choice?.message.content } }] },
+    { choices: [{ index: 0, delta: {}, finish_reason: choice?.finish_reason }] },
+    { choices: [], usage: completion.usage },
+    '[DONE]',
+  ]
+}
+
 /** ToolCallRecords carry wall-clock timing; drop it so runs compare deeply. */
 function strip_timing(records: GenerateResult['tool_calls']): unknown {
   return records.map(({ duration_ms: _d, started_at: _s, ...rest }) => rest)
@@ -186,18 +206,17 @@ function without_timing({ timing: _call, ...result }: GenerateResult): unknown {
   }
 }
 
-async function run_weather_loop(streamed: boolean): Promise<{
+async function run_weather_loop(
+  consumer: boolean,
+  responses: Response[] = [sse_response(TOOL_TURN_STREAM), sse_response(FINAL_TURN_STREAM)],
+): Promise<{
   result: GenerateResult
   chunks: StreamChunk[]
   mock: ReturnType<typeof vi.fn>
   weather: Tool & { calls: unknown[] }
   approvals: Array<{ tool_name: string; input: unknown }>
 }> {
-  const mock = stub_fetch_queue(
-    streamed
-      ? [sse_response(TOOL_TURN_STREAM), sse_response(FINAL_TURN_STREAM)]
-      : [json_response(TOOL_TURN_FIXTURE), json_response(FINAL_TURN_FIXTURE)],
-  )
+  const mock = stub_fetch_queue(responses)
   const weather = make_weather_tool({ needs_approval: true })
   const approvals: Array<{ tool_name: string; input: unknown }> = []
   const chunks: StreamChunk[] = []
@@ -210,7 +229,7 @@ async function run_weather_loop(streamed: boolean): Promise<{
       approvals.push({ tool_name: req.tool_name, input: req.input })
       return true
     },
-    ...(streamed
+    ...(consumer
       ? {
           on_chunk: (chunk: StreamChunk) => {
             chunks.push(chunk)
@@ -221,7 +240,14 @@ async function run_weather_loop(streamed: boolean): Promise<{
   return { result, chunks, mock, weather, approvals }
 }
 
-describe('openai-compatible native e2e tool loop (non-streamed)', () => {
+/** Each request body the stubbed fetch was sent, parsed. */
+function request_bodies(mock: ReturnType<typeof vi.fn>): Array<Record<string, unknown>> {
+  return mock.mock.calls.map(
+    (call) => JSON.parse((call as [string, RequestInit])[1].body as string) as Record<string, unknown>,
+  )
+}
+
+describe('openai-compatible native e2e tool loop (no consumer)', () => {
   it('runs the approval-gated loop with cost and feeds wire-shape tool results back', async () => {
     const { result, mock, weather, approvals } = await run_weather_loop(false)
 
@@ -251,6 +277,11 @@ describe('openai-compatible native e2e tool loop (non-streamed)', () => {
     // The second request carries the whole loop on the wire: the assistant
     // tool_calls turn and the fed-back tool role message.
     expect(mock).toHaveBeenCalledTimes(2)
+    // Every turn asks for a stream, and for its usage, though nothing consumes the chunks.
+    expect(request_bodies(mock).map((body) => [body['stream'], body['stream_options']])).toStrictEqual([
+      [true, { include_usage: true }],
+      [true, { include_usage: true }],
+    ])
     const second_call = mock.mock.calls[1] as [string, RequestInit]
     expect(second_call[0]).toBe('http://localhost:8080/v1/chat/completions')
     const second_body = JSON.parse(second_call[1].body as string) as Record<string, unknown>
@@ -272,14 +303,14 @@ describe('openai-compatible native e2e tool loop (non-streamed)', () => {
   })
 })
 
-describe('openai-compatible native e2e tool loop (streamed)', () => {
-  it('produces a result equal to the non-streamed run of the same loop', async () => {
-    const non_streamed = await run_weather_loop(false)
+describe('openai-compatible native e2e tool loop (with a consumer)', () => {
+  it('produces a result equal to the run without one', async () => {
+    const without = await run_weather_loop(false)
     vi.unstubAllGlobals()
-    const streamed = await run_weather_loop(true)
+    const with_consumer = await run_weather_loop(true)
 
-    expect(without_timing(streamed.result)).toEqual(without_timing(non_streamed.result))
-    expect(streamed.weather.calls).toEqual([{ city: 'Ottawa' }])
+    expect(without_timing(with_consumer.result)).toEqual(without_timing(without.result))
+    expect(with_consumer.weather.calls).toEqual([{ city: 'Ottawa' }])
   })
 
   it('dispatches loop-ordered chunks: tool traffic, results, step and final finishes', async () => {
@@ -342,8 +373,8 @@ describe('openai-compatible native e2e salvage', () => {
       usage: { prompt_tokens: 100, completion_tokens: 50, total_tokens: 150 },
     }
     const mock = stub_fetch_queue([
-      json_response(salvage_fixture),
-      json_response(FINAL_TURN_FIXTURE),
+      sse_response(completion_stream(salvage_fixture)),
+      sse_response(FINAL_TURN_STREAM),
     ])
     const weather = make_weather_tool()
     const engine = make_engine()
@@ -387,7 +418,7 @@ describe('openai-compatible native e2e salvage', () => {
 
 describe('openai-compatible native e2e ends_turn', () => {
   it('stops after a successful terminal tool call without another request', async () => {
-    const mock = stub_fetch_queue([json_response(TOOL_TURN_FIXTURE)])
+    const mock = stub_fetch_queue([sse_response(TOOL_TURN_STREAM)])
     const weather = make_weather_tool({ ends_turn: true })
     const engine = make_engine()
 
@@ -407,7 +438,7 @@ describe('openai-compatible native e2e ends_turn', () => {
 
 describe('openai-compatible native e2e fail-closed approval', () => {
   it('denies a needs_approval tool without a handler and never executes it', async () => {
-    const mock = stub_fetch_queue([json_response(TOOL_TURN_FIXTURE)])
+    const mock = stub_fetch_queue([sse_response(TOOL_TURN_STREAM)])
     const weather = make_weather_tool({ needs_approval: true })
     const engine = make_engine()
 
@@ -461,23 +492,6 @@ const ENCRYPTED_ENTRY = {
   index: 0,
 }
 
-function reasoning_tool_turn(finish_reason: string, entries: unknown[]): Record<string, unknown> {
-  return {
-    ...TOOL_TURN_FIXTURE,
-    choices: [
-      {
-        index: 0,
-        message: {
-          ...TOOL_TURN_FIXTURE.choices[0]?.message,
-          reasoning: 'Ottawa needs a lookup.',
-          reasoning_details: entries,
-        },
-        finish_reason,
-      },
-    ],
-  }
-}
-
 function reasoning_tool_stream(
   finish_reason: string,
   fragments: unknown[],
@@ -493,7 +507,7 @@ function reasoning_tool_stream(
 }
 
 async function run_reasoning_loop(
-  streamed: boolean,
+  consumer: boolean,
   finish_reason: string,
 ): Promise<{
   result: GenerateResult
@@ -501,24 +515,22 @@ async function run_reasoning_loop(
   weather: Tool & { calls: unknown[] }
   reasoning: string[]
 }> {
-  const entries = [SIGNED_ENTRY, ENCRYPTED_ENTRY]
   const fragments = [
     { ...SIGNED_ENTRY, text: 'Ottawa needs ', signature: undefined },
     { ...SIGNED_ENTRY, text: 'a lookup.' },
     ENCRYPTED_ENTRY,
   ]
-  const mock = stub_fetch_queue(
-    streamed
-      ? [sse_response(reasoning_tool_stream(finish_reason, fragments)), sse_response(FINAL_TURN_STREAM)]
-      : [json_response(reasoning_tool_turn(finish_reason, entries)), json_response(FINAL_TURN_FIXTURE)],
-  )
+  const mock = stub_fetch_queue([
+    sse_response(reasoning_tool_stream(finish_reason, fragments)),
+    sse_response(FINAL_TURN_STREAM),
+  ])
   const weather = make_weather_tool()
   const reasoning: string[] = []
   const result = await make_reasoning_engine().generate({
     model: MODEL,
     prompt: 'weather in Ottawa?',
     tools: [weather],
-    ...(streamed
+    ...(consumer
       ? {
           on_chunk: (chunk: StreamChunk) => {
             if (chunk.kind === 'reasoning') reasoning.push(chunk.text)
@@ -536,9 +548,9 @@ function second_request_messages(mock: ReturnType<typeof vi.fn>): unknown {
 
 describe('openai-compatible native e2e reasoning round trip', () => {
   it.each([false, true])(
-    "sends the first turn's entries back with the second request (streamed: %s)",
-    async (streamed) => {
-      const { result, mock, weather } = await run_reasoning_loop(streamed, 'tool_calls')
+    "sends the first turn's entries back with the second request (consumer: %s)",
+    async (consumer) => {
+      const { result, mock, weather } = await run_reasoning_loop(consumer, 'tool_calls')
       expect(weather.calls).toEqual([{ city: 'Ottawa' }])
       expect(result.content).toBe('The weather in Ottawa is sunny.')
       expect(second_request_messages(mock)).toStrictEqual([
@@ -568,9 +580,9 @@ describe('openai-compatible native e2e reasoning round trip', () => {
   // Gemini 3 has reported finish_reason 'stop' beside its tool calls; the loop
   // reads tool_calls, never the finish reason, so the tools still run.
   it.each([false, true])(
-    'runs the tools of a turn whose finish_reason is stop (streamed: %s)',
-    async (streamed) => {
-      const { result, mock, weather } = await run_reasoning_loop(streamed, 'stop')
+    'runs the tools of a turn whose finish_reason is stop (consumer: %s)',
+    async (consumer) => {
+      const { result, mock, weather } = await run_reasoning_loop(consumer, 'stop')
       expect(weather.calls).toEqual([{ city: 'Ottawa' }])
       expect(result.steps).toHaveLength(2)
       expect(result.content).toBe('The weather in Ottawa is sunny.')
@@ -660,5 +672,88 @@ describe('openai-compatible native e2e error frame mid-stream', () => {
     )
     expect(chunks.filter((chunk) => chunk.kind === 'text')).toHaveLength(1)
     expect(mock).toHaveBeenCalledTimes(1)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// The replies a streamed request can get back: whole JSON, something that
+// isn't JSON, and a stream cut off before [DONE].
+// ---------------------------------------------------------------------------
+
+/** The weather stream with its closing [DONE] dropped. */
+const CUT_TOOL_TURN_STREAM = TOOL_TURN_STREAM.slice(0, -1)
+
+describe('openai-compatible native e2e reply shapes', () => {
+  it('reads a JSON reply to a streamed request as a whole body, and fails one that is neither with the base_url hint', async () => {
+    const streamed = await run_weather_loop(false)
+    vi.unstubAllGlobals()
+    const whole = await run_weather_loop(false, [
+      json_response(TOOL_TURN_FIXTURE),
+      json_response(FINAL_TURN_FIXTURE),
+    ])
+
+    expect(request_bodies(whole.mock).map((body) => body['stream'])).toStrictEqual([true, true])
+    expect(without_timing(whole.result)).toEqual(without_timing(streamed.result))
+
+    vi.unstubAllGlobals()
+    stub_fetch_queue([
+      new Response('<html>not the API</html>', { status: 200, headers: { 'content-type': 'text/html' } }),
+    ])
+    const caught = await make_engine()
+      .generate({ model: MODEL, prompt: 'hi', retry: INSTANT_RETRY })
+      .catch((e: unknown) => e)
+    expect(caught).toBeInstanceOf(provider_error)
+    expect((caught as Error).message).toMatch(
+      /^compat native: response body is not valid JSON: check that base_url points at the compat API/,
+    )
+  })
+
+  it('retries a stream cut off before [DONE] with no consumer, and fails it as stream interrupted with one', async () => {
+    const mock = stub_fetch_queue([
+      sse_response(CUT_TOOL_TURN_STREAM),
+      sse_response(TOOL_TURN_STREAM),
+      sse_response(FINAL_TURN_STREAM),
+    ])
+    const result = await make_engine().generate({
+      model: MODEL,
+      prompt: 'weather in Ottawa?',
+      tools: [make_weather_tool()],
+      retry: INSTANT_RETRY,
+    })
+    expect(mock).toHaveBeenCalledTimes(3)
+    expect(result.content).toBe('The weather in Ottawa is sunny.')
+
+    vi.unstubAllGlobals()
+    const watched = stub_fetch_queue([sse_response(CUT_TOOL_TURN_STREAM), sse_response(TOOL_TURN_STREAM)])
+    const caught = await make_engine()
+      .generate({
+        model: MODEL,
+        prompt: 'hi',
+        tools: [make_weather_tool()],
+        retry: INSTANT_RETRY,
+        on_chunk: () => {},
+      })
+      .catch((e: unknown) => e)
+    expect(caught).toBeInstanceOf(provider_error)
+    expect((caught as Error).message).toBe(
+      'stream interrupted: compat native: stream ended before [DONE]; the result would be truncated',
+    )
+    expect(watched).toHaveBeenCalledTimes(1)
+  })
+
+  it('surfaces an exhausted cut-off stream as a network provider_error', async () => {
+    stub_fetch_queue([
+      sse_response(CUT_TOOL_TURN_STREAM),
+      sse_response(CUT_TOOL_TURN_STREAM),
+      sse_response(CUT_TOOL_TURN_STREAM),
+    ])
+    const caught = await make_engine()
+      .generate({ model: MODEL, prompt: 'hi', tools: [make_weather_tool()], retry: INSTANT_RETRY })
+      .catch((e: unknown) => e)
+    expect(caught).toBeInstanceOf(provider_error)
+    expect(caught).toMatchObject({
+      cause_kind: 'network',
+      message: 'compat native: stream ended before [DONE]; the result would be truncated',
+    })
   })
 })

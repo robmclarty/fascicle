@@ -65,13 +65,14 @@ export class provider_error extends Error {
 
 /**
  * Turn-timeout expiry. Thrown by the engine-owned retry_turn wrapper when a
- * single invoke_turn exceeds `turn_timeout_ms` before any chunk streamed.
+ * single invoke_turn exceeds `turn_timeout_ms` before any chunk reached a
+ * consumer.
  * Its `kind` is the RetryFailureKind wire value `'timeout'` (not the class
  * name) on purpose: that is the discriminant classify_retryable /
  * classify_provider_error already key on, so the shared classifier treats an
- * expiry as retryable without any timeout-specific branch. A mid-stream
- * expiry never reaches here; retry_turn converts it to a non-retryable
- * stream interruption first.
+ * expiry as retryable without any timeout-specific branch. An expiry after a
+ * chunk has reached an on_chunk consumer never reaches here; retry_turn
+ * converts it to a non-retryable stream interruption first.
  */
 export class turn_timeout_error extends Error {
   readonly kind = 'timeout' as const;

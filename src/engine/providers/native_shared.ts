@@ -96,17 +96,33 @@ async function response_error(response: Response, provider: string): Promise<Err
 }
 
 /**
+ * A transport failure in the `kind: 'network'` shape that the shared
+ * classify_provider_error marks retryable. A stream that ends before its
+ * closing event throws it too, since a cut-off stream is a dropped
+ * connection, so the engine retries it whenever nothing consumed its chunks.
+ */
+export function network_failure(message: string): Error {
+  return Object.assign(new Error(message), { kind: 'network' })
+}
+
+/**
  * A user abort surfaces as the fetch/reader AbortError; retry_turn converts
  * it via its own signal check, so it is rethrown untouched. Everything else
- * is a transport failure wrapped in the `kind: 'network'` shape the shared
- * classify_provider_error marks retryable.
+ * is a transport failure wrapped as a network_failure.
  */
 function rethrow_network_failure(err: unknown, abort: AbortSignal, provider: string): never {
   if (abort.aborted) throw err
   const detail = err instanceof Error ? err.message : String(err)
-  throw Object.assign(new Error(`${provider} native: network failure: ${detail}`), {
-    kind: 'network',
-  })
+  throw network_failure(`${provider} native: network failure: ${detail}`)
+}
+
+/**
+ * The response's media type, lowercased and without its parameters, or ''
+ * when it names none.
+ */
+function media_type(response: Response): string {
+  const header = response.headers.get('content-type') ?? ''
+  return (header.split(';')[0] ?? '').trim().toLowerCase()
 }
 
 /**
@@ -138,7 +154,11 @@ async function read_json_body(
 /**
  * Run one native turn over HTTP: POST the dialect's body, map a non-2xx to
  * the retry stack's shapes, and hand the response to the dialect's stream or
- * JSON consumer. `build_body` runs before the network try/catch, so a mapper
+ * JSON consumer. A streamed request whose reply doesn't arrive as the
+ * dialect's stream media type (`text/event-stream`, or NDJSON for Ollama) is
+ * read as a whole JSON body, so a server that answers with JSON still works,
+ * and a page that isn't JSON fails with the `base_url` hint rather than as a
+ * cut-off stream. `build_body` runs before the network try/catch, so a mapper
  * that rejects the request (e.g., a provider_capability_error for a part the
  * wire cannot carry) propagates unchanged instead of being retried as a
  * network failure.
@@ -154,6 +174,8 @@ export async function invoke_http_turn(
   consume: {
     stream: (response: Response) => Promise<TurnResult>
     parse: (payload: unknown) => TurnResult
+    /** The media type that a streamed reply arrives as. */
+    stream_media_type: string
   },
 ): Promise<TurnResult> {
   const body = JSON.stringify(request.build_body())
@@ -169,7 +191,9 @@ export async function invoke_http_turn(
     rethrow_network_failure(err, req.abort, provider)
   }
   if (!response.ok) throw await response_error(response, provider)
-  if (req.stream) return consume.stream(response)
+  if (req.stream && media_type(response) === consume.stream_media_type) {
+    return consume.stream(response)
+  }
   return consume.parse(await read_json_body(response, req.abort, provider))
 }
 

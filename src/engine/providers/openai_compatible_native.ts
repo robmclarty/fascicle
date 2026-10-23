@@ -43,6 +43,7 @@ import {
 import {
   consume_framed_stream,
   invoke_http_turn,
+  network_failure,
   map_messages_by_role,
   parse_tool_call_arguments,
   split_assistant_parts,
@@ -517,8 +518,9 @@ function with_reasoning_content(result: TurnResult, reasoning: ReasoningPart[]):
  * OpenRouter, the HTTP status the failure would have had as a numeric
  * `code`. Carrying that code as `status` lets the engine's retry ladder treat
  * it as it treats the same error at the start of a response, so a 429 or a
- * 5xx before any chunk retries, and any error after a chunk fails the turn as
- * a stream interruption that names the message.
+ * 5xx retries unless a chunk has reached an on_chunk consumer, and any error
+ * after one has fails the turn as a stream interruption that names the
+ * message.
  */
 function stream_error_frame(error: Record<string, unknown>, provider: string): provider_error {
   const message = error['message']
@@ -763,7 +765,7 @@ export function create_chat_stream_aggregator(
     },
     complete(): TurnResult {
       if (!done) {
-        throw new provider_error(
+        throw network_failure(
           `${dialect.name} native: stream ended before [DONE]; the result would be truncated`,
         )
       }
@@ -857,6 +859,7 @@ export const create_openai_compatible_adapter = (
         {
           stream: (response) => consume_sse_response(response, req, dialect),
           parse: (payload) => parse_chat_completion(payload, dialect),
+          stream_media_type: 'text/event-stream',
         },
       )
     },

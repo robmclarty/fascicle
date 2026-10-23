@@ -38,7 +38,7 @@ import {
   provider_capability_error,
   provider_error,
 } from '../errors.js'
-import { consume_framed_stream, invoke_http_turn } from './native_shared.js'
+import { consume_framed_stream, invoke_http_turn, network_failure } from './native_shared.js'
 import { create_sse_decoder } from './sse_native.js'
 import type { NativeProviderAdapter, ProviderCapability } from './types.js'
 
@@ -450,8 +450,8 @@ export function parse_messages_response(payload: unknown): TurnResult {
  * overloaded_error is the SSE analog of a 529, api_error of a 500, and
  * rate_limit_error of a 429, so classify_provider_error sees the transients
  * it already retries. Anything else is a permanent provider_error. Whether a
- * retry actually happens stays retry_turn's call: once chunks have streamed
- * it refuses, exactly as on the ai_sdk path.
+ * retry actually happens stays retry_turn's call: once chunks have reached an
+ * on_chunk consumer it refuses, exactly as on the ai_sdk path.
  */
 function stream_event_error(event: object): Error {
   const error: unknown = Reflect.get(event, 'error')
@@ -715,7 +715,7 @@ function create_stream_aggregator(
     },
     complete(): TurnResult {
       if (!stopped) {
-        throw new provider_error(
+        throw network_failure(
           'anthropic native: stream ended before message_stop; the result would be truncated',
         )
       }
@@ -786,6 +786,7 @@ export const create_anthropic_native_adapter = (
         {
           stream: (response) => consume_sse_response(response, req),
           parse: parse_messages_response,
+          stream_media_type: 'text/event-stream',
         },
       )
     },

@@ -338,7 +338,7 @@ Same provider name, pricing keys, usage fields, and streamed-equals-non-streamed
 - **`provider_options.openrouter` is raw wire format.** Keys are OpenRouter Chat Completions fields exactly as documented (**snake_case**: `reasoning`, `max_tokens`, `top_p`, `provider`, `models`, `transforms`, ...), shallow-merged last over the engine-computed body. Effort arrives as the **nested** `reasoning: { effort: 'high' }` object on both transports, and the shallow merge replaces it whole, so to override reasoning on native, pass the whole `reasoning` object.
 - **Reasoning streams, and it goes back.** Each `reasoning_details` entry that OpenRouter sends streams its text to `on_chunk` as `reasoning` chunks and becomes a reasoning part, with the entry itself under `provider_options.openrouter.detail`. Inside a tool loop the next request carries the turn's entries back as `reasoning_details`, all of them, once, and in order, which is what keeps a Claude loop's thinking and Gemini 3's thought signatures from one step to the next. An encrypted entry has no text to stream, and it goes back all the same.
 - **The cost is the one OpenRouter reports.** Each step records what OpenRouter charged for it, with no pricing row needed (see [Cost Estimation](#cost-estimation)).
-- **Retry belongs to the engine** (429 / 5xx / network, with a 429's or a 5xx's `Retry-After` honored), identical to `ai_sdk`, and a 401 throws `provider_auth_error` without a retry. OpenRouter can report a failure inside a stream that has already begun, as a frame that carries an `error` object, and the core throws it with OpenRouter's message. Before the first chunk, a 429 or a 5xx code in that frame retries like the same HTTP status, and after it the turn fails as a stream interruption.
+- **Retry belongs to the engine** (429 / 5xx / network, with a 429's or a 5xx's `Retry-After` honored), identical to `ai_sdk`, and a 401 throws `provider_auth_error` without a retry. OpenRouter can report a failure inside a stream that has already begun, as a frame that carries an `error` object, and the core throws it with OpenRouter's message. A 429 or a 5xx code in that frame retries like the same HTTP status, unless a chunk has already reached your `on_chunk`, in which case the turn fails as a stream interruption.
 
 ## `bedrock`
 
@@ -674,8 +674,9 @@ const create_acme_native: ProviderFactory = (init) => ({
       signal: req.abort,
     });
     if (!response.ok) throw await to_classifiable_error(response);
-    // When req.stream is true, emit StreamChunks through req.dispatch_chunk
-    // as they arrive AND return the fully aggregated result.
+    // When req.stream is true (every turn, if supports('streaming') is), emit
+    // StreamChunks through req.dispatch_chunk as they arrive AND return the
+    // fully aggregated result.
     return from_acme_response(await response.json()); // -> { text, tool_calls, finish_reason, usage }
   },
   supports: (c) => c === 'text' || c === 'tools' || c === 'schema' || c === 'streaming',
@@ -690,7 +691,8 @@ const engine = create_engine({
 Rules of the road for native adapters:
 
 - **Never retry internally.** Throw failures in classifiable shapes (`status` and `responseHeaders` for HTTP errors) and let the engine's retry policy own attempts; hidden retries are exactly the illegibility that the engine refuses. An optional `classify_error(err)` overrides the shared classifier when your provider's error shapes need it.
-- **Streaming means both.** When `req.stream` is true, push chunks through `req.dispatch_chunk` and still return the aggregated `TurnResult`; streamed and non-streamed results for the same input must be equal.
+- **Streaming means both.** When `req.stream` is true, push chunks through `req.dispatch_chunk` and still return the aggregated `TurnResult`; streamed and non-streamed results for the same input must be equal. An adapter whose `supports('streaming')` is true gets `stream: true` on every turn, whether or not the caller passed `on_chunk`, and the engine passes the chunks on only to a consumer. One that doesn't support streaming keeps whole-body turns, and with them Node's limit, since `fetch` gives up on a response whose headers take more than 300 seconds.
+- **Throw a cut-off stream as a network failure.** A stream that ends before its closing event is a dropped connection, so throw it in the `{ kind: 'network' }` shape, and the engine retries it when nothing consumed the chunks. A streamed request that gets a JSON reply back should read it as a whole body, the way the built-in adapters do.
 - **Skip `structured_output` unless you truly constrain decoding.** Claiming `schema` is enough; the engine's repair loop does the rest.
 - **Return what the provider wants back.** When a turn holds reasoning, or a part that carries your provider's data, set `TurnResult.content` to the turn's parts in the order that the provider sent them, with that data under your provider's name in each part's `provider_options`. Leave it out otherwise. The tool loop builds the next assistant message from it, and `text` and `tool_calls` stay what everything else reads.
 - **Give the `reasoning` part kind a branch of its own.** An assistant message's parts are `text`, `tool_call`, and `reasoning`. A mapper that's written as `if (part.type === 'text') … else` sends a reasoning part down its tool-call branch, which TypeScript usually catches, since a reasoning part has no `id`. Send a reasoning part back only when `part.provider_options?.[your_name]` is set, and drop it otherwise, so another vendor's signature, or text with no signature, never reaches your wire.

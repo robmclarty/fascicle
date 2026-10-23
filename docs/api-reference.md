@@ -263,7 +263,9 @@ Every step that the engine loop produces carries a `timing` block
 (`StepTiming`). `started_at` and `duration_ms` bracket the successful
 provider attempt alone, so failed attempts, retry backoff, and tool
 execution never inflate the number, and a streamed turn adds
-`first_chunk_ms` (time to first token). When someone asks you how many
+`first_chunk_ms` (time to first token). Every native turn streams when
+its adapter supports streaming, whether or not you pass `on_chunk`, so a
+native step always has one. When someone asks you how many
 tokens per second your agent does, `throughput()` is the answer. Hand it
 a `GenerateResult`, a step array, or a single step:
 
@@ -276,9 +278,11 @@ const rate = throughput(result);
 
 `basis` names what the number means. A streamed turn measures `'decode'`
 (output tokens over the window that excludes time to first chunk, the
-benchmark-style rate), while a non-streamed turn can only measure
+benchmark-style rate), while a whole-body turn can only measure
 `'blended'` (the whole round trip, network and prefill included), which
-understates the model on a long prompt with a short answer.
+understates the model on a long prompt with a short answer. Native turns
+stream, so they measure `'decode'`, while `claude_cli` stays `'blended'`,
+and so does an `ai_sdk` turn with nothing consuming its chunks.
 
 Ollama is the exception, because the daemon times its own decode. It
 reports the nanoseconds it spent generating each step's output as
@@ -314,7 +318,7 @@ The same numbers reach observability consumers without touching the
 result envelope: every turn's `response_received` trajectory event
 carries flat numeric fields (`input_tokens`, `output_tokens`, the cache
 and reasoning splits when reported, `started_at`, `duration_ms`, and
-`first_chunk_ms` on streamed turns), so your own `TrajectoryLogger` or
+`first_chunk_ms` on every turn that streamed), so your own `TrajectoryLogger` or
 the `fascicle/otel` bridge can aggregate latency and token throughput
 directly, with no nested objects to parse. Absorbed retries surface the
 same way: each failed-then-retried attempt records a `turn_retry` event

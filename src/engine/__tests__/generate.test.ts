@@ -8,7 +8,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
-import type { StreamChunk, Tool } from '../types.js'
+import type { StreamChunk, Tool, TurnRequest, TurnResult } from '../types.js'
 import {
   build_mock_ai_module,
   build_mock_registry_module,
@@ -1675,5 +1675,105 @@ describe('generate: duplicate tool names', () => {
     const call = engine.generate({ model: 'sonnet', prompt: 'go', tools })
     await expect(call).rejects.toBeInstanceOf(engine_config_error)
     await expect(call).rejects.toThrow(message)
+  })
+})
+
+describe('generate: the native retry rule across the first chunk', () => {
+  const NO_WAIT = {
+    max_attempts: 3,
+    initial_delay_ms: 0,
+    max_delay_ms: 0,
+    retry_on: ['network', 'timeout'] as Array<'network' | 'timeout'>,
+  }
+  const done: TurnResult = {
+    text: 'done',
+    tool_calls: [],
+    finish_reason: 'stop',
+    usage: { input_tokens: 1, output_tokens: 1 },
+  }
+
+  /**
+   * An engine whose first attempt streams a chunk and then fails as `fail`
+   * says. `streams` records whether each attempt was asked for a stream.
+   */
+  function failing_after_a_chunk(fail: (req: TurnRequest) => Promise<never>): {
+    engine: ReturnType<typeof create_engine>
+    attempts: () => number
+    streams: boolean[]
+  } {
+    let attempts = 0
+    const streams: boolean[] = []
+    const engine = create_engine({
+      providers: { midstream: {} },
+      custom_providers: {
+        midstream: () => ({
+          kind: 'native',
+          name: 'midstream',
+          supports: () => true,
+          invoke_turn: async (req) => {
+            attempts += 1
+            streams.push(req.stream)
+            await req.dispatch_chunk?.({ kind: 'text', text: 'partial', step_index: req.step_index })
+            if (attempts === 1) return fail(req)
+            return done
+          },
+        }),
+      },
+    })
+    return { engine, attempts: () => attempts, streams }
+  }
+
+  const reset = async (): Promise<never> => {
+    throw Object.assign(new Error('connection reset'), { kind: 'network' })
+  }
+
+  it('retries a mid-stream network failure only when no consumer saw a chunk, and nothing deterministic', async () => {
+    const { engine, attempts, streams } = failing_after_a_chunk(reset)
+    const result = await engine.generate({ model: 'm', prompt: 'hi', retry: NO_WAIT })
+    expect(result.content).toBe('done')
+    expect(attempts()).toBe(2)
+    expect(streams).toStrictEqual([true, true])
+
+    const watched = failing_after_a_chunk(reset)
+    const seen: StreamChunk[] = []
+    const interrupted = await watched.engine
+      .generate({ model: 'm', prompt: 'hi', retry: NO_WAIT, on_chunk: (c) => void seen.push(c) })
+      .catch((e: unknown) => e)
+    expect(interrupted).toBeInstanceOf(provider_error)
+    expect(interrupted).toMatchObject({ message: 'stream interrupted: connection reset', cause_kind: 'unknown' })
+    expect(watched.attempts()).toBe(1)
+    expect(seen.map((c) => c.kind)).toStrictEqual(['text'])
+
+    // A malformed frame fails the same way every time, so it never burns the budget.
+    const malformed = failing_after_a_chunk(async () => {
+      throw new provider_error('stream frame is not valid JSON')
+    })
+    const caught = await malformed.engine
+      .generate({ model: 'm', prompt: 'hi', retry: NO_WAIT })
+      .catch((e: unknown) => e)
+    expect(caught).toBeInstanceOf(provider_error)
+    expect((caught as Error).message).toBe('stream frame is not valid JSON')
+    expect(malformed.attempts()).toBe(1)
+  })
+
+  it('retries a turn timeout that fires mid-stream only when nothing consumes the chunks', async () => {
+    const hang = (req: TurnRequest): Promise<never> =>
+      new Promise((_resolve, reject) => {
+        req.abort.addEventListener('abort', () => {
+          reject(Object.assign(new Error('aborted'), { name: 'AbortError' }))
+        })
+      })
+    const { engine, attempts, streams } = failing_after_a_chunk(hang)
+    const result = await engine.generate({ model: 'm', prompt: 'hi', retry: NO_WAIT, turn_timeout_ms: 20 })
+    expect(result.content).toBe('done')
+    expect(attempts()).toBe(2)
+    expect(streams).toStrictEqual([true, true])
+
+    const watched = failing_after_a_chunk(hang)
+    const caught = await watched.engine
+      .generate({ model: 'm', prompt: 'hi', retry: NO_WAIT, turn_timeout_ms: 20, on_chunk: () => {} })
+      .catch((e: unknown) => e)
+    expect((caught as Error).message).toMatch(/^stream interrupted: /)
+    expect(watched.attempts()).toBe(1)
   })
 })

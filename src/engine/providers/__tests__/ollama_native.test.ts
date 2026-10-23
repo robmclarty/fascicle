@@ -887,9 +887,9 @@ describe('streaming invoke_turn', () => {
     expect(chunks.filter((c) => c.kind === 'step_finish')).toHaveLength(1)
   })
 
-  it('fails loud when the stream ends before its done frame (truncated output)', async () => {
+  it('fails as a network error when the stream ends before its done frame (truncated output)', async () => {
     const err: unknown = await invoke_streamed(TEXT_STREAM.slice(0, 2)).catch((e: unknown) => e)
-    expect(err).toBeInstanceOf(provider_error)
+    expect(Reflect.get(err as object, 'kind')).toBe('network')
     expect((err as Error).message).toBe(
       'ollama native: stream ended before its done frame; the result would be truncated',
     )
@@ -912,7 +912,10 @@ describe('streaming invoke_turn', () => {
         controller.close()
       },
     })
-    const response = new Response(stream, { status: 200 })
+    const response = new Response(stream, {
+      status: 200,
+      headers: { 'content-type': 'application/x-ndjson' },
+    })
     const err: unknown = await invoke_streamed([], response).catch((e: unknown) => e)
     expect(err).toBeInstanceOf(provider_error)
     expect((err as Error).message).toBe('ollama native: stream frame is not valid JSON')
@@ -1325,9 +1328,8 @@ describe('streaming invoke_turn (mutation hardening)', () => {
   })
 
   it('throws a provider_error when a streaming response has no body', async () => {
-    const err: unknown = await invoke_streamed([], new Response(null, { status: 200 })).catch(
-      (e: unknown) => e,
-    )
+    const empty = new Response(null, { status: 200, headers: { 'content-type': 'application/x-ndjson' } })
+    const err: unknown = await invoke_streamed([], empty).catch((e: unknown) => e)
     expect(err).toBeInstanceOf(provider_error)
     expect((err as Error).message).toBe('ollama native: streaming response has no body')
   })
@@ -1530,5 +1532,58 @@ describe('create_ollama_native_adapter setup (mutation hardening)', () => {
     )
     expect(chunks).toEqual([])
     expect(result.text).toBe('Hello there')
+  })
+})
+
+describe('ollama native through generate: every turn streams', () => {
+  const NO_WAIT: RetryPolicy = { max_attempts: 3, initial_delay_ms: 0, max_delay_ms: 0, retry_on: ['network'] }
+  const ollama_engine = (): ReturnType<typeof create_engine> =>
+    create_engine({ providers: { ollama: { base_url: BASE_URL, transport: 'native' } } })
+  const bodies = (mock: ReturnType<typeof vi.fn>): unknown[] =>
+    mock.mock.calls.map((call) => (JSON.parse((call as [string, RequestInit])[1].body as string) as Record<string, unknown>)['stream'])
+
+  it('asks for a stream with no on_chunk and folds it into the result', async () => {
+    const mock = stub_fetch_queue([ndjson_response(TEXT_STREAM)])
+    const result = await ollama_engine().generate({ model: 'llama3.2', prompt: 'hi' })
+    expect(bodies(mock)).toStrictEqual([true])
+    expect(result.content).toBe('Hello there')
+    expect(result.usage).toStrictEqual({ input_tokens: 12, output_tokens: 6 })
+    expect(result.steps[0]?.timing?.first_chunk_ms).toBeGreaterThanOrEqual(0)
+  })
+
+  it('reads a JSON reply to a streamed request as a whole body, and fails one that is neither with the base_url hint', async () => {
+    const mock = stub_fetch_queue([json_response(TEXT_FIXTURE)])
+    const result = await ollama_engine().generate({ model: 'llama3.2', prompt: 'hi' })
+    expect(bodies(mock)).toStrictEqual([true])
+    expect(result.content).toBe('Hello there')
+    expect(result.usage).toStrictEqual({ input_tokens: 12, output_tokens: 6 })
+
+    vi.unstubAllGlobals()
+    stub_fetch_queue([new Response('<html>not the daemon</html>', { status: 200, headers: { 'content-type': 'text/html' } })])
+    const caught = await ollama_engine()
+      .generate({ model: 'llama3.2', prompt: 'hi', retry: NO_WAIT })
+      .catch((e: unknown) => e)
+    expect(caught).toBeInstanceOf(provider_error)
+    expect((caught as Error).message).toMatch(
+      /^ollama native: response body is not valid JSON: check that base_url points at the ollama API/,
+    )
+  })
+
+  it('retries a stream cut off before its done frame with no consumer, and fails it as stream interrupted with one', async () => {
+    const mock = stub_fetch_queue([ndjson_response(TEXT_STREAM.slice(0, 2)), ndjson_response(TEXT_STREAM)])
+    const result = await ollama_engine().generate({ model: 'llama3.2', prompt: 'hi', retry: NO_WAIT })
+    expect(mock).toHaveBeenCalledTimes(2)
+    expect(result.content).toBe('Hello there')
+
+    vi.unstubAllGlobals()
+    const watched = stub_fetch_queue([ndjson_response(TEXT_STREAM.slice(0, 2)), ndjson_response(TEXT_STREAM)])
+    const caught = await ollama_engine()
+      .generate({ model: 'llama3.2', prompt: 'hi', retry: NO_WAIT, on_chunk: () => {} })
+      .catch((e: unknown) => e)
+    expect(caught).toBeInstanceOf(provider_error)
+    expect((caught as Error).message).toBe(
+      'stream interrupted: ollama native: stream ended before its done frame; the result would be truncated',
+    )
+    expect(watched).toHaveBeenCalledTimes(1)
   })
 })

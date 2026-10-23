@@ -224,9 +224,42 @@ describe('custom_providers', () => {
     const req = log.native_requests[0]
     expect(req?.model_id).toBe('nat-1')
     expect(req?.effort).toBe('none')
-    expect(req?.stream).toBe(false)
+    // The fake supports streaming, so it is asked for a stream with no on_chunk.
+    expect(req?.stream).toBe(true)
     expect(req?.system).toBe('be brief')
     expect(req?.messages).toEqual([{ role: 'user', content: 'hi' }])
+  })
+
+  it('asks a native adapter for a stream with no on_chunk only when it supports streaming', async () => {
+    const requests: TurnRequest[] = []
+    const engine_for = (streaming: boolean): ReturnType<typeof create_engine> =>
+      create_engine({
+        providers: { plain_native: {} },
+        custom_providers: {
+          plain_native: () => ({
+            kind: 'native',
+            name: 'plain_native',
+            invoke_turn: async (req) => {
+              requests.push(req)
+              return {
+                text: 'whole',
+                tool_calls: [],
+                finish_reason: 'stop',
+                usage: { input_tokens: 1, output_tokens: 1 },
+              }
+            },
+            supports: (capability) => streaming || capability !== 'streaming',
+          }),
+        },
+      })
+    await engine_for(true).generate({ model: 'm', prompt: 'hi' })
+    const whole = await engine_for(false).generate({ model: 'm', prompt: 'hi' })
+    expect(requests.map((req) => [req.stream, 'dispatch_chunk' in req])).toStrictEqual([
+      [true, true],
+      [false, false],
+    ])
+    expect(whole.content).toBe('whole')
+    expect(whole.steps[0]?.timing?.first_chunk_ms).toBeUndefined()
   })
 
   it('drives the tool loop through a native adapter', async () => {

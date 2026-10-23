@@ -113,7 +113,7 @@ afterEach(() => {
 })
 
 describe('StepTiming on the engine loop', () => {
-  it('stamps started_at and duration_ms around a non-streamed turn', async () => {
+  it('stamps started_at and duration_ms around a turn that streams no chunk', async () => {
     const { trajectory, records } = make_recorder()
     const engine = make_engine(async () => {
       advance(250)
@@ -126,7 +126,8 @@ describe('StepTiming on the engine loop', () => {
       retry: NO_RETRY,
       trajectory,
     })
-    // Exact equality also pins first_chunk_ms ABSENT on a non-streamed turn.
+    // The fake dispatches no chunk, so exact equality also pins first_chunk_ms
+    // absent on a turn that streamed nothing.
     expect(result.steps[0]?.timing).toEqual({ started_at: T0, duration_ms: 250 })
     // The full flat event any TrajectoryLogger (and the OTel bridge) receives;
     // `ts` comes from the engine's with_timestamps wrapper at emission.
@@ -173,6 +174,34 @@ describe('StepTiming on the engine loop', () => {
     const received = records.find((e) => e.kind === 'response_received')
     expect(received?.['first_chunk_ms']).toBe(100)
     expect(received?.['started_at']).toBe(T0)
+  })
+
+  it("measures a retried turn's first_chunk_ms from its own attempt, with no consumer", async () => {
+    let attempts = 0
+    const engine = make_engine(async (req) => {
+      attempts += 1
+      advance(attempts === 1 ? 100 : 40)
+      await req.dispatch_chunk?.({ kind: 'text', text: 'a', step_index: req.step_index })
+      if (attempts === 1) {
+        advance(300)
+        throw Object.assign(new Error('connection reset'), { kind: 'network' })
+      }
+      advance(10)
+      return text_turn('a')
+    })
+    const result = await engine.generate({
+      provider: PROVIDER,
+      model: MODEL,
+      prompt: 'hi',
+      retry: RETRY_NETWORK,
+    })
+    expect(attempts).toBe(2)
+    // The first attempt's chunk, 400 ms before this attempt began, counts for nothing.
+    expect(result.steps[0]?.timing).toEqual({
+      started_at: T0 + 400,
+      duration_ms: 50,
+      first_chunk_ms: 40,
+    })
   })
 
   it('times the successful attempt only: failed attempts and backoff excluded', async () => {

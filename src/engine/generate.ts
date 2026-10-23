@@ -277,6 +277,7 @@ type NativeInvokeConfig = {
   readonly temperature: number | undefined
   readonly max_tokens: number | undefined
   readonly top_p: number | undefined
+  readonly on_chunk_provided: boolean
 }
 
 type TurnDeadline = {
@@ -323,24 +324,27 @@ function arm_turn_timeout(
  * Engine-owned wrapper shared by both transports: one turn attempt inside
  * retry_with_policy. The catch ladder classifies by CAUSE, not
  * by the shape the transport happened to throw: on_chunk_error passes through,
- * then a genuine user abort wins, then any error once a chunk has flowed is a
- * non-retryable stream interruption, then a pre-chunk `turn_timeout_ms` expiry
- * is a retryable typed timeout, and only a below-loop aborted_error unrelated
- * to either passes through. Cause-first ordering is what keeps the two
- * transports in parity: the ai_sdk transport reports a mid-stream abort as an
- * aborted_error and the native one as a raw AbortError, so both must be read as
- * the same interruption rather than the ai_sdk timeout masquerading as a user
- * cancel. call_once receives the composed abort+timeout signal so the deadline
- * actually cancels the in-flight request. Adapters may swap `classify`, but
- * never the ladder itself: the engine owns retry, so a hidden adapter-level
- * retry would be invisible to anything relying on this ladder.
+ * then a genuine user abort wins, then any error once a chunk has reached a
+ * consumer is a non-retryable stream interruption, then a `turn_timeout_ms`
+ * expiry is a retryable typed timeout, and only a below-loop aborted_error
+ * unrelated to either passes through. With no consumer attached, nothing was
+ * delivered that a retry would repeat, so a mid-stream failure, a deadline
+ * expiry included, is classified as one before any chunk is. Cause-first
+ * ordering is what keeps the two transports in parity: the ai_sdk transport
+ * reports a mid-stream abort as an aborted_error and the native one as a raw
+ * AbortError, so both must be read as the same interruption rather than the
+ * ai_sdk timeout masquerading as a user cancel. call_once receives the
+ * composed abort+timeout signal so the deadline actually cancels the
+ * in-flight request. Adapters may swap `classify`, but never the ladder
+ * itself: the engine owns retry, so a hidden adapter-level retry would be
+ * invisible to anything relying on this ladder.
  *
  * The wrapper also stamps StepTiming here, and only here, because this is the
  * one place that can see attempt boundaries: started_at re-stamps at every
  * attempt entry, so failed attempts and backoff waits never inflate
  * duration_ms. `first_chunk_at` (the builder's Date.now() from its first
- * dispatched chunk) can only belong to the returning attempt, since any
- * failure after a chunk has flowed is non-retryable by the ladder below.
+ * dispatched chunk) belongs to the returning attempt, since the builder
+ * clears it as each attempt starts.
  */
 function retry_turn(
   call_once: (turn_abort: AbortSignal) => Promise<TurnResult>,
@@ -350,8 +354,9 @@ function retry_turn(
   classify: (err: unknown) => unknown,
   turn_timeout_ms: number | undefined,
   trajectory: TrajectoryLogger | undefined,
+  on_chunk_provided: boolean,
 ): Promise<TurnResult> {
-  const has_streamed = (): boolean => first_chunk_at() !== undefined
+  const has_streamed = (): boolean => on_chunk_provided && first_chunk_at() !== undefined
   return retry_with_policy(
     async () => {
       const started_at = Date.now()
@@ -370,20 +375,20 @@ function retry_turn(
             step_index: args.step_index,
           })
         }
-        // Any failure once a chunk has flowed is a non-retryable stream
-        // interruption, a deadline expiry included (a retry would re-emit
-        // output the consumer already saw). Checked before the aborted_error
-        // pass-through so a mid-stream ai_sdk abort classifies here, in parity
-        // with the native transport's raw AbortError.
+        // Any failure once a chunk has reached a consumer is a non-retryable
+        // stream interruption, a deadline expiry included (a retry would
+        // re-emit output the consumer already saw). Checked before the
+        // aborted_error pass-through so a mid-stream ai_sdk abort classifies
+        // here, in parity with the native transport's raw AbortError.
         if (has_streamed()) {
           const message = err instanceof Error ? err.message : String(err)
           throw new provider_error(`stream interrupted: ${message}`, {
             cause_kind: 'unknown',
           })
         }
-        // A pre-chunk deadline expiry is a retryable typed timeout, whatever
-        // shape the transport threw when its signal aborted. turn_timeout_ms is
-        // defined whenever timed_out() can be true.
+        // A deadline expiry that no consumer saw output from is a retryable
+        // typed timeout, whatever shape the transport threw when its signal
+        // aborted. turn_timeout_ms is defined whenever timed_out() can be true.
         if (deadline.timed_out()) {
           throw new turn_timeout_error(turn_timeout_ms ?? 0, args.step_index)
         }
@@ -420,9 +425,10 @@ function build_step_timing(
  * Build the ai_sdk-transport InvokeOnce: the SDK turn built by
  * providers/ai_sdk/invoke.ts behind the same engine-owned retry_turn wrapper
  * the native path uses. The SDK call body lives behind the seam; this builder
- * owns only retry and the streamed-output tracking that makes a mid-stream
- * failure a non-retryable interruption (the same first-chunk stamp doubles as
- * StepTiming.first_chunk_ms).
+ * owns only retry and the streamed-output tracking that makes a failure after
+ * a chunk reached a consumer a non-retryable interruption (the same
+ * first-chunk stamp doubles as StepTiming.first_chunk_ms). This transport
+ * streams only when a consumer is attached.
  */
 function build_ai_sdk_invoke(cfg: AiSdkInvokeConfig): InvokeOnce {
   return async (args: InvokeOnceArgs): Promise<TurnResult> => {
@@ -446,6 +452,8 @@ function build_ai_sdk_invoke(cfg: AiSdkInvokeConfig): InvokeOnce {
       classify_provider_error,
       cfg.turn_timeout_ms,
       cfg.trajectory,
+      // This transport streams only for a consumer, so a streamed turn always has one.
+      args.stream,
     )
   }
 }
@@ -453,16 +461,22 @@ function build_ai_sdk_invoke(cfg: AiSdkInvokeConfig): InvokeOnce {
 /**
  * Build the native-transport InvokeOnce: maps the loop's InvokeOnceArgs to a
  * TurnRequest and calls adapter.invoke_turn inside the same retry_turn
- * wrapper as the ai_sdk path. The adapter sees a child abort signal so a
- * throwing on_chunk consumer cancels the in-flight request, and its chunk
- * emissions flow through the shared dispatcher, which is what lets
- * run_tool_loop treat both transports identically.
+ * wrapper as the ai_sdk path. Every turn asks for a stream when the adapter
+ * supports streaming, whether or not a consumer is attached, so a long turn's
+ * headers arrive before fetch's 300-second limit, and the adapter gets a
+ * `dispatch_chunk` that stamps the first chunk of each attempt and hands
+ * every chunk to the shared dispatcher, which passes it on only to a
+ * consumer. The adapter sees a child abort signal so a throwing on_chunk
+ * consumer cancels the in-flight request, which is what lets run_tool_loop
+ * treat both transports identically.
  */
 function build_native_invoke(cfg: NativeInvokeConfig): InvokeOnce {
   const classify = cfg.adapter.classify_error ?? classify_provider_error
+  const streams = cfg.adapter.supports('streaming')
   return async (args: InvokeOnceArgs): Promise<TurnResult> => {
     let first_chunk_at: number | undefined
     const call_once = async (turn_abort: AbortSignal): Promise<TurnResult> => {
+      first_chunk_at = undefined
       // turn_abort is the composed user-abort + turn_timeout deadline; the
       // internal controller adds one more reason to cancel (a throwing chunk
       // consumer) without losing either of those.
@@ -492,7 +506,7 @@ function build_native_invoke(cfg: NativeInvokeConfig): InvokeOnce {
         messages,
         tools: args.tools,
         abort: internal_controller.signal,
-        stream: args.stream,
+        stream: streams,
         model_id: cfg.model_id,
         effort: cfg.effort,
         ...(system !== undefined ? { system } : {}),
@@ -503,7 +517,7 @@ function build_native_invoke(cfg: NativeInvokeConfig): InvokeOnce {
         ...(cfg.temperature !== undefined ? { temperature: cfg.temperature } : {}),
         ...(cfg.max_tokens !== undefined ? { max_tokens: cfg.max_tokens } : {}),
         ...(cfg.top_p !== undefined ? { top_p: cfg.top_p } : {}),
-        ...(args.stream ? { dispatch_chunk } : {}),
+        ...(streams ? { dispatch_chunk } : {}),
       }
       try {
         return await cfg.adapter.invoke_turn(req)
@@ -525,6 +539,7 @@ function build_native_invoke(cfg: NativeInvokeConfig): InvokeOnce {
       classify,
       cfg.turn_timeout_ms,
       cfg.trajectory,
+      cfg.on_chunk_provided,
     )
   }
 }
@@ -1168,6 +1183,7 @@ export async function generate<T = string>(
       temperature: opts.temperature,
       max_tokens: opts.max_tokens,
       top_p: opts.top_p,
+      on_chunk_provided,
     })
   }
 

@@ -1190,7 +1190,7 @@ describe('streaming invoke_turn', () => {
   })
 
   it('throws provider_error when the streaming response has no body', async () => {
-    stub_fetch(new Response(null, { status: 200 }))
+    stub_fetch(new Response(null, { status: 200, headers: { 'content-type': 'text/event-stream' } }))
     const adapter = create_openai_compatible_adapter(make_dialect())
     await expect(
       adapter.invoke_turn(make_req({ stream: true, dispatch_chunk: async () => {} })),

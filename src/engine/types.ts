@@ -80,10 +80,13 @@ export type SalvageFormat = 'hermes' | 'json' | 'qwen_xml'
  * Wall-clock timing of one step's provider round-trip, measured by the engine
  * around the successful turn attempt: failed attempts and retry backoff are
  * excluded, as is tool execution (that is ToolCallRecord.duration_ms).
- * `first_chunk_ms` is present only on streamed turns: milliseconds from the
- * attempt start to the first StreamChunk the turn dispatched (a token, a
- * reasoning delta, or a tool-call part, never the transport's stream-open
- * framing). `duration_ms - first_chunk_ms` is the window the model spent
+ * `first_chunk_ms` is present on every turn that dispatched a chunk:
+ * milliseconds from the attempt start to the first StreamChunk the turn
+ * dispatched (a token, a reasoning delta, or a tool-call part, never the
+ * transport's stream-open framing). A native turn streams whenever its
+ * adapter supports streaming, consumer or not, so it carries one, while a
+ * whole-body turn (an ai_sdk turn with no consumer, or a native adapter that
+ * doesn't stream) has none. `duration_ms - first_chunk_ms` is the window the model spent
  * emitting output, as long as the turn streams output while it generates it.
  * A provider that sends a tool call whole once it has generated it leaves
  * that window at the turn's last few milliseconds, which is why `throughput()`,
@@ -95,7 +98,7 @@ export type StepTiming = {
   started_at: number
   /** Wall-clock ms from attempt start to the turn result. */
   duration_ms: number
-  /** Streamed turns only: ms from attempt start to the first dispatched chunk. */
+  /** Turns that dispatched a chunk: ms from attempt start to the first one. */
   first_chunk_ms?: number
 }
 
@@ -336,7 +339,10 @@ export type TurnResult = {
  * generate.ts assembles it from GenerateOptions plus engine defaults (resolved
  * system, effort, merged provider_options, sampling params). When `stream` is
  * true `dispatch_chunk` is defined and the adapter MUST emit StreamChunks
- * through it while still returning the fully aggregated TurnResult.
+ * through it while still returning the fully aggregated TurnResult. The
+ * engine sets `stream` on every turn to an adapter that supports streaming,
+ * whether or not the caller passed `on_chunk`, and passes the chunks on only
+ * to a consumer.
  */
 export type TurnRequest = {
   readonly step_index: number
@@ -398,9 +404,9 @@ export type GenerateOptions<t = string> = {
   max_steps?: number
   /**
    * Per-turn wall-clock budget in milliseconds. When set, the engine composes
-   * a timeout signal with `abort` around every turn; expiry before
-   * any chunk streams throws a retryable timeout, while an expiry after chunks
-   * have flowed becomes a non-retryable stream interruption. undefined (the
+   * a timeout signal with `abort` around every turn; an expiry throws a
+   * retryable timeout, unless a chunk has already reached `on_chunk`, in which
+   * case it becomes a non-retryable stream interruption. undefined (the
    * default) leaves turns unbounded. Must be > 0.
    */
   turn_timeout_ms?: number
