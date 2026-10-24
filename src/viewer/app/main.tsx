@@ -98,6 +98,11 @@ function store_density(on: boolean): void {
   }
 }
 
+/** Writes a turn the inspector copied to the clipboard, a browser global this module owns. */
+async function copy_text(text: string): Promise<void> {
+  await navigator.clipboard.writeText(text)
+}
+
 type Feed = {
   readonly session: Session
   readonly received_at_ms: number | null
@@ -130,6 +135,8 @@ function main(): void {
     held() === null ? feed().session : session_at(frames(), index()),
   )
   const received_at_ms = createMemo(() => (held() === null ? feed().received_at_ms : null))
+  // The turn inspector reads the same prefix the selected session folded.
+  const events = createMemo(() => (held() === null ? frames() : frames().slice(0, index() + 1)))
 
   const plan = createMemo(() => plan_for(timeline().times, playback()))
   const play_position = createMemo(() => {
@@ -226,6 +233,8 @@ function main(): void {
     () => (
       <Canvas
         session={session()}
+        events={events()}
+        copy_text={copy_text}
         status={status()}
         viewport={viewport()}
         received_at_ms={received_at_ms()}

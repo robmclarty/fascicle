@@ -34,6 +34,10 @@ import { Stage, type Viewport } from './stage'
 
 export type CanvasProps = {
   readonly session: Session
+  /** The events the session folded, which the turn inspector reads. */
+  readonly events: ReadonlyArray<unknown>
+  /** Writes a copied turn to the clipboard. */
+  readonly copy_text: (text: string) => Promise<void>
   readonly status: SseStatus
   readonly viewport: Viewport
   /** When the newest frame arrived, on the same clock as `now_ms`. */
@@ -143,7 +147,12 @@ export function Canvas(props: CanvasProps): JSX.Element {
           </For>
         </div>
       </header>
-      <Stage session={props.session} viewport={props.viewport} />
+      <Stage
+        session={props.session}
+        viewport={props.viewport}
+        events={props.events}
+        copy_text={props.copy_text}
+      />
       <Show when={props.timeline.count > 0}>
         <Scrubber
           timeline={props.timeline}

@@ -163,10 +163,11 @@ body {
 }
 
 /* The chrome chip: mono meta-register controls with no accent. One recipe
-   serves the return-to-live affordance and the playback dials, so the two
-   ends of the canvas cannot drift apart. */
+   serves the return-to-live affordance, the playback dials, and the turn
+   inspector's controls, so the ends of the canvas cannot drift apart. */
 .return-live,
-.pb-button {
+.pb-button,
+.td-chip {
   padding: 5px 12px;
   border: 1px solid rgb(246 243 234 / 22%);
   border-radius: 3px;
@@ -182,7 +183,8 @@ body {
 }
 
 .return-live:hover,
-.pb-button:hover {
+.pb-button:hover,
+.td-chip:hover {
   border-color: rgb(246 243 234 / 40%);
   color: rgb(246 243 234 / 88%);
 }
@@ -672,6 +674,251 @@ body {
 .canvas[data-chrome='hidden'] .return-live {
   opacity: 0;
   pointer-events: none;
+}
+
+/* The turns badge: the chrome chip's outline drawn into the stage under a
+   node's meta line, the one control the geometry carries. It stays in the
+   white family, since amber marks only where the run is alive, and an open
+   inspector brightens it the way an engaged dial brightens. */
+.turns-badge {
+  cursor: pointer;
+  outline: none;
+}
+
+.turns-badge-box {
+  fill: var(--ground);
+  stroke: rgb(246 243 234 / 22%);
+  stroke-width: 1;
+}
+
+.turns-badge-text {
+  font: 500 9.5px var(--mono);
+  fill: rgb(246 243 234 / 62%);
+}
+
+.turns-badge:hover .turns-badge-box,
+.turns-badge:focus-visible .turns-badge-box {
+  stroke: rgb(246 243 234 / 40%);
+}
+
+.turns-badge:hover .turns-badge-text,
+.turns-badge:focus-visible .turns-badge-text {
+  fill: rgb(246 243 234 / 88%);
+}
+
+.turns-badge[data-open] .turns-badge-box {
+  stroke: rgb(246 243 234 / 45%);
+}
+
+.turns-badge[data-open] .turns-badge-text {
+  fill: rgb(246 243 234 / 92%);
+}
+
+/* The turn inspector: a drawer on the same warm ground, ruled off the stage
+   by a hairline, between the header and the time spine so neither is
+   covered. Its width is set inline, since the stage fits the flow beside it. Everything inside is the mono register, and hierarchy
+   is opacity: the selected turn and the content at the top of the ramp, the
+   captions near the group label's 35%. */
+.turns-drawer {
+  position: absolute;
+  top: 92px;
+  right: 0;
+  bottom: 96px;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  background: var(--ground);
+  border: 1px solid rgb(243 240 233 / 10%);
+  border-right: none;
+  box-shadow: -32px 0 64px rgb(5 3 1 / 55%);
+  font-family: var(--mono);
+  color: var(--ink);
+  scrollbar-color: rgb(243 240 233 / 18%) transparent;
+  scrollbar-width: thin;
+}
+
+.td-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 16px;
+  padding: 22px 28px 14px;
+}
+
+.td-title {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  min-width: 0;
+}
+
+.td-node {
+  font: 600 15px var(--sans);
+  color: rgb(243 240 233 / 92%);
+}
+
+.td-meta {
+  font: 500 11px var(--mono);
+  letter-spacing: 0.14em;
+  color: rgb(243 240 233 / 42%);
+  white-space: nowrap;
+}
+
+.td-sep {
+  padding: 0 8px;
+  opacity: 0.5;
+}
+
+/* A model id is sent verbatim, so it is shown verbatim, untracked. */
+.td-model {
+  letter-spacing: 0.02em;
+}
+
+.td-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.td-list {
+  list-style: none;
+  margin: 0;
+  padding: 4px 28px 14px;
+  max-height: 28%;
+  overflow-y: auto;
+  border-bottom: 1px solid rgb(243 240 233 / 8%);
+}
+
+/* A turn row: the step, its tokens, and its cache hit in fixed columns, so
+   the numbers line up down the list. The selected row lifts to the top of
+   the ramp and takes a hairline tick at its edge. */
+.td-turn {
+  display: grid;
+  grid-template-columns: 88px 240px 1fr;
+  width: 100%;
+  padding: 6px 0 6px 12px;
+  border: none;
+  border-left: 1.5px solid transparent;
+  background: transparent;
+  font: 500 11px var(--mono);
+  letter-spacing: 0.14em;
+  color: rgb(243 240 233 / 45%);
+  text-align: left;
+  cursor: pointer;
+}
+
+.td-turn:hover {
+  color: rgb(243 240 233 / 75%);
+}
+
+.td-turn[data-selected] {
+  color: rgb(243 240 233 / 92%);
+  border-left-color: rgb(243 240 233 / 60%);
+}
+
+.td-body {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+
+.td-col {
+  min-width: 0;
+  overflow-y: auto;
+  padding: 18px 28px 28px;
+}
+
+.td-col + .td-col {
+  border-left: 1px solid rgb(243 240 233 / 8%);
+}
+
+.td-sec {
+  margin: 0 0 16px;
+  font: 500 11px var(--mono);
+  letter-spacing: 0.24em;
+  color: rgb(243 240 233 / 30%);
+}
+
+.td-msg {
+  margin-bottom: 20px;
+}
+
+.td-msg-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+
+.td-label,
+.td-flag {
+  font: 500 10.5px var(--mono);
+  letter-spacing: 0.18em;
+  color: rgb(243 240 233 / 38%);
+}
+
+.td-name-ref {
+  margin-left: 10px;
+  letter-spacing: 0.02em;
+  color: rgb(243 240 233 / 72%);
+}
+
+/* The one place ember reaches the drawer: the ✕ beside a tool result that
+   went back flagged as an error, a mark and never a fill. */
+.td-error {
+  color: var(--ember);
+}
+
+.td-block + .td-block {
+  margin-top: 10px;
+}
+
+.td-block > .td-label {
+  display: block;
+  margin-bottom: 4px;
+}
+
+.td-text {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: 400 12px/1.6 var(--mono);
+  color: rgb(243 240 233 / 80%);
+}
+
+.td-code {
+  padding-left: 12px;
+  border-left: 1px solid rgb(243 240 233 / 10%);
+  font-size: 11.5px;
+  color: rgb(243 240 233 / 62%);
+}
+
+.td-fold {
+  margin-top: 4px;
+  padding: 2px 0;
+  border: none;
+  background: transparent;
+  font: 500 10.5px var(--mono);
+  letter-spacing: 0.18em;
+  color: rgb(243 240 233 / 45%);
+  cursor: pointer;
+}
+
+.td-fold:hover {
+  color: rgb(243 240 233 / 80%);
+}
+
+.td-tools {
+  margin: 0;
+  font: 400 12px/1.6 var(--mono);
+  color: rgb(243 240 233 / 72%);
+}
+
+.td-empty {
+  margin: 0;
+  font: 500 11px var(--mono);
+  letter-spacing: 0.18em;
+  color: rgb(243 240 233 / 30%);
 }
 
 /* Under reduced motion every looping animation (the marquee, the halo pulse,

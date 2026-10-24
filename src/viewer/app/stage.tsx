@@ -1,4 +1,4 @@
-import { For, Index, Match, Show, Switch, createMemo, type JSX } from 'solid-js'
+import { For, Index, Match, Show, Switch, createMemo, createSignal, type JSX } from 'solid-js'
 import { TOKENS, fit_viewport, layout } from './lib/layout'
 import {
   BLOOM_RADIUS,
@@ -9,6 +9,14 @@ import {
   type SceneSegment,
   type Session,
 } from './lib/scene'
+import {
+  drawer_view,
+  read_turns,
+  turns_badge,
+  turns_by_node,
+  type TurnsBadge,
+} from './lib/turns'
+import { TurnDrawer } from './turns'
 
 /*
  * The stage: the metro geometry drawn into the canvas's SVG layer.
@@ -22,6 +30,11 @@ import {
  * annotation cards over it all. The
  * one-shot emit bloom is re-keyed off the fold's count so each increment
  * re-creates the element and restarts its animation.
+ *
+ * A node whose model calls captured their turns wears a turns badge under
+ * its meta line, and the badge opens the turn inspector beside the stage.
+ * The turns are read out of the same event prefix the session folds, so a
+ * scrubbed canvas inspects only the turns it has reached.
  *
  * `build_scene` returns fresh records on every event, so a `<For>` over them
  * would key on objects that never repeat and rebuild every element per event,
@@ -41,6 +54,10 @@ export type Viewport = {
 export type StageProps = {
   readonly session: Session
   readonly viewport: Viewport
+  /** The events the session folded, which the turn inspector reads its turns from. */
+  readonly events: ReadonlyArray<unknown>
+  /** Writes a copied turn to the clipboard. */
+  readonly copy_text: (text: string) => Promise<void>
 }
 
 /** The half-length of an ember ✕'s arms, on a retry circle and a scar alike. */
@@ -165,6 +182,52 @@ function LiveSegment(props: { readonly scene_segment: SceneSegment }): JSX.Eleme
   )
 }
 
+/**
+ * A node's turns badge: the chrome chip's outlined box in the white family,
+ * a button that opens the node's captured turns, brighter while they're open.
+ */
+function TurnsBadgeMark(props: {
+  readonly badge: TurnsBadge
+  readonly open: boolean
+  readonly on_toggle: () => void
+}): JSX.Element {
+  return (
+    <g
+      class="turns-badge"
+      data-testid="turns-badge"
+      data-open={props.open ? 'true' : undefined}
+      role="button"
+      tabindex="0"
+      aria-label={`${props.badge.label} captured`}
+      aria-expanded={props.open}
+      onClick={() => props.on_toggle()}
+      onKeyDown={(event) => {
+        if (event.key !== 'Enter') return
+        props.on_toggle()
+        event.preventDefault()
+      }}
+    >
+      <rect
+        class="turns-badge-box"
+        x={props.badge.x}
+        y={props.badge.y}
+        width={props.badge.width}
+        height={props.badge.height}
+        rx={3}
+      />
+      <text
+        class="turns-badge-text"
+        x={props.badge.text_x}
+        y={props.badge.text_y}
+        textLength={props.badge.text_length}
+        lengthAdjust="spacing"
+      >
+        {props.badge.label}
+      </text>
+    </g>
+  )
+}
+
 /** The SVG stage: segments, pucks, labels, and the light, all under one fit. */
 export function Stage(props: StageProps): JSX.Element {
   const structure = createMemo(() => props.session.structure)
@@ -175,240 +238,278 @@ export function Stage(props: StageProps): JSX.Element {
       .nodes.filter((node) => node.status === 'active')
       .map((node) => node.glyph),
   )
+  const turns = createMemo(() =>
+    turns_by_node(read_turns(props.events), props.session.state.spans),
+  )
+  const [open, set_open] = createSignal<string | null>(null)
+  const toggle = (id: string): void => {
+    set_open(open() === id ? null : id)
+  }
+  const drawer = createMemo(() =>
+    drawer_view(
+      open(),
+      turns(),
+      scene().nodes.map((node) => node.glyph),
+      props.viewport.width,
+    ),
+  )
+  // An open drawer takes the window's right side, so the flow fits beside it.
   const fit = createMemo(() =>
-    fit_viewport(flow(), props.viewport.width, props.viewport.height),
+    fit_viewport(flow(), props.viewport.width - (drawer()?.width ?? 0), props.viewport.height),
   )
   return (
-    <svg class="stage" data-testid="stage" fill="none">
-      <defs>
-        <radialGradient id="halo">
-          <stop offset="0%" stop-color="#FFAC33" stop-opacity="0.5" />
-          <stop offset="45%" stop-color="#FFAC33" stop-opacity="0.16" />
-          <stop offset="78%" stop-color="#FFAC33" stop-opacity="0" />
-        </radialGradient>
-        <radialGradient id="bloom">
-          <stop offset="0%" stop-color="#FFAC33" stop-opacity="0.055" />
-          <stop offset="70%" stop-color="#FFAC33" stop-opacity="0" />
-        </radialGradient>
-        <filter id="glow-2" x="-60%" y="-60%" width="220%" height="220%">
-          <feGaussianBlur stdDeviation="2" />
-        </filter>
-        <filter id="glow-4" x="-60%" y="-60%" width="220%" height="220%">
-          <feGaussianBlur stdDeviation="4" />
-        </filter>
-      </defs>
-      <g
-        transform={`translate(${fit().offset_x} ${fit().offset_y}) scale(${fit().scale})`}
-      >
-        <For each={active_glyphs()}>
-          {(glyph) => (
-            <circle class="bloom" cx={glyph.center.x} cy={glyph.center.y} r={BLOOM_RADIUS} />
-          )}
-        </For>
-        <g class="scaffold" data-testid="scaffold">
-          <Index each={scene().segments}>
-            {(scene_segment) => (
-              <Show
-                when={scene_segment().state === 'live'}
-                fallback={
-                  <path
-                    class={
-                      scene_segment().state === 'traversed'
-                        ? 'seg seg-traversed'
-                        : 'seg seg-unbuilt'
-                    }
-                    d={scene_segment().segment.path}
-                    data-role={scene_segment().segment.role}
-                    data-to={scene_segment().segment.to}
-                    data-state={scene_segment().state}
-                  />
-                }
+    <>
+      <svg class="stage" data-testid="stage" fill="none">
+        <defs>
+          <radialGradient id="halo">
+            <stop offset="0%" stop-color="#FFAC33" stop-opacity="0.5" />
+            <stop offset="45%" stop-color="#FFAC33" stop-opacity="0.16" />
+            <stop offset="78%" stop-color="#FFAC33" stop-opacity="0" />
+          </radialGradient>
+          <radialGradient id="bloom">
+            <stop offset="0%" stop-color="#FFAC33" stop-opacity="0.055" />
+            <stop offset="70%" stop-color="#FFAC33" stop-opacity="0" />
+          </radialGradient>
+          <filter id="glow-2" x="-60%" y="-60%" width="220%" height="220%">
+            <feGaussianBlur stdDeviation="2" />
+          </filter>
+          <filter id="glow-4" x="-60%" y="-60%" width="220%" height="220%">
+            <feGaussianBlur stdDeviation="4" />
+          </filter>
+        </defs>
+        <g
+          transform={`translate(${fit().offset_x} ${fit().offset_y}) scale(${fit().scale})`}
+        >
+          <For each={active_glyphs()}>
+            {(glyph) => (
+              <circle class="bloom" cx={glyph.center.x} cy={glyph.center.y} r={BLOOM_RADIUS} />
+            )}
+          </For>
+          <g class="scaffold" data-testid="scaffold">
+            <Index each={scene().segments}>
+              {(scene_segment) => (
+                <Show
+                  when={scene_segment().state === 'live'}
+                  fallback={
+                    <path
+                      class={
+                        scene_segment().state === 'traversed'
+                          ? 'seg seg-traversed'
+                          : 'seg seg-unbuilt'
+                      }
+                      d={scene_segment().segment.path}
+                      data-role={scene_segment().segment.role}
+                      data-to={scene_segment().segment.to}
+                      data-state={scene_segment().state}
+                    />
+                  }
+                >
+                  <LiveSegment scene_segment={scene_segment()} />
+                </Show>
+              )}
+            </Index>
+          </g>
+          <Index each={scene().tick_lanes}>
+            {(lane) => (
+              <g class="tick-lane" data-owner={lane().owner} data-testid="tick-lane">
+                <Index each={lane().ticks}>{(tick) => <Tick tick={tick()} />}</Index>
+                <Index each={lane().decades}>
+                  {(decade) => (
+                    <text class="tick-decade" x={decade().x} y={decade().y}>
+                      {decade().value}
+                    </text>
+                  )}
+                </Index>
+              </g>
+            )}
+          </Index>
+          <For each={active_glyphs()}>
+            {(glyph) => (
+              <circle class="halo" cx={glyph.center.x} cy={glyph.center.y} r={HALO_RADIUS} />
+            )}
+          </For>
+          <Index each={scene().nodes}>
+            {(node) => (
+              <g
+                class="node"
+                data-status={node().status}
+                data-scar={node().scar === null ? undefined : 'true'}
+                data-node-id={node().glyph.id}
+                data-testid="node"
               >
-                <LiveSegment scene_segment={scene_segment()} />
-              </Show>
+                <Show
+                  when={node().scar}
+                  fallback={
+                    <circle
+                      class="puck"
+                      cx={node().glyph.center.x}
+                      cy={node().glyph.center.y}
+                      r={
+                        node().status === 'active'
+                          ? node().glyph.radius + 0.5
+                          : node().glyph.radius
+                      }
+                    />
+                  }
+                >
+                  {(mark) => <ScarPuck center={node().glyph.center} mark={mark()} />}
+                </Show>
+                <Show when={node().status === 'active'}>
+                  <circle
+                    class="puck-core"
+                    cx={node().glyph.center.x}
+                    cy={node().glyph.center.y}
+                    r={2.5}
+                  />
+                </Show>
+                <Show when={node().status === 'suspended'}>
+                  <For each={[-PAUSE_BAR_DX, PAUSE_BAR_DX]}>
+                    {(dx) => (
+                      <line
+                        class="pause-bar"
+                        x1={node().glyph.center.x + dx}
+                        y1={node().glyph.center.y - PAUSE_BAR_HALF}
+                        x2={node().glyph.center.x + dx}
+                        y2={node().glyph.center.y + PAUSE_BAR_HALF}
+                      />
+                    )}
+                  </For>
+                </Show>
+                <Show keyed when={node().emits > 0 ? node().emits : null}>
+                  <circle
+                    class="emit-bloom"
+                    cx={node().glyph.center.x}
+                    cy={node().glyph.center.y}
+                    r={EMIT_BLOOM_RADIUS}
+                  />
+                </Show>
+                <Show when={node().glyph.terminus}>
+                  <circle
+                    class="terminus-ring"
+                    cx={node().glyph.center.x}
+                    cy={node().glyph.center.y}
+                    r={TOKENS.terminus_ring_radius}
+                  />
+                </Show>
+                <text
+                  class="node-name"
+                  x={node().glyph.name_anchor.x}
+                  y={node().glyph.name_anchor.y}
+                >
+                  {node().glyph.label}
+                </text>
+                <text
+                  class="node-meta"
+                  x={node().glyph.meta_anchor.x}
+                  y={node().glyph.meta_anchor.y}
+                >
+                  {node().meta}
+                  <Show when={node().meta_fail}>
+                    {(fail) => (
+                      <>
+                        <tspan> · </tspan>
+                        <tspan class="meta-fail">{fail()}</tspan>
+                      </>
+                    )}
+                  </Show>
+                  <Show when={node().checkpoint}>
+                    <tspan class="meta-check"> ✓</tspan>
+                  </Show>
+                </text>
+                <Show when={turns().get(node().glyph.id)}>
+                  {(list) => (
+                    <TurnsBadgeMark
+                      badge={turns_badge(node().glyph.meta_anchor, list().length)}
+                      open={open() === node().glyph.id}
+                      on_toggle={() => toggle(node().glyph.id)}
+                    />
+                  )}
+                </Show>
+              </g>
+            )}
+          </Index>
+          <Index each={scene().fail_marks}>
+            {(mark) => (
+              <path class="fail-mark" d={cross_path(mark().x, mark().y, MARK_ARM)} />
+            )}
+          </Index>
+          <Index each={scene().junctions}>
+            {(junction) => (
+              <g class="junction" data-status={junction().status} data-testid="junction">
+                <circle
+                  class="puck"
+                  cx={junction().glyph.center.x}
+                  cy={junction().glyph.center.y}
+                  r={junction().glyph.radius}
+                />
+                <text
+                  class="junction-label"
+                  x={junction().glyph.label_anchor.x}
+                  y={junction().glyph.label_anchor.y}
+                >
+                  {junction().label}
+                </text>
+              </g>
+            )}
+          </Index>
+          <Index each={scene().group_labels}>
+            {(label) => (
+              <g class="group-label" data-owner={label().anchor.owner} data-testid="group-label">
+                <line
+                  class="group-tick"
+                  x1={label().anchor.tick.x}
+                  y1={label().anchor.tick.y}
+                  x2={label().anchor.tick.x + TOKENS.group_tick_length}
+                  y2={label().anchor.tick.y}
+                />
+                <text
+                  class="group-text"
+                  x={label().anchor.text_anchor.x}
+                  y={label().anchor.text_anchor.y}
+                >
+                  {label().text}
+                </text>
+              </g>
+            )}
+          </Index>
+          <Index each={scene().cards}>
+            {(card) => (
+              <g class="card" data-owner={card().owner} data-testid="card">
+                <Index each={card().lines}>
+                  {(line) => (
+                    <text
+                      class={line().role === 'title' ? 'card-title' : 'card-detail'}
+                      x={line().x}
+                      y={line().y}
+                    >
+                      <Index each={line().spans}>
+                        {(span) => (
+                          <tspan class={span().ember ? 'card-fail' : undefined}>
+                            {span().text}
+                          </tspan>
+                        )}
+                      </Index>
+                    </text>
+                  )}
+                </Index>
+                <path class="card-leader" d={card().leader} />
+                <circle class="card-dot" cx={card().dot.x} cy={card().dot.y} r={2.5} />
+              </g>
             )}
           </Index>
         </g>
-        <Index each={scene().tick_lanes}>
-          {(lane) => (
-            <g class="tick-lane" data-owner={lane().owner} data-testid="tick-lane">
-              <Index each={lane().ticks}>{(tick) => <Tick tick={tick()} />}</Index>
-              <Index each={lane().decades}>
-                {(decade) => (
-                  <text class="tick-decade" x={decade().x} y={decade().y}>
-                    {decade().value}
-                  </text>
-                )}
-              </Index>
-            </g>
-          )}
-        </Index>
-        <For each={active_glyphs()}>
-          {(glyph) => (
-            <circle class="halo" cx={glyph.center.x} cy={glyph.center.y} r={HALO_RADIUS} />
-          )}
-        </For>
-        <Index each={scene().nodes}>
-          {(node) => (
-            <g
-              class="node"
-              data-status={node().status}
-              data-scar={node().scar === null ? undefined : 'true'}
-              data-node-id={node().glyph.id}
-              data-testid="node"
-            >
-              <Show
-                when={node().scar}
-                fallback={
-                  <circle
-                    class="puck"
-                    cx={node().glyph.center.x}
-                    cy={node().glyph.center.y}
-                    r={
-                      node().status === 'active'
-                        ? node().glyph.radius + 0.5
-                        : node().glyph.radius
-                    }
-                  />
-                }
-              >
-                {(mark) => <ScarPuck center={node().glyph.center} mark={mark()} />}
-              </Show>
-              <Show when={node().status === 'active'}>
-                <circle
-                  class="puck-core"
-                  cx={node().glyph.center.x}
-                  cy={node().glyph.center.y}
-                  r={2.5}
-                />
-              </Show>
-              <Show when={node().status === 'suspended'}>
-                <For each={[-PAUSE_BAR_DX, PAUSE_BAR_DX]}>
-                  {(dx) => (
-                    <line
-                      class="pause-bar"
-                      x1={node().glyph.center.x + dx}
-                      y1={node().glyph.center.y - PAUSE_BAR_HALF}
-                      x2={node().glyph.center.x + dx}
-                      y2={node().glyph.center.y + PAUSE_BAR_HALF}
-                    />
-                  )}
-                </For>
-              </Show>
-              <Show keyed when={node().emits > 0 ? node().emits : null}>
-                <circle
-                  class="emit-bloom"
-                  cx={node().glyph.center.x}
-                  cy={node().glyph.center.y}
-                  r={EMIT_BLOOM_RADIUS}
-                />
-              </Show>
-              <Show when={node().glyph.terminus}>
-                <circle
-                  class="terminus-ring"
-                  cx={node().glyph.center.x}
-                  cy={node().glyph.center.y}
-                  r={TOKENS.terminus_ring_radius}
-                />
-              </Show>
-              <text
-                class="node-name"
-                x={node().glyph.name_anchor.x}
-                y={node().glyph.name_anchor.y}
-              >
-                {node().glyph.label}
-              </text>
-              <text
-                class="node-meta"
-                x={node().glyph.meta_anchor.x}
-                y={node().glyph.meta_anchor.y}
-              >
-                {node().meta}
-                <Show when={node().meta_fail}>
-                  {(fail) => (
-                    <>
-                      <tspan> · </tspan>
-                      <tspan class="meta-fail">{fail()}</tspan>
-                    </>
-                  )}
-                </Show>
-                <Show when={node().checkpoint}>
-                  <tspan class="meta-check"> ✓</tspan>
-                </Show>
-              </text>
-            </g>
-          )}
-        </Index>
-        <Index each={scene().fail_marks}>
-          {(mark) => (
-            <path class="fail-mark" d={cross_path(mark().x, mark().y, MARK_ARM)} />
-          )}
-        </Index>
-        <Index each={scene().junctions}>
-          {(junction) => (
-            <g class="junction" data-status={junction().status} data-testid="junction">
-              <circle
-                class="puck"
-                cx={junction().glyph.center.x}
-                cy={junction().glyph.center.y}
-                r={junction().glyph.radius}
-              />
-              <text
-                class="junction-label"
-                x={junction().glyph.label_anchor.x}
-                y={junction().glyph.label_anchor.y}
-              >
-                {junction().label}
-              </text>
-            </g>
-          )}
-        </Index>
-        <Index each={scene().group_labels}>
-          {(label) => (
-            <g class="group-label" data-owner={label().anchor.owner} data-testid="group-label">
-              <line
-                class="group-tick"
-                x1={label().anchor.tick.x}
-                y1={label().anchor.tick.y}
-                x2={label().anchor.tick.x + TOKENS.group_tick_length}
-                y2={label().anchor.tick.y}
-              />
-              <text
-                class="group-text"
-                x={label().anchor.text_anchor.x}
-                y={label().anchor.text_anchor.y}
-              >
-                {label().text}
-              </text>
-            </g>
-          )}
-        </Index>
-        <Index each={scene().cards}>
-          {(card) => (
-            <g class="card" data-owner={card().owner} data-testid="card">
-              <Index each={card().lines}>
-                {(line) => (
-                  <text
-                    class={line().role === 'title' ? 'card-title' : 'card-detail'}
-                    x={line().x}
-                    y={line().y}
-                  >
-                    <Index each={line().spans}>
-                      {(span) => (
-                        <tspan class={span().ember ? 'card-fail' : undefined}>
-                          {span().text}
-                        </tspan>
-                      )}
-                    </Index>
-                  </text>
-                )}
-              </Index>
-              <path class="card-leader" d={card().leader} />
-              <circle class="card-dot" cx={card().dot.x} cy={card().dot.y} r={2.5} />
-            </g>
-          )}
-        </Index>
-      </g>
-    </svg>
+      </svg>
+      <Show when={drawer()}>
+        {(view) => (
+          <TurnDrawer
+            name={view().name}
+            turns={view().turns}
+            width={view().width}
+            copy_text={props.copy_text}
+            on_close={() => set_open(null)}
+          />
+        )}
+      </Show>
+    </>
   )
 }

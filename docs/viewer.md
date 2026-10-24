@@ -224,6 +224,45 @@ is the run being honest about how little time passed.
 Turning the dial back off leaves the playhead where the walk stopped, so you
 can step into an interesting moment and then press play to watch the rest.
 
+## Turn Inspector
+
+When a model call runs with `capture` on (see
+[configuration.md](./configuration.md#generate-options)), its trajectory holds
+what each turn sent the model and what came back, and the canvas lets you read
+it. A node whose calls captured turns wears a small badge under its meta line,
+such as `3 TURNS`. Click the badge, or press Enter on it, and the turn
+inspector opens as a drawer on the right side of the canvas. The flow refits
+into the space that's left beside the drawer, so you can still reach every
+other badge, and clicking one of them moves the drawer to that node.
+
+The drawer lists the node's turns, one row to a turn, with its step, the tokens
+that went in and came out, and its cache hit when the turn read or wrote the
+prompt cache. It opens on the newest turn, which carries the whole conversation
+so far, and you can click any other row to read that one instead. On the left
+you see the request that the selected turn sent: the system prompt, the tool
+names, and then every message by role. A call's input and a tool's result read
+as JSON, and a tool result that went back flagged `is_error` carries the ember
+✕. On the right you see the reply that the provider returned, in the order that
+it sent the parts. Long content folds to its first few lines, and the control
+under it tells you how much it hides.
+
+`COPY TURN` copies the selected turn as JSON in the `CapturedTurn` shape, which
+is what `replay_turn` takes, so you can paste it into a script, change whatever
+you want to test, and send the turn again (see
+[api-reference.md](./api-reference.md#rebuilding-and-replaying-a-captured-turn)).
+`CLOSE` shuts the drawer, and so does Escape while your focus is inside it.
+
+The inspector reads your events the way `captured_turns` does. It folds each
+call's deltas back into the whole request that each turn sent, and it leaves
+out a turn whose request never reached the log (one that your redactor
+dropped, say) until the call sends a whole array again. If your log was cut off
+before a call's first turn, you see no badge for that call, since the call's
+settings and tools went with it. The drawer reads `request_sent` and
+`response_received`, so under `capture: 'wire'` you see the same turns, and
+each exact body stays in the log as `request_wire`. It also reads the prefix
+that the canvas folds, so when you scrub back, you see only the turns that the
+canvas has reached.
+
 ## The Compiled App
 
 The canvas is a compiled Solid app, built by Vite and served as static assets
