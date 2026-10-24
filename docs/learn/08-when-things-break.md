@@ -288,12 +288,25 @@ all sits the fallback, drawn as a path that the run never needed to take.
 A trajectory records where things happened, how long they took, how many tokens
 they used, and what they cost. It also holds your system prompts, once each,
 inside the flow's structure at the top of the file, so treat the file with the
-same care as your code. What it doesn't hold is the message sent on each call,
-or the model's reply. So when the problem is *what* a model
+same care as your code. What it doesn't hold, unless you ask, is the message
+sent on each call, or the model's reply. So when the problem is *what* a model
 said, go to the error instead. A `schema_validation_error` carries the model's
 raw reply on `raw_text`, and its complaints on `schema_issues`. Then copy the
 reply that caused the trouble into a stub, and you can reproduce the failure as
 many times as you like, for free, while you fix it.
+
+From Fascicle 0.17.0, you can ask. Give a model step `capture: 'turns'`, or
+set it in an engine's `defaults`, and the trajectory holds each model turn's
+request and reply as well. A model turn is one request to the provider and the
+reply that comes back, so each of the solver's model calls takes one, or two
+when the first answer fails the schema and the engine asks the model to fix it.
+The first request of a call goes in whole and each later one as the messages
+that it added, and `captured_turns` reads them back into whole requests. That
+puts a reply that failed the schema right beside the one that fixed it, and
+[What a Harness Does](../what-a-harness-does.md#what-the-model-saw) shows how
+to read a turn back and send it again. Capture stays off until you turn it on,
+because a captured request holds everything that your user typed, so a
+trajectory that captures needs even more care than one that doesn't.
 
 ## A Debugging Checklist
 

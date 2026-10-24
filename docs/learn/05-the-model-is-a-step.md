@@ -238,6 +238,26 @@ That's the payoff of everything being a `Step<i, o>`. It's why you can build a
 flow before you've chosen a model, test it without a network, and change
 providers without touching your logic.
 
+## The Model Remembers Nothing
+
+Look at the explanation step again. It hands the explainer the question as
+well as the answer, even though the extract step read that same question a
+moment earlier. That isn't waste. A model remembers nothing from one call to
+the next, so the explainer has never seen the question unless its own call
+sends it.
+
+Every time a `model_step` runs, the engine builds a fresh request for that one
+model call, out of your system prompt and the input that the step was handed.
+It sends the whole request, hands you the reply, and keeps nothing afterwards.
+The extract call and the explain call are two separate requests, and neither
+knows that the other happened. Leave the question out of the explain step's
+input and the model reads `Answer: 7`, with nothing to say seven of what, so it
+has to guess at the apples.
+
+So when a model step needs something, the flow hands it over on purpose, and
+that's the job a chain does here. [The next lesson](./06-going-live.md) shows
+you one of those requests on its way to a real provider.
+
 ## Break the Contract
 
 Change the stub's extract answer to `{ a: 'three', b: 4, op: 'add' }` and run

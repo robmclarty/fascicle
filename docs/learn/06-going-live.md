@@ -219,6 +219,69 @@ That's the main reason to build with Fascicle at all, and it's what lets you
 start cheap, try a bigger model when quality matters, or move to a local model
 when privacy does.
 
+## What Each Provider Was Sent
+
+The flow didn't change, but the request underneath it did. Providers don't all
+speak the same dialect, and the engine writes your model call in the one that
+the provider reads. Here's the body that the extract step sends to OpenRouter
+for the muffin question. OpenRouter speaks OpenAI's Chat Completions, so the
+system prompt rides in the array of messages, as a message with the role
+`system`:
+
+```json
+{
+  "model": "anthropic/claude-haiku-5.5",
+  "messages": [
+    {
+      "role": "system",
+      "content": "solver/extract\nRead an arithmetic word problem and pull out the two numbers and the one\noperation that answers it. Use \"subtract\" when something is taken away and\n\"divide\" when something is shared out. Reply with JSON only, shaped\nlike this: {\"a\": 10, \"b\": 2, \"op\": \"subtract\"}\n\nYou must respond with a single JSON value that conforms to this JSON Schema:\n\n{\"type\":\"object\",\"properties\":{\"a\":{\"type\":\"number\"},\"b\":{\"type\":\"number\"},\"op\":{\"type\":\"string\",\"enum\":[\"add\",\"subtract\",\"multiply\",\"divide\"]}},\"required\":[\"a\",\"b\",\"op\"],\"additionalProperties\":false}\n\nReturn ONLY the JSON value, with no markdown or commentary."
+    },
+    {
+      "role": "user",
+      "content": [{ "type": "text", "text": "A baker made 24 muffins and packed them equally into 6 boxes. How many muffins are in each box?" }]
+    }
+  ],
+  "stream": true,
+  "stream_options": { "include_usage": true }
+}
+```
+
+And here's the same model call with `FASCICLE_PROVIDER=anthropic`, which talks
+to Anthropic's Messages API. The system prompt moves out of the array into a
+field of its own, and `max_tokens` turns up, since every Anthropic request has
+to set it:
+
+```json
+{
+  "model": "claude-haiku-5-5",
+  "messages": [
+    {
+      "role": "user",
+      "content": [{ "type": "text", "text": "A baker made 24 muffins and packed them equally into 6 boxes. How many muffins are in each box?" }]
+    }
+  ],
+  "max_tokens": 4096,
+  "system": "solver/extract\nRead an arithmetic word problem and pull out the two numbers and the one\noperation that answers it. Use \"subtract\" when something is taken away and\n\"divide\" when something is shared out. Reply with JSON only, shaped\nlike this: {\"a\": 10, \"b\": 2, \"op\": \"subtract\"}\n\nYou must respond with a single JSON value that conforms to this JSON Schema:\n\n{\"type\":\"object\",\"properties\":{\"a\":{\"type\":\"number\"},\"b\":{\"type\":\"number\"},\"op\":{\"type\":\"string\",\"enum\":[\"add\",\"subtract\",\"multiply\",\"divide\"]}},\"required\":[\"a\",\"b\",\"op\"],\"additionalProperties\":false}\n\nReturn ONLY the JSON value, with no markdown or commentary.",
+  "stream": true
+}
+```
+
+Read either one and you've read everything the model was told. Your question
+went as a message with the role `user`, and your system prompt went word for
+word. The engine added an instruction to the end of it, which spells out the
+schema that you gave `model_step` as JSON Schema, and that's how the model
+learns the field names. `"stream": true` asks the provider to send its reply a
+piece at a time, and the engine puts the pieces back together before the step
+hands you the answer. On OpenRouter, `stream_options` asks for the token counts
+at the end of the stream.
+
+These are the bodies that Fascicle 0.17.0 sends. Its `capture` option recorded
+them, and [lesson 8](./08-when-things-break.md) comes back to it. Earlier
+releases send a little less. Before 0.17.0 neither body carries `stream`, and
+on 0.16.3 the system prompt stops at your own instructions, since the schema
+joined it in 0.16.4. [What a Harness Does](../what-a-harness-does.md#two-dialects-one-array)
+lays the two dialects side by side.
+
 ## What It Costs
 
 A live run of the solver makes two model calls, one to read the question and
