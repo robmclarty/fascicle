@@ -55,7 +55,7 @@ By the end of the session, the learner has done all of these:
 | 2:55 | the wrap-up | reading the friction log together |
 
 Run long on the early lessons if you need to. Lessons 1 to 4 are where the
-vocabulary forms, and a learner who has it can pick up lessons 8 to 13 on their
+vocabulary forms, and a learner who has it can pick up lessons 8 to 14 on their
 own.
 
 ## How to Run It

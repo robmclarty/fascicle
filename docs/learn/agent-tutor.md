@@ -73,7 +73,7 @@ missing `"type": "module"` shows up as an error about top-level await in the
 "cjs" output format. pnpm may report that it ignored esbuild's build scripts,
 which is harmless. pnpm may also install a slightly older Fascicle when its
 `minimumReleaseAge` setting holds a new release back, and anything from 0.15.0
-on is fine.
+on is fine until lesson 14, which needs 0.17.0.
 
 **1. A step.** *Goal:* wrap a function as a step and run it. *Introduces:*
 `step`, `run`, and `Step<i, o>`. *Keep out:* composers. *Check:* they can say
@@ -155,3 +155,18 @@ prompts as markdown, stage factories, a messages module, the diagram as a header
 comment, refactoring by following `tsc`, and updating a snapshot on purpose.
 *Check:* `flow.ts` holds nothing but Fascicle's words and names imported from
 other files.
+
+**14. Give the model hands.** *Goal:* a model step that calls tools, with a cap
+on its loop and a guard on the tool that writes. *Introduces:* `define_tool`,
+`tools` and `max_steps` on a model step, `make_loop_engine` and its
+`requests`, a failed call fed back with `is_error`, `tool_error_policy`,
+`model_call`'s `finish_reason`, `needs_approval` and `on_tool_approval`, and
+`capture` with `captured_turns`. *Keep out:* live runs, which you'd need their
+yes for anyway, MCP tools, and the ACP server. *Check:* they can say why each request in `requests` is longer than the
+one before it, and why a capped call's text isn't an answer. *Stumbles:* a
+0.16 install, whose `fascicle/testing` has no `make_loop_engine` (the import
+fails with "does not provide an export named"), a script that runs out because
+the loop asked for one more turn than they scripted, and a tool that needs
+approval with no handler, which throws `tool_approval_denied_error` rather than
+run. Before you chase any other stumble here, check their version with
+`pnpm list fascicle`, since a 0.16 install breaks every file in the lesson.

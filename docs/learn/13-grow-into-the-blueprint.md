@@ -299,23 +299,6 @@ plain modules. Copy them into your own app, and change their `files` globs to
 match its layout, when it's big enough that you'd like a machine to remember the
 rules for you.
 
-## Where to Go Next
-
-You know enough now to build real tools, and the rest of Fascicle's docs will
-read differently than they would have this morning.
-
-- [blueprint.md](../blueprint.md) is the full app architecture, with the
-  reasons behind each rule.
-- [leaf-arm-spine.md](../leaf-arm-spine.md) helps you choose the right
-  primitive at each layer.
-- [cookbook.md](../cookbook.md) has worked patterns for retries, fan-out,
-  judges, tool loops, and people in the loop.
-- [testing.md](../testing.md) covers the four stand-in engines in depth.
-- [troubleshooting.md](../troubleshooting.md) maps errors to their causes.
-- [examples/release-notes/](../../examples/release-notes/) is a whole agent in
-  one file, and [examples/pr-improve/](../../examples/pr-improve/) is the full
-  layout at work.
-
 ## With Your Agent
 
 > Read ../fascicle/docs/blueprint.md, then review my commit tool against it.
@@ -345,9 +328,8 @@ When the list looks right:
 - The compiler finds what a refactor broke, and the snapshot shows what it
   changed.
 
-That's the course. You started with a function that added two numbers, and
-you've finished with a model-backed tool that you'll use tomorrow, a method for
-turning ideas into flows, and a shared vocabulary with your agent. Go build
-something.
+Every model step that you've written so far has done one job and handed back
+an answer, in an order that your flow decided. The last lesson changes that.
+You'll give a model tools of its own, and it'll decide when to call them.
 
-[← From a Thought to a Flow](./12-from-a-thought-to-a-flow.md) · [Back to the course map](./README.md)
+[← From a Thought to a Flow](./12-from-a-thought-to-a-flow.md) · [Give the Model Hands →](./14-give-the-model-hands.md)

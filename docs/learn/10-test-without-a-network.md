@@ -129,8 +129,9 @@ different testing question:
 - **`make_loop_engine`** keeps the real engine and scripts only the model, so
   the tools you hand a model call really run, and it keeps every request that
   the model was sent. The solver's model calls use no tools, so none of these
-  tests needs it. It ships from 0.17.0, and [testing.md](../testing.md#make_loop_engine)
-  shows it at work.
+  tests needs it. It ships from 0.17.0, [lesson 14](./14-give-the-model-hands.md)
+  puts it to work, and [testing.md](../testing.md#make_loop_engine) covers the
+  rest.
 
 ## What the Tests Prove
 

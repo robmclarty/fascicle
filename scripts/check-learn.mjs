@@ -4,11 +4,11 @@
  *
  * A lesson holds everything a learner types: the files they write, the
  * commands they run, and what each command prints. The walk builds a
- * workbench from lesson 0, writes each lesson's files in order (with the
- * in-place edits that lessons 5, 8, 9, and 13 ask for), runs the commands,
- * and holds what they print to the lesson's text. Then it compiles and runs
- * the fragments that a lesson shows inside a larger file, each in the
- * context its lesson implies, and the agent primer's sketches.
+ * workbench from lesson 0, writes each lesson's files in order through
+ * lesson 14 (with the in-place edits that lessons 5, 8, 9, and 13 ask for),
+ * runs the commands, and holds what they print to the lesson's text. Then it
+ * compiles and runs the fragments that a lesson shows inside a larger file,
+ * each in the context its lesson implies, and the agent primer's sketches.
  *
  * The workbench links this repository's dist as `fascicle` and borrows zod,
  * tsx, typescript, vitest, and @types/node from its node_modules, so it runs
@@ -74,7 +74,7 @@ const SEVEN = ['06', 5];
 // the network.
 const COMMAND_TIMEOUT_MS = 120_000;
 
-/** Every fenced block in the course, by lesson: `00` through `13`, and `primer`. */
+/** Every fenced block in the course, by lesson: `00` through `14`, and `primer`. */
 function read_lessons() {
   const lessons = new Map();
   const names = readdirSync(LEARN_DIR)
@@ -412,6 +412,34 @@ function walk_blueprint(wb) {
 }
 
 /**
+ * Lesson 14: tools under the loop engine's real tool loop, with no key. Its
+ * approval handler decides in code, since nothing answers on stdin here, and
+ * nothing it prints holds a span id or a timing, which change from run to run.
+ */
+function walk_hands(wb) {
+  wb.write('notes/shopping.md', wb.block('14', 0, 'markdown'));
+  wb.apply('14', 1, 'hands/tools.ts');
+  wb.apply('14', 2, 'hands/helper.ts');
+  wb.apply('14', 3, 'hands/main.ts');
+  wb.expect('L14 tool loop', `${TSX} hands/main.ts`, wb.text('14', 5));
+  wb.apply('14', 6, 'hands/missing.ts');
+  wb.expect('L14 failed call goes back', `${TSX} hands/missing.ts`, wb.text('14', 8));
+  wb.apply('14', 9, 'hands/capped.ts');
+  wb.expect('L14 max_steps', `${TSX} hands/capped.ts`, wb.text('14', 11));
+  wb.tsc('L14 tsc (read-only tools)');
+  wb.apply('14', 12, 'hands/write.ts');
+  wb.apply('14', 13, 'hands/helper.ts');
+  wb.apply('14', 14, 'hands/approve.ts');
+  wb.expect('L14 approval denied', `${TSX} hands/approve.ts`, wb.text('14', 16));
+  wb.check('L14 denied write left the note alone', wb.read('notes/shopping.md') === wb.block('14', 0, 'markdown'));
+  wb.apply('14', 17, 'hands/look_back.ts');
+  wb.sh('rm -f .trajectory.jsonl');
+  wb.expect('L14 captured turns', `${TSX} hands/look_back.ts`, wb.text('14', 19));
+  wb.apply('14', 20, 'hands/ask.ts');
+  wb.tsc('L14 tsc (with approval)');
+}
+
+/**
  * The fragments a learner pastes into a file they already have, each given
  * the context its lesson implies, and the agent primer's sketches. They all
  * compile together, each one runs, and where its lesson shows the output, it
@@ -493,6 +521,7 @@ function main() {
     walk_styles_and_tests(wb);
     walk_tools(wb);
     walk_blueprint(wb);
+    walk_hands(wb);
     walk_fragments(wb);
   } catch (err) {
     console.error(`\ncheck-learn: ${err instanceof Error ? err.message : String(err)}`);

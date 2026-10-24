@@ -1,8 +1,8 @@
 # Learn Fascicle
 
-A course in fourteen short lessons. It takes you from a function that adds two
-numbers to designing and building real tools with Fascicle, with your coding
-agent beside you the whole way. You don't need to know how Fascicle works
+A course in fifteen short lessons. It takes you from a function that adds two
+numbers to designing and building real tools with Fascicle, and to handing a
+model tools of its own, with your coding agent beside you the whole way. You don't need to know how Fascicle works
 inside. You need a handful of ideas, a small vocabulary, and the habit of
 drawing a flow before you build it, and that's what the course gives you.
 
@@ -24,13 +24,16 @@ from another side.
 
 - **You build as you go.** Lesson 0 sets up a small project of your own, called
   the workbench, and every lesson after it adds to that project.
-- **Everything runs.** Every lesson ends with something that you run yourself,
-  and all of the code was run against Fascicle 0.16.3 and 0.15.0 before it went
-  into the lessons. A check in the repository walks every lesson against each
-  new build as well, so the code keeps working as Fascicle changes.
+- **Everything runs.** Every lesson ends with something that you run yourself.
+  The code in lessons 0 to 13 was run against Fascicle 0.16.3 and 0.15.0 before
+  it went into the lessons, and lesson 14's against 0.17.0, the release that
+  adds the stand-in that it uses. A check in the repository walks every lesson
+  against each new build as well, so the code keeps working as Fascicle
+  changes.
 - **It's free until it isn't.** Lessons 0 to 5 need no API key and cost
   nothing. Lesson 6 connects a real model, and a run of the lesson code from
-  then on costs a hundredth or two of a cent.
+  then on costs a hundredth or two of a cent, until lesson 14, which runs on a
+  stand-in again and needs no key.
 - **Your agent comes along.** Each lesson ends with prompts to try on your
   coding agent. Fascicle's vocabulary is how you tell an agent what to build,
   and its diagrams are how you check what the agent built.
@@ -80,6 +83,15 @@ How to turn an idea into a flow, and how a growing app is laid out.
 | --- | --- | --- |
 | [12. From a Thought to a Flow](./12-from-a-thought-to-a-flow.md) | design a flow from a paragraph, together with your agent | 45 min |
 | [13. Grow into the Blueprint](./13-grow-into-the-blueprint.md) | lay out an app the way Fascicle's reference apps are laid out | 20 min |
+
+### Part 5: Tools
+
+A model that calls your own code, the loop that runs the calls, and the guards
+around them.
+
+| Lesson | After it, you can | Time |
+| --- | --- | --- |
+| [14. Give the Model Hands](./14-give-the-model-hands.md) | give a model tools, cap its loop, make it ask before it acts, and read back what it was sent | 30 min |
 
 If you only have one sitting, lessons 0 to 7 are the core of it. By the end of
 lesson 7 you'll have built a flow with a model in it, moved it between

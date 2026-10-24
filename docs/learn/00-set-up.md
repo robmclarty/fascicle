@@ -158,11 +158,12 @@ Last, see which version of Fascicle you got:
 pnpm list fascicle
 ```
 
-These lessons were written against 0.16.3 and checked against 0.15.0, and
-where a later release changes what you'll see, the lesson says so. If your
+Lessons 0 to 13 were written against 0.16.3 and checked against 0.15.0, and
+lesson 14 needs 0.17.0, the release that adds the stand-in engine that it uses.
+Where a later release changes what you'll see, the lesson says so. If your
 pnpm is set to wait a day or two before it installs a brand-new release (its
 `minimumReleaseAge` setting), you might be a release behind the newest, and
-that's fine.
+that's fine, as long as you have 0.17.0 by the time you reach lesson 14.
 
 ## If Something Went Wrong
 
