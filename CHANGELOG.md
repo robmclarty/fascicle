@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.17.0 — 2026-10-24
 
 ### Added
 
@@ -47,6 +47,7 @@
 
 - **acp-coder caches a Claude session, and a live test checks caching.** acp-coder runs the longest tool loops in the repo, and on OpenRouter, its default provider, caching is opt-in. `CoderConfig` gains `cache`, and `main.ts` sets `'5m'` when the provider is `anthropic` or the model id starts with `anthropic/`, so every step after the first reads the session back from the cache. `src/engine/__tests__/live/live_cache.test.ts`, which runs only under `LIVE_TESTS=1` with a key, runs a three-turn Claude tool loop on both native routes to Claude and asserts a write and then reads with no `cache_miss`, prints the hit ratio and the cost beside `cache: 'off'`, and reports what OpenRouter does with `cache: '5m'` on another vendor's model. [CONTRIBUTING.md](./CONTRIBUTING.md#running-tests) has the command.
 - **The test doubles for the `ai` module and the Bedrock peer can serve streams.** The `ai` mock's `streamText` serves a response that a test queued for `generateText` whenever no stream of its own is queued. It streams the result as the parts it would stream as, carries its metadata and content parts across, and counts the call as the `generateText` call it stands in for, so a test written for a whole-body turn holds once that turn streams. A ConverseStream framer under `src/engine/providers/__tests__/fixtures/` encodes Bedrock's binary event stream, CRCs included, with `node:zlib`, and `bedrock_stream_wire.test.ts` drives the real `@ai-sdk/amazon-bedrock` peer through `on_chunk` with it. The framer has a decoder that fails loud, because the peer's own decoder turns a frame it can't read into an empty turn.
+- **The stub engines validate canned replies with the engine's own schema helpers, and three files that only other tests reached have tests of their own.** `validate_canned` carried a copy of `validate_schema` and `format_schema_issues`, and it calls them now, so a stub's schema error matches a real engine's by construction, and a schema that fails with an empty list of issues reads `unknown schema issue`. An audit of the source files without a test of the same name found most of them tested from a parent directory, but nothing asserted which open span `trajectory_recorder` names as a parent, what a stub's schema error carries, or `bench_suspend_error`'s `name`, and each now has tests that catch every mutant.
 
 ## v0.16.5 — 2026-10-21
 
