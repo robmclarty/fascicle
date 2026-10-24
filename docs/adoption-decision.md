@@ -229,7 +229,7 @@ is my bet that containment is cheaper than absorption over time.
 
 ## Further Reading
 
-- [comparison.md](./comparison.md) — the five axes, and where each neighbor
+- [comparison.md](./comparison.md) — the six axes, and where each neighbor
   (LangChain, Mastra, Strands, OpenAI Agents SDK, Inngest AgentKit) sits on them.
 - [concepts.md](./concepts.md) — step-as-value, run context, trajectories.
 - [providers.md](./providers.md) — the three integration depths, the `transport`

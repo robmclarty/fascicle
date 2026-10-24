@@ -5,7 +5,8 @@ working in a project which uses the published `fascicle` package. A person who
 is learning Fascicle will usually import it from their `CLAUDE.md`, as
 [lesson 0](./00-set-up.md) shows. Every shape, rule, and error message below
 was checked against `fascicle` 0.16.3, and against 0.15.0 where the two differ,
-and a rule that a later release changes says what changed.
+except what's marked 0.17.0 and later, which was checked against 0.17.0. A rule
+that a later release changes says what changed.
 
 Your training data probably holds little or nothing about Fascicle, so treat
 this file and the installed type declarations as the truth, and don't fill gaps
@@ -27,9 +28,11 @@ from other agent frameworks.
 - **The repository**, when the person has it cloned (often at `../fascicle`),
   holds the docs and the runnable examples. `docs/blueprint.md` is the app
   architecture, and `docs/composition.md` has one line on every composer.
-- **The two checked versions differ only in the viewer.** On 0.15 it mishandles
-  a trajectory file that holds more than one run, so delete `.trajectory.jsonl`
-  between runs, and from 0.16 on it follows the newest run.
+- **0.16.3 and 0.15.0 differ only in the viewer.** On 0.15 it mishandles a
+  trajectory file that holds more than one run, so delete `.trajectory.jsonl`
+  between runs, and from 0.16 on it follows the newest run. What's marked 0.17.0
+  and later (the tool-loop double, capture, and the duplicate-name check) isn't
+  there at all on either of them.
 
 ## The Model in Four Sentences
 
@@ -40,11 +43,33 @@ step, and a tree of plain objects that you can print before it runs.
 An engine (`create_engine`) talks to model providers, and `model_step` or
 `model_call` turns an engine call into a step.
 
+## Words with One Meaning
+
+The docs use these words in one sense each, and the API's names lean on them
+(`docs/concepts.md` ends with the full glossary):
+
+- **Model call.** One `engine.generate`, which a `model_step` or `model_call`
+  makes each time it runs.
+- **Model turn.** One request to the provider and the reply that comes back. A
+  call with tools takes one per pass of its tool loop. The engine's API calls a
+  model turn a step, in `max_steps`, `step_index`, `prepare_step`, and
+  `GenerateResult.steps`, and that step is never a `Step`.
+- **Tool loop.** The loop inside a model call that has `tools`. It runs the
+  calls that a reply makes, appends the calls and their results, and sends the
+  whole conversation again, until a reply makes no call or `max_steps` runs out.
+- **Transcript.** The array of messages that a tool loop keeps across its
+  turns. `prepare_step` changes what one turn sends and leaves the transcript
+  alone.
+- **Capture.** What the `capture` option records (0.17.0 and later), each model
+  turn's request and reply. It has nothing to do with `make_capture_engine`.
+- **Prompt cache.** A provider's short-lived store of a request's prefix, which
+  the `cache` option asks for (0.17.0 and later).
+
 ## Imports
 
 | From | What |
 | --- | --- |
-| `fascicle` | `run`, `step`, `sequence`, `parallel`, `branch`, `map`, `pipe`, `chain`, `loop`, `retry`, `fallback`, `timeout`, `compose`, `adversarial`, `ensemble_step`, `consensus`, `checkpoint`, `suspend`, `gate`, `describe`, `model_step`, `model_call`, `create_engine`, `define_tool`, `error_path`, the error classes, and the types (`Step`, `Engine`, `RunContext`, `GenerateOptions`, ...) |
+| `fascicle` | `run`, `step`, `sequence`, `parallel`, `branch`, `map`, `pipe`, `chain`, `loop`, `retry`, `fallback`, `timeout`, `compose`, `adversarial`, `ensemble_step`, `consensus`, `checkpoint`, `suspend`, `gate`, `describe`, `model_step`, `model_call`, `create_engine`, `define_tool`, `error_path`, `captured_turns` and `replay_turn` (0.17.0 and later), the error classes, and the types (`Step`, `Engine`, `RunContext`, `GenerateOptions`, ...) |
 | `fascicle/adapters` | `filesystem_logger`, `http_logger`, `stderr_logger`, `tee_logger`, `noop_logger`, `filesystem_store` |
 | `fascicle/testing` | `make_stub_engine`, `make_script_engine`, `make_capture_engine`, `make_loop_engine` and `assert_prefix_stable` (0.17.0 and later), `text_of`, `engine_from_generate` |
 | `fascicle/agents` | `define_agent` |
@@ -111,6 +136,12 @@ const extract = model_step({
 
 model_call({ ...same config })     // the GenerateResult envelope: content, usage, cost, finish_reason
 await engine.dispose()             // always, in finally
+
+const look_up = define_tool({ name: 'look_up', description: 'when to call it', input_schema: z.object({ key: z.string() }), execute: ({ key }) => find(key) })
+model_step({ engine, model, system, tools: [look_up], max_steps: 6 })  // a tool loop; max_steps (default 10) caps its model turns
+model_step({ ...config, on_tool_approval })   // asked before any tool flagged needs_approval runs
+model_step({ ...config, capture: 'turns' })   // 0.17.0 and later: each turn's request and reply go into the trajectory
+captured_turns(events)                        // 0.17.0 and later: each captured turn's whole request, rebuilt
 ```
 
 Five providers need no extra package on `transport: 'native'`. They're
@@ -192,11 +223,13 @@ messages are the real ones.
 17. **`describe(flow)` prints counter ids** like `chain_1`, which also appear in
     `error_path`, and it prints system prompts in full. `describe.diagram` never
     shows counter ids, so it's stable enough to snapshot in a test.
-18. **A trajectory holds no per-call message or reply text.** Its first event,
-    `flow_structure`, does carry every model step's system prompt, so treat the
-    file as sensitive. Beyond that it records spans, timings, token counts,
-    cost, and how the run ended. For a model's reply, read `raw_text` and
-    `schema_issues` on a `schema_validation_error`.
+18. **A trajectory holds no per-call message or reply text unless the call
+    captures.** Its first event, `flow_structure`, does carry every model step's
+    system prompt, so treat the file as sensitive. Beyond that it records spans,
+    timings, token counts, cost, and how the run ended. Under `capture` (rule
+    23) it also holds each model turn's request and reply. Without it, for a
+    model's reply, read `raw_text` and `schema_issues` on a
+    `schema_validation_error`.
 19. **Through 0.16.3, `adversarial` draws its inner machinery** in a diagram:
     `scope` and `stash` nodes, and internal steps such as `snapshot`. For a
     draft, check, and redraft loop that a person has to read, a `loop` with a
@@ -208,6 +241,22 @@ messages are the real ones.
 21. **The engine retries some network failures itself**, inside a model call.
     `retry` works one level up and reruns the whole step when it fails, a schema
     failure included, while an abort or a suspend passes straight through.
+22. **From 0.17.0, two tools under one name throw.** A call whose `tools` hold
+    a name twice fails before any request, with ``engine_config_error: duplicate
+    tool names: search (2); give each tool its own name, or pass `name_prefix`
+    to mcp_client for one server's tools``. Earlier releases let the later tool
+    replace the earlier one without a word. Give each tool its own name, and
+    give an MCP server's tools a prefix with `mcp_client(config, { name_prefix: 'gh_' })`.
+23. **From 0.17.0, capture is off until a call asks for it.** Set
+    `capture: 'turns'` on a model step, a `generate` call, or the engine's
+    `defaults`, and each model turn's request lands on `request_sent` (the first
+    turn whole, each later one as what it added) and its reply on
+    `response_received`. `'wire'` also records the exact body that each attempt
+    sent on a native transport, and on `ai_sdk` it records `option_ignored` and
+    captures as `'turns'`. `captured_turns(events)` rebuilds the whole requests,
+    and `replay_turn(engine, turn)` sends one again without running a tool. A
+    captured trajectory holds everything that the person typed and every tool
+    result, so ask before you turn capture on, and keep the file out of git.
 
 ## Decision Rules
 
@@ -250,6 +299,8 @@ messages are the real ones.
 | "pick the best of" | `ensemble_step` |
 | "only if they agree" | `consensus` |
 | "ask me first," "wait for approval" | `suspend` or `gate`, with `run.until_suspended` |
+| "let it look things up," "give it a tool" | `define_tool`, and `tools` with `max_steps` on the `model_step` |
+| "ask me before it runs that tool" | `needs_approval` on the tool, and `on_tool_approval` on the model step |
 | "don't redo the expensive part" | `checkpoint`, with a `checkpoint_store` |
 
 ## Check Your Own Work

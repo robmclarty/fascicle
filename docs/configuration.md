@@ -358,17 +358,24 @@ await engine.generate({
 `prepare_step` is a per-turn hook that the tool loop calls before each model turn, on both depth-1 transports. It receives the step index and the would-be request messages (the full accumulated transcript at that point) and may return replacement messages to prune, summarize, or window what's sent to the model for that turn only:
 
 ```ts
+const LIMIT = 4_000;
+
 await engine.generate({
   prompt: '...',
   tools,
   max_steps: 20,
-  prepare_step: ({ step_index, messages }) => {
-    // Keep the system/first message plus a sliding window of the last 10.
-    if (messages.length <= 12) return undefined;   // no-op
-    return { messages: [messages[0], ...messages.slice(-10)] };
-  },
+  prepare_step: ({ messages }) => ({
+    // Each message comes out the same on every turn, so the cached prefix holds.
+    messages: messages.map((m) =>
+      m.role === 'tool' && m.content.length > LIMIT
+        ? { ...m, content: `${m.content.slice(0, LIMIT)}\n[cut ${m.content.length - LIMIT} characters]` }
+        : m,
+    ),
+  }),
 });
 ```
+
+This hook cuts any tool result over 4,000 characters and marks the cut, and it spreads the message that it changes, so `is_error` and the rest of the message survive. Because it maps each message on its own, a message reads the same on every turn, and the prefix that the provider cached stays the same. A sliding window that keeps only the last few messages breaks the [prompt cache](./providers.md#prompt-caching): once it starts dropping messages, the top of the array changes on every turn, and every turn after that pays the full input price. The trajectory shows it as `cache_miss` events that carry `after_prepare_step: true`.
 
 - **The canonical transcript is untouched.** Returned messages reshape only what that one turn sends to the model; the history that the loop appends to (and the trajectory) keeps the real transcript, so salvage, approval, `Tool.ends_turn`, and schema-repair keep operating on the true history.
 - **Return `undefined` for a no-op.** Returning `undefined`, or an object without `messages`, leaves the turn's request unchanged.

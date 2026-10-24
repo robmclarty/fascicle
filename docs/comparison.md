@@ -9,7 +9,7 @@ It reflects Fascicle's own design view. The only way to know whether the
 ergonomics fit your taste is to try it — start with
 [getting-started.md](./getting-started.md).
 
-## Five Axes That Matter
+## Six Axes That Matter
 
 1. **Unit of composition.** Is the base type a function-like value (`Step`,
    `Runnable`, `Flow`), a class instance (`Agent`, `Workflow`, `Chain`), or a DSL
@@ -26,12 +26,46 @@ ergonomics fit your taste is to try it — start with
    sells; depth composes.
 5. **Transport awareness.** Does it know more than one way to reach a model (HTTPS
    SDKs, raw HTTP, subprocess CLIs, MCP), or assume everything is an SDK call?
+6. **Request transparency.** Who builds the array of messages that the model
+   reads on each turn, and can you see and change the request that actually
+   went out? When a model ignores an instruction, the first question is what it
+   was sent, and a tool that assembles the request out of sight can't answer it.
 
 **Fascicle's answers:** (1) `Step<i, o>` values, (2) pure values (no registry),
-(3) a library you call, (4) narrow (composition plus a model engine), (5) yes.
+(3) a library you call, (4) narrow (composition plus a model engine), (5) yes,
+(6) you build the array, and you can see what went.
 Providers plug in at one of three depths (an AI SDK model, a raw-HTTP
 `transport: 'native'` turn, or an external agent process). All three run under
 the same loop, and the `fascicle/mcp` subpath bridges MCP both ways.
+
+On the sixth axis, a call starts from your `system` prompt and its input (a
+string or a `Message[]`), and the tool loop appends each turn's calls and
+results. The engine adds three things that you didn't write. A call with a
+`schema` gets an instruction at the end of its system prompt that spells the
+schema out, a reply that misses the schema gets a repair message, and an
+Anthropic call with tools asks for a prompt cache (`cache: 'off'` drops it).
+`prepare_step` can change what any model turn sends. The `capture` option
+records each turn's request and reply in the trajectory, `'wire'` adds the exact
+body that a native transport sent, and `replay_turn` sends a captured turn
+again with whatever you changed. The gap is the external depth. `claude_cli`
+runs Claude Code's own loop, so what it sends never passes through Fascicle,
+and a `capture` set on a call there records `option_ignored`.
+
+[Harness Engineering 101](https://isuruwijesiri.com/harness-engineering-101/10-frameworks-are-wrappers)
+closes its chapter on frameworks with four questions for reading any of them
+quickly. Here's how Fascicle answers them:
+
+- **Where's the loop?** Inside `generate`, above the provider seam, so an AI SDK
+  model and a native turn run the same tool loop. The loops that you compose
+  (`loop`, `adversarial`, `improve`) are separate, and each one shows in the
+  flow's diagram.
+- **Who builds the array?** You do, as above, and `capture` shows you what it
+  became.
+- **What's the unit of composition?** `Step<i, o>`. Sequences, branches,
+  fan-outs, and loops are all composers that take steps and return a step.
+- **What does it do beyond the basics?** It reaches providers at three depths,
+  retries, prices each call, records trajectories, checkpoints and suspends
+  runs, speaks MCP and ACP, and ships test doubles that need no network.
 
 ## At a Glance
 
