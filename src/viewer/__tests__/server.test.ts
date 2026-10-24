@@ -1,6 +1,6 @@
 import { EventEmitter } from 'node:events'
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
-import { request } from 'node:http'
+import { createServer, request } from 'node:http'
 import type { IncomingHttpHeaders, IncomingMessage, Server, ServerResponse } from 'node:http'
 import { connect } from 'node:net'
 import type { AddressInfo } from 'node:net'
@@ -10,9 +10,11 @@ import { afterEach, beforeAll, afterAll, beforeEach, describe, expect, it, vi } 
 import { create_broadcaster, type Broadcaster } from '../broadcast.js'
 import {
   bound_port_of,
+  create_viewer_handler,
   internals_for_test,
   resolve_route,
   start_server,
+  type ViewerHandlerConfig,
   type ViewerServer,
 } from '../server.js'
 
@@ -40,17 +42,14 @@ import {
  *
  * Equivalent-mutant ledger (survivors left after this suite, classified here
  * rather than chased):
- *   - `req.url ?? '/'` -> `''`: the base is always `http://host:port` with no
- *     path, so `new URL('', base)` and `new URL('/', base)` both resolve to
- *     pathname `/`.
- *   - The `Host`-header branch in `resolve_route` (the `header !== undefined`
- *     condition, its try block, and the ``http://${header}`` base): a URL's
- *     pathname does not depend on the authority it is parsed against, so
- *     preferring the header, skipping it, or emptying it all resolve the same
- *     pathname, and a base the mutant breaks is caught and retried against the
- *     server's own authority. The branch exists to keep resolution total on a
- *     malformed header, which the malformed-host test pins; the route key it
- *     produces is header-independent by construction.
+ *   - `req.url ?? '/'` -> `''`, in `resolve_route` and in the handler: the
+ *     base is `http://localhost` with no path, so `new URL('', base)` and
+ *     `new URL('/', base)` both resolve to pathname `/`.
+ *   - `if (path === undefined) return false` -> `false` in the handler: the
+ *     route becomes `"GET undefined"`, which no API route matches and which
+ *     fails the `'GET /'` guard in front of the canvas, so the handler returns
+ *     false down the longer road. The check is what TypeScript needs to
+ *     narrow `path` for `serve_app_asset`.
  *   - `trajectory_path !== undefined` -> `true` in `serve_trajectory`: entering
  *     the file branch with no path calls `stat_file(undefined)`, which returns
  *     null, so it falls through to the ring exactly as the guard would have.
@@ -629,39 +628,20 @@ describe('compiled app resolution', () => {
 
 describe('resolve_route', () => {
   it('builds "METHOD /pathname" from the request', () => {
-    expect(
-      resolve_route({ url: '/api/health', method: 'GET', headers: { host: 'h:1' } }, 'x', 9),
-    ).toBe('GET /api/health')
-    expect(resolve_route({ url: '/x?q=1', method: 'POST', headers: { host: 'h:1' } }, 'x', 9)).toBe(
-      'POST /x',
-    )
+    expect(resolve_route({ url: '/api/health', method: 'GET' })).toBe('GET /api/health')
+    expect(resolve_route({ url: '/x?q=1', method: 'POST' })).toBe('POST /x')
   })
 
   it('falls back to GET when the method is absent', () => {
-    expect(resolve_route({ url: '/x', headers: { host: 'h:1' } }, 'x', 9)).toBe('GET /x')
+    expect(resolve_route({ url: '/x' })).toBe('GET /x')
   })
 
   it('falls back to the root path when the url is absent', () => {
-    expect(resolve_route({ method: 'GET', headers: { host: 'h:1' } }, 'x', 9)).toBe('GET /')
+    expect(resolve_route({ method: 'GET' })).toBe('GET /')
   })
 
-  it('falls back to host:port for the URL base when the Host header is absent', () => {
-    // The base host only affects URL parsing; the route still resolves by path.
-    expect(resolve_route({ url: '/x', method: 'GET', headers: {} }, 'myhost', 1234)).toBe('GET /x')
-  })
-
-  it('brackets an IPv6 server host when it falls back to the server authority', () => {
-    // `http://::1:9` is not a URL; an unbracketed literal throws out of the
-    // request handler for any client that omits the Host header.
-    expect(resolve_route({ url: '/x', method: 'GET', headers: {} }, '::1', 9)).toBe('GET /x')
-  })
-
-  it('falls back to the server authority when the Host header is malformed', () => {
-    // A present-but-malformed host is neither null nor undefined, so a bare
-    // `??` lets it reach `new URL` and throw. Resolution must stay total.
-    expect(resolve_route({ url: '/x', method: 'GET', headers: { host: 'in valid' } }, 'h', 9)).toBe(
-      'GET /x',
-    )
+  it('reads an absolute-form target by its path alone', () => {
+    expect(resolve_route({ url: 'http://elsewhere.example:9/x?q=1', method: 'GET' })).toBe('GET /x')
   })
 })
 
@@ -995,6 +975,219 @@ describe('a server with ingest off', () => {
     } finally {
       await srv.close()
     }
+  })
+})
+
+/** What the host server answers with when the viewer handler declines a request. */
+const HOST_FALLBACK = 'host answered'
+
+type MountedHandler = { readonly origin: string; readonly close: () => Promise<void> }
+
+/**
+ * Mounts `create_viewer_handler` on a bare `node:http` server of the test's
+ * own, the way a host would, answering 418 with `HOST_FALLBACK` whenever the
+ * handler returns false.
+ */
+async function mount_handler(config: ViewerHandlerConfig): Promise<MountedHandler> {
+  const handler = create_viewer_handler(config)
+  const host_server = createServer((req, res) => {
+    if (handler(req, res)) return
+    res.statusCode = 418
+    res.end(HOST_FALLBACK)
+  })
+  await new Promise<void>((listening) => {
+    host_server.listen(0, '127.0.0.1', listening)
+  })
+  const { port } = host_server.address() as AddressInfo
+  return {
+    origin: `http://127.0.0.1:${port}`,
+    close: () =>
+      new Promise<void>((closed) => {
+        host_server.closeAllConnections()
+        host_server.close(() => {
+          closed()
+        })
+      }),
+  }
+}
+
+describe('create_viewer_handler mounted under a base path', () => {
+  with_fixture_app()
+
+  let mounted: MountedHandler | null = null
+  let bc: Broadcaster | null = null
+
+  beforeEach(async () => {
+    bc = create_broadcaster({ buffer: 10 })
+    mounted = await mount_handler({ broadcaster: bc, app_dir, base_path: '/viewer/abc' })
+  })
+
+  afterEach(async () => {
+    if (mounted) await mounted.close()
+    mounted = null
+    bc = null
+  })
+
+  const at = (path: string): string => {
+    if (!mounted) throw new Error('handler not mounted')
+    return mounted.origin + path
+  }
+
+  it('serves the api and the canvas under the prefix', async () => {
+    const health = await fetch(at('/viewer/abc/api/health'))
+    expect(health.status).toBe(200)
+    expect(await health.json()).toEqual({ ok: true })
+
+    const index = await fetch(at('/viewer/abc/'))
+    expect(index.status).toBe(200)
+    expect(await index.text()).toBe('<title>fascicle viewer</title>')
+
+    const script = await fetch(at('/viewer/abc/assets/index-abc.js'))
+    expect(script.status).toBe(200)
+    expect(script.headers.get('content-type')).toBe('text/javascript; charset=utf-8')
+    expect(await script.text()).toBe('console.log(1)')
+  })
+
+  it('takes posted events under the prefix', async () => {
+    const res = await fetch(at('/viewer/abc/api/ingest'), {
+      method: 'POST',
+      headers: NDJSON_HEADERS,
+      body: '{"kind":"emit","value":1}\n',
+    })
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ accepted: 1, rejected: 0 })
+    expect(bc?.snapshot().map((entry) => entry.event)).toEqual([{ kind: 'emit', value: 1 }])
+  })
+
+  it('redirects the bare prefix to its trailing slash, keeping the query', async () => {
+    const bare = await fetch(at('/viewer/abc'), { redirect: 'manual' })
+    expect(bare.status).toBe(308)
+    expect(bare.headers.get('location')).toBe('abc/')
+
+    const with_query = await fetch(at('/viewer/abc?run=7'), { redirect: 'manual' })
+    expect(with_query.status).toBe(308)
+    expect(with_query.headers.get('location')).toBe('abc/?run=7')
+  })
+
+  it('leaves a non-GET to the bare prefix to the host', async () => {
+    // Manual, since a followed 308 would post again to the slashed path.
+    const res = await fetch(at('/viewer/abc'), { method: 'POST', redirect: 'manual' })
+    expect(res.status).toBe(418)
+    expect(await res.text()).toBe(HOST_FALLBACK)
+  })
+
+  it('leaves a request outside the prefix to the host, a longer sibling included', async () => {
+    // A sibling mount of the same length would land on a real route if the
+    // prefix were only measured, not matched.
+    for (const path of ['/api/health', '/', '/viewer/abcd/api/health', '/viewer/xyz/api/health', '/viewer/']) {
+      // oxlint-disable-next-line no-await-in-loop
+      const res = await fetch(at(path))
+      expect(res.status, path).toBe(418)
+      // oxlint-disable-next-line no-await-in-loop
+      expect(await res.text(), path).toBe(HOST_FALLBACK)
+    }
+  })
+
+  it('leaves a file the canvas does not ship, and a route the api does not claim, to the host', async () => {
+    const missing = await fetch(at('/viewer/abc/nope.js'))
+    expect(missing.status).toBe(418)
+    const unclaimed = await fetch(at('/viewer/abc/api/health'), { method: 'POST' })
+    expect(unclaimed.status).toBe(418)
+  })
+
+  it('checks no Host, leaving that to the host', async () => {
+    if (!mounted) throw new Error('handler not mounted')
+    const { port } = new URL(mounted.origin)
+    const res = await new Promise<number>((answered, reject) => {
+      const req = request(
+        {
+          host: '127.0.0.1',
+          port,
+          path: '/viewer/abc/api/health',
+          headers: { host: 'board.example' },
+          setHost: false,
+        },
+        (response) => {
+          response.resume()
+          answered(response.statusCode ?? 0)
+        },
+      )
+      req.on('error', reject)
+      req.end()
+    })
+    expect(res).toBe(200)
+  })
+})
+
+describe('create_viewer_handler base paths', () => {
+  with_fixture_app()
+
+  it('mounts a base path with a trailing slash the same as one without', async () => {
+    const bc = create_broadcaster({ buffer: 10 })
+    const mounted = await mount_handler({ broadcaster: bc, app_dir, base_path: '/viewer/abc/' })
+    try {
+      expect((await fetch(`${mounted.origin}/viewer/abc/api/health`)).status).toBe(200)
+      const bare = await fetch(`${mounted.origin}/viewer/abc`, { redirect: 'manual' })
+      expect(bare.status).toBe(308)
+      expect(bare.headers.get('location')).toBe('abc/')
+    } finally {
+      await mounted.close()
+    }
+  })
+
+  it('mounts at the root with no base path, or with a lone slash', async () => {
+    for (const base_path of [undefined, '/']) {
+      const bc = create_broadcaster({ buffer: 10 })
+      // oxlint-disable-next-line no-await-in-loop
+      const mounted = await mount_handler({
+        broadcaster: bc,
+        app_dir,
+        ...(base_path !== undefined ? { base_path } : {}),
+      })
+      try {
+        // oxlint-disable-next-line no-await-in-loop
+        expect((await fetch(`${mounted.origin}/api/health`)).status).toBe(200)
+        // oxlint-disable-next-line no-await-in-loop
+        expect((await fetch(`${mounted.origin}/`)).status).toBe(200)
+        // oxlint-disable-next-line no-await-in-loop
+        expect((await fetch(`${mounted.origin}/nope.js`)).status).toBe(418)
+      } finally {
+        // oxlint-disable-next-line no-await-in-loop
+        await mounted.close()
+      }
+    }
+  })
+
+  it('leaves ingest to the host when it is off', async () => {
+    const bc = create_broadcaster({ buffer: 10 })
+    const mounted = await mount_handler({ broadcaster: bc, app_dir, ingest: false })
+    try {
+      const res = await fetch(`${mounted.origin}/api/ingest`, {
+        method: 'POST',
+        headers: NDJSON_HEADERS,
+        body: '{"kind":"emit"}\n',
+      })
+      expect(res.status).toBe(418)
+      expect(bc.snapshot()).toEqual([])
+    } finally {
+      await mounted.close()
+    }
+  })
+
+  it('reads a request with no method as a GET', () => {
+    const handler = create_viewer_handler({ broadcaster: create_broadcaster({ buffer: 10 }), app_dir })
+    const res = make_res()
+    const req = Object.assign(make_req(), { url: '/api/health' })
+    expect(handler(as_req(req), as_res(res))).toBe(true)
+    expect(res.statusCode).toBe(200)
+    expect(JSON.parse(res.text())).toEqual({ ok: true })
+  })
+
+  it('throws on a base path that does not start with a slash', () => {
+    const bc = create_broadcaster({ buffer: 10 })
+    expect(() => create_viewer_handler({ broadcaster: bc, base_path: 'viewer/abc' })).toThrow(
+      new TypeError('viewer base_path must start with a slash; got "viewer/abc"'),
+    )
   })
 })
 

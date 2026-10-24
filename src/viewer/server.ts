@@ -20,6 +20,10 @@
  * loopback too, so a web page can't reach it by rebinding a domain of its own
  * to 127.0.0.1. Ingest is mounted unless the config turns it off, reads only
  * `application/x-ndjson`, and refuses a body past 8 MB.
+ *
+ * The routes live in `create_viewer_handler`, which a host can mount under a
+ * path of its own on a server of its own. `start_server` is that handler on a
+ * socket, behind the `Host` check, with a 404 for whatever it doesn't serve.
  */
 
 import { createReadStream, statSync, type Stats } from 'node:fs'
@@ -75,10 +79,15 @@ const NDJSON = 'application/x-ndjson'
  */
 const INGEST_LIMIT_BYTES = 8_000_000
 
-export type ServerConfig = {
+/**
+ * The base a request target is parsed against to read its path. A path never
+ * depends on the authority it's parsed against, so a fixed one serves every
+ * request, whatever `Host` it names or leaves out.
+ */
+const ROUTE_BASE = 'http://localhost'
+
+export type ViewerHandlerConfig = {
   readonly broadcaster: Broadcaster
-  readonly host: string
-  readonly port: number
   /**
    * Where the compiled canvas lives, defaulting to the bundled
    * `dist/viewer-app`. The tests point it at a fixture directory so the suite
@@ -97,7 +106,27 @@ export type ServerConfig = {
    * viewer that only tails a file from taking posts.
    */
   readonly ingest?: boolean | undefined
+  /**
+   * The path the handler is mounted under, such as `/viewer/abc`, which it
+   * takes off each request before routing it; default the root. A request
+   * for the bare path is redirected to it with a trailing slash, since the
+   * canvas resolves its assets and its API requests against the page.
+   */
+  readonly base_path?: string
   readonly on_parse_error?: (err: unknown, line: string) => void
+}
+
+/**
+ * Answers one request and returns true, or returns false without touching
+ * the response when the request isn't one the viewer serves: outside its
+ * `base_path`, a route the API doesn't claim, or a file the canvas doesn't
+ * ship.
+ */
+export type ViewerHandler = (req: IncomingMessage, res: ServerResponse) => boolean
+
+export type ServerConfig = Omit<ViewerHandlerConfig, 'base_path'> & {
+  readonly host: string
+  readonly port: number
 }
 
 export type ViewerServer = {
@@ -108,49 +137,113 @@ export type ViewerServer = {
 }
 
 /**
+ * Builds the viewer's request handler: the five API routes (health, snapshot,
+ * trajectory, SSE, ingest) and the compiled app's static files, for a host to
+ * mount on a `node:http` server of its own, or on any framework that hands
+ * over the raw request and response.
+ *
+ * The API routes are matched first and exactly, so no file the canvas ships
+ * can ever shadow one. The handler checks no `Host`, so a host that mounts it
+ * decides who may reach it, behind its own auth. `start_server` puts the
+ * loopback check in front of it.
+ */
+export function create_viewer_handler(config: ViewerHandlerConfig): ViewerHandler {
+  const { broadcaster, app_dir, trajectory_path, ingest = true, on_parse_error } = config
+  const base_path = normalize_base_path(config.base_path)
+
+  return (req, res) => {
+    const method = req.method ?? 'GET'
+    const target = new URL(req.url ?? '/', ROUTE_BASE)
+    // A pathname always starts with a slash, so a root mount's '' never matches.
+    if (target.pathname === base_path) {
+      if (method !== 'GET') return false
+      redirect_to_slash(res, base_path, target.search)
+      return true
+    }
+    const path = path_under(target.pathname, base_path)
+    if (path === undefined) return false
+    const route = `${method} ${path}`
+
+    if (route === 'GET /api/health') {
+      send_json(res, 200, { ok: true })
+      return true
+    }
+    if (route === 'GET /api/snapshot') {
+      send_json(res, 200, { events: broadcaster.snapshot() })
+      return true
+    }
+    if (route === 'GET /api/trajectory') {
+      serve_trajectory(res, broadcaster, trajectory_path)
+      return true
+    }
+    if (route === 'GET /api/events') {
+      handle_sse(req, res, broadcaster)
+      return true
+    }
+    if (ingest && route === 'POST /api/ingest') {
+      handle_ingest(req, res, broadcaster, on_parse_error)
+      return true
+    }
+    return route.startsWith('GET /') && serve_app_asset(res, path, app_dir)
+  }
+}
+
+/**
+ * A base path with its trailing slash taken off, so `/viewer/abc/` and
+ * `/viewer/abc` mount the same way, and the root reads as `''`.
+ *
+ * Throws on a path that doesn't start with a slash, which no request path
+ * could ever fall under.
+ */
+function normalize_base_path(base_path: string | undefined): string {
+  if (base_path === undefined) return ''
+  if (!base_path.startsWith('/')) {
+    throw new TypeError(`viewer base_path must start with a slash; got ${JSON.stringify(base_path)}`)
+  }
+  return base_path.replace(/\/$/, '')
+}
+
+/**
+ * The part of a request path under `base_path`, starting with its slash, or
+ * undefined when the request falls outside it. `/viewer/abcd` is outside
+ * `/viewer/abc`, and every path is under the root's `''`.
+ */
+function path_under(pathname: string, base_path: string): string | undefined {
+  return pathname.startsWith(`${base_path}/`) ? pathname.slice(base_path.length) : undefined
+}
+
+/**
+ * Redirects a request for the bare base path to the same path with a trailing
+ * slash, which is what the canvas resolves its relative URLs against.
+ *
+ * The `Location` names only the last segment, which a browser resolves
+ * against the path it asked for, so the redirect still lands when another
+ * proxy in front of the host has taken a prefix of its own off.
+ */
+function redirect_to_slash(res: ServerResponse, base_path: string, search: string): void {
+  res.statusCode = 308
+  res.setHeader('location', `${base_path.slice(base_path.lastIndexOf('/') + 1)}/${search}`)
+  res.end()
+}
+
+/**
  * Starts the HTTP server and resolves once it is listening.
  *
- * Wires the five API routes (health, snapshot, trajectory, SSE, ingest) plus
- * the compiled app's static files to a single request handler, and resolves
- * with the bound URL and port and a `close` that shuts the socket down. The
- * `Host` check runs before anything else, then the API routes are matched
- * first and exactly, so no file the canvas ships can ever shadow one.
+ * Mounts `create_viewer_handler` at the root behind the `Host` check, answers
+ * a JSON 404 naming the route for anything the handler doesn't serve, and
+ * resolves with the bound URL and port and a `close` that shuts the socket
+ * down.
  */
 export function start_server(config: ServerConfig): Promise<ViewerServer> {
-  const { broadcaster, host, port, app_dir, trajectory_path, ingest = true, on_parse_error } = config
+  const { host, port } = config
+  const viewer = create_viewer_handler(config)
 
   const handler = (req: IncomingMessage, res: ServerResponse): void => {
     if (!host_allowed(host, req.headers.host)) {
       send_forbidden_host(res, host)
       return
     }
-    const route = resolve_route(req, host, port)
-
-    if (route === 'GET /api/health') {
-      send_json(res, 200, { ok: true })
-      return
-    }
-    if (route === 'GET /api/snapshot') {
-      send_json(res, 200, { events: broadcaster.snapshot() })
-      return
-    }
-    if (route === 'GET /api/trajectory') {
-      serve_trajectory(res, broadcaster, trajectory_path)
-      return
-    }
-    if (route === 'GET /api/events') {
-      handle_sse(req, res, broadcaster)
-      return
-    }
-    if (ingest && route === 'POST /api/ingest') {
-      handle_ingest(req, res, broadcaster, on_parse_error)
-      return
-    }
-    if (route.startsWith('GET /')) {
-      serve_app_asset(res, route, app_dir)
-      return
-    }
-    send_not_found(res, route)
+    if (!viewer(req, res)) send_not_found(res, resolve_route(req))
   }
 
   const http_server = createServer(handler)
@@ -240,35 +333,16 @@ function send_forbidden_host(res: ServerResponse, bound: string): void {
 }
 
 /**
- * Builds a `"METHOD /path"` route key from a request.
+ * Builds a `"METHOD /path"` route key from a request, the key a 404 names.
  *
- * Resolves the path against the client's `Host` header when it parses, and
- * against the server's own `host`/`port` otherwise. A header can be present yet
- * malformed (`'in valid'`), which `??` cannot catch because it is neither null
- * nor undefined; fed to `new URL` it throws. Trying the header inside a
- * try/catch and falling back to the server's authority keeps route resolution
- * total for any header a client sends.
+ * The path is read against a fixed base rather than the client's `Host`, which
+ * can be absent or malformed and changes no path either way.
  */
-export function resolve_route(
-  req: {
-    url?: string | undefined
-    method?: string | undefined
-    headers: { host?: string | undefined }
-  },
-  host: string,
-  port: number,
-): string {
-  const method = req.method ?? 'GET'
-  const path = req.url ?? '/'
-  const header = req.headers.host
-  if (header !== undefined) {
-    try {
-      return `${method} ${new URL(path, `http://${header}`).pathname}`
-    } catch {
-      // A malformed Host header falls through to the server's own authority.
-    }
-  }
-  return `${method} ${new URL(path, `http://${format_authority(host, port)}`).pathname}`
+export function resolve_route(req: {
+  url?: string | undefined
+  method?: string | undefined
+}): string {
+  return `${req.method ?? 'GET'} ${new URL(req.url ?? '/', ROUTE_BASE).pathname}`
 }
 
 /**
@@ -400,30 +474,25 @@ function resolve_app_file(dir: string, url_path: string): string | null {
 }
 
 /**
- * Streams one file of the compiled canvas as the response body.
+ * Streams one file of the compiled canvas as the response body, returning
+ * whether it answered.
  *
  * A missing app directory is a 500 naming the build step, because the server
  * is fine and the operator forgot to compile; a missing file inside a present
- * app is an ordinary 404.
+ * app goes unanswered, for the caller's 404.
  */
-function serve_app_asset(res: ServerResponse, route: string, override: string | undefined): void {
+function serve_app_asset(res: ServerResponse, path: string, override: string | undefined): boolean {
   const dir = resolve_app_dir(override)
   if (dir === null) {
     res.statusCode = 500
     res.setHeader('content-type', 'text/plain')
     res.end('viewer app not built; run `pnpm build`')
-    return
+    return true
   }
 
-  // The route key is `"<METHOD> <path>"`; splitting on the space keeps the
-  // path independent of which method got here, so the GET guard above stays
-  // the only thing deciding whether a non-GET reaches the filesystem.
-  const file = resolve_app_file(dir, route.slice(route.indexOf(' ') + 1))
+  const file = resolve_app_file(dir, path)
   const stats = file === null ? null : stat_file(file)
-  if (file === null || stats === null) {
-    send_not_found(res, route)
-    return
-  }
+  if (file === null || stats === null) return false
 
   res.statusCode = 200
   res.setHeader('content-type', CONTENT_TYPES[extname(file)] ?? FALLBACK_CONTENT_TYPE)
@@ -432,6 +501,7 @@ function serve_app_asset(res: ServerResponse, route: string, override: string | 
   res.setHeader('cache-control', 'no-store')
   res.setHeader('content-length', String(stats.size))
   stream_file(res, file)
+  return true
 }
 
 /**

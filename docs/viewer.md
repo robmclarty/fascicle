@@ -355,6 +355,44 @@ The proxy should also pass `/api/events` through as it arrives, since a proxy
 that buffers the response holds the live tail back. The viewer sends
 `x-accel-buffering: no`, which is enough for nginx.
 
+### Mounting the Handler
+
+A host that can import `fascicle/viewer` doesn't need the proxy or the second
+process. `create_viewer_handler` returns the request handler that
+`start_server` puts on its socket. It takes the `broadcaster`,
+`trajectory_path`, `app_dir`, and `ingest` that `start_server` takes, and a
+`base_path` to mount under.
+
+```ts
+import { createServer } from 'node:http'
+import { create_broadcaster, create_viewer_handler, start_tail } from 'fascicle/viewer'
+
+const broadcaster = create_broadcaster({ buffer: 1000 })
+start_tail({ path: trajectory_path, on_event: (event) => broadcaster.emit(event) })
+const viewer = create_viewer_handler({
+  broadcaster,
+  trajectory_path,
+  ingest: false,
+  base_path: `/viewer/${run_id}`,
+})
+
+createServer((req, res) => {
+  if (!signed_in(req)) return refuse(res)
+  if (viewer(req, res)) return
+  res.statusCode = 404
+  res.end()
+}).listen(8080)
+```
+
+The handler returns true once it has answered. It returns false, and leaves
+the response alone, for a request that it doesn't serve: a path outside
+`base_path`, a route that the API doesn't claim, or a file that the canvas
+doesn't ship. The host answers those itself. A request for the bare
+`/viewer/<id>` gets a redirect to `/viewer/<id>/`, so the trailing slash is
+taken care of. The handler checks no `Host`, because only `start_server` knows
+the address that it's bound to, so the host's own auth decides who reaches
+the canvas.
+
 ## Metrics and Dashboards
 
 The viewer is the live picture of one run. For aggregates across many runs

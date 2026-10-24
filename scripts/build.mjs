@@ -459,7 +459,7 @@ async function main() {
     process.exit(1);
   }
   const viewer_mod = await import(pathToFileURL(DIST_VIEWER_JS).href);
-  const EXPECTED_VIEWER = ['start_viewer', 'run_viewer_cli', 'create_broadcaster', 'start_server', 'start_tail'];
+  const EXPECTED_VIEWER = ['start_viewer', 'run_viewer_cli', 'create_broadcaster', 'create_viewer_handler', 'start_server', 'start_tail'];
   const missing_viewer = EXPECTED_VIEWER.filter((name) => typeof viewer_mod[name] === 'undefined');
   if (missing_viewer.length > 0) {
     console.error(`\nbuild: viewer smoke test missing exports: ${missing_viewer.join(', ')}`);

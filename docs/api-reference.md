@@ -658,11 +658,12 @@ import { start_viewer } from 'fascicle/viewer';
 | `run_viewer_cli(argv)` | the `fascicle-viewer` bin entry point |
 | `create_broadcaster(config)` | fan live trajectory events out to subscribers |
 | `start_server(config)` | the bare HTTP server underneath `start_viewer` |
+| `create_viewer_handler(config)` | the request handler underneath `start_server`, for a host to mount under `base_path` on a server of its own; returns `(req, res) => boolean`, false for a request it doesn't serve, and checks no `Host` |
 | `start_tail(config)` | follow a trajectory JSONL file as it grows |
 
 Types: `StartViewerOptions`, `ViewerHandle`, `Broadcaster`,
 `BroadcasterConfig`, `BroadcastEvent`, `Subscriber`, `ServerConfig`,
-`ViewerServer`, `Tail`, `TailConfig`. The `fascicle-viewer` bin ships with
+`ViewerServer`, `ViewerHandlerConfig`, `ViewerHandler`, `Tail`, `TailConfig`. The `fascicle-viewer` bin ships with
 the package and needs no peer. See [docs/viewer.md](./viewer.md).
 
 ## Errors
