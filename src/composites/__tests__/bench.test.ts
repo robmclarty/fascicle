@@ -445,6 +445,7 @@ describe('bench control flow', () => {
       bench(approval_gate('approve_spend'), [{ id: 'case-7', input: 1 }], {}),
     )
     expect(err).toBeInstanceOf(bench_suspend_error)
+    expect(err.name).toBe('bench_suspend_error')
     expect(err.case_id).toBe('case-7')
     expect(err.suspend_id).toBe('approve_spend')
     expect(err.message).toContain('case-7')
