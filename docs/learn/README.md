@@ -52,6 +52,8 @@ No model, no key, just the pieces that everything else is built from.
 ### Part 2: Models
 
 A word problem solver, where a model reads and writes and code does the math.
+For the picture underneath these lessons, what goes over the wire when a model
+runs and why, read [What a Harness Does](../what-a-harness-does.md).
 
 | Lesson | After it, you can | Time |
 | --- | --- | --- |

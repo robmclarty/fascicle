@@ -175,6 +175,7 @@ The [examples index](../examples/README.md) tells you which examples are keyless
 - [docs/writing-a-harness.md](./writing-a-harness.md) — build a runner around Fascicle.
 - [docs/blueprint.md](./blueprint.md) — the standard app architecture for a real Fascicle app.
 - [docs/embedding-under-a-harness.md](./embedding-under-a-harness.md) — run a Fascicle agent as somebody's child process.
+- [docs/what-a-harness-does.md](./what-a-harness-does.md) explains what the program around a model does, from the request on the wire up.
 - [docs/concepts.md](./concepts.md) — step-as-value, trajectories, cancellation.
 - [docs/configuration.md](./configuration.md) — engine config, defaults, provider setup.
 - [docs/providers.md](./providers.md) — per-provider adapter notes.

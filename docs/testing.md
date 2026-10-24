@@ -309,7 +309,7 @@ assert_prefix_stable(requests);
 ```
 
 It throws a plain `Error` at the first difference, so it works under any test
-runner. The message names the call (counted from 1), the step (its
+runner. The message names the call (counted from 1), the model turn (its
 `step_index`), and the difference, as in `call 1, step 2: message 3 differs
 from step 1`, where message and tool positions count from 0 the way the
 request's arrays hold them. It ends by saying that the check reads calls that

@@ -1,6 +1,8 @@
 # Writing a Harness
 
-A **harness** is the runnable program you write to wrap Fascicle for one specific use case. Fascicle itself is a library, and not an app, not a framework, not a CLI. Your harness is where you decide:
+The word harness has a broad sense and a narrow one. In the field's broad sense, a harness is everything around a model that isn't the model: the code that builds each request, runs the tool loop, spends the context window, and guards the tools, which [What a Harness Does](./what-a-harness-does.md) walks through. Fascicle is a library for writing that code, and its engine runs the innermost part of it, the tool loop, for you. This guide is about the outermost part, the program you write to own the process and everything that reaches it from outside, and it uses the word in that narrow sense.
+
+In that sense, a **harness** is the runnable program you write to wrap Fascicle for one specific use case. Fascicle itself is a library, and not an app, not a framework, not a CLI. Your harness is where you decide:
 
 - what the flow looks like
 - how input gets in (CLI args, HTTP, queue, IDE extension, cron)
