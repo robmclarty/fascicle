@@ -12,6 +12,7 @@
 
 import { aborted_error, schema_validation_error } from '#engine'
 import type { FinishReason, GenerateOptions, UsageTotals } from '#engine'
+import { format_schema_issues, validate_schema } from '#schema'
 
 export const DEFAULT_USAGE: UsageTotals = { input_tokens: 40, output_tokens: 20 }
 
@@ -52,30 +53,13 @@ export async function emit_chunks(
   await on_chunk({ kind: 'finish', finish_reason, usage })
 }
 
-type CannedIssue = {
-  readonly message: string
-  readonly path?: ReadonlyArray<PropertyKey>
-}
-
-/**
- * Render issues as one `path: message` line per issue, dotted the same way
- * the engine's own repair prompts and error messages format them.
- */
-function format_issues(issues: ReadonlyArray<CannedIssue>): string {
-  return issues
-    .map((issue) =>
-      issue.path === undefined || issue.path.length === 0
-        ? issue.message
-        : `${issue.path.map(String).join('.')}: ${issue.message}`,
-    )
-    .join('; ')
-}
-
 /**
  * Validate canned content through the caller's schema, throwing the engine's
  * own `schema_validation_error` on failure so `instanceof` handling in the
  * code under test sees exactly what a real engine throws when its repair
- * attempts run out. Absent a schema, the content passes through untouched.
+ * attempts run out. The issues are normalized and rendered by the same
+ * `#schema` helpers the engine uses. Absent a schema, the content passes
+ * through untouched.
  */
 export async function validate_canned(
   schema: GenerateOptions<unknown>['schema'],
@@ -83,24 +67,11 @@ export async function validate_canned(
   described: string,
 ): Promise<unknown> {
   if (schema === undefined) return content
-  const checked = await schema['~standard'].validate(content)
-  if (checked.issues !== undefined) {
-    // The spec allows a path segment to be a bare key or a `{ key }` wrapper;
-    // normalize to bare keys so schema_issues reads one shape, as the real
-    // engine's validator does.
-    const issues: CannedIssue[] = checked.issues.map((issue) =>
-      issue.path === undefined
-        ? { message: issue.message }
-        : {
-            message: issue.message,
-            path: issue.path.map((segment) =>
-              typeof segment === 'object' ? segment.key : segment,
-            ),
-          },
-    )
+  const checked = await validate_schema(schema, content)
+  if (!checked.ok) {
     throw new schema_validation_error(
-      `${described} failed the caller's schema: ${format_issues(issues)}`,
-      issues,
+      `${described} failed the caller's schema: ${format_schema_issues(checked.issues)}`,
+      checked.issues,
       render_text(content),
     )
   }
