@@ -2,8 +2,8 @@
  * throughput(): the derived tokens-per-second view over StepTiming.
  *
  * Pure-function tests over hand-built step records: the decode vs blended
- * basis rules, the decode time Ollama reports winning over the engine's own
- * timing, the skip of unmeasured steps, the three accepted source shapes, and
+ * basis rules, a whole tool call's round trip counting as blended, the decode
+ * time Ollama reports winning over the engine's own timing, the skip of unmeasured steps, the three accepted source shapes, and
  * the undefined cases where a rate would divide by zero.
  */
 
@@ -118,6 +118,52 @@ describe('throughput', () => {
     expect(
       throughput(make_step(50, { started_at: 0, duration_ms: 100, first_chunk_ms: 100 })),
     ).toBeUndefined()
+  })
+})
+
+describe('throughput on a step whose first chunk was a whole tool call', () => {
+  it('counts the round trip as blended, not the last few milliseconds as decode', () => {
+    const step = make_step(180, {
+      started_at: 0,
+      duration_ms: 6000,
+      first_chunk_ms: 5997,
+      whole_tool_call: true,
+    })
+    expect(throughput(step)).toEqual({
+      tokens_per_second: 30,
+      basis: 'blended',
+      output_tokens: 180,
+      measured_ms: 6000,
+    })
+  })
+
+  it('downgrades the basis of a call whose other steps streamed', () => {
+    const streamed = make_step(30, { started_at: 0, duration_ms: 1200, first_chunk_ms: 200 })
+    const whole = make_step(
+      20,
+      { started_at: 0, duration_ms: 1000, first_chunk_ms: 995, whole_tool_call: true },
+      1,
+    )
+    expect(throughput([streamed, whole])).toEqual({
+      tokens_per_second: 25,
+      basis: 'blended',
+      output_tokens: 50,
+      measured_ms: 2000,
+    })
+  })
+
+  it("takes Ollama's reported decode time over the mark", () => {
+    const step = ollama_step(
+      180,
+      { started_at: 0, duration_ms: 5477, first_chunk_ms: 5474, whole_tool_call: true },
+      { eval_duration: 4_800_000_000 },
+    )
+    expect(throughput(step)).toEqual({
+      tokens_per_second: 37.5,
+      basis: 'decode',
+      output_tokens: 180,
+      measured_ms: 4800,
+    })
   })
 })
 

@@ -9,7 +9,8 @@
  * streamed turn's first-chunk stamp isolates it, as long as the turn streams
  * its output while it generates it, and every depth-1 turn streams, so those
  * measure 'decode'. Without streaming (claude_cli, or a native adapter that
- * doesn't stream), the only measurable
+ * doesn't stream), or when the first chunk was a tool call that arrived
+ * whole, the only measurable
  * window is the whole round-trip, which folds in network, provider queueing,
  * and prompt prefill; that blended rate understates the model on long prompts
  * with short answers. The result names which one it is rather than letting
@@ -66,14 +67,18 @@ function reported_decode_ms(step: StepRecord): number | undefined {
 /**
  * One step's measured window and whether it is decode time, or undefined
  * when the step has nothing to measure. A decode time the provider reported
- * wins over the engine's own timing, streamed or not.
+ * wins over the engine's own timing, streamed or not. A step whose first
+ * chunk was a tool call that arrived whole streamed nothing while the model
+ * generated that call, so its window is the whole round trip.
  */
 function step_window(step: StepRecord): { ms: number; decode: boolean } | undefined {
   const reported = reported_decode_ms(step)
   if (reported !== undefined) return { ms: reported, decode: true }
   if (step.timing === undefined) return undefined
-  const { duration_ms, first_chunk_ms } = step.timing
-  if (first_chunk_ms === undefined) return { ms: duration_ms, decode: false }
+  const { duration_ms, first_chunk_ms, whole_tool_call } = step.timing
+  if (first_chunk_ms === undefined || whole_tool_call === true) {
+    return { ms: duration_ms, decode: false }
+  }
   return { ms: duration_ms - first_chunk_ms, decode: true }
 }
 
@@ -84,7 +89,8 @@ function step_window(step: StepRecord): { ms: number; decode: boolean } | undefi
  * Tool-execution time between turns never contributes, since StepTiming
  * brackets the provider round-trip alone. Each step's window is the decode
  * time its provider reported when it has one (Ollama's `eval_duration`),
- * else `duration_ms - first_chunk_ms` when the turn streamed, else the full
+ * else `duration_ms - first_chunk_ms` when the turn streamed, unless its
+ * first chunk was a tool call that arrived whole, else the full
  * `duration_ms`, with `basis` reporting 'decode' only when no blended window
  * contributed. Returns undefined when nothing is measurable: no step has
  * timing or a reported decode time (an external adapter, a test seam), or the

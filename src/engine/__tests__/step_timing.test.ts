@@ -276,6 +276,102 @@ describe('StepTiming on the engine loop', () => {
   })
 })
 
+describe('StepTiming on a turn whose first chunk is a tool call', () => {
+  const save: Tool = {
+    name: 'save',
+    description: 'save a note',
+    input_schema: z.object({ text: z.string() }),
+    execute: () => 'saved',
+  }
+
+  const call_turn: TurnResult = {
+    text: '',
+    tool_calls: [{ id: 'c1', name: 'save', input: { text: 'tides' } }],
+    finish_reason: 'tool_calls',
+    usage: { input_tokens: 4, output_tokens: 180 },
+  }
+
+  /**
+   * An engine whose first turn generates for 900ms, then dispatches one call
+   * with the input deltas given, 5ms before it returns, and whose second turn
+   * answers with nothing streamed.
+   */
+  function call_engine(deltas: readonly string[]): ReturnType<typeof make_engine> {
+    let calls = 0
+    return make_engine(async (req) => {
+      calls += 1
+      if (calls > 1) return text_turn('done')
+      advance(900)
+      const step_index = req.step_index
+      await req.dispatch_chunk?.({ kind: 'tool_call_start', id: 'c1', name: 'save', step_index })
+      for (const delta of deltas) {
+        // oxlint-disable-next-line no-await-in-loop
+        await req.dispatch_chunk?.({ kind: 'tool_call_input_delta', id: 'c1', delta, step_index })
+      }
+      await req.dispatch_chunk?.({ kind: 'tool_call_end', id: 'c1', input: { text: 'tides' }, step_index })
+      advance(5)
+      return call_turn
+    })
+  }
+
+  it('marks a call that arrived whole and rates the round trip as blended', async () => {
+    const result = await call_engine(['{"text":"tides"}']).generate({
+      provider: PROVIDER,
+      model: MODEL,
+      prompt: 'hi',
+      retry: NO_RETRY,
+      tools: [save],
+    })
+    expect(result.steps[0]?.timing).toEqual({
+      started_at: T0,
+      duration_ms: 905,
+      first_chunk_ms: 900,
+      whole_tool_call: true,
+    })
+    // Without the mark, 180 tokens over the last 5ms would read 36,000 a second.
+    expect(result.steps[0] && throughput(result.steps[0])).toEqual({
+      tokens_per_second: (180 * 1000) / 905,
+      basis: 'blended',
+      output_tokens: 180,
+      measured_ms: 905,
+    })
+  })
+
+  it('leaves a call whose input streamed in pieces unmarked', async () => {
+    const result = await call_engine(['{"text":', '"tides"}']).generate({
+      provider: PROVIDER,
+      model: MODEL,
+      prompt: 'hi',
+      retry: NO_RETRY,
+      tools: [save],
+    })
+    expect(result.steps[0]?.timing).toEqual({ started_at: T0, duration_ms: 905, first_chunk_ms: 900 })
+  })
+
+  it("clears a failed attempt's mark before the attempt that returns", async () => {
+    let attempts = 0
+    const engine = make_engine(async (req) => {
+      attempts += 1
+      advance(100)
+      if (attempts === 1) {
+        await req.dispatch_chunk?.({ kind: 'tool_call_end', id: 'c1', input: {}, step_index: req.step_index })
+        throw Object.assign(new Error('connection reset'), { kind: 'network' })
+      }
+      await req.dispatch_chunk?.({ kind: 'text', text: 'a', step_index: req.step_index })
+      advance(10)
+      return text_turn('a')
+    })
+    const result = await engine.generate({
+      provider: PROVIDER,
+      model: MODEL,
+      prompt: 'hi',
+      retry: RETRY_NETWORK,
+    })
+    expect(attempts).toBe(2)
+    expect(result.steps[0]?.timing).toEqual({ started_at: T0 + 100, duration_ms: 110, first_chunk_ms: 100 })
+  })
+})
+
 describe('GenerateResult.timing', () => {
   it('spans the whole call, tool execution between turns included', async () => {
     const tool: Tool = {

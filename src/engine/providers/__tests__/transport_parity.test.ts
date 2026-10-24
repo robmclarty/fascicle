@@ -174,7 +174,7 @@ async function run_ai_sdk_turn(
     step_index: 0,
     messages,
     abort: new AbortController().signal,
-    on_first_chunk: () => {},
+    observe_chunk: () => {},
   })
 }
 

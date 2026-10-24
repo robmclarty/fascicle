@@ -133,9 +133,10 @@ export type SalvageFormat = 'hermes' | 'json' | 'qwen_xml'
  * adapter that doesn't stream has none. `duration_ms - first_chunk_ms` is the window the model spent
  * emitting output, as long as the turn streams output while it generates it.
  * A provider that sends a tool call whole once it has generated it leaves
- * that window at the turn's last few milliseconds, which is why `throughput()`,
- * the derived tokens-per-second view, prefers a decode time the provider
- * reports itself.
+ * that window at the turn's last few milliseconds. `whole_tool_call` marks
+ * such a turn, and `throughput()`, the derived tokens-per-second view,
+ * prefers a decode time the provider reports itself, and counts a marked
+ * turn's whole round trip when there's none.
  */
 export type StepTiming = {
   /** Epoch ms when the successful provider attempt started. */
@@ -144,6 +145,12 @@ export type StepTiming = {
   duration_ms: number
   /** Turns that dispatched a chunk: ms from attempt start to the first one. */
   first_chunk_ms?: number
+  /**
+   * Present when the first chunk belonged to a tool call that arrived whole,
+   * its input in one delta or none, so the model generated it before the
+   * stamp and the window after `first_chunk_ms` isn't decode time.
+   */
+  whole_tool_call?: true
 }
 
 /**

@@ -94,7 +94,7 @@ async function run_turn(on_chunk: ((chunk: StreamChunk) => void) | undefined): P
     step_index: 0,
     messages: MESSAGES,
     abort: new AbortController().signal,
-    on_first_chunk: () => {},
+    observe_chunk: () => {},
   })
 }
 

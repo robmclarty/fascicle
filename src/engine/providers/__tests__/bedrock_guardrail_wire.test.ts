@@ -140,7 +140,7 @@ async function run_turn(
     step_index: 0,
     messages: MESSAGES,
     abort: new AbortController().signal,
-    on_first_chunk: () => {},
+    observe_chunk: () => {},
   })
 }
 

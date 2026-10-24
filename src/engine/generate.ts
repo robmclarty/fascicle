@@ -52,6 +52,7 @@ import {
 import { format_schema_issues, to_json_schema } from '#schema'
 import type { ToolSchema } from '#schema'
 import type { TrajectoryLogger } from '#core'
+import { create_first_chunk_stamp, type FirstChunkStamp } from './first_chunk_stamp.js'
 import { split_leading_system_run } from './leading_system.js'
 import { merge_provider_options } from './merge_defaults.js'
 import { FREE_PROVIDERS, pricing_key, round6 } from './pricing.js'
@@ -353,28 +354,27 @@ function arm_turn_timeout(
  * The wrapper also stamps StepTiming here, and only here, because this is the
  * one place that can see attempt boundaries: started_at re-stamps at every
  * attempt entry, so failed attempts and backoff waits never inflate
- * duration_ms. `first_chunk_at` (the builder's Date.now() from its first
- * dispatched chunk) belongs to the returning attempt, since the builder
- * clears it as each attempt starts.
+ * duration_ms. The builder's first-chunk stamp belongs to the returning
+ * attempt, since the builder clears it as each attempt starts.
  */
 function retry_turn(
   call_once: (turn_abort: AbortSignal) => Promise<TurnResult>,
   args: InvokeOnceArgs,
-  first_chunk_at: () => number | undefined,
+  stamp: FirstChunkStamp,
   retry_policy: RetryPolicy,
   classify: (err: unknown) => unknown,
   turn_timeout_ms: number | undefined,
   trajectory: TrajectoryLogger | undefined,
   on_chunk_provided: boolean,
 ): Promise<TurnResult> {
-  const has_streamed = (): boolean => on_chunk_provided && first_chunk_at() !== undefined
+  const has_streamed = (): boolean => on_chunk_provided && stamp.at() !== undefined
   return retry_with_policy(
     async () => {
       const started_at = Date.now()
       const deadline = arm_turn_timeout(args.abort, turn_timeout_ms)
       try {
         const turn = await call_once(deadline.signal)
-        return { ...turn, timing: build_step_timing(started_at, first_chunk_at()) }
+        return { ...turn, timing: build_step_timing(started_at, stamp) }
       } catch (err: unknown) {
         if (err instanceof on_chunk_error) throw err
         // A genuine user abort wins over everything below it, including a
@@ -421,14 +421,13 @@ function retry_turn(
 
 /**
  * Assemble one turn's StepTiming from the attempt's start stamp and the
- * builder's first-chunk stamp (undefined on non-streamed turns).
+ * builder's first-chunk stamp, which holds nothing on a non-streamed turn.
  */
-function build_step_timing(
-  started_at: number,
-  first_chunk: number | undefined,
-): StepTiming {
+function build_step_timing(started_at: number, stamp: FirstChunkStamp): StepTiming {
   const timing: StepTiming = { started_at, duration_ms: Date.now() - started_at }
+  const first_chunk = stamp.at()
   if (first_chunk !== undefined) timing.first_chunk_ms = first_chunk - started_at
+  if (stamp.whole_tool_call()) timing.whole_tool_call = true
   return timing
 }
 
@@ -443,23 +442,21 @@ function build_step_timing(
  */
 function build_ai_sdk_invoke(cfg: AiSdkInvokeConfig): InvokeOnce {
   return async (args: InvokeOnceArgs): Promise<TurnResult> => {
-    let first_chunk_at: number | undefined
+    const stamp = create_first_chunk_stamp()
     const call_once = (turn_abort: AbortSignal): Promise<TurnResult> => {
-      first_chunk_at = undefined
+      stamp.reset()
       return cfg.invoke_turn({
         step_index: args.step_index,
         messages: args.messages,
         abort: turn_abort,
-        on_first_chunk: () => {
-          first_chunk_at ??= Date.now()
-        },
+        observe_chunk: stamp.observe,
       })
     }
 
     return await retry_turn(
       call_once,
       args,
-      () => first_chunk_at,
+      stamp,
       cfg.retry_policy,
       classify_provider_error,
       cfg.turn_timeout_ms,
@@ -485,9 +482,9 @@ function build_native_invoke(cfg: NativeInvokeConfig): InvokeOnce {
   const classify = cfg.adapter.classify_error ?? classify_provider_error
   const streams = cfg.adapter.supports('streaming')
   return async (args: InvokeOnceArgs): Promise<TurnResult> => {
-    let first_chunk_at: number | undefined
+    const stamp = create_first_chunk_stamp()
     const call_once = async (turn_abort: AbortSignal): Promise<TurnResult> => {
-      first_chunk_at = undefined
+      stamp.reset()
       // turn_abort is the composed user-abort + turn_timeout deadline; the
       // internal controller adds one more reason to cancel (a throwing chunk
       // consumer) without losing either of those.
@@ -503,7 +500,7 @@ function build_native_invoke(cfg: NativeInvokeConfig): InvokeOnce {
         turn_abort.addEventListener('abort', cancel_on_turn_abort, { once: true })
       }
       const dispatch_chunk = async (chunk: StreamChunk): Promise<void> => {
-        first_chunk_at ??= Date.now()
+        stamp.observe(chunk)
         try {
           await cfg.dispatcher.dispatch(chunk)
         } catch (err: unknown) {
@@ -547,7 +544,7 @@ function build_native_invoke(cfg: NativeInvokeConfig): InvokeOnce {
     return await retry_turn(
       call_once,
       args,
-      () => first_chunk_at,
+      stamp,
       cfg.retry_policy,
       classify,
       cfg.turn_timeout_ms,

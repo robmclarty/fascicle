@@ -487,7 +487,7 @@ async function collect_stream(
   params: Parameters<typeof streamText>[0],
   step_index: number,
   dispatcher: ChunkDispatcher,
-  on_first_chunk: () => void,
+  observe_chunk: (chunk: StreamChunk) => void,
   internal_controller: AbortController,
   adapter: AiSdkProviderAdapter,
 ): Promise<TurnResult> {
@@ -500,8 +500,6 @@ async function collect_stream(
     provider_reported: undefined,
     cut_off: false,
   }
-  let first = true
-
   for await (const part of stream_result.stream) {
     accumulate_stream_part(part, acc)
     if (part.type === 'error') {
@@ -512,16 +510,13 @@ async function collect_stream(
     }
     const chunk = map_stream_part_to_chunk(part, step_index, adapter.normalize_usage)
     if (chunk === undefined) continue
-    // Stamped on the first dispatched chunk, not the first stream part: the
-    // SDK opens every stream with `start` and `start-step` framing before the
-    // model has produced a token, and a stamp there would leave prefill inside
-    // the decode window throughput() measures. This is also the native
-    // transport's rule (build_native_invoke stamps in dispatch_chunk), so a
+    // The engine stamps the first dispatched chunk, not the first stream part:
+    // the SDK opens every stream with `start` and `start-step` framing before
+    // the model has produced a token, and a stamp there would leave prefill
+    // inside the decode window throughput() measures. This is also the native
+    // transport's rule (build_native_invoke observes in dispatch_chunk), so a
     // failure before the first token stays retryable on both.
-    if (first) {
-      first = false
-      on_first_chunk()
-    }
+    observe_chunk(chunk)
     try {
       await dispatcher.dispatch(chunk)
     } catch (err: unknown) {
@@ -571,7 +566,8 @@ export type AiSdkTurnArgs = {
   readonly step_index: number
   readonly messages: ReadonlyArray<Message>
   readonly abort: AbortSignal
-  readonly on_first_chunk: () => void
+  /** Sees every chunk the turn dispatches, just before it goes out. */
+  readonly observe_chunk: (chunk: StreamChunk) => void
 }
 
 export type AiSdkTurn = (args: AiSdkTurnArgs) => Promise<TurnResult>
@@ -690,7 +686,7 @@ export function create_ai_sdk_turn(cfg: AiSdkTurnConfig): AiSdkTurn {
         base_params,
         args.step_index,
         cfg.dispatcher,
-        args.on_first_chunk,
+        args.observe_chunk,
         internal_controller,
         cfg.adapter,
       )

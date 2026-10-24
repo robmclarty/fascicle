@@ -607,7 +607,7 @@ describe('ai_sdk part data round trip', () => {
       step_index: 0,
       messages: [{ role: 'user', content: 'weather in Ottawa?' }],
       abort: new AbortController().signal,
-      on_first_chunk: () => {},
+      observe_chunk: () => {},
     })
     expect(result.content).toStrictEqual(EXPECTED_CONTENT)
   })
@@ -707,7 +707,7 @@ describe('ai_sdk part data round trip', () => {
       step_index: 0,
       messages: [{ role: 'user', content: 'hi' }],
       abort: new AbortController().signal,
-      on_first_chunk: () => {},
+      observe_chunk: () => {},
     })
     expect(result.text).toBe('Sunny.')
     expect('content' in result).toBe(false)
@@ -806,6 +806,49 @@ describe('ai_sdk turns always stream', () => {
     await expect(
       engine.generate({ model: 'mock-model', prompt: 'hi', on_chunk: () => {} }),
     ).rejects.toThrow(/streaming/)
+  })
+
+  it('shows the engine every chunk it dispatches, in order, and none of the stream framing', async () => {
+    const model = new MockLanguageModelV4({ doStream: [stream_of(TOOL_TURN_STREAM)] })
+    const turn = create_ai_sdk_turn({
+      adapter: mock_adapter(model, 'anthropic_mock', 'anthropic'),
+      model_id: 'mock-model',
+      dispatcher: create_chunk_dispatcher(undefined),
+      tools: [weather],
+      schema: undefined,
+      provider_options: undefined,
+      temperature: undefined,
+      max_tokens: undefined,
+      top_p: undefined,
+      reasoning: undefined,
+      telemetry: undefined,
+    })
+    const observed: string[] = []
+    await turn({
+      step_index: 0,
+      messages: [{ role: 'user', content: 'weather in Ottawa?' }],
+      abort: new AbortController().signal,
+      observe_chunk: (chunk) => {
+        observed.push(chunk.kind)
+      },
+    })
+    expect(observed).toStrictEqual(['reasoning', 'reasoning', 'text', 'tool_call_end', 'step_finish'])
+  })
+
+  // The AI SDK reports an Ollama tool call as a lone tool-call part, with no
+  // input parts before it, once the call has been generated.
+  it('marks a turn whose first chunk was a tool call that arrived whole', async () => {
+    const model = two_turn_model([
+      { type: 'stream-start', warnings: [] },
+      { type: 'tool-call', toolCallId: 'call_1', toolName: 'get_weather', input: '{"city":"Ottawa"}' },
+      { type: 'finish', finishReason: { unified: 'tool-calls', raw: 'tool_calls' }, usage: USAGE_V4 },
+    ])
+    const engine = create_engine({
+      providers: { plain_mock: {} },
+      custom_providers: { plain_mock: () => mock_adapter(model, 'plain_mock') },
+    })
+    const result = await engine.generate({ model: 'mock-model', prompt: 'weather in Ottawa?', tools: [weather] })
+    expect(result.steps.map((step) => step.timing?.whole_tool_call)).toStrictEqual([true, undefined])
   })
 })
 

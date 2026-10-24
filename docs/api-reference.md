@@ -300,6 +300,13 @@ the call whole once it has generated it, so the first chunk arrives as the
 turn ends, and a window that started there would cover only its last few
 milliseconds.
 
+A provider that sends a call whole without timing its own decode gets the
+same care another way. When a step's first chunk belongs to a tool call
+whose input came in one piece or none, the engine sets `whole_tool_call:
+true` on its timing, and `throughput()` counts that step's whole round trip
+as `'blended'`. That's the `openai` provider pointed at Ollama's `/v1`, or
+any OpenAI-compatible server that sends a call's arguments in one piece.
+
 You get `undefined` back when no step carries timing, which is the case
 for test doubles and for external adapters other than `claude_cli`, or
 when the measured window is zero.
