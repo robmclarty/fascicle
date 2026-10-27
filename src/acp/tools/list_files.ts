@@ -130,6 +130,7 @@ export function list_files_tool(session: AcpSession, ignore: ReadonlyArray<strin
       },
       additionalProperties: false,
     }),
+    read_only: true,
     execute: async (input, ctx) => {
       const request = list_request(input)
       const files = await matching_files(session, request, ignored, ctx.abort)

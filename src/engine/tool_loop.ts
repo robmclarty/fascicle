@@ -25,11 +25,15 @@
  *     Validated matches run the normal execute path and produce the same
  *     records/events/chunks as native calls, marked salvaged. The budget is
  *     a shared mutable holder so it spans schema-repair re-invocations.
- *   - max_tool_calls_per_step: calls beyond the cap are dropped for the step
- *     (the model can re-issue next turn), recorded with
- *     error: { message: 'dropped_max_tool_calls_per_step' }, and excluded
- *     from the assistant history message so providers that require a result
- *     per emitted call do not reject the next request.
+ *   - max_tool_calls_per_step: a call to a tool flagged read_only doesn't
+ *     count toward the cap. The first counted call past it, and every call
+ *     after that one, are dropped for the step, so what runs is a prefix of
+ *     what the model asked for. Dropped calls are recorded with
+ *     error: { message: 'dropped_max_tool_calls_per_step' } and excluded from
+ *     the assistant history message, so providers that require a result per
+ *     emitted call do not reject the next request. When the loop goes on,
+ *     one user message after the step's tool results names them, so the
+ *     model learns they didn't run and can make them again.
  *   - ends_turn (Tool.ends_turn): a tool flagged terminal ends the loop when a
  *     call to it executes SUCCESSFULLY. The call runs the normal execute path
  *     (record, fed tool_result message, trajectory events + chunk), then the
@@ -998,26 +1002,104 @@ async function dispatch_salvaged_call_chunks(
 }
 
 /**
+ * The most characters of a dropped call's input that the notice quotes.
+ */
+const NOTICE_INPUT_LIMIT = 120
+
+/**
+ * `text` cut to at most `limit` characters, counted by code point so that no
+ * surrogate pair is split, with an ellipsis standing in for what was cut.
+ */
+function clip(text: string, limit: number): string {
+  const points = Array.from(text)
+  return points.length <= limit ? text : `${points.slice(0, limit - 1).join('')}…`
+}
+
+/**
+ * The user message that names the calls the per-step cap dropped. It's fed
+ * back after the step's tool results, since the dropped calls themselves never
+ * reach history, so without it the model would never learn they didn't run.
+ * Each call reads as `name(input)`, with the input as JSON clipped to
+ * NOTICE_INPUT_LIMIT characters. When the call has read-only tools, the
+ * notice says that they don't count, or a turn that made more calls than the
+ * cap would read as a contradiction.
+ */
+function dropped_notice(
+  cap: number,
+  dropped: ReadonlyArray<RawToolCall>,
+  reads_exempt: boolean,
+): Message {
+  const one = dropped.length === 1
+  const counted = one ? '1 call' : `${String(dropped.length)} calls`
+  const exempt = reads_exempt ? ', not counting read-only tools' : ''
+  const listed = dropped
+    .map((call) => `${call.name}(${clip(safe_json_stringify(call.input), NOTICE_INPUT_LIMIT)})`)
+    .join(', ')
+  return {
+    role: 'user',
+    content:
+      `${counted} didn't run, because max_tool_calls_per_step allows ${String(cap)} per turn${exempt}: ` +
+      `${listed}. Make ${one ? 'it' : 'them'} again, no more than ${String(cap)} per turn.`,
+  }
+}
+
+/**
+ * The index of the first call past `cap`, counting only calls to tools that
+ * aren't flagged read_only (an unknown name counts), or -1 when every call
+ * fits.
+ */
+function first_over_cap(
+  calls: ReadonlyArray<RawToolCall>,
+  tool_map: ReadonlyMap<string, Tool>,
+  cap: number,
+): number {
+  let counted = 0
+  for (const [n, call] of calls.entries()) {
+    if (tool_map.get(call.name)?.read_only === true) continue
+    counted += 1
+    if (counted > cap) return n
+  }
+  return -1
+}
+
+/**
+ * A turn's calls split by the per-step cap, with the notice that names the
+ * dropped ones, which is absent when nothing was dropped.
+ */
+type ClampedCalls = {
+  readonly kept: ReadonlyArray<RawToolCall>
+  readonly dropped: ReadonlyArray<RawToolCall>
+  readonly notice?: Message
+}
+
+/**
  * Apply `max_tool_calls_per_step` to a turn's calls, native and salvaged
- * alike. Dropped calls never reach history; the model re-issues them on a
- * later turn if it still wants them.
+ * alike. A call to a read-only tool doesn't count. The first counted call past
+ * the cap is dropped, and so is every call after it, so what runs is always a
+ * prefix of what the model asked for, and nothing runs after a call that
+ * didn't. Dropped calls never reach history; the notice names them instead.
  */
 function clamp_calls(
   config: ToolLoopConfig,
+  tool_map: ReadonlyMap<string, Tool>,
   calls: ReadonlyArray<RawToolCall>,
   step_index: number,
-): { kept: ReadonlyArray<RawToolCall>; dropped: ReadonlyArray<RawToolCall> } {
+): ClampedCalls {
   const cap = config.max_tool_calls_per_step
-  if (cap === undefined || calls.length <= cap) return { kept: calls, dropped: [] }
-  const kept = calls.slice(0, cap)
-  const dropped = calls.slice(cap)
+  // Stryker disable next-line ConditionalExpression: with no cap, first_over_cap finds no call past it (`counted > undefined` is false) and returns -1, so every call is kept either way; the guard is what narrows `cap` for the type.
+  if (cap === undefined) return { kept: calls, dropped: [] }
+  const cut = first_over_cap(calls, tool_map, cap)
+  if (cut === -1) return { kept: calls, dropped: [] }
+  const kept = calls.slice(0, cut)
+  const dropped = calls.slice(cut)
   record_tool_calls_dropped(config.trajectory, {
     step_index,
     max_tool_calls_per_step: cap,
     kept: kept.length,
     dropped: dropped.map((d) => ({ tool_call_id: d.id, name: d.name })),
   })
-  return { kept, dropped }
+  const reads_exempt = config.tools.some((tool) => tool.read_only === true)
+  return { kept, dropped, notice: dropped_notice(cap, dropped, reads_exempt) }
 }
 
 /**
@@ -1443,7 +1525,7 @@ async function run_loop_step(
   }
 
   const view = await salvage_turn(config, turn, tool_map, step_index)
-  const { kept, dropped } = clamp_calls(config, view.calls, step_index)
+  const { kept, dropped, notice } = clamp_calls(config, tool_map, view.calls, step_index)
   config.messages.push(build_assistant_message(turn, view, kept))
 
   if (kept.length === 0) {
@@ -1468,6 +1550,7 @@ async function run_loop_step(
   // Dropped calls mirror the max_steps precedent: a record with an error
   // and a tool_result event/chunk, but no tool_call event, no execution,
   // and no fed-back tool message (their call parts are not in history).
+  // The notice pushed below, once the loop goes on, names them instead.
   for (const d of dropped) {
     await record_unexecuted_call(ctx, d, 'dropped_max_tool_calls_per_step')
   }
@@ -1488,6 +1571,9 @@ async function run_loop_step(
   // full step is already recorded, so the result stays complete.
   if (ctx.terminal_fired) return loop_result(acc, turn.text, 'stop', false)
   if (ctx.would_exceed_after) return loop_result(acc, turn.text, 'max_steps', true)
+  // Only a turn that goes on gets the notice: no later turn would read it,
+  // and every call that ran has its result ahead of it.
+  if (notice !== undefined) config.messages.push(notice)
   // A tool turn ends the response that any paused turns before it began.
   acc.paused_texts.length = 0
   return undefined

@@ -300,6 +300,14 @@ export type Tool<i = unknown, o = unknown> = {
    * end the loop. undefined (the default) never ends the loop early.
    */
   ends_turn?: boolean
+  /**
+   * True for a tool whose calls change nothing, such as a file read or a
+   * search. A call to it doesn't count toward `max_tool_calls_per_step`,
+   * which is there to stop a turn from making calls that depend on each
+   * other's effects before the model has seen a result, and a call that
+   * changes nothing can't. undefined (the default) counts like any call.
+   */
+  read_only?: boolean
 }
 
 export type ToolApprovalRequest = {
@@ -500,10 +508,12 @@ export type GenerateOptions<t = string> = {
    */
   tool_call_repair_attempts?: number
   /**
-   * Cap on tool calls executed per step. Calls beyond the cap are dropped
-   * for that step (the model can re-issue them next turn) and surfaced via
-   * ToolCallRecord errors and a tool_calls_dropped trajectory event.
-   * undefined (the default) leaves the count unlimited.
+   * Cap on tool calls executed per step. A call to a tool flagged
+   * `read_only` doesn't count. The first call past the cap, and every call
+   * after it, are dropped for that step and surfaced via ToolCallRecord
+   * errors and a tool_calls_dropped trajectory event. When the loop goes on,
+   * one user message after the step's tool results names them, so the model
+   * can make them again. undefined (the default) leaves the count unlimited.
    */
   max_tool_calls_per_step?: number
   on_tool_approval?: ToolApprovalHandler

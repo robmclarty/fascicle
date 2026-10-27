@@ -260,6 +260,7 @@ export function search_tool(session: AcpSession, ignore: ReadonlyArray<string>, 
       required: ['pattern'],
       additionalProperties: false,
     }),
+    read_only: true,
     execute: async (input, ctx) => {
       const request = search_request(input)
       const base = await contain(session, request.path)

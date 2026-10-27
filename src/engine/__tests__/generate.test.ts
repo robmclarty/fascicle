@@ -29,7 +29,7 @@ import type { ToolSchema } from '#schema'
 // The engine zone may not import testing, since testing imports the engine;
 // a test may, since nothing in the engine imports a test.
 // fallow-ignore-next-line boundary-violation
-import { make_loop_engine } from '#testing'
+import { assert_prefix_stable, make_loop_engine } from '#testing'
 import { create_engine } from '../create_engine.js'
 import { create_claude_cli_adapter } from '../providers/claude_cli/index.js'
 import {
@@ -2063,5 +2063,35 @@ describe('generate: the caching each built-in adapter declares', () => {
     const adapter = factory(init)
     if (declared === undefined) expect('prompt_cache' in adapter).toBe(false)
     else expect(Reflect.get(adapter, 'prompt_cache')).toBe(declared)
+  })
+})
+
+describe('a tool loop that goes on past what it fed back only appends', () => {
+  const echo: Tool = {
+    name: 'echo',
+    description: 'echo',
+    input_schema: z.object({ value: z.string() }),
+    execute: (input) => (input as { value: string }).value,
+  }
+
+  it('keeps every request a prefix of the next after the cap drops a call', async () => {
+    const { engine, requests } = make_loop_engine([
+      [
+        { name: 'echo', input: { value: '1' } },
+        { name: 'echo', input: { value: '2' } },
+      ],
+      [{ name: 'echo', input: { value: '2' } }],
+      'done',
+    ])
+    const result = await engine.generate({ prompt: 'go', tools: [echo], max_tool_calls_per_step: 1 })
+    expect(result.content).toBe('done')
+    expect(requests).toHaveLength(3)
+    expect(() => assert_prefix_stable(requests)).not.toThrow()
+    expect(requests[1]?.messages.at(-1)).toEqual({
+      role: 'user',
+      content:
+        `1 call didn't run, because max_tool_calls_per_step allows 1 per turn: ` +
+        `echo({"value":"2"}). Make it again, no more than 1 per turn.`,
+    })
   })
 })

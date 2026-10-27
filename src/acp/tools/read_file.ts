@@ -148,6 +148,7 @@ export function read_file_tool(session: AcpSession, read_limit_lines: number): T
       required: ['path'],
       additionalProperties: false,
     }),
+    read_only: true,
     execute: async (input) => {
       const request = read_request(input, read_limit_lines)
       const { real } = await contain(session, request.path)

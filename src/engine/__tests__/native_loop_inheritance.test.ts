@@ -378,7 +378,8 @@ describe('native adapter inherits per-step clamping', () => {
     })
 
     // The dropped call never reaches history: the assistant message carries
-    // only c1 and only one tool result is fed back.
+    // only c1 and only one tool result is fed back. The notice after it is
+    // what tells the model that c2 didn't run.
     expect(log.requests[1]?.messages).toEqual([
       { role: 'user', content: 'go' },
       {
@@ -386,6 +387,12 @@ describe('native adapter inherits per-step clamping', () => {
         content: [{ type: 'tool_call', id: 'c1', name: 'echo', input: { value: 'one' } }],
       },
       { role: 'tool', tool_call_id: 'c1', name: 'echo', content: 'echo:one' },
+      {
+        role: 'user',
+        content:
+          `1 call didn't run, because max_tool_calls_per_step allows 1 per turn: ` +
+          `echo({"value":"two"}). Make it again, no more than 1 per turn.`,
+      },
     ])
   })
 })

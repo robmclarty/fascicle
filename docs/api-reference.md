@@ -218,7 +218,7 @@ Full shape in [configuration.md](./configuration.md#generate-options).
 | `prompt` | `string \| Message[]` |
 | `system` | system prompt |
 | `schema` | any Standard Schema (zod, ArkType, Valibot, ...); structured output with repair passes |
-| `tools` | agentic tool surface (`Tool[]`); `define_tool` types a tool's input, and a tool may set `ends_turn: true` to end the loop on a successful call |
+| `tools` | agentic tool surface (`Tool[]`); `define_tool` types a tool's input, a tool may set `ends_turn: true` to end the loop on a successful call, and a tool that changes nothing may set `read_only: true` to keep its calls out of `max_tool_calls_per_step` |
 | `effort` | `'none' \| 'low' \| 'medium' \| 'high' \| 'xhigh' \| 'max'`, translated per provider |
 | `abort`, `trajectory`, `on_chunk` | cancellation, observation, streaming |
 | `retry` | per-call `RetryPolicy` |

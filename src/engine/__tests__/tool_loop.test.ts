@@ -87,6 +87,7 @@ function make_tool(overrides: Partial<Tool> = {}): Tool {
     execute,
     ...(overrides.needs_approval !== undefined ? { needs_approval: overrides.needs_approval } : {}),
     ...(overrides.ends_turn !== undefined ? { ends_turn: overrides.ends_turn } : {}),
+    ...(overrides.read_only !== undefined ? { read_only: overrides.read_only } : {}),
   }
 }
 
@@ -1476,6 +1477,275 @@ describe('run_tool_loop max_tool_calls_per_step clamp', () => {
     )
     expect(out.tool_calls).toHaveLength(2)
     expect(events.find((e) => e['kind'] === 'tool_calls_dropped')).toBeUndefined()
+  })
+})
+
+describe('run_tool_loop names the calls max_tool_calls_per_step dropped', () => {
+  const echo_turn = (values: ReadonlyArray<string>): Partial<TurnResult> => ({
+    tool_calls: values.map((value, n) => call(`c${String(n + 1)}`, 'echo', { value })),
+    finish_reason: 'tool_calls',
+  })
+
+  it('feeds back one user message after the tool results, naming each dropped call', async () => {
+    const messages: Message[] = [{ role: 'user', content: 'go' }]
+    await run_tool_loop(
+      base_config({
+        invoke: [echo_turn(['1', '2', '3']), { text: 'done' }],
+        tools: [make_tool()],
+        messages,
+        max_tool_calls_per_step: 1,
+      }),
+    )
+    expect(messages.slice(1)).toEqual([
+      { role: 'assistant', content: [{ type: 'tool_call', id: 'c1', name: 'echo', input: { value: '1' } }] },
+      { role: 'tool', tool_call_id: 'c1', name: 'echo', content: 'ok' },
+      {
+        role: 'user',
+        content:
+          `2 calls didn't run, because max_tool_calls_per_step allows 1 per turn: ` +
+          `echo({"value":"2"}), echo({"value":"3"}). Make them again, no more than 1 per turn.`,
+      },
+      { role: 'assistant', content: 'done' },
+    ])
+  })
+
+  it('names one dropped call in the singular, under a cap above 1', async () => {
+    const messages: Message[] = [{ role: 'user', content: 'go' }]
+    await run_tool_loop(
+      base_config({
+        invoke: [echo_turn(['1', '2', '3']), { text: 'done' }],
+        tools: [make_tool()],
+        messages,
+        max_tool_calls_per_step: 2,
+      }),
+    )
+    expect(messages.find((m) => m.role === 'user' && m !== messages[0])).toEqual({
+      role: 'user',
+      content:
+        `1 call didn't run, because max_tool_calls_per_step allows 2 per turn: ` +
+        `echo({"value":"3"}). Make it again, no more than 2 per turn.`,
+    })
+  })
+
+  it('quotes an input of up to 120 characters whole, and clips a longer one to 120', async () => {
+    // `{"value":"` and `"}` add 12 characters to the value.
+    const fits = 'a'.repeat(108)
+    const long = 'b'.repeat(109)
+    const messages: Message[] = [{ role: 'user', content: 'go' }]
+    await run_tool_loop(
+      base_config({
+        invoke: [echo_turn(['1', fits, long]), { text: 'done' }],
+        tools: [make_tool()],
+        messages,
+        max_tool_calls_per_step: 1,
+      }),
+    )
+    const notice = messages[3]
+    const quoted_long = `${JSON.stringify({ value: long }).slice(0, 119)}…`
+    expect(notice?.content).toContain(`echo(${JSON.stringify({ value: fits })}), echo(${quoted_long})`)
+  })
+
+  it('clips by code point, never splitting a surrogate pair', async () => {
+    // Every character of the value is one code point but two UTF-16 units.
+    const messages: Message[] = [{ role: 'user', content: 'go' }]
+    await run_tool_loop(
+      base_config({
+        invoke: [echo_turn(['1', '😀'.repeat(200)]), { text: 'done' }],
+        tools: [make_tool()],
+        messages,
+        max_tool_calls_per_step: 1,
+      }),
+    )
+    expect(messages[3]?.content).toContain(`echo({"value":"${'😀'.repeat(109)}…)`)
+  })
+
+  it('adds no message when every call fits', async () => {
+    const messages: Message[] = [{ role: 'user', content: 'go' }]
+    await run_tool_loop(
+      base_config({
+        invoke: [echo_turn(['1', '2']), { text: 'done' }],
+        tools: [make_tool()],
+        messages,
+        max_tool_calls_per_step: 2,
+      }),
+    )
+    expect(messages.filter((m) => m.role === 'user')).toEqual([{ role: 'user', content: 'go' }])
+  })
+
+  it('adds no message when the step ends the loop on a terminal tool', async () => {
+    const messages: Message[] = [{ role: 'user', content: 'go' }]
+    const out = await run_tool_loop(
+      base_config({
+        invoke: [
+          {
+            tool_calls: [call('c1', 'finish', { value: 'x' }), call('c2', 'echo', { value: 'y' })],
+            finish_reason: 'tool_calls',
+          },
+        ],
+        tools: [make_tool(), make_tool({ name: 'finish', ends_turn: true })],
+        messages,
+        max_tool_calls_per_step: 1,
+      }),
+    )
+    expect(out.finish_reason).toBe('stop')
+    expect(messages.at(-1)).toMatchObject({ role: 'tool', tool_call_id: 'c1' })
+  })
+
+  it('adds no message when the step ends the loop at max_steps', async () => {
+    const messages: Message[] = [{ role: 'user', content: 'go' }]
+    const out = await run_tool_loop(
+      base_config({
+        invoke: [echo_turn(['1', '2'])],
+        tools: [make_tool()],
+        messages,
+        max_steps: 1,
+        max_tool_calls_per_step: 1,
+      }),
+    )
+    expect(out.finish_reason).toBe('max_steps')
+    expect(messages.filter((m) => m.role === 'user')).toEqual([{ role: 'user', content: 'go' }])
+  })
+
+  it('names the salvaged calls it dropped as it names native ones', async () => {
+    const messages: Message[] = [{ role: 'user', content: 'go' }]
+    await run_tool_loop(
+      base_config({
+        invoke: [{ text: `${hermes('a')}${hermes('b')}`, finish_reason: 'stop' }, { text: 'done' }],
+        tools: [capturing_echo([])],
+        messages,
+        salvage_budget: { remaining: 1 },
+        max_tool_calls_per_step: 1,
+      }),
+    )
+    expect(messages[3]).toEqual({
+      role: 'user',
+      content:
+        `1 call didn't run, because max_tool_calls_per_step allows 1 per turn: ` +
+        `echo({"value":"b"}). Make it again, no more than 1 per turn.`,
+    })
+  })
+})
+
+describe('run_tool_loop max_tool_calls_per_step with read-only tools', () => {
+  const ran = (order: string[], name: string, read_only?: boolean): Tool =>
+    make_tool({
+      name,
+      ...(read_only !== undefined ? { read_only } : {}),
+      execute: (input) => {
+        order.push(`${name}:${(input as { value: string }).value}`)
+        return 'ok'
+      },
+    })
+
+  it("doesn't count a call to a read-only tool, and says so in the notice", async () => {
+    const order: string[] = []
+    const messages: Message[] = [{ role: 'user', content: 'go' }]
+    const { trajectory, events } = recording_trajectory()
+    const out = await run_tool_loop(
+      base_config({
+        invoke: [
+          {
+            tool_calls: [
+              call('r1', 'read', { value: '1' }),
+              call('r2', 'read', { value: '2' }),
+              call('w1', 'write', { value: '1' }),
+              call('r3', 'read', { value: '3' }),
+              call('w2', 'write', { value: '2' }),
+            ],
+            finish_reason: 'tool_calls',
+          },
+          { text: 'done' },
+        ],
+        tools: [ran(order, 'read', true), ran(order, 'write')],
+        messages,
+        trajectory,
+        max_tool_calls_per_step: 1,
+      }),
+    )
+    expect(order).toEqual(['read:1', 'read:2', 'write:1', 'read:3'])
+    expect(out.tool_calls.find((tc) => tc.id === 'w2')?.error).toEqual({
+      message: 'dropped_max_tool_calls_per_step',
+    })
+    expect(events.find((e) => e['kind'] === 'tool_calls_dropped')).toMatchObject({
+      kept: 4,
+      dropped: [{ tool_call_id: 'w2', name: 'write' }],
+    })
+    expect(messages.find((m) => m.role === 'user' && m !== messages[0])).toEqual({
+      role: 'user',
+      content:
+        `1 call didn't run, because max_tool_calls_per_step allows 1 per turn, not counting read-only tools: ` +
+        `write({"value":"2"}). Make it again, no more than 1 per turn.`,
+    })
+  })
+
+  it('drops every call after the first one past the cap, read-only or not', async () => {
+    const order: string[] = []
+    const out = await run_tool_loop(
+      base_config({
+        invoke: [
+          {
+            tool_calls: [
+              call('w1', 'write', { value: '1' }),
+              call('w2', 'write', { value: '2' }),
+              call('r1', 'read', { value: '1' }),
+            ],
+            finish_reason: 'tool_calls',
+          },
+          { text: 'done' },
+        ],
+        tools: [ran(order, 'read', true), ran(order, 'write', false)],
+        max_tool_calls_per_step: 1,
+      }),
+    )
+    expect(order).toEqual(['write:1'])
+    expect(out.tool_calls.filter((tc) => tc.error?.message === 'dropped_max_tool_calls_per_step').map((tc) => tc.id))
+      .toEqual(['w2', 'r1'])
+  })
+
+  it('counts read_only: false like a tool with no flag, and says nothing of read-only tools', async () => {
+    const order: string[] = []
+    const messages: Message[] = [{ role: 'user', content: 'go' }]
+    await run_tool_loop(
+      base_config({
+        invoke: [
+          {
+            tool_calls: [call('a1', 'write', { value: '1' }), call('a2', 'write', { value: '2' })],
+            finish_reason: 'tool_calls',
+          },
+          { text: 'done' },
+        ],
+        tools: [ran(order, 'write', false)],
+        messages,
+        max_tool_calls_per_step: 1,
+      }),
+    )
+    expect(order).toEqual(['write:1'])
+    expect(messages[3]).toEqual({
+      role: 'user',
+      content:
+        `1 call didn't run, because max_tool_calls_per_step allows 1 per turn: ` +
+        `write({"value":"2"}). Make it again, no more than 1 per turn.`,
+    })
+  })
+
+  it('counts a call to a tool it has never heard of', async () => {
+    const order: string[] = []
+    const out = await run_tool_loop(
+      base_config({
+        invoke: [
+          {
+            tool_calls: [call('g1', 'ghost', { value: '1' }), call('r1', 'read', { value: '1' }), call('w1', 'write', { value: '1' })],
+            finish_reason: 'tool_calls',
+          },
+          { text: 'done' },
+        ],
+        tools: [ran(order, 'read', true), ran(order, 'write', false)],
+        max_tool_calls_per_step: 1,
+      }),
+    )
+    expect(out.tool_calls.find((tc) => tc.id === 'g1')?.error?.message).toBe("unknown tool 'ghost'")
+    expect(order).toEqual(['read:1'])
+    expect(out.tool_calls.find((tc) => tc.id === 'w1')?.error?.message).toBe('dropped_max_tool_calls_per_step')
   })
 })
 

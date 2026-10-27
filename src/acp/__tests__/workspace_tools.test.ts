@@ -193,6 +193,10 @@ describe('workspace_tools', () => {
     )
   })
 
+  it('flags the reads read-only, so max_tool_calls_per_step lets a turn make several', () => {
+    expect(workspace_tools(session).map((tool) => tool.read_only === true)).toEqual([true, true, true, false, false, false])
+  })
+
   it('validates input against the schemas the tool loop checks before execute', async () => {
     const read = tool_named('read_file', session)
     expect((await validate_schema(read.input_schema, { path: 'a', offset: 2 })).ok).toBe(true)
