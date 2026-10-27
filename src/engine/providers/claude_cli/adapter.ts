@@ -393,6 +393,9 @@ function emit_ignored_options<T>(
   if (opts.max_tool_calls_per_step !== undefined) {
     option_ignored.emit('max_tool_calls_per_step', PROVIDER_NAME)
   }
+  if (opts.truncated_turn_policy !== undefined) {
+    option_ignored.emit('truncated_turn_policy', PROVIDER_NAME)
+  }
   if (opts.cache !== undefined) {
     option_ignored.emit('cache', PROVIDER_NAME, 'the provider caches on its own')
   }

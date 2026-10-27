@@ -457,6 +457,31 @@ export function record_turn_paused(
 }
 
 /**
+ * Record that the loop went on past a turn that hit its output limit before
+ * it made a tool call (`truncated_turn_policy: 'continue'`). `output_tokens`
+ * is what the turn generated, and `max_tokens` is the limit, when the call
+ * set one.
+ */
+export function record_turn_truncated(
+  trajectory: TrajectoryLogger | undefined,
+  meta: {
+    readonly step_index: number
+    readonly span_id: string | undefined
+    readonly output_tokens: number
+    readonly max_tokens: number | undefined
+  },
+): void {
+  if (trajectory === undefined) return
+  trajectory.record({
+    kind: 'turn_truncated',
+    step_index: meta.step_index,
+    output_tokens: meta.output_tokens,
+    ...(meta.max_tokens !== undefined ? { max_tokens: meta.max_tokens } : {}),
+    ...(meta.span_id !== undefined ? { span_id: meta.span_id } : {}),
+  })
+}
+
+/**
  * Record that a requested reasoning-effort setting was ignored because the
  * model does not support it.
  */

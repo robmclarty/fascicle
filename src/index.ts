@@ -90,6 +90,7 @@ export type {
   ToolApprovalRequest,
   ToolCallRecord,
   ToolExecContext,
+  TruncatedTurnPolicy,
   TurnRequest,
   TurnResult,
   UsageTotals,

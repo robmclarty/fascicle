@@ -35,7 +35,7 @@ import { build_ollama_chat_body } from '../providers/ollama_native.js'
 // The engine zone may not import testing, since testing imports the engine;
 // a test may, since nothing in the engine imports a test.
 // fallow-ignore-next-line boundary-violation
-import { make_loop_engine } from '#testing'
+import { assert_prefix_stable, make_loop_engine } from '#testing'
 
 const zero_usage: UsageTotals = { input_tokens: 0, output_tokens: 0 }
 
@@ -3089,6 +3089,200 @@ describe('run_tool_loop continues a paused turn', () => {
     })
     expect(JSON.stringify(ollama)).not.toContain('server_tool_use')
     expect(JSON.stringify(ollama)).toContain('Hello.')
+  })
+})
+
+describe('run_tool_loop goes on past a turn cut off before it made a call', () => {
+  /** A trajectory that keeps every event, numbering spans from span-1. */
+  function recorder(): { trajectory: TrajectoryLogger; events: Array<Record<string, unknown>> } {
+    const events: Array<Record<string, unknown>> = []
+    let n = 0
+    return {
+      events,
+      trajectory: {
+        record: (e) => {
+          events.push(e)
+        },
+        start_span: () => {
+          n += 1
+          return `span-${String(n)}`
+        },
+        end_span: () => {},
+      },
+    }
+  }
+
+  const notice = (limit: string): Message => ({
+    role: 'user',
+    content:
+      `Your last turn reached ${limit} before it finished, so it was cut off. ` +
+      'Keep this turn short: make your next tool call, or give your final answer.',
+  })
+  const echo_call = [{ id: 'c1', name: 'echo', input: { value: 'x' } }]
+
+  it('sends back the text and a notice that names the limit, marks the step, and records turn_truncated', async () => {
+    const { engine, requests } = make_loop_engine([
+      { text: 'Let me look at', finish_reason: 'length', usage: { input_tokens: 10, output_tokens: 8192 } },
+      echo_call,
+      'done',
+    ])
+    const { trajectory, events } = recorder()
+    const result = await engine.generate({
+      model: 'loop',
+      prompt: 'go',
+      tools: [make_tool()],
+      max_tokens: 8192,
+      truncated_turn_policy: 'continue',
+      trajectory,
+    })
+    expect(result.content).toBe('done')
+    expect(result.finish_reason).toBe('stop')
+    expect(requests[1]?.messages).toStrictEqual([
+      { role: 'user', content: 'go' },
+      { role: 'assistant', content: 'Let me look at' },
+      notice('the 8192-token output limit'),
+    ])
+    expect(result.steps.map((step) => [step.finish_reason, step.truncated])).toStrictEqual([
+      ['length', true],
+      ['tool_calls', undefined],
+      ['stop', undefined],
+    ])
+    expect(result.steps.map((step) => 'truncated' in step)).toStrictEqual([true, false, false])
+    expect(result.steps[0]?.tool_calls).toStrictEqual([])
+    expect(events.filter((e) => e['kind'] === 'turn_truncated')).toStrictEqual([
+      { kind: 'turn_truncated', step_index: 0, output_tokens: 8192, max_tokens: 8192, span_id: 'span-2', ts: expect.any(Number) },
+    ])
+  })
+
+  it('sends only the notice for a turn that showed no text, and never its reasoning', async () => {
+    const reasoning: AssistantContentPart = {
+      type: 'reasoning',
+      text: 'First I should',
+      provider_options: { anthropic: { signature: '' } },
+    }
+    const { engine, requests } = make_loop_engine([
+      { content: [reasoning, { type: 'text', text: ' \n' }], finish_reason: 'length' },
+      'done',
+    ])
+    const { trajectory, events } = recorder()
+    await engine.generate({ model: 'loop', prompt: 'go', tools: [make_tool()], truncated_turn_policy: 'continue', trajectory })
+    // With no max_tokens set, the notice can't name the limit, and the event leaves it out.
+    expect(requests[1]?.messages).toStrictEqual([{ role: 'user', content: 'go' }, notice('the output limit')])
+    expect(events.find((e) => e['kind'] === 'turn_truncated')).not.toHaveProperty('max_tokens')
+  })
+
+  it("sends back a turn's text as plain text, leaving out the reasoning that came with it", async () => {
+    const reasoning: AssistantContentPart = { type: 'reasoning', text: 'Hmm.', provider_options: { anthropic: { signature: 'sig' } } }
+    const { engine, requests } = make_loop_engine([
+      { content: [reasoning, { type: 'text', text: 'The answer is' }], finish_reason: 'length' },
+      'done',
+    ])
+    await engine.generate({ model: 'loop', prompt: 'go', tools: [make_tool()], max_tokens: 50, truncated_turn_policy: 'continue' })
+    expect(requests[1]?.messages.slice(1)).toStrictEqual([
+      { role: 'assistant', content: 'The answer is' },
+      notice('the 50-token output limit'),
+    ])
+  })
+
+  it('ends the loop on a cut-off turn under stop, or with no policy, as before', async () => {
+    for (const policy of ['stop', undefined] as const) {
+      const { engine, requests } = make_loop_engine([{ text: 'Let me', finish_reason: 'length' }, 'never sent'])
+      const { trajectory, events } = recorder()
+      const result = await engine.generate({
+        model: 'loop',
+        prompt: 'go',
+        tools: [make_tool()],
+        trajectory,
+        ...(policy === undefined ? {} : { truncated_turn_policy: policy }),
+      })
+      expect(requests).toHaveLength(1)
+      expect(result.finish_reason).toBe('length')
+      expect('truncated' in (result.steps[0] ?? {})).toBe(false)
+      expect(events.some((e) => e['kind'] === 'turn_truncated')).toBe(false)
+    }
+  })
+
+  it('ends the loop on a cut-off turn of a call with no tools', async () => {
+    const { engine, requests } = make_loop_engine([{ text: 'Once upon', finish_reason: 'length' }, 'never sent'])
+    const result = await engine.generate({ model: 'loop', prompt: 'go', truncated_turn_policy: 'continue' })
+    expect(requests).toHaveLength(1)
+    expect(result.finish_reason).toBe('length')
+  })
+
+  it('ends the loop with length on a turn cut off on the last step', async () => {
+    const { engine, requests } = make_loop_engine([
+      { text: 'One', finish_reason: 'length' },
+      { text: 'Two', finish_reason: 'length' },
+      'never sent',
+    ])
+    const result = await engine.generate({
+      model: 'loop',
+      prompt: 'go',
+      tools: [make_tool()],
+      max_steps: 2,
+      truncated_turn_policy: 'continue',
+    })
+    expect(requests).toHaveLength(2)
+    expect(result.finish_reason).toBe('length')
+    expect(result.steps.map((step) => 'truncated' in step)).toStrictEqual([true, false])
+  })
+
+  it('ends the loop on a turn that stopped or was filtered, whatever the policy', async () => {
+    for (const finish_reason of ['stop', 'content_filter'] as const) {
+      const { engine, requests } = make_loop_engine([{ text: 'Done.', finish_reason }, 'never sent'])
+      const result = await engine.generate({ model: 'loop', prompt: 'go', tools: [make_tool()], truncated_turn_policy: 'continue' })
+      expect(requests).toHaveLength(1)
+      expect(result.finish_reason).toBe(finish_reason)
+    }
+  })
+
+  it('runs the call of a turn that was cut off after it made one', async () => {
+    const { engine } = make_loop_engine([{ tool_calls: echo_call, finish_reason: 'length' }, 'done'])
+    const { trajectory, events } = recorder()
+    const result = await engine.generate({ model: 'loop', prompt: 'go', tools: [make_tool()], truncated_turn_policy: 'continue', trajectory })
+    expect(result.tool_calls.map((c) => [c.id, c.output])).toStrictEqual([['c1', 'ok']])
+    expect('truncated' in (result.steps[0] ?? {})).toBe(false)
+    expect(events.some((e) => e['kind'] === 'turn_truncated')).toBe(false)
+  })
+
+  it('salvages a call from the text of a cut-off turn before it would go on past it', async () => {
+    const { engine } = make_loop_engine([
+      { text: '<tool_call>{"name":"echo","arguments":{"value":"x"}}</tool_call>', finish_reason: 'length' },
+      'done',
+    ])
+    const { trajectory, events } = recorder()
+    const result = await engine.generate({
+      model: 'loop',
+      prompt: 'go',
+      tools: [make_tool()],
+      tool_call_repair_attempts: 1,
+      truncated_turn_policy: 'continue',
+      trajectory,
+    })
+    expect(result.tool_calls.map((c) => [c.name, c.output, c.salvaged])).toStrictEqual([['echo', 'ok', true]])
+    expect(events.some((e) => e['kind'] === 'turn_truncated')).toBe(false)
+  })
+
+  it('ends the response that paused turns began, so the call keeps only the final text', async () => {
+    const { engine } = make_loop_engine([
+      { text: 'Searching. ', paused: true },
+      { text: 'Still', finish_reason: 'length' },
+      'Found it.',
+    ])
+    const result = await engine.generate({ model: 'loop', prompt: 'go', tools: [make_tool()], truncated_turn_policy: 'continue' })
+    expect(result.content).toBe('Found it.')
+  })
+
+  it('keeps every request a prefix of the next', async () => {
+    const { engine, requests } = make_loop_engine([
+      { text: '', finish_reason: 'length' },
+      { text: 'Partly', finish_reason: 'length' },
+      echo_call,
+      'done',
+    ])
+    await engine.generate({ model: 'loop', prompt: 'go', tools: [make_tool()], truncated_turn_policy: 'continue' })
+    expect(requests).toHaveLength(4)
+    expect(() => assert_prefix_stable(requests)).not.toThrow()
   })
 })
 

@@ -43,6 +43,14 @@
  *     terminal call is exempt from the max_steps would_exceed_after skip (it
  *     needs no follow-up turn), so a terminal finish wins over a coincident
  *     max_steps cap (finish_reason 'stop', max_steps_reached false).
+ *   - truncated_turns (truncated_turn_policy 'continue'): a turn that
+ *     finishes 'length' with no calls, salvaged ones included, on a call
+ *     with tools and with a step left, doesn't end the loop. Its visible
+ *     text goes back as a plain assistant message (none when it showed no
+ *     text, and never its reasoning), then a user message that says it was
+ *     cut off. The turn counts toward max_steps, records turn_truncated, and
+ *     its StepRecord says truncated: true. Without the holder, or on the last
+ *     step, such a turn ends the loop with 'length' as before.
  *
  * The loop does not itself call the AI SDK. It invokes a supplied `invoke_once`
  * seam that returns a neutral TurnResult. generate.ts builds the real seam
@@ -91,6 +99,7 @@ import {
   record_tool_calls_dropped,
   record_tool_result,
   record_turn_paused,
+  record_turn_truncated,
   end_step_span,
   start_step_span,
   type PricingMissingDedup,
@@ -156,6 +165,13 @@ export type ToolLoopConfig = {
    */
   readonly salvage_budget?: { remaining: number }
   readonly max_tool_calls_per_step?: number
+  /**
+   * Present only under `truncated_turn_policy: 'continue'`, when the loop
+   * goes on past a turn that hit its output limit before it made a call (see
+   * continue_truncated_turn). `max_tokens` is the call's limit, when it set
+   * one, which the notice names. undefined ends the loop on such a turn.
+   */
+  readonly truncated_turns?: { readonly max_tokens: number | undefined } | undefined
   /**
    * What the loop remembers from one turn to the next across a whole
    * generate call, schema-repair re-invocations included, held the way
@@ -604,6 +620,68 @@ function continue_paused_turn(
   if (at_cap) return loop_result(acc, turn.text, 'max_steps', true)
   acc.paused_texts.push(turn.text)
   return undefined
+}
+
+/**
+ * The truncated-turn holder when the loop goes on past this turn, which made
+ * no call, salvaged ones included, and undefined when the turn ends the loop
+ * as any other turn without calls does. The loop goes on only past a turn
+ * that hit its output limit, on a call that asked it to and has tools, so the
+ * turn could have made one, and with a step left for another turn.
+ */
+function truncation_holder(
+  config: ToolLoopConfig,
+  turn: TurnResult,
+  step_index: number,
+): { readonly max_tokens: number | undefined } | undefined {
+  const goes_on =
+    turn.finish_reason === 'length' && config.tools.length > 0 && step_index + 1 < config.max_steps
+  return goes_on ? config.truncated_turns : undefined
+}
+
+/**
+ * The user message that follows a turn the loop went on past. It says that
+ * the turn was cut off, naming the limit when the call set `max_tokens`, and
+ * asks for a shorter one: the next tool call or the final answer, since a
+ * turn can be cut off partway through an answer as well as its reasoning.
+ */
+function truncation_notice(max_tokens: number | undefined): Message {
+  const limit = max_tokens === undefined ? 'the output limit' : `the ${String(max_tokens)}-token output limit`
+  return {
+    role: 'user',
+    content:
+      `Your last turn reached ${limit} before it finished, so it was cut off. ` +
+      'Keep this turn short: make your next tool call, or give your final answer.',
+  }
+}
+
+/**
+ * Go on past a turn that hit its output limit before it made a call. Its
+ * visible text goes back as a plain assistant message, and nothing goes back
+ * when it showed only whitespace, which some transports would send as an
+ * empty block that the API refuses. Its reasoning never goes back: a thinking
+ * block cut off before its signature can't be sent again, and the abandoned
+ * reasoning is what the limit was set to stop paying for. The notice follows
+ * it. The turn counts toward max_steps, its record says truncated, and it
+ * ends whatever response the paused turns before it began.
+ */
+function continue_truncated_turn(
+  config: ToolLoopConfig,
+  acc: LoopAccumulator,
+  at: { readonly step_index: number; readonly step_span: string | undefined },
+  turn: TurnResult,
+  max_tokens: number | undefined,
+): void {
+  record_turn_truncated(config.trajectory, {
+    step_index: at.step_index,
+    span_id: at.step_span,
+    output_tokens: turn.usage.output_tokens,
+    max_tokens,
+  })
+  if (turn.text.trim().length > 0) config.messages.push({ role: 'assistant', content: turn.text })
+  config.messages.push(truncation_notice(max_tokens))
+  push_step_record(config, acc, at.step_index, turn, [], 'length', at.step_span, true)
+  acc.paused_texts.length = 0
 }
 
 /**
@@ -1469,8 +1547,8 @@ function resolve_turn_finish_reason(
 
 /**
  * Build one StepRecord (cost derived and recorded, timing and
- * provider_reported passed through), push it, notify on_finish_step, and
- * close the step span.
+ * provider_reported passed through, `truncated` set for a turn the loop went
+ * on past), push it, notify on_finish_step, and close the step span.
  */
 function push_step_record(
   config: ToolLoopConfig,
@@ -1480,6 +1558,7 @@ function push_step_record(
   tool_calls: ToolCallRecord[],
   finish_reason: FinishReason,
   step_span: string | undefined,
+  truncated = false,
 ): void {
   const record: StepRecord = {
     index: step_index,
@@ -1487,6 +1566,7 @@ function push_step_record(
     tool_calls,
     usage: turn.usage,
     finish_reason,
+    ...(truncated ? { truncated: true } : {}),
   }
   const breakdown = compute_and_record_cost(config, step_index, turn, step_span)
   if (breakdown !== undefined) record.cost = breakdown
@@ -1525,6 +1605,13 @@ async function run_loop_step(
   }
 
   const view = await salvage_turn(config, turn, tool_map, step_index)
+  // Salvage gets the first look at a 'length' turn, so only one that made no
+  // call at all can go on as a truncated turn.
+  const truncated = view.calls.length === 0 ? truncation_holder(config, turn, step_index) : undefined
+  if (truncated !== undefined) {
+    continue_truncated_turn(config, acc, { step_index, step_span }, turn, truncated.max_tokens)
+    return undefined
+  }
   const { kept, dropped, notice } = clamp_calls(config, tool_map, view.calls, step_index)
   config.messages.push(build_assistant_message(turn, view, kept))
 

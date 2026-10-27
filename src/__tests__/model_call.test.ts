@@ -398,6 +398,7 @@ vdescribe('model_call', () => {
       schema_repair_attempts: 3,
       tool_call_repair_attempts: 2,
       max_tool_calls_per_step: 1,
+      truncated_turn_policy: 'continue',
       on_tool_approval: approve,
     })
     await run(s, 'hi', { install_signal_handlers: false })
@@ -420,6 +421,7 @@ vdescribe('model_call', () => {
     expect(opts?.schema_repair_attempts).toBe(3)
     expect(opts?.tool_call_repair_attempts).toBe(2)
     expect(opts?.max_tool_calls_per_step).toBe(1)
+    expect(opts?.truncated_turn_policy).toBe('continue')
     expect(opts?.on_tool_approval).toBe(approve)
   })
 
@@ -448,6 +450,7 @@ vdescribe('model_call', () => {
       'schema_repair_attempts',
       'tool_call_repair_attempts',
       'max_tool_calls_per_step',
+      'truncated_turn_policy',
       'on_tool_approval',
     ]) {
       expect(key in opts).toBe(false)

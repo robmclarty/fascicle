@@ -17,6 +17,7 @@ import {
   record_tool_approval,
   record_tool_call,
   record_turn_retry,
+  record_turn_truncated,
   start_generate_span,
   start_step_span,
 } from '../trajectory.js'
@@ -279,6 +280,20 @@ describe('trajectory helpers', () => {
           input_tokens: 1000,
           after_prepare_step: false,
         },
+      ])
+    })
+  })
+
+  describe('record_turn_truncated', () => {
+    it('records the turn with its span and limit, and leaves out whichever of them it lacks', () => {
+      const { trajectory, events } = create_recorder()
+      record_turn_truncated(trajectory, { step_index: 1, span_id: 'span-2', output_tokens: 8192, max_tokens: 8192 })
+      record_turn_truncated(trajectory, { step_index: 3, span_id: undefined, output_tokens: 4096, max_tokens: undefined })
+      record_turn_truncated(undefined, { step_index: 1, span_id: 'span-2', output_tokens: 8192, max_tokens: 8192 })
+      const records = events.filter((e) => e.kind === 'record').map((e) => e.payload)
+      expect(records).toStrictEqual([
+        { kind: 'turn_truncated', step_index: 1, output_tokens: 8192, max_tokens: 8192, span_id: 'span-2' },
+        { kind: 'turn_truncated', step_index: 3, output_tokens: 4096 },
       ])
     })
   })

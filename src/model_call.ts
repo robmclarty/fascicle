@@ -31,6 +31,7 @@ import type {
   StreamChunk,
   Tool,
   ToolApprovalHandler,
+  TruncatedTurnPolicy,
 } from '#engine'
 import type { ToolSchema } from '#schema'
 
@@ -92,6 +93,12 @@ export type ModelCallConfig<T = string, projected = GenerateResult<T>> = {
   readonly schema_repair_attempts?: number
   readonly tool_call_repair_attempts?: number
   readonly max_tool_calls_per_step?: number
+  /**
+   * What the loop does with a turn that reached its output limit before it
+   * made a tool call, forwarded to the engine. See
+   * `GenerateOptions.truncated_turn_policy`.
+   */
+  readonly truncated_turn_policy?: TruncatedTurnPolicy
   readonly on_tool_approval?: ToolApprovalHandler
   /**
    * Observe every chunk of the call as it streams, for a live renderer that
@@ -246,6 +253,7 @@ function build_generate_options<T, projected>(
   assign_if_present(opts, 'schema_repair_attempts', cfg.schema_repair_attempts)
   assign_if_present(opts, 'tool_call_repair_attempts', cfg.tool_call_repair_attempts)
   assign_if_present(opts, 'max_tool_calls_per_step', cfg.max_tool_calls_per_step)
+  assign_if_present(opts, 'truncated_turn_policy', cfg.truncated_turn_policy)
   assign_if_present(opts, 'on_tool_approval', cfg.on_tool_approval)
   return opts
 }

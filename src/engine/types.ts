@@ -35,6 +35,15 @@ export type CacheSetting = 'off' | '5m' | '1h'
 export type CaptureLevel = 'off' | 'turns' | 'wire'
 
 /**
+ * What a tool loop does with a turn that reached its output limit (finish
+ * reason `'length'`) before it made a tool call: `'stop'` ends the loop with
+ * that turn, and `'continue'` sends back the turn's text with a message that
+ * says it was cut off, and asks for another turn, which counts toward
+ * `max_steps`. See `docs/configuration.md`'s Local-Runtime Tool Reliability.
+ */
+export type TruncatedTurnPolicy = 'stop' | 'continue'
+
+/**
  * One captured payload, as `EngineConfig.redact_capture` receives it before
  * the trajectory does: `'request'` is what a turn's `request_sent` would
  * carry as `request`, `'response'` what its `response_received` would carry
@@ -203,6 +212,13 @@ export type StepRecord = {
    * here, since the call-level field can only carry one.
    */
   provider_reported?: Record<string, unknown>
+  /**
+   * Present on a turn that reached its output limit before it made a tool
+   * call, and that the loop went on past (`truncated_turn_policy:
+   * 'continue'`). Its `finish_reason` is `'length'`. A turn the loop ended
+   * on carries no such mark, so a call that ends on one says `'length'`.
+   */
+  truncated?: true
 }
 
 /**
@@ -516,6 +532,18 @@ export type GenerateOptions<t = string> = {
    * can make them again. undefined (the default) leaves the count unlimited.
    */
   max_tool_calls_per_step?: number
+  /**
+   * What the loop does with a turn that reached its output limit before it
+   * made a tool call. `'stop'` (the default) ends the loop with that turn.
+   * `'continue'`, on a call with tools and with a step left, sends back the
+   * turn's visible text (its reasoning is left out) and a user message that
+   * says the turn was cut off, then asks for another turn; the turn's
+   * StepRecord says `truncated: true`, and a turn_truncated trajectory event
+   * records it. That makes `max_tokens` a per-turn cap that a thinking model
+   * can run into without ending its session. Any other value throws
+   * `engine_config_error`.
+   */
+  truncated_turn_policy?: TruncatedTurnPolicy
   on_tool_approval?: ToolApprovalHandler
   /**
    * Per-turn hook to reshape the messages sent to the model without mutating
@@ -642,7 +670,7 @@ export type AiSdkTelemetrySettings = {
  * | --------------------------------------------------------------------- | ----------------------------------------- |
  * | `model`                                                               | per-call wins; else default; else model_required_error is thrown |
  * | `provider`                                                            | per-call wins; else default; else sole configured provider; else provider_required_error is thrown |
- * | `system`, `effort`, `cache`, `capture`, `max_steps`, `turn_timeout_ms`, `tool_error_policy`, `schema_repair_attempts`, `tool_call_repair_attempts`, `max_tool_calls_per_step` | per-call wins (nullish coalesce) |
+ * | `system`, `effort`, `cache`, `capture`, `max_steps`, `turn_timeout_ms`, `tool_error_policy`, `schema_repair_attempts`, `tool_call_repair_attempts`, `max_tool_calls_per_step`, `truncated_turn_policy` | per-call wins (nullish coalesce) |
  * | `temperature`, `max_tokens`, `top_p`                                  | per-call wins (nullish coalesce)          |
  * | `retry_policy`                                                        | per-call replaces wholesale                |
  * | `provider_options`                                                    | two-level: per-provider-key shallow merge  |
@@ -674,6 +702,13 @@ export type EngineDefaults = {
   readonly schema_repair_attempts?: number
   readonly tool_call_repair_attempts?: number
   readonly max_tool_calls_per_step?: number
+  /**
+   * What every call that sets none does with a turn that reached its output
+   * limit before it made a tool call. An unknown value throws
+   * `engine_config_error` at `create_engine`. See
+   * `GenerateOptions.truncated_turn_policy`.
+   */
+  readonly truncated_turn_policy?: TruncatedTurnPolicy
   readonly provider_options?: Readonly<Record<string, Readonly<Record<string, unknown>>>>
   /**
    * Opt-in OpenTelemetry for the `ai_sdk` transport (Layer 2). Enabling it

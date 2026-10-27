@@ -28,6 +28,7 @@ import type { ProviderAdapter, ProviderFactory } from './providers/types.js'
 import {
   assert_cache_setting,
   assert_capture_level,
+  assert_truncated_turn_policy,
   generate,
   type EngineInternals,
 } from './generate.js'
@@ -183,6 +184,7 @@ function build_internals(
       defaults.tool_call_repair_attempts,
     )
     assign_if_present(internals, 'default_max_tool_calls_per_step', defaults.max_tool_calls_per_step)
+    assign_if_present(internals, 'default_truncated_turn_policy', defaults.truncated_turn_policy)
     assign_if_present(internals, 'default_turn_timeout_ms', defaults.turn_timeout_ms)
     assign_if_present(internals, 'default_ai_sdk_telemetry', defaults.ai_sdk_telemetry)
     assign_if_present(internals, 'default_provider_options', defaults.provider_options)
@@ -208,6 +210,7 @@ export function create_engine(config: EngineConfig): Engine {
   validate_numeric_defaults(config.defaults)
   assert_cache_setting(config.defaults?.cache, 'defaults.cache')
   assert_capture_level(config.defaults?.capture, 'defaults.capture')
+  assert_truncated_turn_policy(config.defaults?.truncated_turn_policy, 'defaults.truncated_turn_policy')
 
   const get_internals = (): EngineInternals => ({
     ...build_internals(

@@ -337,6 +337,32 @@ describe('create_engine folds the capture default into generate', () => {
     expect(log.requests).toStrictEqual([])
   })
 
+  it('throws engine_config_error at construction for an unknown defaults.truncated_turn_policy', () => {
+    const build = (): unknown =>
+      create_engine({
+        providers: { [PROVIDER]: {} },
+        custom_providers: { [PROVIDER]: make_native_factory({ requests: [] }, []) },
+        // eslint-disable-next-line typescript-eslint/no-unsafe-type-assertion
+        defaults: { truncated_turn_policy: 'retry' as unknown as 'continue' },
+      })
+    expect(build).toThrow(engine_config_error)
+    expect(build).toThrow(`defaults.truncated_turn_policy must be one of 'stop', 'continue', got "retry"`)
+  })
+
+  it('throws engine_config_error at generate for an unknown truncated_turn_policy, before any request', async () => {
+    const log: NativeLog = { requests: [] }
+    const call = native_engine(log).generate({
+      model: MODEL,
+      provider: PROVIDER,
+      prompt: 'hi',
+      // eslint-disable-next-line typescript-eslint/no-unsafe-type-assertion
+      truncated_turn_policy: 'resume' as unknown as 'continue',
+    })
+    await expect(call).rejects.toBeInstanceOf(engine_config_error)
+    await expect(call).rejects.toThrow(`truncated_turn_policy must be one of 'stop', 'continue', got "resume"`)
+    expect(log.requests).toStrictEqual([])
+  })
+
   it('throws engine_config_error for an unknown capture on claude_cli before any subprocess starts', async () => {
     // A spawn of this binary would fail as claude_cli_error, so the config
     // error proves the check ran ahead of the external adapter.
@@ -565,6 +591,45 @@ describe('create_engine folds loop-knob defaults into generate', () => {
       id: 'c2',
       error: { message: 'dropped_max_tool_calls_per_step' },
     })
+  })
+
+  it('applies defaults.truncated_turn_policy, and a call that sets its own wins', async () => {
+    const cut_off: ScriptedTurn = () => ({
+      text: '',
+      tool_calls: [],
+      finish_reason: 'length',
+      usage: { input_tokens: 1, output_tokens: 40 },
+    })
+    const run = async (per_call: 'stop' | undefined): Promise<{ log: NativeLog; finish: string }> => {
+      const log: NativeLog = { requests: [] }
+      const engine = create_engine({
+        providers: { [PROVIDER]: {} },
+        custom_providers: { [PROVIDER]: make_native_factory(log, [cut_off, text_turn('done')]) },
+        defaults: { truncated_turn_policy: 'continue', max_tokens: 40 },
+      })
+      const result = await engine.generate({
+        model: MODEL,
+        provider: PROVIDER,
+        prompt: 'go',
+        tools: [make_echo_tool()],
+        ...(per_call === undefined ? {} : { truncated_turn_policy: per_call }),
+      })
+      return { log, finish: result.finish_reason }
+    }
+
+    // The default goes on past the cut-off turn, naming defaults.max_tokens;
+    // the call's own 'stop' ends the loop there, as it would with no default.
+    const continued = await run(undefined)
+    expect(continued.finish).toBe('stop')
+    expect(continued.log.requests[1]?.messages.at(-1)).toEqual({
+      role: 'user',
+      content:
+        'Your last turn reached the 40-token output limit before it finished, so it was cut off. ' +
+        'Keep this turn short: make your next tool call, or give your final answer.',
+    })
+    const stopped = await run('stop')
+    expect(stopped.finish).toBe('length')
+    expect(stopped.log.requests).toHaveLength(1)
   })
 
   it('applies defaults.ai_sdk_telemetry to the ai_sdk turn', async () => {

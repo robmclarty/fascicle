@@ -238,6 +238,7 @@ type EngineDefaults = {
   schema_repair_attempts?: number;
   tool_call_repair_attempts?: number;
   max_tool_calls_per_step?: number;
+  truncated_turn_policy?: 'stop' | 'continue';
   provider_options?: Record<string, Record<string, unknown>>;
   ai_sdk_telemetry?: AiSdkTelemetrySettings;   // opt-in OTel for the ai_sdk transport; see "OpenTelemetry" below
 };
@@ -269,7 +270,7 @@ const result = await engine.generate({ prompt: 'hello' });
 | ---------------------------------------------------------------------------------- | ----------------------------------------------- |
 | `model`                                                                            | per-call wins, else default, else throws `model_required_error` |
 | `provider`                                                                         | per-call wins, else default, else sole provider, else throws `provider_required_error` |
-| `system`, `effort`, `cache`, `capture`, `temperature`, `max_tokens`, `top_p`, `max_steps`, `turn_timeout_ms`, `tool_error_policy`, `schema_repair_attempts`, `tool_call_repair_attempts`, `max_tool_calls_per_step` | per-call wins via nullish coalesce |
+| `system`, `effort`, `cache`, `capture`, `temperature`, `max_tokens`, `top_p`, `max_steps`, `turn_timeout_ms`, `tool_error_policy`, `schema_repair_attempts`, `tool_call_repair_attempts`, `max_tool_calls_per_step`, `truncated_turn_policy` | per-call wins via nullish coalesce |
 | `retry`                                                                            | per-call replaces wholesale                     |
 | `provider_options`                                                                 | two-level, so a per-provider key, shallow-merged     |
 | `prepare_step`, `prompt`, `tools`, `schema`, `abort`, `trajectory`, `on_chunk`     | not defaultable; always call-supplied           |
@@ -411,6 +412,7 @@ type GenerateOptions<t = string> = {
   schema_repair_attempts?: number;
   tool_call_repair_attempts?: number;
   max_tool_calls_per_step?: number;
+  truncated_turn_policy?: 'stop' | 'continue';
   on_tool_approval?: ToolApprovalHandler;
   prepare_step?: PrepareStepHook;
   provider_options?: Record<string, unknown>;
@@ -432,12 +434,13 @@ A few highlights:
 
 ### Local-Runtime Tool Reliability
 
-Local runtimes (Ollama's native API, LM Studio's `/v1`) frequently mis-serialize tool definitions, so the model writes its tool call into the assistant text instead of the structured `tool_calls` array. Two opt-in options make agentic tool loops survivable there. Both are provider-agnostic and default to off, so they never change behavior unless you set them.
+Local runtimes (Ollama's native API, LM Studio's `/v1`) frequently mis-serialize tool definitions, so the model writes its tool call into the assistant text instead of the structured `tool_calls` array. Three opt-in options make agentic tool loops survivable there. All three are provider-agnostic and default to off, so they never change behavior unless you set them.
 
 - `tool_call_repair_attempts` (default `0`) budgets salvage passes. When a step returns text but no structured calls, the engine scans the text for a call in Hermes (`<tool_call>{...}</tool_call>`), bare/`json`-fenced (`{"name":..., "arguments":{...}}`), or Qwen3-Coder XML form. A candidate runs only if its name resolves in that call's tools **and** its arguments validate against the tool's `input_schema`, so an ordinary answer that merely contains JSON never triggers it. A salvaged call runs the normal execute path and is marked `salvaged` on its `ToolCallRecord` (with `salvaged_format`) and via a `tool_call_salvaged` trajectory event. The budget is shared across the whole `generate` call, including schema-repair passes.
 - `max_tool_calls_per_step` (default unlimited, must be `>= 1`) executes only the first N calls of a step and drops the rest for that turn. A call to a tool that's flagged `read_only: true` doesn't count, so a turn can make several reads and still make only one write or command. The first counted call past the cap is dropped, and so is every call after it, read-only or not, so what runs is always the start of what the model asked for. Dropped calls surface as `ToolCallRecord`s with `error.message: 'dropped_max_tool_calls_per_step'` and a `tool_calls_dropped` event. When the loop goes on, one user message after the step's tool results names each dropped call with its input, so the model knows what didn't run, as in `1 call didn't run, because max_tool_calls_per_step allows 1 per turn: write_file({"path":"a.ts"}). Make it again, no more than 1 per turn.` Set it to `1` for runtimes that mishandle parallel tool calls.
+- `truncated_turn_policy` (default `'stop'`) decides what happens to a turn that reaches its output limit before it makes a tool call. The loop stops at the first turn that makes no call, so under `'stop'` such a turn ends the session with `finish_reason: 'length'`, which makes `max_tokens` useless as a per-turn cap on a thinking model. Under `'continue'`, on a call with tools and with a step left, the loop sends back whatever text the turn showed (never its reasoning, and nothing at all when it showed only whitespace), adds a user message that says the turn was cut off at the limit and asks for the next tool call or the final answer, and asks for another turn, which counts toward `max_steps`. The turn's `StepRecord` says `truncated: true`, and a `turn_truncated` event records its `output_tokens` and the `max_tokens` that the call set. Ollama counts a model's thinking against `num_predict`, which is where `max_tokens` goes, so on Ollama a capped turn usually comes back with no text at all.
 
-A third lever lives on the tool itself instead of in `generate` options. Flag a designated `finish` tool `ends_turn: true` and a successful call to it ends the loop deterministically instead of feeding the result back for another model turn. This turns a soft `finish` convention into a hard stop, which matters most for weak local models that otherwise waste a turn (or fail to stop). A denied, invalid, dropped, or throwing terminal call doesn't end the loop; only a successful one does, and it wins over a coincident `max_steps` cap. See the [cookbook](./cookbook.md#tool-loops).
+Another lever lives on the tool itself instead of in `generate` options. Flag a designated `finish` tool `ends_turn: true` and a successful call to it ends the loop deterministically instead of feeding the result back for another model turn. This turns a soft `finish` convention into a hard stop, which matters most for weak local models that otherwise waste a turn (or fail to stop). A denied, invalid, dropped, or throwing terminal call doesn't end the loop; only a successful one does, and it wins over a coincident `max_steps` cap. See the [cookbook](./cookbook.md#tool-loops).
 
 Recommended local preset:
 
@@ -450,7 +453,7 @@ await engine.generate({
 });
 ```
 
-External-kind providers (`claude_cli`) don't run the shared tool loop, so they ignore both options and record `option_ignored` for each.
+External-kind providers (`claude_cli`) don't run the shared tool loop, so they ignore all three options and record `option_ignored` for each.
 
 ## OpenTelemetry
 

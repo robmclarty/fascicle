@@ -117,7 +117,7 @@ describe('claude_cli adapter generate', () => {
     expect(ignored).toEqual(expect.arrayContaining(['max_steps', 'tool_error_policy', 'on_tool_approval']))
   })
 
-  it('records option_ignored for the salvage and clamp options it cannot honor', async () => {
+  it('records option_ignored for the salvage, clamp, and truncated-turn options it cannot honor', async () => {
     hooks.responses = [{ lines: success_lines('ok'), close: ZERO_CLOSE }]
     const traj = create_captured_trajectory()
     const adapter = create_claude_cli_adapter({})
@@ -125,13 +125,14 @@ describe('claude_cli adapter generate', () => {
       gen({
         tool_call_repair_attempts: 2,
         max_tool_calls_per_step: 1,
+        truncated_turn_policy: 'continue',
         trajectory: traj.logger,
       }),
       RESOLVED,
     )
     const ignored = traj.events.filter((e) => e.kind === 'option_ignored').map((e) => e['option'])
     expect(ignored).toEqual(
-      expect.arrayContaining(['tool_call_repair_attempts', 'max_tool_calls_per_step']),
+      expect.arrayContaining(['tool_call_repair_attempts', 'max_tool_calls_per_step', 'truncated_turn_policy']),
     )
   })
 

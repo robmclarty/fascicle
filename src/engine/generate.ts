@@ -34,6 +34,7 @@ import type {
   StepTiming,
   StreamChunk,
   Tool,
+  TruncatedTurnPolicy,
   TurnRequest,
   TurnResult,
 } from './types.js'
@@ -113,6 +114,7 @@ export type EngineInternals = {
   readonly default_schema_repair_attempts?: number
   readonly default_tool_call_repair_attempts?: number
   readonly default_max_tool_calls_per_step?: number
+  readonly default_truncated_turn_policy?: TruncatedTurnPolicy
   readonly default_provider_options?: Readonly<Record<string, Readonly<Record<string, unknown>>>>
   readonly redact_capture?: ((payload: CapturePayload) => unknown) | undefined
 }
@@ -575,6 +577,8 @@ function assert_unique_tool_names(tools: ReadonlyArray<Tool> | undefined): void 
 const CACHE_SETTINGS: Readonly<Record<CacheSetting, true>> = { off: true, '5m': true, '1h': true }
 // Stryker disable next-line BooleanLiteral: assert_allowed reads only the keys, through Object.hasOwn, so a value of false allows the same levels.
 const CAPTURE_LEVELS: Readonly<Record<CaptureLevel, true>> = { off: true, turns: true, wire: true }
+// Stryker disable next-line BooleanLiteral: assert_allowed reads only the keys, through Object.hasOwn, so a value of false allows the same policies.
+const TRUNCATED_TURN_POLICIES: Readonly<Record<TruncatedTurnPolicy, true>> = { stop: true, continue: true }
 
 /**
  * Throw `engine_config_error` when `value` is set to anything but a key of
@@ -606,6 +610,16 @@ export function assert_cache_setting(value: string | undefined, field: string): 
  */
 export function assert_capture_level(value: string | undefined, field: string): void {
   assert_allowed(CAPTURE_LEVELS, value, field)
+}
+
+/**
+ * Throw `engine_config_error` for a truncated-turn policy that isn't a
+ * `TruncatedTurnPolicy`. `create_engine` checks
+ * `defaults.truncated_turn_policy` with it, and `generate` a call's
+ * `truncated_turn_policy`.
+ */
+export function assert_truncated_turn_policy(value: string | undefined, field: string): void {
+  assert_allowed(TRUNCATED_TURN_POLICIES, value, field)
 }
 
 /**
@@ -805,6 +819,7 @@ type LoopLimits = {
   readonly schema_repair_attempts: number
   readonly salvage_budget: { remaining: number } | undefined
   readonly max_tool_calls_per_step: number | undefined
+  readonly truncated_turns: ToolLoopConfig['truncated_turns']
 }
 
 /**
@@ -852,12 +867,17 @@ function resolve_loop_limits<T>(
       `max_tool_calls_per_step must be >= 1, got ${String(max_tool_calls_per_step)}`,
     )
   }
+  // 'stop', the default, needs no holder, so only 'continue' is looked for.
+  const continues = (opts.truncated_turn_policy ?? engine.default_truncated_turn_policy) === 'continue'
   return {
     max_steps,
     tool_error_policy,
     schema_repair_attempts,
     salvage_budget,
     max_tool_calls_per_step,
+    // The holder carries the call's max_tokens (the engine default already
+    // folded in) for the notice the loop feeds back after a cut-off turn.
+    truncated_turns: continues ? { max_tokens: opts.max_tokens } : undefined,
   }
 }
 
@@ -1076,6 +1096,7 @@ function build_loop_config<T>(
     ...(limits.max_tool_calls_per_step !== undefined
       ? { max_tool_calls_per_step: limits.max_tool_calls_per_step }
       : {}),
+    truncated_turns: limits.truncated_turns,
     ...(opts.prepare_step !== undefined ? { prepare_step: opts.prepare_step } : {}),
   }
 }
@@ -1303,6 +1324,7 @@ export async function generate<T = string>(
   assert_unique_tool_names(opts.tools)
   assert_cache_setting(opts.cache, 'cache')
   assert_capture_level(opts.capture, 'capture')
+  assert_truncated_turn_policy(opts.truncated_turn_policy, 'truncated_turn_policy')
 
   if (adapter.kind === 'external') {
     const external = await adapter.generate<T>(opts, target)

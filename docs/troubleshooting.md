@@ -272,6 +272,25 @@ that the turn expected to find. The usual reasons:
 
 See [providers.md](./providers.md#prompt-caching).
 
+## A Tool Loop Ends on `length` with No Tool Call
+
+A tool loop stops at the first turn that makes no tool call, whatever that
+turn's finish reason. So a turn that reaches `max_tokens` before it makes a
+call ends the loop with `finish_reason: 'length'`, and the rest of the session
+never runs. A thinking model does this when it reasons for longer than the
+limit allows, and on Ollama it's likely, since Ollama counts the model's
+thinking against `num_predict`, which is where `max_tokens` goes. A turn like
+that usually comes back with no text at all.
+
+Set `truncated_turn_policy: 'continue'` and the loop goes on past such a turn
+instead. It sends back whatever text the turn showed, leaves out the reasoning
+that was cut off, and adds a user message that says the turn was cut off and
+asks for a shorter one. The turn counts toward `max_steps`, its `StepRecord`
+says `truncated: true`, and the trajectory records a `turn_truncated` event,
+so you can count how often it happens. A turn that's cut off on the last step
+still ends the loop with `length`. See
+[configuration.md](./configuration.md#local-runtime-tool-reliability).
+
 ## A 400 That Names `cache_control`
 
 An Anthropic tool loop caches by default on either transport, so its request
