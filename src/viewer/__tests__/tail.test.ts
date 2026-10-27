@@ -1,10 +1,12 @@
 import {
   type FSWatcher,
   appendFileSync,
+  linkSync,
   mkdirSync,
   mkdtempSync,
   renameSync,
   rmSync,
+  symlinkSync,
   truncateSync,
   unlinkSync,
   writeFileSync,
@@ -927,6 +929,102 @@ describe('start_tail', () => {
       // The second stop finds a nulled watcher; an always-true guard would call
       // close() on null and throw.
       expect(() => tail.stop()).not.toThrow()
+    })
+  })
+
+  // `no_follow.test.ts` covers the open and the check themselves; these cover
+  // what the tail does with a handle, a refusal, and a failure.
+  describe('with follow_links false', () => {
+    it('reads a regular file and then its appends, through the handle it checked', async () => {
+      const path = join(work_dir, 'run.jsonl')
+      writeFileSync(path, emit_line('one'))
+      const seen = collector()
+      const errors: unknown[] = []
+      const tail = spawn({ path, follow_links: false, on_event: seen.on_event, on_io_error: (err) => errors.push(err) })
+      await tail.drain()
+      appendFileSync(path, emit_line('two'))
+      await tail.drain()
+      // A pass that finds nothing new reads no bytes from its handle.
+      await tail.drain()
+      expect(seen.texts).toEqual(['one', 'two'])
+      expect(errors).toEqual([])
+    })
+
+    it('refuses a link at the path, reads nothing through it, and waits for a real file', async () => {
+      gate.quiet_dir = mkdtempSync(join(work_dir, 'quiet-'))
+      const target = join(work_dir, 'secret')
+      writeFileSync(target, emit_line('private'))
+      const path = join(work_dir, 'run.jsonl')
+      symlinkSync(target, path)
+      const seen = collector()
+      const errors: unknown[] = []
+      const tail = spawn({ path, follow_links: false, on_event: seen.on_event, on_io_error: (err) => errors.push(err) })
+      await tail.drain()
+      expect(seen.texts).toEqual([])
+      expect(errors.length).toBeGreaterThanOrEqual(1)
+      for (const err of errors) expect(err).toMatchObject({ code: 'ELOOP' })
+      // A refusal waits as a missing file does, on the directory, so the file
+      // that takes the link's place is announced by the directory watch alone.
+      expect(open_watches()).toEqual([work_dir])
+
+      unlinkSync(path)
+      writeFileSync(path, emit_line('one'))
+      fire(work_dir, 'rename', 'run.jsonl')
+      await seen.reach(1)
+      expect(seen.texts).toEqual(['one'])
+    })
+
+    it('refuses a file with a second hard link, saying why', async () => {
+      const path = join(work_dir, 'run.jsonl')
+      writeFileSync(path, emit_line('one'))
+      linkSync(path, join(work_dir, 'other-name'))
+      const seen = collector()
+      const errors: unknown[] = []
+      const tail = spawn({ path, follow_links: false, on_event: seen.on_event, on_io_error: (err) => errors.push(err) })
+      await tail.drain()
+      expect(seen.texts).toEqual([])
+      expect(errors.length).toBeGreaterThanOrEqual(1)
+      for (const err of errors) {
+        expect(err).toEqual(
+          new Error(`follow_links is false, so the viewer won't read ${path}: it's one of 2 hard links to the same file`),
+        )
+      }
+    })
+
+    it('keeps its place after an open that fails for another reason, with no replay', async () => {
+      const path = join(work_dir, 'run.jsonl')
+      writeFileSync(path, emit_line('one'))
+      const seen = collector()
+      const errors: unknown[] = []
+      const tail = spawn({ path, follow_links: false, on_event: seen.on_event, on_io_error: (err) => errors.push(err) })
+      await tail.drain()
+
+      // Only a refusal or a missing file forgets the inode. Any other failure
+      // keeps it and the offset, as a failed stat does when following links.
+      gate.open_fails = true
+      await tail.drain()
+      gate.open_fails = false
+      appendFileSync(path, emit_line('two'))
+      await tail.drain()
+      expect(seen.texts).toEqual(['one', 'two'])
+      expect(errors.length).toBeGreaterThanOrEqual(1)
+      for (const err of errors) expect(err).toEqual(new Error('mock open failure'))
+    })
+
+    it('waits, with no io error, for a file that is not there yet', async () => {
+      gate.quiet_dir = mkdtempSync(join(work_dir, 'quiet-'))
+      const path = join(work_dir, 'late.jsonl')
+      const seen = collector()
+      const errors: unknown[] = []
+      const tail = spawn({ path, follow_links: false, on_event: seen.on_event, on_io_error: (err) => errors.push(err) })
+      await tail.drain()
+      expect(open_watches()).toEqual([work_dir])
+
+      writeFileSync(path, emit_line('one'))
+      fire(work_dir, 'rename', 'late.jsonl')
+      await seen.reach(1)
+      expect(seen.texts).toEqual(['one'])
+      expect(errors).toEqual([])
     })
   })
 })

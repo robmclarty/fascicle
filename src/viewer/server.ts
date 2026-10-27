@@ -19,7 +19,9 @@
  * A server bound to a loopback name answers only requests whose `Host` names
  * loopback too, so a web page can't reach it by rebinding a domain of its own
  * to 127.0.0.1. Ingest is mounted unless the config turns it off, reads only
- * `application/x-ndjson`, and refuses a body past 8 MB.
+ * `application/x-ndjson`, and refuses a body past 8 MB. With `follow_links`
+ * false, `/api/trajectory` serves the file only through a handle opened
+ * without following a link at its last name (see `no_follow.ts`).
  *
  * The routes live in `create_viewer_handler`, which a host can mount under a
  * path of its own on a server of its own. `start_server` is that handler on a
@@ -33,7 +35,8 @@ import { dirname, extname, resolve, sep } from 'node:path'
 import { pipeline } from 'node:stream'
 import { fileURLToPath } from 'node:url'
 import { parse_trajectory_event, type ParsedTrajectoryEvent } from '#core'
-import type { Broadcaster } from './broadcast.js'
+import type { BroadcastEvent, Broadcaster } from './broadcast.js'
+import { no_follow_flags, open_unfollowed } from './no_follow.js'
 
 const SSE_HEARTBEAT_MS = 15_000
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -113,6 +116,15 @@ export type ViewerHandlerConfig = {
    * canvas resolves its assets and its API requests against the page.
    */
   readonly base_path?: string
+  /**
+   * Whether `/api/trajectory` follows a link at the last name of
+   * `trajectory_path`; default true. False opens the file with `O_NOFOLLOW`
+   * and serves only a regular file with no other name, checked on the handle
+   * it opened, so a link swapped in after a host checked the path is never
+   * served. Anything else is served as no file, from the ring. Throws on a
+   * platform with no `O_NOFOLLOW`.
+   */
+  readonly follow_links?: boolean | undefined
   readonly on_parse_error?: (err: unknown, line: string) => void
 }
 
@@ -150,6 +162,7 @@ export type ViewerServer = {
 export function create_viewer_handler(config: ViewerHandlerConfig): ViewerHandler {
   const { broadcaster, app_dir, trajectory_path, ingest = true, on_parse_error } = config
   const base_path = normalize_base_path(config.base_path)
+  const no_follow = config.follow_links === false ? no_follow_flags() : undefined
 
   return (req, res) => {
     const method = req.method ?? 'GET'
@@ -173,7 +186,7 @@ export function create_viewer_handler(config: ViewerHandlerConfig): ViewerHandle
       return true
     }
     if (route === 'GET /api/trajectory') {
-      serve_trajectory(res, broadcaster, trajectory_path)
+      serve_trajectory(res, broadcaster, trajectory_path, no_follow)
       return true
     }
     if (route === 'GET /api/events') {
@@ -392,11 +405,15 @@ function send_not_found(res: ServerResponse, route: string): void {
  * broadcaster's newest id, the seam the client resumes SSE from; the client
  * still takes the larger of that and its own folded count, so a file that ran
  * ahead of the broadcaster is not re-folded.
+ *
+ * With `no_follow` set (`follow_links: false`), the file is served through
+ * `serve_unfollowed` instead, after the headers and the ring are taken here.
  */
 function serve_trajectory(
   res: ServerResponse,
   broadcaster: Broadcaster,
   trajectory_path: string | undefined,
+  no_follow: number | undefined,
 ): void {
   const ring = broadcaster.snapshot()
   res.statusCode = 200
@@ -404,6 +421,10 @@ function serve_trajectory(
   res.setHeader('cache-control', 'no-store')
   res.setHeader(CURSOR_HEADER, String(ring.at(-1)?.id ?? 0))
 
+  if (trajectory_path !== undefined && no_follow !== undefined) {
+    void serve_unfollowed(res, trajectory_path, no_follow, ring)
+    return
+  }
   // The two guards are nested rather than joined with `&&` on purpose: only a
   // present file reaches `createReadStream`, so a path that is undefined (ingest
   // mode) or set-but-uncreated (a run not yet started) falls through to the
@@ -415,7 +436,39 @@ function serve_trajectory(
       return
     }
   }
-  res.end(ring.map((entry) => `${JSON.stringify(entry.event)}\n`).join(''))
+  res.end(ring_ndjson(ring))
+}
+
+/**
+ * The ring's events as NDJSON, one per line, which is the whole history a
+ * server holds when there's no file it may serve.
+ */
+function ring_ndjson(ring: readonly BroadcastEvent[]): string {
+  return ring.map((entry) => `${JSON.stringify(entry.event)}\n`).join('')
+}
+
+/**
+ * Serves the trajectory from a handle opened without following a link at the
+ * path's last name and checked before a byte is read (see `open_unfollowed`),
+ * so the file that passed the check is the file that's streamed. A path that
+ * can't be opened that way, or that holds anything but a regular file with no
+ * other name, is served as no file, from the ring. Never rejects.
+ */
+async function serve_unfollowed(
+  res: ServerResponse,
+  path: string,
+  flags: number,
+  ring: readonly BroadcastEvent[],
+): Promise<void> {
+  const opened = await open_unfollowed(path, flags)
+  if (opened.kind !== 'opened') {
+    res.end(ring_ndjson(ring))
+    return
+  }
+  pipeline(opened.handle.createReadStream(), res, () => {
+    // Both streams are already destroyed on failure, and the read stream
+    // closes the handle; nothing is left to undo.
+  })
 }
 
 /**

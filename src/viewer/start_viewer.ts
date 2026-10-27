@@ -17,6 +17,14 @@ export type StartViewerOptions = {
   readonly buffer?: number
   /** Whether the server takes `POST /api/ingest`, which `http_logger` posts to; default true. */
   readonly ingest?: boolean
+  /**
+   * Whether the tail and `/api/trajectory` follow a link at the last name of
+   * `path`; default true. False reads only a regular file with no other
+   * name, opened with `O_NOFOLLOW` and checked on its handle, for a host that
+   * checks the path itself before it starts the viewer. A refusal goes to
+   * `on_io_error`, and the route serves the ring, as it does for no file.
+   */
+  readonly follow_links?: boolean
   readonly on_parse_error?: (err: unknown, line: string) => void
   readonly on_io_error?: (err: unknown) => void
   readonly on_subscriber_error?: (err: unknown) => void
@@ -50,6 +58,7 @@ export async function start_viewer(options: StartViewerOptions = {}): Promise<Vi
     host,
     port,
     ingest: options.ingest,
+    follow_links: options.follow_links,
     // The tailed file is `/api/trajectory`'s full-history source; an
     // ingest-only viewer leaves it unset and that route serves the ring.
     ...(options.path !== undefined ? { trajectory_path: options.path } : {}),
@@ -60,6 +69,7 @@ export async function start_viewer(options: StartViewerOptions = {}): Promise<Vi
   if (options.path !== undefined) {
     tail = start_tail({
       path: options.path,
+      follow_links: options.follow_links,
       on_event: (event) => { broadcaster.emit(event) },
       ...(options.on_parse_error ? { on_parse_error: options.on_parse_error } : {}),
       ...(options.on_io_error ? { on_io_error: options.on_io_error } : {}),

@@ -1,5 +1,6 @@
+import { execFileSync } from 'node:child_process'
 import { EventEmitter } from 'node:events'
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, linkSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { createServer, request } from 'node:http'
 import type { IncomingHttpHeaders, IncomingMessage, Server, ServerResponse } from 'node:http'
 import { connect } from 'node:net'
@@ -53,6 +54,9 @@ import {
  *   - `trajectory_path !== undefined` -> `true` in `serve_trajectory`: entering
  *     the file branch with no path calls `stat_file(undefined)`, which returns
  *     null, so it falls through to the ring exactly as the guard would have.
+ *     The same mutant on the `follow_links: false` branch's guard hands
+ *     `open_unfollowed` an undefined path, whose open rejects, which serves
+ *     the ring as well.
  *   - `if (query === -1) return 0` -> `false` in `parse_since`: a url with no
  *     `?` slices from index 0, which is the whole url, and `URLSearchParams`
  *     finds no `since` in it, so the fallback returns 0 down the longer road.
@@ -547,6 +551,83 @@ describe('GET /api/trajectory from a file', () => {
     expect(res.status).toBe(200)
     const lines = (await res.text()).split('\n').filter((line) => line.length > 0)
     expect(lines.map((line) => (JSON.parse(line) as { text: string }).text)).toEqual(['ring-only'])
+  })
+})
+
+describe('GET /api/trajectory with follow_links false', () => {
+  let dir = ''
+  let srv: ViewerServer | null = null
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'fascicle-viewer-no-follow-'))
+  })
+
+  afterEach(async () => {
+    if (srv) await srv.close()
+    srv = null
+    rmSync(dir, { recursive: true, force: true })
+  })
+
+  // The ring holds one event, so a response tells the ring from any file.
+  const boot = async (trajectory_path: string): Promise<string> => {
+    const bc = create_broadcaster({ buffer: 10 })
+    bc.emit({ kind: 'emit', text: 'ring' })
+    srv = await start_server({ broadcaster: bc, host: '127.0.0.1', port: 0, trajectory_path, follow_links: false })
+    return srv.url
+  }
+
+  // The texts of the events a refused path is answered with, which must be
+  // the ring's: a line of the file behind the path wouldn't parse.
+  const refused_with = async (base: string): Promise<unknown[]> => {
+    const res = await fetch(`${base}/api/trajectory`)
+    expect(res.status).toBe(200)
+    expect(res.headers.get('x-fascicle-cursor')).toBe('1')
+    const lines = (await res.text()).split('\n').filter((line) => line.length > 0)
+    return lines.map((line) => (JSON.parse(line) as { text: unknown }).text)
+  }
+
+  it('streams a regular file with no other name verbatim, stamping the broadcaster head', async () => {
+    const path = join(dir, 'run.jsonl')
+    // The blank line is the tell: the file streams through verbatim, which the
+    // ring, which drops blank lines, never could.
+    const body = [JSON.stringify({ kind: 'flow_structure', run_id: 'r1' }), '', ''].join('\n')
+    writeFileSync(path, body)
+    const res = await fetch(`${await boot(path)}/api/trajectory`)
+    expect(res.status).toBe(200)
+    expect(res.headers.get('content-type')).toMatch(/application\/x-ndjson/)
+    expect(res.headers.get('x-fascicle-cursor')).toBe('1')
+    expect(await res.text()).toBe(body)
+  })
+
+  it('serves the ring, never the file behind it, for a link at the path', async () => {
+    const target = join(dir, 'secret')
+    writeFileSync(target, 'not for the viewer\n')
+    const path = join(dir, 'run.jsonl')
+    symlinkSync(target, path)
+    expect(await refused_with(await boot(path))).toEqual(['ring'])
+  })
+
+  it('serves the ring for a file with a second hard link', async () => {
+    const path = join(dir, 'run.jsonl')
+    writeFileSync(path, 'not for the viewer\n')
+    linkSync(path, join(dir, 'other-name'))
+    expect(await refused_with(await boot(path))).toEqual(['ring'])
+  })
+
+  it('serves the ring for a directory at the path', async () => {
+    const path = join(dir, 'run.jsonl')
+    mkdirSync(path)
+    expect(await refused_with(await boot(path))).toEqual(['ring'])
+  })
+
+  it.skipIf(process.platform === 'win32')('serves the ring for a FIFO at the path, without waiting for a writer', async () => {
+    const path = join(dir, 'run.jsonl')
+    execFileSync('mkfifo', [path])
+    expect(await refused_with(await boot(path))).toEqual(['ring'])
+  })
+
+  it('serves the ring when nothing is at the path', async () => {
+    expect(await refused_with(await boot(join(dir, 'never-written.jsonl')))).toEqual(['ring'])
   })
 })
 

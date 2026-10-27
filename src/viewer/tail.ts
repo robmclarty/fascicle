@@ -36,19 +36,41 @@
  * which also covers platforms where fs.watch misses some append
  * notifications: the next successful change event catches the file up
  * regardless.
+ *
+ * With `follow_links: false`, a pass opens the path first, without following
+ * a link at its last name, and takes the inode and size from the handle it
+ * opened, then reads through that same handle (see `no_follow.ts`). What it
+ * won't read, a link or anything but a regular file with no other name, goes
+ * to `on_io_error`, and the tail waits as it does for a missing file. The
+ * watches still follow a link, but a watch only starts a pass, and every pass
+ * opens the path again without following one, so nothing is read through it.
  */
 
-import { type FSWatcher, type WatchListener, statSync, watch as fs_watch } from 'node:fs'
-import { open, stat } from 'node:fs/promises'
+import { type FSWatcher, type Stats, type WatchListener, statSync, watch as fs_watch } from 'node:fs'
+import { open, stat, type FileHandle } from 'node:fs/promises'
 import { basename, dirname, relative, sep } from 'node:path'
 import { parse_trajectory_event, type ParsedTrajectoryEvent } from '#core'
+import { no_follow_flags, open_unfollowed } from './no_follow.js'
 
 export type TailConfig = {
   readonly path: string
   readonly on_event: (event: ParsedTrajectoryEvent) => void
   readonly on_parse_error?: (err: unknown, line: string) => void
   readonly on_io_error?: (err: unknown) => void
+  /**
+   * Whether a link at the path's last name is followed; default true. False
+   * opens the file with `O_NOFOLLOW` and reads only a regular file with no
+   * other name, checked on the handle it opened, so a link swapped in after
+   * a host checked the path is never read. What it refuses goes to
+   * `on_io_error`, and the tail waits for a file it can read, as it does for
+   * a missing one. Directories above the file are still followed. Throws on a
+   * platform with no `O_NOFOLLOW`.
+   */
+  readonly follow_links?: boolean | undefined
 }
+
+/** A file a pass opened, with the size it read up to when it looked. */
+type Opened = { readonly fh: FileHandle; readonly size: number }
 
 export type Tail = {
   readonly stop: () => void
@@ -124,6 +146,7 @@ function next_name(dir: string, path: string): string {
  */
 export function start_tail(config: TailConfig): Tail {
   const { path, on_event, on_parse_error, on_io_error } = config
+  const no_follow = config.follow_links === false ? no_follow_flags() : undefined
   let inode: number | null = null
   let offset = 0
   let buffer = ''
@@ -228,24 +251,20 @@ export function start_tail(config: TailConfig): Tail {
     watch_nearest()
   }
 
-  // Stats the path and returns the size to read up to, or null when nothing
-  // is there. A missing file forgets its inode, so whatever appears next is
-  // read from the top even if the filesystem reuses the number. A new inode
-  // (the first sighting, or a file recreated after a rotation) is adopted,
-  // and a file shorter than the offset was truncated in place, so both start
-  // over at offset 0, since the saved offset means nothing in either.
-  const locate = async (): Promise<number | null> => {
-    let st
-    try {
-      st = await stat(path)
-    } catch (err) {
-      if (is_missing(err)) {
-        inode = null
-        await_file()
-      }
-      report(err)
-      return null
-    }
+  // Forgets the file and waits for the next one at the path. A missing file
+  // forgets its inode, so whatever appears next is read from the top even if
+  // the filesystem reuses the number, and so does a file the tail won't read.
+  const forget = (): void => {
+    inode = null
+    await_file()
+  }
+
+  // Returns the size to read up to for the file whose stats are `st`. A new
+  // inode (the first sighting, or a file recreated after a rotation) is
+  // adopted, and a file shorter than the offset was truncated in place, so
+  // both start over at offset 0, since the saved offset means nothing in
+  // either.
+  const track = (st: Stats): number => {
     if (st.ino !== inode) {
       adopt(st.ino)
     } else if (st.size < offset) {
@@ -255,15 +274,51 @@ export function start_tail(config: TailConfig): Tail {
     return st.size
   }
 
-  const read_more = async (): Promise<void> => {
+  // Stats the path and returns the size to read up to, or null when nothing
+  // is there.
+  const locate = async (): Promise<number | null> => {
+    let st
+    try {
+      st = await stat(path)
+    } catch (err) {
+      if (is_missing(err)) forget()
+      report(err)
+      return null
+    }
+    return track(st)
+  }
+
+  // Following links: opens the file once a stat finds something to read.
+  const open_followed = async (): Promise<Opened | null> => {
     const size = await locate()
-    if (size === null || size === offset) return
+    if (size === null || size === offset) return null
 
     const fh = await open(path, 'r').catch((err: unknown) => {
       report(err)
       return null
     })
-    if (!fh) return
+    return fh === null ? null : { fh, size }
+  }
+
+  // Not following links: opens the path first and takes the size from the
+  // handle it checked. A refusal reads as a missing file, but reported.
+  const open_checked = async (flags: number): Promise<Opened | null> => {
+    const opened = await open_unfollowed(path, flags)
+    if (opened.kind !== 'opened') {
+      if (opened.kind === 'refused' || is_missing(opened.error)) forget()
+      report(opened.error)
+      return null
+    }
+    return { fh: opened.handle, size: track(opened.stats) }
+  }
+
+  const read_more = async (): Promise<void> => {
+    // One await outside the conditional, not one in each branch: V8's block
+    // coverage miscounts an await inside a conditional expression, and the
+    // branch after it reads as negative, which fallow's health check refuses.
+    const opened = await (no_follow === undefined ? open_followed() : open_checked(no_follow))
+    if (opened === null) return
+    const { fh, size } = opened
     try {
       const length = size - offset
       const buf = Buffer.alloc(length)

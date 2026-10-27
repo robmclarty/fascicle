@@ -9,7 +9,7 @@
  * a clean `close()`.
  */
 
-import { appendFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { appendFileSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { request } from 'node:http'
 import { networkInterfaces, tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -179,6 +179,28 @@ describe('start_viewer', () => {
     const deadline = Date.now() + 2000
     while (Date.now() < deadline && io_errors.length === 0) await wait(20)
     expect(io_errors.length).toBeGreaterThan(0)
+  })
+
+  it('hands follow_links false to both the tail and /api/trajectory', async () => {
+    // Followed, the link would feed the tail and the route the file behind it.
+    work_dir = mkdtempSync(join(tmpdir(), 'fascicle-viewer-start-'))
+    const target = join(work_dir, 'secret.jsonl')
+    writeFileSync(target, `${JSON.stringify({ kind: 'emit', text: 'secret' })}\n`)
+    const path = join(work_dir, 'events.jsonl')
+    symlinkSync(target, path)
+    const io_errors: unknown[] = []
+    handle = await start_viewer({
+      path,
+      port: 0,
+      follow_links: false,
+      on_io_error: (err) => io_errors.push(err),
+    })
+    const deadline = Date.now() + 2000
+    while (Date.now() < deadline && io_errors.length === 0) await wait(20)
+    expect(io_errors[0]).toMatchObject({ code: 'ELOOP' })
+    expect(await snapshot(handle.url)).toEqual([])
+    const res = await fetch(`${handle.url}/api/trajectory`)
+    expect(await res.text()).toBe('')
   })
 
   it('close() stops both the tail and the server, leaking neither', async () => {

@@ -360,8 +360,10 @@ that buffers the response holds the live tail back. The viewer sends
 A host that can import `fascicle/viewer` doesn't need the proxy or the second
 process. `create_viewer_handler` returns the request handler that
 `start_server` puts on its socket. It takes the `broadcaster`,
-`trajectory_path`, `app_dir`, and `ingest` that `start_server` takes, and a
-`base_path` to mount under.
+`trajectory_path`, `app_dir`, `ingest`, and `follow_links` that `start_server`
+takes, and a `base_path` to mount under. A host whose trajectories sit where
+another process can write should pass `follow_links: false` to both the
+handler and the tail, as [Security](#security) explains.
 
 ```ts
 import { createServer } from 'node:http'
@@ -418,3 +420,28 @@ the canvas under a path of its own has to send one of those names too, as
 any other address checks no `Host`, since anyone who can reach it can read it
 anyway. Ingest takes only `application/x-ndjson`, which a page on another
 origin can't post without a preflight that the viewer never grants.
+
+The viewer follows a link at the trajectory's path, which is what you want for
+a `latest.jsonl` that points at the newest run. It's not what you want when the
+directory that holds the trajectory is one that another process can write to.
+A host can check the path before it starts a viewer, but the check doesn't
+hold for long, because the tail and `/api/trajectory` open the path again on
+every read. A link that's swapped in afterwards, such as a `trajectory.jsonl`
+that points at `~/.ssh/id_ed25519`, gets read and served to whoever holds the
+viewer's URL.
+
+Pass `follow_links: false` to `start_viewer`, `start_tail`, or
+`create_viewer_handler` to close that. The viewer then opens the trajectory
+with `O_NOFOLLOW`, which makes a link at the path fail to open rather than be
+followed. It checks the file that it opened, not the path, and reads it only
+when it's a regular file with no other name. A hard link that's planted at the
+path is the very file that it names, which no check for a link can see, so a
+file with a second name is refused as well. The tail reports a refusal to
+`on_io_error` and waits for a file that it can read, as it does for a missing
+one, and `/api/trajectory` serves the ring, as it does when there's no file.
+
+Only the last name in the path is covered. A directory above the file is still
+followed, since Node has no way to open a path one directory at a time, so a
+host that needs more keeps checking those directories itself. On a platform
+that has no `O_NOFOLLOW`, which is Windows, `follow_links: false` throws rather
+than follow a link quietly.

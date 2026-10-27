@@ -72,6 +72,7 @@
     "fascicle",
     "esbuild",
     "execvp",
+    "openat",
     "githubcli",
     "exfiltration",
     "fallow",

@@ -661,12 +661,12 @@ import { start_viewer } from 'fascicle/viewer';
 
 | Export | Purpose |
 | --- | --- |
-| `start_viewer(options?)` | start the embedded viewer server; returns a `ViewerHandle` (`.close()`). `ingest: false` leaves `POST /api/ingest` unmounted (default: mounted) |
+| `start_viewer(options?)` | start the embedded viewer server; returns a `ViewerHandle` (`.close()`). `ingest: false` leaves `POST /api/ingest` unmounted (default: mounted). `follow_links: false` reads the trajectory only through a handle that was opened without following a link, where the default follows one (see [viewer.md](./viewer.md#security)) |
 | `run_viewer_cli(argv)` | the `fascicle-viewer` bin entry point |
 | `create_broadcaster(config)` | fan live trajectory events out to subscribers |
 | `start_server(config)` | the bare HTTP server underneath `start_viewer` |
-| `create_viewer_handler(config)` | the request handler underneath `start_server`, for a host to mount under `base_path` on a server of its own; returns `(req, res) => boolean`, false for a request it doesn't serve, and checks no `Host` |
-| `start_tail(config)` | follow a trajectory JSONL file as it grows |
+| `create_viewer_handler(config)` | the request handler underneath `start_server`, for a host to mount under `base_path` on a server of its own; returns `(req, res) => boolean`, false for a request it doesn't serve, and checks no `Host`. `follow_links: false` serves the trajectory as `start_viewer` does |
+| `start_tail(config)` | follow a trajectory JSONL file as it grows; `follow_links: false` reads it only through a handle that was opened without following a link |
 
 Types: `StartViewerOptions`, `ViewerHandle`, `Broadcaster`,
 `BroadcasterConfig`, `BroadcastEvent`, `Subscriber`, `ServerConfig`,

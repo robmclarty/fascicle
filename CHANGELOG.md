@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **The viewer can read a trajectory without following a link.** A host that checked a run's `trajectory.jsonl` before it started a viewer couldn't keep that check true, because the tail and `/api/trajectory` opened the path again on every read and followed a link there, so a link that was swapped in afterwards, such as one that points at `~/.ssh/id_ed25519`, was read and served to whoever held the viewer's URL. `follow_links: false` on `start_viewer`, `start_tail`, and `create_viewer_handler` opens the trajectory with `O_NOFOLLOW` and checks the handle that it opened rather than the path, so the viewer reads only a regular file with no other name, and a FIFO at the path is refused without waiting for a writer. The tail reports a refusal to `on_io_error` and waits for a file that it can read, as it does for a missing one, and `/api/trajectory` serves the ring, as it does when there's no file. A directory above the file is still followed, so a host keeps checking those itself, and the option throws on a platform that has no `O_NOFOLLOW`. Following links stays the default. See [viewer.md](./docs/viewer.md#security).
+
 ## v0.17.0 — 2026-10-24
 
 ### Added
