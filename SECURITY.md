@@ -176,11 +176,14 @@ yours small.
   anywhere.** Releases are published by CI via npm Trusted Publishing (OIDC): the
   registry trusts the release workflow's identity, minted per run, so no npm token
   exists to steal or rotate. This removes the steal-the-CI-token vector that has
-  featured in several ecosystem compromises. The publish job pauses on a protected
-  GitHub Environment (`npm-publish`) until a maintainer approves it, preserving
-  the human gate that manual MFA-prompted publishing used to provide, and each
-  release ships with a signed provenance attestation tying the tarball to this
-  repository, commit, and workflow run.
+  featured in several ecosystem compromises. The job that holds that identity runs
+  none of the repo's dependencies: a separate job installs them, runs the gate and
+  packs the tarball, and the publish job only publishes that tarball, with scripts
+  off, so a compromised dev dependency can't mint the identity. The publish job
+  pauses on a protected GitHub Environment (`npm-publish`) until a maintainer
+  approves it, preserving the human gate that manual MFA-prompted publishing used
+  to provide, and each release ships with a signed provenance attestation tying
+  the tarball to this repository, commit, and workflow run.
 - **Commitments that resist surface growth.** No plugin registry, no integrations
   arms race, no hosted service: fewer moving parts, and fewer packages that can be
   independently compromised.
