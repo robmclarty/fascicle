@@ -24,9 +24,9 @@ import { randomUUID } from 'node:crypto'
 import { create_cleanup_registry } from './cleanup.js'
 import { describe } from './describe.js'
 import { resolve_display_name } from './display_name.js'
-import { aborted_error, suspended_error } from './errors.js'
+import { aborted_error, duplicate_suspend_id_error, suspended_error } from './errors.js'
 import { create_streaming_channel, STREAMING_HIGH_WATER_MARK } from './streaming.js'
-import { check_suspend_ids } from './suspend_ids.js'
+import { check_suspend_ids, same_input_as } from './suspend_ids.js'
 import type {
   AnyStep,
   CheckpointStore,
@@ -48,6 +48,11 @@ const dispatch = new Map<string, Dispatcher>()
 // run id. A step marked `side_effect` that starts while its run still has one
 // is redoing work that an earlier attempt already did.
 const unreached_gates = new Map<string, Set<string>>()
+
+// The resume data each run has taken, by run id: for each suspend id, the
+// test that a later reach's input has to pass, since the one datum answered
+// the input it was taken for.
+const taken_data = new Map<string, Map<string, (input: unknown) => boolean>>()
 
 /**
  * Register the dispatch handler for a step kind.
@@ -120,6 +125,24 @@ export function mark_gates_reached(ctx: RunContext, suspend_ids: Iterable<string
   if (unreached === undefined) return
   for (const id of suspend_ids) unreached.delete(id)
   if (unreached.size === 0) unreached_gates.delete(ctx.run_id)
+}
+
+/**
+ * Note that a `suspend` took its resume datum for `input`. The first take of
+ * `suspend_id` in a run keeps a test of its input. A later take on the same
+ * input passes, since a `retry` ran the step again, and one on another input
+ * throws `duplicate_suspend_id_error` with `reason: 'reached_twice'`, since
+ * the run's one datum for the id answered the first.
+ */
+export function note_datum_taken(ctx: RunContext, suspend_id: string, input: unknown): void {
+  const taken = taken_data.get(ctx.run_id) ?? new Map<string, (input: unknown) => boolean>()
+  taken_data.set(ctx.run_id, taken)
+  const same = taken.get(suspend_id)
+  if (same === undefined) {
+    taken.set(suspend_id, same_input_as(input))
+  } else if (!same(input)) {
+    throw new duplicate_suspend_id_error(suspend_id, 'reached_twice')
+  }
 }
 
 /**
@@ -492,6 +515,8 @@ function start_run<i, o>(
         // run, and before the stream closes so `run.stream` consumers see it.
         logger.record(terminal)
         unreached_gates.delete(run_id)
+        // Stryker disable next-line CallExpression: a run id is never used again, so a note left behind changes no later run, and dropping it only keeps the map from growing.
+        taken_data.delete(run_id)
         unlink_abort()
         signal_runs.delete(controller)
         release_signal_handlers()

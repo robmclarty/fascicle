@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { z } from 'zod'
-import { aborted_error, suspended_error, timeout_error } from '../errors.js'
+import { aborted_error, duplicate_suspend_id_error, suspended_error, timeout_error } from '../errors.js'
 import { map } from '../map.js'
 import { run } from '../runner.js'
 import { step } from '../step.js'
@@ -370,7 +370,7 @@ describe('map with settle', () => {
     ])
   })
 
-  it('lets a suspend through rather than settling it, and resumes into settled values', async () => {
+  it('lets a suspend through rather than settling it, and settles a second item that the one decision would answer', async () => {
     const flow = map({
       items: identity_items,
       settle: true,
@@ -382,9 +382,19 @@ describe('map with settle', () => {
       }),
     })
     await expect(run(flow, [1, 2], QUIET)).rejects.toBeInstanceOf(suspended_error)
+    // The approval answered item 0, so item 1, on another input, fails into
+    // its slot rather than pass on a decision about something else.
     expect(await run(flow, [1, 2], { ...QUIET, resume_data: { approve: { ok: true } } })).toStrictEqual([
       { ok: true, value: 1 },
-      { ok: true, value: 2 },
+      {
+        ok: false,
+        error: {
+          message: new duplicate_suspend_id_error('approve', 'reached_twice').message,
+          name: 'duplicate_suspend_id_error',
+          kind: 'duplicate_suspend_id_error',
+          path: ['approve'],
+        },
+      },
     ])
   })
 

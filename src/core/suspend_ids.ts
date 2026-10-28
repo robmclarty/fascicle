@@ -18,6 +18,11 @@
  * paths reach counts once per path, and a step that is its own ancestor is
  * skipped where it comes back. A step never changes once it's built, so the
  * answer is kept per root step and each root is walked once.
+ *
+ * What the walk can't see, a run can: a `suspend` that a `loop` reaches in a
+ * later round, or a `map` for its next item. `same_input_as(first)` is the
+ * test the runner holds each later reach to, so a run takes each id's datum
+ * once, or again on the same input, the way a `retry` runs a step again.
  */
 
 import { duplicate_suspend_id_error } from './errors.js'
@@ -131,4 +136,45 @@ export function check_suspend_ids(root: AnyStep): void {
   if (refusal !== null) {
     throw new duplicate_suspend_id_error(refusal.suspend_id, 'declared_twice', refusal)
   }
+}
+
+/**
+ * Sort an object's keys as `JSON.stringify` meets it, so two objects that
+ * hold the same entries in another order write the same JSON. An array keeps
+ * its order, since its order is its content.
+ */
+function sort_keys(_: string, value: unknown): unknown {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return value
+  return Object.fromEntries(Object.keys(value).toSorted().map((key) => [key, Reflect.get(value, key)]))
+}
+
+/**
+ * The stable JSON of `value`, its keys sorted, or `undefined` when JSON
+ * can't hold it: `JSON.stringify` throws (a `BigInt`, a cycle) or writes
+ * nothing (`undefined`, a function).
+ */
+function stable_json(value: unknown): string | undefined {
+  try {
+    return JSON.stringify(value, sort_keys)
+  } catch {
+    // A value that makes JSON.stringify throw has no stable JSON.
+  }
+  return undefined
+}
+
+/**
+ * A test of whether a later input is the same as `first`, which a resume
+ * datum taken for `first` answers as well.
+ *
+ * `first` is snapshotted now, as stable JSON with its keys sorted, and a
+ * later input matches when its stable JSON is the same, so a `retry` that
+ * reaches a step again on a copy of its input passes, while an object that
+ * a `loop` changed in place since doesn't, since the datum answered what the
+ * object held then. When JSON can't hold `first`, a later input matches
+ * only when it's the same value by `Object.is`.
+ */
+export function same_input_as(first: unknown): (next: unknown) => boolean {
+  const snapshot = stable_json(first)
+  if (snapshot === undefined) return (next) => Object.is(next, first)
+  return (next) => stable_json(next) === snapshot
 }

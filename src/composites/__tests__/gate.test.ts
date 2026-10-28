@@ -3,6 +3,7 @@ import {
   duplicate_suspend_id_error,
   durable,
   gate_result_error,
+  retry,
   run,
   sequence,
   step,
@@ -580,5 +581,32 @@ describe('two gates with one id', () => {
       `suspend id "approve" is used in 2 places (${place(first).join(' > ')}, ${place(second).join(' > ')}): resume data is keyed by id, so give each suspend and gate an id of its own`,
     )
     expect(front).not.toHaveBeenCalled()
+  })
+})
+
+describe('a gate that a retry runs again', () => {
+  it('passes on the same input, served from a store whose reads are clones', async () => {
+    const store = durable_memory_store()
+    let failures = 1
+    const draft = vi.fn((brief: string) => ({ brief, body: `draft of ${brief}` }))
+    const flow = retry(
+      sequence([
+        gate(step('draft', draft), { id: 'approve' }),
+        step('ship', (result: { body: string }) => {
+          if (failures > 0) {
+            failures -= 1
+            throw new Error('registry down')
+          }
+          return result.body
+        }),
+      ]),
+      { max_attempts: 2 },
+    )
+
+    expect_suspended(await run.until_suspended(flow, 'launch', { ...QUIET, checkpoint_store: store }))
+    expect(
+      await run(flow, 'launch', { ...QUIET, checkpoint_store: store, resume_data: { approve: true } }),
+    ).toBe('draft of launch')
+    expect(draft).toHaveBeenCalledTimes(1)
   })
 })

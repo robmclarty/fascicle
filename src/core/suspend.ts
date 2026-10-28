@@ -11,6 +11,12 @@
  * ctx)`; the result is returned. Invalid resume data throws
  * `resume_validation_error` carrying the vendor-neutral issue list.
  *
+ * A run takes each id's datum once. A run that reaches the suspend again on
+ * the same input takes it again, the way a `retry` runs a step again, and
+ * one that reaches it on another input, in a later round of a `loop` or for
+ * the next item of a `map`, throws `duplicate_suspend_id_error` with
+ * `reason: 'reached_twice'`, since the datum answered the first input.
+ *
  * `deadline_ms` says how long the gate waits for its resume. The run can't
  * keep a clock of its own, since it unwinds as soon as it suspends, so the
  * value rides out on the `suspended_error` (and the outcome
@@ -22,7 +28,7 @@ import { validate_schema, type AnySchema } from '#schema'
 import { description_meta } from './display_name.js'
 import { resume_validation_error, suspended_error } from './errors.js'
 import { is_step } from './is_step.js'
-import { dispatch_step, mark_gates_reached, register_traced_kind } from './runner.js'
+import { dispatch_step, mark_gates_reached, note_datum_taken, register_traced_kind } from './runner.js'
 import { assert_valid_step_id } from './step_id.js'
 import type { RunContext, Step } from './types.js'
 
@@ -88,6 +94,7 @@ export function suspend<i, o, resume>(config: SuspendConfig<i, o, resume>): Step
       throw new suspended_error(suspend_id, { input }, undefined, deadline_ms)
     }
 
+    note_datum_taken(ctx, suspend_id, input)
     mark_gates_reached(ctx, [suspend_id])
     const parsed = await validate_schema(resume_schema, resume_value)
     if (!parsed.ok) {

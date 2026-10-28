@@ -1,11 +1,32 @@
 import { describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
-import { resume_validation_error, suspended_error } from '../errors.js'
+import { duplicate_suspend_id_error, resume_validation_error, suspended_error } from '../errors.js'
+import { loop } from '../loop.js'
+import { map } from '../map.js'
 import { run } from '../runner.js'
 import { step } from '../step.js'
 import { suspend } from '../suspend.js'
-import type { TrajectoryEvent } from '../types.js'
+import type { RunContext, TrajectoryEvent } from '../types.js'
 import { recording_logger } from '../../../test/fixtures/trajectory.js'
+
+const QUIET = { install_signal_handlers: false } as const
+const APPROVED = { ...QUIET, resume_data: { approve: true } } as const
+const REACHED_TWICE = { kind: 'duplicate_suspend_id_error', reason: 'reached_twice', suspend_id: 'approve', paths: [] }
+
+// A suspend that hands back whatever it was given once it's approved.
+function pass_through<v>(): ReturnType<typeof suspend<v, v, boolean>> {
+  return suspend({ id: 'approve', on: () => {}, resume_schema: z.boolean(), combine: (input: v) => input })
+}
+
+// A step whose body reaches `gate` twice through ctx.call, once on each
+// input, which the declared tree doesn't show.
+function reach_twice(first: unknown, second: unknown) {
+  const gate = pass_through<unknown>()
+  return step('twice', async (_: null, ctx: RunContext) => {
+    await ctx.call(gate, first)
+    return ctx.call(gate, second)
+  })
+}
 
 describe('suspend', () => {
   it('calls on(input, ctx) and throws suspended_error on first encounter', async () => {
@@ -249,5 +270,90 @@ describe('suspend ids', () => {
       combine: (input: string) => input,
     })
     expect(labelled.config).toStrictEqual({ id: 'approve_draft', display_name: 'approve draft' })
+  })
+})
+
+describe('a suspend that one run reaches again', () => {
+  it('suspends in round one of a loop, and fails its resume at round two on another input', async () => {
+    const flow = loop({
+      init: (n: number) => n,
+      body: suspend({ id: 'approve', on: () => {}, resume_schema: z.boolean(), combine: (n: number) => n + 1 }),
+      finish: (n) => n,
+      max_rounds: 3,
+    })
+
+    await expect(run(flow, 0, QUIET)).rejects.toBeInstanceOf(suspended_error)
+    const err: unknown = await run(flow, 0, APPROVED).then(
+      () => 'resolved',
+      (e: unknown) => e,
+    )
+    expect(err).toMatchObject(REACHED_TWICE)
+    expect(err).toBeInstanceOf(duplicate_suspend_id_error)
+  })
+
+  it('fails a map whose items each reach it at the second item on resume', async () => {
+    const combined: number[] = []
+    const flow = map({
+      items: (list: number[]) => list,
+      do: suspend({
+        id: 'approve',
+        on: () => {},
+        resume_schema: z.boolean(),
+        combine: (n: number) => {
+          combined.push(n)
+          return n
+        },
+      }),
+    })
+
+    await expect(run(flow, [1, 2], APPROVED)).rejects.toMatchObject(REACHED_TWICE)
+    expect(combined).toEqual([1])
+  })
+
+  it('fails when a loop changes the input object in place between two reaches', async () => {
+    const flow = loop({
+      init: (n: number) => ({ n }),
+      body: suspend({
+        id: 'approve',
+        on: () => {},
+        resume_schema: z.boolean(),
+        combine: (state: { n: number }) => {
+          state.n += 1
+          return state
+        },
+      }),
+      finish: (state) => state.n,
+      max_rounds: 3,
+    })
+
+    await expect(run(flow, 0, APPROVED)).rejects.toMatchObject(REACHED_TWICE)
+  })
+
+  const held = { n: 1n }
+
+  it.each<[string, unknown, unknown]>([
+    ['the same value', 1n, 1n],
+    ['the same object, which holds a BigInt', held, held],
+    ['an input that JSON drops', undefined, undefined],
+    ['two objects with the same JSON, whatever the key order', { a: 1, b: null, c: [1, 2] }, { c: [1, 2], b: null, a: 1 }],
+  ])('passes a second reach on %s', async (_, first, second) => {
+    expect(await run(reach_twice(first, second), null, APPROVED)).toBe(second)
+  })
+
+  it.each<[string, unknown, unknown]>([
+    ['another BigInt', 1n, 2n],
+    ['another object that holds the same BigInt', { n: 1n }, { n: 1n }],
+    ['other JSON', { a: 1 }, { a: 2 }],
+    ['an array against an object with the same entries', [1, 2], { 0: 1, 1: 2 }],
+  ])('fails a second reach on %s', async (_, first, second) => {
+    await expect(run(reach_twice(first, second), null, APPROVED)).rejects.toMatchObject(REACHED_TWICE)
+  })
+
+  it('keeps the notes of two runs of one flow apart', async () => {
+    const flow = pass_through<string>()
+
+    const outputs = await Promise.all([run(flow, 'first', APPROVED), run(flow, 'second', APPROVED)])
+    expect(outputs).toEqual(['first', 'second'])
+    expect(await run(flow, 'third', APPROVED)).toBe('third')
   })
 })

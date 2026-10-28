@@ -179,7 +179,7 @@ You can walk the full loop in
 | `chain<i>(input_name?)` → `.input` / `.step` / `.stage` / `.output` | named steps over a typed record; state the input type via `chain<i>()` or `chain('name').input<i>()` (unannotated chains default to `never` and fail at `run`): `.step(name, arm, select, options?)` dispatches a composed arm on the selected slice and records it as the binding's child, `.step(name, fn, { arm?, name?, description? })` is the body form (`arm` records a describe-only child, or several), `.stage(name, project?)` concludes a phase (with `project`, narrows the record), `.output(fn)` projects the result into a `Step`. Every binding name is a record key, so it follows the same identifier rule as a step id; `options.name` carries the free-prose label |
 | `scope` / `stash` / `use` | named state at the string-key level; the advanced tier under `chain` (see [advanced-composition.md](./advanced-composition.md)) |
 | `checkpoint(inner, { key, on_write_error?, on_read_error? })` | memoize an inner step by key in a `CheckpointStore`. A failed write records `write_error` and returns the inner result, and `on_write_error: 'fail'` throws the store's error instead, which you want when a `suspend` shows the result to an approver. A failed read records `read_error` and runs `inner` as a miss, and `on_read_error: 'fail'` throws the store's error instead, which a checkpoint whose result a `suspend` shows wants as well |
-| `suspend({ id, on, resume_schema, combine, deadline_ms? })` | pause for external input, then resume later with `resume_data` (throws `suspended_error` to signal the pause; `run.until_suspended` surfaces it as a typed outcome instead). `deadline_ms` says how long the gate waits, and it rides out on the outcome so whoever drives the run can schedule the timer. `id` must be an identifier, since resume data is keyed by it, and a label goes in `name` |
+| `suspend({ id, on, resume_schema, combine, deadline_ms? })` | pause for external input, then resume later with `resume_data` (throws `suspended_error` to signal the pause; `run.until_suspended` surfaces it as a typed outcome instead). `deadline_ms` says how long the gate waits, and it rides out on the outcome so whoever drives the run can schedule the timer. `id` must be an identifier, since resume data is keyed by it, and a label goes in `name`. An id is used once per flow and reached once per run, or again on the same input, as a `retry` does |
 | `gate(inner, { id, store?, format?, name? })` | run `inner`, checkpoint its result at `gate:<id>`, then suspend with it as the payload; a resume serves the stored result or fails with `gate_result_error`, and never runs `inner` again, so a gate needs a store (its own or the run's `checkpoint_store`) to resume. A restart with the same store replays from the checkpoint instead of re-running `inner`. `id` must be an identifier, as a `suspend` id must |
 
 ## The Engine
@@ -687,7 +687,8 @@ started). A resumed `gate` that can't serve the result it showed throws
 `gate_result_error`, whose `reason` is `read_error`, `missing`, or `no_store`.
 A flow that holds one suspend id in two places throws
 `duplicate_suspend_id_error` with `reason: 'declared_twice'` before any step
-runs, and its `paths` name each place.
+runs, and its `paths` name each place. A run that reaches one `suspend` again
+on another input throws it with `reason: 'reached_twice'`.
 
 **Engine.** `provider_required_error` (several providers configured, none named
 by the call or `defaults.provider`), `provider_not_configured_error`,
