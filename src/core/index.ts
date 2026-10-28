@@ -46,6 +46,7 @@ export type { LoopConfig, LoopGuardPredicate, LoopGuardResult, LoopOutcome } fro
 export { compose } from './compose.js'
 export type { ComposeConfig } from './compose.js'
 export { checkpoint } from './checkpoint.js'
+export { same_input_as } from './suspend_ids.js'
 export type { CheckpointConfig } from './checkpoint.js'
 export { suspend } from './suspend.js'
 export type { SuspendConfig } from './suspend.js'

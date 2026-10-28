@@ -44,6 +44,12 @@
  *   fails with `gate_result_error`, since nothing holds the result it
  *   showed. Present, the gate-local store wins over the run-level one,
  *   because an explicit argument beats ambient configuration.
+ * - One run reaches a gate once per input: a second reach on another input,
+ *   for the next item of a `map` or a later round of a `loop`, throws
+ *   `duplicate_suspend_id_error` with `reason: 'reached_twice'` before it
+ *   reads or writes the store, since the key is fixed per gate and the one
+ *   stored result and the one decision answer the first input. A `retry`
+ *   that reaches the gate again on the same input passes.
  * - The suspend's `on` hook is a noop: notification is the driver's job, and
  *   `run.until_suspended` already hands it the payload to render.
  */
@@ -52,7 +58,9 @@ import {
   assert_valid_step_id,
   checkpoint,
   compose,
+  duplicate_suspend_id_error,
   gate_result_error,
+  same_input_as,
   scope,
   stash,
   step,
@@ -105,8 +113,16 @@ function holding(value: unknown): CheckpointStore {
 }
 
 /**
- * The gate's checkpoint, with a run that serves a resumed gate from the
- * store or fails the run.
+ * The gate's checkpoint, with a run that checks the gate's input and serves
+ * a resumed gate from the store or fails the run.
+ *
+ * Before it reads or writes the store, on a first run as well as a resume,
+ * the run checks its input: the first reach in a run keeps a test of its
+ * input for that run, which the run's cleanup drops, and a later reach on
+ * another input throws `duplicate_suspend_id_error` with
+ * `reason: 'reached_twice'`. The key is fixed per gate, so a second input
+ * would read or overwrite the first one's result, and the gate's `suspend`,
+ * which always sees a view of that one result, can't tell.
  *
  * A gate that isn't resuming runs the checkpoint as built. A resumed one
  * reads the store itself, so it never runs `inner`: with no store, it throws
@@ -120,7 +136,19 @@ function holding(value: unknown): CheckpointStore {
  * fingerprint see the checkpoint they always have.
  */
 function resume_aware<i, o>(checkpointed: Step<i, o>, id: string, key: string): Step<i, o> {
+  const first_inputs = new Map<string, (input: unknown) => boolean>()
   const run_fn = async (input: i, ctx: RunContext): Promise<o> => {
+    const same = first_inputs.get(ctx.run_id)
+    if (same === undefined) {
+      first_inputs.set(ctx.run_id, same_input_as(input))
+      // Stryker disable next-line BlockStatement,CallExpression: a run id is never used again, so a note left behind changes no later run, and dropping it only keeps the map from growing.
+      ctx.on_cleanup(() => {
+        // Stryker disable next-line CallExpression: the same drop, as the run ends.
+        first_inputs.delete(ctx.run_id)
+      })
+    } else if (!same(input)) {
+      throw new duplicate_suspend_id_error(id, 'reached_twice')
+    }
     if (!is_resuming(ctx, id)) return checkpointed.run(input, ctx)
     const store = ctx.checkpoint_store
     if (store === undefined) throw new gate_result_error(id, 'no_store')

@@ -3,6 +3,8 @@ import {
   duplicate_suspend_id_error,
   durable,
   gate_result_error,
+  loop,
+  map,
   retry,
   run,
   sequence,
@@ -608,5 +610,78 @@ describe('a gate that a retry runs again', () => {
       await run(flow, 'launch', { ...QUIET, checkpoint_store: store, resume_data: { approve: true } }),
     ).toBe('draft of launch')
     expect(draft).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('a gate that one run reaches again on another input', () => {
+  const REACHED_TWICE = { kind: 'duplicate_suspend_id_error', reason: 'reached_twice', suspend_id: 'approve', paths: [] }
+
+  it('fails a map on its first run at the second item, before that item runs inner, so the store keeps the first result', async () => {
+    const store = durable_memory_store()
+    const draft = vi.fn((brief: string) => `draft of ${brief}`)
+    const flow = map({ items: (briefs: string[]) => briefs, do: gate(step('draft', draft), { id: 'approve' }) })
+
+    const err = await rejection(run(flow, ['launch', 'recall'], { ...QUIET, checkpoint_store: store }))
+    expect(err).toMatchObject(REACHED_TWICE)
+    expect(err).toBeInstanceOf(duplicate_suspend_id_error)
+    expect(draft.mock.calls.map(([brief]) => brief)).toEqual(['launch'])
+    expect(await store.get('gate:approve')).toBe('draft of launch')
+  })
+
+  it('suspends a settling map on the first item, and its resume serves that item its own result and settles the second', async () => {
+    const store = durable_memory_store()
+    const draft = vi.fn((brief: string) => `draft of ${brief}`)
+    const flow = map({
+      items: (briefs: string[]) => briefs,
+      settle: true,
+      do: gate(step('draft', draft), { id: 'approve' }),
+    })
+    const options = { ...QUIET, checkpoint_store: store }
+
+    const suspended = expect_suspended(await run.until_suspended(flow, ['launch', 'recall'], options))
+    expect(suspended.payload).toEqual({ input: 'draft of launch' })
+    const resumed = await suspended.resume(true)
+    expect(resumed).toMatchObject({
+      kind: 'done',
+      output: [
+        { ok: true, value: 'draft of launch' },
+        { ok: false, error: { kind: 'duplicate_suspend_id_error' } },
+      ],
+    })
+    expect(draft.mock.calls.map(([brief]) => brief)).toEqual(['launch'])
+  })
+
+  it('fails a loop whose body holds it at round two on resume, rather than serve round one its result', async () => {
+    const store = durable_memory_store()
+    const flow = loop({
+      init: (n: number) => n,
+      body: gate(step('bump', (n: number) => n + 1), { id: 'approve' }),
+      finish: (n) => n,
+      max_rounds: 3,
+    })
+    const options = { ...QUIET, checkpoint_store: store }
+
+    expect_suspended(await run.until_suspended(flow, 0, options))
+    await expect(run(flow, 0, { ...options, resume_data: { approve: true } })).rejects.toMatchObject(
+      REACHED_TWICE,
+    )
+  })
+
+  it('keeps the notes of two runs of one flow apart', async () => {
+    const flow = gate(step('draft', (brief: string) => `draft of ${brief}`), { id: 'approve' })
+    const first = memory_store()
+    const second = memory_store()
+
+    const outcomes = await Promise.all([
+      run.until_suspended(flow, 'launch', { ...QUIET, checkpoint_store: first }),
+      run.until_suspended(flow, 'recall', { ...QUIET, checkpoint_store: second }),
+    ])
+    expect(outcomes.map((o) => expect_suspended(o).payload)).toEqual([
+      { input: 'draft of launch' },
+      { input: 'draft of recall' },
+    ])
+    expect(
+      await run(flow, 'launch', { ...QUIET, checkpoint_store: first, resume_data: { approve: true } }),
+    ).toBe('draft of launch')
   })
 })

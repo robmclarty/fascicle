@@ -727,7 +727,10 @@ the `project` envelopes and option shapes that `retry` and `fallback` take
 `SchemaIssue`). A map that settles returns `Settled` entries, and a failed
 entry carries a `SettledError`. At runtime `is_step` narrows a value to a
 `Step`, and `error_path(err)` reads the `path` that a run attached to a thrown
-error.
+error. `same_input_as(first)` returns the test that a `suspend` and a `gate`
+hold a later input to, which passes when the input's JSON, with its keys
+sorted, reads the same as `first`'s did when the test was made, or, when JSON
+can't hold `first`, when the input is the same value.
 The durable driver adds `DurableConfig`, `DurableStore`, `DurableRuns`,
 `DurableRunOptions`, `DurableOutcome`, and `DurableRunState`, and
 `fascicle/adapters` names what `filesystem_store` returns as `FilesystemStore`
