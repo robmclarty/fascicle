@@ -2,8 +2,13 @@
 
 ## Unreleased
 
+### Changed
+
+- **A `gate` with no store fails its resume instead of running its step again.** A gate without one suspended and then, on the resume, ran `inner` again and passed the new result through, so a gate around a model call bought a second answer that the approver never saw. The resume fails now with `gate_result_error`, whose `reason` is `no_store`. Give the gate a `store`, or the run a `checkpoint_store`, or use a plain `suspend` when the step is cheap and deterministic. A gate handed its datum before it ever suspended, through `resume_data` on a first run, is resuming too, so with nothing stored it fails with `missing`, or with `no_store` when it has no store, since an approval given before anything was shown covers nothing.
+
 ### Fixed
 
+- **A resumed `gate` serves the result it showed, or fails the run.** A gate's resume read its result back from the store, and a read that threw, or a store that no longer held the result, counted as a miss, so the gate ran `inner` again, paid for it again, wrote the new result over the old one, and passed it through an approval that covered the old one. A resume never runs `inner` now. It serves the stored result, or it fails with `gate_result_error`, which names the gate and carries a `reason`: `read_error`, with the store's error as its `cause`, or `missing`. The trajectory records the lookup's `checkpoint` event as before. A durable run that a failed read stopped resumes from the next event with nothing new, since the approval stays in its resume data. A first run's failed read is still a miss, since nobody has approved anything yet.
 - **`checkpoint` can fail the run on a read that failed, with `on_read_error: 'fail'`.** A `store.get` that threw counted as a miss, so `checkpoint` ran `inner` again and wrote the new result over the old one, and a hand-built `checkpoint` before a `suspend` that showed its result passed an approval through to something the approver never saw. `on_read_error: 'fail'` records the same `read_error` event and then throws the store's error, without running `inner` or writing anything, the read-side twin of `on_write_error: 'fail'`. A checkpoint whose result a `suspend` shows should pass `'fail'` for both. `'miss'` is the default and keeps the old behavior, and the option stays out of the step's `config`, so `describe` and a durable run's fingerprint don't change.
 
 ## v0.17.1 — 2026-10-26

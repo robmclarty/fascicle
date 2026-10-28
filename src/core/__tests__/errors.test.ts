@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   aborted_error,
   flow_changed_error,
+  gate_result_error,
   resume_validation_error,
   run_not_found_error,
   suspended_error,
@@ -59,6 +60,44 @@ describe('typed errors', () => {
     expect(err.continued_on).toBe('bbbb')
     expect(err.message).toBe(
       "durable run pr-7 started on a flow of another shape (aaaa, now bbbb): finish it on the flow it started with, delete it, or drive it with on_flow_change: 'replay'",
+    )
+  })
+
+  it('gate_result_error names the gate, the reason, and what to do when the store failed the read', () => {
+    const failure = new Error('disk unavailable')
+    const err = new gate_result_error('approve', 'read_error', failure)
+    expect(err).toBeInstanceOf(Error)
+    expect(err.kind).toBe('gate_result_error')
+    expect(err.name).toBe('gate_result_error')
+    expect(err.suspend_id).toBe('approve')
+    expect(err.reason).toBe('read_error')
+    expect(err.cause).toBe(failure)
+    expect(err.message).toBe(
+      'gate approve resumed, and its store failed to read the result that it showed (disk unavailable): resume the run again once the store reads, since the approval is still in its resume data',
+    )
+  })
+
+  it('gate_result_error carries a store failure that is not an Error as its text', () => {
+    const err = new gate_result_error('approve', 'read_error', 'quota exceeded')
+    expect(err.cause).toBe('quota exceeded')
+    expect(err.message).toContain('(quota exceeded)')
+  })
+
+  it('gate_result_error says to start again when the store no longer holds the result', () => {
+    const err = new gate_result_error('approve', 'missing')
+    expect(err.reason).toBe('missing')
+    expect('cause' in err).toBe(false)
+    expect(err.message).toBe(
+      'gate approve resumed, and its store no longer holds the result that it showed: delete the run and start it again',
+    )
+  })
+
+  it('gate_result_error says how to give a gate with no store one', () => {
+    const err = new gate_result_error('approve', 'no_store')
+    expect(err.reason).toBe('no_store')
+    expect('cause' in err).toBe(false)
+    expect(err.message).toBe(
+      'gate approve resumed with no store to serve the result that it showed: give the gate a store or the run a checkpoint_store, or use a plain suspend when the step is cheap and deterministic',
     )
   })
 

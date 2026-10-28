@@ -75,6 +75,40 @@ export class flow_changed_error extends Error {
   }
 }
 
+/**
+ * What a `gate_result_error` says for `reason`: which gate resumed, why the
+ * result it showed can't be served, and what to do about it.
+ */
+function gate_result_message(
+  suspend_id: string,
+  reason: gate_result_error['reason'],
+  cause: unknown,
+): string {
+  if (reason === 'read_error') {
+    const detail = cause instanceof Error ? cause.message : String(cause)
+    return `gate ${suspend_id} resumed, and its store failed to read the result that it showed (${detail}): resume the run again once the store reads, since the approval is still in its resume data`
+  }
+  if (reason === 'missing') {
+    return `gate ${suspend_id} resumed, and its store no longer holds the result that it showed: delete the run and start it again`
+  }
+  return `gate ${suspend_id} resumed with no store to serve the result that it showed: give the gate a store or the run a checkpoint_store, or use a plain suspend when the step is cheap and deterministic`
+}
+
+export class gate_result_error extends Error {
+  readonly kind = 'gate_result_error' as const;
+  declare readonly path?: ReadonlyArray<string>;
+  readonly suspend_id: string;
+  // Why the result can't be served: the store failed the read (its error is
+  // the `cause`), the store no longer holds it, or the gate has no store.
+  readonly reason: 'read_error' | 'missing' | 'no_store';
+  constructor(suspend_id: string, reason: gate_result_error['reason'], cause?: unknown) {
+    super(gate_result_message(suspend_id, reason, cause), cause === undefined ? undefined : { cause })
+    this.name = 'gate_result_error'
+    this.suspend_id = suspend_id
+    this.reason = reason
+  }
+}
+
 export class run_not_found_error extends Error {
   readonly kind = 'run_not_found_error' as const;
   declare readonly path?: ReadonlyArray<string>;

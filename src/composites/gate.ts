@@ -18,9 +18,15 @@
  *   step must be named.
  * - A failed write fails the run: the checkpoint takes
  *   `on_write_error: 'fail'`, so the run stops before it suspends rather than
- *   ask for approval of a result that the store never kept, which a resume
- *   would replace by running `inner` again. A hand-built checkpoint before a
- *   `suspend` that shows its result should pass `'fail'` for the same reason.
+ *   ask for approval of a result that the store never kept.
+ * - A resume serves the stored result or fails the run: it never runs
+ *   `inner`, since a new result would pass through an approval that covered
+ *   the old one. A store that fails the read, or no longer holds the result,
+ *   fails the resume with `gate_result_error`. A failed read on a first run
+ *   is still a miss, since nobody has approved anything yet. A hand-built
+ *   checkpoint before a `suspend` that shows its result can't tell a first
+ *   run from a resume, so it should pass `'fail'` for both `on_write_error`
+ *   and `on_read_error`.
  * - Suspend payload: follows the library's suspend contract, which raises
  *   `{ input }` on the `suspended_error`. Here that `input` is
  *   `format(result)` when `format` is given and the raw result otherwise, so
@@ -34,15 +40,25 @@
  *   flow that needs decision-dependent output (approve vs reject branches)
  *   should use `suspend` directly, whose `combine` exists for exactly that.
  * - `store` is optional. Absent, the checkpoint falls back to the run's
- *   `checkpoint_store`; with neither, the gate still suspends and resumes
- *   in-process but a restart re-executes `inner`. Present, the gate-local
- *   store wins over the run-level one, because an explicit argument beats
- *   ambient configuration.
+ *   `checkpoint_store`. With neither, the gate still suspends, but its resume
+ *   fails with `gate_result_error`, since nothing holds the result it
+ *   showed. Present, the gate-local store wins over the run-level one,
+ *   because an explicit argument beats ambient configuration.
  * - The suspend's `on` hook is a noop: notification is the driver's job, and
  *   `run.until_suspended` already hands it the payload to render.
  */
 
-import { assert_valid_step_id, checkpoint, compose, scope, stash, step, suspend, use } from '#core'
+import {
+  assert_valid_step_id,
+  checkpoint,
+  compose,
+  gate_result_error,
+  scope,
+  stash,
+  step,
+  suspend,
+  use,
+} from '#core'
 import type { CheckpointStore, RunContext, Step } from '#core'
 import { name_parts } from './parts.js'
 
@@ -66,6 +82,67 @@ const approval_schema = {
 } as const
 
 /**
+ * Whether the gate `id` is resuming: its id holds a defined value of its own
+ * in the run's resume data, which is exactly when its `suspend` passes. Only
+ * an own value counts, so a gate named like an `Object.prototype` member
+ * never mistakes the inherited member for a decision.
+ */
+function is_resuming(ctx: RunContext, id: string): boolean {
+  const resume_data = ctx.resume_data
+  return resume_data !== undefined && Object.hasOwn(resume_data, id) && resume_data[id] !== undefined
+}
+
+/**
+ * A store that holds `value` and nothing else, so the checkpoint's own run
+ * serves it as a hit. A hit never writes, so the writes go nowhere.
+ */
+function holding(value: unknown): CheckpointStore {
+  return {
+    get: async () => value,
+    set: async () => {},
+    delete: async () => {},
+  }
+}
+
+/**
+ * The gate's checkpoint, with a run that serves a resumed gate from the
+ * store or fails the run.
+ *
+ * A gate that isn't resuming runs the checkpoint as built. A resumed one
+ * reads the store itself, so it never runs `inner`: with no store, it throws
+ * `gate_result_error` with `reason: 'no_store'` and records nothing; a read
+ * that throws records the checkpoint's `read_error` event and throws
+ * `reason: 'read_error'`; and a miss records `miss` and throws
+ * `reason: 'missing'`. A hit goes to the checkpoint's own run over a store
+ * that holds only that value, so the checkpoint records the hit and marks
+ * the gates inside `inner` reached, as a hit always has. The node keeps its
+ * kind, id, children, and config, so `describe` and a durable run's
+ * fingerprint see the checkpoint they always have.
+ */
+function resume_aware<i, o>(checkpointed: Step<i, o>, id: string, key: string): Step<i, o> {
+  const run_fn = async (input: i, ctx: RunContext): Promise<o> => {
+    if (!is_resuming(ctx, id)) return checkpointed.run(input, ctx)
+    const store = ctx.checkpoint_store
+    if (store === undefined) throw new gate_result_error(id, 'no_store')
+    const meta = { id: checkpointed.id, key, span_id: ctx.parent_span_id }
+    let value: unknown
+    try {
+      value = await store.get(key)
+    } catch (err) {
+      const error = err instanceof Error ? err.message : String(err)
+      ctx.trajectory.record({ kind: 'checkpoint', status: 'read_error', error, ...meta })
+      throw new gate_result_error(id, 'read_error', err)
+    }
+    if (value === null || value === undefined) {
+      ctx.trajectory.record({ kind: 'checkpoint', status: 'miss', ...meta })
+      throw new gate_result_error(id, 'missing')
+    }
+    return checkpointed.run(input, { ...ctx, checkpoint_store: holding(value) })
+  }
+  return { ...checkpointed, run: run_fn }
+}
+
+/**
  * Bind a gate-local store over the run context for the checkpoint beneath.
  *
  * `checkpoint` reads `ctx.checkpoint_store`, so scoping a store to one gate
@@ -86,9 +163,11 @@ function bind_store<i, o>(persisted: Step<i, o>, store: CheckpointStore): Step<i
  * Build a Step that runs `inner`, checkpoints its result at `gate:<id>`, and
  * suspends with that result as the payload awaiting approval.
  *
- * On resume (any defined resume value) the gate resolves to the inner result
- * unchanged; the decision itself is discarded. On a re-run against the same
- * store, the checkpoint absorbs the replay so `inner` never re-executes.
+ * On resume (any defined resume value) the gate resolves to the stored inner
+ * result unchanged; the decision itself is discarded. A resume that can't
+ * serve the stored result throws `gate_result_error` rather than run `inner`
+ * again. On a re-run against the same store, the checkpoint absorbs the
+ * replay so `inner` never re-executes.
  * Throws at construction time when `inner` is anonymous, because the cached
  * result must map back to a stable step, and when `config.id` isn't an
  * identifier, which it checks under its own name before its `suspend` sees
@@ -97,7 +176,8 @@ function bind_store<i, o>(persisted: Step<i, o>, store: CheckpointStore): Step<i
  * Implemented as a `compose`d `scope`: the checkpointed result is stashed,
  * projected into the approver's view, and handed to `suspend`; the suspend's
  * `combine` returns a `use` step that restores the stashed result, which is
- * how the decision stays signal-only.
+ * how the decision stays signal-only. The checkpoint keeps its node and runs
+ * through `resume_aware`, which is how a resume never runs `inner`.
  */
 export function gate<i, o>(inner: Step<i, o>, config: GateConfig<o>): Step<i, o> {
   if (inner.anonymous === true) {
@@ -108,7 +188,8 @@ export function gate<i, o>(inner: Step<i, o>, config: GateConfig<o>): Step<i, o>
   const { id, store, format } = config
   assert_valid_step_id(id, 'gate id', 'put the label in name')
 
-  const checkpointed = checkpoint(inner, { key: `gate:${id}`, on_write_error: 'fail' })
+  const key = `gate:${id}`
+  const checkpointed = resume_aware(checkpoint(inner, { key, on_write_error: 'fail' }), id, key)
   const persisted = store === undefined ? checkpointed : bind_store(checkpointed, store)
 
   const restore = use(['result'], (vars) => {

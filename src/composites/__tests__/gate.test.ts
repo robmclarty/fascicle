@@ -1,8 +1,11 @@
-import { describe as describe_flow, run, step } from '#core'
-import type { CheckpointStore, FlowNode, RunOutcome } from '#core'
+import { describe as describe_flow, durable, gate_result_error, run, step } from '#core'
+import type { CheckpointStore, DurableStore, FlowNode, RunOutcome } from '#core'
 import { describe, expect, it, vi } from 'vitest'
 import { gate } from '../gate.js'
+import { memory_store as durable_memory_store, type MemoryStore } from '../../../test/fixtures/memory_store.js'
 import { recording_logger } from '../../../test/fixtures/trajectory.js'
+
+const QUIET = { install_signal_handlers: false } as const
 
 function memory_store(): CheckpointStore & { data: Map<string, unknown> } {
   const data = new Map<string, unknown>()
@@ -18,6 +21,39 @@ function memory_store(): CheckpointStore & { data: Map<string, unknown> } {
       data.delete(key)
     },
   }
+}
+
+// A memory store whose reads throw `failure` while `failing.reads` is above
+// zero, one read at a time.
+function flaky_reads(failure: unknown) {
+  const base = memory_store()
+  const failing = { reads: 0 }
+  const store: CheckpointStore & { data: Map<string, unknown> } = {
+    ...base,
+    async get(key) {
+      if (failing.reads > 0) {
+        failing.reads -= 1
+        throw failure
+      }
+      return base.get(key)
+    },
+  }
+  return { store, failing }
+}
+
+// What a promise rejected with, or a marker when it resolved instead.
+function rejection(promise: Promise<unknown>): Promise<unknown> {
+  return promise.then(
+    () => 'resolved',
+    (err: unknown) => err,
+  )
+}
+
+// The tree's kinds and the ids that an author chose, with the ids that a
+// counter generated left out.
+function shape(node: FlowNode): unknown {
+  const generated = new RegExp(`^${node.kind}_\\d+$`).test(node.id)
+  return [node.kind, generated ? null : node.id, (node.children ?? []).map(shape)]
 }
 
 function expect_suspended<o>(
@@ -112,7 +148,7 @@ describe('gate (composite)', () => {
     expect(calls).toHaveLength(1)
   })
 
-  it('still suspends and resumes in-process without a store, re-executing inner on the resume replay', async () => {
+  it('suspends without a store, and fails its resume with no_store rather than run inner again', async () => {
     const spy = vi.fn((n: number) => n * 2)
     const flow = gate(step('double', spy), { id: 'ok' })
 
@@ -121,14 +157,14 @@ describe('gate (composite)', () => {
     )
     expect(outcome.payload).toEqual({ input: 42 })
 
-    const resumed = await outcome.resume(true)
-    expect(resumed.kind).toBe('done')
-    if (resumed.kind === 'done') {
-      expect(resumed.output).toBe(42)
-    }
-    // Resume replays the un-checkpointed inner; that is the cost of running
-    // storeless, not a gate defect.
-    expect(spy).toHaveBeenCalledTimes(2)
+    // With nothing to serve what the approver saw, a resume would run inner
+    // again and pass a result nobody saw.
+    await expect(outcome.resume(true)).rejects.toMatchObject({
+      kind: 'gate_result_error',
+      suspend_id: 'ok',
+      reason: 'no_store',
+    })
+    expect(spy).toHaveBeenCalledTimes(1)
   })
 
   it('prefers the gate-local store over the run-level checkpoint_store', async () => {
@@ -309,5 +345,209 @@ describe('gate (composite)', () => {
     expect(() => gate(step((n: number) => n), { id: 'x' })).toThrow(
       "gate requires a named inner step, got anonymous — give the inner step an id with step('id', fn)",
     )
+  })
+})
+
+describe('gate on a resume', () => {
+  it('fails with read_error when its store fails the read, without running inner again or touching the result', async () => {
+    const failure = new Error('disk unavailable')
+    const { store, failing } = flaky_reads(failure)
+    let drafts = 0
+    const spy = vi.fn((brief: string) => {
+      drafts += 1
+      return `draft ${drafts} of ${brief}`
+    })
+    const flow = gate(step('draft', spy), { id: 'approve', store })
+    const suspended = expect_suspended(await run.until_suspended(flow, 'launch', QUIET))
+
+    failing.reads = 1
+    const err = await rejection(suspended.resume({ approved: true }))
+    expect(err).toMatchObject({ kind: 'gate_result_error', suspend_id: 'approve', reason: 'read_error' })
+    expect(err).toBeInstanceOf(gate_result_error)
+    expect((err as Error).cause).toBe(failure)
+    expect(spy).toHaveBeenCalledTimes(1)
+    expect(store.data.get('gate:approve')).toBe('draft 1 of launch')
+  })
+
+  it.each([
+    ['null', null],
+    ['undefined', undefined],
+  ])('fails with missing when its store lost the result and reads back %s, and never runs inner on the resume', async (_, lost) => {
+    const base = memory_store()
+    const store = {
+      ...base,
+      get: async (key: string) => (base.data.has(key) ? base.data.get(key) : lost),
+    }
+    const spy = vi.fn((brief: string) => `draft of ${brief}`)
+    const flow = gate(step('draft', spy), { id: 'approve', store })
+    const suspended = expect_suspended(await run.until_suspended(flow, 'launch', QUIET))
+
+    store.data.delete('gate:approve')
+    await expect(suspended.resume({ approved: true })).rejects.toMatchObject({
+      kind: 'gate_result_error',
+      suspend_id: 'approve',
+      reason: 'missing',
+    })
+    expect(spy).toHaveBeenCalledTimes(1)
+    expect(store.data.has('gate:approve')).toBe(false)
+  })
+
+  it('still runs inner, writes, and suspends on a first run whose store fails the read', async () => {
+    const { store, failing } = flaky_reads(new Error('disk unavailable'))
+    const spy = vi.fn((brief: string) => `draft of ${brief}`)
+    const flow = gate(step('draft', spy), { id: 'approve', store })
+
+    failing.reads = 1
+    const suspended = expect_suspended(await run.until_suspended(flow, 'launch', QUIET))
+    expect(suspended.payload).toEqual({ input: 'draft of launch' })
+    expect(spy).toHaveBeenCalledTimes(1)
+    expect(store.data.get('gate:approve')).toBe('draft of launch')
+  })
+
+  it('fails with missing when handed its datum on a first run over an empty store, and never runs inner', async () => {
+    const store = memory_store()
+    const spy = vi.fn((brief: string) => `draft of ${brief}`)
+    const flow = gate(step('draft', spy), { id: 'approve' })
+
+    await expect(
+      run(flow, 'launch', { ...QUIET, checkpoint_store: store, resume_data: { approve: true } }),
+    ).rejects.toMatchObject({ kind: 'gate_result_error', suspend_id: 'approve', reason: 'missing' })
+    expect(spy).not.toHaveBeenCalled()
+  })
+
+  it('suspends on a first run whose resume data holds undefined for it', async () => {
+    const store = memory_store()
+    const spy = vi.fn((brief: string) => `draft of ${brief}`)
+    const flow = gate(step('draft', spy), { id: 'approve', store })
+
+    const outcome = await run.until_suspended(flow, 'launch', { ...QUIET, resume_data: { approve: undefined } })
+    expect(expect_suspended(outcome).payload).toEqual({ input: 'draft of launch' })
+    expect(spy).toHaveBeenCalledTimes(1)
+  })
+
+  it('suspends on a first run when its id names an Object.prototype member that the resume data inherits', async () => {
+    const store = memory_store()
+    const spy = vi.fn((brief: string) => `draft of ${brief}`)
+    const flow = gate(step('draft', spy), { id: 'constructor', store })
+
+    const outcome = await run.until_suspended(flow, 'launch', { ...QUIET, resume_data: { other: true } })
+    expect(expect_suspended(outcome).id).toBe('constructor')
+    expect(spy).toHaveBeenCalledTimes(1)
+  })
+
+  it('leaves a durable run failed when its store fails one read, and finishes it on the next resume with the stored result', async () => {
+    const failure = new Error('disk unavailable')
+    const failing = { reads: 0 }
+    type Scope = ReturnType<MemoryStore['scope']>
+    const flaky = (scope: Scope): Scope => ({
+      ...scope,
+      get: async (key) => {
+        if (key === 'gate:approve' && failing.reads > 0) {
+          failing.reads -= 1
+          throw failure
+        }
+        return scope.get(key)
+      },
+      scope: (prefix) => flaky(scope.scope(prefix)),
+    })
+    const base = durable_memory_store()
+    const store: DurableStore = { scope: (prefix) => flaky(base.scope(prefix)) }
+    const runs = durable({ store })
+    const spy = vi.fn((brief: string) => `draft of ${brief}`)
+    const flow = gate(step('draft', spy), { id: 'approve' })
+
+    expect(await runs.start('r', flow, 'launch', QUIET)).toMatchObject({
+      kind: 'suspended',
+      id: 'approve',
+      payload: { input: 'draft of launch' },
+    })
+    failing.reads = 1
+    await expect(runs.resume('r', flow, { approve: true }, QUIET)).rejects.toMatchObject({
+      kind: 'gate_result_error',
+      reason: 'read_error',
+    })
+    expect(await runs.get('r')).toMatchObject({ kind: 'failed', run_id: 'r' })
+    // The approval is still in the run's resume data, so the next resume with
+    // nothing new serves the result that the approver saw.
+    expect(await runs.resume('r', flow, {}, QUIET)).toEqual({
+      kind: 'done',
+      run_id: 'r',
+      output: 'draft of launch',
+    })
+    expect(spy).toHaveBeenCalledTimes(1)
+  })
+
+  it.each([
+    ['hit', 'a gate-local store', true],
+    ['read_error', 'a gate-local store', true],
+    ['miss', 'a gate-local store', true],
+    ['hit', 'the run store', false],
+    ['read_error', 'the run store', false],
+    ['miss', 'the run store', false],
+  ] as const)('records one checkpoint event for a lookup that ends in a %s over %s', async (status, _, local) => {
+    const { store, failing } = flaky_reads(new Error('disk unavailable'))
+    const flow = gate(step('draft', (brief: string) => `draft of ${brief}`), {
+      id: 'approve',
+      ...(local ? { store } : {}),
+    })
+    const options = local ? QUIET : { ...QUIET, checkpoint_store: store }
+    expect_suspended(await run.until_suspended(flow, 'launch', options))
+
+    if (status === 'read_error') failing.reads = 1
+    if (status === 'miss') store.data.delete('gate:approve')
+    const { logger, events } = recording_logger()
+    const resumed = rejection(
+      run(flow, 'launch', { ...options, trajectory: logger, resume_data: { approve: true } }),
+    )
+    if (status === 'hit') {
+      expect(await resumed).toBe('resolved')
+    } else {
+      expect(await resumed).toMatchObject({
+        kind: 'gate_result_error',
+        reason: status === 'miss' ? 'missing' : 'read_error',
+      })
+    }
+
+    const checkpoint_id = find_node(describe_flow.json(flow), (n) => n.kind === 'checkpoint')?.id
+    const span = events.find((e) => e.kind === 'span_start' && e['name'] === 'checkpoint')
+    const recorded = events
+      .filter((e) => e.kind === 'checkpoint')
+      .map(({ run_id: _run_id, ts: _ts, ...rest }) => rest)
+    expect(recorded).toStrictEqual([
+      {
+        kind: 'checkpoint',
+        status,
+        ...(status === 'read_error' ? { error: 'disk unavailable' } : {}),
+        id: checkpoint_id,
+        key: 'gate:approve',
+        span_id: span?.['span_id'],
+      },
+    ])
+  })
+
+  it.each([
+    ['without a store', false],
+    ['with a gate-local store', true],
+  ])('keeps the tree that describe shows %s', (_, local) => {
+    const flow = gate(step('draft', (brief: string) => brief), {
+      id: 'approve',
+      ...(local ? { store: memory_store() } : {}),
+    })
+    const persisted = [['checkpoint', null, [['step', 'draft', []]]]]
+    expect(shape(describe_flow.json(flow))).toStrictEqual([
+      'compose',
+      null,
+      [
+        [
+          'scope',
+          null,
+          [
+            ['stash', null, local ? [['step', 'bind_store', persisted]] : persisted],
+            ['step', 'project_payload', []],
+            ['suspend', 'approve', []],
+          ],
+        ],
+      ],
+    ])
   })
 })

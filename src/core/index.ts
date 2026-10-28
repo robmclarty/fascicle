@@ -59,6 +59,7 @@ export {
   describe_cycle_error,
   error_path,
   flow_changed_error,
+  gate_result_error,
   resume_validation_error,
   run_not_found_error,
   suspended_error,
