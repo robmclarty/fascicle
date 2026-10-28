@@ -133,8 +133,8 @@ The published surface as of v0.16.0:
   needs a store that you write yourself, with
   [`examples/object-store/`](../examples/object-store/) as the pattern to
   follow. I want to ship a store that holds across hosts. The store contract
-  gains a compare-and-set in the same pass, and the first three bugs under
-  Known Issues, which are all about suspend and resume, get fixed with it.
+  gains a compare-and-set in the same pass, and the late resume under Known
+  Issues, which needs it, gets fixed with it.
 - **MCP hardening.** Auth on the HTTP transport, MCP `sampling`, per-tool
   approval gating, and `resources` subscriptions were all deferred out of the
   first bridge.
@@ -153,15 +153,6 @@ The published surface as of v0.16.0:
 These are the bugs that I know about and haven't fixed yet, with the ones most
 likely to bite you first.
 
-- **A repeated suspend id goes unchecked.** Resume data is keyed by id, so a
-  second `suspend` or `gate` that reuses an id finds the first one's datum and
-  passes without pausing. Nothing checks repeated ids for any step yet, since
-  catching them needs a walk over the whole flow when the run starts.
-- **A gate's failed read on resume runs its step again.** When a gate's store
-  fails the read as the run resumes, the lookup counts as a miss, so the inner
-  step runs again (and you pay for it again), and the run goes on with a result
-  that the approver never saw. A hand-built `checkpoint` before a `suspend` has
-  the same gap.
 - **A late resume can leave its datum behind.** A resume that stalls past its
   claim between reading the run and writing its datum, or whose run is deleted
   in that gap, can still write into the inbox of a gate that the run has passed.

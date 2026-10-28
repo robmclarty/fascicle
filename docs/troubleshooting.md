@@ -399,6 +399,57 @@ closure re-runs the flow with the decision. Completion is
 `{ kind: 'done', output }`; real errors still throw. See
 [human-in-the-loop.md](./human-in-the-loop.md).
 
+## My Resumed Gate Threw `gate_result_error`
+
+A `gate` resumed and couldn't serve the result that it showed the approver. It
+won't run its inner step again to make another one, because the approval
+covers the result that the approver saw and nothing else. The error's `reason`
+says which of three things went wrong:
+
+- **`read_error`.** The store threw when the gate read the result back, and
+  the store's error is the `cause`. The approval is still in the run's resume
+  data, so resume the run again once the store reads. Under `durable`, the
+  failure marks the run failed, and a `resume` with no new data drives it
+  again.
+- **`missing`.** The store answered, but the result isn't there any more,
+  because the store was cleared, the gate's store changed, or the entry
+  expired. Nothing can serve what the approver saw, so delete the run and
+  start it again. A gate that's handed its approval through `resume_data`
+  before it ever suspended lands here too, since it never stored anything for
+  anyone to see.
+- **`no_store`.** The gate has no store, so it had nowhere to keep the result.
+  Give the gate a `store`, or give the run a `checkpoint_store`, or use a plain
+  `suspend` when the step is cheap and deterministic enough to run again on
+  every resume.
+
+See [human-in-the-loop.md](./human-in-the-loop.md).
+
+## My Run Threw `duplicate_suspend_id_error`
+
+Resume data is keyed by suspend id, so one id takes one decision per run, and
+this error says that your flow asks it for two. Its `reason` says how:
+
+- **`declared_twice`.** The flow holds one id in two places, and the run
+  refused it before any step ran. The message and `paths` name each place. A
+  `gate` counts through the `suspend` inside it, one `suspend` value placed
+  twice counts twice, and two arms of a `branch` count too, since a resume
+  replays the branch's condition and could hand one arm's approval to the
+  other. Give each `suspend` and `gate` an id of its own. A durable run that
+  this failed has to be deleted with `runs.delete(run_id)` before you start it
+  again on the fixed flow, because renaming an id changes the flow's
+  fingerprint, and the old run would throw `flow_changed_error`.
+- **`reached_twice`.** The run reached one `suspend` or `gate` again with
+  another input, in a later round of a `loop`, for the next item of a `map`,
+  or through a `ctx.call` that the flow's tree doesn't show. Its datum
+  answered a question about the first input, so it can't answer this one. A
+  `retry` that runs the step again on the same input still passes. An input
+  counts as the same when its JSON, with the keys sorted, reads the same as it
+  did the first time, so an object that was changed in place in between
+  counts as another. To decide once for all of them, approve a map's batch at
+  a gate before the `map`, or a loop's result at a gate after the `loop`. A
+  `map` with `settle: true` settles the second item as this error instead of
+  failing the run.
+
 ## A `sequence` Type Error Disappeared after a Refactor
 
 Literal `sequence` tuples are joint-checked at compile time, so each child must

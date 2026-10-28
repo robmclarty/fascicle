@@ -298,7 +298,7 @@ messages are the real ones.
 | "check its work and redo it" | a `loop` with a code guard, or `adversarial` |
 | "pick the best of" | `ensemble_step` |
 | "only if they agree" | `consensus` |
-| "ask me first," "wait for approval" | `suspend` or `gate`, with `run.until_suspended` |
+| "ask me first," "wait for approval" | `suspend` or `gate`, with `run.until_suspended`, and a `gate` needs a `store` or a `checkpoint_store` to resume |
 | "let it look things up," "give it a tool" | `define_tool`, and `tools` with `max_steps` on the `model_step` |
 | "ask me before it runs that tool" | `needs_approval` on the tool, and `on_tool_approval` on the model step |
 | "don't redo the expensive part" | `checkpoint`, with a `checkpoint_store` |

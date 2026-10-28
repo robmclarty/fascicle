@@ -53,6 +53,9 @@ You import everything below from `fascicle`. The primitives live in
 | `describe_cycle_error` | error | thrown when `describe` meets a cycle in the tree |
 | `flow_changed_error` | error | thrown by `durable` when a run's flow changed shape while the run waited |
 | `run_not_found_error` | error | thrown by `durable` when a run is resumed before it started |
+| `gate_result_error` | error | thrown by a resumed `gate` that can't serve the result it stored, with a `reason` of `read_error`, `missing`, or `no_store` |
+| `duplicate_suspend_id_error` | error | thrown before a run starts when its flow holds one `suspend` id in two places (`declared_twice`), or when the run reaches one `suspend` or `gate` again on another input (`reached_twice`) |
+| `same_input_as` | function | the test that a `suspend` and a `gate` hold a later input to: the same JSON with its keys sorted, or the same value when JSON can't hold it |
 | `resolve_display_name` | function | the label a step renders under, resolving `config.display_name`, then `meta.name`, then a caller fallback |
 | `bench_suspend_error` | error | thrown when a benched flow suspends (`bench` has no resume path) |
 | `RunContext` | type | per-run execution context |
@@ -164,12 +167,16 @@ from English specifications:
   Each of these five returns a result envelope; the optional `project` maps
   it into the step's output at the source (`project: (r) => r.winner`), so
   no downstream unwrap step is needed.
-- `checkpoint(inner, { key, on_write_error? })` — memoize `inner` by key.
-  Pass `on_write_error: 'fail'` when a `suspend` shows its result to an
-  approver, so a failed write fails the run instead of being recorded.
+- `checkpoint(inner, { key, on_write_error?, on_read_error? })` — memoize
+  `inner` by key. Pass `on_write_error: 'fail'` and `on_read_error: 'fail'`
+  when a `suspend` shows its result to an approver, so a failed write fails
+  the run instead of being recorded, and a failed read fails it instead of
+  running `inner` again.
 - `suspend({ id, on, resume_schema, combine })` — pause for external input.
 - `gate(inner, { id, store?, format?, name? })` — persist paid work, then
-  pause for approval; resume returns the inner result unchanged.
+  pause for approval. A resume serves the stored result unchanged or fails
+  with `gate_result_error`, and never runs `inner` again, so a gate needs a
+  store (its own or the run's `checkpoint_store`) to resume.
 - `scope([...])` / `stash(key, source)` / `use(keys, fn)` — named state at
   the key-value level; `chain` is the typed front door over the same idea.
 - `chain<i>(input_name?)` with `.step(name, arm, select)` /

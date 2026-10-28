@@ -59,8 +59,23 @@ call plain `run(...)` you can catch it and re-run with
 `{ resume_data: { [id]: data } }` yourself. `run.until_suspended` packages
 exactly that dance for you.
 
-Two things to know before you ship this:
+Three things to know before you ship this:
 
+- **Each id takes one decision per run.** Resume data is keyed by id, so a
+  flow uses each `suspend` id once, and a run reaches each `suspend` once, or
+  again on the same input, as a `retry` does when it runs the step again. If
+  your flow holds one id in two places, the run refuses it before any step
+  runs, with a `duplicate_suspend_id_error` whose `reason` is
+  `declared_twice`, and its message names each place and tells you to give
+  each `suspend` and `gate` an id of its own. A `gate` counts through the
+  `suspend` inside it, and two arms of a `branch` count too, since a resume
+  replays the branch's condition and could hand one arm's approval to the
+  other. A run that reaches one `suspend` again on another input, in a later
+  round of a `loop` or for the next item of a `map`, fails there with
+  `reason: 'reached_twice'`, because its datum answered a question about the
+  first input. When you want one decision for all of them, the message says
+  how: approve a map's batch at a gate before the map, or a loop's result at
+  a gate after it.
 - **Resume replays from the original input.** `resume(...)` re-executes every
   step before the suspend point. That's harmless for pure steps, but wrap any
   expensive or side-effecting prior step in `checkpoint(...)` against a
@@ -77,11 +92,12 @@ Two things to know before you ship this:
 > model calls. The provider bills the replay like any other call. Wrap your paid
 > leaves in `checkpoint(...)` with a `checkpoint_store` before any `suspend`
 > gate, and a resume reads the memoized result instead of buying it again.
-> When the gate shows that result to an approver, pass
-> `on_write_error: 'fail'` to the `checkpoint`, so a failed write fails the run
-> before anyone is asked. By default it's only recorded, so the run would go
-> on, and a resume would run the step again and carry on with a result that
-> nobody approved.
+> When the gate shows that result to an approver, pass both
+> `on_write_error: 'fail'` and `on_read_error: 'fail'` to the `checkpoint`. A
+> failed write then fails the run before anyone is asked, and a failed read
+> fails it rather than run the step again. By default each is only recorded,
+> so the run would go on, and a resume would run the step again and carry on
+> with a result that nobody approved.
 >
 > Every `model_call` counts as a side effect, and so does any step you mark with
 > `{ side_effect: true }`. When a resumed run runs one of them again before it
@@ -111,9 +127,36 @@ resume, or a fresh run after a restart with the same store, serves the inner
 result from the checkpoint instead of re-running it, so you don't pay for the
 model call twice, and approval passes the inner result through unchanged. A
 store that fails the write fails the run before it suspends, since `gate` passes
-`on_write_error: 'fail'` to its checkpoint. Reach for raw `checkpoint` plus
-`suspend` when the approval decision has to shape the output (`combine`), and
-pass `on_write_error: 'fail'` there too.
+`on_write_error: 'fail'` to its checkpoint.
+
+A resumed gate never runs its inner step again. It serves the result that it
+stored, which is the one the approver saw, or it fails the run with
+`gate_result_error`. Its `reason` is `read_error` when the store failed the
+read, and resuming again once the store reads finishes the run, since the
+approval is still in its resume data. It's `missing` when the store no longer
+holds the result, and then all you can do is delete the run and start it
+again. It's `no_store` when the gate has no store at all, so a gate needs a
+store to resume, either its own `store` or the run's `checkpoint_store`. When
+the step is cheap and deterministic enough to run again on every resume, use a
+plain `suspend` instead. If you hand a gate its approval through `resume_data`
+before it ever suspended, it counts as resuming too, so it fails with
+`missing`, or with `no_store` when it has no store, since nobody has seen
+anything yet.
+
+One run reaches a gate once per input. A gate's key is fixed, so in a `map` or
+a `loop` it would serve one stored result to every item or round, when the
+approver had seen only one of them. Instead it fails at the second item or round
+with `duplicate_suspend_id_error` (`reason: 'reached_twice'`), before that
+item runs the inner step, and a `retry` that runs the gate again on the same
+input still passes. If you want one decision for all of them, approve a map's
+batch at one gate before the `map`, or a loop's result at one gate after the
+`loop`.
+
+Reach for raw `checkpoint` plus `suspend` when the approval decision has to
+shape the output (`combine`), and pass both `on_write_error: 'fail'` and
+`on_read_error: 'fail'` to the checkpoint there. A hand-built pair can't tell a
+first run from a resume, so it fails a first run's failed read as well, which
+costs you a retry and never an approval of a result that nobody saw.
 
 A complete server that runs this over HTTP (POST to start, GET the pending
 approval, POST the decision to resume) is in

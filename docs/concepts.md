@@ -270,7 +270,7 @@ Key rules:
 
 - Keys share a single namespace across every flow that uses the same store. Prefix with a flow name or content hash to avoid collisions.
 - Anonymous steps (`step(fn)` with no id) throw at construction when wrapped by `checkpoint`. Give the inner step an id.
-- A store that fails doesn't fail your run. When its `get` throws, the lookup records a `checkpoint` event with `status: 'read_error'` and counts as a miss. When its `set` throws, the step records `status: 'write_error'` and you still get the inner result, since you've already paid for the step that produced it. Your next run with that key misses and runs the step again. When a `suspend` shows that result to an approver, pass `on_write_error: 'fail'`, so a failed write fails the run before anyone is asked to approve a result that the store never kept. `gate` does this for you.
+- A store that fails doesn't fail your run. When its `get` throws, the lookup records a `checkpoint` event with `status: 'read_error'` and counts as a miss. When its `set` throws, the step records `status: 'write_error'` and you still get the inner result, since you've already paid for the step that produced it. Your next run with that key misses and runs the step again. When a `suspend` shows that result to an approver, pass `on_write_error: 'fail'` and `on_read_error: 'fail'`, so a failed write fails the run before anyone is asked to approve a result that the store never kept, and a failed read fails it rather than run the step again and pass on a result that nobody saw. `gate` takes care of both for you.
 - Compositions build trees, not graphs. A composer that references itself causes infinite recursion.
 
 ## Suspend and Resume
@@ -297,7 +297,7 @@ if (outcome.kind === 'suspended') {
 }
 ```
 
-Underneath, the mechanism is unchanged. A gate signals by throwing `suspended_error`, and a plain `run(...)` surfaces that throw directly; the caller can also re-run with `resume_data` by hand (`resume_data` is keyed by `suspend.id` so multiple suspends in the same flow resume independently). Mismatched resume shapes throw `resume_validation_error`. The resume closure can't outlive the process — for durable approval flows, persist the original input and rebuild the outcome after a restart ([human-in-the-loop.md](./human-in-the-loop.md)).
+Underneath, the mechanism is unchanged. A gate signals by throwing `suspended_error`, and a plain `run(...)` surfaces that throw directly; the caller can also re-run with `resume_data` by hand (`resume_data` is keyed by `suspend.id` so multiple suspends in the same flow resume independently). That key is also why two suspends can't share an id, since one datum would answer both. A run refuses a flow that holds one id in two places with `duplicate_suspend_id_error`, and fails the same way when it reaches one `suspend` again on another input. Mismatched resume shapes throw `resume_validation_error`. The resume closure can't outlive the process. For durable approval flows, persist the original input and rebuild the outcome after a restart ([human-in-the-loop.md](./human-in-the-loop.md)).
 
 ## Errors
 
@@ -309,6 +309,8 @@ Typed errors live in `fascicle`:
 | `timeout_error`                  | `timeout(inner, ms)` tripping                         |
 | `suspended_error`                | first pass through `suspend(...)`                     |
 | `resume_validation_error`        | `resume_data` doesn't match `resume_schema`          |
+| `gate_result_error`              | a resumed `gate` that can't serve the result it stored |
+| `duplicate_suspend_id_error`     | one `suspend` id in two places, or one `suspend` reached again on another input |
 | `describe_cycle_error`           | `describe` hitting a cyclic composition               |
 | `provider_error`                 | HTTP failures from a provider, on either transport    |
 | `rate_limit_error`               | 429 responses after retry exhaustion                  |
