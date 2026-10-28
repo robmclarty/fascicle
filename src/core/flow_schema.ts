@@ -379,7 +379,8 @@ export const flow_schema = {
         "description": { "type": "string" },
         "do": { "$ref": "#/$defs/node" },
         "key": { "type": "string" },
-        "on_write_error": { "type": "string", "enum": ["record", "fail"] }
+        "on_write_error": { "type": "string", "enum": ["record", "fail"] },
+        "on_read_error": { "type": "string", "enum": ["miss", "fail"] }
       }
     },
     "suspend_config": {

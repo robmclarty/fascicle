@@ -4,8 +4,8 @@
  * `checkpoint(inner, { key })` checks a persistent store for a completed
  * result at `key` before running `inner`. On a hit, returns the stored
  * value. On a miss, runs `inner`, persists its result at `key`, and returns
- * it. Corrupted reads (store throws on `get`) are treated as a miss. Every
- * lookup records a `checkpoint` trajectory event with
+ * it. A corrupted read (the store throws on `get`) is a miss by default.
+ * Every lookup records a `checkpoint` trajectory event with
  * `status: 'hit' | 'miss' | 'read_error'`.
  *
  * A failed write (store throws on `set`) doesn't fail the run either. It
@@ -15,6 +15,12 @@
  * misses and runs `inner` again. `on_write_error: 'fail'` records the same
  * event and then throws the store's error, for a result that a `suspend`
  * hands to an approver, which has to be the one the store kept.
+ *
+ * `on_read_error: 'fail'` does the same for a failed read: it records the
+ * `read_error` event and then throws the store's error rather than run
+ * `inner`. A checkpoint whose result a `suspend` shows wants both, since a
+ * resume that runs `inner` again would pass a new result through an approval
+ * that covered the old one.
  *
  * Wrapping an anonymous inner step throws synchronously at construction time
  * with the message `checkpoint requires a named step, got anonymous`, because
@@ -41,6 +47,14 @@ export type CheckpointConfig<i> = {
    * refers to a result that the store didn't keep.
    */
   readonly on_write_error?: 'record' | 'fail'
+  /**
+   * What a failed `store.get` does. `'miss'` (the default) records a
+   * `read_error` event and runs `inner`, as today. `'fail'` records the same
+   * event and then throws the store's error, which is what a checkpoint
+   * whose result a `suspend` hands to an approver wants, so a resume never
+   * runs `inner` again and passes the new result through.
+   */
+  readonly on_read_error?: 'miss' | 'fail'
 }
 
 let checkpoint_counter = 0
@@ -98,17 +112,19 @@ function store_failure(
 
 /**
  * The value stored at `key` in `store`, or `undefined` on a miss, recording
- * exactly one `checkpoint` event so hits, misses, and swallowed read errors
- * are all visible in the trajectory. A stored `null` or `undefined` is a
- * miss, which is what lets `undefined` stand for one, and a throwing
- * `store.get` still behaves as a miss (a broken store must not fail the run),
- * but under `status: 'read_error'` instead of silently.
+ * exactly one `checkpoint` event so hits, misses, and read errors are all
+ * visible in the trajectory. A stored `null` or `undefined` is a miss, which
+ * is what lets `undefined` stand for one. A throwing `store.get` records
+ * `status: 'read_error'` and behaves as a miss, so a broken store doesn't
+ * fail the run, unless `fail_on_read` says to throw the store's error once
+ * the event is recorded.
  */
 async function look_up(
   store: CheckpointStore,
   key: string,
   meta: EventMeta,
   ctx: RunContext,
+  fail_on_read: boolean,
 ): Promise<unknown> {
   try {
     const value = await store.get(key)
@@ -117,6 +133,7 @@ async function look_up(
     return hit ? value : undefined
   } catch (err) {
     ctx.trajectory.record(store_failure('read_error', err, meta))
+    if (fail_on_read) throw err
     return undefined
   }
 }
@@ -162,6 +179,7 @@ export function checkpoint<i, o>(inner: Step<i, o>, config: CheckpointConfig<i>)
   const id = next_id()
   const key_spec = config.key
   const fail_on_write = config.on_write_error === 'fail'
+  const fail_on_read = config.on_read_error === 'fail'
   const gates = gates_within(inner)
 
   const run_fn = async (input: i, ctx: RunContext): Promise<o> => {
@@ -170,7 +188,7 @@ export function checkpoint<i, o>(inner: Step<i, o>, config: CheckpointConfig<i>)
     if (!store) return dispatch_step(inner, input, ctx)
 
     const meta = event_meta(id, key, ctx)
-    const cached = await look_up(store, key, meta, ctx)
+    const cached = await look_up(store, key, meta, ctx, fail_on_read)
     if (cached !== undefined) {
       mark_gates_reached(ctx, gates)
       // oxlint-disable-next-line typescript/no-unsafe-type-assertion

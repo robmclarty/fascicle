@@ -159,7 +159,7 @@ const pins: Record<string, Pin> = {
   learn_paths_source: pin<Extract<TrajectorySource, { kind: 'paths' }>>()(['kind', 'paths'], ['kind', 'paths']),
   learn_dir_source: pin<Extract<TrajectorySource, { kind: 'dir' }>>()(['kind', 'dir'], ['kind', 'dir']),
   checkpoint_config: pin<CheckpointConfig<unknown>, 'do', 'do'>()(
-    ['name', 'description', 'do', 'key', 'on_write_error'],
+    ['name', 'description', 'do', 'key', 'on_write_error', 'on_read_error'],
     ['do', 'key'],
   ),
   suspend_config: pin<SuspendConfig<unknown, unknown, unknown>>()(

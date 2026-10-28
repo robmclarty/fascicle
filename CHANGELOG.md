@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- **`checkpoint` can fail the run on a read that failed, with `on_read_error: 'fail'`.** A `store.get` that threw counted as a miss, so `checkpoint` ran `inner` again and wrote the new result over the old one, and a hand-built `checkpoint` before a `suspend` that showed its result passed an approval through to something the approver never saw. `on_read_error: 'fail'` records the same `read_error` event and then throws the store's error, without running `inner` or writing anything, the read-side twin of `on_write_error: 'fail'`. A checkpoint whose result a `suspend` shows should pass `'fail'` for both. `'miss'` is the default and keeps the old behavior, and the option stays out of the step's `config`, so `describe` and a durable run's fingerprint don't change.
+
 ## v0.17.1 — 2026-10-26
 
 ### Added

@@ -272,6 +272,100 @@ describe('checkpoint', () => {
     expect(strict.config).toStrictEqual({ key: 'k' })
   })
 
+  it('records read_error and then throws the store error under on_read_error: fail, without running inner', async () => {
+    const { logger, events } = recording_logger()
+    const failure = new Error('disk unavailable')
+    const spy = vi.fn((x: number) => x + 1)
+    const set = vi.fn(async () => {})
+    const flow = checkpoint(step('add_one', spy), { key: 'k_read_fail', on_read_error: 'fail' })
+    const store: CheckpointStore = {
+      async get() {
+        throw failure
+      },
+      set,
+      async delete() {
+        // noop
+      },
+    }
+
+    await expect(
+      run(flow, 5, { checkpoint_store: store, trajectory: logger, install_signal_handlers: false }),
+    ).rejects.toBe(failure)
+    expect(spy).not.toHaveBeenCalled()
+    expect(set).not.toHaveBeenCalled()
+    const start = events.find((e) => e.kind === 'span_start' && e['name'] === 'checkpoint')
+    const recorded = events
+      .filter((e) => e.kind === 'checkpoint')
+      .map(({ run_id: _run_id, ts: _ts, ...rest }) => rest)
+    expect(recorded).toStrictEqual([
+      {
+        kind: 'checkpoint',
+        status: 'read_error',
+        error: 'disk unavailable',
+        id: flow.id,
+        key: 'k_read_fail',
+        span_id: start?.['span_id'],
+      },
+    ])
+  })
+
+  it('serves a hit and runs inner on a plain miss under on_read_error: fail', async () => {
+    const { logger, events } = recording_logger()
+    const spy = vi.fn((x: number) => x + 1)
+    const flow = checkpoint(step('add_one', spy), {
+      key: (n: number) => `k_${n}`,
+      on_read_error: 'fail',
+    })
+    const store = memory_store()
+    store.data.set('k_1', 42)
+    const options = { checkpoint_store: store, trajectory: logger, install_signal_handlers: false }
+
+    expect(await run(flow, 1, options)).toBe(42)
+    expect(spy).not.toHaveBeenCalled()
+    expect(await run(flow, 5, options)).toBe(6)
+    expect(spy).toHaveBeenCalledTimes(1)
+    expect(store.data.get('k_5')).toBe(6)
+    expect(events.filter((e) => e.kind === 'checkpoint').map((e) => e['status'])).toEqual([
+      'hit',
+      'miss',
+    ])
+  })
+
+  it('records read_error and still runs inner under on_read_error: miss', async () => {
+    const { logger, events } = recording_logger()
+    const flow = checkpoint(step('add_one', (x: number) => x + 1), {
+      key: 'k_read_miss',
+      on_read_error: 'miss',
+    })
+    const store: CheckpointStore = {
+      async get() {
+        throw new Error('corrupted')
+      },
+      async set() {
+        // noop
+      },
+      async delete() {
+        // noop
+      },
+    }
+
+    const result = await run(flow, 5, {
+      checkpoint_store: store,
+      trajectory: logger,
+      install_signal_handlers: false,
+    })
+
+    expect(result).toBe(6)
+    const lookups = events.filter((e) => e.kind === 'checkpoint')
+    expect(lookups.map((e) => e['status'])).toEqual(['read_error'])
+    expect(lookups[0]?.['error']).toBe('corrupted')
+  })
+
+  it('keeps on_read_error out of its config, so describe shows the same step', () => {
+    const strict = checkpoint(step('a', (n: number) => n), { key: 'k', on_read_error: 'fail' })
+    expect(strict.config).toStrictEqual({ key: 'k' })
+  })
+
   it('counts a stored undefined as a miss and runs inner', async () => {
     const { logger, events } = recording_logger()
     const flow = checkpoint(step('add_one', (x: number) => x + 1), { key: 'k_undefined' })
