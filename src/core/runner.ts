@@ -26,6 +26,7 @@ import { describe } from './describe.js'
 import { resolve_display_name } from './display_name.js'
 import { aborted_error, suspended_error } from './errors.js'
 import { create_streaming_channel, STREAMING_HIGH_WATER_MARK } from './streaming.js'
+import { check_suspend_ids } from './suspend_ids.js'
 import type {
   AnyStep,
   CheckpointStore,
@@ -465,6 +466,9 @@ function start_run<i, o>(
       // run rejects without dispatching even when the flow is a single leaf
       // step that never reaches a cooperative abort check.
       throw_if_aborted(ctx)
+      // A flow that holds one suspend id in two places is refused before any
+      // step runs, and the refusal ends the run as failed like any other.
+      check_suspend_ids(flow)
       return await dispatch_step(flow, input, ctx)
     } catch (err) {
       let thrown: unknown = err

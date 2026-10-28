@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   aborted_error,
+  duplicate_suspend_id_error,
   flow_changed_error,
   gate_result_error,
   resume_validation_error,
@@ -98,6 +99,49 @@ describe('typed errors', () => {
     expect('cause' in err).toBe(false)
     expect(err.message).toBe(
       'gate approve resumed with no store to serve the result that it showed: give the gate a store or the run a checkpoint_store, or use a plain suspend when the step is cheap and deterministic',
+    )
+  })
+
+  it('duplicate_suspend_id_error names each place, as the walk labels it, and says what to do', () => {
+    const paths = [
+      ['sequence_1', 'approve'],
+      ['sequence_1', 'approve'],
+    ]
+    const err = new duplicate_suspend_id_error('approve', 'declared_twice', {
+      paths,
+      labels: ['sequence_1 > approve (step 1)', 'sequence_1 > approve (step 3)'],
+      at_branch: false,
+    })
+    expect(err).toBeInstanceOf(Error)
+    expect(err.kind).toBe('duplicate_suspend_id_error')
+    expect(err.name).toBe('duplicate_suspend_id_error')
+    expect(err.suspend_id).toBe('approve')
+    expect(err.reason).toBe('declared_twice')
+    expect(err.paths).toBe(paths)
+    expect(err.message).toBe(
+      'suspend id "approve" is used in 2 places (sequence_1 > approve (step 1), sequence_1 > approve (step 3)): resume data is keyed by id, so give each suspend and gate an id of its own',
+    )
+  })
+
+  it('duplicate_suspend_id_error names each place by its path when it has no labels, and adds the branch advice', () => {
+    const err = new duplicate_suspend_id_error('approve', 'declared_twice', {
+      paths: [
+        ['branch_1', 'approve'],
+        ['branch_1', 'sequence_2', 'approve'],
+      ],
+      at_branch: true,
+    })
+    expect(err.message).toBe(
+      "suspend id \"approve\" is used in 2 places (branch_1 > approve, branch_1 > sequence_2 > approve): resume data is keyed by id, so give each suspend and gate an id of its own; only one arm of a branch runs, but a resume replays its condition, so each arm's gate needs an id of its own",
+    )
+  })
+
+  it('duplicate_suspend_id_error says a suspend takes one decision per run when it was reached twice', () => {
+    const err = new duplicate_suspend_id_error('approve', 'reached_twice')
+    expect(err.reason).toBe('reached_twice')
+    expect(err.paths).toEqual([])
+    expect(err.message).toBe(
+      "suspend approve was reached again in this run with another input, and its resume data answered the first one: a suspend takes one decision per run, so approve a map's batch at a gate before the map, or a loop's result at a gate after it",
     )
   })
 

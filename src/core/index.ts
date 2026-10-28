@@ -57,6 +57,7 @@ export type { Chain, ChainOpen, ChainStepOptions } from './chain.js'
 export {
   aborted_error,
   describe_cycle_error,
+  duplicate_suspend_id_error,
   error_path,
   flow_changed_error,
   gate_result_error,

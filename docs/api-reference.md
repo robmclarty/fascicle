@@ -685,6 +685,9 @@ resume path), `flow_changed_error` (a durable run's flow changed shape while
 the run waited), `run_not_found_error` (a durable run was resumed before it
 started). A resumed `gate` that can't serve the result it showed throws
 `gate_result_error`, whose `reason` is `read_error`, `missing`, or `no_store`.
+A flow that holds one suspend id in two places throws
+`duplicate_suspend_id_error` with `reason: 'declared_twice'` before any step
+runs, and its `paths` name each place.
 
 **Engine.** `provider_required_error` (several providers configured, none named
 by the call or `defaults.provider`), `provider_not_configured_error`,

@@ -1,4 +1,12 @@
-import { describe as describe_flow, durable, gate_result_error, run, step } from '#core'
+import {
+  describe as describe_flow,
+  duplicate_suspend_id_error,
+  durable,
+  gate_result_error,
+  run,
+  sequence,
+  step,
+} from '#core'
 import type { CheckpointStore, DurableStore, FlowNode, RunOutcome } from '#core'
 import { describe, expect, it, vi } from 'vitest'
 import { gate } from '../gate.js'
@@ -549,5 +557,28 @@ describe('gate on a resume', () => {
         ],
       ],
     ])
+  })
+})
+
+describe('two gates with one id', () => {
+  it('are refused before any step runs, naming the place of each one', async () => {
+    const front = vi.fn((brief: string) => brief)
+    const first = gate(step('draft', (brief: string) => `draft of ${brief}`), { id: 'approve' })
+    const second = gate(step('polish', (draft: string) => `polished ${draft}`), { id: 'approve' })
+    const flow = sequence([step('front', front), first, second])
+    // A gate's suspend sits under its compose and the scope inside it.
+    const place = (g: typeof first) => [flow.id, g.id, g.children?.[0]?.id, 'approve']
+
+    const err = await rejection(run(flow, 'launch', { ...QUIET, checkpoint_store: memory_store() }))
+    expect(err).toMatchObject({
+      reason: 'declared_twice',
+      suspend_id: 'approve',
+      paths: [place(first), place(second)],
+    })
+    expect(err).toBeInstanceOf(duplicate_suspend_id_error)
+    expect((err as Error).message).toBe(
+      `suspend id "approve" is used in 2 places (${place(first).join(' > ')}, ${place(second).join(' > ')}): resume data is keyed by id, so give each suspend and gate an id of its own`,
+    )
+    expect(front).not.toHaveBeenCalled()
   })
 })

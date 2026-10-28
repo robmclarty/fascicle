@@ -109,6 +109,63 @@ export class gate_result_error extends Error {
   }
 }
 
+type DuplicateSuspendIdDetail = {
+  // Each place's path of step ids from the root, for `declared_twice`.
+  readonly paths?: ReadonlyArray<ReadonlyArray<string>>
+  // How the message names each place, when a path alone doesn't tell two
+  // places apart. Each path's ids, joined, by default.
+  readonly labels?: ReadonlyArray<string>
+  // Whether two of the places sit in different arms of one `branch`.
+  readonly at_branch?: boolean
+}
+
+/**
+ * What a `duplicate_suspend_id_error` says: where the id sits more than
+ * once, or that a run reached it again on another input, and what to do
+ * about it.
+ */
+function duplicate_suspend_id_message(
+  suspend_id: string,
+  reason: duplicate_suspend_id_error['reason'],
+  paths: ReadonlyArray<ReadonlyArray<string>>,
+  detail: DuplicateSuspendIdDetail,
+): string {
+  if (reason === 'reached_twice') {
+    return `suspend ${suspend_id} was reached again in this run with another input, and its resume data answered the first one: a suspend takes one decision per run, so approve a map's batch at a gate before the map, or a loop's result at a gate after it`
+  }
+  const places = detail.labels ?? paths.map((path) => path.join(' > '))
+  const arms =
+    detail.at_branch === true
+      ? "; only one arm of a branch runs, but a resume replays its condition, so each arm's gate needs an id of its own"
+      : ''
+  return `suspend id ${JSON.stringify(suspend_id)} is used in ${places.length} places (${places.join(', ')}): resume data is keyed by id, so give each suspend and gate an id of its own${arms}`
+}
+
+export class duplicate_suspend_id_error extends Error {
+  readonly kind = 'duplicate_suspend_id_error' as const;
+  declare readonly path?: ReadonlyArray<string>;
+  readonly suspend_id: string;
+  // `declared_twice`: the flow holds the id in two or more places, refused
+  // before the run starts. `reached_twice`: the run reached the id again on
+  // another input, and its one datum answered the first.
+  readonly reason: 'declared_twice' | 'reached_twice';
+  // For `declared_twice`, each place's path of step ids from the root, and
+  // empty for `reached_twice`.
+  readonly paths: ReadonlyArray<ReadonlyArray<string>>;
+  constructor(
+    suspend_id: string,
+    reason: duplicate_suspend_id_error['reason'],
+    detail: DuplicateSuspendIdDetail = {},
+  ) {
+    const paths = detail.paths ?? []
+    super(duplicate_suspend_id_message(suspend_id, reason, paths, detail))
+    this.name = 'duplicate_suspend_id_error'
+    this.suspend_id = suspend_id
+    this.reason = reason
+    this.paths = paths
+  }
+}
+
 export class run_not_found_error extends Error {
   readonly kind = 'run_not_found_error' as const;
   declare readonly path?: ReadonlyArray<string>;
