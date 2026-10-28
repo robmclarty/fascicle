@@ -12,7 +12,9 @@ import type {
   Tool,
   ToolApprovalHandler,
 } from '#engine'
+import { make_loop_engine } from '#testing'
 import { model_call, model_step } from '../model_call.js'
+import { recording_logger } from '../../test/fixtures/trajectory.js'
 
 const sample_tool: Tool = {
   name: 'noop',
@@ -905,5 +907,25 @@ vdescribe('model_call project', () => {
     expect(config_of(bare)['has_project']).toBe(false)
     expect((describe.json(projected).config as Record<string, unknown>)['has_project']).toBe(true)
     expect(describe(projected)).not.toContain('pipe')
+  })
+})
+
+vdescribe('model_step over a provider failure that retry_on leaves out', () => {
+  it("ends the run failed with the provider's message and error kind, not [object Object]", async () => {
+    const { engine } = make_loop_engine([
+      { throw: Object.assign(new Error('Service Unavailable'), { statusCode: 503 }) },
+    ])
+    const { logger, events } = recording_logger()
+    const s = model_step({ engine, model: 'loop', retry_policy: sample_retry })
+
+    await expect(run(s, 'hi', { install_signal_handlers: false, trajectory: logger })).rejects.toMatchObject({
+      kind: 'provider_error',
+      status: 503,
+    })
+    expect(events.find((e) => e.kind === 'run_end')).toMatchObject({
+      status: 'failed',
+      error: 'Service Unavailable',
+      error_kind: 'provider_error',
+    })
   })
 })

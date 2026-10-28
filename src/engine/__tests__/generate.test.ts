@@ -1433,6 +1433,23 @@ describe('generate: retry', () => {
     ).rejects.toBeInstanceOf(rate_limit_error)
   })
 
+  it('throws provider_error for a 5xx that retry_on leaves out', async () => {
+    enqueue_generate_text(mk_5xx())
+    const err: unknown = await basic_engine()
+      .generate({
+        model: 'claude-opus',
+        prompt: 'hi',
+        retry: { max_attempts: 3, initial_delay_ms: 1, max_delay_ms: 5, retry_on: [] },
+      })
+      .then(
+        () => 'resolved',
+        (e: unknown) => e,
+      )
+    expect(err).toBeInstanceOf(provider_error)
+    expect(err).toMatchObject({ status: 503, cause_kind: 'provider_5xx', message: 'server error' })
+    expect(mock_state.generate_text_call_count).toBe(1)
+  })
+
   it('5xx retries and surfaces provider_error after exhaustion', async () => {
     enqueue_generate_text(mk_5xx())
     enqueue_generate_text(mk_5xx())
