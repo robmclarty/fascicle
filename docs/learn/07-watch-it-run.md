@@ -49,7 +49,11 @@ export function build_solver(engine: Engine, model: string): Step<string, string
 
 Fascicle ships a command that prints a flow's diagram without you writing any
 code to print it. It needs one small file that builds the flow, and it builds
-it with the stub, so drawing never needs a key. Create `solver/diagram.ts`:
+it with the stub, so drawing never needs a key. The command can't build the
+solver from `flow.ts` alone, because `build_solver` wants an engine, and
+loading `main.ts` would run the solver. This file holds no printing code. It
+tells the command how to build the flow, and the stub is never asked anything,
+because drawing a flow doesn't run it. Create `solver/diagram.ts`:
 
 ```ts
 // solver/diagram.ts
