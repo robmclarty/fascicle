@@ -87,8 +87,14 @@ function that builds the Step with no arguments, and pass `--width` and
 `--prefix` the way you'd pass the options, as in
 `pnpm exec fascicle-diagram src/diagram.ts --prefix ' * '`. It loads a
 TypeScript module through the project's own `tsx`, and `--export <name>` reads
-another export instead. The exit code is 0 when it prints, 1 when the module
-won't load or holds no Step, and 2 for a usage error.
+another export instead. `--outline` prints the plain `describe(step)` outline
+in place of the diagram, with each node's kind, id, and config, for when you
+need to see what the diagram leaves out. It takes `--prefix`, and it refuses
+`--width`, `--replays`, and `--internals` as usage errors, since only the
+diagram reads them. The outline shows generated ids, which depend on what the
+process built first, so hold a header to the diagram rather than to the
+outline. The exit code is 0 when it prints, 1 when the module won't load or
+holds no Step, and 2 for a usage error.
 
 `describe.replays(step)` reads the same tree for a different question, which
 is what a resumed run would pay for twice. A run that resumes at a `suspend`

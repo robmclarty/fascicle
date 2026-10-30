@@ -4,13 +4,15 @@
  *   fascicle-diagram <module>                   print the diagram of the module's `flow`
  *   fascicle-diagram <module> --export <name>   read another export instead
  *
- * Flags: --export <name> --width <n> --prefix <text> --replays --internals --help
+ * Flags: --export <name> --width <n> --prefix <text> --replays --internals --outline --help
  *
  * The export is a Step, or a function that builds one with no arguments,
  * which is where an app wires its flow to stub dependencies so that drawing
  * it needs no credentials. The diagram is `describe.diagram` of that Step, so
  * it is what the code builds today and can be compared with the header in
- * `flow.ts` at a glance.
+ * `flow.ts` at a glance. `--outline` prints the plain `describe` outline
+ * instead, with each node's kind, id, and config, which is the view to read
+ * when the diagram hides something.
  *
  * This file holds every decision the command makes and touches nothing of
  * the process: output and module loading arrive through `DiagramCliIo`.
@@ -21,7 +23,7 @@
 import { resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 import { describe, is_step } from '#core'
-import type { DiagramOptions } from '#core'
+import type { AnyStep, DiagramOptions } from '#core'
 
 export type DiagramCliIo = {
   readonly out: (text: string) => void
@@ -33,6 +35,7 @@ export type DiagramCliIo = {
 type CliArgs = {
   readonly module: string
   readonly export_name: string
+  readonly outline: boolean
   readonly options: DiagramOptions
 }
 
@@ -56,9 +59,13 @@ Options:
   --prefix <text>   start every line with text, for example ' * '
   --replays         mark the steps a resumed run would pay for again
   --internals       draw a named composite's internal steps, not only its parts
+  --outline         print describe()'s plain outline, with ids and config,
+                    instead of the diagram (no --width, --replays, or --internals)
   --help            show this message
 `
 
+// The flags that only the diagram reads, which `--outline` refuses.
+const DIAGRAM_ONLY = ['width', 'replays', 'internals'] as const
 
 /**
  * Run the CLI over `argv` and resolve to its exit code: 0 once the diagram is
@@ -76,7 +83,7 @@ export async function run_diagram_cli(argv: readonly string[], io: DiagramCliIo)
     io.err(`fascicle-diagram: ${parsed.message}\n\n${HELP}`)
     return 2
   }
-  const { module, export_name, options } = parsed.args
+  const { module, export_name, outline, options } = parsed.args
   const path = resolve(module)
   let exports: Readonly<Record<string, unknown>>
   try {
@@ -108,14 +115,27 @@ export async function run_diagram_cli(argv: readonly string[], io: DiagramCliIo)
     )
     return 1
   }
-  io.out(`${describe.diagram(flow, options)}\n`)
+  const text = outline ? outline_of(flow, options.prefix) : describe.diagram(flow, options)
+  io.out(`${text}\n`)
   return 0
+}
+
+/**
+ * Render `describe`'s plain outline of `flow`, starting every line with
+ * `prefix` the way the diagram does.
+ */
+function outline_of(flow: AnyStep, prefix = ''): string {
+  return describe(flow)
+    .split('\n')
+    .map((line) => `${prefix}${line}`)
+    .join('\n')
 }
 
 /**
  * Parse argv into a run request, a help request, or a usage error. Unknown
  * flags and a missing module are usage errors, and so is a width that is not
- * a positive integer.
+ * a positive integer. `--outline` with an option that only the diagram reads
+ * is one too, since the outline would drop it without a word.
  */
 function parse(argv: readonly string[]): Parsed {
   let parsed: ReturnType<typeof parse_flags>
@@ -129,6 +149,14 @@ function parse(argv: readonly string[]): Parsed {
   const [module, ...extra] = positionals
   if (module === undefined) return { kind: 'usage', message: 'a <module> to draw is required' }
   if (extra.length > 0) return { kind: 'usage', message: `expected one <module>, got ${positionals.join(' ')}` }
+  const outline = values.outline === true
+  if (outline) {
+    const dropped = DIAGRAM_ONLY.filter((flag) => values[flag] !== undefined)
+    if (dropped.length > 0) {
+      const flags = dropped.map((flag) => `--${flag}`).join(', ')
+      return { kind: 'usage', message: `--outline can't take ${flags}, which only the diagram reads` }
+    }
+  }
   const options: { width?: number; prefix?: string; replays?: boolean; internals?: boolean } = {}
   if (values.width !== undefined) {
     const width = Number(values.width)
@@ -140,7 +168,7 @@ function parse(argv: readonly string[]): Parsed {
   if (values.prefix !== undefined) options.prefix = values.prefix
   if (values.replays === true) options.replays = true
   if (values.internals === true) options.internals = true
-  return { kind: 'run', args: { module, export_name: values.export ?? 'flow', options } }
+  return { kind: 'run', args: { module, export_name: values.export ?? 'flow', outline, options } }
 }
 
 /**
@@ -157,6 +185,7 @@ function parse_flags(argv: readonly string[]) {
       prefix: { type: 'string' },
       replays: { type: 'boolean' },
       internals: { type: 'boolean' },
+      outline: { type: 'boolean' },
       help: { type: 'boolean' },
     },
   })

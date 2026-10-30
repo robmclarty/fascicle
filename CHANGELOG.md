@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **`fascicle-diagram --outline` prints the plain `describe` outline.** The plain outline that `describe(step)` prints, with each node's kind, id, and config, was only reachable from code, so seeing it meant writing a script. `--outline` prints it from the terminal in place of the diagram, from the same module and export. It takes `--prefix`, and `--width`, `--replays`, and `--internals` with it are usage errors, since only the diagram reads them.
+
 ## v0.17.2 — 2026-10-28
 
 ### Changed

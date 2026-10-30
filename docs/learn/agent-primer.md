@@ -79,7 +79,8 @@ Two commands ship in the package: `fascicle-viewer <trajectory.jsonl>` and
 `fascicle-diagram <module.ts>`, both run with `pnpm exec`. `fascicle-diagram`
 reads the module's `flow` export, which is either a Step or a function with no
 arguments that builds one, and it takes `--prefix ' * '`, `--width <n>`, and
-`--export <name>`, plus `--internals` after 0.16.3.
+`--export <name>`, plus `--internals` after 0.16.3 and `--outline` after
+0.17.2, which prints the plain `describe` outline instead of the diagram.
 
 ## The Core Vocabulary
 

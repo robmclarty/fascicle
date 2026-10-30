@@ -173,6 +173,22 @@ describe('run_diagram_cli', () => {
     )
   })
 
+  it("prints describe's plain outline with --outline, ids and all", async () => {
+    const result = await cli(['m.ts', '--outline'])
+    expect(result).toEqual({
+      code: 0,
+      out: [`writer(${writer.id})`, '  step(draft)', '  step(polish)', ''].join('\n'),
+      err: '',
+      loaded: [resolve('m.ts')],
+    })
+    expect((await cli(['m.ts', '--outline', '--export', 'build_it'])).out).toBe('step(built)\n')
+  })
+
+  it('starts every line of the outline with --prefix', async () => {
+    const result = await cli(['m.ts', '--outline', '--prefix', ' * '])
+    expect(result.out).toBe([` * writer(${writer.id})`, ' *   step(draft)', ' *   step(polish)', ''].join('\n'))
+  })
+
   it('prints usage for --help and exits 0 without loading anything', async () => {
     const result = await cli(['--help', 'm.ts'])
     expect(result.code).toBe(0)
@@ -189,6 +205,11 @@ describe('run_diagram_cli', () => {
     [['a.ts', '--width', '2.5'], "invalid --width '2.5': expected a positive integer"],
     [['a.ts', '--width', 'wide'], "invalid --width 'wide': expected a positive integer"],
     [['a.ts', '--depth', '3'], "Unknown option '--depth'"],
+    [['a.ts', '--outline', '--width', '40'], "--outline can't take --width, which only the diagram reads"],
+    [
+      ['a.ts', '--outline', '--replays', '--internals'],
+      "--outline can't take --replays, --internals, which only the diagram reads",
+    ],
   ])('exits 2 with usage for %j', async (argv, message) => {
     const result = await cli(argv)
     expect(result.code).toBe(2)
