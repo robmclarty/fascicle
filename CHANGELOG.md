@@ -1,10 +1,14 @@
 # Changelog
 
-## Unreleased
+## v0.17.3 — 2026-10-30
 
 ### Added
 
 - **`fascicle-diagram --outline` prints the plain `describe` outline.** The plain outline that `describe(step)` prints, with each node's kind, id, and config, was only reachable from code, so seeing it meant writing a script. `--outline` prints it from the terminal in place of the diagram, from the same module and export. It takes `--prefix`, and `--width`, `--replays`, and `--internals` with it are usage errors, since only the diagram reads them.
+
+### Internal
+
+- **Lesson 7 says why the solver needs a `diagram.ts`, and the roadmap is current to 0.17.2.** The lesson explains that `fascicle-diagram` can't build the solver from `flow.ts`, which wants an engine, or from `main.ts`, which would run it. The roadmap's Shipped list and near-term plans catch up with 0.17.2.
 
 ## v0.17.2 — 2026-10-28
 
