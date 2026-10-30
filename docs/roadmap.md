@@ -7,7 +7,7 @@ upgrade on purpose.
 
 ## Shipped
 
-The published surface as of v0.16.0:
+The published surface as of v0.17.2:
 
 - **Composition.** 23 primitives over a single `Step<i, o>` value type. You get
   the `chain` spine (`.step` / `.stage` / `.output`), `model_step` as the default
@@ -24,8 +24,11 @@ The published surface as of v0.16.0:
   deadline timer, each in a fresh process. A lease keeps two invocations from
   driving one run at once, an event that lands while the run is busy waits in
   its inbox, and a run whose flow changed shape under it fails loudly instead of
-  replaying the wrong steps. A `suspend` gate can carry a deadline, `gate`
-  checkpoints paid work before an approval pause, and a step marked
+  replaying the wrong steps. A `suspend` gate can carry a deadline, and `gate`
+  checkpoints paid work before an approval pause. A resumed gate serves the
+  result that the approver saw or fails the run, and a flow that uses one
+  suspend id twice, or reaches one again on another input, fails rather than
+  pass on an approval that was given for something else. A step marked
   `side_effect` records a `step_replayed` event whenever a resume runs it again,
   so you can see what a resume paid for twice. `describe.replays` finds those
   steps from the flow's shape before anything runs, so you can hold a flow to
@@ -51,7 +54,12 @@ The published surface as of v0.16.0:
   [providers.md](./providers.md#reasoning-in-a-tool-loop).
 - **Loop control.** Multi-step tool loops with tool-call salvage for models that
   emit calls as prose, approval gating, deterministic turn-ending, per-turn
-  timeout budgets, a `prepare_step` hook, and cost accounting. Prompt caching
+  timeout budgets, a `prepare_step` hook, and cost accounting. When
+  `max_tool_calls_per_step` drops a call, the loop tells the model which calls
+  didn't run, and a tool that sets `read_only` doesn't count toward the cap, so
+  a turn can make several reads and still make only one write.
+  `truncated_turn_policy: 'continue'` keeps a loop going past a turn that hit
+  its output limit before it made a call. Prompt caching
   is one option, `cache`, that every adapter answers the way it declares, and
   an Anthropic tool loop caches by default, so each turn after the first reads
   the conversation back instead of paying for it again. `define_tool`
@@ -99,8 +107,11 @@ The published surface as of v0.16.0:
   enough to implement yourself, the run canvas viewer that draws a live run and
   replays a finished one over one pure fold, and a transport-neutral
   `fascicle/otel` bridge (see [configuration.md](./configuration.md#opentelemetry)).
-  A call's `capture` option records what each turn sent the model and what came
-  back (see [concepts.md](./concepts.md#what-gets-recorded)).
+  Pass `follow_links: false` and the viewer reads a run's trajectory without
+  following a link, so a link that's swapped in after you checked the path
+  can't make it serve another file. A call's `capture` option records what
+  each turn sent the model and what came back (see
+  [concepts.md](./concepts.md#what-gets-recorded)).
   `describe.diagram` draws a flow as an annotated tree, and the
   `fascicle-diagram` bin prints the same diagram from a terminal.
 - **An app architecture.** [`docs/blueprint.md`](./blueprint.md) standardizes the
@@ -132,21 +143,39 @@ The published surface as of v0.16.0:
   its claims lean on a local filesystem, so a run that more than one host drives
   needs a store that you write yourself, with
   [`examples/object-store/`](../examples/object-store/) as the pattern to
-  follow. I want to ship a store that holds across hosts. The store contract
-  gains a compare-and-set in the same pass, and the late resume under Known
-  Issues, which needs it, gets fixed with it.
+  follow. I want to ship a store that holds across hosts, and the plan is
+  settled. The store contract gains a compare-and-set, which is a read that
+  returns the value's version and a write that lands only on the version it
+  read. `durable` keeps each run's inbox in the run's record and makes every
+  write conditional, and `object_store` ships in `fascicle/adapters` over a
+  small client interface that you implement for your bucket. That fixes the
+  late resume and the stalled drive under Known Issues.
+- **ACP sessions that last, and hosts beyond Zed.** A thread that you can
+  reopen after the agent restarts, from sessions that a `CheckpointStore`
+  keeps, so Zed's thread history and kandev's restore both work. Around it,
+  usage and cost for Zed's context ring, a model picker, thread titles, a stop
+  reason for a turn that runs out of tokens or steps, the MCP servers that the
+  client sends (kandev's task tools among them), and the login that the ACP
+  registry asks for before it lists an agent. The SDK peer range widens to take
+  2.0 as well as 1.8. [acp.md](./acp.md#whats-missing-in-zed) lists what you'll
+  notice is missing today.
+- **A live check of prompt caching.** Since 0.17.0 an Anthropic tool loop
+  caches by default, and the mocked suite proves that `cache_control` goes out
+  on the wire, but not that a provider caches or what a loop saves. The live
+  test that measures it has never run. I'll run it through OpenRouter, record
+  the hit ratio and the cost beside the same loop with `cache: 'off'`, find out
+  what OpenRouter does with `cache` on another vendor's model, and fix
+  [providers.md](./providers.md#prompt-caching) wherever the run settles
+  something that it hedges on.
+- **The check gate's tools, brought current.** The repo pins checkride 0.15.0,
+  four releases back, and fallow 3.33.1. Each moves to its newest release in a
+  step of its own, and the triage steps in [AGENTS.md](../AGENTS.md) read
+  checkride's digest of what failed instead of its raw reports.
 - **MCP hardening.** Auth on the HTTP transport, MCP `sampling`, per-tool
   approval gating, and `resources` subscriptions were all deferred out of the
   first bridge.
 - **`claude_cli` on the Agent SDK.** Rebasing the subprocess adapter onto
   Anthropic's Agent SDK, slotted in wherever provider metering forces it.
-- **ACP sessions that last, and the rest of Zed's thread.** A thread that you
-  can reopen after the agent restarts, from sessions that a `CheckpointStore`
-  keeps. Around it, usage and cost for Zed's context ring, a model picker,
-  thread titles, a stop reason for a turn that runs out of steps, the MCP
-  servers that the editor sends, and the auth method that the ACP registry asks
-  for. [acp.md](./acp.md#whats-missing-in-zed) lists what you'll notice is
-  missing today.
 
 ## Known Issues
 
@@ -159,6 +188,10 @@ likely to bite you first.
   Nothing reads it there unless the run comes back to that gate or a new run
   under the same id reaches it. Closing both windows needs a compare-and-set
   that the store contract doesn't have yet.
+- **A stalled drive can write over the drive that took its run.** `durable`
+  checks a run's revision and then writes its next record in two calls, so a
+  drive that stalls between them past its lease can write over the save of the
+  drive that took the run from it. The same compare-and-set closes it.
 - **The viewer slows down on long runs and clips large flows.** Holding or
   playing the scrubber refolds the run from its first event at every position,
   so a long run lags. A flow that's still bigger than the window at the
