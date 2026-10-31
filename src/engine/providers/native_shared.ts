@@ -196,12 +196,15 @@ function error_code(value: unknown): string | undefined {
  * A transport failure's own message, followed by the system error code that
  * the error or its `cause` carries when the message doesn't already name it,
  * as in `fetch failed (ECONNREFUSED)`. Undici's `fetch failed` alone doesn't
- * say whether the host refused, timed out, or doesn't resolve.
+ * say whether the host refused, timed out, or doesn't resolve. A failure with
+ * no message, such as the `AggregateError` that Node raises when every
+ * address of a host refuses, is named by its code alone.
  */
 export function network_detail(err: unknown): string {
   const message = err instanceof Error ? err.message : String(err)
   const cause: unknown = err !== null && typeof err === 'object' ? Reflect.get(err, 'cause') : undefined
   const code = error_code(err) ?? error_code(cause)
+  if (message.length === 0) return code ?? '(no detail)'
   return code === undefined || message.includes(code) ? message : `${message} (${code})`
 }
 
@@ -223,11 +226,15 @@ function log_safe_url(url: string): string {
  * The message for a request that never reached the provider: the URL it was
  * sent to (see log_safe_url), what failed, and what to check, with the
  * command that starts the server for Ollama, the one provider that's usually
- * a daemon on the same machine.
+ * a daemon on the same machine. A failure whose own text repeats the URL,
+ * as undici's does for one that it can't parse or that holds credentials,
+ * gets the same log-safe URL in its place.
  */
 export function unreachable_message(provider: string, url: string, detail: string): string {
+  const safe = log_safe_url(url)
+  const scrubbed = url.length > 0 ? detail.replaceAll(url, safe) : detail
   const start = provider === 'ollama' ? ' (ollama serve)' : ''
-  return `${provider} could not be reached at ${log_safe_url(url)}: ${detail}: check base_url, and that the server is running${start}`
+  return `${provider} could not be reached at ${safe}: ${scrubbed}: check base_url, and that the server is running${start}`
 }
 
 /**

@@ -359,7 +359,9 @@ function classify_client_status(provider: string, err: object): Error | undefine
 /**
  * A network record whose message names the URL that the SDK couldn't reach,
  * in the words the native transport uses, when the SDK's error carries its
- * `url`, and the record as it is otherwise.
+ * `url`, and the record as it is otherwise. The detail comes from the SDK
+ * error's `cause`, the failure that fetch threw, when it has one, since the
+ * SDK's own message only puts `Cannot connect to API:` in front of it.
  */
 function name_unreachable_url(
   provider: string,
@@ -368,7 +370,8 @@ function name_unreachable_url(
 ): Record<string, unknown> {
   const url: unknown = Reflect.get(err, 'url')
   if (record['kind'] !== 'network' || typeof url !== 'string') return record
-  return { ...record, message: unreachable_message(provider, url, network_detail(err)) }
+  const detail = network_detail(Reflect.get(err, 'cause') ?? err)
+  return { ...record, message: unreachable_message(provider, url, detail) }
 }
 
 /**

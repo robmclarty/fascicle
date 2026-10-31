@@ -299,8 +299,27 @@ describe('classify_ai_sdk_error', () => {
     expect(classify_ai_sdk_error('ollama')(err)).toStrictEqual({
       kind: 'network',
       message:
-        'ollama could not be reached at http://localhost:11434/api/chat: Cannot connect to API: connect ECONNREFUSED 127.0.0.1:11434: check base_url, and that the server is running (ollama serve)',
+        'ollama could not be reached at http://localhost:11434/api/chat: connect ECONNREFUSED 127.0.0.1:11434: check base_url, and that the server is running (ollama serve)',
       cause: err,
+    })
+    // Node's AggregateError for a host whose every address refused has no message.
+    const every_address = Object.assign(new AggregateError([], ''), { code: 'ECONNREFUSED' })
+    const sdk = Object.assign(new Error('Cannot connect to API: ', { cause: every_address }), {
+      url: 'https://api.anthropic.com/v1/messages',
+    })
+    expect(anthropic(sdk)).toMatchObject({
+      kind: 'network',
+      message:
+        'anthropic could not be reached at https://api.anthropic.com/v1/messages: ECONNREFUSED: check base_url, and that the server is running',
+    })
+    // A code on the SDK error itself, with no cause, names the error's own text.
+    const bare = Object.assign(new Error('socket hang up'), {
+      code: 'ECONNRESET',
+      url: 'https://api.anthropic.com/v1/messages',
+    })
+    expect(anthropic(bare)).toMatchObject({
+      message:
+        'anthropic could not be reached at https://api.anthropic.com/v1/messages: socket hang up (ECONNRESET): check base_url, and that the server is running',
     })
     // With no URL the SDK's message stays, and a 5xx's url never renames it.
     const no_url = new Error('Cannot connect to API: other side closed', { cause: refused })
@@ -337,7 +356,7 @@ describe('classify_ai_sdk_error', () => {
     ).catch((e: unknown) => e)
     expect(out).toBeInstanceOf(provider_error)
     expect((out as provider_error).message).toBe(
-      'network after 2 attempts: ollama could not be reached at http://localhost:11434/api/chat: Cannot connect to API: connect ECONNREFUSED 127.0.0.1:11434: check base_url, and that the server is running (ollama serve)',
+      'network after 2 attempts: ollama could not be reached at http://localhost:11434/api/chat: connect ECONNREFUSED 127.0.0.1:11434: check base_url, and that the server is running (ollama serve)',
     )
   })
 

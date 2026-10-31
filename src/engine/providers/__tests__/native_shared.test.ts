@@ -159,6 +159,13 @@ describe('network_detail', () => {
     expect(network_detail(new Error('x', { cause: 'ECONNRESET' }))).toBe('x')
   })
 
+  it('names a failure with no message by its code, or says it has no detail', () => {
+    const every_address = Object.assign(new AggregateError([], ''), { code: 'ECONNREFUSED' })
+    expect(network_detail(every_address)).toBe('ECONNREFUSED')
+    expect(network_detail(new TypeError('fetch failed', { cause: every_address }))).toBe('fetch failed (ECONNREFUSED)')
+    expect(network_detail(new Error(''))).toBe('(no detail)')
+  })
+
   it('prints a thrown value that is not an Error', () => {
     expect(network_detail('socket closed')).toBe('socket closed')
     expect(network_detail(null)).toBe('null')
@@ -175,6 +182,22 @@ describe('unreachable_message', () => {
     )
     expect(unreachable_message('openai', 'not a url/chat/completions', 'Failed to parse URL')).toBe(
       'openai could not be reached at a base_url that is not a valid URL: Failed to parse URL: check base_url, and that the server is running',
+    )
+  })
+
+  it("puts the log-safe URL in place of the raw one wherever the failure's own text repeats it", () => {
+    const url = 'http://user:sk-secret@localhost:11999/v1?key=q/chat/completions'
+    expect(
+      unreachable_message('openai', url, `Request cannot be constructed from a URL that includes credentials: ${url}`),
+    ).toBe(
+      'openai could not be reached at http://localhost:11999/v1: Request cannot be constructed from a URL that includes credentials: http://localhost:11999/v1: check base_url, and that the server is running',
+    )
+    expect(unreachable_message('openai', 'not a url', 'Failed to parse URL from not a url')).toBe(
+      'openai could not be reached at a base_url that is not a valid URL: Failed to parse URL from a base_url that is not a valid URL: check base_url, and that the server is running',
+    )
+    // An empty URL replaces nothing.
+    expect(unreachable_message('openai', '', 'fetch failed')).toBe(
+      'openai could not be reached at a base_url that is not a valid URL: fetch failed: check base_url, and that the server is running',
     )
   })
 
