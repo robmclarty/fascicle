@@ -189,14 +189,20 @@ describe('typed errors', () => {
     expect(bare.stderr_snippet).toBeUndefined()
   })
 
-  it('provider_auth_error carries provider and optional refresh_command', () => {
-    const err = new provider_auth_error('anthropic', 'auth failed', { refresh_command: 'claude login' })
+  it('provider_auth_error carries provider and optional refresh_command and cause', () => {
+    const inner = new Error('Unauthorized')
+    const err = new provider_auth_error('anthropic', 'auth failed', {
+      refresh_command: 'claude login',
+      cause: inner,
+    })
     expect(err.kind).toBe('provider_auth_error')
     expect(err.provider).toBe('anthropic')
     expect(err.refresh_command).toBe('claude login')
+    expect(err.cause).toBe(inner)
     const bare = new provider_auth_error('openai', 'no key')
     expect(bare.provider).toBe('openai')
     expect(bare.refresh_command).toBeUndefined()
+    expect(bare.cause).toBeUndefined()
   })
 
   it('incomplete_generation_error carries finish_reason / raw_text / provider_reported', () => {

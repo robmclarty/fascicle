@@ -981,7 +981,7 @@ describe('create_anthropic_native_adapter', () => {
     expect(err).toBeInstanceOf(provider_auth_error)
     expect((err as provider_auth_error).provider).toBe('anthropic')
     expect((err as Error).message).toBe(
-      'anthropic authentication failed (401): invalid x-api-key',
+      'anthropic authentication failed (401): invalid x-api-key: check providers.anthropic.api_key',
     )
   })
 

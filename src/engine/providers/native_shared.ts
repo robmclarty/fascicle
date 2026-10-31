@@ -77,13 +77,80 @@ function extract_error_message(body: string): string {
   return body.length > 300 ? `${body.slice(0, 300)}...` : body
 }
 
+const LOCAL_PROVIDERS: ReadonlySet<string> = new Set(['ollama', 'lmstudio'])
+
+/** The model name in Ollama's `model 'x' not found` reply, either quote. */
+const OLLAMA_MISSING_MODEL = /model ['"]([^'"]+)['"] not found/
+
 /**
- * Map a non-2xx response to what the engine's retry stack expects: 401
- * becomes a typed provider_auth_error, 429/5xx keep `status`, `body`, and
- * `responseHeaders` so classify_provider_error marks them retryable
- * (rate_limit honoring retry-after, provider_5xx) and the exhausted error
- * still has the body, and any other 4xx is a permanent provider_error that
- * surfaces as-is.
+ * `detail` without the one period a provider's sentence ends on, so that an
+ * action can follow it after a colon. A `...` truncation tail keeps its dots.
+ */
+function strip_trailing_period(detail: string): string {
+  return detail.replace(/(?<!\.)\.$/, '')
+}
+
+/**
+ * What to do about a 404: pull the model, when Ollama names one it doesn't
+ * have, and otherwise check the model id and where `base_url` points, since
+ * a path the provider doesn't serve answers 404 too.
+ */
+function not_found_action(provider: string, detail: string): string {
+  const missing = provider === 'ollama' ? OLLAMA_MISSING_MODEL.exec(detail)?.[1] : undefined
+  if (missing !== undefined) return `run ollama pull ${missing}`
+  return `check the model id against the ${provider} model list, and that base_url points at the ${provider} API`
+}
+
+/**
+ * What a caller does about a non-retryable status, or '' for a status whose
+ * fix only the provider's own text can say, such as a 400 or a 422. The
+ * ollama and lmstudio providers send no credentials, so a 401 from either
+ * comes from something in front of the server.
+ */
+function status_action(provider: string, status: number, detail: string): string {
+  if (status === 401) {
+    return LOCAL_PROVIDERS.has(provider)
+      ? `the ${provider} provider sends no credentials, so check that base_url reaches the server without a proxy that asks for them`
+      : `check providers.${provider}.api_key`
+  }
+  if (status === 403) return 'the credentials lack access to this model or endpoint'
+  if (status === 404) return not_found_action(provider, detail)
+  return ''
+}
+
+/**
+ * The error a status that won't be retried becomes, on either transport: a
+ * 401 is a provider_auth_error, and any other status a provider_error that
+ * carries it and the body. The message leads with the provider and the
+ * status, then the provider's own text, then what to do when the status says
+ * it. The native transport's response_error and the engine's ai_sdk
+ * classifier both build theirs here, so a wrong key or a wrong model id reads
+ * the same whichever transport the call took, and `cause` holds the SDK's
+ * error on the ai_sdk one.
+ */
+export function non_retryable_status_error(
+  provider: string,
+  status: number,
+  detail: string,
+  metadata: { body?: string; cause?: unknown } = {},
+): provider_auth_error | provider_error {
+  const action = status_action(provider, status, detail)
+  const tail = action === '' ? detail : `${strip_trailing_period(detail)}: ${action}`
+  if (status === 401) {
+    return new provider_auth_error(provider, `${provider} authentication failed (401): ${tail}`, {
+      cause: metadata.cause,
+    })
+  }
+  return new provider_error(`${provider} API error ${status}: ${tail}`, { status, ...metadata })
+}
+
+/**
+ * Map a non-2xx response to what the engine's retry stack expects: 429/5xx
+ * keep `status`, `body`, and `responseHeaders` so classify_provider_error
+ * marks them retryable (rate_limit honoring retry-after, provider_5xx) and
+ * the exhausted error still has the body, and any other status is the
+ * permanent error that non_retryable_status_error builds, which surfaces
+ * as-is.
  */
 async function response_error(response: Response, provider: string): Promise<Error> {
   let body = ''
@@ -94,12 +161,6 @@ async function response_error(response: Response, provider: string): Promise<Err
   }
   const detail = extract_error_message(body)
   const status = response.status
-  if (status === 401) {
-    return new provider_auth_error(
-      provider,
-      `${provider} authentication failed (401): ${detail}`,
-    )
-  }
   if (status === 429 || status >= 500) {
     const retry_after = response.headers.get('retry-after')
     return Object.assign(
@@ -108,7 +169,7 @@ async function response_error(response: Response, provider: string): Promise<Err
       retry_after !== null ? { responseHeaders: { 'retry-after': retry_after } } : {},
     )
   }
-  return new provider_error(`${provider} API error ${status}: ${detail}`, { status, body })
+  return non_retryable_status_error(provider, status, detail, { body })
 }
 
 /**

@@ -792,7 +792,7 @@ describe('create_openai_compatible_adapter', () => {
     expect(err).toBeInstanceOf(provider_auth_error)
     expect((err as provider_auth_error).provider).toBe('openai')
     expect((err as Error).message).toBe(
-      'openai authentication failed (401): Incorrect API key provided',
+      'openai authentication failed (401): Incorrect API key provided: check providers.openai.api_key',
     )
   })
 
@@ -836,7 +836,9 @@ describe('create_openai_compatible_adapter', () => {
     const err: unknown = await adapter.invoke_turn(make_req()).catch((e: unknown) => e)
     expect(err).toBeInstanceOf(provider_error)
     expect((err as provider_error).status).toBe(404)
-    expect((err as Error).message).toBe("openai API error 404: 'gpt-nope' does not exist")
+    expect((err as Error).message).toBe(
+      "openai API error 404: 'gpt-nope' does not exist: check the model id against the openai model list, and that base_url points at the openai API",
+    )
     expect(classify_provider_error(err)).toBe(err)
   })
 

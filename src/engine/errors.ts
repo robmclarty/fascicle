@@ -273,15 +273,17 @@ export class provider_auth_error extends Error {
   declare readonly path?: ReadonlyArray<string>;
   readonly provider: string;
   readonly refresh_command: string | undefined;
+  override readonly cause: unknown;
   constructor(
     provider: string,
     message: string,
-    metadata: { refresh_command?: string } = {},
+    metadata: { refresh_command?: string; cause?: unknown } = {},
   ) {
     super(message)
     this.name = 'provider_auth_error'
     this.provider = provider
     this.refresh_command = metadata.refresh_command
+    this.cause = metadata.cause
   }
 }
 

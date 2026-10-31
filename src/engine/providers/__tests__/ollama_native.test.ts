@@ -697,7 +697,9 @@ describe('create_ollama_native_adapter', () => {
     const err: unknown = await adapter.invoke_turn(make_req()).catch((e: unknown) => e)
     expect(err).toBeInstanceOf(provider_auth_error)
     expect((err as provider_auth_error).provider).toBe('ollama')
-    expect((err as Error).message).toBe('ollama authentication failed (401): unauthorized')
+    expect((err as Error).message).toBe(
+      'ollama authentication failed (401): unauthorized: the ollama provider sends no credentials, so check that base_url reaches the server without a proxy that asks for them',
+    )
   })
 
   it('throws a 429 shape the shared classifier maps to rate_limit with retry_after_ms', async () => {
@@ -727,7 +729,8 @@ describe('create_ollama_native_adapter', () => {
     const err: unknown = await adapter.invoke_turn(make_req()).catch((e: unknown) => e)
     expect(err).toBeInstanceOf(provider_error)
     expect((err as provider_error).status).toBe(404)
-    expect((err as Error).message).toBe("ollama API error 404: model 'nope' not found")
+    expect((err as provider_error).body).toBe(`{"error":"model 'nope' not found"}`)
+    expect((err as Error).message).toBe("ollama API error 404: model 'nope' not found: run ollama pull nope")
     expect(classify_provider_error(err)).toBe(err)
   })
 

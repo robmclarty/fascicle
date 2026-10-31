@@ -5,14 +5,21 @@
  * The wire plumbing in the same module is covered through each adapter's own
  * tests, apart from `on_wire`, which every built-in native adapter reaches
  * through `invoke_http_turn` and which is tested here through a real engine,
- * and `error_body_message`, which the engine's classifier also calls.
+ * and `error_body_message` and `non_retryable_status_error`, which the
+ * engine's ai_sdk classifier also calls.
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { TrajectoryLogger } from '#core'
 import { create_engine } from '../../create_engine.js'
+import { provider_auth_error, provider_error } from '../../errors.js'
 import type { AssistantContentPart, CapturePayload, EngineConfig } from '../../types.js'
-import { error_body_message, is_own_reasoning, split_assistant_parts } from '../native_shared.js'
+import {
+  error_body_message,
+  is_own_reasoning,
+  non_retryable_status_error,
+  split_assistant_parts,
+} from '../native_shared.js'
 
 type ReasoningPart = Extract<AssistantContentPart, { type: 'reasoning' }>
 
@@ -51,6 +58,77 @@ describe('error_body_message', () => {
   it('returns undefined for a body that is not JSON or carries no message', () => {
     for (const body of ['', '<html>502</html>', '"just a string"', 'null', '{"code":502}', '{"message":""}', '{"message":7}']) {
       expect(error_body_message(body), body).toBeUndefined()
+    }
+  })
+})
+
+describe('non_retryable_status_error', () => {
+  it("makes a 401 a provider_auth_error that names the key to check, after the provider's text", () => {
+    const err = non_retryable_status_error('openrouter', 401, 'User not found.')
+    expect(err).toBeInstanceOf(provider_auth_error)
+    expect((err as provider_auth_error).provider).toBe('openrouter')
+    expect(err.message).toBe('openrouter authentication failed (401): User not found: check providers.openrouter.api_key')
+    expect(err.cause).toBeUndefined()
+    const cause = new Error('Unauthorized')
+    expect(non_retryable_status_error('anthropic', 401, 'invalid x-api-key', { cause }).cause).toBe(cause)
+  })
+
+  it('says a local provider sends no credentials, so a 401 comes from a proxy', () => {
+    for (const provider of ['ollama', 'lmstudio']) {
+      expect(non_retryable_status_error(provider, 401, 'unauthorized').message, provider).toBe(
+        `${provider} authentication failed (401): unauthorized: the ${provider} provider sends no credentials, so check that base_url reaches the server without a proxy that asks for them`,
+      )
+    }
+  })
+
+  it('keeps every period but a closing one', () => {
+    expect(non_retryable_status_error('openai', 401, 'cut off...').message).toBe(
+      'openai authentication failed (401): cut off...: check providers.openai.api_key',
+    )
+    expect(non_retryable_status_error('openai', 401, 'key v1.2 revoked').message).toBe(
+      'openai authentication failed (401): key v1.2 revoked: check providers.openai.api_key',
+    )
+  })
+
+  it('makes a 403 a provider_error that says the credentials lack access, keeping status, body, and cause', () => {
+    const body = '{"message":"The security token included in the request is invalid."}'
+    const cause = new Error('undefined: The security token included in the request is invalid.')
+    const err = non_retryable_status_error('bedrock', 403, 'The security token included in the request is invalid.', {
+      body,
+      cause,
+    })
+    expect(err).toBeInstanceOf(provider_error)
+    expect(err.message).toBe(
+      'bedrock API error 403: The security token included in the request is invalid: the credentials lack access to this model or endpoint',
+    )
+    expect(err).toMatchObject({ status: 403, body, cause })
+  })
+
+  it('says to pull a model that Ollama names as missing, in either quote', () => {
+    expect(non_retryable_status_error('ollama', 404, 'model "qwen3:4b" not found, try pulling it first').message).toBe(
+      'ollama API error 404: model "qwen3:4b" not found, try pulling it first: run ollama pull qwen3:4b',
+    )
+    expect(non_retryable_status_error('ollama', 404, "model 'nope' not found").message).toBe(
+      "ollama API error 404: model 'nope' not found: run ollama pull nope",
+    )
+  })
+
+  it('says to check the model id and base_url on any other 404', () => {
+    expect(non_retryable_status_error('ollama', 404, '404 page not found').message).toBe(
+      'ollama API error 404: 404 page not found: check the model id against the ollama model list, and that base_url points at the ollama API',
+    )
+    // Only Ollama's reply means `ollama pull` will fix it.
+    expect(non_retryable_status_error('anthropic', 404, "model 'claude-nope' not found").message).toBe(
+      "anthropic API error 404: model 'claude-nope' not found: check the model id against the anthropic model list, and that base_url points at the anthropic API",
+    )
+  })
+
+  it("leaves any other status at the provider's own text, period and all", () => {
+    for (const status of [400, 402, 409, 422]) {
+      const err = non_retryable_status_error('openai', status, 'Bad request.', { body: 'raw' })
+      expect(err, String(status)).toBeInstanceOf(provider_error)
+      expect(err.message, String(status)).toBe(`openai API error ${status}: Bad request.`)
+      expect(err, String(status)).toMatchObject({ status, body: 'raw', cause: undefined })
     }
   })
 })

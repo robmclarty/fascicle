@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- **A native 401, 403, or 404 says what to check.** The native transport put the provider's text after the status and stopped there, so `anthropic authentication failed (401): invalid x-api-key` never said which key to look at, and `ollama API error 404: model 'nope' not found` never said how to get the model. A 401 now names the key, as in `anthropic authentication failed (401): invalid x-api-key: check providers.anthropic.api_key`. The `ollama` and `lmstudio` providers send no credentials, so a 401 from either says to check that `base_url` reaches the server without a proxy that asks for them. A 403 says that the credentials lack access to this model or endpoint. A 404 says to check the model id against the provider's model list and that `base_url` points at its API, and when Ollama names the model it doesn't have, it says `run ollama pull nope` instead. The provider's text keeps its place and loses only the period it ended on, and any other 4xx reads as it did. Code that matched the old message text has to match the new one.
+
 ## v0.17.4 — 2026-10-30
 
 ### Changed
