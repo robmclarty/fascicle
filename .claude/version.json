@@ -1,0 +1,7 @@
+{
+  "targets": [{ "type": "json", "path": "package.json", "key": "version" }],
+  "marker": { "commit": "v{version}", "tag": true, "tagAuthoritative": true },
+  "changelog": { "path": "CHANGELOG.md", "style": "sections" },
+  "verify": "pnpm check --only docs,links,spell,prose,prose-health --bail",
+  "publish": { "pushTag": true, "pushBranch": false, "confirm": false }
+}
