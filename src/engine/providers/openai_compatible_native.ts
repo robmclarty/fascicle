@@ -36,7 +36,6 @@ import type {
   UserContentPart,
 } from '../types.js'
 import {
-  engine_config_error,
   provider_capability_error,
   provider_error,
 } from '../errors.js'
@@ -49,7 +48,11 @@ import {
   split_assistant_parts,
 } from './native_shared.js'
 import { create_sse_decoder } from './sse_native.js'
-import type { NativeProviderAdapter, ProviderCapability } from './types.js'
+import {
+  missing_config_error,
+  type NativeProviderAdapter,
+  type ProviderCapability,
+} from './types.js'
 
 /**
  * Per-dialect wire knobs. `name` is the provider name the adapter reports
@@ -837,9 +840,10 @@ export const create_openai_compatible_adapter = (
   dialect: OpenAICompatibleDialect,
 ): NativeProviderAdapter => {
   if (dialect.auth.kind === 'bearer' && dialect.auth.api_key.length === 0) {
-    throw new engine_config_error(
-      `${dialect.name} provider requires a non-empty api_key`,
+    throw missing_config_error(
       dialect.name,
+      'api_key',
+      `process.env.${dialect.name.toUpperCase()}_API_KEY`,
     )
   }
   const base_url = dialect.base_url.replace(/\/+$/, '')

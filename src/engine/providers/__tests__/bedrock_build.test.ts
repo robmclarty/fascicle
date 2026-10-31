@@ -56,7 +56,7 @@ describe('create_bedrock_adapter config assembly', () => {
         err = e
       }
       expect(err).toBeInstanceOf(engine_config_error)
-      expect((err as engine_config_error).message).toBe('bedrock provider requires a non-empty region')
+      expect((err as engine_config_error).message).toBe('bedrock provider requires a non-empty region: pass providers.bedrock.region to create_engine, usually process.env.AWS_REGION')
       expect((err as engine_config_error).provider).toBe('bedrock')
     }
   })

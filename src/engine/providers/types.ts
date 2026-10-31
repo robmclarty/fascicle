@@ -225,6 +225,23 @@ export function normalize_local_usage(raw: RawProviderUsage | undefined): UsageT
 }
 
 /**
+ * The error for a provider config that's missing a value the provider can't
+ * run without. It names the key to pass to create_engine and where the value
+ * usually comes from, an environment variable or a local server's address.
+ * It says "pass" because the engine never reads the environment itself.
+ */
+export function missing_config_error(
+  provider: string,
+  key: string,
+  usual: string,
+): engine_config_error {
+  return new engine_config_error(
+    `${provider} provider requires a non-empty ${key}: pass providers.${provider}.${key} to create_engine, usually ${usual}`,
+    provider,
+  )
+}
+
+/**
  * Build the standard missing-peer error: names the package and the install
  * command so a missing peer is diagnosable from the message alone. Shared so
  * every optional-peer failure reads identically, whether the failing

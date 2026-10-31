@@ -37,6 +37,7 @@ import type { BedrockCredentialProvider, ProviderInit, UsageTotals } from '../ty
 import {
   default_normalize_usage,
   load_optional_peer,
+  missing_config_error,
   translate_effort_to_sdk_reasoning,
   type AiSdkProviderAdapter,
   type ProviderCapability,
@@ -102,7 +103,7 @@ type StaticCredentials = {
 function read_static_credentials(init: ProviderInit): StaticCredentials {
   const region = read_string(init, 'region') ?? ''
   if (region.length === 0) {
-    throw new engine_config_error('bedrock provider requires a non-empty region', 'bedrock')
+    throw missing_config_error('bedrock', 'region', 'process.env.AWS_REGION')
   }
   return {
     region,

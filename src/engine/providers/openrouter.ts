@@ -22,6 +22,7 @@ import type { EffortLevel, ProviderInit, UsageTotals } from '../types.js'
 import {
   default_normalize_usage,
   load_optional_peer,
+  missing_config_error,
   resolve_transport,
   type AiSdkProviderAdapter,
   type EffortTranslation,
@@ -35,7 +36,6 @@ import {
   create_openai_compatible_adapter,
   type OpenAICompatibleDialect,
 } from './openai_compatible_native.js'
-import { engine_config_error } from '../errors.js'
 
 type OpenrouterSdk = {
   createOpenRouter: (config: {
@@ -141,10 +141,7 @@ const create_openrouter_native_adapter = (init: ProviderInit): NativeProviderAda
 const create_openrouter_ai_sdk_adapter = (init: ProviderInit): AiSdkProviderAdapter => {
   const api_key = typeof init.api_key === 'string' ? init.api_key : ''
   if (api_key.length === 0) {
-    throw new engine_config_error(
-      'openrouter provider requires a non-empty api_key',
-      'openrouter',
-    )
+    throw missing_config_error('openrouter', 'api_key', 'process.env.OPENROUTER_API_KEY')
   }
   const base_url = typeof init.base_url === 'string' ? init.base_url : undefined
   const http_referer = typeof init['http_referer'] === 'string' ? init['http_referer'] : undefined

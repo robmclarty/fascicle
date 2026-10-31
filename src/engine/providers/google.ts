@@ -10,12 +10,12 @@ import type { ProviderInit, UsageTotals } from '../types.js'
 import {
   default_normalize_usage,
   load_optional_peer,
+  missing_config_error,
   translate_effort_to_sdk_reasoning,
   type AiSdkProviderAdapter,
   type ProviderCapability,
   type RawProviderUsage,
 } from './types.js'
-import { engine_config_error } from '../errors.js'
 
 type GoogleSdk = {
   createGoogleGenerativeAI: (config: {
@@ -49,10 +49,7 @@ const SUPPORTED: ReadonlySet<ProviderCapability> = new Set([
 export const create_google_adapter = (init: ProviderInit): AiSdkProviderAdapter => {
   const api_key = typeof init.api_key === 'string' ? init.api_key : ''
   if (api_key.length === 0) {
-    throw new engine_config_error(
-      'google provider requires a non-empty api_key',
-      'google',
-    )
+    throw missing_config_error('google', 'api_key', 'process.env.GOOGLE_API_KEY')
   }
   const base_url = typeof init.base_url === 'string' ? init.base_url : undefined
 

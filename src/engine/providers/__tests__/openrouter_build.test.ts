@@ -40,7 +40,7 @@ describe('create_openrouter_adapter config assembly', () => {
       }
       expect(err).toBeInstanceOf(engine_config_error)
       expect((err as engine_config_error).message).toBe(
-        'openrouter provider requires a non-empty api_key',
+        'openrouter provider requires a non-empty api_key: pass providers.openrouter.api_key to create_engine, usually process.env.OPENROUTER_API_KEY',
       )
       expect((err as engine_config_error).provider).toBe('openrouter')
     }

@@ -16,6 +16,7 @@ import type { ProviderInit, UsageTotals } from '../types.js'
 import {
   default_normalize_usage,
   load_optional_peer,
+  missing_config_error,
   resolve_transport,
   translate_effort_to_sdk_reasoning,
   type AiSdkProviderAdapter,
@@ -29,7 +30,6 @@ import {
   create_openai_compatible_adapter,
   type OpenAICompatibleDialect,
 } from './openai_compatible_native.js'
-import { engine_config_error } from '../errors.js'
 
 type OpenaiSdk = {
   createOpenAI: (config: {
@@ -79,7 +79,7 @@ export const create_openai_adapter = (init: ProviderInit): ProviderAdapter => {
  * `max_completion_tokens` token-limit field, and strict usage (a hosted API
  * omitting usage is a broken response, not a local-runtime quirk). The
  * empty-api_key guard rides on the core, which throws the same
- * `openai provider requires a non-empty api_key` engine_config_error.
+ * engine_config_error as the ai_sdk branch, naming `OPENAI_API_KEY`.
  */
 const create_openai_native_adapter = (init: ProviderInit): NativeProviderAdapter => {
   const { api_key, base_url } = read_dialect_init(init, DEFAULT_BASE_URL)
@@ -107,10 +107,7 @@ const create_openai_native_adapter = (init: ProviderInit): NativeProviderAdapter
 const create_openai_ai_sdk_adapter = (init: ProviderInit): AiSdkProviderAdapter => {
   const api_key = typeof init.api_key === 'string' ? init.api_key : ''
   if (api_key.length === 0) {
-    throw new engine_config_error(
-      'openai provider requires a non-empty api_key',
-      'openai',
-    )
+    throw missing_config_error('openai', 'api_key', 'process.env.OPENAI_API_KEY')
   }
   const base_url = typeof init.base_url === 'string' ? init.base_url : undefined
   const organization = typeof init['organization'] === 'string' ? init['organization'] : undefined

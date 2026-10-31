@@ -15,6 +15,7 @@
 import type { EffortLevel, ProviderInit } from '../types.js'
 import {
   load_optional_peer,
+  missing_config_error,
   normalize_local_usage,
   resolve_transport,
   type AiSdkProviderAdapter,
@@ -23,7 +24,6 @@ import {
   type ProviderCapability,
 } from './types.js'
 import { create_ollama_native_adapter } from './ollama_native.js'
-import { engine_config_error } from '../errors.js'
 
 type OllamaSdk = {
   createOllama: (config: { baseURL?: string }) => (model_id: string) => unknown
@@ -74,10 +74,7 @@ export const create_ollama_adapter = (init: ProviderInit): ProviderAdapter => {
 const create_ollama_ai_sdk_adapter = (init: ProviderInit): AiSdkProviderAdapter => {
   const base_url = typeof init.base_url === 'string' ? init.base_url : ''
   if (base_url.length === 0) {
-    throw new engine_config_error(
-      'ollama provider requires a non-empty base_url',
-      'ollama',
-    )
+    throw missing_config_error('ollama', 'base_url', 'http://localhost:11434')
   }
 
   return {

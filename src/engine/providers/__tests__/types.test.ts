@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { default_normalize_usage, load_optional_peer, missing_peer_error } from '../types.js'
+import { engine_config_error } from '../../errors.js'
+import {
+  default_normalize_usage,
+  load_optional_peer,
+  missing_config_error,
+  missing_peer_error,
+} from '../types.js'
 
 describe('default_normalize_usage', () => {
   it('returns zero-only usage when raw is undefined', () => {
@@ -52,6 +58,17 @@ describe('load_optional_peer', () => {
       expect(message).toContain('@repo/definitely-not-a-real-package')
       expect(message).toContain('missing peer dependency')
     }
+  })
+})
+
+describe('missing_config_error', () => {
+  it('names the key to pass and where its value usually comes from, tagged with the provider', () => {
+    const err = missing_config_error('acme', 'api_key', 'process.env.ACME_API_KEY')
+    expect(err).toBeInstanceOf(engine_config_error)
+    expect(err.message).toBe(
+      'acme provider requires a non-empty api_key: pass providers.acme.api_key to create_engine, usually process.env.ACME_API_KEY',
+    )
+    expect(err.provider).toBe('acme')
   })
 })
 

@@ -1520,7 +1520,7 @@ describe('create_ollama_native_adapter setup (mutation hardening)', () => {
       err = e
     }
     expect(err).toBeInstanceOf(engine_config_error)
-    expect((err as Error).message).toBe('ollama provider requires a non-empty base_url')
+    expect((err as Error).message).toBe('ollama provider requires a non-empty base_url: pass providers.ollama.base_url to create_engine, usually http://localhost:11434')
     expect((err as engine_config_error).provider).toBe('ollama')
   })
 

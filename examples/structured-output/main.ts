@@ -25,8 +25,8 @@ import {
 
 const is_main = import.meta.url === `file://${process.argv[1] ?? ''}`
 
-// No key guard here: create_engine itself rejects an empty api_key with
-// `openrouter provider requires a non-empty api_key`.
+// No key guard here: create_engine itself rejects an empty api_key, with a
+// message that names providers.openrouter.api_key and OPENROUTER_API_KEY.
 const engine = create_engine({
   providers: { openrouter: { api_key: process.env['OPENROUTER_API_KEY'] ?? '' } },
   defaults: {

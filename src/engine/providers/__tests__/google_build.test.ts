@@ -38,7 +38,7 @@ describe('create_google_adapter config assembly', () => {
         err = e
       }
       expect(err).toBeInstanceOf(engine_config_error)
-      expect((err as engine_config_error).message).toBe('google provider requires a non-empty api_key')
+      expect((err as engine_config_error).message).toBe('google provider requires a non-empty api_key: pass providers.google.api_key to create_engine, usually process.env.GOOGLE_API_KEY')
       expect((err as engine_config_error).provider).toBe('google')
     }
   })

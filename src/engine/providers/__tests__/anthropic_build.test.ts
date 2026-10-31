@@ -40,7 +40,7 @@ describe('create_anthropic_adapter config assembly', () => {
       }
       expect(err).toBeInstanceOf(engine_config_error)
       expect((err as engine_config_error).message).toBe(
-        'anthropic provider requires a non-empty api_key',
+        'anthropic provider requires a non-empty api_key: pass providers.anthropic.api_key to create_engine, usually process.env.ANTHROPIC_API_KEY',
       )
       expect((err as engine_config_error).provider).toBe('anthropic')
     }

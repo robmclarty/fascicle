@@ -1484,10 +1484,15 @@ describe('parse_chat_completion (mutation hardening)', () => {
 })
 
 describe('create_openai_compatible_adapter error mapping (mutation hardening)', () => {
-  it('names the non-empty api_key requirement in the config error', () => {
+  it('names the non-empty api_key requirement in the config error, and the env var the dialect usually reads', () => {
     expect(() =>
       create_openai_compatible_adapter(make_dialect({ auth: { kind: 'bearer', api_key: '' } })),
-    ).toThrow(/non-empty api_key/)
+    ).toThrow(
+      new engine_config_error(
+        'openai provider requires a non-empty api_key: pass providers.openai.api_key to create_engine, usually process.env.OPENAI_API_KEY',
+        'openai',
+      ),
+    )
   })
 
   it('trims every trailing slash from base_url, not just the last one', async () => {

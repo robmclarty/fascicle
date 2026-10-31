@@ -2107,14 +2107,14 @@ describe('create_anthropic_native_adapter config', () => {
   it('throws engine_config_error with exact message and provider on an empty api_key', () => {
     const err = capture(() => create_anthropic_native_adapter({ api_key: '' }))
     expect(err).toBeInstanceOf(engine_config_error)
-    expect((err as Error).message).toBe('anthropic provider requires a non-empty api_key')
+    expect((err as Error).message).toBe('anthropic provider requires a non-empty api_key: pass providers.anthropic.api_key to create_engine, usually process.env.ANTHROPIC_API_KEY')
     expect((err as engine_config_error).provider).toBe('anthropic')
   })
 
   it('throws engine_config_error when api_key is absent (non-string coerces to empty)', () => {
     const err = capture(() => create_anthropic_native_adapter({}))
     expect(err).toBeInstanceOf(engine_config_error)
-    expect((err as Error).message).toBe('anthropic provider requires a non-empty api_key')
+    expect((err as Error).message).toBe('anthropic provider requires a non-empty api_key: pass providers.anthropic.api_key to create_engine, usually process.env.ANTHROPIC_API_KEY')
   })
 
   it('falls back to the default base_url when the override is an empty string', async () => {

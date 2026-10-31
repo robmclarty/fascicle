@@ -16,6 +16,7 @@
 import type { EffortLevel, ProviderInit } from '../types.js'
 import {
   load_optional_peer,
+  missing_config_error,
   normalize_local_usage,
   resolve_transport,
   type AiSdkProviderAdapter,
@@ -28,7 +29,6 @@ import {
   create_openai_compatible_adapter,
   type OpenAICompatibleDialect,
 } from './openai_compatible_native.js'
-import { engine_config_error } from '../errors.js'
 
 type OpenaiCompatibleSdk = {
   createOpenAICompatible: (config: {
@@ -86,10 +86,7 @@ export const create_lmstudio_adapter = (init: ProviderInit): ProviderAdapter => 
 const create_lmstudio_native_adapter = (init: ProviderInit): NativeProviderAdapter => {
   const base_url = typeof init.base_url === 'string' ? init.base_url : ''
   if (base_url.length === 0) {
-    throw new engine_config_error(
-      'lmstudio provider requires a non-empty base_url',
-      'lmstudio',
-    )
+    throw missing_config_error('lmstudio', 'base_url', 'http://localhost:1234/v1')
   }
   const dialect: OpenAICompatibleDialect = {
     name: 'lmstudio',
@@ -111,10 +108,7 @@ const create_lmstudio_native_adapter = (init: ProviderInit): NativeProviderAdapt
 const create_lmstudio_ai_sdk_adapter = (init: ProviderInit): AiSdkProviderAdapter => {
   const base_url = typeof init.base_url === 'string' ? init.base_url : ''
   if (base_url.length === 0) {
-    throw new engine_config_error(
-      'lmstudio provider requires a non-empty base_url',
-      'lmstudio',
-    )
+    throw missing_config_error('lmstudio', 'base_url', 'http://localhost:1234/v1')
   }
 
   return {

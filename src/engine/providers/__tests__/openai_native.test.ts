@@ -133,6 +133,12 @@ describe('transport dispatch', () => {
     expect(() => create_openai_adapter({ api_key: '', transport: 'native' })).toThrow(
       engine_config_error,
     )
+    expect(() => create_openai_adapter({ api_key: '', transport: 'native' })).toThrow(
+      new engine_config_error(
+        'openai provider requires a non-empty api_key: pass providers.openai.api_key to create_engine, usually process.env.OPENAI_API_KEY',
+        'openai',
+      ),
+    )
   })
 })
 

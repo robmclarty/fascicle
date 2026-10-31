@@ -140,6 +140,12 @@ describe('transport dispatch', () => {
     expect(() => create_openrouter_adapter({ api_key: '', transport: 'native' })).toThrow(
       engine_config_error,
     )
+    expect(() => create_openrouter_adapter({ api_key: '', transport: 'native' })).toThrow(
+      new engine_config_error(
+        'openrouter provider requires a non-empty api_key: pass providers.openrouter.api_key to create_engine, usually process.env.OPENROUTER_API_KEY',
+        'openrouter',
+      ),
+    )
   })
 })
 

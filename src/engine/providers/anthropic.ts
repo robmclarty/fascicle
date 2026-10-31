@@ -14,6 +14,7 @@ import type { CacheSetting, ProviderInit, UsageTotals } from '../types.js'
 import {
   default_normalize_usage,
   load_optional_peer,
+  missing_config_error,
   resolve_transport,
   translate_effort_to_sdk_reasoning,
   type AiSdkProviderAdapter,
@@ -22,7 +23,6 @@ import {
   type RawProviderUsage,
 } from './types.js'
 import { create_anthropic_native_adapter, read_one_hour_writes } from './anthropic_native.js'
-import { engine_config_error } from '../errors.js'
 
 type AnthropicSdk = {
   createAnthropic: (config: {
@@ -112,10 +112,7 @@ export const create_anthropic_adapter = (init: ProviderInit): ProviderAdapter =>
 const create_anthropic_ai_sdk_adapter = (init: ProviderInit): AiSdkProviderAdapter => {
   const api_key = typeof init.api_key === 'string' ? init.api_key : ''
   if (api_key.length === 0) {
-    throw new engine_config_error(
-      'anthropic provider requires a non-empty api_key',
-      'anthropic',
-    )
+    throw missing_config_error('anthropic', 'api_key', 'process.env.ANTHROPIC_API_KEY')
   }
   const base_url = typeof init.base_url === 'string' ? init.base_url : undefined
 

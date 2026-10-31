@@ -38,7 +38,7 @@ describe('create_openai_adapter config assembly', () => {
         err = e
       }
       expect(err).toBeInstanceOf(engine_config_error)
-      expect((err as engine_config_error).message).toBe('openai provider requires a non-empty api_key')
+      expect((err as engine_config_error).message).toBe('openai provider requires a non-empty api_key: pass providers.openai.api_key to create_engine, usually process.env.OPENAI_API_KEY')
       expect((err as engine_config_error).provider).toBe('openai')
     }
   })

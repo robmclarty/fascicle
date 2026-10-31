@@ -154,7 +154,7 @@ describe('transport dispatch', () => {
     }
     expect(thrown).toBeInstanceOf(engine_config_error)
     expect(thrown).toMatchObject({
-      message: 'lmstudio provider requires a non-empty base_url',
+      message: 'lmstudio provider requires a non-empty base_url: pass providers.lmstudio.base_url to create_engine, usually http://localhost:1234/v1',
       provider: 'lmstudio',
     })
   })

@@ -34,13 +34,16 @@ import type {
   UserContentPart,
 } from '../types.js'
 import {
-  engine_config_error,
   provider_capability_error,
   provider_error,
 } from '../errors.js'
 import { consume_framed_stream, invoke_http_turn, network_failure } from './native_shared.js'
 import { create_sse_decoder } from './sse_native.js'
-import type { NativeProviderAdapter, ProviderCapability } from './types.js'
+import {
+  missing_config_error,
+  type NativeProviderAdapter,
+  type ProviderCapability,
+} from './types.js'
 
 /**
  * Effort level to the room native adds to its max_tokens default for
@@ -882,10 +885,7 @@ export const create_anthropic_native_adapter = (
 ): NativeProviderAdapter => {
   const api_key = typeof init.api_key === 'string' ? init.api_key : ''
   if (api_key.length === 0) {
-    throw new engine_config_error(
-      'anthropic provider requires a non-empty api_key',
-      'anthropic',
-    )
+    throw missing_config_error('anthropic', 'api_key', 'process.env.ANTHROPIC_API_KEY')
   }
   const base_url = (
     typeof init.base_url === 'string' && init.base_url.length > 0

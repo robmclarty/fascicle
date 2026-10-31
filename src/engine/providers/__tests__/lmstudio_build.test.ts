@@ -36,7 +36,7 @@ describe('create_lmstudio_adapter config assembly', () => {
         err = e
       }
       expect(err).toBeInstanceOf(engine_config_error)
-      expect((err as engine_config_error).message).toBe('lmstudio provider requires a non-empty base_url')
+      expect((err as engine_config_error).message).toBe('lmstudio provider requires a non-empty base_url: pass providers.lmstudio.base_url to create_engine, usually http://localhost:1234/v1')
       expect((err as engine_config_error).provider).toBe('lmstudio')
     }
   })

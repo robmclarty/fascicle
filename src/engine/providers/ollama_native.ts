@@ -40,7 +40,6 @@ import type {
   UserContentPart,
 } from '../types.js'
 import {
-  engine_config_error,
   provider_capability_error,
   provider_error,
 } from '../errors.js'
@@ -54,7 +53,11 @@ import {
   split_assistant_parts,
 } from './native_shared.js'
 import { to_chat_tools } from './openai_compatible_native.js'
-import type { NativeProviderAdapter, ProviderCapability } from './types.js'
+import {
+  missing_config_error,
+  type NativeProviderAdapter,
+  type ProviderCapability,
+} from './types.js'
 import type { ProviderInit } from '../types.js'
 
 type OllamaToolCall = {
@@ -452,7 +455,7 @@ const SUPPORTED: ReadonlySet<ProviderCapability> = new Set([
 export const create_ollama_native_adapter = (init: ProviderInit): NativeProviderAdapter => {
   const raw_base_url = typeof init.base_url === 'string' ? init.base_url : ''
   if (raw_base_url.length === 0) {
-    throw new engine_config_error('ollama provider requires a non-empty base_url', 'ollama')
+    throw missing_config_error('ollama', 'base_url', 'http://localhost:11434')
   }
   // base_url is the daemon root (http://localhost:11434), the same value the
   // ai_sdk transport takes, so flipping transports never means re-pointing it.
