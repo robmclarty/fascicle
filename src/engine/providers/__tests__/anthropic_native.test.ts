@@ -1366,7 +1366,9 @@ describe('streaming invoke_turn', () => {
     const adapter = create_anthropic_native_adapter({ api_key: 'sk-test' })
     await expect(
       adapter.invoke_turn(make_req({ stream: true, dispatch_chunk: async () => {} })),
-    ).rejects.toThrow(/missing its block index/)
+    ).rejects.toThrow(
+      /^anthropic native: stream event is missing its block index: check that base_url points at the anthropic API$/,
+    )
   })
 
   it('maps a mid-stream overloaded_error to a 529 shape the classifier retries', async () => {
@@ -1595,7 +1597,7 @@ describe('streaming aggregator boundaries', () => {
         .invoke_turn(make_req({ stream: true, dispatch_chunk: async () => {} }))
         .catch((e: unknown) => e)
       expect(err).toBeInstanceOf(provider_error)
-      expect((err as Error).message).toBe('anthropic native: stream event is not valid JSON')
+      expect((err as Error).message).toBe('anthropic native: stream event is not valid JSON: check that base_url points at the anthropic API')
     })
 
     it('skips a null event and still drains the rest of the stream', async () => {

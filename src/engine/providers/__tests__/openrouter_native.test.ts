@@ -186,8 +186,9 @@ describe('openrouter native dialect wiring', () => {
 
   it('treats a response without usage as broken (strict usage)', async () => {
     stub_fetch(json_response({ ...TEXT_FIXTURE, usage: undefined }))
-    await expect(native_adapter().invoke_turn(make_req())).rejects.toThrow(
-      'openrouter native: response is missing its usage object',
+    const err: unknown = await native_adapter().invoke_turn(make_req()).catch((e: unknown) => e)
+    expect((err as Error).message).toBe(
+      'openrouter native: response is missing its usage object: check that base_url points at the openrouter API, or use the lmstudio provider for a self-hosted server',
     )
   })
 

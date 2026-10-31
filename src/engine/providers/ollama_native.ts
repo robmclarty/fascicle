@@ -50,6 +50,7 @@ import {
   network_failure,
   map_messages_by_role,
   parse_tool_call_arguments,
+  protocol_error,
   split_assistant_parts,
 } from './native_shared.js'
 import { to_chat_tools } from './openai_compatible_native.js'
@@ -266,11 +267,11 @@ function parse_ollama_tool_call(
  */
 export function parse_ollama_chat(payload: unknown, step_index: number): TurnResult {
   if (payload === null || typeof payload !== 'object') {
-    throw new provider_error('ollama native: response payload is not a JSON object')
+    throw protocol_error('ollama', 'response payload is not a JSON object')
   }
   const message: unknown = Reflect.get(payload, 'message')
   if (message === null || message === undefined || typeof message !== 'object') {
-    throw new provider_error('ollama native: response has no message')
+    throw protocol_error('ollama', 'response has no message')
   }
   const content: unknown = Reflect.get(message, 'content')
   const raw_tool_calls: unknown = Reflect.get(message, 'tool_calls')
@@ -367,7 +368,7 @@ function create_ollama_stream_aggregator(
       try {
         frame = JSON.parse(line)
       } catch {
-        throw new provider_error('ollama native: stream frame is not valid JSON')
+        throw protocol_error('ollama', 'stream frame is not valid JSON')
       }
       if (frame === null || typeof frame !== 'object') return
       const error: unknown = Reflect.get(frame, 'error')

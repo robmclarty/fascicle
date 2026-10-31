@@ -289,6 +289,19 @@ async function read_json_body(
 }
 
 /**
+ * The error for a response that isn't the provider's protocol: what was
+ * wrong with it, then what to check, since a body of the wrong shape most
+ * often comes from a `base_url` that points somewhere else. `also` names the
+ * other fix when there is one.
+ */
+export function protocol_error(provider: string, what: string, also?: string): provider_error {
+  const other = also === undefined ? '' : `, or ${also}`
+  return new provider_error(
+    `${provider} native: ${what}: check that base_url points at the ${provider} API${other}`,
+  )
+}
+
+/**
  * Run one native turn over HTTP: POST the dialect's body, map a non-2xx to
  * the retry stack's shapes, and hand the response to the dialect's stream or
  * JSON consumer. A streamed request whose reply doesn't arrive as the

@@ -932,7 +932,7 @@ describe('streaming invoke_turn', () => {
     })
     const err: unknown = await invoke_streamed([], response).catch((e: unknown) => e)
     expect(err).toBeInstanceOf(provider_error)
-    expect((err as Error).message).toBe('ollama native: stream frame is not valid JSON')
+    expect((err as Error).message).toBe('ollama native: stream frame is not valid JSON: check that base_url points at the ollama API')
   })
 })
 
@@ -1208,7 +1208,7 @@ describe('parse_ollama_chat (mutation hardening)', () => {
       err = e
     }
     expect(err).toBeInstanceOf(provider_error)
-    expect((err as Error).message).toBe('ollama native: response payload is not a JSON object')
+    expect((err as Error).message).toBe('ollama native: response payload is not a JSON object: check that base_url points at the ollama API')
   })
 
   it('throws the no-message provider_error for a null message', () => {
@@ -1219,7 +1219,7 @@ describe('parse_ollama_chat (mutation hardening)', () => {
       err = e
     }
     expect(err).toBeInstanceOf(provider_error)
-    expect((err as Error).message).toBe('ollama native: response has no message')
+    expect((err as Error).message).toBe('ollama native: response has no message: check that base_url points at the ollama API')
   })
 
   it('throws the no-message provider_error for a non-object message', () => {

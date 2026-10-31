@@ -37,7 +37,12 @@ import {
   provider_capability_error,
   provider_error,
 } from '../errors.js'
-import { consume_framed_stream, invoke_http_turn, network_failure } from './native_shared.js'
+import {
+  consume_framed_stream,
+  invoke_http_turn,
+  network_failure,
+  protocol_error,
+} from './native_shared.js'
 import { create_sse_decoder } from './sse_native.js'
 import {
   missing_config_error,
@@ -509,7 +514,7 @@ function carries_provider_data(parts: ReadonlyArray<AssistantContentPart>): bool
  */
 export function parse_messages_response(payload: unknown): TurnResult {
   if (payload === null || typeof payload !== 'object') {
-    throw new provider_error('anthropic native: response payload is not a JSON object')
+    throw protocol_error('anthropic', 'response payload is not a JSON object')
   }
   const { text_parts, tool_calls, parts } = collect_content_blocks(Reflect.get(payload, 'content'))
   const stop_reason: unknown = Reflect.get(payload, 'stop_reason')
@@ -557,7 +562,7 @@ function stream_event_error(event: object): Error {
 function read_block_index(event: object): number {
   const index: unknown = Reflect.get(event, 'index')
   if (typeof index !== 'number') {
-    throw new provider_error('anthropic native: stream event is missing its block index')
+    throw protocol_error('anthropic', 'stream event is missing its block index')
   }
   return index
 }
@@ -574,7 +579,7 @@ function parse_stream_event(data: string): unknown {
   try {
     return JSON.parse(data)
   } catch {
-    throw new provider_error('anthropic native: stream event is not valid JSON')
+    throw protocol_error('anthropic', 'stream event is not valid JSON')
   }
 }
 

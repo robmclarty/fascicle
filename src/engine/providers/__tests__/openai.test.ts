@@ -130,8 +130,9 @@ describe('openai transport selection and native wiring', () => {
   })
 
   it('treats a native response without usage as broken (strict usage)', async () => {
-    await expect(native_turn({}, { ...OK, usage: undefined })).rejects.toThrow(
-      'openai native: response is missing its usage object',
+    const err: unknown = await native_turn({}, { ...OK, usage: undefined }).catch((e: unknown) => e)
+    expect((err as Error).message).toBe(
+      'openai native: response is missing its usage object: check that base_url points at the openai API, or use the lmstudio provider for a self-hosted server',
     )
   })
 })

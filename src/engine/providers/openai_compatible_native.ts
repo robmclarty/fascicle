@@ -45,6 +45,7 @@ import {
   network_failure,
   map_messages_by_role,
   parse_tool_call_arguments,
+  protocol_error,
   split_assistant_parts,
 } from './native_shared.js'
 import { create_sse_decoder } from './sse_native.js'
@@ -380,8 +381,10 @@ function read_prompt_details(raw: object, totals: UsageTotals): void {
 export function map_chat_usage(raw: unknown, dialect: OpenAICompatibleDialect): UsageTotals {
   if (raw === null || typeof raw !== 'object') {
     if (dialect.tolerant_usage) return { input_tokens: 0, output_tokens: 0 }
-    throw new provider_error(
-      `${dialect.name} native: response is missing its usage object`,
+    throw protocol_error(
+      dialect.name,
+      'response is missing its usage object',
+      'use the lmstudio provider for a self-hosted server',
     )
   }
   const totals: UsageTotals = {
@@ -461,18 +464,16 @@ export function parse_chat_completion(
   dialect: OpenAICompatibleDialect,
 ): TurnResult {
   if (payload === null || typeof payload !== 'object') {
-    throw new provider_error(
-      `${dialect.name} native: response payload is not a JSON object`,
-    )
+    throw protocol_error(dialect.name, 'response payload is not a JSON object')
   }
   const choices: unknown = Reflect.get(payload, 'choices')
   const choice: unknown = Array.isArray(choices) ? choices[0] : undefined
   if (choice === null || choice === undefined || typeof choice !== 'object') {
-    throw new provider_error(`${dialect.name} native: response has no choices`)
+    throw protocol_error(dialect.name, 'response has no choices')
   }
   const message: unknown = Reflect.get(choice, 'message')
   if (message === null || typeof message !== 'object') {
-    throw new provider_error(`${dialect.name} native: response choice has no message`)
+    throw protocol_error(dialect.name, 'response choice has no message')
   }
   const content: unknown = Reflect.get(message, 'content')
   const raw_tool_calls: unknown = Reflect.get(message, 'tool_calls')
@@ -758,7 +759,7 @@ export function create_chat_stream_aggregator(
       try {
         frame = JSON.parse(data)
       } catch {
-        throw new provider_error(`${dialect.name} native: stream frame is not valid JSON`)
+        throw protocol_error(dialect.name, 'stream frame is not valid JSON')
       }
       if (frame === null || typeof frame !== 'object') return
       // Read before the choice, which repeats the failure as

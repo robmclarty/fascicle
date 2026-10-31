@@ -19,6 +19,7 @@ import {
   is_own_reasoning,
   network_detail,
   non_retryable_status_error,
+  protocol_error,
   split_assistant_parts,
   unreachable_message,
 } from '../native_shared.js'
@@ -183,6 +184,18 @@ describe('unreachable_message', () => {
     )
     expect(unreachable_message('ollama', 'http://localhost:11434/api/chat', 'fetch failed')).toBe(
       'ollama could not be reached at http://localhost:11434/api/chat: fetch failed: check base_url, and that the server is running (ollama serve)',
+    )
+  })
+})
+
+describe('protocol_error', () => {
+  it('says what was wrong and to check base_url, with the other fix when there is one', () => {
+    const err = protocol_error('openai', 'response has no choices')
+    expect(err).toBeInstanceOf(provider_error)
+    expect(err.message).toBe('openai native: response has no choices: check that base_url points at the openai API')
+    expect(err.status).toBeUndefined()
+    expect(protocol_error('openrouter', 'response is missing its usage object', 'use the lmstudio provider').message).toBe(
+      'openrouter native: response is missing its usage object: check that base_url points at the openrouter API, or use the lmstudio provider',
     )
   })
 })
