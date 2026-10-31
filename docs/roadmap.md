@@ -216,12 +216,6 @@ likely to bite you first.
   version manager, isn't there when `bwrap` goes to run it, and the call fails
   with `binary_not_found`. Your home directory isn't bound either, so an
   `auth_mode: 'oauth'` run couldn't reach its login even with the binary there.
-- **An Ollama failure on the `ai_sdk` transport isn't retried or named.**
-  `ai-sdk-ollama` keeps an Ollama error's status on its `cause` and the network
-  code a level below that, so on the `ai_sdk` transport an Ollama 429, a 5xx, or
-  a daemon that isn't running fails at once with the package's own message. A
-  404 for a model that isn't pulled reads its status from there and says to run
-  `ollama pull`, and the native transport retries and names all three.
 - **Some provider errors still don't say what to do.** The ones that a new user
   meets first name the fix now, but a few later ones name only what went wrong:
   a turn that outran `turn_timeout_ms`, a stream cut off after `on_chunk` saw

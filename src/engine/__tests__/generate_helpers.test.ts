@@ -212,6 +212,25 @@ describe('classify_provider_error', () => {
     }
   })
 
+  it('finds a network code anywhere down the chain of causes', () => {
+    // ai-sdk-ollama: OllamaError > fetch's TypeError > the error with the code.
+    const every_address = Object.assign(new AggregateError([], ''), { code: 'ECONNREFUSED' })
+    const ollama_error = new Error('fetch failed', { cause: new TypeError('fetch failed', { cause: every_address }) })
+    expect(classify_provider_error(ollama_error)).toStrictEqual({
+      kind: 'network',
+      message: 'fetch failed',
+      cause: ollama_error,
+    })
+    const deeper = new Error('a', { cause: new Error('b', { cause: new Error('c', { cause: every_address }) }) })
+    expect(classify_provider_error(deeper)).toMatchObject({ kind: 'network' })
+  })
+
+  it('stops at a chain of causes that leads back to itself', () => {
+    const looped = new Error('loop')
+    Object.defineProperty(looped, 'cause', { value: new Error('back', { cause: looped }) })
+    expect(classify_provider_error(looped)).toBe(looped)
+  })
+
   it('omits message for a network error that has none', () => {
     const err = { code: 'ECONNRESET' }
     expect(classify_provider_error(err)).toStrictEqual({ kind: 'network', cause: err })
@@ -360,20 +379,11 @@ describe('classify_ai_sdk_error', () => {
     )
   })
 
-  it("reads ai-sdk-ollama's status off the ollama client's ResponseError, its cause", () => {
+  it('reads no status off a cause, which the adapter that knows the shape lifts', () => {
+    // ai-sdk-ollama keeps the status there; the ollama adapter gives the error a statusCode.
     const response_error = Object.assign(new Error("model 'nope' not found"), { status_code: 404 })
     const err = new Error("model 'nope' not found", { cause: response_error })
-    const out = classify_ai_sdk_error('ollama')(err)
-    expect(out).toBeInstanceOf(provider_error)
-    expect(out).toMatchObject({
-      message: "ollama API error 404: model 'nope' not found: run ollama pull nope",
-      status: 404,
-      body: undefined,
-      cause: err,
-    })
-    // A top-level status wins over the cause's.
-    const both = Object.assign(new Error('x', { cause: response_error }), { statusCode: 400 })
-    expect(classify_ai_sdk_error('ollama')(both)).toMatchObject({ status: 400 })
+    expect(classify_ai_sdk_error('ollama')(err)).toBe(err)
   })
 
   it('passes through anything already typed, and anything without a numeric status', () => {

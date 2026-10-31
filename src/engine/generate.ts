@@ -276,12 +276,30 @@ function has_network_code(value: unknown): boolean {
 }
 
 /**
- * Build the `network` classification when the error or its `cause` carries a
- * known network error code, or `undefined` when neither does. The AI SDK
- * wraps a failed fetch in an `APICallError` whose `cause` holds undici's code.
+ * True when `err`, or any error down its chain of `cause`s, carries a known
+ * network error code. The AI SDK wraps a failed fetch in an `APICallError`
+ * whose `cause` holds undici's code, and `ai-sdk-ollama` wraps fetch's own
+ * `TypeError`, whose `cause` holds it, one level further down. A chain that
+ * leads back to an error already seen ends there.
+ */
+function has_network_code_in_chain(err: object): boolean {
+  const seen = new Set<object>()
+  let value: unknown = err
+  while (value !== null && typeof value === 'object' && !seen.has(value)) {
+    if (has_network_code(value)) return true
+    seen.add(value)
+    value = Reflect.get(value, 'cause')
+  }
+  return false
+}
+
+/**
+ * Build the `network` classification when the error or an error down its
+ * chain of `cause`s carries a known network error code, or `undefined` when
+ * none does.
  */
 function classify_network_error(err: object): Record<string, unknown> | undefined {
-  if (!has_network_code(err) && !has_network_code(Reflect.get(err, 'cause'))) return undefined
+  if (!has_network_code_in_chain(err)) return undefined
   return with_error_source(err, { kind: 'network' })
 }
 
@@ -295,8 +313,8 @@ function classify_network_error(err: object): Record<string, unknown> | undefine
  * and the body off `responseBody` or `body` when present, and a known network
  * error code (`ECONNRESET`, `ETIMEDOUT`,
  * `ENOTFOUND`, `ECONNREFUSED`, or undici's `UND_ERR_HEADERS_TIMEOUT`,
- * `UND_ERR_BODY_TIMEOUT`, and `UND_ERR_SOCKET`), on the error or on its
- * `cause`, becomes `network`. Anything else passes through unclassified,
+ * `UND_ERR_BODY_TIMEOUT`, and `UND_ERR_SOCKET`), on the error or anywhere
+ * down its chain of `cause`s, becomes `network`. Anything else passes through unclassified,
  * which `retry_with_policy` treats as non-retryable. The ai_sdk transport
  * runs it inside classify_ai_sdk_error, which also types any other 4xx.
  */
@@ -328,18 +346,6 @@ function has_kind(err: object): boolean {
 }
 
 /**
- * The status that `ai-sdk-ollama` keeps on its error's `cause`. It wraps the
- * `ResponseError` of the `ollama` client, which carries the status as
- * `status_code`, and sets no `statusCode` of its own.
- */
-function cause_status_code(err: object): number | undefined {
-  const cause: unknown = Reflect.get(err, 'cause')
-  if (cause === null || typeof cause !== 'object') return undefined
-  const status: unknown = Reflect.get(cause, 'status_code')
-  return typeof status === 'number' ? status : undefined
-}
-
-/**
  * The typed error for an AI SDK failure whose status says a retry won't
  * help, any 4xx but the 429 that classify_provider_error claims first, or
  * `undefined` when the failure carries no such status. It's the error the
@@ -348,7 +354,7 @@ function cause_status_code(err: object): number | undefined {
  * attached one.
  */
 function classify_client_status(provider: string, err: object): Error | undefined {
-  const status = resolve_error_status(err) ?? cause_status_code(err)
+  const status = resolve_error_status(err)
   if (status === undefined || status < 400 || status > 499) return undefined
   return non_retryable_status_error(provider, status, provider_message(err) ?? '(no detail)', {
     body: response_body(err),

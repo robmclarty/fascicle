@@ -163,10 +163,8 @@ reach it. The URL is your `base_url` with the provider's path on the end, and
 the message leaves out any credentials or query in it. A connection that drops
 after the response began says `connection dropped while reading the response`
 instead, since the request reached the server. Releases through 0.17.4 say
-only `ollama native: network failure: fetch failed`. On the `ai_sdk` transport,
-`ollama` still fails with `fetch failed` alone, and without a retry, because
-its package keeps the code where the engine doesn't read it, so set
-`transport: 'native'` to get this message.
+only `ollama native: network failure: fetch failed` on the native transport,
+and `fetch failed` on the `ai_sdk` one, without a retry.
 
 ## `claude_cli` Problems
 

@@ -478,7 +478,7 @@ No default pricing ships for Bedrock (ids are region- and profile-specific). Add
 pnpm add ai ai-sdk-ollama
 ```
 
-Local only. Requires Ollama running and the model pulled. A model that isn't pulled fails with a 404 whose message says `run ollama pull <model>`, on either transport. A daemon that isn't running fails on the native transport, after its retries, with a message that names the URL and says to run `ollama serve`. On this transport it fails at once with the package's own `fetch failed`, since `ai-sdk-ollama` keeps the network code where the engine's retry doesn't look (the [roadmap](./roadmap.md#known-issues) tracks this).
+Local only. Requires Ollama running and the model pulled. A model that isn't pulled fails with a 404 whose message says `run ollama pull <model>`, and a daemon that isn't running fails, after its retries, with a message that names the URL and says to run `ollama serve`, on either transport.
 
 ```ts
 const engine = create_engine({
