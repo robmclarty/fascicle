@@ -93,7 +93,7 @@ await engine.generate({
 
 ### Auth Failures
 
-If stderr matches any of the frozen `CLI_AUTH_ERROR_PATTERNS` (`authentication`, `unauthorized`, `forbidden`, `oauth token has expired`, `invalid_api_key`), the adapter throws `provider_auth_error` with `refresh_command: 'claude auth login'` so your harness can tell the operator what to do. If you haven't logged in, the CLI leaves stderr empty and says so in its stream instead, as an assistant message with the `authentication_failed` error code, and you get the same error in the CLI's own words: `claude CLI reported an auth failure: Not logged in · Please run /login`. When any other run fails with nothing on stderr, you get the text of the CLI's error result in the message.
+If stderr matches any of the frozen `CLI_AUTH_ERROR_PATTERNS` (`authentication`, `unauthorized`, `forbidden`, `oauth token has expired`, `invalid_api_key`), the adapter throws `provider_auth_error` with `refresh_command: 'claude auth login'` so your harness can tell the operator what to do, and the message ends with the same command. If you haven't logged in, the CLI leaves stderr empty and says so in its stream instead, as an assistant message with the `authentication_failed` error code, and you get the same error in the CLI's own words: `claude CLI reported an auth failure: Not logged in · Please run /login: run claude auth login`. When any other run fails with nothing on stderr, you get the text of the CLI's error result in the message.
 
 ## Per-Call Options
 
@@ -200,7 +200,7 @@ Two deadlines, both reset on forward progress:
 - `startup_timeout_ms` (default 120s) — time from spawn to the first parseable chunk.
 - `stall_timeout_ms` (default 300s) — time between chunks.
 
-Whichever one fires kills the subprocess and throws `claude_cli_error` with `reason: 'startup_timeout' | 'stall_timeout'`.
+Whichever one fires kills the subprocess and throws `claude_cli_error` with `reason: 'startup_timeout' | 'stall_timeout'`, and the message names the option to raise.
 
 ## Sandboxing
 

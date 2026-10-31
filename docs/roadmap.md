@@ -216,8 +216,18 @@ likely to bite you first.
   version manager, isn't there when `bwrap` goes to run it, and the call fails
   with `binary_not_found`. Your home directory isn't bound either, so an
   `auth_mode: 'oauth'` run couldn't reach its login even with the binary there.
-- **Some provider errors don't say what to do.** Many name what went wrong but
-  not the fix, such as the config key to set or the `base_url` to check.
+- **An Ollama failure on the `ai_sdk` transport isn't retried or named.**
+  `ai-sdk-ollama` keeps an Ollama error's status on its `cause` and the network
+  code a level below that, so on the `ai_sdk` transport an Ollama 429, a 5xx, or
+  a daemon that isn't running fails at once with the package's own message. A
+  404 for a model that isn't pulled reads its status from there and says to run
+  `ollama pull`, and the native transport retries and names all three.
+- **Some provider errors still don't say what to do.** The ones that a new user
+  meets first name the fix now, but a few later ones name only what went wrong:
+  a turn that outran `turn_timeout_ms`, a stream cut off after `on_chunk` saw
+  it, a capability error that a custom provider throws, the `claude_cli` exit,
+  sandbox, and missing-result messages, and some of `create_engine`'s config
+  messages.
 - **Housekeeping.** Engine code that only tests call (`normalize_chunk`), a
   schema-issue formatter that `fascicle/testing`
   repeats, a viewer test that runs before the build that it checks, tsdown

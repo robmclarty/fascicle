@@ -106,7 +106,7 @@ export const create_openrouter_adapter = (init: ProviderInit): ProviderAdapter =
  * the cost OpenRouter reports on every response, and caching only when the
  * call or the engine asks for it, since only Claude models take the field.
  * The empty-api_key guard rides on the core, which throws the same
- * `openrouter provider requires a non-empty api_key` engine_config_error.
+ * engine_config_error as the ai_sdk branch, naming `OPENROUTER_API_KEY`.
  */
 const create_openrouter_native_adapter = (init: ProviderInit): NativeProviderAdapter => {
   const { api_key, base_url } = read_dialect_init(init, DEFAULT_BASE_URL)

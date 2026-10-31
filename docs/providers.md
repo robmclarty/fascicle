@@ -267,7 +267,7 @@ Everything call-facing carries over, with the same provider name, the same prici
 - **No image input.** `image_input` is unsupported on the native transport in v1.
 - **Schema always rides the repair loop.** The native adapter doesn't claim `structured_output`, so your `schema` requests are satisfied by the engine's prompt + parse + repair path.
 - **`provider_options.openai` is raw wire format.** On the native transport, keys under `provider_options.openai` are Chat Completions fields exactly as OpenAI documents them (**snake_case**: `reasoning_effort`, `max_completion_tokens`, `top_p`, `stop`, `logprobs`, `response_format`, ...), shallow-merged last over the engine-computed body, so an explicit key beats every derived field (the effort-derived `reasoning_effort`, the token limit, sampling params). Keys do **not** port from the `ai_sdk` transport, which uses `@ai-sdk/openai`'s camelCase spellings: `reasoningEffort` there is `reasoning_effort` here, and the SDK's `maxOutputTokens` is `max_completion_tokens` on the wire. The merge is shallow and unreconciled: pass whole objects, and combinations that the API rejects are rejected by the API, not repaired by Fascicle.
-- **Retry belongs to the engine.** 429 and 5xx (each honoring `Retry-After`) and network failures, undici's timeout and socket codes included, are classified by the shared classifier and retried by the engine's policy, exactly as on `ai_sdk`. A 401 throws `provider_auth_error` without a retry.
+- **Retry belongs to the engine.** 429 and 5xx (each honoring `Retry-After`) and network failures, undici's timeout and socket codes included, are classified by the shared classifier and retried by the engine's policy, exactly as on `ai_sdk`. A 401 throws `provider_auth_error` without a retry, as it does on `ai_sdk`, and its message names the key to check.
 
 The same core powers any OpenAI-compatible server via `base_url` — see [the compat recipe](#openai-compatible-servers-the-compat-recipe).
 
@@ -345,7 +345,7 @@ Same provider name, pricing keys, usage fields, and streamed-equals-non-streamed
 - **Reasoning streams, and it goes back.** Each `reasoning_details` entry that OpenRouter sends streams its text to `on_chunk` as `reasoning` chunks and becomes a reasoning part, with the entry itself under `provider_options.openrouter.detail`. Inside a tool loop the next request carries the turn's entries back as `reasoning_details`, all of them, once, and in order, which is what keeps a Claude loop's thinking and Gemini 3's thought signatures from one step to the next. An encrypted entry has no text to stream, and it goes back all the same.
 - **The cost is the one OpenRouter reports.** Each step records what OpenRouter charged for it, with no pricing row needed (see [Cost Estimation](#cost-estimation)).
 - **Caching is opt-in, and it's meant for Claude.** OpenRouter takes Anthropic's top-level `cache_control` for a Claude model, wherever it routes the model, so a call that sets `cache: '5m'` or `'1h'` sends that field, and a call that sets none sends nothing. The engine reads no model id, so set `cache` on the calls that go to a Claude model, rather than as an engine default that would reach every model. See [Prompt Caching](#prompt-caching). The `ai_sdk` transport doesn't request a cache.
-- **Retry belongs to the engine** (429 / 5xx / network, with a 429's or a 5xx's `Retry-After` honored), identical to `ai_sdk`, and a 401 throws `provider_auth_error` without a retry. OpenRouter can report a failure inside a stream that has already begun, as a frame that carries an `error` object, and the core throws it with OpenRouter's message. A 429 or a 5xx code in that frame retries like the same HTTP status, unless a chunk has already reached your `on_chunk`, in which case the turn fails as a stream interruption.
+- **Retry belongs to the engine** (429 / 5xx / network, with a 429's or a 5xx's `Retry-After` honored), identical to `ai_sdk`, and a 401 throws `provider_auth_error` without a retry, with a message that names the key to check. OpenRouter can report a failure inside a stream that has already begun, as a frame that carries an `error` object, and the core throws it with OpenRouter's message. A 429 or a 5xx code in that frame retries like the same HTTP status, unless a chunk has already reached your `on_chunk`, in which case the turn fails as a stream interruption.
 
 ## `bedrock`
 
@@ -478,7 +478,7 @@ No default pricing ships for Bedrock (ids are region- and profile-specific). Add
 pnpm add ai ai-sdk-ollama
 ```
 
-Local only. Requires Ollama running and the model pulled.
+Local only. Requires Ollama running and the model pulled. A model that isn't pulled fails with a 404 whose message says `run ollama pull <model>`, on either transport. A daemon that isn't running fails on the native transport, after its retries, with a message that names the URL and says to run `ollama serve`. On this transport it fails at once with the package's own `fetch failed`, since `ai-sdk-ollama` keeps the network code where the engine's retry doesn't look (the [roadmap](./roadmap.md#known-issues) tracks this).
 
 ```ts
 const engine = create_engine({
@@ -583,7 +583,7 @@ The CLI resolves the bare tokens `opus`/`sonnet`/`haiku` to the latest itself, s
 - `provider` resolves in this order: per-call `provider`, else `defaults.provider`, else the sole configured provider. Nothing falls back beyond that. With several providers configured and neither a per-call `provider` nor a default, `generate` throws `provider_required_error` ("no provider specified: pass `provider` to generate() or set `defaults.provider`", naming the configured providers).
 - `model` resolves in this order: per-call `model`, else `defaults.model`, else a thrown `model_required_error`.
 
-The provider receives `model` as-is and rejects an unknown id itself (a 404 or validation error). A `provider` with no adapter registered on the engine throws `provider_not_configured_error`. (Exception: the `claude_cli` transport forwards `opus`/`sonnet`/`haiku` to the CLI, which resolves them to the latest.)
+The provider receives `model` as-is and rejects an unknown id itself (a 404 or validation error). A 404's message says to check the id against the provider's model list and that `base_url` points at its API, and a 400 passes on the provider's own reason. A `provider` with no adapter registered on the engine throws `provider_not_configured_error`. (Exception: the `claude_cli` transport forwards `opus`/`sonnet`/`haiku` to the CLI, which resolves them to the latest.)
 
 Need short names? Keep a plain `Record<string, string>` in your own code and resolve it before calling `generate` — Fascicle owns no model-name catalog.
 

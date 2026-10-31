@@ -70,6 +70,7 @@
     "Dockerhub",
     "ECONNREFUSED",
     "ENOENT",
+    "ENOTFOUND",
     "envrc",
     "fascicle",
     "esbuild",

@@ -110,7 +110,13 @@ state the input type when opening the chain, with `chain<Input>()`, or
 
 ## Provider Auth Failures (401 / 403)
 
-A configured provider rejected the credentials. Check the right environment
+A configured provider rejected the credentials. A 401 throws
+`provider_auth_error` on either transport, and its message names the key to
+check, as in `anthropic authentication failed (401): invalid x-api-key: check
+providers.anthropic.api_key`. A 403 is a `provider_error` that says the
+credentials lack access to the model or endpoint. Releases through 0.17.4 throw
+the AI SDK's own `APICallError` for both on the `ai_sdk` transport, and leave
+the fix out of the message on the native one. Check that the right environment
 variable is set and passed into the config:
 
 | Provider     | Credential                                                   |
@@ -121,6 +127,10 @@ variable is set and passed into the config:
 | `openrouter` | `OPENROUTER_API_KEY`                                         |
 | `bedrock`    | `region` (required) plus an AWS credential path              |
 | `ollama` / `lmstudio` | no key; a reachable local `base_url`               |
+
+Neither `ollama` nor `lmstudio` sends credentials, so a 401 from either comes
+from something in front of the server, such as a proxy, and its message says
+to check that `base_url` reaches the server without one.
 
 `bedrock` throws `engine_config_error` if `region` is missing entirely. The
 adapter never reads `AWS_REGION` itself, so pass it in from your config
@@ -134,6 +144,30 @@ credentials error that looks like a missing IAM grant. Set
 `use_credential_chain: true` (and install `@aws-sdk/credential-providers`) to
 use the profile. For the per-provider notes, read [providers.md](./providers.md).
 
+## A Provider Could Not Be Reached
+
+A request that never got an answer fails with the URL that it went to, what
+failed, and what to check:
+
+```text
+provider_error: network after 4 attempts: ollama could not be reached at http://localhost:11434/api/chat: fetch failed (ECONNREFUSED): check base_url, and that the server is running (ollama serve)
+```
+
+The engine retries a network failure before it gives up, so the error comes
+after a pause. `ECONNREFUSED` means nothing is listening at that address, which
+for a local server usually means that it isn't running, so start it, with
+`ollama serve` for Ollama or `lms server start` for LM Studio. `ENOTFOUND` means
+the host name doesn't resolve, and a timeout means that something on the way
+dropped the request, so check `base_url` for a typo and that this machine can
+reach it. The URL is your `base_url` with the provider's path on the end, and
+the message leaves out any credentials or query in it. A connection that drops
+after the response began says `connection dropped while reading the response`
+instead, since the request reached the server. Releases through 0.17.4 say
+only `ollama native: network failure: fetch failed`. On the `ai_sdk` transport,
+`ollama` still fails with `fetch failed` alone, and without a retry, because
+its package keeps the code where the engine doesn't read it, so set
+`transport: 'native'` to get this message.
+
 ## `claude_cli` Problems
 
 | Symptom                                            | Cause and fix                                                                 |
@@ -145,6 +179,9 @@ use the profile. For the per-provider notes, read [providers.md](./providers.md)
 | `claude_cli_error` with `reason: 'sandbox_unavailable'` | A `sandbox` was requested but `bwrap`/`greywall` isn't installed.       |
 | Your tools silently do nothing                     | Default `tool_bridge: 'allowlist_only'` drops `execute` closures and records a `cli_tool_bridge_allowlist_only` trajectory event. Use `tool_bridge: 'forbid'` to turn that into an error. |
 
+Releases after 0.17.4 put the fix in the message as well: a missing binary
+says to install Claude Code or set `providers.claude_cli.binary`, an auth
+failure ends `run claude auth login`, and a timeout names the option to raise.
 Every `claude_cli_error` carries a `stderr_snippet` (first 512 bytes of stderr).
 The full guide is [cli.md](./cli.md).
 

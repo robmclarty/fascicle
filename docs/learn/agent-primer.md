@@ -213,7 +213,8 @@ messages are the real ones.
     valid model ID`.
 13. **The engine never reads `process.env`.** Your code reads keys and passes
     them in. Keep keys in `.env` and run with `pnpm exec tsx --env-file=.env`.
-    A bad key throws `provider_auth_error`.
+    A bad key throws `provider_auth_error`, whose message names the config key
+    to check.
 14. **`create_engine` belongs in one module**, and everything else receives an
     `Engine`. Dispose engines in `finally`.
 15. **Run TypeScript with `tsx`.** Local imports end in `.js` under NodeNext

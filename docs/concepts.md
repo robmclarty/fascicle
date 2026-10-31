@@ -323,7 +323,7 @@ Typed errors live in `fascicle`:
 | `provider_required_error`        | several providers configured, none named per-call or in `defaults.provider` |
 | `provider_not_configured_error`  | named provider missing from `providers`               |
 | `provider_capability_error`      | a provider refusing an option it can't honour        |
-| `provider_auth_error`            | auth failure detected mid-run                         |
+| `provider_auth_error`            | a 401 on either transport, or a `claude_cli` session that isn't logged in |
 | `tool_approval_denied_error`     | a denied approval under `tool_error_policy: 'throw'`, or a tool that needs approval with no `on_tool_approval` set |
 | `on_chunk_error`                 | a caller's `on_chunk` handler threw                   |
 | `claude_cli_error`               | subprocess failure in the `claude_cli` provider       |
