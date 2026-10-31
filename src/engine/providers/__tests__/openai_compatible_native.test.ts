@@ -855,7 +855,7 @@ describe('create_openai_compatible_adapter', () => {
     const err: unknown = await adapter.invoke_turn(make_req()).catch((e: unknown) => e)
     expect(err).toBeInstanceOf(Error)
     expect(Reflect.get(err as object, 'kind')).toBe('network')
-    expect((err as Error).message).toBe('openai native: network failure: fetch failed')
+    expect((err as Error).message).toBe('openai could not be reached at https://api.openai.com/v1/chat/completions: fetch failed: check base_url, and that the server is running')
     expect(classify_provider_error(err)).toBe(err)
   })
 

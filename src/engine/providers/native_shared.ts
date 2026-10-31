@@ -183,14 +183,60 @@ export function network_failure(message: string): Error {
 }
 
 /**
+ * The `code` that `value` carries, such as `ECONNREFUSED`, when it's an
+ * object whose `code` is a string.
+ */
+function error_code(value: unknown): string | undefined {
+  if (value === null || typeof value !== 'object') return undefined
+  const code: unknown = Reflect.get(value, 'code')
+  return typeof code === 'string' ? code : undefined
+}
+
+/**
+ * A transport failure's own message, followed by the system error code that
+ * the error or its `cause` carries when the message doesn't already name it,
+ * as in `fetch failed (ECONNREFUSED)`. Undici's `fetch failed` alone doesn't
+ * say whether the host refused, timed out, or doesn't resolve.
+ */
+export function network_detail(err: unknown): string {
+  const message = err instanceof Error ? err.message : String(err)
+  const cause: unknown = err !== null && typeof err === 'object' ? Reflect.get(err, 'cause') : undefined
+  const code = error_code(err) ?? error_code(cause)
+  return code === undefined || message.includes(code) ? message : `${message} (${code})`
+}
+
+/**
+ * The message for a request that never reached the provider: the URL it was
+ * sent to, what failed, and what to check, with the command that starts the
+ * server for Ollama, the one provider that's usually a daemon on the same
+ * machine.
+ */
+export function unreachable_message(provider: string, url: string, detail: string): string {
+  const start = provider === 'ollama' ? ' (ollama serve)' : ''
+  return `${provider} could not be reached at ${url}: ${detail}: check base_url, and that the server is running${start}`
+}
+
+/**
+ * The message for a connection that dropped after the response began, which
+ * names no URL, since the request reached the server.
+ */
+function dropped_message(provider: string, detail: string): string {
+  return `${provider} connection dropped while reading the response: ${detail}`
+}
+
+/**
  * A user abort surfaces as the fetch/reader AbortError; retry_turn converts
  * it via its own signal check, so it is rethrown untouched. Everything else
- * is a transport failure wrapped as a network_failure.
+ * is a transport failure wrapped as a network_failure, whose message `message`
+ * builds from the failure's network_detail.
  */
-function rethrow_network_failure(err: unknown, abort: AbortSignal, provider: string): never {
+function rethrow_network_failure(
+  err: unknown,
+  abort: AbortSignal,
+  message: (detail: string) => string,
+): never {
   if (abort.aborted) throw err
-  const detail = err instanceof Error ? err.message : String(err)
-  throw network_failure(`${provider} native: network failure: ${detail}`)
+  throw network_failure(message(network_detail(err)))
 }
 
 /**
@@ -217,7 +263,7 @@ async function read_json_body(
   try {
     text = await response.text()
   } catch (err: unknown) {
-    rethrow_network_failure(err, abort, provider)
+    rethrow_network_failure(err, abort, (detail) => dropped_message(provider, detail))
   }
   try {
     return JSON.parse(text)
@@ -269,7 +315,7 @@ export async function invoke_http_turn(
       signal: req.abort,
     })
   } catch (err: unknown) {
-    rethrow_network_failure(err, req.abort, provider)
+    rethrow_network_failure(err, req.abort, (detail) => unreachable_message(provider, request.url, detail))
   }
   if (!response.ok) throw await response_error(response, provider)
   if (req.stream && media_type(response) === consume.stream_media_type) {
@@ -309,7 +355,7 @@ export async function consume_framed_stream(
     try {
       step = await reader.read()
     } catch (err: unknown) {
-      rethrow_network_failure(err, req.abort, provider)
+      rethrow_network_failure(err, req.abort, (detail) => dropped_message(provider, detail))
     }
     return step.done ? undefined : step.value
   }

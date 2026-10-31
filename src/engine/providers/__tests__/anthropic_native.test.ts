@@ -1035,7 +1035,7 @@ describe('create_anthropic_native_adapter', () => {
     const err: unknown = await adapter.invoke_turn(make_req()).catch((e: unknown) => e)
     expect(err).toBeInstanceOf(Error)
     expect(Reflect.get(err as object, 'kind')).toBe('network')
-    expect((err as Error).message).toBe('anthropic native: network failure: fetch failed')
+    expect((err as Error).message).toBe('anthropic could not be reached at https://api.anthropic.com/v1/messages: fetch failed: check base_url, and that the server is running')
     expect(classify_provider_error(err)).toBe(err)
   })
 
@@ -2045,7 +2045,7 @@ describe('consume_sse_response drain lifecycle', () => {
       .invoke_turn(make_req({ stream: true }))
       .catch((e: unknown) => e)
     expect(Reflect.get(err as object, 'kind')).toBe('network')
-    expect((err as Error).message).toBe('anthropic native: network failure: connection reset')
+    expect((err as Error).message).toBe('anthropic connection dropped while reading the response: connection reset')
   })
 
   it('cancels the reader when an aggregator throw exits the drain loop early', async () => {

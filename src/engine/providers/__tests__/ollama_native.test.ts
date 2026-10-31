@@ -747,8 +747,19 @@ describe('create_ollama_native_adapter', () => {
     const err: unknown = await adapter.invoke_turn(make_req()).catch((e: unknown) => e)
     expect(err).toBeInstanceOf(Error)
     expect(Reflect.get(err as object, 'kind')).toBe('network')
-    expect((err as Error).message).toBe('ollama native: network failure: fetch failed')
+    expect((err as Error).message).toBe('ollama could not be reached at http://localhost:11434/api/chat: fetch failed: check base_url, and that the server is running (ollama serve)')
     expect(classify_provider_error(err)).toBe(err)
+  })
+
+  it("names the code of a refused connection, which undici keeps on fetch's cause", async () => {
+    const refused = Object.assign(new Error('connect ECONNREFUSED 127.0.0.1:11434'), { code: 'ECONNREFUSED' })
+    stub_fetch(new TypeError('fetch failed', { cause: refused }))
+    const adapter = create_ollama_native_adapter({ base_url: `${BASE_URL}/` })
+    const err: unknown = await adapter.invoke_turn(make_req()).catch((e: unknown) => e)
+    expect(Reflect.get(err as object, 'kind')).toBe('network')
+    expect((err as Error).message).toBe(
+      'ollama could not be reached at http://localhost:11434/api/chat: fetch failed (ECONNREFUSED): check base_url, and that the server is running (ollama serve)',
+    )
   })
 
   it('rethrows the fetch abort error untouched when the signal aborted', async () => {
@@ -993,7 +1004,7 @@ describe('ollama native through the engine', () => {
     const mock = stub_fetch_queue([dropped_stream_response(THINKING_STREAM.slice(0, 1)), ndjson_response(TEXT_STREAM)])
     const { thrown, chunks } = await generate_streamed()
     expect(thrown).toBeInstanceOf(provider_error)
-    expect((thrown as Error).message).toBe('stream interrupted: ollama native: network failure: terminated')
+    expect((thrown as Error).message).toBe('stream interrupted: ollama connection dropped while reading the response: terminated')
     expect(chunks.filter((chunk) => chunk.kind === 'reasoning')).toEqual([
       { kind: 'reasoning', text: 'The user wants ', step_index: 0 },
     ])
@@ -1347,7 +1358,7 @@ describe('streaming invoke_turn (mutation hardening)', () => {
       (e: unknown) => e,
     )
     expect(Reflect.get(err as object, 'kind')).toBe('network')
-    expect((err as Error).message).toBe('ollama native: network failure: reader boom')
+    expect((err as Error).message).toBe('ollama connection dropped while reading the response: reader boom')
     expect(classify_provider_error(err)).toBe(err)
   })
 
@@ -1470,7 +1481,7 @@ describe('non-stream response body reading', () => {
       },
     })
     const err = await invoke_ok(new Response(stream, { status: 200 }))
-    expect((err as Error).message).toBe('ollama native: network failure: socket hang up')
+    expect((err as Error).message).toBe('ollama connection dropped while reading the response: socket hang up')
     expect((classify_provider_error(err) as Record<string, unknown>)['kind']).toBe('network')
   })
 

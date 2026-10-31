@@ -17,8 +17,10 @@ import type { AssistantContentPart, CapturePayload, EngineConfig } from '../../t
 import {
   error_body_message,
   is_own_reasoning,
+  network_detail,
   non_retryable_status_error,
   split_assistant_parts,
+  unreachable_message,
 } from '../native_shared.js'
 
 type ReasoningPart = Extract<AssistantContentPart, { type: 'reasoning' }>
@@ -130,6 +132,47 @@ describe('non_retryable_status_error', () => {
       expect(err.message, String(status)).toBe(`openai API error ${status}: Bad request.`)
       expect(err, String(status)).toMatchObject({ status, body: 'raw', cause: undefined })
     }
+  })
+})
+
+describe('network_detail', () => {
+  it('adds the code that the error or its cause carries', () => {
+    expect(network_detail(Object.assign(new Error('getaddrinfo failed'), { code: 'ENOTFOUND' }))).toBe(
+      'getaddrinfo failed (ENOTFOUND)',
+    )
+    const refused = Object.assign(new Error('connect refused'), { code: 'ECONNREFUSED' })
+    expect(network_detail(new TypeError('fetch failed', { cause: refused }))).toBe('fetch failed (ECONNREFUSED)')
+    // The error's own code wins over its cause's.
+    const both = Object.assign(new Error('x', { cause: refused }), { code: 'UND_ERR_SOCKET' })
+    expect(network_detail(both)).toBe('x (UND_ERR_SOCKET)')
+  })
+
+  it('adds nothing when the message names the code already, or no code is a string', () => {
+    const refused = Object.assign(new Error('connect ECONNREFUSED 127.0.0.1:11434'), { code: 'ECONNREFUSED' })
+    expect(network_detail(new Error('Cannot connect to API: connect ECONNREFUSED 127.0.0.1:11434', { cause: refused }))).toBe(
+      'Cannot connect to API: connect ECONNREFUSED 127.0.0.1:11434',
+    )
+    expect(network_detail(new Error('terminated'))).toBe('terminated')
+    expect(network_detail(Object.assign(new Error('x'), { code: 7 }))).toBe('x')
+    expect(network_detail(new Error('x', { cause: null }))).toBe('x')
+    expect(network_detail(new Error('x', { cause: 'ECONNRESET' }))).toBe('x')
+  })
+
+  it('prints a thrown value that is not an Error', () => {
+    expect(network_detail('socket closed')).toBe('socket closed')
+    expect(network_detail(null)).toBe('null')
+    expect(network_detail({ code: 'ECONNRESET' })).toBe('[object Object] (ECONNRESET)')
+  })
+})
+
+describe('unreachable_message', () => {
+  it('names the URL, the failure, and what to check, with the command that starts Ollama', () => {
+    expect(unreachable_message('openai', 'https://api.openai.com/v1/chat/completions', 'fetch failed')).toBe(
+      'openai could not be reached at https://api.openai.com/v1/chat/completions: fetch failed: check base_url, and that the server is running',
+    )
+    expect(unreachable_message('ollama', 'http://localhost:11434/api/chat', 'fetch failed')).toBe(
+      'ollama could not be reached at http://localhost:11434/api/chat: fetch failed: check base_url, and that the server is running (ollama serve)',
+    )
   })
 })
 

@@ -291,6 +291,56 @@ describe('classify_ai_sdk_error', () => {
     expect(anthropic(reset)).toStrictEqual({ kind: 'network', cause: reset })
   })
 
+  it("names the URL that the SDK couldn't reach, in the words the native transport uses", () => {
+    const refused = Object.assign(new Error('connect ECONNREFUSED 127.0.0.1:11434'), { code: 'ECONNREFUSED' })
+    const err = Object.assign(new Error('Cannot connect to API: connect ECONNREFUSED 127.0.0.1:11434', { cause: refused }), {
+      url: 'http://localhost:11434/api/chat',
+    })
+    expect(classify_ai_sdk_error('ollama')(err)).toStrictEqual({
+      kind: 'network',
+      message:
+        'ollama could not be reached at http://localhost:11434/api/chat: Cannot connect to API: connect ECONNREFUSED 127.0.0.1:11434: check base_url, and that the server is running (ollama serve)',
+      cause: err,
+    })
+    // With no URL the SDK's message stays, and a 5xx's url never renames it.
+    const no_url = new Error('Cannot connect to API: other side closed', { cause: refused })
+    expect(anthropic(no_url)).toStrictEqual({
+      kind: 'network',
+      message: 'Cannot connect to API: other side closed',
+      cause: no_url,
+    })
+    const down = { statusCode: 503, message: 'Service Unavailable', url: 'https://api.anthropic.com/v1/messages' }
+    expect(anthropic(down)).toMatchObject({ kind: 'provider_5xx', message: 'Service Unavailable' })
+  })
+
+  it('leaves a retry kind, and a native network failure, as they are', () => {
+    for (const kind of ['rate_limit', 'provider_5xx', 'network', 'timeout']) {
+      const classified = { kind, statusCode: 404, code: 'ECONNRESET', url: 'http://x' }
+      expect(anthropic(classified), kind).toBe(classified)
+    }
+    // An unknown kind with a retryable status still retries, as classify_provider_error has it.
+    const odd = { kind: 'mystery', statusCode: 429 }
+    expect(anthropic(odd)).toStrictEqual({ kind: 'rate_limit', status: 429, cause: odd })
+  })
+
+  it('names the URL in the message that an exhausted retry ends with', async () => {
+    const refused = Object.assign(new Error('connect ECONNREFUSED 127.0.0.1:11434'), { code: 'ECONNREFUSED' })
+    const err = Object.assign(new Error('Cannot connect to API: connect ECONNREFUSED 127.0.0.1:11434', { cause: refused }), {
+      url: 'http://localhost:11434/api/chat',
+    })
+    const classify = classify_ai_sdk_error('ollama')
+    const out: unknown = await retry_with_policy(
+      async () => {
+        throw classify(err)
+      },
+      { max_attempts: 2, initial_delay_ms: 0, max_delay_ms: 0, retry_on: ['network'] },
+    ).catch((e: unknown) => e)
+    expect(out).toBeInstanceOf(provider_error)
+    expect((out as provider_error).message).toBe(
+      'network after 2 attempts: ollama could not be reached at http://localhost:11434/api/chat: Cannot connect to API: connect ECONNREFUSED 127.0.0.1:11434: check base_url, and that the server is running (ollama serve)',
+    )
+  })
+
   it("reads ai-sdk-ollama's status off the ollama client's ResponseError, its cause", () => {
     const response_error = Object.assign(new Error("model 'nope' not found"), { status_code: 404 })
     const err = new Error("model 'nope' not found", { cause: response_error })

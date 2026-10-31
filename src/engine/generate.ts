@@ -88,7 +88,12 @@ import {
   type ToolLoopConfig,
 } from './tool_loop.js'
 import { missing_peer_error } from './providers/types.js'
-import { error_body_message, non_retryable_status_error } from './providers/native_shared.js'
+import {
+  error_body_message,
+  network_detail,
+  non_retryable_status_error,
+  unreachable_message,
+} from './providers/native_shared.js'
 import type {
   AiSdkProviderAdapter,
   NativeProviderAdapter,
@@ -298,12 +303,20 @@ function classify_network_error(err: object): Record<string, unknown> | undefine
 export function classify_provider_error(err: unknown): unknown {
   if (err === null || typeof err !== 'object') return err
   if (has_retry_kind(err)) return err
+  return classify_retryable(err) ?? err
+}
+
+/**
+ * The record for a failure that retries, a 429, a 5xx, or a known network
+ * code, or `undefined` for any other.
+ */
+function classify_retryable(err: object): Record<string, unknown> | undefined {
   const status = resolve_error_status(err)
   if (status === 429) return classify_status(err, 'rate_limit', status)
   if (status !== undefined && status >= 500 && status < 600) {
     return classify_status(err, 'provider_5xx', status)
   }
-  return classify_network_error(err) ?? err
+  return classify_network_error(err)
 }
 
 /**
@@ -344,18 +357,34 @@ function classify_client_status(provider: string, err: object): Error | undefine
 }
 
 /**
+ * A network record whose message names the URL that the SDK couldn't reach,
+ * in the words the native transport uses, when the SDK's error carries its
+ * `url`, and the record as it is otherwise.
+ */
+function name_unreachable_url(
+  provider: string,
+  err: object,
+  record: Record<string, unknown>,
+): Record<string, unknown> {
+  const url: unknown = Reflect.get(err, 'url')
+  if (record['kind'] !== 'network' || typeof url !== 'string') return record
+  return { ...record, message: unreachable_message(provider, url, network_detail(err)) }
+}
+
+/**
  * Build the classifier for one ai_sdk provider. A 429, a 5xx, or a network
- * failure becomes the record classify_provider_error builds for it, and any
- * other 4xx becomes the typed error the native transport throws, closed over
- * `provider` so that its message can name the config key to check. Anything
- * that already carries a `kind`, and anything with no status, passes through
- * as it is.
+ * failure becomes the record classify_provider_error builds for it, with a
+ * network failure's message naming the URL, and any other 4xx becomes the
+ * typed error the native transport throws, closed over `provider` so that
+ * its message can name the config key to check. Anything already classified
+ * or typed, and anything with no status, passes through as it is.
  */
 export function classify_ai_sdk_error(provider: string): (err: unknown) => unknown {
   return (err: unknown): unknown => {
-    const classified = classify_provider_error(err)
-    if (classified !== err) return classified
-    if (err === null || typeof err !== 'object' || has_kind(err)) return err
+    if (err === null || typeof err !== 'object' || has_retry_kind(err)) return err
+    const record = classify_retryable(err)
+    if (record !== undefined) return name_unreachable_url(provider, err, record)
+    if (has_kind(err)) return err
     return classify_client_status(provider, err) ?? err
   }
 }
