@@ -11,6 +11,56 @@ import {
   provider_not_configured_error,
 } from '../errors.js'
 
+describe('create_engine refuses a base_url that holds credentials', () => {
+  const SECRET = 'sk-secret'
+
+  it('refuses it for every built-in provider that takes a base_url, on either transport, never repeating it', () => {
+    const configs: ReadonlyArray<readonly [string, Record<string, unknown>]> = [
+      ['anthropic', { api_key: 'k' }],
+      ['anthropic', { api_key: 'k', transport: 'native' }],
+      ['openai', { api_key: 'k' }],
+      ['openai', { api_key: 'k', transport: 'native' }],
+      ['google', { api_key: 'k' }],
+      ['openrouter', { api_key: 'k', transport: 'native' }],
+      ['bedrock', { region: 'us-east-1', api_key: 'k' }],
+      ['ollama', {}],
+      ['lmstudio', { transport: 'native' }],
+    ]
+    for (const [provider, init] of configs) {
+      const label = `${provider} ${init['transport'] === 'native' ? 'native' : 'ai_sdk'}`
+      let caught: unknown
+      try {
+        create_engine({ providers: { [provider]: { ...init, base_url: `http://user:${SECRET}@localhost:11999/v1` } } })
+      } catch (err: unknown) {
+        caught = err
+      }
+      expect(caught, label).toBeInstanceOf(engine_config_error)
+      expect((caught as engine_config_error).provider, label).toBe(provider)
+      expect((caught as Error).message, label).toMatch(
+        new RegExp(`^${provider} provider's base_url holds a user name or password, which fetch refuses to send: take them out of base_url, `),
+      )
+      expect((caught as Error).message, label).not.toContain(SECRET)
+    }
+  })
+
+  it("leaves a custom provider's base_url to the custom adapter", () => {
+    const engine = create_engine({
+      providers: { acme: { base_url: `http://user:${SECRET}@localhost:11999/v1` } },
+      custom_providers: {
+        acme: () => ({
+          kind: 'native',
+          name: 'acme',
+          invoke_turn: async () => {
+            throw new Error('unused')
+          },
+          supports: () => false,
+        }),
+      },
+    })
+    expect(engine).toBeDefined()
+  })
+})
+
 describe('create_engine', () => {
   it('rejects an empty Anthropic api_key at construction', () => {
     expect(() =>

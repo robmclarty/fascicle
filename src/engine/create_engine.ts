@@ -24,6 +24,7 @@ import {
   engine_disposed_error,
 } from './errors.js'
 import { get_provider_factory, list_builtin_providers } from './providers/registry.js'
+import { refuse_credentials_in_base_url } from './providers/types.js'
 import type { ProviderAdapter, ProviderFactory } from './providers/types.js'
 import {
   assert_cache_setting,
@@ -41,7 +42,9 @@ import {
  * Each factory validates its init value synchronously, so a bad credential
  * throws here at construction time rather than later; loading the
  * underlying SDK is deferred until the first `generate` call. Throws if
- * `custom_providers` tries to shadow a built-in provider name.
+ * `custom_providers` tries to shadow a built-in provider name, or if a
+ * built-in provider's `base_url` holds credentials, which no built-in
+ * adapter could send.
  */
 function build_provider_adapters(
   providers: EngineConfig['providers'],
@@ -66,6 +69,7 @@ function build_provider_adapters(
         ? custom_providers[name]
         : undefined
     const factory = custom ?? get_provider_factory(name)
+    if (custom === undefined) refuse_credentials_in_base_url(name, init)
     const adapter = factory(init)
     adapters.set(name, adapter)
   }

@@ -241,6 +241,41 @@ export function missing_config_error(
   )
 }
 
+/** The built-in providers that send no credentials of their own. */
+const KEYLESS_PROVIDERS: ReadonlySet<string> = new Set(['ollama', 'lmstudio'])
+
+/**
+ * Whether `base_url` puts a user name or password before its host, with a
+ * scheme or without one, as `http://user:pass@host` and `user@host:11434`
+ * do. Only the authority counts, the part before the first `/`, `?`, or `#`,
+ * so an `@` in a path or a query isn't one.
+ */
+function has_userinfo(base_url: string): boolean {
+  const scheme_end = base_url.indexOf('://')
+  const rest = scheme_end === -1 ? base_url : base_url.slice(scheme_end + 3)
+  const authority_end = rest.search(/[/?#]/)
+  const authority = authority_end === -1 ? rest : rest.slice(0, authority_end)
+  return authority.includes('@')
+}
+
+/**
+ * Throw `engine_config_error` for a built-in provider whose `base_url` holds
+ * a user name or password. Node's fetch refuses to send a request to such a
+ * URL, and its error repeats the whole URL, credentials included, so the
+ * engine refuses it as it's built, without repeating the URL.
+ */
+export function refuse_credentials_in_base_url(provider: string, init: ProviderInit): void {
+  const base_url: unknown = init.base_url
+  if (typeof base_url !== 'string' || !has_userinfo(base_url)) return
+  const fix = KEYLESS_PROVIDERS.has(provider)
+    ? `since the ${provider} provider sends no credentials`
+    : `and pass the key as providers.${provider}.api_key`
+  throw new engine_config_error(
+    `${provider} provider's base_url holds a user name or password, which fetch refuses to send: take them out of base_url, ${fix}`,
+    provider,
+  )
+}
+
 /**
  * Build the standard missing-peer error: names the package and the install
  * command so a missing peer is diagnosable from the message alone. Shared so

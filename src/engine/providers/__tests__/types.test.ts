@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import { engine_config_error } from '../../errors.js'
+import type { ProviderInit } from '../../types.js'
 import {
   default_normalize_usage,
   load_optional_peer,
   missing_config_error,
   missing_peer_error,
+  refuse_credentials_in_base_url,
 } from '../types.js'
 
 describe('default_normalize_usage', () => {
@@ -69,6 +71,64 @@ describe('missing_config_error', () => {
       'acme provider requires a non-empty api_key: pass providers.acme.api_key to create_engine, usually process.env.ACME_API_KEY',
     )
     expect(err.provider).toBe('acme')
+  })
+})
+
+describe('refuse_credentials_in_base_url', () => {
+  const refused = (provider: string, base_url: unknown): unknown => {
+    // Set through Reflect, since a base_url that isn't a string is what some cases check.
+    const init: ProviderInit = {}
+    Reflect.set(init, 'base_url', base_url)
+    try {
+      refuse_credentials_in_base_url(provider, init)
+    } catch (err: unknown) {
+      return err
+    }
+    return undefined
+  }
+
+  it('refuses a user name or password before the host, with a scheme or without one, never repeating it', () => {
+    for (const base_url of [
+      'http://user:sk-secret@gateway.example/v1',
+      'https://user@gateway.example',
+      'user:sk-secret@localhost:11434',
+      'a@localhost:11434',
+      'http://user@',
+    ]) {
+      const err = refused('openai', base_url)
+      expect(err, base_url).toBeInstanceOf(engine_config_error)
+      expect((err as engine_config_error).provider, base_url).toBe('openai')
+      expect((err as Error).message, base_url).toBe(
+        "openai provider's base_url holds a user name or password, which fetch refuses to send: take them out of base_url, and pass the key as providers.openai.api_key",
+      )
+    }
+  })
+
+  it('says that a local provider sends no credentials at all', () => {
+    for (const provider of ['ollama', 'lmstudio']) {
+      expect((refused(provider, 'http://me:pw@localhost:11434') as Error).message, provider).toBe(
+        `${provider} provider's base_url holds a user name or password, which fetch refuses to send: take them out of base_url, since the ${provider} provider sends no credentials`,
+      )
+    }
+  })
+
+  it('passes an @ in a path, a query, or a fragment, and a base_url without one', () => {
+    for (const base_url of [
+      'https://gateway.example/v1/@scope',
+      'https://gateway.example/v1?user=a@b',
+      'https://gateway.example/#a@b',
+      'http://localhost:11434',
+      'localhost:11434',
+      '',
+    ]) {
+      expect(refused('openai', base_url), base_url).toBeUndefined()
+    }
+  })
+
+  it('passes a base_url that is absent or not a string', () => {
+    for (const base_url of [undefined, 42, null]) {
+      expect(refused('openai', base_url)).toBeUndefined()
+    }
   })
 })
 
