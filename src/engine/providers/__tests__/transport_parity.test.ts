@@ -37,7 +37,7 @@ import { createOpenAI } from '@ai-sdk/openai'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 import { create_engine } from '../../create_engine.js'
-import { provider_error } from '../../errors.js'
+import { provider_auth_error, provider_error } from '../../errors.js'
 import { create_anthropic_adapter } from '../anthropic.js'
 import { create_openai_adapter, normalize_openai_usage } from '../openai.js'
 import { create_ai_sdk_turn } from '../ai_sdk/invoke.js'
@@ -711,4 +711,95 @@ describe('ai_sdk anthropic: a stream cut off before the step finished', () => {
       logged.mockRestore()
     }
   })
+})
+
+// ---------------------------------------------------------------------------
+// A wrong key and a wrong model id, through the real peers and the native
+// adapters behind one engine each
+// ---------------------------------------------------------------------------
+
+describe('transport parity: a 401 and a 404 fail the same way', () => {
+  type Failure = { readonly status: number; readonly body: string; readonly message: string }
+  type Case = {
+    readonly provider: 'anthropic' | 'openai'
+    readonly model: string
+    readonly unauthorized: Failure
+    readonly not_found: Failure
+  }
+
+  const CASES: ReadonlyArray<Case> = [
+    {
+      provider: 'anthropic',
+      model: ANTHROPIC_MODEL,
+      unauthorized: {
+        status: 401,
+        body: '{"type":"error","error":{"type":"authentication_error","message":"invalid x-api-key"}}',
+        message: 'anthropic authentication failed (401): invalid x-api-key: check providers.anthropic.api_key',
+      },
+      not_found: {
+        status: 404,
+        body: '{"type":"error","error":{"type":"not_found_error","message":"model: claude-nope"}}',
+        message:
+          'anthropic API error 404: model: claude-nope: check the model id against the anthropic model list, and that base_url points at the anthropic API',
+      },
+    },
+    {
+      provider: 'openai',
+      model: OPENAI_MODEL,
+      unauthorized: {
+        status: 401,
+        body: '{"error":{"message":"Incorrect API key provided: sk-bad.","type":"invalid_request_error","param":null,"code":"invalid_api_key"}}',
+        message: 'openai authentication failed (401): Incorrect API key provided: sk-bad: check providers.openai.api_key',
+      },
+      not_found: {
+        status: 404,
+        body: '{"error":{"message":"The model gpt-nope does not exist.","type":"invalid_request_error","param":null,"code":"model_not_found"}}',
+        message:
+          'openai API error 404: The model gpt-nope does not exist: check the model id against the openai model list, and that base_url points at the openai API',
+      },
+    },
+  ]
+
+  /** Run one call on `transport` against a server that answers `failure`, and count its requests. */
+  async function fail_on(
+    c: Case,
+    transport: 'ai_sdk' | 'native',
+    failure: Failure,
+  ): Promise<{ readonly err: unknown; readonly requests: number }> {
+    const fetch_mock = vi.fn(
+      async () =>
+        new Response(failure.body, { status: failure.status, headers: { 'content-type': 'application/json' } }),
+    )
+    vi.stubGlobal('fetch', fetch_mock)
+    const engine = create_engine({ providers: { [c.provider]: { api_key: 'sk-bad', transport } } })
+    const err: unknown = await engine.generate({ model: c.model, prompt: 'hi' }).catch((e: unknown) => e)
+    vi.unstubAllGlobals()
+    return { err, requests: fetch_mock.mock.calls.length }
+  }
+
+  for (const c of CASES) {
+    it(`${c.provider}: a 401 is the same provider_auth_error on both, with the SDK's error as the ai_sdk cause`, async () => {
+      const ai_sdk = await fail_on(c, 'ai_sdk', c.unauthorized)
+      const native = await fail_on(c, 'native', c.unauthorized)
+      for (const [label, run] of [['ai_sdk', ai_sdk], ['native', native]] as const) {
+        expect(run.err, label).toBeInstanceOf(provider_auth_error)
+        expect(run.err, label).toMatchObject({ provider: c.provider, message: c.unauthorized.message })
+        expect(run.requests, label).toBe(1)
+      }
+      expect((ai_sdk.err as provider_auth_error).cause).toMatchObject({ statusCode: 401, responseBody: c.unauthorized.body })
+      expect((native.err as provider_auth_error).cause).toBeUndefined()
+    })
+
+    it(`${c.provider}: a 404 is the same provider_error on both, with its status and body`, async () => {
+      const ai_sdk = await fail_on(c, 'ai_sdk', c.not_found)
+      const native = await fail_on(c, 'native', c.not_found)
+      for (const [label, run] of [['ai_sdk', ai_sdk], ['native', native]] as const) {
+        expect(run.err, label).toBeInstanceOf(provider_error)
+        expect(run.err, label).toMatchObject({ status: 404, body: c.not_found.body, message: c.not_found.message })
+        expect(run.requests, label).toBe(1)
+      }
+      expect((ai_sdk.err as provider_error).cause).toMatchObject({ statusCode: 404 })
+      expect((native.err as provider_error).cause).toBeUndefined()
+    })
+  }
 })

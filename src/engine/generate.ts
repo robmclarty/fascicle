@@ -88,7 +88,7 @@ import {
   type ToolLoopConfig,
 } from './tool_loop.js'
 import { missing_peer_error } from './providers/types.js'
-import { error_body_message } from './providers/native_shared.js'
+import { error_body_message, non_retryable_status_error } from './providers/native_shared.js'
 import type {
   AiSdkProviderAdapter,
   NativeProviderAdapter,
@@ -292,7 +292,8 @@ function classify_network_error(err: object): Record<string, unknown> | undefine
  * `ENOTFOUND`, `ECONNREFUSED`, or undici's `UND_ERR_HEADERS_TIMEOUT`,
  * `UND_ERR_BODY_TIMEOUT`, and `UND_ERR_SOCKET`), on the error or on its
  * `cause`, becomes `network`. Anything else passes through unclassified,
- * which `retry_with_policy` treats as non-retryable.
+ * which `retry_with_policy` treats as non-retryable. The ai_sdk transport
+ * runs it inside classify_ai_sdk_error, which also types any other 4xx.
  */
 export function classify_provider_error(err: unknown): unknown {
   if (err === null || typeof err !== 'object') return err
@@ -305,7 +306,62 @@ export function classify_provider_error(err: unknown): unknown {
   return classify_network_error(err) ?? err
 }
 
+/**
+ * True when `err` carries any string `kind`, the mark of a Fascicle typed
+ * error and of every record classify_provider_error builds.
+ */
+function has_kind(err: object): boolean {
+  return typeof Reflect.get(err, 'kind') === 'string'
+}
+
+/**
+ * The status that `ai-sdk-ollama` keeps on its error's `cause`. It wraps the
+ * `ResponseError` of the `ollama` client, which carries the status as
+ * `status_code`, and sets no `statusCode` of its own.
+ */
+function cause_status_code(err: object): number | undefined {
+  const cause: unknown = Reflect.get(err, 'cause')
+  if (cause === null || typeof cause !== 'object') return undefined
+  const status: unknown = Reflect.get(cause, 'status_code')
+  return typeof status === 'number' ? status : undefined
+}
+
+/**
+ * The typed error for an AI SDK failure whose status says a retry won't
+ * help, any 4xx but the 429 that classify_provider_error claims first, or
+ * `undefined` when the failure carries no such status. It's the error the
+ * native transport throws for the same status, with the SDK's error as its
+ * `cause` and the provider's own message read off the body when the SDK
+ * attached one.
+ */
+function classify_client_status(provider: string, err: object): Error | undefined {
+  const status = resolve_error_status(err) ?? cause_status_code(err)
+  if (status === undefined || status < 400 || status > 499) return undefined
+  return non_retryable_status_error(provider, status, provider_message(err) ?? '(no detail)', {
+    body: response_body(err),
+    cause: err,
+  })
+}
+
+/**
+ * Build the classifier for one ai_sdk provider. A 429, a 5xx, or a network
+ * failure becomes the record classify_provider_error builds for it, and any
+ * other 4xx becomes the typed error the native transport throws, closed over
+ * `provider` so that its message can name the config key to check. Anything
+ * that already carries a `kind`, and anything with no status, passes through
+ * as it is.
+ */
+export function classify_ai_sdk_error(provider: string): (err: unknown) => unknown {
+  return (err: unknown): unknown => {
+    const classified = classify_provider_error(err)
+    if (classified !== err) return classified
+    if (err === null || typeof err !== 'object' || has_kind(err)) return err
+    return classify_client_status(provider, err) ?? err
+  }
+}
+
 type AiSdkInvokeConfig = {
+  readonly provider: string
   readonly invoke_turn: AiSdkTurn
   readonly retry_policy: RetryPolicy
   readonly turn_timeout_ms: number | undefined
@@ -477,9 +533,11 @@ function build_step_timing(started_at: number, stamp: FirstChunkStamp): StepTimi
  * turn streams; this builder owns only retry and the first-chunk stamp, which
  * it clears as each attempt starts, and which both makes a failure after a
  * chunk reached a consumer a non-retryable interruption and doubles as
- * StepTiming.first_chunk_ms.
+ * StepTiming.first_chunk_ms. Its classifier is classify_ai_sdk_error, closed
+ * over the call's provider.
  */
 function build_ai_sdk_invoke(cfg: AiSdkInvokeConfig): InvokeOnce {
+  const classify = classify_ai_sdk_error(cfg.provider)
   return async (args: InvokeOnceArgs): Promise<TurnResult> => {
     const stamp = create_first_chunk_stamp()
     const call_once = (turn_abort: AbortSignal): Promise<TurnResult> => {
@@ -497,7 +555,7 @@ function build_ai_sdk_invoke(cfg: AiSdkInvokeConfig): InvokeOnce {
       args,
       stamp,
       cfg.retry_policy,
-      classify_provider_error,
+      classify,
       cfg.turn_timeout_ms,
       cfg.trajectory,
       cfg.on_chunk_provided,
@@ -994,6 +1052,7 @@ async function build_ai_sdk_transport<T>(
   }
   const { create_ai_sdk_turn } = ai_sdk_invoke_mod
   return build_ai_sdk_invoke({
+    provider: cfg.target.provider,
     invoke_turn: create_ai_sdk_turn({
       adapter,
       model_id: cfg.target.model_id,

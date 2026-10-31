@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import type { GenerateOptions, GenerateResult, Message } from '../types.js'
+import { provider_auth_error, provider_error } from '../errors.js'
 import {
   aggregate_cost,
   build_initial_messages,
+  classify_ai_sdk_error,
   classify_provider_error,
   last_provider_reported,
   split_leading_system_messages,
@@ -218,6 +220,103 @@ describe('classify_provider_error', () => {
   it('passes through an unclassifiable error object', () => {
     const err = { statusCode: 400, message: 'bad request' }
     expect(classify_provider_error(err)).toBe(err)
+  })
+})
+
+describe('classify_ai_sdk_error', () => {
+  const anthropic = classify_ai_sdk_error('anthropic')
+
+  it('makes a 401 a provider_auth_error with the SDK error as its cause and the body\'s message as its detail', () => {
+    const err = Object.assign(new Error('Unauthorized'), {
+      statusCode: 401,
+      responseBody: '{"type":"error","error":{"type":"authentication_error","message":"invalid x-api-key"}}',
+    })
+    const out = anthropic(err)
+    expect(out).toBeInstanceOf(provider_auth_error)
+    expect(out).toMatchObject({
+      provider: 'anthropic',
+      message: 'anthropic authentication failed (401): invalid x-api-key: check providers.anthropic.api_key',
+      refresh_command: undefined,
+    })
+    expect((out as provider_auth_error).cause).toBe(err)
+  })
+
+  it("reads a Bedrock 403's message off its body rather than the SDK's `undefined:` rendering", () => {
+    const body = '{"message":"The security token included in the request is invalid."}'
+    const err = Object.assign(new Error('undefined: The security token included in the request is invalid.'), {
+      statusCode: 403,
+      responseBody: body,
+    })
+    const out = classify_ai_sdk_error('bedrock')(err)
+    expect(out).toBeInstanceOf(provider_error)
+    expect(out).toMatchObject({
+      message:
+        'bedrock API error 403: The security token included in the request is invalid: the credentials lack access to this model or endpoint',
+      status: 403,
+      body,
+      cause: err,
+    })
+  })
+
+  it('types every 4xx from 400 to 499, and only those', () => {
+    for (const status of [400, 404, 422, 499]) {
+      const err = { statusCode: status, message: 'nope' }
+      const out = classify_ai_sdk_error('openai')(err)
+      expect(out, String(status)).toBeInstanceOf(provider_error)
+      expect(out, String(status)).toMatchObject({ status, cause: err })
+    }
+    for (const status of [399, 600]) {
+      const err = { statusCode: status, message: 'nope' }
+      expect(anthropic(err), String(status)).toBe(err)
+    }
+  })
+
+  it('keeps the SDK message when the body carries none, and says so when there is no message at all', () => {
+    expect(anthropic({ statusCode: 400, message: 'Bad Request', responseBody: '<html>400</html>' })).toMatchObject({
+      message: 'anthropic API error 400: Bad Request',
+      body: '<html>400</html>',
+    })
+    const bare = anthropic({ statusCode: 400 }) as provider_error
+    expect(bare.message).toBe('anthropic API error 400: (no detail)')
+    expect(bare.body).toBeUndefined()
+    expect((anthropic({ statusCode: 400, message: 'x', responseBody: 7 }) as provider_error).body).toBeUndefined()
+  })
+
+  it('leaves a 429, a 5xx, and a network failure to classify_provider_error', () => {
+    const limited = { statusCode: 429 }
+    expect(anthropic(limited)).toStrictEqual({ kind: 'rate_limit', status: 429, cause: limited })
+    const down = { statusCode: 500 }
+    expect(anthropic(down)).toStrictEqual({ kind: 'provider_5xx', status: 500, cause: down })
+    const reset = { code: 'ECONNRESET' }
+    expect(anthropic(reset)).toStrictEqual({ kind: 'network', cause: reset })
+  })
+
+  it("reads ai-sdk-ollama's status off the ollama client's ResponseError, its cause", () => {
+    const response_error = Object.assign(new Error("model 'nope' not found"), { status_code: 404 })
+    const err = new Error("model 'nope' not found", { cause: response_error })
+    const out = classify_ai_sdk_error('ollama')(err)
+    expect(out).toBeInstanceOf(provider_error)
+    expect(out).toMatchObject({
+      message: "ollama API error 404: model 'nope' not found: run ollama pull nope",
+      status: 404,
+      body: undefined,
+      cause: err,
+    })
+    // A top-level status wins over the cause's.
+    const both = Object.assign(new Error('x', { cause: response_error }), { statusCode: 400 })
+    expect(classify_ai_sdk_error('ollama')(both)).toMatchObject({ status: 400 })
+  })
+
+  it('passes through anything already typed, and anything without a numeric status', () => {
+    const typed = new provider_error('bad request', { status: 400 })
+    const marked = { kind: 'mystery', statusCode: 404 }
+    const no_status = new Error('boom')
+    const null_cause = new Error('boom', { cause: null })
+    const string_cause = new Error('boom', { cause: 'ECONNRESET' })
+    const string_status = new Error('boom', { cause: { status_code: '404' } })
+    for (const value of [typed, marked, no_status, null_cause, string_cause, string_status, 'boom', null, undefined]) {
+      expect(anthropic(value)).toBe(value)
+    }
   })
 })
 

@@ -55,7 +55,7 @@ export class provider_error extends Error {
     message: string,
     metadata: {
       status?: number
-      body?: string
+      body?: string | undefined
       cause_kind?: 'provider_5xx' | 'network' | 'unknown'
       attempts?: number
       cause?: unknown

@@ -50,6 +50,7 @@ import {
   incomplete_generation_error,
   model_required_error,
   on_chunk_error,
+  provider_auth_error,
   provider_capability_error,
   provider_error,
   provider_required_error,
@@ -1964,10 +1965,18 @@ describe('the ai mock serves a queued generateText response to a streamed turn',
   })
 
   it('surfaces a queued error, or a function entry that rejects, as the stream failing', async () => {
-    enqueue_generate_text(Object.assign(new Error('bad request'), { statusCode: 400 }))
-    await expect(
-      basic_engine().generate({ model: 'claude-opus-4-8', prompt: 'hi', on_chunk: () => {} }),
-    ).rejects.toThrow('bad request')
+    const bad_request = Object.assign(new Error('bad request'), { statusCode: 400 })
+    enqueue_generate_text(bad_request)
+    const err: unknown = await basic_engine()
+      .generate({ model: 'claude-opus-4-8', prompt: 'hi', on_chunk: () => {} })
+      .catch((e: unknown) => e)
+    expect(err).toBeInstanceOf(provider_error)
+    expect(err).toMatchObject({
+      message: 'anthropic API error 400: bad request',
+      status: 400,
+      body: undefined,
+    })
+    expect((err as provider_error).cause).toBe(bad_request)
 
     enqueue_generate_text_fn(async () => {
       throw new Error('rejected later')
@@ -1975,6 +1984,35 @@ describe('the ai mock serves a queued generateText response to a streamed turn',
     await expect(
       basic_engine().generate({ model: 'claude-opus-4-8', prompt: 'hi', on_chunk: () => {} }),
     ).rejects.toThrow('rejected later')
+  })
+})
+
+describe('generate: an ai_sdk 4xx', () => {
+  it('throws provider_auth_error for a 401, naming the configured provider, without a retry', async () => {
+    const unauthorized = Object.assign(new Error('invalid x-api-key'), {
+      statusCode: 401,
+      responseBody: '{"type":"error","error":{"type":"authentication_error","message":"invalid x-api-key"}}',
+    })
+    enqueue_generate_text(unauthorized)
+    enqueue_generate_text(make_text_result('never reached'))
+    const err: unknown = await basic_engine()
+      .generate({ model: 'claude-opus-4-8', prompt: 'hi' })
+      .catch((e: unknown) => e)
+    expect(err).toBeInstanceOf(provider_auth_error)
+    expect(err).toMatchObject({
+      provider: 'anthropic',
+      message: 'anthropic authentication failed (401): invalid x-api-key: check providers.anthropic.api_key',
+    })
+    expect((err as provider_auth_error).cause).toBe(unauthorized)
+    expect(mock_state.generate_text_call_count).toBe(1)
+  })
+
+  it("names the provider by its key in the engine's providers", async () => {
+    enqueue_generate_text(Object.assign(new Error('Not Found'), { statusCode: 404 }))
+    const engine = create_engine({ providers: { openai: { api_key: 'k' } } })
+    await expect(engine.generate({ model: 'gpt-nope', prompt: 'hi' })).rejects.toThrow(
+      'openai API error 404: Not Found: check the model id against the openai model list, and that base_url points at the openai API',
+    )
   })
 })
 

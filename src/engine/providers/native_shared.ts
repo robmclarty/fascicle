@@ -132,7 +132,7 @@ export function non_retryable_status_error(
   provider: string,
   status: number,
   detail: string,
-  metadata: { body?: string; cause?: unknown } = {},
+  metadata: { body?: string | undefined; cause?: unknown } = {},
 ): provider_auth_error | provider_error {
   const action = status_action(provider, status, detail)
   const tail = action === '' ? detail : `${strip_trailing_period(detail)}: ${action}`
