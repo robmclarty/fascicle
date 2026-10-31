@@ -7,7 +7,7 @@ upgrade on purpose.
 
 ## Shipped
 
-The published surface as of v0.17.2:
+The published surface as of v0.17.4:
 
 - **Composition.** 23 primitives over a single `Step<i, o>` value type. You get
   the `chain` spine (`.step` / `.stage` / `.output`), `model_step` as the default
@@ -41,7 +41,12 @@ The published surface as of v0.17.2:
   `openai` / `openrouter` / `lmstudio` on a shared OpenAI-compatible core, and
   `ollama` on `/api/chat`. `claude_cli` delegates to an external agent process, and
   `custom_providers` registers your own adapter without touching Fascicle.
-  Model ids are opaque and sent verbatim.
+  Model ids are opaque and sent verbatim. A rate limit, a 5xx, or a dropped
+  connection retries for 7 to 10 s by default, and a failure that outlasts the
+  retries throws an error that carries the status, the response body, the
+  attempt count, and the provider's own error as its `cause`. The run's end
+  events carry the status and the attempt count as fields too, so a dashboard
+  can count them without parsing a message.
 - **Reasoning that lasts a whole tool loop.** A tool loop hands each model its
   own reasoning back on the next step, on the `ai_sdk` transport and on
   `anthropic` and `openrouter` native, so a Claude loop keeps its thinking and a
@@ -113,7 +118,8 @@ The published surface as of v0.17.2:
   each turn sent the model and what came back (see
   [concepts.md](./concepts.md#what-gets-recorded)).
   `describe.diagram` draws a flow as an annotated tree, and the
-  `fascicle-diagram` bin prints the same diagram from a terminal.
+  `fascicle-diagram` bin prints the same diagram from a terminal, or with
+  `--outline` the plain outline that `describe` prints.
 - **An app architecture.** [`docs/blueprint.md`](./blueprint.md) standardizes the
   consumer-app shape, [`docs/leaf-arm-spine.md`](./leaf-arm-spine.md) names the
   layering (with [`docs/advanced-composition.md`](./advanced-composition.md)
