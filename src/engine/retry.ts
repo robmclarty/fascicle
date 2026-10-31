@@ -20,8 +20,8 @@ import { compute_backoff, wait_with_abort } from '#policy'
 import type { BackoffPolicy } from '#policy'
 
 export const DEFAULT_RETRY: RetryPolicy = {
-  max_attempts: 3,
-  initial_delay_ms: 500,
+  max_attempts: 4,
+  initial_delay_ms: 1000,
   max_delay_ms: 30_000,
   retry_on: ['rate_limit', 'provider_5xx', 'network', 'timeout'],
 }

@@ -72,6 +72,21 @@ export type RetryFailureKind =
   | 'network'
   | 'timeout'
 
+/**
+ * How the engine retries one model turn that failed on the provider's side.
+ *
+ * `max_attempts` counts the first try. Before the attempt after the nth
+ * failure the turn waits `initial_delay_ms * 2^(n-1)` plus up to one
+ * `initial_delay_ms` of jitter, capped at `max_delay_ms`, or the server's
+ * `Retry-After` when that is longer. `retry_on` names the failure kinds that
+ * retry at all.
+ *
+ * `DEFAULT_RETRY` makes 4 attempts from a 1 s base, so a failure that lasts
+ * waits 7 to 10 s in all before the turn throws. That covers a short blip.
+ * A provider that answers 503 for tens of seconds at a time wants more
+ * attempts or a longer base, and a call with its own `abort` budget is cut
+ * off mid-wait whatever the policy says.
+ */
 export type RetryPolicy = {
   max_attempts: number
   initial_delay_ms: number
@@ -513,6 +528,10 @@ export type GenerateOptions<t = string> = {
   abort?: AbortSignal
   trajectory?: TrajectoryLogger
   on_chunk?: (chunk: StreamChunk) => void | Promise<void>
+  /**
+   * This call's retry policy, which replaces the engine's wholesale. See
+   * RetryPolicy for the default's window.
+   */
   retry?: RetryPolicy
   tool_error_policy?: 'feed_back' | 'throw'
   schema_repair_attempts?: number
@@ -697,6 +716,11 @@ export type EngineDefaults = {
   readonly top_p?: number
   readonly max_steps?: number
   readonly turn_timeout_ms?: number
+  /**
+   * The retry policy for every call that sets none, in place of
+   * `DEFAULT_RETRY`. See RetryPolicy for the default's window and when to
+   * override it.
+   */
   readonly retry_policy?: RetryPolicy
   readonly tool_error_policy?: 'feed_back' | 'throw'
   readonly schema_repair_attempts?: number
@@ -730,6 +754,7 @@ export type EngineConfig = {
    */
   custom_providers?: Record<string, ProviderFactory>
   pricing?: PricingTable
+  /** The legacy spelling of `defaults.retry_policy`, which wins over it. */
   default_retry?: RetryPolicy
   default_effort?: EffortLevel
   default_max_steps?: number

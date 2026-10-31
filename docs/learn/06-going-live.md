@@ -300,7 +300,7 @@ along on every call, so that comes to a few tenths of a cent a run.
 | `provider_auth_error: openrouter authentication failed (401): User not found.` | The key is wrong, or it's been revoked. |
 | `provider_error: openrouter API error 400: anthropic/claude-haiku-9 is not a valid model ID` | That model name doesn't exist on that provider. Look it up in the provider's model list, and copy it exactly. |
 | `unknown FASCICLE_PROVIDER "open-router"` | A typo in the setting. |
-| `provider_error: ollama native: network failure: fetch failed`, after a pause | Ollama isn't running, so the engine retried a few times and gave up. Start it with `ollama serve`. |
+| `provider_error: ollama native: network failure: fetch failed`, after a pause | Ollama isn't running, so the engine retried a few times and gave up. Start it with `ollama serve`. Releases after 0.17.3 count the tries first, as `provider_error: network after 4 attempts: ollama native: network failure: fetch failed`. |
 | `schema_validation_error` from a live model | The model couldn't produce the shape, even after one try at fixing it. Try a bigger model, or make the example in the prompt clearer. |
 | `claude_cli_error: spawn claude ENOENT` | Claude Code isn't installed, or `claude` isn't on your `PATH`. |
 | `claude_cli_error: claude CLI exited with code 1:`, with nothing after it | Claude Code isn't logged in. Run `claude auth login`. Releases after 0.16.4 say so, as `provider_auth_error: claude CLI reported an auth failure: Not logged in · Please run /login`. |

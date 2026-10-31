@@ -296,12 +296,14 @@ Retries apply only to provider-side failures — 429 rate limits, 5xx errors, ne
 
 ```ts
 const DEFAULT_RETRY: RetryPolicy = {
-  max_attempts: 3,
-  initial_delay_ms: 500,
+  max_attempts: 4,
+  initial_delay_ms: 1_000,
   max_delay_ms: 30_000,
   retry_on: ['rate_limit', 'provider_5xx', 'network', 'timeout'],
 };
 ```
+
+`max_attempts` counts the first try, so the default waits three times, for 1 to 2 s, then 2 to 3 s, then 4 to 5 s, which comes to 7 to 10 s in all before the turn throws. That rides out a short blip. A provider that answers 503 for tens of seconds at a time, as Bedrock can, wants more attempts or a longer base, and a call that passes its own `abort` is cut off mid-wait whatever the policy says.
 
 Override it per engine or per call:
 
