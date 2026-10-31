@@ -27,16 +27,17 @@ export const DEFAULT_RETRY: RetryPolicy = {
 }
 
 type RetryableError =
-  | { kind: 'rate_limit'; retry_after_ms?: number; status?: number; message?: string }
+  | { kind: 'rate_limit'; retry_after_ms?: number; status?: number; message?: string; cause?: unknown }
   | {
       kind: 'provider_5xx'
       retry_after_ms?: number
       status?: number
       body?: string
       message?: string
+      cause?: unknown
     }
-  | { kind: 'network'; message?: string }
-  | { kind: 'timeout'; message?: string }
+  | { kind: 'network'; message?: string; cause?: unknown }
+  | { kind: 'timeout'; message?: string; cause?: unknown }
 
 /**
  * Parse an HTTP `Retry-After` header value into a millisecond delay.
@@ -84,62 +85,84 @@ function to_abort_error(reason: unknown): Error {
 }
 
 /**
+ * The message a typed error carries: `lead`, which says what this layer did,
+ * then the status when the failure had one, then the provider's own message
+ * when it had one, as in `provider_5xx after 4 attempts (status 503): Service
+ * Unavailable`. The lead comes first so the message reads the same whether
+ * or not the provider said anything.
+ */
+function compose_message(lead: string, status: number | undefined, message: string | undefined): string {
+  const status_part = status === undefined ? '' : ` (status ${status})`
+  const detail = message === undefined ? '' : `: ${message}`
+  return `${lead}${status_part}${detail}`
+}
+
+/**
  * Build the `rate_limit_error` for a 429 that this layer won't retry again.
  * Prefers the failing attempt's own `Retry-After`, falling back to the most
- * recent one a prior attempt carried (`last_rate_limit_after`), and carries
- * the failure's own message, or `fallback` when it had none.
+ * recent one a prior attempt carried (`last_rate_limit_after`), and keeps the
+ * failure's original error as its `cause`.
  */
 function build_rate_limit_error(
   retryable: Extract<RetryableError, { kind: 'rate_limit' }>,
   attempt: number,
   last_rate_limit_after: number | undefined,
-  fallback: string,
+  lead: string,
 ): rate_limit_error {
-  const metadata: { attempts: number; retry_after_ms?: number; status?: number } = {
+  const metadata: { attempts: number; retry_after_ms?: number; status?: number; cause?: unknown } = {
     attempts: attempt,
+    cause: retryable.cause,
   }
   if (retryable.retry_after_ms !== undefined) metadata.retry_after_ms = retryable.retry_after_ms
   else if (last_rate_limit_after !== undefined) metadata.retry_after_ms = last_rate_limit_after
   if (retryable.status !== undefined) metadata.status = retryable.status
-  return new rate_limit_error(retryable.message ?? fallback, metadata)
+  return new rate_limit_error(compose_message(lead, retryable.status, retryable.message), metadata)
 }
 
 /**
  * Build the `provider_error` for a 5xx, network, or timeout failure that this
- * layer won't retry again. Timeout collapses onto the `network` cause; only
- * 5xx carries status/body. The failure's own message wins over `fallback`.
+ * layer won't retry again, after `attempt` failures in all. Timeout collapses
+ * onto the `network` cause; only 5xx carries status/body. The failure's
+ * original error is its `cause`.
  */
 function build_provider_error(
   retryable: Exclude<RetryableError, { kind: 'rate_limit' }>,
-  fallback: string,
+  attempt: number,
+  lead: string,
 ): provider_error {
   const cause_kind = retryable.kind === 'provider_5xx' ? 'provider_5xx' : 'network'
-  const metadata: { status?: number; body?: string; cause_kind: typeof cause_kind } = {
-    cause_kind,
-  }
+  const metadata: {
+    status?: number
+    body?: string
+    cause_kind: typeof cause_kind
+    attempts: number
+    cause?: unknown
+  } = { cause_kind, attempts: attempt, cause: retryable.cause }
+  let status: number | undefined
   if (retryable.kind === 'provider_5xx') {
-    if (retryable.status !== undefined) metadata.status = retryable.status
+    status = retryable.status
+    if (status !== undefined) metadata.status = status
     if (retryable.body !== undefined) metadata.body = retryable.body
   }
-  return new provider_error(retryable.message ?? fallback, metadata)
+  return new provider_error(compose_message(lead, status, retryable.message), metadata)
 }
 
 /**
  * Map a classified failure that this layer won't retry again onto the error
  * it rejects with: `rate_limit_error` for 429s, `provider_error` for
- * everything else, after `attempt` failures in all. `fallback` is the message
- * for a failure that carried none of its own.
+ * everything else, after `attempt` failures in all. `lead` opens the message
+ * and says why this layer stopped.
  */
 function build_typed_error(
   retryable: RetryableError,
   attempt: number,
   last_rate_limit_after: number | undefined,
-  fallback: string,
+  lead: string,
 ): Error {
   if (retryable.kind === 'rate_limit') {
-    return build_rate_limit_error(retryable, attempt, last_rate_limit_after, fallback)
+    return build_rate_limit_error(retryable, attempt, last_rate_limit_after, lead)
   }
-  return build_provider_error(retryable, fallback)
+  return build_provider_error(retryable, attempt, lead)
 }
 
 /**
@@ -157,17 +180,18 @@ function build_left_out_error(
   last_rate_limit_after: number | undefined,
 ): unknown {
   if (err instanceof Error) return err
-  const fallback = `${retryable.kind} not retried: retry_on leaves ${retryable.kind} out`
-  return build_typed_error(retryable, attempt, last_rate_limit_after, fallback)
+  const lead = `${retryable.kind} left out of retry_on`
+  return build_typed_error(retryable, attempt, last_rate_limit_after, lead)
 }
 
 /**
- * The message for an exhausted failure that carried none of its own.
+ * The lead of an exhausted failure's message, which counts its attempts.
  */
-function exhaustion_message(retryable: RetryableError, attempt: number): string {
+function exhaustion_lead(retryable: RetryableError, attempt: number): string {
+  const attempts = attempt === 1 ? '1 attempt' : `${attempt} attempts`
   return retryable.kind === 'rate_limit'
-    ? `rate limited after ${attempt} attempts`
-    : `${retryable.kind} after ${attempt} attempts`
+    ? `rate limited after ${attempts}`
+    : `${retryable.kind} after ${attempts}`
 }
 
 /**
@@ -251,13 +275,15 @@ function build_attempt_info(
  * An aborted `abort` signal interrupts a pending backoff wait and throws
  * `aborted_error`. Returns the value from the last successful `fn()` call. On
  * exhaustion, throws `rate_limit_error` (for 429s) or `provider_error` (for
- * 5xx/network/timeout).
+ * 5xx/network/timeout), counting the attempts, with the last failure's
+ * original error as its `cause` and a message that says how many attempts it
+ * took before the status and the provider's own message.
  *
  * A failure whose kind `retry_on` leaves out isn't retried. It's rethrown as
  * it is when it's already an `Error`, and a plain record becomes the
  * `rate_limit_error` or `provider_error` that exhaustion would throw for its
- * kind, counting every failure so far in `attempts`, with the record's own
- * message, or else one that says `retry_on` leaves its kind out.
+ * kind, counting every failure so far in `attempts`, with a message that
+ * says `retry_on` leaves its kind out.
  *
  * `on_retry` fires once per retried failure, just before its backoff wait.
  * It does NOT fire for a first attempt that succeeds, a non-retryable
@@ -292,7 +318,7 @@ export async function retry_with_policy<t>(
         throw build_left_out_error(err, retryable, attempt, last_rate_limit_after)
       }
       if (attempt >= policy.max_attempts) {
-        throw build_typed_error(retryable, attempt, last_rate_limit_after, exhaustion_message(retryable, attempt))
+        throw build_typed_error(retryable, attempt, last_rate_limit_after, exhaustion_lead(retryable, attempt))
       }
       const backoff = next_backoff(retryable, backoff_policy, attempt)
       last_rate_limit_after = carry_rate_limit_after(retryable, backoff, last_rate_limit_after)
@@ -369,18 +395,32 @@ function build_retryable_signal(err: object, kind: 'network' | 'timeout'): Retry
 }
 
 /**
- * Classify a thrown value into a `RetryableError`, or `undefined` if it
- * does not carry one of the recognized retryable `kind`s.
- *
- * Providers throw plain objects tagged with `kind` (set by
- * `classify_provider_error` in generate.ts); this reads that shape back out
- * field by field rather than trusting it wholesale.
+ * Read the retryable shape for a recognized `kind`, or `undefined` for any
+ * other.
  */
-function classify_retryable(err: unknown): RetryableError | undefined {
-  if (err === null || typeof err !== 'object') return undefined
+function read_retryable(err: object): RetryableError | undefined {
   const kind = read_string(err, 'kind')
   if (kind === 'rate_limit') return build_retryable_rate_limit(err)
   if (kind === 'provider_5xx') return build_retryable_5xx(err)
   if (kind === 'network' || kind === 'timeout') return build_retryable_signal(err, kind)
   return undefined
+}
+
+/**
+ * Classify a thrown value into a `RetryableError`, or `undefined` if it
+ * does not carry one of the recognized retryable `kind`s.
+ *
+ * Providers throw plain objects tagged with `kind` (set by
+ * `classify_provider_error` in generate.ts); this reads that shape back out
+ * field by field rather than trusting it wholesale. The failure's `cause` is
+ * what a typed error hands back as its own: the original error that a plain
+ * record names as its `cause`, or the thrown value itself when it is already
+ * an `Error`, such as `turn_timeout_error`.
+ */
+function classify_retryable(err: unknown): RetryableError | undefined {
+  if (err === null || typeof err !== 'object') return undefined
+  const retryable = read_retryable(err)
+  if (retryable === undefined) return undefined
+  retryable.cause = err instanceof Error ? err : Reflect.get(err, 'cause')
+  return retryable
 }

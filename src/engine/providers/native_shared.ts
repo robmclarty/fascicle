@@ -23,51 +23,67 @@ import type {
 import { provider_auth_error, provider_error } from '../errors.js'
 
 /**
- * The message under a JSON error envelope's `error` key, or undefined when
- * the shape carries none worth surfacing.
+ * `value` when it is a non-empty string, or undefined.
  */
-function error_field_message(parsed: unknown): string | undefined {
-  // Stryker disable next-line ConditionalExpression,LogicalOperator: the
-  // caller's try/catch already funnels every non-object parse to the raw
-  // snippet, so this guard only narrows unknown -> object for Reflect.get;
-  // forcing it either way throws-and-catches to the same fallback (equivalent).
-  if (parsed === null || typeof parsed !== 'object') return undefined
-  const error: unknown = Reflect.get(parsed, 'error')
-  if (typeof error === 'string' && error.length > 0) return error
-  // Stryker disable next-line ConditionalExpression,LogicalOperator: same as
-  // above -- a non-object error still reaches the raw-snippet fallback via the
-  // catch or the message-not-a-string check, so both boundaries are equivalent.
-  if (error === null || typeof error !== 'object') return undefined
-  const message: unknown = Reflect.get(error, 'message')
-  return typeof message === 'string' && message.length > 0 ? message : undefined
+function non_empty_string(value: unknown): string | undefined {
+  return typeof value === 'string' && value.length > 0 ? value : undefined
 }
 
 /**
- * Pull a human-readable message out of a non-2xx body. The native wires share
- * one envelope family: Anthropic sends `{ type: 'error', error: { message } }`,
- * OpenAI-style wires send `{ error: { message } }`, and Ollama sends
- * `{ error: "message" }` (with the nested shape appearing behind proxies), so
- * one parser accepts a string or a `{ message }` object under `error` and
- * falls back to the raw body, truncated to 300 chars.
+ * The message under a JSON error envelope's `error` key, or else its
+ * top-level `message`, or undefined when the shape carries none worth
+ * surfacing.
+ */
+function error_field_message(parsed: unknown): string | undefined {
+  if (parsed === null || typeof parsed !== 'object') return undefined
+  const error: unknown = Reflect.get(parsed, 'error')
+  if (typeof error === 'string' && error.length > 0) return error
+  if (error !== null && typeof error === 'object') {
+    const message = non_empty_string(Reflect.get(error, 'message'))
+    if (message !== undefined) return message
+  }
+  return non_empty_string(Reflect.get(parsed, 'message'))
+}
+
+/**
+ * The message a non-2xx JSON body carries, or undefined when the body isn't
+ * JSON or carries none. The wires share one envelope family: Anthropic sends
+ * `{ type: 'error', error: { message } }`, OpenAI-style wires send
+ * `{ error: { message } }`, Ollama sends `{ error: "message" }` (with the
+ * nested shape appearing behind proxies), and Bedrock sends `{ message }`, so
+ * one parser accepts a string or a `{ message }` object under `error`, and
+ * then a top-level `message`. The engine's classifier reads an AI SDK error's
+ * `responseBody` through it too.
+ */
+export function error_body_message(body: string): string | undefined {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(body)
+  } catch {
+    // Not JSON, so it carries no message.
+  }
+  return error_field_message(parsed)
+}
+
+/**
+ * Pull a human-readable message out of a non-2xx body: the one its JSON
+ * carries (see error_body_message), or else the raw body, truncated to 300
+ * chars.
  */
 function extract_error_message(body: string): string {
   if (body.length === 0) return '(empty body)'
-  let message: string | undefined
-  try {
-    message = error_field_message(JSON.parse(body))
-  } catch {
-    // Not JSON; fall through to the raw snippet.
-  }
+  const message = error_body_message(body)
   if (message !== undefined) return message
   return body.length > 300 ? `${body.slice(0, 300)}...` : body
 }
 
 /**
  * Map a non-2xx response to what the engine's retry stack expects: 401
- * becomes a typed provider_auth_error, 429/5xx keep `status` +
+ * becomes a typed provider_auth_error, 429/5xx keep `status`, `body`, and
  * `responseHeaders` so classify_provider_error marks them retryable
- * (rate_limit honoring retry-after, provider_5xx), and any other 4xx is a
- * permanent provider_error that surfaces as-is.
+ * (rate_limit honoring retry-after, provider_5xx) and the exhausted error
+ * still has the body, and any other 4xx is a permanent provider_error that
+ * surfaces as-is.
  */
 async function response_error(response: Response, provider: string): Promise<Error> {
   let body = ''
@@ -88,7 +104,7 @@ async function response_error(response: Response, provider: string): Promise<Err
     const retry_after = response.headers.get('retry-after')
     return Object.assign(
       new Error(`${provider} API error ${status}: ${detail}`),
-      { status },
+      { status, body },
       retry_after !== null ? { responseHeaders: { 'retry-after': retry_after } } : {},
     )
   }

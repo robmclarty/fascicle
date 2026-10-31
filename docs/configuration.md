@@ -331,7 +331,8 @@ The rules:
 - Abort interrupts backoff waits and throws `aborted_error`.
 - A turn doesn't retry once a chunk has reached your `on_chunk`, since a retry would hand you output that you already have. The orchestrator enforces that boundary. With no `on_chunk`, nothing reached you, so a turn that fails partway through its stream retries like any other failure, and a stream that ends before its closing event counts as a network failure.
 - Every `ai_sdk` and native turn asks for a stream, whether or not you pass `on_chunk` (a native one when its adapter supports streaming). Node's `fetch` gives up on a response whose headers take more than 300 seconds, and a turn that streams sends its headers at once, so a long turn outlives that limit. undici still allows 300 seconds of silence between chunks, which a model that's generating doesn't come near.
-- Exhaustion throws `rate_limit_error` (for 429s), which carries `.attempts`, or `provider_error` (for 5xx / network), which carries `.status`, `.body`, and `.cause_kind`.
+- Exhaustion throws `rate_limit_error` (for 429s) or `provider_error` (for 5xx / network). Both carry `.status`, `.attempts`, and `.cause`, which is the error that the last attempt threw, and `provider_error` carries the response `.body` and `.cause_kind` as well. The message says what the retry did, then the status, then what the provider said, as in `provider_5xx after 4 attempts (status 503): Service Unavailable`. On the `ai_sdk` transport `.cause` is the SDK's `APICallError`, which holds the request it sent, so scrub it before you log it whole.
+- A run that fails this way ends with `error_status`, `error_attempts`, `error_cause_kind`, and `error_retry_after_ms` beside the `error` message on its `run_end`, and on the `span_end` of each span that the error crossed, `engine.generate` and `engine.generate.step` among them. A dashboard can count the 503s that outlasted their retries without parsing a message.
 
 ## Turn Timeout Budgets
 

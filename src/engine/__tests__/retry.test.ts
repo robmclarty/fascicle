@@ -240,7 +240,7 @@ describe('retry_with_policy', () => {
     expect(Date.now() - start).toBeLessThan(500) // did not serve the 1000ms wait
   })
 
-  it('rate_limit_error carries status, retry_after_ms, and a custom message', async () => {
+  it('rate_limit_error carries status, retry_after_ms, and the provider message after its lead', async () => {
     let err: unknown
     try {
       // max_attempts 1 exhausts before any backoff, so last_rate_limit_after
@@ -254,7 +254,7 @@ describe('retry_with_policy', () => {
     expect(err).toBeInstanceOf(rate_limit_error)
     expect((err as rate_limit_error).status).toBe(429)
     expect((err as rate_limit_error).retry_after_ms).toBe(7)
-    expect((err as rate_limit_error).message).toBe('slow down')
+    expect((err as rate_limit_error).message).toBe('rate limited after 1 attempt (status 429): slow down')
   })
 
   it('rate_limit_error falls back to a default message and a prior retry_after', async () => {
@@ -289,10 +289,10 @@ describe('retry_with_policy', () => {
     expect((err as provider_error).status).toBe(503)
     expect((err as provider_error).body).toBe('Service Unavailable')
     expect((err as provider_error).cause_kind).toBe('provider_5xx')
-    expect((err as provider_error).message).toBe(`provider_5xx after ${FAST_POLICY.max_attempts} attempts`)
+    expect((err as provider_error).message).toBe(`provider_5xx after ${FAST_POLICY.max_attempts} attempts (status 503)`)
   })
 
-  it('provider_error preserves a custom 5xx message over the default', async () => {
+  it('provider_error ends its message with the provider message', async () => {
     let err: unknown
     try {
       await retry_with_policy(async () => {
@@ -302,7 +302,51 @@ describe('retry_with_policy', () => {
       err = e
     }
     expect(err).toBeInstanceOf(provider_error)
-    expect((err as provider_error).message).toBe('upstream is on fire')
+    expect((err as provider_error).message).toBe('provider_5xx after 1 attempt (status 500): upstream is on fire')
+  })
+
+  it('provider_error leaves the status out of a 5xx message that had none', async () => {
+    const err = await retry_with_policy(async () => {
+      throw { kind: 'provider_5xx', message: 'upstream is on fire' }
+    }, { ...FAST_POLICY, max_attempts: 2 }).catch((e: unknown) => e)
+    expect((err as provider_error).message).toBe('provider_5xx after 2 attempts: upstream is on fire')
+    expect((err as provider_error).status).toBeUndefined()
+  })
+
+  it('an exhausted 5xx counts its attempts and keeps the original error as its cause', async () => {
+    const original = new Error('Bedrock is unable to process your request.')
+    const err = await retry_with_policy(async () => {
+      throw { kind: 'provider_5xx', status: 503, body: '{"message":"x"}', message: 'x', cause: original }
+    }, FAST_POLICY).catch((e: unknown) => e)
+    expect(err).toBeInstanceOf(provider_error)
+    expect(err).toMatchObject({ status: 503, body: '{"message":"x"}', attempts: FAST_POLICY.max_attempts })
+    expect((err as provider_error).cause).toBe(original)
+  })
+
+  it('an exhausted 429 keeps the original error as its cause', async () => {
+    const original = new Error('Too Many Requests')
+    const err = await retry_with_policy(async () => {
+      throw { kind: 'rate_limit', status: 429, cause: original }
+    }, FAST_POLICY).catch((e: unknown) => e)
+    expect(err).toBeInstanceOf(rate_limit_error)
+    expect((err as rate_limit_error).cause).toBe(original)
+  })
+
+  it('a record with no cause leaves the typed error without one', async () => {
+    const err = await retry_with_policy(async () => {
+      throw { kind: 'provider_5xx', status: 500 }
+    }, { ...FAST_POLICY, max_attempts: 1 }).catch((e: unknown) => e)
+    expect((err as provider_error).cause).toBeUndefined()
+  })
+
+  it('an exhausted failure that is already an Error is the cause itself', async () => {
+    const timeout = new turn_timeout_error(50)
+    const err = await retry_with_policy(async () => {
+      throw timeout
+    }, { ...FAST_POLICY, retry_on: ['timeout'], max_attempts: 1 }).catch((e: unknown) => e)
+    expect(err).toBeInstanceOf(provider_error)
+    expect(err).toMatchObject({ cause_kind: 'network', attempts: 1 })
+    expect((err as provider_error).cause).toBe(timeout)
   })
 
   it('retries and exhausts a timeout kind into a network-cause provider_error', async () => {
@@ -317,7 +361,7 @@ describe('retry_with_policy', () => {
     }
     expect(err).toBeInstanceOf(provider_error)
     expect((err as provider_error).cause_kind).toBe('network')
-    expect((err as provider_error).message).toBe('deadline exceeded')
+    expect((err as provider_error).message).toBe('timeout after 1 attempt: deadline exceeded')
   })
 
   it('network exhaustion does not attach status or body', async () => {
@@ -331,8 +375,9 @@ describe('retry_with_policy', () => {
     }
     expect(err).toBeInstanceOf(provider_error)
     expect((err as provider_error).cause_kind).toBe('network')
-    expect((err as provider_error).message).toBe('ECONNRESET') // custom message preserved
+    expect((err as provider_error).message).toBe(`network after ${FAST_POLICY.max_attempts} attempts: ECONNRESET`)
     expect((err as provider_error).body).toBeUndefined()
+    expect((err as provider_error).status).toBeUndefined()
   })
 
   it('throws at the loop top without calling fn when pre-aborted', async () => {
@@ -433,26 +478,43 @@ describe('retry_with_policy: a failure that retry_on leaves out', () => {
   it('throws provider_error for a 5xx record, with its status, body, and message', async () => {
     const err = await rejection({ kind: 'provider_5xx', status: 503, body: 'overloaded', message: 'Service Unavailable' })
     expect(err).toBeInstanceOf(provider_error)
-    expect(err).toMatchObject({ status: 503, body: 'overloaded', cause_kind: 'provider_5xx', message: 'Service Unavailable' })
+    expect(err).toMatchObject({
+      status: 503,
+      body: 'overloaded',
+      cause_kind: 'provider_5xx',
+      attempts: 1,
+      message: 'provider_5xx left out of retry_on (status 503): Service Unavailable',
+    })
+  })
+
+  it('keeps the original error as the cause of a record it leaves out', async () => {
+    const original = new Error('Service Unavailable')
+    const err = await rejection({ kind: 'provider_5xx', status: 503, cause: original })
+    expect((err as provider_error).cause).toBe(original)
   })
 
   it('throws rate_limit_error for a 429 record, with one attempt and its status', async () => {
     const err = await rejection({ kind: 'rate_limit', status: 429, retry_after_ms: 2000, message: 'Too Many Requests' })
     expect(err).toBeInstanceOf(rate_limit_error)
-    expect(err).toMatchObject({ attempts: 1, status: 429, retry_after_ms: 2000, message: 'Too Many Requests' })
+    expect(err).toMatchObject({
+      attempts: 1,
+      status: 429,
+      retry_after_ms: 2000,
+      message: 'rate_limit left out of retry_on (status 429): Too Many Requests',
+    })
   })
 
   it.each(['network', 'timeout'] as const)('throws provider_error with cause_kind network for a %s record', async (kind) => {
     const err = await rejection({ kind, message: 'socket hang up' })
     expect(err).toBeInstanceOf(provider_error)
-    expect(err).toMatchObject({ cause_kind: 'network', status: undefined, message: 'socket hang up' })
+    expect(err).toMatchObject({ cause_kind: 'network', status: undefined, message: `${kind} left out of retry_on: socket hang up` })
   })
 
   it.each(['rate_limit', 'provider_5xx', 'network'] as const)(
     'says that retry_on leaves a %s record without a message out, and never counts attempts',
     async (kind) => {
       const err = await rejection({ kind })
-      expect((err as Error).message).toBe(`${kind} not retried: retry_on leaves ${kind} out`)
+      expect((err as Error).message).toBe(`${kind} left out of retry_on`)
     },
   )
 

@@ -71,6 +71,7 @@ import {
   create_option_ignored_dedup,
   create_pricing_missing_dedup,
   end_generate_span,
+  error_span_meta,
   record_effort_ignored,
   record_schema_validation_failed,
   record_turn_retry,
@@ -87,6 +88,7 @@ import {
   type ToolLoopConfig,
 } from './tool_loop.js'
 import { missing_peer_error } from './providers/types.js'
+import { error_body_message } from './providers/native_shared.js'
 import type {
   AiSdkProviderAdapter,
   NativeProviderAdapter,
@@ -187,16 +189,46 @@ function resolve_error_status(err: object): number | undefined {
 }
 
 /**
- * Copy the error's `message` onto a classification record when it is a string,
- * returning the same record for chaining.
+ * The provider's own message: the one a JSON `responseBody` carries, when the
+ * AI SDK attached one, over the error's `message`. A provider package renders
+ * that message from the body, and `@ai-sdk/amazon-bedrock` renders a Bedrock
+ * 503's `{ message }` as `undefined: <message>`, since the body has no
+ * `type`. A native adapter's message already names the provider and the
+ * status it read, so it stays as it is.
  */
-function with_error_message(
+function provider_message(err: object): string | undefined {
+  const body = Reflect.get(err, 'responseBody')
+  const from_body = typeof body === 'string' ? error_body_message(body) : undefined
+  if (from_body !== undefined) return from_body
+  const message = Reflect.get(err, 'message')
+  return typeof message === 'string' ? message : undefined
+}
+
+/**
+ * Copy the provider's message onto a classification record when there is one,
+ * and the thrown error itself as its `cause`, so the typed error that
+ * retry_with_policy throws in the end still holds it. Returns the same record
+ * for chaining.
+ */
+function with_error_source(
   err: object,
   out: Record<string, unknown>,
 ): Record<string, unknown> {
-  const message = Reflect.get(err, 'message')
-  if (typeof message === 'string') out['message'] = message
+  const message = provider_message(err)
+  if (message !== undefined) out['message'] = message
+  out['cause'] = err
   return out
+}
+
+/**
+ * The body of the failed response: the AI SDK's `responseBody`, or else the
+ * `body` a native adapter attaches, when either is a string.
+ */
+function response_body(err: object): string | undefined {
+  const sdk_body = Reflect.get(err, 'responseBody')
+  if (typeof sdk_body === 'string') return sdk_body
+  const body = Reflect.get(err, 'body')
+  return typeof body === 'string' ? body : undefined
 }
 
 /**
@@ -211,16 +243,19 @@ function retry_after_from_error(err: object): number | undefined {
 
 /**
  * Build the classification for a retryable status (`rate_limit` for a 429,
- * `provider_5xx` for a 5xx), attaching the message and a parsed `Retry-After`
- * when either is present. HTTP defines the header for a 503 as well as a 429,
- * so a server's wait counts on both.
+ * `provider_5xx` for a 5xx), attaching the message, the response body, and a
+ * parsed `Retry-After` when each is present, and the error as its `cause`.
+ * HTTP defines the header for a 503 as well as a 429, so a server's wait
+ * counts on both.
  */
 function classify_status(
   err: object,
   kind: 'rate_limit' | 'provider_5xx',
   status: number,
 ): Record<string, unknown> {
-  const out = with_error_message(err, { kind, status })
+  const out = with_error_source(err, { kind, status })
+  const body = response_body(err)
+  if (body !== undefined) out['body'] = body
   const retry_after_ms = retry_after_from_error(err)
   if (retry_after_ms !== undefined) out['retry_after_ms'] = retry_after_ms
   return out
@@ -242,7 +277,7 @@ function has_network_code(value: unknown): boolean {
  */
 function classify_network_error(err: object): Record<string, unknown> | undefined {
   if (!has_network_code(err) && !has_network_code(Reflect.get(err, 'cause'))) return undefined
-  return with_error_message(err, { kind: 'network' })
+  return with_error_source(err, { kind: 'network' })
 }
 
 /**
@@ -252,7 +287,8 @@ function classify_network_error(err: object): Record<string, unknown> | undefine
  * Passes through anything that already carries a recognized `kind`.
  * Otherwise inspects `statusCode`/`status`: 429 becomes `rate_limit` and 5xx
  * becomes `provider_5xx`, each reading `Retry-After` off `responseHeaders`
- * when present, and a known network error code (`ECONNRESET`, `ETIMEDOUT`,
+ * and the body off `responseBody` or `body` when present, and a known network
+ * error code (`ECONNRESET`, `ETIMEDOUT`,
  * `ENOTFOUND`, `ECONNREFUSED`, or undici's `UND_ERR_HEADERS_TIMEOUT`,
  * `UND_ERR_BODY_TIMEOUT`, and `UND_ERR_SOCKET`), on the error or on its
  * `cause`, becomes `network`. Anything else passes through unclassified,
@@ -397,6 +433,7 @@ function retry_turn(
           const message = err instanceof Error ? err.message : String(err)
           throw new provider_error(`stream interrupted: ${message}`, {
             cause_kind: 'unknown',
+            cause: err,
           })
         }
         // A deadline expiry that no consumer saw output from is a retryable
@@ -1441,8 +1478,7 @@ export async function generate<T = string>(
     result.timing = call_timing(started_at)
     return result
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err)
-    end_generate_span(trajectory, generate_span, { error: message })
+    end_generate_span(trajectory, generate_span, error_span_meta(err))
     throw err
   }
 }

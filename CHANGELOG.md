@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- **A provider failure that runs out of retries says what happened, and keeps its status, its body, and the error it came from.** An exhausted 5xx or 429 threw a `provider_error` or `rate_limit_error` whose message was the provider SDK's alone, so it never said how many attempts it took, and `@ai-sdk/amazon-bedrock` renders a Bedrock 503 as `undefined: Bedrock is unable to process your request.`, since the body has no `type`. The body never reached `provider_error.body` on the `ai_sdk` transport or on a native 429 or 5xx, and neither error had a `cause`, so the SDK's `statusCode` and `responseBody` were gone by the time the error reached you. The message leads with what the retry did now, then the status, then the provider's own message, which comes from the response body's JSON when the AI SDK attached one: `provider_5xx after 4 attempts (status 503): Bedrock is unable to process your request.`, or `provider_5xx left out of retry_on (status 503): ...` for a kind that `retry_on` leaves out. `body` holds the response body, `provider_error.attempts` counts the attempts the way `rate_limit_error.attempts` does, and `cause` is the error the last attempt threw. A failed run's `run_end`, and the `span_end` of each span the error crossed, `engine.generate` and `engine.generate.step` among them, carry `error_status`, `error_attempts`, `error_cause_kind`, and `error_retry_after_ms` beside `error`, so a dashboard can count the 503s that outlasted their retries without parsing a message. The names keep the `error_` prefix so that the error's status stays apart from `run_end`'s own. Code that matched the old message text has to match the new one.
+
 ## v0.17.3 — 2026-10-30
 
 ### Added

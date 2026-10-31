@@ -32,28 +32,43 @@ describe('typed errors', () => {
     expect(err.tool_call_in_flight).toEqual({ id: 'c9', name: 'search' })
   })
 
-  it('rate_limit_error carries retry_after_ms / attempts / status', () => {
+  it('rate_limit_error carries retry_after_ms / attempts / status / cause', () => {
+    const inner = new Error('Too Many Requests')
     const err = new rate_limit_error('rate limited', {
       retry_after_ms: 3000,
       attempts: 3,
       status: 429,
+      cause: inner,
     })
     expect(err.kind).toBe('rate_limit_error')
     expect(err.retry_after_ms).toBe(3000)
     expect(err.attempts).toBe(3)
     expect(err.status).toBe(429)
+    expect(err.cause).toBe(inner)
   })
 
-  it('provider_error carries status / body / cause_kind', () => {
+  it('provider_error carries status / body / cause_kind / attempts / cause', () => {
+    const inner = new Error('Service Unavailable')
     const err = new provider_error('boom', {
       status: 503,
       body: 'Service Unavailable',
       cause_kind: 'provider_5xx',
+      attempts: 4,
+      cause: inner,
     })
     expect(err.kind).toBe('provider_error')
     expect(err.status).toBe(503)
     expect(err.body).toBe('Service Unavailable')
     expect(err.cause_kind).toBe('provider_5xx')
+    expect(err.attempts).toBe(4)
+    expect(err.cause).toBe(inner)
+  })
+
+  it('provider_error built outside retry claims no attempts and no cause', () => {
+    const err = new provider_error('bad request', { status: 400 })
+    expect(err.attempts).toBeUndefined()
+    expect(err.cause).toBeUndefined()
+    expect(new rate_limit_error('slow').cause).toBeUndefined()
   })
 
   it('schema_validation_error carries schema_issues and raw_text', () => {

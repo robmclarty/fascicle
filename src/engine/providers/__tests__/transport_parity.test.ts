@@ -685,7 +685,8 @@ describe('ai_sdk anthropic: a stream cut off before the step finished', () => {
       .catch((e: unknown) => e)
     expect(caught).toMatchObject({
       cause_kind: 'network',
-      message: 'anthropic stream ended before the step finished; the result would be truncated',
+      attempts: 3,
+      message: 'network after 3 attempts: anthropic stream ended before the step finished; the result would be truncated',
     })
   })
 

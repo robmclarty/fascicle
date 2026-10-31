@@ -538,9 +538,9 @@ newer producer emits. The guards are how you narrow one.
 | --- | --- | --- |
 | `parse_trajectory_event(value)` | fn | `{ success: true, data }` or `{ success: false, error }`; `data` is the value itself, uncopied |
 | `is_span_start_event(value)` | guard | `span_start` with a string `span_id` and `name` |
-| `is_span_end_event(value)` | guard | `span_end` with a string `span_id` |
+| `is_span_end_event(value)` | guard | `span_end` with a string `span_id`; a span that failed carries `error`, and a provider failure adds `error_status` / `error_attempts` / `error_cause_kind` / `error_retry_after_ms` when known |
 | `is_emit_event(value)` | guard | a `ctx.emit` event; the payload is the caller's |
-| `is_run_end_event(value)` | guard | the terminal `run_end` event, emitted once per run, where `status` is `'done' \| 'failed' \| 'aborted' \| 'suspended'`; failures carry `error` plus `error_name` / `error_kind` / `error_path` when known |
+| `is_run_end_event(value)` | guard | the terminal `run_end` event, emitted once per run, where `status` is `'done' \| 'failed' \| 'aborted' \| 'suspended'`; failures carry `error` plus `error_name` / `error_kind` / `error_path` when known, and a provider failure adds `error_status` / `error_attempts` / `error_cause_kind` / `error_retry_after_ms` |
 | `is_checkpoint_event(value)` | guard | a `checkpoint` store event, where `status` is `'hit' \| 'miss' \| 'read_error' \| 'write_error'`, with the step `id` and store `key`. A write that fails after a miss records `write_error`, and the step returns the inner result anyway |
 | `is_step_replayed_event(value)` | guard | a step marked `side_effect` that ran again before its resumed run reached its gates, with the `step_id` and the `suspend_ids` still ahead |
 | `is_map_item_failed_event(value)` | guard | an item of a `map` that settles threw, with the map's `step_id`, the item's `index`, the `error` message, and `error_kind` when the error had one |

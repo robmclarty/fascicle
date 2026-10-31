@@ -50,8 +50,9 @@ describe('classify_provider_error', () => {
   })
 
   it('classifies a 429 with no headers and omits absent message/retry_after', () => {
-    const out = classify_provider_error({ statusCode: 429 }) as Record<string, unknown>
-    expect(out).toEqual({ kind: 'rate_limit', status: 429 })
+    const err = { statusCode: 429 }
+    const out = classify_provider_error(err) as Record<string, unknown>
+    expect(out).toEqual({ kind: 'rate_limit', status: 429, cause: err })
     expect('message' in out).toBe(false)
     expect('retry_after_ms' in out).toBe(false)
   })
@@ -80,7 +81,8 @@ describe('classify_provider_error', () => {
   })
 
   it('omits message for a 5xx error that has none', () => {
-    expect(classify_provider_error({ status: 500 })).toStrictEqual({ kind: 'provider_5xx', status: 500 })
+    const err = { status: 500 }
+    expect(classify_provider_error(err)).toStrictEqual({ kind: 'provider_5xx', status: 500, cause: err })
   })
 
   it('ignores a non-string Retry-After header', () => {
@@ -99,20 +101,73 @@ describe('classify_provider_error', () => {
   })
 
   it('reads a 5xx Retry-After header into retry_after_ms', () => {
-    expect(
-      classify_provider_error({
-        statusCode: 503,
-        message: 'overloaded',
-        responseHeaders: { 'retry-after': '2' },
-      }),
-    ).toStrictEqual({ kind: 'provider_5xx', status: 503, message: 'overloaded', retry_after_ms: 2000 })
+    const err = { statusCode: 503, message: 'overloaded', responseHeaders: { 'retry-after': '2' } }
+    expect(classify_provider_error(err)).toStrictEqual({
+      kind: 'provider_5xx',
+      status: 503,
+      message: 'overloaded',
+      retry_after_ms: 2000,
+      cause: err,
+    })
+  })
+
+  it("copies the AI SDK's responseBody to body and takes the message its JSON carries", () => {
+    // @ai-sdk/amazon-bedrock renders a Bedrock 503 body, which has no type, as `undefined: <message>`.
+    const body = '{"message":"Bedrock is unable to process your request."}'
+    const err = Object.assign(new Error('undefined: Bedrock is unable to process your request.'), {
+      statusCode: 503,
+      responseBody: body,
+    })
+    expect(classify_provider_error(err)).toStrictEqual({
+      kind: 'provider_5xx',
+      status: 503,
+      message: 'Bedrock is unable to process your request.',
+      body,
+      cause: err,
+    })
+  })
+
+  it('reads the message under error in a responseBody, as a string or an object', () => {
+    for (const body of ['{"error":{"message":"Overloaded"}}', '{"error":"Overloaded"}']) {
+      const out = classify_provider_error({ statusCode: 529, message: 'sdk text', responseBody: body })
+      expect(out, body).toMatchObject({ message: 'Overloaded', body })
+    }
+  })
+
+  it("keeps the error's message when its responseBody isn't JSON or carries none", () => {
+    for (const body of ['<html>502 Bad Gateway</html>', '{"code":502}', '']) {
+      const out = classify_provider_error({ statusCode: 502, message: 'Bad Gateway', responseBody: body })
+      expect(out, body).toMatchObject({ message: 'Bad Gateway', body })
+    }
+  })
+
+  it("copies a native adapter's body and keeps its message, which names the provider", () => {
+    const body = '{"error":{"message":"Overloaded"}}'
+    const out = classify_provider_error({ status: 529, message: 'anthropic API error 529: Overloaded', body })
+    expect(out).toMatchObject({ message: 'anthropic API error 529: Overloaded', body })
+  })
+
+  it('prefers responseBody over body and ignores a body that is not a string', () => {
+    expect(classify_provider_error({ status: 503, responseBody: 'sdk', body: 'native' })).toMatchObject({ body: 'sdk' })
+    const out = classify_provider_error({ status: 503, responseBody: 7, body: { a: 1 } }) as Record<string, unknown>
+    expect('body' in out).toBe(false)
+    // An array would read as its one JSON string if it reached the parser.
+    const listed = classify_provider_error({ status: 503, message: 'sdk', responseBody: ['{"message":"x"}'] })
+    expect(listed).toMatchObject({ message: 'sdk' })
+  })
+
+  it('omits a message that is not a string', () => {
+    const out = classify_provider_error({ status: 500, message: 42 }) as Record<string, unknown>
+    expect('message' in out).toBe(false)
   })
 
   it("classifies undici's codes and ECONNRESET, on the error and on its cause, as network", () => {
     for (const code of ['UND_ERR_HEADERS_TIMEOUT', 'UND_ERR_BODY_TIMEOUT', 'UND_ERR_SOCKET', 'ECONNRESET']) {
-      expect(classify_provider_error({ code, message: 'net' }), code).toStrictEqual({
+      const bare = { code, message: 'net' }
+      expect(classify_provider_error(bare), code).toStrictEqual({
         kind: 'network',
         message: 'net',
+        cause: bare,
       })
       // The AI SDK's APICallError for a failed fetch keeps undici's error as its cause.
       const wrapped = new Error('Cannot connect to API: Headers Timeout Error', {
@@ -121,6 +176,7 @@ describe('classify_provider_error', () => {
       expect(classify_provider_error(wrapped), `cause ${code}`).toStrictEqual({
         kind: 'network',
         message: 'Cannot connect to API: Headers Timeout Error',
+        cause: wrapped,
       })
     }
 
@@ -155,7 +211,8 @@ describe('classify_provider_error', () => {
   })
 
   it('omits message for a network error that has none', () => {
-    expect(classify_provider_error({ code: 'ECONNRESET' })).toStrictEqual({ kind: 'network' })
+    const err = { code: 'ECONNRESET' }
+    expect(classify_provider_error(err)).toStrictEqual({ kind: 'network', cause: err })
   })
 
   it('passes through an unclassifiable error object', () => {

@@ -1446,7 +1446,11 @@ describe('generate: retry', () => {
         (e: unknown) => e,
       )
     expect(err).toBeInstanceOf(provider_error)
-    expect(err).toMatchObject({ status: 503, cause_kind: 'provider_5xx', message: 'server error' })
+    expect(err).toMatchObject({
+      status: 503,
+      cause_kind: 'provider_5xx',
+      message: 'provider_5xx left out of retry_on (status 503): server error',
+    })
     expect(mock_state.generate_text_call_count).toBe(1)
   })
 
@@ -1466,6 +1470,67 @@ describe('generate: retry', () => {
         },
       }),
     ).rejects.toBeInstanceOf(provider_error)
+  })
+
+  it('surfaces an exhausted Bedrock 503 with its status, body, attempts, and cause, on the error and its spans', async () => {
+    const body = '{"message":"Bedrock is unable to process your request."}'
+    // What @ai-sdk/amazon-bedrock throws for a 503 whose body has no `type`.
+    const sdk_error = (): Error =>
+      Object.assign(new Error('undefined: Bedrock is unable to process your request.'), {
+        statusCode: 503,
+        responseBody: body,
+      })
+    const thrown = [sdk_error(), sdk_error(), sdk_error(), sdk_error()]
+    for (const e of thrown) enqueue_generate_text(e)
+    const { logger, starts, ends } = make_span_recorder()
+    const err: unknown = await basic_engine()
+      .generate({
+        model: 'claude-opus',
+        prompt: 'hi',
+        trajectory: logger,
+        retry: { max_attempts: 4, initial_delay_ms: 1, max_delay_ms: 5, retry_on: ['provider_5xx'] },
+      })
+      .then(
+        () => 'resolved',
+        (e: unknown) => e,
+      )
+    expect(err).toBeInstanceOf(provider_error)
+    expect(err).toMatchObject({
+      message: 'provider_5xx after 4 attempts (status 503): Bedrock is unable to process your request.',
+      status: 503,
+      body,
+      attempts: 4,
+      cause_kind: 'provider_5xx',
+    })
+    expect((err as provider_error).cause).toBe(thrown[3])
+    for (const name of ['engine.generate', 'engine.generate.step']) {
+      const id = starts.find((st) => st.name === name)?.id
+      expect(ends.find((e) => e.id === id)?.attrs, name).toMatchObject({
+        error: (err as Error).message,
+        error_status: 503,
+        error_attempts: 4,
+        error_cause_kind: 'provider_5xx',
+      })
+    }
+  })
+
+  it("ends the generate span with an exhausted 429's status, attempts, and Retry-After", async () => {
+    for (let i = 0; i < 3; i += 1) enqueue_generate_text(mk_429_retry_after_0())
+    const { logger, starts, ends } = make_span_recorder()
+    await expect(
+      basic_engine().generate({
+        model: 'claude-opus',
+        prompt: 'hi',
+        trajectory: logger,
+        retry: { max_attempts: 3, initial_delay_ms: 1, max_delay_ms: 5, retry_on: ['rate_limit'] },
+      }),
+    ).rejects.toBeInstanceOf(rate_limit_error)
+    const id = starts.find((st) => st.name === 'engine.generate')?.id
+    expect(ends.find((e) => e.id === id)?.attrs).toMatchObject({
+      error_status: 429,
+      error_attempts: 3,
+      error_retry_after_ms: 0,
+    })
   })
 })
 

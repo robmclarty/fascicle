@@ -270,6 +270,31 @@ describe('failure-aware trajectory', () => {
     expect(sequence_end?.['error_path']).toEqual(['boom'])
   })
 
+  it("copies a provider failure's status, attempts, cause_kind, and retry_after_ms under error_ names", async () => {
+    const { logger, events } = recording_logger()
+    const exhausted = Object.assign(new Error('provider_5xx after 4 attempts (status 503): unavailable'), {
+      kind: 'provider_error',
+      status: 503,
+      attempts: 4,
+      cause_kind: 'provider_5xx',
+      retry_after_ms: 2000,
+    })
+    const boom = step('boom', () => {
+      throw exhausted
+    })
+
+    await expect(
+      run(boom, 0, { trajectory: logger, install_signal_handlers: false }),
+    ).rejects.toBe(exhausted)
+
+    const fields = { error_status: 503, error_attempts: 4, error_cause_kind: 'provider_5xx', error_retry_after_ms: 2000 }
+    const end = events.find((e) => e.kind === 'span_end' && e['error'] !== undefined)
+    expect(end).toMatchObject(fields)
+    const terminal = events[events.length - 1]
+    // The error's status stays apart from the run's own.
+    expect(terminal).toMatchObject({ kind: 'run_end', status: 'failed', error_kind: 'provider_error', ...fields })
+  })
+
   it('records a terminal run_end with status done as the last event', async () => {
     const { logger, events } = recording_logger()
     await run(step('ok', (n: number) => n + 1), 1, {

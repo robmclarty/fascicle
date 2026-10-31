@@ -29,15 +29,17 @@ export class rate_limit_error extends Error {
   readonly retry_after_ms: number | undefined;
   readonly attempts: number;
   readonly status: number | undefined;
+  override readonly cause: unknown;
   constructor(
     message: string,
-    metadata: { retry_after_ms?: number; attempts?: number; status?: number } = {},
+    metadata: { retry_after_ms?: number; attempts?: number; status?: number; cause?: unknown } = {},
   ) {
     super(message)
     this.name = 'rate_limit_error'
     this.retry_after_ms = metadata.retry_after_ms
     this.attempts = metadata.attempts ?? 0
     this.status = metadata.status
+    this.cause = metadata.cause
   }
 }
 
@@ -47,12 +49,16 @@ export class provider_error extends Error {
   readonly status: number | undefined;
   readonly body: string | undefined;
   readonly cause_kind: 'provider_5xx' | 'network' | 'unknown' | undefined;
+  readonly attempts: number | undefined;
+  override readonly cause: unknown;
   constructor(
     message: string,
     metadata: {
       status?: number
       body?: string
       cause_kind?: 'provider_5xx' | 'network' | 'unknown'
+      attempts?: number
+      cause?: unknown
     } = {},
   ) {
     super(message)
@@ -60,6 +66,8 @@ export class provider_error extends Error {
     this.status = metadata.status
     this.body = metadata.body
     this.cause_kind = metadata.cause_kind
+    this.attempts = metadata.attempts
+    this.cause = metadata.cause
   }
 }
 

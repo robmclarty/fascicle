@@ -641,7 +641,7 @@ describe('native anthropic e2e reply shapes', () => {
     expect(caught).toBeInstanceOf(provider_error)
     expect(caught).toMatchObject({
       cause_kind: 'network',
-      message: 'anthropic native: stream ended before message_stop; the result would be truncated',
+      message: 'network after 3 attempts: anthropic native: stream ended before message_stop; the result would be truncated',
     })
   })
 })

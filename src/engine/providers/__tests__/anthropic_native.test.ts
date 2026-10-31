@@ -1951,6 +1951,8 @@ describe('response_error status classification (raw shapes)', () => {
       kind: 'provider_5xx',
       status: 500,
       message: 'anthropic API error 500: boom',
+      body: JSON.stringify({ type: 'error', error: { message: 'boom' } }),
+      cause: err,
     })
   })
 })

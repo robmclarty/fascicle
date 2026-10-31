@@ -27,6 +27,7 @@ import { resolve_display_name } from './display_name.js'
 import { aborted_error, duplicate_suspend_id_error, suspended_error } from './errors.js'
 import { create_streaming_channel, STREAMING_HIGH_WATER_MARK } from './streaming.js'
 import { check_suspend_ids, same_input_as } from './suspend_ids.js'
+import { failure_meta } from '#policy'
 import type {
   AnyStep,
   CheckpointStore,
@@ -167,6 +168,9 @@ function track_resumed_gates(
  * carry, so a consumer can classify a failure without regex-matching the
  * message. `error_path` is the chain of step ids the error crossed below this
  * point, already accumulated on the error by `prepend_path` as it bubbled up.
+ * `error_status`, `error_attempts`, `error_cause_kind`, and
+ * `error_retry_after_ms` copy what a provider error carries (see
+ * `failure_meta`).
  */
 function error_meta(err: unknown): Record<string, unknown> {
   const meta: Record<string, unknown> = {
@@ -181,7 +185,7 @@ function error_meta(err: unknown): Record<string, unknown> {
       meta['error_path'] = path.filter((v): v is string => typeof v === 'string')
     }
   }
-  return meta
+  return { ...meta, ...failure_meta(err) }
 }
 
 export type RunOptions = {

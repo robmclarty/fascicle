@@ -17,6 +17,7 @@ import type {
   UsageTotals,
 } from './types.js'
 import type { RetryAttemptInfo } from './retry.js'
+import { failure_meta, type FailureMeta } from '#policy'
 
 export type GenerateSpanStartMeta = {
   model: string
@@ -39,8 +40,17 @@ export function start_generate_span(
 }
 
 /**
+ * The meta an engine span ends with when its call throws: the message as
+ * `error`, and the status, attempts, cause kind, and `Retry-After` that a
+ * typed provider error carries (see `failure_meta`).
+ */
+export function error_span_meta(err: unknown): { error: string } & FailureMeta {
+  return { error: err instanceof Error ? err.message : String(err), ...failure_meta(err) }
+}
+
+/**
  * Close the `engine.generate` span with usage, finish reason, resolved model,
- * or the error message on failure. `step_count` and `tool_call_count` are the
+ * or the error meta on failure. `step_count` and `tool_call_count` are the
  * call-level totals (model turns and tool executions in the call), the
  * span-attribute analog of the GenAI semconv agent metrics
  * `inference_calls` / `tool_calls`.
@@ -55,7 +65,7 @@ export function end_generate_span(
     step_count?: number
     tool_call_count?: number
     error?: string
-  },
+  } & FailureMeta,
 ): void {
   if (trajectory === undefined || span_id === undefined) return
   trajectory.end_span(span_id, { ...meta })
@@ -78,7 +88,7 @@ export function start_step_span(
 export function end_step_span(
   trajectory: TrajectoryLogger | undefined,
   span_id: string | undefined,
-  meta: { usage?: UsageTotals; finish_reason?: FinishReason; error?: string },
+  meta: { usage?: UsageTotals; finish_reason?: FinishReason; error?: string } & FailureMeta,
 ): void {
   if (trajectory === undefined || span_id === undefined) return
   trajectory.end_span(span_id, { ...meta })

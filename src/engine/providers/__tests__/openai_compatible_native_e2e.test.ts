@@ -753,7 +753,7 @@ describe('openai-compatible native e2e reply shapes', () => {
     expect(caught).toBeInstanceOf(provider_error)
     expect(caught).toMatchObject({
       cause_kind: 'network',
-      message: 'compat native: stream ended before [DONE]; the result would be truncated',
+      message: 'network after 3 attempts: compat native: stream ended before [DONE]; the result would be truncated',
     })
   })
 })

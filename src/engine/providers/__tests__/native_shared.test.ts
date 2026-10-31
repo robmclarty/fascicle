@@ -4,14 +4,15 @@
  * three-way split the chat-completions and Ollama mappers serialize from.
  * The wire plumbing in the same module is covered through each adapter's own
  * tests, apart from `on_wire`, which every built-in native adapter reaches
- * through `invoke_http_turn` and which is tested here through a real engine.
+ * through `invoke_http_turn` and which is tested here through a real engine,
+ * and `error_body_message`, which the engine's classifier also calls.
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { TrajectoryLogger } from '#core'
 import { create_engine } from '../../create_engine.js'
 import type { AssistantContentPart, CapturePayload, EngineConfig } from '../../types.js'
-import { is_own_reasoning, split_assistant_parts } from '../native_shared.js'
+import { error_body_message, is_own_reasoning, split_assistant_parts } from '../native_shared.js'
 
 type ReasoningPart = Extract<AssistantContentPart, { type: 'reasoning' }>
 
@@ -26,6 +27,33 @@ const foreign: ReasoningPart = {
   provider_options: { anthropic: { signature: 'sig' } },
 }
 const bare: ReasoningPart = { type: 'reasoning', text: 'no data' }
+
+describe('error_body_message', () => {
+  it('reads a string or a { message } under error, then a top-level message', () => {
+    expect(error_body_message('{"type":"error","error":{"type":"api_error","message":"Overloaded"}}')).toBe('Overloaded')
+    expect(error_body_message('{"error":"model not found"}')).toBe('model not found')
+    expect(error_body_message('{"message":"Bedrock is unable to process your request."}')).toBe(
+      'Bedrock is unable to process your request.',
+    )
+  })
+
+  it('prefers the message under error over a top-level one', () => {
+    expect(error_body_message('{"error":{"message":"inner"},"message":"outer"}')).toBe('inner')
+    expect(error_body_message('{"error":"inner","message":"outer"}')).toBe('inner')
+  })
+
+  it('falls back to the top-level message when error carries none', () => {
+    for (const error of ['null', '42', '""', '{"code":1}', '{"message":""}']) {
+      expect(error_body_message(`{"error":${error},"message":"outer"}`), error).toBe('outer')
+    }
+  })
+
+  it('returns undefined for a body that is not JSON or carries no message', () => {
+    for (const body of ['', '<html>502</html>', '"just a string"', 'null', '{"code":502}', '{"message":""}', '{"message":7}']) {
+      expect(error_body_message(body), body).toBeUndefined()
+    }
+  })
+})
 
 describe('is_own_reasoning', () => {
   it('keeps a part carrying data under the provider key', () => {

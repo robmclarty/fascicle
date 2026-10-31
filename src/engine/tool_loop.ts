@@ -101,6 +101,7 @@ import {
   record_turn_paused,
   record_turn_truncated,
   end_step_span,
+  error_span_meta,
   start_step_span,
   type PricingMissingDedup,
 } from './trajectory.js'
@@ -991,8 +992,7 @@ async function invoke_turn(
     })
     return turn
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err)
-    end_step_span(config.trajectory, step_span, { error: message })
+    end_step_span(config.trajectory, step_span, error_span_meta(err))
     throw err
   }
 }

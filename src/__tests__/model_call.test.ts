@@ -911,7 +911,7 @@ vdescribe('model_call project', () => {
 })
 
 vdescribe('model_step over a provider failure that retry_on leaves out', () => {
-  it("ends the run failed with the provider's message and error kind, not [object Object]", async () => {
+  it("ends the run failed with the provider's message, error kind, and status, not [object Object]", async () => {
     const { engine } = make_loop_engine([
       { throw: Object.assign(new Error('Service Unavailable'), { statusCode: 503 }) },
     ])
@@ -924,8 +924,11 @@ vdescribe('model_step over a provider failure that retry_on leaves out', () => {
     })
     expect(events.find((e) => e.kind === 'run_end')).toMatchObject({
       status: 'failed',
-      error: 'Service Unavailable',
+      error: 'provider_5xx left out of retry_on (status 503): Service Unavailable',
       error_kind: 'provider_error',
+      error_status: 503,
+      error_cause_kind: 'provider_5xx',
+      error_attempts: 1,
     })
   })
 })
