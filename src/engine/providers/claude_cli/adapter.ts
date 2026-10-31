@@ -56,6 +56,7 @@ import { build_generate_result } from './stream_result.js'
 import {
   CLI_AUTH_FAILED_ERROR,
   CLI_BINARY_DEFAULT,
+  CLI_REFRESH_COMMAND,
   DEFAULT_STALL_TIMEOUT_MS,
   DEFAULT_STARTUP_TIMEOUT_MS,
 } from './constants.js'
@@ -229,10 +230,11 @@ export function classify_close_error(
   const reported = parsed?.is_error === true ? parsed.final_text.slice(0, 512) : ''
   const detail = snippet.length > 0 ? snippet : reported
   if (stderr_is_auth_failure(stderr) || parsed?.api_error === CLI_AUTH_FAILED_ERROR) {
+    const reason = detail.length > 0 ? `${detail}: ` : ''
     return new provider_auth_error(
       PROVIDER_NAME,
-      `claude CLI reported an auth failure: ${detail}`,
-      { refresh_command: 'claude auth login' },
+      `claude CLI reported an auth failure: ${reason}run ${CLI_REFRESH_COMMAND}`,
+      { refresh_command: CLI_REFRESH_COMMAND },
     )
   }
   const sandboxed_binary = BWRAP_EXEC_MISSING.exec(stderr)?.[1]

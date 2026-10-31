@@ -29,5 +29,11 @@ export const CLI_AUTH_ERROR_PATTERNS: ReadonlyArray<string> = Object.freeze([
  */
 export const CLI_AUTH_FAILED_ERROR = 'authentication_failed'
 
+/**
+ * The command that logs the CLI in again, which an auth failure's message
+ * names and its `refresh_command` carries.
+ */
+export const CLI_REFRESH_COMMAND = 'claude auth login'
+
 export const DEFAULT_SETTING_SOURCES: ReadonlyArray<'user' | 'project' | 'local'> =
   Object.freeze(['project', 'local'])

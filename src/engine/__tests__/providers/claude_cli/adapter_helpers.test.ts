@@ -152,11 +152,20 @@ describe('compile_schema', () => {
 })
 
 describe('classify_close_error', () => {
-  it('classifies an auth failure with a refresh command', () => {
+  it('classifies an auth failure with a refresh command, which its message names', () => {
     const err = classify_close_error(1, null, 'Error: unauthorized request')
     expect(err).toBeInstanceOf(provider_auth_error)
-    expect(err.message).toContain('auth failure')
+    expect(err.message).toBe('claude CLI reported an auth failure: Error: unauthorized request: run claude auth login')
     expect((err as provider_auth_error).refresh_command).toBe('claude auth login')
+  })
+
+  it('names the refresh command alone when the CLI gave no reason', () => {
+    const err = classify_close_error(1, null, '', {
+      is_error: false,
+      final_text: '',
+      api_error: 'authentication_failed',
+    })
+    expect(err.message).toBe('claude CLI reported an auth failure: run claude auth login')
   })
 
   it('classifies a missing sandbox binary', () => {
@@ -218,7 +227,7 @@ describe('classify_close_error', () => {
       api_error: 'authentication_failed',
     })
     expect(err).toBeInstanceOf(provider_auth_error)
-    expect(err.message).toBe('claude CLI reported an auth failure: Not logged in · Please run /login')
+    expect(err.message).toBe('claude CLI reported an auth failure: Not logged in · Please run /login: run claude auth login')
     expect((err as provider_auth_error).refresh_command).toBe('claude auth login')
   })
 

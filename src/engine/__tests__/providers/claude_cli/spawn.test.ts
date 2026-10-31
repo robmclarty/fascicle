@@ -139,7 +139,12 @@ describe('create_spawn_runtime: spawn options', () => {
     for await (const _ of session.stdout_lines) void _
     const err = await session.wait_close().catch((e: unknown) => e)
     expect(err).toBeInstanceOf(claude_cli_error)
-    if (err instanceof claude_cli_error) expect(err.reason).toBe('binary_not_found')
+    if (err instanceof claude_cli_error) {
+      expect(err.reason).toBe('binary_not_found')
+      expect(err.message).toBe(
+        "failed to spawn '/nonexistent/path/to/claude-binary-xyz': spawn /nonexistent/path/to/claude-binary-xyz ENOENT: install Claude Code, or set providers.claude_cli.binary to where it is",
+      )
+    }
     await runtime.dispose_all()
   })
 
@@ -157,7 +162,13 @@ describe('create_spawn_runtime: spawn options', () => {
     for await (const _ of session.stdout_lines) void _
     const err = await session.wait_close().catch((e: unknown) => e)
     expect(err).toBeInstanceOf(claude_cli_error)
-    if (err instanceof claude_cli_error) expect(err.reason).toBe('sandbox_unavailable')
+    if (err instanceof claude_cli_error) {
+      expect(err.reason).toBe('sandbox_unavailable')
+      // Installing Claude Code won't bring back a missing sandbox wrapper.
+      expect(err.message).toBe(
+        "failed to spawn '/nonexistent/path/to/bwrap-xyz': spawn /nonexistent/path/to/bwrap-xyz ENOENT",
+      )
+    }
     await runtime.dispose_all()
   })
 
@@ -179,6 +190,7 @@ describe('create_spawn_runtime: spawn options', () => {
     if (err instanceof claude_cli_error) {
       expect(err.reason).toBe('binary_not_found')
       expect(err.message).toContain("failed to spawn 'bad")
+      expect(err.message).toMatch(/: install Claude Code, or set providers\.claude_cli\.binary to where it is$/)
     }
     await runtime.dispose_all()
   })
@@ -557,7 +569,9 @@ describe('startup and stall timers', () => {
     expect(err).toBeInstanceOf(claude_cli_error)
     if (err instanceof claude_cli_error) {
       expect(err.reason).toBe('startup_timeout')
-      expect(err.message).toContain('no stdout within 200ms')
+      expect(err.message).toBe(
+        'no stdout within 200ms: raise providers.claude_cli.startup_timeout_ms if Claude Code needs longer to start',
+      )
     }
     await drain.catch(() => undefined)
     await runtime.dispose_all()
@@ -619,7 +633,9 @@ describe('startup and stall timers', () => {
     expect(err).toBeInstanceOf(claude_cli_error)
     if (err instanceof claude_cli_error) {
       expect(err.reason).toBe('stall_timeout')
-      expect(err.message).toContain('no stdout for 200ms')
+      expect(err.message).toBe(
+        "no stdout for 200ms: raise providers.claude_cli.stall_timeout_ms if the model's pauses run longer",
+      )
     }
     await drain.catch(() => undefined)
     await runtime.dispose_all()

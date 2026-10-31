@@ -318,7 +318,7 @@ describe('a logged-out session', () => {
       .catch((e: unknown) => e)
     expect(err).toBeInstanceOf(provider_auth_error)
     if (err instanceof provider_auth_error) {
-      expect(err.message).toBe(`claude CLI reported an auth failure: ${not_logged_in}`)
+      expect(err.message).toBe(`claude CLI reported an auth failure: ${not_logged_in}: run claude auth login`)
       expect(err.refresh_command).toBe('claude auth login')
     }
   })

@@ -57,6 +57,24 @@ export type SpawnSession = {
 
 type ChildRegistry = Set<ChildProcess>
 
+/**
+ * The message for a command that couldn't be started: the command, Node's
+ * reason, and, when the claude binary itself is missing, how to install it
+ * or point at it. A sandbox wrapper that's missing gets no such advice,
+ * since installing Claude Code won't help it.
+ */
+function spawn_failure_message(
+  cmd: string,
+  reason: 'binary_not_found' | 'sandbox_unavailable',
+  detail: string,
+): string {
+  const action =
+    reason === 'binary_not_found'
+      ? ': install Claude Code, or set providers.claude_cli.binary to where it is'
+      : ''
+  return `failed to spawn '${cmd}': ${detail}${action}`
+}
+
 const ALL_REGISTRIES: Set<ChildRegistry> = new Set()
 let exit_handler_installed = false
 
@@ -128,7 +146,10 @@ export function create_spawn_runtime(): SpawnRuntime {
       child = node_spawn(args.cmd, [...args.argv], spawn_opts)
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err)
-      throw new claude_cli_error(spawn_failure_reason, `failed to spawn '${args.cmd}': ${message}`)
+      throw new claude_cli_error(
+        spawn_failure_reason,
+        spawn_failure_message(args.cmd, spawn_failure_reason, message),
+      )
     }
   
     live_children.add(child)
@@ -183,7 +204,7 @@ export function create_spawn_runtime(): SpawnRuntime {
         if (first_stdout_byte_seen) return
         startup_error = new claude_cli_error(
           'startup_timeout',
-          `no stdout within ${String(args.startup_timeout_ms)}ms`,
+          `no stdout within ${String(args.startup_timeout_ms)}ms: raise providers.claude_cli.startup_timeout_ms if Claude Code needs longer to start`,
         )
         escalate('timeout')
       }, args.startup_timeout_ms)
@@ -197,7 +218,7 @@ export function create_spawn_runtime(): SpawnRuntime {
       stall_timer = setTimeout(() => {
         stall_error = new claude_cli_error(
           'stall_timeout',
-          `no stdout for ${String(args.stall_timeout_ms)}ms`,
+          `no stdout for ${String(args.stall_timeout_ms)}ms: raise providers.claude_cli.stall_timeout_ms if the model's pauses run longer`,
         )
         escalate('timeout')
       }, args.stall_timeout_ms)
@@ -248,8 +269,10 @@ export function create_spawn_runtime(): SpawnRuntime {
       wait_close: async () => {
         const outcome = await close_promise
         if (spawn_error !== undefined) {
-          const message = spawn_error.message
-          throw new claude_cli_error(spawn_failure_reason, message)
+          throw new claude_cli_error(
+            spawn_failure_reason,
+            spawn_failure_message(args.cmd, spawn_failure_reason, spawn_error.message),
+          )
         }
         if (startup_error !== undefined) throw startup_error
         if (stall_error !== undefined) throw stall_error
