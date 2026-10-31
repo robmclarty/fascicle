@@ -166,6 +166,17 @@ describe('network_detail', () => {
 })
 
 describe('unreachable_message', () => {
+  it('names the URL without its credentials, query, or fragment', () => {
+    expect(
+      unreachable_message('openai', 'https://user:sk-secret@gateway.example:8443/v1/chat/completions?key=sk-q#frag', 'fetch failed'),
+    ).toBe(
+      'openai could not be reached at https://gateway.example:8443/v1/chat/completions: fetch failed: check base_url, and that the server is running',
+    )
+    expect(unreachable_message('openai', 'not a url/chat/completions', 'Failed to parse URL')).toBe(
+      'openai could not be reached at a base_url that is not a valid URL: Failed to parse URL: check base_url, and that the server is running',
+    )
+  })
+
   it('names the URL, the failure, and what to check, with the command that starts Ollama', () => {
     expect(unreachable_message('openai', 'https://api.openai.com/v1/chat/completions', 'fetch failed')).toBe(
       'openai could not be reached at https://api.openai.com/v1/chat/completions: fetch failed: check base_url, and that the server is running',

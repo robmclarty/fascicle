@@ -206,14 +206,28 @@ export function network_detail(err: unknown): string {
 }
 
 /**
+ * `url` as its origin and path, without the credentials, query, or fragment
+ * that can carry a key, so that a message that names it is safe to log. A
+ * string that doesn't parse is named only as not being a URL.
+ */
+function log_safe_url(url: string): string {
+  try {
+    const parsed = new URL(url)
+    return `${parsed.origin}${parsed.pathname}`
+  } catch {
+    return 'a base_url that is not a valid URL'
+  }
+}
+
+/**
  * The message for a request that never reached the provider: the URL it was
- * sent to, what failed, and what to check, with the command that starts the
- * server for Ollama, the one provider that's usually a daemon on the same
- * machine.
+ * sent to (see log_safe_url), what failed, and what to check, with the
+ * command that starts the server for Ollama, the one provider that's usually
+ * a daemon on the same machine.
  */
 export function unreachable_message(provider: string, url: string, detail: string): string {
   const start = provider === 'ollama' ? ' (ollama serve)' : ''
-  return `${provider} could not be reached at ${url}: ${detail}: check base_url, and that the server is running${start}`
+  return `${provider} could not be reached at ${log_safe_url(url)}: ${detail}: check base_url, and that the server is running${start}`
 }
 
 /**
