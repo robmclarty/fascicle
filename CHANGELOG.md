@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.17.5 — 2026-10-31
 
 ### Changed
 
@@ -19,6 +19,7 @@
 ### Internal
 
 - **Lesson 6's error table says what the next release prints, and the docs quote the new messages.** The lesson claimed that every message in its table but the last said what to do, which wasn't true of the 401, the network failure, or `spawn claude ENOENT`. Each of those rows now quotes what releases after 0.17.4 print, and the closing paragraph says which messages name the fix and why a 400 passes on the provider's own reason. [troubleshooting.md](./docs/troubleshooting.md#a-provider-could-not-be-reached) gains an entry for a provider that can't be reached, and the auth, `claude_cli`, provider, configuration, and primer pages describe the messages as they read now. The roadmap's Known Issues bullet keeps only the errors that still don't say what to do.
+- **Releases go through the shared `version` plugin, and the roadmap is current to 0.17.4.** The repo's own `/version` skill and `scripts/bump-version.mjs` repeated what the `version` plugin does, and the skill said to draft the release notes from commits, though fix and feature commits here write their entries under `## Unreleased` as they land, so an agent that followed it would have written them twice. `.claude/version.json` now holds the conventions that the script and the skill hard-coded, and `.claude/version.md` keeps what config can't say, such as the `npm-publish` approval that a tag waits on. The roadmap's Shipped list covers 0.17.3 and 0.17.4.
 
 ## v0.17.4 — 2026-10-30
 
