@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.17.6 — 2026-11-01
 
 ### Added
 
@@ -19,6 +19,7 @@
 
 - **The dependency audit is back to the one KaTeX low it has carried since 0.14.** It had grown to 25 advisories, and eight were high, against markdown-it under `markdownlint-cli2`, zod, undici under the AI SDK's provider-utils, and body-parser under the MCP SDK's express. Four dev pins moved, to `markdownlint-cli2` 0.24.0, `zod` 4.6.7, `solid-js` 1.9.18, and `fallow` 3.37.0. The fast-uri and qs floors in `pnpm-workspace.yaml` went up, and new overrides there cover undici, body-parser, ip-address, minimatch, and the `re2js` that markdownlint 0.42 pins, each scoped to its vulnerable range, with a comment that says why it's there and when it can go. minimatch is the one that crosses a major, since Stryker asks for 10.2 and the fix is only in 11, and a one-file Stryker run on 11 still kills every mutant. Nothing that a consumer installs changes, except that the viewer's compiled canvas is now built from solid-js 1.9.18.
 - **fallow's entry glob for `examples/` reads `examples/**/*.ts`.** Through fallow 3.33, a `*` crossed directory separators, and `examples/*.ts` relied on that to make every module inside an example app an entry point. 3.37 doesn't do that, and the old glob turned up 77 dead-code findings across the example apps. 3.37 also caught the regular-file, size, and binary guards that pr-improve's `read_file` and `edit_file` each carried a copy of, and the two tools now share them as `read_text_within`. An oversized file in `edit_file` names the cap now, as it always did in `read_file`.
+- **The retry test's HTTP-date case holds on a busy machine.** It built a date three seconds past `Date.now()` and wanted at least 2000 ms back, but an HTTP-date keeps whole seconds, so the answer could start a second short, and a slow moment between the two clock reads took it under the floor (1997 in one `check:all` run). The test freezes the clock on a whole second now and wants exactly 3000.
 
 ## v0.17.5 — 2026-10-31
 
