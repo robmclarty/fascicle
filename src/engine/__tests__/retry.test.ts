@@ -32,11 +32,17 @@ describe('parse_retry_after', () => {
   })
 
   it('parses HTTP-date forms into ms from now', () => {
-    const future = new Date(Date.now() + 3000).toUTCString()
-    const result = parse_retry_after(future)
-    expect(result).toBeDefined()
-    expect(result!).toBeGreaterThanOrEqual(2000)
-    expect(result!).toBeLessThanOrEqual(3500)
+    // An HTTP-date has whole seconds, so on a live clock the answer lands
+    // anywhere up to a second short, less however long the call took. A
+    // frozen clock on a whole second makes it exact.
+    const T0 = 1_700_000_000_000
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(T0)
+    try {
+      expect(parse_retry_after(new Date(T0 + 3000).toUTCString())).toBe(3000)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('returns undefined for null/empty/invalid', () => {
