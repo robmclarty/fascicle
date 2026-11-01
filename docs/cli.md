@@ -51,6 +51,7 @@ type ClaudeCliProviderConfig = {
   auth_mode?: 'auto' | 'oauth' | 'api_key';  // default 'auto'
   api_key?: string;                 // required when auth_mode === 'api_key'
   inherit_env?: boolean;            // default true; oauth seeds full process.env, other modes seed the 7 standard keys
+  omit_env?: ReadonlyArray<string>; // names the subprocess never sees, inherited or caller-set
   default_cwd?: string;             // subprocess cwd
   startup_timeout_ms?: number;      // default 120_000
   stall_timeout_ms?: number;        // default 300_000
@@ -71,6 +72,17 @@ type ClaudeCliProviderConfig = {
 ### Env Inheritance
 
 Under `oauth`, the subprocess env seeds from the full `process.env` so the `claude` binary can reach `HOME`, `PATH`, and other things it needs to find its session files. Under `api_key` and `auto`, it seeds only the 7 standard keys (`PATH`, `HOME`, `SHELL`, `USER`, `LOGNAME`, `LANG`, `TMPDIR`) from `process.env`, plus caller-supplied keys. Set `inherit_env: false` under any mode to start from an empty env.
+
+Under `oauth`, that full env holds every key your process holds, and the CLI hands its env on to the commands it runs. List the names to keep out in `omit_env`, such as another provider's key, and the CLI never sees them, whether they came from `process.env` or from a call's `env`. The configured `api_key` still reaches the CLI under `api_key` and `auto`.
+
+```ts
+const engine = create_engine({
+  providers: {
+    claude_cli: { auth_mode: 'oauth', omit_env: ['OPENROUTER_API_KEY'] },
+    openrouter: { api_key: process.env.OPENROUTER_API_KEY! },
+  },
+});
+```
 
 If you need a minimal-but-functional env under `api_key`, use the helper:
 

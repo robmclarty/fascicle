@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **A `claude_cli` provider can keep named variables out of the CLI's env.** Under `auth_mode: 'oauth'` the CLI inherits all of `process.env`, which it needs to reach its login, and nothing let a host leave a variable out. So a host that also ran another provider handed that provider's key to the Claude CLI and to every command the CLI ran. `omit_env` on the provider config lists names the subprocess never sees, whether inherited or set in a call's `env`, under every auth mode. The configured `api_key` still reaches the CLI under `api_key` and `auto`. Volley needs it to keep `OPENROUTER_API_KEY` from a Claude builder under `oauth`. See [cli.md](./docs/cli.md#env-inheritance).
+
 ## v0.17.6 — 2026-11-01
 
 ### Added

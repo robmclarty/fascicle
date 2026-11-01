@@ -44,6 +44,14 @@ export type ClaudeCliProviderConfig = {
    * session. Set to `false` to opt out and start from an empty env.
    */
   readonly inherit_env?: boolean
+  /**
+   * Variable names the subprocess never sees, whether inherited from
+   * `process.env` or set in a call's `env`. Under `auth_mode: 'oauth'` the
+   * CLI inherits everything, so this is how a host keeps its other
+   * providers' keys away from the Claude CLI and the commands it runs. The
+   * configured `api_key` still reaches the CLI under `'api_key'` and `'auto'`.
+   */
+  readonly omit_env?: ReadonlyArray<string>
   readonly default_cwd?: string
   readonly startup_timeout_ms?: number
   readonly stall_timeout_ms?: number

@@ -280,6 +280,68 @@ describe('build_env — standard env keys are seeded across every auth mode (reg
   })
 })
 
+describe('build_env — omit_env', () => {
+  function with_process_env<T>(vars: Record<string, string>, fn: () => T): T {
+    const prior: Partial<Record<string, string | undefined>> = {}
+    for (const [k, v] of Object.entries(vars)) {
+      prior[k] = process.env[k]
+      process.env[k] = v
+    }
+    try {
+      return fn()
+    } finally {
+      for (const k of Object.keys(vars)) {
+        const v = prior[k]
+        if (v === undefined) delete process.env[k]
+        else process.env[k] = v
+      }
+    }
+  }
+
+  it('keeps a named variable out of the full env oauth inherits, and keeps the rest', () => {
+    with_process_env({ OPENROUTER_API_KEY: 'sk-or-secret', AGENT_KIT_OMIT_KEEP: 'kept' }, () => {
+      const env = build_env({ omit_env: ['OPENROUTER_API_KEY'] }, undefined, 'oauth')
+      expect(env['OPENROUTER_API_KEY']).toBeUndefined()
+      expect(env['AGENT_KIT_OMIT_KEEP']).toBe('kept')
+      expect(env['PATH']).toBe(process.env['PATH'])
+    })
+  })
+
+  it('drops a named variable that a call sets in its env', () => {
+    const env = build_env(
+      { omit_env: ['OPENROUTER_API_KEY'] },
+      { OPENROUTER_API_KEY: 'sk-or-caller', EXTRA: '1' },
+      'auto',
+    )
+    expect(env['OPENROUTER_API_KEY']).toBeUndefined()
+    expect(env['EXTRA']).toBe('1')
+  })
+
+  it('drops a named standard key under auto', () => {
+    with_process_env({ TMPDIR: '/tmp/omit-test' }, () => {
+      const env = build_env({ omit_env: ['TMPDIR'] }, undefined, 'auto')
+      expect(env['TMPDIR']).toBeUndefined()
+      expect(env['PATH']).toBe(process.env['PATH'])
+    })
+  })
+
+  it('still sets the configured api_key when ANTHROPIC_API_KEY is named', () => {
+    const config = { api_key: 'sk-config', omit_env: ['ANTHROPIC_API_KEY'] }
+    expect(build_env(config, { ANTHROPIC_API_KEY: 'sk-caller' }, 'api_key')['ANTHROPIC_API_KEY'])
+      .toBe('sk-config')
+    expect(build_env(config, undefined, 'auto')['ANTHROPIC_API_KEY']).toBe('sk-config')
+  })
+
+  it('drops a caller ANTHROPIC_API_KEY under auto when no api_key is configured', () => {
+    const env = build_env(
+      { omit_env: ['ANTHROPIC_API_KEY'] },
+      { ANTHROPIC_API_KEY: 'sk-caller' },
+      'auto',
+    )
+    expect(env['ANTHROPIC_API_KEY']).toBeUndefined()
+  })
+})
+
 describe('stderr_is_auth_failure patterns', () => {
   it('returns false for empty stderr', () => {
     expect(stderr_is_auth_failure('')).toBe(false)
@@ -340,6 +402,48 @@ describe('end-to-end auth-scrub through adapter spawn', () => {
         expect(v).not.toBe('config-secret-should-not-leak')
         expect(v).not.toBe('caller-secret-should-not-leak')
       }
+    },
+    15_000,
+  )
+
+  it(
+    'oauth mode keeps an omit_env variable out of the spawned subprocess env',
+    async () => {
+      const handle = await track(await write_mock_script(success_ops('ok')))
+      const adapter = create_claude_cli_adapter({
+        binary: MOCK_CLAUDE_PATH,
+        auth_mode: 'oauth',
+        omit_env: ['OPENROUTER_API_KEY'],
+      })
+      cleanup_stack.push(() => adapter.dispose())
+      const prior = process.env['OPENROUTER_API_KEY']
+      process.env['OPENROUTER_API_KEY'] = 'sk-or-should-not-leak'
+      try {
+        await adapter.generate(
+          {
+            model: 'claude-sonnet-4-6',
+            prompt: 'hello',
+            provider_options: {
+              claude_cli: {
+                env: build_mock_env({
+                  MOCK_CLAUDE_SCRIPT: handle.script_path,
+                  MOCK_CLAUDE_RECORD: handle.record_path,
+                }),
+              },
+            },
+          },
+          alias_target,
+        )
+      } finally {
+        if (prior === undefined) delete process.env['OPENROUTER_API_KEY']
+        else process.env['OPENROUTER_API_KEY'] = prior
+      }
+
+      const snapshot = JSON.parse(await readFile(handle.record_path, 'utf8')) as {
+        env: Record<string, string>
+      }
+      expect(snapshot.env['OPENROUTER_API_KEY']).toBeUndefined()
+      expect(snapshot.env['MOCK_CLAUDE_SCRIPT']).toBe(handle.script_path)
     },
     15_000,
   )

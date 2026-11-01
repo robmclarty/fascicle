@@ -122,9 +122,11 @@ function apply_auth_key(
  *
  * Under `auth_mode: 'oauth'` the full `process.env` is inherited instead
  * of just the standard keys, because the CLI needs HOME plus
- * session-specific vars to reach the already-logged-in OAuth session. The
- * auth-mode scrub runs last, after config and caller overrides are merged
- * in, so nothing can re-introduce `ANTHROPIC_API_KEY` under `'oauth'`.
+ * session-specific vars to reach the already-logged-in OAuth session.
+ * `omit_env` drops its names after the caller overrides are merged in, so a
+ * call can't hand back a variable the provider keeps out. The auth-mode
+ * scrub runs last, so nothing can re-introduce `ANTHROPIC_API_KEY` under
+ * `'oauth'`, and a configured `api_key` still reaches the CLI.
  */
 export function build_env(
   config: ClaudeCliProviderConfig,
@@ -133,6 +135,7 @@ export function build_env(
 ): Record<string, string> {
   const env = seed_base_env(config, auth_mode)
   if (caller_env !== undefined) copy_string_entries(env, caller_env)
+  for (const key of config.omit_env ?? []) delete env[key]
   apply_auth_key(env, config, auth_mode)
   return env
 }
