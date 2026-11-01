@@ -69,12 +69,13 @@ function is_usage(value: unknown): value is AcpSessionUsage {
  */
 function is_stored_session(value: unknown): value is AcpStoredSession {
   if (!is_record(value)) return false
-  const { id, cwd, additional_directories, mode, title, updated_at, history, usage } = value
+  const { id, cwd, additional_directories, mode, model, title, updated_at, history, usage } = value
   return (
     typeof id === 'string' &&
     typeof cwd === 'string' &&
     is_strings(additional_directories) &&
     is_acp_mode(mode) &&
+    (model === undefined || typeof model === 'string') &&
     (title === null || typeof title === 'string') &&
     typeof updated_at === 'string' &&
     Array.isArray(history) &&

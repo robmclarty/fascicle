@@ -12,7 +12,8 @@ model how to work.
 ![Zed's agent panel running acp-coder: after "Always allow pnpm test this session", the prompts to run the tests again and once more each run pnpm test without asking](./screenshot.png)
 
 It answers with `anthropic/claude-sonnet-5.5` on OpenRouter unless `--model`
-names another model. `--provider` switches the provider through the same
+names another model. Each `--model` you give adds one to Zed's model picker,
+and a thread starts on the first. `--provider` switches the provider through the same
 switch that [acp-agent](../acp-agent/) uses, and its
 [engines.ts](../acp-agent/engines.ts) lists the providers and the key that
 each one reads. [docs/acp.md](../../docs/acp.md) covers what a turn carries
@@ -21,9 +22,11 @@ and where credentials come from.
 ## Flow
 
 ```text
-sequence        built once per session, since its tools and approvals belong to it
+sequence        built for each session, since its tools and approvals belong to it,
+│               and again when the user picks another model
 ├─ history      the earlier turns and the new prompt, as messages
-└─ coder        the model with the workspace tools, up to 100 steps a turn
+└─ coder        the picked model with the workspace tools and the MCP servers'
+                tools, up to 100 steps a turn
 ```
 
 ## What a command can reach
@@ -38,6 +41,29 @@ Commands inherit the agent's environment, minus the API keys that
 `engines.ts` reads. `main.ts` hands `workspace_tools` that trimmed copy as
 `command_env`, so a command the model runs can't read the key that the model
 runs on.
+
+## MCP servers
+
+The MCP servers you've configured in Zed reach the model beside the
+workspace tools, each tool named `mcp__<server>__<tool>`. A server's call can
+do anything that server can, so it asks first in Manual and in Accept edits,
+the same as a command, and the prompt offers to allow that one tool for the
+rest of the thread. A server that fails to start is left out of the thread
+with a warning on the agent's stderr, and the thread carries on without it.
+
+## Threads and the context ring
+
+Threads are kept under `~/.local/state/fascicle-acp-coder/sessions`, or
+under `$XDG_STATE_HOME` when that's set, so Zed can open one again after the
+agent restarts. `--sessions <dir>` keeps them somewhere else. Keep the
+directory outside every workspace you open, since each file holds a whole
+conversation.
+
+`--context-window <tokens>` gives Zed the context window that it draws its
+context ring against, and the ring shows the thread's cost beside it. Give
+the window that your provider lists for the model. With more than one
+`--model`, the one window stands for all of them, so give the smallest.
+Without the flag, Zed draws no ring.
 
 ## How hard it thinks
 
@@ -84,7 +110,11 @@ a model, your OpenRouter key, and a `PATH`:
       "args": [
         "--tsconfig", "/abs/path/to/fascicle/tsconfig.json",
         "/abs/path/to/fascicle/examples/acp-coder/main.ts",
-        "--model", "anthropic/claude-sonnet-5.5"
+        "--model", "anthropic/claude-sonnet-5.5",
+        "--model", "openai/gpt-5.5",
+        // The context window your provider lists for these models, in
+        // tokens, for Zed's context ring.
+        "--context-window", "<tokens>"
       ],
       // To start each thread in a mode other than Manual, uncomment this and
       // name the mode ("accept_edits" or "auto"). Zed reads this setting, and
@@ -123,8 +153,15 @@ whose `test` script runs `node --test` is enough), start a thread with
    should end as cancelled, and `pgrep -fl 'sleep 60'` should find nothing.
 7. Ask it to read a file outside the project. The tool should refuse, and the
    agent should say why.
-8. Swap `--model` for a model from another vendor, such as
-   `google/gemini-3.8-flash`, and repeat step 2.
+8. Pick the other model in the model picker and repeat step 2. The change
+   should come from the new model, with the earlier turns in its context.
+9. Watch the context ring under the thread. It should fill as the turns go
+   on, with the cost beside it.
+10. Add an MCP server to Zed's `context_servers`, start a new thread, and ask
+    for something that needs one of its tools. A permission request should
+    name the tool as `mcp__<server>__<tool>`.
+11. Quit Zed, open it again, and open the thread from the agent panel's
+    history. Its messages, its title, and its model should all come back.
 
 Two more checks round it out. Switch to Auto, ask for a change and a test
 run, and neither should ask. And start a long command again, quit Zed while it

@@ -161,7 +161,7 @@ describe('acp_agent: initialize and sessions', () => {
       agentCapabilities: {
         loadSession: false,
         promptCapabilities: { embeddedContext: true },
-        sessionCapabilities: { additionalDirectories: {} },
+        sessionCapabilities: { close: {}, additionalDirectories: {} },
       },
       authMethods: [],
     })
@@ -286,7 +286,7 @@ describe('acp_agent: workspace roots', () => {
       agentCapabilities: {
         loadSession: false,
         promptCapabilities: { embeddedContext: true },
-        sessionCapabilities: {},
+        sessionCapabilities: { close: {} },
       },
       authMethods: [],
     })
@@ -1128,7 +1128,7 @@ describe('acp_agent: stored sessions', () => {
     expect(initialized.agentCapabilities).toEqual({
       loadSession: true,
       promptCapabilities: { embeddedContext: true },
-      sessionCapabilities: { additionalDirectories: {}, list: {}, resume: {} },
+      sessionCapabilities: { close: {}, additionalDirectories: {}, list: {}, resume: {} },
     })
   })
 
@@ -1345,5 +1345,36 @@ describe('acp_agent: stored sessions', () => {
     const { session } = await open_session(app)
     await expect(session.prompt('go')).resolves.toEqual({ stopReason: 'end_turn' })
     expect(stderr).toHaveBeenCalledWith(`fascicle/acp: couldn't save session ${session.sessionId}: disk full\n`)
+  })
+})
+
+describe('acp_agent: closing sessions', () => {
+  it('cancels the turn in flight and waits for its run to settle before it answers', async () => {
+    const { flow, seen } = stalled_reply()
+    const app = await acp_agent({ name: 'test-agent', flow })
+    const { agent, session } = await open_session(app)
+    const turn = session.prompt('go')
+    await read_until(session, is_message)
+    await expect(agent.request('session/close', { sessionId: session.sessionId })).resolves.toEqual({})
+    expect(seen.aborted).toBe(true)
+    await expect(turn).resolves.toEqual({ stopReason: 'cancelled' })
+  })
+
+  it('leaves a closed session in the store, where session/load finds it again', async () => {
+    const root_dir = await scratch()
+    const { flow } = numbered_replies()
+    const app = await acp_agent({
+      name: 'test-agent',
+      flow,
+      to_input: (turn: AcpTurn) => turn,
+      session_store: filesystem_session_store({ root_dir }),
+    })
+    const { agent, session } = await open_session(app)
+    await session.prompt('hello')
+    await read_turn(session)
+    await agent.request('session/close', { sessionId: session.sessionId })
+    await expect(
+      agent.request('session/load', { sessionId: session.sessionId, cwd: tmpdir(), mcpServers: [] }),
+    ).resolves.toMatchObject({ modes: { currentModeId: 'manual' } })
   })
 })

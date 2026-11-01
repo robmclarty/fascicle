@@ -8,7 +8,7 @@ import { acp_agent } from 'fascicle/acp'
 import type { AcpTurn } from 'fascicle/acp'
 import { make_loop_engine } from 'fascicle/testing'
 import { keyless_agent, to_messages } from '../examples/acp-agent/main.js'
-import { coder_agent, command_env, parse_effort } from '../examples/acp-coder/main.js'
+import { coder_agent, command_env, flags, parse_context_window, parse_effort } from '../examples/acp-coder/main.js'
 import { run_adversarial_build } from '../examples/adversarial-build/main.js'
 import { run_bench_reviewer } from '../examples/bench-reviewer/main.js'
 import { run_checkpoint_resume } from '../examples/checkpoint-resume/main.js'
@@ -92,7 +92,7 @@ describe('examples smoke', () => {
       return { outcome: { outcome: 'selected', optionId: 'allow_once' } }
     })
     const env = command_env({ PATH: process.env['PATH'], OPENROUTER_API_KEY: 'sk-secret', UNSET: undefined })
-    const app = await acp_agent(coder_agent({ engine, model: 'loop', command_env: env }))
+    const app = await acp_agent(coder_agent({ engine, models: ['loop'], command_env: env }))
     try {
       const { session } = await open_session(app, { client: client_app, session: { cwd } })
       const stops: unknown[] = []
@@ -159,13 +159,42 @@ describe('examples smoke', () => {
     const efforts: unknown[] = []
     for (const effort of [undefined, 'high'] as const) {
       const { engine, requests } = make_loop_engine(['hi'])
-      const config = { engine, model: 'loop', command_env: {}, ...(effort === undefined ? {} : { effort }) }
+      const config = { engine, models: ['loop'], command_env: {}, ...(effort === undefined ? {} : { effort }) }
       const { session } = await open_session(await acp_agent(coder_agent(config)))
       await session.prompt('hello')
       await read_turn(session)
       efforts.push(requests[0]?.effort)
     }
     expect(efforts).toEqual(['none', 'high'])
+  })
+
+  it('acp_coder answers on the model picked in Zed, asking for the cache that model takes', async () => {
+    const { engine, requests } = make_loop_engine(['on the first', 'on the second'])
+    const cache_for = vi.fn((_: string) => undefined)
+    const app = await acp_agent(
+      coder_agent({ engine, models: ['anthropic/claude-sonnet-5.5', 'openai/gpt-5.5'], cache_for, command_env: {} }),
+    )
+    const { agent, session } = await open_session(app)
+    await session.prompt('hello')
+    await read_turn(session)
+    await agent.request('session/set_config_option', { sessionId: session.sessionId, configId: 'model', value: 'openai/gpt-5.5' })
+    await session.prompt('again')
+    await read_turn(session)
+    expect(requests.map((request) => request.model_id)).toEqual(['anthropic/claude-sonnet-5.5', 'openai/gpt-5.5'])
+    expect(cache_for.mock.calls).toEqual([['anthropic/claude-sonnet-5.5'], ['openai/gpt-5.5']])
+  })
+
+  it('acp_coder reads every --model it is given, in order', () => {
+    expect(flags('--model', ['node', 'main.ts', '--model', 'a', '--effort', 'high', '--model', 'b'])).toEqual(['a', 'b'])
+    expect(flags('--model', ['node', 'main.ts', '--model'])).toEqual([])
+  })
+
+  it('acp_coder takes a --context-window of whole tokens above zero', () => {
+    expect(parse_context_window(undefined)).toBeUndefined()
+    expect(parse_context_window('200000')).toBe(200_000)
+    for (const value of ['0', '-5', '1.5', 'lots']) {
+      expect(() => parse_context_window(value)).toThrow(`--context-window takes a whole number of tokens above zero, not ${value}`)
+    }
   })
 
   it('acp_coder refuses an unknown --effort, naming the levels it takes', () => {

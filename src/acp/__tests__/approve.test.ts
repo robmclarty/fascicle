@@ -21,6 +21,7 @@ import type { LoopTurn } from '#testing'
 import { acp_agent } from '../acp_agent.js'
 import { command_key, create_card_sync, session_approver } from '../approve.js'
 import type { CardSync, PermissionAsker } from '../approve.js'
+import { gated_mcp_tools } from '../mcp_servers.js'
 import { session_modes } from '../modes.js'
 import { prompt_turn } from '../prompt_turn.js'
 import { open_session, read_turn } from '../test/connect_client.js'
@@ -711,6 +712,8 @@ async function manual_session(cards: CardSync, ask: PermissionAsker): Promise<Ac
     roots,
     client_capabilities: {},
     mode: modes.current,
+    model: () => undefined,
+    mcp_tools: [],
     approve: (request) => approver(session, request),
   }
   return session
@@ -907,5 +910,66 @@ describe('approve: waiting for the client', () => {
     controller.abort(new Error('cancelled'))
     expect(await answer).toBe(false)
     expect(writes).toEqual([])
+  })
+})
+
+/**
+ * An approval request for a call to the session's MCP tool `name`, whose
+ * input that tool's `needs_approval` saw first, as the tool loop asks it.
+ */
+async function mcp_request(session: AcpSession, name: string, input: Record<string, unknown>): Promise<ToolApprovalRequest> {
+  const raw: Tool = { name, description: name, input_schema: json_schema_to_standard({ type: 'object' }), execute: () => 'ok' }
+  const [tool] = gated_mcp_tools([raw], () => session)
+  if (typeof tool?.needs_approval !== 'function') throw new Error(`${name} never asks`)
+  await tool.needs_approval(input)
+  return { tool_name: name, input, step_index: 0, tool_call_id: name, abort: new AbortController().signal }
+}
+
+describe('approve: MCP tools', () => {
+  it('asks before an MCP call and offers to always allow that one tool for the session', async () => {
+    const asked: RequestPermissionRequest[] = []
+    const session = await manual_session(create_card_sync(), async (request) => {
+      asked.push(request)
+      return choose(asked.length === 1 ? 'allow_always' : 'reject_once')
+    })
+    expect(await session.approve(await mcp_request(session, 'mcp__github__create_issue', { title: 'a' }))).toBe(true)
+    expect(await session.approve(await mcp_request(session, 'mcp__github__create_issue', { title: 'b' }))).toBe(true)
+    expect(await session.approve(await mcp_request(session, 'mcp__github__close_issue', { number: 1 }))).toBe(false)
+    expect(asked.map((request) => [request.toolCall.title, request.toolCall.rawInput, request.options])).toEqual([
+      ['mcp__github__create_issue', { title: 'a' }, [ALLOW, always('Always allow mcp__github__create_issue this session'), REJECT]],
+      ['mcp__github__close_issue', { number: 1 }, [ALLOW, always('Always allow mcp__github__close_issue this session'), REJECT]],
+    ])
+  })
+
+  it("covers no call of the same name that the session's MCP tool never saw", async () => {
+    const asked: RequestPermissionRequest[] = []
+    const session = await manual_session(create_card_sync(), async (request) => {
+      asked.push(request)
+      return choose(asked.length === 1 ? 'allow_always' : 'reject_once')
+    })
+    expect(await session.approve(await mcp_request(session, 'mcp__db__query', { sql: 'select 1' }))).toBe(true)
+    const same_name: ToolApprovalRequest = {
+      tool_name: 'mcp__db__query',
+      input: { sql: 'select 1' },
+      step_index: 0,
+      tool_call_id: 'o',
+      abort: new AbortController().signal,
+    }
+    expect(await session.approve(same_name)).toBe(false)
+    expect(asked.map((request) => request.options)).toEqual([
+      [ALLOW, always('Always allow mcp__db__query this session'), REJECT],
+      [ALLOW, REJECT],
+    ])
+  })
+
+  it('keeps a grant on a command apart from a grant on an MCP tool of the same name', async () => {
+    const asked: RequestPermissionRequest[] = []
+    const session = await manual_session(create_card_sync(), async (request) => {
+      asked.push(request)
+      return choose(asked.length === 1 ? 'allow_always' : 'reject_once')
+    })
+    expect(await session.approve(await command_request(session, 'mcp__db__query'))).toBe(true)
+    expect(await session.approve(await mcp_request(session, 'mcp__db__query', {}))).toBe(false)
+    expect(asked).toHaveLength(2)
   })
 })

@@ -59,7 +59,7 @@ afterAll(async () => {
  */
 async function fixture_session(client_capabilities: ClientCapabilities = {}): Promise<AcpSession> {
   const roots = await resolve_roots([cwd])
-  return { id: 'session-1', cwd, additional_directories: [], roots, client_capabilities, mode: () => 'auto', approve: () => false }
+  return { id: 'session-1', cwd, additional_directories: [], roots, client_capabilities, mode: () => 'auto', model: () => undefined, mcp_tools: [], approve: () => false }
 }
 
 /** A model call on the scripted engine with the session's workspace tools. */
@@ -504,6 +504,8 @@ describe('presentation: titles and locations', () => {
     roots: ['/work', '/shared'],
     client_capabilities: {},
     mode: () => 'manual',
+    model: () => undefined,
+    mcp_tools: [],
     approve: () => false,
   })
 
@@ -609,6 +611,8 @@ describe('presentation: closing a card from the mapper', () => {
     roots: ['/work'],
     client_capabilities: {},
     mode: () => 'manual',
+    model: () => undefined,
+    mcp_tools: [],
     approve: () => false,
   })
   const terminals = with_workspace_tools({ ...session, id: 't', client_capabilities: { _meta: { terminal_output: true } } })
@@ -704,6 +708,8 @@ describe('presentation: a session that never built the workspace tools', () => {
     roots: ['/work'],
     client_capabilities: { _meta: { terminal_output: true } },
     mode: () => 'manual',
+    model: () => undefined,
+    mcp_tools: [],
     approve: () => false,
   }
 
@@ -743,6 +749,8 @@ describe('presentation: the preview store', () => {
     roots: ['/a'],
     client_capabilities: {},
     mode: () => 'manual',
+    model: () => undefined,
+    mcp_tools: [],
     approve: () => false,
   })
 

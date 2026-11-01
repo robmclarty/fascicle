@@ -19,7 +19,7 @@
 import type { SessionConfigOption, SessionModeState, SessionUpdate } from '@agentclientprotocol/sdk'
 import type { AcpMode } from './types.js'
 
-/** The id of the config option that carries the mode, the only option this agent has. */
+/** The id of the config option that carries the mode. */
 export const MODE_CONFIG_ID = 'mode'
 
 /** What a workspace tool does that a mode may want to ask about first. */
@@ -137,8 +137,9 @@ export function mode_state(offer: ModeOffer, mode: AcpMode): SessionModeState {
 }
 
 /**
- * The session's config options, the mode as a select being the only one, as
- * `session/new` and `session/set_config_option` report them.
+ * The session's mode as a config option, a select over every mode the agent
+ * offers, which leads the options `session/new` and
+ * `session/set_config_option` report.
  */
 export function config_options(offer: ModeOffer, mode: AcpMode): SessionConfigOption[] {
   return [
@@ -171,22 +172,24 @@ export type SessionModes = {
  * agent has since stopped offering starts where a new one would. A switch
  * takes effect before the client hears of it, so a tool call that asks after
  * the switch reads the new mode, and the two updates go out in order through
- * `send`.
+ * `send`. A config option update carries every option the session has, so
+ * `others` gives the ones after the mode, such as the model.
  */
 export function session_modes(
   offer: ModeOffer,
   send: (update: SessionUpdate) => Promise<void>,
   start?: AcpMode,
+  others: () => SessionConfigOption[] = () => [],
 ): SessionModes {
   const offered: ReadonlyArray<unknown> = offer.modes
-  let mode = start !== undefined && offered.includes(start) ? start : offer.default_mode
+  let mode = offer.modes.find((entry) => entry === start) ?? offer.default_mode
   return {
     current: () => mode,
     offers: (candidate): candidate is AcpMode => offered.includes(candidate),
     switch_to: async (next) => {
       mode = next
       await send({ sessionUpdate: 'current_mode_update', currentModeId: next })
-      await send({ sessionUpdate: 'config_option_update', configOptions: config_options(offer, next) })
+      await send({ sessionUpdate: 'config_option_update', configOptions: [...config_options(offer, next), ...others()] })
     },
   }
 }

@@ -15,9 +15,11 @@
  * and never offered one, since anything can follow a `;` or a `|`.
  *
  * Only the session's own workspace tools get the diff and the "always",
- * known by the input their `needs_approval` marked rather than by name. A
- * tool of a flow's own or an MCP tool that shares a name gets the plain
- * request, and no grant covers it.
+ * known by the input their `needs_approval` marked rather than by name. The
+ * tools of the MCP servers the client sent ask as a command does, and their
+ * "always" covers that one tool for the session. A tool of a flow's own
+ * that shares a name with either gets the plain request, and no grant
+ * covers it.
  *
  * A permission check that fails open isn't a check, so anything short of
  * an allow denies the call: a rejection, a `cancelled` outcome, an option
@@ -45,7 +47,8 @@ import type { TrajectoryEvent, TrajectoryLogger } from '#core'
 import type { ToolApprovalRequest } from '#engine'
 import { as_record } from '#schema'
 import { asks_before } from './modes.js'
-import type { GatedAction, SessionModes } from './modes.js'
+import type { SessionModes } from './modes.js'
+import { is_mcp_call } from './mcp_servers.js'
 import { input_fields, opening_fields } from './presentation.js'
 import { edit_file_change } from './tools/edit_file.js'
 import { write_file_change } from './tools/write_file.js'
@@ -105,21 +108,48 @@ export type ApproverDeps = {
 /** Answers the engine's approval requests for the calls in one session. */
 export type SessionApprover = (session: AcpSession, request: ToolApprovalRequest) => Promise<boolean>
 
+/** What an "always" for one call covers, under the name the request offers it by. */
+type Grant = { readonly key: string; readonly name: string }
+
 /**
- * What a workspace tool that asks does, and for a write or an edit, how
- * to work out its change without making it. A gate goes by name, but only
- * a call the session's own workspace tool marked ever reaches one.
+ * How a call that asks is shown and what may cover it: for a write or an
+ * edit, how to work out its change without making it, which also makes it
+ * an edit that Accept edits covers, and for a command or an MCP call, what
+ * a grant for the session covers. A workspace tool's gate goes by name, but
+ * only a call the session's own workspace tool marked ever reaches one.
  */
 type Gate = {
-  readonly action: GatedAction
   readonly change?: (session: AcpSession, input: unknown) => Promise<ShownChange>
+  readonly grant?: (request: ToolApprovalRequest) => Grant | undefined
 }
 
 const GATES: ReadonlyMap<string, Gate> = new Map<string, Gate>([
-  ['write_file', { action: 'edit', change: write_file_change }],
-  ['edit_file', { action: 'edit', change: edit_file_change }],
-  ['run_command', { action: 'command' }],
+  ['write_file', { change: write_file_change }],
+  ['edit_file', { change: edit_file_change }],
+  [
+    'run_command',
+    {
+      grant: (request) => {
+        const line = command_key(request.input)
+        return line === undefined ? undefined : { key: `command ${line}`, name: `Always allow \`${line}\` this session` }
+      },
+    },
+  ],
 ])
+
+/** The gate every MCP tool's call goes through: it asks as a command does, and the grant covers the tool. */
+const MCP_GATE: Gate = {
+  grant: (request) => ({ key: `tool ${request.tool_name}`, name: `Always allow ${request.tool_name} this session` }),
+}
+
+/**
+ * The gate a call goes through: its workspace tool's, the MCP tools' for a
+ * call one of the session's MCP tools marked, and none for any other call.
+ */
+function gate_for(session: AcpSession, request: ToolApprovalRequest): Gate | undefined {
+  if (is_workspace_call(session, request.input)) return GATES.get(request.tool_name)
+  return is_mcp_call(session, request.input) ? MCP_GATE : undefined
+}
 
 /**
  * Shell syntax that runs, chains, or redirects something past the
@@ -332,17 +362,17 @@ function warn_failed(tool_name: string, err: unknown): void {
 
 /**
  * The "always" a call is offered: Accept edits for an edit, when the agent
- * offers that mode, and a grant of its key for a command that has one. Any
- * other call gets none. Choosing Accept edits leaves a session that has
- * moved past Manual since the call asked where it is.
+ * offers that mode, and the grant its gate makes for a command line or an
+ * MCP tool. Any other call gets none. Choosing Accept edits leaves a session
+ * that has moved past Manual since the call asked where it is.
  */
 function always_for(
   gate: Gate | undefined,
-  key: string | undefined,
+  grant: Grant | undefined,
   modes: SessionModes,
   granted: Set<string>,
 ): Always | undefined {
-  if (gate?.action === 'edit') {
+  if (gate?.change !== undefined) {
     if (!modes.offers('accept_edits')) return undefined
     return {
       name: 'Allow all edits this session',
@@ -351,11 +381,11 @@ function always_for(
       },
     }
   }
-  if (key === undefined) return undefined
+  if (grant === undefined) return undefined
   return {
-    name: `Always allow \`${key}\` this session`,
+    name: grant.name,
     grant: async () => {
-      granted.add(key)
+      granted.add(grant.key)
     },
   }
 }
@@ -376,11 +406,11 @@ function options_for(always: Always | undefined): PermissionOption[] {
 export function session_approver({ modes, cards, ask }: ApproverDeps): SessionApprover {
   const granted = new Set<string>()
   return async (session, request) => {
-    const gate = is_workspace_call(session, request.input) ? GATES.get(request.tool_name) : undefined
-    const key = gate?.action === 'command' ? command_key(request.input) : undefined
-    // Stryker disable next-line ConditionalExpression: only keys are ever granted, so has() answers false for a missing key either way; the check narrows the type.
-    if (key !== undefined && granted.has(key)) return true
-    const always = always_for(gate, key, modes, granted)
+    const gate = gate_for(session, request)
+    const grant = gate?.grant?.(request)
+    // Stryker disable next-line ConditionalExpression: only grants' keys are ever granted, so has() answers false without one either way; the check narrows the type.
+    if (grant !== undefined && granted.has(grant.key)) return true
+    const always = always_for(gate, grant, modes, granted)
     const options = options_for(always)
     try {
       await unless_aborted(request.abort, cards.caught_up)

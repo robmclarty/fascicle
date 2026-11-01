@@ -64,6 +64,8 @@ beforeAll(async () => {
     roots: await resolve_roots([cwd]),
     client_capabilities: {},
     mode: () => 'manual',
+    model: () => undefined,
+    mcp_tools: [],
     approve: () => false,
   }
 })

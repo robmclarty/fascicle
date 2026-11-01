@@ -41,6 +41,7 @@
       "#agents": ["./src/agents/index.ts"],
       "#stdio": ["./src/stdio/index.ts"],
       "#acp": ["./src/acp/index.ts"],
+      "#mcp": ["./src/mcp/index.ts"],
       "#ui": ["./src/ui/index.ts"],
       "#policy": ["./src/policy/index.ts"],
       "#process": ["./src/process/index.ts"],

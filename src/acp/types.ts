@@ -6,7 +6,7 @@
 
 import type { ClientCapabilities, ContentBlock, SessionUpdate } from '@agentclientprotocol/sdk'
 import type { Step, TrajectoryEvent, TrajectoryLogger } from '#core'
-import type { ToolApprovalHandler } from '#engine'
+import type { Tool, ToolApprovalHandler } from '#engine'
 
 /**
  * Where a model call's streamed text goes: the reply, the collapsed thought
@@ -85,6 +85,8 @@ export type AcpStoredSession = {
   readonly cwd: string
   readonly additional_directories: ReadonlyArray<string>
   readonly mode: AcpMode
+  /** The model the session last ran on, kept only by an agent that offers models. */
+  readonly model?: string | undefined
   /** Null until the session's first turn names it, and empty for a session left untitled. */
   readonly title: string | null
   /** When the session last changed, in ISO 8601. */
@@ -134,6 +136,23 @@ export type AcpTurn = {
 export type AcpMode = 'manual' | 'accept_edits' | 'auto'
 
 /**
+ * A model a session can run on, as the client's model picker lists it. The
+ * id is the agent's own, so the flow builder reads it from `session.model()`
+ * and decides what it means, such as a model id on one provider.
+ */
+export type AcpModel = {
+  readonly id: string
+  /** What the picker shows; default: the id. */
+  readonly name?: string | undefined
+  readonly description?: string | undefined
+  /**
+   * The model's context window in tokens, in place of the config's
+   * `context_window` while a session runs on this model.
+   */
+  readonly context_window?: number | undefined
+}
+
+/**
  * A session as its flow builder sees it, made once per `session/new`.
  */
 export type AcpSession = {
@@ -155,6 +174,20 @@ export type AcpSession = {
    * included, so a tool reads it at each call rather than once.
    */
   readonly mode: () => AcpMode
+  /**
+   * The id of the model the session runs on, one of the config's `models`,
+   * or undefined for an agent that offers none. The user can pick another
+   * between turns, and the flow builder runs again when they do, so a flow
+   * reads it as it's built.
+   */
+  readonly model: () => string | undefined
+  /**
+   * The tools of the MCP servers the client sent for the session, for an
+   * agent whose config sets `mcp_servers`, and none otherwise. Each one's
+   * name is `mcp__<server>__<tool>`, and each asks before it runs whenever
+   * the session's mode asks before a command.
+   */
+  readonly mcp_tools: ReadonlyArray<Tool>
   /**
    * Asks the client before a tool call runs, through
    * `session/request_permission`, for a model call's `on_tool_approval`.
@@ -225,6 +258,23 @@ type ServeAcpCommon<i, o> = {
    */
   readonly additional_directories?: boolean | undefined
   /**
+   * The models a session can run on, which the client lists in its model
+   * picker in this order. A session starts on `default_model`, and the flow
+   * builder runs again whenever the user picks another, so `flow` has to be
+   * a function of the session. Left out, the client shows no picker and the
+   * flow runs on whatever model it was built with.
+   */
+  readonly models?: ReadonlyArray<AcpModel> | undefined
+  /** The id of the model each session starts on, one of `models`; default: the first. */
+  readonly default_model?: string | undefined
+  /**
+   * Whether the agent connects to the MCP servers the client sends with each
+   * session and hands their tools to the flow builder as `session.mcp_tools`
+   * (default: `false`, which ignores them). It needs the
+   * `@modelcontextprotocol/sdk` peer.
+   */
+  readonly mcp_servers?: boolean | undefined
+  /**
    * The turn's reply when the flow streamed no message text; default: a
    * string as-is, anything else as JSON.
    */
@@ -240,6 +290,7 @@ type ServeAcpCommon<i, o> = {
    * ring against. With it, the agent sends a `usage_update` after each model
    * turn, carrying the session's cost once a turn has been priced; without
    * it, the agent sends none, since the update can't leave the window out.
+   * A model in `models` that names its own window takes its place.
    */
   readonly context_window?: number | undefined
   /**

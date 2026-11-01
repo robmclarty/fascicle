@@ -217,9 +217,9 @@ allow = ["core", "engine", "composites", "schema"]
 from = "mcp"
 allow = ["core", "engine", "schema"]
 
-[[boundaries.rules]] # acp: core + engine + schema (serves a flow as an ACP agent), process for the console reroute; testing for its lifecycle tests' stub engine
+[[boundaries.rules]] # acp: core + engine + schema (serves a flow as an ACP agent), process for the console reroute, mcp to connect the client's MCP servers; testing for its lifecycle tests' stub engine
 from = "acp"
-allow = ["core", "engine", "schema", "process", "testing"]
+allow = ["core", "engine", "schema", "process", "mcp", "testing"]
 
 [[boundaries.rules]] # stdio: core + adapters + schema (single-shot child-process entry helper), process for the console reroute
 from = "stdio"

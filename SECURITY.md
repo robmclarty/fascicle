@@ -131,6 +131,16 @@ injection can reach too.
   `modes: ['manual', 'accept_edits']` in its config. No client can then switch
   a session into Auto, and every command asks before it runs unless you've
   allowed that exact command line for the session.
+- **MCP servers run as the client sends them.** With `mcp_servers: true`, the
+  agent starts each stdio server that the client sends with a session, under
+  the command and arguments its entry names, so the MCP servers in your
+  editor's settings are programs the agent runs for you. A stdio server gets
+  the variables its entry sets on top of the MCP SDK's short default list, not
+  the agent's environment, so it doesn't see the provider keys. Each MCP call
+  asks in Manual and in Accept edits, and its "always" covers that one tool
+  for the session. The model reads what an MCP tool returns, so a tool that
+  fetches a page or an issue is one more way for a prompt injection to reach
+  it.
 
 [docs/acp.md](./docs/acp.md#coding-sessions) covers the tools, the modes, and
 the prompts in full.

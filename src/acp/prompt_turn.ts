@@ -16,6 +16,7 @@ import { aborted_error, run } from '#core'
 import type { Step, TrajectoryEvent } from '#core'
 import type { FinishReason } from '#engine'
 import type { CardSync } from './approve.js'
+import { context_window_of } from './models.js'
 import { create_acp_mapper_state, to_session_updates } from './to_session_updates.js'
 import { reset_previews } from './tools/previews.js'
 import { finish_reason_of, note_usage, stop_reason_for, usage_update } from './usage.js'
@@ -39,7 +40,8 @@ type TurnHandle = {
  */
 export type SessionRecord<i, o> = {
   readonly session: AcpSession
-  readonly flow: Step<i, o>
+  /** Built again when the user picks another model, so a turn reads it as it starts. */
+  flow: Step<i, o>
   readonly history: AcpHistoryEntry[]
   readonly cards: CardSync
   readonly usage: SessionUsage
@@ -199,7 +201,8 @@ async function send_all(updates: ReadonlyArray<SessionUpdate>, cancelled: AbortS
  */
 function usage_updates<i, o>(config: ServeAcpConfig<i, o>, record: SessionRecord<i, o>, event: TrajectoryEvent): SessionUpdate[] {
   const changed = note_usage(record.usage, event)
-  return changed && config.context_window !== undefined ? [usage_update(record.usage, config.context_window)] : []
+  const window = context_window_of(config, record.session.model())
+  return changed && window !== undefined ? [usage_update(record.usage, window)] : []
 }
 
 /**

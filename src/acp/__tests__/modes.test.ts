@@ -8,7 +8,7 @@ import { model_step } from 'fascicle'
 import { make_loop_engine, make_stub_engine } from '#testing'
 import type { Tool, ToolApprovalRequest } from '#engine'
 import { acp_agent } from '../acp_agent.js'
-import { is_acp_mode, session_modes } from '../modes.js'
+import { config_options, is_acp_mode, session_modes } from '../modes.js'
 import { open_session, read_turn, read_until } from '../test/connect_client.js'
 import type { OpenSession } from '../test/connect_client.js'
 import type { AcpMode, AcpSession, ServeAcpConfig } from '../types.js'
@@ -136,6 +136,24 @@ describe('modes: switching', () => {
     await modes.switch_to('auto')
     expect(seen).toEqual(['auto', 'auto'])
     expect(modes.current()).toBe('auto')
+  })
+})
+
+describe('modes: the options a switch sends', () => {
+  const offer = { modes: ['manual', 'accept_edits', 'auto'], default_mode: 'manual' } as const
+
+  it('sends the mode alone for a session with no other options, and the others after it', async () => {
+    const sent: SessionUpdate[] = []
+    const record = async (update: SessionUpdate): Promise<void> => {
+      sent.push(update)
+    }
+    const other: SessionConfigOption = { id: 'model', name: 'Model', type: 'select', currentValue: 'a', options: [] }
+    await session_modes(offer, record).switch_to('auto')
+    await session_modes(offer, record, undefined, () => [other]).switch_to('auto')
+    expect(sent.filter((update) => update.sessionUpdate === 'config_option_update')).toEqual([
+      { sessionUpdate: 'config_option_update', configOptions: config_options(offer, 'auto') },
+      { sessionUpdate: 'config_option_update', configOptions: [...config_options(offer, 'auto'), other] },
+    ])
   })
 })
 
@@ -320,7 +338,7 @@ describe('modes: a config that offers no mode it can run', () => {
 describe('modes: when the workspace tools ask', () => {
   /** A session whose mode is whatever `mode` returns at the time. */
   function session_in(mode: () => AcpMode): AcpSession {
-    return { id: 's', cwd: '/work', additional_directories: [], roots: ['/work'], client_capabilities: {}, mode, approve: () => false }
+    return { id: 's', cwd: '/work', additional_directories: [], roots: ['/work'], client_capabilities: {}, mode, model: () => undefined, mcp_tools: [], approve: () => false }
   }
 
   /** Whether the engine's approval check would ask before `tool` runs. */

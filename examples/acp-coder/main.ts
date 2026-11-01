@@ -10,8 +10,15 @@
  * It answers with anthropic/claude-sonnet-5.5 on OpenRouter unless --model
  * names another model, and --provider switches the provider, through the
  * same switch as examples/acp-agent (engines.ts lists the providers and the
- * key each one reads). Commands run with the agent's environment minus those
- * keys, so a command the model runs can't read them.
+ * key each one reads). Each --model adds one to Zed's model picker, and a
+ * thread starts on the first. Commands run with the agent's environment
+ * minus those keys, so a command the model runs can't read them.
+ *
+ * The MCP servers configured in Zed reach the model beside the workspace
+ * tools, and each of their calls asks first unless the mode is Auto.
+ * --context-window gives Zed the window to draw its context ring against.
+ * Threads are kept under ~/.local/state/fascicle-acp-coder/sessions (or
+ * --sessions <dir>), so Zed can open one again after a restart.
  *
  * --effort sets how hard the model thinks, from none to max. Without it the
  * model keeps its own default, and Claude Sonnet 5.5 decides for itself when
@@ -27,10 +34,12 @@
  */
 
 import { readFileSync } from 'node:fs'
+import { homedir } from 'node:os'
+import { join } from 'node:path'
 import { model_step, sequence, step } from 'fascicle'
 import type { CacheSetting, EffortLevel, Engine, Step } from 'fascicle'
-import { serve_acp, workspace_tools } from 'fascicle/acp'
-import type { AcpSession, AcpTurn, ServeAcpConfig } from 'fascicle/acp'
+import { filesystem_session_store, serve_acp, workspace_tools } from 'fascicle/acp'
+import type { AcpSession, AcpSessionStore, AcpTurn, ServeAcpConfig } from 'fascicle/acp'
 import { API_KEYS, engine_for, flag } from '../acp-agent/engines.js'
 import { to_messages } from '../acp-agent/main.js'
 
@@ -65,6 +74,27 @@ export function parse_effort(value: string | undefined): EffortLevel | undefined
 }
 
 /**
+ * Every value given for a flag that may repeat, in order, read from `argv`.
+ */
+export function flags(name: string, argv: ReadonlyArray<string> = process.argv): string[] {
+  return argv.flatMap((arg, index) => {
+    const value = argv[index + 1]
+    return arg === name && value !== undefined ? [value] : []
+  })
+}
+
+/**
+ * The window that `--context-window` names, in tokens, or undefined when
+ * the flag is absent. Anything but a whole number above zero fails here.
+ */
+export function parse_context_window(value: string | undefined): number | undefined {
+  if (value === undefined) return undefined
+  const tokens = Number(value)
+  if (Number.isInteger(tokens) && tokens > 0) return tokens
+  throw new Error(`--context-window takes a whole number of tokens above zero, not ${value}`)
+}
+
+/**
  * The coder's prompt, followed by where the session's workspace is, so the
  * model knows where relative paths start without a call to find out.
  */
@@ -91,54 +121,76 @@ export function command_env(env: NodeJS.ProcessEnv): Record<string, string> {
 
 export type CoderConfig = {
   readonly engine: Engine
-  readonly model: string
+  /** The models Zed's picker offers, in order; a thread starts on the first. */
+  readonly models: ReadonlyArray<string>
   /** How hard the model thinks. Left out, the model keeps its own default. */
   readonly effort?: EffortLevel
-  /** Prompt caching for the coder's model call. Left out, the provider's default applies. */
-  readonly cache?: CacheSetting
+  /** Prompt caching for a model call on `model`. Left out, the provider's default applies. */
+  readonly cache_for?: (model: string) => CacheSetting | undefined
+  /** The context window Zed draws its context ring against. Left out, Zed draws none. */
+  readonly context_window?: number
+  /** Where threads are kept, so Zed can open one again after a restart. */
+  readonly session_store?: AcpSessionStore
   /** The whole environment the model's commands run with. */
   readonly command_env: Readonly<Record<string, string>>
 }
 
 /**
  * The coding agent: per session, the earlier turns and the new prompt go to
- * one model call that holds the session's workspace tools and asks the
- * client before an edit or a command whenever the session's mode says to.
- * It hands `serve_acp` its engine, so the engine is disposed once Zed
- * disconnects.
+ * one model call on the model picked in Zed, holding the session's workspace
+ * tools and the tools of its MCP servers, and asking the client before an
+ * edit, a command, or an MCP call whenever the session's mode says to. Zed
+ * rebuilds the flow when the user picks another model. It hands `serve_acp`
+ * its engine, so the engine is disposed once Zed disconnects.
  */
 export function coder_agent(config: CoderConfig): ServeAcpConfig<AcpTurn, string> {
   return {
     name: 'fascicle-coder',
-    flow: (session: AcpSession): Step<AcpTurn, string> =>
-      sequence([
+    models: config.models.map((id) => ({ id })),
+    mcp_servers: true,
+    flow: (session: AcpSession): Step<AcpTurn, string> => {
+      const model = session.model()
+      const cache = model === undefined ? undefined : config.cache_for?.(model)
+      return sequence([
         step('history', to_messages),
         model_step({
           id: 'coder',
           engine: config.engine,
-          model: config.model,
+          ...(model === undefined ? {} : { model }),
           ...(config.effort === undefined ? {} : { effort: config.effort }),
-          ...(config.cache === undefined ? {} : { cache: config.cache }),
+          ...(cache === undefined ? {} : { cache }),
           system: system_for(session),
-          tools: workspace_tools(session, { command_env: config.command_env }),
+          tools: [...workspace_tools(session, { command_env: config.command_env }), ...session.mcp_tools],
           max_steps: 100,
           on_tool_approval: session.approve,
         }),
-      ]),
+      ])
+    },
     to_input: (turn) => turn,
+    ...(config.context_window === undefined ? {} : { context_window: config.context_window }),
+    ...(config.session_store === undefined ? {} : { session_store: config.session_store }),
     engine: config.engine,
   }
 }
 
 /**
- * The model the command line names, on the provider it names. The default
+ * The models the command line names, on the provider it names. The default
  * model is an OpenRouter id, so another provider needs `--model` as well.
  */
-function chosen_model(provider: string): string {
-  const model = flag('--model')
-  if (model !== undefined) return model
-  if (provider === 'openrouter') return DEFAULT_MODEL
+function chosen_models(provider: string): string[] {
+  const models = flags('--model')
+  if (models.length > 0) return models
+  if (provider === 'openrouter') return [DEFAULT_MODEL]
   throw new Error(`--provider ${provider} needs --model too: ${DEFAULT_MODEL} is an OpenRouter model id`)
+}
+
+/**
+ * Where threads are kept: `--sessions` when it's given, and otherwise a
+ * directory under the user's state directory, outside every workspace.
+ */
+function sessions_dir(): string {
+  const state = process.env['XDG_STATE_HOME'] ?? join(homedir(), '.local', 'state')
+  return flag('--sessions') ?? join(state, 'fascicle-acp-coder', 'sessions')
 }
 
 /**
@@ -155,15 +207,16 @@ function cache_for(provider: string, model: string): CacheSetting | undefined {
 
 if (import.meta.url === `file://${process.argv[1] ?? ''}`) {
   const provider = flag('--provider') ?? 'openrouter'
-  const model = chosen_model(provider)
   const effort = parse_effort(flag('--effort'))
-  const cache = cache_for(provider, model)
+  const context_window = parse_context_window(flag('--context-window'))
   await serve_acp(
     coder_agent({
       engine: engine_for(provider),
-      model,
+      models: chosen_models(provider),
       ...(effort === undefined ? {} : { effort }),
-      ...(cache === undefined ? {} : { cache }),
+      cache_for: (model) => cache_for(provider, model),
+      ...(context_window === undefined ? {} : { context_window }),
+      session_store: filesystem_session_store({ root_dir: sessions_dir() }),
       command_env: command_env(process.env),
     }),
   )

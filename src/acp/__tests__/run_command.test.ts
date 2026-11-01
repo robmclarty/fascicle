@@ -43,6 +43,8 @@ async function session_over(root: string): Promise<AcpSession> {
     roots: await resolve_roots([root]),
     client_capabilities: {},
     mode: () => 'manual',
+    model: () => undefined,
+    mcp_tools: [],
     approve: () => false,
   }
 }
