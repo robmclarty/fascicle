@@ -39,6 +39,9 @@ Options:
 - `to_input` maps the turn to the flow's input. It defaults to `turn.text`, so you need it only when the flow takes something other than a string.
 - `to_text` is the turn's reply when the flow streamed none (see [Structured Output and `to_text`](#structured-output-and-to_text)).
 - `stream` says where each model call's text goes (see [Routing a Model Call's Text](#routing-a-model-calls-text)).
+- `to_title` names a session from its first turn (see [Titles](#titles)).
+- `context_window` is the model's context window in tokens, which the editor draws its context ring against (see [Usage](#usage)).
+- `session_store` keeps sessions between runs of the agent, so the editor can list them and open one again (see [Keeping Sessions](#keeping-sessions)).
 - `to_updates` maps each run event to the updates that go to the editor, in place of the exported `to_session_updates`. Wrap that function and add to what it returns when you want an `emit` of your own in the thread, or a tool card with its own icon.
 - `engine` (anything that has a `dispose(): Promise<void>`) is disposed once the editor disconnects.
 - `trajectory` receives every run's events, and it must never write to stdout.
@@ -62,7 +65,7 @@ A flow that wants the whole turn sets `to_input: (turn) => turn` and receives an
 
 The agent tells the editor it accepts embedded context, so a file the user @-mentions in Zed arrives with its text, rather than as a bare URI the flow has no way to read.
 
-`history` is a copy, so a flow can't change the session's own, and it holds what the user actually saw. Reply text on either side of a tool call is recorded as two paragraphs with a blank line between them, because the client shows it as two messages and a flow that reads the history shouldn't see the sentences run together. A cancelled turn still records the prompt, along with any reply text that had already streamed before the stop, so the next turn's "as I said above" points at something. Its last entry carries `cancelled: true`, which a flow should pass on to its model. A model that reads a stopped request with nothing to mark it takes the request as still waiting, and carries it out at the next prompt. Sessions live in the process's memory, and the agent doesn't offer `session/load`, so a session ends when the process does. Until then, nothing releases a session when the editor closes its thread, so an agent that runs for a long time holds the history of every session that it has opened.
+`history` is a copy, so a flow can't change the session's own, and it holds what the user actually saw. Reply text on either side of a tool call is recorded as two paragraphs with a blank line between them, because the client shows it as two messages and a flow that reads the history shouldn't see the sentences run together. A cancelled turn still records the prompt, along with any reply text that had already streamed before the stop, so the next turn's "as I said above" points at something. Its last entry carries `cancelled: true`, which a flow should pass on to its model. A model that reads a stopped request with nothing to mark it takes the request as still waiting, and carries it out at the next prompt. A turn that ends in a refusal is the one exception, and it stays out of the history (see [How a Turn Ends](#how-a-turn-ends)). Without a `session_store`, sessions live in the process's memory and end when it does. Either way, nothing releases a session when the editor closes its thread, so an agent that runs for a long time holds the history of every session that it has opened.
 
 ## Stdout Belongs to the Protocol
 
@@ -154,6 +157,84 @@ await serve_acp({
 ```
 
 With `build_prompt`, the markdown body becomes the system prompt and the turn's text becomes the user message, which is the shape a chat turn wants.
+
+## How a Turn Ends
+
+A turn answers with a stop reason, and the editor reads it to say why the agent stopped. A cancelled turn answers `cancelled`. Any other turn takes its reason from the last model call that finished in it, since that's the call whose reply the user reads:
+
+| The model call finished with | The turn answers | What it means |
+| --- | --- | --- |
+| `max_steps` | `max_turn_requests` | the call ran out of tool turns before it was done |
+| `length` | `max_tokens` | the reply hit `max_tokens` partway through |
+| `content_filter` | `refusal` | the provider's filter stopped the reply |
+| anything else, or no model call at all | `end_turn` | the turn finished |
+
+So a coding agent that reaches `max_steps` says so, rather than reading as a turn that finished its work. A flow whose last model call finishes cleanly ends its turn with `end_turn`, even when an earlier call in the same turn ran out of steps. A refusal leaves the turn out of the history, because the protocol has the editor leave the prompt out of the next one too, and the two would disagree otherwise.
+
+## Usage
+
+Zed draws a ring under the thread that shows how full the context is, with the session's cost beside it, from the `usage_update` that the agent sends. The ring needs the size of the model's context window, which the engine doesn't know, so you give it as `context_window`:
+
+<!-- snippet: check -->
+```ts
+import { create_engine, model_step } from 'fascicle'
+import { serve_acp } from 'fascicle/acp'
+
+const engine = create_engine({
+  providers: { anthropic: { api_key: process.env['ANTHROPIC_API_KEY'] ?? '' } },
+  defaults: { model: 'claude-sonnet-5-5' },
+})
+
+await serve_acp({
+  name: 'chat',
+  flow: model_step({ engine }),
+  context_window: 200_000,
+  engine,
+})
+```
+
+With it, the agent sends an update after each model turn. The context in use is that turn's input and output tokens, cache reads and writes included, since the next turn sends all of it again. The cost is the sum of every turn that the engine priced, in US dollars, and it appears once the first priced turn does. A model with no pricing (a local one, say) shows the ring without a cost. Without `context_window`, the agent sends no `usage_update` at all, because the update can't leave the window out. A flow with several model calls reports whichever call ran last, so a small reviewer call after the main one shows its own context, not the main call's.
+
+## Titles
+
+A thread in Zed takes the title that the agent sends in a `session_info_update`. The agent sends one at the start of a session's first turn, made from the first line of its text with the whitespace collapsed and cut to 60 characters. `to_title` replaces that rule. It gets the first turn and returns the title, and an empty string leaves the thread untitled:
+
+<!-- snippet: check -->
+```ts
+import type { AcpTurn } from 'fascicle/acp'
+
+export const to_title = (turn: AcpTurn): string => turn.text.split('\n')[0]?.replace(/^(please|can you)\s+/i, '') ?? ''
+```
+
+A session keeps its first title, so later turns send none.
+
+## Keeping Sessions
+
+By default, a session lives in the agent's memory and ends with its process, so a thread in Zed can't be opened again once the agent restarts. A `session_store` keeps sessions between runs. `filesystem_session_store` writes one JSON file for each session under a directory you choose:
+
+<!-- snippet: check -->
+```ts
+import { homedir } from 'node:os'
+import { join } from 'node:path'
+import { step } from 'fascicle'
+import { filesystem_session_store, serve_acp } from 'fascicle/acp'
+
+await serve_acp({
+  name: 'echo',
+  flow: step('echo', (text: string) => `you said: ${text}`),
+  session_store: filesystem_session_store({ root_dir: join(homedir(), '.echo-agent', 'sessions') }),
+})
+```
+
+With a store, the agent saves a session after each turn and after each mode switch, once the session has a turn in it. It also tells the editor that it can list, load, and resume sessions:
+
+- `session/list` lists the stored sessions, newest first, with their titles, and only those in one `cwd` when the editor asks for that.
+- `session/load` opens a stored session and shows its thread again. The agent replays each prompt and each reply as a message, then sends the title and the usage, and the session's next turn starts from its history as if the agent had never stopped.
+- `session/resume` opens a stored session without showing the thread again, for an editor that keeps its own copy.
+
+A stored session holds plain data: its workspace, its mode, its title, its usage, its history, and when it last changed. The flow is built again from your config when a session opens, so a change to the flow takes effect in old sessions too. Tool cards aren't kept, so a loaded thread shows the conversation without them. The editor has to send the `cwd` that the session started in, and the agent refuses a load or a resume that sends another one. A stored mode that the agent no longer offers falls back to the default mode.
+
+A save that fails is written to stderr, and the turn still ends, since the user has already watched it finish. Any other store needs only `save`, `load`, and `list` (the `AcpSessionStore` type). A session id comes from the editor, so `filesystem_session_store` reads an id that could name another path as a session it doesn't hold. A stored session holds the whole conversation, so the directory the store makes and every file it writes are readable by their owner alone.
 
 ## Coding Sessions
 
@@ -298,12 +379,11 @@ Each card's id carries the turn, the model call's `step_id`, and how many times 
 
 A turn works as this page describes, but Zed draws more around a thread than the agent sends it yet. You'll notice that:
 
-- a thread can't be reopened once the agent restarts, because sessions live in memory and the agent offers neither `session/load` nor `session/resume`
-- Zed shows no context ring and no cost, because the agent sends no `usage_update`
 - there's no model dropdown, so a session runs on whatever model the flow's engine was built with
-- a thread keeps a generic title, because the agent sends no `session_info_update`
-- a turn that stops at `max_steps` ends as if it had finished, because every turn that isn't cancelled reports `end_turn`
 - the MCP servers that you've configured in Zed don't reach the flow (see [MCP Servers Are Ignored for Now](#mcp-servers-are-ignored-for-now))
+- a thread opened again after a restart shows its messages without their tool cards (see [Keeping Sessions](#keeping-sessions))
+
+Two more need config. Zed shows the context ring and the cost only for an agent that sets `context_window`, and a thread survives a restart only for an agent that has a `session_store`.
 
 ## Checklist
 
@@ -317,3 +397,5 @@ Everything in the [writing-a-harness checklist](./writing-a-harness.md#checklist
 - [ ] A coding agent builds its flow per session, with `workspace_tools(session)` and `on_tool_approval: session.approve`.
 - [ ] Commands run with a `command_env` that leaves out the provider keys, and the agent server's `env` sets a `PATH` that finds your tools.
 - [ ] Auto runs only in a container or a throwaway worktree, and an agent that runs anywhere else leaves it out with `modes`.
+- [ ] `context_window` matches the model the engine runs, so the context ring reads true.
+- [ ] An agent people come back to has a `session_store`, in a directory outside the workspace.

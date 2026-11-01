@@ -66,6 +66,50 @@ export type AcpHistoryEntry = {
   readonly cancelled?: true | undefined
 }
 
+/** What a session has spent, as a store keeps it. */
+export type AcpSessionUsage = {
+  /** The last model turn's input and output tokens, which the next turn sends again. */
+  readonly context_tokens: number
+  /** Every priced model turn's cost, in US dollars. */
+  readonly cost_usd: number
+  /** Whether any model turn was priced. */
+  readonly priced: boolean
+}
+
+/**
+ * A session as a store keeps it between processes: plain data, with no flow
+ * and no turn in flight, which the agent rebuilds and drops.
+ */
+export type AcpStoredSession = {
+  readonly id: string
+  readonly cwd: string
+  readonly additional_directories: ReadonlyArray<string>
+  readonly mode: AcpMode
+  /** Null until the session's first turn names it, and empty for a session left untitled. */
+  readonly title: string | null
+  /** When the session last changed, in ISO 8601. */
+  readonly updated_at: string
+  readonly history: ReadonlyArray<AcpHistoryEntry>
+  readonly usage: AcpSessionUsage
+}
+
+/** What `session/list` reports of a stored session, without its history. */
+export type AcpSessionSummary = Pick<AcpStoredSession, 'id' | 'cwd' | 'additional_directories' | 'title' | 'updated_at'>
+
+/**
+ * Where an agent keeps its sessions between processes.
+ * `filesystem_session_store` keeps one JSON file for each, and any other
+ * store needs only these three functions.
+ */
+export type AcpSessionStore = {
+  /** Keeps the session, in place of any earlier copy with its id. */
+  readonly save: (session: AcpStoredSession) => Promise<void>
+  /** The session with this id, or undefined when the store holds none. */
+  readonly load: (id: string) => Promise<AcpStoredSession | undefined>
+  /** Every session the store holds, in any order. */
+  readonly list: () => Promise<ReadonlyArray<AcpSessionSummary>>
+}
+
 /**
  * Everything a flow sees of one prompt turn. `text` joins the prompt's text
  * blocks, writes a resource link or an embedded resource as its URI, and
@@ -185,6 +229,27 @@ type ServeAcpCommon<i, o> = {
    * string as-is, anything else as JSON.
    */
   readonly to_text?: ((output: o) => string) | undefined
+  /**
+   * The session's title, made from its first turn, which a client shows on
+   * the thread; default: the first line of the turn's text, cut to 60
+   * characters. An empty string leaves the thread untitled.
+   */
+  readonly to_title?: ((turn: AcpTurn) => string) | undefined
+  /**
+   * The model's context window in tokens, which a client draws its context
+   * ring against. With it, the agent sends a `usage_update` after each model
+   * turn, carrying the session's cost once a turn has been priced; without
+   * it, the agent sends none, since the update can't leave the window out.
+   */
+  readonly context_window?: number | undefined
+  /**
+   * Where sessions are kept between processes. With one, the agent saves a
+   * session after each turn and each mode switch, and a client can list its
+   * threads (`session/list`), load one back with its messages
+   * (`session/load`), or pick one up without them (`session/resume`).
+   * Without one, sessions live in memory and end with the process.
+   */
+  readonly session_store?: AcpSessionStore | undefined
   /** Where each model call's text goes, by its `step_id`; default: `'message'`. */
   readonly stream?: ((step_id: string) => AcpStreamRoute) | undefined
   /** Maps each run event to the updates sent to the client; default: `to_session_updates`. */

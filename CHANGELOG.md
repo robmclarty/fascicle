@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **An ACP agent can keep its sessions, so a thread in Zed survives a restart.** Sessions lived in the agent's memory, and the agent offered neither `session/load` nor `session/resume`, so a thread was gone once the agent stopped. A `session_store` in the `serve_acp` config now keeps them, and `filesystem_session_store({ root_dir })` from `fascicle/acp` writes one JSON file for each. The agent saves a session after each turn and each mode switch, once it has a turn in it, and answers `session/list`, `session/load`, which replays the thread's messages, and `session/resume`, which doesn't. A loaded session's next turn starts from its history, in the mode it was left in. The store makes its directory and writes its files readable by their owner alone, since they hold the conversation. Any other store needs only `save`, `load`, and `list`. See [acp.md](./docs/acp.md#keeping-sessions).
+- **An ACP agent reports its context and its cost, for Zed's context ring.** The agent sent no `usage_update`, so Zed drew no ring and no cost. With `context_window` set, it sends one after each model turn, with the last turn's input and output tokens as the context in use, and the sum of every priced turn as the cost in US dollars. The window has to come from the config, because the engine doesn't know it, so an agent without one sends none. See [acp.md](./docs/acp.md#usage).
+- **An ACP session takes a title from its first turn.** A thread kept Zed's generic title, because the agent sent no `session_info_update`. It sends one at the start of the first turn now, from the first line of the prompt cut to 60 characters, and `to_title` replaces that rule. An empty title leaves the thread untitled. A client that reads every update sees one more at the start of each session's first turn. See [acp.md](./docs/acp.md#titles).
+
+### Changed
+
+- **An ACP turn says why it stopped.** Every turn that wasn't cancelled answered `end_turn`, so a coding agent that ran out of `max_steps` read as one that had finished. A turn now takes its stop reason from the last model call that finished in it: `max_steps` answers `max_turn_requests`, `length` answers `max_tokens`, and `content_filter` answers `refusal`, which also leaves the turn out of the history, as the protocol has the client leave it out of the next prompt. See [acp.md](./docs/acp.md#how-a-turn-ends).
+
 ## v0.17.5 — 2026-10-31
 
 ### Changed

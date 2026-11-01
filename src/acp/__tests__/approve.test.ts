@@ -26,6 +26,7 @@ import { prompt_turn } from '../prompt_turn.js'
 import { open_session, read_turn } from '../test/connect_client.js'
 import { resolve_roots } from '../tools/containment.js'
 import type { AcpMode, AcpSession } from '../types.js'
+import { create_session_usage } from '../usage.js'
 import { workspace_tools } from '../workspace_tools.js'
 
 const ALLOW = { optionId: 'allow_once', name: 'Allow', kind: 'allow_once' }
@@ -804,7 +805,7 @@ describe('approve: waiting for the client', () => {
       return choose('allow_once')
     })
     const flow = sequence([coder(engine, session, 'first'), coder(engine, session, 'second')])
-    const record = { session, flow, history: [], cards, last_turn: null }
+    const record = { session, flow, history: [], cards, usage: create_session_usage(), last_turn: null, title: null }
     await prompt_turn({ name: 'approve', flow }, record, [{ type: 'text', text: 'go' }], new AbortController().signal, send)
     expect(at_ask.map(({ card }) => card)).toEqual([
       card_id(sent, 'ollama_call_0_0', 'first'),

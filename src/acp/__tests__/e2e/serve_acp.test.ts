@@ -95,7 +95,10 @@ describe('serve_acp (spawned)', () => {
     const session = await agent.session
     await session.prompt('hello')
     expect(await read_turn(session)).toEqual({
-      updates: [{ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'echo: hello' } }],
+      updates: [
+        { sessionUpdate: 'session_info_update', title: 'hello' },
+        { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'echo: hello' } },
+      ],
       stop_reason: 'end_turn',
     })
 

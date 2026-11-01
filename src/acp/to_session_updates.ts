@@ -145,7 +145,7 @@ function map_chunk(chunk: StreamChunk, step_id: string, state: AcpMapperState): 
  * only real StreamChunks there, and map_chunk maps a kind it doesn't know to
  * nothing, so ruling out a missing or null value is enough.
  */
-function is_stream_chunk(value: unknown): value is StreamChunk {
+export function is_stream_chunk(value: unknown): value is StreamChunk {
   return typeof value === 'object' && value !== null
 }
 

@@ -19,6 +19,7 @@ import { resolve_roots } from '../tools/containment.js'
 import { record_preview, reset_previews, take_preview } from '../tools/previews.js'
 import type { ToolPreview } from '../tools/previews.js'
 import type { AcpSession } from '../types.js'
+import { create_session_usage } from '../usage.js'
 import { workspace_tools } from '../workspace_tools.js'
 
 /**
@@ -434,7 +435,7 @@ describe('presentation: previews that share a raw id', () => {
       await finished
       updates.push(update)
     }
-    const record = { session, flow: build(release), history: [], cards: create_card_sync(), last_turn: null }
+    const record = { session, flow: build(release), history: [], cards: create_card_sync(), usage: create_session_usage(), last_turn: null, title: null }
     await prompt_turn({ name: 'presentation', flow: record.flow }, record, [{ type: 'text', text: 'go' }], new AbortController().signal, send)
     return updates
   }

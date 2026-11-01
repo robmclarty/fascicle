@@ -110,7 +110,10 @@ describe('serve_streams', () => {
     const session = await open(client_connection)
     await session.prompt('hi')
     expect(await read_turn(session)).toEqual({
-      updates: [{ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'echo: hi' } }],
+      updates: [
+        { sessionUpdate: 'session_info_update', title: 'hi' },
+        { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'echo: hi' } },
+      ],
       stop_reason: 'end_turn',
     })
     await hang_up()

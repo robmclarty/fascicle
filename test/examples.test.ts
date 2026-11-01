@@ -67,12 +67,14 @@ describe('examples smoke', () => {
       await session.prompt(prompt)
       replies.push(await read_turn(session))
     }
-    expect(replies).toEqual(
-      ['turn 1: you said "hello"', 'turn 2: you said "again"'].map((text) => ({
-        updates: [{ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text } }],
+    const reply = (text: string) => ({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text } })
+    expect(replies).toEqual([
+      {
+        updates: [{ sessionUpdate: 'session_info_update', title: 'hello' }, reply('turn 1: you said "hello"')],
         stop_reason: 'end_turn',
-      })),
-    )
+      },
+      { updates: [reply('turn 2: you said "again"')], stop_reason: 'end_turn' },
+    ])
   })
 
   it('acp_coder writes and runs commands behind permission requests, with the provider keys kept from commands', async () => {

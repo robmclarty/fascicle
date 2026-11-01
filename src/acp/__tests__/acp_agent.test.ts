@@ -4,13 +4,15 @@ import { join } from 'node:path'
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest'
 import { client, PROTOCOL_VERSION, RequestError } from '@agentclientprotocol/sdk'
 import type { ContentBlock, SessionUpdate } from '@agentclientprotocol/sdk'
-import { model_step } from 'fascicle'
+import { define_tool, model_step } from 'fascicle'
 import { sequence, step } from '#core'
 import type { RunContext, TrajectoryEvent, TrajectoryLogger } from '#core'
-import { make_stub_engine } from '#testing'
+import { make_loop_engine, make_stub_engine } from '#testing'
+import { z } from 'zod'
 import { acp_agent } from '../acp_agent.js'
+import { filesystem_session_store } from '../session_store.js'
 import { to_session_updates } from '../to_session_updates.js'
-import { connect_client, open_session, read_turn, read_until } from '../test/connect_client.js'
+import { connect_client, is_session_info, open_session, read_chat, read_turn, read_until } from '../test/connect_client.js'
 import type { AcpHistoryEntry, AcpSession, AcpTurn, ServeAcpConfig } from '../types.js'
 
 /** A model call that streams `content` as one text chunk and returns it. */
@@ -125,9 +127,9 @@ async function recorded_reply(
   })
   const { session } = await open_session(app)
   await session.prompt('go')
-  const first = await read_turn(session)
+  const first = await read_chat(session)
   await session.prompt('again')
-  await read_turn(session)
+  await read_chat(session)
   return { sent: first.updates, recorded: histories[1]?.[1]?.text }
 }
 
@@ -185,7 +187,7 @@ describe('acp_agent: initialize and sessions', () => {
       session: { mcpServers: [{ name: 'files', command: '/bin/mcp-files', args: [], env: [] }] },
     })
     await session.prompt('hi')
-    expect(await read_turn(session)).toEqual({ updates: [message('hello there')], stop_reason: 'end_turn' })
+    expect(await read_chat(session)).toEqual({ updates: [message('hello there')], stop_reason: 'end_turn' })
   })
 
   it('builds a flow function once per session, handing it the session it serves', async () => {
@@ -231,7 +233,7 @@ describe('acp_agent: one connection per app', () => {
     const first = await open_session(app)
     expect(() => connect_client(app)).toThrow(REFUSAL)
     await first.session.prompt('hi')
-    expect(await read_turn(first.session)).toEqual({ updates: [message('hello there')], stop_reason: 'end_turn' })
+    expect(await read_chat(first.session)).toEqual({ updates: [message('hello there')], stop_reason: 'end_turn' })
   })
 
   // A second client that a server routes to a shared app reaches `initialize`
@@ -397,7 +399,7 @@ describe('acp_agent: prompt turns', () => {
     const app = await acp_agent({ name: 'test-agent', flow: reply_step('hello there') })
     const { session } = await open_session(app)
     await expect(session.prompt('hi')).resolves.toEqual({ stopReason: 'end_turn' })
-    expect(await read_turn(session)).toEqual({ updates: [message('hello there')], stop_reason: 'end_turn' })
+    expect(await read_chat(session)).toEqual({ updates: [message('hello there')], stop_reason: 'end_turn' })
   })
 
   it("sends to_text's text when the flow streamed no message", async () => {
@@ -408,7 +410,7 @@ describe('acp_agent: prompt turns', () => {
     })
     const { session } = await open_session(app)
     await session.prompt('what is it?')
-    expect(await read_turn(session)).toEqual({ updates: [message('the answer is 42')], stop_reason: 'end_turn' })
+    expect(await read_chat(session)).toEqual({ updates: [message('the answer is 42')], stop_reason: 'end_turn' })
   })
 
   it.each<[string, unknown, string]>([
@@ -418,14 +420,14 @@ describe('acp_agent: prompt turns', () => {
     const app = await acp_agent({ name: 'test-agent', flow: step('out', () => output) })
     const { session } = await open_session(app)
     await session.prompt('go')
-    expect(await read_turn(session)).toEqual({ updates: [message(expected)], stop_reason: 'end_turn' })
+    expect(await read_chat(session)).toEqual({ updates: [message(expected)], stop_reason: 'end_turn' })
   })
 
   it('sends the to_text message after a flow whose text all routes to thought', async () => {
     const app = await acp_agent({ name: 'test-agent', flow: reply_step('draft'), stream: () => 'thought' })
     const { session } = await open_session(app)
     await session.prompt('think')
-    expect(await read_turn(session)).toEqual({ updates: [thought('draft'), message('draft')], stop_reason: 'end_turn' })
+    expect(await read_chat(session)).toEqual({ updates: [thought('draft'), message('draft')], stop_reason: 'end_turn' })
   })
 
   it('routes model text by step_id through stream', async () => {
@@ -440,7 +442,7 @@ describe('acp_agent: prompt turns', () => {
     })
     const { session } = await open_session(app)
     await session.prompt('write')
-    expect(await read_turn(session)).toEqual({ updates: [message('final')], stop_reason: 'end_turn' })
+    expect(await read_chat(session)).toEqual({ updates: [message('final')], stop_reason: 'end_turn' })
     expect(routed).toEqual(['draft', 'final'])
   })
 
@@ -448,7 +450,7 @@ describe('acp_agent: prompt turns', () => {
     const app = await acp_agent({ name: 'test-agent', flow: step('quiet', () => undefined) })
     const { session } = await open_session(app)
     await session.prompt('hush')
-    expect(await read_turn(session)).toEqual({ updates: [], stop_reason: 'end_turn' })
+    expect(await read_chat(session)).toEqual({ updates: [], stop_reason: 'end_turn' })
   })
 
   it('counts a message from a custom to_updates as the reply', async () => {
@@ -462,7 +464,7 @@ describe('acp_agent: prompt turns', () => {
     })
     const { session } = await open_session(app)
     await session.prompt('go')
-    expect(await read_turn(session)).toEqual({ updates: [message('from an emit')], stop_reason: 'end_turn' })
+    expect(await read_chat(session)).toEqual({ updates: [message('from an emit')], stop_reason: 'end_turn' })
   })
 
   it('counts a message without text as a reply that adds no history', async () => {
@@ -483,9 +485,9 @@ describe('acp_agent: prompt turns', () => {
     })
     const { session } = await open_session(app)
     await session.prompt('draw')
-    expect(await read_turn(session)).toEqual({ updates: [image], stop_reason: 'end_turn' })
+    expect(await read_chat(session)).toEqual({ updates: [image], stop_reason: 'end_turn' })
     await session.prompt('again')
-    await read_turn(session)
+    await read_chat(session)
     expect(histories[1]).toEqual([{ role: 'user', text: 'draw' }])
   })
 
@@ -650,16 +652,176 @@ describe('acp_agent: prompt turns', () => {
   })
 })
 
+/** A flow that records `events` on the run's trajectory, as a model call would, and returns `ok`. */
+function recording(events: ReadonlyArray<TrajectoryEvent>) {
+  return step('recording', (_: string, ctx) => {
+    for (const event of events) ctx.trajectory.record(event)
+    return 'ok'
+  })
+}
+
+/** A `finish` chunk from the model call `step_id`, as model_call records one. */
+function finish_event(finish_reason: string, step_id = 'm'): TrajectoryEvent {
+  return {
+    kind: 'model_chunk',
+    step_id,
+    chunk: { kind: 'finish', finish_reason, usage: { input_tokens: 1, output_tokens: 1 } },
+  }
+}
+
+/** A `step_finish` chunk reporting a model turn's usage. */
+function step_finish_event(input_tokens: number, output_tokens: number): TrajectoryEvent {
+  return {
+    kind: 'model_chunk',
+    step_id: 'm',
+    chunk: { kind: 'step_finish', step_index: 0, finish_reason: 'stop', usage: { input_tokens, output_tokens } },
+  }
+}
+
+function title(text: string): SessionUpdate {
+  return { sessionUpdate: 'session_info_update', title: text }
+}
+
+describe('acp_agent: stop reasons', () => {
+  it('answers max_turn_requests when the model call runs out of tool turns', async () => {
+    const ping = define_tool({ name: 'ping', description: 'Ping.', input_schema: z.object({}), execute: () => 'pong' })
+    const { engine } = make_loop_engine([[{ name: 'ping', input: {} }], [{ name: 'ping', input: {} }], 'never read'])
+    const app = await acp_agent({ name: 'test-agent', flow: model_step({ engine, tools: [ping], max_steps: 1 }) })
+    const { session } = await open_session(app)
+    await expect(session.prompt('go')).resolves.toEqual({ stopReason: 'max_turn_requests' })
+  })
+
+  it.each<[string, string]>([
+    ['length', 'max_tokens'],
+    ['stop', 'end_turn'],
+  ])('answers a turn whose model call finished with %s as %s', async (reason, expected) => {
+    const app = await acp_agent({ name: 'test-agent', flow: recording([finish_event(reason)]) })
+    const { session } = await open_session(app)
+    await expect(session.prompt('go')).resolves.toEqual({ stopReason: expected })
+  })
+
+  it('goes by the last model call that finished, so a later call that finished cleanly ends the turn', async () => {
+    const app = await acp_agent({
+      name: 'test-agent',
+      flow: recording([finish_event('max_steps', 'draft'), finish_event('stop', 'final')]),
+    })
+    const { session } = await open_session(app)
+    await expect(session.prompt('go')).resolves.toEqual({ stopReason: 'end_turn' })
+  })
+
+  it('answers refusal when the provider filtered the reply, and leaves the turn out of the history', async () => {
+    const histories: AcpHistoryEntry[][] = []
+    const app = await acp_agent({
+      name: 'test-agent',
+      flow: step('probe', (turn: AcpTurn, ctx) => {
+        histories.push(structuredClone([...turn.history]))
+        if (histories.length === 1) ctx.trajectory.record(finish_event('content_filter'))
+        return 'reply'
+      }),
+      to_input: (turn) => turn,
+    })
+    const { session } = await open_session(app)
+    await expect(session.prompt('forbidden')).resolves.toEqual({ stopReason: 'refusal' })
+    await session.prompt('fine')
+    expect(histories[1]).toEqual([])
+  })
+})
+
+describe('acp_agent: usage', () => {
+  it('sends a usage_update after each model turn against the context window, with the cost once priced', async () => {
+    const app = await acp_agent({
+      name: 'test-agent',
+      flow: recording([step_finish_event(900, 100), { kind: 'cost', total_usd: 0.25 }]),
+      context_window: 200_000,
+    })
+    const { session } = await open_session(app)
+    await session.prompt('go')
+    const first = await read_turn(session)
+    expect(first.updates.filter((update) => update.sessionUpdate === 'usage_update')).toEqual([
+      { sessionUpdate: 'usage_update', used: 1000, size: 200_000 },
+      { sessionUpdate: 'usage_update', used: 1000, size: 200_000, cost: { amount: 0.25, currency: 'USD' } },
+    ])
+    await session.prompt('again')
+    const second = await read_turn(session)
+    expect(second.updates.findLast((update) => update.sessionUpdate === 'usage_update')).toEqual({
+      sessionUpdate: 'usage_update',
+      used: 1000,
+      size: 200_000,
+      cost: { amount: 0.5, currency: 'USD' },
+    })
+  })
+
+  it('sends no usage_update when the config names no context window', async () => {
+    const app = await acp_agent({
+      name: 'test-agent',
+      flow: recording([step_finish_event(900, 100), { kind: 'cost', total_usd: 0.25 }]),
+    })
+    const { session } = await open_session(app)
+    await session.prompt('go')
+    expect(await read_turn(session)).toEqual({ updates: [title('go'), message('ok')], stop_reason: 'end_turn' })
+  })
+
+  it("reports a real model call's usage", async () => {
+    const { engine } = make_loop_engine(['hello'], { usage: { input_tokens: 70, output_tokens: 30 } })
+    const app = await acp_agent({ name: 'test-agent', flow: model_step({ engine }), context_window: 1000 })
+    const { session } = await open_session(app)
+    await session.prompt('go')
+    const { updates } = await read_turn(session)
+    expect(updates).toContainEqual({ sessionUpdate: 'usage_update', used: 100, size: 1000 })
+  })
+})
+
+describe('acp_agent: titles', () => {
+  it("titles the session from its first turn's first line, before the reply, and only once", async () => {
+    const app = await acp_agent({ name: 'test-agent', flow: reply_step('hi') })
+    const { session } = await open_session(app)
+    await session.prompt('\n  fix the   failing test\nin src/core')
+    expect(await read_turn(session)).toEqual({
+      updates: [title('fix the failing test'), message('hi')],
+      stop_reason: 'end_turn',
+    })
+    await session.prompt('and another')
+    expect(await read_turn(session)).toEqual({ updates: [message('hi')], stop_reason: 'end_turn' })
+  })
+
+  it('cuts a long first line to 60 characters', async () => {
+    const app = await acp_agent({ name: 'test-agent', flow: reply_step('hi') })
+    const { session } = await open_session(app)
+    await session.prompt('word '.repeat(30))
+    const { updates } = await read_turn(session)
+    expect(updates[0]).toEqual(title(`${'word '.repeat(12).trimEnd()}…`))
+  })
+
+  it("takes the title from to_title, which sees the turn, and sends none for an empty one", async () => {
+    const seen: string[] = []
+    const app = await acp_agent({
+      name: 'test-agent',
+      flow: reply_step('hi'),
+      to_title: (turn) => {
+        seen.push(turn.text)
+        return seen.length === 1 ? 'Custom title' : ''
+      },
+    })
+    const first = await open_session(app)
+    await first.session.prompt('first')
+    expect((await read_turn(first.session)).updates[0]).toEqual(title('Custom title'))
+    const second = await first.agent.buildSession({ cwd: tmpdir(), mcpServers: [] }).start()
+    await second.prompt('second')
+    expect(await read_turn(second)).toEqual({ updates: [message('hi')], stop_reason: 'end_turn' })
+    expect(seen).toEqual(['first', 'second'])
+  })
+})
+
 describe('acp_agent: cancellation', () => {
   it('answers cancelled when the client cancels mid-reply, and sends nothing after', async () => {
     const { flow, seen } = stalled_reply()
     const app = await acp_agent({ name: 'test-agent', flow })
     const { agent, session } = await open_session(app)
     const response = session.prompt('go')
-    expect(await read_until(session, is_message)).toEqual([message('partial')])
+    expect((await read_until(session, is_message)).filter((update) => !is_session_info(update))).toEqual([message('partial')])
     await agent.notify('session/cancel', { sessionId: session.sessionId })
     await expect(response).resolves.toEqual({ stopReason: 'cancelled' })
-    expect(await read_turn(session)).toEqual({ updates: [], stop_reason: 'cancelled' })
+    expect(await read_chat(session)).toEqual({ updates: [], stop_reason: 'cancelled' })
     expect(seen.aborted).toBe(true)
   })
 
@@ -671,7 +833,7 @@ describe('acp_agent: cancellation', () => {
     await read_until(session, is_message)
     await agent.notify('session/cancel', { sessionId: session.sessionId })
     await expect(response).resolves.toEqual({ stopReason: 'cancelled' })
-    expect(await read_turn(session)).toEqual({ updates: [], stop_reason: 'cancelled' })
+    expect(await read_chat(session)).toEqual({ updates: [], stop_reason: 'cancelled' })
     expect(seen.finished).toBe(true)
   })
 
@@ -696,7 +858,7 @@ describe('acp_agent: cancellation', () => {
     await started
     await agent.notify('session/cancel', { sessionId: session.sessionId })
     await expect(response).resolves.toEqual({ stopReason: 'cancelled' })
-    expect(await read_turn(session)).toEqual({ updates: [], stop_reason: 'cancelled' })
+    expect(await read_chat(session)).toEqual({ updates: [], stop_reason: 'cancelled' })
     await session.prompt('second')
     expect(histories[1]).toEqual([{ role: 'user', text: 'first', cancelled: true }])
   })
@@ -908,6 +1070,280 @@ describe('acp_agent: run options', () => {
     const app = await acp_agent({ name: 'test-agent', flow: reply_step('hi') })
     const { session } = await open_session(app, { client: client({ name: 'test-client' }) })
     await session.prompt('go')
-    expect(await read_turn(session)).toEqual({ updates: [message('hi')], stop_reason: 'end_turn' })
+    expect(await read_chat(session)).toEqual({ updates: [message('hi')], stop_reason: 'end_turn' })
+  })
+})
+
+/**
+ * A client that collects every `session/update` it's sent, for sessions it
+ * didn't start with `buildSession`, as a loaded one is.
+ */
+function collecting_client() {
+  const updates: Array<{ sessionId: string; update: SessionUpdate }> = []
+  const client_app = client().onNotification('session/update', (ctx) => {
+    updates.push({ sessionId: ctx.params.sessionId, update: ctx.params.update })
+  })
+  return { client_app, updates }
+}
+
+/** Connect a client to `app` and initialize it, collecting what it's sent. */
+async function connect_collecting(app: Awaited<ReturnType<typeof acp_agent>>) {
+  const { client_app, updates } = collecting_client()
+  const { agent } = connect_client(app, client_app)
+  const initialized = await agent.request('initialize', { protocolVersion: PROTOCOL_VERSION, clientCapabilities: {} })
+  return { agent, updates, initialized }
+}
+
+/**
+ * A flow over the turn that answers `reply <n>` and records the history
+ * each turn was handed.
+ */
+function numbered_replies() {
+  const histories: AcpHistoryEntry[][] = []
+  const flow = step('numbered', (turn: AcpTurn) => {
+    histories.push(structuredClone([...turn.history]))
+    return `reply ${histories.length}`
+  })
+  return { flow, histories }
+}
+
+describe('acp_agent: stored sessions', () => {
+  async function stored_agent(overrides: Partial<ServeAcpConfig<AcpTurn, string>> = {}) {
+    const root_dir = await scratch()
+    const { flow, histories } = numbered_replies()
+    const make = () =>
+      acp_agent({
+        name: 'test-agent',
+        flow,
+        to_input: (turn) => turn,
+        session_store: filesystem_session_store({ root_dir }),
+        ...overrides,
+      })
+    return { make, histories, store: filesystem_session_store({ root_dir }) }
+  }
+
+  it('advertises load, list, and resume when the config has a store', async () => {
+    const { make } = await stored_agent()
+    const { initialized } = await connect_collecting(await make())
+    expect(initialized.agentCapabilities).toEqual({
+      loadSession: true,
+      promptCapabilities: { embeddedContext: true },
+      sessionCapabilities: { additionalDirectories: {}, list: {}, resume: {} },
+    })
+  })
+
+  it('saves a session after each turn, with its history, title, mode, and usage', async () => {
+    const { make, store } = await stored_agent({ context_window: 1000 })
+    const app = await make()
+    const { session } = await open_session(app)
+    expect(await store.list()).toEqual([])
+    await session.prompt('first')
+    await read_turn(session)
+    await session.prompt('second')
+    await read_turn(session)
+    expect(await store.load(session.sessionId)).toMatchObject({
+      id: session.sessionId,
+      cwd: tmpdir(),
+      additional_directories: [],
+      mode: 'manual',
+      title: 'first',
+      history: [
+        { role: 'user', text: 'first' },
+        { role: 'agent', text: 'reply 1' },
+        { role: 'user', text: 'second' },
+        { role: 'agent', text: 'reply 2' },
+      ],
+      usage: { context_tokens: 0, cost_usd: 0, priced: false },
+    })
+  })
+
+  it('saves a mode switch once the session has a turn, and not before', async () => {
+    const { make, store } = await stored_agent()
+    const { agent, session } = await open_session(await make())
+    await agent.request('session/set_mode', { sessionId: session.sessionId, modeId: 'auto' })
+    expect(await store.list()).toEqual([])
+    await session.prompt('go')
+    await read_turn(session)
+    await agent.request('session/set_config_option', { sessionId: session.sessionId, configId: 'mode', value: 'accept_edits' })
+    expect(await store.load(session.sessionId)).toMatchObject({ mode: 'accept_edits' })
+  })
+
+  it('lists the stored sessions in a cwd, newest first, after the agent restarts', async () => {
+    const { make } = await stored_agent()
+    const [a, b] = await Promise.all([scratch(), scratch()])
+    const before = await open_session(await make(), { session: { cwd: a } })
+    await before.session.prompt('older')
+    await read_turn(before.session)
+    const newer = await before.agent.buildSession({ cwd: a, additionalDirectories: [b], mcpServers: [] }).start()
+    await newer.prompt('newer')
+    await read_turn(newer)
+    const elsewhere = await before.agent.buildSession({ cwd: b, mcpServers: [] }).start()
+    await elsewhere.prompt('elsewhere')
+    await read_turn(elsewhere)
+
+    const { agent } = await connect_collecting(await make())
+    const listed = await agent.request('session/list', { cwd: a })
+    expect(listed.sessions.map((info) => ({ sessionId: info.sessionId, title: info.title, additionalDirectories: info.additionalDirectories }))).toEqual([
+      { sessionId: newer.sessionId, title: 'newer', additionalDirectories: [b] },
+      { sessionId: before.session.sessionId, title: 'older', additionalDirectories: undefined },
+    ])
+    expect(listed.sessions[0]?.cwd).toBe(a)
+    expect(typeof listed.sessions[0]?.updatedAt).toBe('string')
+    expect(await agent.request('session/list', {})).toMatchObject({ sessions: expect.arrayContaining([expect.anything()]) })
+    expect((await agent.request('session/list', {})).sessions).toHaveLength(3)
+  })
+
+  it('loads a stored session after a restart: it replays the thread, names it, and picks up where it left off', async () => {
+    const { make, histories } = await stored_agent({ context_window: 1000 })
+    const first = await open_session(await make())
+    await first.agent.request('session/set_mode', { sessionId: first.session.sessionId, modeId: 'accept_edits' })
+    await first.session.prompt('fix the bug')
+    await read_turn(first.session)
+
+    const { agent, updates } = await connect_collecting(await make())
+    const sessionId = first.session.sessionId
+    const loaded = await agent.request('session/load', { sessionId, cwd: tmpdir(), mcpServers: [] })
+    expect(loaded.modes?.currentModeId).toBe('accept_edits')
+    expect(loaded.configOptions?.[0]).toMatchObject({ currentValue: 'accept_edits' })
+    expect(updates).toEqual([
+      { sessionId, update: { sessionUpdate: 'user_message_chunk', content: { type: 'text', text: 'fix the bug' } } },
+      { sessionId, update: message('reply 1') },
+      { sessionId, update: title('fix the bug') },
+    ])
+    await agent.request('session/prompt', { sessionId, prompt: [{ type: 'text', text: 'thanks' }] })
+    expect(histories.at(-1)).toEqual([
+      { role: 'user', text: 'fix the bug' },
+      { role: 'agent', text: 'reply 1' },
+    ])
+    expect(updates.at(-1)).toEqual({ sessionId, update: message('reply 2') })
+  })
+
+  it("sends a loaded session's usage again when the config names a context window", async () => {
+    const { agent, updates } = await connect_collecting(
+      await acp_agent({
+        name: 'test-agent',
+        flow: step('noop', () => ''),
+        context_window: 5000,
+        session_store: {
+          save: async () => {},
+          load: async (id) => ({
+            id,
+            cwd: tmpdir(),
+            additional_directories: [],
+            mode: 'manual',
+            title: '',
+            updated_at: '2026-10-31T00:00:00.000Z',
+            history: [],
+            usage: { context_tokens: 1234, cost_usd: 0.5, priced: true },
+          }),
+          list: async () => [],
+        },
+      }),
+    )
+    await agent.request('session/load', { sessionId: 'stored', cwd: tmpdir(), mcpServers: [] })
+    expect(updates).toEqual([
+      {
+        sessionId: 'stored',
+        update: { sessionUpdate: 'usage_update', used: 1234, size: 5000, cost: { amount: 0.5, currency: 'USD' } },
+      },
+    ])
+  })
+
+  it('resumes a stored session without replaying the thread, and keeps its history', async () => {
+    const { make, histories } = await stored_agent()
+    const first = await open_session(await make())
+    await first.session.prompt('remember this')
+    await read_turn(first.session)
+
+    const { agent, updates } = await connect_collecting(await make())
+    const sessionId = first.session.sessionId
+    const resumed = await agent.request('session/resume', { sessionId, cwd: tmpdir() })
+    expect(resumed.modes?.currentModeId).toBe('manual')
+    expect(updates).toEqual([{ sessionId, update: title('remember this') }])
+    await agent.request('session/prompt', { sessionId, prompt: [{ type: 'text', text: 'what was it?' }] })
+    expect(histories.at(-1)).toEqual([
+      { role: 'user', text: 'remember this' },
+      { role: 'agent', text: 'reply 1' },
+    ])
+  })
+
+  it('replays a session this connection already holds, without building its flow again', async () => {
+    const root_dir = await scratch()
+    let built = 0
+    const app = await acp_agent({
+      name: 'test-agent',
+      flow: () => {
+        built += 1
+        return step('echo', (text: string) => `echo: ${text}`)
+      },
+      session_store: filesystem_session_store({ root_dir }),
+    })
+    const { client_app, updates } = collecting_client()
+    const { agent } = connect_client(app, client_app)
+    await agent.request('initialize', { protocolVersion: PROTOCOL_VERSION })
+    const { sessionId } = await agent.request('session/new', { cwd: tmpdir(), mcpServers: [] })
+    await agent.request('session/prompt', { sessionId, prompt: [{ type: 'text', text: 'hi' }] })
+    updates.length = 0
+    await agent.request('session/load', { sessionId, cwd: tmpdir(), mcpServers: [] })
+    expect(built).toBe(1)
+    expect(updates.map(({ update }) => update.sessionUpdate)).toEqual([
+      'user_message_chunk',
+      'agent_message_chunk',
+      'session_info_update',
+    ])
+  })
+
+  it('refuses to load an unknown session, or one sent with another cwd', async () => {
+    const { make } = await stored_agent()
+    const first = await open_session(await make())
+    await first.session.prompt('go')
+    await read_turn(first.session)
+    const { agent } = await connect_collecting(await make())
+    await expect(agent.request('session/load', { sessionId: 'nope', cwd: tmpdir(), mcpServers: [] })).rejects.toThrow(
+      'unknown session nope; list the stored ones with session/list',
+    )
+    const elsewhere = await scratch()
+    await expect(
+      agent.request('session/resume', { sessionId: first.session.sessionId, cwd: elsewhere }),
+    ).rejects.toThrow(`session ${first.session.sessionId} started in ${tmpdir()}; send that cwd with session/resume`)
+  })
+
+  it('fails a load with the store’s own message when the stored file is broken', async () => {
+    const root_dir = await scratch()
+    await writeFile(join(root_dir, 'broken.json'), 'nope')
+    const app = await acp_agent({ name: 'test-agent', flow: reply_step(), session_store: filesystem_session_store({ root_dir }) })
+    const { agent } = await connect_collecting(app)
+    await expect(agent.request('session/load', { sessionId: 'broken', cwd: tmpdir(), mcpServers: [] })).rejects.toThrow(
+      "isn't a stored ACP session",
+    )
+  })
+
+  it('answers method not found for load, resume, and list without a store', async () => {
+    const app = await acp_agent({ name: 'test-agent', flow: reply_step() })
+    const { agent, initialized } = await connect_collecting(app)
+    expect(initialized.agentCapabilities?.loadSession).toBe(false)
+    await expect(agent.request('session/load', { sessionId: 'x', cwd: tmpdir(), mcpServers: [] })).rejects.toThrow(
+      'Method not found',
+    )
+    await expect(agent.request('session/resume', { sessionId: 'x', cwd: tmpdir() })).rejects.toThrow('Method not found')
+    await expect(agent.request('session/list', {})).rejects.toThrow('Method not found')
+  })
+
+  it('reports a failed save on stderr and still ends the turn', async () => {
+    const stderr = vi.spyOn(process.stderr, 'write').mockReturnValue(true)
+    const app = await acp_agent({
+      name: 'test-agent',
+      flow: reply_step(),
+      session_store: {
+        save: async () => {
+          throw new Error('disk full')
+        },
+        load: async () => undefined,
+        list: async () => [],
+      },
+    })
+    const { session } = await open_session(app)
+    await expect(session.prompt('go')).resolves.toEqual({ stopReason: 'end_turn' })
+    expect(stderr).toHaveBeenCalledWith(`fascicle/acp: couldn't save session ${session.sessionId}: disk full\n`)
   })
 })

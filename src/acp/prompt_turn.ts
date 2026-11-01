@@ -14,9 +14,12 @@
 import type { ContentBlock, PromptResponse, SessionUpdate } from '@agentclientprotocol/sdk'
 import { aborted_error, run } from '#core'
 import type { Step, TrajectoryEvent } from '#core'
+import type { FinishReason } from '#engine'
 import type { CardSync } from './approve.js'
 import { create_acp_mapper_state, to_session_updates } from './to_session_updates.js'
 import { reset_previews } from './tools/previews.js'
+import { finish_reason_of, note_usage, stop_reason_for, usage_update } from './usage.js'
+import type { SessionUsage } from './usage.js'
 import type { AcpHistoryEntry, AcpSession, AcpTurn, ServeAcpConfig } from './types.js'
 
 /**
@@ -30,15 +33,18 @@ type TurnHandle = {
 }
 
 /**
- * A session between turns: its flow, its history, its latest turn, and the
- * sync that lets its approvals wait for the client to catch up.
+ * A session between turns: its flow, its history, its latest turn, the sync
+ * that lets its approvals wait for the client to catch up, what it has spent,
+ * and its title, which stays null until its first turn names it.
  */
 export type SessionRecord<i, o> = {
   readonly session: AcpSession
   readonly flow: Step<i, o>
   readonly history: AcpHistoryEntry[]
   readonly cards: CardSync
+  readonly usage: SessionUsage
   last_turn: TurnHandle | null
+  title: string | null
 }
 
 export type SendUpdate = (update: SessionUpdate) => Promise<void>
@@ -80,6 +86,35 @@ function turn_input<i, o>(config: ServeAcpConfig<i, o>, turn: AcpTurn): i {
   if (config.to_input !== undefined) return config.to_input(turn)
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion
   return turn.text as i
+}
+
+/** The most characters a default title keeps. */
+const TITLE_LIMIT = 60
+
+/**
+ * The default `to_title`: the first line of the turn's text with its
+ * whitespace collapsed, cut to `TITLE_LIMIT` characters.
+ */
+function default_title(turn: AcpTurn): string {
+  const line = turn.text.split('\n').find((text) => text.trim() !== '') ?? ''
+  const words = line.trim().replaceAll(/\s+/g, ' ')
+  return words.length <= TITLE_LIMIT ? words : `${words.slice(0, TITLE_LIMIT - 1).trimEnd()}…`
+}
+
+/**
+ * Name the session from its first turn, and tell the client, which shows it
+ * on the thread. A session already named keeps its title, and an empty one
+ * leaves the thread untitled.
+ */
+async function name_session<i, o>(
+  config: ServeAcpConfig<i, o>,
+  record: SessionRecord<i, o>,
+  turn: AcpTurn,
+  send: SendUpdate,
+): Promise<void> {
+  if (record.title !== null) return
+  record.title = (config.to_title ?? default_title)(turn)
+  if (record.title !== '') await send({ sessionUpdate: 'session_info_update', title: record.title })
 }
 
 /**
@@ -147,9 +182,33 @@ function warn_dropped(event: TrajectoryEvent): void {
 }
 
 /**
+ * Send `updates` in order until the turn is cancelled, and say whether all
+ * of them went out.
+ */
+async function send_all(updates: ReadonlyArray<SessionUpdate>, cancelled: AbortSignal, send: SendUpdate): Promise<boolean> {
+  for (const update of updates) {
+    if (cancelled.aborted) return false
+    await send(update)
+  }
+  return true
+}
+
+/**
+ * Fold a run event into the session's usage, and return the `usage_update`
+ * that a change sends, when the config names the context window.
+ */
+function usage_updates<i, o>(config: ServeAcpConfig<i, o>, record: SessionRecord<i, o>, event: TrajectoryEvent): SessionUpdate[] {
+  const changed = note_usage(record.usage, event)
+  return changed && config.context_window !== undefined ? [usage_update(record.usage, config.context_window)] : []
+}
+
+/**
  * Send each run event's updates in order, and tell the session's card sync
- * once all of an event's updates have gone out. Once the turn is cancelled
- * nothing more is sent, and leaving the loop closes the run's event stream.
+ * once all of an event's updates have gone out. Each event also folds into
+ * the session's usage, and a change goes out as a `usage_update` when the
+ * config names the context window. Once the turn is cancelled nothing more
+ * is sent, and leaving the loop closes the run's event stream. Resolves with
+ * the finish reason of the last model call that finished.
  */
 async function forward<i, o>(
   events: AsyncIterable<TrajectoryEvent>,
@@ -157,24 +216,27 @@ async function forward<i, o>(
   record: SessionRecord<i, o>,
   cancelled: AbortSignal,
   send: SendUpdate,
-): Promise<void> {
+): Promise<FinishReason | undefined> {
   const state = create_acp_mapper_state({ stream: config.stream, session: record.session })
   const to_updates = config.to_updates ?? to_session_updates
+  let finish: FinishReason | undefined
   for await (const event of events) {
     if (event.kind === 'events_dropped') warn_dropped(event)
+    finish = finish_reason_of(event) ?? finish
     const updates = to_updates(event, state)
-    for (const update of updates) {
-      if (cancelled.aborted) return
-      await send(update)
-    }
+    if (!(await send_all(updates, cancelled, send))) return finish
     record.cards.sent(event, updates)
+    if (!(await send_all(usage_updates(config, record, event), cancelled, send))) return finish
   }
+  return finish
 }
 
 /**
  * Run the flow for one turn, forward its updates, and record the exchange.
  * The run has always settled by the time this returns or throws, so a turn
- * never leaves a run behind.
+ * never leaves a run behind. A turn that ends in a refusal stays out of the
+ * history, since the protocol has the client leave it out of the next prompt
+ * too.
  */
 async function run_turn<i, o>(
   config: ServeAcpConfig<i, o>,
@@ -207,8 +269,12 @@ async function run_turn<i, o>(
     trajectory: record.cards.start(config.trajectory),
   })
   const outcome = settle(handle.result)
+  let finish: FinishReason | undefined
   try {
-    await forward(handle.events, config, record, cancelled, send_update)
+    // The run starts first, so a client slow to take the title holds up only
+    // the updates queued behind it.
+    await name_session(config, record, turn, send_update)
+    finish = await forward(handle.events, config, record, cancelled, send_update)
     const result = await outcome
     if (!cancelled.aborted) {
       if (!result.ok) throw result.error
@@ -220,8 +286,9 @@ async function run_turn<i, o>(
     await outcome
     if (!cancelled.aborted) throw err
   }
-  record_exchange(record.history, turn.text, reply.text, cancelled.aborted)
-  return { stopReason: cancelled.aborted ? 'cancelled' : 'end_turn' }
+  const stop_reason = cancelled.aborted ? 'cancelled' : stop_reason_for(finish)
+  if (stop_reason !== 'refusal') record_exchange(record.history, turn.text, reply.text, cancelled.aborted)
+  return { stopReason: stop_reason }
 }
 
 /**

@@ -90,6 +90,23 @@ export async function read_turn(session: ActiveSession): Promise<TurnRecord> {
 }
 
 /**
+ * Whether an update tells the client about the session (its title, or its
+ * usage) rather than adding to the thread.
+ */
+export function is_session_info(update: SessionUpdate): boolean {
+  return update.sessionUpdate === 'session_info_update' || update.sessionUpdate === 'usage_update'
+}
+
+/**
+ * Read a session's updates until its turn stops, leaving out the ones about
+ * the session, for a test about what the thread shows.
+ */
+export async function read_chat(session: ActiveSession): Promise<TurnRecord> {
+  const turn = await read_turn(session)
+  return { ...turn, updates: turn.updates.filter((update) => !is_session_info(update)) }
+}
+
+/**
  * Read a session's updates until one matches `predicate`, returning every
  * update read so far, so a test can act mid-turn.
  */

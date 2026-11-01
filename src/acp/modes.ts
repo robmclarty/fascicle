@@ -166,14 +166,20 @@ export type SessionModes = {
 }
 
 /**
- * Hold a session's mode, starting at the offer's `default_mode`. A switch
+ * Hold a session's mode, starting at `start` when the agent offers it and
+ * at the offer's `default_mode` otherwise, so a stored session whose mode the
+ * agent has since stopped offering starts where a new one would. A switch
  * takes effect before the client hears of it, so a tool call that asks after
  * the switch reads the new mode, and the two updates go out in order through
  * `send`.
  */
-export function session_modes(offer: ModeOffer, send: (update: SessionUpdate) => Promise<void>): SessionModes {
-  let mode = offer.default_mode
+export function session_modes(
+  offer: ModeOffer,
+  send: (update: SessionUpdate) => Promise<void>,
+  start?: AcpMode,
+): SessionModes {
   const offered: ReadonlyArray<unknown> = offer.modes
+  let mode = start !== undefined && offered.includes(start) ? start : offer.default_mode
   return {
     current: () => mode,
     offers: (candidate): candidate is AcpMode => offered.includes(candidate),
