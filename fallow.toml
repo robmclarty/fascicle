@@ -31,10 +31,13 @@ entry = [
   "playwright.config.ts",
   # Example demos: each examples/<name>/main.ts is run directly via `pnpm exec
   # tsx`, never imported. The subset that's stub-driven and network-free is
-  # also imported by test/examples.test.ts; this glob (the `*` matches across
-  # directory separators) covers the rest (live CLI/HTTP/network demos that
-  # can't run in the default suite).
-  "examples/*.ts",
+  # also imported by test/examples.test.ts; this glob covers the rest (live
+  # CLI/HTTP/network demos that can't run in the default suite). It also makes
+  # every module inside an example app an entry, so an app's internal exports
+  # read as its own surface rather than as dead library code. Through fallow
+  # 3.33 a `*` crossed directory separators and `examples/*.ts` did this; the
+  # `**` says so now that it doesn't.
+  "examples/**/*.ts",
   # amplify's chart renderer: invoked by scripts/demo.sh as a CLI, not imported.
   "examples/amplify/scripts/*.mjs",
   # amplify's pluggable metrics: resolved by name via a dynamic import built

@@ -6,14 +6,13 @@
  * so the model can budget further calls.
  */
 
-import { lstat, readFile } from 'node:fs/promises'
 import { z } from 'zod'
 
 import { define_tool } from 'fascicle'
 import type { Tool } from 'fascicle'
 
 import { MAX_FILE_BYTES } from './limits.js'
-import { assert_not_symlink, resolve_within } from './path_safety.js'
+import { read_text_within } from './read_text.js'
 
 export const read_file_input = z.object({
   path: z.string().min(1),
@@ -36,21 +35,7 @@ export function make_read_file(root: string): Tool {
       ' bytes are rejected.',
     input_schema: read_file_input,
     execute: async (input) => {
-      const resolved = resolve_within(root, input.path)
-      await assert_not_symlink(resolved, input.path)
-      const target_stat = await lstat(resolved)
-      if (!target_stat.isFile()) {
-        throw new Error(`not a regular file: ${input.path}`)
-      }
-      if (target_stat.size > MAX_FILE_BYTES) {
-        throw new Error(
-          `file exceeds size cap: ${input.path} is ${String(target_stat.size)} bytes, max ${String(MAX_FILE_BYTES)}`,
-        )
-      }
-      const buffer = await readFile(resolved)
-      if (buffer.includes(0)) {
-        throw new Error(`refusing to read binary file (NUL byte present): ${input.path}`)
-      }
+      const { buffer } = await read_text_within(root, input.path, 'read')
       const content = buffer.toString('utf8')
       const lines = content.length === 0 ? 0 : content.split('\n').length
       return { path: input.path, content, bytes: buffer.byteLength, lines }

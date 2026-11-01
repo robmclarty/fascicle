@@ -26,21 +26,22 @@ minimumReleaseAgeExclude:
 # workspace. Every entry below lifts a transitive pin past an advisory, and
 # every one of them is dev-tree only. smol-toml >=1.6.1 puts cspell and
 # markdownlint-cli2 on one copy, past the advisory against 1.6.0. fast-uri
-# >=4.1.3 lifts ajv's pin past the path-traversal advisory and the three high
+# >=4.2.3 lifts ajv's pin past the path-traversal advisory, the three high
 # ones that landed against 4.1.2, among them host confusion on scheme-relative
-# references and request forgery via IPv6 normalization. vite ^8.0.16 clears
-# the `server.fs.deny` bypass under vitest, capped at 8, the newest major
-# vitest 5 accepts. The override replaces the root's own vite pin too, so
-# moving that pin also takes a re-resolve inside the range (`pnpm update -r
-# vite`).
+# references and request forgery via IPv6 normalization, and the four that
+# landed against 4.2.1, among them scheme spoofing through a percent-encoded
+# scheme. vite ^8.0.16 clears the `server.fs.deny` bypass under vitest, capped
+# at 8, the newest major vitest 5 accepts. The override replaces the root's own
+# vite pin too, so moving that pin also takes a re-resolve inside the range
+# (`pnpm update -r vite`).
 #
-# qs >=6.16.0 is the one entry the `security` slot does not demand, because all
-# three of its advisories are moderate and the slot fails at high. They reach
-# the tree through Stryker and through the MCP SDK's express, the SDK being an
-# optional peer a consumer installs themselves, so nothing here ships. The
-# floor is set to the highest of the three patched versions, which clears the
-# comma-format stringify crash, the array-limit bypass, and the isBuffer
-# denial of service in one move.
+# The `security` slot doesn't demand the qs entry, because all four of its
+# advisories are moderate and the slot fails at high. They reach the tree
+# through Stryker and through the MCP SDK's express, the SDK being an optional
+# peer a consumer installs themselves, so nothing here ships. 6.16.0 cleared
+# the first three (the comma-format stringify crash, the array-limit bypass,
+# and the isBuffer denial of service), and 6.16.1 clears the fourth, an
+# uncaught TypeError on an array element whose own `toString` can't be called.
 #
 # brace-expansion is scoped to its vulnerable range rather than floored, since
 # older majors of it still serve other parts of the tree. Its one 5.x copy
@@ -48,6 +49,30 @@ minimumReleaseAgeExclude:
 # but `pnpm update` won't re-resolve a lone transitive copy by name, so the
 # entry lifts it past the two high advisories and the moderate one that
 # followed them.
+#
+# undici, body-parser, and ip-address are scoped the same way, and each
+# parent's own range already admits the fix. undici comes in through the AI
+# SDK's provider-utils, whose `^7.29.0` takes 7.30.1, past four high
+# advisories (TLS options dropped in an Agent, cache poisoning across
+# cross-origin redirects, and two denials of service) and four moderate ones.
+# body-parser 2.4.0 and ip-address 10.7.4 sit inside what the MCP SDK's
+# express and express-rate-limit ask for, and clear a high denial of service
+# on trailing bytes after a compressed body and a quadratic zone-identifier
+# match. All three reach a consumer only through peers they install
+# themselves, and that install resolves onto the patched releases, so these
+# entries change this lockfile alone.
+#
+# minimatch is the one entry that crosses a major. Stryker asks for
+# `~10.2.4`, and the globparts amplification advisory has no fix before
+# 11.0.1, so the entry moves Stryker onto 11. Stryker calls nothing that 11
+# removed (`makeRe`, `Minimatch#regexp`, and the `AST` class among it), only
+# `minimatch()`, `Minimatch#match` with partial matching, and `hasMagic`.
+# Retire the entry when a Stryker release asks for 11 itself.
+#
+# re2js arrived with markdownlint 0.42, which pins it at exactly 2.8.6, inside
+# the range of a high advisory on quadratic-time lookbehind matching. The
+# entry takes the smallest step past it, to the fix on the 2.8 line, rather
+# than 2.9. Retire it when a markdownlint release pins 2.8.7 or later.
 #
 # Note what these entries cannot do. A `>=` pin is a floor, not a ceiling, so
 # it clears today's advisory and says nothing about the next one inside the
@@ -57,10 +82,15 @@ minimumReleaseAgeExclude:
 # to this file or the lockfile.
 overrides:
   smol-toml: '>=1.6.1'
-  fast-uri: '>=4.1.3'
-  qs: '>=6.16.0'
+  fast-uri: '>=4.2.3'
+  qs: '>=6.16.1'
   vite: '^8.0.16'
   'brace-expansion@>=4.0.0 <5.0.12': '^5.0.12'
+  'undici@>=7.0.0 <7.30.1': '^7.30.1'
+  'body-parser@>=2.0.0 <2.4.0': '^2.4.0'
+  'ip-address@>=10.0.0 <10.7.4': '^10.7.4'
+  'minimatch@>=10.0.0 <11.0.1': '^11.0.1'
+  're2js@>=2.2.0 <2.8.7': '~2.8.7'
 
 # Patched dependencies: fixes upstream hasn't shipped yet. Each entry names the
 # issue it carries and how to tell it's done.

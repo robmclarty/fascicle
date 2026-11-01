@@ -232,18 +232,18 @@
     "arktype": "2.2.8",
     "checkride": "0.15.0",
     "cspell": "10.3.6",
-    "fallow": "3.33.1",
-    "markdownlint-cli2": "0.23.3",
+    "fallow": "3.37.0",
+    "markdownlint-cli2": "0.24.0",
     "oxlint": "1.88.0",
     "oxlint-tsgolint": "7.0.2004",
     "publint": "0.3.25",
-    "solid-js": "1.9.17",
+    "solid-js": "1.9.18",
     "tsdown": "0.23.1",
     "tsx": "4.23.15",
     "typescript": "7.0.2",
     "vite": "8.3.4",
     "vite-plugin-solid": "2.11.14",
     "vitest": "5.0.4",
-    "zod": "4.4.3"
+    "zod": "4.6.7"
   }
 }

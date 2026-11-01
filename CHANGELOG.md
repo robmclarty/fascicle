@@ -15,6 +15,11 @@
 
 - **An ACP turn says why it stopped.** Every turn that wasn't cancelled answered `end_turn`, so a coding agent that ran out of `max_steps` read as one that had finished. A turn now takes its stop reason from the last model call that finished in it: `max_steps` answers `max_turn_requests`, `length` answers `max_tokens`, and `content_filter` answers `refusal`, which also leaves the turn out of the history, as the protocol has the client leave it out of the next prompt. See [acp.md](./docs/acp.md#how-a-turn-ends).
 
+### Internal
+
+- **The dependency audit is back to the one KaTeX low it has carried since 0.14.** It had grown to 25 advisories, and eight were high, against markdown-it under `markdownlint-cli2`, zod, undici under the AI SDK's provider-utils, and body-parser under the MCP SDK's express. Four dev pins moved, to `markdownlint-cli2` 0.24.0, `zod` 4.6.7, `solid-js` 1.9.18, and `fallow` 3.37.0. The fast-uri and qs floors in `pnpm-workspace.yaml` went up, and new overrides there cover undici, body-parser, ip-address, minimatch, and the `re2js` that markdownlint 0.42 pins, each scoped to its vulnerable range, with a comment that says why it's there and when it can go. minimatch is the one that crosses a major, since Stryker asks for 10.2 and the fix is only in 11, and a one-file Stryker run on 11 still kills every mutant. Nothing that a consumer installs changes, except that the viewer's compiled canvas is now built from solid-js 1.9.18.
+- **fallow's entry glob for `examples/` reads `examples/**/*.ts`.** Through fallow 3.33, a `*` crossed directory separators, and `examples/*.ts` relied on that to make every module inside an example app an entry point. 3.37 doesn't do that, and the old glob turned up 77 dead-code findings across the example apps. 3.37 also caught the regular-file, size, and binary guards that pr-improve's `read_file` and `edit_file` each carried a copy of, and the two tools now share them as `read_text_within`. An oversized file in `edit_file` names the cap now, as it always did in `read_file`.
+
 ## v0.17.5 — 2026-10-31
 
 ### Changed

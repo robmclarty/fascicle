@@ -10,14 +10,14 @@
  * `find` paired with a giant `replace` can't smuggle past the limit.
  */
 
-import { lstat, readFile, writeFile } from 'node:fs/promises'
+import { writeFile } from 'node:fs/promises'
 import { z } from 'zod'
 
 import { define_tool } from 'fascicle'
 import type { Tool } from 'fascicle'
 
 import { MAX_FILE_BYTES } from './limits.js'
-import { assert_not_symlink, resolve_within } from './path_safety.js'
+import { read_text_within } from './read_text.js'
 
 export const edit_file_input = z.object({
   path: z.string().min(1),
@@ -41,21 +41,7 @@ export function make_edit_file(root: string): Tool {
       'replace_all: true to replace every occurrence.',
     input_schema: edit_file_input,
     execute: async (input) => {
-      const resolved = resolve_within(root, input.path)
-      await assert_not_symlink(resolved, input.path)
-      const target_stat = await lstat(resolved)
-      if (!target_stat.isFile()) {
-        throw new Error(`not a regular file: ${input.path}`)
-      }
-      if (target_stat.size > MAX_FILE_BYTES) {
-        throw new Error(
-          `file exceeds size cap: ${input.path} is ${String(target_stat.size)} bytes`,
-        )
-      }
-      const buffer = await readFile(resolved)
-      if (buffer.includes(0)) {
-        throw new Error(`refusing to edit binary file (NUL byte present): ${input.path}`)
-      }
+      const { resolved, buffer } = await read_text_within(root, input.path, 'edit')
       const before = buffer.toString('utf8')
       const occurrences = count_occurrences(before, input.find)
       if (occurrences === 0) {
