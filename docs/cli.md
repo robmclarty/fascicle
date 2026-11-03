@@ -264,7 +264,7 @@ Some things run outside the sandbox, where the policy can't reach them:
 
 A Bash command that names a path outside the working directories is refused before it runs, because the read block would have to ask you first, and `-p` can't. That includes `/dev/null`, so `curl -o /dev/null` fails where `curl -o page.html` works.
 
-The sandbox needs Claude Code 2.1.314 or later. An older release drops the settings that it doesn't know without saying so, which would leave the file tools unconfined. So before its first sandboxed call the adapter runs `claude --version`, and it throws `claude_cli_error` with `reason: 'sandbox_unavailable'` for an older release. If yours is older, run `claude update`.
+The sandbox needs Claude Code 2.1.314 or later. An older release drops the settings that it doesn't know without saying so, which would leave the file tools unconfined. So before its first sandboxed call, and again for a call whose `PATH` differs, the adapter runs `claude --version`, and it throws `claude_cli_error` with `reason: 'sandbox_unavailable'` for an older release. If yours is older, run `claude update`.
 
 You can't pass your own `--settings` in a call's `extra_args` under this sandbox, and a call that tries throws `engine_config_error`.
 

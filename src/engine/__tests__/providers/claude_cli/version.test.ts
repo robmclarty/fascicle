@@ -128,6 +128,30 @@ describe('create_cli_version_gate', () => {
     expect(err.stderr_snippet).toBe('e'.repeat(512))
   })
 
+  it('checks again for a call whose PATH differs, since it can find another binary', async () => {
+    const { runtime, calls } = fake_runtime([
+      { lines: ['2.1.316 (Claude Code)'], code: 0 },
+      { lines: ['2.1.300 (Claude Code)'], code: 0 },
+    ])
+    const gate = create_cli_version_gate(runtime, INIT)
+    const abort = new AbortController().signal
+    await gate.ensure({ PATH: '/new/bin' }, abort)
+    await gate.ensure({ PATH: '/new/bin' }, abort)
+    await expect(gate.ensure({ PATH: '/old/bin' }, abort)).rejects.toMatchObject({
+      reason: 'sandbox_unavailable',
+    })
+    expect(calls.map((c) => c.env['PATH'])).toEqual(['/new/bin', '/old/bin'])
+  })
+
+  it('remembers a pass for an env with no PATH as well', async () => {
+    const { runtime, calls } = fake_runtime([{ lines: ['2.1.316 (Claude Code)'], code: 0 }])
+    const gate = create_cli_version_gate(runtime, INIT)
+    const abort = new AbortController().signal
+    await gate.ensure({}, abort)
+    await gate.ensure({}, abort)
+    expect(calls).toHaveLength(1)
+  })
+
   it('checks again after a failure instead of remembering it', async () => {
     const { runtime, calls } = fake_runtime([
       { lines: ['2.1.0 (Claude Code)'], code: 0 },

@@ -4,8 +4,8 @@
  * The sandbox's settings keys arrived over several Claude Code releases, and
  * the CLI drops a settings key it doesn't know without failing, so a run on
  * an older CLI would go ahead with part of its policy missing. The gate asks
- * the binary for its version once per adapter, before the first sandboxed
- * call, and refuses a CLI older than `CLAUDE_CODE_SANDBOX_MIN_VERSION`.
+ * the binary for its version before the first sandboxed call on each `PATH`,
+ * and refuses a CLI older than `CLAUDE_CODE_SANDBOX_MIN_VERSION`.
  */
 
 import { claude_cli_error } from '../../errors.js'
@@ -82,20 +82,23 @@ async function check_cli_version(
 }
 
 /**
- * Build the per-adapter gate. `ensure` checks the CLI on its first call and
- * remembers only a pass, so a CLI that's updated after a failure passes on
- * the next call.
+ * Build the per-adapter gate. `ensure` checks the CLI the first time it sees
+ * a call's `PATH`, because a bare binary name resolves against that `PATH`
+ * and a call can pass its own, so a pass for one `PATH` says nothing about
+ * the binary that another finds. It remembers only passes, so a CLI that's
+ * updated after a failure passes on the next call.
  */
 export function create_cli_version_gate(
   spawn_runtime: SpawnRuntime,
   init: CliVersionGateInit,
 ): CliVersionGate {
-  let passed = false
+  const passed = new Set<string>()
   return {
     ensure: async (env, abort) => {
-      if (passed) return
+      const path = env['PATH'] ?? ''
+      if (passed.has(path)) return
       await check_cli_version(spawn_runtime, init, env, abort)
-      passed = true
+      passed.add(path)
     },
   }
 }
