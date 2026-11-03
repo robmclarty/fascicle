@@ -65,11 +65,18 @@ output. That is a real trust boundary:
   to the CLI's own allowlist and silently drops the closures; use
   `tool_bridge: 'forbid'` when you need a hard guarantee that no `execute` closure
   becomes a silent no-op.
-- For untrusted work, confine the subprocess with `sandbox: { kind: 'bwrap' |
-  'greywall', network_allowlist, additional_write_paths }`. Under `bwrap`, an
-  empty `network_allowlist` means network-off, and a non-empty one shares the
-  host network without filtering it. Under `greywall`, greyproxy enforces the
-  allowlist. Full details in [docs/cli.md](./docs/cli.md).
+- For untrusted work, run the subprocess under Claude Code's own sandbox,
+  `sandbox: { kind: 'claude_code' }`. The CLI enforces it at the OS level, so
+  Bash reaches only the domains in `network_allowlist` and writes only inside
+  the working directory, the temp directory, and `additional_write_paths`,
+  while the file tools refuse paths outside the working directories. Hooks
+  are off, and so is any MCP server that you didn't name. The sandbox doesn't
+  cover WebFetch, WebSearch, or the helpers in a repo's own settings, and
+  [docs/cli.md](./docs/cli.md#sandboxing) shows you how to close those.
+- The older `bwrap` and `greywall` wrappers are deprecated, and neither one
+  enforces `network_allowlist`. A non-empty list under `bwrap` shares the host
+  network without filtering it, and `greywall` leaves host filtering to a
+  greyproxy that you'd have to configure yourself.
 
 Tools you pass to a model call run **in your process**, with whatever privileges
 your process holds. Validate their inputs and scope their side effects; Fascicle

@@ -17,6 +17,7 @@ import {
   merge_system,
 } from '../../../providers/claude_cli/argv.js'
 import { build_sandbox_plan } from '../../../providers/claude_cli/sandbox.js'
+import { render_sandbox_settings } from '../../../providers/claude_cli/settings.js'
 import { DEFAULT_SETTING_SOURCES } from '../../../providers/claude_cli/constants.js'
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -118,6 +119,33 @@ describe('build_cli_argv: pinned argv', () => {
       '--append-system-prompt', 'be brief',
       '--max-turns', '3',
     ])
+  })
+
+  it('adds the claude_code policy and strict MCP right after --setting-sources', () => {
+    const sandbox = { kind: 'claude_code', network_allowlist: ['openrouter.ai'] } as const
+    const argv = build_cli_argv({
+      ...minimal_input,
+      provider_config: { sandbox },
+      merged_allowed_tools: ['Bash'],
+    })
+    expect(argv).toEqual([
+      '-p',
+      '--output-format', 'stream-json',
+      '--model', 'claude-sonnet-4-6',
+      '--verbose',
+      '--setting-sources', 'project,local',
+      '--settings', render_sandbox_settings(sandbox),
+      '--strict-mcp-config',
+      '--allowedTools', 'Bash',
+    ])
+  })
+
+  it('adds neither flag for the wrapper kinds, which wrap the binary instead', () => {
+    for (const kind of ['bwrap', 'greywall'] as const) {
+      const argv = build_cli_argv({ ...minimal_input, provider_config: { sandbox: { kind } } })
+      expect(argv).not.toContain('--settings')
+      expect(argv).not.toContain('--strict-mcp-config')
+    }
   })
 })
 
@@ -254,6 +282,14 @@ describe('build_sandbox_plan', () => {
     expect(plan.prefix_args).toEqual([])
   })
 
+  it('claude_code plan: the CLI enforces it, so the binary runs unwrapped', () => {
+    const plan = build_sandbox_plan('/opt/claude', {
+      kind: 'claude_code',
+      network_allowlist: ['openrouter.ai'],
+    })
+    expect(plan).toEqual({ spawn_cmd: '/opt/claude', prefix_args: [] })
+  })
+
   it('bwrap plan: spawn_cmd is bwrap; binary appears after sandbox args', () => {
     const plan = build_sandbox_plan('claude', { kind: 'bwrap' })
     expect(plan.spawn_cmd).toBe('bwrap')
@@ -385,10 +421,12 @@ describe('argv-injection audit', () => {
       'cost.ts',
       'index.ts',
       'sandbox.ts',
+      'settings.ts',
       'spawn.ts',
       'stream_parse.ts',
       'stream_result.ts',
       'types.ts',
+      'version.ts',
     ]
     for (const name of files) {
       const src = await readFile(

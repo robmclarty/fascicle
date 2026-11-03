@@ -8,7 +8,7 @@ Three good reasons, and they're all about what you already have:
 
 1. **Piggyback on your CLI login.** Run `claude auth login` once, and every Fascicle harness you write uses that session.
 2. **Use CLI-only features.** Sub-agents via `--agents`, per-invocation tool allowlisting, setting source control, plugin dirs, schema-constrained output via `--json-schema`.
-3. **Sandboxable.** `bwrap` and `greywall` wrappers let you confine the subprocess to an allowlist.
+3. **Sandboxable.** Claude Code's own sandbox lets you hold the commands that the CLI runs to a list of domains and the working directory, and its file tools to the working directory too.
 
 It does **not** replace the `anthropic` AI SDK adapter. Use `anthropic` for direct API traffic, and reach for `claude_cli` when the CLI's features or your existing CLI login is the reason.
 
@@ -57,7 +57,7 @@ type ClaudeCliProviderConfig = {
   stall_timeout_ms?: number;        // default 300_000
   setting_sources?: ReadonlyArray<'user' | 'project' | 'local'>;   // default ['project', 'local']
   plugin_dirs?: ReadonlyArray<string>;
-  sandbox?: SandboxProviderConfig;
+  sandbox?: SandboxProviderConfig;  // see Sandboxing below
 };
 ```
 
@@ -160,6 +160,7 @@ claude -p \
 
 Plus, conditionally:
 
+- `--settings <json>` and `--strict-mcp-config`, right after `--setting-sources`, when `sandbox` is a `claude_code` sandbox. The JSON is the policy that [Sandboxing](#sandboxing) describes.
 - `--allowedTools <name>` — repeated, one per allowlisted tool (union of `provider_options.claude_cli.allowed_tools` and `opts.tools[].name`).
 - `--resume <session_id>` — when `provider_options.claude_cli.session_id` is set.
 - `--agents <json>` — when `provider_options.claude_cli.agents` is set.
@@ -218,26 +219,62 @@ Whichever one fires kills the subprocess and throws `claude_cli_error` with `rea
 
 ## Sandboxing
 
-Opt in with `sandbox: { kind: 'bwrap' | 'greywall', network_allowlist?, additional_write_paths? }`. A `greywall` sandbox also takes `settings_path?`.
+Set `sandbox: { kind: 'claude_code' }` to run each call under Claude Code's own sandbox. Fascicle passes the policy to the CLI as `--settings`, and the CLI enforces it at the OS level, with Seatbelt on macOS and bubblewrap on Linux and WSL2, where you have to install `bubblewrap` and `socat`. Native Windows has no sandbox, so a call there fails rather than running unconfined. Your login keeps working, because the sandbox holds the commands that the CLI runs and leaves the CLI itself alone.
 
 ```ts
 const engine = create_engine({
   providers: {
     claude_cli: {
       auth_mode: 'oauth',
+      default_cwd: '/work/repo',
       sandbox: {
-        kind: 'bwrap',
-        network_allowlist: ['api.anthropic.com'],
-        additional_write_paths: ['/tmp/claude-workdir'],
+        kind: 'claude_code',
+        network_allowlist: ['registry.npmjs.org', '*.github.com'],
+        additional_write_paths: ['~/.cache/pnpm'],
+        additional_read_paths: ['~/.npmrc'],
+        deny_read_paths: ['~/.ssh', '~/.aws'],
       },
     },
   },
 });
 ```
 
+| Field                    | What it confines                                                                 |
+| ------------------------ | -------------------------------------------------------------------------------- |
+| `network_allowlist`      | The domains that Bash commands may reach, with `*.example.com` for the subdomains. Empty or absent means no network, and a host off the list is refused rather than asked about. |
+| `additional_write_paths` | Where Bash may write, beyond the working directory and the per-user temp directory. |
+| `additional_read_paths`  | What Bash may still read outside the working directory. The sandbox shuts Bash out of your home directory, apart from the working directory and git's global config. |
+| `deny_read_paths`        | What neither Bash nor the file tools may read, even inside the working directory. |
+
+Give each path as an absolute path or one that starts with `~/`. A relative one throws `engine_config_error` when you build the engine, since Claude Code resolves a relative path differently in each of its lists.
+
+You can't change the rest of the policy:
+
+- Bash can't retry a blocked command outside the sandbox, and a repo's own `.claude/settings.json` can't loosen the sandbox, because a policy that arrives through `--settings` outranks it.
+- Bash still runs only when you allow it in `allowed_tools`, as it would without a sandbox.
+- The file tools refuse paths outside the working directories in every permission mode, `bypassPermissions` included.
+- Hooks are off, and the only MCP servers that start are the ones that you name with `--mcp-config` in `extra_args`. Both run outside the sandbox, and `-p` runs a project's hooks without asking you.
+- When the sandbox can't start, the CLI exits, and your call fails with `claude_cli_error` and `reason: 'sandbox_unavailable'`.
+
+Some things run outside the sandbox, where the policy can't reach them:
+
+- **WebFetch and WebSearch.** They run in the CLI's own process, so `network_allowlist` doesn't bind them. Leave them out of `allowed_tools`, or pass `--disallowedTools WebFetch,WebSearch` in `extra_args`.
+- **A repo's settings helpers and `env`.** A project's `.claude/settings.json` still loads under the default `setting_sources`, so set `setting_sources: []` for a repo that you don't trust.
+- **Node's `fetch`.** It ignores the proxy variables that the sandbox sets unless you set `NODE_USE_ENV_PROXY=1`, and a tool that ignores them can't connect at all, even to a listed host.
+
+A Bash command that names a path outside the working directories is refused before it runs, because the read block would have to ask you first, and `-p` can't. That includes `/dev/null`, so `curl -o /dev/null` fails where `curl -o page.html` works.
+
+The sandbox needs Claude Code 2.1.314 or later. An older release drops the settings that it doesn't know without saying so, which would leave the file tools unconfined. So before its first sandboxed call the adapter runs `claude --version`, and it throws `claude_cli_error` with `reason: 'sandbox_unavailable'` for an older release. If yours is older, run `claude update`.
+
+You can't pass your own `--settings` in a call's `extra_args` under this sandbox, and a call that tries throws `engine_config_error`.
+
+### Deprecated `bwrap` and `greywall` Wrappers
+
+`kind: 'bwrap'` and `kind: 'greywall'` still work, but neither enforces `network_allowlist`, and both go in a later minor release. Switch to `kind: 'claude_code'`, which takes the same `network_allowlist` and `additional_write_paths`.
+
 The `bwrap` wrapper read-only binds `/usr`, `/bin`, `/lib`, `/lib64`, `/etc/resolv.conf`, mounts `/proc`, `/dev`, and a tmpfs at `/tmp`, unshares user/pid/ipc/uts/cgroup namespaces, binds each of `additional_write_paths` read-write, and dies with the parent. An empty or absent `network_allowlist` unshares the network, so the network is off. A non-empty one shares the host network (`--share-net`) and only hands the hosts to the child in the `CLAUDE_CLI_NET_ALLOW` variable, so nothing filters the traffic and every host stays reachable.
 
-`greywall` takes its policy from a JSON settings file that's passed with `--settings`. The adapter writes one for each run, with `network_allowlist` as `network.allowHosts` and `additional_write_paths` as `filesystem.allowWrite`, or forwards your own file untouched when you set `settings_path`. `greywall` honors the write paths directly and ignores `network.allowHosts`, since greyproxy is what enforces host allowlisting.
+`greywall` takes its policy from a JSON settings file that's passed with `--settings`. The adapter writes one for each run, with `network_allowlist` as `network.allowHosts` and `additional_write_paths` as `filesystem.allowWrite`, or forwards your own file untouched when you set `settings_path`. `greywall` honors the write paths directly and ignores `network.allowHosts`, since greyproxy is what enforces host allowlisting, and the adapter writes no greyproxy rules, so nothing filters the hosts unless you add those rules yourself.
 
 A missing sandbox binary triggers `claude_cli_error` with `reason: 'sandbox_unavailable'`. A `claude` binary outside the paths that `bwrap` binds, such as one in your home directory, isn't there inside the sandbox, so `bwrap` can't run it, and the error has `reason: 'binary_not_found'` and names the binary.
 
@@ -245,7 +282,7 @@ A missing sandbox binary triggers `claude_cli_error` with `reason: 'sandbox_unav
 
 | Error                    | Cause                                                                       |
 | ------------------------ | --------------------------------------------------------------------------- |
-| `engine_config_error`    | `api_key` missing under `auth_mode: 'api_key'`.                             |
+| `engine_config_error`    | `api_key` missing under `auth_mode: 'api_key'`, a relative path in a `claude_code` sandbox, or `--settings` in a call's `extra_args` under one. |
 | `provider_auth_error`    | Stderr matched an auth-failure pattern, so surface `refresh_command` to whoever is running this. |
 | `claude_cli_error`       | Subprocess failure. Check `.reason` for `binary_not_found`, `startup_timeout`, `stall_timeout`, `no_result_event`, `result_error`, `subprocess_exit`, or `sandbox_unavailable`. |
 | `aborted_error`          | Your `abort` fired, or the engine was disposed while the call ran, in which case `.reason` is `'engine_disposed'`. |

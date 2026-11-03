@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Added
+
+- **A `claude_cli` provider can run under Claude Code's own sandbox.** The `bwrap` and `greywall` wrappers never enforced `network_allowlist`, so nothing held a call's commands to a list of hosts. `sandbox: { kind: 'claude_code' }` passes a policy to the CLI as `--settings`, and the CLI enforces it at the OS level, with Seatbelt on macOS and bubblewrap on Linux, while the login keeps working. Bash reaches only the domains in `network_allowlist`, and a host off the list is refused rather than asked about. It writes only inside the working directory, the temp directory, and `additional_write_paths`, it reads outside the working directory only from `additional_read_paths`, and it can't retry a blocked command outside the sandbox. The file tools refuse paths outside the working directories in every permission mode, and `deny_read_paths` keeps Bash and the file tools off credential files. Hooks are off, only the MCP servers named with `--mcp-config` start, and a repo's own settings can't loosen any of it. Before its first sandboxed call the adapter checks for Claude Code 2.1.314 or later, since an older CLI drops the settings that it doesn't know without saying so, and a CLI whose sandbox can't start fails with `sandbox_unavailable`. See [cli.md](./docs/cli.md#sandboxing).
+
+### Changed
+
+- **The `bwrap` and `greywall` sandboxes are deprecated, and the docs stop saying that they enforce the allowlist.** A non-empty `network_allowlist` under `bwrap` shares the host network and hands the hosts to a variable that nothing reads, and `greywall` ignores the `network.allowHosts` that it's given, but `cli.md` and `SECURITY.md` said that the list confined the subprocess. Both kinds behave as they did. `kind: 'claude_code'` takes the same `network_allowlist` and `additional_write_paths`, so moving over changes one word, and the old kinds go in a later minor release.
+
 ### Fixed
 
 - **An `oauth` call no longer inherits the variable that runs Claude Code bare.** `CLAUDE_CODE_SIMPLE=1` runs the CLI in bare mode, the same as `--bare`, and bare mode never reads the CLI's login. Under `auth_mode: 'oauth'` the CLI inherits all of `process.env`, so a host that was started inside a bare session handed the variable on, and the call couldn't authenticate. `oauth` scrubs it now, along with `ANTHROPIC_API_KEY`. See [cli.md](./docs/cli.md#auth-modes).
@@ -9,6 +17,7 @@
 ### Internal
 
 - **`claude_cli`'s argv is pinned whole under each auth mode.** Claude Code plans to make `-p` bare by default, and bare mode never reads the login, so `auto` and `oauth` calls will need a flag that opts back out. The tests held the argv one flag at a time, which would have let that flag, or any other, change without a test noticing. They hold all of it now, at the argv builder and at the spawn.
+- **A live test probes the `claude_code` sandbox on the real CLI.** The mocked suite shows which settings go out, and only the CLI can show that it enforces them. `claude_cli_sandbox.test.ts` runs the real `claude` on the subscription from a temp directory outside the repo and checks each confinement by its effect: a file that mustn't appear, a canary that mustn't come back, an exit code, an HTTP code. Each Bash probe reaches outside through a symlink in the working directory, so the OS sandbox is the only thing in its way. It passed on Claude Code 2.1.316, and it's gated on `LIVE_TESTS=1` and `LIVE_CLAUDE_CLI=1`.
 
 ## v0.17.7 — 2026-11-01
 

@@ -174,7 +174,8 @@ and `fetch failed` on the `ai_sdk` one, without a retry.
 | `binary_not_found` whose message says `bwrap` found no binary | The `claude` binary sits outside the paths that the `bwrap` sandbox binds, such as in your home directory. The [roadmap](./roadmap.md#known-issues) tracks this. |
 | `provider_auth_error` with `refresh_command: 'claude auth login'` | The CLI session is missing or expired. Run `claude auth login`. |
 | `claude_cli_error` with `reason: 'startup_timeout' \| 'stall_timeout'` | No first chunk within 120s, or a 300s gap mid-stream. Check connectivity; raise `startup_timeout_ms` / `stall_timeout_ms`. |
-| `claude_cli_error` with `reason: 'sandbox_unavailable'` | A `sandbox` was requested but `bwrap`/`greywall` isn't installed.       |
+| `claude_cli_error` with `reason: 'sandbox_unavailable'` | A `claude_code` sandbox can't start, so on Linux and WSL2 install `bubblewrap` and `socat`. Or Claude Code is older than 2.1.314, so run `claude update`. Under the deprecated `bwrap` and `greywall` kinds, the wrapper isn't installed. |
+| A sandboxed Bash command fails with "the read block does not allow without asking" | Under a `claude_code` sandbox, a command that names a path outside the working directories is refused before it runs, `/dev/null` included. Point the output at a file inside the working directory, or add the directory that it names with `--add-dir` in `extra_args`. |
 | Your tools silently do nothing                     | Default `tool_bridge: 'allowlist_only'` drops `execute` closures and records a `cli_tool_bridge_allowlist_only` trajectory event. Use `tool_bridge: 'forbid'` to turn that into an error. |
 
 Releases after 0.17.4 put the fix in the message as well: a missing binary

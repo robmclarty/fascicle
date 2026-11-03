@@ -41,5 +41,15 @@ export const CLI_REFRESH_COMMAND = 'claude auth login'
  */
 export const CLI_BARE_MODE_ENV = 'CLAUDE_CODE_SIMPLE'
 
+/**
+ * The oldest Claude Code that honors every key the `claude_code` sandbox
+ * renders, as `[major, minor, patch]`. 2.1.314 added
+ * `blockWritesOutsideWorkingDirectories`, the newest of them, and an older
+ * CLI drops a key it doesn't know without a word, which would leave the
+ * file tools unconfined.
+ */
+export const CLAUDE_CODE_SANDBOX_MIN_VERSION: readonly [number, number, number] =
+  Object.freeze([2, 1, 314] as const)
+
 export const DEFAULT_SETTING_SOURCES: ReadonlyArray<'user' | 'project' | 'local'> =
   Object.freeze(['project', 'local'])

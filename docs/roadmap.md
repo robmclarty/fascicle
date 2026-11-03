@@ -216,6 +216,9 @@ likely to bite you first.
   version manager, isn't there when `bwrap` goes to run it, and the call fails
   with `binary_not_found`. Your home directory isn't bound either, so an
   `auth_mode: 'oauth'` run couldn't reach its login even with the binary there.
+  The wrapper is deprecated now and won't get a fix. `kind: 'claude_code'`
+  runs the binary unwrapped, and `bwrap` and `greywall` both go in a later
+  minor release.
 - **Claude Code's coming bare default will cut `claude_cli` off from the
   login.** Claude Code plans to run `-p` in bare mode by default in a future
   release, and bare mode never reads the CLI's login, so an

@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 import {
   aborted_error,
+  engine_config_error,
   engine_disposed_error,
 } from '../../../errors.js'
 import type { GenerateOptions, Message, ResolvedModel, StreamChunk, Tool } from '../../../types.js'
@@ -453,5 +454,120 @@ describe('claude_cli adapter generate', () => {
     expect(typeof gen_span?.ended?.['error']).toBe('string')
     const step_span = traj.spans.find((s) => s.name === 'engine.generate.step')
     expect(typeof step_span?.ended?.['error']).toBe('string')
+  })
+})
+
+describe('claude_cli adapter generate under a claude_code sandbox', () => {
+  const sandbox = { kind: 'claude_code', network_allowlist: ['openrouter.ai'] } as const
+  const version_reply = (text: string, code = 0): { lines: string[]; close: Close } => ({
+    lines: [text],
+    close: { code, signal: null, stderr: '' },
+  })
+
+  it('checks the CLI version once, first, then spawns claude unwrapped with the policy', async () => {
+    hooks.responses = [
+      version_reply('2.1.316 (Claude Code)'),
+      { lines: success_lines('ok'), close: ZERO_CLOSE },
+    ]
+    const adapter = create_claude_cli_adapter({ sandbox })
+    await adapter.generate(gen({}), RESOLVED)
+    await adapter.generate(gen({}), RESOLVED)
+    expect(hooks.spawn_calls).toHaveLength(3)
+    const [version_call, run_call] = hooks.spawn_calls
+    expect(version_call?.['cmd']).toBe('claude')
+    expect(version_call?.['argv']).toEqual(['--version'])
+    expect(version_call?.['stdin']).toBe('')
+    expect(version_call?.['abort']).toBeInstanceOf(AbortSignal)
+    const run_argv = (run_call?.['argv'] ?? []) as string[]
+    expect(run_call?.['cmd']).toBe('claude')
+    expect(run_argv[0]).toBe('-p')
+    expect(run_argv).toEqual(expect.arrayContaining(['--settings', '--strict-mcp-config']))
+    // A failed spawn here is the claude binary's, not a wrapper's.
+    expect(run_call !== undefined && 'spawn_failure_reason' in run_call).toBe(false)
+    expect(hooks.spawn_calls[2]?.['argv']).not.toEqual(['--version'])
+  })
+
+  it('refuses a CLI older than 2.1.314 without running the call', async () => {
+    hooks.responses = [version_reply('2.1.313 (Claude Code)')]
+    const adapter = create_claude_cli_adapter({ sandbox })
+    const err = await adapter.generate(gen({}), RESOLVED).catch((e: unknown) => e)
+    expect(err).toMatchObject({ kind: 'claude_cli_error', reason: 'sandbox_unavailable' })
+    expect((err as Error).message).toContain('Claude Code 2.1.313 is older than 2.1.314')
+    expect(hooks.spawn_calls).toHaveLength(1)
+  })
+
+  it('refuses output it cannot read a version from, and a failing --version', async () => {
+    for (const reply of [version_reply('claude: something went wrong'), version_reply('2.1.316', 1)]) {
+      hooks.spawn_calls = []
+      hooks.responses = [reply]
+      const adapter = create_claude_cli_adapter({ sandbox })
+      const err = await adapter.generate(gen({}), RESOLVED).catch((e: unknown) => e)
+      expect(err).toMatchObject({ kind: 'claude_cli_error', reason: 'sandbox_unavailable' })
+      expect((err as Error).message).toContain("couldn't read a Claude Code version from 'claude --version'")
+      expect((err as Error).message).toContain('needs Claude Code 2.1.314 or later')
+    }
+  })
+
+  it('checks again after a failure, so an updated CLI passes on the next call', async () => {
+    hooks.responses = [
+      version_reply('2.1.200 (Claude Code)'),
+      version_reply('2.1.314 (Claude Code)'),
+      { lines: success_lines('ok'), close: ZERO_CLOSE },
+    ]
+    const adapter = create_claude_cli_adapter({ sandbox })
+    await expect(adapter.generate(gen({}), RESOLVED)).rejects.toMatchObject({
+      reason: 'sandbox_unavailable',
+    })
+    const result = await adapter.generate(gen({}), RESOLVED)
+    expect(result.content).toBe('ok')
+    expect(hooks.spawn_calls.map((c) => (c['argv'] as string[])[0])).toEqual([
+      '--version',
+      '--version',
+      '-p',
+    ])
+  })
+
+  it('closes the spans when the version check fails', async () => {
+    hooks.responses = [version_reply('2.1.0 (Claude Code)')]
+    const traj = create_captured_trajectory()
+    const adapter = create_claude_cli_adapter({ sandbox })
+    await expect(adapter.generate(gen({ trajectory: traj.logger }), RESOLVED)).rejects.toBeDefined()
+    const gen_span = traj.spans.find((s) => s.name === 'engine.generate')
+    expect(gen_span?.ended?.['error']).toContain('older than 2.1.314')
+  })
+
+  it('refuses a call whose extra_args carries its own --settings, before spawning', async () => {
+    const adapter = create_claude_cli_adapter({ sandbox })
+    await expect(
+      adapter.generate(
+        gen({ provider_options: { claude_cli: { extra_args: ['--settings', '{}'] } } }),
+        RESOLVED,
+      ),
+    ).rejects.toBeInstanceOf(engine_config_error)
+    expect(hooks.spawn_calls).toHaveLength(0)
+  })
+
+  it('refuses a relative sandbox path when the adapter is built', () => {
+    expect(() =>
+      create_claude_cli_adapter({ sandbox: { kind: 'claude_code', deny_read_paths: ['secrets'] } }),
+    ).toThrow(engine_config_error)
+  })
+
+  it('never checks the version for the wrapper kinds or an unsandboxed provider', async () => {
+    for (const config of [{ sandbox: { kind: 'bwrap' } }, { sandbox: { kind: 'greywall' } }, {}] as const) {
+      hooks.spawn_calls = []
+      hooks.responses = [{ lines: success_lines('ok'), close: ZERO_CLOSE }]
+      const adapter = create_claude_cli_adapter(config)
+      await adapter.generate(gen({}), RESOLVED)
+      expect(hooks.spawn_calls).toHaveLength(1)
+      expect(hooks.spawn_calls[0]?.['argv']).not.toContain('--version')
+    }
+  })
+
+  it('blames a failed spawn on the wrapper only for the wrapper kinds', async () => {
+    hooks.responses = [{ lines: success_lines('ok'), close: ZERO_CLOSE }]
+    await create_claude_cli_adapter({ sandbox: { kind: 'bwrap' } }).generate(gen({}), RESOLVED)
+    expect(hooks.spawn_calls[0]?.['cmd']).toBe('bwrap')
+    expect(hooks.spawn_calls[0]?.['spawn_failure_reason']).toBe('sandbox_unavailable')
   })
 })

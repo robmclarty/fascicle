@@ -8,6 +8,7 @@
 
 import type { ClaudeCliCallOptions, ClaudeCliProviderConfig } from './types.js'
 import { DEFAULT_SETTING_SOURCES } from './constants.js'
+import { render_sandbox_settings } from './settings.js'
 
 export type BuildArgvInput = {
   readonly model_id: string
@@ -37,6 +38,7 @@ export function build_cli_argv(input: BuildArgvInput): ReadonlyArray<string> {
   const setting_sources =
     input.provider_config.setting_sources ?? DEFAULT_SETTING_SOURCES
   args.push('--setting-sources', setting_sources.join(','))
+  args.push(...sandbox_args(input.provider_config))
 
   for (const tool of input.merged_allowed_tools) {
     args.push('--allowedTools', tool)
@@ -69,6 +71,18 @@ export function build_cli_argv(input: BuildArgvInput): ReadonlyArray<string> {
   }
 
   return Object.freeze(args)
+}
+
+/**
+ * The flags that a `claude_code` sandbox adds: its policy as `--settings`,
+ * and `--strict-mcp-config`, since MCP servers run outside the sandbox and
+ * the strict flag starts only the ones a caller names with `--mcp-config`,
+ * never a repo's `.mcp.json`. Any other sandbox adds none.
+ */
+function sandbox_args(config: ClaudeCliProviderConfig): ReadonlyArray<string> {
+  const sandbox = config.sandbox
+  if (sandbox?.kind !== 'claude_code') return []
+  return ['--settings', render_sandbox_settings(sandbox), '--strict-mcp-config']
 }
 
 /**

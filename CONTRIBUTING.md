@@ -61,4 +61,15 @@ Claude runs on OpenRouter to one upstream if a turn lands somewhere else:
 LIVE_TESTS=1 OPENROUTER_API_KEY=... pnpm exec vitest run src/engine/__tests__/live/live_cache.test.ts
 ```
 
+A fourth, `claude_cli_sandbox.test.ts`, checks the `claude_code` sandbox on the
+real `claude` binary. It runs on the subscription that Claude Code is logged
+in to, from a temp directory outside the repo, so it needs no key, only Claude
+Code 2.1.314 or later and `LIVE_CLAUDE_CLI=1` beside `LIVE_TESTS=1`. It makes
+about a dozen calls on haiku and checks each confinement by its effect, never
+by what the model says happened:
+
+```bash
+LIVE_TESTS=1 LIVE_CLAUDE_CLI=1 pnpm exec vitest run src/engine/__tests__/live/claude_cli_sandbox.test.ts
+```
+
 — Rob

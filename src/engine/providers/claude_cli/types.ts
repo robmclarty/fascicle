@@ -13,11 +13,51 @@ export type ToolBridgeMode = 'allowlist_only' | 'forbid'
 
 export type SandboxProviderConfig =
   | {
+      /**
+       * Claude Code's own sandbox, passed to the CLI as `--settings`. It
+       * confines Bash at the OS level (Seatbelt on macOS, bubblewrap on
+       * Linux) and keeps the file tools inside the working directories.
+       * Needs Claude Code 2.1.314 or later, which the adapter checks.
+       */
+      readonly kind: 'claude_code'
+      /**
+       * Domains that Bash commands may reach; `*.example.com` matches the
+       * subdomains. Empty or absent means no network. WebFetch and
+       * WebSearch run outside the sandbox, so this list doesn't bind them.
+       */
+      readonly network_allowlist?: ReadonlyArray<string>
+      /**
+       * Absolute or `~/` paths that Bash commands may write, beyond the
+       * working directory and the per-user temp directory.
+       */
+      readonly additional_write_paths?: ReadonlyArray<string>
+      /**
+       * Absolute or `~/` paths that Bash commands may still read, such as
+       * a package manager's config or cache. The sandbox shuts Bash out of
+       * the home directory apart from the working directory, the temp
+       * directory, and git's global config.
+       */
+      readonly additional_read_paths?: ReadonlyArray<string>
+      /**
+       * Absolute or `~/` paths that neither Bash nor the file tools may
+       * read, such as `~/.ssh`.
+       */
+      readonly deny_read_paths?: ReadonlyArray<string>
+    }
+  | {
+      /**
+       * @deprecated `bwrap` doesn't enforce `network_allowlist`: a non-empty
+       * list shares the host network. Use `kind: 'claude_code'`.
+       */
       readonly kind: 'bwrap'
       readonly network_allowlist?: ReadonlyArray<string>
       readonly additional_write_paths?: ReadonlyArray<string>
     }
   | {
+      /**
+       * @deprecated greywall ignores `network_allowlist` unless you set up
+       * greyproxy's rules yourself. Use `kind: 'claude_code'`.
+       */
       readonly kind: 'greywall'
       readonly network_allowlist?: ReadonlyArray<string>
       readonly additional_write_paths?: ReadonlyArray<string>

@@ -11,6 +11,7 @@
  *   MOCK_CLAUDE_RECORD_RESUME   optional record path used on --resume invocations
  *   MOCK_CLAUDE_IGNORE_SIGTERM  "1" installs a no-op SIGTERM handler
  *   MOCK_CLAUDE_READY           path touched once the SIGTERM handler is live
+ *   MOCK_CLAUDE_VERSION         what `--version` prints (default "2.1.316 (Claude Code)")
  *
  * Supported ops (each object in the script array):
  *   { "op": "line",   "data": <any> }      JSON.stringify(data) + "\n" -> stdout
@@ -23,6 +24,13 @@
  */
 
 import { writeFileSync, readFileSync } from 'node:fs';
+
+// `--version` answers before anything else runs, so the sandbox's version
+// check never overwrites a test's record or plays its script.
+if (process.argv[2] === '--version') {
+  process.stdout.write(`${process.env.MOCK_CLAUDE_VERSION ?? '2.1.316 (Claude Code)'}\n`);
+  process.exit(0);
+}
 
 const argv = process.argv.slice(2);
 const is_resume = argv.includes('--resume');

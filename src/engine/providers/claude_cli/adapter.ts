@@ -44,7 +44,9 @@ import {
   merge_system,
 } from './argv.js'
 import { build_sandbox_plan } from './sandbox.js'
+import { validate_sandbox_config, validate_sandbox_extra_args } from './settings.js'
 import { create_spawn_runtime } from './spawn.js'
+import { create_cli_version_gate } from './version.js'
 import {
   create_parser_state,
   feed_chunk,
@@ -98,6 +100,11 @@ const PROVIDER_NAME = 'claude_cli'
 // `bwrap: execvp <target>: <strerror>`, and the target is always the claude
 // binary, since the sandbox plan puts it right after `--`.
 const BWRAP_EXEC_MISSING = /^bwrap: execvp (.+): No such file or directory$/m
+
+// When `failIfUnavailable` stops a run because Claude Code's own sandbox
+// can't start, its message ends "Set sandbox.failIfUnavailable=false to
+// allow unsandboxed execution."
+const CLI_SANDBOX_START_FAILED = /sandbox\.failIfUnavailable/
 
 // Map Fascicle's EffortLevel to Claude Code's CLAUDE_CODE_EFFORT_LEVEL env var.
 // The CLI supports `low | medium | high | xhigh | max | auto`; we expose all
@@ -201,23 +208,58 @@ export function compile_schema<T>(schema: ToolSchema<T>): string {
 }
 
 /**
+ * Classify a close whose stderr or error result says that a sandbox kept
+ * the run from going ahead, whether Claude Code's own or a wrapper. Returns
+ * `undefined` when neither does.
+ *
+ * The bwrap check has to come before the wrapper check: bwrap's own
+ * "execvp <binary>: No such file or directory" names bwrap and says the file
+ * is missing, so the wrapper check would blame bwrap for the claude binary.
+ */
+function classify_sandbox_failure(
+  stderr: string,
+  reported: string,
+  snippet: string,
+  detail: string,
+): claude_cli_error | undefined {
+  if (CLI_SANDBOX_START_FAILED.test(stderr) || CLI_SANDBOX_START_FAILED.test(reported)) {
+    return new claude_cli_error(
+      'sandbox_unavailable',
+      `Claude Code's sandbox couldn't start, so the claude_code sandbox stopped the run: on Linux and WSL2 it needs bubblewrap and socat, and native Windows has no sandbox (${detail})`,
+      { stderr_snippet: snippet },
+    )
+  }
+  const sandboxed_binary = BWRAP_EXEC_MISSING.exec(stderr)?.[1]
+  if (sandboxed_binary !== undefined) {
+    return new claude_cli_error(
+      'binary_not_found',
+      `bwrap ran but found no claude binary at '${sandboxed_binary}' inside its sandbox, which binds only /usr, /bin, /lib, /lib64, and additional_write_paths: ${snippet}`,
+      { stderr_snippet: snippet },
+    )
+  }
+  if (/bwrap|greywall|sandbox/i.test(stderr) && /not found|no such file|enoent/i.test(stderr)) {
+    return new claude_cli_error('sandbox_unavailable', `sandbox binary unavailable: ${snippet}`, {
+      stderr_snippet: snippet,
+    })
+  }
+  return undefined
+}
+
+/**
  * Turn a closed CLI subprocess's exit code, signal, stderr, and what its
  * stream reported into an `Error`.
  *
- * Checks for an auth failure first, then for a claude binary that bwrap
- * started but couldn't find inside its sandbox, then for a missing sandbox
- * binary, then falls back to a generic exit-code error. The stderr snippet
- * attached to each error is truncated to 512 bytes.
+ * Checks for an auth failure first, then for a sandbox that stopped the run
+ * (Claude Code's own failing to start, a claude binary that bwrap couldn't
+ * find inside its sandbox, or a missing wrapper), then falls back to a
+ * generic exit-code error. The stderr snippet attached to each error is
+ * truncated to 512 bytes.
  *
  * A logged-out CLI says so on stdout and leaves stderr empty: it writes an
  * assistant message with the `authentication_failed` error code and an error
  * result that reads "Not logged in · Please run /login". So the auth check
  * reads the stream's error code as well as stderr, and when stderr is empty,
  * an error result's text stands in for it in the message.
- *
- * The bwrap check has to come before the sandbox check: bwrap's own
- * "execvp <binary>: No such file or directory" names bwrap and says the file
- * is missing, so the sandbox check would blame bwrap for the claude binary.
  */
 export function classify_close_error(
   code: number | null,
@@ -237,19 +279,8 @@ export function classify_close_error(
       { refresh_command: CLI_REFRESH_COMMAND },
     )
   }
-  const sandboxed_binary = BWRAP_EXEC_MISSING.exec(stderr)?.[1]
-  if (sandboxed_binary !== undefined) {
-    return new claude_cli_error(
-      'binary_not_found',
-      `bwrap ran but found no claude binary at '${sandboxed_binary}' inside its sandbox, which binds only /usr, /bin, /lib, /lib64, and additional_write_paths: ${snippet}`,
-      { stderr_snippet: snippet },
-    )
-  }
-  if (/bwrap|greywall|sandbox/i.test(stderr) && /not found|no such file|enoent/i.test(stderr)) {
-    return new claude_cli_error('sandbox_unavailable', `sandbox binary unavailable: ${snippet}`, {
-      stderr_snippet: snippet,
-    })
-  }
+  const sandbox_failure = classify_sandbox_failure(stderr, reported, snippet, detail)
+  if (sandbox_failure !== undefined) return sandbox_failure
   const status = typeof code === 'number' ? code : undefined
   const signal_part = signal !== null ? ` (signal ${signal})` : ''
   const message = `claude CLI exited with code ${String(code)}${signal_part}: ${detail}`
@@ -309,6 +340,7 @@ async function run_cli(
     ...(args.compiled_schema !== undefined ? { compiled_schema: args.compiled_schema } : {}),
   })
   const full_argv: string[] = [...args.prefix_args, ...argv]
+  const sandbox = args.provider_config.sandbox
 
   const session = await spawn_runtime.spawn_cli({
     cmd: args.spawn_cmd,
@@ -319,7 +351,8 @@ async function run_cli(
     stall_timeout_ms: args.stall_timeout_ms,
     ...(args.cwd !== undefined ? { cwd: args.cwd } : {}),
     ...(args.abort !== undefined ? { abort: args.abort } : {}),
-    ...(args.provider_config.sandbox !== undefined
+    // Only the wrapper kinds spawn something other than claude.
+    ...(sandbox !== undefined && sandbox.kind !== 'claude_code'
       ? { spawn_failure_reason: 'sandbox_unavailable' as const }
       : {}),
   })
@@ -750,6 +783,7 @@ function close_spans_on_error(
 export function create_claude_cli_adapter(init: ProviderInit): ExternalAgentAdapter {
   const config = init as ClaudeCliProviderConfig
   validate_auth_config(config)
+  validate_sandbox_config(config)
 
   const spawn_runtime = create_spawn_runtime()
   let disposed = false
@@ -761,6 +795,13 @@ export function create_claude_cli_adapter(init: ProviderInit): ExternalAgentAdap
   const resolved_auth_mode = config.auth_mode ?? 'auto'
   const resolved_startup_timeout = config.startup_timeout_ms ?? DEFAULT_STARTUP_TIMEOUT_MS
   const resolved_stall_timeout = config.stall_timeout_ms ?? DEFAULT_STALL_TIMEOUT_MS
+  const sandbox_cli_gate = config.sandbox?.kind === 'claude_code'
+    ? create_cli_version_gate(spawn_runtime, {
+        cmd: resolved_binary,
+        startup_timeout_ms: resolved_startup_timeout,
+        stall_timeout_ms: resolved_stall_timeout,
+      })
+    : undefined
 
   const adapter: ExternalAgentAdapter = {
     kind: 'external',
@@ -786,6 +827,7 @@ export function create_claude_cli_adapter(init: ProviderInit): ExternalAgentAdap
       const tools_list: ReadonlyArray<Tool> = opts.tools ?? []
       const tool_bridge: ToolBridgeMode = call_opts.tool_bridge ?? 'allowlist_only'
       validate_request(opts.prompt, tools_list, tool_bridge)
+      validate_sandbox_extra_args(config.sandbox, call_opts.extra_args)
 
       const merged_allowed_tools = merge_allowed_tools(
         call_opts.allowed_tools,
@@ -831,6 +873,7 @@ export function create_claude_cli_adapter(init: ProviderInit): ExternalAgentAdap
       }
 
       try {
+        await sandbox_cli_gate?.ensure(env, controller.signal)
         const first_outcome = await run_cli(spawn_runtime, base_args)
         const { parsed, parsed_content } = await resolve_content(
           spawn_runtime,

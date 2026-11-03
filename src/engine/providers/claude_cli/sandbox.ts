@@ -1,13 +1,17 @@
 /**
  * Sandbox wrapper for the claude_cli adapter.
  *
- * Builds the `{ spawn_cmd, prefix_args }` pair for bwrap and greywall. When
- * no sandbox is configured, returns `{ spawn_cmd: binary, prefix_args: [] }`;
- * the caller then concatenates prefix_args before the CLI argv.
+ * Builds the `{ spawn_cmd, prefix_args }` pair for the deprecated bwrap and
+ * greywall wrappers. With no sandbox, or a `claude_code` one, which the CLI
+ * enforces itself from `--settings` (see `settings.ts`), it returns
+ * `{ spawn_cmd: binary, prefix_args: [] }`; the caller then concatenates
+ * prefix_args before the CLI argv.
  *
- * Both wrappers allow the binary to execute while restricting network reach
- * to the allowlist and write access to additional paths on top of the
- * sandbox's default-read-only filesystem.
+ * Both wrappers let the binary run with write access to additional paths on
+ * top of the sandbox's default-read-only filesystem. Neither enforces
+ * `network_allowlist`: bwrap shares the host network whenever the list is
+ * non-empty, and greywall leaves host filtering to greyproxy, which nothing
+ * here configures.
  *
  * greywall 0.3+ removed the `--allow-host` and `--rw` flags; policy now
  * lives in a JSON settings file passed via `--settings <path>`. Schema is
@@ -39,13 +43,13 @@ export type SandboxPlan = {
  * Pick the sandbox wrapper (if any) and build its wrapping argv.
  *
  * Returns the unwrapped binary with no prefix args when `sandbox` is
- * undefined.
+ * undefined or a `claude_code` sandbox, which wraps nothing.
  */
 export function build_sandbox_plan(
   binary: string,
   sandbox: SandboxProviderConfig | undefined,
 ): SandboxPlan {
-  if (sandbox === undefined) {
+  if (sandbox === undefined || sandbox.kind === 'claude_code') {
     return { spawn_cmd: binary, prefix_args: [] }
   }
   if (sandbox.kind === 'bwrap') {

@@ -168,6 +168,30 @@ describe('classify_close_error', () => {
     expect(err.message).toBe('claude CLI reported an auth failure: run claude auth login')
   })
 
+  // Shaped like Claude Code 2.1.316's message when failIfUnavailable stops a
+  // run because its own sandbox can't start. The detail varies by platform;
+  // the closing sentence is the CLI's own.
+  const SANDBOX_START_FAILED = 'sandbox unavailable detail: socat is missing. Set sandbox.failIfUnavailable=false to allow unsandboxed execution.'
+
+  it("classifies Claude Code's own sandbox failing to start from stderr", () => {
+    const err = classify_close_error(1, null, SANDBOX_START_FAILED)
+    expect(err).toBeInstanceOf(claude_cli_error)
+    expect((err as claude_cli_error).reason).toBe('sandbox_unavailable')
+    expect(err.message).toContain("Claude Code's sandbox couldn't start")
+    expect(err.message).toContain('bubblewrap and socat')
+    expect(err.message).toContain(SANDBOX_START_FAILED)
+    expect((err as claude_cli_error).stderr_snippet).toBe(SANDBOX_START_FAILED)
+  })
+
+  it("classifies Claude Code's own sandbox failing to start from the error result", () => {
+    const err = classify_close_error(1, null, '', {
+      is_error: true,
+      final_text: SANDBOX_START_FAILED,
+    })
+    expect((err as claude_cli_error).reason).toBe('sandbox_unavailable')
+    expect(err.message).toContain(SANDBOX_START_FAILED)
+  })
+
   it('classifies a missing sandbox binary', () => {
     const err = classify_close_error(127, null, 'bwrap: command not found')
     expect(err).toBeInstanceOf(claude_cli_error)
