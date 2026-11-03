@@ -100,6 +100,27 @@ describe('claude_cli adapter generate', () => {
     expect(call['argv']).toEqual(expect.arrayContaining(['claude-sonnet-4-5']))
   })
 
+  // The spawn is pinned whole under each auth mode: when `-p` turns bare by
+  // default, the opt-out that keeps auto and oauth on the login lands here.
+  for (const auth_mode of ['auto', 'oauth', 'api_key'] as const) {
+    it(`spawns claude with the pinned argv under auth_mode: ${auth_mode}`, async () => {
+      hooks.responses = [{ lines: success_lines('ok'), close: ZERO_CLOSE }]
+      const adapter = create_claude_cli_adapter(
+        auth_mode === 'api_key' ? { auth_mode, api_key: 'sk-test' } : { auth_mode },
+      )
+      await adapter.generate(gen({}), RESOLVED)
+      const call = hooks.spawn_calls[0] ?? {}
+      expect(call['cmd']).toBe('claude')
+      expect(call['argv']).toEqual([
+        '-p',
+        '--output-format', 'stream-json',
+        '--model', 'claude-sonnet-4-5',
+        '--verbose',
+        '--setting-sources', 'project,local',
+      ])
+    })
+  }
+
   it('records option_ignored for max_steps, tool_error_policy, and on_tool_approval', async () => {
     hooks.responses = [{ lines: success_lines('ok'), close: ZERO_CLOSE }]
     const traj = create_captured_trajectory()

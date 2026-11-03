@@ -15,6 +15,7 @@ import {
 } from '../../../providers/claude_cli/auth.js'
 import {
   CLI_AUTH_ERROR_PATTERNS,
+  CLI_BARE_MODE_ENV,
   DEFAULT_SETTING_SOURCES,
 } from '../../../providers/claude_cli/constants.js'
 import { engine_config_error } from '../../../errors.js'
@@ -136,6 +137,37 @@ describe('build_env — auth_mode: oauth', () => {
       if (prior === undefined) delete process.env['ANTHROPIC_API_KEY']
       else process.env['ANTHROPIC_API_KEY'] = prior
     }
+  })
+
+  // CLAUDE_CODE_SIMPLE=1 runs the CLI bare, and bare mode never reads the
+  // login, so a host started inside a bare session would hand that on.
+  it('scrubs the bare-mode variable inherited from process.env under oauth', () => {
+    const prior = process.env[CLI_BARE_MODE_ENV]
+    process.env[CLI_BARE_MODE_ENV] = '1'
+    try {
+      const env = build_env({}, undefined, 'oauth')
+      expect(env[CLI_BARE_MODE_ENV]).toBeUndefined()
+      expect(env['PATH']).toBe(process.env['PATH'])
+    } finally {
+      if (prior === undefined) delete process.env[CLI_BARE_MODE_ENV]
+      else process.env[CLI_BARE_MODE_ENV] = prior
+    }
+  })
+
+  it('scrubs CLAUDE_CODE_SIMPLE from caller env under oauth', () => {
+    const env = build_env(
+      { inherit_env: false },
+      { CLAUDE_CODE_SIMPLE: '1', PATH: '/bin' },
+      'oauth',
+    )
+    expect(env['CLAUDE_CODE_SIMPLE']).toBeUndefined()
+    expect(env['PATH']).toBe('/bin')
+  })
+
+  it('leaves the bare-mode variable alone under auto and api_key, which can run on a key', () => {
+    const caller = { [CLI_BARE_MODE_ENV]: '1' }
+    expect(build_env({}, caller, 'auto')[CLI_BARE_MODE_ENV]).toBe('1')
+    expect(build_env({ api_key: 'k' }, caller, 'api_key')[CLI_BARE_MODE_ENV]).toBe('1')
   })
 })
 

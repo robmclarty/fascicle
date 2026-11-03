@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- **An `oauth` call no longer inherits the variable that runs Claude Code bare.** `CLAUDE_CODE_SIMPLE=1` runs the CLI in bare mode, the same as `--bare`, and bare mode never reads the CLI's login. Under `auth_mode: 'oauth'` the CLI inherits all of `process.env`, so a host that was started inside a bare session handed the variable on, and the call couldn't authenticate. `oauth` scrubs it now, along with `ANTHROPIC_API_KEY`. See [cli.md](./docs/cli.md#auth-modes).
+
+### Internal
+
+- **`claude_cli`'s argv is pinned whole under each auth mode.** Claude Code plans to make `-p` bare by default, and bare mode never reads the login, so `auto` and `oauth` calls will need a flag that opts back out. The tests held the argv one flag at a time, which would have let that flag, or any other, change without a test noticing. They hold all of it now, at the argv builder and at the spawn.
+
 ## v0.17.7 — 2026-11-01
 
 ### Added

@@ -9,7 +9,7 @@
 
 import { engine_config_error } from '../../errors.js'
 import type { AuthMode, ClaudeCliProviderConfig } from './types.js'
-import { CLI_AUTH_ERROR_PATTERNS } from './constants.js'
+import { CLI_AUTH_ERROR_PATTERNS, CLI_BARE_MODE_ENV } from './constants.js'
 
 /**
  * Standard env keys forwarded from process.env so the spawn target
@@ -89,7 +89,8 @@ function seed_base_env(
 
 /**
  * Apply the auth-mode scrub last, after base and caller env are merged, so
- * nothing can re-introduce `ANTHROPIC_API_KEY` under `'oauth'`. `'api_key'`
+ * nothing can re-introduce `ANTHROPIC_API_KEY` under `'oauth'`, or the
+ * bare-mode variable that would stop the CLI reading its login. `'api_key'`
  * forces the configured key (empty string when absent); `'auto'` forwards a
  * non-empty configured key and otherwise leaves the inherited env untouched.
  */
@@ -100,6 +101,7 @@ function apply_auth_key(
 ): void {
   if (auth_mode === 'oauth') {
     delete env['ANTHROPIC_API_KEY']
+    delete env[CLI_BARE_MODE_ENV]
     return
   }
   if (auth_mode === 'api_key') {
@@ -125,8 +127,9 @@ function apply_auth_key(
  * session-specific vars to reach the already-logged-in OAuth session.
  * `omit_env` drops its names after the caller overrides are merged in, so a
  * call can't hand back a variable the provider keeps out. The auth-mode
- * scrub runs last, so nothing can re-introduce `ANTHROPIC_API_KEY` under
- * `'oauth'`, and a configured `api_key` still reaches the CLI.
+ * scrub runs last, so nothing can re-introduce `ANTHROPIC_API_KEY` or
+ * `CLAUDE_CODE_SIMPLE` under `'oauth'`, and a configured `api_key` still
+ * reaches the CLI.
  */
 export function build_env(
   config: ClaudeCliProviderConfig,

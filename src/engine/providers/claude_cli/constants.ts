@@ -35,5 +35,11 @@ export const CLI_AUTH_FAILED_ERROR = 'authentication_failed'
  */
 export const CLI_REFRESH_COMMAND = 'claude auth login'
 
+/**
+ * The variable that runs the CLI in bare mode, the same as passing `--bare`.
+ * Bare mode never reads the CLI's login, so an `oauth` call scrubs it.
+ */
+export const CLI_BARE_MODE_ENV = 'CLAUDE_CODE_SIMPLE'
+
 export const DEFAULT_SETTING_SOURCES: ReadonlyArray<'user' | 'project' | 'local'> =
   Object.freeze(['project', 'local'])

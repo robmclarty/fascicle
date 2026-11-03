@@ -76,6 +76,51 @@ describe('build_cli_argv — mandatory structure', () => {
   })
 })
 
+// Claude Code plans to run `-p` bare by default, and bare mode never reads the
+// login. These pins hold the whole argv, so the opt-out flag that auto and
+// oauth calls will need arrives as a deliberate edit here.
+describe('build_cli_argv: pinned argv', () => {
+  for (const auth_mode of ['auto', 'oauth', 'api_key'] as const) {
+    it(`builds the same base argv under auth_mode: ${auth_mode}`, () => {
+      const argv = build_cli_argv({ ...minimal_input, provider_config: { auth_mode } })
+      expect(argv).toEqual([
+        '-p',
+        '--output-format', 'stream-json',
+        '--model', 'claude-sonnet-4-6',
+        '--verbose',
+        '--setting-sources', 'project,local',
+      ])
+    })
+  }
+
+  it('places every optional flag in a fixed order', () => {
+    const agents = { planner: { description: 'plan', prompt: 'plan it' } }
+    const argv = build_cli_argv({
+      model_id: 'claude-sonnet-4-6',
+      provider_config: { setting_sources: ['user'], plugin_dirs: ['/plugins/a'] },
+      call_opts: { session_id: 'sess-1', agents, extra_args: ['--max-turns', '3'] },
+      merged_allowed_tools: ['Read', 'Bash(git:*)'],
+      merged_system: 'be brief',
+      compiled_schema: '{"type":"object"}',
+    })
+    expect(argv).toEqual([
+      '-p',
+      '--output-format', 'stream-json',
+      '--model', 'claude-sonnet-4-6',
+      '--verbose',
+      '--setting-sources', 'user',
+      '--allowedTools', 'Read',
+      '--allowedTools', 'Bash(git:*)',
+      '--resume', 'sess-1',
+      '--agents', JSON.stringify(agents),
+      '--plugin-dir', '/plugins/a',
+      '--json-schema', '{"type":"object"}',
+      '--append-system-prompt', 'be brief',
+      '--max-turns', '3',
+    ])
+  })
+})
+
 describe('build_cli_argv — conditional flags', () => {
   it('adds --resume when session_id is non-empty', () => {
     const argv = build_cli_argv({

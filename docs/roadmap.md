@@ -216,6 +216,13 @@ likely to bite you first.
   version manager, isn't there when `bwrap` goes to run it, and the call fails
   with `binary_not_found`. Your home directory isn't bound either, so an
   `auth_mode: 'oauth'` run couldn't reach its login even with the binary there.
+- **Claude Code's coming bare default will cut `claude_cli` off from the
+  login.** Claude Code plans to run `-p` in bare mode by default in a future
+  release, and bare mode never reads the CLI's login, so an
+  `auth_mode: 'oauth'` call, or an `auto` call without a key, would stop
+  authenticating. No release has made the switch yet, and none documents a
+  flag that opts a run back out. When one ships, I'll have `claude_cli` pass
+  that flag under `auto` and `oauth`, and let `api_key` calls go bare.
 - **Some provider errors still don't say what to do.** The ones that a new user
   meets first name the fix now, but a few later ones name only what went wrong:
   a turn that outran `turn_timeout_ms`, a stream cut off after `on_chunk` saw

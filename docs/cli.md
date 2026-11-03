@@ -66,8 +66,10 @@ type ClaudeCliProviderConfig = {
 | Mode       | Behaviour                                                                          |
 | ---------- | ---------------------------------------------------------------------------------- |
 | `auto`     | If `api_key` is set, use it; else fall back to the CLI's stored session.           |
-| `oauth`    | Use the CLI's stored session. `ANTHROPIC_API_KEY` is scrubbed from the subprocess env.  |
+| `oauth`    | Use the CLI's stored session. `ANTHROPIC_API_KEY` and `CLAUDE_CODE_SIMPLE` are scrubbed from the subprocess env.  |
 | `api_key`  | Use the provided `api_key`. Throws `engine_config_error` synchronously if missing. |
+
+`CLAUDE_CODE_SIMPLE=1` runs the CLI in bare mode, the same as `--bare`, and bare mode never reads the stored session, so an `oauth` call drops that variable along with the key. Claude Code plans to make bare mode the default for `-p` in a future release. Once it does, an `oauth` call, or an `auto` call without a key, can't authenticate until Fascicle passes the flag that opts a run back out, and the [roadmap](./roadmap.md#known-issues) tracks that.
 
 ### Env Inheritance
 
