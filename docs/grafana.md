@@ -84,7 +84,7 @@ them; a program that skips this section pays nothing):
 
 ```bash
 pnpm add @opentelemetry/api @opentelemetry/resources \
-  @opentelemetry/sdk-metrics @opentelemetry/sdk-trace-base \
+  @opentelemetry/sdk-metrics @opentelemetry/sdk-trace \
   @opentelemetry/exporter-metrics-otlp-http @opentelemetry/exporter-trace-otlp-http
 ```
 
@@ -100,7 +100,7 @@ import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-http'
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http'
 import { resourceFromAttributes } from '@opentelemetry/resources'
 import { MeterProvider, PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics'
-import { BasicTracerProvider, BatchSpanProcessor } from '@opentelemetry/sdk-trace-base'
+import { BatchSpanProcessor, TracerProvider } from '@opentelemetry/sdk-trace'
 
 const resource = resourceFromAttributes({ 'service.name': 'my-agent' })
 
@@ -110,9 +110,9 @@ const meter_provider = new MeterProvider({
 })
 metrics.setGlobalMeterProvider(meter_provider)
 
-const tracer_provider = new BasicTracerProvider({
+const tracer_provider = new TracerProvider({
   resource,
-  spanProcessors: [new BatchSpanProcessor(new OTLPTraceExporter())],
+  spanProcessors: [new BatchSpanProcessor({ exporter: new OTLPTraceExporter() })],
 })
 trace.setGlobalTracerProvider(tracer_provider)
 ```

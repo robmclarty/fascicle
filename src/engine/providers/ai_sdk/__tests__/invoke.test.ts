@@ -852,6 +852,63 @@ describe('ai_sdk turns always stream', () => {
   })
 })
 
+describe('ai_sdk streams that end before the provider says why', () => {
+  /** A text turn that finishes the way `finish_reason` says. */
+  function text_turn(finish_reason: { unified: 'interrupted' | 'other'; raw: string | undefined }): MockStreamPart[] {
+    return [
+      { type: 'stream-start', warnings: [] },
+      { type: 'text-start', id: 't1' },
+      { type: 'text-delta', id: 't1', delta: 'Partial' },
+      { type: 'text-end', id: 't1' },
+      { type: 'finish', finishReason: finish_reason, usage: USAGE_V4 },
+    ]
+  }
+
+  /** Run one turn of `parts` through the transport and return what it settled to. */
+  async function settle(parts: MockStreamPart[]): Promise<unknown> {
+    const model = new MockLanguageModelV4({ doStream: [stream_of(parts)] })
+    const turn = create_ai_sdk_turn({
+      adapter: mock_adapter(model, 'cut_mock'),
+      model_id: 'mock-model',
+      dispatcher: create_chunk_dispatcher(undefined),
+      tools: [],
+      schema: undefined,
+      provider_options: undefined,
+      temperature: undefined,
+      max_tokens: undefined,
+      top_p: undefined,
+      reasoning: undefined,
+      telemetry: undefined,
+    })
+    return turn({
+      step_index: 0,
+      messages: [{ role: 'user', content: 'hi' }],
+      abort: new AbortController().signal,
+      observe_chunk: () => {},
+    }).catch((err: unknown) => err)
+  }
+
+  const CUT_OFF = {
+    kind: 'network',
+    message: 'cut_mock stream ended before the step finished; the result would be truncated',
+  }
+
+  it("throws the network shape for a step that finished as 'interrupted'", async () => {
+    expect(await settle(text_turn({ unified: 'interrupted', raw: undefined }))).toMatchObject(CUT_OFF)
+  })
+
+  it("throws the network shape for 'other' with no raw reason, as provider releases before 'interrupted' report it", async () => {
+    expect(await settle(text_turn({ unified: 'other', raw: undefined }))).toMatchObject(CUT_OFF)
+  })
+
+  it("returns the turn for 'other' when the provider named a raw reason", async () => {
+    expect(await settle(text_turn({ unified: 'other', raw: 'pause_turn' }))).toMatchObject({
+      text: 'Partial',
+      finish_reason: 'stop',
+    })
+  })
+})
+
 describe('ai_sdk structured output on a streamed turn', () => {
   /** A one-turn text stream. */
   const text_stream = (text: string): MockStreamPart[] => [

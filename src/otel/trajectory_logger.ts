@@ -28,7 +28,6 @@ import {
   context as otel_context,
   trace,
   SpanStatusCode,
-  type AttributeValue,
   type Attributes,
   type Context,
   type Span,
@@ -74,19 +73,23 @@ function safe_json(value: unknown): string {
 }
 
 /**
+ * The attribute values the bridge writes, a primitive or a homogeneous array
+ * of one, which every `@opentelemetry/api` release in the peer range accepts.
+ * From 1.10 the API also takes complex values, which backends aren't
+ * expected to index.
+ */
+type SimpleAttributeValue = string | number | boolean | string[] | number[] | boolean[]
+
+/**
  * Convert a JS value into an OTel-compatible attribute value.
  *
  * Primitives and homogeneous primitive arrays pass through unchanged;
  * anything else falls back to `safe_json`; `null`/`undefined` drop out
  * entirely (returning `undefined`) so the caller can omit the attribute.
  */
-function to_attribute_value(value: unknown): AttributeValue | undefined {
+function to_attribute_value(value: unknown): SimpleAttributeValue | undefined {
   if (value === null || value === undefined) return undefined
-  const kind = typeof value
-  if (kind === 'string' || kind === 'number' || kind === 'boolean') {
-    // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion
-    return value as AttributeValue
-  }
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') return value
   if (Array.isArray(value)) {
     if (value.every((v) => typeof v === 'string')) return value
     if (value.every((v) => typeof v === 'number')) return value

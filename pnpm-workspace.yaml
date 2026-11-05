@@ -95,21 +95,6 @@ overrides:
 # Patched dependencies: fixes upstream hasn't shipped yet. Each entry names the
 # issue it carries and how to tell it's done.
 #
-# @stryker-mutator/vitest-runner 10.0.0 builds its per-test filter by joining
-# describe and test names with ' ', but vitest 5 joins them with ' > '. The
-# filter then matches nothing, nearly every mutant run executes zero tests, and
-# the mutants survive with no error. That's stryker-js #6210; the patch is the
-# separator change from PR #6214, copied from checkride, which carries the same
-# fix. Measured 2026-10-14 on src/core/pipe.ts: 2.44% unpatched on vitest 5
-# (1 of 41 killed), 100% on vitest 4.
-#
-# Retire it when a release carries the fix: delete the entry and the patch file,
-# re-install, and run stryker over that one file, outside the incremental
-# record:
-#   pnpm exec stryker run --mutate src/core/pipe.ts --force \
-#     --incrementalFile /tmp/canary.json --reporters clear-text
-# A score near 100% means the release fixed it; one near zero means it didn't.
-#
 # braces 3.0.3 limits a pattern's length but not its nesting, and its
 # recursive walkers overflow the stack on a deeply nested one: on Node 24,
 # `braces.expand` throws RangeError at a depth of 4990, inside the length
@@ -123,7 +108,6 @@ overrides:
 # Retire it when braces ships a fix: delete the entry, the patch file, and
 # the `audit.ignore` line below, re-install, and run `pnpm check:security`.
 patchedDependencies:
-  '@stryker-mutator/vitest-runner@10.0.0': patches/@stryker-mutator__vitest-runner@10.0.0.patch
   braces@3.0.3: patches/braces@3.0.3.patch
 
 # pnpm audit matches advisories by version, so it can't see a patch. This

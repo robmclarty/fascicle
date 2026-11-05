@@ -438,17 +438,27 @@ type StreamAccumulator = {
   finish_reason: FinishReason
   raw_usage: RawProviderUsage
   provider_reported: Record<string, unknown> | undefined
-  /** True when the step finished as 'other' with no raw reason: a cut-off stream. */
+  /** True when the step finished as 'interrupted', or as 'other' with no raw reason: a cut-off stream. */
   cut_off: boolean
+}
+
+/**
+ * True when a finish-step says its stream ended before the provider said why.
+ * A provider package reports that as 'interrupted', and a release from before
+ * the AI SDK named the case reports it as 'other' with no raw finish reason,
+ * so both read as cut off.
+ */
+function is_cut_off(finish_reason: string, raw_finish_reason: string | undefined): boolean {
+  if (finish_reason === 'interrupted') return true
+  return finish_reason === 'other' && raw_finish_reason === undefined
 }
 
 /**
  * Fold one stream part's accumulated state into `acc`: text deltas append,
  * tool-call parts push a RawToolCall, and the finish-step overwrites finish
- * reason, usage, and provider_reported. A finish-step of 'other' with no raw
- * finish reason is what a provider package reports when its stream ended
- * before the provider said why, so it marks the stream as cut off. Parts with
- * no accumulated state (error, abort, stream framing) are the caller's to
+ * reason, usage, and provider_reported. A finish-step whose stream ended
+ * before the provider said why marks the stream as cut off. Parts with no
+ * accumulated state (error, abort, stream framing) are the caller's to
  * handle.
  */
 function accumulate_stream_part(part: TextStreamPart<ToolSet>, acc: StreamAccumulator): void {
@@ -468,7 +478,7 @@ function accumulate_stream_part(part: TextStreamPart<ToolSet>, acc: StreamAccumu
     acc.finish_reason = map_finish_reason(part.finishReason)
     acc.raw_usage = to_raw_provider_usage(part.usage)
     acc.provider_reported = to_provider_reported(part.providerMetadata)
-    acc.cut_off = part.finishReason === 'other' && part.rawFinishReason === undefined
+    acc.cut_off = is_cut_off(part.finishReason, part.rawFinishReason)
   }
 }
 

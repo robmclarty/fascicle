@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import {
-  BasicTracerProvider,
   InMemorySpanExporter,
   SimpleSpanProcessor,
+  TracerProvider,
   type ReadableSpan,
-} from '@opentelemetry/sdk-trace-base'
+} from '@opentelemetry/sdk-trace'
 import { SpanStatusCode, trace, type Tracer } from '@opentelemetry/api'
 import type { TrajectoryEvent } from '#core'
 import { create_otel_trajectory_logger } from '../trajectory_logger.js'
@@ -14,8 +14,8 @@ function harness(tracer_name = 'test'): {
   exporter: InMemorySpanExporter
 } {
   const exporter = new InMemorySpanExporter()
-  const provider = new BasicTracerProvider({
-    spanProcessors: [new SimpleSpanProcessor(exporter)],
+  const provider = new TracerProvider({
+    spanProcessors: [new SimpleSpanProcessor({ exporter })],
   })
   return { tracer: provider.getTracer(tracer_name), exporter }
 }
@@ -238,8 +238,8 @@ describe('create_otel_trajectory_logger', () => {
 
   it('opens spans on the default fascicle tracer when constructed without options', () => {
     const exporter = new InMemorySpanExporter()
-    const provider = new BasicTracerProvider({
-      spanProcessors: [new SimpleSpanProcessor(exporter)],
+    const provider = new TracerProvider({
+      spanProcessors: [new SimpleSpanProcessor({ exporter })],
     })
     trace.setGlobalTracerProvider(provider)
     try {

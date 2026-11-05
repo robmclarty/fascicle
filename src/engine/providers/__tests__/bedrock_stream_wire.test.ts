@@ -5,10 +5,10 @@
  * The peer streams over `/converse-stream` in AWS's binary event-stream
  * encoding, which no other wire in this repo uses, so the suite first proves
  * its framer (`fixtures/converse_stream.ts`): a frame decodes to what it
- * encoded, and a flipped CRC fails. That check matters because the peer's
- * own decoder swallows a frame that fails to decode and ends the stream
- * there, so a framer bug would read as a stream cut off before its step
- * finished rather than as a bad frame.
+ * encoded, and a flipped CRC fails. That check matters because the peer
+ * fails a stream at the first frame it can't decode, so a framer bug would
+ * fail every turn below with the peer's checksum error, which reads as the
+ * peer's fault rather than the fixture's.
  * It then drives one turn with tool calls through the peer against a fetch
  * stub that serves the framed stream, with a chunk consumer and without one,
  * and shows both folding to the text, tool calls, and usage that the same turn
@@ -133,19 +133,16 @@ describe('the ConverseStream framer', () => {
     expect(() => decode_event_stream(message)).toThrow(/^frame at \d+ has a bad message CRC$/)
   })
 
-  it('shows why: the peer stops at a frame it cannot decode, which the transport reads as a cut-off stream', async () => {
+  it('shows why: the peer fails the stream at a frame it cannot decode, naming the checksum it read', async () => {
     const bytes = encode_converse_stream(TOOL_TURN_EVENTS)
     const first_frame_end = new DataView(bytes.buffer).getUint32(0, false)
     bytes[first_frame_end - 1] = (bytes[first_frame_end - 1] ?? 0) ^ 0xff
-    // The peer's decoder drops the bad frame and every frame after it without
-    // an error, so its step finishes as 'other' with no raw reason, which the
-    // transport throws in the network shape rather than return an empty turn.
+    // The bad frame is the first, so the turn throws the decoder's error
+    // rather than return an empty turn.
     stub_fetch(() => new Response(bytes, { status: 200, headers: { 'content-type': 'application/vnd.amazon.eventstream' } }))
     const caught = await run_turn(() => {}).catch((e: unknown) => e)
-    expect(caught).toMatchObject({
-      kind: 'network',
-      message: 'bedrock stream ended before the step finished; the result would be truncated',
-    })
+    expect(caught).toBeInstanceOf(Error)
+    expect((caught as Error).message).toMatch(/^The message checksum \(\d+\) did not match the expected value of \d+$/)
   })
 })
 

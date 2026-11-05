@@ -132,10 +132,7 @@ function build_transport(
     })
   }
   const opts = config.headers !== undefined ? { requestInit: { headers: config.headers } } : {}
-  // The SDK declares this class `implements Transport`, but its `onmessage`
-  // overload is narrower than the interface's, which only strict mode flags.
-  // eslint-disable-next-line typescript-eslint/no-unsafe-type-assertion
-  return new sdk.StreamableHTTPClientTransport(new URL(config.url), opts) as Transport
+  return new sdk.StreamableHTTPClientTransport(new URL(config.url), opts)
 }
 
 /**

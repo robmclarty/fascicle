@@ -32,7 +32,7 @@ import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-http'
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http'
 import { resourceFromAttributes } from '@opentelemetry/resources'
 import { MeterProvider, PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics'
-import { BasicTracerProvider, BatchSpanProcessor } from '@opentelemetry/sdk-trace-base'
+import { BatchSpanProcessor, TracerProvider } from '@opentelemetry/sdk-trace'
 import { z } from 'zod'
 
 import { chain, create_engine, define_tool, model_step, run } from 'fascicle'
@@ -62,9 +62,9 @@ const meter_provider = new MeterProvider({
 })
 otel_metrics.setGlobalMeterProvider(meter_provider)
 
-const tracer_provider = new BasicTracerProvider({
+const tracer_provider = new TracerProvider({
   resource,
-  spanProcessors: [new BatchSpanProcessor(new OTLPTraceExporter())],
+  spanProcessors: [new BatchSpanProcessor({ exporter: new OTLPTraceExporter() })],
 })
 otel_trace.setGlobalTracerProvider(tracer_provider)
 

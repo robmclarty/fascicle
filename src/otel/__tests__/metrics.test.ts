@@ -6,7 +6,7 @@ import {
   PeriodicExportingMetricReader,
   type MetricData,
 } from '@opentelemetry/sdk-metrics'
-import { BasicTracerProvider } from '@opentelemetry/sdk-trace-base'
+import { TracerProvider } from '@opentelemetry/sdk-trace'
 import { metrics as otel_metrics, type Meter } from '@opentelemetry/api'
 import { create_otel_trajectory_logger } from '../trajectory_logger.js'
 
@@ -31,8 +31,8 @@ function harness(): {
   }
 }
 
-function tracer(): ReturnType<BasicTracerProvider['getTracer']> {
-  return new BasicTracerProvider().getTracer('test')
+function tracer(): ReturnType<TracerProvider['getTracer']> {
+  return new TracerProvider().getTracer('test')
 }
 
 function by_name(metrics: MetricData[], name: string): MetricData {

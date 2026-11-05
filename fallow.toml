@@ -78,7 +78,7 @@ ignoreDependencies = [
   "@opentelemetry/exporter-trace-otlp-http",
   "@opentelemetry/resources",
   "@opentelemetry/sdk-metrics",
-  "@opentelemetry/sdk-trace-base",
+  "@opentelemetry/sdk-trace",
   # The one devDependency imported by runtime code on purpose. Vite compiles
   # solid-js into dist/viewer-app/ at build time, so nothing a consumer
   # installs ever resolves the package, and promoting it would break the very

@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- **`fascicle/acp` takes the 2.x ACP SDK as well as 1.8.** The peer range read `^1.8.0`, so a project on `@agentclientprotocol/sdk` 2 got a peer warning, though the adapter already used the app API that 2.0 keeps and dropped nothing that 2.0 removed. The range is `^1.8.0 || ^2.0.0` now. Every method, capability, and update the agent uses is in the SDK's stable v1 schema, which is what its default import serves from 2.0 on, so the adapter still imports nothing from `/unstable`, and it still speaks ACP v1.
+
+### Fixed
+
+- **An `ai_sdk` stream cut off before its step finished fails again, rather than returning a truncated turn as finished.** The transport caught a cut-off stream by its finish reason, `other` with no raw reason, which is what the provider packages reported. The AI SDK named the case `interrupted` in `ai` 7.0.149, and `@ai-sdk/anthropic` 4.0.86, `@ai-sdk/openai` 4.0.100, `@ai-sdk/google` 4.0.103, and `@ai-sdk/amazon-bedrock` 5.0.122 report it that way, so on any of them the check never fired, and a turn that lost its tail came back with `finish_reason: 'stop'`. Either finish reason now throws the network shape that the engine retries when nothing consumed the chunks, and that fails as `stream interrupted` when something did.
+
+### Internal
+
+- **The check gate's tools are current.** checkride moves from 0.15.0 to 0.20.0, and the dev tree moves with it, among it oxlint 1.90, vitest 5.1, Stryker 10.1.1, ast-grep 0.51, vale 3.25, cspell 10.4, and `ai` 7.0.162. fallow stops at 3.38.1, since 3.39.0's platform binaries are still inside the two-day release-age quarantine that only the `fallow` package itself is excluded from. Stryker 10.1.1 ships the vitest 5 test-name separator fix (stryker-js #6210), so the pnpm patch that carried it is gone.
+- **The OpenTelemetry tests, example, and Grafana guide are on SDK 3.** SDK 3 removed `@opentelemetry/sdk-trace-base`, so they import `TracerProvider` from `@opentelemetry/sdk-trace`, and its span processors take `{ exporter }`. API 1.10 widened `AttributeValue` to `unknown`, so the trace bridge types what it writes as the primitives and primitive arrays that every API release in the peer range accepts.
+- **The Bedrock wire test holds the peer's new failure.** `@ai-sdk/amazon-bedrock` used to drop a frame it couldn't decode, and every frame after it, without an error. It fails the stream with the checksum it read now, so the test says that, and so does the reason the suite proves its framer first.
+
 ## v0.17.8 — 2026-11-02
 
 ### Added

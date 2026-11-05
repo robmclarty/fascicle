@@ -162,9 +162,9 @@ The published surface as of v0.17.4:
   usage and cost for Zed's context ring, a model picker, thread titles, a stop
   reason for a turn that runs out of tokens or steps, the MCP servers that the
   client sends (kandev's task tools among them), and the login that the ACP
-  registry asks for before it lists an agent. The SDK peer range widens to take
-  2.0 as well as 1.8. [acp.md](./acp.md#whats-missing-in-zed) lists what you'll
-  notice is missing today.
+  registry asks for before it lists an agent.
+  [acp.md](./acp.md#whats-missing-in-zed) lists what you'll notice is missing
+  today.
 - **A live check of prompt caching.** Since 0.17.0 an Anthropic tool loop
   caches by default, and the mocked suite proves that `cache_control` goes out
   on the wire, but not that a provider caches or what a loop saves. The live
@@ -173,10 +173,10 @@ The published surface as of v0.17.4:
   what OpenRouter does with `cache` on another vendor's model, and fix
   [providers.md](./providers.md#prompt-caching) wherever the run settles
   something that it hedges on.
-- **The check gate's tools, brought current.** The repo pins checkride 0.15.0,
-  four releases back, and fallow 3.33.1. Each moves to its newest release in a
-  step of its own, and the triage steps in [AGENTS.md](../AGENTS.md) read
-  checkride's digest of what failed instead of its raw reports.
+- **Triage from checkride's digest.** Since 0.19, checkride prints an excerpt
+  of what failed when it's run with `--digest`, but the triage steps in
+  [AGENTS.md](../AGENTS.md) still send an agent to the summary and then to each
+  raw report. They'll read the digest instead.
 - **MCP hardening.** Auth on the HTTP transport, MCP `sampling`, per-tool
   approval gating, and `resources` subscriptions were all deferred out of the
   first bridge.
