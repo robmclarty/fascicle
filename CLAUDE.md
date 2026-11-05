@@ -4,7 +4,9 @@ Claude Code-specific instructions for this repository.
 
 ## Start here
 
-Read [AGENTS.md](./AGENTS.md) for the universal contract: `pnpm check:all` is the source of truth, all conventions live there, all structured output contracts are defined there.
+[AGENTS.md](./AGENTS.md) holds the universal contract: `pnpm check:all` is the source of truth, all conventions live there, all structured output contracts are defined there. Claude Code reads this file and not `AGENTS.md`, so the line below pulls it in.
+
+@AGENTS.md
 
 This file only adds what is Claude-specific.
 
