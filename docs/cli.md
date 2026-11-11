@@ -165,7 +165,7 @@ Plus, conditionally:
 - `--resume <session_id>` — when `provider_options.claude_cli.session_id` is set.
 - `--agents <json>` — when `provider_options.claude_cli.agents` is set.
 - `--plugin-dir <path>` — repeated, one per `provider_config.plugin_dirs` entry.
-- `--json-schema <json>` — when either `opts.schema` is a zod schema (compiled to JSON Schema) or `provider_options.claude_cli.output_json_schema` is a string; the zod schema wins.
+- `--json-schema <json>` — when either `opts.schema` is set (compiled to JSON Schema) or `provider_options.claude_cli.output_json_schema` is a string; `opts.schema` wins.
 - `--append-system-prompt <text>` — the merged system prompt (`opts.system` + `append_system_prompt`, joined by `\n\n`).
 - Any `extra_args` appended verbatim to the tail.
 - `CLAUDE_CODE_EFFORT_LEVEL=<level>` — set in the subprocess env when `opts.effort` is anything but `'none'`; the level (`low` … `max`) is forwarded verbatim.
@@ -189,7 +189,7 @@ The CLI's `duration_api_ms` also gives each step a blended `timing`, which is wh
 
 ## Tool Bridging
 
-Fascicle tools (`Tool<i, o>` with a zod `input_schema` and an `execute` closure) can't run under the CLI subprocess — there's no RPC for invoking your in-process executor from inside the child's tool loop. Two modes handle that for you:
+Fascicle tools (`Tool<i, o>` with an `input_schema` and an `execute` closure) can't run under the CLI subprocess — there's no RPC for invoking your in-process executor from inside the child's tool loop. Two modes handle that for you:
 
 | `tool_bridge`       | Behaviour                                                                                                       |
 | ------------------- | --------------------------------------------------------------------------------------------------------------- |
@@ -197,6 +197,8 @@ Fascicle tools (`Tool<i, o>` with a zod `input_schema` and an `execute` closure)
 | `forbid`            | Reject at call time — if any tool has an `execute` closure, throws `provider_capability_error('tool_execute')`. |
 
 Use `allowlist_only` when you want the CLI to use its built-in tools and you declared them in `tools` for documentation. Use `forbid` when you want a hard guarantee that no `execute` closure of yours silently becomes a no-op.
+
+That covers `web_fetch` and `web_search` from [`fascicle/web`](./web.md) too. Their `execute` closures never run under `claude_cli`, so here you allow the CLI's own `WebFetch` and `WebSearch` in `allowed_tools` instead, and those run outside the sandbox (see [Sandboxing](#sandboxing)).
 
 ## Schema-Constrained Output
 
@@ -288,7 +290,7 @@ A missing sandbox binary triggers `claude_cli_error` with `reason: 'sandbox_unav
 | `aborted_error`          | Your `abort` fired, or the engine was disposed while the call ran, in which case `.reason` is `'engine_disposed'`. |
 | `engine_disposed_error`  | `generate` was called after `engine.dispose()`.                             |
 | `provider_capability_error` | Multi-turn `prompt: Message[]` with two or more user messages, or `tool_bridge: 'forbid'` with a tool that has an `execute` closure. |
-| `schema_validation_error` | Zod parse failed after one repair attempt.                                 |
+| `schema_validation_error` | The reply failed the schema after one repair attempt.                      |
 
 ## Dispose Behaviour
 

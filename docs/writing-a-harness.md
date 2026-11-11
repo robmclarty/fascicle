@@ -178,7 +178,7 @@ pnpm exec tsx examples/hello/main.ts
 pnpm exec tsx examples/hello/main.ts "your custom input here"
 ```
 
-> **Layout note.** This repo is a single installable package (`fascicle`). All source lives under `src/` as deep modules (`core`, `engine`, `composites`, `agents`, `adapters`, `mcp`, `acp`, `stdio`, `ui`, `otel`, `policy`, `schema`, `testing`, `viewer`), each with a barrel `index.ts` that you reach only through its `#<module>` import alias (`mcp` and `otel` have none, because no sibling module imports them). The aliases enforce architectural boundaries (for example, core can't import from adapters, engine can't reach into providers). The umbrella surface at the `src/` root is what bundles to npm — the published surface is the only public face.
+> **Layout note.** This repo is a single installable package (`fascicle`). All source lives under `src/` as deep modules (`core`, `engine`, `composites`, `agents`, `adapters`, `mcp`, `acp`, `stdio`, `ui`, `otel`, `policy`, `process`, `schema`, `testing`, `viewer`, `web`), each with a barrel `index.ts` that you reach only through its `#<module>` import alias (`otel` has none, because no sibling module imports it). The aliases enforce architectural boundaries (for example, core can't import from adapters, engine can't reach into providers). The umbrella surface at the `src/` root is what bundles to npm — the published surface is the only public face.
 
 ## Checklist
 

@@ -7,7 +7,8 @@ upgrade on purpose.
 
 ## Shipped
 
-The published surface as of v0.17.4:
+The published surface as of v0.17.8, plus the web tools, which have landed and
+ship in the next release:
 
 - **Composition.** 23 primitives over a single `Step<i, o>` value type. You get
   the `chain` spine (`.step` / `.stage` / `.output`), `model_step` as the default
@@ -46,7 +47,13 @@ The published surface as of v0.17.4:
   retries throws an error that carries the status, the response body, the
   attempt count, and the provider's own error as its `cause`. The run's end
   events carry the status and the attempt count as fields too, so a dashboard
-  can count them without parsing a message.
+  can count them without parsing a message. A 4xx throws the same typed error
+  on either transport, and its message says what to check, so a 401 names the
+  key and a refused connection names the URL. `claude_cli` can run under
+  Claude Code's own sandbox (`sandbox: { kind: 'claude_code' }`), which the
+  CLI enforces at the OS level, so its commands reach only the hosts in
+  `network_allowlist` and write only where you allow. `omit_env` keeps the
+  variables that you name out of the CLI's env.
 - **Reasoning that lasts a whole tool loop.** A tool loop hands each model its
   own reasoning back on the next step, on the `ai_sdk` transport and on
   `anthropic` and `openrouter` native, so a Claude loop keeps its thinking and a
@@ -91,7 +98,11 @@ The published surface as of v0.17.4:
   of their own. A file tool reaches only paths inside the session's workspace,
   the session asks before an edit or a command as often as its mode (Manual,
   Accept edits, or Auto) says, and each tool card looks the way Claude Agent's
-  does. `@agentclientprotocol/sdk` rides as an optional peer,
+  does. A `session_store` keeps sessions, so a thread survives a restart, and
+  config turns on the rest of what Zed draws around a thread: the context ring
+  and the cost, a model picker, and the MCP servers that you've set up in the
+  editor. A thread takes its title from its first prompt, and a turn says why
+  it stopped. `@agentclientprotocol/sdk` (1.8 or 2.x) rides as an optional peer,
   [`examples/acp-coder/`](../examples/acp-coder/) is a working coding agent on
   OpenRouter, and [acp.md](./acp.md) covers the rest.
 - **Reading the web** (`fascicle/web`). `web_tools()` hands an agent
@@ -169,13 +180,11 @@ The published surface as of v0.17.4:
   write conditional, and `object_store` ships in `fascicle/adapters` over a
   small client interface that you implement for your bucket. That fixes the
   late resume and the stalled drive under Known Issues.
-- **ACP sessions that last, and hosts beyond Zed.** A thread that you can
-  reopen after the agent restarts, from sessions that a `CheckpointStore`
-  keeps, so Zed's thread history and kandev's restore both work. Around it,
-  usage and cost for Zed's context ring, a model picker, thread titles, a stop
-  reason for a turn that runs out of tokens or steps, the MCP servers that the
-  client sends (kandev's task tools among them), and the login that the ACP
-  registry asks for before it lists an agent.
+- **ACP hosts beyond Zed.** The 0.17.6 release shipped sessions that last, the
+  context ring, the model picker, thread titles, stop reasons, and the client's
+  MCP servers. What's left is the login that the ACP registry asks for before
+  it lists an agent, the tool cards that a thread loses when you open it again
+  after a restart, and hosts other than Zed, kandev among them.
   [acp.md](./acp.md#whats-missing-in-zed) lists what you'll notice is missing
   today.
 - **A live check of prompt caching.** Since 0.17.0 an Anthropic tool loop
@@ -219,10 +228,6 @@ likely to bite you first.
   with the server, so a tab that reconnects asks for the events after its old
   id and gets nothing until the new ids pass it, then folds the run from the
   middle. Reload the tab after you restart the viewer.
-- **A long-running ACP agent keeps every session's history.** Nothing releases
-  a session when the editor closes its thread, so an agent that runs for a long
-  time holds the history of every session that it has opened until its process
-  ends. [acp.md](./acp.md#what-a-turn-carries) has the details.
 - **The `bwrap` sandbox can't run a `claude` installed in your home directory.**
   The sandbox binds only `/usr`, `/bin`, `/lib`, `/lib64`, and
   `additional_write_paths`, so a binary under `~/.local/bin`, or a Node from a

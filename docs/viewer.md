@@ -294,7 +294,7 @@ fascicle-viewer <path> --listen    both producers feed the same broadcaster
 
   --listen        accept HTTP push on /api/ingest (off unless set)
   --port <n>      port (default 4242)
-  --host <h>      bind host (default 127.0.0.1; --host 0.0.0.0 warns)
+  --host <h>      bind host (default 127.0.0.1; a non-loopback host warns)
   --buffer <n>    ring-buffer size (default 1000)
   --no-open       do not open the browser
   --help          show this message

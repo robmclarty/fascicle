@@ -135,7 +135,7 @@ try {
 
           <div style="margin-top:44px; background:#EFE3CE; border:3px solid #211C17; box-shadow:1px 1px 0 #211C17, 2px 2px 0 #211C17, 3px 3px 0 #211C17, 4px 4px 0 #211C17, 5px 5px 0 #211C17; padding:24px 28px;">
             <div style="font-family:'JetBrains Mono',monospace; font-size:12px; letter-spacing:2px; color:#15706A; margin-bottom:10px;">BUILDING A WHOLE APP?</div>
-            <div style="font-size:15.5px; line-height:1.6; color:#3a342e;">Once your flow outgrows one file, follow <a href="blueprint.html" style="color:#C0521F; font-weight:700; border-bottom:2px solid #C0521F;">the agent blueprint</a> — the standard architecture for fascicle apps: one composition layer, markdown prompts, module contracts, and ast-grep rules to enforce the boundaries.</div>
+            <div style="font-size:15.5px; line-height:1.6; color:#3a342e;">Once your flow outgrows one file, follow <a href="blueprint.html" style="color:#C0521F; font-weight:700; border-bottom:2px solid #C0521F;">the agent blueprint</a> — the standard architecture for Fascicle apps: one composition layer, markdown prompts, module contracts, and ast-grep rules to enforce the boundaries.</div>
           </div>
         </div>
       </sc-if>
@@ -145,10 +145,10 @@ try {
         <div>
           <div style="font-family:'JetBrains Mono',monospace; font-size:12px; letter-spacing:3px; color:#C0521F; margin-bottom:14px;">CORE</div>
           <h1 style="font-family:'DM Serif Display',serif; font-weight:400; font-size:60px; line-height:1; margin:0 0 20px;">Concepts</h1>
-          <p style="font-size:18px; line-height:1.6; color:#3a342e; max-width:640px;">The mental model behind fascicle. Read this once — the rest of the docs assume it.</p>
+          <p style="font-size:18px; line-height:1.6; color:#3a342e; max-width:640px;">The mental model behind Fascicle. Read this once — the rest of the docs assume it.</p>
 
           <h2 style="font-family:'DM Serif Display',serif; font-weight:400; font-size:32px; margin:48px 0 16px;">Two layers</h2>
-          <p style="font-size:16px; line-height:1.6; color:#3a342e;">fascicle ships two independently useful layers from a single src/ tree, and exactly one value glues them: <span style="font-family:'JetBrains Mono',monospace; font-size:14px; color:#C0521F;">model_call</span>.</p>
+          <p style="font-size:16px; line-height:1.6; color:#3a342e;">Fascicle ships two independently useful layers from a single src/ tree, and exactly one value glues them: <span style="font-family:'JetBrains Mono',monospace; font-size:14px; color:#C0521F;">model_call</span>.</p>
           <div style="display:grid; grid-template-columns:1fr 1fr; gap:18px; margin-top:20px;">
             <div style="background:#EFE3CE; border:3px solid #211C17; box-shadow:1px 1px 0 #211C17, 2px 2px 0 #211C17, 3px 3px 0 #211C17, 4px 4px 0 #211C17, 5px 5px 0 #211C17; padding:22px;">
               <div style="font-family:'JetBrains Mono',monospace; font-size:14px; font-weight:700; color:#C0521F;">core</div>
@@ -189,7 +189,7 @@ const output = await handle.result" style="background:transparent; color:#8a8278
           <p style="font-size:16px; line-height:1.6; color:#3a342e; margin-bottom:18px;">The moment a step needs a value that isn't its immediate predecessor's output, reach for <span style="font-family:'JetBrains Mono',monospace; font-size:14px; color:#C0521F;">chain</span>: each <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">.step</span> merges its result into a growing typed record, later bindings destructure whatever earlier names they need (checked at compile time), and <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">.output</span> projects the result into an ordinary <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">Step</span>.</p>
           <div style="border:3px solid #211C17; box-shadow:1px 1px 0 #211C17, 2px 2px 0 #211C17, 3px 3px 0 #211C17, 4px 4px 0 #211C17, 5px 5px 0 #211C17;">
             <div style="display:flex; align-items:center; justify-content:space-between; padding:11px 16px; background:#26211b; border-bottom:1px solid #4a443c;"><span style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#8a8278;">chain.ts</span></div>
-            <div style="white-space:pre; overflow-x:auto; background:#211C17; color:#E8DFCD; padding:20px; font-family:'JetBrains Mono',monospace; font-size:14px; line-height:1.85;"><span style="color:#C0521F;">const</span> flow = <span style="color:#15a39a;">chain</span>(<span style="color:#D6982A;">'email'</span>)<br>  .<span style="color:#15a39a;">step</span>(<span style="color:#D6982A;">'user'</span>, ({ email }) =&gt; <span style="color:#15a39a;">find_user</span>(email))<br>  .<span style="color:#15a39a;">step</span>(<span style="color:#D6982A;">'sent'</span>, ({ email, user }) =&gt; <span style="color:#15a39a;">publish_event</span>(email, user))<br>  .<span style="color:#15a39a;">output</span>(({ sent }) =&gt; sent)</div>
+            <div style="white-space:pre; overflow-x:auto; background:#211C17; color:#E8DFCD; padding:20px; font-family:'JetBrains Mono',monospace; font-size:14px; line-height:1.85;"><span style="color:#C0521F;">const</span> flow = <span style="color:#15a39a;">chain</span>&lt;<span style="color:#15a39a;">string</span>, <span style="color:#D6982A;">'email'</span>&gt;(<span style="color:#D6982A;">'email'</span>)<br>  .<span style="color:#15a39a;">step</span>(<span style="color:#D6982A;">'user'</span>, ({ email }) =&gt; <span style="color:#15a39a;">find_user</span>(email))<br>  .<span style="color:#15a39a;">step</span>(<span style="color:#D6982A;">'sent'</span>, ({ email, user }) =&gt; <span style="color:#15a39a;">publish_event</span>(email, user))<br>  .<span style="color:#15a39a;">output</span>(({ sent }) =&gt; sent)</div>
           </div>
           <p style="font-size:14px; line-height:1.6; color:#5a5249; margin-top:14px;">Underneath sits the raw state tier (<span style="font-family:'JetBrains Mono',monospace; font-size:13px;">scope</span> / <span style="font-family:'JetBrains Mono',monospace; font-size:13px;">stash</span> / <span style="font-family:'JetBrains Mono',monospace; font-size:13px;">use</span>, string keys over <span style="font-family:'JetBrains Mono',monospace; font-size:13px;">ctx.state</span>) for the shapes that bindings can't express. See <a href="https://github.com/robmclarty/fascicle/blob/main/docs/advanced-composition.md" style="color:#C0521F; font-weight:700; border-bottom:2px solid #C0521F;">advanced composition</a> before reaching for it.</p>
         </div>
@@ -200,7 +200,7 @@ const output = await handle.result" style="background:transparent; color:#8a8278
         <div>
           <div style="font-family:'JetBrains Mono',monospace; font-size:12px; letter-spacing:3px; color:#C0521F; margin-bottom:14px;">CORE · THE DECISION GUIDE</div>
           <h1 style="font-family:'DM Serif Display',serif; font-weight:400; font-size:60px; line-height:1; margin:0 0 20px;">Leaves, arms, spine</h1>
-          <p style="font-size:18px; line-height:1.6; color:#3a342e; max-width:660px;">Every well-factored fascicle app converges on the same three-layer shape, whatever its domain. The layering is a convention, not a mechanism: it keeps a flow readable top to bottom, renders fully under <span style="font-family:'JetBrains Mono',monospace; font-size:15px;">describe</span>, and leaves every piece swappable behind a <span style="font-family:'JetBrains Mono',monospace; font-size:15px;">Step</span> type.</p>
+          <p style="font-size:18px; line-height:1.6; color:#3a342e; max-width:660px;">Every well-factored Fascicle app converges on the same three-layer shape, whatever its domain. The layering is a convention, not a mechanism: it keeps a flow readable top to bottom, renders fully under <span style="font-family:'JetBrains Mono',monospace; font-size:15px;">describe</span>, and leaves every piece swappable behind a <span style="font-family:'JetBrains Mono',monospace; font-size:15px;">Step</span> type.</p>
 
           <div style="display:flex; flex-direction:column; gap:18px; margin-top:32px;">
             <div style="background:#EFE3CE; border:3px solid #211C17; box-shadow:1px 1px 0 #211C17, 2px 2px 0 #211C17, 3px 3px 0 #211C17, 4px 4px 0 #211C17, 5px 5px 0 #211C17; padding:22px 26px;">
@@ -282,7 +282,7 @@ const output = await handle.result" style="background:transparent; color:#8a8278
           <h2 style="font-family:'DM Serif Display',serif; font-weight:400; font-size:32px; margin:48px 0 16px;">The config shape</h2>
           <div style="border:3px solid #211C17; box-shadow:1px 1px 0 #211C17, 2px 2px 0 #211C17, 3px 3px 0 #211C17, 4px 4px 0 #211C17, 5px 5px 0 #211C17;">
             <div style="display:flex; align-items:center; justify-content:space-between; padding:11px 16px; background:#26211b; border-bottom:1px solid #4a443c;"><span style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#8a8278;">EngineConfig</span></div>
-            <div style="white-space:pre; overflow-x:auto; background:#211C17; color:#E8DFCD; padding:20px; font-family:'JetBrains Mono',monospace; font-size:14px; line-height:1.85;"><span style="color:#A8336A;">type</span> <span style="color:#15a39a;">EngineConfig</span> = {<br>  providers: <span style="color:#15a39a;">ProviderConfigMap</span>     <span style="color:#6f675c;">// required</span><br>  custom_providers?: <span style="color:#15a39a;">Record</span>&lt;<span style="color:#15a39a;">string</span>, <span style="color:#15a39a;">ProviderFactory</span>&gt;<br>  pricing?: <span style="color:#15a39a;">PricingTable</span><br>  default_retry?: <span style="color:#15a39a;">RetryPolicy</span><br>  default_effort?: <span style="color:#15a39a;">EffortLevel</span><br>  default_max_steps?: <span style="color:#15a39a;">number</span><br>  defaults?: <span style="color:#15a39a;">EngineDefaults</span><br>}</div>
+            <div style="white-space:pre; overflow-x:auto; background:#211C17; color:#E8DFCD; padding:20px; font-family:'JetBrains Mono',monospace; font-size:14px; line-height:1.85;"><span style="color:#A8336A;">type</span> <span style="color:#15a39a;">EngineConfig</span> = {<br>  providers: <span style="color:#15a39a;">ProviderConfigMap</span>     <span style="color:#6f675c;">// required</span><br>  custom_providers?: <span style="color:#15a39a;">Record</span>&lt;<span style="color:#15a39a;">string</span>, <span style="color:#15a39a;">ProviderFactory</span>&gt;<br>  pricing?: <span style="color:#15a39a;">PricingTable</span><br>  default_retry?: <span style="color:#15a39a;">RetryPolicy</span><br>  default_effort?: <span style="color:#15a39a;">EffortLevel</span><br>  default_max_steps?: <span style="color:#15a39a;">number</span><br>  defaults?: <span style="color:#15a39a;">EngineDefaults</span><br>  redact_capture?: (payload: <span style="color:#15a39a;">CapturePayload</span>) =&gt; <span style="color:#15a39a;">unknown</span><br>}</div>
           </div>
 
           <h2 style="font-family:'DM Serif Display',serif; font-weight:400; font-size:32px; margin:48px 0 16px;">Engine defaults</h2>
@@ -306,7 +306,7 @@ const result = await engine.generate({ prompt: 'hello' })" style="background:tra
           <p style="font-size:16px; line-height:1.6; color:#3a342e; margin-bottom:18px;">Retries apply only to provider-side failures — 429s, 5xx, and network errors. Backoff is exponential with jitter; <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">Retry-After</span> always wins.</p>
           <div style="border:3px solid #211C17; box-shadow:1px 1px 0 #211C17, 2px 2px 0 #211C17, 3px 3px 0 #211C17, 4px 4px 0 #211C17, 5px 5px 0 #211C17;">
             <div style="display:flex; align-items:center; justify-content:space-between; padding:11px 16px; background:#26211b; border-bottom:1px solid #4a443c;"><span style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#8a8278;">DEFAULT_RETRY</span></div>
-            <div style="white-space:pre; overflow-x:auto; background:#211C17; color:#E8DFCD; padding:20px; font-family:'JetBrains Mono',monospace; font-size:14px; line-height:1.85;"><span style="color:#C0521F;">const</span> DEFAULT_RETRY: <span style="color:#15a39a;">RetryPolicy</span> = {<br>  max_attempts: <span style="color:#D6982A;">3</span>,<br>  initial_delay_ms: <span style="color:#D6982A;">500</span>,<br>  max_delay_ms: <span style="color:#D6982A;">30_000</span>,<br>  retry_on: [<span style="color:#D6982A;">'rate_limit'</span>, <span style="color:#D6982A;">'provider_5xx'</span>, <span style="color:#D6982A;">'network'</span>, <span style="color:#D6982A;">'timeout'</span>],<br>}</div>
+            <div style="white-space:pre; overflow-x:auto; background:#211C17; color:#E8DFCD; padding:20px; font-family:'JetBrains Mono',monospace; font-size:14px; line-height:1.85;"><span style="color:#C0521F;">const</span> DEFAULT_RETRY: <span style="color:#15a39a;">RetryPolicy</span> = {<br>  max_attempts: <span style="color:#D6982A;">4</span>,<br>  initial_delay_ms: <span style="color:#D6982A;">1000</span>,<br>  max_delay_ms: <span style="color:#D6982A;">30_000</span>,<br>  retry_on: [<span style="color:#D6982A;">'rate_limit'</span>, <span style="color:#D6982A;">'provider_5xx'</span>, <span style="color:#D6982A;">'network'</span>, <span style="color:#D6982A;">'timeout'</span>],<br>}</div>
           </div>
 
           <h2 style="font-family:'DM Serif Display',serif; font-weight:400; font-size:32px; margin:48px 0 16px;">Lifecycle</h2>
@@ -484,8 +484,8 @@ class Component extends DCLogic {
       ['consensus', 'ARM', 'Run all members each round; accept when your agree(results) predicate holds.', "consensus({\n  members: { a, b, c },\n  agree: (r) => new Set(Object.values(r)).size === 1,\n  max_rounds: 3,\n  project: (r) => r.converged,\n})"],
       ['suspend', 'ARM', 'Pause for external input; drive with run.until_suspended and resume via the returned closure.', "suspend({\n  id: 'approve',\n  on: (input) => notify(input),\n  resume_schema: z.object({ approved: z.boolean() }),\n  combine: (input, r) => r.approved ? 'ship' : 'hold',\n})"],
       ['gate', 'ARM', 'Checkpoint-then-suspend approval envelope: persist paid work, then pause for approval; resume returns the inner result unchanged.', "gate(expensive_build, {\n  id: 'ship',\n  store: filesystem_store({ root_dir: '.gates' }),\n})"],
-      ['compose', 'ARM', 'Label a composite so it shows up by intent in trajectories.', "compose('research', sequence([\n  fetch_sources,\n  summarize,\n]))"],
-      ['chain', 'SPINE', 'Named steps over a growing typed record: .step binds, .stage concludes a phase, .output projects. One per flow.', "chain('brief')\n  .step('outline', ({ brief }, ctx) => ctx.call(outliner, brief), { arm: outliner })\n  .step('draft', ({ outline }, ctx) => ctx.call(writer, outline), { arm: writer })\n  .output(({ brief, draft }) => `${brief}: ${draft}`)"],
+      ['compose', 'ARM', 'Label a composite so it shows up by intent in trajectories.', "compose(sequence([\n  fetch_sources,\n  summarize,\n]), { name: 'research' })"],
+      ['chain', 'SPINE', 'Named steps over a growing typed record: .step binds, .stage concludes a phase, .output projects. One per flow.', "chain<string, 'brief'>('brief')\n  .step('outline', ({ brief }, ctx) => ctx.call(outliner, brief), { arm: outliner })\n  .step('draft', ({ outline }, ctx) => ctx.call(writer, outline), { arm: writer })\n  .output(({ brief, draft }) => `${brief}: ${draft}`)"],
       ['branch', 'SPINE', 'Route on when(input): then or otherwise.', "branch({\n  when: (x) => x.score > 0.5,\n  then: ship_step,\n  otherwise: revise_step,\n})"],
       ['loop', 'SPINE', 'Bounded iteration with carry-state and an optional convergence guard.', "loop({\n  init:   (topic) => topic,\n  body:   refine,\n  guard:  step('done', (s) => ({ stop: ok(s), state: s })),\n  finish: (s) => s,\n  max_rounds: 5,\n})"],
       ['ensemble', 'ADVANCED', 'Pick-best scored by a plain function; prefer ensemble_step when the judge is a model.', "ensemble({\n  members: { a, b, c },\n  score: (out) => rate(out),\n  project: (r) => r.winner,\n})"],
@@ -546,20 +546,23 @@ class Component extends DCLogic {
       ['timeout_error', 'timeout(inner, ms) tripping'],
       ['suspended_error', 'first pass through suspend(...)'],
       ['resume_validation_error', 'resume_data does not match resume_schema'],
+      ['gate_result_error', 'a resumed gate that cannot serve the result it stored'],
+      ['duplicate_suspend_id_error', 'one suspend id in two places, or one suspend reached again on another input'],
       ['describe_cycle_error', 'describe hitting a cyclic composition'],
       ['provider_error', 'HTTP failures from providers (AI SDK and native transports)'],
       ['rate_limit_error', '429 responses after retry exhaustion'],
       ['on_chunk_error', 'an on_chunk streaming callback throwing'],
-      ['tool_error', "a tool's execute throws"],
+      ['tool_error', "a tool's execute throws, under tool_error_policy: 'throw'"],
       ['schema_validation_error', 'schema parsing failed after repair attempts'],
       ['incomplete_generation_error', 'schema set and the call finished on a non-stop reason'],
       ['engine_config_error', 'invalid create_engine(config)'],
       ['engine_disposed_error', 'calling generate after engine.dispose()'],
       ['model_required_error', 'no model and no defaults.model set'],
+      ['provider_required_error', 'several providers configured, none named per call or in defaults.provider'],
       ['provider_not_configured_error', 'named provider missing from providers'],
       ['provider_capability_error', 'a provider refusing an option it cannot honour'],
-      ['provider_auth_error', 'auth failure detected mid-run'],
-      ['tool_approval_denied_error', 'on_tool_approval returned false'],
+      ['provider_auth_error', 'a 401 on either transport, or a claude_cli session that is not logged in'],
+      ['tool_approval_denied_error', "a denied approval under tool_error_policy: 'throw', or a tool that needs approval with no on_tool_approval set"],
       ['claude_cli_error', 'subprocess failure in the claude_cli provider'],
     ];
     const errors = edef.map(([name, by], i) => ({ name, by, bg: i % 2 ? '#EFE3CE' : '#F4EBDB' }));

@@ -4,7 +4,7 @@ An agent can't read a web page until its app hands it a tool that fetches one. W
 
 It returns up to two tools, the way `workspace_tools` returns six. `web_fetch` takes a URL and gives back the page as text the model can read. `web_search` takes a query and gives back titles, URLs, and snippets, and it's there only when you pass a search backend, since no general index answers a query without a key or a server of your own.
 
-Both are plain `Tool` values that run in your own process, inside the engine's tool loop. Nothing here asks a provider to search on the model's behalf, so an agent on Ollama reads the web as well as one on Claude does. `fascicle/web` needs no peer and adds no dependency.
+Both are plain `Tool` values that run in your own process, inside the engine's tool loop. Nothing here asks a provider to search on the model's behalf, so an agent on Ollama reads the web as well as one on Claude does. The one provider they don't reach is `claude_cli`, which never runs a tool's `execute` and has `WebFetch` and `WebSearch` of its own ([cli.md](./cli.md#tool-bridging)). `fascicle/web` needs no peer and adds no dependency.
 
 ## An Agent That Reads the Web
 
@@ -199,7 +199,7 @@ Nothing in `fascicle/web` tries to detect an injection. A detector that works so
 
 ## What It Leaves Out
 
-- **Search that a provider runs.** Anthropic, OpenAI, Gemini, and OpenRouter each offer one, and each works on that provider only. These tools run in your process so that they work on all of them.
+- **Search that a provider runs.** Anthropic, OpenAI, Gemini, and OpenRouter each offer one, and each works on that provider only. These tools run in your process so that they work on every provider the tool loop drives.
 - **Pages that need a browser.** A page that wants JavaScript, a login, or a click is a job for Playwright's MCP server, which `mcp_client` from `fascicle/mcp` attaches as tools.
 - **PDFs, images, and other binary content.** `web_fetch` refuses them by name.
 - **A cache.** Two fetches of one URL make two requests.

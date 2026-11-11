@@ -327,6 +327,62 @@ so you can count how often it happens. A turn that's cut off on the last step
 still ends the loop with `length`. See
 [configuration.md](./configuration.md#local-runtime-tool-reliability).
 
+## `web_fetch` Refused a URL
+
+`web_fetch` throws when it won't fetch a URL. Under the default
+`tool_error_policy` the message goes back to the model as the call's error and
+the loop carries on, so you find the refusal in the trajectory, or in an answer
+that says a page couldn't be read. The message names the option that decided
+it:
+
+```text
+docs.example.com is not on allow_hosts (nodejs.org, developer.mozilla.org), so web_fetch won't fetch https://docs.example.com/guide
+wiki.internal resolves to 10.0.0.12, a loopback, private, or link-local address, so web_fetch won't reach it; set allow_private to read a server on your own network
+https://example.com/report.pdf is application/pdf, and web_fetch reads only text (HTML, plain text, markdown, JSON, or XML)
+```
+
+- **`is not on allow_hosts`.** The host isn't one that you named when you
+  called `web_tools`. A name covers its subdomains, so add the host or a
+  parent of it. A redirect goes through the same check, and a refused one
+  opens its message with `redirect 1 (...) was refused:`.
+- **`a loopback, private, or link-local address`.** The host resolved to an
+  address on your own machine or network, which `web_fetch` refuses so that a
+  page can't point the model at them. `localhost` lands here, and so does the
+  metadata address `169.254.169.254`. For a docs server on your own network,
+  set `allow_private: true` and pass an `allow_hosts` that names the server,
+  because `allow_private` turns the check off for every host.
+- **`reads only text`.** The response is a PDF, an image, or some other
+  binary type, and no option changes that. Point the model at a text version
+  of the page, or give it a tool of your own for that type.
+
+A host list entry that's written as a URL or with a `*` fails sooner, when the
+app calls `web_tools`, and the message names the host to write:
+
+```text
+web_tools needs each allow_hosts entry as a bare host name such as "example.com", and got "https://example.com"; write "example.com", which covers its subdomains too
+```
+
+See [web.md](./web.md#web_fetch).
+
+## `web_search` Fails with a 403 or a 422
+
+The two search adapters in `fascicle/web` each have a status that doesn't mean
+what it looks like, and the message says what it does mean:
+
+```text
+SearXNG at http://localhost:8888 answered 403, most likely because json is not among its search.formats; add json under search.formats in settings.yml and restart the server
+Brave search answered 422 (SUBSCRIPTION_TOKEN_INVALID: …); check the api_key passed to brave_search
+```
+
+A SearXNG server answers in HTML alone until `json` is listed under
+`search.formats` in its `settings.yml`, and it answers a JSON request with 403
+until then. Add `json` there and restart the server. Brave answers a key that
+it doesn't know with 422, where you'd expect a 401, so check the key that you
+passed, and that the variable it comes from reached the process. An empty key
+fails sooner, when the app calls `brave_search`. Like a refused fetch, a
+failed search goes back to the model as the call's error. See
+[web.md](./web.md#web_search).
+
 ## A 400 That Names `cache_control`
 
 An Anthropic tool loop caches by default on either transport, so its request

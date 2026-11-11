@@ -4,16 +4,16 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Agent blueprint — fascicle</title>
-<meta name="description" content="A standard architecture for agents built on fascicle: one rule, three adoption tiers, module contracts, anti-patterns, and ast-grep enforcement.">
+<meta name="description" content="A standard architecture for agents built on Fascicle: one rule, three adoption tiers, module contracts, anti-patterns, and ast-grep enforcement.">
 <link rel="canonical" href="https://robmclarty.github.io/fascicle/blueprint.html">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="fascicle">
 <meta property="og:url" content="https://robmclarty.github.io/fascicle/blueprint.html">
 <meta property="og:title" content="Agent blueprint — fascicle">
-<meta property="og:description" content="A standard architecture for agents built on fascicle: one rule, three adoption tiers, module contracts, anti-patterns, and ast-grep enforcement.">
+<meta property="og:description" content="A standard architecture for agents built on Fascicle: one rule, three adoption tiers, module contracts, anti-patterns, and ast-grep enforcement.">
 <meta name="twitter:card" content="summary">
 <meta name="twitter:title" content="Agent blueprint — fascicle">
-<meta name="twitter:description" content="A standard architecture for agents built on fascicle: one rule, three adoption tiers, module contracts, anti-patterns, and ast-grep enforcement.">
+<meta name="twitter:description" content="A standard architecture for agents built on Fascicle: one rule, three adoption tiers, module contracts, anti-patterns, and ast-grep enforcement.">
 <script src="https://cdn.usefathom.com/script.js" data-site="TFDVEGLQ" defer></script>
 <script src="./support.js"></script>
 <script src="./stars.js" defer></script>
@@ -68,9 +68,9 @@
     <div style="display:flex; gap:64px; align-items:flex-start;">
       <div style="flex:1; min-width:0; padding-top:6px;">
         <div style="font-family:'JetBrains Mono',monospace; font-size:13px; letter-spacing:3px; text-transform:uppercase; color:#C0521F; margin-bottom:26px;">The agent blueprint</div>
-        <h1 style="font-family:'DM Serif Display',serif; font-weight:400; font-size:76px; line-height:0.98; margin:0; letter-spacing:-0.5px;">A standard architecture for <span style="font-style:italic; color:#15706A;">fascicle apps.</span></h1>
+        <h1 style="font-family:'DM Serif Display',serif; font-weight:400; font-size:76px; line-height:0.98; margin:0; letter-spacing:-0.5px;">A standard architecture for <span style="font-style:italic; color:#15706A;">Fascicle apps.</span></h1>
         <p style="font-size:19px; line-height:1.6; color:#3a342e; margin:28px 0 0; max-width:560px;">Fascicle never dictates your app's shape — but the apps that stay easy to change all converge on the same one. The blueprint is that shape, distilled from the reference apps and from production consumers: one composition layer, markdown prompts, normalized module contracts, and boundaries that lint rules enforce instead of memory.</p>
-        <p style="font-size:16px; line-height:1.6; color:#5a5249; margin:16px 0 0; max-width:560px;">Building an agent on fascicle — or pointing a coding agent at the task? Start here. This page is the summary; the full spec lives in <a href="https://github.com/robmclarty/fascicle/blob/main/docs/blueprint.md" style="color:#C0521F; font-weight:700; border-bottom:2px solid #C0521F;">docs/blueprint.md</a>.</p>
+        <p style="font-size:16px; line-height:1.6; color:#5a5249; margin:16px 0 0; max-width:560px;">Building an agent on Fascicle — or pointing a coding agent at the task? Start here. This page is the summary; the full spec lives in <a href="https://github.com/robmclarty/fascicle/blob/main/docs/blueprint.md" style="color:#C0521F; font-weight:700; border-bottom:2px solid #C0521F;">docs/blueprint.md</a>.</p>
         <div style="display:flex; gap:16px; margin-top:38px; flex-wrap:wrap;">
           <a href="https://github.com/robmclarty/fascicle/blob/main/docs/blueprint.md" style="background:#C0521F; color:#F4EBDB; font-weight:700; font-size:15px; padding:15px 28px; border:3px solid #211C17;" class="fc-btn"><span class="fc-btn-label">Read the full blueprint →</span></a>
           <a href="https://github.com/robmclarty/fascicle/tree/main/examples/pr-improve" style="background:#F4EBDB; color:#211C17; font-weight:700; font-size:15px; padding:15px 28px; border:3px solid #211C17;" class="fc-btn"><span class="fc-btn-label">See the reference app</span></a>
@@ -100,7 +100,7 @@
     <div style="max-width:1320px; margin:0 auto;">
       <div style="font-family:'JetBrains Mono',monospace; font-size:13px; letter-spacing:3px; color:#D6982A; margin-bottom:18px;">01 · THE ONE RULE</div>
       <h2 style="font-family:'DM Serif Display',serif; font-weight:400; font-size:54px; line-height:1.02; margin:0; max-width:900px;">Give the agent exactly <span style="font-style:italic; color:#D6982A;">one composition layer.</span></h2>
-      <p style="font-size:18px; line-height:1.6; color:#C9C0AE; max-width:720px; margin:22px 0 0;">One file (call it <span style="font-family:'JetBrains Mono',monospace; font-size:15px; color:#F4EBDB;">flow.ts</span>) shows the reader the entire topology, written in fascicle vocabulary only: <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">chain</span>, <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">step</span>, <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">model_step</span>, <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">sequence</span>, <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">parallel</span>, <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">branch</span>, <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">loop</span>. Everything that isn't shape (string formatting, IO, state transitions) lives in sibling modules and plugs in as plain functions.</p>
+      <p style="font-size:18px; line-height:1.6; color:#C9C0AE; max-width:720px; margin:22px 0 0;">One file (call it <span style="font-family:'JetBrains Mono',monospace; font-size:15px; color:#F4EBDB;">flow.ts</span>) shows the reader the entire topology, written in Fascicle vocabulary only: <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">chain</span>, <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">step</span>, <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">model_step</span>, <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">sequence</span>, <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">parallel</span>, <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">branch</span>, <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">loop</span>. Everything that isn't shape (string formatting, IO, state transitions) lives in sibling modules and plugs in as plain functions.</p>
       <p style="font-size:18px; line-height:1.6; color:#C9C0AE; max-width:720px; margin:16px 0 0;">Steps are plain values: anything with the same <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">Step&lt;i, o&gt;</span> type swaps for anything else. That plug-and-play property is only worth something if your app has a place where the blocks are <em>visible</em>. Scattered through business logic, the topology exists only in the reader's head. Gathered into one layer, the topology <em>is</em> the file — and swapping a block is editing one line of it.</p>
 
       <div style="margin-top:48px; border:3px solid #F4EBDB;">
@@ -260,7 +260,7 @@ rule:
     <div style="position:relative; max-width:1000px; margin:0 auto;">
       <h2 style="font-family:'DM Serif Display',serif; font-weight:400; font-size:56px; line-height:1; margin:0; color:#F4EBDB;">Before calling an agent app done.</h2>
       <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px 40px; margin:40px 0 0; font-size:15.5px; line-height:1.5; color:#FBEEDC;">
-        <div style="display:flex; gap:12px;"><span style="font-family:'JetBrains Mono',monospace; color:#211C17; font-weight:700;">☐</span><span>One composition layer, fascicle vocabulary only; the header diagram matches the code.</span></div>
+        <div style="display:flex; gap:12px;"><span style="font-family:'JetBrains Mono',monospace; color:#211C17; font-weight:700;">☐</span><span>One composition layer, Fascicle vocabulary only; the header diagram matches the code.</span></div>
         <div style="display:flex; gap:12px;"><span style="font-family:'JetBrains Mono',monospace; color:#211C17; font-weight:700;">☐</span><span><span style="font-family:'JetBrains Mono',monospace; font-size:13.5px;">create_engine</span> in exactly one file; provider swap is one env var; disposal in <span style="font-family:'JetBrains Mono',monospace; font-size:13.5px;">finally</span>.</span></div>
         <div style="display:flex; gap:12px;"><span style="font-family:'JetBrains Mono',monospace; color:#211C17; font-weight:700;">☐</span><span>Every model boundary has a zod schema; stages return <span style="font-family:'JetBrains Mono',monospace; font-size:13.5px;">Step&lt;In, Out&gt;</span> from <span style="font-family:'JetBrains Mono',monospace; font-size:13.5px;">model_step</span> (the envelope only where <span style="font-family:'JetBrains Mono',monospace; font-size:13.5px;">model_call</span> is deliberate).</span></div>
         <div style="display:flex; gap:12px;"><span style="font-family:'JetBrains Mono',monospace; color:#211C17; font-weight:700;">☐</span><span>System prompts are markdown with frontmatter; dynamic content assembled in <span style="font-family:'JetBrains Mono',monospace; font-size:13.5px;">messages.ts</span>.</span></div>
@@ -340,16 +340,16 @@ class Component extends DCLogic {
   renderVals() {
     const accents = ['#C0521F', '#15706A', '#A8336A', '#7A5230'];
     const cdef = [
-      ['flow.ts', 'topology, in fascicle vocabulary', 'string building, IO, business logic, `as` casts'],
+      ['flow.ts', 'topology, in Fascicle vocabulary', 'string building, IO, business logic, `as` casts'],
       ['engine.ts', 'env to create_engine, provider selection', 'anything about the flow'],
       ['stages/', 'one model_step factory per role, prompt loading', 'message formatting, result extraction'],
       ['prompts/', 'static role instruction as markdown', 'code, dynamic content'],
-      ['messages.ts', 'user-message assembly from typed inputs', 'fascicle imports'],
+      ['messages.ts', 'user-message assembly from typed inputs', 'Fascicle imports'],
       ['types.ts', 'zod schemas plus inferred types', 'logic'],
       ['state.ts', 'stash key constants, typed readers (raw scope state only; chain needs none)', 'anything except keys and readers'],
       ['tools/', 'Tool factories, shared safety, limits', 'prompt text, flow knowledge'],
       ['render.ts', 'output artifacts (markdown, JSON reports)', 'model calls'],
-      ['services/', 'side-effecting domain IO', 'fascicle imports'],
+      ['services/', 'side-effecting domain IO', 'Fascicle imports'],
       ['main.ts', 'argv/HTTP in, run(...), adapters, disposal', 'composition'],
     ];
     const contracts = cdef.map(([name, owns, not], i) => ({
@@ -357,7 +357,7 @@ class Component extends DCLogic {
     }));
 
     const adef = [
-      ['Scattered fascicle calls', 'model_call and combinators are sprinkled through business logic, so the topology becomes unreadable and unswappable.', 'gather into one composition layer, or drop to tier 1 behind a port'],
+      ['Scattered Fascicle calls', 'model_call and combinators are sprinkled through business logic, so the topology becomes unreadable and unswappable.', 'gather into one composition layer, or drop to tier 1 behind a port'],
       ['Control flow buried in step bodies', 'An if / for / try-fallback inside a step is invisible to trajectories and to describe().', 'lift to branch / loop / fallback'],
       ['Composition theater', 'Single-step flows whose only contribution is a span name; combinator chains around a linear two-call sequence.', 'collapse to a step, or to plain code behind a port'],
       ['Two sources of truth for model defaults', 'Defaults live in engine.ts, get redefined in main.ts, and env overrides are parsed but never reach the flow.', 'one role-to-model table, resolved once, passed as data'],

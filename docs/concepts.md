@@ -66,6 +66,7 @@ tournament  single-elimination bracket
 consensus   run all members each round; accept once agree(results) holds
 checkpoint  memoize a named inner step by key
 suspend     pause for external input; resume with resume_data
+gate        persist a step's paid work, then pause for approval
 chain       named steps over a growing typed record; one per flow, the spine
 scope       stash named values and use them later without rewiring
 improve     bounded online propose → score → accept/reject loop
@@ -312,6 +313,9 @@ Typed errors live in `fascicle`:
 | `gate_result_error`              | a resumed `gate` that can't serve the result it stored |
 | `duplicate_suspend_id_error`     | one `suspend` id in two places, or one `suspend` reached again on another input |
 | `describe_cycle_error`           | `describe` hitting a cyclic composition               |
+| `flow_changed_error`             | a `durable` run whose flow changed shape while it waited |
+| `run_not_found_error`            | `durable` resuming a run that never started           |
+| `bench_suspend_error`            | a flow that suspends under `bench`, which has no resume path |
 | `provider_error`                 | HTTP failures from a provider, on either transport    |
 | `rate_limit_error`               | 429 responses after retry exhaustion                  |
 | `tool_error`                     | a tool's `execute` throws, under `tool_error_policy: 'throw'` |
@@ -326,6 +330,7 @@ Typed errors live in `fascicle`:
 | `provider_auth_error`            | a 401 on either transport, or a `claude_cli` session that isn't logged in |
 | `tool_approval_denied_error`     | a denied approval under `tool_error_policy: 'throw'`, or a tool that needs approval with no `on_tool_approval` set |
 | `on_chunk_error`                 | a caller's `on_chunk` handler threw                   |
+| `turn_timeout_error`             | a model turn that outran `turn_timeout_ms`, when `retry_on` leaves out `'timeout'` |
 | `claude_cli_error`               | subprocess failure in the `claude_cli` provider       |
 
 Every error bubbles out of `run(...)` as a normal promise rejection. Composition-layer errors carry a `.path` array of the step ids that led to the failure — surface it in logs to make failures locatable.
@@ -334,7 +339,7 @@ Every error bubbles out of `run(...)` as a normal promise rejection. Composition
 
 Not a runtime concept, but a project one. `pnpm check:all` is the single source of truth for "is this done". The pipeline runs types, lint, structural rules, dead-code analysis, tests, coverage, spelling, markdown, and mutation. Exit 0 means done. Exit non-zero means read `.check/summary.json` for which step failed and the per-tool JSON for diagnostics.
 
-`pnpm check` runs the default set, every slot except the opt-in ones. `pnpm check:all` adds the opt-in slots (Stryker `mutation`, the Playwright `e2e`, and the `build` and packaging gate slots: `publint`, `attw`, `pack`, `smoke`, `snippets`) and is the gate before declaring done. Use `pnpm check` during iteration. See [AGENTS.md](../AGENTS.md) for the full contract.
+`pnpm check` runs the default set, every slot except the opt-in ones. `pnpm check:all` adds the opt-in slots (Stryker `mutation`, the Playwright `e2e`, the `learn` walk through the course, and the `build` and packaging gate slots: `publint`, `attw`, `pack`, `smoke`, `snippets`) and is the gate before declaring done. Use `pnpm check` during iteration. See [AGENTS.md](../AGENTS.md) for the full contract.
 
 ## Glossary
 

@@ -282,7 +282,7 @@ import { filesystem_store } from 'fascicle/adapters';
 
 const approve = suspend({
   id: 'approve',
-  on: ({ plan }) => notify_slack(plan),
+  on: ({ plan }: { plan: string }) => notify_slack(plan),
   resume_schema: z.object({ approved: z.boolean() }),
   combine: (input: { plan: string }, resume) =>
     resume.approved ? `ship:${input.plan}` : `hold:${input.plan}`,
@@ -370,6 +370,8 @@ const finish = define_tool({
 ```
 
 The call runs its `execute` first (so the summary lands in the `ToolCallRecord` output and the trajectory), then the loop stops with `finish_reason: 'stop'`. Only a successful call ends the loop: a denied, invalid, dropped, or throwing terminal call is fed back like any other tool error and the loop keeps going. A terminal call also wins over a coincident `max_steps` cap, so a `finish` on the last allowed step is a clean stop, not a cutoff. `ends_turn` composes with `tool_call_repair_attempts` (a salvaged `finish` ends the loop too) and `max_tool_calls_per_step`.
+
+You don't have to write the tool that reads a web page. `web_tools()` from `fascicle/web` returns a `web_fetch` that won't reach `localhost` or a private address when a model asks it to, and a `web_search` too when you pass it a search backend. See [web.md](./web.md).
 
 ## Structured Output with Zod
 

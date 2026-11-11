@@ -333,17 +333,25 @@ under test exercises. You don't have to implement pricing, `with_providers`, or
 `dispose`, because the shell supplies inert versions.
 
 ```ts
+import type { GenerateOptions, GenerateResult } from 'fascicle';
 import { engine_from_generate } from 'fascicle/testing';
 
-const flaky = engine_from_generate(async (opts) => ({
-  content: opts.system?.startsWith('app/judge') ? 'ship' : 'hold',
-  tool_calls: [],
-  steps: [],
-  usage: { input_tokens: 1, output_tokens: 1 },
-  finish_reason: 'stop',
-  model_resolved: { provider: 'stub', model_id: 'flaky' },
-}));
+const flaky = engine_from_generate(async <t = string>(opts: GenerateOptions<t>) => {
+  const result: GenerateResult = {
+    content: opts.system?.startsWith('app/judge') ? 'ship' : 'hold',
+    tool_calls: [],
+    steps: [],
+    usage: { input_tokens: 1, output_tokens: 1 },
+    finish_reason: 'stop',
+    model_resolved: { provider: 'stub', model_id: 'flaky' },
+  };
+  return result as GenerateResult<t>;
+});
 ```
+
+`generate` is generic over the type that a call's `schema` validates to, and
+your canned string can't promise that type, so you cast the result, the way
+the three canned factories do.
 
 ## `checkpoint_store_conformance`
 

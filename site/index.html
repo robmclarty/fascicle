@@ -127,7 +127,7 @@
   <div id="why" style="position:relative; padding:96px 40px; max-width:1320px; margin:0 auto;">
     <div style="font-family:'JetBrains Mono',monospace; font-size:13px; letter-spacing:3px; color:#C0521F; margin-bottom:18px;">01 · WHY FASCICLE</div>
     <h2 style="font-family:'DM Serif Display',serif; font-weight:400; font-size:54px; line-height:1; margin:0;">Not a framework. <span style="font-style:italic;">A toolkit.</span></h2>
-    <p style="font-size:18px; line-height:1.6; color:#3a342e; max-width:660px; margin:18px 0 56px;">Most agent libraries are frameworks — they own your control flow, hide it behind decorators, and tie you to one vendor. Fascicle is the opposite: a small set of plain, typed functions you compose yourself. You keep the architecture; it just makes the hard parts composable. Bigger frameworks will always ship more integrations; fascicle competes on a different axis: controllability, auditability, and portability.</p>
+    <p style="font-size:18px; line-height:1.6; color:#3a342e; max-width:660px; margin:18px 0 56px;">Most agent libraries are frameworks — they own your control flow, hide it behind decorators, and tie you to one vendor. Fascicle is the opposite: a small set of plain, typed functions you compose yourself. You keep the architecture; it just makes the hard parts composable. Bigger frameworks will always ship more integrations; Fascicle competes on a different axis: controllability, auditability, and portability.</p>
 
     <div style="display:grid; grid-template-columns:repeat(2,1fr); gap:24px;">
       <div style="background:#EFE3CE; border:3px solid #211C17; box-shadow:1px 1px 0 #211C17, 2px 2px 0 #211C17, 3px 3px 0 #211C17, 4px 4px 0 #211C17, 5px 5px 0 #211C17, 6px 6px 0 #211C17; padding:28px;">
@@ -346,7 +346,7 @@ try {
     <div style="font-family:'JetBrains Mono',monospace; font-size:13px; letter-spacing:3px; color:#C0521F; margin-bottom:18px;">06 · PROVIDERS</div>
     <h2 style="font-family:'DM Serif Display',serif; font-weight:400; font-size:54px; line-height:1; margin:0;">One <span style="font-style:italic; color:#15706A;">generate</span> surface, eight providers.</h2>
     <p style="font-size:18px; line-height:1.6; color:#3a342e; max-width:680px; margin:18px 0 24px;">Your logic shouldn't care who serves the tokens. Write a flow once and point it at Anthropic, Bedrock, or a model that runs on your laptop — by changing a string. Develop against free local models, ship on a compliant cloud, fall back to another vendor mid-outage; the code never moves.</p>
-    <p style="font-size:16px; line-height:1.6; color:#5a5249; max-width:680px; margin:0 0 40px;">Aliases resolve, a provider-neutral <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">effort</span> knob translates per vendor, and <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">supports(capability)</span> lets you degrade gracefully instead of failing at runtime. Every SDK is an optional peer — install only the ones you call.</p>
+    <p style="font-size:16px; line-height:1.6; color:#5a5249; max-width:680px; margin:0 0 40px;">A model id reaches its provider verbatim, a provider-neutral <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">effort</span> knob translates per vendor, and <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">supports(capability)</span> lets you degrade gracefully instead of failing at runtime. Every SDK is an optional peer — install only the ones you call.</p>
 
     <div style="border:3px solid #211C17; box-shadow:1px 1px 0 #211C17, 2px 2px 0 #211C17, 3px 3px 0 #211C17, 4px 4px 0 #211C17, 5px 5px 0 #211C17, 6px 6px 0 #211C17, 7px 7px 0 #211C17, 8px 8px 0 #211C17; overflow:hidden;">
       <table style="width:100%; border-collapse:collapse; font-family:'JetBrains Mono',monospace; font-size:14px;">
@@ -414,6 +414,7 @@ try {
             <a href="blueprint.html">Architecture</a>
             <a href="https://github.com/robmclarty/fascicle/blob/main/docs/leaf-arm-spine.md">Leaves, arms, spine</a>
             <a href="https://github.com/robmclarty/fascicle/blob/main/docs/advanced-composition.md">Advanced composition</a>
+            <a href="https://github.com/robmclarty/fascicle/blob/main/docs/web.md">Web tools</a>
           </div>
         </div>
         <div>
@@ -425,6 +426,7 @@ try {
             <span>adapters</span>
             <span>mcp</span>
             <span>viewer</span>
+            <span>web</span>
           </div>
         </div>
         <div>
@@ -482,7 +484,7 @@ class Component extends DCLogic {
       openrouter: "openrouter: { api_key: process.env.OPENROUTER_API_KEY! }",
       bedrock: "bedrock: { region: process.env.AWS_REGION! }",
       ollama: "ollama: { base_url: 'http://localhost:11434' }",
-      lmstudio: "lmstudio: { base_url: 'http://localhost:1234' }",
+      lmstudio: "lmstudio: { base_url: 'http://localhost:1234/v1' }",
       claude_cli: "claude_cli: { auth_mode: 'oauth' }",
     };
 
@@ -506,12 +508,12 @@ class Component extends DCLogic {
       case 'pipe': flowLines = ["const flow = pipe(" + inner + ", (s) => s.slice(0, 280))"]; break;
       case 'model_step': flowLines = ["const flow = " + inner]; break;
       case 'model_call': flowLines = ["const flow = model_call({", "  engine" + providerArg + ",", "  model: '" + MODEL[effProv] + "',", "  project: (r) => `${r.content} (${r.usage.output_tokens} tokens)`,", "})"]; break;
-      case 'chain': flowLines = ["const polish = " + inner, "", "const flow = chain('topic')", "  .step('outline', ({ topic }) => `Outline: ${topic}`)", "  .step('draft', ({ outline }, ctx) => ctx.call(polish, outline), { arm: polish })", "  .output(({ topic, draft }) => `# ${topic}\\n\\n${draft}`)"]; break;
+      case 'chain': flowLines = ["const polish = " + inner, "", "const flow = chain<string, 'topic'>('topic')", "  .step('outline', ({ topic }) => `Outline: ${topic}`)", "  .step('draft', ({ outline }, ctx) => ctx.call(polish, outline), { arm: polish })", "  .output(({ topic, draft }) => `# ${topic}\\n\\n${draft}`)"]; break;
       case 'retry': flowLines = ["const flow = retry(" + inner + ", { max_attempts: 3 })"]; break;
       case 'fallback': flowLines = ["const flow = fallback(", "  " + inner + ",", "  step('cached', () => CACHED),", ")"]; break;
       case 'timeout': flowLines = ["const flow = timeout(" + inner + ", 10_000)"]; break;
       case 'loop': flowLines = ["const flow = loop({", "  init:   (topic) => topic,", "  body:   " + inner + ",", "  guard:  step('check', (s) => ({ stop: true, state: s })),", "  finish: (s) => s,", "  max_rounds: 5,", "})"]; break;
-      case 'compose': flowLines = ["const flow = compose('draft-stage', " + inner + ")"]; break;
+      case 'compose': flowLines = ["const flow = compose(" + inner + ", { name: 'draft-stage' })"]; break;
       case 'adversarial': flowLines = ["const flow = adversarial({", "  build:    " + inner + ",", "  critique: judge,", "  accept:   (c) => c.approved,", "  max_rounds: 3,", "  project: (r) => r.candidate,", "})"]; break;
       case 'ensemble': flowLines = ["const flow = ensemble({", "  members: { a: " + inner + ", b: " + inner + " },", "  score: (out) => rate(out),", "  project: (r) => r.winner,", "})"]; break;
       case 'ensemble_step': flowLines = ["const flow = ensemble_step({", "  members: { a: " + inner + ", b: " + inner + " },", "  score: judge,", "  rank_by: (r) => r.score,", "  project: (e) => e.winner,", "})"]; break;

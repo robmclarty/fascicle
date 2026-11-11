@@ -90,14 +90,15 @@ that names the joint.
 **3. Fan out, choose, repeat.** *Goal:* `parallel`, `branch`, and `map`, and
 nesting them. *Keep out:* `chain` and the hardening arms. *Check:* they hear
 "for each," "at the same time," and "if" as composers. *Stumbles:* `branch`
-arms with different output types, and treating `when` as a step when it's a
-plain function.
+arms with different output types, which 0.16.3 and earlier reject and later
+releases join into a union, and treating `when` as a step when it's a plain
+function.
 
 **4. The spine.** *Goal:* `chain` and the fan-in rule. *Introduces:*
 `.input<T>()`, the function and step forms of `.step`, `.output`, the words
 leaf, arm, and spine, and a first look at `ctx.call`. *Check:* they can say when
 a `chain` beats a `sequence`. *Stumbles:* `never` errors from a missing
-`.input<T>()`.
+`.input<T>()` on 0.16.3 and earlier. Later releases name the fix in the type.
 
 **5. The model is a step.** *Goal:* put a model in a flow without leaving the
 stub. *Introduces:* `model_step`, zod schemas, role ids, `make_stub_engine`,

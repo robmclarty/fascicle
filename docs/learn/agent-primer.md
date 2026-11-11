@@ -5,8 +5,8 @@ working in a project which uses the published `fascicle` package. A person who
 is learning Fascicle will usually import it from their `CLAUDE.md`, as
 [lesson 0](./00-set-up.md) shows. Every shape, rule, and error message below
 was checked against `fascicle` 0.16.3, and against 0.15.0 where the two differ,
-except what's marked 0.17.0 and later, which was checked against 0.17.0. A rule
-that a later release changes says what changed.
+except what's marked with a later release, which was checked against the
+release that added it. A rule that a later release changes says what changed.
 
 Your training data probably holds little or nothing about Fascicle, so treat
 this file and the installed type declarations as the truth, and don't fill gaps
@@ -16,8 +16,8 @@ from other agent frameworks.
 
 - **The installed types are authoritative.** Before you use an API that you
   haven't used yet in this session, read its declaration in
-  `node_modules/fascicle/dist/index.d.ts`, or in `adapters.d.ts`,
-  `testing.d.ts`, `agents.d.ts`, or `viewer.d.ts` for the subpaths. Don't
+  `node_modules/fascicle/dist/index.d.ts`, or for a subpath in the file with
+  its name, as `fascicle/testing` is in `testing.d.ts`. Don't
   invent options. Follow the imports, too. Core types such as `Step`,
   `RunContext` (which holds `ctx.call` and `ctx.abort`), and `StepOptions` live
   in files with generated names like `dist/types-<hash>.d.ts`, so search
@@ -74,6 +74,14 @@ The docs use these words in one sense each, and the API's names lean on them
 | `fascicle/testing` | `make_stub_engine`, `make_script_engine`, `make_capture_engine`, `make_loop_engine` and `assert_prefix_stable` (0.17.0 and later), `text_of`, `engine_from_generate` |
 | `fascicle/agents` | `define_agent` |
 | `fascicle/viewer` | `start_viewer` |
+| `fascicle/mcp` | `mcp_client`, `serve_flow` |
+| `fascicle/web` | `web_tools`, `searxng_search`, `brave_search` (releases after 0.17.8) |
+
+You'll want one of four more subpaths when you join a flow to a host. They're
+`fascicle/acp` for an editor that speaks the Agent Client Protocol,
+`fascicle/stdio` for a parent process, `fascicle/ui` for a `useChat` front end,
+and `fascicle/otel` for OpenTelemetry. Read a subpath's declarations before you
+use it.
 
 Two commands ship in the package: `fascicle-viewer <trajectory.jsonl>` and
 `fascicle-diagram <module.ts>`, both run with `pnpm exec`. `fascicle-diagram`
@@ -141,6 +149,7 @@ await engine.dispose()             // always, in finally
 const look_up = define_tool({ name: 'look_up', description: 'when to call it', input_schema: z.object({ key: z.string() }), execute: ({ key }) => find(key) })
 model_step({ engine, model, system, tools: [look_up], max_steps: 6 })  // a tool loop; max_steps (default 10) caps its model turns
 model_step({ ...config, on_tool_approval })   // asked before any tool flagged needs_approval runs
+model_step({ ...config, tools: web_tools() }) // after 0.17.8, from 'fascicle/web': web_fetch, and web_search too with { search }
 model_step({ ...config, capture: 'turns' })   // 0.17.0 and later: each turn's request and reply go into the trajectory
 captured_turns(events)                        // 0.17.0 and later: each captured turn's whole request, rebuilt
 ```
@@ -302,6 +311,7 @@ messages are the real ones.
 | "only if they agree" | `consensus` |
 | "ask me first," "wait for approval" | `suspend` or `gate`, with `run.until_suspended`, and a `gate` needs a `store` or a `checkpoint_store` to resume |
 | "let it look things up," "give it a tool" | `define_tool`, and `tools` with `max_steps` on the `model_step` |
+| "read this page," "look it up on the web" | `web_tools()` from `fascicle/web` (releases after 0.17.8) as the model step's `tools`, with a `search` backend when it should search too, in place of a fetch tool of your own |
 | "ask me before it runs that tool" | `needs_approval` on the tool, and `on_tool_approval` on the model step |
 | "don't redo the expensive part" | `checkpoint`, with a `checkpoint_store` |
 
@@ -404,5 +414,7 @@ describe('the calculator', () => {
 - [composition.md](../composition.md) for one line on every composer.
 - [cookbook.md](../cookbook.md) for worked patterns, including tool loops with
   `define_tool`.
+- [web.md](../web.md) for `web_tools` (releases after 0.17.8), which you should
+  read before you give the web to an agent that holds private data.
 - [testing.md](../testing.md) for the stand-in engines.
 - [troubleshooting.md](../troubleshooting.md) for errors and their causes.

@@ -180,6 +180,7 @@ The [examples index](../examples/README.md) tells you which examples are keyless
 - [docs/configuration.md](./configuration.md) — engine config, defaults, provider setup.
 - [docs/providers.md](./providers.md) — per-provider adapter notes.
 - [docs/cli.md](./cli.md) — the `claude_cli` subprocess adapter.
+- [docs/web.md](./web.md) covers the two tools that let an agent search the web and read a page.
 - [docs/cookbook.md](./cookbook.md) — retries, fan-out, judges, human-in-the-loop.
 - [docs/troubleshooting.md](./troubleshooting.md) — when the first run fails.
 - [examples/](../examples/) — runnable reference flows.

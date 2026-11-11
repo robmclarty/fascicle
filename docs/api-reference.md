@@ -28,8 +28,8 @@ classes other than `Error` subclasses.
 `fascicle` itself has no mandatory peers. Four subpaths need one to do their
 work. `fascicle/mcp` needs `@modelcontextprotocol/sdk`, which it loads
 dynamically and reports as `mcp_sdk_missing_error` when absent.
-`fascicle/acp` needs `@agentclientprotocol/sdk` and the `zod` that the SDK
-imports, which it loads the same way and reports as `acp_sdk_missing_error`.
+`fascicle/acp` needs `@agentclientprotocol/sdk`, at 1.8 or any 2.x, and the
+`zod` that the SDK imports, which it loads the same way and reports as `acp_sdk_missing_error`.
 `fascicle/otel` needs `@opentelemetry/api`. `fascicle/ui` needs `ai`, which it
 imports statically because it speaks the AI SDK's UI message-stream protocol,
 so a missing `ai` fails at module resolution rather than with a Fascicle error.
@@ -416,7 +416,8 @@ inside the step, so `describe` and the trajectory gain no wrapper node.
 Omitted, the envelope is the output. The config also carries the caller-shaped
 generation knobs (`temperature`, `max_tokens`, `top_p`, `turn_timeout_ms`,
 `prepare_step`, `cache`, `capture`) alongside `model` / `provider` / `system` / `schema` /
-`tools` / `effort` / `retry`; `abort` and `trajectory` stay runner-owned and are
+`tools` / `effort` / `retry_policy` (which `generate` takes as `retry`); `abort`
+and `trajectory` stay runner-owned and are
 threaded automatically. An `on_chunk` in the config is an observer: it sees
 every chunk of the call as it streams, which suits a live terminal renderer,
 and it runs beside the `model_chunk` forwarding that `run.stream` sets up
@@ -489,7 +490,10 @@ Full notes in [providers.md](./providers.md).
 
 As a helper, `forward_standard_env()` returns a minimal env (`PATH`, `HOME`, `SHELL`,
 `USER`, `LOGNAME`, `LANG`, `TMPDIR`) for sandboxed `claude_cli` runs. See
-[cli.md](./cli.md).
+[cli.md](./cli.md). `claude_cli_reported(result)` reads back what a
+`claude_cli` call reported, its `session_id` and its durations, as a typed
+`ClaudeCliProviderReported`, or `undefined` when the result came from another
+provider (see [cli.md](./cli.md#multi-turn-is-via-session_id)).
 
 ## Adapters (`fascicle/adapters`)
 
@@ -514,6 +518,10 @@ drops it and keeps going. `filesystem_logger` hands the error to its
 `http_logger` is best effort in one more way, since it posts in the
 background, so a process that exits as soon as its run settles may drop
 its last few events.
+
+Types: `FilesystemLoggerConfig`, `HttpLoggerConfig`, `HttpLoggerFetch`,
+`StderrLoggerOptions`, `FilesystemStoreConfig`, `FilesystemStore`,
+`FilesystemScopedStore`.
 
 ### Checkpoint Store Capabilities
 
@@ -584,6 +592,10 @@ optional peer dependency, installed only when this subpath is used.
 | `json_schema_to_standard(schema)` | fn | wraps a server's JSON Schema as the `ToolSchema` inbound tools carry; emits it back verbatim, save for the `additionalProperties: false` every tool schema is closed with |
 | `mcp_error`, `mcp_sdk_missing_error` | error | tool-level failure / missing optional peer |
 
+Types: `McpClientConfig`, which is one of `McpStdioConfig`,
+`McpStreamableHttpConfig`, and `McpExistingClientConfig`, plus
+`McpClientOptions`, `McpClientHandle`, and `ServeFlowConfig`.
+
 `serve_flow` over a stdio transport is a stateful session for MCP hosts. For a
 single-shot child under a plain JSON-over-stdio parent, use `run_stdio` below.
 
@@ -618,16 +630,24 @@ an agent starts. See [acp.md](./acp.md).
 | `serve_acp(config)` | fn | serve the flow over stdin and stdout until the client disconnects, then dispose the engine; sends `console.log` and its siblings to stderr, and SIGTERM or SIGINT aborts every run and exits |
 | `acp_agent(config)` | fn | the same agent as the SDK's `AgentApp`, its handlers registered but not connected, for another transport or an in-process client. It serves one connection, so build one for each connection that you accept |
 | `workspace_tools(session, options?)` | fn | the six tools of a coding session (`read_file`, `list_files`, `search`, `write_file`, `edit_file`, `run_command`) as plain `Tool` values; the file tools reach only paths whose real path lands under the session's roots, and the writes and `run_command` ask before they run as the session's mode says. `list_files` returns at most 1,000 paths a call. See [Coding Sessions](./acp.md#coding-sessions) |
+| `filesystem_session_store(config)` | fn | an `AcpSessionStore` that keeps each session as one JSON file under `root_dir`, readable by its owner alone, so a thread survives a restart of the agent. See [Keeping Sessions](./acp.md#keeping-sessions) |
 | `to_session_updates(event, state)` | fn | map one run event to zero or more ACP `SessionUpdate`s, with no I/O; the default `to_updates`, which a custom one can wrap as long as it passes every event through, since each `span_start` advances the state's run count |
 | `create_acp_mapper_state(options?)` | fn | fresh per-turn mapper state for the low-level API: `turn_id`, `stream`, `runs` (the count that keeps a model call's cards apart when it runs again), `tools` (each card's tool), and `session`, which gives the workspace tools' cards their titles, diffs, and command output |
 | `acp_sdk_missing_error` | error | missing optional peer |
 
 Types: `ServeAcpConfig`, `AcpSession`, `AcpTurn`, `AcpHistoryEntry`,
 `AcpStreamRoute`, `AcpMapperState`, `AcpMapperOptions`, `AcpMode`,
-`WorkspaceToolsOptions`. In `ServeAcpConfig`, `to_input` is required unless the
+`WorkspaceToolsOptions`, `AcpSessionStore`, `AcpStoredSession`,
+`AcpSessionSummary`, `AcpSessionUsage`, `FilesystemSessionStoreConfig`. In
+`ServeAcpConfig`, `to_input` is required unless the
 flow takes a string, `modes` and `default_mode` set the modes that a session
 offers and the one it starts in, and `additional_directories: false` keeps each
-session to `cwd`. `AcpMode` is one of `manual`, which asks before edits and
+session to `cwd`. `models` and `default_model` give the editor a model picker
+(see [Models](./acp.md#models)), `mcp_servers: true` connects the MCP servers
+that the editor has configured, `context_window` turns on the usage reports,
+`to_title` replaces the rule that titles a session from its first prompt, and
+`session_store` keeps sessions past a restart, where a store is any object
+with `save`, `load`, and `list`. `AcpMode` is one of `manual`, which asks before edits and
 commands and is the default whenever an agent offers it, `accept_edits`, which
 asks only before commands, and `auto`, which never asks. `WorkspaceToolsOptions`
 holds `read_limit_lines`, `ignore`, `search_timeout_ms`, `command_timeout_ms`,
@@ -636,7 +656,9 @@ holds `read_limit_lines`, `ignore`, `search_timeout_ms`, `command_timeout_ms`,
 ## Web Tools (`fascicle/web`)
 
 Hands an agent the web as two plain `Tool` values that run in your own
-process, so they work on every provider. The subpath needs no peer. See
+process, inside the engine's tool loop, so they work on every provider that
+the loop drives, which is all of them but `claude_cli`. The subpath needs no
+peer. See
 [web.md](./web.md), which also covers what a page can talk a model into and
 how to hold an agent to the hosts that you trust.
 
@@ -763,7 +785,13 @@ the `project` envelopes and option shapes that `retry` and `fallback` take
 `SchemaIssue`). A map that settles returns `Settled` entries, and a failed
 entry carries a `SettledError`. At runtime `is_step` narrows a value to a
 `Step`, and `error_path(err)` reads the `path` that a run attached to a thrown
-error. `same_input_as(first)` returns the test that a `suspend` and a `gate`
+error. `is_valid_step_id(id)` tests the identifier rule that every id is held
+to, `suggest_step_id(raw)` gives the spelling that a failure message offers,
+and `assert_valid_step_id(id, subject, remedy)` is the guard that the
+factories call. `resolve_display_name(node, fallback)` gives the label that a
+step, or a `describe.json` node, renders under, and `flow_schema` is the JSON
+Schema for the YAML form of a flow (see [composition.md](./composition.md)).
+`same_input_as(first)` returns the test that a `suspend` and a `gate`
 hold a later input to, which passes when the input's JSON, with its keys
 sorted, reads the same as `first`'s did when the test was made, or, when JSON
 can't hold `first`, when the input is the same value.
@@ -795,7 +823,8 @@ The bench tier adds `BenchCase`, `BenchOptions`, `BenchReport`, `BenchSummary`,
 `ToolCallRecord`, `ToolApprovalHandler`, `ToolApprovalRequest`, `StepRecord`,
 `StepTiming`, `GenerateTiming`, `Throughput`, `UsageTotals`,
 `ClaudeCliProviderReported`, `CostBreakdown`, `Pricing`, `PricingTable`,
-`EffortLevel`, `CacheSetting`, `CaptureLevel`, `CapturePayload`, `CapturedTurn`,
+`EffortLevel`, `CacheSetting`, `CaptureLevel`, `TruncatedTurnPolicy`,
+`CapturePayload`, `CapturedTurn`,
 `CapturedSettings`, `CapturedTool`, `EffortTranslation`, `RawProviderUsage`,
 `PrepareStepContext`, `PrepareStepResult`, `PrepareStepHook`, `RetryPolicy`,
 `RetryFailureKind`, `ProviderConfigMap`, `ProviderInit`, `ResolvedModel`,
@@ -806,5 +835,7 @@ The bench tier adds `BenchCase`, `BenchOptions`, `BenchReport`, `BenchSummary`,
 `fascicle/viewer` subpath.
 
 The provider-authoring types (`ProviderAdapter`, `ProviderFactory`,
-`NativeProviderAdapter`, `TurnRequest`, `TurnResult`, ...) are enumerated in
+`AiSdkProviderAdapter`, `NativeProviderAdapter`, `ExternalAgentAdapter`,
+`ProviderCapability`, `ProviderTransport`, `TurnRequest`, `TurnResult`) and
+the `default_normalize_usage` helper are covered in
 [configuration.md](./configuration.md#custom-providers).

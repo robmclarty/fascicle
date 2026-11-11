@@ -169,7 +169,7 @@ await serve_acp({
 });
 ```
 
-**Reading the web.** The `fascicle/web` subpath hands an agent two tools. `web_fetch` takes a URL and returns the page as text, and it refuses the places a URL that a model chose shouldn't reach, which are `localhost`, the private ranges, and the cloud metadata address. `web_search` is there once you pass a search backend, either a SearXNG server that you run with no key, Brave's hosted index with one, or a function of your own. Both run in your process, so they work on every provider, and the subpath adds no dependency. A page is text that somebody else wrote, and [docs/web.md](./docs/web.md) covers what that means for an agent that also holds private data.
+**Reading the web.** The `fascicle/web` subpath hands an agent two tools. `web_fetch` takes a URL and returns the page as text, and it refuses the places a URL that a model chose shouldn't reach, which are `localhost`, the private ranges, and the cloud metadata address. `web_search` is there once you pass a search backend, either a SearXNG server that you run with no key, Brave's hosted index with one, or a function of your own. Both run in your process, inside the engine's tool loop, so they work on every provider that the loop drives (all of them but `claude_cli`), and the subpath adds no dependency. A page is text that somebody else wrote, and [docs/web.md](./docs/web.md) covers what that means for an agent that also holds private data.
 
 <!-- snippet: check -->
 ```typescript
@@ -277,12 +277,12 @@ Fascicle is early and not accepting outside pull requests yet. Bug reports and f
 
 ## Development
 
-This repo is a **single package**. The code is organized as deep modules under `src/` (`core`, `engine`, `composites`, `agents`, `adapters`, `mcp`, `acp`, `stdio`, `ui`, `otel`, `policy`, `schema`, `testing`, `viewer`), each reachable only through its barrel via the `#<module>` import alias. The umbrella surface at the `src/` root is what publishes to npm as `fascicle`. Architectural boundaries (for example, core cannot import adapters, engine imports core type-only, and no `process.env` outside the audited exceptions) are enforced by the ast-grep rules in `rules/` and a directory-level boundary DAG in `fallow.toml`. The 7 apps under `examples/*/` are separate workspace members that consume the library via `fascicle: workspace:*`.
+This repo is a **single package**. The code is organized as deep modules under `src/` (`core`, `engine`, `composites`, `agents`, `adapters`, `mcp`, `acp`, `stdio`, `ui`, `otel`, `policy`, `process`, `schema`, `testing`, `viewer`, `web`), each reachable only through its barrel via the `#<module>` import alias. The umbrella surface at the `src/` root is what publishes to npm as `fascicle`. Architectural boundaries (for example, core cannot import adapters, engine imports core type-only, and no `process.env` outside the audited exceptions) are enforced by the ast-grep rules in `rules/` and a directory-level boundary DAG in `fallow.toml`. The 7 apps under `examples/*/` are separate workspace members that consume the library via `fascicle: workspace:*`.
 
 ```bash
 pnpm install
 pnpm check        # types, lint, structural rules, dead-code, tests, docs, spell
-pnpm check:all    # adds Stryker mutation testing, the packaging gate, and Playwright e2e (final gate)
+pnpm check:all    # adds Stryker mutation testing, the packaging gate, the walk through the course, and Playwright e2e (final gate)
 ```
 
 `pnpm check:all` is the single source of truth for "is this done?", and `pnpm check` is the faster loop you run while you work. Output lands in `.check/` (one JSON per check). See [AGENTS.md](./AGENTS.md) for the full contract and [CLAUDE.md](./CLAUDE.md) for Claude-specific notes.

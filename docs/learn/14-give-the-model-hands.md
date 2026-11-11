@@ -497,6 +497,9 @@ read differently than they would have this morning.
   the wire when a model runs, from one request to the guards on its tools.
 - [cookbook.md](../cookbook.md) has worked patterns for retries, fan-out,
   judges, tool loops, and people in the loop.
+- [web.md](../web.md) has two tools that you don't have to write, one that
+  fetches a page and one that searches the web. They ship from `fascicle/web`
+  in releases after 0.17.8.
 - [testing.md](../testing.md) covers the four stand-in engines in depth.
 - [troubleshooting.md](../troubleshooting.md) maps errors to their causes.
 - [examples/release-notes/](../../examples/release-notes/) is a whole agent in

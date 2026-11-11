@@ -10,7 +10,7 @@ It's the other side of `serve_flow`. `serve_flow` (from `fascicle/mcp`) turns a 
 pnpm add @agentclientprotocol/sdk zod
 ```
 
-Without them, `serve_acp` rejects with an `acp_sdk_missing_error` that names the install.
+Without them, `serve_acp` rejects with an `acp_sdk_missing_error` that names the install. Any 1.x release of the SDK from 1.8.0 works, and so does any 2.x.
 
 ## `serve_acp`
 
@@ -424,7 +424,7 @@ Each workspace tool's card looks the way Claude Agent's do, with a kind that pic
 | `edit_file` | `edit` | `Edit src/a.ts` | the diff, and a location at the first line it changed |
 | `run_command` | `execute` | the command line | what it printed and how it ended |
 
-Only a session that has built the workspace tools draws these cards. In a session that never called `workspace_tools`, a tool under one of these names gets the plain card, with its name as its title.
+Only a session that has built the workspace tools draws these cards. In a session that never called `workspace_tools`, a tool under one of these names gets the plain card, with its name as its title. A tool from anywhere else gets the plain card too, and that includes the `web_fetch` and `web_search` that [`fascicle/web`](./web.md) builds.
 
 A write's or an edit's diff is worked out before the call runs, so the card keeps it in every mode, not only when a prompt asks. A command's output goes to a terminal on the card when the client advertises Zed's terminal extension (`_meta.terminal_output`), and into the card as a `console` code block otherwise. A read, a listing, or a search shows the text that the model read in a code block with no info string, so the `*`, `#`, or backtick in a matching line shows as it is rather than rendering as markdown. Each card keeps that text in `rawOutput` too, which is what hosts other than Zed read, and a failed call shows its error instead.
 

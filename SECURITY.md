@@ -48,7 +48,8 @@ Pin a version you have reviewed and upgrade deliberately.
   output, and tool inputs/outputs in plain text. The bundled `filesystem_logger`
   and `filesystem_store` adapters write unencrypted files to disk; treat their
   output paths like any other secret-bearing artifact and keep them out of
-  version control.
+  version control. `filesystem_session_store` from `fascicle/acp` keeps whole
+  conversations the same way, in files that only their owner can read.
 
 ## Subprocess and sandbox model (`claude_cli`)
 
@@ -57,7 +58,10 @@ output. That is a real trust boundary:
 
 - Under `auth_mode: 'oauth'` the adapter scrubs `ANTHROPIC_API_KEY` from the
   child environment so a stored session is used instead of leaking a key into the
-  subprocess. Under `api_key`/`auto` the child inherits only the standard keys
+  subprocess. The rest of `process.env` still reaches the child under `oauth`,
+  and the CLI hands its env on to the commands it runs, so list any other key
+  that your process holds in `omit_env`, which keeps a name out of the child
+  under every auth mode. Under `api_key`/`auto` the child inherits only the standard keys
   (`PATH`, `HOME`, `SHELL`, `USER`, `LOGNAME`, `LANG`, `TMPDIR`) plus the values
   you pass, and `inherit_env: false` starts it from an empty environment.
 - Fascicle tools that carry an `execute` closure cannot run inside the
@@ -151,6 +155,33 @@ injection can reach too.
 
 [docs/acp.md](./docs/acp.md#coding-sessions) covers the tools, the modes, and
 the prompts in full.
+
+## Web tools (`fascicle/web`)
+
+`web_tools` gives a model `web_fetch`, which requests whatever URL the model
+writes, from inside your process and on your network. It refuses the addresses
+that a server shouldn't be asked to reach, and it leaves two risks that no
+tool can refuse for you.
+
+- **`web_fetch` stays off your own network.** It fetches only `http:` and
+  `https:` URLs, and it refuses loopback, private, and link-local addresses,
+  the cloud metadata address among them, on the first request and on every
+  redirect. It connects to the address that it checked, so a second DNS answer
+  can't swap in another one. `allow_private: true` turns the check off for
+  every host, so pair it with an `allow_hosts` that names the servers you
+  meant.
+- **A page can carry instructions.** What `web_fetch` returns is text that
+  somebody else wrote, and a model can be talked into following it. The tool's
+  description tells the model to read a result as content and never as
+  instructions, which lowers the odds and doesn't remove them.
+- **A URL carries data out.** A model that's been talked into it can put what
+  it knows into a query string and fetch it, and whoever runs that server
+  reads it in their logs. An agent that holds private data wants `allow_hosts`,
+  or a `needs_approval` that shows a person the whole URL before it's sent. A
+  search query leaves your process too, for the one backend that you chose.
+
+[docs/web.md](./docs/web.md#untrusted-text-and-a-way-out) covers both risks
+and the defenses in full.
 
 ## Supply-chain posture
 

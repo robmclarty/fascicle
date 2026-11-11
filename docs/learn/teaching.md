@@ -136,9 +136,9 @@ These came up while the course was being checked, so watch for them and warn
 the learner when they're close:
 
 - **pnpm can hold back a new release.** A `minimumReleaseAge` setting makes
-  pnpm wait a day or two before it installs a brand-new version. The lessons
-  work on 0.15.0 and later, so it doesn't matter, but it can confuse someone
-  who just read the release notes.
+  pnpm wait a day or two before it installs a brand-new version. Lessons 0 to
+  13 work on 0.15.0 and later, and lesson 14 needs 0.17.0, so it seldom matters,
+  but it can confuse someone who just read the release notes.
 - **Up to 0.16.3, a wrongly ordered `sequence` gives a noisy error.** It's
   `No overload matches this call`, twice. Teach the habit of reading from the
   last line up. Later releases print it once, on the step that doesn't fit.

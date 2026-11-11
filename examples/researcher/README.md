@@ -10,6 +10,8 @@ without any network or API keys.
 
 To drive it against real services, replace `make_stub_engine` with
 `create_engine({...})` and provide real `search` / `fetch` implementations.
+[web-research](../web-research/#next-to-researcher) says how the tools in
+`fascicle/web` fill both.
 The agent definition itself is demo code in [`../agents/`](../agents/); copy
 it alongside this example when porting it into your own project.
 

@@ -188,10 +188,10 @@ its design quality. If you're evaluating it seriously, name them:
 What makes these survivable is the shape of the thing:
 
 - It's Apache-2.0 and public, so a fork is always available as an escape hatch.
-- It's small and readable (one package, roughly 21k lines of source with tests
-  excluded, and a mutation-tested core), and a *library*, not a framework. Because
-  every unit is a substitutable `Step`, you can excise it one piece at a time
-  instead of being locked into a lifecycle.
+- It's small and readable (one package, roughly 28k lines of code with tests and
+  comments excluded, and a mutation-tested core), and a *library*, not a
+  framework. Because every unit is a substitutable `Step`, you can excise it
+  one piece at a time instead of being locked into a lifecycle.
 - **Consume it as an ordinary published dependency.** Pin a reviewed version from
   the registry and keep anything organization-specific in your own repository,
   where it builds on Fascicle's public contracts instead of being vendored into
