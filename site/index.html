@@ -3,16 +3,16 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>fascicle — composable agentic toolkit for TypeScript</title>
+<title>fascicle · composable agentic toolkit for TypeScript</title>
 <meta name="description" content="Compose LLM calls, tools, and plain functions into a typed Step&lt;i, o&gt;. Eight providers behind one generate surface. A toolkit, not a framework.">
 <link rel="canonical" href="https://robmclarty.github.io/fascicle/">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="fascicle">
 <meta property="og:url" content="https://robmclarty.github.io/fascicle/">
-<meta property="og:title" content="fascicle — composable agentic toolkit for TypeScript">
+<meta property="og:title" content="fascicle · composable agentic toolkit for TypeScript">
 <meta property="og:description" content="Compose LLM calls, tools, and plain functions into a typed Step&lt;i, o&gt;. Eight providers behind one generate surface. A toolkit, not a framework.">
 <meta name="twitter:card" content="summary">
-<meta name="twitter:title" content="fascicle — composable agentic toolkit for TypeScript">
+<meta name="twitter:title" content="fascicle · composable agentic toolkit for TypeScript">
 <meta name="twitter:description" content="Compose LLM calls, tools, and plain functions into a typed Step&lt;i, o&gt;. Eight providers behind one generate surface. A toolkit, not a framework.">
 <script src="https://cdn.usefathom.com/script.js" data-site="TFDVEGLQ" defer></script>
 <script src="./support.js"></script>
@@ -73,6 +73,7 @@
         </div>
 
         <div onClick="{{ copy }}" data-copy="pnpm add fascicle" style="display:inline-flex; align-items:center; gap:14px; margin-top:34px; cursor:pointer; font-family:'JetBrains Mono',monospace; font-size:16px; background:#EFE3CE; border:2px dashed #7A5230; padding:7px 20px;"><span style="color:#C0521F;">$</span> pnpm add fascicle <span data-icon="" style="margin-left:18px; color:#7A5230; font-size:40px; line-height:1; position:relative; top:-4px;">⎘</span></div>
+        <div style="margin-top:12px; font-family:'JetBrains Mono',monospace; font-size:12px; color:#7A5230;">ESM-only · Node 24 or later</div>
       </div>
 
       <!-- interactive code card -->
@@ -127,7 +128,7 @@
   <div id="why" style="position:relative; padding:96px 40px; max-width:1320px; margin:0 auto;">
     <div style="font-family:'JetBrains Mono',monospace; font-size:13px; letter-spacing:3px; color:#C0521F; margin-bottom:18px;">01 · WHY FASCICLE</div>
     <h2 style="font-family:'DM Serif Display',serif; font-weight:400; font-size:54px; line-height:1; margin:0;">Not a framework. <span style="font-style:italic;">A toolkit.</span></h2>
-    <p style="font-size:18px; line-height:1.6; color:#3a342e; max-width:660px; margin:18px 0 56px;">Most agent libraries are frameworks — they own your control flow, hide it behind decorators, and tie you to one vendor. Fascicle is the opposite: a small set of plain, typed functions you compose yourself. You keep the architecture; it just makes the hard parts composable. Bigger frameworks will always ship more integrations; Fascicle competes on a different axis: controllability, auditability, and portability.</p>
+    <p style="font-size:18px; line-height:1.6; color:#3a342e; max-width:660px; margin:18px 0 56px;">Most agent libraries are frameworks: they own your control flow, hide it behind decorators, and tie you to one vendor. Fascicle is the opposite: a small set of plain, typed functions you compose yourself. You keep the architecture; it just makes the hard parts composable. Bigger frameworks will always ship more integrations; Fascicle competes on a different axis: controllability, auditability, and portability.</p>
 
     <div style="display:grid; grid-template-columns:repeat(2,1fr); gap:24px;">
       <div style="background:#EFE3CE; border:3px solid #211C17; box-shadow:1px 1px 0 #211C17, 2px 2px 0 #211C17, 3px 3px 0 #211C17, 4px 4px 0 #211C17, 5px 5px 0 #211C17, 6px 6px 0 #211C17; padding:28px;">
@@ -144,7 +145,7 @@
       </div>
       <div style="background:#EFE3CE; border:3px solid #211C17; box-shadow:1px 1px 0 #211C17, 2px 2px 0 #211C17, 3px 3px 0 #211C17, 4px 4px 0 #211C17, 5px 5px 0 #211C17, 6px 6px 0 #211C17; padding:28px;">
         <div style="font-family:'DM Serif Display',serif; font-size:34px; color:#7A5230; line-height:1.02;">Composition, all the way down</div>
-        <p style="font-size:15px; line-height:1.55; color:#3a342e; margin:16px 0 0;">Every primitive takes a <span style="font-family:'JetBrains Mono',monospace; font-size:13px;">Step&lt;i,o&gt;</span> and returns a <span style="font-family:'JetBrains Mono',monospace; font-size:13px;">Step&lt;i,o&gt;</span>. Wrap one in <span style="font-family:'JetBrains Mono',monospace; font-size:13px;">retry</span>, <span style="font-family:'JetBrains Mono',monospace; font-size:13px;">fallback</span>, or <span style="font-family:'JetBrains Mono',monospace; font-size:13px;">ensemble_step</span> and it's still just a step — behavior layers on, the type never changes.</p>
+        <p style="font-size:15px; line-height:1.55; color:#3a342e; margin:16px 0 0;">Every primitive takes a <span style="font-family:'JetBrains Mono',monospace; font-size:13px;">Step&lt;i,o&gt;</span> and returns a <span style="font-family:'JetBrains Mono',monospace; font-size:13px;">Step&lt;i,o&gt;</span>. Wrap one in <span style="font-family:'JetBrains Mono',monospace; font-size:13px;">retry</span>, <span style="font-family:'JetBrains Mono',monospace; font-size:13px;">fallback</span>, or <span style="font-family:'JetBrains Mono',monospace; font-size:13px;">ensemble_step</span> and it's still just a step. Behavior layers on, and the type never changes.</p>
       </div>
     </div>
   </div>
@@ -154,8 +155,8 @@
     <div style="max-width:1320px; margin:0 auto;">
       <div style="font-family:'JetBrains Mono',monospace; font-size:13px; letter-spacing:3px; color:#C0521F; margin-bottom:18px;">02 · THE HARNESS</div>
       <h2 style="font-family:'DM Serif Display',serif; font-weight:400; font-size:54px; line-height:1; margin:0;">You hold the <span style="font-style:italic; color:#C0521F;">reins.</span></h2>
-      <p style="font-size:18px; line-height:1.6; color:#3a342e; max-width:680px; margin:18px 0 12px;">The harness is the product. The model is a service it calls. Your outer program is ordinary, deterministic code that you can read, test, and reason about — it reaches for a model only where real judgment is needed, and runs token-free everywhere else.</p>
-      <p style="font-size:18px; line-height:1.6; color:#3a342e; max-width:680px; margin:0 0 52px;">That's the opposite of handing the reins to a model and hoping it orchestrates the others. Real engineering lives in the harness — Fascicle just gives you the primitives to compose it. Even the frontier labs now state the equation plainly: an agent is a model plus a harness, and the harness is the durable, controllable part.</p>
+      <p style="font-size:18px; line-height:1.6; color:#3a342e; max-width:680px; margin:18px 0 12px;">The harness is the product. The model is a service it calls. Your outer program is ordinary, deterministic code that you can read, test, and reason about. It reaches for a model only where real judgment is needed, and runs token-free everywhere else.</p>
+      <p style="font-size:18px; line-height:1.6; color:#3a342e; max-width:680px; margin:0 0 52px;">That's the opposite of handing the reins to a model and hoping it orchestrates the others. Real engineering lives in the harness. Fascicle just gives you the primitives to compose it. Even the frontier labs now state the equation plainly: an agent is a model plus a harness, and the harness is the durable, controllable part.</p>
 
       <div style="display:grid; grid-template-columns:1fr 1fr; gap:24px;">
 
@@ -174,9 +175,9 @@
             <div style="text-align:center; font-family:'JetBrains Mono',monospace; font-size:11px; color:#A8336A; margin-top:12px;">tokens spent on every hop</div>
           </div>
           <div style="display:flex; flex-direction:column; gap:12px; font-size:14.5px; line-height:1.5; color:#3a342e;">
-            <div style="display:flex; gap:10px;"><span style="color:#A8336A; font-weight:700;">—</span><span>A model decides every next move at runtime.</span></div>
-            <div style="display:flex; gap:10px;"><span style="color:#A8336A; font-weight:700;">—</span><span>Every hop spends tokens, so latency and cost stay unpredictable.</span></div>
-            <div style="display:flex; gap:10px;"><span style="color:#A8336A; font-weight:700;">—</span><span>Nondeterministic. Hard to test, replay, or debug.</span></div>
+            <div style="display:flex; gap:10px;"><span style="color:#A8336A; font-weight:700;">−</span><span>A model decides every next move at runtime.</span></div>
+            <div style="display:flex; gap:10px;"><span style="color:#A8336A; font-weight:700;">−</span><span>Every hop spends tokens, so latency and cost stay unpredictable.</span></div>
+            <div style="display:flex; gap:10px;"><span style="color:#A8336A; font-weight:700;">−</span><span>Nondeterministic. Hard to test, replay, or debug.</span></div>
           </div>
         </div>
 
@@ -197,7 +198,7 @@
             <div style="text-align:center; font-family:'JetBrains Mono',monospace; font-size:11px; color:#8a8278; margin-top:12px;">one model call, surrounded by token-free code</div>
           </div>
           <div style="display:flex; flex-direction:column; gap:12px; font-size:14.5px; line-height:1.5; color:#C9C0AE;">
-            <div style="display:flex; gap:10px;"><span style="color:#D6982A; font-weight:700;">+</span><span>Your script holds the control flow — plain, readable, testable.</span></div>
+            <div style="display:flex; gap:10px;"><span style="color:#D6982A; font-weight:700;">+</span><span>Your script holds the control flow: plain, readable, testable.</span></div>
             <div style="display:flex; gap:10px;"><span style="color:#D6982A; font-weight:700;">+</span><span><span style="font-family:'JetBrains Mono',monospace; font-size:13px; color:#F4EBDB;">model_step</span> only where real judgment is needed.</span></div>
             <div style="display:flex; gap:10px;"><span style="color:#D6982A; font-weight:700;">+</span><span>Everything else is token-free: fast, cheap, deterministic.</span></div>
           </div>
@@ -206,7 +207,7 @@
       </div>
 
       <div style="margin-top:40px; border-left:6px solid #C0521F; padding:6px 0 6px 24px;">
-        <div style="font-family:'DM Serif Display',serif; font-size:30px; line-height:1.2; color:#211C17; max-width:900px;">This shape is the future: boring, predictable code that calls models <span style="font-style:italic; color:#C0521F;">sparingly</span> — not models that burn tokens to orchestrate other models.</div>
+        <div style="font-family:'DM Serif Display',serif; font-size:30px; line-height:1.2; color:#211C17; max-width:900px;">This shape is the future: boring, predictable code that calls models <span style="font-style:italic; color:#C0521F;">sparingly</span>, not models that burn tokens to orchestrate other models.</div>
       </div>
     </div>
   </div>
@@ -243,7 +244,7 @@ try {
   await engine.dispose()
 }" style="background:transparent; color:#8a8278; font-family:'JetBrains Mono',monospace; font-size:11px; letter-spacing:1px; border:1px solid #4a443c; padding:5px 11px; cursor:pointer;">COPY</button>
           </div>
-          <div style="padding:24px 26px; font-family:'JetBrains Mono',monospace; font-size:14.5px; line-height:1.9; color:#E8DFCD; white-space:pre; overflow-x:auto;"><span style="color:#A8336A;">import</span> { create_engine, model_step, run, sequence, step } <span style="color:#A8336A;">from</span> <span style="color:#D6982A;">'fascicle'</span><br><br><span style="color:#C0521F;">const</span> engine = <span style="color:#15a39a;">create_engine</span>({<br>  providers: { anthropic: { api_key: process.<span style="color:#15a39a;">env</span>.ANTHROPIC_API_KEY! } },<br>})<br><br><span style="color:#C0521F;">const</span> flow = <span style="color:#15a39a;">sequence</span>([<br>  <span style="color:#15a39a;">step</span>(<span style="color:#D6982A;">'brief'</span>, (topic) =&gt; <span style="color:#D6982A;">`Write a 2-sentence brief on: ${topic}`</span>),<br>  <span style="color:#15a39a;">model_step</span>({ engine, model: <span style="color:#D6982A;">'claude-sonnet-4-6'</span>, system: <span style="color:#D6982A;">'No preamble.'</span> }),<br>])<br><br><span style="color:#A8336A;">try</span> {<br>  console.<span style="color:#15a39a;">log</span>(<span style="color:#A8336A;">await</span> <span style="color:#15a39a;">run</span>(flow, <span style="color:#D6982A;">'Rust ownership'</span>))<br>} <span style="color:#A8336A;">finally</span> {<br>  <span style="color:#A8336A;">await</span> engine.<span style="color:#15a39a;">dispose</span>()<br>}</div>
+          <div style="padding:24px 26px; font-family:'JetBrains Mono',monospace; font-size:14.5px; line-height:1.9; color:#E8DFCD; white-space:pre; overflow-x:auto;"><span style="color:#A8336A;">import</span> { create_engine, model_step, run, sequence, step } <span style="color:#A8336A;">from</span> <span style="color:#D6982A;">'fascicle'</span><br><br><span style="color:#C0521F;">const</span> engine = <span style="color:#15a39a;">create_engine</span>({<br>  providers: { anthropic: { api_key: process.<span style="color:#15a39a;">env</span>.ANTHROPIC_API_KEY! } },<br>})<br><br><span style="color:#C0521F;">const</span> flow = <span style="color:#15a39a;">sequence</span>([<br>  <span style="color:#15a39a;">step</span>(<span style="color:#D6982A;">'brief'</span>, (topic: <span style="color:#15a39a;">string</span>) =&gt; <span style="color:#D6982A;">`Write a 2-sentence brief on: ${topic}`</span>),<br>  <span style="color:#15a39a;">model_step</span>({ engine, model: <span style="color:#D6982A;">'claude-sonnet-4-6'</span>, system: <span style="color:#D6982A;">'No preamble.'</span> }),<br>])<br><br><span style="color:#A8336A;">try</span> {<br>  console.<span style="color:#15a39a;">log</span>(<span style="color:#A8336A;">await</span> <span style="color:#15a39a;">run</span>(flow, <span style="color:#D6982A;">'Rust ownership'</span>))<br>} <span style="color:#A8336A;">finally</span> {<br>  <span style="color:#A8336A;">await</span> engine.<span style="color:#15a39a;">dispose</span>()<br>}</div>
         </div>
       </div>
     </div>
@@ -254,9 +255,9 @@ try {
     <div style="max-width:1320px; margin:0 auto; display:flex; gap:64px; align-items:center;">
       <div style="flex:none; width:430px;">
         <div style="font-family:'JetBrains Mono',monospace; font-size:13px; letter-spacing:3px; color:#C0521F; margin-bottom:18px;">04 · COMPOSITION</div>
-        <h2 style="font-family:'DM Serif Display',serif; font-weight:400; font-size:50px; line-height:1.02; margin:0;">Add capability by <span style="font-style:italic; color:#C0521F;">wrapping</span> — never by rewriting.</h2>
-        <p style="font-size:17px; line-height:1.6; color:#3a342e; margin:24px 0 0;">Because every composer takes a <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">Step</span> and returns a <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">Step</span>, a composition is just another <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">Step</span>. No layer is privileged as a “top level,” and no interface widens as a flow grows — a thousand nested layers still type as <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">Step&lt;i, o&gt;</span>.</p>
-        <p style="font-size:17px; line-height:1.6; color:#3a342e; margin:18px 0 0;">So you harden a flow the way you'd wrap a function. Need retries, a fallback, or three-model voting? Wrap the step you already have. What's inside doesn't change; what calls it doesn't change. No refactor, no bespoke glue for every feature — just one more layer.</p>
+        <h2 style="font-family:'DM Serif Display',serif; font-weight:400; font-size:50px; line-height:1.02; margin:0;">Add capability by <span style="font-style:italic; color:#C0521F;">wrapping</span>, never by rewriting.</h2>
+        <p style="font-size:17px; line-height:1.6; color:#3a342e; margin:24px 0 0;">Because every composer takes a <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">Step</span> and returns a <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">Step</span>, a composition is just another <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">Step</span>. No layer is privileged as a “top level,” and no interface widens as a flow grows: a thousand nested layers still type as <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">Step&lt;i, o&gt;</span>.</p>
+        <p style="font-size:17px; line-height:1.6; color:#3a342e; margin:18px 0 0;">So you harden a flow the way you'd wrap a function. Need retries, a fallback, or three-model voting? Wrap the step you already have. What's inside doesn't change; what calls it doesn't change. No refactor, no bespoke glue for every feature. Just one more layer.</p>
         <div style="margin-top:24px; font-family:'JetBrains Mono',monospace; font-size:15px; background:#211C17; color:#E8DFCD; padding:14px 18px; border:3px solid #211C17; box-shadow:1px 1px 0 #C0521F, 2px 2px 0 #C0521F, 3px 3px 0 #C0521F, 4px 4px 0 #C0521F, 5px 5px 0 #C0521F;">Step&lt;i, o&gt; → Step&lt;i, o&gt;</div>
       </div>
 
@@ -306,32 +307,36 @@ try {
           <div style="border:3px solid #F4EBDB;">
             <div style="display:flex; align-items:center; justify-content:space-between; padding:11px 14px; border-bottom:1px solid #4a443c; background:#26211b;">
               <div style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#8a8278;">release-notes/main.ts</div>
-              <button onClick="{{ copy }}" data-orig="COPY" data-copy="const flow = chain<Repo, 'repo'>('repo')
-  .step('commits', ({ repo }) => list_commits(repo))
-  .step('draft', ({ commits }, ctx) =>
-    ctx.call(writer, format_prompt(commits)), { arm: writer })
-  .step('checked', ({ draft }, ctx) =>
-    ctx.call(fact_gate, draft), { arm: fact_gate })
-  .output(({ checked, draft }) => (checked ? draft : 'needs review'))" style="background:transparent; color:#8a8278; font-family:'JetBrains Mono',monospace; font-size:11px; letter-spacing:1px; border:1px solid #4a443c; padding:4px 10px; cursor:pointer;">COPY</button>
+              <button onClick="{{ copy }}" data-orig="COPY" data-copy="return chain&lt;string, 'log'&gt;('log')
+  .step('commits', ({ log }) =&gt; parse_commits(log))
+  .step('grouped', ({ commits }) =&gt; group_by_type(commits))
+  .step('notes', ({ grouped }, ctx) =&gt;
+    ctx.call(writer, JSON.stringify(grouped, null, 2)))
+  .output(({ commits, grouped, notes }) =&gt;
+    render_markdown(notes, grouped, commits.length))" style="background:transparent; color:#8a8278; font-family:'JetBrains Mono',monospace; font-size:11px; letter-spacing:1px; border:1px solid #4a443c; padding:4px 10px; cursor:pointer;">COPY</button>
             </div>
-            <div style="padding:20px 22px; font-family:'JetBrains Mono',monospace; font-size:13px; line-height:1.9; color:#E8DFCD; white-space:pre; overflow-x:auto;"><span style="color:#C0521F;">const</span> flow = <span style="color:#15a39a;">chain</span>&lt;<span style="color:#15a39a;">Repo</span>, <span style="color:#D6982A;">'repo'</span>&gt;(<span style="color:#D6982A;">'repo'</span>)<br>  .<span style="color:#15a39a;">step</span>(<span style="color:#D6982A;">'commits'</span>, ({ repo }) =&gt; <span style="color:#15a39a;">list_commits</span>(repo))<br>  .<span style="color:#15a39a;">step</span>(<span style="color:#D6982A;">'draft'</span>, ({ commits }, ctx) =&gt;<br>    ctx.<span style="color:#15a39a;">call</span>(writer, <span style="color:#15a39a;">format_prompt</span>(commits)), { arm: writer })<br>  .<span style="color:#15a39a;">step</span>(<span style="color:#D6982A;">'checked'</span>, ({ draft }, ctx) =&gt;<br>    ctx.<span style="color:#15a39a;">call</span>(fact_gate, draft), { arm: fact_gate })<br>  .<span style="color:#15a39a;">output</span>(({ checked, draft }) =&gt; (checked ? draft : <span style="color:#D6982A;">'needs review'</span>))</div>
+            <div style="padding:20px 22px; font-family:'JetBrains Mono',monospace; font-size:13px; line-height:1.9; color:#E8DFCD; white-space:pre; overflow-x:auto;"><span style="color:#A8336A;">return</span> <span style="color:#15a39a;">chain</span>&lt;<span style="color:#15a39a;">string</span>, <span style="color:#D6982A;">'log'</span>&gt;(<span style="color:#D6982A;">'log'</span>)<br>  .<span style="color:#15a39a;">step</span>(<span style="color:#D6982A;">'commits'</span>, ({ log }) =&gt; <span style="color:#15a39a;">parse_commits</span>(log))<br>  .<span style="color:#15a39a;">step</span>(<span style="color:#D6982A;">'grouped'</span>, ({ commits }) =&gt; <span style="color:#15a39a;">group_by_type</span>(commits))<br>  .<span style="color:#15a39a;">step</span>(<span style="color:#D6982A;">'notes'</span>, ({ grouped }, ctx) =&gt;<br>    ctx.<span style="color:#15a39a;">call</span>(writer, JSON.<span style="color:#15a39a;">stringify</span>(grouped, <span style="color:#A8336A;">null</span>, <span style="color:#D6982A;">2</span>)))<br>  .<span style="color:#15a39a;">output</span>(({ commits, grouped, notes }) =&gt;<br>    <span style="color:#15a39a;">render_markdown</span>(notes, grouped, commits.length))</div>
           </div>
-          <div style="margin-top:12px; font-family:'JetBrains Mono',monospace; font-size:12px; color:#8a8278; line-height:1.6;">Bindings are typed, arms are declared, and describe prints the whole tree (spine, arms, leaves) before anything runs.</div>
+          <div style="margin-top:12px; font-family:'JetBrains Mono',monospace; font-size:12px; color:#8a8278; line-height:1.6;">Each binding is typed and named, so describe prints the spine before anything runs.</div>
         </div>
         <div>
           <div style="font-family:'JetBrains Mono',monospace; font-size:12px; letter-spacing:2px; color:#D6982A; margin-bottom:12px;">DIRECT · A PLAIN BODY, WHEN WIRING IS DYNAMIC</div>
           <div style="border:3px solid #F4EBDB;">
             <div style="display:flex; align-items:center; justify-content:space-between; padding:11px 14px; border-bottom:1px solid #4a443c; background:#26211b;">
               <div style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#8a8278;">release-notes-direct/main.ts</div>
-              <button onClick="{{ copy }}" data-orig="COPY" data-copy="const flow = step('release_notes', async (repo: Repo, ctx) => {
-  const commits = list_commits(repo)
-  const draft = await ctx.call(writer, format_prompt(commits))
-  if (!needs_check(commits)) return draft
-  const checked = await ctx.call(fact_gate, draft)
-  return checked ? draft : 'needs review'
+              <button onClick="{{ copy }}" data-orig="COPY" data-copy="return step('release_notes', async (log: string, ctx) =&gt; {
+  const commits = parse_commits(log)
+  const grouped = group_by_type(commits)
+  const user_facing =
+    (grouped['feat'] ?? []).length + (grouped['fix'] ?? []).length
+  if (user_facing === 0) {
+    // ...return a maintenance note, with no model call
+  }
+  const notes = await ctx.call(writer, JSON.stringify(grouped, null, 2))
+  // ...render the notes as markdown
 })" style="background:transparent; color:#8a8278; font-family:'JetBrains Mono',monospace; font-size:11px; letter-spacing:1px; border:1px solid #4a443c; padding:4px 10px; cursor:pointer;">COPY</button>
             </div>
-            <div style="padding:20px 22px; font-family:'JetBrains Mono',monospace; font-size:13px; line-height:1.9; color:#E8DFCD; white-space:pre; overflow-x:auto;"><span style="color:#C0521F;">const</span> flow = <span style="color:#15a39a;">step</span>(<span style="color:#D6982A;">'release_notes'</span>, <span style="color:#A8336A;">async</span> (repo: <span style="color:#15a39a;">Repo</span>, ctx) =&gt; {<br>  <span style="color:#C0521F;">const</span> commits = <span style="color:#15a39a;">list_commits</span>(repo)<br>  <span style="color:#C0521F;">const</span> draft = <span style="color:#A8336A;">await</span> ctx.<span style="color:#15a39a;">call</span>(writer, <span style="color:#15a39a;">format_prompt</span>(commits))<br>  <span style="color:#A8336A;">if</span> (!<span style="color:#15a39a;">needs_check</span>(commits)) <span style="color:#A8336A;">return</span> draft<br>  <span style="color:#C0521F;">const</span> checked = <span style="color:#A8336A;">await</span> ctx.<span style="color:#15a39a;">call</span>(fact_gate, draft)<br>  <span style="color:#A8336A;">return</span> checked ? draft : <span style="color:#D6982A;">'needs review'</span><br>})</div>
+            <div style="padding:20px 22px; font-family:'JetBrains Mono',monospace; font-size:13px; line-height:1.9; color:#E8DFCD; white-space:pre; overflow-x:auto;"><span style="color:#A8336A;">return</span> <span style="color:#15a39a;">step</span>(<span style="color:#D6982A;">'release_notes'</span>, <span style="color:#A8336A;">async</span> (log: <span style="color:#15a39a;">string</span>, ctx) =&gt; {<br>  <span style="color:#C0521F;">const</span> commits = <span style="color:#15a39a;">parse_commits</span>(log)<br>  <span style="color:#C0521F;">const</span> grouped = <span style="color:#15a39a;">group_by_type</span>(commits)<br>  <span style="color:#C0521F;">const</span> user_facing =<br>    (grouped[<span style="color:#D6982A;">'feat'</span>] ?? []).length + (grouped[<span style="color:#D6982A;">'fix'</span>] ?? []).length<br>  <span style="color:#A8336A;">if</span> (user_facing === <span style="color:#D6982A;">0</span>) {<br>    <span style="color:#6f675c;">// ...return a maintenance note, with no model call</span><br>  }<br>  <span style="color:#C0521F;">const</span> notes = <span style="color:#A8336A;">await</span> ctx.<span style="color:#15a39a;">call</span>(writer, JSON.<span style="color:#15a39a;">stringify</span>(grouped, <span style="color:#A8336A;">null</span>, <span style="color:#D6982A;">2</span>))<br>  <span style="color:#6f675c;">// ...render the notes as markdown</span><br>})</div>
           </div>
           <div style="margin-top:12px; font-family:'JetBrains Mono',monospace; font-size:12px; color:#8a8278; line-height:1.6;">Ordinary const / if / await. ctx.call keeps spans, abort, and error paths intact, so nothing is lost but static describability.</div>
         </div>
@@ -345,8 +350,8 @@ try {
   <div id="providers" style="position:relative; padding:96px 40px; max-width:1320px; margin:0 auto;">
     <div style="font-family:'JetBrains Mono',monospace; font-size:13px; letter-spacing:3px; color:#C0521F; margin-bottom:18px;">06 · PROVIDERS</div>
     <h2 style="font-family:'DM Serif Display',serif; font-weight:400; font-size:54px; line-height:1; margin:0;">One <span style="font-style:italic; color:#15706A;">generate</span> surface, eight providers.</h2>
-    <p style="font-size:18px; line-height:1.6; color:#3a342e; max-width:680px; margin:18px 0 24px;">Your logic shouldn't care who serves the tokens. Write a flow once and point it at Anthropic, Bedrock, or a model that runs on your laptop — by changing a string. Develop against free local models, ship on a compliant cloud, fall back to another vendor mid-outage; the code never moves.</p>
-    <p style="font-size:16px; line-height:1.6; color:#5a5249; max-width:680px; margin:0 0 40px;">A model id reaches its provider verbatim, a provider-neutral <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">effort</span> knob translates per vendor, and <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">supports(capability)</span> lets you degrade gracefully instead of failing at runtime. Every SDK is an optional peer — install only the ones you call.</p>
+    <p style="font-size:18px; line-height:1.6; color:#3a342e; max-width:680px; margin:18px 0 24px;">Your logic shouldn't care who serves the tokens. Write a flow once and point it at Anthropic, Bedrock, or a model that runs on your laptop. Changing a string is all it takes. Develop against free local models, ship on a compliant cloud, fall back to another vendor mid-outage; the code never moves.</p>
+    <p style="font-size:16px; line-height:1.6; color:#5a5249; max-width:680px; margin:0 0 40px;">A model id reaches its provider verbatim, a provider-neutral <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">effort</span> knob translates per vendor, and <span style="font-family:'JetBrains Mono',monospace; font-size:14px;">supports(capability)</span> lets you degrade gracefully instead of failing at runtime. Every SDK is an optional peer. Install only the ones you call.</p>
 
     <div style="border:3px solid #211C17; box-shadow:1px 1px 0 #211C17, 2px 2px 0 #211C17, 3px 3px 0 #211C17, 4px 4px 0 #211C17, 5px 5px 0 #211C17, 6px 6px 0 #211C17, 7px 7px 0 #211C17, 8px 8px 0 #211C17; overflow:hidden;">
       <table style="width:100%; border-collapse:collapse; font-family:'JetBrains Mono',monospace; font-size:14px;">
@@ -420,13 +425,17 @@ try {
         <div>
           <div style="font-family:'JetBrains Mono',monospace; font-size:12px; letter-spacing:2px; color:#D6982A; margin-bottom:14px;">MODULES</div>
           <div style="display:flex; flex-direction:column; gap:10px; font-family:'JetBrains Mono',monospace; font-size:13px;">
-            <span>core</span>
-            <span>engine</span>
-            <span>composites</span>
-            <span>adapters</span>
-            <span>mcp</span>
-            <span>viewer</span>
-            <span>web</span>
+            <span>fascicle</span>
+            <span>fascicle/acp</span>
+            <span>fascicle/adapters</span>
+            <span>fascicle/agents</span>
+            <span>fascicle/mcp</span>
+            <span>fascicle/otel</span>
+            <span>fascicle/stdio</span>
+            <span>fascicle/testing</span>
+            <span>fascicle/ui</span>
+            <span>fascicle/viewer</span>
+            <span>fascicle/web</span>
           </div>
         </div>
         <div>
@@ -460,7 +469,7 @@ class Component extends DCLogic {
   tokenize(line) {
     if (line === '') return { tokens: [{ t: ' ', color: '#E8DFCD' }] };
     const kw = new Set(['import', 'from', 'const', 'await', 'try', 'finally', 'return', 'type', 'of', 'new', 'let']);
-    const fns = new Set(['run', 'sequence', 'step', 'parallel', 'branch', 'map', 'pipe', 'retry', 'fallback', 'timeout', 'adversarial', 'ensemble', 'ensemble_step', 'tournament', 'consensus', 'checkpoint', 'suspend', 'scope', 'stash', 'use', 'improve', 'learn', 'chain', 'stage', 'output', 'call', 'until_suspended', 'create_engine', 'model_call', 'model_step', 'dispose', 'generate', 'rate', 'judge', 'publish', 'pick_winner', 'notify', 'analyze']);
+    const fns = new Set(['run', 'sequence', 'step', 'parallel', 'branch', 'map', 'pipe', 'retry', 'fallback', 'timeout', 'adversarial', 'ensemble', 'ensemble_step', 'tournament', 'consensus', 'checkpoint', 'suspend', 'scope', 'stash', 'use', 'improve', 'learn', 'chain', 'stage', 'output', 'call', 'until_suspended', 'gate', 'filesystem_store', 'create_engine', 'model_call', 'model_step', 'dispose', 'generate', 'rate', 'judge', 'publish', 'pick_winner', 'notify', 'analyze']);
     const re = /(\/\/[^\n]*)|('(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`|"(?:[^"\\]|\\.)*")|(\b\d[\w]*\b)|([A-Za-z_$][\w$]*)|(\s+)|([^])/g;
     const tokens = []; let m;
     while ((m = re.exec(line)) !== null) {
@@ -490,21 +499,22 @@ class Component extends DCLogic {
 
     if (!prim && !prov) {
       return ["import { run, sequence, step } from 'fascicle'", "",
-        "const flow = sequence([", "  step('add', (n) => n + 1),", "  step('double', (n) => n * 2),", "])", "",
+        "const flow = sequence([", "  step('add', (n: number) => n + 1),", "  step('double', (n: number) => n * 2),", "])", "",
         "await run(flow, 1) // 4"];
     }
 
     const effProv = prov || ((prim === 'model_step' || prim === 'model_call') ? 'anthropic' : null);
     const providerArg = (effProv && effProv !== 'anthropic') ? ", provider: '" + effProv + "'" : "";
-    const inner = effProv ? "model_step({ engine" + providerArg + ", model: '" + MODEL[effProv] + "' })" : "step('draft', (topic) => `Draft on: ${topic}`)";
+    const inner = effProv ? "model_step({ engine" + providerArg + ", model: '" + MODEL[effProv] + "' })" : "step('draft', (topic: string) => `Draft on: ${topic}`)";
+    const namedInner = effProv ? "model_step({ engine" + providerArg + ", id: 'draft', model: '" + MODEL[effProv] + "' })" : inner;
 
     let flowLines, input = "'Rust ownership'";
     switch (prim) {
-      case 'step': flowLines = ["const flow = step('double', (n) => n * 2)"]; input = "21"; break;
-      case 'sequence': flowLines = ["const flow = sequence([", "  step('brief', (topic) => `Brief: ${topic}`),", "  " + inner + ",", "])"]; break;
+      case 'step': flowLines = ["const flow = step('double', (n: number) => n * 2)"]; input = "21"; break;
+      case 'sequence': flowLines = ["const flow = sequence([", "  step('brief', (topic: string) => `Brief: ${topic}`),", "  " + inner + ",", "])"]; break;
       case 'parallel': flowLines = ["const flow = parallel({", "  summary: " + inner + ",", "  title:   " + inner + ",", "})"]; break;
-      case 'branch': flowLines = ["const flow = branch({", "  when: (x) => x.urgent,", "  then: " + inner + ",", "  otherwise: step('queue', (x) => x),", "})"]; break;
-      case 'map': flowLines = ["const flow = map({", "  items: (xs) => xs,", "  do: " + inner + ",", "  concurrency: 4,", "})"]; input = "['a', 'b', 'c']"; break;
+      case 'branch': flowLines = ["const flow = branch({", "  when: (topic: string) => topic.includes('urgent'),", "  then: " + inner + ",", "  otherwise: step('queue', (topic: string) => topic),", "})"]; break;
+      case 'map': flowLines = ["const flow = map({", "  items: (xs: string[]) => xs,", "  do: " + inner + ",", "  concurrency: 4,", "})"]; input = "['a', 'b', 'c']"; break;
       case 'pipe': flowLines = ["const flow = pipe(" + inner + ", (s) => s.slice(0, 280))"]; break;
       case 'model_step': flowLines = ["const flow = " + inner]; break;
       case 'model_call': flowLines = ["const flow = model_call({", "  engine" + providerArg + ",", "  model: '" + MODEL[effProv] + "',", "  project: (r) => `${r.content} (${r.usage.output_tokens} tokens)`,", "})"]; break;
@@ -512,16 +522,17 @@ class Component extends DCLogic {
       case 'retry': flowLines = ["const flow = retry(" + inner + ", { max_attempts: 3 })"]; break;
       case 'fallback': flowLines = ["const flow = fallback(", "  " + inner + ",", "  step('cached', () => CACHED),", ")"]; break;
       case 'timeout': flowLines = ["const flow = timeout(" + inner + ", 10_000)"]; break;
-      case 'loop': flowLines = ["const flow = loop({", "  init:   (topic) => topic,", "  body:   " + inner + ",", "  guard:  step('check', (s) => ({ stop: true, state: s })),", "  finish: (s) => s,", "  max_rounds: 5,", "})"]; break;
+      case 'loop': flowLines = ["const flow = loop({", "  init:   (topic: string) => topic,", "  body:   " + inner + ",", "  guard:  step('check', (s: string) => ({ stop: true, state: s })),", "  finish: (s: string) => s,", "  max_rounds: 5,", "})"]; break;
       case 'compose': flowLines = ["const flow = compose(" + inner + ", { name: 'draft-stage' })"]; break;
-      case 'adversarial': flowLines = ["const flow = adversarial({", "  build:    " + inner + ",", "  critique: judge,", "  accept:   (c) => c.approved,", "  max_rounds: 3,", "  project: (r) => r.candidate,", "})"]; break;
+      case 'adversarial': flowLines = ["const flow = adversarial({", "  build:    sequence([step('prompt', (b: { input: string }) => b.input), " + inner + "]),", "  critique: judge,", "  accept:   (c) => c['approved'] === true,", "  max_rounds: 3,", "  project: (r) => r.candidate,", "})"]; break;
       case 'ensemble': flowLines = ["const flow = ensemble({", "  members: { a: " + inner + ", b: " + inner + " },", "  score: (out) => rate(out),", "  project: (r) => r.winner,", "})"]; break;
       case 'ensemble_step': flowLines = ["const flow = ensemble_step({", "  members: { a: " + inner + ", b: " + inner + " },", "  score: judge,", "  rank_by: (r) => r.score,", "  project: (e) => e.winner,", "})"]; break;
       case 'tournament': flowLines = ["const flow = tournament({", "  members: { a: " + inner + ", b: " + inner + " },", "  compare: pick_winner,", "  project: (r) => r.winner,", "})"]; break;
-      case 'consensus': flowLines = ["const flow = consensus({", "  members: { a: " + inner + ", b: " + inner + ", c: " + inner + " },", "  agree: (r) => new Set(Object.values(r)).size === 1,", "  max_rounds: 3,", "  project: (r) => r.converged,", "})"]; break;
-      case 'checkpoint': flowLines = ["const flow = checkpoint(", "  " + inner + ",", "  { key: (topic) => `brief:${topic}` },", ")"]; break;
+      case 'consensus': flowLines = ["const flow = consensus({", "  members: { a: " + inner + ", b: " + inner + ", c: " + inner + " },", "  agree: (r) => new Set(Object.values(r)).size === 1,", "  max_rounds: 3,", "  project: (r) => r.result,", "})"]; break;
+      case 'checkpoint': flowLines = ["const flow = checkpoint(", "  " + namedInner + ",", "  { key: (topic: string) => `brief:${topic}` },", ")"]; break;
       case 'suspend': flowLines = ["const flow = suspend({", "  id: 'approve',", "  on: (input) => notify(input),", "  resume_schema: z.object({ ok: z.boolean() }),", "  combine: (input, r) => r.ok ? 'ship' : 'hold',", "})"]; break;
-      case 'scope': flowLines = ["const flow = scope([", "  stash('draft', " + inner + "),", "  use(['draft'], (s) => publish(s.draft)),", "])"]; break;
+      case 'gate': flowLines = ["const flow = gate(" + namedInner + ", {", "  id: 'approve',", "  store: filesystem_store({ root_dir: '.gates' }),", "})"]; break;
+      case 'scope': flowLines = ["const flow = scope([", "  stash('draft', " + inner + "),", "  use(['draft'], (s) => publish(String(s.draft))),", "])"]; break;
       case 'improve': flowLines = ["const flow = improve({", "  seed: step('seed', (t) => ({ content: t, score: 0 })),", "  propose: " + inner + ",", "  score: judge,", "  budget: { max_rounds: 5, patience: 2 },", "})"]; break;
       case 'learn': flowLines = ["const flow = learn({", "  flow: " + inner + ",", "  source: { kind: 'dir', dir: '.trajectories' },", "  analyzer: analyze,", "})"]; break;
       default: flowLines = ["const flow = " + inner];
@@ -529,7 +540,7 @@ class Component extends DCLogic {
 
     const flowText = flowLines.join('\n');
     const usesModel = /model_call|model_step/.test(flowText);
-    const known = ['sequence', 'step', 'parallel', 'branch', 'map', 'pipe', 'retry', 'fallback', 'timeout', 'loop', 'compose', 'chain', 'adversarial', 'ensemble', 'ensemble_step', 'tournament', 'consensus', 'checkpoint', 'suspend', 'scope', 'stash', 'use', 'improve', 'learn'];
+    const known = ['sequence', 'step', 'parallel', 'branch', 'map', 'pipe', 'retry', 'fallback', 'timeout', 'loop', 'compose', 'chain', 'adversarial', 'ensemble', 'ensemble_step', 'tournament', 'consensus', 'checkpoint', 'suspend', 'gate', 'scope', 'stash', 'use', 'improve', 'learn'];
     const used = known.filter(n => new RegExp('(?<!\\.)\\b' + n + '\\b').test(flowText));
     used.push('run');
     if (/\bmodel_call\b/.test(flowText)) used.push('model_call');
@@ -539,6 +550,7 @@ class Component extends DCLogic {
 
     const out = ["import { " + imports.join(', ') + " } from 'fascicle'"];
     if (/z\.object/.test(flowText)) out.push("import { z } from 'zod'");
+    if (/\bfilesystem_store\b/.test(flowText)) out.push("import { filesystem_store } from 'fascicle/adapters'");
     out.push("");
     if (usesModel) {
       out.push("const engine = create_engine({");
@@ -548,7 +560,7 @@ class Component extends DCLogic {
     }
     flowLines.forEach(l => out.push(l));
     out.push("");
-    out.push(prim === 'suspend' ? "const outcome = await run.until_suspended(flow, " + input + ")" : "await run(flow, " + input + ")");
+    out.push((prim === 'suspend' || prim === 'gate') ? "const outcome = await run.until_suspended(flow, " + input + ")" : "await run(flow, " + input + ")");
     return out;
   }
 
@@ -601,7 +613,7 @@ class Component extends DCLogic {
     });
     const groupDef = [
       { label: '1 · LEAVES', labelColor: '#7A5230', muted: false, names: ['step', 'model_step', 'model_call'] },
-      { label: '2 · ARMS', labelColor: '#7A5230', muted: false, names: ['sequence', 'parallel', 'map', 'pipe', 'retry', 'fallback', 'timeout', 'checkpoint', 'adversarial', 'ensemble_step', 'consensus', 'suspend', 'compose'] },
+      { label: '2 · ARMS', labelColor: '#7A5230', muted: false, names: ['sequence', 'parallel', 'map', 'pipe', 'retry', 'fallback', 'timeout', 'checkpoint', 'adversarial', 'ensemble_step', 'consensus', 'suspend', 'gate', 'compose'] },
       { label: '3 · SPINE', labelColor: '#7A5230', muted: false, names: ['chain', 'branch', 'loop'] },
       { label: 'ADVANCED · REACH FOR LAST', labelColor: '#a89f92', muted: true, names: ['ensemble', 'tournament', 'scope', 'improve', 'learn'] },
     ];
@@ -624,10 +636,10 @@ class Component extends DCLogic {
       }),
     }));
 
-    const providerHint = prov ? ('tap ' + prov + ' again to clear') : 'adds a model_call';
+    const providerHint = prov ? ('tap ' + prov + ' again to clear') : 'adds a model_step';
     let selectionNote;
     if (!prim && !prov) selectionNote = 'Showing the 60-second tour. Click a primitive (and optionally a provider) to build a live example.';
-    else selectionNote = 'Composing ' + (prim || 'model_call') + (prov ? ' with ' + prov : '') + '. Tap the highlighted chips again to reset.';
+    else selectionNote = 'Composing ' + (prim || 'model_step') + (prov ? ' with ' + prov : '') + '. Tap the highlighted chips again to reset.';
 
     return { codeLines, rawCode, fileName, providerChips, primGroups, providerHint, selectionNote, matrix, copy: (e) => this.copy(e) };
   }
