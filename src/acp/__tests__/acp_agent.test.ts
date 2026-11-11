@@ -1174,6 +1174,9 @@ describe('acp_agent: stored sessions', () => {
     const before = await open_session(await make(), { session: { cwd: a } })
     await before.session.prompt('older')
     await read_turn(before.session)
+    // updated_at counts in milliseconds, and two saves inside one of them list
+    // in directory order, so the newer session waits for the clock to move on.
+    await new Promise((resolve) => setTimeout(resolve, 5))
     const newer = await before.agent.buildSession({ cwd: a, additionalDirectories: [b], mcpServers: [] }).start()
     await newer.prompt('newer')
     await read_turn(newer)
