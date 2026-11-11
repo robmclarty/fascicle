@@ -931,7 +931,10 @@ describe('html_to_text malformed markup', () => {
   })
 })
 
-describe('html_to_text on hostile input', () => {
+// Each test here converts several large inputs and holds every one of them to
+// LINEAR_BUDGET_MS, so the test as a whole needs more room than the default,
+// most of all under coverage or mutation instrumentation.
+describe('html_to_text on hostile input', { timeout: 120_000 }, () => {
   const COUNT = 100_000
 
   it('survives a hundred thousand nested tags of each container kind', () => {

@@ -380,6 +380,26 @@ function bare_value_end(html: string, from: number): number {
 }
 
 /**
+ * Read the value of the attribute whose name ends at `from`, with the index just past it.
+ *
+ * A name with no `=` after it has an empty value. A quoted value that never
+ * closes reads as undefined, because the tag it belongs to never ends.
+ */
+function read_value(html: string, from: number): { value: string; end: number } | undefined {
+  const equals = skip_spaces(html, from)
+  if (html.charCodeAt(equals) !== EQUALS) return { value: '', end: equals }
+  const pos = skip_spaces(html, equals + 1)
+  const quote = html.charCodeAt(pos)
+  if (quote !== DOUBLE_QUOTE && quote !== SINGLE_QUOTE) {
+    const end = bare_value_end(html, pos)
+    return { value: html.slice(pos, end), end }
+  }
+  const close = html.indexOf(quote === DOUBLE_QUOTE ? '"' : "'", pos + 1)
+  if (close < 0) return undefined
+  return { value: html.slice(pos + 1, close), end: close + 1 }
+}
+
+/**
  * Read a tag from its name to its closing `>`, or undefined when the input ends first.
  *
  * `from` is the index of the name's first character. A quoted attribute value
@@ -405,23 +425,10 @@ function read_tag(html: string, from: number): Tag | undefined {
     // which is what guarantees each turn of the loop moves forward.
     const key_end = name_end(html, pos + 1, true)
     const key = html.slice(pos, key_end).toLowerCase()
-    let value = ''
-    pos = skip_spaces(html, key_end)
-    if (html.charCodeAt(pos) === EQUALS) {
-      pos = skip_spaces(html, pos + 1)
-      const quote = html.charCodeAt(pos)
-      if (quote === DOUBLE_QUOTE || quote === SINGLE_QUOTE) {
-        const close = html.indexOf(quote === DOUBLE_QUOTE ? '"' : "'", pos + 1)
-        if (close < 0) return undefined
-        value = html.slice(pos + 1, close)
-        pos = close + 1
-      } else {
-        const end = bare_value_end(html, pos)
-        value = html.slice(pos, end)
-        pos = end
-      }
-    }
-    if (!attrs.has(key)) attrs.set(key, value)
+    const read = read_value(html, key_end)
+    if (read === undefined) return undefined
+    pos = read.end
+    if (!attrs.has(key)) attrs.set(key, read.value)
   }
 }
 
@@ -527,6 +534,32 @@ function tokenizer(html: string): () => Token | undefined {
     }
     skip_past('>', pos + 2)
   }
+  // A declaration, a processing instruction, and an end tag that names
+  // nothing are markup with no token of their own.
+  const skip_non_tag = (code: number): boolean => {
+    if (code === BANG) {
+      skip_declaration()
+      return true
+    }
+    if (code === QUESTION || (code === SLASH && !is_letter(html.charCodeAt(pos + 2)))) {
+      skip_past('>', pos + 2)
+      return true
+    }
+    return false
+  }
+  const tag_token = (tag: Tag, closing: boolean): Token => {
+    pos = tag.end
+    if (closing) return { kind: 'close', name: tag.name }
+    if (!RAW_ENDS.has(tag.name)) {
+      return { kind: 'open', name: tag.name, attrs: tag.attrs, self_closing: tag.self_closing }
+    }
+    if (tag.self_closing) return { kind: 'raw', name: tag.name, text: '' }
+    const found = raw_end_index(html, tag.name, pos)
+    const text = html.slice(pos, found < 0 ? length : found)
+    // The end tag is read as any tag is, so a `>` in one of its quoted attributes does not end it.
+    pos = found < 0 ? length : (read_tag(html, found + 2)?.end ?? length)
+    return { kind: 'raw', name: tag.name, text }
+  }
   return () => {
     while (pos < length) {
       if (html.charCodeAt(pos) !== LT || !starts_markup(html, pos)) {
@@ -535,28 +568,11 @@ function tokenizer(html: string): () => Token | undefined {
         return { kind: 'text', text: html.slice(start, pos) }
       }
       const code = html.charCodeAt(pos + 1)
-      if (code === BANG) {
-        skip_declaration()
-        continue
-      }
+      if (skip_non_tag(code)) continue
       const closing = code === SLASH
-      if (code === QUESTION || (closing && !is_letter(html.charCodeAt(pos + 2)))) {
-        skip_past('>', pos + 2)
-        continue
-      }
       const tag = read_tag(html, closing ? pos + 2 : pos + 1)
       if (tag === undefined) break
-      pos = tag.end
-      if (closing) return { kind: 'close', name: tag.name }
-      if (!RAW_ENDS.has(tag.name)) {
-        return { kind: 'open', name: tag.name, attrs: tag.attrs, self_closing: tag.self_closing }
-      }
-      if (tag.self_closing) return { kind: 'raw', name: tag.name, text: '' }
-      const found = raw_end_index(html, tag.name, pos)
-      const text = html.slice(pos, found < 0 ? length : found)
-      // The end tag is read as any tag is, so a `>` in one of its quoted attributes does not end it.
-      pos = found < 0 ? length : (read_tag(html, found + 2)?.end ?? length)
-      return { kind: 'raw', name: tag.name, text }
+      return tag_token(tag, closing)
     }
     pos = length
     return undefined
@@ -1245,6 +1261,16 @@ function close_list(state: State): void {
 }
 
 /**
+ * Close the open item of the innermost list, or the open item outside any list.
+ */
+function close_item(state: State): void {
+  const ctx = state.ctx
+  const list = ctx.lists[ctx.lists.length - 1]
+  const open = list === undefined ? ctx.orphan : list.item
+  if (open !== undefined) pop_to(ctx, open)
+}
+
+/**
  * Open a list item, closing the item before it when its end tag was left out.
  *
  * Items of one list sit on consecutive lines whatever blocks they hold. An
@@ -1252,9 +1278,8 @@ function close_list(state: State): void {
  */
 function open_item(state: State): void {
   const ctx = state.ctx
+  close_item(state)
   const list = ctx.lists[ctx.lists.length - 1]
-  const open = list === undefined ? ctx.orphan : list.item
-  if (open !== undefined) pop_to(ctx, open)
   flush_inline(ctx)
   if (list !== undefined && list.count > 0) ctx.gap = 1
   else request_gap(ctx, 1)
@@ -1266,16 +1291,6 @@ function open_item(state: State): void {
     list.count += 1
   }
   open_margin(ctx, 'item', marker)
-}
-
-/**
- * Close the open item of the innermost list.
- */
-function close_item(state: State): void {
-  const ctx = state.ctx
-  const list = ctx.lists[ctx.lists.length - 1]
-  const open = list === undefined ? ctx.orphan : list.item
-  if (open !== undefined) pop_to(ctx, open)
 }
 
 /**
@@ -1323,6 +1338,15 @@ function open_cell(state: State, token: OpenToken): void {
 }
 
 /**
+ * Handle the end tag of a part of a table that is being read as plain blocks.
+ */
+function close_plain_table_part(ctx: Ctx, name: string): void {
+  if (name === 'table') ctx.fake_tables -= 1
+  if (name === 'table' || name === 'caption') break_block(ctx, 2)
+  else if (!CELL_TAGS.has(name)) break_block(ctx, 1)
+}
+
+/**
  * Handle the end tag of a table, a row, a row group, a cell, or a caption.
  *
  * A cell's end tag is ignored while a table inside that cell is still open,
@@ -1331,9 +1355,7 @@ function open_cell(state: State, token: OpenToken): void {
 function close_table_part(state: State, name: string): void {
   const ctx = state.ctx
   if (ctx.fake_tables > 0) {
-    if (name === 'table') ctx.fake_tables -= 1
-    if (name === 'table' || name === 'caption') break_block(ctx, 2)
-    else if (!CELL_TAGS.has(name)) break_block(ctx, 1)
+    close_plain_table_part(ctx, name)
     return
   }
   if (CELL_TAGS.has(name)) {
@@ -1500,13 +1522,27 @@ function dropped(state: State, token: Token): boolean {
   const skip = state.skip
   if (skip === undefined) return false
   if (token.kind === 'close') {
-    if (token.name === skip.name) {
-      skip.depth -= 1
-      if (skip.depth === 0) state.skip = undefined
-    } else if (token.name === FOREIGN_OBJECT && skip.foreign > 0) skip.foreign -= 1
+    close_in_dropped(state, skip, token.name)
     return true
   }
   if (token.kind !== 'open') return true
+  return open_in_dropped(state, skip, token)
+}
+
+/**
+ * Take an end tag met while dropping, which ends the dropping when it closes the outermost dropped element.
+ */
+function close_in_dropped(state: State, skip: Skip, name: string): void {
+  if (name === skip.name) {
+    skip.depth -= 1
+    if (skip.depth === 0) state.skip = undefined
+  } else if (name === FOREIGN_OBJECT && skip.foreign > 0) skip.foreign -= 1
+}
+
+/**
+ * Take a start tag met while dropping, and say whether it was dropped too.
+ */
+function open_in_dropped(state: State, skip: Skip, token: OpenToken): boolean {
   const in_svg = skip.name === 'svg'
   if (token.name === skip.name) {
     if (!(in_svg && token.self_closing)) skip.depth += 1
