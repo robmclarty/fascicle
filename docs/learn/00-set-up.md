@@ -114,8 +114,8 @@ If your agent isn't Claude Code and doesn't follow `@` imports, paste the two
 files into its own instructions file instead, or ask it to read them at the
 start of each session.
 
-Releases after 0.16.3 ship the primer inside the package, too, so in a project
-of your own that installs Fascicle, without the clone beside it, the import is
+The primer ships inside the package, too, so in a project of your own that
+installs Fascicle, without the clone beside it, the import is
 `@node_modules/fascicle/dist/AGENTS.md`. The tutoring notes are only in the
 clone, since they're for the course.
 
@@ -158,12 +158,13 @@ Last, see which version of Fascicle you got:
 pnpm list fascicle
 ```
 
-Lessons 0 to 13 were written against 0.16.3 and checked against 0.15.0, and
-lesson 14 needs 0.17.0, the release that adds the stand-in engine that it uses.
-Where a later release changes what you'll see, the lesson says so. If your
-pnpm is set to wait a day or two before it installs a brand-new release (its
-`minimumReleaseAge` setting), you might be a release behind the newest, and
-that's fine, as long as you have 0.17.0 by the time you reach lesson 14.
+The course needs 0.18.0 or later, and a check that walks every lesson against
+each new build keeps it in step with the current release, so what you see
+should match what the lessons show. If your pnpm is
+set to wait a day or two before it installs a brand-new release (its
+`minimumReleaseAge` setting), you might be a release behind the newest. That's
+fine as long as you have 0.18.0, and if you don't, run
+`pnpm add fascicle@latest`.
 
 ## If Something Went Wrong
 

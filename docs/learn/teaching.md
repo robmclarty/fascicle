@@ -118,8 +118,8 @@ replace them with your own.
 
 | When | Lesson | Who | What they tried | What they expected | What happened | Minutes lost | Fix idea |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 0:52 | 4 | person | ran a chain without `.input<Pair>()` | it to work | errors about `never` | 4 | say why in the lesson's first example |
-| 1:41 | 5 | agent | gave a stub content function untyped parameters | it to compile | implicit `any` errors from `tsc` | 2 | already in the primer, and it read past it |
+| 0:52 | 4 | person | ran a chain without `.input<Pair>()` | it to work | a screen of `ChainInputUndeclared` errors, and missed the fix written inside them | 4 | show the error in the lesson's first example |
+| 1:41 | 9 | agent | ran a step with `step.run(...)` inside another step's body | the inner step in the trajectory | no span for it, so the viewer never drew it | 2 | already in the primer, and it read past it |
 
 Keep a short second list as well, of the moments that landed, the times the
 learner said "oh." Those are worth protecting when the docs change.
@@ -136,30 +136,17 @@ These came up while the course was being checked, so watch for them and warn
 the learner when they're close:
 
 - **pnpm can hold back a new release.** A `minimumReleaseAge` setting makes
-  pnpm wait a day or two before it installs a brand-new version. Lessons 0 to
-  13 work on 0.15.0 and later, and lesson 14 needs 0.17.0, so it seldom matters,
-  but it can confuse someone who just read the release notes.
-- **Up to 0.16.3, a wrongly ordered `sequence` gives a noisy error.** It's
-  `No overload matches this call`, twice. Teach the habit of reading from the
-  last line up. Later releases print it once, on the step that doesn't fit.
-- **A chain needs its input type.** Without it, the errors talk about `never`
-  up to 0.16.3, and later releases say to call `.input<T>()`.
-- **Up to 0.16.3, `branch` arms must return the same type.** Later releases
-  return the union of the two.
-- **Up to 0.16.3, a model step in a `parallel` needs its type annotated** as
-  `Step<string, T>`, or the input type becomes odd.
-- **Prompts must show the JSON shape, up to 0.16.3.** On those versions the
-  native transport never shows the model the schema, so a prompt without an
-  example costs an extra round trip, and a small local model may fail outright.
-- **Up to 0.16.3, a stub's `content` function needs typed parameters.**
+  pnpm wait a day or two before it installs a brand-new version. The course
+  needs 0.18.0 or later, so a learner whose pnpm held it back gets an older
+  release, and the lessons that rely on something newer stop matching what
+  they see. Have them check `pnpm list fascicle` first.
+- **A wrongly ordered `sequence` gives a long error.** It's
+  `No overload matches this call`, on the step that doesn't fit, and the part
+  that matters is the `SequenceJointMismatch` type, which names the joint. Teach
+  the habit of finding that part first.
+- **A chain needs its input type.** Without it, every error names
+  `ChainInputUndeclared`, whose text says to call `.input<T>()`, though a
+  learner who sees a screen of them may not read that far.
 - **Vitest and Fascicle both export `describe`.**
-- **The viewer on 0.15** gets confused by a trajectory file that holds more than
-  one run, so delete the file between runs there.
-- **Up to 0.16.3, the viewer labels a loop by its id**, as `LOOP_1`, and adds
-  together the runs of steps that share an id, so in lesson 11 both `output`
-  steps show the total of the two.
-- **Up to 0.16.3, `adversarial` draws its scopes and stashes**, which is why
-  lesson 11 builds its loop with `loop`.
-- **Up to 0.16.3, the viewer labels a loop's guard `loop_1_guard`**, an id
-  that Fascicle makes up for a plain function, so say what it is before the
-  learner asks. Later releases label it `guard`.
+- **A loop's guard turns up in the viewer as a puck called `guard`**, so say
+  what it is before the learner asks.

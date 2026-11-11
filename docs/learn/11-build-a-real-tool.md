@@ -282,13 +282,11 @@ so a bad question fails loudly.
 That's the stub's second draft, the one that passed the checks. Open the
 trajectory in the viewer (`pnpm exec fascicle-viewer .trajectory.jsonl`) and
 you'll see the loop drawn as a box around the steps that it repeated, with
-`write` marked `×2`, because it ran twice. The last puck in the box is the
-loop's guard, the check that decides whether to go round again. On 0.16.3 and
-earlier, the box is labelled `LOOP_1`, the loop's id, and the guard
-`loop_1_guard`, an id that Fascicle made up for a plain function, and both
-`output` steps show the runs of the two added together. Later releases label
-them `DRAFT_UNTIL_CLEAN`, from the loop's `name`, and `guard`, and count each
-step on its own.
+`write` marked `×2`, because it ran twice. The box is labelled
+`DRAFT_UNTIL_CLEAN`, from the loop's `name`. The last puck in it is labelled
+`guard`, and that's the loop's guard, the check that decides whether to go
+round again. Each step counts only its own runs, even where two steps share
+the name `output`.
 
 Now run it live, on your real changes:
 
@@ -341,10 +339,9 @@ const draft = adversarial({
 ```
 
 It does the same job, and the critic can be a model instead of code, which is
-where it really earns its keep. On 0.16.3 and earlier, its diagram also shows
-the scopes and stashes that it's built from, which is why this lesson started
-with `loop`. Later releases draw it as its `build` and its `critique`, and
-`describe.diagram(draft, { internals: true })` shows the rest.
+where it really earns its keep. Its diagram draws it as its `build` and its
+`critique`, and `describe.diagram(draft, { internals: true })` shows the scopes
+and stashes that it's built from.
 
 ## With Your Agent
 

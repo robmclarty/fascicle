@@ -102,23 +102,17 @@ pnpm exec tsc --noEmit
 ```text
 error TS2769: No overload matches this call.
   The last overload gave the following error.
-    Type 'Step<Pair, number>' is not assignable to type 'Step<number, number>'.
-      Type 'number' is not assignable to type 'Pair'.
-error TS2769: No overload matches this call.
-  The last overload gave the following error.
-    Type 'Step<number, string>' is not assignable to type 'Step<number, number>'.
-      Type 'string' is not assignable to type 'number'.
+    Type 'Step<number, number>' is not assignable to type 'Step<number, number> & SequenceJointMismatch<"after children[1]", string, number>'.
+      Type 'Step<number, number>' is missing the following properties from type 'SequenceJointMismatch<"after children[1]", string, number>': upstream_output, this_step_accepts, sequence_joint_mismatch
 ```
 
-That's noisy, so read it from the bottom up. The last line says it all: a string
-showed up where a number was expected. `say` hands `double` a sentence, and
-`double` can only double numbers. (That's what 0.16.3 and earlier print. Later
-releases print one error, on `double`, and its type names the joint:
+That's a mouthful, so look for the part that names the joint.
 `SequenceJointMismatch<"after children[1]", string, number>` says that a string
-arrives after the second step, where `double` takes a number.) TypeScript
-checks every joint in a sequence
-that you write out as a list of steps, which means a flow that type-checks is a
-flow whose pieces fit together. Put the
+arrives after the second step, where the next step takes a number. The error
+sits on `double`, since that's the step that can't take what it's handed: `say`
+hands `double` a sentence, and `double` can only double numbers. TypeScript
+checks every joint in a sequence that you write out as a list of steps, which
+means a flow that type-checks is a flow whose pieces fit together. Put the
 order back before you go on.
 
 ## Flows Inside Flows

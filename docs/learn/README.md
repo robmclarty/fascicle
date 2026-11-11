@@ -25,11 +25,9 @@ from another side.
 - **You build as you go.** Lesson 0 sets up a small project of your own, called
   the workbench, and every lesson after it adds to that project.
 - **Everything runs.** Every lesson ends with something that you run yourself.
-  The code in lessons 0 to 13 was run against Fascicle 0.16.3 and 0.15.0 before
-  it went into the lessons, and lesson 14's against 0.17.0, the release that
-  adds the stand-in that it uses. A check in the repository walks every lesson
-  against each new build as well, so the code keeps working as Fascicle
-  changes.
+  The course needs Fascicle 0.18.0 or later. A check in the repository walks
+  every lesson against each new build, so the course doesn't fall behind the
+  current release as Fascicle changes.
 - **It's free until it isn't.** Lessons 0 to 5 need no API key and cost
   nothing. Lesson 6 connects a real model, and a run of the lesson code from
   then on costs a hundredth or two of a cent, until lesson 14, which runs on a
@@ -107,8 +105,8 @@ files are written for it:
 - [agent-primer.md](./agent-primer.md) is the reference that an agent needs to
   build with Fascicle: the vocabulary with its exact shapes, the sharp edges
   with their real error messages, and a way to check its own work. It stays
-  useful long after the course is over, and releases after 0.16.3 ship it in
-  the package as `node_modules/fascicle/dist/AGENTS.md`.
+  useful long after the course is over, and it ships in the package as
+  `node_modules/fascicle/dist/AGENTS.md`.
 - [agent-tutor.md](./agent-tutor.md) asks your agent to teach rather than take
   over, and gives it notes on what each lesson is for.
 

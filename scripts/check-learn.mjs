@@ -6,7 +6,8 @@
  * commands they run, and what each command prints. The walk builds a
  * workbench from lesson 0, writes each lesson's files in order through
  * lesson 14 (with the in-place edits that lessons 5, 8, 9, and 13 ask for),
- * runs the commands, and holds what they print to the lesson's text. Then it
+ * runs the commands, and holds what they print to the lesson's text, the
+ * type errors that lessons 2 and 4 show for a mistake included. Then it
  * compiles and runs the fragments that a lesson shows inside a larger file,
  * each in the context its lesson implies, and the agent primer's sketches.
  *
@@ -259,6 +260,11 @@ function walk_basics(wb) {
   wb.apply('02', 0, '02-sequence.ts');
   wb.expect('L2 sequence', `${TSX} 02-sequence.ts`, wb.text('02', 2));
   wb.tsc('L2 tsc');
+  // The steps out of order, as the lesson asks, in a file of their own that
+  // goes once the error is held, since every check after it compiles the lot.
+  wb.write('02-swapped.ts', wb.read('02-sequence.ts').replace('sequence([add, double, say])', 'sequence([add, say, double])'));
+  wb.tsc('L2 tsc names the joint', { fails: true, contains: wb.text('02', 7) });
+  wb.sh('rm 02-swapped.ts');
 
   // Lesson 3's file grows as the lesson goes, one composer at a time.
   const shapes = [wb.file('03', 0, '03-shapes.ts'), wb.fragment('03', 3), wb.fragment('03', 6), wb.fragment('03', 8)];
@@ -268,6 +274,15 @@ function walk_basics(wb) {
 
   wb.apply('04', 1, '04-chain.ts');
   wb.expect('L4 chain', `${TSX} 04-chain.ts`, wb.text('04', 3));
+  // tsc prints a position before each error, so each of the lesson's lines is
+  // held to the output on its own.
+  wb.write('04-undeclared.ts', wb.read('04-chain.ts').replace('.input<Pair>()', ''));
+  const undeclared = wb.sh(TSC);
+  const missing = norm(wb.text('04', 4))
+    .split('\n')
+    .filter((line) => !undeclared.stdout.includes(line));
+  wb.check('L4 tsc names the missing input', undeclared.code !== 0 && missing.length === 0, missing.join('\n'));
+  wb.sh('rm 04-undeclared.ts');
 }
 
 /** Lessons 5 and 6: fake leaves, then model leaves on a stub, then the engine module. */

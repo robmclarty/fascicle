@@ -12,9 +12,7 @@ fail, put a cap on how long the model can keep going, and make it ask before it
 replaces anything. Then you'll read back exactly what the model was sent.
 
 You still don't need a key. A stand-in plays the model again, but this one keeps
-Fascicle's real tool loop, so your tools really run. It arrived in Fascicle
-0.17.0, so check `pnpm list fascicle`, and if yours is older, run
-`pnpm add fascicle@latest` first. About thirty minutes.
+Fascicle's real tool loop, so your tools really run. About thirty minutes.
 
 ## A Tool Is a Function the Model Can Ask For
 
@@ -498,8 +496,8 @@ read differently than they would have this morning.
 - [cookbook.md](../cookbook.md) has worked patterns for retries, fan-out,
   judges, tool loops, and people in the loop.
 - [web.md](../web.md) has two tools that you don't have to write, one that
-  fetches a page and one that searches the web. They ship from `fascicle/web`
-  in 0.18.0 and later.
+  fetches a page and one that searches the web, and you import them from
+  `fascicle/web`.
 - [testing.md](../testing.md) covers the four stand-in engines in depth.
 - [troubleshooting.md](../troubleshooting.md) maps errors to their causes.
 - [examples/release-notes/](../../examples/release-notes/) is a whole agent in

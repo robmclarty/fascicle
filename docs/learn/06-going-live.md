@@ -275,12 +275,10 @@ piece at a time, and the engine puts the pieces back together before the step
 hands you the answer. On OpenRouter, `stream_options` asks for the token counts
 at the end of the stream.
 
-These are the bodies that Fascicle 0.17.0 sends. Its `capture` option recorded
-them, and [lesson 8](./08-when-things-break.md) comes back to it. Earlier
-releases send a little less. Before 0.17.0 neither body carries `stream`, and
-on 0.16.3 the system prompt stops at your own instructions, since the schema
-joined it in 0.16.4. [What a Harness Does](../what-a-harness-does.md#two-dialects-one-array)
-lays the two dialects side by side.
+Fascicle's `capture` option recorded these bodies, and
+[lesson 8](./08-when-things-break.md) comes back to it.
+[What a Harness Does](../what-a-harness-does.md#two-dialects-one-array) lays
+the two dialects side by side.
 
 ## What It Costs
 
@@ -297,22 +295,20 @@ along on every call, so that comes to a few tenths of a cent a run.
 | What you see | What it means |
 | --- | --- |
 | `OPENROUTER_API_KEY is not set: add it to .env, or export it in your shell` | You left off `--env-file=.env`, or `.env` doesn't have the line. |
-| `provider_auth_error: openrouter authentication failed (401): User not found.` | The key is wrong, or it's been revoked. Releases after 0.17.4 name the key to check, as `provider_auth_error: openrouter authentication failed (401): User not found: check providers.openrouter.api_key`. |
+| `provider_auth_error: openrouter authentication failed (401): User not found: check providers.openrouter.api_key` | The key is wrong, or it's been revoked. |
 | `provider_error: openrouter API error 400: anthropic/claude-haiku-9 is not a valid model ID` | That model name doesn't exist on that provider. Look it up in the provider's model list, and copy it exactly. |
 | `unknown FASCICLE_PROVIDER "open-router"` | A typo in the setting. |
-| `provider_error: ollama native: network failure: fetch failed`, after a pause | Ollama isn't running, so the engine retried a few times and gave up. Start it with `ollama serve`. Releases after 0.17.3 count the tries first, as `provider_error: network after 4 attempts: ollama native: network failure: fetch failed`, and releases after 0.17.4 name the address and the fix, as `provider_error: network after 4 attempts: ollama could not be reached at http://localhost:11434/api/chat: fetch failed (ECONNREFUSED): check base_url, and that the server is running (ollama serve)`. |
+| `provider_error: network after 4 attempts: ollama could not be reached at http://localhost:11434/api/chat: fetch failed (ECONNREFUSED): check base_url, and that the server is running (ollama serve)`, after a pause | Ollama isn't running, so the engine tried four times and gave up. Start it with `ollama serve`. |
 | `schema_validation_error` from a live model | The model couldn't produce the shape, even after one try at fixing it. Try a bigger model, or make the example in the prompt clearer. |
-| `claude_cli_error: spawn claude ENOENT` | Claude Code isn't installed, or `claude` isn't on your `PATH`. Releases after 0.17.4 say so, as `claude_cli_error: failed to spawn 'claude': spawn claude ENOENT: install Claude Code, or set providers.claude_cli.binary to where it is`. |
-| `claude_cli_error: claude CLI exited with code 1:`, with nothing after it | Claude Code isn't logged in. Run `claude auth login`. Releases after 0.16.4 say so, as `provider_auth_error: claude CLI reported an auth failure: Not logged in · Please run /login`, and releases after 0.17.4 end it with `: run claude auth login`. |
+| `claude_cli_error: failed to spawn 'claude': spawn claude ENOENT: install Claude Code, or set providers.claude_cli.binary to where it is` | Claude Code isn't installed, or `claude` isn't on your `PATH`. |
+| `provider_auth_error: claude CLI reported an auth failure: Not logged in · Please run /login: run claude auth login` | Claude Code isn't logged in. Run `claude auth login`. |
 
-Every one of those messages but the last says what went wrong, and releases
-after 0.16.4 fix the last one. Releases after 0.17.4 also say what to do
-whenever the fix is in your setup: the key to check, the address that didn't
-answer, the program to install, or the command that logs you in. The 400 is the
-exception, since only the provider knows why it refused, so the message passes
-on the provider's own reason, which here names the model. On earlier releases,
-the right-hand column has the fix. Fascicle's errors are written that way on
-purpose, and it's a good standard for your own.
+Every one of those messages says what went wrong, and each one also says what
+to do whenever the fix is in your setup: the key to check, the address that
+didn't answer, the program to install, or the command that logs you in. The 400
+is the exception, since only the provider knows why it refused, so the message
+passes on the provider's own reason, which here names the model. Fascicle's
+errors are written that way on purpose, and it's a good standard for your own.
 
 ## With Your Agent
 

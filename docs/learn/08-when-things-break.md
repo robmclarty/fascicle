@@ -295,7 +295,7 @@ raw reply on `raw_text`, and its complaints on `schema_issues`. Then copy the
 reply that caused the trouble into a stub, and you can reproduce the failure as
 many times as you like, for free, while you fix it.
 
-From Fascicle 0.17.0, you can ask. Give a model step `capture: 'turns'`, or
+You can ask for them, though. Give a model step `capture: 'turns'`, or
 set it in an engine's `defaults`, and the trajectory holds each model turn's
 request and reply as well. A model turn is one request to the provider and the
 reply that comes back, so each of the solver's model calls takes one, or two

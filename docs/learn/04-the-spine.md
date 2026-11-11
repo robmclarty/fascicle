@@ -89,18 +89,15 @@ the diagram.
 ## Say What Goes In
 
 Leave off `.input<Pair>()` and TypeScript can't tell what the chain takes in,
-so it assumes the input can never exist (the type `never`), and you'll see
-errors like these:
+so every line that reads the input fails, and you'll see errors like these:
 
 ```text
-error TS2339: Property 'a' does not exist on type 'never'.
-error TS2345: Argument of type '{ a: number; b: number; }' is not assignable to parameter of type 'never'.
+error TS2339: Property 'a' does not exist on type 'ChainInputUndeclared<"call .input<T>() on the chain to say what it takes">'.
+error TS2353: Object literal may only specify known properties, and 'a' does not exist in type 'ChainInputUndeclared<"call .input<T>() on the chain to say what it takes">'.
 ```
 
-When you see `never` in an error about a chain, the fix is almost always to say
-what goes in. That's what 0.16.3 and earlier print. Later releases put the fix
-in the type itself, as in
-`Property 'a' does not exist on type 'ChainInputUndeclared<"call .input<T>() on the chain to say what it takes">'`. You'll also see chains opened the other way in Fascicle's own
+The type in each error is a note that tells you the fix, which is to say what
+goes in. You'll also see chains opened the other way in Fascicle's own
 docs, as `chain<Pair, 'pair'>('pair')`, which means exactly the same thing, and
 as `chain<Pair>()`, which names the input `input` instead of `pair`.
 

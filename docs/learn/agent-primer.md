@@ -4,9 +4,7 @@ This file is for a coding agent (Claude Code, Codex, Cursor, or another) that's
 working in a project which uses the published `fascicle` package. A person who
 is learning Fascicle will usually import it from their `CLAUDE.md`, as
 [lesson 0](./00-set-up.md) shows. Every shape, rule, and error message below
-was checked against `fascicle` 0.16.3, and against 0.15.0 where the two differ,
-except what's marked with a later release, which was checked against the
-release that added it. A rule that a later release changes says what changed.
+was checked against the `fascicle` release that this file ships in.
 
 Your training data probably holds little or nothing about Fascicle, so treat
 this file and the installed type declarations as the truth, and don't fill gaps
@@ -22,17 +20,12 @@ from other agent frameworks.
   `RunContext` (which holds `ctx.call` and `ctx.abort`), and `StepOptions` live
   in files with generated names like `dist/types-<hash>.d.ts`, so search
   `dist/*.d.ts` for a name when `index.d.ts` only re-exports it.
-- **The package README** ships at `node_modules/fascicle/README.md`, and
-  releases after 0.16.3 ship this primer too, at
-  `node_modules/fascicle/dist/AGENTS.md`, with its links pointed at GitHub.
+- **The package README** ships at `node_modules/fascicle/README.md`, and this
+  primer ships beside it, at `node_modules/fascicle/dist/AGENTS.md`, with its
+  links pointed at GitHub.
 - **The repository**, when the person has it cloned (often at `../fascicle`),
   holds the docs and the runnable examples. `docs/blueprint.md` is the app
   architecture, and `docs/composition.md` has one line on every composer.
-- **0.16.3 and 0.15.0 differ only in the viewer.** On 0.15 it mishandles a
-  trajectory file that holds more than one run, so delete `.trajectory.jsonl`
-  between runs, and from 0.16 on it follows the newest run. What's marked 0.17.0
-  and later (the tool-loop double, capture, and the duplicate-name check) isn't
-  there at all on either of them.
 
 ## The Model in Four Sentences
 
@@ -60,22 +53,22 @@ The docs use these words in one sense each, and the API's names lean on them
 - **Transcript.** The array of messages that a tool loop keeps across its
   turns. `prepare_step` changes what one turn sends and leaves the transcript
   alone.
-- **Capture.** What the `capture` option records (0.17.0 and later), each model
-  turn's request and reply. It has nothing to do with `make_capture_engine`.
+- **Capture.** What the `capture` option records, each model turn's request and
+  reply. It has nothing to do with `make_capture_engine`.
 - **Prompt cache.** A provider's short-lived store of a request's prefix, which
-  the `cache` option asks for (0.17.0 and later).
+  the `cache` option asks for.
 
 ## Imports
 
 | From | What |
 | --- | --- |
-| `fascicle` | `run`, `step`, `sequence`, `parallel`, `branch`, `map`, `pipe`, `chain`, `loop`, `retry`, `fallback`, `timeout`, `compose`, `adversarial`, `ensemble_step`, `consensus`, `checkpoint`, `suspend`, `gate`, `describe`, `model_step`, `model_call`, `create_engine`, `define_tool`, `error_path`, `captured_turns` and `replay_turn` (0.17.0 and later), the error classes, and the types (`Step`, `Engine`, `RunContext`, `GenerateOptions`, ...) |
+| `fascicle` | `run`, `step`, `sequence`, `parallel`, `branch`, `map`, `pipe`, `chain`, `loop`, `retry`, `fallback`, `timeout`, `compose`, `adversarial`, `ensemble_step`, `consensus`, `checkpoint`, `suspend`, `gate`, `describe`, `model_step`, `model_call`, `create_engine`, `define_tool`, `error_path`, `captured_turns`, `replay_turn`, the error classes, and the types (`Step`, `Engine`, `RunContext`, `GenerateOptions`, ...) |
 | `fascicle/adapters` | `filesystem_logger`, `http_logger`, `stderr_logger`, `tee_logger`, `noop_logger`, `filesystem_store` |
-| `fascicle/testing` | `make_stub_engine`, `make_script_engine`, `make_capture_engine`, `make_loop_engine` and `assert_prefix_stable` (0.17.0 and later), `text_of`, `engine_from_generate` |
+| `fascicle/testing` | `make_stub_engine`, `make_script_engine`, `make_capture_engine`, `make_loop_engine`, `assert_prefix_stable`, `text_of`, `engine_from_generate` |
 | `fascicle/agents` | `define_agent` |
 | `fascicle/viewer` | `start_viewer` |
 | `fascicle/mcp` | `mcp_client`, `serve_flow` |
-| `fascicle/web` | `web_tools`, `searxng_search`, `brave_search` (0.18.0 and later) |
+| `fascicle/web` | `web_tools`, `searxng_search`, `brave_search` |
 
 You'll want one of four more subpaths when you join a flow to a host. They're
 `fascicle/acp` for an editor that speaks the Agent Client Protocol,
@@ -87,8 +80,9 @@ Two commands ship in the package: `fascicle-viewer <trajectory.jsonl>` and
 `fascicle-diagram <module.ts>`, both run with `pnpm exec`. `fascicle-diagram`
 reads the module's `flow` export, which is either a Step or a function with no
 arguments that builds one, and it takes `--prefix ' * '`, `--width <n>`, and
-`--export <name>`, plus `--internals` after 0.16.3 and `--outline` after
-0.17.2, which prints the plain `describe` outline instead of the diagram.
+`--export <name>`, as well as `--internals`, which draws a named composite's
+insides, and `--outline`, which prints the plain `describe` outline instead of
+the diagram.
 
 ## The Core Vocabulary
 
@@ -149,9 +143,9 @@ await engine.dispose()             // always, in finally
 const look_up = define_tool({ name: 'look_up', description: 'when to call it', input_schema: z.object({ key: z.string() }), execute: ({ key }) => find(key) })
 model_step({ engine, model, system, tools: [look_up], max_steps: 6 })  // a tool loop; max_steps (default 10) caps its model turns
 model_step({ ...config, on_tool_approval })   // asked before any tool flagged needs_approval runs
-model_step({ ...config, tools: web_tools() }) // 0.18.0 and later, from 'fascicle/web': web_fetch, and web_search too with { search }
-model_step({ ...config, capture: 'turns' })   // 0.17.0 and later: each turn's request and reply go into the trajectory
-captured_turns(events)                        // 0.17.0 and later: each captured turn's whole request, rebuilt
+model_step({ ...config, tools: web_tools() }) // from 'fascicle/web': web_fetch, and web_search too with { search }
+model_step({ ...config, capture: 'turns' })   // each turn's request and reply go into the trajectory
+captured_turns(events)                        // each captured turn's whole request, rebuilt
 ```
 
 Five providers need no extra package on `transport: 'native'`. They're
@@ -170,46 +164,35 @@ messages are the real ones.
    meta.name`. Put prose in `{ name }`.
 2. **A step takes one input.** Bundle several values into an object.
 3. **Open a chain with its input type**, `chain('name').input<T>()` or the
-   equivalent `chain<T, 'name'>('name')`. Without it, through 0.16.3 the input
-   type is `never`, and you'll see `Property 'a' does not exist on type 'never'`.
-   Later releases type it as `ChainInputUndeclared<"call .input<T>() on the chain to say what it takes">`, which says the same thing outright.
+   equivalent `chain<T, 'name'>('name')`. Without it, the input type is a
+   branded type that nothing satisfies, and every read of the input fails as
+   `Property 'a' does not exist on type 'ChainInputUndeclared<"call .input<T>() on the chain to say what it takes">'`.
 4. **A mis-wired literal `sequence`** reports `TS2769: No overload matches this
-   call`. Through 0.16.3 it reports it on more than one element, so read the
-   last `Type 'X' is not assignable to type 'Y'` line, which names the joint.
-   Later releases report it once, on the step that can't take its input, and
-   the type names the joint, what arrives there, and what the step accepts, as
-   in `SequenceJointMismatch<"after children[1]", string, number>`.
-5. **Through 0.16.3, `branch` arms must share an output type.** Otherwise
-   you'll get `Type 'Step<Pair, number>' is not assignable to type 'Step<Pair, string>'`,
-   so state the union, as in `branch<Pair, number | null>({ ... })`. Later
-   releases return the union of the arms' outputs, and naming one output type
-   still holds both arms to it.
-6. **`model_step`'s input type is `string | readonly Message[]`.** Annotate a
-   model leaf as `Step<string, T>` before you combine it. Through 0.16.3, an
-   unannotated model leaf beside a string step in a `parallel` makes the input
-   `string & readonly Message[]`, which no value satisfies. Later releases take
-   the input that every member accepts, a `string` there, and the annotation
-   still keeps the types easy to read.
-7. **Through 0.16.3, the schema never reaches the model on the native
-   transport.** The engine asks for JSON that matches "the expected schema,"
-   validates the reply, and repairs once after a failure
-   (`schema_repair_attempts`, default 1). So on those versions, put an example
-   of the exact JSON shape, with its field names, in the system prompt:
-   `Reply with JSON only, shaped like this: {"a": 10, "b": 2, "op": "subtract"}`.
-   Without one, the first reply usually fails and costs a second round trip, and
-   small local models may never recover. Text in a zod `.describe()` doesn't
-   reach the model on those versions either. Releases after 0.16.3 put the JSON
-   Schema itself in that instruction, so the example becomes optional and the
-   advice in `docs/blueprint.md` to keep field rules in `.describe()` holds.
-   The installed version is in `node_modules/fascicle/package.json`.
+   call` once, on the step that can't take its input. The type in the error
+   names the joint, what arrives there, and what the step accepts, as in
+   `SequenceJointMismatch<"after children[1]", string, number>`.
+5. **`branch` returns the union of its arms' outputs**, so arms that return
+   `number` and `null` make a `Step<Pair, number | null>`. Naming one output
+   type, as in `branch<Pair, string>({ ... })`, holds both arms to it.
+6. **`model_step`'s input type is `string | readonly Message[]`.** A `parallel`
+   takes the input that every member accepts, so a model leaf beside a string
+   step makes the parallel take a `string`. Annotating a model leaf as
+   `Step<string, T>` before you combine it still keeps the types easy to read.
+7. **The engine shows the model the schema.** A call with a `schema` ends its
+   instruction with the schema as compact JSON Schema, validates the reply, and
+   repairs once after a failure (`schema_repair_attempts`, default 1). Text in a
+   zod `.describe()` reaches the model the same way, so the advice in
+   `docs/blueprint.md` to keep field rules in `.describe()` holds. A schema that
+   JSON Schema can't express, such as one that holds a `Date`, sends only the
+   bare request for JSON and still validates the reply, so give that call an
+   example of the exact shape in its system prompt.
 8. **The system prompt's first line is a stable role id**, like
    `solver/extract`. `make_stub_engine` routes canned answers by prefix on it,
    and an unmatched system prompt throws
    `make_stub_engine: no canned response for system: ...`.
-9. **Through 0.16.3, a stub's `content` function has no inferred parameter
-   types**, because `content` is typed `unknown`, so annotate them:
-   `(opts: GenerateOptions, call_index: number) => ...`. Later releases infer
-   them for a function written inline.
+9. **A stub's `content` can be a function**, `(opts, call_index) => ...`, that
+   works out each reply from the call. Written inline, it takes its parameter
+   types from `StubContentFn`, which `fascicle/testing` exports.
 10. **Inside a step body, run other steps with `ctx.call(step, input)`**, never
     `step.run(...)`, which loses the span and cancellation. Declare what the body
     calls with `{ arm: step }` or `{ arm: [a, b] }`, so `describe` shows it.
@@ -241,24 +224,22 @@ messages are the real ones.
     23) it also holds each model turn's request and reply. Without it, for a
     model's reply, read `raw_text` and `schema_issues` on a
     `schema_validation_error`.
-19. **Through 0.16.3, `adversarial` draws its inner machinery** in a diagram:
-    `scope` and `stash` nodes, and internal steps such as `snapshot`. For a
-    draft, check, and redraft loop that a person has to read, a `loop` with a
-    code guard draws more simply there. Later releases draw a named composite
-    as the steps that it was built from (`build` and `critique`), and
-    `describe.diagram(flow, { internals: true })` draws the rest.
+19. **`describe.diagram` draws a named composite as the steps that it was built
+    from**, so an `adversarial` is one row over its `build` and its `critique`.
+    `describe.diagram(flow, { internals: true })`, or `--internals` on
+    `fascicle-diagram`, draws the `scope` and `stash` nodes and internal steps
+    such as `snapshot` as well.
 20. **The `then` key in `branch`** can trip the `unicorn/no-thenable` lint rule.
     It's a false positive.
 21. **The engine retries some network failures itself**, inside a model call.
     `retry` works one level up and reruns the whole step when it fails, a schema
     failure included, while an abort or a suspend passes straight through.
-22. **From 0.17.0, two tools under one name throw.** A call whose `tools` hold
+22. **Two tools under one name throw.** A call whose `tools` hold
     a name twice fails before any request, with ``engine_config_error: duplicate
     tool names: search (2); give each tool its own name, or pass `name_prefix`
-    to mcp_client for one server's tools``. Earlier releases let the later tool
-    replace the earlier one without a word. Give each tool its own name, and
+    to mcp_client for one server's tools``. Give each tool its own name, and
     give an MCP server's tools a prefix with `mcp_client(config, { name_prefix: 'gh_' })`.
-23. **From 0.17.0, capture is off until a call asks for it.** Set
+23. **Capture is off until a call asks for it.** Set
     `capture: 'turns'` on a model step, a `generate` call, or the engine's
     `defaults`, and each model turn's request lands on `request_sent` (the first
     turn whole, each later one as what it added) and its reply on
@@ -311,7 +292,7 @@ messages are the real ones.
 | "only if they agree" | `consensus` |
 | "ask me first," "wait for approval" | `suspend` or `gate`, with `run.until_suspended`, and a `gate` needs a `store` or a `checkpoint_store` to resume |
 | "let it look things up," "give it a tool" | `define_tool`, and `tools` with `max_steps` on the `model_step` |
-| "read this page," "look it up on the web" | `web_tools()` from `fascicle/web` (0.18.0 and later) as the model step's `tools`, with a `search` backend when it should search too, in place of a fetch tool of your own |
+| "read this page," "look it up on the web" | `web_tools()` from `fascicle/web` as the model step's `tools`, with a `search` backend when it should search too, in place of a fetch tool of your own |
 | "ask me before it runs that tool" | `needs_approval` on the tool, and `on_tool_approval` on the model step |
 | "don't redo the expensive part" | `checkpoint`, with a `checkpoint_store` |
 
@@ -414,7 +395,7 @@ describe('the calculator', () => {
 - [composition.md](../composition.md) for one line on every composer.
 - [cookbook.md](../cookbook.md) for worked patterns, including tool loops with
   `define_tool`.
-- [web.md](../web.md) for `web_tools` (0.18.0 and later), which you should
+- [web.md](../web.md) for `web_tools`, which you should
   read before you give the web to an agent that holds private data.
 - [testing.md](../testing.md) for the stand-in engines.
 - [troubleshooting.md](../troubleshooting.md) for errors and their causes.

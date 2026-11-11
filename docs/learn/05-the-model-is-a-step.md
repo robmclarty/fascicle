@@ -161,13 +161,10 @@ engine and a model name. The chain didn't change by a single character.
   model call (a stand-in engine, or you reading a run log) look for it.
 - **`schema`** is the shape that the answer has to have. The engine checks what
   comes back, and if it doesn't fit, asks the model to fix it before giving up.
-  From the next lesson on, the solver talks to real providers over what
-  Fascicle calls the native transport. In Fascicle 0.16.3 and earlier, the
-  schema on that transport checks the answer but never reaches the model, so the
-  prompt shows an example with the exact field names. Leave the example out
-  there and a big model has to guess, then spend a second round trip fixing its
-  guess, while a small one may never get there. Later releases show the model
-  the schema itself, and the example does no harm.
+  The engine also shows the model the schema, so the model knows the field
+  names before it writes its first answer. The prompt shows an example with
+  the same names as well, which costs one line and gives a small model one more
+  hint about what a good answer looks like.
 - **`id`** is the step's name, the same as `step('extract', ...)` had.
 
 Hover over `extract` and its type is `Step<string | readonly Message[], Problem>`.

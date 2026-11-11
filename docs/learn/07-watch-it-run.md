@@ -158,11 +158,8 @@ running, and the line fills in behind it. Press **STEP**, then **NEXT** or the
 space bar, to walk the run one moment at a time, or use the arrow keys to move
 along the timeline at the bottom.
 
-Leave the viewer open and run the solver again with a different question. From
-Fascicle 0.16 on, the viewer follows the file and switches to the newest run as
-it happens. Version 0.15 gets confused by more than one run in a file, so there,
-stop the viewer with Ctrl-C, delete `.trajectory.jsonl`, run the solver, and
-start the viewer again.
+Leave the viewer open and run the solver again with a different question. The
+viewer follows the file, so it switches to the newest run as that run happens.
 
 ## What the Viewer Is For
 

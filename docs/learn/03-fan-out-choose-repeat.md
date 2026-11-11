@@ -65,11 +65,12 @@ nobody to share with
 runs `then` for yes and `otherwise` for no. Only one of the two runs. `when` is a
 plain function, not a step, because it's a question rather than a piece of work.
 
-Both arms hand back a string, and that's deliberate. Whatever comes after a
-branch has to cope with either arm's output, so `branch` wants them to agree,
-which is the same joint-checking you saw in the last lesson. When you really do
-want two different types, spell out the combination and TypeScript will hold
-you to it:
+Both arms hand back a string here, but they don't have to. Whatever comes after
+a branch has to cope with either arm's output, so when the arms disagree,
+`branch` hands back a type that combines the two, and the step that comes next
+has to take either one. That's the same joint-checking you saw in the last
+lesson. You can also spell out the combination yourself, and TypeScript will
+hold you to it:
 
 ```ts
 const maybe_divide = branch<Pair, number | null>({
@@ -79,9 +80,9 @@ const maybe_divide = branch<Pair, number | null>({
 })
 ```
 
-That's required on 0.16.3 and earlier, which reject arms that don't agree.
-Later releases work the combination out for you, `number | null` here, so
-spelling it out becomes optional, though it still says what you meant.
+Leave off `<Pair, number | null>` and TypeScript works out the same
+combination for you. Spelling it out is optional, but it leaves a note that
+says what you meant.
 
 ## Repeat with `map`
 
