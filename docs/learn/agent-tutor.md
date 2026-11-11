@@ -71,9 +71,11 @@ failed session, however good the code is.
 loaded. *Check:* `pnpm exec tsx hello.ts` prints `hello, world`. *Stumbles:* a
 missing `"type": "module"` shows up as an error about top-level await in the
 "cjs" output format. pnpm may report that it ignored esbuild's build scripts,
-which is harmless. pnpm may also install an older Fascicle when its
-`minimumReleaseAge` setting holds a new release back, and the course needs
-0.18.0 or later, so check `pnpm list fascicle` when a lesson doesn't match.
+which is harmless. pnpm 11 and later also hold back a release that's less than
+a day old (the `minimumReleaseAge` setting), so the day after a release they
+install the one before it, and `@latest` doesn't get past that. The course
+needs 0.18.0 or later, so check `pnpm list fascicle` when a lesson doesn't
+match, and install by number (`pnpm add fascicle@0.18.0`) when it's older.
 
 **1. A step.** *Goal:* wrap a function as a step and run it. *Introduces:*
 `step`, `run`, and `Step<i, o>`. *Keep out:* composers. *Check:* they can say

@@ -338,10 +338,16 @@ const draft = adversarial({
 })
 ```
 
-It does the same job, and the critic can be a model instead of code, which is
-where it really earns its keep. Its diagram draws it as its `build` and its
-`critique`, and `describe.diagram(draft, { internals: true })` shows the scopes
-and stashes that it's built from.
+It does the same job, but this lesson writes out the `loop` for two reasons.
+Building it yourself shows you the parts that `adversarial` packages up (the
+state that goes from round to round, and the guard that stops it). And the
+checks here are code that returns a list of problems. A `Round` carries that
+list as it is, but `adversarial` wants each critique as a string of `notes`, so
+the version above joins the list and splits it again. Reach for `adversarial`
+when the critic is a model that writes its critique as prose, which is where it
+really earns its keep. Its diagram draws it as its `build` and its `critique`,
+and `describe.diagram(draft, { internals: true })` shows the scopes and stashes
+that it's built from.
 
 ## With Your Agent
 

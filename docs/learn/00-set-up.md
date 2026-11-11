@@ -160,11 +160,15 @@ pnpm list fascicle
 
 The course needs 0.18.0 or later, and a check that walks every lesson against
 each new build keeps it in step with the current release, so what you see
-should match what the lessons show. If your pnpm is
-set to wait a day or two before it installs a brand-new release (its
-`minimumReleaseAge` setting), you might be a release behind the newest. That's
-fine as long as you have 0.18.0, and if you don't, run
-`pnpm add fascicle@latest`.
+should match what the lessons show. pnpm 11 and later hold back a release
+that's less than a day old (the `minimumReleaseAge` setting), so in the day
+after a release you get the one before it, and asking for `fascicle@latest`
+gets you the same one. If you see a version that's older than 0.18.0, ask for
+0.18.0 by number, with `pnpm add fascicle@0.18.0`. pnpm installs it and notes
+the exception in a `pnpm-workspace.yaml` file. If you've set
+`minimumReleaseAge` yourself, pnpm refuses instead and names the cutoff. Then
+add `fascicle` to a `minimumReleaseAgeExclude` list in `pnpm-workspace.yaml`,
+creating the file if you have to, and run the command again.
 
 ## If Something Went Wrong
 

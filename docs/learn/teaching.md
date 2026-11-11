@@ -135,11 +135,13 @@ the fix.
 These came up while the course was being checked, so watch for them and warn
 the learner when they're close:
 
-- **pnpm can hold back a new release.** A `minimumReleaseAge` setting makes
-  pnpm wait a day or two before it installs a brand-new version. The course
-  needs 0.18.0 or later, so a learner whose pnpm held it back gets an older
-  release, and the lessons that rely on something newer stop matching what
-  they see. Have them check `pnpm list fascicle` first.
+- **pnpm can hold back a new release.** pnpm 11 and later hold back a version
+  that's less than a day old (the `minimumReleaseAge` setting), and asking for
+  `@latest` gets the same older one. The course needs 0.18.0 or later, so a
+  learner whose pnpm held it back gets an older release, and the lessons that
+  rely on something newer stop matching what they see. Have them check
+  `pnpm list fascicle` first, and install the version by number, as lesson 0
+  shows.
 - **A wrongly ordered `sequence` gives a long error.** It's
   `No overload matches this call`, on the step that doesn't fit, and the part
   that matters is the `SequenceJointMismatch` type, which names the joint. Teach

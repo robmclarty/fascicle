@@ -98,7 +98,8 @@ await run(flow, input, { install_signal_handlers: false })  // tests and long-ru
 
 sequence([a, b, c])                          // each step gets the previous output
 parallel({ sum: add, product: multiply })    // same input to all; returns { sum, product }
-branch({ when: (x: X) => boolean, then: step_a, otherwise: step_b })  // either arm's output
+branch({ when: (x: X) => boolean, then: step_a, otherwise: step_b })  // the union of the arms' outputs
+branch<In, Out>({ when, then: step_a, otherwise: step_b })            // holds both arms to Out
 map({ items: (input: In) => list, do: per_item, concurrency: 4 })    // array out, in order
 pipe(step_a, (value) => reshape(value))      // one step and one plain function, no more
 
@@ -122,6 +123,7 @@ fallback(primary, backup)                          // backup runs when primary t
 describe(flow)                               // text tree (prints system prompts in full)
 describe.diagram(flow)                       // compact annotated tree; best for showing a person
 describe.diagram(flow, { prefix: ' * ' })    // ready to paste into a doc comment
+describe.diagram(flow, { internals: true })  // a named composite's scope, stash, and inner steps too
 describe.json(flow)                          // the tree as data
 ```
 
@@ -171,75 +173,64 @@ messages are the real ones.
    call` once, on the step that can't take its input. The type in the error
    names the joint, what arrives there, and what the step accepts, as in
    `SequenceJointMismatch<"after children[1]", string, number>`.
-5. **`branch` returns the union of its arms' outputs**, so arms that return
-   `number` and `null` make a `Step<Pair, number | null>`. Naming one output
-   type, as in `branch<Pair, string>({ ... })`, holds both arms to it.
-6. **`model_step`'s input type is `string | readonly Message[]`.** A `parallel`
-   takes the input that every member accepts, so a model leaf beside a string
-   step makes the parallel take a `string`. Annotating a model leaf as
+5. **`model_step`'s input type is `string | readonly Message[]`.** A `parallel`
+   takes the input that every member accepts, so a model leaf that sits beside
+   a string step makes the parallel take a `string`. Annotating a model leaf as
    `Step<string, T>` before you combine it still keeps the types easy to read.
-7. **The engine shows the model the schema.** A call with a `schema` ends its
-   instruction with the schema as compact JSON Schema, validates the reply, and
-   repairs once after a failure (`schema_repair_attempts`, default 1). Text in a
-   zod `.describe()` reaches the model the same way, so the advice in
-   `docs/blueprint.md` to keep field rules in `.describe()` holds. A schema that
-   JSON Schema can't express, such as one that holds a `Date`, sends only the
-   bare request for JSON and still validates the reply, so give that call an
-   example of the exact shape in its system prompt.
-8. **The system prompt's first line is a stable role id**, like
+6. **A schema that JSON Schema can't express never reaches the model.** The
+   engine usually ends a call's instruction with its `schema` as compact JSON
+   Schema, `.describe()` text included, so the prompt doesn't need to repeat
+   it. A schema that holds a `Date`, or one from a library that has no Standard
+   JSON Schema support, sends only the bare request for JSON. The reply is still
+   validated and repaired once (`schema_repair_attempts`, default 1), but the
+   model has to guess the field names, so give that call an example of the
+   exact shape in its system prompt.
+7. **The system prompt's first line is a stable role id**, like
    `solver/extract`. `make_stub_engine` routes canned answers by prefix on it,
    and an unmatched system prompt throws
    `make_stub_engine: no canned response for system: ...`.
-9. **A stub's `content` can be a function**, `(opts, call_index) => ...`, that
-   works out each reply from the call. Written inline, it takes its parameter
-   types from `StubContentFn`, which `fascicle/testing` exports.
-10. **Inside a step body, run other steps with `ctx.call(step, input)`**, never
-    `step.run(...)`, which loses the span and cancellation. Declare what the body
-    calls with `{ arm: step }` or `{ arm: [a, b] }`, so `describe` shows it.
-11. **`pipe` is binary.** To chain steps, use `sequence`.
-12. **Model ids go to the provider verbatim**, and each provider spells them its
+8. **Inside a step body, run other steps with `ctx.call(step, input)`**, never
+   `step.run(...)`, which loses the span and cancellation. Declare what the body
+   calls with `{ arm: step }` or `{ arm: [a, b] }`, so `describe` shows it.
+9. **`pipe` is binary.** To chain steps, use `sequence`.
+10. **Model ids go to the provider verbatim**, and each provider spells them its
     own way: `anthropic/claude-haiku-5.5` on OpenRouter, `claude-haiku-5-5` on
     Anthropic, `gpt-5-mini` on OpenAI, `qwen3:4b-instruct-2507-q4_K_M` on Ollama.
     A wrong id fails with the provider's own message, such as
     `provider_error: openrouter API error 400: anthropic/claude-haiku-9 is not a
     valid model ID`.
-13. **The engine never reads `process.env`.** Your code reads keys and passes
+11. **The engine never reads `process.env`.** Your code reads keys and passes
     them in. Keep keys in `.env` and run with `pnpm exec tsx --env-file=.env`.
     A bad key throws `provider_auth_error`, whose message names the config key
     to check.
-14. **`create_engine` belongs in one module**, and everything else receives an
+12. **`create_engine` belongs in one module**, and everything else receives an
     `Engine`. Dispose engines in `finally`.
-15. **Run TypeScript with `tsx`.** Local imports end in `.js` under NodeNext
+13. **Run TypeScript with `tsx`.** Local imports end in `.js` under NodeNext
     resolution, and plain `node` won't map a `.js` specifier to a `.ts` file.
-16. **In vitest files, rename Fascicle's `describe`**, as
+14. **In vitest files, rename Fascicle's `describe`**, as
     `import { describe as describe_flow } from 'fascicle'`, since vitest has
     one too. Pass `install_signal_handlers: false` to `run` in tests.
-17. **`describe(flow)` prints counter ids** like `chain_1`, which also appear in
+15. **`describe(flow)` prints counter ids** like `chain_1`, which also appear in
     `error_path`, and it prints system prompts in full. `describe.diagram` never
     shows counter ids, so it's stable enough to snapshot in a test.
-18. **A trajectory holds no per-call message or reply text unless the call
+16. **A trajectory holds no per-call message or reply text unless the call
     captures.** Its first event, `flow_structure`, does carry every model step's
     system prompt, so treat the file as sensitive. Beyond that it records spans,
     timings, token counts, cost, and how the run ended. Under `capture` (rule
-    23) it also holds each model turn's request and reply. Without it, for a
+    20) it also holds each model turn's request and reply. Without it, for a
     model's reply, read `raw_text` and `schema_issues` on a
     `schema_validation_error`.
-19. **`describe.diagram` draws a named composite as the steps that it was built
-    from**, so an `adversarial` is one row over its `build` and its `critique`.
-    `describe.diagram(flow, { internals: true })`, or `--internals` on
-    `fascicle-diagram`, draws the `scope` and `stash` nodes and internal steps
-    such as `snapshot` as well.
-20. **The `then` key in `branch`** can trip the `unicorn/no-thenable` lint rule.
+17. **The `then` key in `branch`** can trip the `unicorn/no-thenable` lint rule.
     It's a false positive.
-21. **The engine retries some network failures itself**, inside a model call.
+18. **The engine retries some network failures itself**, inside a model call.
     `retry` works one level up and reruns the whole step when it fails, a schema
     failure included, while an abort or a suspend passes straight through.
-22. **Two tools under one name throw.** A call whose `tools` hold
+19. **Two tools under one name throw.** A call whose `tools` hold
     a name twice fails before any request, with ``engine_config_error: duplicate
     tool names: search (2); give each tool its own name, or pass `name_prefix`
     to mcp_client for one server's tools``. Give each tool its own name, and
     give an MCP server's tools a prefix with `mcp_client(config, { name_prefix: 'gh_' })`.
-23. **Capture is off until a call asks for it.** Set
+20. **Capture is off until a call asks for it.** Set
     `capture: 'turns'` on a model step, a `generate` call, or the engine's
     `defaults`, and each model turn's request lands on `request_sent` (the first
     turn whole, each later one as what it added) and its reply on
@@ -386,6 +377,10 @@ describe('the calculator', () => {
   })
 })
 ```
+
+A stub's `content` can also be a function, `(opts, call_index) => ...`, that
+works out each reply from the call. Written inline, it takes its parameter types
+from `StubContentFn`, which `fascicle/testing` exports.
 
 ## Where to Look Next
 
