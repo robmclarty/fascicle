@@ -44,15 +44,27 @@ function search_request(input: unknown): WebSearchRequest {
 }
 
 /**
+ * A backend's text on one line: every run of whitespace becomes a space, and
+ * the ends are trimmed.
+ */
+function one_line(text: string): string {
+  return text.replace(/\s+/g, ' ').trim()
+}
+
+/**
  * One result as the model sees it: its number and title, then its URL, then
  * its snippet when the index gave one.
  *
  * The URL and the snippet sit under the title, indented past the number, so
- * the URL is alone on its line and the model can copy it whole.
+ * the URL is alone on its line and the model can copy it whole. Each field
+ * is held to one line, because the text comes from pages the index read, and
+ * a line break inside a snippet could otherwise start a line that reads as
+ * the next numbered result.
  */
 function entry(result: WebSearchResult, position: number): string {
-  const lines = [`${position}. ${result.title}`, `   ${result.url}`]
-  if (result.snippet !== '') lines.push(`   ${result.snippet}`)
+  const lines = [`${position}. ${one_line(result.title)}`, `   ${one_line(result.url)}`]
+  const snippet = one_line(result.snippet)
+  if (snippet !== '') lines.push(`   ${snippet}`)
   return lines.join('\n')
 }
 
