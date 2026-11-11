@@ -192,6 +192,10 @@ patterns = ["src/schema/**"]
 name = "testing"
 patterns = ["src/testing/**"]
 
+[[boundaries.zones]]
+name = "web"
+patterns = ["src/web/**"]
+
 [[boundaries.rules]] # core: imports no sibling module except the policy algebra and the schema seam
 from = "core"
 allow = ["policy", "schema"]
@@ -244,10 +248,14 @@ allow = []
 from = "process"
 allow = []
 
-[[boundaries.rules]] # schema: bottom of the DAG; core, engine, acp, mcp, stdio, and agents import it, so it imports nothing
+[[boundaries.rules]] # schema: bottom of the DAG; core, engine, acp, mcp, stdio, agents, and web import it, so it imports nothing
 from = "schema"
 allow = []
 
 [[boundaries.rules]] # testing: engine and core (the Engine doubles, the CheckpointStore contract the store conformance suite checks), and schema, since assert_prefix_stable compares tool schemas as the JSON Schema a provider is sent and schema imports nothing; no src module imports it back
 from = "testing"
 allow = ["engine", "core", "schema"]
+
+[[boundaries.rules]] # web: engine for the Tool type and schema for json_schema_to_standard (web_fetch and web_search are plain tools over node:http and fetch); testing for the loop engine its cross-module test drives
+from = "web"
+allow = ["engine", "schema", "testing"]

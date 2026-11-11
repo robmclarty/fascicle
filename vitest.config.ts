@@ -19,6 +19,7 @@ export default defineConfig({
       { find: /^#process$/, replacement: fileURLToPath(new URL('./src/process/index.ts', import.meta.url)) },
       { find: /^#schema$/, replacement: fileURLToPath(new URL('./src/schema/index.ts', import.meta.url)) },
       { find: /^#testing$/, replacement: fileURLToPath(new URL('./src/testing/index.ts', import.meta.url)) },
+      { find: /^#web$/, replacement: fileURLToPath(new URL('./src/web/index.ts', import.meta.url)) },
       // Published surface (examples + doc snippets import these names).
       { find: /^fascicle\/acp$/, replacement: fileURLToPath(new URL('./src/acp/index.ts', import.meta.url)) },
       { find: /^fascicle\/adapters$/, replacement: fileURLToPath(new URL('./src/adapters/index.ts', import.meta.url)) },
@@ -29,6 +30,7 @@ export default defineConfig({
       { find: /^fascicle\/viewer$/, replacement: fileURLToPath(new URL('./src/viewer/index.ts', import.meta.url)) },
       { find: /^fascicle\/agents$/, replacement: fileURLToPath(new URL('./src/agents/index.ts', import.meta.url)) },
       { find: /^fascicle\/testing$/, replacement: fileURLToPath(new URL('./src/testing/index.ts', import.meta.url)) },
+      { find: /^fascicle\/web$/, replacement: fileURLToPath(new URL('./src/web/index.ts', import.meta.url)) },
       { find: /^fascicle$/, replacement: fileURLToPath(new URL('./src/index.ts', import.meta.url)) },
     ],
   },

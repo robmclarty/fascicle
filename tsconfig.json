@@ -33,6 +33,7 @@
       "fascicle/viewer": ["./src/viewer/index.ts"],
       "fascicle/agents": ["./src/agents/index.ts"],
       "fascicle/testing": ["./src/testing/index.ts"],
+      "fascicle/web": ["./src/web/index.ts"],
       "#core": ["./src/core/index.ts"],
       "#engine": ["./src/engine/index.ts"],
       "#composites": ["./src/composites/index.ts"],
@@ -46,7 +47,8 @@
       "#policy": ["./src/policy/index.ts"],
       "#process": ["./src/process/index.ts"],
       "#schema": ["./src/schema/index.ts"],
-      "#testing": ["./src/testing/index.ts"]
+      "#testing": ["./src/testing/index.ts"],
+      "#web": ["./src/web/index.ts"]
     }
   },
   "include": [

@@ -50,6 +50,8 @@ const DIST_UI_JS = join(DIST_DIR, 'ui.js');
 const DIST_UI_DTS = join(DIST_DIR, 'ui.d.ts');
 const DIST_VIEWER_JS = join(DIST_DIR, 'viewer.js');
 const DIST_VIEWER_DTS = join(DIST_DIR, 'viewer.d.ts');
+const DIST_WEB_JS = join(DIST_DIR, 'web.js');
+const DIST_WEB_DTS = join(DIST_DIR, 'web.d.ts');
 const DIST_APP_DIR = join(DIST_DIR, 'viewer-app');
 const DIST_APP_HTML = join(DIST_APP_DIR, 'index.html');
 const DIST_BIN_DIR = join(DIST_DIR, 'bin');
@@ -466,6 +468,19 @@ async function main() {
     process.exit(1);
   }
 
+  process.stderr.write(`▸ build: smoke-importing ${DIST_WEB_JS}\n`);
+  if (!existsSync(DIST_WEB_JS) || !existsSync(DIST_WEB_DTS)) {
+    console.error(`\nbuild: dist/web.{js,d.ts} were not produced (the ./web subpath)`);
+    process.exit(1);
+  }
+  const web_mod = await import(pathToFileURL(DIST_WEB_JS).href);
+  const EXPECTED_WEB = ['web_tools', 'searxng_search', 'brave_search'];
+  const missing_web = EXPECTED_WEB.filter((name) => typeof web_mod[name] === 'undefined');
+  if (missing_web.length > 0) {
+    console.error(`\nbuild: web smoke test missing exports: ${missing_web.join(', ')}`);
+    process.exit(1);
+  }
+
   process.stderr.write(`▸ build: smoke-importing ${DIST_DIAGRAM_BIN_JS}\n`);
   const diagram_mod = await import(pathToFileURL(DIST_DIAGRAM_BIN_JS).href);
   if (typeof diagram_mod.run_diagram_bin !== 'function') {
@@ -474,7 +489,7 @@ async function main() {
   }
 
   process.stderr.write(
-    `\n✔ build ok (${js_stat.size} bytes js, ${dts_stat.size} bytes d.ts, ${EXPECTED_NAMED.length} named exports + describe.json + ${EXPECTED_ACP.length} acp + ${EXPECTED_ADAPTERS.length} adapters + ${EXPECTED_AGENTS.length} agents + ${EXPECTED_MCP.length} mcp + ${EXPECTED_OTEL.length} otel + ${EXPECTED_STDIO.length} stdio + ${EXPECTED_TESTING.length} testing + ${EXPECTED_UI.length} ui + ${EXPECTED_VIEWER.length} viewer verified)\n`,
+    `\n✔ build ok (${js_stat.size} bytes js, ${dts_stat.size} bytes d.ts, ${EXPECTED_NAMED.length} named exports + describe.json + ${EXPECTED_ACP.length} acp + ${EXPECTED_ADAPTERS.length} adapters + ${EXPECTED_AGENTS.length} agents + ${EXPECTED_MCP.length} mcp + ${EXPECTED_OTEL.length} otel + ${EXPECTED_STDIO.length} stdio + ${EXPECTED_TESTING.length} testing + ${EXPECTED_UI.length} ui + ${EXPECTED_VIEWER.length} viewer + ${EXPECTED_WEB.length} web verified)\n`,
   );
 }
 
