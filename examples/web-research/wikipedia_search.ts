@@ -40,13 +40,14 @@ function plain_snippet(html: string): string {
  *
  * A hit carries a title and no URL, so the article's address is built from
  * the title the way Wikipedia builds it, with underscores for spaces. The API
- * returns ten hits unless asked for more, so a larger `limit` still gets ten.
+ * returns ten hits unless asked for more, so the request names the `limit`.
  */
 export const wikipedia_search: WebSearch = async ({ query, limit }, ctx) => {
   const params = new URLSearchParams({
     action: 'query',
     list: 'search',
     srsearch: query,
+    srlimit: String(limit),
     format: 'json',
   })
   const res = await fetch(`${API_URL}?${params.toString()}`, {
