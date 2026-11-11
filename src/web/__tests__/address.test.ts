@@ -728,3 +728,59 @@ describe('what a message repeats', () => {
     )
   })
 })
+
+describe('check_addresses with an address on deny_hosts', () => {
+  const url = new URL('https://name.test/a')
+  const deny_policy: AddressPolicy = { ...open_policy, deny_hosts: ['93.184.216.34', '2606:4700:4700::1111'] }
+
+  it.each([
+    ['93.184.216.34', 4],
+    ['::ffff:93.184.216.34', 6],
+    ['::ffff:5db8:d822', 6],
+    ['64:ff9b::5db8:d822', 6],
+    ['2606:4700:4700:0:0:0:0:1111', 6],
+  ] as const)('refuses a name that resolves to %s', (address, family) => {
+    expect(message_of(() => check_addresses(url, [{ address, family }], deny_policy))).toBe(
+      `name.test resolves to ${address}, which is on deny_hosts, so web_fetch won't reach it`,
+    )
+  })
+
+  it('refuses when the denied address is not the first one', () => {
+    const addresses: ReadonlyArray<ResolvedAddress> = [
+      { address: '8.8.8.8', family: 4 },
+      { address: '93.184.216.34', family: 4 },
+    ]
+    expect(message_of(() => check_addresses(url, addresses, deny_policy))).toBe(
+      "name.test resolves to 93.184.216.34, which is on deny_hosts, so web_fetch won't reach it",
+    )
+  })
+
+  it('refuses a denied address even with allow_private set', () => {
+    const policy: AddressPolicy = { ...private_policy, deny_hosts: ['127.0.0.1'] }
+    expect(message_of(() => check_addresses(url, [{ address: '::ffff:127.0.0.1', family: 6 }], policy))).toBe(
+      "name.test resolves to ::ffff:127.0.0.1, which is on deny_hosts, so web_fetch won't reach it",
+    )
+  })
+
+  it('refuses a mapped literal host whose IPv4 address is denied', () => {
+    const literal_url = new URL('http://[::ffff:93.184.216.34]/')
+    const literal = literal_address(literal_url)
+    expect(literal).toBeDefined()
+    expect(message_of(() => check_addresses(literal_url, literal === undefined ? [] : [literal], deny_policy))).toBe(
+      "[::ffff:5db8:d822] resolves to ::ffff:5db8:d822, which is on deny_hosts, so web_fetch won't reach it",
+    )
+  })
+
+  it('lets through an address that no entry names, and ignores name entries', () => {
+    const near: ResolvedAddress = { address: '93.184.216.35', family: 4 }
+    expect(check_addresses(url, [near], deny_policy)).toBe(near)
+    const named: AddressPolicy = { ...open_policy, deny_hosts: ['example.com'] }
+    expect(check_addresses(url, [near], named)).toBe(near)
+  })
+
+  it('reads a zoned address without throwing and leaves it to the private check', () => {
+    const zoned: ResolvedAddress = { address: 'fe80::1%en0', family: 6 }
+    const policy: AddressPolicy = { ...private_policy, deny_hosts: ['93.184.216.34'] }
+    expect(check_addresses(url, [zoned], policy)).toBe(zoned)
+  })
+})

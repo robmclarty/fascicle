@@ -264,11 +264,33 @@ export function check_url(text: string, policy: AddressPolicy, base?: string): U
 }
 
 /**
+ * The first resolved address that an IP entry on `deny_hosts` names.
+ *
+ * `check_url` compares the host as the URL spelled it, which misses a name
+ * that resolves to a denied address and an IPv6 literal that embeds a denied
+ * IPv4 one. Both are caught here, on the address the socket would reach. A
+ * zoned address never leaves the machine's own link, so no entry can name it.
+ */
+function denied_address(
+  addresses: ReadonlyArray<ResolvedAddress>,
+  deny_hosts: ReadonlyArray<string>,
+): ResolvedAddress | undefined {
+  const denied = deny_hosts.map(canonical_host).filter((name) => isIP(name) !== 0)
+  if (denied.length === 0) return undefined
+  return addresses.find(({ address }) => {
+    if (address.includes('%')) return false
+    const embedded = isIP(address) === 6 ? embedded_v4(address_groups(address)) : []
+    return [canonical_host(address), ...embedded].some((form) => denied.includes(form))
+  })
+}
+
+/**
  * Check every address a URL's host resolved to, and return the one to
  * connect to.
  *
  * One blocked address refuses the whole set, so a name with a public and a
- * private address is refused.
+ * private address is refused. An address on `deny_hosts` refuses it too, and
+ * `allow_private` doesn't relax that, since deny wins over everything.
  */
 export function check_addresses(
   url: URL,
@@ -277,6 +299,12 @@ export function check_addresses(
 ): ResolvedAddress {
   const [first] = addresses
   if (first === undefined) throw new Error(`${clip(url.hostname)} did not resolve to any address`)
+  const denied = denied_address(addresses, policy.deny_hosts)
+  if (denied !== undefined) {
+    throw new Error(
+      `${clip(url.hostname)} resolves to ${clip(denied.address)}, which is on deny_hosts, so web_fetch won't reach it`,
+    )
+  }
   if (policy.allow_private) return first
   const blocked = addresses.find(({ address }) => is_blocked_address(address))
   if (blocked !== undefined) {
