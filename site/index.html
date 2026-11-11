@@ -381,7 +381,7 @@ try {
         </tbody>
       </table>
     </div>
-    <div style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#7A5230; margin-top:14px;">✅ supported · — not in v1 (ollama, lmstudio, claude_cli have no image input; ollama and lmstudio also drop reasoning effort)</div>
+    <div style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#7A5230; margin-top:14px;">✅ supported · — not supported (ollama, lmstudio, claude_cli have no image input; ollama and lmstudio also drop reasoning effort)</div>
   </div>
 
   <!-- ===================== CTA ===================== -->
@@ -533,7 +533,7 @@ class Component extends DCLogic {
       case 'suspend': flowLines = ["const flow = suspend({", "  id: 'approve',", "  on: (input) => notify(input),", "  resume_schema: z.object({ ok: z.boolean() }),", "  combine: (input, r) => r.ok ? 'ship' : 'hold',", "})"]; break;
       case 'gate': flowLines = ["const flow = gate(" + namedInner + ", {", "  id: 'approve',", "  store: filesystem_store({ root_dir: '.gates' }),", "})"]; break;
       case 'scope': flowLines = ["const flow = scope([", "  stash('draft', " + inner + "),", "  use(['draft'], (s) => publish(String(s.draft))),", "])"]; break;
-      case 'improve': flowLines = ["const flow = improve({", "  seed: step('seed', (t) => ({ content: t, score: 0 })),", "  propose: " + inner + ",", "  score: judge,", "  budget: { max_rounds: 5, patience: 2 },", "})"]; break;
+      case 'improve': flowLines = ["const flow = improve({", "  seed: step('seed', (topic: string) => ({ content: topic, score: 0 })),", "  propose: pipe(", "    sequence([", "      step('prompt', (r: ImproveRoundInput<string>) => `Improve: ${r.parent}`),", "      " + inner + ",", "    ]),", "    (content) => ({ content, proposer_id: 'rewrite' }),", "  ),", "  score: judge,", "  budget: { max_rounds: 5, patience: 2 },", "  project: (r) => r.best.content,", "})"]; break;
       case 'learn': flowLines = ["const flow = learn({", "  flow: " + inner + ",", "  source: { kind: 'dir', dir: '.trajectories' },", "  analyzer: analyze,", "})"]; break;
       default: flowLines = ["const flow = " + inner];
     }
@@ -549,6 +549,7 @@ class Component extends DCLogic {
     const imports = Array.from(new Set(used)).sort();
 
     const out = ["import { " + imports.join(', ') + " } from 'fascicle'"];
+    if (/\bImproveRoundInput\b/.test(flowText)) out.push("import type { ImproveRoundInput } from 'fascicle'");
     if (/z\.object/.test(flowText)) out.push("import { z } from 'zod'");
     if (/\bfilesystem_store\b/.test(flowText)) out.push("import { filesystem_store } from 'fascicle/adapters'");
     out.push("");

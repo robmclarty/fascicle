@@ -34,6 +34,17 @@
   .fc-btn:active{transform:translate(0,0); box-shadow:inset 1px 1px 0 #211C17,inset 2px 2px 0 #211C17,inset 3px 3px 0 #211C17,inset 4px 4px 0 #211C17,inset 5px 5px 0 #211C17,inset 6px 6px 0 #211C17;}
   .fc-btn-label{display:inline-block; transition:transform .09s ease;}
   .fc-btn:active .fc-btn-label{transform:translate(8px,8px);}
+  /* Below 760px the 268px sidebar leaves the content column a few pixels wide, so the two columns stack. */
+  @media (max-width:760px){
+    .fc-nav{flex-wrap:wrap; gap:12px; padding:14px 20px !important;}
+    .fc-body{flex-direction:column; align-items:stretch !important;}
+    .fc-side{position:static !important; align-self:stretch !important; width:auto !important; height:auto !important; border-right:none !important; border-bottom:3px solid #211C17; padding:24px 20px 4px !important;}
+    .fc-main{padding:32px 20px 80px !important;}
+    .fc-cards{grid-template-columns:1fr !important;}
+    .fc-prim-row{flex-wrap:wrap; row-gap:8px !important;}
+    .fc-prim-name{flex:1; min-width:0 !important;}
+    .fc-prim-name + div{order:1; flex-basis:100% !important; min-width:0;}
+  }
 </style>
 </helmet>
 
@@ -43,7 +54,7 @@
   <div style="position:fixed; inset:0; z-index:9999; pointer-events:none; opacity:0.06; mix-blend-mode:multiply; background-image:url(&quot;data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E&quot;);"></div>
 
   <!-- ===================== NAV ===================== -->
-  <div style="position:sticky; top:0; z-index:100; display:flex; align-items:center; justify-content:space-between; padding:16px 32px; background:#F4EBDB; border-bottom:3px solid #211C17;">
+  <div class="fc-nav" style="position:sticky; top:0; z-index:100; display:flex; align-items:center; justify-content:space-between; padding:16px 32px; background:#F4EBDB; border-bottom:3px solid #211C17;">
     <div style="display:flex; align-items:center; gap:16px;">
       <a href="index.html" style="display:flex; align-items:center; gap:12px;">
         <div style="width:20px; height:20px; background:#C0521F; border:2px solid #211C17;"></div>
@@ -59,10 +70,10 @@
   </div>
 
   <!-- ===================== BODY ===================== -->
-  <div style="display:flex; align-items:flex-start; max-width:1280px; margin:0 auto;">
+  <div class="fc-body" style="display:flex; align-items:flex-start; max-width:1280px; margin:0 auto;">
 
     <!-- SIDEBAR -->
-    <div style="flex:none; width:268px; position:sticky; top:64px; align-self:flex-start; height:calc(100vh - 64px); overflow-y:auto; border-right:3px solid #211C17; padding:34px 26px 60px;">
+    <div class="fc-side" style="flex:none; width:268px; position:sticky; top:64px; align-self:flex-start; height:calc(100vh - 64px); overflow-y:auto; border-right:3px solid #211C17; padding:34px 26px 60px;">
       <sc-for list="{{ nav }}" as="grp" hint-placeholder-count="3">
         <div style="margin-bottom:30px;">
           <div style="font-family:'JetBrains Mono',monospace; font-size:11px; letter-spacing:2px; color:#7A5230; margin-bottom:14px;">{{ grp.title }}</div>
@@ -76,7 +87,7 @@
     </div>
 
     <!-- CONTENT -->
-    <div style="flex:1; min-width:0; padding:48px 56px 120px; max-width:880px;">
+    <div class="fc-main" style="flex:1; min-width:0; padding:48px 56px 120px; max-width:880px;">
 
       <!-- ============ GETTING STARTED ============ -->
       <sc-if value="{{ isGettingStarted }}" hint-placeholder-val="{{ true }}">
@@ -149,7 +160,7 @@ try {
 
           <h2 style="font-family:'DM Serif Display',serif; font-weight:400; font-size:32px; margin:48px 0 16px;">Two layers</h2>
           <p style="font-size:16px; line-height:1.6; color:#3a342e;">Fascicle ships two independently useful layers from a single src/ tree, and exactly one value glues them: <span style="font-family:'JetBrains Mono',monospace; font-size:14px; color:#C0521F;">model_call</span>.</p>
-          <div style="display:grid; grid-template-columns:1fr 1fr; gap:18px; margin-top:20px;">
+          <div class="fc-cards" style="display:grid; grid-template-columns:1fr 1fr; gap:18px; margin-top:20px;">
             <div style="background:#EFE3CE; border:3px solid #211C17; box-shadow:1px 1px 0 #211C17, 2px 2px 0 #211C17, 3px 3px 0 #211C17, 4px 4px 0 #211C17, 5px 5px 0 #211C17; padding:22px;">
               <div style="font-family:'JetBrains Mono',monospace; font-size:14px; font-weight:700; color:#C0521F;">core</div>
               <div style="font-family:'DM Serif Display',serif; font-size:24px; margin:6px 0 8px;">Composition</div>
@@ -168,7 +179,7 @@ try {
             <div style="display:flex; align-items:center; justify-content:space-between; padding:11px 16px; background:#26211b; border-bottom:1px solid #4a443c;"><span style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#8a8278;">types.ts</span></div>
             <div style="white-space:pre; overflow-x:auto; background:#211C17; color:#E8DFCD; padding:20px; font-family:'JetBrains Mono',monospace; font-size:14px; line-height:1.85;"><span style="color:#A8336A;">type</span> <span style="color:#15a39a;">Step</span>&lt;i, o&gt; = {<br>  <span style="color:#A8336A;">readonly</span> id: <span style="color:#15a39a;">string</span><br>  <span style="color:#A8336A;">readonly</span> kind: <span style="color:#15a39a;">string</span><br>  <span style="color:#A8336A;">readonly</span> run: (input: i, ctx: <span style="color:#15a39a;">RunContext</span>) =&gt; <span style="color:#15a39a;">Promise</span>&lt;o&gt; | o<br>  <span style="color:#A8336A;">readonly</span> config?: <span style="color:#15a39a;">Readonly</span>&lt;<span style="color:#15a39a;">Record</span>&lt;<span style="color:#15a39a;">string</span>, <span style="color:#15a39a;">unknown</span>&gt;&gt;<br>  <span style="color:#A8336A;">readonly</span> children?: <span style="color:#15a39a;">ReadonlyArray</span>&lt;<span style="color:#15a39a;">AnyStep</span>&gt;<br>  <span style="color:#A8336A;">readonly</span> anonymous?: <span style="color:#15a39a;">boolean</span><br>  <span style="color:#A8336A;">readonly</span> meta?: <span style="color:#15a39a;">StepMetadata</span><br>}</div>
           </div>
-          <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-top:20px;">
+          <div class="fc-cards" style="display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-top:20px;">
             <div style="border-left:3px solid #C0521F; padding:4px 0 4px 14px;"><div style="font-weight:700; font-size:15px;">Substitutability</div><div style="font-size:13.5px; line-height:1.5; color:#5a5249; margin-top:4px;">Replace any step with any composition that shares its I/O.</div></div>
             <div style="border-left:3px solid #15706A; padding:4px 0 4px 14px;"><div style="font-weight:700; font-size:15px;">Introspectability</div><div style="font-size:13.5px; line-height:1.5; color:#5a5249; margin-top:4px;">A flow is a tree of plain objects. Walk it with <span style="font-family:'JetBrains Mono',monospace; font-size:12px;">describe()</span>.</div></div>
             <div style="border-left:3px solid #A8336A; padding:4px 0 4px 14px;"><div style="font-weight:700; font-size:15px;">No hidden state</div><div style="font-size:13.5px; line-height:1.5; color:#5a5249; margin-top:4px;">Steps are values, not instances. Flows share nothing.</div></div>
@@ -255,8 +266,8 @@ const output = await handle.result" style="background:transparent; color:#8a8278
           <div style="margin-top:32px; display:flex; flex-direction:column; gap:12px;">
             <sc-for list="{{ primitives }}" as="p" hint-placeholder-count="21">
               <div style="border:3px solid #211C17; box-shadow:1px 1px 0 #211C17, 2px 2px 0 #211C17, 3px 3px 0 #211C17, 4px 4px 0 #211C17; background:#F4EBDB;">
-                <div onClick="{{ p.toggle }}" style="cursor:pointer; display:flex; align-items:center; gap:16px; padding:16px 20px;">
-                  <div style="font-family:'JetBrains Mono',monospace; font-size:18px; font-weight:700; color:{{ p.color }}; min-width:130px;">{{ p.name }}</div>
+                <div class="fc-prim-row" onClick="{{ p.toggle }}" style="cursor:pointer; display:flex; align-items:center; gap:16px; padding:16px 20px;">
+                  <div class="fc-prim-name" style="font-family:'JetBrains Mono',monospace; font-size:18px; font-weight:700; color:{{ p.color }}; min-width:130px;">{{ p.name }}</div>
                   <div style="flex:1; font-size:15px; color:#3a342e;">{{ p.desc }}</div>
                   <div style="font-family:'JetBrains Mono',monospace; font-size:11px; letter-spacing:1px; color:#F4EBDB; background:{{ p.color }}; padding:3px 9px;">{{ p.tag }}</div>
                   <div style="font-family:'JetBrains Mono',monospace; font-size:18px; color:#7A5230;">{{ p.icon }}</div>
