@@ -69,8 +69,8 @@ answers in HTML until you turn JSON on, so starting it takes two steps.
 docker run --name searxng -d -p 8888:8080 -v "./config/:/etc/searxng/" docker.io/searxng/searxng:latest
 ```
 
-The first start writes `./config/settings.yml`. Open it, find `search.formats`,
-and add `json` to the list:
+The first start writes `./config/settings.yml`, a short file that takes every
+default. Open it and add this block, which keeps HTML and turns JSON on:
 
 ```yaml
 search:

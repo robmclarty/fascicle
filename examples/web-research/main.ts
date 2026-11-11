@@ -87,8 +87,9 @@ function input_field(input: unknown, key: string): string {
  * Wrap a tool so each call prints one line, and each fetched page is noted.
  *
  * A search prints its query before it runs. A fetch prints after, because its
- * line carries how many characters came back. A refusal prints too and is
- * thrown again, so the engine still hands it to the model as the tool's result.
+ * line carries how many characters came back. A failure of either tool prints
+ * too and is thrown again, so the engine still hands it to the model as the
+ * tool's result.
  */
 function announce(tool: Tool, pages: string[]): Tool {
   return {
@@ -96,7 +97,12 @@ function announce(tool: Tool, pages: string[]): Tool {
     execute: async (input, ctx) => {
       if (tool.name === 'web_search') {
         console.log(`search  ${JSON.stringify(input_field(input, 'query'))}`)
-        return tool.execute(input, ctx)
+        try {
+          return await tool.execute(input, ctx)
+        } catch (err: unknown) {
+          console.log(`search  failed: ${err instanceof Error ? err.message : String(err)}`)
+          throw err
+        }
       }
       const url = input_field(input, 'url')
       try {
