@@ -129,7 +129,10 @@ export async function run_web_research(
   question = DEFAULT_QUESTION,
   options: WebResearchOptions = {},
 ): Promise<WebResearchResult> {
-  const system = await readFile(new URL('./prompts/system.md', import.meta.url), 'utf8')
+  const prompt = await readFile(new URL('./prompts/system.md', import.meta.url), 'utf8')
+  // A model takes the year it was trained in for the present one, and then
+  // searches for a "latest" that is years old.
+  const system = `${prompt.trimEnd()}\n\nToday's date is ${new Date().toISOString().slice(0, 10)}.\n`
   const pages: string[] = []
   const tools = web_tools({
     search: pick_search(),
