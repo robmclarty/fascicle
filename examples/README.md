@@ -66,7 +66,7 @@ Then browse by topic:
 | --- | --- |
 | composition and self-improvement | [improve](./improve/), [learn](./learn/), [ensemble-judge](./ensemble-judge/), [adversarial-build](./adversarial-build/) |
 | engine and providers | [hello-claude-cli](./hello-claude-cli/), [hello-claude-cli-lisp](./hello-claude-cli-lisp/), [adversarial-claude-cli](./adversarial-claude-cli/), [ollama-chat](./ollama-chat/), [streaming-chat](./streaming-chat/), [structured-output](./structured-output/) |
-| tools | [tool-loop](./tool-loop/) |
+| tools | [tool-loop](./tool-loop/), [web-research](./web-research/) |
 | durability | [checkpoint-resume](./checkpoint-resume/), [suspend-resume](./suspend-resume/), [durable-runs](./durable-runs/), [object-store](./object-store/) |
 | human-in-the-loop | [hitl-http](./hitl-http/) |
 | observability | [trajectory-logger](./trajectory-logger/), [viewer-demo](./viewer-demo/), [otel-grafana](./otel-grafana/) |
@@ -88,4 +88,4 @@ legend below is derived from those headers.
 | Local Docker (no key: the `grafana/otel-lgtm` container listening on localhost) | `otel-grafana` |
 | Local Ollama (no key: a running daemon plus a pulled model) | `ollama-chat` |
 | Local `claude` session (no key: Claude Code installed and `claude auth login` run) | `hello-claude-cli`, `hello-claude-cli-lisp`, `adversarial-claude-cli` |
-| Provider API key | `structured-output` and `tool-loop` (`OPENROUTER_API_KEY`, exported or in the root `.env`), `acp-coder` (`OPENROUTER_API_KEY` in the `env` of its Zed agent server entry, or another provider's key with `--provider`), `live-smoke` (`OPENROUTER_API_KEY`, plus optional local Ollama / LM Studio; missing legs are skipped), `pr-improve` (`OPENROUTER_API_KEY` exported and `gh auth login` for a real PR, or another provider's key with `--provider`, while its `--stub` fixture run needs nothing) |
+| Provider API key | `structured-output` and `tool-loop` (`OPENROUTER_API_KEY`, exported or in the root `.env`), `web-research` (`OPENROUTER_API_KEY` the same way, plus an optional `BRAVE_API_KEY` or `SEARXNG_URL` for a wider search than Wikipedia), `acp-coder` (`OPENROUTER_API_KEY` in the `env` of its Zed agent server entry, or another provider's key with `--provider`), `live-smoke` (`OPENROUTER_API_KEY`, plus optional local Ollama / LM Studio; missing legs are skipped), `pr-improve` (`OPENROUTER_API_KEY` exported and `gh auth login` for a real PR, or another provider's key with `--provider`, while its `--stub` fixture run needs nothing) |
