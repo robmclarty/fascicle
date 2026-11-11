@@ -264,24 +264,34 @@ export function check_url(text: string, policy: AddressPolicy, base?: string): U
 }
 
 /**
+ * Every spelling an address is compared under: its canonical form, and the
+ * IPv4 address it embeds when it is an IPv6 one. A host name, or a zoned
+ * address, has none.
+ *
+ * Both the entries on `deny_hosts` and the resolved addresses go through
+ * this, so `::ffff:1.2.3.4` and `1.2.3.4` meet whichever side wrote which.
+ */
+function address_forms(text: string): ReadonlyArray<string> {
+  const canonical = canonical_host(text)
+  const family = isIP(canonical)
+  if (family === 0 || canonical.includes('%')) return []
+  return [canonical, ...(family === 6 ? embedded_v4(address_groups(canonical)) : [])]
+}
+
+/**
  * The first resolved address that an IP entry on `deny_hosts` names.
  *
  * `check_url` compares the host as the URL spelled it, which misses a name
  * that resolves to a denied address and an IPv6 literal that embeds a denied
- * IPv4 one. Both are caught here, on the address the socket would reach. A
- * zoned address never leaves the machine's own link, so no entry can name it.
+ * IPv4 one. Both are caught here, on the address the socket would reach.
  */
 function denied_address(
   addresses: ReadonlyArray<ResolvedAddress>,
   deny_hosts: ReadonlyArray<string>,
 ): ResolvedAddress | undefined {
-  const denied = deny_hosts.map(canonical_host).filter((name) => isIP(name) !== 0)
+  const denied = deny_hosts.flatMap(address_forms)
   if (denied.length === 0) return undefined
-  return addresses.find(({ address }) => {
-    if (address.includes('%')) return false
-    const embedded = isIP(address) === 6 ? embedded_v4(address_groups(address)) : []
-    return [canonical_host(address), ...embedded].some((form) => denied.includes(form))
-  })
+  return addresses.find(({ address }) => address_forms(address).some((form) => denied.includes(form)))
 }
 
 /**

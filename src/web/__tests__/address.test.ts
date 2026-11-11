@@ -778,6 +778,18 @@ describe('check_addresses with an address on deny_hosts', () => {
     expect(check_addresses(url, [near], named)).toBe(near)
   })
 
+  it.each([
+    ['::ffff:93.184.216.34', '93.184.216.34', 4],
+    ['::ffff:5db8:d822', '93.184.216.34', 4],
+    ['64:ff9b::93.184.216.34', '::ffff:5db8:d822', 6],
+    ['0:0:0:0:0:ffff:5db8:d822', '93.184.216.34', 4],
+  ] as const)('refuses when the entry %s embeds the address %s resolves to', (entry, address, family) => {
+    const policy: AddressPolicy = { ...open_policy, deny_hosts: [entry] }
+    expect(message_of(() => check_addresses(url, [{ address, family }], policy))).toBe(
+      `name.test resolves to ${address}, which is on deny_hosts, so web_fetch won't reach it`,
+    )
+  })
+
   it('reads a zoned address without throwing and leaves it to the private check', () => {
     const zoned: ResolvedAddress = { address: 'fe80::1%en0', family: 6 }
     const policy: AddressPolicy = { ...private_policy, deny_hosts: ['93.184.216.34'] }
