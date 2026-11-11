@@ -37,6 +37,15 @@ const INSTRUMENTED = process.env['STRYKER_MUTATOR_WORKER'] !== undefined
  */
 const LINEAR_BUDGET_MS = INSTRUMENTED ? 120_000 : 5000
 
+/**
+ * What the large inputs are divided by. Stryker runs these tests once to map
+ * coverage and again for every mutant they cover, so at full size they would
+ * take its initial run past its limit and a mutation run into hours. A
+ * sixteenth is still thousands of tags deep, and the suite's own run is where
+ * the full size and the five-second budget are held.
+ */
+const SHRINK = INSTRUMENTED ? 16 : 1
+
 describe('html_to_text on fixtures', () => {
   it('converts an article page, dropping its chrome of scripts, styles, svg, noscript, and template', () => {
     expect(md(fixture('article'))).toBe(
@@ -946,7 +955,7 @@ describe('html_to_text malformed markup', () => {
 // LINEAR_BUDGET_MS, so the test as a whole needs more room than the default,
 // most of all under coverage or mutation instrumentation.
 describe('html_to_text on hostile input', { timeout: INSTRUMENTED ? 600_000 : 120_000 }, () => {
-  const COUNT = 100_000
+  const COUNT = 100_000 / SHRINK
 
   it('survives a hundred thousand nested tags of each container kind', () => {
     for (const tag of ['div', 'span', 'blockquote', 'ul', 'ol', 'li', 'b', 'p', 'pre', 'code', 'svg', 'template', 'h1', 'td', 'tr']) {
@@ -1028,7 +1037,7 @@ describe('html_to_text on hostile input', { timeout: INSTRUMENTED ? 600_000 : 12
   })
 
   it('keeps the output within a small multiple of the input, with its text intact', () => {
-    const SIZE = 512 * 1024
+    const SIZE = (512 * 1024) / SHRINK
     const wide = '<ol start=999999999><li>'.repeat(24)
     const quotes = '<blockquote>'.repeat(24)
     const cases: ReadonlyArray<readonly [string, number]> = [
@@ -1060,7 +1069,7 @@ describe('html_to_text on hostile input', { timeout: INSTRUMENTED ? 600_000 : 12
   it('converts a few megabytes of ordinary markup in linear time', () => {
     const row = '<tr><td>cell &amp; <a href="/x?y=1">link</a></td><td><code>code</code></td></tr>'
     const section = `<h2>Title</h2><p>Some <b>text</b> here.</p><ul><li>one<li>two</ul><table>${row.repeat(5)}</table><pre>x\n  y</pre>`
-    const { text, ms } = timed(section.repeat(8000))
+    const { text, ms } = timed(section.repeat(8000 / SHRINK))
     expect(text.startsWith('## Title\n\nSome text here.\n\n- one\n- two\n\n| cell & [link](https://example.org/x?y=1) | `code` |\n| --- | --- |')).toBe(true)
     expect(text.endsWith('```\nx\n  y\n```')).toBe(true)
     expect(ms).toBeLessThan(LINEAR_BUDGET_MS)
