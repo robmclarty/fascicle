@@ -320,8 +320,15 @@ describe('html_to_text quotes', () => {
     expect(md('<blockquote><ul><li>a</blockquote>b')).toBe('> - a\n\nb')
   })
 
-  it('stops drawing margins past the depth limit', () => {
+  it('stops drawing margins once they are 48 characters wide together', () => {
     expect(md(`${'<blockquote>'.repeat(30)}deep`)).toBe(`${'> '.repeat(24)}deep`)
+    expect(md(`${'<ol start=999999999><li>'.repeat(24)}deep`)).toBe(`${'999999999. '.repeat(4)}deep`)
+    expect(md(`${'<ol start=999999999><li>'.repeat(4)}<blockquote><blockquote><blockquote>deep`)).toBe(
+      `${'999999999. '.repeat(4)}> > deep`,
+    )
+    expect(md(`${'<ol start=999999999><li>'.repeat(5)}a</ol></ol><li>b`)).toBe(
+      `${'999999999. '.repeat(4)}a\n${' '.repeat(22)}1000000000. b`,
+    )
     expect(md(`${'<blockquote>'.repeat(24)}a${'</blockquote>'.repeat(24)}b`)).toBe(`${'> '.repeat(24)}a\n\nb`)
     expect(md(`${'<blockquote>'.repeat(25)}a${'</blockquote>'.repeat(25)}b`)).toBe(`${'> '.repeat(24)}a\n\nb`)
   })
@@ -382,6 +389,27 @@ describe('html_to_text links', () => {
 
   it('escapes square brackets in link text', () => {
     expect(md('<a href="/x">[1] a]</a>')).toBe('[\\[1\\] a\\]](https://example.org/x)')
+    expect(md('<a href="/x"><img alt="[i]"></a>')).toBe('[\\[i\\]](https://example.org/x)')
+  })
+
+  it('escapes a backslash in link text, so the text cannot close the link itself', () => {
+    expect(md('<a href="/safe">foo\\](http://evil.example/) [bar</a>')).toBe(
+      '[foo\\\\\\](http://evil.example/) \\[bar](https://example.org/safe)',
+    )
+    expect(md('Open <a href="/docs/dir">C:\\Users\\</a> then go')).toBe(
+      'Open [C:\\\\Users\\\\](https://example.org/docs/dir) then go',
+    )
+    expect(md('C:\\Users\\ [x]')).toBe('C:\\Users\\ [x]')
+  })
+
+  it('leaves brackets and backslashes inside a code span of a link as they are', () => {
+    expect(md('<a href="/x"><code>arr[0]</code></a> and <a href="/y"><code>List[int]</code></a>')).toBe(
+      '[`arr[0]`](https://example.org/x) and [`List[int]`](https://example.org/y)',
+    )
+    expect(md('<a href="/x">see [1] <code>a\\[b]</code> [2]</a>')).toBe(
+      '[see \\[1\\] `a\\[b]` \\[2\\]](https://example.org/x)',
+    )
+    expect(md('<a href="/x"><code>a[0]</a> [b]')).toBe('[`a[0]`](https://example.org/x) [b]')
   })
 
   it('moves whitespace at the ends of a link outside it', () => {
@@ -537,11 +565,32 @@ describe('html_to_text tables', () => {
   })
 
   it('escapes pipes and folds a cell onto one line', () => {
-    expect(md('<table><tr><td>a | b</td><td><p>x</p><p>y</p><ul><li>i</li><li>j</li></ul></td></tr></table>')).toBe(
-      '| a \\| b | x y - i - j |\n| --- | --- |',
+    expect(md('<table><tr><td>a | b</td><td><p>x</p><p>y</p><div>z</div></td></tr></table>')).toBe(
+      '| a \\| b | x y z |\n| --- | --- |',
     )
-    expect(md('<table><tr><td>a<br>b</td><td><pre>c\n  d</pre></td></tr></table>')).toBe(
-      '| a b | ``` c d ``` |\n| --- | --- |',
+    expect(md('<table><tr><td>a<br>b</td><td><code>c</code>\n  d</td></tr></table>')).toBe(
+      '| a b | `c` d |\n| --- | --- |',
+    )
+  })
+
+  it('writes a table as blocks when a cell holds a code block, a list, a heading, a quote, or a rule', () => {
+    expect(
+      md(
+        '<table><tr><td>Nav</td><td><h1>Title</h1><p>Para one.</p><ul><li>x</li><li>y</li></ul><pre>def f():\n    return 1\n\nprint(f())</pre><blockquote>q</blockquote></td></tr></table>',
+      ),
+    ).toBe('Nav\n\n# Title\n\nPara one.\n\n- x\n- y\n\n```\ndef f():\n    return 1\n\nprint(f())\n```\n\n> q')
+    expect(md('<table><tr><td>k</td><td><pre>line1\nline2</pre></td></tr></table>')).toBe('k\n\n```\nline1\nline2\n```')
+    expect(md('<table><tr><td>k</td><td><ul><li>i</li><li>j</li></ul></td></tr></table>')).toBe('k\n\n- i\n- j')
+    expect(md('<table><tr><td>k</td><td><h2>h</h2></td></tr></table>')).toBe('k\n\n## h')
+    expect(md('<table><tr><td>k</td><td><blockquote>q</blockquote></td></tr></table>')).toBe('k\n\n> q')
+    expect(md('<table><tr><td>k</td><td>a<hr>b</td></tr></table>')).toBe('k\n\na\n\n---\n\nb')
+    expect(md('<table><tr><td>k</td><td><li>i</td></tr></table>')).toBe('k\n\n- i')
+  })
+
+  it('keeps a table whose cells hold only empty blocks, or whose caption holds a list', () => {
+    expect(md('<table><tr><td>k</td><td>v<pre></pre><ul></ul><h2></h2></td></tr></table>')).toBe('| k | v |\n| --- | --- |')
+    expect(md('<table><caption><ul><li>c</ul></caption><tr><td>k</td><td>v</td></tr></table>')).toBe(
+      '- c\n\n| k | v |\n| --- | --- |',
     )
   })
 
@@ -593,7 +642,7 @@ describe('html_to_text tables', () => {
 
   it('closes a cell and what it holds at a row or table tag', () => {
     expect(md('<table><tr><td><ul><li>a<td>b</tr><tr><td>c<blockquote>q</table>d')).toBe(
-      '| - a | b |\n| --- | --- |\n| c > q |\n\nd',
+      '- a\n\nb\n\nc\n\n> q\n\nd',
     )
     expect(md('<table><tr><td>a<td><b>b</tbody><tr><td>c</thead></table>')).toBe('| a | b |\n| --- | --- |\n| c |')
   })
@@ -645,6 +694,35 @@ describe('html_to_text dropped content', () => {
     expect(md('a<script>x</script/>b')).toBe('ab')
   })
 
+  it('keeps a script open through an end tag that follows a comment opener and a nested script', () => {
+    expect(md('<p>a</p><script><!-- <script>var x=1;</script> var leaked = "secret"; --></script><p>b</p>')).toBe('a\n\nb')
+    expect(md('a<script><!-- <SCRIPT>x</SCRIPT> y </script>b')).toBe('ab')
+    expect(md('a<script><!-- x </script>b')).toBe('ab')
+    expect(md('a<script><!-- <scripty>x</script>b')).toBe('ab')
+    expect(md('a<script><!-- <script> --> x </script>b')).toBe('ab')
+    expect(md('a<script><!--> <script>x</script>b')).toBe('ab')
+    expect(md('a<script><!---> <script>x</script>b')).toBe('ab')
+    expect(md('a<script><script>x</script>b')).toBe('ab')
+    expect(md('a<script><!-- <script>x</script>b')).toBe('a')
+    expect(md('a<style><!-- <style>x</style>b')).toBe('ab')
+  })
+
+  it('reads the end tag of a dropped element to its own >, past one in a quoted attribute', () => {
+    expect(md('<p>a</p><script>x</script foo="a>b"><p>c</p>')).toBe('a\n\nc')
+    expect(md("a<style>x</style x='>'>b<title>t</title y=\">\">c")).toBe('abc')
+    expect(md('a<script>x</script foo="b')).toBe('a')
+  })
+
+  it('reads a self-closing script, title, textarea, or iframe as an empty element', () => {
+    expect(
+      md('<html><head><script src="a.js"/><title>T</title></head><body><p>Body text one</p><script>x()</script><p>Body two</p></body></html>'),
+    ).toBe('Body text one\n\nBody two')
+    expect(md('<html><head><title/></head><body><p>Body</p></body></html>')).toBe('Body')
+    expect(md('<p>a</p><textarea name="q"/><p>b</p><iframe src="x"/><p>c</p>')).toBe('a\n\nb\n\nc')
+    expect(md('a<script src="a.js"/></script>b<style />c<noscript/>d')).toBe('abcd')
+    expect(md('a<script src=a.js/>x</script>b')).toBe('ab')
+  })
+
   it('drops the rest of the page after a script that is never closed', () => {
     expect(md('a<script>var x = 1; <p>hidden</p>')).toBe('a')
     expect(md('a<script>x</script')).toBe('a')
@@ -676,6 +754,14 @@ describe('html_to_text dropped content', () => {
     expect(md('a<template><p>t</p><template><p>u</p></template><p>v</p></template>b')).toBe('ab')
     expect(md('a<template><svg></svg><p>t</p></template>b')).toBe('ab')
     expect(md('a<template/><p>t</p></template>b')).toBe('ab')
+  })
+
+  it('drops an svg and a template inside a pre', () => {
+    expect(
+      md('<pre><button><svg viewBox="0 0 1 1"><title>Copy</title><desc>Copy to clipboard</desc><text>cp</text></svg></button><code>npm i x</code></pre>'),
+    ).toBe('```\nnpm i x\n```')
+    expect(md('<pre>a<template><span>hidden template</span></template>b</pre>')).toBe('```\nab\n```')
+    expect(md('<pre>a<svg/>b</svg>c</template>d</pre>')).toBe('```\nabcd\n```')
   })
 
   it('drops comments, including the short and the unterminated forms', () => {
@@ -750,8 +836,18 @@ describe('html_to_text entities', () => {
     expect(md('a&Tab;b&NewLine;c&#10;d&#9;e&ensp;f')).toBe('a b c d e\u{2002}f')
   })
 
-  it('stops a numeric reference at eight digits', () => {
-    expect(md('&#000000065;&#x000000041;')).toBe('\u00065;\u00041;')
+  it('reads every digit of a numeric reference, however many lead with zero', () => {
+    expect(md('&#000000065;&#x000000041;')).toBe('AA')
+    expect(md('&#0000000065; &#x0000000041;')).toBe('A A')
+    expect(md(`&#${'0'.repeat(5000)}65;&#x${'0'.repeat(5000)}41`)).toBe('AA')
+  })
+
+  it('turns a numeric reference too large to be a character into one replacement character', () => {
+    expect(md('x&#99999999999;y')).toBe('x\u{fffd}y')
+    expect(md('x&#xfffffffffff;y')).toBe('x\u{fffd}y')
+    expect(md(`x&#${'9'.repeat(5000)};y&#x${'f'.repeat(5000)}z`)).toBe('x\u{fffd}y\u{fffd}z')
+    expect(md('&#1114111;&#1114112;&#x10ffff;&#x110000;')).toBe('\u{10ffff}\u{fffd}\u{10ffff}\u{fffd}')
+    expect(md('&#0000;&#x000;')).toBe('\u{fffd}\u{fffd}')
   })
 })
 
@@ -887,6 +983,11 @@ describe('html_to_text on hostile input', () => {
       '<a b=c '.repeat(COUNT),
       '<script>'.repeat(COUNT),
       '<script></scrip'.repeat(COUNT),
+      '<script><!--<script></script>'.repeat(COUNT),
+      '<script></script a="'.repeat(COUNT),
+      '<script/><title/>'.repeat(COUNT),
+      `&#${'0'.repeat(COUNT * 10)}`,
+      `&#x${'f'.repeat(COUNT * 10)}`,
       '<title></titl'.repeat(COUNT),
       '<svg><foreignObject>'.repeat(COUNT),
       '&'.repeat(COUNT * 10),
@@ -910,6 +1011,36 @@ describe('html_to_text on hostile input', () => {
       html_title(html)
       expect(performance.now() - start).toBeLessThan(LINEAR_BUDGET_MS)
     }
+  })
+
+  it('keeps the output within a small multiple of the input, with its text intact', () => {
+    const SIZE = 512 * 1024
+    const wide = '<ol start=999999999><li>'.repeat(24)
+    const quotes = '<blockquote>'.repeat(24)
+    const cases: ReadonlyArray<readonly [string, number]> = [
+      [`${wide}<pre>${'a\n'.repeat(SIZE / 2)}`, SIZE / 2],
+      [`${wide}${'a<br>'.repeat(SIZE / 4)}`, SIZE / 4],
+      [`${quotes}<pre>a${'\n'.repeat(SIZE)}a`, 2],
+      [`${'<ul><li>'.repeat(24)}${'<p>a'.repeat(SIZE / 4)}`, SIZE / 4],
+      [`${`<table><tr><td>${quotes}`.repeat(6)}<pre>${'a\n'.repeat(SIZE / 2)}`, SIZE / 2],
+      [`<a href="/${'x'.repeat(2000)}">${'<p>a'.repeat(SIZE / 4)}`, SIZE / 4],
+      [`<base href="https://example.org/${'x'.repeat(4000)}/">${'<a href=y>a</a><br>'.repeat(SIZE / 16)}`, SIZE / 16],
+    ]
+    for (const [html, lines] of cases) {
+      const { text, ms } = timed(html)
+      expect(text.length).toBeLessThan(html.length * 8)
+      expect(text.split('\n').filter((line) => line.endsWith('a') || line.endsWith(')')).length).toBe(lines)
+      expect(ms).toBeLessThan(LINEAR_BUDGET_MS)
+    }
+  })
+
+  it('draws every margin and address on a page whose own size pays for them', () => {
+    const item = '<li><p>some text</p><p>more text</p><a href="/x">link</a>'
+    const text = md(`<blockquote><ol>${item.repeat(20_000)}</ol></blockquote>`)
+    const lines = text.split('\n')
+    expect(lines.every((line) => line.startsWith('>'))).toBe(true)
+    expect(lines.filter((line) => line.endsWith('[link](https://example.org/x)')).length).toBe(20_000)
+    expect(text.endsWith('> 20000. some text\n>\n>        more text\n>\n>        [link](https://example.org/x)')).toBe(true)
   })
 
   it('converts a few megabytes of ordinary markup in linear time', () => {
@@ -949,6 +1080,15 @@ describe('html_title', () => {
 
   it('reads a title that is never closed to the end of the input', () => {
     expect(html_title('<title>Open <p>ended')).toBe('Open <p>ended')
+  })
+
+  it('reads past a self-closing script to the title, and a self-closing title as an empty one', () => {
+    expect(html_title('<html><head><script src="a.js"/><title>Real title</title></head><body><p>x</p></body></html>')).toBe(
+      'Real title',
+    )
+    expect(html_title('<title/><p>Body</p>')).toBeUndefined()
+    expect(html_title('<script><!-- <script>"</script><title>No</title>" --></script><title>Yes</title>')).toBe('Yes')
+    expect(html_title('<style>x</style a=">"><title>Yes</title>')).toBe('Yes')
   })
 
   it('skips a title inside a comment, a script, or an svg', () => {

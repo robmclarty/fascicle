@@ -8,6 +8,11 @@
  * it, or gives up and takes the rest of the input, which is what keeps the
  * pass linear on markup that was written to make it slow. It never throws on
  * malformed markup, because the pages worth reading are rarely well formed.
+ *
+ * The output is held to a small multiple of the input. What the converter
+ * adds of its own (the margin on each line, the address of each link) is
+ * paid out of a budget sized to the page, and once that is spent the text
+ * goes on without them.
  */
 
 type TextToken = { readonly kind: 'text'; readonly text: string }
@@ -54,7 +59,7 @@ type Table = {
   readonly rows: string[][]
   row: string[] | undefined
   caption: string
-  nested: boolean
+  layout: boolean
 }
 
 type Entry = Margin | List | Table
@@ -69,6 +74,9 @@ type CellInfo = {
   readonly span: number
 }
 
+/** How many more characters of margins and link addresses the converter may write. */
+type Budget = { left: number }
+
 /**
  * Where output is being written: the page itself, or one table cell.
  *
@@ -82,6 +90,7 @@ type Ctx = {
   gap: number
   readonly stack: Entry[]
   readonly margins: Margin[]
+  margin_width: number
   readonly lists: List[]
   orphan: number | undefined
   quotes: number
@@ -91,7 +100,9 @@ type Ctx = {
   code: Span | undefined
   heading: number
   pre: string | undefined
+  blocks: boolean
   readonly cell: CellInfo | undefined
+  readonly budget: Budget
 }
 
 type Skip = { readonly name: string; depth: number; foreign: number }
@@ -117,8 +128,17 @@ const EQUALS = 61
 const DOUBLE_QUOTE = 34
 const SINGLE_QUOTE = 39
 
-/** Margins past this depth are not drawn, which bounds the width of a line's prefix. */
-const MAX_MARGINS = 24
+/** A margin that would take a line's prefix past this width is not drawn. It is the width of 24 quotes. */
+const MAX_MARGIN_WIDTH = 48
+
+/** The budget for margins and link addresses is this many times the input's length, plus the floor below. */
+const BUDGET_FACTOR = 4
+
+/** What a small page may spend on margins and link addresses whatever its length. */
+const BUDGET_FLOOR = 65_536
+
+/** A numeric reference with more significant digits than this names no character, in decimal or in hex. */
+const MAX_REFERENCE_DIGITS = 8
 
 /** Tables nested past this depth are read as plain blocks, which bounds how often a cell's text is copied. */
 const MAX_TABLE_DEPTH = 6
@@ -133,7 +153,13 @@ const REPLACEMENT_CHARACTER = String.fromCodePoint(0xfffd)
 
 const WHITESPACE_RUN = new RegExp(`[ \\t\\n\\r\\f${NO_BREAK_SPACE}]+`, 'g')
 
-const ENTITY = /&(?:#[xX]([0-9a-fA-F]{1,8})|#([0-9]{1,8})|([a-zA-Z][a-zA-Z0-9]{1,31}));?/g
+const ENTITY = /&(?:#[xX]([0-9a-fA-F]+)|#([0-9]+)|([a-zA-Z][a-zA-Z0-9]{1,31}));?/g
+
+/** The characters of link text that would close the link early or hide its closing bracket. */
+const LINK_TEXT_SPECIALS = /[\\[\]]/g
+
+/** What moves a script between its states: a comment's two ends, and a start or end tag of its own name. */
+const SCRIPT_MARKS = /<!--|-->|<\/?script(?=[\s/>])/gi
 
 const LINK_SCHEMES: ReadonlySet<string> = new Set(['http:', 'https:', 'mailto:', 'tel:'])
 
@@ -180,6 +206,9 @@ const SVG_BREAKOUT: ReadonlySet<string> = new Set([
   'nobr', 'ol', 'p', 'pre', 'ruby', 's', 'small', 'span', 'strong', 'strike', 'sub', 'sup', 'table',
   'tt', 'u', 'ul', 'var',
 ])
+
+/** Elements that are dropped with everything they hold. */
+const SKIPPED_TAGS: ReadonlySet<string> = new Set(['svg', 'template'])
 
 const FOREIGN_OBJECT = 'foreignobject'
 
@@ -419,6 +448,46 @@ function next_markup(html: string, from: number): number {
 }
 
 /**
+ * The index of the `</script` that ends a script whose content starts at `from`, or -1 when nothing ends it.
+ *
+ * A script that opens a comment and then names a `<script` inside it stays
+ * open through the next `</script`, which is how a browser reads the old
+ * habit of writing a script tag from inside a script. The search is one
+ * pass forward over the marks that change the state.
+ */
+function script_end(html: string, from: number): number {
+  let in_comment = false
+  let nested = false
+  SCRIPT_MARKS.lastIndex = from
+  for (let mark = SCRIPT_MARKS.exec(html); mark !== null; mark = SCRIPT_MARKS.exec(html)) {
+    const text = mark[0]
+    if (text === '<!--') {
+      // The opener's two dashes may also be the first two of a `-->`.
+      if (!in_comment) SCRIPT_MARKS.lastIndex = mark.index + 2
+      in_comment = true
+    } else if (text === '-->') {
+      in_comment = false
+      nested = false
+    } else if (text.charCodeAt(1) !== SLASH) {
+      if (in_comment) nested = true
+    } else if (nested) nested = false
+    else return mark.index
+  }
+  return -1
+}
+
+/**
+ * The index of the end tag that closes the raw text element `name`, whose content starts at `from`, or -1.
+ */
+function raw_end_index(html: string, name: string, from: number): number {
+  if (name === 'script') return script_end(html, from)
+  const end = RAW_ENDS.get(name)
+  if (end === undefined) return -1
+  end.lastIndex = from
+  return end.exec(html)?.index ?? -1
+}
+
+/**
  * Split a page into tokens, handed out one call at a time, undefined at the end.
  *
  * Comments, declarations, and processing instructions are dropped here. The
@@ -426,6 +495,10 @@ function next_markup(html: string, from: number): number {
  * one `raw` token that runs to the element's own end tag, so a `</` inside a
  * script's string closes nothing. A construct the input never closes takes
  * the rest of the input, which is what a browser does with it too.
+ *
+ * A raw text element written self-closing (`<script src="a.js"/>`) is read
+ * as empty. That is what it means in XHTML, which arrives here too, and in
+ * HTML the form has no use an author would keep.
  */
 function tokenizer(html: string): () => Token | undefined {
   const length = html.length
@@ -475,15 +548,14 @@ function tokenizer(html: string): () => Token | undefined {
       if (tag === undefined) break
       pos = tag.end
       if (closing) return { kind: 'close', name: tag.name }
-      const raw_end = RAW_ENDS.get(tag.name)
-      if (raw_end === undefined) {
+      if (!RAW_ENDS.has(tag.name)) {
         return { kind: 'open', name: tag.name, attrs: tag.attrs, self_closing: tag.self_closing }
       }
-      raw_end.lastIndex = pos
-      const found = raw_end.exec(html)
-      const text = html.slice(pos, found === null ? length : found.index)
-      if (found === null) pos = length
-      else skip_past('>', found.index)
+      if (tag.self_closing) return { kind: 'raw', name: tag.name, text: '' }
+      const found = raw_end_index(html, tag.name, pos)
+      const text = html.slice(pos, found < 0 ? length : found)
+      // The end tag is read as any tag is, so a `>` in one of its quoted attributes does not end it.
+      pos = found < 0 ? length : (read_tag(html, found + 2)?.end ?? length)
       return { kind: 'raw', name: tag.name, text }
     }
     pos = length
@@ -496,11 +568,15 @@ function tokenizer(html: string): () => Token | undefined {
  *
  * The range 0x80 to 0x9f is read as Windows-1252, which is what the pages
  * that use it mean and what a browser does. A code that is no character at
- * all becomes U+FFFD.
+ * all becomes U+FFFD, and so does one with too many digits to be a code
+ * point, however long the run of digits is. Leading zeros do not count.
  */
-function code_point_text(code: number): string {
+function code_point_text(digits: string, radix: 10 | 16): string {
+  const significant = digits.replace(/^0+/, '')
+  if (significant === '' || significant.length > MAX_REFERENCE_DIGITS) return REPLACEMENT_CHARACTER
+  const code = Number.parseInt(significant, radix)
   if (code >= 0x80 && code <= 0x9f) return String.fromCodePoint(WINDOWS_1252[code - 0x80] ?? code)
-  if (code === 0 || code > 0x10ffff || (code >= 0xd800 && code <= 0xdfff)) return REPLACEMENT_CHARACTER
+  if (code > 0x10ffff || (code >= 0xd800 && code <= 0xdfff)) return REPLACEMENT_CHARACTER
   return String.fromCodePoint(code)
 }
 
@@ -515,8 +591,8 @@ function code_point_text(code: number): string {
  */
 function entity_text(match: RegExpExecArray, text: string, in_attribute: boolean): string | undefined {
   const [whole, hex, decimal, name] = match
-  if (hex !== undefined) return code_point_text(Number.parseInt(hex, 16))
-  if (decimal !== undefined) return code_point_text(Number.parseInt(decimal, 10))
+  if (hex !== undefined) return code_point_text(hex, 16)
+  if (decimal !== undefined) return code_point_text(decimal, 10)
   if (name === undefined) return undefined
   const closed = whole.endsWith(';')
   if (closed) {
@@ -654,7 +730,7 @@ function whole_number(value: string | undefined, fallback: number, min: number, 
 /**
  * Make an empty output context, for the page or for one table cell.
  */
-function new_ctx(cell: CellInfo | undefined): Ctx {
+function new_ctx(cell: CellInfo | undefined, budget: Budget): Ctx {
   return {
     out: [],
     parts: [],
@@ -662,6 +738,7 @@ function new_ctx(cell: CellInfo | undefined): Ctx {
     gap: 0,
     stack: [],
     margins: [],
+    margin_width: 0,
     lists: [],
     orphan: undefined,
     quotes: 0,
@@ -671,8 +748,25 @@ function new_ctx(cell: CellInfo | undefined): Ctx {
     code: undefined,
     heading: 0,
     pre: undefined,
+    blocks: false,
     cell,
+    budget,
   }
+}
+
+/**
+ * Pay for a margin or a link address out of the budget and return it, or an empty string once the budget is spent.
+ *
+ * A budget that could not pay once pays for nothing after, so a page does
+ * not get its margins back for a line here and there.
+ */
+function spend(budget: Budget, text: string): string {
+  if (text.length > budget.left) {
+    budget.left = 0
+    return ''
+  }
+  budget.left -= text.length
+  return text
 }
 
 /**
@@ -713,15 +807,19 @@ function blank_prefix(ctx: Ctx): string {
 
 /**
  * Write a block's lines to the output, each under the margins open right now.
+ *
+ * A block written inside a list, an item, or a quote marks its context as
+ * holding block structure, which is what a table cell is asked about later.
  */
 function emit_block(ctx: Ctx, lines: ReadonlyArray<string>): void {
   if (lines.length === 0) return
+  if (ctx.stack.length > 0) ctx.blocks = true
   if (ctx.out.length > 0) {
     ctx.out.push('\n')
-    if (ctx.gap >= 2) ctx.out.push(blank_prefix(ctx), '\n')
+    if (ctx.gap >= 2) ctx.out.push(spend(ctx.budget, blank_prefix(ctx)), '\n')
   }
   lines.forEach((line, index) => {
-    const prefix = line_prefix(ctx)
+    const prefix = spend(ctx.budget, line_prefix(ctx))
     if (index > 0) ctx.out.push('\n')
     ctx.out.push(line === '' ? prefix.trimEnd() : prefix + line)
   })
@@ -730,12 +828,18 @@ function emit_block(ctx: Ctx, lines: ReadonlyArray<string>): void {
 
 /**
  * Add decoded text to the current line, with its whitespace collapsed against what is already there.
+ *
+ * Text that lands in a link has its brackets and backslashes escaped, so it
+ * cannot close the link or put a target of its own after it. Text in a code
+ * span is left alone even there, because markdown reads a backslash in code
+ * as a backslash.
  */
 function push_text(ctx: Ctx, text: string): void {
   const collapsed = collapse(text)
   const piece = ctx.spaced && collapsed.startsWith(' ') ? collapsed.slice(1) : collapsed
   if (piece === '') return
-  ctx.parts.push(piece)
+  const escaped = ctx.link !== undefined && ctx.code === undefined
+  ctx.parts.push(escaped ? piece.replace(LINK_TEXT_SPECIALS, '\\$&') : piece)
   ctx.spaced = piece.endsWith(' ')
 }
 
@@ -771,6 +875,9 @@ function close_code(ctx: Ctx): void {
 
 /**
  * Close the open link, if one is open, writing it as `[text](address)`.
+ *
+ * The text was escaped as it came in. The address is paid for out of the
+ * budget, and a link the budget cannot pay for is written as its text.
  */
 function close_link(ctx: Ctx): void {
   const link = ctx.link
@@ -778,7 +885,10 @@ function close_link(ctx: Ctx): void {
   ctx.link = undefined
   // Code opened inside the link and never closed ends with it.
   close_code(ctx)
-  close_span(ctx, link, (text) => `[${text.replace(/[[\]]/g, '\\$&')}](${link.href})`)
+  close_span(ctx, link, (text) => {
+    const href = spend(ctx.budget, link.href)
+    return href === '' ? text : `[${text}](${href})`
+  })
 }
 
 /**
@@ -797,6 +907,7 @@ function end_pre(ctx: Ctx): void {
   const code = (raw.startsWith('\n') ? raw.slice(1) : raw).trimEnd()
   if (code === '') return
   const fence = '`'.repeat(Math.max(3, longest_backtick_run(code) + 1))
+  ctx.blocks = true
   emit_block(ctx, [fence + language, ...code.split('\n'), fence])
   request_gap(ctx, 2)
 }
@@ -826,6 +937,7 @@ function flush_inline(ctx: Ctx): void {
     emit_block(ctx, lines)
     return
   }
+  ctx.blocks = true
   emit_block(ctx, [`${'#'.repeat(ctx.heading)} ${lines.join(' ')}`])
   ctx.heading = 0
 }
@@ -858,9 +970,10 @@ function end_row(table: Table): void {
  *
  * A table of two or more columns is a markdown table, with its first row as
  * the header since markdown has no table without one, and each cell folded
- * onto one line. A table that holds another table, or has a single column,
- * is taken for page layout, and its cells are written as blocks one after
- * another.
+ * onto one line. A table that has a single column, or holds in some cell
+ * what cannot be folded (another table, a code block, a list, a heading, a
+ * quote, a rule), is taken for page layout, and its cells are written as
+ * blocks one after another.
  */
 function emit_table(ctx: Ctx, table: Table): void {
   end_row(table)
@@ -871,7 +984,7 @@ function emit_table(ctx: Ctx, table: Table): void {
     request_gap(ctx, 2)
   }
   const width = table.rows.reduce((widest, row) => Math.max(widest, row.length), 0)
-  if (table.nested || width < 2) {
+  if (table.layout || width < 2) {
     for (const text of table.rows.flat()) {
       if (text === '') continue
       emit_block(ctx, text.split('\n'))
@@ -912,7 +1025,10 @@ function pop_entry(ctx: Ctx): Entry | undefined {
     request_gap(ctx, 2)
     return entry
   }
-  if (entry.shown) ctx.margins.pop()
+  if (entry.shown) {
+    ctx.margins.pop()
+    ctx.margin_width -= entry.first.length
+  }
   if (entry.kind === 'quote') {
     ctx.quotes -= 1
     request_gap(ctx, 2)
@@ -956,6 +1072,7 @@ function close_cell(state: State): void {
     table.caption = text
     return
   }
+  if (ctx.blocks) table.layout = true
   const row = table.row ?? []
   table.row = row
   row.push(text)
@@ -1011,6 +1128,7 @@ function open_break(state: State): void {
  */
 function open_rule(state: State): void {
   break_block(state.ctx, 2)
+  state.ctx.blocks = true
   emit_block(state.ctx, ['---'])
   request_gap(state.ctx, 2)
 }
@@ -1064,20 +1182,33 @@ function open_pre(state: State, token: OpenToken): void {
 }
 
 /**
+ * Open a list item or a quote, whose margin is drawn when the line's prefix has room for it.
+ *
+ * The limit is on the width of the prefix and not on the count of margins,
+ * because an ordered item's marker is as wide as its number.
+ */
+function open_margin(ctx: Ctx, kind: Margin['kind'], first: string): void {
+  const shown = ctx.margin_width + first.length <= MAX_MARGIN_WIDTH
+  const margin: Margin = {
+    kind,
+    first,
+    rest: kind === 'quote' ? first : ' '.repeat(first.length),
+    shown,
+    started: false,
+  }
+  ctx.stack.push(margin)
+  if (!shown) return
+  ctx.margins.push(margin)
+  ctx.margin_width += first.length
+}
+
+/**
  * Open a block quote.
  */
 function open_quote(state: State): void {
   const ctx = state.ctx
   break_block(ctx, 2)
-  const quote: Margin = {
-    kind: 'quote',
-    first: '> ',
-    rest: '> ',
-    shown: ctx.margins.length < MAX_MARGINS,
-    started: false,
-  }
-  ctx.stack.push(quote)
-  if (quote.shown) ctx.margins.push(quote)
+  open_margin(ctx, 'quote', '> ')
   ctx.quotes += 1
 }
 
@@ -1128,21 +1259,13 @@ function open_item(state: State): void {
   if (list !== undefined && list.count > 0) ctx.gap = 1
   else request_gap(ctx, 1)
   const marker = list?.ordered === true ? `${String(list.next)}. ` : '- '
-  const item: Margin = {
-    kind: 'item',
-    first: marker,
-    rest: ' '.repeat(marker.length),
-    shown: ctx.margins.length < MAX_MARGINS,
-    started: false,
-  }
   if (list === undefined) ctx.orphan = ctx.stack.length
   else {
     list.item = ctx.stack.length
     list.next += 1
     list.count += 1
   }
-  ctx.stack.push(item)
-  if (item.shown) ctx.margins.push(item)
+  open_margin(ctx, 'item', marker)
 }
 
 /**
@@ -1165,8 +1288,8 @@ function open_table(state: State): void {
     ctx.fake_tables += 1
     return
   }
-  if (ctx.cell !== undefined) ctx.cell.table.nested = true
-  ctx.stack.push({ kind: 'table', rows: [], row: undefined, caption: '', nested: false })
+  if (ctx.cell !== undefined) ctx.cell.table.layout = true
+  ctx.stack.push({ kind: 'table', rows: [], row: undefined, caption: '', layout: false })
   ctx.tables += 1
 }
 
@@ -1196,7 +1319,7 @@ function open_cell(state: State, token: OpenToken): void {
   }
   const span = caption ? 1 : whole_number(token.attrs.get(COLSPAN), 1, 1, MAX_COLUMN_SPAN)
   state.outer.push(state.ctx)
-  state.ctx = new_ctx({ table, caption, span })
+  state.ctx = new_ctx({ table, caption, span }, state.ctx.budget)
 }
 
 /**
@@ -1297,11 +1420,14 @@ const CLOSERS = closers()
  *
  * Most tags in a `pre` are highlighting and are dropped. A `br` or a block
  * boundary is a new line of code, a `code` may name the language, and a tag
- * that cannot sit in a `pre` ends it and is then handled as usual.
+ * that cannot sit in a `pre` ends it and is then handled as usual. An `svg`
+ * or a `template` is handled as usual too, which drops it with what it
+ * holds, so the icon of a copy button does not land in the code.
  */
 function handled_in_pre(ctx: Ctx, token: OpenToken | CloseToken): boolean {
   if (ctx.pre === undefined) return false
   const name = token.name
+  if (SKIPPED_TAGS.has(name)) return false
   if (PRE_ENDERS.has(name)) {
     end_pre(ctx)
     return false
@@ -1408,7 +1534,7 @@ function dropped(state: State, token: Token): boolean {
  */
 export function html_to_text(html: string, url: string): string {
   const state: State = {
-    ctx: new_ctx(undefined),
+    ctx: new_ctx(undefined, { left: html.length * BUDGET_FACTOR + BUDGET_FLOOR }),
     outer: [],
     base: parse_url(url, undefined),
     based: false,
