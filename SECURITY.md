@@ -169,7 +169,9 @@ tool can refuse for you.
   redirect. It connects to the address that it checked, so a second DNS answer
   can't swap in another one. `allow_private: true` turns the check off for
   every host, so pair it with an `allow_hosts` that names the servers you
-  meant.
+  meant. If you find a URL that gets `web_fetch` to one of those addresses
+  while `allow_private` is unset, that's a Fascicle vulnerability, so please
+  report it.
 - **A page can carry instructions.** What `web_fetch` returns is text that
   somebody else wrote, and a model can be talked into following it. The tool's
   description tells the model to read a result as content and never as
