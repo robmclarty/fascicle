@@ -10,6 +10,7 @@ export type {
   AcpMapperOptions,
   AcpMapperState,
   AcpMode,
+  AcpModel,
   AcpSession,
   AcpSessionStore,
   AcpSessionSummary,

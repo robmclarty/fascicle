@@ -12,6 +12,7 @@
 
 ### Fixed
 
+- **`fascicle/acp` exports `AcpModel`.** `ServeAcpConfig.models` took a list of them, and the subpath never exported the type, so an app couldn't name what it was building without reaching through the config type.
 - **An `ai_sdk` stream cut off before its step finished fails again, rather than returning a truncated turn as finished.** The transport caught a cut-off stream by its finish reason, `other` with no raw reason, which is what the provider packages reported. The AI SDK named the case `interrupted` in `ai` 7.0.149, and `@ai-sdk/anthropic` 4.0.86, `@ai-sdk/openai` 4.0.100, `@ai-sdk/google` 4.0.103, and `@ai-sdk/amazon-bedrock` 5.0.122 report it that way, so on any of them the check never fired, and a turn that lost its tail came back with `finish_reason: 'stop'`. Either finish reason now throws the network shape that the engine retries when nothing consumed the chunks, and that fails as `stream interrupted` when something did.
 
 ### Internal

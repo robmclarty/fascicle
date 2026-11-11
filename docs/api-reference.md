@@ -636,7 +636,7 @@ an agent starts. See [acp.md](./acp.md).
 | `acp_sdk_missing_error` | error | missing optional peer |
 
 Types: `ServeAcpConfig`, `AcpSession`, `AcpTurn`, `AcpHistoryEntry`,
-`AcpStreamRoute`, `AcpMapperState`, `AcpMapperOptions`, `AcpMode`,
+`AcpStreamRoute`, `AcpMapperState`, `AcpMapperOptions`, `AcpMode`, `AcpModel`,
 `WorkspaceToolsOptions`, `AcpSessionStore`, `AcpStoredSession`,
 `AcpSessionSummary`, `AcpSessionUsage`, `FilesystemSessionStoreConfig`. In
 `ServeAcpConfig`, `to_input` is required unless the
