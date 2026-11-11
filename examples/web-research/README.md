@@ -5,6 +5,8 @@ Answer a question from the web and cite the pages it read. The example hands
 does the rest: it searches, fetches the pages that look useful, and writes an
 answer that ends with the URLs it leaned on.
 
+![terminal output of the web-research example: the question, one Wikipedia search, two fetched pages, and the answer with its sources](./screenshot.png)
+
 This is the real network with a real model. Each tool call prints as it
 happens (the query for a search, the URL for a fetch and how many characters
 came back), so you can watch what the model went looking for before you read
