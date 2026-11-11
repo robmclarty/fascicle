@@ -1,0 +1,59 @@
+<!doctype html>
+<html>
+<head>
+<title>
+  retry &middot;  API reference
+</title>
+<base href="https://docs.example.com/v2/api/">
+</head>
+<body>
+<div class="sidebar">
+  <ul>
+    <li><a href="retry.html">retry</a></li>
+    <li><a href="../guide/">Guide</a></li>
+  </ul>
+</div>
+<div class="content">
+<h1 id="retry"><code>retry(fn, options)</code></h1>
+<p>Calls <code>fn</code> until it succeeds. Pass <code>`raw`</code> names in <kbd>Ctrl</kbd>+<kbd>C</kbd> style.</p>
+<h2>Example</h2>
+<pre><code class="hljs language-ts"><span class="kw">const</span> result = <span class="kw">await</span> retry(() =&gt; fetch(url), {
+  attempts: 3,
+  on_error: (err) =&gt; console.log(`failed: ${err}`),
+})
+
+<span class="cm">// &lt;T&gt; is inferred &amp;amp; kept</span>
+</code></pre>
+<p>From a shell:</p>
+<pre class="lang-sh">
+$ npm install retry
+$ echo '```'
+</pre>
+<h2>Options</h2>
+<table>
+  <caption>Options of <code>retry</code></caption>
+  <thead>
+    <tr><th>Name</th><th>Type</th><th>Default</th><th>Notes</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>attempts</code></td><td>number</td><td>3</td><td>Total calls, the first included.</td></tr>
+    <tr><td><code>delay_ms</code></td><td>number | function</td><td>250</td><td>See <a href="backoff.html">backoff</a>.<br>May be a function.</td></tr>
+    <tr><td><code>on_error</code></td><td>function</td><td></td></tr>
+  </tbody>
+</table>
+<h3>Returns</h3>
+<dl>
+  <dt>value</dt>
+  <dd>Whatever <code>fn</code> returned.</dd>
+  <dt>attempts</dt>
+  <dd>How many calls it took.</dd>
+</dl>
+<ol start="3">
+  <li><p>Install it.</p><p>Any version works.</p></li>
+  <li>Import it.
+    <pre>import { retry } from 'retry'</pre>
+  </li>
+</ol>
+</div>
+</body>
+</html>
