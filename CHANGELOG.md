@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.18.1 — 2026-11-11
+
+### Changed
+
+- **The `AGENTS.md` that ships in the package describes the release it ships in.** The primer that the build copies into `dist/AGENTS.md` was written against 0.16.3, so a coding agent in a project on 0.18.0 read notes about what 0.16.3 did and rules for traps that 0.16.4 removed, and it learned nothing of `fascicle/web`. It states what this release does now. Three rules that no longer bite (`branch` returning a union, a stub's `content` as a function, how a composite draws) move into the vocabulary, the schema rule says the one case where a schema still never reaches the model (one that JSON Schema can't express, such as a `Date`), and `web_tools` joins the imports and the vocabulary.
+
+### Internal
+
+- **The course leads with what the current release does.** Every learner who follows lesson 0 installs the current release, though the lessons showed 0.16.3's errors as the main text and the current ones in a note. The course states one floor, 0.18.0, and lessons 2 and 4 show the errors that the build really prints, which the `learn` walk now holds them to. Lesson 0's advice for a release that pnpm holds back was wrong too: pnpm 11 and later wait a day before they install a new release, and `fascicle@latest` falls back to the older one without saying so. The lesson installs by version, and gives the `minimumReleaseAgeExclude` entry for a strict setting.
+- **The site's samples type, and each copy button copies what its block shows.** Samples that failed under strict mode are annotated or corrected, the `checkpoint` chip no longer builds the anonymous inner step that `checkpoint` refuses, the `improve` chip has a sample of its own, and two blocks copied different code from what they displayed. The two-styles cards excerpt the files they name, the widget gains a `gate` chip, and the docs page stacks its sidebar above the content on a narrow screen. The install line says Fascicle is ESM-only and needs Node 24, and the site's em dashes are gone.
+
 ## v0.18.0 — 2026-11-11
 
 ### Added
