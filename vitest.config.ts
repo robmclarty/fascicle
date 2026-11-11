@@ -2,36 +2,42 @@ import { fileURLToPath } from 'node:url';
 
 import { defineConfig } from 'vitest/config';
 
+/** Modules that siblings reach through a `#<module>` alias, mirroring `package.json` `imports`. */
+const INTERNAL_MODULES = [
+  'core',
+  'engine',
+  'composites',
+  'adapters',
+  'viewer',
+  'agents',
+  'stdio',
+  'acp',
+  'mcp',
+  'ui',
+  'policy',
+  'process',
+  'schema',
+  'testing',
+  'web',
+];
+
+/** Modules published as `fascicle/<module>` subpaths, mirroring `package.json` `exports`. */
+const PUBLISHED_MODULES = ['acp', 'adapters', 'mcp', 'otel', 'stdio', 'ui', 'viewer', 'agents', 'testing', 'web'];
+
+/**
+ * Resolve a path beside this config to an absolute file path.
+ */
+function source(path: string): string {
+  return fileURLToPath(new URL(path, import.meta.url));
+}
+
 export default defineConfig({
   resolve: {
     alias: [
-      { find: /^#core$/, replacement: fileURLToPath(new URL('./src/core/index.ts', import.meta.url)) },
-      { find: /^#engine$/, replacement: fileURLToPath(new URL('./src/engine/index.ts', import.meta.url)) },
-      { find: /^#composites$/, replacement: fileURLToPath(new URL('./src/composites/index.ts', import.meta.url)) },
-      { find: /^#adapters$/, replacement: fileURLToPath(new URL('./src/adapters/index.ts', import.meta.url)) },
-      { find: /^#viewer$/, replacement: fileURLToPath(new URL('./src/viewer/index.ts', import.meta.url)) },
-      { find: /^#agents$/, replacement: fileURLToPath(new URL('./src/agents/index.ts', import.meta.url)) },
-      { find: /^#stdio$/, replacement: fileURLToPath(new URL('./src/stdio/index.ts', import.meta.url)) },
-      { find: /^#acp$/, replacement: fileURLToPath(new URL('./src/acp/index.ts', import.meta.url)) },
-      { find: /^#mcp$/, replacement: fileURLToPath(new URL('./src/mcp/index.ts', import.meta.url)) },
-      { find: /^#ui$/, replacement: fileURLToPath(new URL('./src/ui/index.ts', import.meta.url)) },
-      { find: /^#policy$/, replacement: fileURLToPath(new URL('./src/policy/index.ts', import.meta.url)) },
-      { find: /^#process$/, replacement: fileURLToPath(new URL('./src/process/index.ts', import.meta.url)) },
-      { find: /^#schema$/, replacement: fileURLToPath(new URL('./src/schema/index.ts', import.meta.url)) },
-      { find: /^#testing$/, replacement: fileURLToPath(new URL('./src/testing/index.ts', import.meta.url)) },
-      { find: /^#web$/, replacement: fileURLToPath(new URL('./src/web/index.ts', import.meta.url)) },
+      ...INTERNAL_MODULES.map((name) => ({ find: new RegExp(`^#${name}$`), replacement: source(`./src/${name}/index.ts`) })),
       // Published surface (examples + doc snippets import these names).
-      { find: /^fascicle\/acp$/, replacement: fileURLToPath(new URL('./src/acp/index.ts', import.meta.url)) },
-      { find: /^fascicle\/adapters$/, replacement: fileURLToPath(new URL('./src/adapters/index.ts', import.meta.url)) },
-      { find: /^fascicle\/mcp$/, replacement: fileURLToPath(new URL('./src/mcp/index.ts', import.meta.url)) },
-      { find: /^fascicle\/otel$/, replacement: fileURLToPath(new URL('./src/otel/index.ts', import.meta.url)) },
-      { find: /^fascicle\/stdio$/, replacement: fileURLToPath(new URL('./src/stdio/index.ts', import.meta.url)) },
-      { find: /^fascicle\/ui$/, replacement: fileURLToPath(new URL('./src/ui/index.ts', import.meta.url)) },
-      { find: /^fascicle\/viewer$/, replacement: fileURLToPath(new URL('./src/viewer/index.ts', import.meta.url)) },
-      { find: /^fascicle\/agents$/, replacement: fileURLToPath(new URL('./src/agents/index.ts', import.meta.url)) },
-      { find: /^fascicle\/testing$/, replacement: fileURLToPath(new URL('./src/testing/index.ts', import.meta.url)) },
-      { find: /^fascicle\/web$/, replacement: fileURLToPath(new URL('./src/web/index.ts', import.meta.url)) },
-      { find: /^fascicle$/, replacement: fileURLToPath(new URL('./src/index.ts', import.meta.url)) },
+      ...PUBLISHED_MODULES.map((name) => ({ find: new RegExp(`^fascicle/${name}$`), replacement: source(`./src/${name}/index.ts`) })),
+      { find: /^fascicle$/, replacement: source('./src/index.ts') },
     ],
   },
   test: {
