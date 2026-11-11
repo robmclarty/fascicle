@@ -337,6 +337,18 @@ describe('fetch_url', () => {
       expect(response.body.toString()).toBe('lost')
     })
 
+    it('returns a 302 with an empty Location as the final response, and asks once', async () => {
+      const site = await serve((_req, res) => {
+        res.writeHead(302, { location: '' })
+        res.end('nowhere')
+      })
+      const response = await fetch_url(ask(`http://127.0.0.1:${site.port}/start`))
+      expect(response.status).toBe(302)
+      expect(response.url).toBe(`http://127.0.0.1:${site.port}/start`)
+      expect(response.body.toString()).toBe('nowhere')
+      expect(site.seen).toHaveLength(1)
+    })
+
     it('resolves and checks every hop once, and carries nothing from one hop to the next', async () => {
       const site = await serve((req, res) => {
         if (req.headers.host?.startsWith('a.test') === true) {
