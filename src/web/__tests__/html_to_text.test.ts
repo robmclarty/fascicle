@@ -23,8 +23,19 @@ const timed = (html: string): { text: string; ms: number } => {
   return { text, ms: performance.now() - start }
 }
 
-/** Generous enough for a loaded machine, and far under what a quadratic pass over these inputs takes. */
-const LINEAR_BUDGET_MS = 5000
+/**
+ * Whether the run is inside a Stryker worker, whose instrumentation counts
+ * every statement the converter runs and slows it about a hundred times over.
+ */
+const INSTRUMENTED = process.env['STRYKER_MUTATOR_WORKER'] !== undefined
+
+/**
+ * Generous enough for a loaded machine, and far under what a quadratic pass
+ * over these inputs takes. Under Stryker the budget is wider by the cost of
+ * its instrumentation, and a mutant that turns a pass quadratic still dies,
+ * on Stryker's own timeout.
+ */
+const LINEAR_BUDGET_MS = INSTRUMENTED ? 120_000 : 5000
 
 describe('html_to_text on fixtures', () => {
   it('converts an article page, dropping its chrome of scripts, styles, svg, noscript, and template', () => {
@@ -934,7 +945,7 @@ describe('html_to_text malformed markup', () => {
 // Each test here converts several large inputs and holds every one of them to
 // LINEAR_BUDGET_MS, so the test as a whole needs more room than the default,
 // most of all under coverage or mutation instrumentation.
-describe('html_to_text on hostile input', { timeout: 120_000 }, () => {
+describe('html_to_text on hostile input', { timeout: INSTRUMENTED ? 600_000 : 120_000 }, () => {
   const COUNT = 100_000
 
   it('survives a hundred thousand nested tags of each container kind', () => {
