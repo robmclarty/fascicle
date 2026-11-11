@@ -636,7 +636,7 @@ function link_target(href: string | undefined, base: URL | undefined): string | 
  */
 function language_of(attrs: ReadonlyMap<string, string>): string {
   for (const token of (attrs.get('class') ?? '').split(/[ \t\n\r\f]+/)) {
-    const language = /^lang(?:uage)?-([A-Za-z0-9_+#.-]{1,32})$/.exec(token)?.[1]
+    const language = /^(?:lang|language)-([A-Za-z0-9_+#.-]{1,32})$/.exec(token)?.[1]
     if (language !== undefined) return language
   }
   return ''
@@ -885,7 +885,9 @@ function emit_table(ctx: Ctx, table: Table): void {
     const cells = row.map((text) => one_line(text).replaceAll('|', '\\|'))
     // Only the header is padded: its width has to match the rule under it,
     // while a short body row is legal and padding each would cost rows times columns.
-    while (index === 0 && cells.length < width) cells.push('')
+    if (index === 0) {
+      while (cells.length < width) cells.push('')
+    }
     lines.push(`| ${cells.join(' | ')} |`)
     if (index === 0) lines.push(`|${' --- |'.repeat(width)}`)
   })
@@ -1043,7 +1045,7 @@ function close_anchor(state: State): void {
  */
 function open_code(state: State): void {
   const ctx = state.ctx
-  if (ctx.code === undefined) ctx.code = { start: ctx.parts.length, spaced: ctx.spaced }
+  ctx.code ??= { start: ctx.parts.length, spaced: ctx.spaced }
 }
 
 /**
