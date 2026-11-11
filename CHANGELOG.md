@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.18.0 — 2026-11-11
 
 ### Added
 
@@ -20,6 +20,8 @@
 - **The check gate's tools are current.** checkride moves from 0.15.0 to 0.20.0, and the dev tree moves with it, among it oxlint 1.90, vitest 5.1, Stryker 10.1.1, ast-grep 0.51, vale 3.25, cspell 10.4, and `ai` 7.0.162. fallow stops at 3.38.1, since 3.39.0's platform binaries are still inside the two-day release-age quarantine that only the `fallow` package itself is excluded from. Stryker 10.1.1 ships the vitest 5 test-name separator fix (stryker-js #6210), so the pnpm patch that carried it is gone.
 - **The OpenTelemetry tests, example, and Grafana guide are on SDK 3.** SDK 3 removed `@opentelemetry/sdk-trace-base`, so they import `TracerProvider` from `@opentelemetry/sdk-trace`, and its span processors take `{ exporter }`. API 1.10 widened `AttributeValue` to `unknown`, so the trace bridge types what it writes as the primitives and primitive arrays that every API release in the peer range accepts.
 - **The Bedrock wire test holds the peer's new failure.** `@ai-sdk/amazon-bedrock` used to drop a frame it couldn't decode, and every frame after it, without an error. It fails the stream with the checksum it read now, so the test says that, and so does the reason the suite proves its framer first.
+- **The docs and the site match the code again.** A sweep against the barrels and the manifest found a roadmap that stopped at v0.17.4, site samples that called `compose` and `chain` the way older releases took them, a `DEFAULT_RETRY` shown as 3 attempts where the engine makes 4, and exports that `api-reference.md` never listed. Each is corrected, and `SECURITY.md` gains a section on the web tools that counts a `web_fetch` address-check bypass as a vulnerability to report.
+- **The ACP test that orders stored sessions no longer leans on the clock.** `updated_at` has millisecond resolution and `session/list` sorts on it, so two sessions saved inside one millisecond came back in directory order, and the test failed about one Stryker dry run in five. It waits 5 ms between the two saves now.
 
 ## v0.17.8 — 2026-11-02
 
