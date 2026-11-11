@@ -1,6 +1,6 @@
 import { createServer } from 'node:http'
-import type { IncomingMessage, Server, ServerResponse } from 'node:http'
-import type { AddressInfo } from 'node:net'
+import type { ClientRequest, IncomingMessage, RequestOptions, Server, ServerResponse } from 'node:http'
+import type { AddressInfo, LookupFunction } from 'node:net'
 import { brotliCompressSync, constants, deflateSync, gzipSync } from 'node:zlib'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { fetch_url } from '../transport.js'
@@ -19,6 +19,37 @@ type Site = {
 const OPEN: AddressPolicy = { allow_hosts: undefined, deny_hosts: [], allow_private: true }
 
 const LOOPBACK: ResolvedAddress = { address: '127.0.0.1', family: 4 }
+
+/**
+ * An address outside every blocked range (the benchmarking range that
+ * `address.ts` leaves open on purpose) which no local server can listen on.
+ */
+const PUBLIC: ResolvedAddress = { address: '198.18.0.1', family: 4 }
+
+// A redirect from a public address to a private one needs a first hop that
+// passes the address check and still reaches the local server. This wraps
+// the transport's `lookup`, so that a socket pinned to PUBLIC opens to the
+// loopback address. The check has already run on PUBLIC by then, and every
+// other address goes through untouched.
+vi.mock('node:http', async (original) => {
+  const actual = await original<typeof import('node:http')>()
+  /** Send a request as `node:http` would, with PUBLIC rerouted to the loopback address. */
+  const request = (url: URL, options: RequestOptions): ClientRequest => {
+    const pinned = options.lookup
+    if (pinned === undefined) return actual.request(url, options)
+    /** PUBLIC as the loopback address, and any other address as it is. */
+    const rerouted = (address: string): string => (address === PUBLIC.address ? LOOPBACK.address : address)
+    /** Answer what the pinned lookup answers, in either of its two shapes, with PUBLIC rerouted. */
+    const lookup: LookupFunction = (hostname, lookup_options, callback) => {
+      pinned(hostname, lookup_options, (error, address, family) => {
+        if (typeof address === 'string') callback(error, rerouted(address), family)
+        else callback(error, address.map((entry) => ({ ...entry, address: rerouted(entry.address) })))
+      })
+    }
+    return actual.request(url, { ...options, lookup })
+  }
+  return { ...actual, request }
+})
 
 const servers: Server[] = []
 
@@ -367,6 +398,70 @@ describe('fetch_url', () => {
       expect(site.seen).toHaveLength(2)
     })
 
+    it.each([
+      ['a name that resolves to a loopback address', 'inside.test', '127.0.0.1'],
+      ['a name that resolves to the metadata address', 'metadata.test', '169.254.169.254'],
+      ['a name that resolves to a private address', 'intranet.test', '10.0.0.5'],
+    ])('refuses a redirect from a public address to %s, and opens no second connection', async (_label, host, address) => {
+      const site = await serve((_req, res) => {
+        res.writeHead(302, { location: `http://${host}:${site.port}/admin` })
+        res.end()
+      })
+      const resolve = vi.fn<ResolveHost>((hostname) =>
+        Promise.resolve(hostname === 'public.test' ? [PUBLIC] : [{ address, family: 4 }]),
+      )
+      const error = await rejection(
+        fetch_url(ask(`http://public.test:${site.port}/go`, { policy: { ...OPEN, allow_private: false } }), {
+          resolve,
+        }),
+      )
+      expect(error.message).toBe(
+        `redirect 1 (http://public.test:${site.port}/go to http://${host}:${site.port}/admin) was refused: ${host} resolves to ${address}, a loopback, private, or link-local address, so web_fetch won't reach it; set allow_private to read a server on your own network`,
+      )
+      expect(resolve.mock.calls).toEqual([['public.test'], [host]])
+      expect(site.seen).toHaveLength(1)
+      expect(site.connections()).toBe(1)
+    })
+
+    it.each([['127.0.0.1'], ['[::1]'], ['169.254.169.254'], ['2130706433'], ['[::ffff:7f00:1]']])(
+      'refuses a redirect from a public address to the literal %s',
+      async (literal) => {
+        const site = await serve((_req, res) => {
+          res.writeHead(302, { location: `http://${literal}:${site.port}/admin` })
+          res.end()
+        })
+        const resolve = vi.fn<ResolveHost>(() => Promise.resolve([PUBLIC]))
+        const error = await rejection(
+          fetch_url(ask(`http://public.test:${site.port}/go`, { policy: { ...OPEN, allow_private: false } }), {
+            resolve,
+          }),
+        )
+        expect(error.message).toMatch(/^redirect 1 \(.* to .*\) was refused: .* resolves to .*, a loopback, private, or link-local address/)
+        expect(resolve.mock.calls).toEqual([['public.test']])
+        expect(site.seen).toHaveLength(1)
+        expect(site.connections()).toBe(1)
+      },
+    )
+
+    it('follows a redirect from one public address to another with the address check on', async () => {
+      const site = await serve((req, res) => {
+        if (req.url === '/go') {
+          res.writeHead(302, { location: `http://other.test:${site.port}/there` })
+          res.end()
+          return
+        }
+        res.writeHead(200, { 'content-type': 'text/plain' })
+        res.end('arrived')
+      })
+      const resolve = vi.fn<ResolveHost>(() => Promise.resolve([PUBLIC]))
+      const response = await fetch_url(
+        ask(`http://public.test:${site.port}/go`, { policy: { ...OPEN, allow_private: false } }),
+        { resolve },
+      )
+      expect(response.body.toString()).toBe('arrived')
+      expect(response.url).toBe(`http://other.test:${site.port}/there`)
+    })
+
     it('refuses a redirect to a scheme other than http and https', async () => {
       const site = await serve((_req, res) => {
         res.writeHead(302, { location: 'file:///etc/passwd' })
@@ -389,6 +484,60 @@ describe('fetch_url', () => {
       )
       expect(error.message).not.toContain('hunter2')
       expect(error.message).not.toContain('alice')
+    })
+
+    it.each([
+      ['http://user:s3cret@bad host/x', 'http://bad host/x'],
+      ['http:\\\\user:s3cret@bad host/x', 'http:\\\\bad host/x'],
+      ['//user:s3cret@bad host/x', '//bad host/x'],
+    ])('keeps a password in a Location that does not parse out of the refusal', async (location, quoted) => {
+      const site = await serve((_req, res) => {
+        res.writeHead(302, { location })
+        res.end()
+      })
+      const error = await rejection(fetch_url(ask(`http://127.0.0.1:${site.port}/`)))
+      expect(error.message).toBe(
+        `redirect 1 (http://127.0.0.1:${site.port}/ to ${quoted}) was refused: web_fetch can't read "${quoted}" as a URL; pass a full http or https URL`,
+      )
+    })
+
+    it('keeps a password in a Location out of the message about one redirect too many', async () => {
+      const site = await serve((_req, res) => {
+        res.writeHead(302, { location: 'http://user:s3cret@bad host/x' })
+        res.end()
+      })
+      const error = await rejection(fetch_url(ask(`http://127.0.0.1:${site.port}/`, { max_redirects: 0 })))
+      expect(error.message).toBe(
+        `http://127.0.0.1:${site.port}/ redirected more than 0 times; redirect 1 pointed at http://bad host/x`,
+      )
+    })
+
+    it('cuts a long Location and a long URL in the refusal of a redirect', async () => {
+      const query = 'q'.repeat(3000)
+      const location = `http://bad host/${'x'.repeat(12_000)}`
+      const site = await serve((_req, res) => {
+        res.writeHead(302, { location })
+        res.end()
+      })
+      const from = `http://127.0.0.1:${site.port}/?${query}`
+      const error = await rejection(fetch_url(ask(from)))
+      const shown = `${location.slice(0, 200)}...`
+      expect(error.message).toBe(
+        `redirect 1 (${from.slice(0, 200)}... to ${shown}) was refused: web_fetch can't read "${shown}" as a URL; pass a full http or https URL`,
+      )
+    })
+
+    it('cuts a long Location and a long URL in the message about one redirect too many', async () => {
+      const location = `/${'x'.repeat(12_000)}`
+      const site = await serve((_req, res) => {
+        res.writeHead(302, { location })
+        res.end()
+      })
+      const from = `http://127.0.0.1:${site.port}/?${'q'.repeat(3000)}`
+      const error = await rejection(fetch_url(ask(from, { max_redirects: 0 })))
+      expect(error.message).toBe(
+        `${from.slice(0, 200)}... redirected more than 0 times; redirect 1 pointed at ${location.slice(0, 200)}...`,
+      )
     })
 
     it('rethrows a refusal of the first URL unchanged', async () => {
@@ -504,11 +653,89 @@ describe('fetch_url', () => {
       expect(response.truncated).toBe(false)
     })
 
-    it.each(['identity', 'zstd'])('passes a Content-Encoding of %s through as it came', async (encoding) => {
-      const packed = gzipSync(Buffer.from('still packed'))
-      const site = await serve(reply(packed, { 'content-encoding': encoding }))
+    it.each(['identity', 'IDENTITY', '', ' , identity, '])(
+      'passes a Content-Encoding of %j through as it came',
+      async (encoding) => {
+        const packed = gzipSync(Buffer.from('still packed'))
+        const site = await serve(reply(packed, { 'content-encoding': encoding }))
+        const response = await fetch_url(ask(`http://127.0.0.1:${site.port}/`))
+        expect(response.body.equals(packed)).toBe(true)
+      },
+    )
+
+    it.each([
+      ['gzip, gzip', (data: Buffer) => gzipSync(gzipSync(data))],
+      ['gzip, br', (data: Buffer) => brotliCompressSync(gzipSync(data))],
+      ['br,gzip', (data: Buffer) => gzipSync(brotliCompressSync(data))],
+      ['deflate, identity, GZIP', (data: Buffer) => gzipSync(deflateSync(data))],
+      ['gzip, deflate, br', (data: Buffer) => brotliCompressSync(deflateSync(gzipSync(data)))],
+    ])('undoes a stacked Content-Encoding of %j, last coding first', async (encoding, compress) => {
+      const text = 'the same words, again and again. '.repeat(200)
+      const site = await serve(reply(compress(Buffer.from(text)), { 'content-encoding': encoding }))
       const response = await fetch_url(ask(`http://127.0.0.1:${site.port}/`))
-      expect(response.body.equals(packed)).toBe(true)
+      expect(response.body.toString()).toBe(text)
+      expect(response.truncated).toBe(false)
+    })
+
+    it('undoes a Content-Encoding header that the server sent twice', async () => {
+      const site = await serve((_req, res) => {
+        res.setHeader('content-type', 'text/plain')
+        res.setHeader('content-encoding', ['gzip', 'gzip'])
+        res.end(gzipSync(gzipSync(Buffer.from('twice packed'))))
+      })
+      const response = await fetch_url(ask(`http://127.0.0.1:${site.port}/`))
+      expect(response.body.toString()).toBe('twice packed')
+    })
+
+    it('counts the limit after every coding of a stack is undone, and stops a stacked bomb there', async () => {
+      const unpacked = 32 * 1024 * 1024
+      const packed = gzipSync(gzipSync(Buffer.alloc(unpacked)))
+      expect(packed.length).toBeLessThan(1024)
+      const site = await serve(reply(packed, { 'content-encoding': 'gzip, gzip' }))
+      const before = process.memoryUsage().arrayBuffers
+      const response = await fetch_url(ask(`http://127.0.0.1:${site.port}/`, { fetch_limit_bytes: 4096 }))
+      expect(response.body.length).toBe(4096)
+      expect(response.truncated).toBe(true)
+      expect(process.memoryUsage().arrayBuffers - before).toBeLessThan(unpacked / 4)
+    })
+
+    it.each([
+      ['zstd', 'zstd'],
+      ['gzip, zstd', 'zstd'],
+      ['compress', 'compress'],
+      [`gzip, ${'z'.repeat(500)}`, 'z'.repeat(40)],
+    ])('refuses a Content-Encoding of %j by the name of the coding it does not know', async (encoding, named) => {
+      const site = await serve(reply(gzipSync(Buffer.from('still packed')), { 'content-encoding': encoding }))
+      const error = await rejection(fetch_url(ask(`http://127.0.0.1:${site.port}/packed`)))
+      expect(error.message).toBe(
+        `web_fetch can't decode the ${named} body of http://127.0.0.1:${site.port}/packed; it reads gzip, deflate, and br`,
+      )
+      expect(site.connections()).toBe(1)
+    })
+
+    it('undoes a stack of three codings and refuses a stack of four', async () => {
+      const three = gzipSync(gzipSync(gzipSync(Buffer.from('three deep'))))
+      const site = await serve((req, res) => {
+        res.writeHead(200, {
+          'content-type': 'text/plain',
+          'content-encoding': req.url === '/three' ? 'gzip, gzip, gzip' : 'gzip, gzip, identity, gzip, gzip',
+        })
+        res.end(req.url === '/three' ? three : gzipSync(three))
+      })
+      const response = await fetch_url(ask(`http://127.0.0.1:${site.port}/three`))
+      expect(response.body.toString()).toBe('three deep')
+      const error = await rejection(fetch_url(ask(`http://127.0.0.1:${site.port}/four`)))
+      expect(error.message).toBe(
+        `http://127.0.0.1:${site.port}/four stacks 4 content encodings, and web_fetch undoes at most 3`,
+      )
+    })
+
+    it('names the coding that failed when one of a stack is not what it claims', async () => {
+      const site = await serve(reply(gzipSync(Buffer.from('not brotli inside')), { 'content-encoding': 'deflate, gzip' }))
+      const error = await rejection(fetch_url(ask(`http://127.0.0.1:${site.port}/bad`)))
+      expect(error.message).toBe(
+        `web_fetch could not decode the deflate body of http://127.0.0.1:${site.port}/bad: incorrect header check`,
+      )
     })
 
     it('counts the limit after decompression, so a gzip that unpacks past it is cut at the same count', async () => {
@@ -704,6 +931,13 @@ describe('fetch_url', () => {
         fetch_url(ask('http://user:hunter2@public.test/page', { abort: AbortSignal.abort('stop') })),
       )
       expect(error.message).toBe('web_fetch was cancelled before http://public.test/page answered')
+    })
+
+    it('says so with no password when the URL it was cancelled on does not parse', async () => {
+      const error = await rejection(
+        fetch_url(ask('http://user:hunter2@bad host/', { abort: AbortSignal.abort('stop') })),
+      )
+      expect(error.message).toBe('web_fetch was cancelled before http://bad host/ answered')
     })
 
     it('stops waiting on a server when the signal fires', async () => {

@@ -15,7 +15,7 @@ import { request as https_request } from 'node:https'
 import type { LookupFunction } from 'node:net'
 import type { Readable } from 'node:stream'
 import { createBrotliDecompress, createGunzip, createInflate } from 'node:zlib'
-import { check_addresses, check_url, literal_address } from './address.js'
+import { check_addresses, check_url, literal_address, quoted_url } from './address.js'
 import type {
   ResolveHost,
   ResolvedAddress,
@@ -31,12 +31,18 @@ const ACCEPT = 'text/html, text/markdown;q=0.9, text/plain;q=0.9, */*;q=0.5'
 
 const ACCEPT_ENCODING = 'gzip, deflate, br'
 
+/** The most codings one `Content-Encoding` may stack before the body is refused. */
+const MAX_CODINGS = 3
+
+/** The longest coding name a message quotes. */
+const CODING_WIDTH = 40
+
 /** One fetch in flight: what it was asked, how it resolves, when it stops, and the hop it is on. */
 type Call = {
   readonly request: TransportRequest
   readonly resolve: ResolveHost
   readonly stop: AbortSignal
-  /** The URL of the hop in flight, which the timeout and abort messages name. */
+  /** The URL of the hop in flight as a message quotes it, which the timeout and abort messages name. */
   href: string
 }
 
@@ -46,25 +52,16 @@ type Exchange = {
   readonly incoming: IncomingMessage
 }
 
+/** One stream that undoes one coding of a `Content-Encoding`, and the coding's name for a message. */
+type Decoder = {
+  readonly coding: string
+  readonly stream: Readable & NodeJS.WritableStream
+}
+
 /** What a body came to once it was decompressed and held to the limit. */
 type Body = {
   readonly body: Buffer
   readonly truncated: boolean
-}
-
-/**
- * A URL as a message may show it, with any username and password taken out.
- *
- * Text that does not parse is returned as it came, since nothing in it can
- * be told apart as a credential.
- */
-function without_credentials(text: string, base?: string): string {
-  if (!URL.canParse(text, base)) return text
-  const url = new URL(text, base)
-  if (url.username === '' && url.password === '') return text
-  url.username = ''
-  url.password = ''
-  return url.href
 }
 
 /** The message of a thrown value, whatever was thrown. */
@@ -74,7 +71,7 @@ function message_of(cause: unknown): string {
 
 /** The error for a hop that failed below HTTP: DNS, the connection, or a socket that closed early. */
 function unreachable(href: string, cause: unknown): Error {
-  return new Error(`web_fetch could not reach ${href}: ${message_of(cause)}`, { cause })
+  return new Error(`web_fetch could not reach ${quoted_url(href)}: ${message_of(cause)}`, { cause })
 }
 
 /**
@@ -137,7 +134,7 @@ function pinned_lookup(pinned: ResolvedAddress): LookupFunction {
 function refusal(cause: unknown, hop: number, from: string | undefined, location: string): unknown {
   if (hop === 0 || from === undefined) return cause
   return new Error(
-    `redirect ${String(hop)} (${from} to ${without_credentials(location, from)}) was refused: ${message_of(cause)}`,
+    `redirect ${String(hop)} (${quoted_url(from)} to ${quoted_url(location, from)}) was refused: ${message_of(cause)}`,
     { cause },
   )
 }
@@ -211,9 +208,9 @@ function open(url: URL, pinned: ResolvedAddress, call: Call): Promise<Exchange> 
   })
 }
 
-/** The stream that undoes a `Content-Encoding`, or undefined when the body passes through as it is. */
-function decoder_for(encoding: string | undefined): (Readable & NodeJS.WritableStream) | undefined {
-  switch ((encoding ?? '').trim().toLowerCase()) {
+/** The stream that undoes one coding, or undefined for a coding this transport does not know. */
+function stream_for(coding: string): Decoder['stream'] | undefined {
+  switch (coding) {
     case 'gzip':
     case 'x-gzip':
       return createGunzip()
@@ -224,6 +221,37 @@ function decoder_for(encoding: string | undefined): (Readable & NodeJS.WritableS
     default:
       return undefined
   }
+}
+
+/**
+ * The streams that undo a `Content-Encoding`, in the order the body goes
+ * through them, which is the reverse of the order the header lists.
+ *
+ * The header is a list: a server may stack codings, and Node joins a
+ * repeated header with a comma. `identity` and an empty entry stand for no
+ * coding. A coding this transport does not know is refused by name, since
+ * the bytes under it would reach the model as noise, and so is a stack
+ * deeper than `MAX_CODINGS`.
+ */
+function decoders_for(encoding: string | undefined, href: string): ReadonlyArray<Decoder> {
+  const codings = (encoding ?? '')
+    .split(',')
+    .map((entry) => entry.trim().toLowerCase())
+    .filter((coding) => coding !== '' && coding !== 'identity')
+  if (codings.length > MAX_CODINGS) {
+    throw new Error(
+      `${quoted_url(href)} stacks ${String(codings.length)} content encodings, and web_fetch undoes at most ${String(MAX_CODINGS)}`,
+    )
+  }
+  return codings.toReversed().map((coding) => {
+    const stream = stream_for(coding)
+    if (stream === undefined) {
+      throw new Error(
+        `web_fetch can't decode the ${coding.slice(0, CODING_WIDTH)} body of ${quoted_url(href)}; it reads gzip, deflate, and br`,
+      )
+    }
+    return { coding, stream }
+  })
 }
 
 /**
@@ -238,23 +266,20 @@ function read_body(exchange: Exchange, href: string, call: Call): Promise<Body> 
   return new Promise<Body>((resolve, reject) => {
     const { incoming, outgoing } = exchange
     const limit = call.request.fetch_limit_bytes
-    const encoding = incoming.headers['content-encoding']
-    const decoder = decoder_for(encoding)
-    const source: Readable = decoder === undefined ? incoming : incoming.pipe(decoder)
+    const decoders = decoders_for(incoming.headers['content-encoding'], href)
+    const source = decoders.reduce<Readable>((upstream, { stream }) => upstream.pipe(stream), incoming)
     const chunks: Buffer[] = []
     let total = 0
     let settled = false
 
-    /** Settle once, then let go of the listener, the decoder, and the socket. */
+    /** Settle once, then let go of the listener, the decoders, and the socket. */
     const finish = (settle: () => void): void => {
       if (settled) return
       settled = true
       call.stop.removeEventListener('abort', on_stop)
       settle()
-      if (decoder !== undefined) {
-        incoming.unpipe(decoder)
-        decoder.destroy()
-      }
+      incoming.unpipe()
+      for (const { stream } of decoders) stream.destroy()
       outgoing.destroy()
     }
     /** Resolve with what was read. */
@@ -294,10 +319,10 @@ function read_body(exchange: Exchange, href: string, call: Call): Promise<Body> 
     incoming.on('close', () => {
       if (!incoming.complete) fail(unreachable(href, new Error('the connection closed before the body ended')))
     })
-    if (decoder !== undefined) {
-      decoder.on('error', (error) => {
+    for (const { coding, stream } of decoders) {
+      stream.on('error', (error) => {
         fail(
-          new Error(`web_fetch could not decode the ${String(encoding)} body of ${href}: ${error.message}`, {
+          new Error(`web_fetch could not decode the ${coding} body of ${quoted_url(href)}: ${error.message}`, {
             cause: error,
           }),
         )
@@ -332,8 +357,8 @@ async function follow(call: Call): Promise<TransportResponse> {
     const location = text
     const base = from
     const url = checked(() => check_url(location, request.policy, base), hop, base, location)
-    call.href = url.href
-    if (hop === 0) start = url.href
+    call.href = quoted_url(url.href)
+    if (hop === 0) start = call.href
     const addresses = await addresses_of(url, call)
     const pinned = checked(() => check_addresses(url, addresses, request.policy), hop, base, location)
     const exchange = await open(url, pinned, call)
@@ -351,7 +376,7 @@ async function follow(call: Call): Promise<TransportResponse> {
       }
       if (hop >= request.max_redirects) {
         throw new Error(
-          `${start} redirected more than ${String(request.max_redirects)} times; redirect ${String(hop + 1)} pointed at ${without_credentials(next, url.href)}`,
+          `${start} redirected more than ${String(request.max_redirects)} times; redirect ${String(hop + 1)} pointed at ${quoted_url(next, url.href)}`,
         )
       }
       text = next
@@ -376,7 +401,7 @@ export function fetch_url(request: TransportRequest, deps: WebDeps = {}): Promis
     request,
     resolve: deps.resolve ?? default_resolve,
     stop: controller.signal,
-    href: without_credentials(request.url),
+    href: quoted_url(request.url),
   }
   /** Stop the call with the caller's own reason, which `stop_error` turns into the error to reject with. */
   const on_abort = (): void => {
