@@ -133,7 +133,11 @@ export async function run_web_research(
   return { question, answer: result.content, pages: [...new Set(pages)] }
 }
 
-if (is_main) {
+/**
+ * Read the question and any `--allow-host` flags off the command line, run the
+ * research, and print the answer with the pages it was read from.
+ */
+async function main(): Promise<void> {
   const { values, positionals } = parseArgs({
     args: process.argv.slice(2),
     options: { 'allow-host': { type: 'string', multiple: true } },
@@ -143,19 +147,19 @@ if (is_main) {
   const allow_hosts = values['allow-host']
   if (allow_hosts !== undefined) console.error(`fetch: only ${allow_hosts.join(', ')}`)
   console.log(`question: ${question.length > 0 ? question : DEFAULT_QUESTION}\n`)
-  run_web_research(
-    question.length > 0 ? question : undefined,
-    allow_hosts !== undefined ? { allow_hosts } : {},
-  )
-    .then(({ answer, pages }) => {
-      console.log(`\n${answer}`)
-      if (pages.length > 0) console.log(`\npages read:\n${pages.map((url) => `  ${url}`).join('\n')}`)
-    })
-    .catch((err: unknown) => {
-      console.error(err)
-      process.exit(1)
-    })
-    .finally(() => {
-      void engine.dispose()
-    })
+  try {
+    const { answer, pages } = await run_web_research(
+      question.length > 0 ? question : undefined,
+      allow_hosts !== undefined ? { allow_hosts } : {},
+    )
+    console.log(`\n${answer}`)
+    if (pages.length > 0) console.log(`\npages read:\n${pages.map((url) => `  ${url}`).join('\n')}`)
+  } catch (err: unknown) {
+    console.error(err)
+    process.exitCode = 1
+  } finally {
+    await engine.dispose()
+  }
 }
+
+if (is_main) void main()
