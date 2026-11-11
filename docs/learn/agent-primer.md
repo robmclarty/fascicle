@@ -75,7 +75,7 @@ The docs use these words in one sense each, and the API's names lean on them
 | `fascicle/agents` | `define_agent` |
 | `fascicle/viewer` | `start_viewer` |
 | `fascicle/mcp` | `mcp_client`, `serve_flow` |
-| `fascicle/web` | `web_tools`, `searxng_search`, `brave_search` (releases after 0.17.8) |
+| `fascicle/web` | `web_tools`, `searxng_search`, `brave_search` (0.18.0 and later) |
 
 You'll want one of four more subpaths when you join a flow to a host. They're
 `fascicle/acp` for an editor that speaks the Agent Client Protocol,
@@ -149,7 +149,7 @@ await engine.dispose()             // always, in finally
 const look_up = define_tool({ name: 'look_up', description: 'when to call it', input_schema: z.object({ key: z.string() }), execute: ({ key }) => find(key) })
 model_step({ engine, model, system, tools: [look_up], max_steps: 6 })  // a tool loop; max_steps (default 10) caps its model turns
 model_step({ ...config, on_tool_approval })   // asked before any tool flagged needs_approval runs
-model_step({ ...config, tools: web_tools() }) // after 0.17.8, from 'fascicle/web': web_fetch, and web_search too with { search }
+model_step({ ...config, tools: web_tools() }) // 0.18.0 and later, from 'fascicle/web': web_fetch, and web_search too with { search }
 model_step({ ...config, capture: 'turns' })   // 0.17.0 and later: each turn's request and reply go into the trajectory
 captured_turns(events)                        // 0.17.0 and later: each captured turn's whole request, rebuilt
 ```
@@ -311,7 +311,7 @@ messages are the real ones.
 | "only if they agree" | `consensus` |
 | "ask me first," "wait for approval" | `suspend` or `gate`, with `run.until_suspended`, and a `gate` needs a `store` or a `checkpoint_store` to resume |
 | "let it look things up," "give it a tool" | `define_tool`, and `tools` with `max_steps` on the `model_step` |
-| "read this page," "look it up on the web" | `web_tools()` from `fascicle/web` (releases after 0.17.8) as the model step's `tools`, with a `search` backend when it should search too, in place of a fetch tool of your own |
+| "read this page," "look it up on the web" | `web_tools()` from `fascicle/web` (0.18.0 and later) as the model step's `tools`, with a `search` backend when it should search too, in place of a fetch tool of your own |
 | "ask me before it runs that tool" | `needs_approval` on the tool, and `on_tool_approval` on the model step |
 | "don't redo the expensive part" | `checkpoint`, with a `checkpoint_store` |
 
@@ -414,7 +414,7 @@ describe('the calculator', () => {
 - [composition.md](../composition.md) for one line on every composer.
 - [cookbook.md](../cookbook.md) for worked patterns, including tool loops with
   `define_tool`.
-- [web.md](../web.md) for `web_tools` (releases after 0.17.8), which you should
+- [web.md](../web.md) for `web_tools` (0.18.0 and later), which you should
   read before you give the web to an agent that holds private data.
 - [testing.md](../testing.md) for the stand-in engines.
 - [troubleshooting.md](../troubleshooting.md) for errors and their causes.
