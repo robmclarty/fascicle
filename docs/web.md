@@ -54,11 +54,11 @@ A status that isn't a success still comes back as a page. A 404 reads `Status: 4
 
 **What it refuses to reach.** Before it connects, the tool resolves the host and checks every address that came back. Loopback, the private ranges, link-local (which covers the metadata address `169.254.169.254`), carrier-grade NAT, multicast, the unspecified address, and the IPv6 forms of each are all refused, and one refused address among several refuses the request. The connection then goes to the address that was checked. It never resolves the name a second time, so a DNS answer that changes between the check and the connect gets nowhere.
 
-**Hosts.** `allow_hosts` and `deny_hosts` each take a list of host names. A name matches a host exactly, or as a suffix on a dot, so `example.com` covers `docs.example.com` and doesn't cover `not-example.com`. Once `allow_hosts` is set, a host outside it is refused, and `deny_hosts` wins over both.
+**Hosts.** `allow_hosts` and `deny_hosts` each take a list of host names. A name matches a host exactly, or as a suffix on a dot, so `example.com` covers `docs.example.com` and doesn't cover `not-example.com`. Once `allow_hosts` is set, a host outside it is refused, and `deny_hosts` wins over both. An entry is a bare name. One written as a URL or with a `*` would match no host, so `web_tools` refuses it when the app starts and names the host to write.
 
 **Redirects.** The tool follows them itself, five at most, and every hop goes through the same scheme, host, and address checks that the first URL did. A redirect to a refused place fails the call with a message that names the hop.
 
-**Size and time.** The body is read up to 5 MB, counted after decompression so that a small gzip can't unpack into a large one. A body that runs past the limit is cut there, and the text ends with a line that says so. The whole call (the lookup, every hop, and the body) stops at 20 seconds, or sooner when the run is aborted.
+**Size and time.** The body is read up to 5 MB, counted after decompression so that a small gzip can't unpack into a large one. A body that runs past the limit is cut there, and the text ends with a line that says so. The whole call (the lookup, every hop, the body, and turning it into text) stops at 20 seconds, or sooner when the run is aborted.
 
 **Text.** HTML goes through a converter that drops `script`, `style`, `noscript`, `svg`, and `template`, and keeps headings, paragraphs, lists, links, code blocks, and tables as markdown. It's a few hundred lines with no dependency behind it, so it does worse than a real extraction library on a messy page. When that matters, pass `to_text` and wrap whichever library you like. Text is decoded with the charset that the `Content-Type` names, and as UTF-8 when it names none.
 
@@ -130,7 +130,7 @@ An adapter calls the one host that you chose, so it skips the address checks tha
 | `allow_private` | `false` | reach loopback, private, and link-local addresses too |
 | `fetch_limit_bytes` | `5242880` (5 MB) | how much of a body is read, counted after decompression |
 | `output_limit_chars` | `40000` | the most characters one call returns, header and notices included |
-| `timeout_ms` | `20000` | how long one call may take, from the lookup to the last byte |
+| `timeout_ms` | `20000` | how long one call may take, from the lookup to the text. At most `2147483647`, the longest a timer waits |
 | `max_redirects` | `5` | how many redirects one call follows. `0` follows none |
 | `user_agent` | `fascicle-web (+https://github.com/robmclarty/fascicle)` | the `User-Agent` header that every request sends |
 | `to_text` | the built-in converter | a function from a page's HTML and its URL to the text, sync or async |

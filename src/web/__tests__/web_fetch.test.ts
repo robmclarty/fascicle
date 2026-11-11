@@ -171,6 +171,78 @@ describe('web_fetch_tool', () => {
     ] as const)('takes %s of %s, the least it can be', (name, value) => {
       expect(() => web_fetch_tool({ [name]: value })).not.toThrow()
     })
+
+    it('takes a timeout_ms as long as a timer can wait, and refuses one longer', () => {
+      expect(() => web_fetch_tool({ timeout_ms: 2_147_483_647 })).not.toThrow()
+      expect(() => web_fetch_tool({ timeout_ms: 2_147_483_648 })).toThrow(
+        new Error('web_tools needs timeout_ms as a whole number of at most 2147483647, and got 2147483648'),
+      )
+      expect(() => web_fetch_tool({ timeout_ms: 3_000_000_000 })).toThrow(
+        new Error('web_tools needs timeout_ms as a whole number of at most 2147483647, and got 3000000000'),
+      )
+    })
+
+    it('puts no such ceiling on the other limits', () => {
+      expect(() =>
+        web_fetch_tool({ fetch_limit_bytes: 3_000_000_000, output_limit_chars: 3_000_000_000, max_redirects: 3_000_000_000 }),
+      ).not.toThrow()
+    })
+
+    it.each([
+      ['https://evil.com', 'evil.com'],
+      ['http://evil.com/x', 'evil.com'],
+      ['*.evil.com', 'evil.com'],
+      ['*evil.com', 'evil.com'],
+      ['evil.com/', 'evil.com'],
+      ['evil.com/path?q=1', 'evil.com'],
+      ['user@evil.com', 'evil.com'],
+      ['https://user:pw@evil.com:8443/x#y', 'evil.com'],
+      ['evil.com?x', 'evil.com'],
+      ['evil.com#x', 'evil.com'],
+      ['evil.com\\x', 'evil.com'],
+    ])('refuses a host list entry of %j when the tool is built, and names the host to write', (entry, host) => {
+      for (const name of ['allow_hosts', 'deny_hosts'] as const) {
+        expect(() => web_fetch_tool({ [name]: ['ok.test', entry] })).toThrow(
+          new Error(
+            `web_tools needs each ${name} entry as a bare host name such as "example.com", and got "${entry}"; write "${host}", which covers its subdomains too`,
+          ),
+        )
+      }
+    })
+
+    it.each([['evil .com'], ['*'], ['https://'], ['*.*.com']])(
+      'refuses a host list entry of %j with no host to suggest',
+      (entry) => {
+        expect(() => web_fetch_tool({ deny_hosts: [entry] })).toThrow(
+          new Error(`web_tools needs each deny_hosts entry as a bare host name such as "example.com", and got "${entry}"`),
+        )
+      },
+    )
+
+    it('cuts a long entry in the refusal', () => {
+      const entry = `https://${'a'.repeat(500)}.test`
+      expect(() => web_fetch_tool({ deny_hosts: [entry] })).toThrow(
+        new Error(
+          `web_tools needs each deny_hosts entry as a bare host name such as "example.com", and got "${entry.slice(0, 100)}"; write "${'a'.repeat(500)}.test", which covers its subdomains too`,
+        ),
+      )
+    })
+
+    it.each([
+      ['evil.com'],
+      ['Evil.COM'],
+      ['.evil.com'],
+      ['evil.com.'],
+      ['evil.com:8080'],
+      [' evil.com '],
+      ['127.0.0.1'],
+      ['::1'],
+      ['[::1]'],
+      ['bücher.example'],
+      [''],
+    ])('takes a host list entry of %j', (entry) => {
+      expect(() => web_fetch_tool({ allow_hosts: [entry], deny_hosts: [entry] })).not.toThrow()
+    })
   })
 
   describe('input checks', () => {
@@ -251,6 +323,104 @@ describe('web_fetch_tool', () => {
 
       await expect(call(local_tool({ timeout_ms: 60 }), { url: `${site.origin}/slow` })).rejects.toThrow(
         new Error(`${site.origin}/slow did not answer within 60 ms, so web_fetch gave up`),
+      )
+    })
+  })
+
+  describe('the clock after the body is read', () => {
+    it('gives up at timeout_ms on a to_text that never answers', async () => {
+      const site = await serve_body('<p>hi</p>', 'text/html')
+      const to_text = (): Promise<string> => new Promise<string>(() => {})
+      const started = performance.now()
+
+      await expect(call(local_tool({ timeout_ms: 150, to_text }), { url: `${site.origin}/slow` })).rejects.toThrow(
+        new Error(
+          `${site.origin}/slow was not turned into text within 150 ms of the call's start, so web_fetch gave up`,
+        ),
+      )
+      expect(performance.now() - started).toBeLessThan(1000)
+    })
+
+    it('gives up at timeout_ms on a to_text that answers late', async () => {
+      const site = await serve_body('<p>hi</p>', 'text/html')
+      const to_text = (): Promise<string> =>
+        new Promise<string>((resolve) => {
+          setTimeout(() => resolve('late'), 600)
+        })
+      const started = performance.now()
+
+      await expect(call(local_tool({ timeout_ms: 100, to_text }), { url: `${site.origin}/` })).rejects.toThrow(
+        /was not turned into text within 100 ms/,
+      )
+      expect(performance.now() - started).toBeLessThan(500)
+    })
+
+    it('fails a conversion that held the thread past timeout_ms, once it lets go', async () => {
+      const site = await serve_body('<p>hi</p>', 'text/html')
+      /** Hold the thread for a while, as a slow synchronous converter does. */
+      const to_text = (): string => {
+        const until = performance.now() + 400
+        let spins = 0
+        while (performance.now() < until) spins += 1
+        return `late after ${spins} spins`
+      }
+
+      await expect(call(local_tool({ timeout_ms: 200, to_text }), { url: `${site.origin}/` })).rejects.toThrow(
+        new Error(`${site.origin}/ was not turned into text within 200 ms of the call's start, so web_fetch gave up`),
+      )
+    })
+
+    it('stops waiting on to_text when the abort signal fires, with the reason when it is an error', async () => {
+      const site = await serve_body('<p>hi</p>', 'text/html')
+      const controller = new AbortController()
+      const reason = new Error('the turn was cancelled')
+      const to_text = (): Promise<string> => {
+        setTimeout(() => controller.abort(reason), 20)
+        return new Promise<string>(() => {})
+      }
+
+      await expect(call(local_tool({ to_text }), { url: `${site.origin}/` }, controller.signal)).rejects.toBe(reason)
+    })
+
+    it('says the conversion was cancelled when the abort reason is not an error', async () => {
+      const site = await serve_body('<p>hi</p>', 'text/html')
+      const controller = new AbortController()
+      const to_text = (): Promise<string> => {
+        setTimeout(() => controller.abort('stop'), 20)
+        return new Promise<string>(() => {})
+      }
+
+      await expect(call(local_tool({ to_text }), { url: `${site.origin}/p` }, controller.signal)).rejects.toThrow(
+        new Error(`web_fetch was cancelled before ${site.origin}/p was turned into text`),
+      )
+    })
+
+    it('fails with the error of a to_text that throws, and leaves no timer or listener behind', async () => {
+      const site = await serve_body('<p>hi</p>', 'text/html')
+      const controller = new AbortController()
+      const removed = vi.spyOn(controller.signal, 'removeEventListener')
+      const cleared = vi.spyOn(globalThis, 'clearTimeout')
+      const to_text = (): string => {
+        throw new Error('the converter broke')
+      }
+
+      await expect(call(local_tool({ to_text }), { url: `${site.origin}/` }, controller.signal)).rejects.toThrow(
+        new Error('the converter broke'),
+      )
+      expect(removed).toHaveBeenCalledWith('abort', expect.any(Function))
+      expect(cleared).toHaveBeenCalled()
+      vi.restoreAllMocks()
+    })
+
+    it('returns a page that was converted in time', async () => {
+      const site = await serve_body('<p>hi</p>', 'text/html')
+      const to_text = async (): Promise<string> => {
+        await new Promise((resolve) => setTimeout(resolve, 20))
+        return 'in time'
+      }
+
+      await expect(call(local_tool({ timeout_ms: 2000, to_text }), { url: `${site.origin}/` })).resolves.toBe(
+        `${header_of(`${site.origin}/`)}in time`,
       )
     })
   })
@@ -341,6 +511,18 @@ describe('web_fetch_tool', () => {
   })
 
   describe('the content type', () => {
+    it('cuts a long URL and a long media type in the refusal', async () => {
+      const media = `application/${'x'.repeat(300)}`
+      const site = await serve_body('bytes', media)
+      const url = `${site.origin}/file?${'q'.repeat(5000)}`
+
+      await expect(call(local_tool(), { url })).rejects.toThrow(
+        new Error(
+          `${url.slice(0, 200)}... is ${media.slice(0, 100)}, and web_fetch reads only text (HTML, plain text, markdown, JSON, or XML)`,
+        ),
+      )
+    })
+
     it.each([
       ['application/pdf', 'application/pdf'],
       ['Application/PDF; qs=0.9', 'application/pdf'],
@@ -599,6 +781,96 @@ describe('web_fetch_tool', () => {
       )
     })
 
+    it('never ends a window between the two halves of a character, and loses none between windows', async () => {
+      const text = '\u{1F600}'.repeat(400)
+      const site = await serve_body(text, 'text/plain; charset=utf-8')
+      const head = header_of(`${site.origin}/`)
+      // An odd room: 77 code units, which would cut the 39th character in two.
+      const limit = head.length + read_on(0, 800, 800).length + 77
+      const tool = local_tool({ output_limit_chars: limit })
+
+      const first = String(await call(tool, { url: `${site.origin}/` }))
+
+      expect(first).toBe(`${head}${'\u{1F600}'.repeat(38)}${read_on(0, 76, 800)}`)
+      expect(first.isWellFormed()).toBe(true)
+
+      let read = ''
+      let offset = 0
+      for (let calls = 0; calls < 30; calls += 1) {
+        const result = String(await call(tool, { url: `${site.origin}/`, offset }))
+        expect(result.isWellFormed()).toBe(true)
+        expect(result.length).toBeLessThanOrEqual(limit)
+        const next = /read on with offset (\d+)\]$/.exec(result)
+        const body = result.slice(head.length, next === null ? undefined : result.lastIndexOf('\n\n[characters'))
+        read += body
+        if (next === null) break
+        offset = Number(next[1])
+      }
+      expect(read).toBe(text)
+    })
+
+    it('starts a window on a whole character when the offset lands inside one', async () => {
+      const text = `ab\u{1F600}cd`
+      const site = await serve_body(text, 'text/plain; charset=utf-8')
+
+      const result = String(await call(local_tool(), { url: `${site.origin}/`, offset: 3 }))
+
+      expect(result).toBe(`${header_of(`${site.origin}/`)}\u{1F600}cd`)
+      expect(result.isWellFormed()).toBe(true)
+    })
+
+    it('fails when the only room left would hold half a character', async () => {
+      const site = await serve_body('\u{1F600}'.repeat(400), 'text/plain; charset=utf-8')
+      const limit = header_of(`${site.origin}/`).length + read_on(0, 800, 800).length + 1
+
+      await expect(call(local_tool({ output_limit_chars: limit }), { url: `${site.origin}/` })).rejects.toThrow(
+        new Error(
+          `output_limit_chars is ${limit}, which leaves no room for the text of ${site.origin}/ under its header; raise output_limit_chars`,
+        ),
+      )
+    })
+
+    it('cuts a URL past 2,000 characters in the header, so a long URL still leaves room for the page', async () => {
+      const text = text_of(100_000)
+      const site = await serve_body(text)
+      const url = `${site.origin}/?q=${'a'.repeat(5000)}`
+      const head = `URL: ${url.slice(0, 2000)}...\nStatus: 200\n\n`
+
+      const result = String(await call(local_tool(), { url }))
+
+      const room = 40_000 - head.length - read_on(0, 100_000, 100_000).length
+      expect(result).toBe(`${head}${text.slice(0, room)}${read_on(0, room, 100_000)}`)
+      expect(result.length).toBeLessThanOrEqual(40_000)
+    })
+
+    it('keeps a URL of exactly 2,000 characters whole in the header', async () => {
+      const site = await serve_body('ok')
+      const stem = `${site.origin}/?q=`
+      const url = `${stem}${'a'.repeat(2000 - stem.length)}`
+
+      expect(await call(local_tool(), { url })).toBe(`URL: ${url}\nStatus: 200\n\nok`)
+    })
+
+    it('cuts a long URL in the message about no room, which stays shorter than the URL', async () => {
+      const site = await serve_body(text_of(5000))
+      const url = `${site.origin}/ok?${'q'.repeat(5000)}`
+
+      await expect(call(local_tool({ output_limit_chars: 500 }), { url })).rejects.toThrow(
+        new Error(
+          `output_limit_chars is 500, which leaves no room for the text of ${url.slice(0, 200)}... under its header; raise output_limit_chars`,
+        ),
+      )
+    })
+
+    it('cuts a long URL in the message about an offset past the end', async () => {
+      const site = await serve_body('short')
+      const url = `${site.origin}/ok?${'q'.repeat(5000)}`
+
+      await expect(call(local_tool(), { url, offset: 9 })).rejects.toThrow(
+        new Error(`offset 9 is past the end of ${url.slice(0, 200)}..., which has 5 characters`),
+      )
+    })
+
     it('fails the same way when output_limit_chars is smaller than the header', async () => {
       const site = await serve_body('')
 
@@ -830,7 +1102,8 @@ describe('web_fetch_tool', () => {
 
     // A redirect to a private address can't be staged here: the first hop
     // would need a public address that a local server answers on. The
-    // transport's own tests pin that refusal, and this one pins that an
+    // transport's tests stage one by rerouting its socket ("refuses a
+    // redirect from a public address to ..."), and this one pins that an
     // address check on a later hop is named like any other.
     it('fails on a redirect to a name with no address and names the hop', async () => {
       const site = await serve((_req, res) => {

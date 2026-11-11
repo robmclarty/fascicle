@@ -19,12 +19,29 @@ import {
   DEFAULT_TIMEOUT_MS,
   DEFAULT_USER_AGENT,
 } from './defaults.js'
+import { quoted_url } from './address.js'
 import { html_title, html_to_text } from './html_to_text.js'
 import { fetch_url } from './transport.js'
 import type { AddressPolicy, TransportHead, TransportResponse, WebDeps, WebToolsOptions } from './types.js'
 
 /** The longest title the header carries, so a page can't spend the window on its own title. */
 const TITLE_WIDTH = 200
+
+/**
+ * The longest URL the header carries. A URL past it is cut and ends in
+ * `...`, so the header has a size the window can count on however long a
+ * URL the model or a redirect came up with.
+ */
+const URL_WIDTH = 2000
+
+/** The longest media type or host list entry a message quotes. */
+const QUOTE_WIDTH = 100
+
+/** The longest delay a timer takes. Past it the runtime sets the timer to 1 ms. */
+const MAX_TIMEOUT_MS = 2_147_483_647
+
+/** The characters a host list entry can't hold: the marks of a scheme, a path, a query, userinfo, or a pattern. */
+const NOT_IN_A_HOST = /[\s/\\*@?#]/
 
 /** One fetch: the URL as the model gave it, and where in the page's text the window starts. */
 type FetchRequest = {
@@ -40,6 +57,13 @@ type FetchLimits = {
   readonly max_redirects: number
 }
 
+/** When a call has to be over: the moment on the `performance.now()` clock, and the signal that ends it sooner. */
+type Stop = {
+  readonly deadline: number
+  readonly timeout_ms: number
+  readonly abort: AbortSignal
+}
+
 /** A fetched page as text: the header fields, and the text a window is cut from. */
 type Page = {
   readonly url: string
@@ -51,29 +75,71 @@ type Page = {
 
 /**
  * Read one numeric option, or its default, and refuse a value that isn't a
- * whole number of at least `min`.
+ * whole number from `min` to `max`.
  *
  * The check runs when the tools are built, so a bad limit fails the app at
  * startup and not the model in the middle of a turn.
  */
-function whole_option(name: string, value: number | undefined, fallback: number, min: number): number {
+function whole_option(
+  name: string,
+  value: number | undefined,
+  fallback: number,
+  min: number,
+  max: number = Number.MAX_SAFE_INTEGER,
+): number {
   if (value === undefined) return fallback
   if (!Number.isInteger(value) || value < min) {
     throw new Error(`web_tools needs ${name} as a whole number of at least ${min}, and got ${value}`)
+  }
+  if (value > max) {
+    throw new Error(`web_tools needs ${name} as a whole number of at most ${max}, and got ${value}`)
   }
   return value
 }
 
 /**
  * Fill in the limits from the options and the defaults.
+ *
+ * `timeout_ms` has a ceiling because a timer does: a delay past it fires
+ * after 1 ms, which would fail every fetch of an app that meant "no limit".
  */
 function fetch_limits(options: WebToolsOptions): FetchLimits {
   return {
     fetch_limit_bytes: whole_option('fetch_limit_bytes', options.fetch_limit_bytes, DEFAULT_FETCH_LIMIT_BYTES, 1),
     output_limit_chars: whole_option('output_limit_chars', options.output_limit_chars, DEFAULT_OUTPUT_LIMIT_CHARS, 1),
-    timeout_ms: whole_option('timeout_ms', options.timeout_ms, DEFAULT_TIMEOUT_MS, 1),
+    timeout_ms: whole_option('timeout_ms', options.timeout_ms, DEFAULT_TIMEOUT_MS, 1, MAX_TIMEOUT_MS),
     max_redirects: whole_option('max_redirects', options.max_redirects, DEFAULT_MAX_REDIRECTS, 0),
   }
+}
+
+/**
+ * The bare host name a host list entry most likely meant: the entry without
+ * its scheme, userinfo, `*.` prefix, port, and path.
+ */
+function bare_host(entry: string): string {
+  const rest = entry.trim().replace(/^[a-z][a-z0-9+.-]*:\/\//i, '')
+  const authority = rest.split(/[/\\?#]/)[0] ?? ''
+  const host = authority.slice(authority.lastIndexOf('@') + 1).replace(/^\*\.?/, '')
+  return host.replace(/:\d*$/, '')
+}
+
+/**
+ * Check a host list when the tools are built, and return it as it came.
+ *
+ * An entry is a bare host name. One written as a URL or a pattern would
+ * match no host at all, which on `deny_hosts` means it silently denies
+ * nothing, so it is refused here with the name to write in its place.
+ */
+function host_names(name: string, entries: ReadonlyArray<string>): ReadonlyArray<string> {
+  for (const entry of entries) {
+    if (!NOT_IN_A_HOST.test(entry.trim())) continue
+    const host = bare_host(entry)
+    const advice = host === '' || NOT_IN_A_HOST.test(host) ? '' : `; write "${host}", which covers its subdomains too`
+    throw new Error(
+      `web_tools needs each ${name} entry as a bare host name such as "example.com", and got "${entry.slice(0, QUOTE_WIDTH)}"${advice}`,
+    )
+  }
+  return entries
 }
 
 /**
@@ -137,7 +203,9 @@ function is_html(media: string | undefined): boolean {
 function check_head(head: TransportHead): void {
   const media = media_type(head.content_type)
   if (is_text(media)) return
-  throw new Error(`${head.url} is ${media}, and web_fetch reads only text (HTML, plain text, markdown, JSON, or XML)`)
+  throw new Error(
+    `${quoted_url(head.url)} is ${media?.slice(0, QUOTE_WIDTH)}, and web_fetch reads only text (HTML, plain text, markdown, JSON, or XML)`,
+  )
 }
 
 /**
@@ -169,12 +237,61 @@ async function read_page(response: TransportResponse, to_text: WebToolsOptions['
 }
 
 /**
+ * Wait for a page to be turned into text, but no longer than the call has
+ * left: until its deadline, or until the tool's abort signal fires.
+ *
+ * The transport's clock stops when the body is read, and an app's `to_text`
+ * runs after that, so this is what holds a slow one to `timeout_ms`. A
+ * conversion can't be cancelled, so a stop leaves it running and stops
+ * waiting on it. The built-in converter is synchronous and no timer fires
+ * while it runs, which is why the clock is read once more when it is done.
+ */
+function within_deadline(work: Promise<Page>, url: string, stop: Stop): Promise<Page> {
+  const { abort, deadline } = stop
+  const late = new Error(
+    `${quoted_url(url)} was not turned into text within ${stop.timeout_ms} ms of the call's start, so web_fetch gave up`,
+  )
+  return new Promise<Page>((resolve, reject) => {
+    /** Reject with the caller's own abort reason when that is an error, and otherwise one that names the page. */
+    const on_abort = (): void => {
+      const reason: unknown = abort.reason
+      reject(
+        reason instanceof Error
+          ? reason
+          : new Error(`web_fetch was cancelled before ${quoted_url(url)} was turned into text`),
+      )
+    }
+    const timer = setTimeout(
+      () => {
+        reject(late)
+      },
+      Math.max(0, deadline - performance.now()),
+    )
+    work
+      .then((page) => {
+        if (performance.now() > deadline) reject(late)
+        else resolve(page)
+      }, reject)
+      .finally(() => {
+        clearTimeout(timer)
+        abort.removeEventListener('abort', on_abort)
+      })
+    if (abort.aborted) on_abort()
+    else abort.addEventListener('abort', on_abort, { once: true })
+  })
+}
+
+/**
  * The lines above the text: the URL that answered, its status, and the
  * page's title when it has one, then a blank line.
+ *
+ * The URL is held to `URL_WIDTH` and the title to `TITLE_WIDTH`, so the
+ * header can't spend the window.
  */
 function header(page: Page): string {
+  const url = page.url.length > URL_WIDTH ? `${page.url.slice(0, URL_WIDTH)}...` : page.url
   const title = page.title === undefined ? '' : `Title: ${page.title}\n`
-  return `URL: ${page.url}\nStatus: ${page.status}\n${title}\n`
+  return `URL: ${url}\nStatus: ${page.status}\n${title}\n`
 }
 
 /**
@@ -182,6 +299,17 @@ function header(page: Page): string {
  */
 function read_on_notice(offset: number, end: number, total: number): string {
   return `\n\n[characters ${offset} to ${end} of ${total} shown; the page goes on, so read on with offset ${end}]`
+}
+
+/**
+ * Whether a cut at `index` would fall between the two halves of a surrogate
+ * pair, which is one character written as two UTF-16 code units.
+ */
+function splits_pair(text: string, index: number): boolean {
+  if (index <= 0 || index >= text.length) return false
+  const before = text.charCodeAt(index - 1)
+  const after = text.charCodeAt(index)
+  return before >= 0xd800 && before <= 0xdbff && after >= 0xdc00 && after <= 0xdfff
 }
 
 /**
@@ -196,41 +324,49 @@ function read_on_notice(offset: number, end: number, total: number): string {
  * The read-on notice is always longer than the cut notice, so a window that
  * makes room for it stops short of the page's end and the cut notice lands
  * on the last window alone.
+ *
+ * Offsets count UTF-16 code units, and a character outside the basic plane
+ * takes two. A window never holds half of one: an end that would split a
+ * pair steps back by one, so the notice names an offset that starts on a
+ * whole character, and an `offset` that lands inside a pair starts one
+ * earlier.
  */
 function window_of(page: Page, offset: number, limits: FetchLimits): string {
   const total = page.text.length
   if (offset > 0 && offset >= total) {
-    throw new Error(`offset ${offset} is past the end of ${page.url}, which has ${total} characters`)
+    throw new Error(`offset ${offset} is past the end of ${quoted_url(page.url)}, which has ${total} characters`)
   }
+  const start = splits_pair(page.text, offset) ? offset - 1 : offset
   const head = header(page)
   const budget = limits.output_limit_chars - head.length
-  const rest = page.text.slice(offset)
+  const rest = page.text.slice(start)
   const cut = page.truncated
     ? `\n\n[the page was cut at ${limits.fetch_limit_bytes} bytes, so this is not all of it]`
     : ''
   if (rest.length + cut.length <= budget) return `${head}${rest}${cut}`
-  const room = budget - read_on_notice(offset, total, total).length
-  if (room < 1) {
+  const room = budget - read_on_notice(start, total, total).length
+  const end = splits_pair(page.text, start + room) ? start + room - 1 : start + room
+  if (end <= start) {
     throw new Error(
-      `output_limit_chars is ${limits.output_limit_chars}, which leaves no room for the text of ${page.url} ` +
+      `output_limit_chars is ${limits.output_limit_chars}, which leaves no room for the text of ${quoted_url(page.url)} ` +
         `under its header; raise output_limit_chars`,
     )
   }
-  const end = offset + room
-  return `${head}${page.text.slice(offset, end)}${read_on_notice(offset, end, total)}`
+  return `${head}${page.text.slice(start, end)}${read_on_notice(start, end, total)}`
 }
 
 /**
  * Build the `web_fetch` tool from the options `web_tools` was given.
  *
- * The numeric options are checked here, when the tool is built. `deps` is
+ * The numeric options and the host lists are checked here, when the tool is
+ * built. `deps` is
  * internal, and a test passes a resolver through it.
  */
 export function web_fetch_tool(options: WebToolsOptions = {}, deps: WebDeps = {}): Tool {
   const limits = fetch_limits(options)
   const policy: AddressPolicy = {
-    allow_hosts: options.allow_hosts,
-    deny_hosts: options.deny_hosts ?? [],
+    allow_hosts: options.allow_hosts === undefined ? undefined : host_names('allow_hosts', options.allow_hosts),
+    deny_hosts: host_names('deny_hosts', options.deny_hosts ?? []),
     allow_private: options.allow_private ?? false,
   }
   const user_agent = options.user_agent ?? DEFAULT_USER_AGENT
@@ -258,6 +394,11 @@ export function web_fetch_tool(options: WebToolsOptions = {}, deps: WebDeps = {}
     ...(options.needs_approval !== undefined ? { needs_approval: options.needs_approval } : {}),
     execute: async (input, ctx) => {
       const request = fetch_request(input)
+      const stop: Stop = {
+        deadline: performance.now() + limits.timeout_ms,
+        timeout_ms: limits.timeout_ms,
+        abort: ctx.abort,
+      }
       const response = await fetch_url(
         {
           url: request.url,
@@ -271,7 +412,8 @@ export function web_fetch_tool(options: WebToolsOptions = {}, deps: WebDeps = {}
         },
         deps,
       )
-      return window_of(await read_page(response, options.to_text), request.offset, limits)
+      const page = await within_deadline(read_page(response, options.to_text), response.url, stop)
+      return window_of(page, request.offset, limits)
     },
   }
 }
