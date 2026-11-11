@@ -187,17 +187,44 @@ export function literal_address(url: URL): ResolvedAddress | undefined {
   return family === 4 || family === 6 ? { address, family } : undefined
 }
 
-/** Cut a quoted URL to a length a message can carry. */
+/** Cut quoted text to a length a message can carry. */
 function clip(text: string): string {
   return text.length > MAX_SHOWN_CHARS ? `${text.slice(0, MAX_SHOWN_CHARS)}...` : text
 }
 
-/** A URL's text for a message, without the username and password it carries. */
-function shown(url: URL): string {
-  const copy = new URL(url.href)
-  copy.username = ''
-  copy.password = ''
-  return clip(copy.href)
+/**
+ * Take the username and password out of text the URL parser rejected.
+ *
+ * The parser drops tabs and line breaks and reads `\` as `/`, and it takes
+ * the authority to run from the scheme's slashes (any number of them, or
+ * none) to the first `/`, `\`, `?`, or `#`. Whatever sits there before the
+ * last `@` is where a password would be, so that part goes, however the text
+ * spelled its slashes.
+ */
+function scrub(text: string): string {
+  const bare = text.replace(/[\t\n\r]/g, '').trimStart()
+  const parts = /^([a-z][a-z0-9+.-]*:)?([/\\]*)([^/\\?#]*)/i.exec(bare)
+  const [lead = '', scheme = '', slashes = '', authority = ''] = parts ?? []
+  const at = authority.lastIndexOf('@')
+  if (at === -1) return bare
+  return `${scheme}${slashes}${authority.slice(at + 1)}${bare.slice(lead.length)}`
+}
+
+/**
+ * A URL as a message quotes it: without the username and password it
+ * carries, and cut to a length a message can carry.
+ *
+ * `base` is the URL a redirect's `Location` is relative to. A reference with
+ * no credentials is quoted as it was written. The credentials go before the
+ * cut, so a long password can't push its own `@` past the cut and survive.
+ */
+export function quoted_url(text: string, base?: string): string {
+  if (!URL.canParse(text, base)) return clip(scrub(text))
+  const url = new URL(text, base)
+  if (url.username === '' && url.password === '') return clip(text)
+  url.username = ''
+  url.password = ''
+  return clip(url.href)
 }
 
 /**
@@ -211,28 +238,26 @@ export function check_url(text: string, policy: AddressPolicy, base?: string): U
   try {
     url = new URL(text, base)
   } catch {
-    // The text between `//` and the last `@` of the authority is where a
-    // password sits, and a message never repeats one.
-    const quoted = clip(text).replace(/\/\/[^/?#]*@/, '//')
-    throw new Error(`web_fetch can't read "${quoted}" as a URL; pass a full http or https URL`)
+    throw new Error(`web_fetch can't read "${quoted_url(text, base)}" as a URL; pass a full http or https URL`)
   }
   if (url.protocol !== 'http:' && url.protocol !== 'https:') {
     throw new Error(
-      `web_fetch only fetches http and https URLs, and ${shown(url)} is ${url.protocol.slice(0, -1)}`,
+      `web_fetch only fetches http and https URLs, and ${quoted_url(url.href)} is ${url.protocol.slice(0, -1)}`,
     )
   }
   const host = url.hostname
+  const name = clip(host)
   if (url.username !== '' || url.password !== '') {
     throw new Error(
-      `web_fetch won't fetch a URL that carries a username or a password; remove them from the URL for ${host}`,
+      `web_fetch won't fetch a URL that carries a username or a password; remove them from the URL for ${name}`,
     )
   }
   if (host_matches(host, policy.deny_hosts)) {
-    throw new Error(`${host} is on deny_hosts, so web_fetch won't fetch ${shown(url)}`)
+    throw new Error(`${name} is on deny_hosts, so web_fetch won't fetch ${quoted_url(url.href)}`)
   }
   if (policy.allow_hosts !== undefined && !host_matches(host, policy.allow_hosts)) {
     throw new Error(
-      `${host} is not on allow_hosts (${policy.allow_hosts.join(', ')}), so web_fetch won't fetch ${shown(url)}`,
+      `${name} is not on allow_hosts (${clip(policy.allow_hosts.join(', '))}), so web_fetch won't fetch ${quoted_url(url.href)}`,
     )
   }
   return url
@@ -251,12 +276,12 @@ export function check_addresses(
   policy: AddressPolicy,
 ): ResolvedAddress {
   const [first] = addresses
-  if (first === undefined) throw new Error(`${url.hostname} did not resolve to any address`)
+  if (first === undefined) throw new Error(`${clip(url.hostname)} did not resolve to any address`)
   if (policy.allow_private) return first
   const blocked = addresses.find(({ address }) => is_blocked_address(address))
   if (blocked !== undefined) {
     throw new Error(
-      `${url.hostname} resolves to ${blocked.address}, a loopback, private, or link-local address, so web_fetch won't reach it; set allow_private to read a server on your own network`,
+      `${clip(url.hostname)} resolves to ${clip(blocked.address)}, a loopback, private, or link-local address, so web_fetch won't reach it; set allow_private to read a server on your own network`,
     )
   }
   return first

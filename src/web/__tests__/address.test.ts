@@ -6,6 +6,7 @@ import {
   host_matches,
   is_blocked_address,
   literal_address,
+  quoted_url,
 } from '../address.js'
 import type { AddressPolicy, ResolvedAddress } from '../types.js'
 
@@ -638,5 +639,92 @@ describe('check_addresses', () => {
     const loopback: ResolvedAddress = { address: '127.0.0.1', family: 4 }
     expect(check_addresses(url, [loopback, public_v4], private_policy)).toBe(loopback)
     expect(check_addresses(url, [public_v4, loopback], private_policy)).toBe(public_v4)
+  })
+})
+
+describe('quoted_url', () => {
+  it('quotes a URL with no credentials as it was written, whether it is whole or relative', () => {
+    expect(quoted_url('https://example.com/a?b=1#c')).toBe('https://example.com/a?b=1#c')
+    expect(quoted_url('/next?page=2', 'https://example.com/a')).toBe('/next?page=2')
+  })
+
+  it('takes the username and password out of a URL that parses', () => {
+    expect(quoted_url('https://alice:hunter2@example.com/a')).toBe('https://example.com/a')
+    expect(quoted_url('//alice:hunter2@other.test/x', 'http://example.com/')).toBe('http://other.test/x')
+  })
+
+  it.each([
+    ['http://user:hunter2@bad host/x', 'http://bad host/x'],
+    ['http:\\\\user:hunter2@bad host/', 'http:\\\\bad host/'],
+    ['http:/user:hunter2@bad host/', 'http:/bad host/'],
+    ['http:user:hunter2@bad host/', 'http:bad host/'],
+    ['HTTP:///\\/user:hunter2@bad host\\x', 'HTTP:///\\/bad host\\x'],
+    ['  http://user:hunter2@bad host/', 'http://bad host/'],
+    ['ht\ttp://user:hun\nter2@bad host/', 'http://bad host/'],
+    ['//user:hunter2@bad host/x', '//bad host/x'],
+    ['http://user:p@ss@bad host/p@th?q=@', 'http://bad host/p@th?q=@'],
+    ['http://bad host/p@th', 'http://bad host/p@th'],
+    ['no at sign here', 'no at sign here'],
+  ])('takes the credentials out of %j, which does not parse', (text, quoted) => {
+    expect(URL.canParse(text)).toBe(false)
+    expect(quoted_url(text)).toBe(quoted)
+  })
+
+  it('takes a password out before it cuts, so one longer than the cut does not survive it', () => {
+    const quoted = quoted_url(`http://user:${'P'.repeat(300)}@bad host/`)
+    expect(quoted).toBe('http://bad host/')
+  })
+
+  it('cuts at 200 characters, after the credentials are gone', () => {
+    const path = 'x'.repeat(300)
+    expect(quoted_url(`https://example.com/${path}`)).toBe(`https://example.com/${path}`.slice(0, 200) + '...')
+    expect(quoted_url(`https://u:p@example.com/${path}`)).toBe(`https://example.com/${path}`.slice(0, 200) + '...')
+    expect(quoted_url(`http://u:p@bad host/${path}`)).toBe(`http://bad host/${path}`.slice(0, 200) + '...')
+    expect(quoted_url('x'.repeat(200))).toBe('x'.repeat(200))
+  })
+})
+
+describe('what a message repeats', () => {
+  it.each([
+    ['http:\\\\user:hunter2@bad host/', 'http:\\\\bad host/'],
+    ['http:/user:hunter2@bad host/', 'http:/bad host/'],
+    [`http://user:${'P'.repeat(300)}@bad host/`, 'http://bad host/'],
+  ])('check_url leaves the password out of unreadable text however its slashes are spelled', (text, quoted) => {
+    expect(message_of(() => check_url(text, open_policy))).toBe(
+      `web_fetch can't read "${quoted}" as a URL; pass a full http or https URL`,
+    )
+  })
+
+  it('cuts a long URL and a long host in every refusal', () => {
+    const host = `${'a'.repeat(300)}.test`
+    const shown_host = `${host.slice(0, 200)}...`
+    const shown_url = `${`http://${host}/`.slice(0, 200)}...`
+    expect(message_of(() => check_url(`http://${host}/`, { ...open_policy, deny_hosts: [host] }))).toBe(
+      `${shown_host} is on deny_hosts, so web_fetch won't fetch ${shown_url}`,
+    )
+    expect(message_of(() => check_url(`http://${host}/`, { ...open_policy, allow_hosts: ['example.com'] }))).toBe(
+      `${shown_host} is not on allow_hosts (example.com), so web_fetch won't fetch ${shown_url}`,
+    )
+    expect(message_of(() => check_url(`http://u:p@${host}/`, open_policy))).toBe(
+      `web_fetch won't fetch a URL that carries a username or a password; remove them from the URL for ${shown_host}`,
+    )
+    expect(message_of(() => check_url(`ftp://${host}/`, open_policy))).toBe(
+      `web_fetch only fetches http and https URLs, and ${`ftp://${host}/`.slice(0, 200)}... is ftp`,
+    )
+    const url = new URL(`http://${host}/`)
+    expect(message_of(() => check_addresses(url, [], open_policy))).toBe(
+      `${shown_host} did not resolve to any address`,
+    )
+    expect(message_of(() => check_addresses(url, [{ address: '127.0.0.1', family: 4 }], open_policy))).toBe(
+      `${shown_host} resolves to 127.0.0.1${BLOCKED_SUFFIX}`,
+    )
+  })
+
+  it('cuts a long allow_hosts list', () => {
+    const names = Array.from({ length: 100 }, (_, index) => `host-${index}.test`)
+    const message = message_of(() => check_url('http://other.test/', { ...open_policy, allow_hosts: names }))
+    expect(message).toBe(
+      `other.test is not on allow_hosts (${names.join(', ').slice(0, 200)}...), so web_fetch won't fetch http://other.test/`,
+    )
   })
 })
