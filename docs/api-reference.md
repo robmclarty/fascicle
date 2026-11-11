@@ -18,6 +18,7 @@ import { /* stdio child contract */ } from 'fascicle/stdio';
 import { /* OpenTelemetry bridge */ } from 'fascicle/otel';
 import { /* stub, script, capture, and loop engines */ } from 'fascicle/testing';
 import { /* useChat stream adapters */ } from 'fascicle/ui';
+import { /* web_fetch and web_search tools */ } from 'fascicle/web';
 import { /* trajectory viewer server */ } from 'fascicle/viewer';
 ```
 
@@ -586,6 +587,11 @@ optional peer dependency, installed only when this subpath is used.
 `serve_flow` over a stdio transport is a stateful session for MCP hosts. For a
 single-shot child under a plain JSON-over-stdio parent, use `run_stdio` below.
 
+A page that needs a browser (JavaScript, a login, a click) is a job for
+Playwright's MCP server, which `mcp_client` attaches as tools. A page that
+doesn't is one that `web_fetch` from [`fascicle/web`](#web-tools-fascicleweb)
+reads without it.
+
 ## Stdio Agent Contract (`fascicle/stdio`)
 
 Run a flow as a single-shot child process, with JSON on stdin, one JSON result on
@@ -626,6 +632,30 @@ commands and is the default whenever an agent offers it, `accept_edits`, which
 asks only before commands, and `auto`, which never asks. `WorkspaceToolsOptions`
 holds `read_limit_lines`, `ignore`, `search_timeout_ms`, `command_timeout_ms`,
 `output_limit_bytes`, and `command_env`.
+
+## Web Tools (`fascicle/web`)
+
+Hands an agent the web as two plain `Tool` values that run in your own
+process, so they work on every provider. The subpath needs no peer. See
+[web.md](./web.md), which also covers what a page can talk a model into and
+how to hold an agent to the hosts that you trust.
+
+| Export | Kind | Notes |
+| --- | --- | --- |
+| `web_tools(options?)` | fn | returns `web_fetch`, and `web_search` too when `options.search` is set. `web_fetch` takes `{ url, offset? }` and returns the page as text under `URL:`, `Status:`, and `Title:` lines, at most 40,000 characters a call, with `offset` counting characters from 0 to read on. It fetches only `http:` and `https:` text, refuses loopback, private, and link-local addresses on the first request and on each of up to 5 redirects, reads 5 MB at most, and stops at 20 seconds. `web_search` takes `{ query, limit? }`, with `limit` defaulting to 8 and held to 20, and returns a numbered list of titles, URLs, and snippets. Both are `read_only` |
+| `searxng_search(config)` | fn | a `WebSearch` over a SearXNG server that you run, with no key. The server needs `json` under `search.formats` in its `settings.yml`, and a 403 gets a message that says so |
+| `brave_search(config)` | fn | a `WebSearch` over Brave's Search API, with the key passed as `api_key`. A bad key answers 422 with the code `SUBSCRIPTION_TOKEN_INVALID`, and the message says to check the key |
+
+Types: `WebToolsOptions`, `WebSearch`, `WebSearchRequest`, `WebSearchContext`,
+`WebSearchResult`, `SearxngSearchConfig`, `BraveSearchConfig`.
+`WebToolsOptions` holds `search`, `allow_hosts`, `deny_hosts`, `allow_private`,
+`fetch_limit_bytes`, `output_limit_chars`, `timeout_ms`, `max_redirects`,
+`user_agent`, `to_text`, and `needs_approval`, which goes to `web_fetch` and
+can be a function of the call's input, so that a known host passes and the
+rest ask. A `WebSearch` is a function from a `WebSearchRequest` (`query` and a
+`limit` from 1 to 20) and a `WebSearchContext` (`abort`) to a promise of
+`WebSearchResult`s, each a `title`, a `url`, and a `snippet`, so an index of
+your own fits behind `web_search` as well as a shipped adapter does.
 
 ## UI Message Streams (`fascicle/ui`)
 

@@ -94,6 +94,19 @@ The published surface as of v0.17.4:
   does. `@agentclientprotocol/sdk` rides as an optional peer,
   [`examples/acp-coder/`](../examples/acp-coder/) is a working coding agent on
   OpenRouter, and [acp.md](./acp.md) covers the rest.
+- **Reading the web** (`fascicle/web`). `web_tools()` hands an agent
+  `web_fetch`, which takes a URL and returns the page as text that a model can
+  read, and `web_search` once you pass it a search backend. Both run in your own
+  process, so an agent on Ollama reads the web as well as one on Claude does.
+  `web_fetch` refuses the addresses that a server shouldn't be asked to reach
+  (loopback, the private ranges, and the cloud metadata address), on the first
+  request and on every redirect, and it caps what it reads and how long it
+  waits. `searxng_search` searches through a SearXNG server that you run with
+  no key, `brave_search` takes a key for a hosted index, and any function of the
+  same shape fits in their place. The subpath adds no dependency,
+  [`examples/web-research/`](../examples/web-research/) answers a question from
+  the web and cites what it read, and [web.md](./web.md) covers the rest, the
+  risks of handing a model the web among them.
 - **Chat UIs** (`fascicle/ui`). `to_ui_message_response` turns a `run.stream`
   handle into the AI SDK's UI message stream, so you can back a `useChat`
   endpoint with a flow, and `pipe_ui_message_stream_to_response` does the same

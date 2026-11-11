@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Added
+
+- **An agent can read the web, through two tools from the new `fascicle/web` subpath.** An app that wanted its agent to read a page wrote the tool itself, and the short version of that tool will fetch `localhost`, a cloud metadata address, or a 2 GB file when a model asks it to. `web_tools()` returns `web_fetch`, which takes a URL and returns the page as text under `URL:`, `Status:`, and `Title:` lines. It fetches only `http:` and `https:` text, and it refuses loopback, private, and link-local addresses on the first request and on each of up to 5 redirects, connecting to the address it checked so that a second DNS answer can't swap it. A call reads 5 MB at most, stops at 20 seconds, and returns 40,000 characters, with an `offset` that reads on. `allow_hosts` and `deny_hosts` hold it to the hosts that you name, and `needs_approval` can be a function of the URL. Pass `search` and `web_tools` returns `web_search` too, over `searxng_search` for a SearXNG server that you run with no key, `brave_search` for Brave's hosted index, or a function of your own. Both tools run in the app's process, so they work on every provider, and the subpath adds no dependency. A page can carry instructions, and a fetch can carry data out in its query string, so read the section on both before you hand these to an agent that holds private data. [`examples/web-research/`](./examples/web-research/) answers a question from the web with nothing but a model key. See [web.md](./docs/web.md).
+
 ### Changed
 
 - **`fascicle/acp` takes the 2.x ACP SDK as well as 1.8.** The peer range read `^1.8.0`, so a project on `@agentclientprotocol/sdk` 2 got a peer warning, though the adapter already used the app API that 2.0 keeps and dropped nothing that 2.0 removed. The range is `^1.8.0 || ^2.0.0` now. Every method, capability, and update the agent uses is in the SDK's stable v1 schema, which is what its default import serves from 2.0 on, so the adapter still imports nothing from `/unstable`, and it still speaks ACP v1.

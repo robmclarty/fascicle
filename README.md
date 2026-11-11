@@ -169,6 +169,28 @@ await serve_acp({
 });
 ```
 
+**Reading the web.** The `fascicle/web` subpath hands an agent two tools. `web_fetch` takes a URL and returns the page as text, and it refuses the places a URL that a model chose shouldn't reach, which are `localhost`, the private ranges, and the cloud metadata address. `web_search` is there once you pass a search backend, either a SearXNG server that you run with no key, Brave's hosted index with one, or a function of your own. Both run in your process, so they work on every provider, and the subpath adds no dependency. A page is text that somebody else wrote, and [docs/web.md](./docs/web.md) covers what that means for an agent that also holds private data.
+
+<!-- snippet: check -->
+```typescript
+import { create_engine, model_step, run } from 'fascicle';
+import { searxng_search, web_tools } from 'fascicle/web';
+
+const engine = create_engine({
+  providers: { openrouter: { api_key: process.env['OPENROUTER_API_KEY'] ?? '', transport: 'native' } },
+});
+
+const research = model_step({
+  engine,
+  model: 'anthropic/claude-sonnet-5.5',
+  system: 'Answer from the web, and cite the URL of every page you lean on.',
+  tools: web_tools({ search: searxng_search({ base_url: 'http://localhost:8888' }) }),
+  max_steps: 12,
+});
+
+console.log(await run(research, 'What changed in the latest Node release?'));
+```
+
 ## Provider matrix
 
 | Provider     | Peer dep                      | Auth                |
@@ -240,6 +262,7 @@ The canonical worked example is [examples/pr-improve/](./examples/pr-improve/), 
 - [docs/writing-a-harness.md](./docs/writing-a-harness.md) — building a runner around Fascicle
 - [docs/embedding-under-a-harness.md](./docs/embedding-under-a-harness.md) — running a Fascicle agent as somebody's child process
 - [docs/acp.md](./docs/acp.md) covers serving a flow as an agent that you talk to in Zed's agent panel, over the Agent Client Protocol
+- [docs/web.md](./docs/web.md) covers the two tools that let an agent search the web and read a page, and how to keep one that holds private data from leaking it
 - [docs/troubleshooting.md](./docs/troubleshooting.md) — first-run errors and what they mean
 - [docs/comparison.md](./docs/comparison.md) — how Fascicle compares to LangChain, Mastra, and others
 - [docs/adoption-decision.md](./docs/adoption-decision.md) weighs whether to adopt Fascicle: the honest case, the risks, and when to reach for something else
