@@ -49,7 +49,17 @@ Pin a version you have reviewed and upgrade deliberately.
   and `filesystem_store` adapters write unencrypted files to disk; treat their
   output paths like any other secret-bearing artifact and keep them out of
   version control. `filesystem_session_store` from `fascicle/acp` keeps whole
-  conversations the same way, in files that only their owner can read.
+  conversations the same way, in files that only their owner can read. A
+  stored session holds each turn as the client saw it, so it holds the file
+  contents the model read, the diffs it wrote, and the output of the commands
+  it ran. `checkpoint_session_store` keeps the same data in a store of your
+  choosing, and who can read it is then up to that store. Neither one keeps
+  the MCP servers a client sent, or their `env` and `headers` values.
+- **`api_key_login` keeps a key in plain text.** The file it writes under
+  `--login` holds one API key, as `~/.aws/credentials` does, in a directory
+  made for its owner alone (mode 0700) and readable by its owner alone (mode
+  0600). The key is read at a terminal with echo off, and it never reaches a
+  log, stdout, or the protocol. Logging out deletes the file.
 
 ## Subprocess and sandbox model (`claude_cli`)
 
@@ -149,7 +159,10 @@ injection can reach too.
   the variables its entry sets on top of the MCP SDK's short default list, not
   the agent's environment, so it doesn't see the provider keys. Each MCP call
   asks in Manual and in Accept edits, and its "always" covers that one tool
-  for the session. The model reads what an MCP tool returns, so a tool that
+  for the session. A server runs with your rights, so it can do whatever its
+  program does with them. Its `env` and `headers` values are credentials, and
+  the agent keeps them out of the store, the model's context, and the warning
+  it writes when a server can't be reached. The model reads what an MCP tool returns, so a tool that
   fetches a page or an issue is one more way for a prompt injection to reach
   it.
 

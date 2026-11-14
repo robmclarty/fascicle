@@ -32,7 +32,7 @@ Each prompt runs the flow once through `run.stream`, and as the run records its 
 Options:
 
 - `name` (required) is the name the agent reports to the editor, and `version` sits beside it (default `'0.0.0'`).
-- `flow` (required) is the step each turn runs, or a function that builds one per session. The function is called once for each new session with an `AcpSession`, which holds the session's `id`, its `cwd` and additional directories, the capabilities the client announced, its mode, its model, the tools of its MCP servers, and the `approve` that asks the user, so a flow whose tools close over the session can be built for it (see [Coding Sessions](#coding-sessions)).
+- `flow` (required) is the step each turn runs, or a function that builds one per session, which may return a promise. The function is called once for each new session with an `AcpSession`, which holds the session's `id`, its `cwd` and additional directories, the capabilities the client announced, its mode, its model, the tools of its MCP servers, and the `approve` that asks the user, so a flow whose tools close over the session can be built for it (see [Coding Sessions](#coding-sessions)).
 - `modes` lists the modes that a session offers (default: all three, see [Modes](#modes)). The client's picker lists them in the order Manual, Accept edits, Auto, whatever order you give them in, and a mode listed twice counts once. An agent that runs on the host, outside a container or a throwaway worktree, leaves out `'auto'`.
 - `default_mode` is the mode each session starts in until the client picks another. It has to be one of `modes`, and it defaults to the first mode that the agent offers, which is `'manual'` whenever Manual is on offer. An empty `modes`, an entry that isn't a mode, or a `default_mode` that `modes` leaves out rejects the config before the SDK loads, so `serve_acp` fails at launch with an error that names the problem.
 - `additional_directories` says whether a client may widen a session's workspace past `cwd` (default `true`). An agent that works in `cwd` alone sets it to `false`. It then stops advertising the capability, and it refuses a `session/new` that sends additional directories anyway, so every session it starts has `cwd` as its one root (see [What the File Tools Can Reach](#what-the-file-tools-can-reach)).
@@ -43,7 +43,8 @@ Options:
 - `stream` says where each model call's text goes (see [Routing a Model Call's Text](#routing-a-model-calls-text)).
 - `to_title` names a session from its first turn (see [Titles](#titles)).
 - `context_window` is the model's context window in tokens, which the editor draws its context ring against (see [Usage](#usage)).
-- `session_store` keeps sessions between runs of the agent, so the editor can list them and open one again (see [Keeping Sessions](#keeping-sessions)).
+- `session_store` keeps sessions between runs of the agent, so the editor can list them, open one again, and delete one (see [Keeping Sessions](#keeping-sessions)).
+- `auth` offers the editor a login, and holds a session back until the login is ready (see [Logging In](#logging-in)).
 - `to_updates` maps each run event to the updates that go to the editor, in place of the exported `to_session_updates`. Wrap that function and add to what it returns when you want an `emit` of your own in the thread, or a tool card with its own icon.
 - `engine` (anything that has a `dispose(): Promise<void>`) is disposed once the editor disconnects.
 - `trajectory` receives every run's events, and it must never write to stdout.
@@ -67,7 +68,7 @@ A flow that wants the whole turn sets `to_input: (turn) => turn` and receives an
 
 The agent tells the editor it accepts embedded context, so a file the user @-mentions in Zed arrives with its text, rather than as a bare URI the flow has no way to read.
 
-`history` is a copy, so a flow can't change the session's own, and it holds what the user actually saw. Reply text on either side of a tool call is recorded as two paragraphs with a blank line between them, because the client shows it as two messages and a flow that reads the history shouldn't see the sentences run together. A cancelled turn still records the prompt, along with any reply text that had already streamed before the stop, so the next turn's "as I said above" points at something. Its last entry carries `cancelled: true`, which a flow should pass on to its model. A model that reads a stopped request with nothing to mark it takes the request as still waiting, and carries it out at the next prompt. A turn that ends in a refusal is the one exception, and it stays out of the history (see [How a Turn Ends](#how-a-turn-ends)). Without a `session_store`, sessions live in the process's memory and end when it does. Either way, a session stays in memory until the editor closes it with `session/close` or disconnects, so an agent that runs for a long time beside an editor that never closes its sessions holds the history of every one that it has opened.
+`history` is a copy, so a flow can't change the session's own, and it holds what the user actually saw. Reply text on either side of a tool call is recorded as two paragraphs with a blank line between them, because the client shows it as two messages and a flow that reads the history shouldn't see the sentences run together. A cancelled turn still records the prompt, along with any reply text that had already streamed before the stop, so the next turn's "as I said above" points at something. Its last entry carries `cancelled: true`, which a flow should pass on to its model. A model that reads a stopped request with nothing to mark it takes the request as still waiting, and carries it out at the next prompt. A turn that ends in a refusal is the one exception, and it stays out of the history (see [How a Turn Ends](#how-a-turn-ends)). Without a `session_store`, sessions live in the process's memory and end when it does. A request that names a session the agent doesn't hold, whether it never existed or the editor closed it, fails with -32002 and the id as `data.sessionId`, which is how the protocol has an agent say that a session is gone. Either way, a session stays in memory until the editor closes it with `session/close` or disconnects, so an agent that runs for a long time beside an editor that never closes its sessions holds the history of every one that it has opened.
 
 ## Stdout Belongs to the Protocol
 
@@ -83,13 +84,61 @@ Key rules:
 
 ## Where Credentials Come From
 
-ACP v1 gives the editor no way to hand an agent its model credentials. The agent is a process the editor launches, and it authenticates with whatever that process can already see. So `serve_acp` advertises no ACP auth methods, and a flow works with however you've already authenticated:
+ACP v1 gives the editor no way to hand an agent its model credentials. The agent is a process the editor launches, and it authenticates with whatever that process can already see. So by default `serve_acp` advertises no ACP auth methods, and a flow works with however you've already authenticated:
 
 - API keys (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `OPENROUTER_API_KEY`) go in the `env` of the editor's agent server entry. That's more reliable than counting on a shell export to reach a process the editor started.
 - Bedrock wants `use_credential_chain: true` in its provider config, which picks up `aws sso login`, named profiles, and `~/.aws/credentials` (through the `@aws-sdk/credential-providers` peer). Without it, the Bedrock provider reads only `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`, so an SSO login alone isn't enough.
 - Ollama needs nothing at all.
 
 A Claude subscription login isn't on the list. Anthropic doesn't allow third-party products to offer claude.ai login, so that path stays with Claude Code itself, which Zed already runs as an ACP agent of its own.
+
+### Logging In
+
+An agent that fails at launch for want of a key looks, from the editor, like a process that died. An `auth` in the config turns that into a login the editor can offer. With it, the agent lists a login method in `initialize`, and it answers `session/new`, `session/load`, and `session/resume` with `auth_required` (-32000) until `auth.ready()` says yes, which is the error an editor answers by showing the login. `api_key_login` builds the `auth` for the usual case, one API key:
+
+<!-- snippet: check -->
+```ts
+import { homedir } from 'node:os'
+import { join } from 'node:path'
+import { create_engine, model_step } from 'fascicle'
+import type { Engine } from 'fascicle'
+import { api_key_login, serve_acp } from 'fascicle/acp'
+
+const login = api_key_login({
+  name: 'OpenRouter API key',
+  variable: 'OPENROUTER_API_KEY',
+  file: join(homedir(), '.config', 'my-agent', 'credentials.json'),
+  env: process.env,
+})
+if (process.argv.includes('--login')) process.exit(await login.run({ input: process.stdin, output: process.stderr }))
+
+let engine: Engine | undefined
+const engine_now = (): Engine =>
+  (engine ??= create_engine({
+    providers: { openrouter: { api_key: login.key() ?? '', transport: 'native' } },
+    defaults: { model: 'anthropic/claude-sonnet-5.5' },
+  }))
+
+await serve_acp({
+  name: 'chat',
+  flow: () => model_step({ engine: engine_now() }),
+  auth: login.auth,
+  engine: { dispose: async () => engine?.dispose() },
+})
+```
+
+`login.key()` reads the variable first, so a key in the agent server's `env` keeps working, and then the file. The engine is built inside the flow builder, which runs only once the login is ready, so the key is there by the time anything needs it.
+
+ACP has two kinds of login, and the agent offers both where it can:
+
+- Every editor is offered the `login` method, which the agent checks by itself. `authenticate` answers once `ready()` says yes, and fails with `auth.instructions` until then, so the user reads what to do (set the variable, or run the login). The ACP registry lists only agents that offer a method like this one.
+- An editor that says it can run a terminal login (`auth.terminal` in its capabilities, which Zed sets) is also offered `terminal-login`, when the `auth` has `terminal_args`. The editor runs the agent's own command with those arguments in a terminal, and an exit of 0 means the user is logged in. `api_key_login` sets them to `--login`, and `login.run` is what that argument runs: it asks for the key without echoing it, writes the file, and returns the exit code.
+
+The file holds the key in plain text, as `~/.aws/credentials` does. `run` makes its directory for its owner alone (mode 0700) and writes the file readable by its owner alone (mode 0600), and the key never reaches a log, stdout, or the protocol. `auth.logout` deletes the file, and an `auth` that has a `logout` tells the editor that it can log out. `api_key_login` takes its environment as `env` and reads no `process.env` of its own, like the rest of Fascicle.
+
+An `auth` of your own is any object with a `name`, a `ready` function, and `instructions`. Without one, nothing changes: the agent offers no method and never answers -32000, which matters because some clients end an agent that asks for a login it has no method for.
+
+Not every host shows a login where you'd expect one. kandev offers it only for a new session that fails, and a load or a resume that fails the same way leaves its task waiting with no prompt. So under kandev, keep the key in the profile's `env`.
 
 ## MCP Servers
 
@@ -120,11 +169,13 @@ await serve_acp({
 })
 ```
 
-The agent connects through `mcp_client` from `fascicle/mcp`, so it needs the `@modelcontextprotocol/sdk` peer. It tells the editor that it speaks stdio and HTTP. A stdio server starts in the session's `cwd` with the variables that its entry in Zed sets, on top of the MCP SDK's own short list (`HOME`, `PATH`, and a few more), so it doesn't inherit the provider keys. Each tool is named `mcp__<server>__<tool>`, the form Claude Code uses, so tools from two servers don't collide and none of them takes a workspace tool's name. A server that fails to connect, or that uses a transport the agent doesn't speak, is left out with a warning on stderr rather than failing the session, so one broken entry in Zed's settings can't stop every thread.
+The agent connects through `mcp_client` from `fascicle/mcp`, so it needs the `@modelcontextprotocol/sdk` peer. It tells the editor that it speaks stdio and HTTP. A stdio server starts in the session's `cwd` with the variables that its entry in Zed sets, on top of the MCP SDK's own short list (`HOME`, `PATH`, and a few more), so it doesn't inherit the provider keys. Each tool is named `mcp__<server>__<tool>`, the form Claude Code uses, so tools from two servers don't collide and none of them takes a workspace tool's name. The server's name is cut down to letters, digits, `_`, and `-` on the way. A provider takes a tool name of 64 characters at most, and the engine refuses two tools under one name, so a name that runs longer, or one that another tool already took, is cut and ends in a short hash. The tool still calls its server under the name the server gave it.
+
+A server that fails to connect, or that uses a transport the agent doesn't speak (SSE), is left out with a warning on stderr rather than failing the session, so one broken entry in Zed's settings can't stop every thread. An editor that shows notices, as Zed does, also gets the warning as a `notice`, at the thread's first prompt for a new session and before the answer for one that's loaded or resumed. A server's `env` and `headers` values are credentials, so the warning names the server and its error and carries none of them. The agent cuts any such value of eight characters or more out of the error text, and it never writes a server's entry to the store. The one failure that does stop a session is a missing `@modelcontextprotocol/sdk`, which fails `session/new` with the install line.
 
 An MCP tool can do anything its server can, so each call asks first whenever the session's mode asks before a command, which is in Manual and in Accept edits but not in Auto. The prompt offers **Always allow mcp__github__create_issue this session**, which covers that one tool from then on. The prompt knows the session's MCP calls the way it knows its workspace calls, by the input each tool marks, so a tool of the flow's own that copies an MCP tool's name gets the plain prompt.
 
-The servers stay connected as long as the session does. The agent closes them when the editor closes the session with `session/close`, which also cancels a turn that's running, and it closes every session's servers when the editor disconnects. A stored session opened again with `session/load` or `session/resume` connects to the servers that the request sends, and a session that's still open keeps the ones it has.
+The servers stay connected as long as the session does. The agent closes them when the editor closes the session with `session/close`, which also cancels a turn that's running, and it closes every session's servers when the editor disconnects. A stored session opened again with `session/load` or `session/resume` connects to the servers that the request sends. A session that's still open keeps the ones it has when the request sends the same list, or none. When it sends a different list, the agent connects to the new servers and builds the session's flow again, as it does for a model switch, so the next turn has the new tools. The old servers close once the turn that's running has finished with them. A host can hand a waiting session new servers this way.
 
 Without `mcp_servers`, the agent ignores the list, and a flow that needs an MCP server's tools can connect to it itself with `mcp_client`.
 
@@ -205,6 +256,10 @@ A turn answers with a stop reason, and the editor reads it to say why the agent 
 | anything else, or no model call at all | `end_turn` | the turn finished |
 
 So a coding agent that reaches `max_steps` says so, rather than reading as a turn that finished its work. A flow whose last model call finishes cleanly ends its turn with `end_turn`, even when an earlier call in the same turn ran out of steps. A refusal leaves the turn out of the history, because the protocol has the editor leave the prompt out of the next one too, and the two would disagree otherwise.
+
+A model call with a `schema` throws `incomplete_generation_error` when it ends before its output validates. When its `finish_reason` is one of the three in the table, the turn answers with that row's stop reason instead of failing, so the editor can say what happened in its own words. Any other error from the flow fails the prompt, as it always has.
+
+The call's own finish decides, not each model turn's. With `truncated_turn_policy: 'continue'`, a model turn that's cut off at its output limit with a step to spare doesn't end the call, so it doesn't end the prompt turn either, and only one on the last step answers `max_tokens`.
 
 ## Models
 
@@ -291,15 +346,39 @@ await serve_acp({
 })
 ```
 
-With a store, the agent saves a session after each turn and after each mode or model switch, once the session has a turn in it. It also tells the editor that it can list, load, and resume sessions:
+With a store, the agent saves a session after each turn and after each mode or model switch, once the session has a turn in it. It also tells the editor that it can list, load, resume, and delete sessions:
 
-- `session/list` lists the stored sessions, newest first, with their titles, and only those in one `cwd` when the editor asks for that.
-- `session/load` opens a stored session and shows its thread again. The agent replays each prompt and each reply as a message, then sends the title and the usage, and the session's next turn starts from its history as if the agent had never stopped.
-- `session/resume` opens a stored session without showing the thread again, for an editor that keeps its own copy.
+- `session/list` lists the stored sessions, newest first, with their titles, and only those in one `cwd` when the editor asks for that. It answers 50 at a time, with a cursor for the next page, and it refuses a cursor that it never gave out.
+- `session/load` opens a stored session and shows its thread again. The agent replays each turn as the editor saw it, then sends the title and the usage, and the session's next turn starts from its history as if the agent had never stopped.
+- `session/resume` opens a stored session without showing the thread again, for an editor or a host that keeps its own copy. It still sends the title and the usage, and a host that keeps a running cost takes that usage as where the session stood.
+- `session/delete` closes the session if it's open, then removes everything that's stored for it. It succeeds for a session the store doesn't hold, as the protocol asks.
 
-A stored session holds plain data: its workspace, its mode, its model, its title, its usage, its history, and when it last changed. The flow is built again from your config when a session opens, so a change to the flow takes effect in old sessions too. Tool cards aren't kept, so a loaded thread shows the conversation without them. The editor has to send the `cwd` that the session started in, and the agent refuses a load or a resume that sends another one. A stored mode that the agent no longer offers falls back to the default mode.
+A load or a resume of a session that the store doesn't hold fails with -32002 and the id as `data.sessionId`. A host such as kandev reads that code as a session that's gone, and offers to start the thread over, where any other error would leave its task stuck.
 
-A save that fails is written to stderr, and the turn still ends, since the user has already watched it finish. Any other store needs only `save`, `load`, and `list` (the `AcpSessionStore` type). Closing a session with `session/close` takes it out of the agent's memory and leaves it in the store, where `session/load` finds it again. A session id comes from the editor, so `filesystem_session_store` reads an id that could name another path as a session it doesn't hold. A stored session holds the whole conversation, so the directory the store makes and every file it writes are readable by their owner alone.
+A stored session holds plain data: its workspace, its mode, its model, its title, its usage, its history, how many turns are kept, and when it last changed. The flow is built again from your config when a session opens, so a change to the flow takes effect in old sessions too. The editor has to send the `cwd` that the session started in, and the agent refuses a load or a resume that sends another one. A stored mode that the agent no longer offers falls back to the default mode.
+
+Each turn is also kept as the editor saw it, in a file of its own: the prompt, then every update the turn sent, with the reply's text joined into a few messages instead of one for each token. That's what a load replays, so a thread comes back with its tool cards, an edit's diff, and a command's output where they were. A turn that was refused is kept nowhere, and a cancelled one is kept as far as it got. A session that was saved before turns were kept, or by a store that keeps none, replays its history as plain messages. Keeping a turn apart from the session means a long thread costs one small write for each turn, where rewriting the whole thread would cost more every time.
+
+`checkpoint_session_store` keeps sessions in any `CheckpointStore` instead, so an app that already has one for its durable runs, or a store of its own that passes the conformance suite, needs no second place to keep things:
+
+<!-- snippet: check -->
+```ts
+import { homedir } from 'node:os'
+import { join } from 'node:path'
+import { step } from 'fascicle'
+import { checkpoint_session_store, serve_acp } from 'fascicle/acp'
+import { filesystem_store } from 'fascicle/adapters'
+
+await serve_acp({
+  name: 'echo',
+  flow: step('echo', (text: string) => `you said: ${text}`),
+  session_store: checkpoint_session_store(filesystem_store({ root_dir: join(homedir(), '.echo-agent', 'store') })),
+})
+```
+
+It writes a session under `acp/session/<id>`, each turn under `acp/session/<id>/turn/<n>`, and an index under `acp/sessions`, which is what `session/list` reads, since a checkpoint store can't list its keys. On a store that has `set_if`, an index update goes through only while the index is still as it was read, so two agent processes that share a store never drop each other's sessions. A store without it is safe for one agent process at a time. Who can read the stored conversations is up to the store underneath, and `filesystem_store` doesn't narrow its files' permissions the way `filesystem_session_store` does.
+
+A save that fails is written to stderr, and the turn still ends, since the user has already watched it finish. A store of your own needs only `save`, `load`, and `list` (the `AcpSessionStore` type). Give it `delete` and the agent answers `session/delete`, and give it `save_turn` and `load_turns` and a loaded thread keeps its tool cards. Closing a session with `session/close` takes it out of the agent's memory and leaves it in the store, where `session/load` finds it again. A session id comes from the editor, so `filesystem_session_store` reads an id that could name another path as a session it doesn't hold. A stored session holds the whole conversation, file contents and command output included, so the directory the store makes and every file it writes are readable by their owner alone. It never holds the MCP servers that the editor sent, whose `env` and `headers` are credentials.
 
 ## Coding Sessions
 
@@ -442,14 +521,13 @@ Each card's id carries the turn, the model call's `step_id`, and how many times 
 
 ### What's Missing in Zed
 
-A turn works as this page describes, but a thread opened again after a restart shows its messages without their tool cards (see [Keeping Sessions](#keeping-sessions)).
-
-The rest of what Zed draws around a thread needs config:
+A turn works as this page describes. What Zed draws around a thread needs config:
 
 - the context ring and the cost need `context_window`, or a window on each model
 - the model picker needs `models`
 - the MCP servers you've configured in Zed reach the flow only with `mcp_servers`
-- a thread survives a restart only with a `session_store`
+- a thread survives a restart, and can be deleted from the history, only with a `session_store`
+- a thread that starts without its key offers a login only with `auth`
 
 ## Checklist
 
@@ -467,3 +545,4 @@ Everything in the [writing-a-harness checklist](./writing-a-harness.md#checklist
 - [ ] A flow builder that offers `models` builds its model call with `session.model()`.
 - [ ] An agent with `mcp_servers` puts `session.mcp_tools` in its model call's tools.
 - [ ] An agent people come back to has a `session_store`, in a directory outside the workspace.
+- [ ] An agent that offers a login builds its engine inside the flow builder, and runs its terminal login before it serves.
