@@ -13,6 +13,7 @@ export type {
   A2aHistoryEntry,
   A2aMapperOptions,
   A2aMapperState,
+  A2aReplay,
   A2aRequest,
   A2aResult,
   A2aResumeOptions,

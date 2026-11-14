@@ -428,7 +428,9 @@ describe('a remote question', () => {
       a2a_step({ id: 'ask', url: inner.url }),
       step('wrap', (result: A2aResult) => `the inner agent said: ${result.text}`),
     ])
-    const outer = await serve(outer_flow)
+    // The remote text is routed away from the artifact, so the artifact is
+    // the outer flow's own output and not the text that streamed through.
+    const outer = await serve(outer_flow, { stream: () => 'none' })
     const client = await new ClientFactory().createFromUrl(outer.url)
 
     const asked = await client.sendMessage(user_request('v1.2'))
@@ -451,6 +453,73 @@ describe('a remote question', () => {
       $case: 'text',
       value: 'the inner agent said: published: notes on v1.2 [approved]',
     })
+  })
+})
+
+describe('a chain of agents, streamed', () => {
+  // The text of every artifact chunk a stream carried, in order.
+  async function chunks_of(events: AsyncIterable<StreamResponse>): Promise<{ texts: string[]; last: TaskState | undefined; id: string; context_id: string }> {
+    const texts: string[] = []
+    let last: TaskState | undefined
+    let id = ''
+    let context_id = ''
+    for await (const event of events) {
+      const payload = event.payload
+      if (payload?.$case === 'task') {
+        id = payload.value.id
+        context_id = payload.value.contextId
+      }
+      if (payload?.$case === 'statusUpdate') last = payload.value.status?.state
+      if (payload?.$case === 'artifactUpdate') {
+        texts.push((payload.value.artifact?.parts ?? []).map((part) => (part.content?.$case === 'text' ? part.content.value : '')).join(''))
+      }
+    }
+    return { texts, last, id, context_id }
+  }
+
+  it('streams the remote text that follows an answered question, and not the text before it again', async () => {
+    const inner = await serve(sequence([speaker('lead', ['L1 ', 'L2 ']), approval(), speaker('tail', ['F1 ', 'F2'])]))
+    const outer = await serve(
+      sequence([a2a_step({ id: 'ask', url: inner.url }), step('wrap', (result: A2aResult) => `wrapped: ${result.text}`)]),
+    )
+    const client = await new ClientFactory().createFromUrl(outer.url)
+
+    const asked = await chunks_of(client.sendMessageStream(user_request('v1.2')))
+    expect(asked.texts).toEqual(['L1 ', 'L2 '])
+    expect(asked.last).toBe(TaskState.TASK_STATE_INPUT_REQUIRED)
+
+    const request = user_request('', asked.id, asked.context_id)
+    const answered = await chunks_of(
+      client.sendMessageStream({
+        ...request,
+        message: {
+          ...request.message!,
+          parts: [
+            { content: { $case: 'data', value: { approved: true } }, metadata: undefined, filename: '', mediaType: 'application/json' },
+          ],
+        },
+      }),
+    )
+    expect(answered.texts).toEqual(['F1 ', 'F2'])
+    expect(answered.last).toBe(TaskState.TASK_STATE_COMPLETED)
+  })
+})
+
+describe('serve_a2a', () => {
+  it('answers 500 with a message, and no error field, when the handler throws', async () => {
+    const server = await serve(step('echo', (text: string) => text), {
+      authenticate: () => {
+        throw new Error('the token service is down')
+      },
+    })
+    const response = await fetch(server.url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'a2a-version': '1.0' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'GetTask', params: { id: 'x' } }),
+    })
+    expect(response.status).toBe(500)
+    expect(response.headers.get('content-type')).toBe('application/json')
+    expect(await response.json()).toEqual({ message: 'internal error' })
   })
 })
 

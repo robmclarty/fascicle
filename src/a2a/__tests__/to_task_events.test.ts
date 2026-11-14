@@ -145,7 +145,65 @@ describe('to_task_events replays', () => {
     ])
     expect(events).toEqual([])
     expect(end_task_events(state)).toEqual([])
-    expect([...state.replaying]).toEqual([['s2', 'draft']])
+    expect([...state.replaying]).toEqual([['s2', { step_id: 'draft', gates: new Set(['approve']) }]])
+  })
+
+  it('lets a step speak inside its span once the drive has passed every gate the replay named', () => {
+    const state = create_a2a_mapper_state(IDS)
+    const events = map_all(state, [
+      { kind: 'step_replayed', step_id: 'ask', span_id: 's1', suspend_ids: ['ask_1', 'later'] },
+      text_chunk('ask', 'round one again'),
+      { kind: 'span_end', span_id: 'g1', id: 'ask_1' },
+      text_chunk('ask', 'one gate is not all of them'),
+      { kind: 'span_end', span_id: 'g2', id: 'later' },
+      text_chunk('ask', 'round two'),
+    ])
+    expect(events).toEqual([])
+    expect(state.replaying.size).toBe(0)
+    expect(chunks_of(end_task_events(state))).toEqual([{ parts: [text_part('round two')], append: false, last: true }])
+  })
+
+  it('keeps a step muted past a gate that stopped the drive, and past a span that is no gate of its own', () => {
+    const state = create_a2a_mapper_state(IDS)
+    const events = map_all(state, [
+      { kind: 'step_replayed', step_id: 'ask', span_id: 's1', suspend_ids: ['ask_1'] },
+      { kind: 'span_end', span_id: 'g1', id: 'ask_1', error: 'suspended at ask_1' },
+      { kind: 'span_end', span_id: 'g2', id: 'ask_send' },
+      { kind: 'span_end', span_id: 'g3' },
+      text_chunk('ask', 'still a replay'),
+    ])
+    expect(events).toEqual([])
+    expect(end_task_events(state)).toEqual([])
+    expect([...state.replaying.keys()]).toEqual(['s1'])
+  })
+
+  it('unmutes only the steps that waited on the gate that passed', () => {
+    const state = create_a2a_mapper_state(IDS)
+    map_all(state, [
+      { kind: 'step_replayed', step_id: 'first', span_id: 's1', suspend_ids: ['a'] },
+      { kind: 'step_replayed', step_id: 'second', span_id: 's2', suspend_ids: ['b'] },
+      { kind: 'span_end', span_id: 'g1', id: 'a' },
+      text_chunk('second', 'muted'),
+      text_chunk('first', 'heard'),
+    ])
+    expect(chunks_of(end_task_events(state))).toEqual([{ parts: [text_part('heard')], append: false, last: true }])
+    expect([...state.replaying.keys()]).toEqual(['s2'])
+  })
+
+  it('holds a replay that names no gates, or gates that are not strings, until its span ends', () => {
+    const state = create_a2a_mapper_state(IDS)
+    map_all(state, [
+      { kind: 'step_replayed', step_id: 'draft', span_id: 's1' },
+      { kind: 'step_replayed', step_id: 'other', span_id: 's2', suspend_ids: [7, 'approve'] },
+      { kind: 'span_end', span_id: 'g1', id: 'anything' },
+      text_chunk('draft', 'muted'),
+      text_chunk('other', 'muted too'),
+    ])
+    expect(end_task_events(state)).toEqual([])
+    expect(state.replaying.get('s2')).toEqual({ step_id: 'other', gates: new Set(['approve']) })
+    map_all(state, [{ kind: 'span_end', span_id: 'g2', id: 'approve' }, text_chunk('other', 'heard')])
+    expect([...state.replaying.keys()]).toEqual(['s1'])
+    expect(chunks_of(end_task_events(state))).toEqual([{ parts: [text_part('heard')], append: false, last: true }])
   })
 
   it('ignores a step_replayed event that names no span or no step', () => {

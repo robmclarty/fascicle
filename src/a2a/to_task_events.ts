@@ -6,8 +6,12 @@
  * fascicle/ui and the ACP mapper read. This half of a task does no I/O and
  * holds no SDK value, so a flow author can wrap `to_task_events` in their
  * own `to_events` and add to what it returns, as long as every event still
- * reaches it: a `step_replayed` mutes the step it names, and the `span_end`
- * of that step's span lets it speak again.
+ * reaches it: a `step_replayed` mutes the step it names, and the step speaks
+ * again once its span ends, or sooner, once the drive has passed every gate
+ * the event names. From there on the step is doing new work. An `a2a_step`
+ * is the case that needs it: its span stays open across the remote
+ * question, and the text that follows the answer is the remote agent's
+ * next round, which no client has read.
  *
  * Text goes into one artifact for each drive, in chunks. A2A marks the last
  * chunk of an artifact, and no chunk knows it's the last, so the mapper
@@ -93,9 +97,27 @@ function hold(state: A2aMapperState, text: string): AgentExecutionEvent[] {
  */
 function is_replaying(state: A2aMapperState, step_id: string): boolean {
   for (const replayed of state.replaying.values()) {
-    if (replayed === step_id) return true
+    if (replayed.step_id === step_id) return true
   }
   return false
+}
+
+/**
+ * The gates a `step_replayed` event says are still ahead of the drive.
+ */
+function gates_of(event: TrajectoryEvent): Set<string> {
+  const ids: unknown = event['suspend_ids']
+  return new Set(Array.isArray(ids) ? ids.filter((id): id is string => typeof id === 'string') : [])
+}
+
+/**
+ * Note that the drive has passed `gate`, and let every step speak that was
+ * waiting on no other. A replay that named no gate waits for its span.
+ */
+function pass_gate(state: A2aMapperState, gate: string): void {
+  for (const [span_id, replayed] of state.replaying) {
+    if (replayed.gates.delete(gate) && replayed.gates.size === 0) state.replaying.delete(span_id)
+  }
 }
 
 /**
@@ -107,11 +129,16 @@ export function to_task_events(event: TrajectoryEvent, state: A2aMapperState): A
   const span_id = event.span_id
   const step_id = event['step_id']
   if (event.kind === 'step_replayed') {
-    if (typeof span_id === 'string' && typeof step_id === 'string') state.replaying.set(span_id, step_id)
+    if (typeof span_id === 'string' && typeof step_id === 'string') {
+      state.replaying.set(span_id, { step_id, gates: gates_of(event) })
+    }
     return []
   }
   if (event.kind === 'span_end') {
     if (typeof span_id === 'string') state.replaying.delete(span_id)
+    // A gate's span ends without an error only when the gate took its answer.
+    const ended = event['id']
+    if (typeof ended === 'string' && event['error'] === undefined) pass_gate(state, ended)
     return []
   }
   if (event.kind !== 'model_chunk' || typeof step_id !== 'string') return []

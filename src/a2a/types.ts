@@ -111,6 +111,13 @@ export type A2aMapperOptions = {
  * What `to_task_events` needs to know about the drive it maps, made once per
  * drive by `create_a2a_mapper_state`.
  */
+/** One step that a resumed drive is running again. */
+export type A2aReplay = {
+  readonly step_id: string
+  /** The gates still ahead of the drive, each removed as the drive passes it. */
+  readonly gates: Set<string>
+}
+
 export type A2aMapperState = {
   readonly task_id: string
   readonly context_id: string
@@ -118,10 +125,11 @@ export type A2aMapperState = {
   readonly stream: (step_id: string) => A2aStreamRoute
   /**
    * The steps a resumed drive is running again, by the span each replay
-   * runs in. Their text already reached the client, so `to_task_events`
-   * drops it until the span ends.
+   * runs in, with the gates the drive hadn't reached when the step began.
+   * Their text already reached the client, so `to_task_events` drops it
+   * until the span ends or the drive has passed the last of those gates.
    */
-  readonly replaying: Map<string, string>
+  readonly replaying: Map<string, A2aReplay>
   /**
    * The newest text chunk, held back until the next one arrives or the drive
    * ends, since only the artifact's last chunk carries `lastChunk`.
