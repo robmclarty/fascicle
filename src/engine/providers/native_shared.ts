@@ -24,10 +24,9 @@ import { provider_auth_error, provider_capability_error, provider_error } from '
 
 /**
  * The error for an image part on a native transport, none of which maps one.
- * It sends every provider to `transport: 'ai_sdk'`, which forwards image
- * parts whether or not the adapter declares `image_input`. That includes
- * `ollama` and `lmstudio`, whose ai_sdk adapters declare nothing and whose
- * vision models read the image all the same.
+ * It sends every provider to `transport: 'ai_sdk'`, where every adapter
+ * with a native sibling declares `image_input` and forwards the part. That
+ * includes `ollama` and `lmstudio`, whose local vision models read it there.
  */
 export function image_input_error(provider: string): provider_capability_error {
   return new provider_capability_error(

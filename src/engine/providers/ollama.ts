@@ -8,8 +8,10 @@
  * /v1. No API key; base_url is the daemon root and is required on both
  * transports. Ollama does not support reasoning effort: the ai_sdk branch
  * drops the field and records `effort_ignored`; the native branch ignores it
- * entirely (thinking is opt-in via provider_options.ollama.think). Ollama
- * does not emit the image_input capability.
+ * entirely (thinking is opt-in via provider_options.ollama.think). The
+ * ai_sdk branch declares `image_input`, because ai-sdk-ollama sends a user
+ * message's image parts as the daemon's `images` field; the native branch
+ * maps no image part and declares none.
  */
 
 import type { EffortLevel, ProviderInit } from '../types.js'
@@ -92,6 +94,11 @@ const SUPPORTED: ReadonlySet<ProviderCapability> = new Set([
   // ai-sdk-ollama maps from the AI SDK responseFormat. The text-extraction
   // path is unreliable for local models, so prefer the constrained decode.
   'structured_output',
+  // ai-sdk-ollama carries a user message's image parts to the daemon as the
+  // message's `images`. The capability says the transport carries an image;
+  // reading it is up to the model, and the daemon answers 500 for a model
+  // that has no vision.
+  'image_input',
 ])
 
 /**

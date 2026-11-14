@@ -301,21 +301,34 @@ describe('trajectory captured on cancellation', () => {
   
     const traj = create_captured_trajectory()
     const ctrl = new AbortController()
+    // Resolves on the first text chunk, which the child writes after its init
+    // line, so the abort lands mid-stream however long the child took to start.
+    let text_arrived: () => void = () => {}
+    const mid_stream = new Promise<void>((resolve) => {
+      text_arrived = resolve
+    })
+    const chunks: string[] = []
     const promise = adapter.generate(
       {
         ...base_opts(build_mock_env({ MOCK_CLAUDE_SCRIPT: handle.script_path })),
         abort: ctrl.signal,
         trajectory: traj.logger,
+        on_chunk: (chunk) => {
+          if (chunk.kind !== 'text') return
+          chunks.push(chunk.text)
+          text_arrived()
+        },
       },
       alias_target,
     )
-  
-    await new Promise((r) => setTimeout(r, 200))
+
+    await mid_stream
     ctrl.abort(new Error('done'))
     await expect(promise).rejects.toThrow(aborted_error)
-  
-    // Some provider-level events should have made it into the trajectory
-    // before abort (init session, assistant text).
-    expect(traj.events.length).toBeGreaterThan(0)
+
+    // What the stream produced before the abort is still there after it: the
+    // chunk the caller was handed, and the session event from the init line.
+    expect(chunks).toEqual(['partial...'])
+    expect(traj.events.map((event) => event.kind)).toEqual(['cli_session_started'])
   })
 })

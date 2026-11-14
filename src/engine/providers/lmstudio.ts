@@ -7,7 +7,10 @@
  * the token-limit field, and tolerant usage, since a local server that omits
  * or approximates token counts is a fact of local-first running, not a broken
  * response. LM Studio exposes an OpenAI-compatible local server; base_url is
- * required on both transports. Reasoning effort differs by transport: the
+ * required on both transports. The ai_sdk branch declares `image_input`,
+ * because @ai-sdk/openai-compatible sends an image part as an `image_url`
+ * content part; the native branch maps no image part and declares none.
+ * Reasoning effort differs by transport: the
  * ai_sdk branch drops it and records `effort_ignored`, while the native
  * branch sends it as the flat `reasoning_effort` field through the shared
  * core and leaves the server to honor or ignore it.
@@ -64,6 +67,10 @@ const SUPPORTED: ReadonlySet<ProviderCapability> = new Set([
   // via a json_schema response format, surfaced through the AI SDK
   // responseFormat. Prefer it over the unreliable text-extraction path.
   'structured_output',
+  // @ai-sdk/openai-compatible carries an image part to the server as an
+  // `image_url` content part. The capability says the transport carries an
+  // image; reading it is up to the model that the server has loaded.
+  'image_input',
 ])
 
 /**

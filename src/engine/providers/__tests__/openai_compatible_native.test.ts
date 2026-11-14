@@ -1352,8 +1352,8 @@ describe('to_chat_messages (mutation hardening)', () => {
     return undefined
   }
 
-  // lmstudio is in the list on purpose: its ai_sdk adapter declares no
-  // image_input, but that transport forwards image parts all the same.
+  // lmstudio is in the list on purpose: its ai_sdk adapter declares
+  // image_input, so the hint points at a transport that carries the image.
   it.each(['openai', 'openrouter', 'lmstudio'])(
     'names the image_input capability and the ai_sdk transport in the error %s throws',
     (provider) => {
