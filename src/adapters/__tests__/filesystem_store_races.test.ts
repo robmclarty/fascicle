@@ -16,8 +16,8 @@ import { filesystem_store } from '../filesystem_store.js'
 const swaps = vi.hoisted(() => ({
   readdir: [] as Array<() => Promise<string[]> | undefined>,
   link: [] as Array<() => Promise<void>>,
-  writeFile: [] as Array<() => Promise<void>>,
-  readFile: [] as Array<() => Promise<string>>,
+  writeFile: [] as Array<() => Promise<void> | undefined>,
+  readFile: [] as Array<() => Promise<string | Buffer> | undefined>,
 }))
 
 vi.mock('node:fs/promises', async (import_original) => {
@@ -173,5 +173,140 @@ describe('filesystem_store claim races', () => {
     const store = filesystem_store({ root_dir: work_dir })
     expect(await store.claim('k', 'first', 60_000)).toBe(true)
     expect(read_claim(1)).toMatchObject({ owner: 'first' })
+  })
+})
+
+describe('filesystem_store conditional write races', () => {
+  // The store under test is a scope, so a test can clear it mid-write the way
+  // deleting a durable run does.
+  const scope_dir = (): string => {
+    const name = readdirSync(work_dir).find((entry) => entry.endsWith('.scope'))
+    return join(work_dir, name ?? '')
+  }
+  const value_file = (): string => {
+    const name = readdirSync(scope_dir()).find((entry) => entry.endsWith('.json'))
+    return join(scope_dir(), name ?? '')
+  }
+  const lock_file = (generation: number): string => {
+    const name = readdirSync(scope_dir()).find((entry) => entry.endsWith('.lock'))
+    return join(scope_dir(), name ?? '', `${generation}.json`)
+  }
+  const temporary_files = (): string[] =>
+    readdirSync(scope_dir()).filter((name) => name.endsWith('.tmp'))
+
+  it('refuses a write whose scope was cleared and made again after it began', async () => {
+    const store = filesystem_store({ root_dir: work_dir }).scope('run')
+    await store.set('k', { v: 1 })
+    const read = await store.get_versioned('k')
+    const dir = scope_dir()
+    const file = value_file()
+    // The first read is the lock's. The second is the value's, and by the time
+    // it answers, the run was deleted and a new one holds the same bytes.
+    swaps.readFile.push(
+      () => undefined,
+      async () => {
+        rmSync(dir, { recursive: true })
+        mkdirSync(dir)
+        writeFileSync(file, '{"v":1}')
+        return Buffer.from('{"v":1}')
+      },
+    )
+    expect(await store.set_if('k', { v: 2 }, read?.version ?? '')).toBe(false)
+    expect(readFileSync(file, 'utf8')).toBe('{"v":1}')
+    expect(readdirSync(dir)).toEqual([file.slice(dir.length + 1)])
+  })
+
+  it('reads a directory that vanished before the temporary file was written as a conflict', async () => {
+    const store = filesystem_store({ root_dir: work_dir }).scope('run')
+    await store.set('k', { v: 1 })
+    const read = await store.get_versioned('k')
+    // The first write is the lock's, and the second is the temporary file's.
+    swaps.writeFile.push(
+      () => undefined,
+      () => Promise.reject(fs_error('ENOENT')),
+    )
+    expect(await store.set_if('k', { v: 2 }, read?.version ?? '')).toBe(false)
+    expect(await store.get('k')).toEqual({ v: 1 })
+  })
+
+  it('surfaces any other failure of a conditional write, and lets the lock go', async () => {
+    const store = filesystem_store({ root_dir: work_dir }).scope('run')
+    await store.set('k', { v: 1 })
+    const read = await store.get_versioned('k')
+    swaps.writeFile.push(
+      () => undefined,
+      () => Promise.reject(fs_error('EACCES')),
+    )
+    await expect(store.set_if('k', { v: 2 }, read?.version ?? '')).rejects.toThrow(
+      'EACCES: simulated',
+    )
+    expect(JSON.parse(readFileSync(lock_file(2), 'utf8'))).toMatchObject({ expires_at: 0 })
+    expect(await store.get('k')).toEqual({ v: 1 })
+  })
+
+  it('surfaces a failure that is not an Error untouched', async () => {
+    const store = filesystem_store({ root_dir: work_dir }).scope('run')
+    await store.set('k', { v: 1 })
+    swaps.writeFile.push(
+      () => undefined,
+      () => Promise.reject('ENOENT'),
+    )
+    await expect(store.set_if('k', { v: 2 }, 'any version')).rejects.toBe('ENOENT')
+  })
+
+  it('removes its temporary file when the value cannot be read', async () => {
+    const store = filesystem_store({ root_dir: work_dir }).scope('run')
+    await store.set('k', { v: 1 })
+    swaps.readFile.push(
+      () => undefined,
+      () => Promise.reject(fs_error('EIO')),
+    )
+    await expect(store.set_if('k', { v: 2 }, 'any version')).rejects.toThrow('EIO: simulated')
+    expect(temporary_files()).toEqual([])
+  })
+
+  it('surfaces a versioned read that fails for a reason other than absence', async () => {
+    const store = filesystem_store({ root_dir: work_dir }).scope('run')
+    await store.set('k', { v: 1 })
+    swaps.readFile.push(() => Promise.reject(fs_error('EIO')))
+    await expect(store.get_versioned('k')).rejects.toThrow('EIO: simulated')
+  })
+
+  it('holds the lock of a write for ten seconds unless the write lets it go', async () => {
+    const store = filesystem_store({ root_dir: work_dir }).scope('run')
+    await store.set('k', { v: 1 })
+    let remaining = 0
+    // The first write is the lock's. The second is the value's, made while
+    // the lock is held.
+    swaps.writeFile.push(
+      () => undefined,
+      () => {
+        const lock = JSON.parse(readFileSync(lock_file(2), 'utf8')) as { expires_at: number }
+        remaining = lock.expires_at - Date.now()
+        return undefined
+      },
+    )
+    await store.set('k', { v: 2 })
+    expect(remaining).toBeGreaterThan(9_000)
+    expect(remaining).toBeLessThanOrEqual(10_000)
+    expect(await store.get('k')).toEqual({ v: 2 })
+  })
+
+  it('asks again for a held lock every couple of milliseconds', async () => {
+    const store = filesystem_store({ root_dir: work_dir }).scope('run')
+    await store.set('k', { v: 1 })
+    const held = { owner: 'another writer', expires_at: Date.now() + 100 }
+    writeFileSync(lock_file(1), JSON.stringify(held))
+    const waits: number[] = []
+    const real_set_timeout = globalThis.setTimeout
+    const spy = vi.spyOn(globalThis, 'setTimeout')
+    spy.mockImplementation(((fn: () => void, ms?: number) => {
+      waits.push(ms ?? 0)
+      return real_set_timeout(fn, ms)
+    }) as typeof setTimeout)
+    await store.set('k', { v: 2 })
+    spy.mockRestore()
+    expect(waits.length).toBeGreaterThan(1)
+    expect(new Set(waits)).toEqual(new Set([2]))
   })
 })
