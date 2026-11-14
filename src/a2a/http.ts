@@ -199,8 +199,11 @@ export function http_handler(config: HttpConfig): (request: Request) => Promise<
   const rpc = async (request: Request): Promise<Response> => {
     const user = config.authenticate === undefined ? { name: '', authenticated: false } : await config.authenticate(request)
     if (user === null) return refusal(401, 'unauthorized')
-    const type = request.headers.get('content-type')
-    if (type !== null && type.split(';', 1)[0]?.trim().toLowerCase() !== JSON_TYPE) {
+    // A body with no JSON content type is refused, a missing one included.
+    // A web page can post such a body to localhost without the browser
+    // asking first, and it can't post one that says it's JSON.
+    const type = request.headers.get('content-type') ?? ''
+    if (type.split(';', 1)[0]?.trim().toLowerCase() !== JSON_TYPE) {
       const unsupported = new sdk.errors.ContentTypeNotSupportedError(
         `Unsupported Content-Type "${type}"; expected ${JSON_TYPE}.`,
       )

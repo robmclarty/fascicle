@@ -302,6 +302,18 @@ describe('JSON-RPC errors', () => {
     })
     const with_charset = await send(agent, 'hi', { headers: { 'content-type': 'Application/JSON; charset=utf-8' } })
     expect(state_of(with_charset)).toBe('TASK_STATE_COMPLETED')
+
+    // No content type at all, which is what a web page can send unasked.
+    const untyped = await agent.fetch(
+      new Request('http://agent.test/', {
+        method: 'POST',
+        headers: { 'a2a-version': '1.0' },
+        body: new Blob([JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'SendMessage', params: { message: user_message('hi') } })]),
+      }),
+    )
+    expect(await untyped.json()).toMatchObject({
+      error: { code: -32005, message: 'Unsupported Content-Type ""; expected application/json.' },
+    })
   })
 
   it('answers method-not-found for a method the protocol does not have', async () => {

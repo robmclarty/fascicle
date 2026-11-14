@@ -219,6 +219,8 @@ Don't serve [`workspace_tools`](./acp.md#coding-sessions), or any tool that touc
 
 An answer to a waiting task isn't held to `max_drives`, since refusing it would strand a task that's already been paid for.
 
+The JSON-RPC path takes only a body that says it's `application/json`. A web page can post to localhost without the browser asking first, but it can't post a body with that content type, so a page you happen to visit can't start tasks on an agent that's listening on your machine.
+
 ## Without the Server
 
 `serve_a2a` is process glue around `a2a_agent`, which builds the same agent with its handlers ready and nothing listening:
