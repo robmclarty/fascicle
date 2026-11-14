@@ -725,3 +725,21 @@ describe('step_replayed', () => {
     ])
   })
 })
+
+describe('record_chunks', () => {
+  const streaming = step('probe', (_: string, ctx) => ctx.streaming)
+
+  it('turns ctx.streaming on without a stream, and leaves it off by default', async () => {
+    expect(await run(streaming, 'x', { install_signal_handlers: false, record_chunks: true })).toBe(true)
+    expect(await run(streaming, 'x', { install_signal_handlers: false, record_chunks: false })).toBe(false)
+    expect(await run(streaming, 'x', { install_signal_handlers: false })).toBe(false)
+  })
+
+  it('leaves run.stream streaming whatever the flag says', async () => {
+    const handle = run.stream(streaming, 'x', { install_signal_handlers: false, record_chunks: false })
+    const kinds: string[] = []
+    for await (const event of handle.events) kinds.push(event.kind)
+    expect(await handle.result).toBe(true)
+    expect(kinds).toContain('flow_structure')
+  })
+})

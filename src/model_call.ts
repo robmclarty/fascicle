@@ -263,7 +263,8 @@ function build_generate_options<T, projected>(
  * `GenerateOptions`.
  *
  * Threads `ctx.abort` and `ctx.trajectory` (nested under the model_call
- * step's own span) into every call, and, when `run.stream` is driving,
+ * step's own span) into every call, and, when `run.stream` is driving or
+ * the run set `record_chunks`,
  * records each chunk as a `model_chunk` trajectory event before handing it
  * to `cfg.on_chunk`. `cfg.project`
  * maps the `GenerateResult` envelope into the step's output inside the same

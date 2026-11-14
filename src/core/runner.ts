@@ -200,6 +200,13 @@ export type RunOptions = {
   // reason, composing with the internal controller and the process signal
   // handlers rather than replacing them.
   readonly abort?: AbortSignal
+  /**
+   * Record each model call's chunks as `model_chunk` events on the run's
+   * trajectory, as `run.stream` does, without the stream. No channel or
+   * buffer comes with it, so the chunks reach `trajectory` synchronously and
+   * in order. `durable` passes it through; default: false.
+   */
+  readonly record_chunks?: boolean
 }
 
 export type StreamingRunHandle<o> = {
@@ -416,7 +423,9 @@ type StartResult<o> = {
  * Construct a run context and execute a flow to settlement.
  *
  * Shared engine behind `run` and `run.stream`; `high_water_mark` selects the
- * mode (null means no streaming channel). Owns the full run lifecycle:
+ * mode (null means no streaming channel). `ctx.streaming` is on when a
+ * channel is, and when `record_chunks` asks for chunks without one. Owns the
+ * full run lifecycle:
  * abort wiring, logger decoration, cleanup registration, signal handlers,
  * the `flow_structure` event that opens an observed run, and the
  * settle-time teardown ordering (cleanup handlers first, then unlinking and
@@ -430,7 +439,8 @@ function start_run<i, o>(
 ): StartResult<o> {
   const install_signal_handlers = options.install_signal_handlers !== false
   const base_logger = options.trajectory ?? noop_logger
-  const streaming = high_water_mark !== null
+  const has_channel = high_water_mark !== null
+  const streaming = has_channel || options.record_chunks === true
 
   const controller = new AbortController()
   const unlink_abort = link_external_abort(controller, options.abort)
@@ -440,7 +450,7 @@ function start_run<i, o>(
   let close_stream: (() => void) | null = null
   let inner: TrajectoryLogger = base_logger
 
-  if (streaming) {
+  if (has_channel) {
     // Decorate must wrap the streaming channel, not the reverse: the channel
     // enqueues a copy of each event for `run.stream` consumers, so it has to
     // see the events after `decorate_logger` has stamped `ts` and `run_id`.
@@ -454,7 +464,7 @@ function start_run<i, o>(
 
   // Structure is worth its one describe() walk only when something will see
   // it: a real logger, or a run.stream() consumer reading the channel.
-  if (options.trajectory !== undefined || streaming) {
+  if (options.trajectory !== undefined || has_channel) {
     logger.record({ kind: 'flow_structure', structure: describe.json(flow) })
   }
 
