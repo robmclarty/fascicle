@@ -10,8 +10,9 @@
  * While a stream is read, each text chunk of the task's artifacts is
  * recorded as a `model_chunk` event under the step's id when the run asked
  * for chunks, so every consumer that shows a model call's text shows the
- * remote agent's too. A status message becomes an `emit` event, and so does
- * the id of the task a round opens.
+ * remote agent's too. Each change of the task's status becomes an `emit`
+ * event with the state and the status message's text, and so does the id of
+ * the task a round opens.
  *
  * A round ends in one of two ways the flow can go on from: the task
  * completed, or it asked a question. A task that failed, was rejected or
@@ -201,13 +202,12 @@ export async function send_round(remote: Remote, step_id: string, outgoing: Outg
   const see_status = (state: TaskState | undefined, message: Message | undefined): void => {
     seen.state = state
     seen.status = message
-    if (message === undefined) return
     ctx.emit({
       step_id,
       a2a_status: {
         task_id: seen.task_id,
         state: state === undefined ? 'TASK_STATE_UNSPECIFIED' : remote.sdk.wire.taskStateToJSON(state),
-        text: text_of(message.parts, '\n'),
+        text: text_of(message?.parts ?? [], '\n'),
       },
     })
   }

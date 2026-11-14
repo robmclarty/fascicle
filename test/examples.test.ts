@@ -3,10 +3,11 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { client } from '@agentclientprotocol/sdk'
 import { describe, expect, it, vi } from 'vitest'
-import { describe as describe_flow } from 'fascicle'
+import { describe as describe_flow, step } from 'fascicle'
 import { acp_agent } from 'fascicle/acp'
 import type { AcpTurn } from 'fascicle/acp'
 import { make_loop_engine } from 'fascicle/testing'
+import { build_notes_flow, run_a2a_agent } from '../examples/a2a-agent/main.js'
 import { keyless_agent, to_messages } from '../examples/acp-agent/main.js'
 import { coder_agent, command_env, flags, parse_context_window, parse_effort } from '../examples/acp-coder/main.js'
 import { run_adversarial_build } from '../examples/adversarial-build/main.js'
@@ -229,6 +230,24 @@ describe('examples smoke', () => {
   it('durable_runs: describe.replays names the step the run replayed, without running anything', () => {
     const flow = build_review({ drafted: () => {}, posting: async () => {} })
     expect(describe_flow.replays(flow)).toEqual([{ id: 'gather', label: 'gather', gates: ['ci'] }])
+  })
+
+  it('a2a_agent asks its question through the caller, survives a restart, and finishes on the answer', async () => {
+    const lines: string[] = []
+    const result = await run_a2a_agent((line) => lines.push(line))
+    expect(result).toEqual({
+      asked: 'waiting at notes_1',
+      question: 'Waiting for input at "approve".',
+      after_restart: 'TASK_STATE_INPUT_REQUIRED',
+      answered: 'done: Published. v1.2: faster cold starts, and the export bug is fixed.',
+      states: ['TASK_STATE_WORKING', 'TASK_STATE_INPUT_REQUIRED', 'TASK_STATE_WORKING', 'TASK_STATE_COMPLETED'],
+    })
+    expect(lines.at(-1)).toBe('done: Published. v1.2: faster cold starts, and the export bug is fixed.')
+  })
+
+  it('a2a_agent: the notes flow keeps its draft in a checkpoint, so no answer replays it', () => {
+    const flow = build_notes_flow(step('draft', (version: string) => version, { side_effect: true }))
+    expect(describe_flow.replays(flow)).toEqual([])
   })
 
   it('object_store keeps the whole store contract and holds a durable run in a bucket', async () => {

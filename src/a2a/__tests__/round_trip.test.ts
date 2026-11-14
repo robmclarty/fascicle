@@ -285,7 +285,7 @@ describe('a2a_step against a served agent', () => {
     expect(failure.message).toBe(`the remote task ${failure.task_id} ended in TASK_STATE_FAILED: the remote flow broke`)
   })
 
-  it('records a remote status message as an emit event', async () => {
+  it('records each change of the remote status as an emit event', async () => {
     const server = await serve(
       step('boom', (): string => {
         throw new Error('the remote flow broke')
@@ -294,11 +294,13 @@ describe('a2a_step against a served agent', () => {
     const { events, logger } = recorder()
     await run(a2a_step({ id: 'ask', url: server.url }), 'go', logger).catch(() => {})
     const emitted = events.filter((event) => event.kind === 'emit' && 'a2a_status' in event)
-    expect(emitted).toHaveLength(1)
-    expect(emitted[0]).toMatchObject({
-      step_id: 'ask',
-      a2a_status: { state: 'TASK_STATE_FAILED', text: 'the remote flow broke' },
-    })
+    expect(emitted).toMatchObject([
+      { step_id: 'ask', a2a_status: { state: 'TASK_STATE_WORKING', text: '' } },
+      { step_id: 'ask', a2a_status: { state: 'TASK_STATE_FAILED', text: 'the remote flow broke' } },
+    ])
+    const ids = emitted.map((event) => (event['a2a_status'] as { task_id: string }).task_id)
+    expect(ids[0]).toMatch(/^[0-9a-f-]{36}$/)
+    expect(ids[1]).toBe(ids[0])
   })
 
   it('cancels the remote task when the run is aborted, then throws the abort reason', async () => {
@@ -329,12 +331,12 @@ describe('a2a_step against a served agent', () => {
     const server = await serve(gated_flow(), { gates: () => 'external' })
     const { events, logger } = recorder()
     const asking = run(a2a_step({ id: 'ask', url: server.url }), 'v1.2', logger)
+    const at_the_gate = (event: TrajectoryEvent): boolean =>
+      (event['a2a_status'] as { text?: string } | undefined)?.text?.startsWith('Waiting on "approve"') === true
     await vi.waitFor(() => {
-      expect(events.some((event) => 'a2a_status' in event)).toBe(true)
+      expect(events.some(at_the_gate)).toBe(true)
     })
-    const emitted = events.find((event) => 'a2a_status' in event) as unknown as {
-      a2a_status: { task_id: string; state: string }
-    }
+    const emitted = events.find(at_the_gate) as unknown as { a2a_status: { task_id: string; state: string } }
     expect(emitted.a2a_status.state).toBe('TASK_STATE_WORKING')
 
     await server.resume(emitted.a2a_status.task_id, { approve: { approved: true } })
