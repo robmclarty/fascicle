@@ -256,6 +256,29 @@ function incomplete_finish(error: unknown): FinishReason | undefined {
 }
 
 /**
+ * End a turn whose run has settled and wasn't cancelled. A run that
+ * finished sends `to_text(output)` as the reply when the turn sent none. A
+ * run that threw because a schema call ended early resolves with that
+ * call's finish reason, which decides the turn's stop reason, and any other
+ * failure is thrown on.
+ */
+async function end_run<i, o>(
+  config: ServeAcpConfig<i, o>,
+  result: Settled<o>,
+  reply: Reply,
+  send: SendUpdate,
+): Promise<FinishReason | undefined> {
+  if (result.ok) {
+    const final_text = (config.to_text ?? default_to_text)(result.output)
+    if (!reply.sent && final_text !== '') await send(agent_message(final_text))
+    return undefined
+  }
+  const finish = incomplete_finish(result.error)
+  if (finish === undefined) throw result.error
+  return finish
+}
+
+/**
  * Run the flow for one turn, forward its updates, and record the exchange.
  * The run has always settled by the time this returns or throws, so a turn
  * never leaves a run behind. A turn that ends in a refusal stays out of the
@@ -304,15 +327,7 @@ async function run_turn<i, o>(
     await name_session(config, record, turn, send_update)
     finish = await forward(handle.events, config, record, cancelled, send_update)
     const result = await outcome
-    if (!cancelled.aborted) {
-      if (result.ok) {
-        const final_text = (config.to_text ?? default_to_text)(result.output)
-        if (!reply.sent && final_text !== '') await send_update(agent_message(final_text))
-      } else {
-        finish = incomplete_finish(result.error)
-        if (finish === undefined) throw result.error
-      }
-    }
+    if (!cancelled.aborted) finish = (await end_run(config, result, reply, send_update)) ?? finish
   } catch (err: unknown) {
     stop.abort(new aborted_error('the prompt turn failed before its run finished'))
     await outcome
