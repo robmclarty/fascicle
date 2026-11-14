@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { CheckpointStore, ScopedCheckpointStore } from '#core'
+import type { CheckpointStore, ScopedCheckpointStore, Versioned } from '#core'
 import { memory_store, type MemoryStore } from '../../../test/fixtures/memory_store.js'
 import {
   checkpoint_store_conformance,
@@ -47,14 +47,46 @@ const SCOPED_CLAIM = [
   'clear drops the claims under a scope',
 ]
 
+const CAS = [
+  'get_versioned comes with set_if',
+  'a missing key has no version',
+  'a stored null reads with a version',
+  'a create lands on an absent key',
+  'a create refuses a key that holds anything',
+  'exactly one racing create wins',
+  'a write on the version it read lands and moves the version',
+  'a write on a stale version is refused and changes nothing',
+  'exactly one racing write on one version wins',
+  'set and delete move the version',
+  'a create works again after a delete',
+]
+const CAS_DAMAGE = ['a damaged value reads with a version']
+const SCOPED_CAS = [
+  'scopes keep the compare-and-set capability',
+  'a version from one scope satisfies nothing in another',
+  'a create works again after a clear',
+]
+// What a store with no compare-and-set skips, in the order the suite lists it.
+const NO_CAS = [...CAS, ...CAS_DAMAGE, ...SCOPED_CAS]
+
 // Short enough that the expiry checks wait tens of milliseconds, not seconds.
 const FAST: StoreConformanceOptions = { ttl_ms: 20 }
 
 type Patch = (base: MemoryStore) => Partial<CheckpointStore>
 
-// A fresh memory store per call with `patch` laid over it, so each test
-// breaks the contract in exactly the way it names.
+// A fresh memory store per call, without its compare-and-set, with `patch`
+// laid over it, so each test breaks the contract in exactly the way it names
+// and a patched `get` or `set` isn't bypassed by a conditional write.
 function broken(patch: Patch): () => CheckpointStore {
+  return () => {
+    const base = memory_store()
+    const { get, set, delete: remove, scope, claim, release } = base
+    return { get, set, delete: remove, scope, claim, release, ...patch(base) }
+  }
+}
+
+// The same, with the compare-and-set kept, for the tests that break it.
+function broken_cas(patch: Patch): () => CheckpointStore {
   return () => {
     const base = memory_store()
     return { ...base, ...patch(base) }
@@ -135,7 +167,16 @@ describe('checkpoint_store_conformance', () => {
     })
     expect(report.failed).toEqual([])
     expect(report.skipped).toEqual([])
-    expect(report.passed).toEqual([...CONTRACT, ...DAMAGE, ...SCOPE, ...CLAIM, ...SCOPED_CLAIM])
+    expect(report.passed).toEqual([
+      ...CONTRACT,
+      ...DAMAGE,
+      ...SCOPE,
+      ...CLAIM,
+      ...SCOPED_CLAIM,
+      ...CAS,
+      ...CAS_DAMAGE,
+      ...SCOPED_CAS,
+    ])
   })
 
   it('calls claim and release on the store, so methods that use `this` work', async () => {
@@ -166,13 +207,13 @@ describe('checkpoint_store_conformance', () => {
     }, FAST)
     expect(report.failed).toEqual([])
     expect(report.passed).toEqual(CONTRACT)
-    expect(report.skipped).toEqual([...DAMAGE, ...SCOPE, ...CLAIM, ...SCOPED_CLAIM])
+    expect(report.skipped).toEqual([...DAMAGE, ...SCOPE, ...CLAIM, ...SCOPED_CLAIM, ...NO_CAS])
   })
 
   it('runs the claim checks for a store with claims and no scope, and skips the scoped ones', async () => {
     const report = await checkpoint_store_conformance(scopeless, FAST)
     expect(report.failed).toEqual([])
-    expect(report.skipped).toEqual([...DAMAGE, ...SCOPE, ...SCOPED_CLAIM])
+    expect(report.skipped).toEqual([...DAMAGE, ...SCOPE, ...SCOPED_CLAIM, ...NO_CAS])
   })
 
   it('waits 200ms on an expiry check when no ttl_ms is given', async () => {
@@ -379,7 +420,9 @@ describe('checkpoint_store_conformance', () => {
         return memory_store()
       }, FAST)
       expect(report.passed).toEqual([])
-      expect(report.failed).toHaveLength(CONTRACT.length + SCOPE.length + CLAIM.length + SCOPED_CLAIM.length)
+      expect(report.failed).toHaveLength(
+        CONTRACT.length + SCOPE.length + CLAIM.length + SCOPED_CLAIM.length + CAS.length + SCOPED_CAS.length,
+      )
       expect(new Set(report.failed.map((failure) => failure.message))).toEqual(
         new Set(['the backing service is down']),
       )
@@ -696,7 +739,7 @@ describe('checkpoint_store_conformance', () => {
         return { get, set, delete: remove, scope }
       }, FAST)
       expect(report.failed).toEqual([])
-      expect(report.skipped).toEqual([...DAMAGE, ...CLAIM, ...SCOPED_CLAIM])
+      expect(report.skipped).toEqual([...DAMAGE, ...CLAIM, ...SCOPED_CLAIM, ...NO_CAS])
     })
 
     it('fails a release that frees a claim for anyone who asks', async () => {
@@ -1027,6 +1070,541 @@ describe('checkpoint_store_conformance', () => {
       )
       expect(failures).toMatchObject({
         'claims in different scopes stay apart': "the parent couldn't claim a key held in a scope",
+      })
+    })
+  })
+
+  describe('compare-and-set', () => {
+    // A store whose conditional writes go through `write`, which can ask the
+    // base store for its own answer to the same call.
+    function with_set_if(
+      write: (
+        base: MemoryStore,
+        key: string,
+        value: unknown,
+        expected: string | null,
+      ) => Promise<boolean>,
+    ): () => CheckpointStore {
+      return broken_cas((base) => ({
+        set_if: (key, value, expected) => write(base, key, value, expected),
+      }))
+    }
+
+    // A store whose versioned reads are rewritten by `read`.
+    function with_get_versioned(
+      read: (found: Versioned | undefined) => Versioned | undefined,
+    ): () => CheckpointStore {
+      return broken_cas((base) => ({
+        get_versioned: async (key) => read(await base.get_versioned(key)),
+      }))
+    }
+
+    it('runs the compare-and-set checks for a store with no scope, and skips the scoped ones', async () => {
+      const report = await checkpoint_store_conformance(() => {
+        const { get, set, delete: remove, get_versioned, set_if } = memory_store()
+        return { get, set, delete: remove, get_versioned, set_if }
+      }, FAST)
+      expect(report.failed).toEqual([])
+      expect(report.passed).toEqual([...CONTRACT, ...CAS])
+      expect(report.skipped).toEqual([
+        ...DAMAGE,
+        ...SCOPE,
+        ...CLAIM,
+        ...SCOPED_CLAIM,
+        ...CAS_DAMAGE,
+        ...SCOPED_CAS,
+      ])
+    })
+
+    it('calls get_versioned and set_if on the store, so methods that use `this` work', async () => {
+      type Holder = { readonly base: MemoryStore }
+      const report = await checkpoint_store_conformance(() => {
+        const base = memory_store()
+        return {
+          base,
+          get: base.get,
+          set: base.set,
+          delete: base.delete,
+          get_versioned(this: Holder, key: string) {
+            return this.base.get_versioned(key)
+          },
+          set_if(this: Holder, key: string, value: unknown, expected: string | null) {
+            return this.base.set_if(key, value, expected)
+          },
+        }
+      }, FAST)
+      expect(report.failed).toEqual([])
+      expect(report.passed).toEqual([...CONTRACT, ...CAS])
+    })
+
+    it('fails a store with get_versioned and no set_if', async () => {
+      const failures = await failures_of(() => {
+        const { get, set, delete: remove, get_versioned } = memory_store()
+        return { get, set, delete: remove, get_versioned }
+      })
+      expect(failures['get_versioned comes with set_if']).toBe(
+        'the store offers get_versioned without set_if',
+      )
+    })
+
+    it('fails a store with set_if and no get_versioned', async () => {
+      const failures = await failures_of(() => {
+        const { get, set, delete: remove, set_if } = memory_store()
+        return { get, set, delete: remove, set_if }
+      })
+      expect(failures['get_versioned comes with set_if']).toBe(
+        'the store offers set_if without get_versioned',
+      )
+    })
+
+    it('fails the checks when a later store from make_store has no compare-and-set', async () => {
+      let calls = 0
+      const failures = await failures_of(() => {
+        calls += 1
+        return calls === 1 ? memory_store() : broken(() => ({}))()
+      })
+      for (const check of CAS) {
+        expect(failures[check]).toBe('the store has neither get_versioned nor set_if')
+      }
+    })
+
+    it('fails a store whose set_if ignores its condition', async () => {
+      const failures = await failures_of(
+        with_set_if(async (base, key, value) => {
+          await base.set(key, value)
+          return true
+        }),
+      )
+      expect(failures).toEqual({
+        'a create refuses a key that holds anything': 'a create landed on a key that holds a value',
+        'exactly one racing create wins': '8 creates raced for an absent key and 8 won',
+        'a write on a stale version is refused and changes nothing':
+          'a write landed on a version another write had already replaced',
+        'exactly one racing write on one version wins': '8 writes raced on one version and 8 won',
+        'set and delete move the version': 'a write landed on a version a set had already replaced',
+      })
+    })
+
+    it('fails a store that lets nobody win a race', async () => {
+      const failures = await failures_of(
+        with_set_if(async (base, key, value, expected) =>
+          key === 'race' ? false : base.set_if(key, value, expected),
+        ),
+      )
+      expect(failures).toEqual({
+        'exactly one racing create wins': '8 creates raced for an absent key and 0 won',
+        'exactly one racing write on one version wins': '8 writes raced on one version and 0 won',
+      })
+    })
+
+    it('fails a create that lands on a stored null', async () => {
+      const failures = await failures_of(
+        with_set_if(async (base, key, value, expected) => {
+          if (expected !== null || key !== 'null') {
+            return base.set_if(key, value, expected)
+          }
+          await base.set(key, value)
+          return true
+        }),
+      )
+      expect(failures).toEqual({
+        'a create refuses a key that holds anything':
+          'a create landed on a key that holds a stored null',
+      })
+    })
+
+    it('fails a create that is refused and writes anyway', async () => {
+      const failures = await failures_of(
+        with_set_if(async (base, key, value, expected) => {
+          const wrote = await base.set_if(key, value, expected)
+          if (!wrote && expected === null) await base.set(key, value)
+          return wrote
+        }),
+      )
+      expect(failures).toEqual({
+        'a create refuses a key that holds anything': 'a refused create left {"v":2}',
+        'exactly one racing create wins':
+          'the key holds {"writer":7}, which the create that won never wrote',
+      })
+    })
+
+    it('fails a write that is refused and writes anyway', async () => {
+      const failures = await failures_of(
+        with_set_if(async (base, key, value, expected) => {
+          const wrote = await base.set_if(key, value, expected)
+          if (!wrote && expected !== null) await base.set(key, value)
+          return wrote
+        }),
+      )
+      expect(failures).toEqual({
+        'a write on a stale version is refused and changes nothing': 'a refused write left {"v":3}',
+        'exactly one racing write on one version wins':
+          'the key holds {"writer":7}, which the write that won never wrote',
+        'set and delete move the version': 'a refused write brought a deleted value back',
+      })
+    })
+
+    it('fails a refused write that moves the version', async () => {
+      const failures = await failures_of(
+        with_set_if(async (base, key, value, expected) => {
+          const wrote = await base.set_if(key, value, expected)
+          const current = await base.get(key)
+          if (!wrote && current !== null) await base.set(key, current)
+          return wrote
+        }),
+      )
+      expect(failures).toEqual({
+        'a write on a stale version is refused and changes nothing':
+          'a refused write moved the version',
+      })
+    })
+
+    it('fails a store whose version never moves', async () => {
+      const failures = await failures_of(
+        broken_cas((base) => ({
+          get_versioned: async (key) => {
+            const found = await base.get_versioned(key)
+            return found === undefined ? undefined : { ...found, version: 'same' }
+          },
+          set_if: async (key, value, expected) => {
+            const found = await base.get_versioned(key)
+            return base.set_if(key, value, expected === null ? null : (found?.version ?? 'gone'))
+          },
+        })),
+      )
+      expect(failures).toMatchObject({
+        'a write on the version it read lands and moves the version':
+          'a write that landed left the version where it was',
+        'set and delete move the version': 'a set left the version where it was',
+      })
+    })
+
+    it('fails a store that reads a missing key with a version', async () => {
+      const failures = await failures_of(
+        with_get_versioned((found) => found ?? { value: undefined, version: 'none' }),
+      )
+      expect(failures).toMatchObject({
+        'a missing key has no version':
+          'get_versioned on a key nobody set returned {"version":"none"}',
+        'set and delete move the version': 'get_versioned after delete returned {"version":"none"}',
+      })
+    })
+
+    it('fails a store that reads a stored null as an absent key', async () => {
+      const failures = await failures_of(
+        with_get_versioned((found) => (found?.value === undefined ? undefined : found)),
+      )
+      expect(failures).toEqual({
+        'a stored null reads with a version':
+          'get_versioned read a key that holds something as absent',
+      })
+    })
+
+    it('fails a store that reads a stored null as a hit', async () => {
+      const failures = await failures_of(
+        with_get_versioned((found) =>
+          found !== undefined && found.value === undefined ? { ...found, value: 'null' } : found,
+        ),
+      )
+      expect(failures).toEqual({
+        'a stored null reads with a version': 'a stored null read back as "null"',
+      })
+    })
+
+    it('fails a store whose version is not a string', async () => {
+      const failures = await failures_of(
+        broken_cas((base) => ({
+          get_versioned: async (key) => {
+            const found = await base.get_versioned(key)
+            if (found === undefined) return undefined
+            const numbered: unknown = { ...found, version: 3 }
+            // The wrong type is the point of the test.
+            // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+            return numbered as Versioned
+          },
+        })),
+      )
+      expect(failures['a stored null reads with a version']).toBe(
+        'get_versioned returned the version 3',
+      )
+    })
+
+    it('fails a store that reads back another value with the version', async () => {
+      const failures = await failures_of(
+        with_get_versioned((found) =>
+          found === undefined || found.value === undefined ? found : { ...found, value: 'other' },
+        ),
+      )
+      expect(failures).toMatchObject({
+        'a write on the version it read lands and moves the version': 'get_versioned read "other"',
+      })
+    })
+
+    it("fails a store that refuses a write on a stored null's version", async () => {
+      const failures = await failures_of(
+        with_set_if(async (base, key, value, expected) =>
+          key === 'null' && expected !== null ? false : base.set_if(key, value, expected),
+        ),
+      )
+      expect(failures).toEqual({
+        'a stored null reads with a version': 'a write on the version of a stored null was refused',
+      })
+    })
+
+    it('fails a store that reports a write it never made', async () => {
+      const failures = await failures_of(with_set_if(async () => true))
+      expect(failures).toMatchObject({
+        'a stored null reads with a version': 'the write over a null left null',
+        'a create lands on an absent key': 'a create that won left null',
+        'a write on the version it read lands and moves the version': 'the write left {"v":1}',
+        'a create works again after a delete': 'the second create left null',
+      })
+    })
+
+    it('fails a store that refuses every conditional write', async () => {
+      const failures = await failures_of(with_set_if(async () => false))
+      expect(failures).toMatchObject({
+        'a create lands on an absent key': 'a create on a key that holds nothing was refused',
+        'a write on the version it read lands and moves the version':
+          'a write on the version just read was refused',
+        'a write on a stale version is refused and changes nothing':
+          'a write on the version just read was refused',
+        'a create works again after a delete': 'a create on a key that holds nothing was refused',
+      })
+    })
+
+    it('fails a store that remembers a deleted key', async () => {
+      const failures = await failures_of(
+        broken_cas((base) => {
+          const seen = new Set<string>()
+          return {
+            set_if: async (key, value, expected) => {
+              if (expected === null && seen.has(key)) return false
+              seen.add(key)
+              return base.set_if(key, value, expected)
+            },
+          }
+        }),
+      )
+      expect(failures).toEqual({
+        'a create works again after a delete': 'a create was refused on a key that was deleted',
+      })
+    })
+
+    it('fails a store that writes on the version of a deleted value', async () => {
+      const failures = await failures_of(
+        with_set_if(async (base, key, value, expected) => {
+          if (expected === null || (await base.get_versioned(key)) !== undefined) {
+            return base.set_if(key, value, expected)
+          }
+          await base.set(key, value)
+          return true
+        }),
+      )
+      expect(failures).toEqual({
+        'set and delete move the version': 'a write landed on the version of a value that was deleted',
+      })
+    })
+
+    describe('a damaged value', () => {
+      type DamagePatch = (base: MemoryStore, damaged: ReadonlySet<string>) => Partial<CheckpointStore>
+
+      // The failures of a store that reads a damaged key as a miss, as the
+      // contract asks, with `patch` laid over its compare-and-set.
+      function damage_failures(patch: DamagePatch): Promise<Record<string, string>> {
+        const damaged = new Set<string>()
+        const make_store = broken_cas((base) => ({
+          get: async (key) => (damaged.has(key) ? null : base.get(key)),
+          ...patch(base, damaged),
+        }))
+        return failures_of(make_store, { corrupt: (_, key) => void damaged.add(key) })
+      }
+
+      // Read a damaged key with its version and no value, as the contract asks.
+      const reads_damage: DamagePatch = (base, damaged) => ({
+        get_versioned: async (key) => {
+          const found = await base.get_versioned(key)
+          return found !== undefined && damaged.has(key) ? { ...found, value: undefined } : found
+        },
+      })
+
+      it('fails a store whose write over it never shows', async () => {
+        // The patched `get` keeps reading the key as damaged after the write.
+        expect(await damage_failures(reads_damage)).toEqual({
+          'a damaged value reads with a version': 'the write over the damage left null',
+        })
+      })
+
+      it('fails a store that throws reading it', async () => {
+        const failures = await damage_failures((base, damaged) => ({
+          get_versioned: async (key) => {
+            if (damaged.has(key)) throw new Error('unreadable')
+            return base.get_versioned(key)
+          },
+        }))
+        expect(failures).toEqual({
+          'a damaged value reads with a version':
+            'get_versioned threw on a damaged value: Error: unreadable',
+        })
+      })
+
+      it('fails a store that reads it as an absent key', async () => {
+        const failures = await damage_failures((base, damaged) => ({
+          get_versioned: async (key) => (damaged.has(key) ? undefined : base.get_versioned(key)),
+        }))
+        expect(failures).toEqual({
+          'a damaged value reads with a version':
+            'get_versioned read a damaged value as an absent key',
+        })
+      })
+
+      it('fails a store that reads it as a hit', async () => {
+        const failures = await damage_failures(() => ({}))
+        expect(failures).toEqual({
+          'a damaged value reads with a version':
+            'get_versioned on a damaged value returned {"ok":true}',
+        })
+      })
+
+      it('fails a store that refuses a write on its version', async () => {
+        const failures = await damage_failures((base, damaged) => ({
+          ...reads_damage(base, damaged),
+          set_if: async (key, value, expected) =>
+            damaged.has(key) ? false : base.set_if(key, value, expected),
+        }))
+        expect(failures).toEqual({
+          'a damaged value reads with a version':
+            'a write on the version of a damaged value was refused',
+        })
+      })
+    })
+
+    describe('in scopes', () => {
+      type Scope = ReturnType<MemoryStore['scope']>
+
+      // A store whose scopes are rewritten by `patch`.
+      function scoped(patch: (scope: Scope) => Partial<Scope>): () => CheckpointStore {
+        return broken_cas((base) => ({
+          scope: (prefix) => {
+            const scope = base.scope(prefix)
+            return { ...scope, ...patch(scope) }
+          },
+        }))
+      }
+
+      it('fails a store whose scopes lose the compare-and-set', async () => {
+        const failures = await failures_of(
+          broken_cas((base) => ({
+            scope: (prefix) => {
+              const { get, set, delete: remove, scope, clear, claim, release } = base.scope(prefix)
+              return { get, set, delete: remove, scope, clear, claim, release }
+            },
+          })),
+        )
+        expect(failures).toEqual(
+          Object.fromEntries(
+            SCOPED_CAS.map((check) => [check, 'the store has neither get_versioned nor set_if']),
+          ),
+        )
+      })
+
+      it('fails a scope that refuses a create', async () => {
+        const failures = await failures_of(scoped(() => ({ set_if: async () => false })))
+        expect(failures).toMatchObject({
+          'scopes keep the compare-and-set capability': 'a create inside a fresh scope was refused',
+          'a create works again after a clear': 'a create inside a fresh scope was refused',
+        })
+      })
+
+      it('fails a scope that reads back another value', async () => {
+        const failures = await failures_of(
+          scoped((scope) => ({
+            get_versioned: async (key) => {
+              const found = await scope.get_versioned(key)
+              return found === undefined ? undefined : { ...found, value: 'other' }
+            },
+          })),
+        )
+        expect(failures).toEqual({
+          'scopes keep the compare-and-set capability': 'a scope read back "other"',
+        })
+      })
+
+      it("fails scopes whose conditional writes land in the parent's keys", async () => {
+        const failures = await failures_of(
+          broken_cas((base) => ({
+            scope: (prefix) => ({
+              ...base.scope(prefix),
+              get_versioned: base.get_versioned,
+              set_if: base.set_if,
+            }),
+          })),
+        )
+        expect(failures).toMatchObject({
+          'scopes keep the compare-and-set capability':
+            "a create in a scope showed up under its parent's key",
+        })
+      })
+
+      it('fails a scope that takes a version read in another', async () => {
+        const failures = await failures_of(
+          scoped((scope) => ({
+            set_if: async (key, value) => {
+              await scope.set(key, value)
+              return true
+            },
+          })),
+        )
+        expect(failures).toEqual({
+          'a version from one scope satisfies nothing in another':
+            "a write in scope 'b' landed on a version read in scope 'a'",
+        })
+      })
+
+      it('fails a scope whose refused write lands anyway', async () => {
+        const failures = await failures_of(
+          scoped((scope) => ({
+            set_if: async (key, value, expected) => {
+              const wrote = await scope.set_if(key, value, expected)
+              if (!wrote) await scope.set(key, value)
+              return wrote
+            },
+          })),
+        )
+        expect(failures).toEqual({
+          'a version from one scope satisfies nothing in another':
+            'the refused write left {"v":3} in scope \'b\'',
+        })
+      })
+
+      it('fails scopes that share one set of created keys', async () => {
+        const taken = new Set<string>()
+        const failures = await failures_of(() => {
+          taken.clear()
+          return scoped((scope) => ({
+            set: async (key, value) => {
+              taken.add(key)
+              await scope.set(key, value)
+            },
+            set_if: async (key, value, expected) => {
+              if (expected === null && taken.has(key)) return false
+              taken.add(key)
+              return scope.set_if(key, value, expected)
+            },
+          }))()
+        })
+        expect(failures).toEqual({
+          'a version from one scope satisfies nothing in another':
+            'a create was refused because another scope holds the key',
+          'a create works again after a clear': 'a create was refused on a key that was cleared',
+        })
+      })
+
+      it('fails a scope whose clear keeps its values', async () => {
+        const failures = await failures_of(scoped(() => ({ clear: async () => {} })))
+        expect(failures['a create works again after a clear']).toMatch(
+          /^get_versioned after clear returned \{"value":\{"v":1\},"version":"w\d+"\}$/,
+        )
       })
     })
   })
