@@ -233,7 +233,7 @@ describe('examples smoke', () => {
 
   it('object_store keeps the whole store contract and holds a durable run in a bucket', async () => {
     expect(await run_object_store()).toEqual({
-      conformance: { passed: 32, failed: [], skipped: [] },
+      conformance: { passed: 47, failed: [], skipped: [] },
       submitted: 'waiting at approve',
       bucket_while_waiting: ['runs/s/exp-7/c/lease', 'runs/s/exp-7/s/flow/v/total', 'runs/s/exp-7/v/record'],
       approved: 'done: reimbursed ada 42.50, approved by grace',
