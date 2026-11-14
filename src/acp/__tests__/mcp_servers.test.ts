@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { MockInstance } from 'vitest'
-import { PROTOCOL_VERSION } from '@agentclientprotocol/sdk'
+import { client, PROTOCOL_VERSION } from '@agentclientprotocol/sdk'
 import type { McpServer } from '@agentclientprotocol/sdk'
 import { step } from '#core'
 import type { Tool } from '#engine'
@@ -92,8 +92,18 @@ describe('connect_mcp_servers', () => {
     const connected = await connect_mcp_servers([stdio, sse, http], '/work', IDENTITY)
     expect(connected.tools.map((entry) => entry.name)).toEqual(['mcp__issues__open'])
     expect(warnings().toSorted()).toEqual([
-      "fascicle/acp: MCP server old uses a transport this agent doesn't speak, so its tools are left out of the session\n",
-      "fascicle/acp: couldn't connect to MCP server files (spawn ENOENT), so its tools are left out of the session\n",
+      "fascicle/acp: MCP server files: it couldn't be reached (spawn ENOENT), so its tools are left out of the session\n",
+      "fascicle/acp: MCP server old: it uses a transport this agent doesn't speak, so its tools are left out of the session\n",
+    ])
+    expect(connected.warnings).toEqual([
+      {
+        title: "MCP server files isn't connected",
+        description: "it couldn't be reached (spawn ENOENT), so its tools are left out of the session",
+      },
+      {
+        title: "MCP server old isn't connected",
+        description: "it uses a transport this agent doesn't speak, so its tools are left out of the session",
+      },
     ])
   })
 
@@ -101,22 +111,76 @@ describe('connect_mcp_servers', () => {
     vi.mocked(mcp_client).mockRejectedValueOnce('no route')
     await connect_mcp_servers([stdio], '/work', IDENTITY)
     expect(warnings()).toEqual([
-      "fascicle/acp: couldn't connect to MCP server files (no route), so its tools are left out of the session\n",
+      "fascicle/acp: MCP server files: it couldn't be reached (no route), so its tools are left out of the session\n",
     ])
   })
 
-  it('keeps the first tool to take a name two servers share', async () => {
-    const first = handle('mcp__a__x')
-    const second = { tools: [{ ...tool('mcp__a__x'), description: 'second' }, tool('mcp__a__y')], close: vi.fn(async () => {}) }
+  it("cuts a server's env and headers values out of the warning its error would carry them in", async () => {
+    const secret_stdio: McpServer = { ...stdio, env: [{ name: 'TOKEN', value: 'sk-secret-token' }, { name: 'DEBUG', value: '1' }] }
+    const secret_http: McpServer = { ...http, headers: [{ name: 'Authorization', value: 'Bearer abcdef123456' }] }
+    vi.mocked(mcp_client)
+      .mockRejectedValueOnce(new Error('exit 1 with TOKEN=sk-secret-token'))
+      .mockRejectedValueOnce(new Error('401 for Bearer abcdef123456'))
+    const connected = await connect_mcp_servers([secret_stdio, secret_http], '/work', IDENTITY)
+    expect(connected.warnings.map((warning) => warning.description)).toEqual([
+      "it couldn't be reached (exit 1 with TOKEN=[redacted]), so its tools are left out of the session",
+      "it couldn't be reached (401 for [redacted]), so its tools are left out of the session",
+    ])
+    const said = warnings().join('') + JSON.stringify(connected.warnings)
+    expect(said).not.toContain('sk-secret-token')
+    expect(said).not.toContain('abcdef123456')
+  })
+
+  it('throws a missing MCP SDK on, and closes the servers it had reached', async () => {
+    const files = handle('mcp__files__read')
+    const missing = Object.assign(new Error('@modelcontextprotocol/sdk is required; install it: pnpm add @modelcontextprotocol/sdk'), {
+      name: 'mcp_sdk_missing_error',
+    })
+    vi.mocked(mcp_client).mockResolvedValueOnce(files).mockRejectedValueOnce(missing)
+    await expect(connect_mcp_servers([stdio, http], '/work', IDENTITY)).rejects.toBe(missing)
+    expect(files.close).toHaveBeenCalledOnce()
+    expect(warnings()).toEqual([])
+  })
+
+  it('gives the second of two tools that share a name one of its own, ending in a hash', async () => {
+    const first = handle('mcp__my_server__x')
+    const second = { tools: [{ ...tool('mcp__my_server__x'), description: 'second' }, tool('mcp__my_server__y')], close: vi.fn(async () => {}) }
     vi.mocked(mcp_client).mockResolvedValueOnce(first).mockResolvedValueOnce(second)
-    const connected = await connect_mcp_servers([{ ...stdio, name: 'a' }, { ...http, name: 'a' }], '/work', IDENTITY)
-    expect(connected.tools.map((entry) => [entry.name, entry.description])).toEqual([
-      ['mcp__a__x', 'mcp__a__x'],
-      ['mcp__a__y', 'mcp__a__y'],
-    ])
-    expect(warnings()).toEqual([
-      "fascicle/acp: two MCP servers offer a tool named mcp__a__x, so the second one's is left out\n",
-    ])
+    const connected = await connect_mcp_servers([{ ...stdio, name: 'my server' }, { ...http, name: 'my.server' }], '/work', IDENTITY)
+    const names = connected.tools.map((entry) => entry.name)
+    expect(names).toHaveLength(3)
+    expect(new Set(names).size).toBe(3)
+    expect(names[0]).toBe('mcp__my_server__x')
+    expect(names[1]).toMatch(/^mcp__my_server__x_[0-9a-f]{8}$/)
+    expect(names[2]).toBe('mcp__my_server__y')
+    expect(connected.tools[1]).toMatchObject({ description: 'second', execute: second.tools[0]?.execute })
+    expect(warnings()).toEqual([])
+  })
+
+  it('gives two servers with one name and one tool a hash apiece, by their place in the list', async () => {
+    vi.mocked(mcp_client).mockResolvedValueOnce(handle('mcp__a__x')).mockResolvedValueOnce(handle('mcp__a__x')).mockResolvedValueOnce(handle('mcp__a__x'))
+    const twin = { ...stdio, name: 'a' }
+    const connected = await connect_mcp_servers([twin, twin, twin], '/work', IDENTITY)
+    expect(new Set(connected.tools.map((entry) => entry.name)).size).toBe(3)
+  })
+
+  it('cuts a name past 64 characters to 64, ending in a hash, and leaves one of exactly 64 alone', async () => {
+    const long = `mcp__files__${'a'.repeat(60)}`
+    const exact = `mcp__files__${'b'.repeat(52)}`
+    vi.mocked(mcp_client).mockResolvedValueOnce(handle(long, exact))
+    const connected = await connect_mcp_servers([stdio], '/work', IDENTITY)
+    const [cut, kept] = connected.tools.map((entry) => entry.name)
+    expect(cut).toHaveLength(64)
+    expect(cut).toMatch(new RegExp(`^${long.slice(0, 55)}_[0-9a-f]{8}$`))
+    expect(kept).toBe(exact)
+  })
+
+  it('leaves out a tool whose server lists it twice, with a warning', async () => {
+    const long = `mcp__files__${'a'.repeat(60)}`
+    vi.mocked(mcp_client).mockResolvedValueOnce(handle(long, long))
+    const connected = await connect_mcp_servers([stdio], '/work', IDENTITY)
+    expect(connected.tools).toHaveLength(1)
+    expect(warnings()).toEqual([`fascicle/acp: MCP server files offers a tool named ${long} twice, so the second one is left out\n`])
   })
 
   it('closes every server it reached, warning about each one that fails to close', async () => {
@@ -274,10 +338,10 @@ describe('acp_agent: MCP servers', () => {
     const { agent, session } = await open_session(app, { session: { mcpServers: [stdio] } })
     await expect(agent.request('session/close', { sessionId: session.sessionId })).resolves.toEqual({})
     expect(files.close).toHaveBeenCalledOnce()
-    await expect(session.prompt('still there?')).rejects.toThrow(`unknown session ${session.sessionId}`)
-    await expect(agent.request('session/close', { sessionId: session.sessionId })).rejects.toThrow(
-      `unknown session ${session.sessionId}`,
-    )
+    const gone = { code: -32002, message: 'Resource not found', data: { sessionId: session.sessionId } }
+    await expect(session.prompt('still there?')).rejects.toMatchObject(gone)
+    // The SDK's client reads -32002 from session/close as a session already closed, and resolves.
+    await expect(agent.request('session/close', { sessionId: session.sessionId })).resolves.toEqual({})
   })
 
   it('connects a stored session to the servers its load sends', async () => {
@@ -324,6 +388,267 @@ describe('acp_agent: MCP servers', () => {
       await agent.request('initialize', { protocolVersion: PROTOCOL_VERSION, clientCapabilities: {} })
       await agent.request('session/resume', { sessionId: session.sessionId, cwd: tmpdir() })
       expect(mcp_client).not.toHaveBeenCalled()
+    } finally {
+      await rm(root_dir, { recursive: true, force: true })
+    }
+  })
+
+  it('fails session/new with the install line when the MCP SDK is missing', async () => {
+    const missing = Object.assign(new Error('@modelcontextprotocol/sdk is required for fascicle/mcp; install it: pnpm add @modelcontextprotocol/sdk'), {
+      name: 'mcp_sdk_missing_error',
+    })
+    vi.mocked(mcp_client).mockRejectedValueOnce(missing)
+    const { app, built } = await mcp_agent()
+    const { agent } = connect_client(app)
+    await agent.request('initialize', { protocolVersion: PROTOCOL_VERSION, clientCapabilities: {} })
+    await expect(agent.request('session/new', { cwd: tmpdir(), mcpServers: [stdio] })).rejects.toThrow(
+      'Internal error: @modelcontextprotocol/sdk is required for fascicle/mcp; install it: pnpm add @modelcontextprotocol/sdk',
+    )
+    expect(built).toEqual([])
+  })
+
+  it('tells a client that shows notices which server was left out, at the first prompt, without its env values', async () => {
+    const secret: McpServer = { ...stdio, env: [{ name: 'TOKEN', value: 'sk-secret-token' }] }
+    vi.mocked(mcp_client).mockRejectedValueOnce(new Error('exit 1 with TOKEN=sk-secret-token'))
+    const { app } = await mcp_agent()
+    const { session } = await open_session(app, {
+      client_capabilities: { session: { notices: {} } },
+      session: { mcpServers: [secret] },
+    })
+    await session.prompt('first')
+    const first = await read_turn(session)
+    expect(first.updates[0]).toEqual({
+      sessionUpdate: 'notice',
+      severity: 'warning',
+      title: "MCP server files isn't connected",
+      description: "it couldn't be reached (exit 1 with TOKEN=[redacted]), so its tools are left out of the session",
+    })
+    await session.prompt('second')
+    const second = await read_turn(session)
+    expect(second.updates.filter((update) => update.sessionUpdate === 'notice')).toEqual([])
+  })
+
+  it.each([{}, { session: {} }, { session: { notices: null } }])(
+    'sends no notice to a client whose capabilities are %j, which never asked for them',
+    async (client_capabilities) => {
+      vi.mocked(mcp_client).mockRejectedValueOnce(new Error('spawn ENOENT'))
+      const { app } = await mcp_agent()
+      const { session } = await open_session(app, { client_capabilities, session: { mcpServers: [stdio] } })
+      await session.prompt('first')
+      const turn = await read_turn(session)
+      expect(turn.updates.filter((update) => update.sessionUpdate === 'notice')).toEqual([])
+      expect(warnings()).toEqual([
+        "fascicle/acp: MCP server files: it couldn't be reached (spawn ENOENT), so its tools are left out of the session\n",
+      ])
+    },
+  )
+
+  it('sends the notice for a loaded session before it answers, and keeps no server in the store', async () => {
+    const root_dir = await mkdtemp(join(tmpdir(), 'fascicle-acp-mcp-'))
+    try {
+      const store = filesystem_session_store({ root_dir })
+      const make = () =>
+        acp_agent({
+          name: 'test-agent',
+          mcp_servers: true,
+          flow: () => step('noop', (_: AcpTurn) => 'ok'),
+          to_input: (turn) => turn,
+          session_store: store,
+        })
+      const secret: McpServer = { ...http, headers: [{ name: 'Authorization', value: 'Bearer abcdef123456' }] }
+      vi.mocked(mcp_client).mockResolvedValueOnce(handle('mcp__issues__open'))
+      const { session } = await open_session(await make(), { session: { mcpServers: [secret] } })
+      await session.prompt('hello')
+      await read_turn(session)
+      const kept = JSON.stringify([await store.load(session.sessionId), await store.load_turns(session.sessionId, 1)])
+      expect(kept).not.toContain('abcdef123456')
+      expect(kept).not.toContain('mcp.example.com')
+
+      vi.mocked(mcp_client).mockRejectedValueOnce(new Error('401'))
+      const notices: unknown[] = []
+      const client_app = client().onNotification('session/update', (ctx) => {
+        if (ctx.params.update.sessionUpdate === 'notice') notices.push(ctx.params.update)
+      })
+      const { agent } = connect_client(await make(), client_app)
+      await agent.request('initialize', { protocolVersion: PROTOCOL_VERSION, clientCapabilities: { session: { notices: {} } } })
+      await agent.request('session/load', { sessionId: session.sessionId, cwd: tmpdir(), mcpServers: [secret] })
+      expect(notices).toEqual([
+        {
+          sessionUpdate: 'notice',
+          severity: 'warning',
+          title: "MCP server issues isn't connected",
+          description: "it couldn't be reached (401), so its tools are left out of the session",
+        },
+      ])
+    } finally {
+      await rm(root_dir, { recursive: true, force: true })
+    }
+  })
+
+  /**
+   * A stored agent that connects to MCP servers, with one live session that
+   * has had a turn, for a resume that arrives while the session is live.
+   */
+  async function live_session(servers: McpServer[], first: McpClientHandle) {
+    const root_dir = await mkdtemp(join(tmpdir(), 'fascicle-acp-mcp-'))
+    const built: AcpSession[] = []
+    let fail_build = false
+    const app = await acp_agent({
+      name: 'test-agent',
+      version: '1.0.0',
+      mcp_servers: true,
+      flow: (session) => {
+        if (fail_build) throw new Error('no flow for those servers')
+        built.push(session)
+        const names = session.mcp_tools.map((entry) => entry.name).join(', ')
+        return step('tools', (_: AcpTurn) => names)
+      },
+      to_input: (turn) => turn,
+      session_store: filesystem_session_store({ root_dir }),
+    })
+    vi.mocked(mcp_client).mockResolvedValueOnce(first)
+    const opened = await open_session(app, { session: { mcpServers: servers } })
+    await opened.session.prompt('which tools?')
+    await read_turn(opened.session)
+    const resume = (mcpServers: McpServer[]) =>
+      opened.agent.request('session/resume', { sessionId: opened.session.sessionId, cwd: tmpdir(), mcpServers })
+    const tools_now = async (): Promise<string> => {
+      await opened.session.prompt('which tools?')
+      const turn = await read_turn(opened.session)
+      const said = turn.updates.find((update) => update.sessionUpdate === 'agent_message_chunk')
+      return said?.sessionUpdate === 'agent_message_chunk' && said.content.type === 'text' ? said.content.text : ''
+    }
+    return {
+      ...opened,
+      built,
+      resume,
+      tools_now,
+      fail_builds: () => {
+        fail_build = true
+      },
+      cleanup: () => rm(root_dir, { recursive: true, force: true }),
+    }
+  }
+
+  it('switches a live session to the servers a resume brings: it closes the old ones and builds the flow on the new', async () => {
+    const files = handle('mcp__files__read')
+    const issues = handle('mcp__issues__open')
+    const live = await live_session([stdio], files)
+    try {
+      vi.mocked(mcp_client).mockResolvedValueOnce(issues)
+      await live.resume([http])
+      await vi.waitFor(() => {
+        expect(files.close).toHaveBeenCalledOnce()
+      })
+      expect(issues.close).not.toHaveBeenCalled()
+      expect(live.built).toHaveLength(2)
+      expect(await live.tools_now()).toBe('mcp__issues__open')
+      const needs = live.built[1]?.mcp_tools[0]?.needs_approval
+      expect(typeof needs === 'function' && (await needs({}))).toBe(true)
+      await live.agent.request('session/close', { sessionId: live.session.sessionId })
+      expect(issues.close).toHaveBeenCalledOnce()
+      expect(files.close).toHaveBeenCalledOnce()
+    } finally {
+      await live.cleanup()
+    }
+  })
+
+  it('changes nothing for a resume that brings the same servers, or names none', async () => {
+    const files = handle('mcp__files__read')
+    const live = await live_session([stdio], files)
+    try {
+      await live.resume([stdio])
+      await live.agent.request('session/resume', { sessionId: live.session.sessionId, cwd: tmpdir() })
+      expect(mcp_client).toHaveBeenCalledOnce()
+      expect(files.close).not.toHaveBeenCalled()
+      expect(live.built).toHaveLength(1)
+      expect(await live.tools_now()).toBe('mcp__files__read')
+    } finally {
+      await live.cleanup()
+    }
+  })
+
+  it('drops a live session to no servers when a resume brings an empty list', async () => {
+    const files = handle('mcp__files__read')
+    const live = await live_session([stdio], files)
+    try {
+      await live.resume([])
+      await vi.waitFor(() => {
+        expect(files.close).toHaveBeenCalledOnce()
+      })
+      expect(await live.tools_now()).toBe('')
+    } finally {
+      await live.cleanup()
+    }
+  })
+
+  it('leaves a live session on the servers it had when the flow builder throws for the new ones', async () => {
+    const files = handle('mcp__files__read')
+    const issues = handle('mcp__issues__open')
+    const live = await live_session([stdio], files)
+    try {
+      vi.mocked(mcp_client).mockResolvedValueOnce(issues)
+      live.fail_builds()
+      await expect(live.resume([http])).rejects.toThrow('Internal error: no flow for those servers')
+      expect(issues.close).toHaveBeenCalledOnce()
+      expect(files.close).not.toHaveBeenCalled()
+      expect(live.built[0]?.mcp_tools.map((entry) => entry.name)).toEqual(['mcp__files__read'])
+      expect(await live.tools_now()).toBe('mcp__files__read')
+    } finally {
+      await live.cleanup()
+    }
+  })
+
+  it('waits for the turn in flight before it closes the servers a resume replaced', async () => {
+    const root_dir = await mkdtemp(join(tmpdir(), 'fascicle-acp-mcp-'))
+    try {
+      const files = handle('mcp__files__read')
+      const release = Promise.withResolvers<void>()
+      const started = Promise.withResolvers<void>()
+      const app = await acp_agent({
+        name: 'test-agent',
+        mcp_servers: true,
+        flow: () =>
+          step('slow', async (_: AcpTurn) => {
+            started.resolve()
+            await release.promise
+            return 'ok'
+          }),
+        to_input: (turn) => turn,
+        session_store: filesystem_session_store({ root_dir }),
+      })
+      vi.mocked(mcp_client).mockResolvedValueOnce(files).mockResolvedValueOnce(handle('mcp__issues__open'))
+      const { agent, session } = await open_session(app, { session: { mcpServers: [stdio] } })
+      const turn = session.prompt('go')
+      await started.promise
+      await agent.request('session/resume', { sessionId: session.sessionId, cwd: tmpdir(), mcpServers: [http] })
+      await new Promise((resolve) => setTimeout(resolve, 10))
+      expect(files.close).not.toHaveBeenCalled()
+      release.resolve()
+      await turn
+      await vi.waitFor(() => {
+        expect(files.close).toHaveBeenCalledOnce()
+      })
+    } finally {
+      await rm(root_dir, { recursive: true, force: true })
+    }
+  })
+
+  it("closes a session's servers when the session is deleted", async () => {
+    const root_dir = await mkdtemp(join(tmpdir(), 'fascicle-acp-mcp-'))
+    try {
+      const files = handle('mcp__files__read')
+      vi.mocked(mcp_client).mockResolvedValueOnce(files)
+      const app = await acp_agent({
+        name: 'test-agent',
+        mcp_servers: true,
+        flow: () => step('noop', (_: AcpTurn) => 'ok'),
+        to_input: (turn) => turn,
+        session_store: filesystem_session_store({ root_dir }),
+      })
+      const { agent, session } = await open_session(app, { session: { mcpServers: [stdio] } })
+      await agent.request('session/delete', { sessionId: session.sessionId })
+      expect(files.close).toHaveBeenCalledOnce()
     } finally {
       await rm(root_dir, { recursive: true, force: true })
     }

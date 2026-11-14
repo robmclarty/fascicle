@@ -7,10 +7,18 @@
  * `mcp_client` from fascicle/mcp and hands their tools to the flow builder.
  * A server that can't be reached is left out with a warning on stderr
  * rather than failing the session, so one broken entry in the editor's
- * settings can't stop every thread. Each tool is named
- * `mcp__<server>__<tool>`, the form Claude Code uses, so two servers' tools
- * don't collide and none takes a workspace tool's name. A name that two
- * servers still share after that goes to the first.
+ * settings can't stop every thread, and the warning is kept for a client
+ * that shows notices. A server's `env` and `headers` values are
+ * credentials, so a warning carries the server's name and its error with
+ * any of those values cut out, and nothing else of the server.
+ *
+ * Each tool is named `mcp__<server>__<tool>`, the form Claude Code uses, so
+ * two servers' tools don't collide and none takes a workspace tool's name.
+ * A provider takes a tool name of 64 characters at most, and the engine
+ * refuses two tools under one name, so a name that runs longer, or that
+ * another tool already took once the server's name was cleaned up, is cut
+ * and ends in a hash of its server and tool. The tool still calls its
+ * server under the name the server gave it.
  *
  * An MCP tool can do anything its server can, so each one asks before it
  * runs whenever the session's mode asks before a command. The approval
@@ -22,6 +30,7 @@
  * closes the session or the connection.
  */
 
+import { createHash } from 'node:crypto'
 import type { McpServer } from '@agentclientprotocol/sdk'
 import type { Tool } from '#engine'
 import { mcp_client } from '#mcp'
@@ -36,14 +45,37 @@ import type { AcpSession } from './types.js'
  */
 export const MCP_CAPABILITIES = { http: true } as const
 
-/** A session's MCP servers, connected: every tool they offer, and the way to close them all. */
+/** What went wrong with one MCP server, in the words a client shows the user. */
+export type McpWarning = {
+  readonly title: string
+  readonly description: string
+}
+
+/**
+ * A session's MCP servers, connected: every tool they offer, the way to
+ * close them all, and a warning for each server that was left out.
+ */
 export type McpConnections = {
   readonly tools: ReadonlyArray<Tool>
   readonly close: () => Promise<void>
+  readonly warnings: ReadonlyArray<McpWarning>
 }
 
 /** The connections of a session with no MCP servers. */
-export const NO_MCP: McpConnections = { tools: [], close: async () => {} }
+export const NO_MCP: McpConnections = { tools: [], close: async () => {}, warnings: [] }
+
+/** The longest tool name a provider takes. */
+const NAME_LIMIT = 64
+
+/**
+ * The shortest `env` or `headers` value that's cut out of a warning. A
+ * shorter one, such as `1` or `true`, is a setting, and cutting it would
+ * shred the message it happens to appear in.
+ */
+const SECRET_LENGTH = 8
+
+/** How many characters of a hash end a shortened name. */
+const HASH_LENGTH = 8
 
 /** Who the agent says it is to each server. */
 type McpIdentity = { readonly name: string; readonly version: string }
@@ -81,26 +113,43 @@ function client_config(server: McpServer, cwd: string): McpClientConfig | undefi
 }
 
 /**
- * Connect to one server, or warn and return undefined when it can't be
- * reached, so the session starts without it.
+ * `text` with every `env` and `headers` value of `server` that's long
+ * enough to be a credential cut out, since an error that quotes one would
+ * carry it to stderr and to the client.
+ */
+function without_secrets(server: McpServer, text: string): string {
+  const pairs = 'command' in server ? server.env : 'headers' in server ? server.headers : []
+  return pairs.reduce((cut, { value }) => (value.length < SECRET_LENGTH ? cut : cut.replaceAll(value, '[redacted]')), text)
+}
+
+/**
+ * The warning for a server left out of the session, also written to
+ * stderr, for a client that shows no notices.
+ */
+function left_out(server: McpServer, reason: string): McpWarning {
+  const description = `${without_secrets(server, reason)}, so its tools are left out of the session`
+  warn(`MCP server ${server.name}: ${description}`)
+  return { title: `MCP server ${server.name} isn't connected`, description }
+}
+
+/**
+ * Connect to one server, or return the warning that says why it was left
+ * out, so the session starts without it. A missing MCP SDK isn't one
+ * server's failure, so that error is thrown on.
  */
 async function connect_server(
   server: McpServer,
   cwd: string,
   identity: McpIdentity,
-): Promise<McpClientHandle | undefined> {
+): Promise<McpClientHandle | McpWarning> {
   const config = client_config(server, cwd)
-  if (config === undefined) {
-    warn(`MCP server ${server.name} uses a transport this agent doesn't speak, so its tools are left out of the session`)
-    return undefined
-  }
+  if (config === undefined) return left_out(server, "it uses a transport this agent doesn't speak")
   const name_prefix = `mcp__${server.name.replaceAll(/[^\w-]/g, '_')}__`
   try {
     return await mcp_client(config, { client_info: identity, name_prefix })
   } catch (err: unknown) {
-    const reason = err instanceof Error ? err.message : String(err)
-    warn(`couldn't connect to MCP server ${server.name} (${reason}), so its tools are left out of the session`)
-    return undefined
+    if (err instanceof Error && err.name === 'mcp_sdk_missing_error') throw err
+    return left_out(server, `it couldn't be reached (${err instanceof Error ? err.message : String(err)})`)
   }
 }
 
@@ -119,8 +168,28 @@ async function close_all(handles: ReadonlyArray<McpClientHandle>): Promise<void>
 }
 
 /**
+ * A tool's name cut to the limit, ending in a hash of the server it came
+ * from (by its place in the list and its name as the client sent it) and
+ * the name `mcp_client` gave the tool, so two tools that would share a name
+ * each get one of their own.
+ */
+function shortened(name: string, server: McpServer, index: number): string {
+  const hash = createHash('sha256').update(`${index}\0${server.name}\0${name}`).digest('hex').slice(0, HASH_LENGTH)
+  return `${name.slice(0, NAME_LIMIT - HASH_LENGTH - 1)}_${hash}`
+}
+
+/**
+ * Whether `value` is a connection instead of the warning that stands in
+ * for one.
+ */
+function is_handle(value: McpClientHandle | McpWarning): value is McpClientHandle {
+  return 'tools' in value
+}
+
+/**
  * Connect to every server the client sent for a session, all at once, and
- * gather their tools, keeping the first tool to take each name.
+ * gather their tools under names no two of them share and no provider
+ * refuses.
  */
 export async function connect_mcp_servers(
   servers: ReadonlyArray<McpServer>,
@@ -128,14 +197,30 @@ export async function connect_mcp_servers(
   identity: McpIdentity,
 ): Promise<McpConnections> {
   if (servers.length === 0) return NO_MCP
-  const connected = await Promise.all(servers.map((server) => connect_server(server, cwd, identity)))
-  const handles = connected.filter((handle) => handle !== undefined)
-  const tools = new Map<string, Tool>()
-  for (const tool of handles.flatMap((handle) => handle.tools)) {
-    if (tools.has(tool.name)) warn(`two MCP servers offer a tool named ${tool.name}, so the second one's is left out`)
-    else tools.set(tool.name, tool)
+  const settled = await Promise.allSettled(servers.map((server) => connect_server(server, cwd, identity)))
+  const connected = settled.map((result) => (result.status === 'fulfilled' ? result.value : undefined))
+  const handles = connected.filter((entry) => entry !== undefined).filter(is_handle)
+  const failed = settled.find((result) => result.status === 'rejected')
+  if (failed !== undefined) {
+    await close_all(handles)
+    throw failed.reason
   }
-  return { tools: [...tools.values()], close: () => close_all(handles) }
+  const tools = new Map<string, Tool>()
+  const warnings: McpWarning[] = []
+  connected.forEach((entry, index) => {
+    const server = servers[index]
+    if (entry === undefined || server === undefined) return
+    if (!is_handle(entry)) {
+      warnings.push(entry)
+      return
+    }
+    for (const tool of entry.tools) {
+      const name = tool.name.length > NAME_LIMIT || tools.has(tool.name) ? shortened(tool.name, server, index) : tool.name
+      if (tools.has(name)) warn(`MCP server ${server.name} offers a tool named ${tool.name} twice, so the second one is left out`)
+      else tools.set(name, name === tool.name ? tool : { ...tool, name })
+    }
+  })
+  return { tools: [...tools.values()], close: () => close_all(handles), warnings }
 }
 
 /**

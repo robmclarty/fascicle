@@ -435,7 +435,7 @@ describe('presentation: previews that share a raw id', () => {
       await finished
       updates.push(update)
     }
-    const record = { session, flow: build(release), history: [], cards: create_card_sync(), usage: create_session_usage(), last_turn: null, title: null }
+    const record = { session, flow: build(release), history: [], cards: create_card_sync(), usage: create_session_usage(), last_turn: null, title: null, unsaved_turns: [] }
     await prompt_turn({ name: 'presentation', flow: record.flow }, record, [{ type: 'text', text: 'go' }], new AbortController().signal, send)
     return updates
   }

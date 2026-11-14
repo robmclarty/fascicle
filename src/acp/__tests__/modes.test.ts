@@ -197,11 +197,7 @@ describe('modes: refusals', () => {
 
   it('refuses either setter for a session it never started', async () => {
     const { agent } = await open()
-    const refusal = {
-      code: -32602,
-      message: 'Invalid params: unknown session nope; start one with session/new first',
-      data: { sessionId: 'nope' },
-    }
+    const refusal = { code: -32002, message: 'Resource not found', data: { sessionId: 'nope' } }
     await expect(agent.request('session/set_mode', { sessionId: 'nope', modeId: 'auto' })).rejects.toMatchObject(refusal)
     await expect(
       agent.request('session/set_config_option', { sessionId: 'nope', configId: 'mode', value: 'auto' }),
