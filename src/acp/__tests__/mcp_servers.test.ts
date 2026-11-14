@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { MockInstance } from 'vitest'
-import { client, PROTOCOL_VERSION } from '@agentclientprotocol/sdk'
+import { client, PROTOCOL_VERSION, RequestError } from '@agentclientprotocol/sdk'
 import type { McpServer } from '@agentclientprotocol/sdk'
 import { step } from '#core'
 import type { Tool } from '#engine'
@@ -59,6 +59,7 @@ function warnings(): string[] {
 describe('connect_mcp_servers', () => {
   it('connects to nothing for a session the client sent no servers with', async () => {
     expect(await connect_mcp_servers([], '/work', IDENTITY)).toBe(NO_MCP)
+    expect(NO_MCP).toEqual({ tools: [], close: expect.any(Function), warnings: [] })
     expect(mcp_client).not.toHaveBeenCalled()
     await expect(NO_MCP.close()).resolves.toBeUndefined()
   })
@@ -123,7 +124,7 @@ describe('connect_mcp_servers', () => {
       .mockRejectedValueOnce(new Error('401 for Bearer abcdef123456'))
     const connected = await connect_mcp_servers([secret_stdio, secret_http], '/work', IDENTITY)
     expect(connected.warnings.map((warning) => warning.description)).toEqual([
-      "it couldn't be reached (exit [redacted] with TOKEN=[redacted]), so its tools are left out of the session",
+      "it couldn't be reached (exit 1 with TOKEN=[redacted]), so its tools are left out of the session",
       "it couldn't be reached (401 for [redacted]), so its tools are left out of the session",
     ])
     const said = warnings().join('') + JSON.stringify(connected.warnings)
@@ -149,11 +150,65 @@ describe('connect_mcp_servers', () => {
       .mockRejectedValueOnce(new Error('spawn failed with PIN=123456 at 1234567'))
     const connected = await connect_mcp_servers([short_http, short_stdio], '/work', IDENTITY)
     expect(connected.warnings.map((warning) => warning.description)).toEqual([
-      'it couldn\'t be reached (401 from 127.0.0.[redacted]:3100, token "[redacted]" refused (abc, [redacted], [redacted], xab12cd, ab12cd_)), so its tools are left out of the session',
+      'it couldn\'t be reached (401 from 127.0.0.1:3100, token "[redacted]" refused (abc, [redacted], [redacted], xab12cd, ab12cd_)), so its tools are left out of the session',
       "it couldn't be reached (spawn failed with PIN=[redacted] at 1234567), so its tools are left out of the session",
     ])
     expect(warnings().join('')).not.toContain('"ab12cd"')
     expect(warnings().join('')).not.toContain('PIN=123456')
+  })
+
+  it('leaves a value of one or two characters where it is, and cuts one of three where it stands whole', async () => {
+    const tiny: McpServer = {
+      ...stdio,
+      env: [
+        { name: 'DEBUG', value: '1' },
+        { name: 'COLOR', value: 'no' },
+        { name: 'LEVEL', value: '0.' },
+        { name: 'PORT', value: '127' },
+        { name: 'MODE', value: 'dev' },
+      ],
+    }
+    vi.mocked(mcp_client).mockRejectedValueOnce(new Error('exit 1 from 127.0.0.1, no route (0.), mode dev, devs 1270'))
+    const connected = await connect_mcp_servers([tiny], '/work', IDENTITY)
+    expect(connected.warnings.map((warning) => warning.description)).toEqual([
+      "it couldn't be reached (exit 1 from [redacted].0.0.1, no route (0.), mode [redacted], devs 1270), so its tools are left out of the session",
+    ])
+    expect(warnings()).toEqual([
+      "fascicle/acp: MCP server files: it couldn't be reached (exit 1 from [redacted].0.0.1, no route (0.), mode [redacted], devs 1270), so its tools are left out of the session\n",
+    ])
+  })
+
+  it('cuts a value of eight characters wherever it appears, and one of seven only where it stands whole', async () => {
+    const edge: McpServer = {
+      ...stdio,
+      env: [
+        { name: 'EIGHT', value: 'abcd1234' },
+        { name: 'SEVEN', value: 'wxyz789' },
+      ],
+    }
+    vi.mocked(mcp_client).mockRejectedValueOnce(new Error('bad key xabcd1234y (abcd1234), bad pin xwxyz789y (wxyz789)'))
+    const connected = await connect_mcp_servers([edge], '/work', IDENTITY)
+    expect(connected.warnings.map((warning) => warning.description)).toEqual([
+      "it couldn't be reached (bad key x[redacted]y ([redacted]), bad pin xwxyz789y ([redacted])), so its tools are left out of the session",
+    ])
+  })
+
+  it('hands on a tool as its server gave it, and closes only the servers it reached when one was left out', async () => {
+    const files = handle('mcp__files__read')
+    const issues = handle('mcp__issues__open')
+    vi.mocked(mcp_client)
+      .mockResolvedValueOnce(files)
+      .mockRejectedValueOnce(new Error('spawn ENOENT'))
+      .mockResolvedValueOnce(issues)
+    const connected = await connect_mcp_servers([stdio, { ...stdio, name: 'gone' }, http], '/work', IDENTITY)
+    expect(connected.tools).toHaveLength(2)
+    expect(connected.tools[0]).toBe(files.tools[0])
+    expect(connected.tools[1]).toBe(issues.tools[0])
+    stderr.mockClear()
+    await expect(connected.close()).resolves.toBeUndefined()
+    expect(files.close).toHaveBeenCalledOnce()
+    expect(issues.close).toHaveBeenCalledOnce()
+    expect(warnings()).toEqual([])
   })
 
   it('throws a missing MCP SDK on, and closes the servers it had reached', async () => {
@@ -365,8 +420,14 @@ describe('acp_agent: MCP servers', () => {
     expect(files.close).toHaveBeenCalledOnce()
     const gone = { code: -32002, message: 'Resource not found', data: { sessionId: session.sessionId } }
     await expect(session.prompt('still there?')).rejects.toMatchObject(gone)
-    // The SDK's client reads -32002 from session/close as a session already closed, and resolves.
-    await expect(agent.request('session/close', { sessionId: session.sessionId })).resolves.toEqual({})
+    // The agent answers a second close with -32002 as well. The 2.x SDK's
+    // client reads that as a session already closed and resolves, and the
+    // 1.x client hands the error on.
+    const again = await agent.request('session/close', { sessionId: session.sessionId }).then(
+      () => 'closed',
+      (err: unknown) => (err instanceof RequestError ? err.code : err),
+    )
+    expect(['closed', -32002]).toContain(again)
   })
 
   it('connects a stored session to the servers its load sends', async () => {
@@ -604,6 +665,66 @@ describe('acp_agent: MCP servers', () => {
       expect(await live.tools_now()).toBe('')
     } finally {
       await live.cleanup()
+    }
+  })
+
+  it('switches a live session that has had no turn, and tells the client which of the new servers was left out', async () => {
+    const root_dir = await mkdtemp(join(tmpdir(), 'fascicle-acp-mcp-'))
+    try {
+      const files = handle('mcp__files__read')
+      const app = await acp_agent({
+        name: 'test-agent',
+        mcp_servers: true,
+        flow: () => step('noop', (_: AcpTurn) => 'ok'),
+        to_input: (turn) => turn,
+        session_store: filesystem_session_store({ root_dir }),
+      })
+      const notices: unknown[] = []
+      const client_app = client().onNotification('session/update', (ctx) => {
+        if (ctx.params.update.sessionUpdate === 'notice') notices.push(ctx.params.update)
+      })
+      vi.mocked(mcp_client).mockResolvedValueOnce(files).mockRejectedValueOnce(new Error('401'))
+      const { agent, session } = await open_session(app, {
+        client: client_app,
+        client_capabilities: { session: { notices: {} } },
+        session: { mcpServers: [stdio] },
+      })
+      await agent.request('session/resume', { sessionId: session.sessionId, cwd: tmpdir(), mcpServers: [http] })
+      expect(notices).toEqual([
+        {
+          sessionUpdate: 'notice',
+          severity: 'warning',
+          title: "MCP server issues isn't connected",
+          description: "it couldn't be reached (401), so its tools are left out of the session",
+        },
+      ])
+      await vi.waitFor(() => {
+        expect(files.close).toHaveBeenCalledOnce()
+      })
+    } finally {
+      await rm(root_dir, { recursive: true, force: true })
+    }
+  })
+
+  it('builds no flow again for a resume that brings other servers to an agent that connects to none', async () => {
+    const root_dir = await mkdtemp(join(tmpdir(), 'fascicle-acp-mcp-'))
+    try {
+      let built = 0
+      const app = await acp_agent({
+        name: 'test-agent',
+        flow: () => {
+          built += 1
+          return step('noop', (_: AcpTurn) => 'ok')
+        },
+        to_input: (turn) => turn,
+        session_store: filesystem_session_store({ root_dir }),
+      })
+      const { agent, session } = await open_session(app, { session: { mcpServers: [stdio] } })
+      await agent.request('session/resume', { sessionId: session.sessionId, cwd: tmpdir(), mcpServers: [http] })
+      expect(built).toBe(1)
+      expect(mcp_client).not.toHaveBeenCalled()
+    } finally {
+      await rm(root_dir, { recursive: true, force: true })
     }
   })
 

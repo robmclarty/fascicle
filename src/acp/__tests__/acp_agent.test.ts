@@ -2313,3 +2313,336 @@ describe('acp_agent: a turn the store could not take', () => {
     expect(updates.map(({ update }) => update)).toEqual([user('one'), message('reply 1'), title('one')])
   })
 })
+
+describe('acp_agent: what a save writes', () => {
+  /**
+   * A filesystem store that logs every write it's asked for, in order: a
+   * turn as its index and the prompt it opens with, and a session as its
+   * count of turns and of history entries.
+   */
+  async function logging_store() {
+    const base = filesystem_session_store({ root_dir: await scratch() })
+    const log: string[] = []
+    const prompt_of = (updates: ReadonlyArray<SessionUpdate>): string => {
+      const [opening] = updates
+      return opening?.sessionUpdate === 'user_message_chunk' && opening.content.type === 'text' ? opening.content.text : '?'
+    }
+    const session_store = {
+      ...base,
+      save_turn: async (id: string, index: number, updates: ReadonlyArray<SessionUpdate>) => {
+        log.push(`turn ${index} (${prompt_of(updates)})`)
+        await base.save_turn(id, index, updates)
+      },
+      save: async (session: AcpStoredSession) => {
+        log.push(`session: ${session.turns} turns, ${session.history.length} entries`)
+        await base.save(session)
+      },
+    }
+    return { base, log, session_store }
+  }
+
+  /** The thread a fresh agent over `session_store` replays for a load. */
+  async function replayed_thread(session_store: ServeAcpConfig<AcpTurn, string>['session_store'], sessionId: string) {
+    const app = await acp_agent({ name: 'test-agent', flow: numbered_replies().flow, to_input: (turn: AcpTurn) => turn, session_store })
+    const { agent, updates } = await connect_collecting(app)
+    await agent.request('session/load', { sessionId, cwd: tmpdir(), mcpServers: [] })
+    return updates.map(({ update }) => update)
+  }
+
+  it('writes each turn once, at its own index, with the history that goes with it, while an earlier save is still writing', async () => {
+    const { base, log, session_store } = await logging_store()
+    const writing = Promise.withResolvers<void>()
+    const release = Promise.withResolvers<void>()
+    const fourth = Promise.withResolvers<void>()
+    let saves = 0
+    let turns = 0
+    const app = await acp_agent({
+      name: 'test-agent',
+      flow: step('counted', (_: AcpTurn) => {
+        turns += 1
+        // A turn starts once the one before it has settled, so by the time
+        // the fourth runs, the second and the third have ended.
+        if (turns === 4) fourth.resolve()
+        return `reply ${turns}`
+      }),
+      to_input: (turn) => turn,
+      session_store: {
+        ...session_store,
+        save: async (session: AcpStoredSession) => {
+          saves += 1
+          if (saves === 1) {
+            writing.resolve()
+            await release.promise
+          }
+          await session_store.save(session)
+        },
+      },
+    })
+    const { agent, updates } = await connect_collecting(app)
+    const { sessionId } = await agent.request('session/new', { cwd: tmpdir(), mcpServers: [] })
+    const prompt = (text: string) => agent.request('session/prompt', { sessionId, prompt: [{ type: 'text', text }] })
+    // A prompt cancels the turn in flight, so each one waits for the reply
+    // of the one before it, whose own answer waits on the save.
+    const replied = (reply: string) =>
+      vi.waitFor(() => {
+        expect(updates.map(({ update }) => update)).toContainEqual(message(reply))
+      })
+    const first = prompt('one')
+    await writing.promise
+    const second = prompt('two')
+    await replied('reply 2')
+    const third = prompt('three')
+    await replied('reply 3')
+    const last = prompt('four')
+    await fourth.promise
+    release.resolve()
+    await Promise.all([first, second, third, last])
+    expect(log).toEqual([
+      'turn 0 (one)',
+      'session: 1 turns, 2 entries',
+      'turn 1 (two)',
+      'session: 2 turns, 4 entries',
+      'turn 2 (three)',
+      'session: 3 turns, 6 entries',
+      'turn 3 (four)',
+      'session: 4 turns, 8 entries',
+    ])
+    expect(await base.load(sessionId)).toMatchObject({ turns: 4 })
+    expect(await replayed_thread(base, sessionId)).toEqual([
+      user('one'),
+      message('reply 1'),
+      user('two'),
+      message('reply 2'),
+      user('three'),
+      message('reply 3'),
+      user('four'),
+      message('reply 4'),
+      title('one'),
+    ])
+  })
+
+  it('writes no turn for a save with nothing new, and saves the session with the count it had', async () => {
+    const { base, log, session_store } = await logging_store()
+    const app = await acp_agent({ name: 'test-agent', flow: numbered_replies().flow, to_input: (turn: AcpTurn) => turn, session_store })
+    const { agent, session } = await open_session(app)
+    await session.prompt('one')
+    await read_turn(session)
+    await session.prompt('two')
+    await read_turn(session)
+    await agent.request('session/set_mode', { sessionId: session.sessionId, modeId: 'auto' })
+    await agent.request('session/set_config_option', { sessionId: session.sessionId, configId: 'mode', value: 'manual' })
+    expect(log).toEqual([
+      'turn 0 (one)',
+      'session: 1 turns, 2 entries',
+      'turn 1 (two)',
+      'session: 2 turns, 4 entries',
+      'session: 2 turns, 4 entries',
+      'session: 2 turns, 4 entries',
+    ])
+    expect(await base.load(session.sessionId)).toMatchObject({ turns: 2, mode: 'manual' })
+    await session.prompt('three')
+    await read_turn(session)
+    expect(log.slice(6)).toEqual(['turn 2 (three)', 'session: 3 turns, 6 entries'])
+  })
+
+  it('counts no turn of a save that wrote only some of them, and writes them all again, in order, with the next', async () => {
+    const stderr = vi.spyOn(process.stderr, 'write').mockReturnValue(true)
+    const { base, log, session_store } = await logging_store()
+    const refused = new Set<number>()
+    const app = await acp_agent({
+      name: 'test-agent',
+      flow: numbered_replies().flow,
+      to_input: (turn: AcpTurn) => turn,
+      session_store: {
+        ...session_store,
+        save_turn: async (id: string, index: number, updates: ReadonlyArray<SessionUpdate>) => {
+          if (refused.has(index)) throw new Error(`no room for turn ${index}`)
+          await session_store.save_turn(id, index, updates)
+        },
+      },
+    })
+    const { session } = await open_session(app)
+    const { sessionId } = session
+    const turn = async (text: string): Promise<void> => {
+      await session.prompt(text)
+      await read_turn(session)
+    }
+    await turn('one')
+    refused.add(1)
+    await turn('two')
+    expect(stderr).toHaveBeenLastCalledWith(`fascicle/acp: couldn't save session ${sessionId}: no room for turn 1\n`)
+    expect(log).toEqual(['turn 0 (one)', 'session: 1 turns, 2 entries'])
+    // The second turn's write goes through this time and the third's doesn't,
+    // so neither is counted and the session isn't saved over.
+    refused.clear()
+    refused.add(2)
+    await turn('three')
+    expect(stderr).toHaveBeenLastCalledWith(`fascicle/acp: couldn't save session ${sessionId}: no room for turn 2\n`)
+    expect(log.slice(2)).toEqual(['turn 1 (two)'])
+    expect(await base.load(sessionId)).toMatchObject({ turns: 1, history: [{ text: 'one' }, { text: 'reply 1' }] })
+    refused.clear()
+    await turn('four')
+    expect(log.slice(3)).toEqual(['turn 1 (two)', 'turn 2 (three)', 'turn 3 (four)', 'session: 4 turns, 8 entries'])
+    await turn('five')
+    expect(log.slice(7)).toEqual(['turn 4 (five)', 'session: 5 turns, 10 entries'])
+    expect(stderr).toHaveBeenCalledTimes(2)
+    expect((await base.list()).map((entry) => entry.id)).toEqual([sessionId])
+    expect(await replayed_thread(base, sessionId)).toEqual([
+      user('one'),
+      message('reply 1'),
+      user('two'),
+      message('reply 2'),
+      user('three'),
+      message('reply 3'),
+      user('four'),
+      message('reply 4'),
+      user('five'),
+      message('reply 5'),
+      title('one'),
+    ])
+  })
+
+  it.each(['save_turn', 'load_turns'] as const)('keeps no turns in a store that has %s alone', async (only) => {
+    const { base, log, session_store } = await logging_store()
+    const { save, load, list } = session_store
+    const load_turns = vi.fn(base.load_turns)
+    const half = only === 'save_turn' ? { save, load, list, save_turn: session_store.save_turn } : { save, load, list, load_turns }
+    const make = () => acp_agent({ name: 'test-agent', flow: numbered_replies().flow, to_input: (turn: AcpTurn) => turn, session_store: half })
+    const { session } = await open_session(await make())
+    await session.prompt('one')
+    await read_turn(session)
+    await session.prompt('two')
+    await read_turn(session)
+    expect(log).toEqual(['session: undefined turns, 2 entries', 'session: undefined turns, 4 entries'])
+    expect(await base.load(session.sessionId)).not.toHaveProperty('turns')
+    const { agent, updates } = await connect_collecting(await make())
+    await agent.request('session/load', { sessionId: session.sessionId, cwd: tmpdir(), mcpServers: [] })
+    expect(updates.map(({ update }) => update)).toEqual([user('one'), message('reply 1'), user('two'), message('reply 2'), title('one')])
+    expect(load_turns).not.toHaveBeenCalled()
+  })
+
+  it('reads no turns for a session that has none yet, or one stored without them', async () => {
+    const { base, session_store } = await logging_store()
+    const load_turns = vi.fn(base.load_turns)
+    await base.save({
+      id: 'older',
+      cwd: tmpdir(),
+      additional_directories: [],
+      mode: 'manual',
+      title: null,
+      updated_at: '2026-10-31T00:00:00.000Z',
+      history: [{ role: 'user', text: 'from before' }],
+      usage: { context_tokens: 0, cost_usd: 0, priced: false },
+    })
+    const app = await acp_agent({ name: 'test-agent', flow: reply_step(), session_store: { ...session_store, load_turns } })
+    const { agent, updates } = await connect_collecting(app)
+    const { sessionId } = await agent.request('session/new', { cwd: tmpdir(), mcpServers: [] })
+    await agent.request('session/load', { sessionId, cwd: tmpdir(), mcpServers: [] })
+    expect(updates).toEqual([])
+    await agent.request('session/load', { sessionId: 'older', cwd: tmpdir(), mcpServers: [] })
+    expect(updates.map(({ update }) => update)).toEqual([user('from before')])
+    expect(load_turns).not.toHaveBeenCalled()
+  })
+})
+
+describe('acp_agent: what a client is told about a stored session', () => {
+  const summary: AcpSessionSummary = {
+    id: 'titled',
+    cwd: '/work',
+    additional_directories: ['/lib'],
+    title: 'Fix the test',
+    updated_at: '2026-10-31T03:00:00.000Z',
+  }
+
+  /** An agent over a store that lists `summaries`, holds `stored`, and fails a list with `list_error`. */
+  async function listing_agent(options: { summaries?: AcpSessionSummary[]; stored?: AcpStoredSession; list_error?: Error }) {
+    const app = await acp_agent({
+      name: 'test-agent',
+      flow: reply_step(),
+      session_store: {
+        save: async () => {},
+        load: async () => options.stored,
+        list: async () => {
+          if (options.list_error !== undefined) throw options.list_error
+          return options.summaries ?? []
+        },
+      },
+    })
+    return connect_collecting(app)
+  }
+
+  it('lists a session with no title, or an empty one, without a title, and one with no other directories without them', async () => {
+    const { agent } = await listing_agent({
+      summaries: [
+        summary,
+        { ...summary, id: 'untitled', title: null, additional_directories: [], updated_at: '2026-10-31T02:00:00.000Z' },
+        { ...summary, id: 'blank', title: '', additional_directories: [], updated_at: '2026-10-31T01:00:00.000Z' },
+      ],
+    })
+    expect(await agent.request('session/list', {})).toEqual({
+      sessions: [
+        { sessionId: 'titled', cwd: '/work', updatedAt: '2026-10-31T03:00:00.000Z', additionalDirectories: ['/lib'], title: 'Fix the test' },
+        { sessionId: 'untitled', cwd: '/work', updatedAt: '2026-10-31T02:00:00.000Z' },
+        { sessionId: 'blank', cwd: '/work', updatedAt: '2026-10-31T01:00:00.000Z' },
+      ],
+    })
+  })
+
+  it("fails a list with the store's own message when the store can't list", async () => {
+    const { agent } = await listing_agent({ list_error: new Error('the index is unreadable') })
+    await expect(agent.request('session/list', {})).rejects.toThrow('Internal error: the index is unreadable')
+  })
+
+  it('sends no usage for a loaded session when the config names no context window', async () => {
+    // The SDK's client drops an update it can't read with a console.error,
+    // so a usage update with no window would leave only that behind.
+    const dropped = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const { agent, updates } = await listing_agent({
+      stored: {
+        id: 'stored',
+        cwd: tmpdir(),
+        additional_directories: [],
+        mode: 'manual',
+        title: null,
+        updated_at: '2026-10-31T00:00:00.000Z',
+        history: [],
+        usage: { context_tokens: 1234, cost_usd: 0.5, priced: true },
+      },
+    })
+    await agent.request('session/load', { sessionId: 'stored', cwd: tmpdir(), mcpServers: [] })
+    expect(updates).toEqual([])
+    expect(dropped).not.toHaveBeenCalled()
+  })
+
+  it('names the method an agent without a store, or without a logout, does not have', async () => {
+    const bare = await connect_collecting(await acp_agent({ name: 'test-agent', flow: reply_step() }))
+    const missing = (method: string) => ({ code: -32601, data: { method } })
+    await expect(bare.agent.request('session/load', { sessionId: 'x', cwd: tmpdir(), mcpServers: [] })).rejects.toMatchObject(
+      missing('session/load'),
+    )
+    await expect(bare.agent.request('session/resume', { sessionId: 'x', cwd: tmpdir() })).rejects.toMatchObject(missing('session/resume'))
+    await expect(bare.agent.request('session/list', {})).rejects.toMatchObject(missing('session/list'))
+    await expect(bare.agent.request('session/delete', { sessionId: 'x' })).rejects.toMatchObject(missing('session/delete'))
+    await expect(bare.agent.request('logout', {})).rejects.toMatchObject(missing('logout'))
+  })
+
+  it('tells a client that sent another cwd which session it named and the cwd it sent', async () => {
+    const elsewhere = await scratch()
+    const { agent } = await listing_agent({
+      stored: {
+        id: 'stored',
+        cwd: tmpdir(),
+        additional_directories: [],
+        mode: 'manual',
+        title: null,
+        updated_at: '2026-10-31T00:00:00.000Z',
+        history: [],
+        usage: { context_tokens: 0, cost_usd: 0, priced: false },
+      },
+    })
+    await expect(agent.request('session/load', { sessionId: 'stored', cwd: elsewhere, mcpServers: [] })).rejects.toMatchObject({
+      code: -32602,
+      data: { sessionId: 'stored', cwd: elsewhere },
+    })
+  })
+})

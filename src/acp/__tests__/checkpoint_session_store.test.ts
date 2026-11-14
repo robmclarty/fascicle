@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { SessionUpdate } from '@agentclientprotocol/sdk'
 import type { CheckpointStore } from '#core'
 import { checkpoint_session_store } from '../checkpoint_session_store.js'
@@ -147,6 +147,53 @@ describe.each([{ versioned: true }, { versioned: false }])('checkpoint_session_s
     write('acp/sessions', 'not a list')
     expect(await sessions.list()).toEqual([])
   })
+
+  it('leaves out an index entry with any one field wrong, and keeps one whose title is null', async () => {
+    const { store, write } = memory_store({ versioned })
+    const sessions = checkpoint_session_store(store)
+    await sessions.save(stored({ title: null }))
+    const [entry] = await sessions.list()
+    expect(entry).toEqual({ id: 'session-1', cwd: '/work', additional_directories: ['/lib'], title: null, updated_at: '2026-10-31T12:00:00.000Z' })
+    write('acp/sessions', [
+      null,
+      { ...entry, id: 1 },
+      { ...entry, id: 'no-cwd', cwd: 2 },
+      { ...entry, id: 'no-dirs', additional_directories: '/lib' },
+      { ...entry, id: 'no-title', title: undefined },
+      { ...entry, id: 'no-date', updated_at: 3 },
+      entry,
+    ])
+    expect(await sessions.list()).toEqual([entry])
+    // A save reads the same index, so it keeps what a list shows and no more.
+    await sessions.save(stored({ id: 'session-2' }))
+    expect((await sessions.list()).map((kept) => kept.id)).toEqual(['session-2', 'session-1'])
+  })
+
+  it('lists a session once however often it is saved, and not at all once it is deleted', async () => {
+    const { store, keys } = memory_store({ versioned })
+    const sessions = checkpoint_session_store(store)
+    for (const title of ['one', 'two', 'three']) await sessions.save(stored({ title }))
+    await sessions.save(stored({ id: 'session-2' }))
+    await sessions.save(stored({ title: 'four' }))
+    expect((await sessions.list()).map((entry) => [entry.id, entry.title])).toEqual([
+      ['session-1', 'four'],
+      ['session-2', 'Fix the test'],
+    ])
+    await sessions.delete('session-1')
+    await sessions.delete('session-1')
+    expect((await sessions.list()).map((entry) => entry.id)).toEqual(['session-2'])
+    await sessions.delete('session-2')
+    expect(await sessions.list()).toEqual([])
+    expect(keys()).toEqual(['acp/sessions'])
+  })
+
+  it('reads a store that answers undefined for a key it does not hold as holding no session', async () => {
+    const { store } = memory_store({ versioned })
+    const sessions = checkpoint_session_store({ ...store, get: async (key) => (await store.get(key)) ?? undefined })
+    expect(await sessions.load('session-1')).toBeUndefined()
+    expect(await sessions.list()).toEqual([])
+    await expect(sessions.delete('session-1')).resolves.toBeUndefined()
+  })
 })
 
 describe('checkpoint_session_store: two writers', () => {
@@ -209,6 +256,38 @@ describe('checkpoint_session_store: two writers', () => {
     expect((await sessions.list()).map((entry) => entry.id)).toEqual(['c', 'b', 'a'])
     await Promise.all([sessions.delete('a'), sessions.save(stored({ id: 'd' }))])
     expect((await sessions.list()).map((entry) => entry.id)).toEqual(['d', 'c', 'b'])
+  })
+
+  it.each(['get_versioned', 'set_if'] as const)('updates the index without comparing on a store that has %s alone', async (only) => {
+    const memory = memory_store({ versioned: true })
+    const { get, set, delete: remove, get_versioned, set_if } = memory.store
+    const used = vi.fn()
+    const half: CheckpointStore =
+      only === 'get_versioned'
+        ? {
+            get,
+            set,
+            delete: remove,
+            get_versioned: async (key) => {
+              used()
+              return get_versioned?.(key)
+            },
+          }
+        : {
+            get,
+            set,
+            delete: remove,
+            set_if: async (key, value, expected) => {
+              used()
+              return (await set_if?.(key, value, expected)) ?? false
+            },
+          }
+    const sessions = checkpoint_session_store(half)
+    await sessions.save(stored({ id: 'a' }))
+    await sessions.save(stored({ id: 'b' }))
+    await sessions.delete('a')
+    expect((await sessions.list()).map((entry) => entry.id)).toEqual(['b'])
+    expect(used).not.toHaveBeenCalled()
   })
 
   it('fails the save whose index write failed, and goes on to the next update', async () => {

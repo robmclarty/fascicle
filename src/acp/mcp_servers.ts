@@ -10,7 +10,9 @@
  * settings can't stop every thread, and the warning is kept for a client
  * that shows notices. A server's `env` and `headers` values are
  * credentials, so a warning carries the server's name and its error with
- * every one of those values cut out, and nothing else of the server.
+ * those values cut out, and nothing else of the server. The one value that
+ * stays is a value under three characters, which is too short to tell from
+ * the message's own words and numbers.
  *
  * Each tool is named `mcp__<server>__<tool>`, the form Claude Code uses, so
  * two servers' tools don't collide and none takes a workspace tool's name.
@@ -69,11 +71,20 @@ const NAME_LIMIT = 64
 
 /**
  * The shortest `env` or `headers` value that's cut out of a warning
- * wherever it appears. A shorter one, such as `1` or `true`, is cut only
+ * wherever it appears. A shorter one, such as `true` or `8080`, is cut only
  * where it stands whole, since cutting it out of the middle of every word
  * and number would shred the message it happens to appear in.
  */
 const SECRET_LENGTH = 8
+
+/**
+ * The shortest `env` or `headers` value that's cut out of a warning at
+ * all. A value of one or two characters, such as `1` or `no`, stands whole
+ * in ordinary error text (the `1` of `exit 1`, the last octet of
+ * `127.0.0.1`), so cutting it hides the error and protects nothing worth
+ * calling a secret.
+ */
+const SHORTEST_CUT = 3
 
 /** How many characters of a hash end a shortened name. */
 const HASH_LENGTH = 8
@@ -115,22 +126,24 @@ function client_config(server: McpServer, cwd: string): McpClientConfig | undefi
 
 /**
  * `text` with one `env` or `headers` value cut out. A short value is cut
- * where no letter, digit, or underscore adjoins it.
+ * where no letter, digit, or underscore adjoins it, and a value under
+ * three characters is left where it is.
  */
 function without_value(text: string, value: string): string {
+  if (value.length < SHORTEST_CUT) return text
   if (value.length >= SECRET_LENGTH) return text.replaceAll(value, '[redacted]')
   const literal = value.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`)
   return text.replaceAll(new RegExp(String.raw`(?<!\w)${literal}(?!\w)`, 'g'), '[redacted]')
 }
 
 /**
- * `text` with every `env` and `headers` value of `server` cut out, the
+ * `text` with the `env` and `headers` values of `server` cut out, the
  * longest first, since an error that quotes one would carry it to stderr
  * and to the client.
  */
 function without_secrets(server: McpServer, text: string): string {
   const pairs = 'command' in server ? server.env : 'headers' in server ? server.headers : []
-  const values = pairs.map(({ value }) => value).filter((value) => value !== '')
+  const values = pairs.map(({ value }) => value)
   return values.toSorted((a, b) => b.length - a.length).reduce(without_value, text)
 }
 
@@ -211,9 +224,11 @@ export async function connect_mcp_servers(
   identity: McpIdentity,
 ): Promise<McpConnections> {
   if (servers.length === 0) return NO_MCP
-  const settled = await Promise.allSettled(servers.map((server) => connect_server(server, cwd, identity)))
-  const connected = settled.map((result) => (result.status === 'fulfilled' ? result.value : undefined))
-  const handles = connected.filter((entry) => entry !== undefined).filter(is_handle)
+  const settled = await Promise.allSettled(
+    servers.map(async (server) => ({ server, entry: await connect_server(server, cwd, identity) })),
+  )
+  const reached = settled.flatMap((result) => (result.status === 'fulfilled' ? [result.value] : []))
+  const handles = reached.map(({ entry }) => entry).filter(is_handle)
   const failed = settled.find((result) => result.status === 'rejected')
   if (failed !== undefined) {
     await close_all(handles)
@@ -221,9 +236,9 @@ export async function connect_mcp_servers(
   }
   const tools = new Map<string, Tool>()
   const warnings: McpWarning[] = []
-  connected.forEach((entry, index) => {
-    const server = servers[index]
-    if (entry === undefined || server === undefined) return
+  // Every server was reached or left out by here, so each one's place in
+  // `reached` is its place in the list the client sent.
+  reached.forEach(({ server, entry }, index) => {
     if (!is_handle(entry)) {
       warnings.push(entry)
       return

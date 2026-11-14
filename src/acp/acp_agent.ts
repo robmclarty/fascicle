@@ -77,10 +77,10 @@ type AcpSdk = Awaited<ReturnType<typeof load_acp_sdk>>
  * A session as the agent holds it: what a turn needs, its mode, its model,
  * its MCP servers as the client sent them and as connected, the warnings
  * about them the client hasn't been shown, how many of its turns the store
- * keeps (null for a session whose turns aren't kept), how many turns have
- * left `unsaved_turns`, the latest save, which the next save waits on so
- * two never write at once, and the prompts that haven't answered yet, each
- * done once its turn is saved. A deleted session saves nothing more.
+ * keeps (null for a session whose turns aren't kept), the latest save,
+ * which the next save waits on so two never write at once, and the prompts
+ * that haven't answered yet, each done once its turn is saved. A deleted
+ * session saves nothing more.
  */
 type AgentSession<i, o> = SessionRecord<i, o> & {
   readonly modes: SessionModes
@@ -91,7 +91,6 @@ type AgentSession<i, o> = SessionRecord<i, o> & {
   readonly use_mcp: (connections: McpConnections) => void
   readonly notices: McpWarning[]
   turns: number | null
-  flushed: number
   saving: Promise<void>
   readonly prompts: Set<Promise<void>>
   deleted: boolean
@@ -252,7 +251,8 @@ function requested_directories(
 
 /**
  * A session's state as the store keeps it, copied, so a turn that runs while
- * the save is writing can't change what it writes.
+ * the save is writing can't change what it writes. Its count of turns isn't
+ * here, since the save adds it once it has written them.
  */
 function stored_session<i, o>(record: AgentSession<i, o>): AcpStoredSession {
   return {
@@ -265,7 +265,6 @@ function stored_session<i, o>(record: AgentSession<i, o>): AcpStoredSession {
     updated_at: new Date().toISOString(),
     history: structuredClone(record.history),
     usage: { ...record.usage },
-    ...(record.turns === null ? {} : { turns: record.turns }),
   }
 }
 
@@ -283,29 +282,35 @@ function stored_session<i, o>(record: AgentSession<i, o>): AcpStoredSession {
 function save_session<i, o>(config: ServeAcpConfig<i, o>, record: AgentSession<i, o>): Promise<void> {
   const store = config.session_store
   if (store === undefined || record.deleted || record.history.length === 0) {
-    record.flushed += record.unsaved_turns.splice(0).length
+    record.unsaved_turns.length = 0
     return Promise.resolve()
   }
   const { save_turn } = store
-  if (record.turns === null || save_turn === undefined) record.flushed += record.unsaved_turns.splice(0).length
-  // The history is copied now and names the turns that go with it, so a
-  // turn that ends while this save waits its place isn't written by it.
   const snapshot = stored_session(record)
-  const through = record.flushed + record.unsaved_turns.length
+  const report = (err: unknown): void => {
+    process.stderr.write(`fascicle/acp: couldn't save session ${snapshot.id}: ${message_of(err)}\n`)
+  }
+  if (record.turns === null || save_turn === undefined) {
+    record.unsaved_turns.length = 0
+    record.saving = record.saving.then(() => store.save(snapshot)).catch(report)
+    return record.saving
+  }
+  // The history is copied now and names the turns that go with it, by the
+  // number the last of them will have, so a turn that ends while this save
+  // waits its place isn't written by it.
+  const through = record.turns + record.unsaved_turns.length
   record.saving = record.saving
     .then(async () => {
-      const first = record.turns
-      if (first === null || save_turn === undefined) return store.save(snapshot)
-      const unsaved = record.unsaved_turns.slice(0, through - record.flushed)
+      // The saves ahead of this one have written their turns by now, and
+      // the count says how many of this one's turns they took with them.
+      const first = record.turns ?? 0
+      const unsaved = record.unsaved_turns.slice(0, through - first)
       await Promise.all(unsaved.map((updates, offset) => save_turn(snapshot.id, first + offset, updates)))
       record.unsaved_turns.splice(0, unsaved.length)
-      record.flushed += unsaved.length
       record.turns = first + unsaved.length
       return store.save({ ...snapshot, turns: record.turns })
     })
-    .catch((err: unknown) => {
-      process.stderr.write(`fascicle/acp: couldn't save session ${snapshot.id}: ${message_of(err)}\n`)
-    })
+    .catch(report)
   return record.saving
 }
 
@@ -453,7 +458,6 @@ export async function acp_agent<i, o>(config: ServeAcpConfig<i, o>): Promise<Age
         },
         notices: [...mcp.warnings],
         turns: keeps_turns ? (stored === undefined ? 0 : (stored.turns ?? null)) : null,
-        flushed: 0,
         saving: Promise.resolve(),
         prompts: new Set(),
         deleted: false,
