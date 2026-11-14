@@ -121,26 +121,36 @@ function pass_gate(state: A2aMapperState, gate: string): void {
 }
 
 /**
+ * Mute the step a `step_replayed` event names, for as long as its span runs
+ * or until the drive has passed the gates the event names.
+ */
+function start_replay(event: TrajectoryEvent, state: A2aMapperState): void {
+  const span_id = event.span_id
+  const step_id = event['step_id']
+  if (typeof span_id !== 'string' || typeof step_id !== 'string') return
+  state.replaying.set(span_id, { step_id, gates: gates_of(event) })
+}
+
+/**
+ * Take in the end of a span: a replay that ran in it is over, and a gate
+ * that it was has been passed. A gate's span ends without an error only
+ * when the gate took its answer.
+ */
+function end_span(event: TrajectoryEvent, state: A2aMapperState): void {
+  if (typeof event.span_id === 'string') state.replaying.delete(event.span_id)
+  const ended = event['id']
+  if (typeof ended === 'string' && event['error'] === undefined) pass_gate(state, ended)
+}
+
+/**
  * Map one run event to zero or more task events. Only a `model_chunk` that
  * carries text produces any, and it produces the chunk before it. The
  * function does no I/O.
  */
 export function to_task_events(event: TrajectoryEvent, state: A2aMapperState): AgentExecutionEvent[] {
-  const span_id = event.span_id
+  if (event.kind === 'step_replayed') start_replay(event, state)
+  if (event.kind === 'span_end') end_span(event, state)
   const step_id = event['step_id']
-  if (event.kind === 'step_replayed') {
-    if (typeof span_id === 'string' && typeof step_id === 'string') {
-      state.replaying.set(span_id, { step_id, gates: gates_of(event) })
-    }
-    return []
-  }
-  if (event.kind === 'span_end') {
-    if (typeof span_id === 'string') state.replaying.delete(span_id)
-    // A gate's span ends without an error only when the gate took its answer.
-    const ended = event['id']
-    if (typeof ended === 'string' && event['error'] === undefined) pass_gate(state, ended)
-    return []
-  }
   if (event.kind !== 'model_chunk' || typeof step_id !== 'string') return []
   const text = chunk_text(event['chunk'])
   if (text === undefined || text === '') return []
