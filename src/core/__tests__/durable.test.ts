@@ -51,10 +51,18 @@ function record_of(store: MemoryStore, run_id: string): Promise<unknown> {
   return store.scope(run_id).get('record')
 }
 
-// A store whose first claim on `key` waits until `release` is called, so a
-// test can hold one resume between its record read and its inbox write while
-// other calls move the run on. `held` settles once that claim is waiting.
-function holding_claim(base: MemoryStore, key: string) {
+// The record `run_id` would have had under a driver from before the inbox
+// moved into the record: `format: 1`, with no inbox of its own.
+async function as_format_1(store: MemoryStore, run_id: string): Promise<void> {
+  const { inbox: _, ...rest } = (await record_of(store, run_id)) as Record<string, unknown>
+  await store.scope(run_id).set('record', { ...rest, format: 1 })
+}
+
+// A store whose first conditional write of a record that `matches` waits
+// until `release` is called, so a test can hold one writer between its read
+// of the record and its write while other calls move the run on. `held`
+// settles once that write is waiting.
+function holding_write(base: MemoryStore, matches: (record: Record<string, unknown>) => boolean) {
   const held = Promise.withResolvers<void>()
   const go = Promise.withResolvers<void>()
   let waiting = false
@@ -63,18 +71,27 @@ function holding_claim(base: MemoryStore, key: string) {
       const scope = base.scope(prefix)
       return {
         ...scope,
-        claim: async (claimed, owner, ttl_ms) => {
-          if (claimed === key && !waiting) {
+        set_if: async (key, value, expected) => {
+          if (key === 'record' && !waiting && matches(value as Record<string, unknown>)) {
             waiting = true
             held.resolve()
             await go.promise
           }
-          return scope.claim(claimed, owner, ttl_ms)
+          return scope.set_if(key, value, expected)
         },
       }
     },
   }
   return { store, held: held.promise, release: () => go.resolve() }
+}
+
+// True for a record whose inbox holds `{ ok }` for `gate_id`, which is the
+// write a delivery of that datum makes.
+function delivers(gate_id: string, ok: boolean) {
+  return (record: Record<string, unknown>): boolean => {
+    const inbox = record['inbox'] as Record<string, { data: { ok: boolean } }>
+    return inbox[gate_id]?.data.ok === ok
+  }
 }
 
 afterEach(() => {
@@ -148,7 +165,10 @@ describe('durable: a run from start to finish', () => {
     const store: DurableStore = {
       scope: (prefix) => {
         const scope = base.scope(prefix)
-        return { ...scope, set: (key, value) => scope.set(key, as_json(value)) }
+        return {
+          ...scope,
+          set_if: (key, value, expected) => scope.set_if(key, as_json(value), expected),
+        }
       },
     }
     const seen: unknown[] = []
@@ -213,7 +233,7 @@ describe('durable: repeated and stray events', () => {
     await runs.resume('r', flow, { first: { ok: true } }, QUIET)
     const stale = await runs.resume('r', flow, { first: { ok: false } }, QUIET)
     expect(stale).toMatchObject({ kind: 'suspended', id: 'second', payload: { input: 'go+first' } })
-    expect(await store.scope('r').scope('inbox').get('first')).toBeNull()
+    expect(await record_of(store, 'r')).toMatchObject({ inbox: {}, resume_data: { first: { ok: true } } })
   })
 
   it('keeps data for a gate the run has yet to reach, and spends it there', async () => {
@@ -235,11 +255,13 @@ describe('durable: repeated and stray events', () => {
     const notified = { n: 0 }
     const flow = sequence([gate('approve', { on: () => void (notified.n += 1) })])
     await runs.start('r', flow, 'in', QUIET)
+    const before = await record_of(store, 'r')
     expect(await runs.resume('r', flow, { approve: undefined }, QUIET)).toMatchObject({
       kind: 'suspended',
       id: 'approve',
     })
-    expect(Object.keys(store.dump())).not.toContain(JSON.stringify(['r', 'inbox']))
+    expect(before).toMatchObject({ inbox: {} })
+    expect(await record_of(store, 'r')).toStrictEqual(before)
     // The run never moved, so the gate never asked again.
     expect(notified.n).toBe(1)
   })
@@ -289,7 +311,11 @@ describe('durable: one drive at a time', () => {
       run_id: 'r',
     })
     expect(await runs.start('r', flow, 'in', QUIET)).toEqual({ kind: 'busy', run_id: 'r' })
-    expect(await store.scope('r').scope('inbox').get('approve')).toEqual({ data: { ok: true } })
+    // The delivery changed the inbox and left the revision to the drives.
+    expect(await record_of(store, 'r')).toMatchObject({
+      revision: 1,
+      inbox: { approve: { data: { ok: true } } },
+    })
     await store.scope('r').release('lease', 'someone else')
     // A resume with nothing new still drives, and takes up what waited.
     expect(await runs.resume('r', flow, {}, QUIET)).toEqual({
@@ -313,23 +339,17 @@ describe('durable: one drive at a time', () => {
 
   it('gives a gate the first datum when two resumes race for it', async () => {
     const base = memory_store()
-    // An inbox read answers late with what it saw, so two resumes that read
-    // before they write both see an empty inbox before either one writes.
+    // A read of the record answers late with what it saw, so two resumes that
+    // read before they write both see an empty inbox before either one writes.
     const store: DurableStore = {
       scope: (prefix) => {
         const scope = base.scope(prefix)
         return {
           ...scope,
-          scope: (inner) => {
-            const nested = scope.scope(inner)
-            return {
-              ...nested,
-              get: async (key) => {
-                const value = await nested.get(key)
-                await sleep(20)
-                return value
-              },
-            }
+          get_versioned: async (key) => {
+            const read = await scope.get_versioned(key)
+            await sleep(20)
+            return read
           },
         }
       },
@@ -346,14 +366,15 @@ describe('durable: one drive at a time', () => {
       { kind: 'busy', run_id: 'r' },
       { kind: 'busy', run_id: 'r' },
     ])
-    expect(await base.scope('r').scope('inbox').get('ci')).toEqual({ data: { ok: true } })
+    expect(await record_of(base, 'r')).toMatchObject({ inbox: { ci: { data: { ok: true } } } })
     await base.scope('r').release('lease', 'someone else')
     expect(await runs.resume('r', flow, {}, QUIET)).toEqual({ kind: 'done', run_id: 'r', output: 'pr+ci' })
   })
 
-  it('drops a datum that reaches its gate after another resume moved the run past it', async () => {
+  it('drops a datum whose delivery stalled while another resume moved the run past its gate', async () => {
     const base = memory_store()
-    const { store, held, release } = holding_claim(base, 'inbox/first')
+    // The late delivery has read the record and decided to write when it stalls.
+    const { store, held, release } = holding_write(base, delivers('first', false))
     const runs = durable({ store })
     const flow = sequence([gate('first'), gate('second')])
     await runs.start('r', flow, 'go', QUIET)
@@ -363,14 +384,16 @@ describe('durable: one drive at a time', () => {
       kind: 'suspended',
       id: 'second',
     })
+    const moved_on = await record_of(base, 'r')
     release()
     expect(await late).toMatchObject({ kind: 'suspended', id: 'second', payload: { input: 'go+first' } })
-    expect(await base.scope('r').scope('inbox').get('first')).toBeNull()
+    expect(moved_on).toMatchObject({ inbox: {}, resume_data: { first: { ok: true } } })
+    expect(await record_of(base, 'r')).toStrictEqual(moved_on)
   })
 
-  it('drops a datum whose run was deleted while it waited, so a new run under the id starts clean', async () => {
+  it('drops a datum whose run was deleted while its delivery stalled, so a new run under the id starts clean', async () => {
     const base = memory_store()
-    const { store, held, release } = holding_claim(base, 'inbox/first')
+    const { store, held, release } = holding_write(base, delivers('first', true))
     const runs = durable({ store })
     const flow = sequence([gate('first'), gate('second')])
     await runs.start('r', flow, 'old', QUIET)
@@ -379,32 +402,103 @@ describe('durable: one drive at a time', () => {
     expect(await runs.delete('r')).toBe(true)
     release()
     await expect(late).rejects.toBeInstanceOf(run_not_found_error)
+    expect(base.dump()).toEqual({})
     expect(await runs.start('r', flow, 'new', QUIET)).toStrictEqual({
       kind: 'suspended',
       run_id: 'r',
       id: 'first',
       payload: { input: 'new' },
     })
+    expect(await record_of(base, 'r')).toMatchObject({ inbox: {}, resume_data: {} })
   })
 
-  it("holds a gate's data back until the claim of a resume that died lapses", async () => {
-    let clock = 0
-    const store = memory_store({ now: () => clock })
-    const runs = durable({ store, lease_ms: 1_000 })
+  it('delivers without a claim, taking nothing but the lease', async () => {
+    const base = memory_store()
+    const claimed: string[] = []
+    const store: DurableStore = {
+      scope: (prefix) => {
+        const scope = base.scope(prefix)
+        return {
+          ...scope,
+          claim: (key, owner, ttl_ms) => {
+            claimed.push(key)
+            return scope.claim(key, owner, ttl_ms)
+          },
+        }
+      },
+    }
+    const runs = durable({ store })
     const flow = sequence([gate('ci')])
     await runs.start('r', flow, 'pr', QUIET)
-    await store.scope('r').claim('inbox/ci', 'a resume that died', 1_000)
-    expect(await runs.resume('r', flow, { ci: { ok: true } }, QUIET)).toMatchObject({
-      kind: 'suspended',
-      id: 'ci',
-    })
-    expect(await store.scope('r').scope('inbox').get('ci')).toBeNull()
-    clock += 1_000
+    // A claim that a resume from before the inbox moved left on its gate.
+    await base.scope('r').claim('inbox/ci', 'a resume that died', 60_000)
     expect(await runs.resume('r', flow, { ci: { ok: true } }, QUIET)).toEqual({
       kind: 'done',
       run_id: 'r',
       output: 'pr+ci',
     })
+    expect(new Set(claimed)).toEqual(new Set(['lease']))
+  })
+
+  it('delivers each datum of one call, one write after another', async () => {
+    const store = memory_store()
+    const runs = durable({ store })
+    const flow = sequence([gate('first'), gate('second'), gate('third')])
+    await runs.start('r', flow, 'go', QUIET)
+    await store.scope('r').claim('lease', 'someone else', 60_000)
+    const all = { third: { ok: true }, second: { ok: false }, first: { ok: true } }
+    expect(await runs.resume('r', flow, all, QUIET)).toEqual({ kind: 'busy', run_id: 'r' })
+    expect(await record_of(store, 'r')).toMatchObject({
+      inbox: { first: { data: { ok: true } }, second: { data: { ok: false } }, third: { data: { ok: true } } },
+    })
+    await store.scope('r').release('lease', 'someone else')
+    expect(await runs.resume('r', flow, {}, QUIET)).toEqual({
+      kind: 'done',
+      run_id: 'r',
+      output: 'go+first-second+third',
+    })
+    expect(await record_of(store, 'r')).toMatchObject({ inbox: {} })
+  })
+
+  it("keeps a delivery that lands between a drive's read of the record and its write", async () => {
+    const base = memory_store()
+    // The drive has read the record and is about to save where it stopped.
+    const { store, held, release } = holding_write(base, (record) => record['status'] === 'suspended')
+    const runs = durable({ store })
+    const flow = sequence([gate('approve')])
+    const first = runs.start('r', flow, 'in', QUIET)
+    await held
+    expect(await durable({ store: base }).resume('r', flow, { approve: { ok: true } }, QUIET)).toEqual({
+      kind: 'busy',
+      run_id: 'r',
+    })
+    release()
+    // The save lost to the delivery, wrote again with it kept, and took it up.
+    expect(await first).toEqual({ kind: 'done', run_id: 'r', output: 'in+approve' })
+    expect(await record_of(base, 'r')).toMatchObject({ status: 'done', inbox: {}, revision: 3 })
+  })
+
+  it('moves a datum from the inbox into the resume data in one write, and leaves the rest of the inbox', async () => {
+    const store = memory_store()
+    const runs = durable({ store })
+    const seen: unknown[] = []
+    const flow = sequence([
+      gate('first'),
+      step('look', async (s: string) => {
+        seen.push(await record_of(store, 'r'))
+        return s
+      }),
+      gate('second'),
+    ])
+    await runs.start('r', flow, 'go', QUIET)
+    await runs.resume('r', flow, { second: { ok: true } }, QUIET)
+    expect(await runs.resume('r', flow, { first: { ok: true } }, QUIET)).toMatchObject({
+      kind: 'done',
+      output: 'go+first+second',
+    })
+    // What the store held while the drive that took `first` up was running.
+    expect(seen[0]).toMatchObject({ status: 'running', resume_data: { first: { ok: true } } })
+    expect((seen[0] as { inbox: unknown }).inbox).toStrictEqual({ second: { data: { ok: true } } })
   })
 
   it('reports a finished run as done even while another call holds it', async () => {
@@ -452,12 +546,10 @@ describe('durable: one drive at a time', () => {
         return {
           ...scope,
           release: async (key, owner) => {
-            if (!landed && (await scope.get('record')) !== null) {
-              const record = (await scope.get('record')) as { status: string }
-              if (record.status === 'suspended') {
-                landed = true
-                await scope.scope('inbox').set('approve', { data: { ok: true } })
-              }
+            const record = (await scope.get('record')) as { status: string } | null
+            if (!landed && record?.status === 'suspended') {
+              landed = true
+              await scope.set('record', { ...record, inbox: { approve: { data: { ok: true } } } })
             }
             await scope.release(key, owner)
           },
@@ -486,7 +578,8 @@ describe('durable: one drive at a time', () => {
             await scope.release(key, owner)
             if (stolen) return
             stolen = true
-            await scope.scope('inbox').set('approve', { data: { ok: true } })
+            const record = (await scope.get('record')) as Record<string, unknown>
+            await scope.set('record', { ...record, inbox: { approve: { data: { ok: true } } } })
             await scope.claim('lease', 'the other call', 60_000)
           },
         }
@@ -497,6 +590,50 @@ describe('durable: one drive at a time', () => {
       kind: 'busy',
       run_id: 'r',
     })
+  })
+
+  it('reports where the run stopped when the run is deleted as the drive lets it go', async () => {
+    const base = memory_store()
+    const store: DurableStore = {
+      scope: (prefix) => {
+        const scope = base.scope(prefix)
+        return {
+          ...scope,
+          release: async (key, owner) => {
+            await scope.release(key, owner)
+            await scope.clear()
+          },
+        }
+      },
+    }
+    expect(await durable({ store }).start('r', sequence([gate('approve')]), 'in', QUIET)).toMatchObject({
+      kind: 'suspended',
+      id: 'approve',
+    })
+  })
+
+  it('reports where the run stopped when what waits in the inbox is for another gate', async () => {
+    const base = memory_store()
+    const store: DurableStore = {
+      scope: (prefix) => {
+        const scope = base.scope(prefix)
+        return {
+          ...scope,
+          release: async (key, owner) => {
+            const record = (await scope.get('record')) as Record<string, unknown>
+            await scope.set('record', { ...record, inbox: { second: { data: { ok: true } } } })
+            await scope.release(key, owner)
+          },
+        }
+      },
+    }
+    const notified = { n: 0 }
+    const flow = sequence([gate('first', { on: () => void (notified.n += 1) }), gate('second')])
+    expect(await durable({ store }).start('r', flow, 'in', QUIET)).toMatchObject({
+      kind: 'suspended',
+      id: 'first',
+    })
+    expect(notified.n).toBe(1)
   })
 })
 
@@ -608,6 +745,61 @@ describe('durable: leases', () => {
     stalled.resolve()
     expect(await first).toEqual({ kind: 'busy', run_id: 'r' })
     expect(await record_of(store, 'r')).toEqual(moved_on)
+  })
+
+  it("won't write over a drive that saved after this one read the record and before it wrote", async () => {
+    const base = memory_store()
+    // The drive has confirmed its lease and read the record at the revision
+    // it expects when it stalls, with its write still to make.
+    const { store, held, release } = holding_write(base, (record) => record['status'] === 'done')
+    const first = durable({ store }).start('r', step('stall', () => 'stale result'), null, QUIET)
+    await held
+    // Past the stalled drive's lease, another drive took the run and saved.
+    const record = (await record_of(base, 'r')) as Record<string, unknown>
+    const moved_on = { ...record, revision: 1, status: 'done', output: 'the other drive' }
+    await base.scope('r').set('record', moved_on)
+    release()
+    expect(await first).toEqual({ kind: 'busy', run_id: 'r' })
+    expect(await record_of(base, 'r')).toEqual(moved_on)
+  })
+
+  it('gives up a drive whose run was deleted between its read of the record and its write', async () => {
+    const base = memory_store()
+    const { store, held, release } = holding_write(base, (record) => record['status'] === 'done')
+    const first = durable({ store }).start('r', step('stall', () => 'orphaned'), null, QUIET)
+    await held
+    await base.scope('r').delete('record')
+    release()
+    expect(await first).toEqual({ kind: 'busy', run_id: 'r' })
+    expect(await record_of(base, 'r')).toBeNull()
+  })
+
+  it('drives the record that won when another start creates the run first', async () => {
+    const base = memory_store()
+    let raced = false
+    const store: DurableStore = {
+      scope: (prefix) => {
+        const scope = base.scope(prefix)
+        return {
+          ...scope,
+          // Another start, outside the lease, creates the record just ahead.
+          set_if: async (key, value, expected) => {
+            if (!raced && expected === null) {
+              raced = true
+              await scope.set_if(key, { ...(value as object), input: 'theirs' }, null)
+            }
+            return scope.set_if(key, value, expected)
+          },
+        }
+      },
+    }
+    const flow = step('echo', (s: string) => `${s}!`)
+    expect(await durable({ store }).start('r', flow, 'ours', QUIET)).toEqual({
+      kind: 'done',
+      run_id: 'r',
+      output: 'theirs!',
+    })
+    expect(await record_of(base, 'r')).toMatchObject({ input: 'theirs' })
   })
 
   it('gives up a drive whose run was deleted under it', async () => {
@@ -892,11 +1084,11 @@ describe('durable: failures', () => {
         const scope = base.scope(prefix)
         return {
           ...scope,
-          set: async (key, value) => {
+          set_if: async (key, value, expected) => {
             if (typeof value === 'object' && value !== null && 'status' in value && value.status === 'failed') {
               throw new Error('store is down')
             }
-            await scope.set(key, value)
+            return scope.set_if(key, value, expected)
           },
         }
       },
@@ -983,6 +1175,152 @@ describe('durable: get and delete', () => {
   })
 })
 
+describe('durable: a run from before the inbox moved into the record', () => {
+  // The old inbox scope of `run_id`, where a driver that wrote `format: 1`
+  // kept the events waiting on gates.
+  const old_inbox = (store: MemoryStore, run_id: string) => store.scope(run_id).scope('inbox')
+  const OLD_INBOX = JSON.stringify(['r', 'inbox'])
+
+  it('takes up the datum that waited in the old inbox scope, and saves the record as format 2', async () => {
+    const store = memory_store()
+    const runs = durable({ store })
+    const flow = sequence([gate('approve')])
+    await runs.start('r', flow, 'in', QUIET)
+    await as_format_1(store, 'r')
+    await old_inbox(store, 'r').set('approve', { data: { ok: true } })
+    expect(await runs.get('r')).toMatchObject({ kind: 'suspended', id: 'approve' })
+    expect(await runs.resume('r', flow, {}, QUIET)).toEqual({
+      kind: 'done',
+      run_id: 'r',
+      output: 'in+approve',
+    })
+    // One write to migrate, one to take the datum up, one for the end.
+    expect(await record_of(store, 'r')).toMatchObject({ format: 2, revision: 4, inbox: {} })
+    expect(Object.keys(store.dump())).not.toContain(OLD_INBOX)
+  })
+
+  it('keeps a datum that waited there for a gate the run has yet to reach', async () => {
+    const store = memory_store()
+    const runs = durable({ store })
+    const flow = sequence([gate('first'), sequence([gate('second')])])
+    await runs.start('r', flow, 'go', QUIET)
+    await as_format_1(store, 'r')
+    await old_inbox(store, 'r').set('second', { data: { ok: false } })
+    expect(await runs.start('r', flow, 'go', QUIET)).toMatchObject({ kind: 'suspended', id: 'first' })
+    expect(await record_of(store, 'r')).toMatchObject({
+      format: 2,
+      inbox: { second: { data: { ok: false } } },
+    })
+    expect(Object.keys(store.dump())).not.toContain(OLD_INBOX)
+    expect(await runs.resume('r', flow, { first: { ok: true } }, QUIET)).toEqual({
+      kind: 'done',
+      run_id: 'r',
+      output: 'go+first-second',
+    })
+  })
+
+  it('gives the gate the datum that waited there over one delivered since', async () => {
+    const store = memory_store()
+    const runs = durable({ store })
+    const flow = sequence([gate('approve')])
+    await runs.start('r', flow, 'in', QUIET)
+    await as_format_1(store, 'r')
+    await old_inbox(store, 'r').set('approve', { data: { ok: true } })
+    await store.scope('r').claim('lease', 'someone else', 60_000)
+    expect(await runs.resume('r', flow, { approve: { ok: false } }, QUIET)).toEqual({
+      kind: 'busy',
+      run_id: 'r',
+    })
+    // A delivery leaves the format alone, so the drive still migrates.
+    expect(await record_of(store, 'r')).toMatchObject({
+      format: 1,
+      inbox: { approve: { data: { ok: false } } },
+    })
+    await store.scope('r').release('lease', 'someone else')
+    expect(await runs.resume('r', flow, {}, QUIET)).toEqual({
+      kind: 'done',
+      run_id: 'r',
+      output: 'in+approve',
+    })
+  })
+
+  it('drops what waited there for a gate the run already passed, and anything that is no datum', async () => {
+    const store = memory_store()
+    const runs = durable({ store })
+    const flow = sequence([gate('first'), gate('second'), gate('third')])
+    await runs.start('r', flow, 'go', QUIET)
+    await runs.resume('r', flow, { first: { ok: true } }, QUIET)
+    await as_format_1(store, 'r')
+    await old_inbox(store, 'r').set('first', { data: { ok: false } })
+    await old_inbox(store, 'r').set('third', 'not an entry')
+    await old_inbox(store, 'r').set('never a gate', { data: { ok: true } })
+    expect(await runs.resume('r', flow, {}, QUIET)).toMatchObject({
+      kind: 'suspended',
+      id: 'second',
+      payload: { input: 'go+first' },
+    })
+    const record = (await record_of(store, 'r')) as { inbox: unknown }
+    expect(record).toMatchObject({ format: 2, resume_data: { first: { ok: true } } })
+    expect(record.inbox).toStrictEqual({})
+    expect(Object.keys(store.dump())).not.toContain(OLD_INBOX)
+  })
+
+  it('migrates a record with nothing waiting, and only once', async () => {
+    const store = memory_store()
+    const runs = durable({ store })
+    const flow = sequence([gate('approve')])
+    await runs.start('r', flow, 'in', QUIET)
+    await as_format_1(store, 'r')
+    await runs.resume('r', flow, {}, QUIET)
+    expect(await record_of(store, 'r')).toMatchObject({ format: 2, revision: 2, inbox: {} })
+    // A datum left in the old scope after the migration is never read.
+    await old_inbox(store, 'r').set('approve', { data: { ok: true } })
+    expect(await runs.resume('r', flow, {}, QUIET)).toMatchObject({ kind: 'suspended', id: 'approve' })
+    expect(await record_of(store, 'r')).toMatchObject({ format: 2, revision: 2 })
+  })
+})
+
+describe('durable: an inbox it cannot read', () => {
+  it.each([
+    ['is missing', undefined],
+    ['is not an object', 'approve'],
+    ['holds an entry with no datum', { approve: { ok: true } }],
+    ['holds an entry that is not an object', { approve: 'yes' }],
+  ])('waits at the gate when the inbox %s', async (_, inbox) => {
+    const store = memory_store()
+    const runs = durable({ store })
+    const flow = sequence([gate('approve')])
+    await runs.start('r', flow, 'in', QUIET)
+    const record = (await record_of(store, 'r')) as Record<string, unknown>
+    await store.scope('r').set('record', { ...record, inbox })
+    expect(await runs.resume('r', flow, {}, QUIET)).toMatchObject({ kind: 'suspended', id: 'approve' })
+    // The gate is still open to the next datum, which the bad entry didn't take.
+    expect(await runs.resume('r', flow, { approve: { ok: true } }, QUIET)).toEqual({
+      kind: 'done',
+      run_id: 'r',
+      output: 'in+approve',
+    })
+    expect(await record_of(store, 'r')).toMatchObject({ inbox: {} })
+  })
+
+  it('keeps the entries it can read beside one it cannot', async () => {
+    const store = memory_store()
+    const runs = durable({ store })
+    const flow = sequence([gate('first'), gate('second')])
+    await runs.start('r', flow, 'go', QUIET)
+    const record = (await record_of(store, 'r')) as Record<string, unknown>
+    await store.scope('r').set('record', {
+      ...record,
+      inbox: { first: 'torn', second: { data: { ok: true } } },
+    })
+    expect(await runs.resume('r', flow, { first: { ok: false } }, QUIET)).toEqual({
+      kind: 'done',
+      run_id: 'r',
+      output: 'go-first+second',
+    })
+  })
+})
+
 describe('durable: records it cannot read', () => {
   const valid = {
     format: 1,
@@ -1010,7 +1348,8 @@ describe('durable: records it cannot read', () => {
   it.each([
     ['a non-object', 'record'],
     ['an array', [valid]],
-    ['another format', { ...valid, format: 2 }],
+    ['a format from a later driver', { ...valid, format: 3 }],
+    ['no format', { ...valid, format: undefined }],
     ['no revision', { ...valid, revision: 'three' }],
     ['no flow fingerprint', { ...valid, flow: 7 }],
     ['resume data that is not an object', { ...valid, resume_data: [] }],
