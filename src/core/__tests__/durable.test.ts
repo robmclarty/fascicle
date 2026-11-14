@@ -1278,6 +1278,31 @@ describe('durable: a run from before the inbox moved into the record', () => {
     expect(await runs.resume('r', flow, {}, QUIET)).toMatchObject({ kind: 'suspended', id: 'approve' })
     expect(await record_of(store, 'r')).toMatchObject({ format: 2, revision: 2 })
   })
+
+  it("takes up what waited for the gate the run stopped at, even when the flow's tree has no such gate", async () => {
+    const store = memory_store()
+    const runs = durable({ store })
+    // The gate is built inside a step, so no description of the flow lists it.
+    const flow = step('outer', (s: string, ctx) => ctx.call(gate('hidden'), s))
+    expect(await runs.start('r', flow, 'in', QUIET)).toMatchObject({ kind: 'suspended', id: 'hidden' })
+    await as_format_1(store, 'r')
+    await old_inbox(store, 'r').set('hidden', { data: { ok: true } })
+    expect(await runs.resume('r', flow, {}, QUIET)).toEqual({
+      kind: 'done',
+      run_id: 'r',
+      output: 'in+hidden',
+    })
+  })
+
+  it('migrates a finished run without reading for a gate it stopped at', async () => {
+    const store = memory_store()
+    const runs = durable({ store })
+    const flow = step('double', (n: number) => n * 2)
+    await runs.start('r', flow, 21, QUIET)
+    await as_format_1(store, 'r')
+    expect(await runs.start('r', flow, 21, QUIET)).toEqual({ kind: 'done', run_id: 'r', output: 42 })
+    expect(await record_of(store, 'r')).toMatchObject({ format: 2, status: 'done', suspended: null })
+  })
 })
 
 describe('durable: an inbox it cannot read', () => {

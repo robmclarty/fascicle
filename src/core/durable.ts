@@ -477,15 +477,19 @@ function gate_ids(node: FlowNode): ReadonlyArray<string> {
  * its old `inbox` scope into the record, then clear that scope.
  *
  * A scope can't be listed, so the old scope is read once for each gate in
- * the flow. An event that waited there got to its gate before anything in
- * the record's own inbox did, so it wins the gate, and an event for a gate
- * the run already passed is dropped, as a delivery would drop it. The record
- * is saved before the scope is cleared, so a crash between the two leaves
- * the events in the record.
+ * the flow, and for the gate the run waits at, which a flow can reach
+ * without having it in its tree. An event that waited there got to its gate
+ * before anything in the record's own inbox did, so it wins the gate, and an
+ * event for a gate the run already passed is dropped, as a delivery would
+ * drop it. The record is saved before the scope is cleared, so a crash
+ * between the two leaves the events in the record.
  */
 async function migrate<i, o>(drive: Drive<i, o>, lease: Lease, record: RunRecord): Promise<RunRecord> {
   const old = drive.scope.scope(INBOX)
-  const ids = gate_ids(describe.json(drive.flow)).filter((id) => !Object.hasOwn(record.resume_data, id))
+  const waited_at = record.suspended === null ? [] : [record.suspended.id]
+  const ids = [...new Set([...gate_ids(describe.json(drive.flow)), ...waited_at])].filter(
+    (id) => !Object.hasOwn(record.resume_data, id),
+  )
   const waiting = as_inbox(Object.fromEntries(await Promise.all(ids.map(async (id) => [id, await old.get(id)]))))
   const saved = await save(drive.scope, lease, { ...record, format: 2 }, (inbox) => ({
     ...inbox,
