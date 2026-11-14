@@ -508,7 +508,9 @@ roll your own to target any sink.
 | `noop_logger()` | logger | discard all events |
 | `stderr_logger(options?)` | logger | JSONL to stderr; keeps stdout clean when your process is somebody's child |
 | `tee_logger(...loggers)` | logger | fan one event stream out to several loggers |
-| `filesystem_store(config)` | store | filesystem-backed `CheckpointStore` with scopes and claims, so it also backs `durable` |
+| `filesystem_store(config)` | store | filesystem-backed `CheckpointStore` with every capability below, so it also backs `durable`, between the processes of one machine |
+| `object_store({ client, prefix? })` | store | a `CheckpointStore` with every capability below, kept as objects in a bucket behind an `ObjectClient` you write, so it backs `durable` across hosts; see [human-in-the-loop.md](./human-in-the-loop.md#the-store-a-run-lives-in) for a client over `@aws-sdk/client-s3` |
+| `ObjectClient` | type | the four calls `object_store` needs of an S3-style service: `get(key)` resolving `{ body, etag }` or `undefined`, `put(key, body, condition?)` resolving false when its `{ if_none_match: '*' }` or `{ if_match }` condition failed, `delete(key)`, and `list(prefix, start_after?)` resolving a page of `keys` with a `next` while more follow |
 
 No adapter logger throws into a flow. A logger that can't write an event
 drops it and keeps going. `filesystem_logger` hands the error to its
@@ -521,11 +523,12 @@ its last few events.
 
 Types: `FilesystemLoggerConfig`, `HttpLoggerConfig`, `HttpLoggerFetch`,
 `StderrLoggerOptions`, `FilesystemStoreConfig`, `FilesystemStore`,
-`FilesystemScopedStore`.
+`FilesystemScopedStore`, `ObjectStoreConfig`, `ObjectStore`,
+`ObjectScopedStore`, `ObjectPutCondition`.
 
 ### Checkpoint Store Capabilities
 
-`checkpoint` only needs `get`, `set`, and `delete`. The other three are optional,
+`checkpoint` only needs `get`, `set`, and `delete`. The other five are optional,
 and `durable` needs all of them. `checkpoint_store_conformance` from
 `fascicle/testing` checks a store you wrote against every row here.
 
@@ -535,6 +538,8 @@ and `durable` needs all of them. `checkpoint_store_conformance` from
 | `scope(prefix)` | a store whose keys, claims, and nested scopes are apart from this one's; the same prefix always reaches the same data, and the scoped store adds `clear()` |
 | `claim(key, owner, ttl_ms)` | resolves true when `owner` holds `key` afterwards (it was free, its claim expired or was released, or `owner` renewed it) and false while another owner holds it; claims never touch values |
 | `release(key, owner)` | frees a claim that `owner` holds, and does nothing otherwise |
+| `get_versioned(key)` | resolves `{ value, version }`, or `undefined` when nothing is stored at `key`; a stored `null`, or a value the store can't read back whole, reads as `{ value: undefined, version }`, so a writer can still replace it. The version is an opaque string that changes whenever the stored value does, and a store may derive it from the content |
+| `set_if(key, value, expected)` | writes only while `key` is still at the version `expected`, or only while nothing is stored there when `expected` is `null`, and resolves whether it wrote. A conflict never throws. It's atomic against every write to the key, `set` and `delete` included, so exactly one of several racing writers wins; a `delete` or a `clear` makes the key absent again, and a version from one scope satisfies nothing in another |
 
 ### Reading a Trajectory Back
 
@@ -766,7 +771,7 @@ For full field-level detail, read the source `.d.ts`. The public type exports:
 
 **Composition.** `Step`, `AnyStep`, `StepMetadata`, `StepOptions`, `StepKind`,
 `RunContext`, `RunOutcome`, `Chain`, `ChainOpen`, `ChainStepOptions`, `TrajectoryLogger`,
-`TrajectoryEvent`, `CheckpointStore`, `ScopedCheckpointStore`, `DescribeOptions`,
+`TrajectoryEvent`, `CheckpointStore`, `ScopedCheckpointStore`, `Versioned`, `DescribeOptions`,
 `DiagramOptions`, `ReplayHint`, `FlowNode`, `FlowValue`, `LoopConfig`, `LoopOutcome`, `LoopGuardResult`,
 `LoopGuardPredicate`, plus the trajectory event shapes (`SpanStartEvent`,
 `SpanEndEvent`, `EmitEvent`, `RunEndEvent`, `RunEndStatus`,
@@ -798,7 +803,9 @@ can't hold `first`, when the input is the same value.
 The durable driver adds `DurableConfig`, `DurableStore`, `DurableRuns`,
 `DurableRunOptions`, `DurableOutcome`, and `DurableRunState`, and
 `fascicle/adapters` names what `filesystem_store` returns as `FilesystemStore`
-and `FilesystemScopedStore`.
+and `FilesystemScopedStore`, and what `object_store` returns as `ObjectStore`
+and `ObjectScopedStore`. `Versioned` is what a store's `get_versioned` reads,
+a `value` beside the `version` it was read at.
 
 **Composites.** Every deliberation composite carries a config and a result
 envelope: `AdversarialConfig` / `AdversarialResult` plus

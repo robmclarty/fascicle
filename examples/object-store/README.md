@@ -1,33 +1,47 @@
 # object-store
 
-A `CheckpointStore` written over an object-store client, with the scopes and
-claims that `durable` needs, so a run that waits at a gate can live in a
-bucket. The client is an in-memory fake with S3's shape, which makes the store
-the part to copy. Swap in a real client and it works the same way.
+A durable run kept in a bucket, through `object_store` from
+`fascicle/adapters`. The store sits over a small client interface, and it has
+the scopes, the claims, and the conditional writes that `durable` needs, so a
+run that waits at a gate can live where every host in a fleet reaches it. The
+client here is an in-memory fake with S3's shape. Swap in a real one and the
+store works the same way
+([human-in-the-loop.md](../../docs/human-in-the-loop.md#the-store-a-run-lives-in)
+has one for `@aws-sdk/client-s3`).
 
 ![terminal output of the object-store example: the store passes all 32 conformance checks, the run waits at the approval with three objects in the bucket, the approval finishes it, and deleting the run empties the bucket](./screenshot.png)
 
+The screenshot is from before the suite grew its compare-and-set checks. The
+store passes all 47 now.
+
 ## How the Store Works
 
-Three parts of it are easy to get wrong, and the conformance suite checks each
-one.
+Four parts of it are easy to get wrong in a store of your own, and the
+conformance suite checks each one.
 
 - **Keys.** A scope is a key prefix, and every name is percent-encoded before
   it joins one, dots included. Values, claims, and nested scopes each sit
   under a segment of their own (`v/`, `c/`, `s/`). So two names can't reach the
   same object however alike they look, and clearing scope `a` deletes what's
-  under its own prefix and never touches a scope named `a/b`.
-- **Claims.** A claim is an object that holds its owner and expiry. It's
-  created with `If-None-Match: *` and replaced with `If-Match` on the ETag the
-  claimer just read, so when claimers race, the bucket takes exactly one of
-  their writes. A release overwrites the claim as expired, on the same
-  condition, rather than deleting it, because a plain delete could erase a
-  claim that another owner took in between.
+  under its own prefix and never touches a scope named `a/b`. A name whose
+  encoding runs past 128 characters is cut to 64 and given a hash of the whole
+  name, which keeps a key under S3's 1,024-byte limit.
+- **Conditional writes.** A value's version is its ETag. `set_if` creates with
+  `If-None-Match: *` and replaces with `If-Match` on the version it was given,
+  so when writers race, the bucket takes exactly one of their writes. A
+  condition that fails is read again before it counts. An SDK that retries a
+  put whose answer got lost sees its own earlier write as the conflict, so
+  when the object holds the body that this call sent, the write landed.
+- **Claims.** A claim is an object that holds its owner and expiry, and it
+  changes hands through the same two conditions, on the ETag the claimer just
+  read. A release overwrites the claim as expired rather than deleting it. A
+  plain delete could erase a claim that another owner took in between, and
+  not every service has a conditional delete.
 - **Clear.** It lists the scope's prefix a page at a time and deletes each
   key, following the continuation the way every real listing needs.
 
 `run_object_store()` runs `checkpoint_store_conformance` with a fresh bucket for
-each check and a `corrupt` hook, so the damage check runs too, and
+each check and a `corrupt` hook, so the damage checks run too, and
 `test/examples.test.ts` holds it to no failures and nothing skipped. Then it
 drives an expense report through `durable`:
 
@@ -39,10 +53,6 @@ drives an expense report through `durable`:
 3. Deleting the run clears its scope, and the bucket is empty again.
 
 Every step is a deterministic stub: no engine layer, no network, no LLM calls.
-A store over a real S3 client would also read its 409
-`ConditionalRequestConflict` as a lost claim, the way this one reads a 412, and
-it would hash any name long enough to push a key past S3's 1024-byte limit,
-the way `filesystem_store` does.
 
 ## Flow
 

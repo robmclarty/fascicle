@@ -361,10 +361,11 @@ and not throw. Two keys can't share storage just because they encode to the
 same file name, and clearing scope `a` can't reach a scope named `a/b` just
 because its name begins the same way. A claim has to refuse a second owner even
 when both ask at the same moment, and once it's expired, it has to pass to the
-next one.
+next one. A conditional write has to let exactly one of several racing writers
+through, and refuse the rest without changing anything.
 `checkpoint_store_conformance` checks all of that against a store you wrote,
-so a store over S3, DynamoDB, or Postgres can earn the same trust that
-`filesystem_store` has.
+so a store over DynamoDB or Postgres can earn the same trust that
+`filesystem_store` and `object_store` have.
 
 <!-- snippet: check -->
 ```ts
@@ -384,20 +385,49 @@ export async function prove_my_store(): Promise<void> {
 It hands every check a fresh store from the factory you pass, so the factory
 should give each store a namespace of its own (a temporary directory, a random
 key prefix, a throwaway table). The scope checks run when your store has
-`scope`, the claim checks run when it has `claim` or `release`, and the report
-lists whatever it's skipped. It doesn't register tests. It returns the report
-instead, so it works under any runner, and asserting that `failed` is empty is
-the whole test.
+`scope`, the claim checks run when it has `claim` or `release`, the
+compare-and-set checks run when it has `get_versioned` or `set_if`, and the
+report lists whatever it's skipped. It doesn't register tests. It returns the
+report instead, so it works under any runner, and asserting that `failed` is
+empty is the whole test.
+
+The compare-and-set checks are the ones your store has to pass before you can
+hand it to `durable`. Here's what they hold your `get_versioned` and `set_if`
+to:
+
+- A key you never set reads as `undefined`, while a `null` you stored reads
+  with a version that a write can land on.
+- A create (`set_if` with `null`) lands on an absent key, and it refuses a key
+  that holds anything, a stored `null` included.
+- Of several creates that race for one key, exactly one wins, and the key
+  holds what the winner wrote.
+- A write on the version it read lands and moves the version. A write on a
+  stale version is refused, and it changes neither the value nor the version.
+- Of several writes that race on one version, exactly one wins.
+- `set` and `delete` move the version, and a create works again after a
+  `delete`.
+- A scope keeps both methods. A version read in one scope satisfies nothing
+  in another, and a create works again after a `clear`.
+
+Every one of them writes a different value from the one it's replacing, so
+you can derive your versions from the content, the way an S3 ETag does.
 
 Two options tune it. `corrupt(store, key)` damages the value stored at a key the
 way a torn write would, and when you pass it, the suite checks that the
-damaged value reads as a miss. `ttl_ms` sets the claim lifetime that the expiry
-checks wait out. It's 200 milliseconds by default, and if your store's clock is
-coarse, you'll want it longer.
+damaged value reads as a miss, and that `get_versioned` still reads it with a
+version you can replace it on. `ttl_ms` sets the claim lifetime that the
+expiry checks wait out. It's 200 milliseconds by default, and if your store's
+clock is coarse, you'll want it longer.
 
-For a worked example, [examples/object-store](../examples/object-store/) writes a
-store over an S3-style client, with claims made of conditional writes, and runs
-it through the suite before `durable` keeps a run in it.
+Run it against your real service at least once, and not only against a fake
+you wrote for your tests. A fake honors every condition by construction. A
+real service can accept your conditional write and quietly ignore the
+condition, and the racing checks are the ones that catch it.
+
+For a worked example, [examples/object-store](../examples/object-store/) runs
+`object_store` from `fascicle/adapters` through the suite over an S3-style
+client, then has `durable` keep a run in it. Its README walks through how the
+store builds its keys, its claims, and its `clear`.
 
 ## Recipes
 

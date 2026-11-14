@@ -221,14 +221,14 @@ export async function on_ci(pr: number, ci: { green: boolean; timed_out?: boolea
 takes care of so that your handlers don't have to:
 
 - **One drive at a time.** A drive holds a lease on its run and renews it while
-  it works, and every write it makes checks that nobody else has written the
-  record since, so a drive that stalls past its lease can't overwrite the one
-  that took the run over. If you resume a run mid-drive, you get `busy` back,
-  and the data you passed waits in the run's inbox. The drive that holds the
-  run takes it up when the run reaches that gate, and if that drive dies
-  first, the next call on the run does (a resume with no data is enough to
-  nudge it). A CI webhook and a deadline timer that land together can't both
-  post the review.
+  it works, and every write it makes lands only if nobody else has written the
+  record since it read it, so a drive that stalls past its lease can't
+  overwrite the one that took the run over. If you resume a run mid-drive, you
+  get `busy` back, and the data you passed waits in the run's inbox, which is
+  part of its record. The drive that holds the run takes it up when the run
+  reaches that gate, and if that drive dies first, the next call on the run
+  does (a resume with no data is enough to nudge it). A CI webhook and a
+  deadline timer that land together can't both post the review.
 - **Repeated events are safe.** If you start a run that already exists, it
   doesn't start over. A run that's waiting or done reports where it is, and
   one that failed or died mid-drive is driven again from its input. The first
@@ -257,13 +257,6 @@ output) goes through the store, so it has to survive JSON, the same as any
 checkpointed value. Even the first drive reads the input back from the store,
 so a run sees it the same way on every drive.
 
-Your store has to offer `scope`, `claim`, and `release` on top of `get`,
-`set`, and `delete`. `filesystem_store` from `fascicle/adapters` has all of
-them. If
-you'd rather keep runs in S3, DynamoDB, or Postgres, write a store over the
-client you already use and prove it with `checkpoint_store_conformance` from
-`fascicle/testing` (see [testing.md](./testing.md#checkpoint_store_conformance)).
-
 Nothing in the store expires on its own. Call `runs.delete(run_id)` once
 you're done with a run, and it clears everything that the run kept. When your
 store has retention of its own (an S3 lifecycle rule on the run's prefix,
@@ -272,6 +265,148 @@ say), you can let that do the job instead.
 [`examples/durable-runs/main.ts`](../examples/durable-runs/main.ts) drives one
 run through all of this, with a start, a webhook and a timer that land
 together, and a webhook that's delivered twice.
+
+### The Store a Run Lives In
+
+The store you hand to `durable` has to offer `scope`, `claim`, `release`,
+`get_versioned`, and `set_if` on top of `get`, `set`, and `delete`. The last
+two are a compare-and-set. `get_versioned` reads a value with its version, and
+`set_if` writes only while the key is still at that version, or only while the
+key is absent. The driver makes every write to a run's record through them,
+which is what decides a race between two of your handlers, or between a drive
+and an event that arrives while it works.
+
+You get two stores in `fascicle/adapters`, and which one you want depends on
+where your events land:
+
+- **`filesystem_store`** holds your runs between the processes of one machine.
+  Its claims and its conditional writes lean on the local filesystem being
+  atomic, which a network filesystem doesn't promise, so don't share its
+  directory between hosts.
+- **`object_store`** holds them across a fleet. It keeps a run in a bucket,
+  through a small client interface that you write over the SDK you already
+  use, so when you run several instances of a web service, or workers on
+  several machines, any of them can drive the same run.
+
+```ts
+import { durable } from 'fascicle';
+import { object_store } from 'fascicle/adapters';
+import { S3Client } from '@aws-sdk/client-s3';
+import { s3_object_client } from './s3_object_client.js';
+
+const client = s3_object_client(new S3Client({}), 'my-bucket');
+const runs = durable({ store: object_store({ client, prefix: 'runs/' }) });
+```
+
+Fascicle depends on no cloud SDK, so the client is yours to paste. This one is
+for `@aws-sdk/client-s3`:
+
+```ts
+import {
+  DeleteObjectCommand,
+  GetObjectCommand,
+  ListObjectsV2Command,
+  NoSuchKey,
+  PutObjectCommand,
+  S3ServiceException,
+  type S3Client,
+} from '@aws-sdk/client-s3';
+import type { ObjectClient } from 'fascicle/adapters';
+
+// A 412 says the condition failed. S3 answers 409 when a conditional write
+// overlapped another, and the store reads the object again either way.
+function lost(err: unknown): boolean {
+  if (!(err instanceof S3ServiceException)) return false;
+  const status = err.$metadata.httpStatusCode;
+  return status === 412 || status === 409;
+}
+
+export function s3_object_client(s3: S3Client, Bucket: string): ObjectClient {
+  return {
+    get: async (Key) => {
+      try {
+        const found = await s3.send(new GetObjectCommand({ Bucket, Key }));
+        return { body: (await found.Body?.transformToString()) ?? '', etag: found.ETag ?? '' };
+      } catch (err) {
+        if (err instanceof NoSuchKey) return undefined;
+        throw err;
+      }
+    },
+    put: async (Key, Body, condition) => {
+      const IfNoneMatch = condition && 'if_none_match' in condition ? '*' : undefined;
+      const IfMatch = condition && 'if_match' in condition ? condition.if_match : undefined;
+      try {
+        await s3.send(new PutObjectCommand({ Bucket, Key, Body, IfNoneMatch, IfMatch }));
+        return true;
+      } catch (err) {
+        if (condition !== undefined && lost(err)) return false;
+        throw err;
+      }
+    },
+    delete: async (Key) => {
+      await s3.send(new DeleteObjectCommand({ Bucket, Key }));
+    },
+    list: async (Prefix, StartAfter) => {
+      const page = await s3.send(new ListObjectsV2Command({ Bucket, Prefix, StartAfter }));
+      const keys = (page.Contents ?? []).flatMap(({ Key }) => (Key === undefined ? [] : [Key]));
+      const last = keys.at(-1);
+      return page.IsTruncated && last !== undefined ? { keys, next: last } : { keys };
+    },
+  };
+}
+```
+
+The role you run it under needs `s3:GetObject`, `s3:PutObject`, and
+`s3:DeleteObject` on your prefix, and `s3:ListBucket` on the bucket. S3 checks
+a conditional write against the object, so `s3:PutObject` alone won't get you
+one. A bucket policy can require a condition on every put, and you shouldn't
+add one here, because the store writes your checkpoint values without a
+condition and the policy would refuse them.
+
+Here's what you change for another service:
+
+- **Cloudflare R2 and Tigris** take this client as it is, once you set the
+  endpoint on your `S3Client`. On Tigris, pick a bucket whose reads see the
+  last write everywhere, since a run can't live in a bucket whose reads lag.
+- **Google Cloud Storage** wants a client that you write over its own SDK.
+  Google documents `If-Match` and `If-None-Match` on its S3-compatible API
+  for reads only, so you condition a write on the object's generation
+  instead. Create with `ifGenerationMatch: 0`, replace with the generation
+  you read, and hand the generation back as the `etag`. GCS throttles writes
+  to one object name past about one a second, so retry a 429.
+- **Azure Blob Storage** wants a client over its own SDK as well. Its
+  conditions are the same two headers, and a create that loses can come back
+  as a 409 `BlobAlreadyExists` in place of a 412, which your client should
+  report as a failed condition.
+- **MinIO's community server and Backblaze B2** aren't ones you should use.
+  MinIO's server is archived, and its last release can let a conditional put
+  through unchecked. B2 documents no conditional write at all.
+
+The worst failure for this design is a service that accepts your condition
+and quietly ignores it, since two writers then both win and nothing errors. So
+before you trust a service with your runs, run `checkpoint_store_conformance`
+from `fascicle/testing` against a real bucket once (see
+[testing.md](./testing.md#checkpoint_store_conformance)). Its racing checks
+are what catch a service like that.
+
+If you'd rather keep runs in Postgres or DynamoDB, write a store over the
+client you already use and prove it with the same suite. Each has the
+conditional write the contract asks for. In Postgres it's a version column,
+with `UPDATE ... WHERE version = $1` to replace a value and `INSERT ... ON
+CONFLICT DO NOTHING` to create one. In DynamoDB it's a condition expression,
+`attribute_not_exists` to create and a comparison on a version attribute to
+replace. [`examples/object-store/`](../examples/object-store/) walks through
+how `object_store` builds its keys, its claims, and its `clear`, which is the
+pattern to copy.
+
+When you upgrade, mind the record's format. The driver now writes
+`format: 2`, which keeps the inbox inside the record, and it brings your
+`format: 1` runs forward on their first drive, with whatever waited in each
+run's inbox. A driver from 0.18 or earlier can't read `format: 2`. It takes
+the run for one it has never seen, so its `start` begins your run again from
+its input and its `resume` throws `run_not_found_error`. Run one version of
+the driver across your hosts at a time, and don't roll back past this one
+while you have runs waiting.
 
 ## Streaming the Outcome to a UI
 
