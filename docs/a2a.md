@@ -69,15 +69,19 @@ Where the run comes to rest decides the task's state:
 | stops at a gate that the client answers | `INPUT_REQUIRED`, with the gate's question as the status message |
 | stops at a gate that something else answers | `WORKING`, with a status message that names the gate |
 | refuses the client's answer | `INPUT_REQUIRED` again, with the schema's issues as the status message |
-| throws | `FAILED`, with the error's message |
+| throws | `FAILED`, with a line that says the task failed |
 | is canceled | `CANCELED` |
 
 `FAILED` is final in A2A, while `durable` drives a failed run again at the next event, and the A2A side wins. Once a task is `COMPLETED`, `FAILED`, or `CANCELED`, the agent deletes its run, because the task record keeps the result and nothing will drive the run again. The run store only ever holds live tasks.
 
-A failed task's status carries the error's message, and an error's message can hold a connection string or a path that shouldn't leave the server. `to_failure` replaces it:
+A failed task's status says `The agent could not finish the task.` and nothing about why. The status goes to whoever sent the message, and an error's message can hold a connection string or a path that shouldn't leave the server. The error stays on your side. Each failed drive hands your `trajectory` an `a2a_task_failed` event with the `task_id`, the `error`, and the `error_name` and `error_stack` when the error has them, and an agent with no `trajectory` writes the same to stderr.
+
+`to_failure` decides what the caller reads instead. `failure_message` is the one that sends the error's own message, for an agent whose callers are trusted with it:
 
 ```ts
-to_failure: () => 'The agent could not finish the task.'
+import { failure_message } from 'fascicle/a2a'
+
+to_failure: failure_message
 ```
 
 ## Gates: Client or External
@@ -137,7 +141,9 @@ await server.resume(task_id, { ci: { green: true } })
 
 `resume` drives the run the way a message does and writes what follows to the task store, so the next `GetTask` reports it. The client's stream ended when the task came to rest at the gate, so a client that wants to watch the drive calls `SubscribeToTask` while `resume` is running, and it reads the drive from there to the end. A `CancelTask` that arrives in that time aborts the drive, as it does for any task that's running. An agent with an `authenticate` hook keeps each caller's tasks apart, so after a restart `resume` needs to be told whose task it is, with `{ user }` as its third argument.
 
-A process that only holds the store (a webhook worker, say) can call `runs.resume` directly instead. The next `GetTask` picks up the change, and so does a `ListTasks` whose page holds the task. A `ListTasks` that filters by state reads the state that's stored, so the task shows up under its new state once something has read it.
+A process that only holds the store (a webhook worker, say) can call `runs.resume` directly instead. The next `GetTask` picks up the change, and so does a `ListTasks` whose page holds the task.
+
+A `ListTasks` that filters by state is answered from the states that are stored, so the agent first brings the stored tasks up to date. Only a task stored as submitted, working, or waiting for input can have moved, and the agent reads the run of each of those in the caller's scope, up to 100 in each of the three states, most recently changed first. A task whose run finished in another process is then on the `COMPLETED` page and off the `WORKING` one. The cap bounds what one request costs. A caller with more than 100 tasks open in one state can miss an older one on a filtered page until a later request, or a `GetTask`, reads it.
 
 ## Streaming
 
@@ -159,7 +165,7 @@ A blocking `SendMessage` gets the same events, folded into the task that it retu
 
 `CancelTask` aborts a task that's running in this process. The agent waits for the flow to settle (even when the flow ignores the abort), ends the task `CANCELED`, and deletes the run. A task that waits at a gate is canceled where it stands.
 
-After a restart, or when another process is driving the task, the task record still goes `CANCELED` at once and the run is deleted as soon as nothing holds it. A drive in another process runs on to its next resting place, and its result is dropped. Stopping it early would take a cancel flag in core, which doesn't exist yet.
+After a restart, or when another process is driving the task, the task record still goes `CANCELED` at once and the run is deleted as soon as nothing holds it. The process that holds the drive finds out by reading. Every drive reads its task's record every `cancel_poll_ms` (2,000 by default), and aborts itself once the record says `CANCELED`, so a drive in another process stops within that interval and its result is dropped. Each read is one `load` on the task store. An agent that is the only one over its stores can set `cancel_poll_ms: 0` to turn the reads off, and a drive that another process cancels then runs on to its next resting place.
 
 ## Keeping Tasks Past a Restart
 

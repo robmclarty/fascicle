@@ -155,7 +155,12 @@ type A2aAgentCommon<i, o> = {
   readonly to_question?: ((gate: string, payload: unknown) => string | ReadonlyArray<Part>) | undefined
   /** The output as artifact parts; default: a string as text, anything else as data. */
   readonly to_parts?: ((output: o) => ReadonlyArray<Part>) | undefined
-  /** A failed task's status text; default: the error's message. */
+  /**
+   * A failed task's status text, which the caller reads; default: `The agent
+   * could not finish the task.`, whatever the error was. Pass
+   * `failure_message` to send the error's own message instead. The error
+   * itself always goes to `trajectory`, or to stderr without one.
+   */
   readonly to_failure?: ((err: unknown) => string) | undefined
   /** Where each model call's text goes, by its `step_id`; default: `'artifact'`. */
   readonly stream?: ((step_id: string) => A2aStreamRoute) | undefined
@@ -171,7 +176,13 @@ type A2aAgentCommon<i, o> = {
   readonly max_body_bytes?: number | undefined
   /** How many drives may run at once; default: 8. */
   readonly max_drives?: number | undefined
-  /** Receives every drive's events. */
+  /**
+   * How often a drive reads its task's record for a cancel that another
+   * process took, in milliseconds; default: 2_000. 0 turns the check off,
+   * for an agent that is the only one over its stores.
+   */
+  readonly cancel_poll_ms?: number | undefined
+  /** Receives every drive's events, and an `a2a_task_failed` event for each drive that failed. */
   readonly trajectory?: TrajectoryLogger | undefined
 }
 

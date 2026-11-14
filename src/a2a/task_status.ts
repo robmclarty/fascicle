@@ -53,9 +53,22 @@ export function default_question(gate: string, payload: unknown): ReadonlyArray<
 }
 
 /**
- * The default `to_failure`: the error's message.
+ * The default `to_failure`: one line that says the task failed and nothing
+ * about why.
+ *
+ * A failed task's status goes to whoever sent the message, and an error's
+ * text can hold a connection string or a path that shouldn't leave the
+ * server. The error itself goes to the agent's own trajectory or stderr.
  */
-export function default_failure(err: unknown): string {
+export function default_failure(): string {
+  return 'The agent could not finish the task.'
+}
+
+/**
+ * A `to_failure` that sends the error's own message, for an agent whose
+ * callers are trusted with it.
+ */
+export function failure_message(err: unknown): string {
   return err instanceof Error ? err.message : String(err)
 }
 

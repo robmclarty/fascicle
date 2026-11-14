@@ -4,9 +4,9 @@ import type { Task, TaskState, TaskStatus } from '@a2a-js/sdk'
 import { InMemoryTaskStore, ServerCallContext } from '@a2a-js/sdk/server'
 import type { DurableRunState, DurableRuns } from '#core'
 import { data_part, output_parts, text_part } from '../parts.js'
-import { sight, task_records } from '../task_records.js'
+import { sight, STALE_SCAN_LIMIT, task_records } from '../task_records.js'
 import type { Sighting } from '../task_records.js'
-import { default_failure, default_question, gate_of } from '../task_status.js'
+import { default_question, failure_message, gate_of } from '../task_status.js'
 
 const STATE = wire.TaskState
 const ann = new ServerCallContext({ user: { isAuthenticated: true, userName: 'ann' } })
@@ -43,7 +43,7 @@ function harness(options: { live?: boolean; delete_refused?: boolean } = {}) {
     hooks: {
       gates: (gate) => (gate === 'ci' ? 'external' : 'client'),
       to_question: default_question,
-      to_failure: (err) => `failed: ${default_failure(err)}`,
+      to_failure: (err) => `failed: ${failure_message(err)}`,
     },
     to_parts: output_parts,
     is_live: () => options.live === true,
@@ -416,6 +416,127 @@ describe('task_records list', () => {
   })
 })
 
+describe('task_records list with a status filter', () => {
+  const filtered = (h: Harness, status: TaskState, more: { contextId?: string; statusTimestampAfter?: string } = {}) =>
+    h.records.store.list(
+      { tenant: '', contextId: '', pageToken: '', statusTimestampAfter: undefined, includeArtifacts: true, ...more, status },
+      ann,
+    )
+  const ids_of = (listed: { tasks: Task[] }): string[] => listed.tasks.map((found) => found.id).toSorted()
+
+  it('finds a task whose run finished elsewhere under COMPLETED, though its record still said working', async () => {
+    const h = harness()
+    await seeded(h, task(STATE.TASK_STATE_WORKING))
+    h.states.set('task-1', { kind: 'done', run_id: 'task-1', output: 'shipped' })
+
+    const listed = await filtered(h, STATE.TASK_STATE_COMPLETED)
+
+    expect(listed.tasks.map((found) => found.status?.state)).toEqual([STATE.TASK_STATE_COMPLETED])
+    expect(listed.tasks[0]?.artifacts.map((artifact) => artifact.parts)).toEqual([[text_part('shipped')]])
+    expect(listed.totalSize).toBe(1)
+    expect(h.deleted).toEqual(['task-1'])
+  })
+
+  it('brings a task up to date from each state a task can still leave', async () => {
+    const h = harness()
+    await seeded(h, task(STATE.TASK_STATE_SUBMITTED, { id: 'submitted' }))
+    await seeded(h, task(STATE.TASK_STATE_WORKING, { id: 'working' }))
+    await seeded(h, task(STATE.TASK_STATE_INPUT_REQUIRED, { id: 'waiting', gate: 'approve' }))
+    for (const id of ['submitted', 'working', 'waiting']) h.states.set(id, { kind: 'failed', run_id: id, error: 'broke' })
+
+    expect(ids_of(await filtered(h, STATE.TASK_STATE_FAILED))).toEqual(['submitted', 'waiting', 'working'])
+  })
+
+  it('keeps a task off the page of a state its run has left, and reads each stale task once', async () => {
+    const h = harness()
+    await seeded(h, task(STATE.TASK_STATE_WORKING, { id: 'gone' }))
+    await seeded(h, task(STATE.TASK_STATE_WORKING, { id: 'still' }))
+    h.states.set('gone', { kind: 'done', run_id: 'gone', output: 'shipped' })
+    h.states.set('still', { kind: 'running', run_id: 'still' })
+
+    const listed = await filtered(h, STATE.TASK_STATE_WORKING)
+
+    expect(ids_of(listed)).toEqual(['still'])
+    expect(listed.totalSize).toBe(1)
+    expect(h.got.toSorted()).toEqual(['gone', 'still'])
+  })
+
+  it('reads no run for a terminal task, or for one this process drives', async () => {
+    const ended = harness()
+    await seeded(ended, task(STATE.TASK_STATE_COMPLETED))
+    ended.states.set('task-1', { kind: 'failed', run_id: 'task-1', error: 'late' })
+    expect(ids_of(await filtered(ended, STATE.TASK_STATE_COMPLETED))).toEqual(['task-1'])
+    expect(ids_of(await filtered(ended, STATE.TASK_STATE_FAILED))).toEqual([])
+    expect(ended.got).toEqual([])
+
+    const live = harness({ live: true })
+    await seeded(live, task(STATE.TASK_STATE_WORKING))
+    live.states.set('task-1', { kind: 'done', run_id: 'task-1', output: 'not yet' })
+    expect(ids_of(await filtered(live, STATE.TASK_STATE_COMPLETED))).toEqual([])
+    expect(ids_of(await filtered(live, STATE.TASK_STATE_WORKING))).toEqual(['task-1'])
+    expect(live.got).toEqual([])
+    expect(live.saves).not.toHaveBeenCalled()
+  })
+
+  it('scans within the request context, and past its time window', async () => {
+    const h = harness()
+    await seeded(h, task(STATE.TASK_STATE_WORKING, { id: 'mine' }))
+    await seeded(h, { ...task(STATE.TASK_STATE_WORKING, { id: 'other' }), contextId: 'ctx-2' })
+    h.states.set('mine', { kind: 'done', run_id: 'mine', output: 'shipped' })
+    h.states.set('other', { kind: 'done', run_id: 'other', output: 'shipped' })
+
+    // Both records were stamped before the window opens, and catching up stamps `mine` now.
+    const listed = await filtered(h, STATE.TASK_STATE_COMPLETED, {
+      contextId: 'ctx-1',
+      statusTimestampAfter: '2026-06-01T00:00:00.000Z',
+    })
+
+    expect(ids_of(listed)).toEqual(['mine'])
+    expect(h.got).toEqual(['mine'])
+    expect((await h.inner.load('other', ann))?.status?.state).toBe(STATE.TASK_STATE_WORKING)
+  })
+
+  it('brings up to date no more than the limit in one state, most recently changed first', async () => {
+    const h = harness()
+    const count = STALE_SCAN_LIMIT + 1
+    for (let n = 0; n < count; n += 1) {
+      const id = `t${String(n).padStart(3, '0')}`
+      const stamp = new Date(Date.UTC(2026, 0, 1, 0, 0, n)).toISOString()
+      const stored = task(STATE.TASK_STATE_WORKING, { id })
+      await h.inner.save({ ...stored, status: { state: STATE.TASK_STATE_WORKING, message: undefined, timestamp: stamp } }, ann)
+      h.states.set(id, { kind: 'done', run_id: id, output: 'shipped' })
+    }
+    h.saves.mockClear()
+
+    const first = await filtered(h, STATE.TASK_STATE_COMPLETED)
+    expect(first.totalSize).toBe(STALE_SCAN_LIMIT)
+    expect(h.got).toHaveLength(STALE_SCAN_LIMIT)
+    // The oldest record is the one past the limit, and it stays as stored.
+    expect(h.got).not.toContain('t000')
+    expect((await h.inner.load('t000', ann))?.status?.state).toBe(STATE.TASK_STATE_WORKING)
+
+    // The next request finds it, since the others have left the state it sits in.
+    expect((await filtered(h, STATE.TASK_STATE_COMPLETED)).totalSize).toBe(count)
+  })
+
+  it('drops a task that catches up on the page into a state the filter did not ask for', async () => {
+    const h = harness()
+    const count = STALE_SCAN_LIMIT + 1
+    for (let n = 0; n < count; n += 1) {
+      const id = `t${String(n).padStart(3, '0')}`
+      const stamp = new Date(Date.UTC(2026, 0, 1, 0, 0, n)).toISOString()
+      const stored = task(STATE.TASK_STATE_WORKING, { id })
+      await h.inner.save({ ...stored, status: { state: STATE.TASK_STATE_WORKING, message: undefined, timestamp: stamp } }, ann)
+      h.states.set(id, { kind: 'done', run_id: id, output: 'shipped' })
+    }
+
+    // Every scanned task leaves WORKING, so the stored page holds only the one past the limit.
+    const listed = await filtered(h, STATE.TASK_STATE_WORKING)
+    expect(listed.tasks).toEqual([])
+    expect((await h.inner.load('t000', ann))?.status?.state).toBe(STATE.TASK_STATE_COMPLETED)
+  })
+})
+
 describe('sight', () => {
   const at = (context_id: string): Sighting => ({ context: ann, context_id })
 
@@ -489,12 +610,15 @@ describe('task_records saved', () => {
     expect(Date.now() - started).toBeLessThan(2_000)
   })
 
-  it('does not hear a save that the store refused', async () => {
+  it('resolves at once for a task the store has seen ended, whose saves it refuses', async () => {
     const h = harness()
-    await h.records.store.save(task(STATE.TASK_STATE_CANCELED), ann)
     const late = status(STATE.TASK_STATE_COMPLETED, '2026-01-01T00:00:09.000Z')
-    const waiting = h.records.saved('task-1', late, 60_000)
-    await h.records.store.save(with_status(late), ann)
-    expect(await settled(waiting)).toBe(false)
+    const before = h.records.saved('task-1', late, 60_000)
+    expect(await settled(before)).toBe(false)
+
+    await h.records.store.save(task(STATE.TASK_STATE_CANCELED), ann)
+    expect(await settled(before)).toBe(false)
+    expect(await settled(h.records.saved('task-1', late, 60_000))).toBe(true)
+    expect(await settled(h.records.saved('another-task', late, 60_000))).toBe(false)
   })
 })

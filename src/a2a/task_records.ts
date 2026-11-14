@@ -22,12 +22,14 @@
  * ended, the store refuses every later `save` of it.
  *
  * `list` answers from the same records, so it brings each task on its page
- * up to date the way `load` does. A task that a status filter left off the
- * page stays as it was until something reads it.
+ * up to date the way `load` does. The inner store applies a status filter
+ * to the states it has stored, so a filtered `list` first brings up to date
+ * the tasks the filter could misplace: the ones stored in a state a task
+ * can still leave, up to `STALE_SCAN_LIMIT` of them in each such state.
  */
 
 import { randomUUID } from 'node:crypto'
-import type { Part, Task, TaskStatus } from '@a2a-js/sdk'
+import type { ListTasksRequest, Part, Task, TaskStatus } from '@a2a-js/sdk'
 import type { ServerCallContext, TaskStore } from '@a2a-js/sdk/server'
 import type { DurableRunState, DurableRuns } from '#core'
 import { gate_of, is_terminal, status_for } from './task_status.js'
@@ -56,6 +58,7 @@ export type TaskRecords = {
   /**
    * Resolves once a task is saved in `status`, or after `timeout_ms` when no
    * save comes, which is what happens when nothing reads the task's events.
+   * Resolves at once for a task the store has seen ended.
    */
   readonly saved: (task_id: string, status: TaskStatus, timeout_ms: number) => Promise<void>
 }
@@ -69,6 +72,12 @@ const REMEMBERED_LIMIT = 10_000
 // a request's context, headers included, so a task that a client walked
 // away from can't keep one for the life of the process.
 const SEEN_LIMIT = 10_000
+
+// How many stored tasks a filtered `list` brings up to date in each state a
+// task can still leave, most recently changed first. It bounds what one
+// request costs: three list calls, and a task load and a run read for each
+// task. It is also the largest page the SDK lets a store be asked for.
+export const STALE_SCAN_LIMIT = 100
 
 type Waiter = { readonly status: TaskStatus; readonly resolve: () => void }
 
@@ -197,17 +206,43 @@ export function task_records(config: TaskRecordsConfig): TaskRecords {
     return with_artifacts ? loaded : { ...loaded, artifacts: [] }
   }
 
-  const store: TaskStore = {
-    load,
-    save: write,
-    list: async (params, context) => {
-      const page = await inner.list(params, context)
-      const tasks = await Promise.all(page.tasks.map((task) => refresh(task, params.includeArtifacts === true, context)))
-      return { ...page, tasks }
-    },
+  // Bring up to date the stored tasks that a status filter could hide or
+  // wrongly show, and resolve the ids it read. A terminal record never
+  // changes, so only a task stored as submitted, working, or waiting can be
+  // in the wrong place. The scan keeps the request's tenant and context and
+  // drops its time window, since a task that catches up gets a new timestamp.
+  const catch_up = async (params: ListTasksRequest, context: ServerCallContext): Promise<Set<string>> => {
+    const open = [wire.TaskState.TASK_STATE_SUBMITTED, wire.TaskState.TASK_STATE_WORKING, wire.TaskState.TASK_STATE_INPUT_REQUIRED]
+    const pages = await Promise.all(
+      open.map((status) =>
+        inner.list(
+          { ...params, status, pageSize: STALE_SCAN_LIMIT, pageToken: '', statusTimestampAfter: undefined, includeArtifacts: false },
+          context,
+        ),
+      ),
+    )
+    const stale = pages.flatMap((page) => page.tasks).filter((task) => !config.is_live(task.id))
+    await Promise.all(stale.map((task) => load(task.id, context)))
+    return new Set(stale.map((task) => task.id))
   }
 
+  const list: TaskStore['list'] = async (params, context) => {
+    const filtered = params.status !== wire.TaskState.TASK_STATE_UNSPECIFIED
+    const current = filtered ? await catch_up(params, context) : new Set<string>()
+    const page = await inner.list(params, context)
+    const tasks = await Promise.all(
+      page.tasks.map(async (task) => (current.has(task.id) ? task : refresh(task, params.includeArtifacts === true, context))),
+    )
+    // A task past the scan's limit can still catch up here, into a state
+    // the filter didn't ask for, and then it has no place on the page.
+    return { ...page, tasks: filtered ? tasks.filter((task) => task.status?.state === params.status) : tasks }
+  }
+
+  const store: TaskStore = { load, save: write, list }
+
   const saved = (task_id: string, status: TaskStatus, timeout_ms: number): Promise<void> => {
+    // The store refuses every save of a task it has seen ended, so no save is coming.
+    if (ended.has(task_id)) return Promise.resolve()
     const { promise, resolve } = Promise.withResolvers<void>()
     const waiting = waiters.get(task_id) ?? new Set<Waiter>()
     waiters.set(task_id, waiting)

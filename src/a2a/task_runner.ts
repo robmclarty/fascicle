@@ -19,6 +19,15 @@
  * message find the task working. A drive lets go only once its resting
  * status has reached the task store, so a `GetTask` that lands in between
  * reads the record as the drive left it and not as its run alone suggests.
+ *
+ * A cancel can land in a process that doesn't hold the drive. That process
+ * can only mark the record `CANCELED`, so every drive reads its own task's
+ * record on an interval and aborts itself once the record says so.
+ *
+ * A failed task tells its caller only what `to_failure` makes of the error.
+ * The error itself goes to the config's `trajectory` as an
+ * `a2a_task_failed` event, or to stderr when the config has none, so the
+ * people who run the agent can always read why a task failed.
  */
 
 import { randomUUID } from 'node:crypto'
@@ -100,6 +109,9 @@ const MAX_HISTORY_LIMIT = 100
 // before it lets go of the task anyway.
 const SAVE_WAIT_MS = 2_000
 
+// How often a drive reads its task's record for a cancel from elsewhere.
+const DEFAULT_CANCEL_POLL_MS = 2_000
+
 /**
  * Take a hold on `task_id` for a drive, or for a message on its way to one.
  */
@@ -152,6 +164,22 @@ function refusal_of(err: unknown): Rest | undefined {
 }
 
 /**
+ * The trajectory event for a drive that failed: the task it belongs to, and
+ * the error's message, name, and stack, none of which the caller is sent.
+ */
+function failure_event(ids: TaskIds, err: unknown): TrajectoryEvent {
+  const known = err instanceof Error
+  return {
+    kind: 'a2a_task_failed',
+    task_id: ids.task_id,
+    context_id: ids.context_id,
+    error: known ? err.message : String(err),
+    ...(known ? { error_name: err.name } : {}),
+    ...(known && err.stack !== undefined ? { error_stack: err.stack } : {}),
+  }
+}
+
+/**
  * The caller behind a request, as a flow sees them.
  */
 function user_of(context: ServerCallContext): A2aUser {
@@ -180,6 +208,50 @@ export function task_runner<i, o>(deps: TaskRunnerConfig<i, o>): TaskRunner {
   const { sdk, config, runs, records, holds, slots, hooks, buses } = deps
   const state = sdk.wire.TaskState
   const store: TaskStore = records.store
+  const cancel_poll_ms = config.cancel_poll_ms ?? DEFAULT_CANCEL_POLL_MS
+
+  // Tell the server side why a drive failed, whatever the caller is told.
+  const report_failure = (ids: TaskIds, err: unknown): void => {
+    const event = failure_event(ids, err)
+    if (config.trajectory !== undefined) {
+      config.trajectory.record(event)
+      return
+    }
+    const detail = typeof event['error_stack'] === 'string' ? event['error_stack'] : String(event['error'])
+    process.stderr.write(`a2a_agent: task ${ids.task_id} failed: ${detail}\n`)
+  }
+
+  // Read the task's record every `cancel_poll_ms` while a drive runs, and
+  // abort the drive once the record is CANCELED, which only a cancel that
+  // another process took can have made it. Returns what stops the reads.
+  const watch_for_cancel = (ids: TaskIds, hold: Hold, context: ServerCallContext): (() => void) => {
+    if (!(cancel_poll_ms > 0)) return () => {}
+    let stopped = false
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const check = async (): Promise<void> => {
+      // A store that can't be read now is read again at the next tick, and
+      // the drive is no worse off than it is with the check turned off.
+      const task = await store.load(ids.task_id, context).catch(() => undefined)
+      if (stopped) return
+      if (task?.status?.state === state.TASK_STATE_CANCELED) {
+        hold.canceled = true
+        hold.abort.abort(new aborted_error('the task was canceled in another process'))
+        return
+      }
+      wait()
+    }
+    const wait = (): void => {
+      timer = setTimeout(() => {
+        void check()
+      }, cancel_poll_ms)
+      timer.unref()
+    }
+    wait()
+    return () => {
+      stopped = true
+      clearTimeout(timer)
+    }
+  }
 
   // The earlier exchanges of a context, oldest first, from the most recent
   // tasks the caller has in it.
@@ -228,13 +300,20 @@ export function task_runner<i, o>(deps: TaskRunnerConfig<i, o>): TaskRunner {
 
   // Run one drive and publish what it comes to. Resolves the status the
   // drive rested on, or `undefined` when another process holds the run.
-  const drive = async (ids: TaskIds, hold: Hold, publish: Publish, begin: Begin<o>): Promise<TaskStatus | undefined> => {
+  const drive = async (
+    ids: TaskIds,
+    hold: Hold,
+    context: ServerCallContext,
+    publish: Publish,
+    begin: Begin<o>,
+  ): Promise<TaskStatus | undefined> => {
     const mapper = create_a2a_mapper_state({ ...ids, stream: config.stream })
     const to_events = config.to_events ?? to_task_events
     const logger = drive_logger((event) => {
       for (const mapped of to_events(event, mapper)) publish(mapped)
     }, config.trajectory)
     let rest: Rest | undefined
+    const unwatch = watch_for_cancel(ids, hold, context)
     try {
       const outcome = await begin({
         record_chunks: true,
@@ -245,8 +324,11 @@ export function task_runner<i, o>(deps: TaskRunnerConfig<i, o>): TaskRunner {
       if (outcome.kind !== 'busy') rest = outcome
     } catch (err) {
       rest = refusal_of(err) ?? { kind: 'failed', error: err }
+    } finally {
+      unwatch()
     }
     if (hold.canceled) rest = { kind: 'canceled' }
+    if (rest?.kind === 'failed') report_failure(ids, rest.error)
     // Text that streamed is the output already, unless the output is more
     // than text, in which case its parts close the artifact.
     const parts = rest?.kind === 'done' && !(has_streamed(mapper) && typeof rest.output === 'string') ? deps.to_parts(rest.output) : []
@@ -291,7 +373,7 @@ export function task_runner<i, o>(deps: TaskRunnerConfig<i, o>): TaskRunner {
     try {
       publish({ kind: 'task', data: opening })
       publish(status_event(ids, status_of(state.TASK_STATE_WORKING)))
-      await drive(ids, hold, publish, async (options) => {
+      await drive(ids, hold, request.context, publish, async (options) => {
         const turn = await turn_of(ids, message, request.context)
         if (request.task === undefined) return runs.start(ids.task_id, config.flow, input_of(turn), options)
         const run = await runs.get(ids.task_id)
@@ -364,7 +446,7 @@ export function task_runner<i, o>(deps: TaskRunnerConfig<i, o>): TaskRunner {
     }
     try {
       publish(status_event(ids, status_of(state.TASK_STATE_WORKING)))
-      const status = await drive(ids, hold, publish, (run_options) =>
+      const status = await drive(ids, hold, context, publish, (run_options) =>
         runs.resume(task_id, config.flow, resume_data, run_options),
       )
       await writes

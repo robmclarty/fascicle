@@ -9,6 +9,7 @@ import type { Step, TrajectoryEvent } from '#core'
 import { a2a_step } from '../a2a_step.js'
 import { a2a_error } from '../errors.js'
 import { serve_a2a } from '../serve_a2a.js'
+import { failure_message } from '../task_status.js'
 import type { A2aResult, A2aServer, A2aTurn, ServeA2aConfig } from '../types.js'
 import { approval, CARD, gated_flow, latched, speaker } from './support/flows.js'
 
@@ -45,6 +46,13 @@ async function serve(flow: Step<never, unknown>, config: Record<string, unknown>
   servers.push(server)
   return server
 }
+
+// An agent that tells its caller why a task failed, and keeps the error off
+// the test run's stderr by handing it to a trajectory.
+const TELLING = {
+  to_failure: failure_message,
+  trajectory: { record: () => {}, start_span: () => 'span', end_span: () => {} },
+} as const
 
 function recorder(): { readonly events: TrajectoryEvent[]; readonly logger: Parameters<typeof run>[2] } {
   const events: TrajectoryEvent[] = []
@@ -273,6 +281,7 @@ describe('a2a_step against a served agent', () => {
       step('boom', (): string => {
         throw new Error('the remote flow broke')
       }),
+      TELLING,
     )
     const err: unknown = await run(a2a_step({ id: 'ask', url: server.url }), 'go', QUIET).catch((e: unknown) => e)
     expect(err).toBeInstanceOf(a2a_error)
@@ -290,6 +299,7 @@ describe('a2a_step against a served agent', () => {
       step('boom', (): string => {
         throw new Error('the remote flow broke')
       }),
+      TELLING,
     )
     const { events, logger } = recorder()
     await run(a2a_step({ id: 'ask', url: server.url }), 'go', logger).catch(() => {})

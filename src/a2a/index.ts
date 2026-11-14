@@ -4,6 +4,7 @@ export { a2a_error, a2a_sdk_missing_error } from './errors.js'
 export type { A2aErrorDetail } from './errors.js'
 export { serve_a2a } from './serve_a2a.js'
 export { sqlite_task_store } from './sqlite_task_store.js'
+export { failure_message } from './task_status.js'
 export { create_a2a_mapper_state, end_task_events, to_task_events } from './to_task_events.js'
 export type {
   A2aAgent,

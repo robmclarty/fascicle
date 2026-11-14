@@ -4,6 +4,7 @@ import type { Task } from '@a2a-js/sdk'
 import { data_part, text_part } from '../parts.js'
 import {
   default_failure,
+  failure_message,
   default_question,
   gate_of,
   is_terminal,
@@ -58,10 +59,18 @@ describe('the defaults', () => {
     expect(default_question('approve', null)).toHaveLength(2)
   })
 
-  it('reads a failure as the error message, or the thrown value as text', () => {
-    expect(default_failure(new Error('boom'))).toBe('boom')
-    expect(default_failure('a bare string')).toBe('a bare string')
-    expect(default_failure(42)).toBe('42')
+  it('says only that the task failed, whatever the error was', () => {
+    const to_failure: StatusHooks['to_failure'] = default_failure
+    expect(to_failure(new Error('postgres://admin:hunter2@db.internal refused the connection'))).toBe(
+      'The agent could not finish the task.',
+    )
+    expect(to_failure('a bare string')).toBe('The agent could not finish the task.')
+  })
+
+  it('reads a failure as the error message, or the thrown value as text, with failure_message', () => {
+    expect(failure_message(new Error('boom'))).toBe('boom')
+    expect(failure_message('a bare string')).toBe('a bare string')
+    expect(failure_message(42)).toBe('42')
   })
 })
 
@@ -181,8 +190,11 @@ describe('status_for', () => {
   it('reads a failure as FAILED with what to_failure says, and a cancel as CANCELED', () => {
     const failed = rest_status({ kind: 'failed', error: new Error('boom') })
     expect(failed?.state).toBe(STATE.TASK_STATE_FAILED)
-    expect(failed?.message?.parts).toEqual([text_part('boom')])
+    expect(failed?.message?.parts).toEqual([text_part('The agent could not finish the task.')])
     expect(failed?.message?.metadata).toBeUndefined()
+
+    const told = rest_status({ kind: 'failed', error: new Error('boom') }, { ...hooks, to_failure: failure_message })
+    expect(told?.message?.parts).toEqual([text_part('boom')])
 
     const hidden = rest_status({ kind: 'failed', error: new Error('boom') }, { ...hooks, to_failure: () => 'hidden' })
     expect(hidden?.message?.parts).toEqual([text_part('hidden')])

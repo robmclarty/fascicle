@@ -5,10 +5,11 @@ import { afterAll, afterEach, describe, expect, it, vi } from 'vitest'
 import { InMemoryTaskStore } from '@a2a-js/sdk/server'
 import { memory_store, sqlite_store } from '#adapters'
 import { durable, sequence, step } from '#core'
-import type { DurableRuns, TrajectoryEvent } from '#core'
+import type { DurableRuns, TrajectoryEvent, TrajectoryLogger } from '#core'
 import { a2a_agent } from '../a2a_agent.js'
 import { data_part, text_part } from '../parts.js'
 import { sqlite_task_store } from '../sqlite_task_store.js'
+import { failure_message } from '../task_status.js'
 import { to_task_events } from '../to_task_events.js'
 import type { A2aAgent, A2aTurn } from '../types.js'
 import { approval, CARD, gated_flow, latched, say, speaker } from './support/flows.js'
@@ -35,6 +36,8 @@ const dirs: string[] = []
 const closers: Array<() => void> = []
 
 afterEach(async () => {
+  // Closing fails whatever is still running, and each failure is reported on stderr.
+  vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
   await Promise.all(agents.splice(0).map((agent) => agent.close()))
   vi.restoreAllMocks()
 })
@@ -43,6 +46,25 @@ afterAll(() => {
   for (const close of closers) close()
   for (const dir of dirs) rmSync(dir, { recursive: true, force: true })
 })
+
+// What the agents under test wrote to stderr, which stays off the test run's own.
+function stderr_lines(): string[] {
+  const written: string[] = []
+  vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
+    written.push(String(chunk))
+    return true
+  })
+  return written
+}
+
+// A trajectory that keeps what it's handed.
+function sink(): { readonly events: TrajectoryEvent[]; readonly trajectory: TrajectoryLogger } {
+  const events: TrajectoryEvent[] = []
+  return {
+    events,
+    trajectory: { record: (event) => events.push(event), start_span: (name) => `${name}:span`, end_span: () => {} },
+  }
+}
 
 // Build an agent that the suite closes once the test is over.
 async function agent_for(config: Parameters<typeof a2a_agent<string, unknown>>[0]): Promise<A2aAgent> {
@@ -162,21 +184,99 @@ describe('a2a_agent: a task that runs to the end', () => {
 })
 
 describe('a2a_agent: a task that fails', () => {
-  it('ends FAILED with the error message, and deletes the run', async () => {
+  it('ends FAILED without the error message, which goes to stderr, and deletes the run', async () => {
+    const written = stderr_lines()
     const runs = fresh_runs()
     const flow = step('boom', (): string => {
-      throw new Error('the database is on fire')
+      throw new Error('postgres://admin:hunter2@db.internal refused the connection')
     })
     const agent = await agent_for({ flow, card: CARD, runs })
 
     const task = await send(agent, 'go')
 
     expect(state_of(task)).toBe('TASK_STATE_FAILED')
-    expect(status_text(task)).toBe('the database is on fire')
+    expect(status_text(task)).toBe('The agent could not finish the task.')
+    expect(JSON.stringify(task)).not.toContain('hunter2')
+    expect(JSON.stringify(await get_task(agent, id_of(task)))).not.toContain('hunter2')
     expect(await runs.get(id_of(task))).toBeUndefined()
+    expect(written).toHaveLength(1)
+    expect(written[0]).toMatch(
+      new RegExp(
+        `^a2a_agent: task ${id_of(task)} failed: Error: postgres://admin:hunter2@db\\.internal refused the connection\\n    at [^]*\\n$`,
+      ),
+    )
+  })
+
+  it('hands the error to the trajectory instead of stderr when the agent has one', async () => {
+    const written = stderr_lines()
+    const { events, trajectory } = sink()
+    const flow = step('boom', (): string => {
+      throw new TypeError('the database is on fire')
+    })
+    const agent = await agent_for({ flow, card: CARD, trajectory })
+
+    const task = await send(agent, 'go')
+
+    expect(status_text(task)).toBe('The agent could not finish the task.')
+    const failures = events.filter((event) => event.kind === 'a2a_task_failed')
+    expect(failures).toEqual([
+      {
+        kind: 'a2a_task_failed',
+        task_id: id_of(task),
+        context_id: task['contextId'],
+        error: 'the database is on fire',
+        error_name: 'TypeError',
+        error_stack: expect.stringMatching(/^TypeError: the database is on fire\n {4}at /),
+      },
+    ])
+    expect(written).toEqual([])
+  })
+
+  it('reports a thrown value that is no Error as text, with no name or stack', async () => {
+    const written = stderr_lines()
+    const { events, trajectory } = sink()
+    const thrower = step('boom', (): string => {
+      // oxlint-disable-next-line typescript/only-throw-error -- the case under test
+      throw 'a bare string'
+    })
+    const told = await send(await agent_for({ flow: thrower, card: CARD, trajectory }), 'go')
+    expect(events.filter((event) => event.kind === 'a2a_task_failed')).toEqual([
+      { kind: 'a2a_task_failed', task_id: id_of(told), context_id: told['contextId'], error: 'a bare string' },
+    ])
+
+    const logged = await send(await agent_for({ flow: thrower, card: CARD }), 'go')
+    expect(written).toEqual([`a2a_agent: task ${id_of(logged)} failed: a bare string\n`])
+  })
+
+  it('reports nothing for a task that completes, waits at a gate, or is canceled', async () => {
+    const written = stderr_lines()
+    const { events, trajectory } = sink()
+    await send(await agent_for({ flow: step('echo', (text: string) => text), card: CARD, trajectory }), 'go')
+    await send(await agent_for({ flow: gated_flow(), card: CARD }), 'go')
+
+    const { flow, latch } = latched()
+    const agent = await agent_for({ flow, card: CARD })
+    const started = await call(agent, 'SendMessage', { message: user_message('go'), configuration: { returnImmediately: true } })
+    await latch.started
+    const canceled = await call(agent, 'CancelTask', { id: id_of(task_in(started)) })
+    expect(state_of(canceled.result as Json)).toBe('TASK_STATE_CANCELED')
+
+    expect(events.filter((event) => event.kind === 'a2a_task_failed')).toEqual([])
+    expect(written).toEqual([])
+  })
+
+  it('sends the error message to the caller with failure_message', async () => {
+    const { trajectory } = sink()
+    const flow = step('boom', (): string => {
+      throw new Error('the database is on fire')
+    })
+    const agent = await agent_for({ flow, card: CARD, to_failure: failure_message, trajectory })
+
+    expect(status_text(await send(agent, 'go'))).toBe('the database is on fire')
   })
 
   it('lets to_failure replace a message that should not leave the server', async () => {
+    stderr_lines()
     const seen: unknown[] = []
     const flow = step('boom', (): string => {
       throw new Error('postgres://admin:hunter2@db.internal refused the connection')
@@ -199,10 +299,13 @@ describe('a2a_agent: a task that fails', () => {
 
   it('fails the task when to_input throws, before any run starts', async () => {
     const runs = fresh_runs()
+    const { events, trajectory } = sink()
     const agent = await a2a_agent({
       flow: step('never', (n: number) => n),
       card: CARD,
       runs,
+      trajectory,
+      to_failure: failure_message,
       to_input: () => {
         throw new Error('the message has no number in it')
       },
@@ -211,6 +314,9 @@ describe('a2a_agent: a task that fails', () => {
     const task = await send(agent, 'go')
     expect(state_of(task)).toBe('TASK_STATE_FAILED')
     expect(status_text(task)).toBe('the message has no number in it')
+    expect(events.filter((event) => event.kind === 'a2a_task_failed')).toMatchObject([
+      { task_id: id_of(task), error: 'the message has no number in it' },
+    ])
   })
 })
 
@@ -838,12 +944,82 @@ describe('a2a_agent: stores that outlive the agent', () => {
     expect(artifact_texts(await get_task(second, task_id))).toEqual(['go: by the first'])
   })
 
-  it('keeps a cancel from another agent: the drive runs on, its result is dropped, and its run is deleted', async () => {
+  it('aborts its drive once another agent over the same stores has canceled the task', async () => {
+    const written = stderr_lines()
     const store = memory_store()
     const task_store = new InMemoryTaskStore()
     const { flow, latch } = latched()
     const runs = durable({ store })
-    const driver = await agent_for({ flow, card: CARD, runs, task_store })
+    const driver = await agent_for({ flow, card: CARD, runs, task_store, cancel_poll_ms: 10 })
+    const other = await agent_for({ flow, card: CARD, runs: durable({ store }), task_store, cancel_poll_ms: 10 })
+    const started = await call(driver, 'SendMessage', {
+      message: user_message('go'),
+      configuration: { returnImmediately: true },
+    })
+    const task_id = id_of(task_in(started))
+    await latch.started
+    // Several reads of a task nobody canceled leave the drive running.
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(latch.aborted()).toBeUndefined()
+
+    const canceled = await call(other, 'CancelTask', { id: task_id })
+    expect(state_of(canceled.result as Json)).toBe('TASK_STATE_CANCELED')
+
+    // The latch is never opened: only the abort ends the drive.
+    await vi.waitFor(() => {
+      expect(latch.aborted()).toMatchObject({
+        kind: 'aborted_error',
+        message: 'the task was canceled in another process',
+      })
+    })
+    await vi.waitFor(async () => {
+      expect(await runs.get(task_id)).toBeUndefined()
+    })
+    expect(store.dump()).toEqual({})
+    const task = await get_task(driver, task_id)
+    expect(state_of(task)).toBe('TASK_STATE_CANCELED')
+    expect(artifact_texts(task)).toEqual([])
+    // An abort the cancel caused is no failure to report.
+    expect(written).toEqual([])
+  })
+
+  it('sees a cancel from another agent on a drive that resume started', async () => {
+    const store = memory_store()
+    const task_store = new InMemoryTaskStore()
+    const { flow: work, latch } = latched()
+    const flow = sequence([approval('ci'), work])
+    const gates = (): 'external' => 'external'
+    const runs = durable({ store })
+    const driver = await agent_for({ flow, card: CARD, runs, task_store, gates, cancel_poll_ms: 10 })
+    const other = await agent_for({ flow, card: CARD, runs: durable({ store }), task_store, gates, cancel_poll_ms: 10 })
+    const waiting = await send(driver, 'build')
+    const task_id = id_of(waiting)
+
+    const resumed = driver.resume(task_id, { ci: { approved: true } })
+    await latch.started
+    await call(other, 'CancelTask', { id: task_id })
+    await resumed
+
+    expect(latch.aborted()).toMatchObject({ message: 'the task was canceled in another process' })
+    expect(state_of(await get_task(driver, task_id))).toBe('TASK_STATE_CANCELED')
+    expect(await runs.get(task_id)).toBeUndefined()
+  })
+
+  it('stops reading the record once its drive has rested', async () => {
+    const task_store = new InMemoryTaskStore()
+    const agent = await agent_for({ flow: gated_flow(), card: CARD, task_store, cancel_poll_ms: 5 })
+    await send(agent, 'v1')
+    const loads = vi.spyOn(task_store, 'load')
+    await new Promise((resolve) => setTimeout(resolve, 40))
+    expect(loads).not.toHaveBeenCalled()
+  })
+
+  it('runs on with the check turned off: the result is dropped, and the run is deleted', async () => {
+    const store = memory_store()
+    const task_store = new InMemoryTaskStore()
+    const { flow, latch } = latched()
+    const runs = durable({ store })
+    const driver = await agent_for({ flow, card: CARD, runs, task_store, cancel_poll_ms: 0 })
     const other = await agent_for({ flow, card: CARD, runs: durable({ store }), task_store })
     const started = await call(driver, 'SendMessage', {
       message: user_message('go'),
@@ -994,6 +1170,7 @@ describe('a2a_agent: context history', () => {
 
 describe('a2a_agent: close', () => {
   it('aborts every drive, waits for each to settle, and answers 503 afterwards', async () => {
+    const written = stderr_lines()
     const { flow, latch } = latched()
     const agent = await a2a_agent({ flow, card: CARD })
     const started = await call(agent, 'SendMessage', {
@@ -1004,6 +1181,9 @@ describe('a2a_agent: close', () => {
     await latch.started
 
     await agent.close()
+
+    expect(written).toHaveLength(1)
+    expect(written[0]).toContain(`a2a_agent: task ${task_id} failed: aborted_error: the agent closed while the task was running\n`)
 
     expect(latch.aborted()).toMatchObject({
       kind: 'aborted_error',
