@@ -11,6 +11,9 @@ type Space = {
 type MemoryStoreOptions = {
   // The clock claims expire against. A suite that moves time replaces it.
   readonly now?: () => number
+  // Derive a value's version from its content, the way a store that hashes
+  // the bytes or reads an ETag does, so two writes of one value share one.
+  readonly content_versions?: boolean
 }
 
 type MemoryScope = {
@@ -39,7 +42,7 @@ export type MemoryStore = Omit<MemoryScope, 'clear'> & {
 // reopening a scope finds its data and `clear` drops a whole subtree. Values
 // are cloned in and out, the way a store that serializes would hand back a
 // copy. A version is a count of the store's writes, so no two writes share
-// one, in any scope.
+// one, in any scope, unless `content_versions` asks for the value's JSON.
 export function memory_store(options: MemoryStoreOptions = {}): MemoryStore {
   const now = options.now ?? (() => Date.now())
   const spaces = new Map<string, Space>()
@@ -62,7 +65,8 @@ export function memory_store(options: MemoryStoreOptions = {}): MemoryStore {
 
   const write = (path: ReadonlyArray<string>, key: string, value: unknown): void => {
     writes += 1
-    space_at(path).values.set(key, { value: structuredClone(value), version: `w${writes}` })
+    const version = options.content_versions === true ? JSON.stringify(value) : `w${writes}`
+    space_at(path).values.set(key, { value: structuredClone(value), version })
   }
 
   const store_at = (path: ReadonlyArray<string>): Omit<MemoryScope, 'clear'> => ({

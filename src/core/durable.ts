@@ -33,11 +33,19 @@
  * record puts every check a delivery makes, and its write, on one version of
  * one key, which is what lets the store's compare-and-set decide every race.
  *
+ * A run id can be deleted and started again, so the record carries a `nonce`
+ * that `start` draws once for each run it creates. A delivery writes only to
+ * the run it first read, and since a store may derive a version from the
+ * value's bytes, the nonce is also what keeps the record of a new run apart
+ * from the identical-looking record of the run it replaced.
+ *
  * A record written before the inbox moved into it is `format: 1`, with its
  * waiting events in an `inbox` scope of their own. The first drive to find
- * one moves those events into the record, saves it as `format: 2`, and clears
- * the old scope. A driver from before this format reads a `format: 2` record
- * as no record at all, so a fleet runs one version of the driver at a time.
+ * one saves it as `format: 2` and marks it `old_inbox`, and from then on a
+ * drive that stops at a gate looks in the old scope for that gate's event
+ * before it looks in the record. A driver from before this format reads a
+ * `format: 2` record as no record at all, so a fleet runs one version of the
+ * driver at a time.
  */
 
 import { createHash, randomUUID } from 'node:crypto'
@@ -153,6 +161,17 @@ type RunBase = {
   // delivery changes the inbox and leaves the revision alone, which is how a
   // drive tells a delivery's write from another drive's.
   readonly revision: number
+  // Drawn once when `start` creates the run, or '' in a record from a driver
+  // that drew none. It tells this run from one deleted and started again
+  // under the same id.
+  readonly nonce: string
+  // The lease owner of the drive that last saved the record, or '' in a
+  // record from a driver that kept none. It tells a drive its own landed
+  // write from another drive's.
+  readonly writer: string
+  // True for a run that began as `format: 1`, whose old inbox scope may still
+  // hold events for gates it has yet to reach.
+  readonly old_inbox: boolean
   readonly input: unknown
   readonly flow: string
   readonly resume_data: Readonly<Record<string, unknown>>
@@ -172,6 +191,7 @@ type RunRecord = RunBase &
 type Waiting = Extract<RunRecord, { readonly status: 'suspended' }>
 
 type Lease = {
+  readonly owner: string
   readonly signal: AbortSignal
   readonly lost: () => boolean
   // Mark the lease lost and abort the drive, returning the abort's reason.
@@ -274,6 +294,9 @@ function as_record(value: unknown): RunRecord | undefined {
   const base: RunBase = {
     format,
     revision,
+    nonce: typeof value['nonce'] === 'string' ? value['nonce'] : '',
+    writer: typeof value['writer'] === 'string' ? value['writer'] : '',
+    old_inbox: value['old_inbox'] === true,
     input,
     flow,
     resume_data,
@@ -362,6 +385,7 @@ async function take_lease(scope: RunScope, lease_ms: number): Promise<Lease | un
   }, lease_ms / 3)
   timer.unref()
   return {
+    owner,
     signal: controller.signal,
     lost: () => lost,
     lose,
@@ -392,6 +416,11 @@ async function take_lease(scope: RunScope, lease_ms: number): Promise<Lease | un
  * that conflicts while the revision still matches lost to a delivery (the
  * lease keeps other drives out), so it reads again and writes again with
  * that delivery kept.
+ *
+ * A store can land a write and still report a conflict, when the answer was
+ * lost and a delivery changed the record before the store looked again. So a
+ * record one revision on that names this drive as its writer is this save's
+ * own write, and it resolves as written, with the delivery in its inbox.
  */
 async function save(
   scope: RunScope,
@@ -403,10 +432,16 @@ async function save(
   for (;;) {
     const read = await scope.get_versioned(RECORD)
     const stored = as_record(read?.value)
+    if (stored?.revision === next.revision + 1 && stored.writer === lease.owner) return stored
     if (read === undefined || stored === undefined || stored.revision !== next.revision) {
       throw lease.lose()
     }
-    const saved: RunRecord = { ...next, revision: next.revision + 1, inbox: edit(stored.inbox) }
+    const saved: RunRecord = {
+      ...next,
+      revision: next.revision + 1,
+      writer: lease.owner,
+      inbox: edit(stored.inbox),
+    }
     if (await scope.set_if(RECORD, saved, read.version)) return saved
   }
 }
@@ -437,26 +472,29 @@ async function check_shape<i, o>(
 }
 
 /**
- * Leave `data` in the run's inbox for `gate_id`, unless a datum already waits
- * there, the run has already passed the gate, or the run is gone.
+ * Leave `data` in the inbox of the run that carries `nonce` for `gate_id`,
+ * unless a datum already waits there, the run has already passed the gate,
+ * or the run is gone.
  *
- * All three checks read one version of the record, and the write lands only
+ * All the checks read one version of the record, and the write lands only
  * on that version, so no claim guards it. A write that conflicts reads the
  * record again and decides again. So of two resumes that race for one gate,
  * the second finds the first one's datum and drops its own, a run that moved
  * past the gate in the meantime drops the datum, and a `delete` in the
- * meantime leaves no record to write to, which keeps the datum away from a
- * new run under the same id.
+ * meantime leaves no record to write to. A run started again under the same
+ * id after that `delete` carries another nonce, so the datum never reaches
+ * it, however late the delivery wakes up.
  *
  * The record keeps the format it was read with. A `format: 1` record may
- * have events in its old inbox scope that only a drive can move, and a
- * record that claimed to be `format: 2` would hide them from it.
+ * have events in its old inbox scope, which a drive reads only once it has
+ * marked the record `old_inbox`, and a record that claimed to be `format: 2`
+ * would skip that step.
  */
-async function deliver(scope: RunScope, gate_id: string, data: unknown): Promise<void> {
+async function deliver(scope: RunScope, nonce: string, gate_id: string, data: unknown): Promise<void> {
   for (;;) {
     const read = await scope.get_versioned(RECORD)
     const record = as_record(read?.value)
-    if (read === undefined || record === undefined) return
+    if (read === undefined || record === undefined || record.nonce !== nonce) return
     if (Object.hasOwn(record.resume_data, gate_id) || Object.hasOwn(record.inbox, gate_id)) return
     const next: RunRecord = { ...record, inbox: { ...record.inbox, [gate_id]: { data } } }
     if (await scope.set_if(RECORD, next, read.version)) return
@@ -464,39 +502,16 @@ async function deliver(scope: RunScope, gate_id: string, data: unknown): Promise
 }
 
 /**
- * Every gate id in the flow, which is every key the old inbox scope could
- * hold a datum under that the flow would ever take up.
- */
-function gate_ids(node: FlowNode): ReadonlyArray<string> {
-  const below = (node.children ?? []).flatMap(gate_ids)
-  return node.kind === 'suspend' ? [node.id, ...below] : below
-}
-
-/**
- * Bring a `format: 1` record up to `format: 2`: move the events waiting in
- * its old `inbox` scope into the record, then clear that scope.
+ * Bring a `format: 1` record up to `format: 2`, marked as a run whose old
+ * `inbox` scope may still hold events.
  *
- * A scope can't be listed, so the old scope is read once for each gate in
- * the flow, and for the gate the run waits at, which a flow can reach
- * without having it in its tree. An event that waited there got to its gate
- * before anything in the record's own inbox did, so it wins the gate, and an
- * event for a gate the run already passed is dropped, as a delivery would
- * drop it. The record is saved before the scope is cleared, so a crash
- * between the two leaves the events in the record.
+ * A scope can't be listed, so the events stay where they are, and `take_up`
+ * reads the old scope one gate at a time, as the run reaches each gate. That
+ * way an event for a gate the flow builds inside a step, or for a gate this
+ * deploy renamed, is still there when a drive comes looking for it.
  */
-async function migrate<i, o>(drive: Drive<i, o>, lease: Lease, record: RunRecord): Promise<RunRecord> {
-  const old = drive.scope.scope(INBOX)
-  const waited_at = record.suspended === null ? [] : [record.suspended.id]
-  const ids = [...new Set([...gate_ids(describe.json(drive.flow)), ...waited_at])].filter(
-    (id) => !Object.hasOwn(record.resume_data, id),
-  )
-  const waiting = as_inbox(Object.fromEntries(await Promise.all(ids.map(async (id) => [id, await old.get(id)]))))
-  const saved = await save(drive.scope, lease, { ...record, format: 2 }, (inbox) => ({
-    ...inbox,
-    ...waiting,
-  }))
-  await old.clear()
-  return saved
+function migrate<i, o>(drive: Drive<i, o>, lease: Lease, record: RunRecord): Promise<RunRecord> {
+  return save(drive.scope, lease, { ...record, format: 2, old_inbox: true })
 }
 
 /**
@@ -505,6 +520,12 @@ async function migrate<i, o>(drive: Drive<i, o>, lease: Lease, record: RunRecord
  *
  * The datum leaves the inbox and joins the resume data in one write, so a
  * crash can't leave it in both places or in neither.
+ *
+ * A run that began as `format: 1` looks in its old inbox scope first. An
+ * event that waited there got to the gate before anything in the record's
+ * own inbox did, so it wins the gate. Its key is deleted only after the
+ * record holds the datum, and after the flow's shape is checked, so neither
+ * a crash nor a changed flow can lose it.
  */
 async function take_up<i, o>(
   drive: Drive<i, o>,
@@ -512,15 +533,19 @@ async function take_up<i, o>(
   record: Waiting,
 ): Promise<RunRecord | undefined> {
   const gate = record.suspended.id
-  const entry = Object.hasOwn(record.inbox, gate) ? record.inbox[gate] : undefined
+  const old = drive.scope.scope(INBOX)
+  const waited = record.old_inbox ? as_entry(await old.get(gate)) : undefined
+  const entry = waited ?? (Object.hasOwn(record.inbox, gate) ? record.inbox[gate] : undefined)
   if (entry === undefined) return undefined
   const current = await check_shape(drive, lease, record)
-  return save(
+  const saved = await save(
     drive.scope,
     lease,
     { ...current, status: 'running', resume_data: { ...current.resume_data, [gate]: entry.data } },
     (inbox) => without(inbox, gate),
   )
+  if (waited !== undefined) await old.delete(gate)
+  return saved
 }
 
 /**
@@ -620,14 +645,14 @@ async function settle<i, o>(
  */
 async function bring_to_rest<i, o>(
   drive: Drive<i, o>,
-  load: () => Promise<RunRecord>,
+  load: (lease: Lease) => Promise<RunRecord>,
 ): Promise<DurableOutcome<o>> {
   for (;;) {
     const lease = await take_lease(drive.scope, drive.lease_ms)
     if (lease === undefined) return { kind: 'busy', run_id: drive.run_id }
     let outcome: DurableOutcome<o>
     try {
-      outcome = await settle(drive, lease, await load())
+      outcome = await settle(drive, lease, await load(lease))
     } catch (err) {
       if (lease.lost()) return { kind: 'busy', run_id: drive.run_id }
       throw err
@@ -696,13 +721,16 @@ async function start_run<i, o>(
   options: DurableRunOptions,
 ): Promise<DurableOutcome<o>> {
   const drive = drive_for(driver, run_id, flow, options)
-  return bring_to_rest(drive, async () => {
+  return bring_to_rest(drive, async (lease) => {
     const read = await drive.scope.get_versioned(RECORD)
     const existing = as_record(read?.value)
     if (existing !== undefined) return existing
     const record: RunRecord = {
       format: 2,
       revision: 0,
+      nonce: randomUUID(),
+      writer: lease.owner,
+      old_inbox: false,
       input,
       flow: drive.shape,
       resume_data: {},
@@ -729,7 +757,8 @@ async function start_run<i, o>(
  * reach a gate is the one it gets. Each datum is checked against one version
  * of the run's record and written only on that version, so the rules hold
  * when two calls race for one gate, and when another call moves the run past
- * the gate or deletes the run at any point before the write. The data go in
+ * the gate or deletes the run at any point before the write, even when the
+ * run is started again under the same id. The data go in
  * one after another, since they all write the same record. `undefined`
  * resumes nothing. A call with no new data still drives a run that failed,
  * or whose drive died, once more.
@@ -745,7 +774,7 @@ async function resume_run<i, o>(
   const record = await existing_record(run_id, drive.scope)
   if (record.status === 'done') return done_view(drive, record)
   for (const [id, data] of Object.entries(resume_data)) {
-    if (data !== undefined) await deliver(drive.scope, id, data)
+    if (data !== undefined) await deliver(drive.scope, record.nonce, id, data)
   }
   return bring_to_rest(drive, () => existing_record(run_id, drive.scope))
 }

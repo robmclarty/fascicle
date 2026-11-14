@@ -2,7 +2,7 @@ import { mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
-import { durable, sequence, step, suspend, type CheckpointStore } from 'fascicle'
+import { durable, sequence, step, suspend, type CheckpointStore, type DurableStore } from 'fascicle'
 import { filesystem_store, object_store } from 'fascicle/adapters'
 import { checkpoint_store_conformance } from 'fascicle/testing'
 import { z } from 'zod'
@@ -64,6 +64,52 @@ describe('filesystem_store against the store conformance suite', () => {
       run_id: 'r',
       output: 'pricing: draft approved',
     })
+  }, 30_000)
+
+  it('keeps a stalled delivery away from a run deleted and started again with the same input', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'fascicle-durable-'))
+    const base = filesystem_store({ root_dir: dir })
+    roots.set(base, dir)
+    // The first conditional write that carries a datum waits for `go`, which
+    // holds a delivery between its read of the record and its write.
+    const held = Promise.withResolvers<void>()
+    const go = Promise.withResolvers<void>()
+    let waiting = false
+    const store: DurableStore = {
+      scope: (prefix) => {
+        const scope = base.scope(prefix)
+        return {
+          ...scope,
+          set_if: async (key, value, expected) => {
+            const inbox = (value as { inbox?: Record<string, unknown> }).inbox ?? {}
+            if (!waiting && Object.keys(inbox).length > 0) {
+              waiting = true
+              held.resolve()
+              await go.promise
+            }
+            return scope.set_if(key, value, expected)
+          },
+        }
+      },
+    }
+    const flow = suspend({
+      id: 'approve',
+      on: () => {},
+      resume_schema: z.object({ ok: z.boolean() }),
+      combine: (draft: string, decision) => `${draft} ${decision.ok ? 'approved' : 'refused'}`,
+    })
+    const quiet = { install_signal_handlers: false } as const
+    const runs = durable({ store })
+    await runs.start('r', flow, 'same', quiet)
+    const late = runs.resume('r', flow, { approve: { ok: false } }, quiet)
+    await held.promise
+    expect(await runs.delete('r')).toBe(true)
+    // The file's hash is its version, and but for the nonce and the writer
+    // the new run's record is the old one's bytes.
+    expect(await runs.start('r', flow, 'same', quiet)).toMatchObject({ kind: 'suspended', id: 'approve' })
+    go.resolve()
+    expect(await late).toMatchObject({ kind: 'suspended', id: 'approve' })
+    expect(await base.scope('r').get('record')).toMatchObject({ status: 'suspended', inbox: {}, resume_data: {} })
   }, 30_000)
 })
 
