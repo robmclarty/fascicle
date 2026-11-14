@@ -752,6 +752,38 @@ describe('a2a_agent: stores that outlive the agent', () => {
     expect(artifact_texts(await get_task(second, task_id))).toEqual(['go: by the first'])
   })
 
+  it('keeps a cancel from another agent: the drive runs on, its result is dropped, and its run is deleted', async () => {
+    const store = memory_store()
+    const task_store = new InMemoryTaskStore()
+    const { flow, latch } = latched()
+    const runs = durable({ store })
+    const driver = await agent_for({ flow, card: CARD, runs, task_store })
+    const other = await agent_for({ flow, card: CARD, runs: durable({ store }), task_store })
+    const started = await call(driver, 'SendMessage', {
+      message: user_message('go'),
+      configuration: { returnImmediately: true },
+    })
+    const task_id = id_of(task_in(started))
+    await latch.started
+
+    const canceled = await call(other, 'CancelTask', { id: task_id })
+    expect(state_of(canceled.result as Json)).toBe('TASK_STATE_CANCELED')
+    // The other agent can't stop a drive it doesn't hold, or delete its run.
+    expect(latch.aborted()).toBeUndefined()
+    expect(await runs.get(task_id)).toMatchObject({ kind: 'running' })
+
+    latch.open('too late')
+    await vi.waitFor(
+      async () => {
+        expect(await runs.get(task_id)).toBeUndefined()
+      },
+      { timeout: 5_000 },
+    )
+    const task = await get_task(driver, task_id)
+    expect(state_of(task)).toBe('TASK_STATE_CANCELED')
+    expect(artifact_texts(task)).toEqual([])
+  }, 10_000)
+
   it('repairs a task record that fell behind its run: failed, waiting, and working again', async () => {
     const store = memory_store()
     const task_store = new InMemoryTaskStore()

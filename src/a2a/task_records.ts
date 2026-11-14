@@ -14,6 +14,12 @@
  * would drive a failed run again at the next event, so the task's state
  * wins: a `save` that makes a task terminal deletes its run, and so does a
  * `load` that finds one. The run store only ever holds live tasks.
+ *
+ * A terminal task doesn't change either. A drive that another process
+ * canceled runs on to its next resting place, and the SDK drops the status it
+ * publishes there but would still fold its artifacts into the record. The
+ * SDK loads a task before every write to it, so once a load has seen a task
+ * ended, the store refuses every later `save` of it.
  */
 
 import { randomUUID } from 'node:crypto'
@@ -47,9 +53,10 @@ export type TaskRecords = {
   readonly saved: (task_id: string, status: TaskStatus, timeout_ms: number) => Promise<void>
 }
 
-// How many deleted runs the store remembers, so that loading a finished task
-// again doesn't ask the run store to delete what's already gone.
-const DROPPED_LIMIT = 10_000
+// How many finished tasks the store remembers, so that loading one again
+// doesn't ask the run store to delete what's already gone, and so that a
+// late write can't change it.
+const REMEMBERED_LIMIT = 10_000
 
 type Waiter = { readonly status: TaskStatus; readonly resolve: () => void }
 
@@ -73,24 +80,34 @@ function is_current(wire: Wire, task: Task, rest: Rest, next: TaskStatus | undef
 }
 
 /**
+ * Add a task id to a set of remembered ones, emptying the set first once it
+ * has grown to its limit. Forgetting costs a repeated store call, never a
+ * wrong answer, since the next load of the task remembers it again.
+ */
+function remember(ids: Set<string>, task_id: string): void {
+  if (ids.size >= REMEMBERED_LIMIT) ids.clear()
+  ids.add(task_id)
+}
+
+/**
  * Wrap `config.inner` so that its task records follow their runs.
  */
 export function task_records(config: TaskRecordsConfig): TaskRecords {
   const { wire, inner, runs, hooks } = config
   const seen = new Map<string, Sighting>()
+  const ended = new Set<string>()
   const dropped = new Set<string>()
   const waiters = new Map<string, Set<Waiter>>()
 
   const drop_run = async (task_id: string): Promise<void> => {
     if (dropped.has(task_id)) return
-    if (!(await runs.delete(task_id))) return
-    if (dropped.size >= DROPPED_LIMIT) dropped.clear()
-    dropped.add(task_id)
+    if (await runs.delete(task_id)) remember(dropped, task_id)
   }
 
   const settle = async (task: Task): Promise<void> => {
     if (!is_terminal(wire, task)) return
     seen.delete(task.id)
+    remember(ended, task.id)
     await drop_run(task.id)
   }
 
@@ -102,6 +119,7 @@ export function task_records(config: TaskRecordsConfig): TaskRecords {
   }
 
   const write = async (task: Task, context: ServerCallContext): Promise<void> => {
+    if (ended.has(task.id)) return
     await inner.save(task, context)
     seen.set(task.id, { context, context_id: task.contextId })
     announce(task)
@@ -136,7 +154,7 @@ export function task_records(config: TaskRecordsConfig): TaskRecords {
       const task = await inner.load(task_id, context)
       if (task === undefined) return undefined
       if (is_terminal(wire, task)) {
-        await drop_run(task_id)
+        await settle(task)
         return task
       }
       seen.set(task_id, { context, context_id: task.contextId })
