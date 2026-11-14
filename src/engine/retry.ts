@@ -89,12 +89,19 @@ function to_abort_error(reason: unknown): Error {
  * then the status when the failure had one, then the provider's own message
  * when it had one, as in `provider_5xx after 4 attempts (status 503): Service
  * Unavailable`. The lead comes first so the message reads the same whether
- * or not the provider said anything.
+ * or not the provider said anything. `action`, when the caller has one to
+ * offer, closes the message, after whatever the provider said.
  */
-function compose_message(lead: string, status: number | undefined, message: string | undefined): string {
+function compose_message(
+  lead: string,
+  status: number | undefined,
+  message: string | undefined,
+  action?: string,
+): string {
   const status_part = status === undefined ? '' : ` (status ${status})`
   const detail = message === undefined ? '' : `: ${message}`
-  return `${lead}${status_part}${detail}`
+  const action_part = action === undefined ? '' : `: ${action}`
+  return `${lead}${status_part}${detail}${action_part}`
 }
 
 /**
@@ -108,6 +115,7 @@ function build_rate_limit_error(
   attempt: number,
   last_rate_limit_after: number | undefined,
   lead: string,
+  action?: string,
 ): rate_limit_error {
   const metadata: { attempts: number; retry_after_ms?: number; status?: number; cause?: unknown } = {
     attempts: attempt,
@@ -116,7 +124,10 @@ function build_rate_limit_error(
   if (retryable.retry_after_ms !== undefined) metadata.retry_after_ms = retryable.retry_after_ms
   else if (last_rate_limit_after !== undefined) metadata.retry_after_ms = last_rate_limit_after
   if (retryable.status !== undefined) metadata.status = retryable.status
-  return new rate_limit_error(compose_message(lead, retryable.status, retryable.message), metadata)
+  return new rate_limit_error(
+    compose_message(lead, retryable.status, retryable.message, action),
+    metadata,
+  )
 }
 
 /**
@@ -129,6 +140,7 @@ function build_provider_error(
   retryable: Exclude<RetryableError, { kind: 'rate_limit' }>,
   attempt: number,
   lead: string,
+  action?: string,
 ): provider_error {
   const cause_kind = retryable.kind === 'provider_5xx' ? 'provider_5xx' : 'network'
   const metadata: {
@@ -144,25 +156,27 @@ function build_provider_error(
     if (status !== undefined) metadata.status = status
     if (retryable.body !== undefined) metadata.body = retryable.body
   }
-  return new provider_error(compose_message(lead, status, retryable.message), metadata)
+  return new provider_error(compose_message(lead, status, retryable.message, action), metadata)
 }
 
 /**
  * Map a classified failure that this layer won't retry again onto the error
  * it rejects with: `rate_limit_error` for 429s, `provider_error` for
  * everything else, after `attempt` failures in all. `lead` opens the message
- * and says why this layer stopped.
+ * and says why this layer stopped, and `action`, when given, closes it with
+ * what the caller can do.
  */
 function build_typed_error(
   retryable: RetryableError,
   attempt: number,
   last_rate_limit_after: number | undefined,
   lead: string,
+  action?: string,
 ): Error {
   if (retryable.kind === 'rate_limit') {
-    return build_rate_limit_error(retryable, attempt, last_rate_limit_after, lead)
+    return build_rate_limit_error(retryable, attempt, last_rate_limit_after, lead, action)
   }
-  return build_provider_error(retryable, attempt, lead)
+  return build_provider_error(retryable, attempt, lead, action)
 }
 
 /**
@@ -171,7 +185,8 @@ function build_typed_error(
  * network failure, is rethrown as it is, so a caller that catches its class
  * still gets it. A plain record that `classify_provider_error` built becomes
  * the typed error that exhaustion would have thrown for its kind, so a
- * caller never gets a value that prints as `[object Object]`.
+ * caller never gets a value that prints as `[object Object]`, and its
+ * message closes by naming the kind to add to `retry_on`.
  */
 function build_left_out_error(
   err: unknown,
@@ -181,7 +196,8 @@ function build_left_out_error(
 ): unknown {
   if (err instanceof Error) return err
   const lead = `${retryable.kind} left out of retry_on`
-  return build_typed_error(retryable, attempt, last_rate_limit_after, lead)
+  const action = `add '${retryable.kind}' to retry.retry_on to retry it`
+  return build_typed_error(retryable, attempt, last_rate_limit_after, lead, action)
 }
 
 /**

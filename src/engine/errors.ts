@@ -81,6 +81,9 @@ export class provider_error extends Error {
  * expiry as retryable without any timeout-specific branch. An expiry after a
  * chunk has reached an on_chunk consumer never reaches here; retry_turn
  * converts it to a non-retryable stream interruption first.
+ *
+ * The message names `turn_timeout_ms` as the option to raise, and it keeps
+ * that action when retry exhaustion quotes it after its own lead.
  */
 export class turn_timeout_error extends Error {
   readonly kind = 'timeout' as const;
@@ -88,7 +91,9 @@ export class turn_timeout_error extends Error {
   readonly timeout_ms: number;
   readonly step_index: number | undefined;
   constructor(timeout_ms: number, step_index?: number) {
-    super(`turn exceeded turn_timeout_ms budget of ${timeout_ms}ms`)
+    super(
+      `turn exceeded turn_timeout_ms budget of ${timeout_ms}ms: raise turn_timeout_ms on the call or in the engine's defaults if the model needs longer`,
+    )
     this.name = 'turn_timeout_error'
     this.timeout_ms = timeout_ms
     this.step_index = step_index

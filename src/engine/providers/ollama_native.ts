@@ -39,12 +39,10 @@ import type {
   UsageTotals,
   UserContentPart,
 } from '../types.js'
-import {
-  provider_capability_error,
-  provider_error,
-} from '../errors.js'
+import { provider_error } from '../errors.js'
 import {
   consume_framed_stream,
+  image_input_error,
   create_line_splitter,
   invoke_http_turn,
   network_failure,
@@ -74,18 +72,14 @@ export type OllamaChatMessage =
 /**
  * Map user message content to a plain string, the shape this wire expects
  * (no part-array support). Image parts throw a capability error: they are
- * not mapped on the native transport.
+ * not mapped on either Ollama transport.
  */
 function to_user_content(content: string | UserContentPart[]): string {
   if (typeof content === 'string') return content
   const parts: string[] = []
   for (const part of content) {
     if (part.type === 'image') {
-      throw new provider_capability_error(
-        'ollama',
-        'image_input',
-        "image parts are not mapped on the native transport; use transport: 'ai_sdk'",
-      )
+      throw image_input_error('ollama')
     }
     if (part.text.trim().length > 0) parts.push(part.text)
   }

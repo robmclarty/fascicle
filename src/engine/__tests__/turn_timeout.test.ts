@@ -220,7 +220,9 @@ describe('turn_timeout_error on the public surface', () => {
     expect(err).toBeInstanceOf(public_turn_timeout_error)
     expect((err as InstanceType<typeof public_turn_timeout_error>).timeout_ms).toBe(20)
     expect((err as Error).name).toBe('turn_timeout_error')
-    expect((err as Error).message).toBe('turn exceeded turn_timeout_ms budget of 20ms')
+    expect((err as Error).message).toBe(
+      "turn exceeded turn_timeout_ms budget of 20ms: raise turn_timeout_ms on the call or in the engine's defaults if the model needs longer",
+    )
     expect(log.requests).toHaveLength(1)
   })
 })

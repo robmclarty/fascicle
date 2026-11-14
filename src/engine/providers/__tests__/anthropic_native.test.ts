@@ -181,7 +181,7 @@ describe('to_anthropic_messages', () => {
       'mid_conversation_system_messages',
     )
     expect((err as Error).message).toBe(
-      "provider 'anthropic' does not support 'mid_conversation_system_messages': the Messages API accepts system text only before the first user/assistant turn",
+      "provider 'anthropic' does not support 'mid_conversation_system_messages': the Messages API accepts system text only before the first user/assistant turn: move it to the front of the messages, or send it as a user message",
     )
   })
 

@@ -35,12 +35,10 @@ import type {
   UsageTotals,
   UserContentPart,
 } from '../types.js'
-import {
-  provider_capability_error,
-  provider_error,
-} from '../errors.js'
+import { provider_error } from '../errors.js'
 import {
   consume_framed_stream,
+  image_input_error,
   invoke_http_turn,
   network_failure,
   map_messages_by_role,
@@ -161,11 +159,7 @@ function to_user_content(
   const parts: Array<{ type: 'text'; text: string }> = []
   for (const part of content) {
     if (part.type === 'image') {
-      throw new provider_capability_error(
-        provider,
-        'image_input',
-        "image parts are not mapped on the native transport; use transport: 'ai_sdk'",
-      )
+      throw image_input_error(provider)
     }
     if (part.text.trim().length > 0) parts.push({ type: 'text', text: part.text })
   }

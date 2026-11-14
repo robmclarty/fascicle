@@ -1340,19 +1340,37 @@ function sse_byte_at_a_time(frames: ReadonlyArray<StreamFrame>): Response {
 }
 
 describe('to_chat_messages (mutation hardening)', () => {
-  it('names the image_input capability and the ai_sdk transport in the thrown error', () => {
-    let caught: unknown
+  const image_error = (provider: string): unknown => {
     try {
       to_chat_messages(
         [{ role: 'user', content: [{ type: 'image', image: 'aGk=', media_type: 'image/png' }] }],
-        'lmstudio',
+        provider,
       )
     } catch (err) {
-      caught = err
+      return err
     }
+    return undefined
+  }
+
+  it.each(['openai', 'openrouter'])(
+    'names the image_input capability and the ai_sdk transport in the error %s throws',
+    (provider) => {
+      const caught = image_error(provider)
+      expect(caught).toBeInstanceOf(provider_capability_error)
+      expect((caught as provider_capability_error).capability).toBe('image_input')
+      expect((caught as Error).message).toBe(
+        `provider '${provider}' does not support 'image_input': image parts are not mapped on the native transport; use transport: 'ai_sdk'`,
+      )
+    },
+  )
+
+  it('never sends lmstudio to the ai_sdk transport, which takes no image parts either', () => {
+    const caught = image_error('lmstudio')
     expect(caught).toBeInstanceOf(provider_capability_error)
     expect((caught as provider_capability_error).capability).toBe('image_input')
-    expect((caught as Error).message).toContain("transport: 'ai_sdk'")
+    expect((caught as Error).message).toBe(
+      "provider 'lmstudio' does not support 'image_input': image parts are not mapped on either lmstudio transport: drop the image part, or route the call to a provider that supports image_input",
+    )
   })
 
   it('maps a non-empty plain assistant string verbatim, adding no tool_calls key', () => {

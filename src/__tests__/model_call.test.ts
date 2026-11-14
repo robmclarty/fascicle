@@ -924,7 +924,7 @@ vdescribe('model_step over a provider failure that retry_on leaves out', () => {
     })
     expect(events.find((e) => e.kind === 'run_end')).toMatchObject({
       status: 'failed',
-      error: 'provider_5xx left out of retry_on (status 503): Service Unavailable',
+      error: "provider_5xx left out of retry_on (status 503): Service Unavailable: add 'provider_5xx' to retry.retry_on to retry it",
       error_kind: 'provider_error',
       error_status: 503,
       error_cause_kind: 'provider_5xx',

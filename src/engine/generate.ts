@@ -465,6 +465,17 @@ function arm_turn_timeout(
 }
 
 /**
+ * The message for a turn that failed after `on_chunk` had received output.
+ * It says why the engine didn't retry, since a 5xx or a dropped connection
+ * is retried anywhere else, and that the caller can still retry the call as
+ * a whole, which is theirs to decide because their consumer saw the first
+ * part of an answer.
+ */
+function stream_interrupted_message(detail: string): string {
+  return `stream interrupted: ${detail}: not retried because on_chunk had already received output, so retry the whole call`
+}
+
+/**
  * Engine-owned wrapper shared by both transports: one turn attempt inside
  * retry_with_policy. The catch ladder classifies by CAUSE, not
  * by the shape the transport happened to throw: on_chunk_error passes through,
@@ -525,7 +536,7 @@ function retry_turn(
         // here, in parity with the native transport's raw AbortError.
         if (has_streamed()) {
           const message = err instanceof Error ? err.message : String(err)
-          throw new provider_error(`stream interrupted: ${message}`, {
+          throw new provider_error(stream_interrupted_message(message), {
             cause_kind: 'unknown',
             cause: err,
           })
@@ -824,9 +835,20 @@ function resolve_target<T>(
 }
 
 /**
+ * What to do about a call option that the resolved adapter can't honor:
+ * drop the option, or send the call to a provider that can. Only a custom
+ * provider reaches it, since every built-in adapter supports all three
+ * capabilities that assert_capabilities checks.
+ */
+function capability_action(option: string, capability: string): string {
+  return `drop \`${option}\` from the call, or route it to a provider that supports '${capability}'`
+}
+
+/**
  * Reject a call that uses a capability the resolved adapter does not
  * implement. Checked up front, before any transport work, so the failure is a
- * typed capability error rather than a mid-call provider rejection.
+ * typed capability error rather than a mid-call provider rejection. Each
+ * error names the call option that asked for the capability.
  */
 function assert_capabilities<T>(
   adapter: AiSdkProviderAdapter | NativeProviderAdapter,
@@ -836,13 +858,17 @@ function assert_capabilities<T>(
   on_chunk_provided: boolean,
 ): void {
   if (opts.schema !== undefined && !adapter.supports('schema')) {
-    throw new provider_capability_error(provider, 'schema')
+    throw new provider_capability_error(provider, 'schema', capability_action('schema', 'schema'))
   }
   if (tools_list.length > 0 && !adapter.supports('tools')) {
-    throw new provider_capability_error(provider, 'tools')
+    throw new provider_capability_error(provider, 'tools', capability_action('tools', 'tools'))
   }
   if (on_chunk_provided && !adapter.supports('streaming')) {
-    throw new provider_capability_error(provider, 'streaming')
+    throw new provider_capability_error(
+      provider,
+      'streaming',
+      capability_action('on_chunk', 'streaming'),
+    )
   }
 }
 

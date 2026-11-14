@@ -39,6 +39,7 @@ import {
 } from '../errors.js'
 import {
   consume_framed_stream,
+  image_input_error,
   invoke_http_turn,
   network_failure,
   protocol_error,
@@ -120,11 +121,7 @@ function to_user_blocks(content: string | UserContentPart[]): AnthropicContentBl
   const blocks: AnthropicContentBlock[] = []
   for (const part of content) {
     if (part.type === 'image') {
-      throw new provider_capability_error(
-        'anthropic',
-        'image_input',
-        "image parts are not mapped on the native transport; use transport: 'ai_sdk'",
-      )
+      throw image_input_error('anthropic')
     }
     blocks.push(...text_blocks(part.text))
   }
@@ -229,7 +226,7 @@ export function to_anthropic_messages(messages: ReadonlyArray<Message>): {
           throw new provider_capability_error(
             'anthropic',
             'mid_conversation_system_messages',
-            'the Messages API accepts system text only before the first user/assistant turn',
+            'the Messages API accepts system text only before the first user/assistant turn: move it to the front of the messages, or send it as a user message',
           )
         }
         system_parts.push(message.content)

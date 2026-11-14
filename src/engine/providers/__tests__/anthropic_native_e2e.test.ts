@@ -624,7 +624,7 @@ describe('native anthropic e2e reply shapes', () => {
       .catch((e: unknown) => e)
     expect(caught).toBeInstanceOf(provider_error)
     expect((caught as Error).message).toBe(
-      'stream interrupted: anthropic native: stream ended before message_stop; the result would be truncated',
+      'stream interrupted: anthropic native: stream ended before message_stop; the result would be truncated: not retried because on_chunk had already received output, so retry the whole call',
     )
     expect(watched).toHaveBeenCalledTimes(1)
   })
