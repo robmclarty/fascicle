@@ -5,7 +5,7 @@
  * failing write or link) and lets every other call reach the real disk.
  */
 
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, type Stats, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -18,6 +18,9 @@ const swaps = vi.hoisted(() => ({
   link: [] as Array<() => Promise<void>>,
   writeFile: [] as Array<() => Promise<void> | undefined>,
   readFile: [] as Array<() => Promise<string | Buffer> | undefined>,
+  mkdir: [] as Array<() => Promise<undefined> | undefined>,
+  stat: [] as Array<() => Promise<Stats> | undefined>,
+  rmdir: [] as Array<() => Promise<void> | undefined>,
 }))
 
 vi.mock('node:fs/promises', async (import_original) => {
@@ -29,6 +32,10 @@ vi.mock('node:fs/promises', async (import_original) => {
     writeFile: (path: string, data: string) => swaps.writeFile.shift()?.() ?? real.writeFile(path, data),
     readFile: (path: string, encoding: 'utf8') =>
       swaps.readFile.shift()?.() ?? real.readFile(path, encoding),
+    mkdir: (path: string, options?: { recursive: boolean }) =>
+      swaps.mkdir.shift()?.() ?? real.mkdir(path, options),
+    stat: (path: string) => swaps.stat.shift()?.() ?? real.stat(path),
+    rmdir: (path: string) => swaps.rmdir.shift()?.() ?? real.rmdir(path),
   }
 })
 
@@ -61,6 +68,9 @@ afterEach(() => {
   swaps.link.length = 0
   swaps.writeFile.length = 0
   swaps.readFile.length = 0
+  swaps.mkdir.length = 0
+  swaps.stat.length = 0
+  swaps.rmdir.length = 0
   rmSync(work_dir, { recursive: true, force: true })
 })
 
@@ -187,10 +197,7 @@ describe('filesystem_store conditional write races', () => {
     const name = readdirSync(scope_dir()).find((entry) => entry.endsWith('.json'))
     return join(scope_dir(), name ?? '')
   }
-  const lock_file = (generation: number): string => {
-    const name = readdirSync(scope_dir()).find((entry) => entry.endsWith('.lock'))
-    return join(scope_dir(), name ?? '', `${generation}.json`)
-  }
+  const locks = (): string[] => readdirSync(scope_dir()).filter((name) => name.endsWith('.lock'))
   const temporary_files = (): string[] =>
     readdirSync(scope_dir()).filter((name) => name.endsWith('.tmp'))
 
@@ -200,17 +207,14 @@ describe('filesystem_store conditional write races', () => {
     const read = await store.get_versioned('k')
     const dir = scope_dir()
     const file = value_file()
-    // The first read is the lock's. The second is the value's, and by the time
-    // it answers, the run was deleted and a new one holds the same bytes.
-    swaps.readFile.push(
-      () => undefined,
-      async () => {
-        rmSync(dir, { recursive: true })
-        mkdirSync(dir)
-        writeFileSync(file, '{"v":1}')
-        return Buffer.from('{"v":1}')
-      },
-    )
+    // By the time the read of the value answers, the run was deleted and a
+    // new one holds the same bytes.
+    swaps.readFile.push(async () => {
+      rmSync(dir, { recursive: true })
+      mkdirSync(dir)
+      writeFileSync(file, '{"v":1}')
+      return Buffer.from('{"v":1}')
+    })
     expect(await store.set_if('k', { v: 2 }, read?.version ?? '')).toBe(false)
     expect(readFileSync(file, 'utf8')).toBe('{"v":1}')
     expect(readdirSync(dir)).toEqual([file.slice(dir.length + 1)])
@@ -220,11 +224,7 @@ describe('filesystem_store conditional write races', () => {
     const store = filesystem_store({ root_dir: work_dir }).scope('run')
     await store.set('k', { v: 1 })
     const read = await store.get_versioned('k')
-    // The first write is the lock's, and the second is the temporary file's.
-    swaps.writeFile.push(
-      () => undefined,
-      () => Promise.reject(fs_error('ENOENT')),
-    )
+    swaps.writeFile.push(() => Promise.reject(fs_error('ENOENT')))
     expect(await store.set_if('k', { v: 2 }, read?.version ?? '')).toBe(false)
     expect(await store.get('k')).toEqual({ v: 1 })
   })
@@ -233,34 +233,25 @@ describe('filesystem_store conditional write races', () => {
     const store = filesystem_store({ root_dir: work_dir }).scope('run')
     await store.set('k', { v: 1 })
     const read = await store.get_versioned('k')
-    swaps.writeFile.push(
-      () => undefined,
-      () => Promise.reject(fs_error('EACCES')),
-    )
+    swaps.writeFile.push(() => Promise.reject(fs_error('EACCES')))
     await expect(store.set_if('k', { v: 2 }, read?.version ?? '')).rejects.toThrow(
       'EACCES: simulated',
     )
-    expect(JSON.parse(readFileSync(lock_file(2), 'utf8'))).toMatchObject({ expires_at: 0 })
+    expect(locks()).toEqual([])
     expect(await store.get('k')).toEqual({ v: 1 })
   })
 
   it('surfaces a failure that is not an Error untouched', async () => {
     const store = filesystem_store({ root_dir: work_dir }).scope('run')
     await store.set('k', { v: 1 })
-    swaps.writeFile.push(
-      () => undefined,
-      () => Promise.reject('ENOENT'),
-    )
+    swaps.writeFile.push(() => Promise.reject('ENOENT'))
     await expect(store.set_if('k', { v: 2 }, 'any version')).rejects.toBe('ENOENT')
   })
 
   it('removes its temporary file when the value cannot be read', async () => {
     const store = filesystem_store({ root_dir: work_dir }).scope('run')
     await store.set('k', { v: 1 })
-    swaps.readFile.push(
-      () => undefined,
-      () => Promise.reject(fs_error('EIO')),
-    )
+    swaps.readFile.push(() => Promise.reject(fs_error('EIO')))
     await expect(store.set_if('k', { v: 2 }, 'any version')).rejects.toThrow('EIO: simulated')
     expect(temporary_files()).toEqual([])
   })
@@ -272,33 +263,41 @@ describe('filesystem_store conditional write races', () => {
     await expect(store.get_versioned('k')).rejects.toThrow('EIO: simulated')
   })
 
-  it('holds the lock of a write for ten seconds unless the write lets it go', async () => {
+})
+
+describe('filesystem_store write lock races', () => {
+  const scope_dir = (): string => {
+    const name = readdirSync(work_dir).find((entry) => entry.endsWith('.scope'))
+    return join(work_dir, name ?? '')
+  }
+  // The lock directory of the one key these tests write, whose name the
+  // value's file gives away.
+  const lock_dir = (): string => {
+    const name = readdirSync(scope_dir()).find((entry) => entry.endsWith('.json'))
+    return join(scope_dir(), (name ?? '').replace(/\.json$/, '.lock'))
+  }
+  const recovery_claim = (generation: number): string =>
+    join(scope_dir(), 'lock.recovery', `${generation}.json`)
+
+  // Make the lock look as if it was taken `ms` milliseconds ago.
+  function age(ms: number): void {
+    const then = new Date(Date.now() - ms)
+    utimesSync(lock_dir(), then, then)
+  }
+
+  async function store_with_value(): Promise<ReturnType<ReturnType<typeof filesystem_store>['scope']>> {
     const store = filesystem_store({ root_dir: work_dir }).scope('run')
     await store.set('k', { v: 1 })
-    let remaining = 0
-    // The first write is the lock's. The second is the value's, made while
-    // the lock is held.
-    swaps.writeFile.push(
-      () => undefined,
-      () => {
-        const lock = JSON.parse(readFileSync(lock_file(2), 'utf8')) as { expires_at: number }
-        remaining = lock.expires_at - Date.now()
-        return undefined
-      },
-    )
-    await store.set('k', { v: 2 })
-    expect(remaining).toBeGreaterThan(9_000)
-    expect(remaining).toBeLessThanOrEqual(10_000)
-    expect(await store.get('k')).toEqual({ v: 2 })
-  })
+    return store
+  }
 
   it('asks again for a held lock every couple of milliseconds', async () => {
-    const store = filesystem_store({ root_dir: work_dir }).scope('run')
-    await store.set('k', { v: 1 })
-    const held = { owner: 'another writer', expires_at: Date.now() + 100 }
-    writeFileSync(lock_file(1), JSON.stringify(held))
+    const store = await store_with_value()
+    const lock = lock_dir()
+    mkdirSync(lock)
     const waits: number[] = []
     const real_set_timeout = globalThis.setTimeout
+    real_set_timeout(() => rmSync(lock, { recursive: true }), 40)
     const spy = vi.spyOn(globalThis, 'setTimeout')
     spy.mockImplementation(((fn: () => void, ms?: number) => {
       waits.push(ms ?? 0)
@@ -308,5 +307,147 @@ describe('filesystem_store conditional write races', () => {
     spy.mockRestore()
     expect(waits.length).toBeGreaterThan(1)
     expect(new Set(waits)).toEqual(new Set([2]))
+    expect(await store.get('k')).toEqual({ v: 2 })
+  })
+
+  it('takes the lock of an uncontended write without waiting at all', async () => {
+    const store = await store_with_value()
+    const spy = vi.spyOn(globalThis, 'setTimeout')
+    await Promise.all([store.set('k', { v: 2 }), store.delete('k'), store.set('k', { v: 3 })])
+    expect(spy).not.toHaveBeenCalled()
+    spy.mockRestore()
+    expect(await store.get('k')).toEqual({ v: 3 })
+  })
+
+  it('surfaces a lock it cannot make for a reason other than being held', async () => {
+    const store = await store_with_value()
+    swaps.mkdir.push(() => Promise.reject(fs_error('EACCES')))
+    await expect(store.set('k', { v: 2 })).rejects.toThrow('EACCES: simulated')
+    expect(await store.get('k')).toEqual({ v: 1 })
+    // The failed write left the queue, so the next one goes ahead.
+    await store.set('k', { v: 3 })
+    expect(await store.get('k')).toEqual({ v: 3 })
+  })
+
+  it('makes the directory again when it vanished, and then takes the lock', async () => {
+    const store = await store_with_value()
+    const dir = scope_dir()
+    rmSync(dir, { recursive: true })
+    await store.set('k', { v: 2 })
+    expect(readdirSync(dir)).toHaveLength(1)
+    expect(await store.get('k')).toEqual({ v: 2 })
+  })
+
+  it('reads a held lock that is let go before it can be looked at as free to ask for again', async () => {
+    const store = await store_with_value()
+    const lock = lock_dir()
+    mkdirSync(lock)
+    swaps.stat.push(() => {
+      rmSync(lock, { recursive: true })
+      return Promise.reject(fs_error('ENOENT'))
+    })
+    await store.set('k', { v: 2 })
+    expect(await store.get('k')).toEqual({ v: 2 })
+    expect(existsSync(join(scope_dir(), 'lock.recovery'))).toBe(false)
+  })
+
+  it('surfaces a held lock it cannot look at', async () => {
+    const store = await store_with_value()
+    mkdirSync(lock_dir())
+    swaps.stat.push(() => Promise.reject(fs_error('EIO')))
+    await expect(store.set('k', { v: 2 })).rejects.toThrow('EIO: simulated')
+  })
+
+  it('lets go quietly of a lock that vanished with its scope', async () => {
+    const store = await store_with_value()
+    swaps.rmdir.push(() => Promise.reject(fs_error('ENOENT')))
+    await store.set('k', { v: 2 })
+    expect(await store.get('k')).toEqual({ v: 2 })
+  })
+
+  it('surfaces any other failure to let the lock go', async () => {
+    const store = await store_with_value()
+    swaps.rmdir.push(() => Promise.reject(fs_error('EIO')))
+    await expect(store.set('k', { v: 2 })).rejects.toThrow('EIO: simulated')
+  })
+
+  it('leaves a lock alone when it was taken afresh before the recovery claim was held', async () => {
+    const store = await store_with_value()
+    const lock = lock_dir()
+    mkdirSync(lock)
+    age(60_000)
+    // The writer sees the abandoned lock. Before it holds the claim, another
+    // writer recovers that lock and takes a fresh one.
+    swaps.stat.push(
+      () => undefined,
+      () => {
+        const now = new Date()
+        utimesSync(lock, now, now)
+        return undefined
+      },
+    )
+    const landed = vi.fn()
+    const waiting = store.set('k', { v: 2 }).then(landed)
+    await new Promise((resolve) => setTimeout(resolve, 60))
+    expect(landed).not.toHaveBeenCalled()
+    expect(existsSync(lock)).toBe(true)
+    expect(JSON.parse(readFileSync(recovery_claim(1), 'utf8'))).toMatchObject({ expires_at: 0 })
+    rmSync(lock, { recursive: true })
+    await waiting
+    expect(await store.get('k')).toEqual({ v: 2 })
+  })
+
+  it('holds the recovery claim for ten seconds unless it lets it go', async () => {
+    const store = await store_with_value()
+    mkdirSync(lock_dir())
+    age(60_000)
+    let remaining = 0
+    // The second look at the lock is made with the claim held.
+    swaps.stat.push(
+      () => undefined,
+      () => {
+        const claim = JSON.parse(readFileSync(recovery_claim(1), 'utf8')) as { expires_at: number }
+        remaining = claim.expires_at - Date.now()
+        return undefined
+      },
+    )
+    await store.set('k', { v: 2 })
+    expect(remaining).toBeGreaterThan(9_000)
+    expect(remaining).toBeLessThanOrEqual(10_000)
+    expect(await store.get('k')).toEqual({ v: 2 })
+  })
+
+  it('lets the recovery claim go when the lock cannot be looked at again', async () => {
+    const store = await store_with_value()
+    mkdirSync(lock_dir())
+    age(60_000)
+    swaps.stat.push(
+      () => undefined,
+      () => Promise.reject(fs_error('EIO')),
+    )
+    await expect(store.set('k', { v: 2 })).rejects.toThrow('EIO: simulated')
+    expect(JSON.parse(readFileSync(recovery_claim(1), 'utf8'))).toMatchObject({ expires_at: 0 })
+  })
+
+  it('waits a couple of milliseconds when another writer holds the recovery claim', async () => {
+    const store = await store_with_value()
+    const lock = lock_dir()
+    mkdirSync(lock)
+    age(60_000)
+    mkdirSync(join(scope_dir(), 'lock.recovery'))
+    writeFileSync(recovery_claim(1), JSON.stringify({ owner: 'another writer', expires_at: Date.now() + 60_000 }))
+    const waits: number[] = []
+    const real_set_timeout = globalThis.setTimeout
+    real_set_timeout(() => rmSync(lock, { recursive: true }), 40)
+    const spy = vi.spyOn(globalThis, 'setTimeout')
+    spy.mockImplementation(((fn: () => void, ms?: number) => {
+      waits.push(ms ?? 0)
+      return real_set_timeout(fn, ms)
+    }) as typeof setTimeout)
+    await store.set('k', { v: 2 })
+    spy.mockRestore()
+    expect(waits.length).toBeGreaterThan(1)
+    expect(new Set(waits)).toEqual(new Set([2]))
+    expect(readdirSync(join(scope_dir(), 'lock.recovery'))).toEqual(['1.json'])
   })
 })

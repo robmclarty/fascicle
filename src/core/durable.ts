@@ -40,10 +40,13 @@
  * from the identical-looking record of the run it replaced.
  *
  * A record written before the inbox moved into it is `format: 1`, with its
- * waiting events in an `inbox` scope of their own. The first drive to find
- * one saves it as `format: 2` and marks it `old_inbox`, and from then on a
- * drive that stops at a gate looks in the old scope for that gate's event
- * before it looks in the record. A driver from before this format reads a
+ * waiting events in an `inbox` scope of their own and no nonce. The first
+ * drive to find one saves it as `format: 2`, draws its nonce, and marks it
+ * `old_inbox`, and from then on a drive that stops at a gate looks in the
+ * old scope for that gate's event before it looks in the record. That look
+ * is one store read at every gate for as long as the run lives, because a
+ * scope can't be listed and an event may wait there for a gate the run has
+ * yet to reach. A driver from before this format reads a
  * `format: 2` record as no record at all, so a fleet runs one version of the
  * driver at a time.
  */
@@ -161,9 +164,9 @@ type RunBase = {
   // delivery changes the inbox and leaves the revision alone, which is how a
   // drive tells a delivery's write from another drive's.
   readonly revision: number
-  // Drawn once when `start` creates the run, or '' in a record from a driver
-  // that drew none. It tells this run from one deleted and started again
-  // under the same id.
+  // Drawn once when `start` creates the run, or when a drive migrates a
+  // `format: 1` record, which reads as '' until then. It tells this run from
+  // one deleted and started again under the same id.
   readonly nonce: string
   // The lease owner of the drive that last saved the record, or '' in a
   // record from a driver that kept none. It tells a drive its own landed
@@ -472,6 +475,21 @@ async function check_shape<i, o>(
 }
 
 /**
+ * True when `record` is the run that a delivery first read with `nonce`.
+ *
+ * A `format: 1` record has no nonce and reads as '', and the drive that
+ * migrates it draws one. A delivery that read the '' and then lost its write
+ * to that migration would find another nonce and drop its datum, so it also
+ * takes a record marked `old_inbox` for its run, which only a migrated run
+ * is. A run this driver started is never marked, so the datum still can't
+ * reach one. Two runs under one id that both began as `format: 1` are the
+ * one pair a delivery that read '' can't tell apart.
+ */
+function is_same_run(record: RunRecord, nonce: string): boolean {
+  return record.nonce === nonce || (nonce === '' && record.old_inbox)
+}
+
+/**
  * Leave `data` in the inbox of the run that carries `nonce` for `gate_id`,
  * unless a datum already waits there, the run has already passed the gate,
  * or the run is gone.
@@ -483,7 +501,8 @@ async function check_shape<i, o>(
  * past the gate in the meantime drops the datum, and a `delete` in the
  * meantime leaves no record to write to. A run started again under the same
  * id after that `delete` carries another nonce, so the datum never reaches
- * it, however late the delivery wakes up.
+ * it, however late the delivery wakes up. `is_same_run` says how a delivery
+ * that read a `format: 1` record finds that run again once it has a nonce.
  *
  * The record keeps the format it was read with. A `format: 1` record may
  * have events in its old inbox scope, which a drive reads only once it has
@@ -494,7 +513,7 @@ async function deliver(scope: RunScope, nonce: string, gate_id: string, data: un
   for (;;) {
     const read = await scope.get_versioned(RECORD)
     const record = as_record(read?.value)
-    if (read === undefined || record === undefined || record.nonce !== nonce) return
+    if (read === undefined || record === undefined || !is_same_run(record, nonce)) return
     if (Object.hasOwn(record.resume_data, gate_id) || Object.hasOwn(record.inbox, gate_id)) return
     const next: RunRecord = { ...record, inbox: { ...record.inbox, [gate_id]: { data } } }
     if (await scope.set_if(RECORD, next, read.version)) return
@@ -503,15 +522,22 @@ async function deliver(scope: RunScope, nonce: string, gate_id: string, data: un
 
 /**
  * Bring a `format: 1` record up to `format: 2`, marked as a run whose old
- * `inbox` scope may still hold events.
+ * `inbox` scope may still hold events, and with a nonce when it has none.
  *
  * A scope can't be listed, so the events stay where they are, and `take_up`
  * reads the old scope one gate at a time, as the run reaches each gate. That
  * way an event for a gate the flow builds inside a step, or for a gate this
- * deploy renamed, is still there when a drive comes looking for it.
+ * deploy renamed, is still there when a drive comes looking for it. It's
+ * also why the mark stays for the life of the run: no read can show that
+ * nothing waits for the gates still ahead.
+ *
+ * The nonce closes, for a run from before there was one, the window it
+ * closes for every other run: a delivery that read this record can't land
+ * in another run that began the same way under the same id.
  */
 function migrate<i, o>(drive: Drive<i, o>, lease: Lease, record: RunRecord): Promise<RunRecord> {
-  return save(drive.scope, lease, { ...record, format: 2, old_inbox: true })
+  const nonce = record.nonce === '' ? randomUUID() : record.nonce
+  return save(drive.scope, lease, { ...record, format: 2, old_inbox: true, nonce })
 }
 
 /**

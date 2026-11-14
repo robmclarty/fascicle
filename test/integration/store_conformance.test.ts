@@ -1,6 +1,8 @@
-import { mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { spawn } from 'node:child_process'
+import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { DatabaseSync } from 'node:sqlite'
 import { afterAll, describe, expect, it } from 'vitest'
 import { durable, sequence, step, suspend, type CheckpointStore, type DurableStore } from 'fascicle'
@@ -16,6 +18,25 @@ const roots = new Map<CheckpointStore, string>()
 afterAll(() => {
   for (const dir of roots.values()) rmSync(dir, { recursive: true, force: true })
 })
+
+const writer_script = fileURLToPath(new URL('../fixtures/filesystem_store_writer.mjs', import.meta.url))
+
+// Run one writer process to its end: `times` increments of the counter under
+// `root_dir`, each a conditional write.
+function run_writer(root_dir: string, times: number): Promise<{ code: number | null; stderr: string }> {
+  const child = spawn(process.execPath, [writer_script, root_dir, String(times)], {
+    stdio: ['ignore', 'ignore', 'pipe'],
+  })
+  let stderr = ''
+  child.stderr.on('data', (chunk: Buffer) => {
+    stderr += chunk.toString()
+  })
+  return new Promise((resolve) => {
+    child.on('close', (code) => {
+      resolve({ code, stderr })
+    })
+  })
+}
 
 function make_store(): CheckpointStore {
   const dir = mkdtempSync(join(tmpdir(), 'fascicle-conformance-'))
@@ -38,8 +59,21 @@ describe('filesystem_store against the store conformance suite', () => {
     const report = await checkpoint_store_conformance(make_store, { corrupt: tear, ttl_ms: 60 })
     expect(report.failed).toEqual([])
     expect(report.skipped).toEqual([])
-    expect(report.passed).toHaveLength(47)
+    expect(report.passed).toHaveLength(49)
   }, 30_000)
+
+  it('loses no conditional write among the writers of several processes', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'fascicle-processes-'))
+    const store = filesystem_store({ root_dir: dir })
+    roots.set(store, dir)
+    const PROCESSES = 4
+    const TIMES = 25
+    const writers = await Promise.all(Array.from({ length: PROCESSES }, () => run_writer(dir, TIMES)))
+    expect(writers.map((writer) => writer.code)).toEqual(Array.from({ length: PROCESSES }, () => 0))
+    expect(await store.get('counter')).toEqual({ n: PROCESSES * TIMES })
+    // Every lock was let go, and nothing had to be recovered.
+    expect(readdirSync(dir)).toHaveLength(1)
+  }, 60_000)
 
   it('holds a durable run through a start, a busy resume, and the drive that takes it up', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'fascicle-durable-'))
@@ -138,7 +172,7 @@ describe('object_store against the store conformance suite', () => {
     )
     expect(report.failed).toEqual([])
     expect(report.skipped).toEqual([])
-    expect(report.passed).toHaveLength(47)
+    expect(report.passed).toHaveLength(49)
   }, 30_000)
 
   it('keeps it when every conditional put that lands reports a failed condition', async () => {
@@ -155,8 +189,19 @@ describe('object_store against the store conformance suite', () => {
     )
     expect(report.failed).toEqual([])
     expect(report.skipped).toEqual([])
-    expect(report.passed).toHaveLength(47)
+    expect(report.passed).toHaveLength(49)
   }, 30_000)
+})
+
+describe('the S3 client in docs/human-in-the-loop.md', () => {
+  it('is the client the live suite takes to a real bucket, but for its semicolons', () => {
+    const read = (path: string): string => readFileSync(fileURLToPath(new URL(path, import.meta.url)), 'utf8')
+    const doc = read('../../docs/human-in-the-loop.md')
+    const fixture = read('../fixtures/s3_object_client.ts')
+    const printed = /```ts\n(import \{\n {2}DeleteObjectCommand[\s\S]*?)\n```/.exec(doc)?.[1] ?? ''
+    expect(printed).toContain('export function s3_object_client')
+    expect(`${printed.replaceAll(/;$/gm, '')}\n`).toBe(fixture.slice(fixture.indexOf('import {')))
+  })
 })
 
 describe('memory_store against the store conformance suite', () => {
@@ -164,7 +209,7 @@ describe('memory_store against the store conformance suite', () => {
     const report = await checkpoint_store_conformance(() => memory_store(), { ttl_ms: 60 })
     expect(report.failed).toEqual([])
     expect(report.skipped).toEqual(['a damaged value reads as a miss', 'a damaged value reads with a version'])
-    expect(report.passed).toHaveLength(45)
+    expect(report.passed).toHaveLength(47)
   }, 30_000)
 })
 
@@ -199,7 +244,7 @@ describe('sqlite_store against the store conformance suite', () => {
     const report = await checkpoint_store_conformance(on_file, { corrupt: tear_row, ttl_ms: 60 })
     expect(report.failed).toEqual([])
     expect(report.skipped).toEqual([])
-    expect(report.passed).toHaveLength(47)
+    expect(report.passed).toHaveLength(49)
   }, 30_000)
 
   it("keeps it on ':memory:', where only the damage checks have nothing to damage", async () => {
@@ -213,6 +258,6 @@ describe('sqlite_store against the store conformance suite', () => {
     )
     expect(report.failed).toEqual([])
     expect(report.skipped).toEqual(['a damaged value reads as a miss', 'a damaged value reads with a version'])
-    expect(report.passed).toHaveLength(45)
+    expect(report.passed).toHaveLength(47)
   }, 30_000)
 })

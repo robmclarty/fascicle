@@ -23,15 +23,34 @@
  *
  * A value's version, for `get_versioned` and `set_if`, is a hash of its
  * file's bytes, so the files stay where they always were. Every write to a
- * key takes a short lock on it first (a claim of its own, in
- * `<key>.lock/`), `set` and `delete` included, which is what makes `set_if`
- * atomic against all of them. Under the lock, `set_if` writes its temporary
- * file, reads the bytes at the key, and renames the file into place only when
- * their hash is the version it was given. A create (`expected: null`) needs
- * no lock, because it's the same `link` a claim uses.
+ * key holds a lock on it while it works, `set` and `delete` included, which
+ * is what makes `set_if` atomic against all of them. The lock is an empty
+ * directory beside the value (`<key>.lock/`), made with one `mkdir`, which
+ * refuses a directory that exists, and removed with one `rmdir` when the
+ * write is done, so nothing stays behind. Under the lock, `set_if` writes its
+ * temporary file, reads the bytes at the key, and renames the file into place
+ * only when their hash is the version it was given. A create
+ * (`expected: null`) needs no lock, because it's the same `link` a claim
+ * uses.
  *
- * All of this leans on `link` and `rename` being atomic and on a directory
- * listing being current, which a local filesystem gives and a network
+ * The lock costs a write two calls more than it would make without one: a
+ * `set` is four filesystem calls, a `delete` three, and a `set_if` on a
+ * version six. Writers to one key go one at a time. Those in one process
+ * queue in memory, and those in other processes ask for the lock again every
+ * couple of milliseconds, so a key that many writers want at once is as slow
+ * as the queue is long.
+ *
+ * A writer that dies between its `mkdir` and its `rmdir` leaves the lock
+ * behind. A lock older than ten seconds counts as abandoned, and the writer
+ * that finds one removes it while holding a claim on the directory's
+ * `lock.recovery/`, so two writers can't both clear the way and a lock taken
+ * since is never the one removed. That directory appears the first time a
+ * lock is recovered and stays. A writer that stalls for longer than ten
+ * seconds inside a write is taken for dead, and the write it finishes late
+ * is no longer exclusive.
+ *
+ * All of this leans on `link`, `rename`, and `mkdir` being atomic and on a
+ * directory listing being current, which a local filesystem gives and a network
  * filesystem may not. So this is a store for the processes of one machine,
  * and a run that events reach on several hosts wants `object_store`.
  *
@@ -39,8 +58,8 @@
  */
 
 import { createHash, randomUUID } from 'node:crypto'
-import { link, mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { link, mkdir, readdir, readFile, rename, rm, rmdir, stat, writeFile } from 'node:fs/promises'
+import { dirname, join } from 'node:path'
 import type { CheckpointStore } from '#core'
 
 export type FilesystemStoreConfig = {
@@ -67,12 +86,21 @@ type ClaimRecord = {
   readonly expires_at: number
 }
 
-// How long a write's lock on its key lasts when nothing releases it, which
-// only happens when the process that took it died.
+// How old a write's lock gets before it counts as abandoned, which only
+// happens when the process that took it died.
 const LOCK_MS = 10_000
 
 // How long a writer waits before it asks for a held lock again.
 const LOCK_RETRY_MS = 2
+
+// The claim directory a writer holds while it removes an abandoned lock, one
+// to each directory of values. No key's files can take the name, since each
+// of those carries the key's hash.
+const RECOVERY = 'lock.recovery'
+
+// The last write this process queued on each lock path, there while a write
+// on that path is under way.
+const turns = new Map<string, Promise<void>>()
 
 /**
  * Turn a key or a scope prefix into a filesystem-safe name.
@@ -250,21 +278,110 @@ function sleep(ms: number): Promise<void> {
 }
 
 /**
- * Run `body` while holding the lock in `dir`, waiting for it when another
- * writer has it.
- *
- * The lock is a claim, so one that a dead process left behind lapses after
- * `LOCK_MS` instead of wedging the key. A write is a file and a rename, which
- * takes a small fraction of that.
+ * True when the lock at `path` is older than `LOCK_MS`. A lock that's gone
+ * isn't abandoned, it was let go.
  */
-async function with_lock<t>(dir: string, body: () => Promise<t>): Promise<t> {
-  const owner = randomUUID()
-  while (!(await claim_in(dir, owner, LOCK_MS))) await sleep(LOCK_RETRY_MS)
+async function is_abandoned(path: string): Promise<boolean> {
   try {
-    return await body()
+    return Date.now() - (await stat(path)).mtimeMs > LOCK_MS
+  } catch (err) {
+    if (error_code(err) === 'ENOENT') return false
+    throw err
+  }
+}
+
+/**
+ * Remove the abandoned lock at `path`, or wait a moment when another writer
+ * is already removing one.
+ *
+ * Two writers that both found the lock abandoned can't both be let remove
+ * it: the second would remove the lock a third writer took after the first
+ * cleared the way. So the removal happens under a claim, and the lock's age
+ * is read again once the claim is held. The claim lapses by itself when its
+ * holder dies, which a second lock directory wouldn't.
+ */
+async function recover(path: string): Promise<void> {
+  const dir = join(dirname(path), RECOVERY)
+  const owner = randomUUID()
+  if (!(await claim_in(dir, owner, LOCK_MS))) return sleep(LOCK_RETRY_MS)
+  try {
+    if (await is_abandoned(path)) await rm(path, { recursive: true, force: true })
   } finally {
     await release_in(dir, owner)
   }
+}
+
+/**
+ * Take the lock at `path`, waiting for it while another writer has it.
+ *
+ * The lock is a directory, and `mkdir` refuses one that exists, so of the
+ * writers that ask at once exactly one gets it. The first write to a store
+ * finds no directory to make the lock in, and makes that first.
+ */
+async function take_lock(path: string): Promise<void> {
+  for (;;) {
+    try {
+      await mkdir(path)
+      return
+    } catch (err) {
+      const code = error_code(err)
+      if (code === 'ENOENT') {
+        await mkdir(dirname(path), { recursive: true })
+        continue
+      }
+      if (code !== 'EEXIST') throw err
+    }
+    if (await is_abandoned(path)) await recover(path)
+    else await sleep(LOCK_RETRY_MS)
+  }
+}
+
+/**
+ * Let go of the lock at `path`. A lock that vanished meanwhile (its scope
+ * was cleared) has nothing left to let go of.
+ */
+async function drop_lock(path: string): Promise<void> {
+  try {
+    await rmdir(path)
+  } catch (err) {
+    if (error_code(err) !== 'ENOENT') throw err
+  }
+}
+
+/**
+ * Run `body` once every write this process began on `path` before it has
+ * finished.
+ *
+ * The lock directory is for the other processes. Inside one process the
+ * writers to a key queue here, so each takes the lock on its first try and
+ * none of them spends its wait asking the disk for it.
+ */
+async function in_turn<t>(path: string, body: () => Promise<t>): Promise<t> {
+  const ahead = turns.get(path)
+  const done = Promise.withResolvers<void>()
+  turns.set(path, done.promise)
+  await ahead
+  try {
+    return await body()
+  } finally {
+    if (turns.get(path) === done.promise) turns.delete(path)
+    done.resolve()
+  }
+}
+
+/**
+ * Run `body` while holding the lock at `path`, waiting for it when another
+ * writer has it.
+ */
+function with_lock<t>(path: string, body: () => Promise<t>): Promise<t> {
+  return in_turn(path, async () => {
+    await take_lock(path)
+    try {
+      return await body()
+    } finally {
+      await drop_lock(path)
+    }
+  })
 }
 
 /**
@@ -357,7 +474,7 @@ function store_at(root_dir: string): FilesystemStore {
 
   const get = (key: string): Promise<unknown> => read_json(value_path(key))
 
-  // Taking the lock makes its directory, and the root with it.
+  // Taking the lock makes the root when it isn't there yet.
   const set = (key: string, value: unknown): Promise<void> =>
     with_lock(lock_dir(key), () => write_atomic(value_path(key), value))
 

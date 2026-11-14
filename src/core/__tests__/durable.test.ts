@@ -1435,6 +1435,96 @@ describe('durable: a run from before the inbox moved into the record', () => {
     expect(old_of(store)).toStrictEqual({ approve: { data: { ok: true } } })
   })
 
+  // The record a driver from before the nonce would have left: `format: 1`,
+  // with no inbox and no nonce.
+  async function as_unnamed_format_1(store: MemoryStore, run_id: string): Promise<void> {
+    const { inbox: _, nonce: __, ...rest } = (await record_of(store, run_id)) as Record<string, unknown>
+    await store.scope(run_id).set('record', { ...rest, format: 1 })
+  }
+
+  const nonce_of = async (store: MemoryStore, run_id: string): Promise<unknown> =>
+    ((await record_of(store, run_id)) as { nonce?: unknown }).nonce
+
+  it('draws a nonce for a run that had none as it migrates it, and keeps it from then on', async () => {
+    const store = memory_store()
+    const runs = durable({ store })
+    const flow = sequence([gate('first'), gate('second')])
+    await runs.start('r', flow, 'go', QUIET)
+    await as_unnamed_format_1(store, 'r')
+    expect(await nonce_of(store, 'r')).toBeUndefined()
+    await runs.start('r', flow, 'go', QUIET)
+    const nonce = await nonce_of(store, 'r')
+    expect(nonce).toEqual(expect.stringMatching(/^[0-9a-f-]{36}$/))
+    await runs.resume('r', flow, { first: { ok: true } }, QUIET)
+    expect(await record_of(store, 'r')).toMatchObject({ format: 2, old_inbox: true, nonce })
+  })
+
+  it('keeps the nonce of a format 1 record that has one', async () => {
+    const store = memory_store()
+    const runs = durable({ store })
+    const flow = sequence([gate('approve')])
+    await runs.start('r', flow, 'in', QUIET)
+    const nonce = await nonce_of(store, 'r')
+    await as_format_1(store, 'r')
+    await runs.start('r', flow, 'in', QUIET)
+    expect(await record_of(store, 'r')).toMatchObject({ format: 2, old_inbox: true, nonce })
+  })
+
+  it('lands a delivery that read the run before a drive migrated it and gave it a nonce', async () => {
+    const base = memory_store()
+    // The delivery has read the format 1 record, with no nonce, when it stalls.
+    const { store, held, release } = holding_write(base, delivers('approve', true))
+    const runs = durable({ store })
+    const flow = sequence([gate('approve')])
+    await runs.start('r', flow, 'in', QUIET)
+    await as_unnamed_format_1(base, 'r')
+    const late = runs.resume('r', flow, { approve: { ok: true } }, QUIET)
+    await held
+    expect(await runs.start('r', flow, 'in', QUIET)).toMatchObject({ kind: 'suspended', id: 'approve' })
+    expect(await nonce_of(base, 'r')).toEqual(expect.stringMatching(/^[0-9a-f-]{36}$/))
+    release()
+    expect(await late).toEqual({ kind: 'done', run_id: 'r', output: 'in+approve' })
+  })
+
+  it('keeps a delivery that read a migrated run out of another old run that took its id', async () => {
+    const base = memory_store()
+    const { store, held, release } = holding_write(base, delivers('first', false))
+    const runs = durable({ store })
+    const flow = sequence([gate('first'), gate('second')])
+    await runs.start('r', flow, 'go', QUIET)
+    await as_unnamed_format_1(base, 'r')
+    await runs.start('r', flow, 'go', QUIET)
+    const first_nonce = await nonce_of(base, 'r')
+    const late = runs.resume('r', flow, { first: { ok: false } }, QUIET)
+    await held
+    // The run is deleted, and a record from the old driver takes its place,
+    // which a drive then migrates.
+    expect(await runs.delete('r')).toBe(true)
+    await runs.start('r', flow, 'go', QUIET)
+    await as_unnamed_format_1(base, 'r')
+    await runs.start('r', flow, 'go', QUIET)
+    expect(await nonce_of(base, 'r')).not.toBe(first_nonce)
+    release()
+    expect(await late).toMatchObject({ kind: 'suspended', id: 'first' })
+    expect(await record_of(base, 'r')).toMatchObject({ old_inbox: true, inbox: {}, resume_data: {} })
+  })
+
+  it('keeps a delivery that read a run with no nonce out of a run started since under its id', async () => {
+    const base = memory_store()
+    const { store, held, release } = holding_write(base, delivers('first', false))
+    const runs = durable({ store })
+    const flow = sequence([gate('first'), gate('second')])
+    await runs.start('r', flow, 'go', QUIET)
+    await as_unnamed_format_1(base, 'r')
+    const late = runs.resume('r', flow, { first: { ok: false } }, QUIET)
+    await held
+    expect(await runs.delete('r')).toBe(true)
+    await runs.start('r', flow, 'go', QUIET)
+    release()
+    expect(await late).toMatchObject({ kind: 'suspended', id: 'first' })
+    expect(await record_of(base, 'r')).toMatchObject({ old_inbox: false, inbox: {}, resume_data: {} })
+  })
+
   it('keeps what waited there when the flow changed, for the flow the run started on', async () => {
     const store = memory_store()
     const runs = durable({ store })

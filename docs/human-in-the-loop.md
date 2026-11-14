@@ -282,7 +282,12 @@ where your events land:
 - **`filesystem_store`** holds your runs between the processes of one machine.
   Its claims and its conditional writes lean on the local filesystem being
   atomic, which a network filesystem doesn't promise, so don't share its
-  directory between hosts.
+  directory between hosts. Every write holds a lock on its key while it
+  works, which is a directory it makes beside the value and removes when it's
+  done. That costs a `set` four filesystem calls where an unlocked one would
+  make two, and writers to one key go one at a time. If a process dies inside
+  a write, the next writer to that key waits until the lock is ten seconds
+  old and then clears it.
 - **`sqlite_store`** holds them between the processes of one machine too, in
   one file, on Node's built-in `node:sqlite`. SQLite runs each statement
   atomically across connections, so its claims and its conditional writes are
@@ -309,6 +314,7 @@ const runs = durable({ store: object_store({ client, prefix: 'runs/' }) });
 Fascicle depends on no cloud SDK, so the client is yours to paste. This one is
 for `@aws-sdk/client-s3`:
 
+<!-- snippet: check -->
 ```ts
 import {
   DeleteObjectCommand,
@@ -322,11 +328,12 @@ import {
 import type { ObjectClient } from 'fascicle/adapters';
 
 // A 412 says the condition failed. S3 answers 409 when a conditional write
-// overlapped another, and the store reads the object again either way.
+// overlapped another, and a 404 `NoSuchKey` when an `If-Match` finds the key
+// gone, and the store reads the object again in every case.
 function lost(err: unknown): boolean {
   if (!(err instanceof S3ServiceException)) return false;
   const status = err.$metadata.httpStatusCode;
-  return status === 412 || status === 409;
+  return status === 412 || status === 409 || err.name === 'NoSuchKey';
 }
 
 export function s3_object_client(s3: S3Client, Bucket: string): ObjectClient {
@@ -395,7 +402,9 @@ and quietly ignores it, since two writers then both win and nothing errors. So
 before you trust a service with your runs, run `checkpoint_store_conformance`
 from `fascicle/testing` against a real bucket once (see
 [testing.md](./testing.md#checkpoint_store_conformance)). Its racing checks
-are what catch a service like that.
+are what catch a service like that. Fascicle's own repository keeps that run
+as [`test/live/object_store_live.test.ts`](../test/live/object_store_live.test.ts),
+which takes the client above to a bucket you name and deletes what it wrote.
 
 If you'd rather keep runs in Postgres or DynamoDB, write a store over the
 client you already use and prove it with the same suite. Each has the
@@ -410,7 +419,13 @@ pattern to copy.
 When you upgrade, mind the record's format. The driver now writes
 `format: 2`, which keeps the inbox inside the record, and it brings your
 `format: 1` runs forward on their first drive, with whatever waited in each
-run's inbox. A driver from 0.18 or earlier can't read `format: 2`. It takes
+run's inbox. That drive also gives the run the nonce that tells it from a
+run started again under its id, which a `format: 1` record never had. A run
+brought forward this way costs one store read more each time it rests at a
+gate, for as long as it lives. The driver can't list what still waits in the
+run's old inbox, so it looks there for each gate as the run reaches it, and
+whatever waited for a gate the run never reaches stays until you delete the
+run. A driver from 0.18 or earlier can't read `format: 2`. It takes
 the run for one it has never seen, so its `start` begins your run again from
 its input and its `resume` throws `run_not_found_error`. Run one version of
 the driver across your hosts at a time, and don't roll back past this one

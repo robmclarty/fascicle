@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -109,11 +109,6 @@ function read_json(path: string): unknown {
   return JSON.parse(readFileSync(path, 'utf8'))
 }
 
-// What a directory holds apart from the locks its writes took.
-function values_in(dir: string): string[] {
-  return readdirSync(dir).filter((name) => !name.endsWith('.lock'))
-}
-
 function version_of(text: string): string {
   return createHash('sha256').update(text).digest('hex')
 }
@@ -122,14 +117,14 @@ describe('filesystem_store values on disk', () => {
   it('keeps a key at <slug>.<hash>.json under the root', async () => {
     const store = filesystem_store({ root_dir: work_dir })
     await store.set('build:abc/def', { ok: true })
-    expect(values_in(work_dir)).toEqual([`${disk_name('build:abc/def')}.json`])
+    expect(readdirSync(work_dir)).toEqual([`${disk_name('build:abc/def')}.json`])
     expect(disk_name('build:abc/def')).toMatch(/^build_abc_def\.[0-9a-f]{12}$/)
   })
 
   it('cuts a long key to 64 characters before the hash', async () => {
     const store = filesystem_store({ root_dir: work_dir })
     await store.set('k'.repeat(100), 1)
-    expect(values_in(work_dir)).toEqual([`${'k'.repeat(64)}.${disk_name('k'.repeat(100)).slice(-12)}.json`])
+    expect(readdirSync(work_dir)).toEqual([`${'k'.repeat(64)}.${disk_name('k'.repeat(100)).slice(-12)}.json`])
   })
 
   it('writes undefined, or a value JSON has no text for, as null', async () => {
@@ -166,15 +161,13 @@ describe('filesystem_store scopes', () => {
     await store.scope('b').set('k', 'b')
     await store.scope('a').clear()
     expect(readdirSync(work_dir).toSorted()).toEqual(
-      [`${disk_name('b')}.scope`, `${disk_name('k')}.json`, `${disk_name('k')}.lock`].toSorted(),
+      [`${disk_name('b')}.scope`, `${disk_name('k')}.json`].toSorted(),
     )
   })
 })
 
 describe('filesystem_store versions', () => {
   const value_file = (key: string): string => join(work_dir, `${disk_name(key)}.json`)
-  const lock_file = (key: string, generation: number): string =>
-    join(work_dir, `${disk_name(key)}.lock`, `${generation}.json`)
 
   it('reads a missing key as undefined', async () => {
     const store = filesystem_store({ root_dir: work_dir })
@@ -248,7 +241,7 @@ describe('filesystem_store versions', () => {
   it('refuses a version for a key that holds nothing', async () => {
     const store = filesystem_store({ root_dir: work_dir })
     expect(await store.set_if('k', { v: 2 }, version_of('{"v":1}'))).toBe(false)
-    expect(values_in(work_dir)).toEqual([])
+    expect(readdirSync(work_dir)).toEqual([])
   })
 
   it('writes a conditional value JSON has no text for as null', async () => {
@@ -260,15 +253,52 @@ describe('filesystem_store versions', () => {
     expect(readFileSync(value_file('k'), 'utf8')).toBe('null')
   })
 
-  it('takes a lock on the key for a write and lets it go afterwards', async () => {
+  it("keeps a write's lock apart from a claim on the same key", async () => {
+    const store = filesystem_store({ root_dir: work_dir })
+    expect(await store.claim('k', 'owner', 60_000)).toBe(true)
+    await store.set('k', 1)
+    expect(await store.get('k')).toBe(1)
+    expect(await store.claim('k', 'another', 60_000)).toBe(false)
+  })
+})
+
+describe('filesystem_store write locks', () => {
+  const value_file = (key: string): string => join(work_dir, `${disk_name(key)}.json`)
+  const lock_dir = (key: string): string => join(work_dir, `${disk_name(key)}.lock`)
+  const recovery_dir = (): string => join(work_dir, 'lock.recovery')
+
+  // Take the lock on `key` the way another process's write would.
+  function hold(key: string): void {
+    mkdirSync(lock_dir(key))
+  }
+
+  // Make the lock on `key` look as if it was taken `ms` milliseconds ago.
+  function age(key: string, ms: number): void {
+    const then = new Date(Date.now() - ms)
+    utimesSync(lock_dir(key), then, then)
+  }
+
+  const writes: ReadonlyArray<readonly [string, (store: ReturnType<typeof filesystem_store>) => Promise<unknown>]> = [
+    ['set', (store) => store.set('k', 'late')],
+    ['delete', (store) => store.delete('k')],
+    ['set_if', (store) => store.set_if('k', 'late', version_of('"early"'))],
+  ]
+
+  it('leaves nothing beside the value once a write is done', async () => {
     const store = filesystem_store({ root_dir: work_dir })
     await store.set('k', 1)
-    expect(read_json(lock_file('k', 1))).toMatchObject({ expires_at: 0 })
+    expect(readdirSync(work_dir)).toEqual([`${disk_name('k')}.json`])
     await store.set_if('k', 2, version_of('1'))
+    expect(readdirSync(work_dir)).toEqual([`${disk_name('k')}.json`])
     await store.delete('k')
-    // Each write took the released lock as the next generation.
-    expect(readdirSync(join(work_dir, `${disk_name('k')}.lock`))).toEqual(['3.json'])
-    expect(read_json(lock_file('k', 3))).toMatchObject({ expires_at: 0 })
+    expect(readdirSync(work_dir)).toEqual([])
+  })
+
+  it('makes the root for the first write, however deep it is', async () => {
+    const root = join(work_dir, 'not', 'made', 'yet')
+    const store = filesystem_store({ root_dir: root })
+    await store.set('k', 1)
+    expect(readdirSync(root)).toEqual([`${disk_name('k')}.json`])
   })
 
   it('lets the lock go when the write fails', async () => {
@@ -276,52 +306,121 @@ describe('filesystem_store versions', () => {
     // A rename onto a directory fails, with the lock taken.
     mkdirSync(value_file('k'))
     await expect(store.set('k', 1)).rejects.toThrow()
-    expect(read_json(lock_file('k', 1))).toMatchObject({ expires_at: 0 })
+    expect(readdirSync(work_dir).filter((name) => name.endsWith('.lock'))).toEqual([])
   })
 
-  it('waits for as long as a lock is held, and writes once it is let go', async () => {
-    const store = filesystem_store({ root_dir: work_dir })
-    await store.set('k', 1)
-    const held = JSON.stringify({ owner: 'another writer', expires_at: Date.now() + 60_000 })
-    writeFileSync(lock_file('k', 1), held)
-    const landed = vi.fn()
-    const waiting = store.set('k', 2).then(landed)
-    await new Promise((resolve) => setTimeout(resolve, 60))
-    expect(landed).not.toHaveBeenCalled()
-    expect(await store.get('k')).toBe(1)
-    writeFileSync(lock_file('k', 1), JSON.stringify({ owner: 'another writer', expires_at: 0 }))
-    await waiting
-    expect(await store.get('k')).toBe(2)
-  })
-
-  it.each([
-    ['set', (store: ReturnType<typeof filesystem_store>) => store.set('k', 'late')],
-    ['delete', (store: ReturnType<typeof filesystem_store>) => store.delete('k')],
-    ['set_if', (store: ReturnType<typeof filesystem_store>) => store.set_if('k', 'late', version_of('"early"'))],
-  ])('makes %s wait for a write that holds the lock', async (_, write) => {
+  it.each(writes)('makes %s wait for as long as another writer holds the lock', async (_, write) => {
     const store = filesystem_store({ root_dir: work_dir })
     await store.set('k', 'early')
-    writeFileSync(lock_file('k', 1), JSON.stringify({ owner: 'another writer', expires_at: Date.now() + 80 }))
-    const started = Date.now()
-    await write(store)
-    expect(Date.now() - started).toBeGreaterThanOrEqual(70)
+    hold('k')
+    const landed = vi.fn()
+    const waiting = write(store).then(landed)
+    await new Promise((resolve) => setTimeout(resolve, 60))
+    expect(landed).not.toHaveBeenCalled()
+    expect(await store.get('k')).toBe('early')
+    rmSync(lock_dir('k'), { recursive: true })
+    await waiting
     expect(await store.get('k')).not.toBe('early')
+    expect(readdirSync(work_dir).filter((name) => name.endsWith('.lock'))).toEqual([])
   })
 
   it('locks a write to one key and not its neighbors', async () => {
     const store = filesystem_store({ root_dir: work_dir })
-    await store.set('held', 1)
-    writeFileSync(lock_file('held', 1), JSON.stringify({ owner: 'another writer', expires_at: Date.now() + 60_000 }))
+    hold('held')
     await store.set('free', 2)
     expect(await store.get('free')).toBe(2)
   })
 
-  it("keeps a write's lock apart from a claim on the same key", async () => {
+  it('takes no lock to create a key, so a held one does not stop it', async () => {
     const store = filesystem_store({ root_dir: work_dir })
-    expect(await store.claim('k', 'owner', 60_000)).toBe(true)
+    hold('k')
+    expect(await store.set_if('k', 1, null)).toBe(true)
+  })
+
+  it('removes a lock older than ten seconds and writes, under a claim it lets go', async () => {
+    const store = filesystem_store({ root_dir: work_dir })
+    hold('k')
+    age('k', 10_500)
     await store.set('k', 1)
     expect(await store.get('k')).toBe(1)
-    expect(await store.claim('k', 'another', 60_000)).toBe(false)
+    expect(readdirSync(work_dir).toSorted()).toEqual([`${disk_name('k')}.json`, 'lock.recovery'].toSorted())
+    expect(readdirSync(recovery_dir())).toEqual(['1.json'])
+    expect(read_json(join(recovery_dir(), '1.json'))).toMatchObject({ expires_at: 0 })
+  })
+
+  it('removes an abandoned lock that holds files, as one from an older layout does', async () => {
+    const store = filesystem_store({ root_dir: work_dir })
+    hold('k')
+    writeFileSync(join(lock_dir('k'), '3.json'), JSON.stringify({ owner: 'gone', expires_at: 0 }))
+    age('k', 60_000)
+    await store.set('k', 1)
+    expect(await store.get('k')).toBe(1)
+    expect(readdirSync(work_dir).filter((name) => name.endsWith('.lock'))).toEqual([])
+  })
+
+  it('waits on a lock a little under ten seconds old', async () => {
+    const store = filesystem_store({ root_dir: work_dir })
+    hold('k')
+    age('k', 9_000)
+    const landed = vi.fn()
+    const waiting = store.set('k', 1).then(landed)
+    await new Promise((resolve) => setTimeout(resolve, 60))
+    expect(landed).not.toHaveBeenCalled()
+    expect(readdirSync(work_dir)).toEqual([`${disk_name('k')}.lock`])
+    rmSync(lock_dir('k'), { recursive: true })
+    await waiting
+  })
+
+  it('leaves an abandoned lock alone while another writer holds the recovery claim', async () => {
+    const store = filesystem_store({ root_dir: work_dir })
+    hold('k')
+    age('k', 60_000)
+    mkdirSync(recovery_dir())
+    const claim = join(recovery_dir(), '1.json')
+    writeFileSync(claim, JSON.stringify({ owner: 'another writer', expires_at: Date.now() + 60_000 }))
+    const landed = vi.fn()
+    const waiting = store.set('k', 1).then(landed)
+    await new Promise((resolve) => setTimeout(resolve, 60))
+    expect(landed).not.toHaveBeenCalled()
+    expect(readdirSync(work_dir)).toContain(`${disk_name('k')}.lock`)
+    // The other writer lets its claim go, and this one recovers the lock.
+    writeFileSync(claim, JSON.stringify({ owner: 'another writer', expires_at: 0 }))
+    await waiting
+    expect(await store.get('k')).toBe(1)
+  })
+
+  it('recovers each abandoned lock of several keys in one directory', async () => {
+    const store = filesystem_store({ root_dir: work_dir })
+    for (const key of ['a', 'b', 'c']) {
+      hold(key)
+      age(key, 60_000)
+    }
+    await Promise.all(['a', 'b', 'c'].map((key) => store.set(key, key)))
+    expect(await Promise.all(['a', 'b', 'c'].map((key) => store.get(key)))).toEqual(['a', 'b', 'c'])
+    expect(readdirSync(work_dir).filter((name) => name.endsWith('.lock'))).toEqual([])
+  })
+
+  it('queues the writes of one process in the order they were made', async () => {
+    const store = filesystem_store({ root_dir: work_dir })
+    const order: number[] = []
+    await Promise.all(
+      Array.from({ length: 8 }, (_, i) => store.set('k', i).then(() => order.push(i))),
+    )
+    expect(order).toEqual([0, 1, 2, 3, 4, 5, 6, 7])
+    expect(await store.get('k')).toBe(7)
+    expect(readdirSync(work_dir)).toEqual([`${disk_name('k')}.json`])
+  })
+
+  it('runs the next write in the queue after one that failed', async () => {
+    const store = filesystem_store({ root_dir: work_dir })
+    mkdirSync(value_file('k'))
+    const failed = store.set('k', 1)
+    const next = store.delete('other')
+    await expect(failed).rejects.toThrow()
+    await next
+    rmSync(value_file('k'), { recursive: true })
+    await store.set('k', 2)
+    expect(await store.get('k')).toBe(2)
   })
 })
 

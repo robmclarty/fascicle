@@ -12,7 +12,7 @@ has one for `@aws-sdk/client-s3`).
 ![terminal output of the object-store example: the store passes all 32 conformance checks, the run waits at the approval with three objects in the bucket, the approval finishes it, and deleting the run empties the bucket](./screenshot.png)
 
 The screenshot is from before the suite grew its compare-and-set checks. The
-store passes all 47 now.
+store passes all 49 now.
 
 ## How the Store Works
 

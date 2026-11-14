@@ -406,6 +406,11 @@ to:
 - Of several writes that race on one version, exactly one wins.
 - `set` and `delete` move the version, and a create works again after a
   `delete`.
+- A `set` that races a write on a version is the write that lasts, and a
+  `delete` that races one leaves the key absent. The write on the version may
+  win or lose, since either order is a fair one, but its value can't be what
+  the key ends up holding. Each race runs sixteen times, and a `set_if` that
+  checks the version in one step and writes in another loses one of them.
 - A scope keeps both methods. A version read in one scope satisfies nothing
   in another, and a create works again after a `clear`.
 

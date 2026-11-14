@@ -74,6 +74,11 @@ const HELD_MS = 60_000
 
 const RACERS = 8
 
+// How many times a conditional write races an unconditional one. The two
+// start in the other order every round, and a store that checks its
+// condition and then writes in a second step loses the race within a few.
+const RACE_ROUNDS = 16
+
 // Stryker disable StringLiteral: the checks need their keys, prefixes, and
 // owners to differ from one another and nothing more, which any distinct
 // strings do, so trading one for another can't change what a check proves.
@@ -292,6 +297,39 @@ async function ensure_one_winner(
     canonical(value) === canonical(racer_value(winners[0])),
     `the key holds ${show(value)}, which the ${kind} that won never wrote`,
   )
+}
+
+/**
+ * Race a write on the version `RACE_KEY` was just read at against `plain`,
+ * an unconditional write to the same key, and resolve what the key holds
+ * afterwards, or `undefined` when it holds nothing.
+ *
+ * Whichever of the two the store runs first, the unconditional write decides
+ * what's left. Run second, it lands over the conditional write. Run first,
+ * it moves the version, and the conditional write is refused. So the
+ * conditional write may report either answer, and its value may never be
+ * what the key ends up holding. Even rounds start the conditional write
+ * first and odd rounds start the unconditional one first, since a store
+ * that isn't atomic tends to lose only one of the two orders.
+ */
+async function race_unconditional(
+  store: CheckpointStore,
+  round: number,
+  plain: () => Promise<void>,
+): Promise<Versioned | undefined> {
+  const cas = cas_of(store)
+  await store.set(RACE_KEY, { round, by: 'before' })
+  const read = await held_version(cas, RACE_KEY)
+  const conditional = (): Promise<boolean> => cas.set_if(RACE_KEY, raced_value(round), read.version)
+  await (round % 2 === 0 ? Promise.all([conditional(), plain()]) : Promise.all([plain(), conditional()]))
+  return cas.get_versioned(RACE_KEY)
+}
+
+/**
+ * The value the conditional write of one round writes.
+ */
+function raced_value(round: number): unknown {
+  return { round, by: 'set_if' }
 }
 
 const CONTRACT_CHECKS: ReadonlyArray<Check> = [
@@ -738,6 +776,31 @@ const CAS_CHECKS: ReadonlyArray<Check> = [
       const over_delete = await cas.set_if(KEY, { v: 3 }, second.version)
       ensure(!over_delete, 'a write landed on the version of a value that was deleted')
       ensure(is_miss(await store.get(KEY)), 'a refused write brought a deleted value back')
+    },
+  },
+  {
+    name: 'a set that races a write on a version is the one that lasts',
+    run: async (store) => {
+      for (let round = 0; round < RACE_ROUNDS; round += 1) {
+        const written = { round, by: 'set' }
+        const left = await race_unconditional(store, round, () => store.set(RACE_KEY, written))
+        ensure(
+          canonical(left?.value) === canonical(written),
+          `a set raced a write on a version and the key holds ${show(left?.value)}, not what the set wrote`,
+        )
+      }
+    },
+  },
+  {
+    name: 'a delete that races a write on a version leaves the key absent',
+    run: async (store) => {
+      for (let round = 0; round < RACE_ROUNDS; round += 1) {
+        const left = await race_unconditional(store, round, () => store.delete(RACE_KEY))
+        ensure(
+          left === undefined,
+          `a delete raced a write on a version and the key holds ${show(left?.value)}`,
+        )
+      }
     },
   },
   {

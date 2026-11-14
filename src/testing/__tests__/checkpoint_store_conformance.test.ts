@@ -58,6 +58,8 @@ const CAS = [
   'a write on a stale version is refused and changes nothing',
   'exactly one racing write on one version wins',
   'set and delete move the version',
+  'a set that races a write on a version is the one that lasts',
+  'a delete that races a write on a version leaves the key absent',
   'a create works again after a delete',
 ]
 const CAS_DAMAGE = ['a damaged value reads with a version']
@@ -1182,6 +1184,11 @@ describe('checkpoint_store_conformance', () => {
           'a write landed on a version another write had already replaced',
         'exactly one racing write on one version wins': '8 writes raced on one version and 8 won',
         'set and delete move the version': 'a write landed on a version a set had already replaced',
+        // On the rounds that start the set or the delete first.
+        'a set that races a write on a version is the one that lasts':
+          'a set raced a write on a version and the key holds {"round":1,"by":"set_if"}, not what the set wrote',
+        'a delete that races a write on a version leaves the key absent':
+          'a delete raced a write on a version and the key holds {"round":1,"by":"set_if"}',
       })
     })
 
@@ -1241,6 +1248,10 @@ describe('checkpoint_store_conformance', () => {
         'exactly one racing write on one version wins':
           'the key holds {"writer":7}, which the write that won never wrote',
         'set and delete move the version': 'a refused write brought a deleted value back',
+        'a set that races a write on a version is the one that lasts':
+          'a set raced a write on a version and the key holds {"round":1,"by":"set_if"}, not what the set wrote',
+        'a delete that races a write on a version leaves the key absent':
+          'a delete raced a write on a version and the key holds {"round":1,"by":"set_if"}',
       })
     })
 
@@ -1373,6 +1384,126 @@ describe('checkpoint_store_conformance', () => {
       })
     })
 
+    it('fails a store that checks the version and writes in a second step', async () => {
+      // The read and the write are two awaits, so a set or a delete that
+      // starts after the read lands between them and the write goes over it.
+      const failures = await failures_of(
+        with_set_if(async (base, key, value, expected) => {
+          const read = await base.get_versioned(key)
+          if (expected === null || read?.version !== expected) return base.set_if(key, value, expected)
+          await base.set(key, value)
+          return true
+        }),
+      )
+      expect(failures).toEqual({
+        'exactly one racing write on one version wins': '8 writes raced on one version and 8 won',
+        'a set that races a write on a version is the one that lasts':
+          'a set raced a write on a version and the key holds {"round":0,"by":"set_if"}, not what the set wrote',
+        'a delete that races a write on a version leaves the key absent':
+          'a delete raced a write on a version and the key holds {"round":0,"by":"set_if"}',
+      })
+    })
+
+    it('fails a store that orders a set and a delete by when they began', async () => {
+      // Each unconditional write is stamped as it starts and dropped when a
+      // write stamped later has landed by the time it gets to the data, so
+      // one that started before a conditional write and landed after it is
+      // lost. Only the rounds that start the unconditional write first show it.
+      const failures = await failures_of(
+        broken_cas((base) => {
+          let clock = 0
+          let landed = 0
+          const stamped = async (write: () => Promise<void>): Promise<void> => {
+            clock += 1
+            const at = clock
+            await sleep(0)
+            if (at < landed) return
+            landed = at
+            await write()
+          }
+          return {
+            set: (key, value) => stamped(() => base.set(key, value)),
+            delete: (key) => stamped(() => base.delete(key)),
+            set_if: async (key, value, expected) => {
+              clock += 1
+              const at = clock
+              const wrote = await base.set_if(key, value, expected)
+              if (wrote) landed = at
+              return wrote
+            },
+          }
+        }),
+      )
+      expect(failures).toEqual({
+        'a set that races a write on a version is the one that lasts':
+          'a set raced a write on a version and the key holds {"round":1,"by":"set_if"}, not what the set wrote',
+        'a delete that races a write on a version leaves the key absent':
+          'a delete raced a write on a version and the key holds {"round":1,"by":"set_if"}',
+      })
+    })
+
+    it('fails a store whose racing set leaves the value from before the race', async () => {
+      // A set that finds a conditional write under way gives up and resolves.
+      const failures = await failures_of(
+        broken_cas((base) => {
+          let writing = 0
+          return {
+            set: async (key, value) => {
+              if (writing === 0) await base.set(key, value)
+            },
+            set_if: async (key, value, expected) => {
+              writing += 1
+              await sleep(0)
+              writing -= 1
+              return expected === null ? base.set_if(key, value, expected) : false
+            },
+          }
+        }),
+      )
+      expect(failures['a set that races a write on a version is the one that lasts']).toBe(
+        'a set raced a write on a version and the key holds {"round":0,"by":"before"}, not what the set wrote',
+      )
+    })
+
+    it('races a set, and then a delete, against sixteen writes on a version', async () => {
+      const raced: unknown[] = []
+      const report = await checkpoint_store_conformance(
+        with_set_if((base, key, value, expected) => {
+          if (key === 'race' && expected !== null) raced.push(value)
+          return base.set_if(key, value, expected)
+        }),
+        FAST,
+      )
+      expect(report.failed).toEqual([])
+      const rounds = Array.from({ length: 16 }, (_, round) => ({ round, by: 'set_if' }))
+      expect(raced.filter((value) => (value as { by?: string }).by === 'set_if')).toEqual([...rounds, ...rounds])
+    })
+
+    it('starts the conditional write first on even rounds and the other write first on odd ones', async () => {
+      const order: string[] = []
+      const report = await checkpoint_store_conformance(
+        broken_cas((base) => ({
+          set: (key, value) => {
+            if ((value as { by?: string } | null)?.by === 'set') order.push('set')
+            return base.set(key, value)
+          },
+          delete: (key) => {
+            if (key === 'race') order.push('delete')
+            return base.delete(key)
+          },
+          set_if: (key, value, expected) => {
+            if ((value as { by?: string } | null)?.by === 'set_if') order.push('set_if')
+            return base.set_if(key, value, expected)
+          },
+        })),
+        FAST,
+      )
+      expect(report.failed).toEqual([])
+      const rounds = (plain: string): string[] =>
+        Array.from({ length: 8 }, () => ['set_if', plain, plain, 'set_if']).flat()
+      expect(order).toEqual([...rounds('set'), ...rounds('delete')])
+    })
+
     it('fails a store that remembers a deleted key', async () => {
       const failures = await failures_of(
         broken_cas((base) => {
@@ -1403,6 +1534,8 @@ describe('checkpoint_store_conformance', () => {
       )
       expect(failures).toEqual({
         'set and delete move the version': 'a write landed on the version of a value that was deleted',
+        'a delete that races a write on a version leaves the key absent':
+          'a delete raced a write on a version and the key holds {"round":1,"by":"set_if"}',
       })
     })
 
