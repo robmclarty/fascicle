@@ -123,12 +123,37 @@ describe('connect_mcp_servers', () => {
       .mockRejectedValueOnce(new Error('401 for Bearer abcdef123456'))
     const connected = await connect_mcp_servers([secret_stdio, secret_http], '/work', IDENTITY)
     expect(connected.warnings.map((warning) => warning.description)).toEqual([
-      "it couldn't be reached (exit 1 with TOKEN=[redacted]), so its tools are left out of the session",
+      "it couldn't be reached (exit [redacted] with TOKEN=[redacted]), so its tools are left out of the session",
       "it couldn't be reached (401 for [redacted]), so its tools are left out of the session",
     ])
     const said = warnings().join('') + JSON.stringify(connected.warnings)
     expect(said).not.toContain('sk-secret-token')
     expect(said).not.toContain('abcdef123456')
+  })
+
+  it('cuts a short value out where it stands whole, and leaves the words and numbers it is only part of', async () => {
+    const short_http: McpServer = {
+      ...http,
+      headers: [
+        { name: 'X-Token', value: 'ab12cd' },
+        { name: 'X-Retries', value: '1' },
+        { name: 'X-Reach', value: 'reached' },
+        { name: 'X-Mark', value: 'a.c' },
+        { name: 'X-Empty', value: '' },
+        { name: 'X-Long', value: 'ab12cd-and-more' },
+      ],
+    }
+    const short_stdio: McpServer = { ...stdio, env: [{ name: 'PIN', value: '123456' }] }
+    vi.mocked(mcp_client)
+      .mockRejectedValueOnce(new Error('401 from 127.0.0.1:3100, token "ab12cd" refused (abc, a.c, ab12cd-and-more, xab12cd, ab12cd_)'))
+      .mockRejectedValueOnce(new Error('spawn failed with PIN=123456 at 1234567'))
+    const connected = await connect_mcp_servers([short_http, short_stdio], '/work', IDENTITY)
+    expect(connected.warnings.map((warning) => warning.description)).toEqual([
+      'it couldn\'t be reached (401 from 127.0.0.[redacted]:3100, token "[redacted]" refused (abc, [redacted], [redacted], xab12cd, ab12cd_)), so its tools are left out of the session',
+      "it couldn't be reached (spawn failed with PIN=[redacted] at 1234567), so its tools are left out of the session",
+    ])
+    expect(warnings().join('')).not.toContain('"ab12cd"')
+    expect(warnings().join('')).not.toContain('PIN=123456')
   })
 
   it('throws a missing MCP SDK on, and closes the servers it had reached', async () => {

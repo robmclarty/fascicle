@@ -10,7 +10,7 @@
  * settings can't stop every thread, and the warning is kept for a client
  * that shows notices. A server's `env` and `headers` values are
  * credentials, so a warning carries the server's name and its error with
- * any of those values cut out, and nothing else of the server.
+ * every one of those values cut out, and nothing else of the server.
  *
  * Each tool is named `mcp__<server>__<tool>`, the form Claude Code uses, so
  * two servers' tools don't collide and none takes a workspace tool's name.
@@ -68,9 +68,10 @@ export const NO_MCP: McpConnections = { tools: [], close: async () => {}, warnin
 const NAME_LIMIT = 64
 
 /**
- * The shortest `env` or `headers` value that's cut out of a warning. A
- * shorter one, such as `1` or `true`, is a setting, and cutting it would
- * shred the message it happens to appear in.
+ * The shortest `env` or `headers` value that's cut out of a warning
+ * wherever it appears. A shorter one, such as `1` or `true`, is cut only
+ * where it stands whole, since cutting it out of the middle of every word
+ * and number would shred the message it happens to appear in.
  */
 const SECRET_LENGTH = 8
 
@@ -113,21 +114,34 @@ function client_config(server: McpServer, cwd: string): McpClientConfig | undefi
 }
 
 /**
- * `text` with every `env` and `headers` value of `server` that's long
- * enough to be a credential cut out, since an error that quotes one would
- * carry it to stderr and to the client.
+ * `text` with one `env` or `headers` value cut out. A short value is cut
+ * where no letter, digit, or underscore adjoins it.
+ */
+function without_value(text: string, value: string): string {
+  if (value.length >= SECRET_LENGTH) return text.replaceAll(value, '[redacted]')
+  const literal = value.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`)
+  return text.replaceAll(new RegExp(String.raw`(?<!\w)${literal}(?!\w)`, 'g'), '[redacted]')
+}
+
+/**
+ * `text` with every `env` and `headers` value of `server` cut out, the
+ * longest first, since an error that quotes one would carry it to stderr
+ * and to the client.
  */
 function without_secrets(server: McpServer, text: string): string {
   const pairs = 'command' in server ? server.env : 'headers' in server ? server.headers : []
-  return pairs.reduce((cut, { value }) => (value.length < SECRET_LENGTH ? cut : cut.replaceAll(value, '[redacted]')), text)
+  const values = pairs.map(({ value }) => value).filter((value) => value !== '')
+  return values.toSorted((a, b) => b.length - a.length).reduce(without_value, text)
 }
 
 /**
  * The warning for a server left out of the session, also written to
- * stderr, for a client that shows no notices.
+ * stderr, for a client that shows no notices. `error` is the server's own
+ * failure, which is the part that can quote one of its values.
  */
-function left_out(server: McpServer, reason: string): McpWarning {
-  const description = `${without_secrets(server, reason)}, so its tools are left out of the session`
+function left_out(server: McpServer, reason: string, error?: string): McpWarning {
+  const detail = error === undefined ? '' : ` (${without_secrets(server, error)})`
+  const description = `${reason}${detail}, so its tools are left out of the session`
   warn(`MCP server ${server.name}: ${description}`)
   return { title: `MCP server ${server.name} isn't connected`, description }
 }
@@ -149,7 +163,7 @@ async function connect_server(
     return await mcp_client(config, { client_info: identity, name_prefix })
   } catch (err: unknown) {
     if (err instanceof Error && err.name === 'mcp_sdk_missing_error') throw err
-    return left_out(server, `it couldn't be reached (${err instanceof Error ? err.message : String(err)})`)
+    return left_out(server, "it couldn't be reached", err instanceof Error ? err.message : String(err))
   }
 }
 
