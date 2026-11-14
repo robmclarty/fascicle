@@ -32,9 +32,13 @@ The published surface as of v0.18.0:
   `side_effect` records a `step_replayed` event whenever a resume runs it again,
   so you can see what a resume paid for twice. `describe.replays` finds those
   steps from the flow's shape before anything runs, so you can hold a flow to
-  having none in a test. Stores can scope and claim, and
-  [`examples/object-store/`](../examples/object-store/) shows you how to write
-  one over an S3-style client.
+  having none in a test. Stores can scope, claim, and write on a condition, so every write that
+  `durable` makes lands only on the record it read. `object_store` in
+  `fascicle/adapters` keeps a run in a bucket for more than one host to drive,
+  over a small client that you write for your bucket, `sqlite_store` keeps one
+  in a single file on `node:sqlite`, and
+  [`examples/object-store/`](../examples/object-store/) runs the first of them.
+  A drive can stream with `record_chunks`.
 - **A provider-sovereign engine.** One `generate` seam fronts eight providers.
   Most wrap the Vercel AI SDK, and five can instead run `transport: 'native'`
   (raw HTTP, no SDK in the path). Those five are `anthropic` on the Messages API,
@@ -104,6 +108,13 @@ The published surface as of v0.18.0:
   it stopped. `@agentclientprotocol/sdk` (1.8 or 2.x) rides as an optional peer,
   [`examples/acp-coder/`](../examples/acp-coder/) is a working coding agent on
   OpenRouter, and [acp.md](./acp.md) covers the rest.
+- **Network agents over A2A** (`fascicle/a2a`). `serve_a2a` serves a flow as an
+  Agent2Agent agent over JSON-RPC, so an agent built on another framework can
+  hand it work over HTTP, and `a2a_step` calls a remote agent from inside a
+  flow. Every task is a durable run, so a task that asks a question waits in
+  the store until the answer comes. `@a2a-js/sdk` rides as an optional peer,
+  [`examples/a2a-agent/`](../examples/a2a-agent/) is a working pair, and
+  [a2a.md](./a2a.md) covers the rest.
 - **Reading the web** (`fascicle/web`). `web_tools()` hands an agent
   `web_fetch`, which takes a URL and returns the page as text that a model can
   read, and `web_search` once you pass it a search backend. Both run in your own
@@ -159,33 +170,24 @@ The published surface as of v0.18.0:
   and `assert_prefix_stable` checks that each of those requests only appended
   to the one before it, so a provider's prompt cache can hold across the loop.
   `checkpoint_store_conformance` checks that a store you wrote
-  keeps the `CheckpointStore` contract, scopes and claims included.
+  keeps the `CheckpointStore` contract, with scopes, claims, and the
+  compare-and-set included.
 - **Supply-chain posture.** Releases publish from CI with npm Trusted Publishing
   (OIDC) and a signed provenance attestation, and you can verify one with
   `npm audit signatures`. See [SECURITY.md](../SECURITY.md).
 
 ## Near-Term
 
-- **Durable runs across hosts.** This one comes first, since it's the gap most
-  likely to stop a server-side app that builds on `durable` today.
-  `filesystem_store` claims a run safely between processes on one machine, but
-  its claims lean on a local filesystem, so a run that more than one host drives
-  needs a store that you write yourself, with
-  [`examples/object-store/`](../examples/object-store/) as the pattern to
-  follow. I want to ship a store that holds across hosts, and the plan is
-  settled. The store contract gains a compare-and-set, which is a read that
-  returns the value's version and a write that lands only on the version it
-  read. `durable` keeps each run's inbox in the run's record and makes every
-  write conditional, and `object_store` ships in `fascicle/adapters` over a
-  small client interface that you implement for your bucket. That fixes the
-  late resume and the stalled drive under Known Issues.
-- **ACP hosts beyond Zed.** The 0.17.6 release shipped sessions that last, the
-  context ring, the model picker, thread titles, stop reasons, and the client's
-  MCP servers. What's left is the login that the ACP registry asks for before
-  it lists an agent, the tool cards that a thread loses when you open it again
-  after a restart, and hosts other than Zed, kandev among them.
-  [acp.md](./acp.md#whats-missing-in-zed) lists what you'll notice is missing
-  today.
+- **ACP hosts beyond Zed.** An ACP agent now offers the login that the ACP
+  registry asks for, a thread that you open again comes back with its tool
+  cards, and an unknown session answers the way the protocol says. What's left
+  is to run it by hand in Zed and in kandev, to run the suite on the 1.x SDK,
+  and to list an agent in the registry.
+- **A live run of `object_store` against a real bucket.** The store passes the
+  conformance suite over in-memory clients only, and the S3 client in
+  [human-in-the-loop.md](./human-in-the-loop.md#the-store-a-run-lives-in) has
+  never been compiled against the SDK. I'll run both against a real bucket
+  before I call the store proven.
 - **A live check of prompt caching.** Since 0.17.0 an Anthropic tool loop
   caches by default, and the mocked suite proves that `cache_control` goes out
   on the wire, but not that a provider caches or what a loop saves. The live
@@ -209,16 +211,14 @@ The published surface as of v0.18.0:
 These are the bugs that I know about and haven't fixed yet, with the ones most
 likely to bite you first.
 
-- **A late resume can leave its datum behind.** A resume that stalls past its
-  claim between reading the run and writing its datum, or whose run is deleted
-  in that gap, can still write into the inbox of a gate that the run has passed.
-  Nothing reads it there unless the run comes back to that gate or a new run
-  under the same id reaches it. Closing both windows needs a compare-and-set
-  that the store contract doesn't have yet.
-- **A stalled drive can write over the drive that took its run.** `durable`
-  checks a run's revision and then writes its next record in two calls, so a
-  drive that stalls between them past its lease can write over the save of the
-  drive that took the run from it. The same compare-and-set closes it.
+- **An A2A agent that closes fails the tasks it was running.** `close` on a
+  `serve_a2a` agent ends every task in flight as `FAILED` and deletes its run,
+  even over a store that would have kept it. A task that waits at a gate
+  survives. Drain the agent before a redeploy until a close can leave a
+  running task for the next process.
+- **An A2A cancel can't stop a drive that another process holds.** The task
+  goes `CANCELED` at once and the drive's result is dropped, but the work runs
+  on to its end, and you pay for it.
 - **The viewer slows down on long runs and clips large flows.** Holding or
   playing the scrubber refolds the run from its first event at every position,
   so a long run lags. A flow that's still bigger than the window at the
@@ -243,12 +243,6 @@ likely to bite you first.
   authenticating. No release has made the switch yet, and none documents a
   flag that opts a run back out. When one ships, I'll have `claude_cli` pass
   that flag under `auto` and `oauth`, and let `api_key` calls go bare.
-- **Some provider errors still don't say what to do.** The ones that a new user
-  meets first name the fix now, but a few later ones name only what went wrong:
-  a turn that outran `turn_timeout_ms`, a stream cut off after `on_chunk` saw
-  it, a capability error that a custom provider throws, the `claude_cli` exit,
-  sandbox, and missing-result messages, and some of `create_engine`'s config
-  messages.
 - **Housekeeping.** Engine code that only tests call (`normalize_chunk`), a
   schema-issue formatter that `fascicle/testing`
   repeats, a viewer test that runs before the build that it checks, tsdown
@@ -259,8 +253,9 @@ likely to bite you first.
 
 Scoped but not sequenced. Each one is a bet on leverage, not a promise to you.
 
-- **Deployment shells.** Thin runtime wrappers around `run` / `run.stream`, so
-  HTTP/SSE, a queue worker, or a Cloudflare Worker. Your composition stays
+- **Deployment shells.** Thin runtime wrappers around `run` / `run.stream`.
+  `fascicle/a2a` is the first, and what remains is a plain HTTP/SSE shell, a
+  queue worker, and a Cloudflare Worker. Your composition stays
   portable, and only the runtime ships.
 - **Observability adapters (community territory).** Langfuse, LangSmith, Phoenix,
   Helicone, Braintrust, OpenLLMetry, each of which is a `TrajectoryLogger`. I want
