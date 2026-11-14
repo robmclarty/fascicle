@@ -1427,6 +1427,11 @@ describe('durable: a run from before the inbox moved into the record', () => {
     const record = (await record_of(store, 'r')) as Record<string, unknown>
     await store.scope('r').set('record', { ...record, old_inbox: 'yes' })
     expect(await runs.resume('r', flow, {}, QUIET)).toMatchObject({ kind: 'suspended', id: 'approve' })
+    // Taking up a delivered datum touches nothing there either.
+    expect(await runs.resume('r', flow, { approve: { ok: false } }, QUIET)).toMatchObject({
+      kind: 'done',
+      output: 'in-approve',
+    })
     expect(old_of(store)).toStrictEqual({ approve: { data: { ok: true } } })
   })
 
