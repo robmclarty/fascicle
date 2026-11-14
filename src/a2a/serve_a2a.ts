@@ -86,7 +86,8 @@ async function answer(agent: A2aAgent, incoming: IncomingMessage, outgoing: Serv
       return
     }
     outgoing.writeHead(500, { 'content-type': 'application/json' })
-    outgoing.end('{"error":"internal error"}')
+    // No `error` field: a JSON-RPC client would read one as an error object.
+    outgoing.end('{"message":"internal error"}')
   }
 }
 
