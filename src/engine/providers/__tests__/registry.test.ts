@@ -25,7 +25,7 @@ describe('builtin provider registry', () => {
     }
     expect(err).toBeInstanceOf(engine_config_error)
     expect((err as engine_config_error).message).toBe(
-      "unknown provider 'nobody'; built-in providers are: anthropic, openai, google, ollama, lmstudio, openrouter, bedrock, claude_cli",
+      "unknown provider 'nobody': use a built-in provider (anthropic, openai, google, ollama, lmstudio, openrouter, bedrock, claude_cli), or register a factory for 'nobody' in custom_providers",
     )
     expect((err as engine_config_error).provider).toBe('nobody')
   })

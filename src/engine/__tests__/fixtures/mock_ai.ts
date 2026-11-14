@@ -371,7 +371,7 @@ export async function build_mock_registry_module(): Promise<Record<string, unkno
       // config typo, so it surfaces as engine_config_error.
       if (f === undefined) {
         throw new engine_config_error(
-          `unknown provider '${n}'; built-in providers are: ${[...providers.keys()].join(', ')}`,
+          `unknown provider '${n}': use a built-in provider (${[...providers.keys()].join(', ')}), or register a factory for '${n}' in custom_providers`,
           n,
         )
       }

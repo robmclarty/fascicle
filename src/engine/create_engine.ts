@@ -55,7 +55,7 @@ function build_provider_adapters(
     for (const name of Object.keys(custom_providers)) {
       if (builtins.has(name)) {
         throw new engine_config_error(
-          `custom_providers must not shadow built-in provider '${name}'`,
+          `custom_providers must not shadow built-in provider '${name}': register the custom adapter under another name`,
           name,
         )
       }
@@ -205,7 +205,9 @@ function build_internals(
  */
 export function create_engine(config: EngineConfig): Engine {
   if (config.providers === null || typeof config.providers !== 'object') {
-    throw new engine_config_error('EngineConfig.providers is required')
+    throw new engine_config_error(
+      'EngineConfig.providers is required: pass create_engine({ providers }) an object keyed by provider name, such as { anthropic: { api_key } }',
+    )
   }
 
   const adapters = build_provider_adapters(config.providers, config.custom_providers)

@@ -146,7 +146,9 @@ describe('with_providers', () => {
     ).toThrow(engine_config_error)
     expect(() =>
       parent.with_providers({}, { openai: make_ai_sdk_factory('openai', log) }),
-    ).toThrow("custom_providers must not shadow built-in provider 'openai'")
+    ).toThrow(
+      "custom_providers must not shadow built-in provider 'openai': register the custom adapter under another name",
+    )
   })
 
   it('constructs adapters fresh and disposes independently of the parent', async () => {

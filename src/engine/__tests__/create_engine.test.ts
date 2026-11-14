@@ -100,14 +100,14 @@ describe('create_engine', () => {
   it('throws engine_config_error with a message when providers is null', () => {
     expect(() => create_engine({ providers: null as never })).toThrow(engine_config_error)
     expect(() => create_engine({ providers: null as never })).toThrow(
-      'EngineConfig.providers is required',
+      'EngineConfig.providers is required: pass create_engine({ providers }) an object keyed by provider name, such as { anthropic: { api_key } }',
     )
   })
 
   it('throws when providers is a non-object', () => {
     // typeof-guard branch: a string is neither null nor an object.
     expect(() => create_engine({ providers: 'nope' as never })).toThrow(
-      'EngineConfig.providers is required',
+      'EngineConfig.providers is required: pass create_engine({ providers }) an object keyed by provider name, such as { anthropic: { api_key } }',
     )
   })
 
@@ -138,7 +138,7 @@ describe('create_engine', () => {
     // a call-time "not configured on this engine" routing failure.
     expect(err).toBeInstanceOf(engine_config_error)
     expect((err as engine_config_error).message).toBe(
-      "unknown provider 'anthropc'; built-in providers are: anthropic, openai, google, ollama, lmstudio, openrouter, bedrock, claude_cli",
+      "unknown provider 'anthropc': use a built-in provider (anthropic, openai, google, ollama, lmstudio, openrouter, bedrock, claude_cli), or register a factory for 'anthropc' in custom_providers",
     )
     expect((err as engine_config_error).provider).toBe('anthropc')
     expect(err).not.toBeInstanceOf(provider_not_configured_error)
