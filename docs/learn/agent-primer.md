@@ -63,15 +63,16 @@ The docs use these words in one sense each, and the API's names lean on them
 | From | What |
 | --- | --- |
 | `fascicle` | `run`, `step`, `sequence`, `parallel`, `branch`, `map`, `pipe`, `chain`, `loop`, `retry`, `fallback`, `timeout`, `compose`, `adversarial`, `ensemble_step`, `consensus`, `checkpoint`, `suspend`, `gate`, `describe`, `model_step`, `model_call`, `create_engine`, `define_tool`, `error_path`, `captured_turns`, `replay_turn`, the error classes, and the types (`Step`, `Engine`, `RunContext`, `GenerateOptions`, ...) |
-| `fascicle/adapters` | `filesystem_logger`, `http_logger`, `stderr_logger`, `tee_logger`, `noop_logger`, `filesystem_store`, `object_store` |
+| `fascicle/adapters` | `filesystem_logger`, `http_logger`, `stderr_logger`, `tee_logger`, `noop_logger`, `filesystem_store`, `sqlite_store`, `memory_store`, `object_store` |
 | `fascicle/testing` | `make_stub_engine`, `make_script_engine`, `make_capture_engine`, `make_loop_engine`, `assert_prefix_stable`, `text_of`, `engine_from_generate` |
 | `fascicle/agents` | `define_agent` |
 | `fascicle/viewer` | `start_viewer` |
 | `fascicle/mcp` | `mcp_client`, `serve_flow` |
 | `fascicle/web` | `web_tools`, `searxng_search`, `brave_search` |
 
-You'll want one of four more subpaths when you join a flow to a host. They're
+You'll want one of five more subpaths when you join a flow to a host. They're
 `fascicle/acp` for an editor that speaks the Agent Client Protocol,
+`fascicle/a2a` for other agents that speak Agent2Agent over HTTP,
 `fascicle/stdio` for a parent process, `fascicle/ui` for a `useChat` front end,
 and `fascicle/otel` for OpenTelemetry. Read a subpath's declarations before you
 use it.

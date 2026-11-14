@@ -276,13 +276,21 @@ key is absent. The driver makes every write to a run's record through them,
 which is what decides a race between two of your handlers, or between a drive
 and an event that arrives while it works.
 
-You get two stores in `fascicle/adapters`, and which one you want depends on
+You get four stores in `fascicle/adapters`, and which one you want depends on
 where your events land:
 
 - **`filesystem_store`** holds your runs between the processes of one machine.
   Its claims and its conditional writes lean on the local filesystem being
   atomic, which a network filesystem doesn't promise, so don't share its
   directory between hosts.
+- **`sqlite_store`** holds them between the processes of one machine too, in
+  one file, on Node's built-in `node:sqlite`. SQLite runs each statement
+  atomically across connections, so its claims and its conditional writes are
+  one statement each. `sqlite_store({ path })` opens the file in WAL mode and
+  waits `timeout_ms` (five seconds unless you say otherwise) on another
+  connection's lock, and `close()` closes it.
+- **`memory_store`** holds them for as long as the process lives. It's the
+  store for a test, and for a server whose runs may end when it does.
 - **`object_store`** holds them across a fleet. It keeps a run in a bucket,
   through a small client interface that you write over the SDK you already
   use, so when you run several instances of a web service, or workers on
@@ -407,6 +415,43 @@ the run for one it has never seen, so its `start` begins your run again from
 its input and its `resume` throws `run_not_found_error`. Run one version of
 the driver across your hosts at a time, and don't roll back past this one
 while you have runs waiting.
+
+### Streaming a Durable Run
+
+A drive runs your flow without `run.stream`, so by default its model calls
+don't record their chunks. Pass `record_chunks: true` and they do. Every
+`model_call` in the drive then records a `model_chunk` event on the drive's
+`trajectory` for each chunk the provider sends, the same events that
+`run.stream` yields, and the call streams from the provider as it would under
+`run.stream`.
+
+```ts
+import { durable } from 'fascicle';
+import type { TrajectoryLogger } from 'fascicle';
+import { filesystem_store } from 'fascicle/adapters';
+
+const runs = durable({ store: filesystem_store({ root_dir: '.runs' }) });
+
+const to_client: TrajectoryLogger = {
+  record: (event) => {
+    if (event.kind === 'model_chunk') send_to_client(event);
+  },
+  start_span: (name) => name,
+  end_span: () => {},
+};
+
+await runs.start('pr-42', flow, { pr: 42 }, { trajectory: to_client, record_chunks: true });
+```
+
+No channel or buffer comes with the flag. The chunks reach your logger
+synchronously and in order, so the logger is where you forward them, to a
+socket or a server-sent event stream or wherever your client listens.
+
+A drive that resumes runs the flow again from its input, so a `model_call`
+before the gate streams the same text a second time unless a `checkpoint`
+holds it. The runner records a `step_replayed` event when such a step starts,
+which is your cue to drop its chunks. `fascicle/a2a` builds on exactly this,
+and [a2a.md](./a2a.md#streaming) describes what it does with the chunks.
 
 ## Streaming the Outcome to a UI
 

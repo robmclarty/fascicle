@@ -194,3 +194,4 @@ Before you call a harness done:
 - [ ] The harness exits with a non-zero code on failure so CI/queues can retry.
 - [ ] If your harness might be spawned by another program, speak the child contract with `run_stdio` — see [embedding-under-a-harness.md](./embedding-under-a-harness.md).
 - [ ] If people will talk to it in their editor, serve it as an ACP agent with `serve_acp`, as [acp.md](./acp.md) describes.
+- [ ] If you want other agents to hand your flow work over the network, serve it as an A2A agent with `serve_a2a`, as [a2a.md](./a2a.md) describes.

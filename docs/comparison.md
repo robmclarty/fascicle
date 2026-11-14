@@ -155,7 +155,9 @@ compose the control flow explicitly out of `Step` values, and a model call is on
 functions. It's also agent-centric (the unit is an `Agent`, not a substitutable `Step`), broader in scope, and
 Python-first (its TypeScript reached GA only in April 2026), where Fascicle is TS-native from the start and
 narrow. The two do reconcile, though, because a model-driven Strands agent is the kind of thing that Fascicle
-would treat as a single step inside a flow you composed yourself.
+would treat as a single step inside a flow you composed yourself. Both sides speak A2A, so that step can be an
+[`a2a_step`](./a2a.md#calling-a-remote-agent) that calls the Strands agent over the network, and `serve_a2a` lets
+a Strands agent call your flow the same way.
 
 **Choose it when** you want the model to drive the agent loop with minimal
 control-flow code, you need production multi-agent orchestration (swarms / graphs /

@@ -169,6 +169,30 @@ await serve_acp({
 });
 ```
 
+**Network agents over A2A.** The `fascicle/a2a` subpath serves a flow as an [Agent2Agent](https://a2a-protocol.org) agent over HTTP, so agents that were built on other frameworks can hand it work, and `a2a_step` calls a remote agent from inside a flow. Every A2A task is a durable run, so a task that stops to ask its client a question waits in a store and outlives the process. `@a2a-js/sdk` is an optional peer, and [docs/a2a.md](./docs/a2a.md) covers the rest.
+
+<!-- snippet: check -->
+```typescript
+import { create_engine, model_step } from 'fascicle';
+import { serve_a2a } from 'fascicle/a2a';
+
+const engine = create_engine({
+  providers: { openrouter: { api_key: process.env['OPENROUTER_API_KEY'] ?? '', transport: 'native' } },
+});
+
+await serve_a2a({
+  flow: model_step({ engine, model: 'anthropic/claude-sonnet-5.5', system: 'Answer briefly.' }),
+  card: {
+    name: 'my-agent',
+    description: 'Answers questions, briefly.',
+    url: 'http://127.0.0.1:41241/',
+    skills: [{ id: 'answer', name: 'Answer', description: 'Answers a question in a sentence or two.' }],
+  },
+  port: 41241,
+  engine,
+});
+```
+
 **Reading the web.** The `fascicle/web` subpath hands an agent two tools. `web_fetch` takes a URL and returns the page as text, and it refuses the places a URL that a model chose shouldn't reach, which are `localhost`, the private ranges, and the cloud metadata address. `web_search` is there once you pass a search backend, either a SearXNG server that you run with no key, Brave's hosted index with one, or a function of your own. Both run in your process, inside the engine's tool loop, so they work on every provider that the loop drives (all of them but `claude_cli`), and the subpath adds no dependency. A page is text that somebody else wrote, and [docs/web.md](./docs/web.md) covers what that means for an agent that also holds private data.
 
 <!-- snippet: check -->
@@ -262,6 +286,7 @@ The canonical worked example is [examples/pr-improve/](./examples/pr-improve/), 
 - [docs/writing-a-harness.md](./docs/writing-a-harness.md) — building a runner around Fascicle
 - [docs/embedding-under-a-harness.md](./docs/embedding-under-a-harness.md) — running a Fascicle agent as somebody's child process
 - [docs/acp.md](./docs/acp.md) covers serving a flow as an agent that you talk to in Zed's agent panel, over the Agent Client Protocol
+- [docs/a2a.md](./docs/a2a.md) covers serving a flow as a network agent that other agents hand work to, over Agent2Agent, and calling one from a flow
 - [docs/web.md](./docs/web.md) covers the two tools that let an agent search the web and read a page, and how to keep one that holds private data from leaking it
 - [docs/troubleshooting.md](./docs/troubleshooting.md) — first-run errors and what they mean
 - [docs/comparison.md](./docs/comparison.md) — how Fascicle compares to LangChain, Mastra, and others

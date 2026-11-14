@@ -14,6 +14,7 @@ import { /* loggers + stores */ } from 'fascicle/adapters';
 import { /* define_agent */ } from 'fascicle/agents';
 import { /* MCP bridge */ } from 'fascicle/mcp';
 import { /* ACP agent server */ } from 'fascicle/acp';
+import { /* A2A agent server and a step that calls one */ } from 'fascicle/a2a';
 import { /* stdio child contract */ } from 'fascicle/stdio';
 import { /* OpenTelemetry bridge */ } from 'fascicle/otel';
 import { /* stub, script, capture, and loop engines */ } from 'fascicle/testing';
@@ -25,11 +26,13 @@ import { /* trajectory viewer server */ } from 'fascicle/viewer';
 Fascicle is ESM-only and needs Node >= 24. It has no default exports, and no
 classes other than `Error` subclasses.
 
-`fascicle` itself has no mandatory peers. Four subpaths need one to do their
+`fascicle` itself has no mandatory peers. Five subpaths need one to do their
 work. `fascicle/mcp` needs `@modelcontextprotocol/sdk`, which it loads
 dynamically and reports as `mcp_sdk_missing_error` when absent.
 `fascicle/acp` needs `@agentclientprotocol/sdk`, at 1.8 or any 2.x, and the
 `zod` that the SDK imports, which it loads the same way and reports as `acp_sdk_missing_error`.
+`fascicle/a2a` needs `@a2a-js/sdk`, at 1.3 or later, loaded the same way and
+reported as `a2a_sdk_missing_error`.
 `fascicle/otel` needs `@opentelemetry/api`. `fascicle/ui` needs `ai`, which it
 imports statically because it speaks the AI SDK's UI message-stream protocol,
 so a missing `ai` fails at module resolution rather than with a Fascicle error.
@@ -38,10 +41,10 @@ so a missing `ai` fails at module resolution rather than with a Fascicle error.
 
 | Export | Shape | Notes |
 | --- | --- | --- |
-| `run(flow, input, options?)` | `Promise<output>` | Execute a step. `options`: `{ trajectory?, checkpoint_store?, abort?, resume_data?, install_signal_handlers? }`. |
+| `run(flow, input, options?)` | `Promise<output>` | Execute a step. `options`: `{ trajectory?, checkpoint_store?, abort?, resume_data?, install_signal_handlers?, record_chunks? }`. `record_chunks: true` records each model call's chunks as `model_chunk` events on `trajectory`, as `run.stream` does, without the stream. |
 | `run.stream(flow, input, options?)` | `{ events, result }` | Same graph as `run`; `events` is an async iterable of `TrajectoryEvent`, `result` resolves to the output. |
 | `run.until_suspended(flow, input, options?)` | `Promise<RunOutcome<output>>` | Same graph as `run`, but a `suspend` gate resolves `{ kind: 'suspended', id, payload, deadline_ms?, resume }` instead of throwing; `payload` is the value that the gate surfaced, `deadline_ms` is there when the gate set one, and `resume(data)` re-runs with the decision and resolves to the next outcome. Completion is `{ kind: 'done', output }`; real errors still throw. |
-| `durable({ store, lease_ms?, on_flow_change? })` | `DurableRuns` | Keeps runs in a store across processes, one event at a time: `start(run_id, flow, input)`, `resume(run_id, flow, { [gate]: data })`, `get(run_id)`, `delete(run_id)`. `start` and `resume` resolve `{ kind: 'done', output }`, `{ kind: 'suspended', id, payload, deadline_at? }`, or `{ kind: 'busy' }` when another invocation holds the run, and both are safe to repeat. See [Durable Runs](./human-in-the-loop.md#durable-runs). |
+| `durable({ store, lease_ms?, on_flow_change? })` | `DurableRuns` | Keeps runs in a store across processes, one event at a time: `start(run_id, flow, input)`, `resume(run_id, flow, { [gate]: data })`, `get(run_id)`, `delete(run_id)`. `start` and `resume` resolve `{ kind: 'done', output }`, `{ kind: 'suspended', id, payload, deadline_at? }`, or `{ kind: 'busy' }` when another invocation holds the run, and both are safe to repeat. Each takes `run`'s options but `checkpoint_store` and `resume_data`, so `record_chunks: true` lets a drive stream. See [Durable Runs](./human-in-the-loop.md#durable-runs). |
 | `describe(step, options?)` | `string` | Static text-tree description of a step tree. No execution, no model calls. `describe.json(step)` returns the structured `FlowNode` tree instead, and `describe.diagram(step, options?)` draws it as an annotated tree (see below). |
 | `ctx.call(step, input)` | `Promise<output>` | On `RunContext`, inside any step body, runs another Step with spans, abort, and error paths intact. The direct-style counterpart to composing. |
 
@@ -509,6 +512,8 @@ roll your own to target any sink.
 | `stderr_logger(options?)` | logger | JSONL to stderr; keeps stdout clean when your process is somebody's child |
 | `tee_logger(...loggers)` | logger | fan one event stream out to several loggers |
 | `filesystem_store(config)` | store | filesystem-backed `CheckpointStore` with every capability below, so it also backs `durable`, between the processes of one machine |
+| `sqlite_store({ path, timeout_ms? })` | store | a `CheckpointStore` with every capability below in one SQLite file, on Node's built-in `node:sqlite`, so it backs `durable` between the processes of one machine with no dependency. `path` is the file, or `':memory:'`. The file opens in WAL mode, a write waits `timeout_ms` (5,000 by default) on another connection's lock, and `close()` closes it. `node:sqlite` loads when the store is built, not when the subpath is imported |
+| `memory_store(options?)` | store | a `CheckpointStore` with every capability below, in memory, for a test or for runs that may end with the process. Values are cloned in and out, the way a store that serializes hands back a copy. `dump()` returns every value by scope path and key, `options.now` replaces the clock that claims expire against, and `options.content_versions` derives each version from the value's JSON |
 | `object_store({ client, prefix? })` | store | a `CheckpointStore` with every capability below, kept as objects in a bucket behind an `ObjectClient` you write, so it backs `durable` across hosts; see [human-in-the-loop.md](./human-in-the-loop.md#the-store-a-run-lives-in) for a client over `@aws-sdk/client-s3` |
 | `ObjectClient` | type | the four calls `object_store` needs of an S3-style service: `get(key)` resolving `{ body, etag }` or `undefined`, `put(key, body, condition?)` resolving false when its `{ if_none_match: '*' }` or `{ if_match }` condition failed, `delete(key)`, and `list(prefix, start_after?)` resolving a page of `keys` with a `next` while more follow |
 
@@ -523,8 +528,9 @@ its last few events.
 
 Types: `FilesystemLoggerConfig`, `HttpLoggerConfig`, `HttpLoggerFetch`,
 `StderrLoggerOptions`, `FilesystemStoreConfig`, `FilesystemStore`,
-`FilesystemScopedStore`, `ObjectStoreConfig`, `ObjectStore`,
-`ObjectScopedStore`, `ObjectPutCondition`.
+`FilesystemScopedStore`, `SqliteStoreConfig`, `SqliteStore`,
+`SqliteScopedStore`, `MemoryStoreOptions`, `MemoryStore`, `MemoryScopedStore`,
+`ObjectStoreConfig`, `ObjectStore`, `ObjectScopedStore`, `ObjectPutCondition`.
 
 ### Checkpoint Store Capabilities
 
@@ -658,6 +664,42 @@ asks only before commands, and `auto`, which never asks. `WorkspaceToolsOptions`
 holds `read_limit_lines`, `ignore`, `search_timeout_ms`, `command_timeout_ms`,
 `output_limit_bytes`, and `command_env`.
 
+## Agent2Agent (`fascicle/a2a`)
+
+Serves a flow as an [A2A](https://a2a-protocol.org) v1.0 agent over JSON-RPC,
+the kind that other agents hand work to over HTTP, and calls remote A2A agents
+from inside a flow. Every task is a `durable` run, so a task that waits for an
+answer outlives the process. `@a2a-js/sdk` is an optional peer that's loaded
+only when an agent is built or a remote one is called. See [a2a.md](./a2a.md).
+
+| Export | Kind | Notes |
+| --- | --- | --- |
+| `serve_a2a(config)` | fn | serve the flow over `node:http` and resolve `{ url, resume, close }`. It binds `127.0.0.1` unless `host` says otherwise, and SIGTERM or SIGINT stops new connections, aborts every drive, disposes the engine, and exits with the signal's code |
+| `a2a_agent(config)` | fn | the same agent with its handlers ready and nothing listening: `fetch` (the card at `/.well-known/agent-card.json` and JSON-RPC at `rpc_path`, as a web handler), `resume(task_id, resume_data, options?)` for an outside event, `request_handler` (the SDK's handler, for the REST or gRPC binding), `card`, and `close` |
+| `a2a_step({ id, url, headers?, stream?, name?, description? })` | fn | a step from an `A2aRequest` (a string, or `{ text?, data?, context_id? }`) to an `A2aResult` (`task_id`, `context_id`, `text`, `data`, `artifacts`). It's marked `side_effect`, records the remote text as `model_chunk` events under `run.stream` or `record_chunks`, and turns a remote `INPUT_REQUIRED` into a local `suspend` at `<id>_<round>`, which needs a checkpoint store. See [Calling a Remote Agent](./a2a.md#calling-a-remote-agent) |
+| `sqlite_task_store({ path, timeout_ms? })` | fn | the SDK's `TaskStore` on `node:sqlite`, scoped by tenant and caller as the SDK's own stores are, with `close()`. It can share a file with `sqlite_store`. See [Keeping Tasks Past a Restart](./a2a.md#keeping-tasks-past-a-restart) |
+| `to_task_events(event, state)` | fn | map one run event to zero or more task events, with no I/O; the default `to_events`, which a custom one can wrap as long as it passes every event through, since a `step_replayed` mutes the step it names until that step's span ends |
+| `end_task_events(state, parts?)` | fn | the events that close a drive's artifact: the text chunk that the mapper still holds, marked `lastChunk`, with `parts` behind it |
+| `create_a2a_mapper_state(options)` | fn | fresh per-drive mapper state for the low-level API: `task_id`, `context_id`, `artifact_id`, and `stream` |
+| `a2a_error` | error | a remote task that ended somewhere other than `COMPLETED`, with its `state`, `status_text`, and `task_id`, or a call the adapter can't carry out |
+| `a2a_sdk_missing_error` | error | missing optional peer |
+
+Types: `A2aAgentConfig`, `ServeA2aConfig`, `A2aAgent`, `A2aServer`,
+`A2aResumeOptions`, `A2aCard`, `A2aSkill`, `A2aTurn`, `A2aFile`,
+`A2aHistoryEntry`, `A2aUser`, `A2aStreamRoute`, `A2aMapperState`,
+`A2aMapperOptions`, `A2aStepConfig`, `A2aRequest`, `A2aResult`,
+`A2aErrorDetail`, `SqliteTaskStoreConfig`. In `A2aAgentConfig`, `flow` and
+`card` are required, and `to_input` is required unless the flow takes a
+string. `runs` and `task_store` say where the runs and the task records live,
+and both default to memory. `gates` says which gates the client answers and
+which wait on something else, `to_resume` and `to_question` map a client's
+answer in and a gate's question out, and `to_parts` and `to_failure` map the
+output and an error. `stream` and `to_events` control what a drive streams,
+`history_limit` bounds `turn.history`, and `authenticate`, `rpc_path`,
+`max_body_bytes`, and `max_drives` shape the HTTP side. `ServeA2aConfig` adds
+`port`, `host`, and `engine`. Protocol shapes such as `Message`, `Part`, and
+`Artifact` stay the SDK's own, so import those from `@a2a-js/sdk`.
+
 ## Web Tools (`fascicle/web`)
 
 Hands an agent the web as two plain `Tool` values that run in your own
@@ -762,6 +804,10 @@ by the call or `defaults.provider`), `provider_not_configured_error`,
 `tool_approval_denied_error`, `on_chunk_error`, `turn_timeout_error` (a turn
 outran `turn_timeout_ms` before any chunk streamed), `claude_cli_error`.
 
+**A2A.** `a2a_error` (a remote task ended failed, rejected, canceled, or
+waiting for credentials, or a remote question reached a run with no checkpoint
+store), `a2a_sdk_missing_error`.
+
 The [troubleshooting guide](./troubleshooting.md) maps the common ones to causes
 and fixes.
 
@@ -804,7 +850,8 @@ The durable driver adds `DurableConfig`, `DurableStore`, `DurableRuns`,
 `DurableRunOptions`, `DurableOutcome`, and `DurableRunState`, and
 `fascicle/adapters` names what `filesystem_store` returns as `FilesystemStore`
 and `FilesystemScopedStore`, and what `object_store` returns as `ObjectStore`
-and `ObjectScopedStore`. `Versioned` is what a store's `get_versioned` reads,
+and `ObjectScopedStore`. `sqlite_store` and `memory_store` follow the same
+pattern, with `SqliteStore` and `MemoryStore`. `Versioned` is what a store's `get_versioned` reads,
 a `value` beside the `version` it was read at.
 
 **Composites.** Every deliberation composite carries a config and a result
