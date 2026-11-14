@@ -184,7 +184,7 @@ and `fetch failed` on the `ai_sdk` one, without a retry.
 Releases after 0.17.4 put the fix in the message as well: a missing binary
 says to install Claude Code or set `providers.claude_cli.binary`, an auth
 failure ends `run claude auth login`, and a timeout names the option to raise.
-Releases after 0.18.1 do the same for the rest of the table. The `bwrap` and
+From 0.19.0 on they do the same for the rest of the table. The `bwrap` and
 missing-wrapper messages name the config to change, an exit that printed no
 reason says so, and the exit, missing-result, and error-result messages each
 end with the check or the retry that the table gives.
@@ -214,7 +214,7 @@ of any loop that doesn't otherwise await something abortable. See
   since a retry would hand you that part again; the orchestrator enforces that
   boundary. With no `on_chunk`, nothing reached you, so a turn that fails
   mid-stream retries the whole turn. The failure is a `provider_error` that
-  opens `stream interrupted`, and in releases after 0.18.1 it ends by saying
+  opens `stream interrupted`, and from 0.19.0 on it ends by saying
   that it wasn't retried because `on_chunk` had already received output, so
   retry the whole call yourself when a repeated first half is acceptable. See
   [configuration.md](./configuration.md#retry-policy).

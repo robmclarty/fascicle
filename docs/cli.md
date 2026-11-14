@@ -278,7 +278,7 @@ The `bwrap` wrapper read-only binds `/usr`, `/bin`, `/lib`, `/lib64`, `/etc/reso
 
 `greywall` takes its policy from a JSON settings file that's passed with `--settings`. The adapter writes one for each run, with `network_allowlist` as `network.allowHosts` and `additional_write_paths` as `filesystem.allowWrite`, or forwards your own file untouched when you set `settings_path`. `greywall` honors the write paths directly and ignores `network.allowHosts`, since greyproxy is what enforces host allowlisting, and the adapter writes no greyproxy rules, so nothing filters the hosts unless you add those rules yourself.
 
-A missing sandbox binary triggers `claude_cli_error` with `reason: 'sandbox_unavailable'`. A `claude` binary outside the paths that `bwrap` binds, such as one in your home directory, isn't there inside the sandbox, so `bwrap` can't run it, and the error has `reason: 'binary_not_found'` and names the binary. Both messages end with what to change, which is the wrapper to install or the `binary` to move, and both offer `kind: 'claude_code'` as the way out, since it wraps nothing.
+A missing sandbox binary triggers `claude_cli_error` with `reason: 'sandbox_unavailable'`. A `claude` binary outside the paths that `bwrap` binds, such as one in your home directory, isn't there inside the sandbox, so `bwrap` can't run it, and the error has `reason: 'binary_not_found'` and names the binary. Both messages end with what to change, which is the wrapper to install or the `binary` to move, and both offer `kind: 'claude_code'` as the way out, since Fascicle wraps nothing around it. On Linux and WSL2 that sandbox is Claude Code's own use of `bubblewrap`, so it needs `bubblewrap` and `socat` installed.
 
 ## Errors You May Hit
 

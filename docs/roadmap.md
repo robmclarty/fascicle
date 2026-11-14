@@ -7,7 +7,7 @@ upgrade on purpose.
 
 ## Shipped
 
-The published surface as of v0.18.0:
+The published surface as of v0.19.0:
 
 - **Composition.** 23 primitives over a single `Step<i, o>` value type. You get
   the `chain` spine (`.step` / `.stage` / `.output`), `model_step` as the default
