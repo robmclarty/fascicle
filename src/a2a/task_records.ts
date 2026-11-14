@@ -193,7 +193,7 @@ export function task_records(config: TaskRecordsConfig): TaskRecords {
   const refresh = async (listed: Task, with_artifacts: boolean, context: ServerCallContext): Promise<Task> => {
     if (is_terminal(wire, listed) || config.is_live(listed.id)) return listed
     const loaded = await load(listed.id, context)
-    if (loaded === undefined || loaded.status?.timestamp === listed.status?.timestamp) return listed
+    if (loaded === undefined) return listed
     return with_artifacts ? loaded : { ...loaded, artifacts: [] }
   }
 

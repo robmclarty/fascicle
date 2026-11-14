@@ -551,6 +551,27 @@ describe('a2a_agent: an external gate', () => {
     expect(late.error).toMatchObject({ code: -32004 })
   })
 
+  it('ends a subscriber\'s stream when the resumed drive rests at another external gate, and closes the bus', async () => {
+    const { flow: work, latch } = latched()
+    const flow = sequence([approval('ci'), work, approval('qa')])
+    const agent = await agent_for({ flow, card: CARD, gates: () => 'external' })
+    const task = await send(agent, 'build')
+
+    const resumed = agent.resume(id_of(task), { ci: { approved: true } })
+    await latch.started
+    const subscribed = await agent.fetch(rpc_request('SubscribeToTask', { id: id_of(task) }))
+    latch.open()
+    const frames = await frames_of(subscribed)
+    await resumed
+
+    expect(frames.map((frame) => Object.keys(frame)[0])).toEqual(['task', 'statusUpdate'])
+    expect(state_of(frames[1]?.['statusUpdate'] as Json)).toBe('TASK_STATE_WORKING')
+    // No drive, no bus: a subscriber now gets where the task stands and no more.
+    const after = await stream(agent, 'SubscribeToTask', { id: id_of(task) })
+    expect(after.map((frame) => Object.keys(frame)[0])).toEqual(['task'])
+    expect(status_message(after[0]?.['task'] as Json)['metadata']).toEqual({ fascicle: { gate: 'qa' } })
+  })
+
   it('lists a run that runs.resume drove directly as it stands, without a GetTask first', async () => {
     const runs = fresh_runs()
     const flow = gated_flow()
