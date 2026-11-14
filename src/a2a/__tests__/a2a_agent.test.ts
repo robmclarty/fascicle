@@ -15,6 +15,7 @@ import { approval, CARD, gated_flow, latched, say, speaker } from './support/flo
 import {
   artifact_texts,
   call,
+  frames_of,
   get_task,
   parts_text,
   send,
@@ -23,6 +24,7 @@ import {
   stream,
   task_in,
   parts_in,
+  rpc_request,
   user_message,
 } from './support/rpc.js'
 
@@ -498,6 +500,69 @@ describe('a2a_agent: an external gate', () => {
     expect(status_message(asking)['metadata']).toEqual({ fascicle: { gate: 'approve' } })
     const done = await send(agent, '', { task_id: id_of(task), data: { approved: true } })
     expect(artifact_texts(done)).toEqual(['build [approved] [approved]'])
+  })
+
+  it('aborts the drive an outside event started when the task is canceled, and deletes the run', async () => {
+    const runs = fresh_runs()
+    const { flow: work, latch } = latched()
+    const agent = await agent_for({ flow: sequence([approval('ci'), work]), card: CARD, runs, gates: () => 'external' })
+    const task = await send(agent, 'build')
+    expect(state_of(task)).toBe('TASK_STATE_WORKING')
+
+    const resumed = agent.resume(id_of(task), { ci: { approved: true } })
+    await latch.started
+    const { result } = await call(agent, 'CancelTask', { id: id_of(task) })
+
+    expect(state_of(result as Json)).toBe('TASK_STATE_CANCELED')
+    expect(latch.aborted()).toMatchObject({ kind: 'aborted_error', message: 'the task was canceled' })
+    await resumed
+    expect(state_of(await get_task(agent, id_of(task)))).toBe('TASK_STATE_CANCELED')
+    expect(await runs.get(id_of(task))).toBeUndefined()
+  })
+
+  it('shows the drive an outside event started to a client that subscribes while it runs', async () => {
+    const begun = Promise.withResolvers<void>()
+    const go = Promise.withResolvers<void>()
+    const tail = step('tail', async (_: string, ctx) => {
+      begun.resolve()
+      await go.promise
+      say(ctx, 'tail', 'one ')
+      say(ctx, 'tail', 'two')
+      return 'one two'
+    })
+    const agent = await agent_for({ flow: sequence([approval('ci'), tail]), card: CARD, gates: () => 'external' })
+    const task = await send(agent, 'build')
+
+    const resumed = agent.resume(id_of(task), { ci: { approved: true } })
+    await begun.promise
+    const subscribed = await agent.fetch(rpc_request('SubscribeToTask', { id: id_of(task) }))
+    go.resolve()
+    const frames = await frames_of(subscribed)
+    await resumed
+
+    expect(frames.map((frame) => Object.keys(frame)[0])).toEqual(['task', 'artifactUpdate', 'artifactUpdate', 'statusUpdate'])
+    expect(frames.slice(1, 3).map((frame) => parts_text(parts_in((frame['artifactUpdate'] as Json)['artifact'])))).toEqual([
+      'one ',
+      'two',
+    ])
+    expect(state_of(frames[3]?.['statusUpdate'] as Json)).toBe('TASK_STATE_COMPLETED')
+    // The bus goes with the drive, so a later subscriber is told the task is over.
+    const late = await call(agent, 'SubscribeToTask', { id: id_of(task) })
+    expect(late.error).toMatchObject({ code: -32004 })
+  })
+
+  it('lists a run that runs.resume drove directly as it stands, without a GetTask first', async () => {
+    const runs = fresh_runs()
+    const flow = gated_flow()
+    const agent = await agent_for({ flow, card: CARD, runs, ...external })
+    const task = await send(agent, 'v1.2')
+    await runs.resume(id_of(task), flow, { approve: { approved: true } }, { install_signal_handlers: false })
+
+    const { result } = await call(agent, 'ListTasks', { includeArtifacts: true })
+
+    const listed = (result?.['tasks'] ?? []) as Json[]
+    expect(listed.map((found) => [found['id'], state_of(found)])).toEqual([[id_of(task), 'TASK_STATE_COMPLETED']])
+    expect(artifact_texts(listed[0] as Json)).toEqual(['published: notes on v1.2 [approved]'])
   })
 
   it('does nothing when asked to resume a task that has ended, and throws for one it cannot find', async () => {

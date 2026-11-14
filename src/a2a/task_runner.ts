@@ -11,7 +11,8 @@
  * The SDK's request handler owns the bus and writes each event to the task
  * store as the request reads it. A drive that the SDK didn't start (an
  * outside event) writes its events through the SDK's `ResultManager`
- * instead, and publishes them as well when a client is subscribed.
+ * instead, and publishes them on a bus of its own as well, for a client
+ * that subscribes while it runs.
  *
  * One drive at a time holds a task in this process. The handle it holds is
  * what a cancel aborts, what `close` waits for, and what makes a second
@@ -276,7 +277,7 @@ export function task_runner<i, o>(deps: TaskRunnerConfig<i, o>): TaskRunner {
     // The hold counts from here on, so the room the request reserved is free.
     slots.get(request.context)?.()
     const publish: Publish = (event) => {
-      bus?.publish(event)
+      bus.publish(event)
     }
     const message = request.userMessage
     const opening: Task = request.task ?? {
@@ -350,7 +351,11 @@ export function task_runner<i, o>(deps: TaskRunnerConfig<i, o>): TaskRunner {
     const ids: TaskIds = { task_id, context_id: task.contextId }
     const hold = take_hold(holds, task_id)
     hold.taken = true
-    const bus = buses.getByTaskId(task_id, context)
+    // The drive gets a bus even when no client holds one open. A client can
+    // then subscribe to the task while it runs, and a cancel reaches the
+    // drive: for a task with no bus the SDK writes CANCELED by itself and
+    // never asks the executor, so the flow would run on.
+    const bus = buses.createOrGetByTaskId(task_id, context)
     const writer = new sdk.server.ResultManager(store, context)
     let writes: Promise<void> = Promise.resolve()
     const publish: Publish = (event) => {
@@ -364,7 +369,7 @@ export function task_runner<i, o>(deps: TaskRunnerConfig<i, o>): TaskRunner {
       )
       await writes
       // A bus stays open only for a task that waits on its client.
-      if (bus !== undefined && status?.state !== state.TASK_STATE_INPUT_REQUIRED) {
+      if (status?.state !== state.TASK_STATE_INPUT_REQUIRED) {
         bus.finished()
         buses.cleanupByTaskId(task_id, context)
       }

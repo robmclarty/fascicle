@@ -121,7 +121,14 @@ export async function stream(
   params: Json,
   options: RpcOptions = {},
 ): Promise<Json[]> {
-  const response = await agent.fetch(rpc_request(method, params, options))
+  return frames_of(await agent.fetch(rpc_request(method, params, options)), method)
+}
+
+/**
+ * Read a streamed response to its end and collect the result of every
+ * frame, in order.
+ */
+export async function frames_of(response: Response, method = 'the call'): Promise<Json[]> {
   if (!(response.headers.get('content-type') ?? '').startsWith('text/event-stream')) {
     throw new Error(`${method} didn't stream: ${await response.text()}`)
   }

@@ -4,7 +4,8 @@ import type { Task, TaskState, TaskStatus } from '@a2a-js/sdk'
 import { InMemoryTaskStore, ServerCallContext } from '@a2a-js/sdk/server'
 import type { DurableRunState, DurableRuns } from '#core'
 import { data_part, output_parts, text_part } from '../parts.js'
-import { task_records } from '../task_records.js'
+import { sight, task_records } from '../task_records.js'
+import type { Sighting } from '../task_records.js'
 import { default_failure, default_question, gate_of } from '../task_status.js'
 
 const STATE = wire.TaskState
@@ -331,15 +332,107 @@ describe('task_records save', () => {
     expect((await h.inner.load('live', ann))?.status?.state).toBe(STATE.TASK_STATE_INPUT_REQUIRED)
   })
 
-  it('lists straight from the inner store', async () => {
+})
+
+describe('task_records list', () => {
+  const page = (h: Harness, options: { artifacts?: boolean; status?: TaskState } = {}) =>
+    h.records.store.list(
+      {
+        tenant: '',
+        contextId: '',
+        status: options.status ?? STATE.TASK_STATE_UNSPECIFIED,
+        pageToken: '',
+        statusTimestampAfter: undefined,
+        includeArtifacts: options.artifacts,
+      },
+      ann,
+    )
+
+  it('lists a task as stored when its run has nothing new to say', async () => {
     const h = harness()
-    await h.records.store.save(task(STATE.TASK_STATE_WORKING), ann)
-    const listed = await h.records.store.list(
+    await seeded(h, task(STATE.TASK_STATE_WORKING))
+    const listed = await page(h)
+    expect(listed.tasks).toEqual([task(STATE.TASK_STATE_WORKING)])
+    expect(h.got).toEqual(['task-1'])
+    expect(h.saves).not.toHaveBeenCalled()
+  })
+
+  it('lists a task whose run finished elsewhere as completed, and writes the record', async () => {
+    const h = harness()
+    await seeded(h, task(STATE.TASK_STATE_WORKING))
+    h.states.set('task-1', { kind: 'done', run_id: 'task-1', output: 'shipped' })
+
+    const listed = await page(h, { artifacts: true })
+    expect(listed.tasks.map((found) => found.status?.state)).toEqual([STATE.TASK_STATE_COMPLETED])
+    expect(listed.tasks[0]?.artifacts.map((artifact) => artifact.parts)).toEqual([[text_part('shipped')]])
+    expect((await h.inner.load('task-1', ann))?.status?.state).toBe(STATE.TASK_STATE_COMPLETED)
+    expect(h.deleted).toEqual(['task-1'])
+  })
+
+  it('keeps artifacts off a page that asked for none, and in the record all the same', async () => {
+    const h = harness()
+    const stored = task(STATE.TASK_STATE_WORKING)
+    stored.artifacts.push({ artifactId: 'a1', name: '', description: '', parts: [text_part('draft')], metadata: undefined, extensions: [] })
+    await seeded(h, stored)
+    h.states.set('task-1', { kind: 'done', run_id: 'task-1', output: 'shipped' })
+
+    const listed = await page(h)
+    expect(listed.tasks.map((found) => found.status?.state)).toEqual([STATE.TASK_STATE_COMPLETED])
+    expect(listed.tasks[0]?.artifacts).toEqual([])
+    const kept = await h.inner.load('task-1', ann)
+    expect(kept?.artifacts.map((artifact) => artifact.parts)).toEqual([[text_part('draft')], [text_part('shipped')]])
+  })
+
+  it('leaves a terminal task and a task this process drives alone, without asking the runs', async () => {
+    const ended = harness()
+    await seeded(ended, task(STATE.TASK_STATE_FAILED))
+    ended.states.set('task-1', { kind: 'done', run_id: 'task-1', output: 'late' })
+    expect((await page(ended)).tasks).toEqual([task(STATE.TASK_STATE_FAILED)])
+    expect(ended.got).toEqual([])
+
+    const live = harness({ live: true })
+    await seeded(live, task(STATE.TASK_STATE_WORKING))
+    live.states.set('task-1', { kind: 'done', run_id: 'task-1', output: 'not yet' })
+    expect((await page(live)).tasks).toEqual([task(STATE.TASK_STATE_WORKING)])
+    expect(live.got).toEqual([])
+    expect(live.saves).not.toHaveBeenCalled()
+  })
+
+  it('passes the page through with everything else the inner store answered', async () => {
+    const h = harness()
+    await seeded(h, task(STATE.TASK_STATE_WORKING, { id: 'a' }))
+    await h.inner.save(task(STATE.TASK_STATE_COMPLETED, { id: 'b' }), ann)
+    const inner_page = await h.inner.list(
       { tenant: '', contextId: '', status: STATE.TASK_STATE_UNSPECIFIED, pageToken: '', statusTimestampAfter: undefined },
       ann,
     )
-    expect(listed.tasks.map((found) => found.id)).toEqual(['task-1'])
-    expect(h.got).toEqual([])
+    const listed = await page(h)
+    expect({ ...listed, tasks: [] }).toEqual({ ...inner_page, tasks: [] })
+    expect(listed.tasks.map((found) => found.id).toSorted()).toEqual(['a', 'b'])
+  })
+})
+
+describe('sight', () => {
+  const at = (context_id: string): Sighting => ({ context: ann, context_id })
+
+  it('forgets the oldest sighting once more than the limit are held', () => {
+    const seen = new Map<string, Sighting>()
+    sight(seen, 'a', at('1'), 2)
+    sight(seen, 'b', at('2'), 2)
+    expect([...seen.keys()]).toEqual(['a', 'b'])
+    sight(seen, 'c', at('3'), 2)
+    expect([...seen.keys()]).toEqual(['b', 'c'])
+  })
+
+  it('counts a task seen again as the newest, with its latest sighting', () => {
+    const seen = new Map<string, Sighting>()
+    sight(seen, 'a', at('1'), 2)
+    sight(seen, 'b', at('2'), 2)
+    sight(seen, 'a', at('4'), 2)
+    expect(seen.size).toBe(2)
+    sight(seen, 'c', at('3'), 2)
+    expect([...seen.keys()]).toEqual(['a', 'c'])
+    expect(seen.get('a')).toEqual(at('4'))
   })
 })
 

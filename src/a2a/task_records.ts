@@ -20,6 +20,10 @@
  * publishes there but would still fold its artifacts into the record. The
  * SDK loads a task before every write to it, so once a load has seen a task
  * ended, the store refuses every later `save` of it.
+ *
+ * `list` answers from the same records, so it brings each task on its page
+ * up to date the way `load` does. A task that a status filter left off the
+ * page stays as it was until something reads it.
  */
 
 import { randomUUID } from 'node:crypto'
@@ -44,7 +48,10 @@ export type TaskRecordsConfig = {
 
 export type TaskRecords = {
   readonly store: TaskStore
-  /** Who each task this process has touched belongs to, until the task ends. */
+  /**
+   * Who each task this process has touched belongs to, until the task ends
+   * or enough other tasks have been touched since.
+   */
   readonly seen: ReadonlyMap<string, Sighting>
   /**
    * Resolves once a task is saved in `status`, or after `timeout_ms` when no
@@ -57,6 +64,11 @@ export type TaskRecords = {
 // doesn't ask the run store to delete what's already gone, and so that a
 // late write can't change it.
 const REMEMBERED_LIMIT = 10_000
+
+// How many live tasks the store remembers the owner of. Each sighting holds
+// a request's context, headers included, so a task that a client walked
+// away from can't keep one for the life of the process.
+const SEEN_LIMIT = 10_000
 
 type Waiter = { readonly status: TaskStatus; readonly resolve: () => void }
 
@@ -87,6 +99,21 @@ function is_current(wire: Wire, task: Task, rest: Rest, next: TaskStatus | undef
 function remember(ids: Set<string>, task_id: string): void {
   if (ids.size >= REMEMBERED_LIMIT) ids.clear()
   ids.add(task_id)
+}
+
+/**
+ * Note where a task was last seen, as the newest sighting, and forget the
+ * oldest one once more than `limit` are held. A forgotten task is still
+ * served: `resume` then needs `user` for a task that belongs to someone.
+ */
+export function sight(seen: Map<string, Sighting>, task_id: string, sighting: Sighting, limit: number): void {
+  seen.delete(task_id)
+  seen.set(task_id, sighting)
+  if (seen.size <= limit) return
+  for (const oldest of seen.keys()) {
+    seen.delete(oldest)
+    return
+  }
 }
 
 /**
@@ -121,7 +148,7 @@ export function task_records(config: TaskRecordsConfig): TaskRecords {
   const write = async (task: Task, context: ServerCallContext): Promise<void> => {
     if (ended.has(task.id)) return
     await inner.save(task, context)
-    seen.set(task.id, { context, context_id: task.contextId })
+    sight(seen, task.id, { context, context_id: task.contextId }, SEEN_LIMIT)
     announce(task)
     await settle(task)
   }
@@ -149,19 +176,35 @@ export function task_records(config: TaskRecordsConfig): TaskRecords {
     return updated
   }
 
+  const load: TaskStore['load'] = async (task_id, context) => {
+    const task = await inner.load(task_id, context)
+    if (task === undefined) return undefined
+    if (is_terminal(wire, task)) {
+      await settle(task)
+      return task
+    }
+    sight(seen, task_id, { context, context_id: task.contextId }, SEEN_LIMIT)
+    return config.is_live(task_id) ? task : reconcile(task, context)
+  }
+
+  // A listed task as its run has it now. The whole record is loaded, since
+  // a page may come without artifacts and a reconcile writes the record
+  // back. The page's own choice about artifacts holds for the answer.
+  const refresh = async (listed: Task, with_artifacts: boolean, context: ServerCallContext): Promise<Task> => {
+    if (is_terminal(wire, listed) || config.is_live(listed.id)) return listed
+    const loaded = await load(listed.id, context)
+    if (loaded === undefined || loaded.status?.timestamp === listed.status?.timestamp) return listed
+    return with_artifacts ? loaded : { ...loaded, artifacts: [] }
+  }
+
   const store: TaskStore = {
-    load: async (task_id, context) => {
-      const task = await inner.load(task_id, context)
-      if (task === undefined) return undefined
-      if (is_terminal(wire, task)) {
-        await settle(task)
-        return task
-      }
-      seen.set(task_id, { context, context_id: task.contextId })
-      return config.is_live(task_id) ? task : reconcile(task, context)
-    },
+    load,
     save: write,
-    list: (params, context) => inner.list(params, context),
+    list: async (params, context) => {
+      const page = await inner.list(params, context)
+      const tasks = await Promise.all(page.tasks.map((task) => refresh(task, params.includeArtifacts === true, context)))
+      return { ...page, tasks }
+    },
   }
 
   const saved = (task_id: string, status: TaskStatus, timeout_ms: number): Promise<void> => {
