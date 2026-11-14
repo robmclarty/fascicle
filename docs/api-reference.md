@@ -687,7 +687,7 @@ only when an agent is built or a remote one is called. See [a2a.md](./a2a.md).
 Types: `A2aAgentConfig`, `ServeA2aConfig`, `A2aAgent`, `A2aServer`,
 `A2aResumeOptions`, `A2aCard`, `A2aSkill`, `A2aTurn`, `A2aFile`,
 `A2aHistoryEntry`, `A2aUser`, `A2aStreamRoute`, `A2aMapperState`,
-`A2aMapperOptions`, `A2aStepConfig`, `A2aRequest`, `A2aResult`,
+`A2aReplay`, `A2aMapperOptions`, `A2aStepConfig`, `A2aRequest`, `A2aResult`,
 `A2aErrorDetail`, `SqliteTaskStoreConfig`. In `A2aAgentConfig`, `flow` and
 `card` are required, and `to_input` is required unless the flow takes a
 string. `runs` and `task_store` say where the runs and the task records live,

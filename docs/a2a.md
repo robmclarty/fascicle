@@ -135,9 +135,9 @@ A task at an external gate rests `WORKING`, and a message for it is refused. The
 await server.resume(task_id, { ci: { green: true } })
 ```
 
-`resume` drives the run the way a message does and writes what follows to the task store, so the next `GetTask` reports it, and a client that's subscribed to the task sees it as it happens. An agent with an `authenticate` hook keeps each caller's tasks apart, so after a restart `resume` needs to be told whose task it is, with `{ user }` as its third argument.
+`resume` drives the run the way a message does and writes what follows to the task store, so the next `GetTask` reports it. The client's stream ended when the task came to rest at the gate, so a client that wants to watch the drive calls `SubscribeToTask` while `resume` is running, and it reads the drive from there to the end. A `CancelTask` that arrives in that time aborts the drive, as it does for any task that's running. An agent with an `authenticate` hook keeps each caller's tasks apart, so after a restart `resume` needs to be told whose task it is, with `{ user }` as its third argument.
 
-A process that only holds the store (a webhook worker, say) can call `runs.resume` directly instead. The next read of the task picks up the change.
+A process that only holds the store (a webhook worker, say) can call `runs.resume` directly instead. The next `GetTask` picks up the change, and so does a `ListTasks` whose page holds the task. A `ListTasks` that filters by state reads the state that's stored, so the task shows up under its new state once something has read it.
 
 ## Streaming
 
@@ -147,7 +147,7 @@ A client that calls `SendStreamingMessage` reads the task as server-sent events.
 - **`stream(step_id)`** routes each model call's text to `'artifact'` or `'none'`. A call with a `schema` streams raw JSON, and a flow with several calls would stream every draft, so route those away by their `step_id`.
 - **Reasoning and tool calls** map to nothing, because A2A has no thought channel and no tool card. `to_events` is the escape hatch: it's handed every run event, and it can wrap `to_task_events` and add to what that returns.
 - **The output.** When a drive finishes without streaming any text, the output becomes its artifact, a string as a text part and anything else as a data part. When text did stream and the output isn't a string, the output's data part closes the same artifact, so an agent client gets the structured result as well as the prose. `to_parts` replaces the mapping.
-- **Replays stay quiet.** A resumed drive runs the flow again from its input, and a `model_call` before the gate that no `checkpoint` holds would stream the same text twice. The agent drops the chunks of every step that's replaying.
+- **Replays stay quiet.** A resumed drive runs the flow again from its input, and a `model_call` before the gate that no `checkpoint` holds would stream the same text twice. The agent drops the chunks of every step that's replaying. A step speaks again once the drive is past the gate that was answered, which is how the text an `a2a_step` receives after a remote question still streams.
 
 A quiet replay still bills. `a2a_agent` writes a warning to stderr when the flow has such a step, and wrapping the step in a `checkpoint` is the fix, as it is for any flow that suspends (see [Durable Runs](./human-in-the-loop.md#durable-runs)).
 
@@ -240,7 +240,7 @@ const response = await agent.fetch(new Request('https://agents.example.com/.well
 console.log(response.status)
 ```
 
-`agent.fetch` is a web handler from a `Request` to a `Response`, so the agent runs under whatever framework you already have, and `rpc_path` moves JSON-RPC off the root. `agent.request_handler` is the SDK's own handler, for mounting the REST or gRPC binding with the SDK's helpers. `agent.close` aborts every drive and waits for each to settle, and it leaves the stores to you, since you opened them.
+`agent.fetch` is a web handler from a `Request` to a `Response`, so the agent runs under whatever framework you already have, and `rpc_path` moves JSON-RPC off the root. `agent.request_handler` is the SDK's own handler, for mounting the REST or gRPC binding with the SDK's helpers. `agent.close` aborts every drive and waits for each to settle, and it leaves the stores to you, since you opened them. A task that was running when the agent closed ends `FAILED`, while a task that waits at a gate is untouched and takes its answer after a restart. A closed agent answers 503 to everything.
 
 ## Calling a Remote Agent
 
@@ -262,7 +262,7 @@ console.log(await run(flow, 'v1.2'))
 
 The step reads the agent's card from `/.well-known/agent-card.json` under `url`, once for each step value. A string input is the message's text. An object's `text` and `data` become a text part and a data part, and its `context_id` continues a conversation with the agent. The result holds the task's artifacts, with their text parts joined as `text` and their data parts as `data`.
 
-- **Streaming.** The step reads the reply as a stream when the card says the agent can stream. Under `run.stream` or `record_chunks`, each chunk of the remote agent's text becomes a `model_chunk` event under the step's id, so everything that already shows a model call's text (`fascicle/ui`, an ACP thread, an A2A artifact) shows the remote agent's text too. Each change of the task's state becomes an `emit` event.
+- **Streaming.** The step reads the reply as a stream when the card says the agent can stream. Under `run.stream` or `record_chunks`, each chunk of the remote agent's text becomes a `model_chunk` event under the step's id, so everything that already shows a model call's text (`fascicle/ui`, an ACP thread, an A2A artifact) shows the remote agent's text too. Each change of the task's state becomes an `emit` event that carries `a2a_status` (the `task_id`, the `state`, and the status `text`), and the task a round opens is named once in an `emit` event that carries `a2a_task` (the `task_id` and the `context_id`).
 - **Without streaming**, the step sends a blocking `SendMessage`. Either way, while the task is still working it polls `GetTask`, on a backoff that starts at half a second and stops growing at five.
 - **Failures.** A task that ends `FAILED`, `REJECTED`, or `CANCELED`, or that wants credentials partway through, throws `a2a_error`, which carries the state and the status text.
 - **Abort** stops the stream and asks the remote agent to cancel the task before the step throws.
@@ -270,9 +270,11 @@ The step reads the agent's card from `/.well-known/agent-card.json` under `url`,
 
 A remote question becomes a local `suspend`. When the remote task stops at `INPUT_REQUIRED`, the step suspends its own run at a gate named `<step id>_<round>` (`notes_1` above), with the remote question as the gate's payload. Resuming that gate sends the answer to the same remote task as its next message, a string as text and anything else as data.
 
-That's what lets agents chain. A Fascicle agent that calls another and gets a question surfaces it as its own `INPUT_REQUIRED`, all the way up to whoever runs the outermost flow, and the answer travels back down the same way.
+That's what lets agents chain. A Fascicle agent that calls another and gets a question surfaces it as its own `INPUT_REQUIRED`, all the way up to whoever runs the outermost flow, and the answer travels back down the same way. The remote agent's text streams into the outer task's artifact as it would for a model call. When a later step's output is what the client should read instead, route the `a2a_step` to `'none'` with `stream`.
 
 It needs a checkpoint store, because the step keeps each round's result in a `checkpoint` so that a replay doesn't send the message again. `durable` gives every drive one, and so does an `a2a_agent`. Under a plain `run` with no `checkpoint_store`, a remote question throws an `a2a_error` that says so.
+
+The checkpoint's key is the step id, the round, and a digest of what the round sends. A second call that sends the same thing under the same store gets the first call's reply back and never reaches the agent. `durable` keeps a store for each run, so there it takes one run that calls the step twice with the same input. A `checkpoint_store` that you pass to `run` is shared by every run you pass it to, so give each run a store of its own when the agent should be asked again.
 
 ## What's Left Out
 

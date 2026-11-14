@@ -19,6 +19,11 @@
  * drive. Without one a remote question throws `a2a_error`, since a resume
  * would otherwise open a second remote task.
  *
+ * A round's checkpoint is keyed by the step id, the round, and a digest of
+ * what the round sends. Under one checkpoint store, a second call that
+ * sends the same thing gets the first call's reply and doesn't reach the
+ * remote agent.
+ *
  * The card is read once for each step value, on first use, and the step
  * streams when the card says the agent can and `stream` doesn't say
  * otherwise.
