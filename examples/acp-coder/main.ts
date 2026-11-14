@@ -20,6 +20,10 @@
  * Threads are kept under ~/.local/state/fascicle-acp-coder/sessions (or
  * --sessions <dir>), so Zed can open one again after a restart.
  *
+ * The provider's key comes from the agent server's env, or from a file that
+ * --login writes after asking for the key in a terminal, which is the login
+ * Zed offers when a thread starts without one.
+ *
  * --effort sets how hard the model thinks, from none to max. Without it the
  * model keeps its own default, and Claude Sonnet 5.5 decides for itself when
  * a prompt needs thinking, so Zed's thought block fills in without the flag.
@@ -31,6 +35,7 @@
  *   pnpm exec tsx --env-file=.env examples/acp-coder/main.ts
  *   pnpm exec tsx --env-file=.env examples/acp-coder/main.ts --model openai/gpt-5.5
  *   pnpm exec tsx --env-file=.env examples/acp-coder/main.ts --effort high
+ *   pnpm exec tsx examples/acp-coder/main.ts --login
  */
 
 import { readFileSync } from 'node:fs'
@@ -38,9 +43,9 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { model_step, sequence, step } from 'fascicle'
 import type { CacheSetting, EffortLevel, Engine, Step } from 'fascicle'
-import { filesystem_session_store, serve_acp, workspace_tools } from 'fascicle/acp'
-import type { AcpSession, AcpSessionStore, AcpTurn, ServeAcpConfig } from 'fascicle/acp'
-import { API_KEYS, engine_for, flag } from '../acp-agent/engines.js'
+import { api_key_login, filesystem_session_store, serve_acp, workspace_tools } from 'fascicle/acp'
+import type { AcpAuth, AcpSession, AcpSessionStore, AcpTurn, ApiKeyLogin, ServeAcpConfig } from 'fascicle/acp'
+import { API_KEYS, engine_for, flag, is_keyed } from '../acp-agent/engines.js'
 import { to_messages } from '../acp-agent/main.js'
 
 const CODER_PROMPT = readFileSync(new URL('./prompts/coder.md', import.meta.url), 'utf8')
@@ -120,7 +125,14 @@ export function command_env(env: NodeJS.ProcessEnv): Record<string, string> {
 }
 
 export type CoderConfig = {
-  readonly engine: Engine
+  /**
+   * The engine, or a function that builds it, which runs once, as the first
+   * session starts. An agent with a login passes the function, since the key
+   * the engine needs may arrive after launch.
+   */
+  readonly engine: Engine | (() => Engine)
+  /** How a user logs in from the client. Left out, the agent offers no login. */
+  readonly auth?: AcpAuth
   /** The models Zed's picker offers, in order; a thread starts on the first. */
   readonly models: ReadonlyArray<string>
   /** How hard the model thinks. Left out, the model keeps its own default. */
@@ -141,9 +153,12 @@ export type CoderConfig = {
  * tools and the tools of its MCP servers, and asking the client before an
  * edit, a command, or an MCP call whenever the session's mode says to. Zed
  * rebuilds the flow when the user picks another model. It hands `serve_acp`
- * its engine, so the engine is disposed once Zed disconnects.
+ * its engine, so the engine is disposed once Zed disconnects, when one was
+ * built.
  */
 export function coder_agent(config: CoderConfig): ServeAcpConfig<AcpTurn, string> {
+  let built: Engine | undefined
+  const engine_now = (): Engine => (built ??= typeof config.engine === 'function' ? config.engine() : config.engine)
   return {
     name: 'fascicle-coder',
     models: config.models.map((id) => ({ id })),
@@ -155,7 +170,7 @@ export function coder_agent(config: CoderConfig): ServeAcpConfig<AcpTurn, string
         step('history', to_messages),
         model_step({
           id: 'coder',
-          engine: config.engine,
+          engine: engine_now(),
           ...(model === undefined ? {} : { model }),
           ...(config.effort === undefined ? {} : { effort: config.effort }),
           ...(cache === undefined ? {} : { cache }),
@@ -169,7 +184,8 @@ export function coder_agent(config: CoderConfig): ServeAcpConfig<AcpTurn, string
     to_input: (turn) => turn,
     ...(config.context_window === undefined ? {} : { context_window: config.context_window }),
     ...(config.session_store === undefined ? {} : { session_store: config.session_store }),
-    engine: config.engine,
+    ...(config.auth === undefined ? {} : { auth: config.auth }),
+    engine: { dispose: async () => built?.dispose() },
   }
 }
 
@@ -193,6 +209,35 @@ function sessions_dir(): string {
   return flag('--sessions') ?? join(state, 'fascicle-acp-coder', 'sessions')
 }
 
+/** Each keyed provider's name as a login shows it. */
+const PROVIDER_NAMES = { openrouter: 'OpenRouter', anthropic: 'Anthropic', openai: 'OpenAI' } as const
+
+/**
+ * The login for a provider that reads an API key, or undefined for one that
+ * doesn't. The key a user enters under `--login` is kept in the user's
+ * config directory, outside every workspace, in a file for that provider.
+ */
+function login_for(provider: string): ApiKeyLogin | undefined {
+  if (!is_keyed(provider)) return undefined
+  const config_home = process.env['XDG_CONFIG_HOME'] ?? join(homedir(), '.config')
+  return api_key_login({
+    name: `${PROVIDER_NAMES[provider]} API key`,
+    variable: API_KEYS[provider],
+    file: join(config_home, 'fascicle-acp-coder', `${provider}-credentials.json`),
+    env: process.env,
+  })
+}
+
+/**
+ * The environment the engine reads its key from: the process's own, with
+ * the key the login found under the provider's variable, so a key entered
+ * under `--login` reaches the engine the way one in the env does.
+ */
+function engine_env(provider: string, login: ApiKeyLogin | undefined): NodeJS.ProcessEnv {
+  if (login === undefined || !is_keyed(provider)) return process.env
+  return { ...process.env, [API_KEYS[provider]]: login.key() }
+}
+
 /**
  * The cache a session asks for: five minutes for a Claude model, which takes
  * Anthropic's cache on the anthropic provider and through OpenRouter, where
@@ -207,11 +252,19 @@ function cache_for(provider: string, model: string): CacheSetting | undefined {
 
 if (import.meta.url === `file://${process.argv[1] ?? ''}`) {
   const provider = flag('--provider') ?? 'openrouter'
+  const login = login_for(provider)
+  if (process.argv.includes('--login')) {
+    if (login === undefined) throw new Error(`--provider ${provider} reads no API key, so it has no login`)
+    // The login runs in a terminal, before anything is served, and stdout stays clear of it.
+    process.exit(await login.run({ input: process.stdin, output: process.stderr }))
+  }
   const effort = parse_effort(flag('--effort'))
   const context_window = parse_context_window(flag('--context-window'))
   await serve_acp(
     coder_agent({
-      engine: engine_for(provider),
+      // Built as the first session starts, by which time the login has a key.
+      engine: () => engine_for(provider, engine_env(provider, login)),
+      ...(login === undefined ? {} : { auth: login.auth }),
       models: chosen_models(provider),
       ...(effort === undefined ? {} : { effort }),
       cache_for: (model) => cache_for(provider, model),

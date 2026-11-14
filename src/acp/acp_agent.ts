@@ -349,9 +349,13 @@ export async function acp_agent<i, o>(config: ServeAcpConfig<i, o>): Promise<Age
     const warnings = record.notices.splice(0)
     if (client_capabilities.session?.notices === undefined || client_capabilities.session.notices === null) return
     const send = sender(sdk, client, record.session.id)
-    for (const { title, description } of warnings) {
-      await send({ sessionUpdate: 'notice', severity: 'warning', title, description })
-    }
+    // A notice is fire-and-forget, so one that can't be sent is dropped
+    // instead of failing the request it rode in on.
+    await Promise.all(
+      warnings.map(({ title, description }) =>
+        send({ sessionUpdate: 'notice', severity: 'warning', title, description }).catch(() => {}),
+      ),
+    )
   }
   // Every option a session has, the mode first, as each answer and each
   // config option update reports them.

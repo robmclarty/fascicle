@@ -49,7 +49,8 @@ workspace tools, each tool named `mcp__<server>__<tool>`. A server's call can
 do anything that server can, so it asks first in Manual and in Accept edits,
 the same as a command, and the prompt offers to allow that one tool for the
 rest of the thread. A server that fails to start is left out of the thread
-with a warning on the agent's stderr, and the thread carries on without it.
+with a warning on the agent's stderr, which Zed also shows as a notice at
+the thread's first prompt, and the thread carries on without it.
 
 ## Threads and the context ring
 
@@ -57,13 +58,37 @@ Threads are kept under `~/.local/state/fascicle-acp-coder/sessions`, or
 under `$XDG_STATE_HOME` when that's set, so Zed can open one again after the
 agent restarts. `--sessions <dir>` keeps them somewhere else. Keep the
 directory outside every workspace you open, since each file holds a whole
-conversation.
+conversation. A thread comes back as you saw it, with its tool cards, its
+diffs, and its commands' output, and deleting it from Zed's history deletes
+its files.
 
 `--context-window <tokens>` gives Zed the context window that it draws its
 context ring against, and the ring shows the thread's cost beside it. Give
 the window that your provider lists for the model. With more than one
 `--model`, the one window stands for all of them, so give the smallest.
 Without the flag, Zed draws no ring.
+
+## Logging in
+
+The provider's key can sit in the `env` of the agent server entry, as the
+entry below has it, and nothing more is needed. Leave it out, and a new
+thread fails with a login prompt in a client that offers one. Zed offers to
+run the login in a terminal: it starts this agent with `--login`, which asks
+for the key without showing what you type and writes it to
+`~/.config/fascicle-acp-coder/openrouter-credentials.json` (under
+`$XDG_CONFIG_HOME` when that's set, and named for the provider under
+`--provider`). The file holds the key in plain text, readable by you alone,
+the way `~/.aws/credentials` does. The key in `env` wins when both are there,
+and the login's Log out deletes the file.
+
+You can run the same login yourself:
+
+```bash
+pnpm exec tsx examples/acp-coder/main.ts --login
+```
+
+A client that shows no login prompt for a thread it reopens, as kandev
+doesn't, needs the key in `env`.
 
 ## How hard it thinks
 
@@ -161,7 +186,13 @@ whose `test` script runs `node --test` is enough), start a thread with
     for something that needs one of its tools. A permission request should
     name the tool as `mcp__<server>__<tool>`.
 11. Quit Zed, open it again, and open the thread from the agent panel's
-    history. Its messages, its title, and its model should all come back.
+    history. Its messages, its tool cards with their diffs and output, its
+    title, and its model should all come back.
+12. Delete a thread from the history. Its file and its `.turns` directory
+    should be gone from the sessions directory.
+13. Take `OPENROUTER_API_KEY` out of `env`, restart the agent, and start a
+    thread. Zed should offer the login, and the thread should start once the
+    terminal login has the key.
 
 Two more checks round it out. Switch to Auto, ask for a change and a test
 run, and neither should ask. And start a long command again, quit Zed while it
