@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { aborted_error, timeout_error } from '../errors.js'
 import { run } from '../runner.js'
 import { step } from '../step.js'
@@ -7,6 +7,10 @@ import type { RunContext } from '../types.js'
 import { recording_logger } from '../../../test/fixtures/trajectory.js'
 
 describe('timeout', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
   it('throws timeout_error when inner exceeds the budget', async () => {
     const slow = step('slow', async (_: number, ctx: RunContext) => {
       await new Promise<void>((resolve, reject) => {
@@ -23,13 +27,27 @@ describe('timeout', () => {
       return 'done'
     })
   
+    // The clock is the test's own, so the budget is held to the millisecond
+    // however busy the machine is: nothing has settled a millisecond short of
+    // it, and the error is there at it, long before the step's own 500.
+    vi.useFakeTimers()
     const flow = timeout(slow, 50)
-    const started = Date.now()
-    await expect(run(flow, 0, { install_signal_handlers: false })).rejects.toBeInstanceOf(
-      timeout_error,
+    let settled = false
+    const outcome = run(flow, 0, { install_signal_handlers: false }).then(
+      () => {
+        settled = true
+        return undefined
+      },
+      (err: unknown) => {
+        settled = true
+        return err
+      },
     )
-    const elapsed = Date.now() - started
-    expect(elapsed).toBeLessThan(200)
+    await vi.advanceTimersByTimeAsync(49)
+    expect(settled).toBe(false)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(settled).toBe(true)
+    expect(await outcome).toBeInstanceOf(timeout_error)
   })
 
   it('resolves normally when inner completes in time', async () => {
@@ -106,16 +124,31 @@ describe('timeout', () => {
       return 'done'
     })
   
+    // On the test's own clock: the error is there at the budget's 100, with
+    // the step still 400 short of finishing, and the step runs on to its end.
+    vi.useFakeTimers()
     const flow = timeout(ignorant, 100)
-    const started = Date.now()
-    await expect(run(flow, 0, { install_signal_handlers: false })).rejects.toBeInstanceOf(
-      timeout_error,
+    let settled = false
+    const outcome = run(flow, 0, { install_signal_handlers: false }).then(
+      () => {
+        settled = true
+        return undefined
+      },
+      (err: unknown) => {
+        settled = true
+        return err
+      },
     )
-    const elapsed = Date.now() - started
-  
-    expect(elapsed).toBeLessThan(250)
+    await vi.advanceTimersByTimeAsync(99)
+    expect(settled).toBe(false)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(settled).toBe(true)
+    expect(await outcome).toBeInstanceOf(timeout_error)
+
     expect(inner_still_running).toBe(false)
-    await new Promise((resolve) => setTimeout(resolve, 450))
+    await vi.advanceTimersByTimeAsync(399)
+    expect(inner_still_running).toBe(false)
+    await vi.advanceTimersByTimeAsync(1)
     expect(inner_still_running).toBe(true)
   })
 

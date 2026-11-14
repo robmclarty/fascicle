@@ -43,23 +43,42 @@ describe('parallel', () => {
   })
 
   it('runs two children concurrently', async () => {
+    // Neither child returns until both have started, which only children that
+    // overlap can do. Run one after the other, the first waits on a second
+    // that never starts, gives up, and fails the run.
+    let started = 0
+    let release: () => void = () => {}
+    const both_started = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const wait_for_the_other = async (): Promise<void> => {
+      started += 1
+      if (started === 2) release()
+      let timer: ReturnType<typeof setTimeout> | undefined
+      const gave_up = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error('the other child never started')), 2000)
+      })
+      try {
+        await Promise.race([both_started, gave_up])
+      } finally {
+        clearTimeout(timer)
+      }
+    }
     const flow = parallel({
       a: step('a', async (x: number) => {
-        await wait(40)
+        await wait_for_the_other()
         return x + 1
       }),
       b: step('b', async (x: number) => {
-        await wait(40)
+        await wait_for_the_other()
         return x * 2
       }),
     })
-  
-    const started = Date.now()
-    const result = await run(flow, 3)
-    const elapsed = Date.now() - started
-  
+
+    const result = await run(flow, 3, { install_signal_handlers: false })
+
     expect(result).toEqual({ a: 4, b: 6 })
-    expect(elapsed).toBeLessThan(80)
+    expect(started).toBe(2)
   })
 
   it('wraps children in a parallel span', async () => {

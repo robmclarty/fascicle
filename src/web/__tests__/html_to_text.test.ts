@@ -15,36 +15,90 @@ const md = (html: string): string => html_to_text(html, PAGE)
 const fixture = (name: string): string => readFileSync(new URL(`./fixtures/${name}.html`, import.meta.url), 'utf8')
 
 /**
- * Run a conversion and return what it made with the milliseconds it took.
- */
-const timed = (html: string): { text: string; ms: number } => {
-  const start = performance.now()
-  const text = md(html)
-  return { text, ms: performance.now() - start }
-}
-
-/**
  * Whether the run is inside a Stryker worker, whose instrumentation counts
  * every statement the converter runs and slows it about a hundred times over.
  */
 const INSTRUMENTED = process.env['STRYKER_MUTATOR_WORKER'] !== undefined
 
 /**
- * Generous enough for a loaded machine, and far under what a quadratic pass
- * over these inputs takes. Under Stryker the budget is wider by the cost of
- * its instrumentation, and a mutant that turns a pass quadratic still dies,
- * on Stryker's own timeout.
- */
-const LINEAR_BUDGET_MS = INSTRUMENTED ? 120_000 : 5000
-
-/**
  * What the large inputs are divided by. Stryker runs these tests once to map
  * coverage and again for every mutant they cover, so at full size they would
  * take its initial run past its limit and a mutation run into hours. A
  * sixteenth is still thousands of tags deep, and the suite's own run is where
- * the full size and the five-second budget are held.
+ * the full size is held.
  */
 const SHRINK = INSTRUMENTED ? 16 : 1
+
+/**
+ * How many times smaller the second input of a growth measurement is.
+ */
+const GROWTH = 8
+
+/**
+ * The most a conversion's time may grow by when its input grows GROWTH times.
+ * A quadratic pass grows about 64 times. A linear one measures between 8 and
+ * 15 here, more than 8 because the larger input falls out of the processor's
+ * cache and leaves more for the collector, so the limit is double the one and
+ * half the other.
+ */
+const GROWTH_LIMIT = 32
+
+/**
+ * The processor time under which a full-size conversion passes without a
+ * growth measurement, since an eighth of so little is too short to time. A
+ * quadratic pass over any of these inputs takes seconds, so none hides here.
+ */
+const GROWTH_FLOOR_MS = 50
+
+/**
+ * Run `work` and return the milliseconds of processor time this process spent
+ * on it. Processor time, unlike the clock, doesn't count the time the process
+ * waits its turn on a busy machine.
+ */
+const cpu_ms = (work: () => unknown): number => {
+  const start = process.cpuUsage()
+  work()
+  const spent = process.cpuUsage(start)
+  return (spent.user + spent.system) / 1000
+}
+
+/**
+ * Convert the input that `make` builds at `size` and again at an eighth of
+ * it, and return the full-size text, the processor time it took, and the
+ * limit that linear growth keeps it under.
+ *
+ * Both sizes are timed in the same run, so the comparison holds on a slow or
+ * a busy machine, where a fixed budget doesn't. The small input runs after
+ * the full one, when the converter is already compiled, and takes its best of
+ * three, since anything else on the machine can only add to a measurement. A
+ * full-size time over the limit is taken again for the same reason, and a
+ * pass that really is quadratic stays over it every time.
+ */
+const growth = (
+  make: (size: number) => string,
+  size: number,
+  convert: (html: string) => string = md,
+): { text: string; full_ms: number; limit_ms: number } => {
+  const html = make(size)
+  let text = ''
+  let full_ms = cpu_ms(() => {
+    text = convert(html)
+  })
+  const small = make(Math.floor(size / GROWTH))
+  const small_ms = Math.min(
+    cpu_ms(() => convert(small)),
+    cpu_ms(() => convert(small)),
+    cpu_ms(() => convert(small)),
+  )
+  const limit_ms = Math.max(GROWTH_FLOOR_MS, small_ms * GROWTH_LIMIT)
+  for (let again = 0; again < 2 && full_ms >= limit_ms; again += 1) {
+    full_ms = Math.min(
+      full_ms,
+      cpu_ms(() => convert(html)),
+    )
+  }
+  return { text, full_ms, limit_ms }
+}
 
 describe('html_to_text on fixtures', () => {
   it('converts an article page, dropping its chrome of scripts, styles, svg, noscript, and template', () => {
@@ -951,17 +1005,36 @@ describe('html_to_text malformed markup', () => {
   })
 })
 
-// Each test here converts several large inputs and holds every one of them to
-// LINEAR_BUDGET_MS, so the test as a whole needs more room than the default,
-// most of all under coverage or mutation instrumentation.
+// Each test here converts several large inputs, and each of those more than
+// once to measure how its time grows, so the test as a whole needs more room
+// than the default, most of all under coverage or mutation instrumentation.
+// The timeout is there to end a hang. What holds a conversion to linear time
+// is `growth`, which doesn't read the clock.
 describe('html_to_text on hostile input', { timeout: INSTRUMENTED ? 600_000 : 120_000 }, () => {
   const COUNT = 100_000 / SHRINK
 
+  it('measures growth closely enough to fail a quadratic pass', () => {
+    // Stands in for a converter that reads the rest of the input again for
+    // every character, which is the pass the tests below are there to catch.
+    const quadratic = (html: string): string => {
+      let seen = 0
+      for (let index = 0; index < html.length; index += 1) {
+        for (let rest = index; rest < html.length; rest += 1) seen += html.charCodeAt(rest) & 1
+      }
+      return String(seen)
+    }
+    const { full_ms, limit_ms } = growth((count) => 'a'.repeat(count), 16_000, quadratic)
+    expect(full_ms).toBeGreaterThanOrEqual(limit_ms)
+  })
+
   it('survives a hundred thousand nested tags of each container kind', () => {
     for (const tag of ['div', 'span', 'blockquote', 'ul', 'ol', 'li', 'b', 'p', 'pre', 'code', 'svg', 'template', 'h1', 'td', 'tr']) {
-      const { text, ms } = timed(`${`<${tag}>`.repeat(COUNT)}x${`</${tag}>`.repeat(COUNT)}y`)
+      const { text, full_ms, limit_ms } = growth(
+        (count) => `${`<${tag}>`.repeat(count)}x${`</${tag}>`.repeat(count)}y`,
+        COUNT,
+      )
       expect(typeof text).toBe('string')
-      expect(ms).toBeLessThan(LINEAR_BUDGET_MS)
+      expect(full_ms, tag).toBeLessThan(limit_ms)
     }
   })
 
@@ -974,65 +1047,66 @@ describe('html_to_text on hostile input', { timeout: INSTRUMENTED ? 600_000 : 12
   })
 
   it('stays linear on nested lists, tables, and links with text at every level', () => {
-    for (const html of [
-      '<ul><li>a'.repeat(COUNT),
-      '<table><tr><td>a<td>b'.repeat(COUNT),
-      '<a href="/x">a'.repeat(COUNT),
-      '<blockquote>a<li>b'.repeat(COUNT),
-      `${'<blockquote>'.repeat(COUNT)}${'</ul>'.repeat(COUNT)}${'<li>a'.repeat(COUNT)}`,
-      `<p>${'<span>a</span> '.repeat(COUNT)}</p>`,
-      `<pre>${'a\n'.repeat(COUNT)}</pre>`,
-      `<table>${'<tr><td>a<td>b'.repeat(COUNT)}</table>`,
-      `<table><tr>${'<td>a'.repeat(COUNT)}${'<tr><td>b'.repeat(COUNT)}</table>`,
-      `<table><tr>${'<td colspan=1000>a'.repeat(COUNT)}</table>`,
-    ]) {
-      const { text, ms } = timed(html)
+    const makers: ReadonlyArray<(count: number) => string> = [
+      (count) => '<ul><li>a'.repeat(count),
+      (count) => '<table><tr><td>a<td>b'.repeat(count),
+      (count) => '<a href="/x">a'.repeat(count),
+      (count) => '<blockquote>a<li>b'.repeat(count),
+      (count) => `${'<blockquote>'.repeat(count)}${'</ul>'.repeat(count)}${'<li>a'.repeat(count)}`,
+      (count) => `<p>${'<span>a</span> '.repeat(count)}</p>`,
+      (count) => `<pre>${'a\n'.repeat(count)}</pre>`,
+      (count) => `<table>${'<tr><td>a<td>b'.repeat(count)}</table>`,
+      (count) => `<table><tr>${'<td>a'.repeat(count)}${'<tr><td>b'.repeat(count)}</table>`,
+      (count) => `<table><tr>${'<td colspan=1000>a'.repeat(count)}</table>`,
+    ]
+    for (const [index, make] of makers.entries()) {
+      const { text, full_ms, limit_ms } = growth(make, COUNT)
       expect(text.length).toBeGreaterThan(0)
-      expect(ms).toBeLessThan(LINEAR_BUDGET_MS)
+      expect(full_ms, `input ${index}`).toBeLessThan(limit_ms)
     }
   })
 
   it('stays linear on constructs that are opened over and over and never closed', () => {
-    for (const html of [
-      '<'.repeat(COUNT * 10),
-      '</'.repeat(COUNT * 5),
-      '<!'.repeat(COUNT * 5),
-      '<!--'.repeat(COUNT * 3),
-      '<![CDATA['.repeat(COUNT),
-      '<![CDATA[>'.repeat(COUNT),
-      '<?'.repeat(COUNT * 5),
-      '<a "'.repeat(COUNT * 2),
-      "<a href='".repeat(COUNT),
-      '<a b=c '.repeat(COUNT),
-      '<script>'.repeat(COUNT),
-      '<script></scrip'.repeat(COUNT),
-      '<script><!--<script></script>'.repeat(COUNT),
-      '<script></script a="'.repeat(COUNT),
-      '<script/><title/>'.repeat(COUNT),
-      `&#${'0'.repeat(COUNT * 10)}`,
-      `&#x${'f'.repeat(COUNT * 10)}`,
-      '<title></titl'.repeat(COUNT),
-      '<svg><foreignObject>'.repeat(COUNT),
-      '&'.repeat(COUNT * 10),
-      '&#'.repeat(COUNT * 5),
-      '&amp'.repeat(COUNT * 2),
-      `&${'a'.repeat(COUNT * 10)}`,
-      `<pre>${' '.repeat(COUNT * 10)}x`,
-      `<p>${' '.repeat(COUNT * 10)}x`,
-      `<code>${'`'.repeat(COUNT)}</code>`,
-      `<table><tr><td><pre>${' \n'.repeat(COUNT)}x</pre><td>y</table>`,
-      `<a href="${'/x('.repeat(COUNT)}">y</a>`,
-      `<div ${'a'.repeat(COUNT * 10)}>x`,
-      `<${'a'.repeat(COUNT * 10)}`,
-      `<p class="${' x'.repeat(COUNT)}">x`,
-      `<pre class="${' language-'.repeat(COUNT)}">x`,
-    ]) {
-      const { text, ms } = timed(html)
-      expect(typeof text).toBe('string')
-      expect(ms).toBeLessThan(LINEAR_BUDGET_MS)
-      const start = performance.now()
-      html_title(html)
-      expect(performance.now() - start).toBeLessThan(LINEAR_BUDGET_MS)
+    const makers: ReadonlyArray<(count: number) => string> = [
+      (count) => '<'.repeat(count * 10),
+      (count) => '</'.repeat(count * 5),
+      (count) => '<!'.repeat(count * 5),
+      (count) => '<!--'.repeat(count * 3),
+      (count) => '<![CDATA['.repeat(count),
+      (count) => '<![CDATA[>'.repeat(count),
+      (count) => '<?'.repeat(count * 5),
+      (count) => '<a "'.repeat(count * 2),
+      (count) => "<a href='".repeat(count),
+      (count) => '<a b=c '.repeat(count),
+      (count) => '<script>'.repeat(count),
+      (count) => '<script></scrip'.repeat(count),
+      (count) => '<script><!--<script></script>'.repeat(count),
+      (count) => '<script></script a="'.repeat(count),
+      (count) => '<script/><title/>'.repeat(count),
+      (count) => `&#${'0'.repeat(count * 10)}`,
+      (count) => `&#x${'f'.repeat(count * 10)}`,
+      (count) => '<title></titl'.repeat(count),
+      (count) => '<svg><foreignObject>'.repeat(count),
+      (count) => '&'.repeat(count * 10),
+      (count) => '&#'.repeat(count * 5),
+      (count) => '&amp'.repeat(count * 2),
+      (count) => `&${'a'.repeat(count * 10)}`,
+      (count) => `<pre>${' '.repeat(count * 10)}x`,
+      (count) => `<p>${' '.repeat(count * 10)}x`,
+      (count) => `<code>${'`'.repeat(count)}</code>`,
+      (count) => `<table><tr><td><pre>${' \n'.repeat(count)}x</pre><td>y</table>`,
+      (count) => `<a href="${'/x('.repeat(count)}">y</a>`,
+      (count) => `<div ${'a'.repeat(count * 10)}>x`,
+      (count) => `<${'a'.repeat(count * 10)}`,
+      (count) => `<p class="${' x'.repeat(count)}">x`,
+      (count) => `<pre class="${' language-'.repeat(count)}">x`,
+    ]
+    for (const [index, make] of makers.entries()) {
+      const body = growth(make, COUNT)
+      expect(typeof body.text).toBe('string')
+      expect(body.full_ms, `input ${index}`).toBeLessThan(body.limit_ms)
+      const title = growth(make, COUNT, (html) => html_title(html) ?? '')
+      expect(title.full_ms, `title of input ${index}`).toBeLessThan(title.limit_ms)
     }
   })
 
@@ -1040,20 +1114,20 @@ describe('html_to_text on hostile input', { timeout: INSTRUMENTED ? 600_000 : 12
     const SIZE = (512 * 1024) / SHRINK
     const wide = '<ol start=999999999><li>'.repeat(24)
     const quotes = '<blockquote>'.repeat(24)
-    const cases: ReadonlyArray<readonly [string, number]> = [
-      [`${wide}<pre>${'a\n'.repeat(SIZE / 2)}`, SIZE / 2],
-      [`${wide}${'a<br>'.repeat(SIZE / 4)}`, SIZE / 4],
-      [`${quotes}<pre>a${'\n'.repeat(SIZE)}a`, 2],
-      [`${'<ul><li>'.repeat(24)}${'<p>a'.repeat(SIZE / 4)}`, SIZE / 4],
-      [`${`<table><tr><td>${quotes}`.repeat(6)}<pre>${'a\n'.repeat(SIZE / 2)}`, SIZE / 2],
-      [`<a href="/${'x'.repeat(2000)}">${'<p>a'.repeat(SIZE / 4)}`, SIZE / 4],
-      [`<base href="https://example.org/${'x'.repeat(4000)}/">${'<a href=y>a</a><br>'.repeat(SIZE / 16)}`, SIZE / 16],
+    const cases: ReadonlyArray<readonly [(size: number) => string, number]> = [
+      [(size) => `${wide}<pre>${'a\n'.repeat(size / 2)}`, SIZE / 2],
+      [(size) => `${wide}${'a<br>'.repeat(size / 4)}`, SIZE / 4],
+      [(size) => `${quotes}<pre>a${'\n'.repeat(size)}a`, 2],
+      [(size) => `${'<ul><li>'.repeat(24)}${'<p>a'.repeat(size / 4)}`, SIZE / 4],
+      [(size) => `${`<table><tr><td>${quotes}`.repeat(6)}<pre>${'a\n'.repeat(size / 2)}`, SIZE / 2],
+      [(size) => `<a href="/${'x'.repeat(2000)}">${'<p>a'.repeat(size / 4)}`, SIZE / 4],
+      [(size) => `<base href="https://example.org/${'x'.repeat(4000)}/">${'<a href=y>a</a><br>'.repeat(size / 16)}`, SIZE / 16],
     ]
-    for (const [html, lines] of cases) {
-      const { text, ms } = timed(html)
-      expect(text.length).toBeLessThan(html.length * 8)
+    for (const [index, [make, lines]] of cases.entries()) {
+      const { text, full_ms, limit_ms } = growth(make, SIZE)
+      expect(text.length).toBeLessThan(make(SIZE).length * 8)
       expect(text.split('\n').filter((line) => line.endsWith('a') || line.endsWith(')')).length).toBe(lines)
-      expect(ms).toBeLessThan(LINEAR_BUDGET_MS)
+      expect(full_ms, `input ${index}`).toBeLessThan(limit_ms)
     }
   })
 
@@ -1069,10 +1143,10 @@ describe('html_to_text on hostile input', { timeout: INSTRUMENTED ? 600_000 : 12
   it('converts a few megabytes of ordinary markup in linear time', () => {
     const row = '<tr><td>cell &amp; <a href="/x?y=1">link</a></td><td><code>code</code></td></tr>'
     const section = `<h2>Title</h2><p>Some <b>text</b> here.</p><ul><li>one<li>two</ul><table>${row.repeat(5)}</table><pre>x\n  y</pre>`
-    const { text, ms } = timed(section.repeat(8000 / SHRINK))
+    const { text, full_ms, limit_ms } = growth((count) => section.repeat(count), 8000 / SHRINK)
     expect(text.startsWith('## Title\n\nSome text here.\n\n- one\n- two\n\n| cell & [link](https://example.org/x?y=1) | `code` |\n| --- | --- |')).toBe(true)
     expect(text.endsWith('```\nx\n  y\n```')).toBe(true)
-    expect(ms).toBeLessThan(LINEAR_BUDGET_MS)
+    expect(full_ms).toBeLessThan(limit_ms)
   })
 })
 

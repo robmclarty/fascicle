@@ -1,10 +1,14 @@
+import { execFile } from 'node:child_process'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { promisify } from 'node:util'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import { make_ctx, type ToolExecContextStub } from './_helpers.js'
 import { make_run_shell, RunShellAllowlistError, type RunShellOutput } from '../run_shell.js'
+
+const exec_file = promisify(execFile)
 
 let root: string
 let ctx: ToolExecContextStub
@@ -69,12 +73,22 @@ describe('run_shell execution', () => {
     expect(out.timed_out).toBe(false)
   })
 
-  it('runs `pnpm --version` and captures stdout', async () => {
+  it('runs `git status` in a repository and captures stdout with a zero code', async () => {
+    // git starts in a few milliseconds where pnpm starts a whole node process,
+    // which is what ran this past the test's timeout on a busy machine. The
+    // allowlist has only the two, and the property is the same for either:
+    // an allowed command's stdout and exit code come back.
+    await exec_file('git', ['init', '--quiet'], { cwd: root })
     const tool = make_run_shell(root)
-    const out = (await tool.execute({ argv: ['pnpm', '--version'] }, ctx)) as RunShellOutput
+    const out = (await tool.execute(
+      { argv: ['git', 'status', '--porcelain=v2', '--branch'] },
+      ctx,
+    )) as RunShellOutput
     expect(out.code).toBe(0)
-    expect(out.stdout.trim()).toMatch(/^\d+\.\d+\.\d+/)
+    expect(out.stdout).toMatch(/^# branch\.oid /)
+    expect(out.stderr).toBe('')
     expect(out.truncated).toBe(false)
+    expect(out.timed_out).toBe(false)
   })
 
   it('honors caller abort signal by aborting the child process', async () => {
