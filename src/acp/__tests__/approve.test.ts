@@ -808,7 +808,7 @@ describe('approve: waiting for the client', () => {
       return choose('allow_once')
     })
     const flow = sequence([coder(engine, session, 'first'), coder(engine, session, 'second')])
-    const record = { session, flow, history: [], cards, usage: create_session_usage(), last_turn: null, title: null }
+    const record = { session, flow, history: [], cards, usage: create_session_usage(), last_turn: null, title: null, unsaved_turns: [] }
     await prompt_turn({ name: 'approve', flow }, record, [{ type: 'text', text: 'go' }], new AbortController().signal, send)
     expect(at_ask.map(({ card }) => card)).toEqual([
       card_id(sent, 'ollama_call_0_0', 'first'),

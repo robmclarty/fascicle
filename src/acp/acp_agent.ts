@@ -8,20 +8,28 @@
  * and the engine alone; `serve_acp` handles both.
  *
  * Given a session store, it saves each session after every turn and every
- * mode or model switch, and answers `session/list`, `session/load`, and
- * `session/resume` from it. A loaded session gets a fresh flow from the
- * config, and the history it carries is what its next turn starts from.
+ * mode or model switch, and answers `session/list`, `session/load`,
+ * `session/resume`, and `session/delete` from it. A loaded session gets a
+ * fresh flow from the config, and the history it carries is what its next
+ * turn starts from.
  *
  * A session holds what the client gave it until the client closes it with
  * `session/close` or drops the connection: its MCP servers, for an agent
  * that connects to them, are closed then, and a closed session leaves
  * memory, though not the store.
+ *
+ * A request that names a session the agent doesn't hold fails with -32002
+ * and the id as `data.sessionId`, which is how the protocol has an agent
+ * say that a session is gone, and what a host reads before it offers to
+ * start the thread over. Given an `auth`, the agent offers a login and
+ * refuses to start, load, or resume a session until the login is ready.
  */
 
 import { randomUUID } from 'node:crypto'
 import type {
   AgentApp,
   AgentContext,
+  AuthMethod,
   ClientCapabilities,
   ListSessionsResponse,
   McpServer,
@@ -32,7 +40,7 @@ import type {
 import { create_card_sync, message_of, session_approver } from './approve.js'
 import type { PermissionAsker } from './approve.js'
 import { connect_mcp_servers, gated_mcp_tools, MCP_CAPABILITIES, NO_MCP } from './mcp_servers.js'
-import type { McpConnections } from './mcp_servers.js'
+import type { McpConnections, McpWarning } from './mcp_servers.js'
 import {
   context_window_of,
   MODEL_CONFIG_ID,
@@ -48,8 +56,18 @@ import type { ModeOffer, SessionModes } from './modes.js'
 import { cancel_turn, prompt_turn } from './prompt_turn.js'
 import type { SessionRecord } from './prompt_turn.js'
 import { load_acp_sdk } from './sdk_loader.js'
+import { session_page } from './session_list.js'
 import { resolve_roots } from './tools/containment.js'
-import type { AcpHistoryEntry, AcpMode, AcpSession, AcpSessionSummary, AcpStoredSession, ServeAcpConfig } from './types.js'
+import type {
+  AcpAuth,
+  AcpHistoryEntry,
+  AcpMode,
+  AcpSession,
+  AcpSessionStore,
+  AcpSessionSummary,
+  AcpStoredSession,
+  ServeAcpConfig,
+} from './types.js'
 import { create_session_usage, usage_update } from './usage.js'
 import type { SessionUsage } from './usage.js'
 
@@ -57,14 +75,26 @@ type AcpSdk = Awaited<ReturnType<typeof load_acp_sdk>>
 
 /**
  * A session as the agent holds it: what a turn needs, its mode, its model,
- * its MCP servers, and the latest save, which the next save waits on so two
- * never write at once.
+ * its MCP servers as the client sent them and as connected, the warnings
+ * about them the client hasn't been shown, how many of its turns the store
+ * keeps (null for a session whose turns aren't kept), how many turns have
+ * left `unsaved_turns`, the latest save, which the next save waits on so
+ * two never write at once, and the prompts that haven't answered yet, each
+ * done once its turn is saved. A deleted session saves nothing more.
  */
 type AgentSession<i, o> = SessionRecord<i, o> & {
   readonly modes: SessionModes
   readonly model: { id: string | undefined }
-  readonly mcp: McpConnections
+  mcp: McpConnections
+  mcp_servers: ReadonlyArray<McpServer>
+  /** Hands the session's flow builder another set of connections' tools. */
+  readonly use_mcp: (connections: McpConnections) => void
+  readonly notices: McpWarning[]
+  turns: number | null
+  flushed: number
   saving: Promise<void>
+  readonly prompts: Set<Promise<void>>
+  deleted: boolean
 }
 
 /**
@@ -79,8 +109,22 @@ type SessionStart = {
   readonly stored?: AcpStoredSession | undefined
 }
 
+/** What a load or a resume asks for, once its directories are checked. */
+type ReopenRequest = {
+  readonly sessionId: string
+  readonly cwd: string
+  readonly additional_directories: ReadonlyArray<string>
+  readonly mcp_servers: ReadonlyArray<McpServer> | undefined
+}
+
 /** Every config option id a session can have, as a refusal lists them. */
 const CONFIG_IDS = `${MODE_CONFIG_ID} and ${MODEL_CONFIG_ID}`
+
+/** The id of the login every client is offered, which `authenticate` takes. */
+const LOGIN_METHOD = 'login'
+
+/** The id of the login a client runs in a terminal. */
+const TERMINAL_LOGIN_METHOD = 'terminal-login'
 
 const ONE_CONNECTION =
   'acp_agent: this app already serves a connection; build an app for each connection, as serve_acp does'
@@ -92,6 +136,55 @@ const ONE_CONNECTION =
  */
 function internal_error(sdk: AcpSdk, err: unknown): Error {
   return sdk.RequestError.internalError(undefined, message_of(err))
+}
+
+/**
+ * The error for a request that names a session the agent doesn't hold:
+ * -32002 with the id as `data.sessionId`, as the protocol asks. It's built
+ * here because the SDK's own helper for it is newer than the oldest SDK the
+ * peer range takes.
+ */
+function unknown_session(sdk: AcpSdk, sessionId: string): Error {
+  return new sdk.RequestError(-32002, 'Resource not found', { sessionId })
+}
+
+/**
+ * The error that tells a client the user has to log in first, which it
+ * answers by offering the agent's login methods.
+ */
+function login_required(sdk: AcpSdk, auth: AcpAuth): Error {
+  return new sdk.RequestError(-32000, `Authentication required: ${auth.instructions}`)
+}
+
+/**
+ * The error for a load or a resume that names a session with another cwd
+ * than the one it started in, which the protocol has the client send.
+ */
+function other_cwd(sdk: AcpSdk, method: string, sessionId: string, started_in: string, cwd: string): Error {
+  return sdk.RequestError.invalidParams(
+    { sessionId, cwd },
+    `session ${sessionId} started in ${started_in}; send that cwd with ${method}`,
+  )
+}
+
+/**
+ * The login methods an agent offers a client. Every client gets the one
+ * the agent checks by itself, which is what the ACP registry looks for,
+ * and a client that can run a terminal login also gets that one.
+ */
+function auth_methods(auth: AcpAuth | undefined, capabilities: ClientCapabilities): AuthMethod[] {
+  if (auth === undefined) return []
+  const shown = { name: auth.name, ...(auth.description === undefined ? {} : { description: auth.description }) }
+  const agent_login: AuthMethod = { id: LOGIN_METHOD, ...shown }
+  if (auth.terminal_args === undefined || capabilities.auth?.terminal !== true) return [agent_login]
+  return [agent_login, { type: 'terminal', id: TERMINAL_LOGIN_METHOD, ...shown, args: [...auth.terminal_args] }]
+}
+
+/**
+ * Whether two lists of MCP servers are the same list, entry for entry.
+ */
+function same_servers(a: ReadonlyArray<McpServer>, b: ReadonlyArray<McpServer>): boolean {
+  return JSON.stringify(a) === JSON.stringify(b)
 }
 
 /**
@@ -172,21 +265,44 @@ function stored_session<i, o>(record: AgentSession<i, o>): AcpStoredSession {
     updated_at: new Date().toISOString(),
     history: structuredClone(record.history),
     usage: { ...record.usage },
+    ...(record.turns === null ? {} : { turns: record.turns }),
   }
 }
 
 /**
- * Save a session after the save before it. A session with no history yet
- * isn't saved, so a thread the user never wrote in doesn't fill the list. A
- * failed save is reported on stderr rather than failing the turn the user
- * already watched finish, and it leaves the session as it was in the store.
+ * Save a session after the save before it: first each turn the store hasn't
+ * been handed, for a store that keeps turns, then the session, whose count
+ * of turns then reaches them. A turn leaves `unsaved_turns` and joins the
+ * count only once it's written, so a turn whose write failed goes with the
+ * next save instead of leaving a hole in the thread. A session with no
+ * history yet isn't saved, so a thread the user never wrote in doesn't fill
+ * the list, and neither is a deleted one. A failed save is reported on
+ * stderr rather than failing the turn the user already watched finish, and
+ * it leaves the session as it was in the store.
  */
 function save_session<i, o>(config: ServeAcpConfig<i, o>, record: AgentSession<i, o>): Promise<void> {
   const store = config.session_store
-  if (store === undefined || record.history.length === 0) return Promise.resolve()
+  if (store === undefined || record.deleted || record.history.length === 0) {
+    record.flushed += record.unsaved_turns.splice(0).length
+    return Promise.resolve()
+  }
+  const { save_turn } = store
+  if (record.turns === null || save_turn === undefined) record.flushed += record.unsaved_turns.splice(0).length
+  // The history is copied now and names the turns that go with it, so a
+  // turn that ends while this save waits its place isn't written by it.
   const snapshot = stored_session(record)
+  const through = record.flushed + record.unsaved_turns.length
   record.saving = record.saving
-    .then(() => store.save(snapshot))
+    .then(async () => {
+      const first = record.turns
+      if (first === null || save_turn === undefined) return store.save(snapshot)
+      const unsaved = record.unsaved_turns.slice(0, through - record.flushed)
+      await Promise.all(unsaved.map((updates, offset) => save_turn(snapshot.id, first + offset, updates)))
+      record.unsaved_turns.splice(0, unsaved.length)
+      record.flushed += unsaved.length
+      record.turns = first + unsaved.length
+      return store.save({ ...snapshot, turns: record.turns })
+    })
     .catch((err: unknown) => {
       process.stderr.write(`fascicle/acp: couldn't save session ${snapshot.id}: ${message_of(err)}\n`)
     })
@@ -232,15 +348,50 @@ export async function acp_agent<i, o>(config: ServeAcpConfig<i, o>): Promise<Age
   const models = model_offer(config)
   const sdk = await load_acp_sdk()
   const sessions = new Map<string, AgentSession<i, o>>()
+  // The stored sessions being opened, so a second request for one waits
+  // for the first instead of opening it again.
+  const opening = new Map<string, Promise<AgentSession<i, o>>>()
   const store = config.session_store
   const identity = { name: config.name, version: config.version ?? '0.0.0' }
   let client_capabilities: ClientCapabilities = {}
   let connected = false
   let initialized = false
+  const { auth } = config
   const session_of = (sessionId: string): AgentSession<i, o> => {
     const record = sessions.get(sessionId)
     if (record !== undefined) return record
-    throw sdk.RequestError.invalidParams({ sessionId }, `unknown session ${sessionId}; start one with session/new first`)
+    throw unknown_session(sdk, sessionId)
+  }
+  // A session that can't run shouldn't look started or restored, so each
+  // request that opens one asks the login first.
+  const require_login = async (): Promise<void> => {
+    if (auth === undefined) return
+    const ready = await Promise.resolve()
+      .then(() => auth.ready())
+      .catch((err: unknown) => {
+        throw internal_error(sdk, err)
+      })
+    if (!ready) throw login_required(sdk, auth)
+  }
+  const connect = (servers: ReadonlyArray<McpServer>, cwd: string): Promise<McpConnections> =>
+    config.mcp_servers === true
+      ? connect_mcp_servers(servers, cwd, identity).catch((err: unknown) => {
+          throw internal_error(sdk, err)
+        })
+      : Promise.resolve(NO_MCP)
+  // A notice is a live message that only a client that asked for notices
+  // may be sent. The warnings already went to stderr for every other one.
+  const send_notices = async (client: AgentContext, record: AgentSession<i, o>): Promise<void> => {
+    const warnings = record.notices.splice(0)
+    if (client_capabilities.session?.notices === undefined || client_capabilities.session.notices === null) return
+    const send = sender(sdk, client, record.session.id)
+    // A notice is fire-and-forget, so one that can't be sent is dropped
+    // instead of failing the request it rode in on.
+    await Promise.all(
+      warnings.map(({ title, description }) =>
+        send({ sessionUpdate: 'notice', severity: 'warning', title, description }).catch(() => {}),
+      ),
+    )
   }
   // Every option a session has, the mode first, as each answer and each
   // config option update reports them.
@@ -248,7 +399,7 @@ export async function acp_agent<i, o>(config: ServeAcpConfig<i, o>): Promise<Age
     ...config_options(offer, record.modes.current()),
     ...model_options(models, record.model.id),
   ]
-  const build_flow = (session: AcpSession) => (typeof config.flow === 'function' ? config.flow(session) : config.flow)
+  const build_flow = async (session: AcpSession) => (typeof config.flow === 'function' ? config.flow(session) : config.flow)
   // The roots resolve once, here, so every containment check compares
   // against the same real paths for the life of the session. The MCP
   // servers connect before the flow is built, since the builder hands their
@@ -262,7 +413,10 @@ export async function acp_agent<i, o>(config: ServeAcpConfig<i, o>): Promise<Age
     const modes = session_modes(offer, sender(sdk, client, id), stored?.mode, () => model_options(models, model.id))
     const cards = create_card_sync()
     const approver = session_approver({ modes, cards, ask: permission_asker(sdk, client) })
-    const mcp = config.mcp_servers === true ? await connect_mcp_servers(start.mcp_servers, cwd, identity) : NO_MCP
+    const mcp = await connect(start.mcp_servers, cwd)
+    // The flow builder reads the tools off the session each time it runs, so
+    // a session handed another list of servers builds its next flow on them.
+    const tools = { gated: gated_mcp_tools(mcp.tools, () => session) }
     const session: AcpSession = {
       id,
       cwd,
@@ -271,23 +425,38 @@ export async function acp_agent<i, o>(config: ServeAcpConfig<i, o>): Promise<Age
       client_capabilities,
       mode: modes.current,
       model: () => model.id,
-      mcp_tools: gated_mcp_tools(mcp.tools, () => session),
+      get mcp_tools() {
+        return tools.gated
+      },
       approve: (request) => approver(session, request),
     }
     const usage: SessionUsage = stored === undefined ? create_session_usage() : { ...stored.usage }
+    // Turns are kept from a session's first one or not at all, so a session
+    // stored without them goes on replaying its history's text.
+    const keeps_turns = store?.save_turn !== undefined && store.load_turns !== undefined
     try {
       const record: AgentSession<i, o> = {
         session,
-        flow: build_flow(session),
+        flow: await build_flow(session),
         history: structuredClone([...(stored?.history ?? [])]),
         cards,
         usage,
         last_turn: null,
         title: stored?.title ?? null,
+        unsaved_turns: [],
         modes,
         model,
         mcp,
+        mcp_servers: start.mcp_servers,
+        use_mcp: (connections) => {
+          tools.gated = gated_mcp_tools(connections.tools, () => session)
+        },
+        notices: [...mcp.warnings],
+        turns: keeps_turns ? (stored === undefined ? 0 : (stored.turns ?? null)) : null,
+        flushed: 0,
         saving: Promise.resolve(),
+        prompts: new Set(),
+        deleted: false,
       }
       sessions.set(id, record)
       return record
@@ -296,10 +465,56 @@ export async function acp_agent<i, o>(config: ServeAcpConfig<i, o>): Promise<Age
       throw internal_error(sdk, err)
     }
   }
+  // A live session handed another list of MCP servers connects to the new
+  // list and builds its flow again, as a model switch does, so its next turn
+  // has the new tools. The old connections close once the turn in flight has
+  // settled, since its flow still calls them. A builder that throws leaves
+  // the session on the servers it had.
+  const switch_servers = async (record: AgentSession<i, o>, servers: ReadonlyArray<McpServer>): Promise<void> => {
+    if (config.mcp_servers !== true || same_servers(record.mcp_servers, servers)) return
+    const previous = record.mcp
+    const next = await connect(servers, record.session.cwd)
+    record.use_mcp(next)
+    try {
+      record.flow = await build_flow(record.session)
+    } catch (err: unknown) {
+      record.use_mcp(previous)
+      await next.close()
+      throw internal_error(sdk, err)
+    }
+    record.mcp = next
+    record.mcp_servers = servers
+    record.notices.push(...next.warnings)
+    void Promise.resolve(record.last_turn?.settled).then(() => previous.close())
+  }
+  // A stored session is opened from the store with the cwd it started in,
+  // which the client must send. The directories the request sends replace
+  // the stored ones, and a request that sends none keeps them, unless the
+  // agent works in cwd alone.
+  const restore = async (
+    client: AgentContext,
+    method: 'session/load' | 'session/resume',
+    request: ReopenRequest,
+    session_store: AcpSessionStore,
+  ): Promise<AgentSession<i, o>> => {
+    const { sessionId, cwd } = request
+    const stored = await session_store.load(sessionId).catch((err: unknown) => {
+      throw internal_error(sdk, err)
+    })
+    if (stored === undefined) throw unknown_session(sdk, sessionId)
+    if (stored.cwd !== cwd) throw other_cwd(sdk, method, sessionId, stored.cwd, cwd)
+    const kept = config.additional_directories === false ? [] : stored.additional_directories
+    return open_session(client, {
+      id: sessionId,
+      cwd,
+      additional_directories: request.additional_directories.length > 0 ? request.additional_directories : kept,
+      mcp_servers: request.mcp_servers ?? [],
+      stored,
+    })
+  }
   // A session this connection already holds is picked up as it is, and a
-  // stored one is opened from the store. Either way the client must send the
-  // cwd the session started in, which the protocol lets the roots beside it
-  // change.
+  // stored one is opened from the store, once: a second request for it that
+  // arrives meanwhile waits and picks up the session the first one opened.
   const reopen = async (
     client: AgentContext,
     method: 'session/load' | 'session/resume',
@@ -311,30 +526,47 @@ export async function acp_agent<i, o>(config: ServeAcpConfig<i, o>): Promise<Age
     },
   ): Promise<AgentSession<i, o>> => {
     if (store === undefined) throw sdk.RequestError.methodNotFound(method)
+    await require_login()
     const { sessionId, cwd } = params
     const additional_directories = requested_directories(sdk, config, method, params.additionalDirectories)
+    for (let pending = opening.get(sessionId); pending !== undefined; pending = opening.get(sessionId)) {
+      await pending.catch(() => {})
+    }
     const live = sessions.get(sessionId)
-    const stored = live === undefined ? await store.load(sessionId).catch((err: unknown) => {
-      throw internal_error(sdk, err)
-    }) : undefined
-    const started_in = live?.session.cwd ?? stored?.cwd
-    if (started_in === undefined) {
-      throw sdk.RequestError.invalidParams({ sessionId }, `unknown session ${sessionId}; list the stored ones with session/list`)
+    if (live === undefined) {
+      const request = { sessionId, cwd, additional_directories, mcp_servers: params.mcpServers }
+      const opened = restore(client, method, request, store).finally(() => opening.delete(sessionId))
+      opening.set(sessionId, opened)
+      return opened
     }
-    if (started_in !== cwd) {
-      throw sdk.RequestError.invalidParams(
-        { sessionId, cwd },
-        `session ${sessionId} started in ${started_in}; send that cwd with ${method}`,
-      )
-    }
-    return (
-      live ?? open_session(client, { id: sessionId, cwd, additional_directories, mcp_servers: params.mcpServers ?? [], stored })
-    )
+    if (live.session.cwd !== cwd) throw other_cwd(sdk, method, sessionId, live.session.cwd, cwd)
+    if (params.mcpServers !== undefined) await switch_servers(live, params.mcpServers)
+    return live
+  }
+  // A loaded thread is shown again from the turns the store kept, each as
+  // the client saw it. A session whose turns weren't kept shows its
+  // history's text, without its tool cards.
+  const replay = async (client: AgentContext, record: AgentSession<i, o>): Promise<void> => {
+    await record.saving
+    const kept =
+      record.turns !== null && record.turns > 0 && store?.load_turns !== undefined
+        ? await store.load_turns(record.session.id, record.turns).catch((err: unknown) => {
+            throw internal_error(sdk, err)
+          })
+        : undefined
+    const send = sender(sdk, client, record.session.id)
+    // A store that kept none of the turns it was handed still has the
+    // history, so the thread shows its text instead of nothing.
+    const turns = kept === undefined || kept.length === 0 ? record.history.map(replayed) : kept.flat()
+    for (const update of turns) await send(update)
   }
   // A reopened thread shows its title and its usage again, which the client
   // can't keep for an agent that restarted, and the answer carries its mode
-  // and its model.
+  // and its model. A host that keeps a running cost takes the usage sent
+  // here as where the session stood, so its next turn isn't charged with
+  // the whole total.
   const reopened = async (client: AgentContext, record: AgentSession<i, o>) => {
+    await send_notices(client, record)
     const send = sender(sdk, client, record.session.id)
     if (record.title !== null && record.title !== '') await send({ sessionUpdate: 'session_info_update', title: record.title })
     const window = context_window_of(config, record.model.id)
@@ -346,11 +578,11 @@ export async function acp_agent<i, o>(config: ServeAcpConfig<i, o>): Promise<Age
   // The flow is built again for the new model before the pick takes, so a
   // builder that throws leaves the session on the model it had. A turn in
   // flight keeps the flow it started with.
-  const switch_model = (record: AgentSession<i, o>, next: string): void => {
+  const switch_model = async (record: AgentSession<i, o>, next: string): Promise<void> => {
     const previous = record.model.id
     record.model.id = next
     try {
-      record.flow = build_flow(record.session)
+      record.flow = await build_flow(record.session)
     } catch (err: unknown) {
       record.model.id = previous
       throw internal_error(sdk, err)
@@ -358,11 +590,15 @@ export async function acp_agent<i, o>(config: ServeAcpConfig<i, o>): Promise<Age
   }
   // Closing cancels the session's turn as session/cancel does, and waits for
   // its run to settle before the MCP servers close, so no tool call is left
-  // talking to one. The session leaves memory, and the store keeps it.
+  // talking to one. It waits for the cancelled turn's save too, so a load
+  // sent as soon as the close answers finds that turn in the store. The
+  // session leaves memory, and the store keeps it.
   const close_session = async (record: AgentSession<i, o>): Promise<void> => {
     sessions.delete(record.session.id)
     cancel_turn(record)
     await record.last_turn?.settled
+    await Promise.all(record.prompts)
+    await record.saving
     await record.mcp.close()
   }
   return sdk
@@ -395,19 +631,34 @@ export async function acp_agent<i, o>(config: ServeAcpConfig<i, o>): Promise<Age
             close: {},
             ...(config.additional_directories === false ? {} : { additionalDirectories: {} }),
             ...(store === undefined ? {} : { list: {}, resume: {} }),
+            ...(store?.delete === undefined ? {} : { delete: {} }),
           },
+          ...(auth?.logout === undefined ? {} : { auth: { logout: {} } }),
         },
-        // Providers authenticate with what the launched process can see;
-        // ACP v1 gives the client no way to hand the agent credentials.
-        authMethods: [],
+        // Without an `auth`, providers authenticate with what the launched
+        // process can see, and the agent offers no method, since a client
+        // can't act on a login the agent has no way to check.
+        authMethods: auth_methods(auth, client_capabilities),
       }
     })
-    .onRequest(
-      'authenticate',
-      // Stryker disable next-line ArrowFunction: the SDK answers an authenticate handler's undefined with {}, so both read the same on the wire.
-      () => ({}),
-    )
+    .onRequest('authenticate', async (ctx) => {
+      if (auth === undefined) return {}
+      const { methodId } = ctx.params
+      if (methodId !== LOGIN_METHOD) {
+        throw sdk.RequestError.invalidParams({ methodId }, `unknown login method ${JSON.stringify(methodId)}; the method is ${LOGIN_METHOD}`)
+      }
+      await require_login()
+      return {}
+    })
+    .onRequest('logout', async () => {
+      if (auth?.logout === undefined) throw sdk.RequestError.methodNotFound('logout')
+      await auth.logout().catch((err: unknown) => {
+        throw internal_error(sdk, err)
+      })
+      return {}
+    })
     .onRequest('session/new', async (ctx) => {
+      await require_login()
       // `mcpServers` is ignored unless the config sets `mcp_servers`.
       const { cwd, mcpServers } = ctx.params
       const additional_directories = requested_directories(sdk, config, 'session/new', ctx.params.additionalDirectories)
@@ -420,21 +671,40 @@ export async function acp_agent<i, o>(config: ServeAcpConfig<i, o>): Promise<Age
     })
     .onRequest('session/load', async (ctx) => {
       const record = await reopen(ctx.client, 'session/load', ctx.params)
-      const send = sender(sdk, ctx.client, record.session.id)
-      for (const entry of record.history) await send(replayed(entry))
+      await replay(ctx.client, record)
       return reopened(ctx.client, record)
     })
     .onRequest('session/resume', async (ctx) => reopened(ctx.client, await reopen(ctx.client, 'session/resume', ctx.params)))
     .onRequest('session/list', async (ctx): Promise<ListSessionsResponse> => {
       if (store === undefined) throw sdk.RequestError.methodNotFound('session/list')
-      const { cwd } = ctx.params
+      const { cwd, cursor } = ctx.params
       const summaries = await store.list().catch((err: unknown) => {
         throw internal_error(sdk, err)
       })
-      const listed = summaries
-        .filter((summary) => cwd === undefined || cwd === null || summary.cwd === cwd)
-        .toSorted((a, b) => b.updated_at.localeCompare(a.updated_at))
-      return { sessions: listed.map(session_info) }
+      const page = session_page(summaries, cwd, cursor)
+      if (page === undefined) {
+        throw sdk.RequestError.invalidParams({ cursor }, "that cursor isn't one this agent gave out; send session/list without a cursor to start over")
+      }
+      return {
+        sessions: page.sessions.map(session_info),
+        ...(page.next_cursor === undefined ? {} : { nextCursor: page.next_cursor }),
+      }
+    })
+    .onRequest('session/delete', async (ctx) => {
+      if (store?.delete === undefined) throw sdk.RequestError.methodNotFound('session/delete')
+      const { sessionId } = ctx.params
+      const live = sessions.get(sessionId)
+      if (live !== undefined) {
+        // A turn that ends while the session is being deleted would save it
+        // back, so the session stops saving before it closes.
+        live.deleted = true
+        await close_session(live)
+        await live.saving
+      }
+      await store.delete(sessionId).catch((err: unknown) => {
+        throw internal_error(sdk, err)
+      })
+      return {}
     })
     .onRequest('session/close', async (ctx) => {
       await close_session(session_of(ctx.params.sessionId))
@@ -443,12 +713,20 @@ export async function acp_agent<i, o>(config: ServeAcpConfig<i, o>): Promise<Age
     .onRequest('session/prompt', async (ctx) => {
       const { sessionId, prompt } = ctx.params
       const record = session_of(sessionId)
+      // A warning about a server left out of a new session waits for the
+      // first prompt, since the client didn't know the session's id while
+      // the session was being made.
+      await send_notices(ctx.client, record)
+      const saved = Promise.withResolvers<void>()
+      record.prompts.add(saved.promise)
       try {
         return await prompt_turn(config, record, prompt, ctx.signal, sender(sdk, ctx.client, sessionId))
       } catch (err: unknown) {
         throw internal_error(sdk, err)
       } finally {
         await save_session(config, record)
+        record.prompts.delete(saved.promise)
+        saved.resolve()
       }
     })
     .onRequest('session/set_mode', async (ctx) => {
@@ -464,7 +742,7 @@ export async function acp_agent<i, o>(config: ServeAcpConfig<i, o>): Promise<Age
       if (configId === MODE_CONFIG_ID) {
         await record.modes.switch_to(requested_mode(sdk, offer, record.modes, value, 'value'))
       } else if (configId === MODEL_CONFIG_ID && models !== undefined) {
-        switch_model(record, requested_model(sdk, models, value))
+        await switch_model(record, requested_model(sdk, models, value))
       } else {
         const known = models === undefined ? `the only one is ${MODE_CONFIG_ID}` : `the options are ${CONFIG_IDS}`
         throw sdk.RequestError.invalidParams({ configId }, `unknown config option ${configId}; ${known}`)

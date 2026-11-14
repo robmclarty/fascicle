@@ -2,6 +2,7 @@ import { mkdtemp, readdir, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest'
+import type { SessionUpdate } from '@agentclientprotocol/sdk'
 import { filesystem_session_store } from '../session_store.js'
 import type { AcpStoredSession } from '../types.js'
 
@@ -93,6 +94,7 @@ describe('filesystem_session_store', () => {
     ['a history that is not a list', { history: 'fix it' }],
     ['usage with a missing field', { usage: { context_tokens: 1, cost_usd: 0 } }],
     ['a title that is not a string', { title: 3 }],
+    ['a count of turns that is not a number', { turns: 'two' }],
     ['additional directories that are not strings', { additional_directories: [1] }],
     ['a list in place of the session', []],
   ])('refuses %s', async (_, fields) => {
@@ -135,5 +137,80 @@ describe('filesystem_session_store', () => {
     const root_dir = join(await scratch(), 'a-file')
     await writeFile(root_dir, 'not a directory')
     await expect(filesystem_session_store({ root_dir }).list()).rejects.toThrow('ENOTDIR')
+  })
+})
+
+const turn: SessionUpdate[] = [
+  { sessionUpdate: 'user_message_chunk', content: { type: 'text', text: 'fix it' } },
+  { sessionUpdate: 'tool_call', toolCallId: 'card-1', title: 'Edit a.ts', status: 'completed' },
+]
+const reply: SessionUpdate[] = [{ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'done' } }]
+
+describe('filesystem_session_store: turns', () => {
+  it('keeps each turn in a file of its own beside the session, and loads the first count of them in order', async () => {
+    const root_dir = await scratch()
+    const store = filesystem_session_store({ root_dir })
+    await store.save_turn('session-1', 1, reply)
+    await store.save_turn('session-1', 0, turn)
+    expect((await readdir(join(root_dir, 'session-1.turns'))).toSorted()).toEqual(['0.json', '1.json'])
+    expect(await store.load_turns('session-1', 2)).toEqual([turn, reply])
+    expect(await store.load_turns('session-1', 1)).toEqual([turn])
+    expect(await store.load_turns('session-1', 0)).toEqual([])
+  })
+
+  it('loads a session that counts its turns, and lists it beside its turns directory', async () => {
+    const store = filesystem_session_store({ root_dir: await scratch() })
+    await store.save_turn('session-1', 0, turn)
+    await store.save(stored({ turns: 1 }))
+    expect(await store.load('session-1')).toEqual(stored({ turns: 1 }))
+    expect((await store.list()).map((entry) => entry.id)).toEqual(['session-1'])
+  })
+
+  it.skipIf(process.platform === 'win32')('makes the turns directory and each turn readable by their owner alone', async () => {
+    const root_dir = join(await scratch(), 'private')
+    await filesystem_session_store({ root_dir }).save_turn('session-1', 0, turn)
+    expect((await stat(join(root_dir, 'session-1.turns'))).mode & 0o777).toBe(0o700)
+    expect((await stat(join(root_dir, 'session-1.turns', '0.json'))).mode & 0o777).toBe(0o600)
+    expect(await readdir(join(root_dir, 'session-1.turns'))).toEqual(['0.json'])
+  })
+
+  it('leaves out a turn whose file is missing, broken, or not a list of updates', async () => {
+    const root_dir = await scratch()
+    const store = filesystem_session_store({ root_dir })
+    await store.save_turn('session-1', 0, turn)
+    await store.save_turn('session-1', 3, reply)
+    await writeFile(join(root_dir, 'session-1.turns', '1.json'), '{ not json')
+    await writeFile(join(root_dir, 'session-1.turns', '2.json'), JSON.stringify([{ not: 'an update' }]))
+    expect(await store.load_turns('session-1', 5)).toEqual([turn, reply])
+  })
+
+  it('refuses to keep a turn for an id that could name another path, and loads none for one', async () => {
+    const store = filesystem_session_store({ root_dir: await scratch() })
+    await expect(store.save_turn('../escape', 0, turn)).rejects.toThrow(
+      `can't save session "../escape": an id names a file, so use letters, digits, - and _`,
+    )
+    expect(await store.load_turns('../escape', 1)).toEqual([])
+  })
+})
+
+describe('filesystem_session_store: delete', () => {
+  it('removes a session and its turns, and leaves the others', async () => {
+    const root_dir = await scratch()
+    const store = filesystem_session_store({ root_dir })
+    await store.save_turn('session-1', 0, turn)
+    await store.save(stored({ turns: 1 }))
+    await store.save(stored({ id: 'session-2' }))
+    await store.delete('session-1')
+    expect(await readdir(root_dir)).toEqual(['session-2.json'])
+    expect(await store.load('session-1')).toBeUndefined()
+  })
+
+  it('resolves for a session it does not hold, and touches nothing for an id that could name another path', async () => {
+    const root_dir = await scratch()
+    await writeFile(join(root_dir, 'outside.json'), JSON.stringify(stored()))
+    const store = filesystem_session_store({ root_dir: join(root_dir, 'sessions') })
+    await expect(store.delete('missing')).resolves.toBeUndefined()
+    await expect(store.delete('../outside')).resolves.toBeUndefined()
+    expect(await readdir(root_dir)).toEqual(['outside.json'])
   })
 })

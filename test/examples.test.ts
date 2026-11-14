@@ -1,7 +1,7 @@
 import { mkdtemp, readFile, realpath, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { client } from '@agentclientprotocol/sdk'
+import { client, PROTOCOL_VERSION } from '@agentclientprotocol/sdk'
 import { describe, expect, it, vi } from 'vitest'
 import { describe as describe_flow, step } from 'fascicle'
 import { acp_agent } from 'fascicle/acp'
@@ -31,7 +31,7 @@ import { run_stdio_agent } from '../examples/stdio-agent/main.js'
 import { run_streaming_chat } from '../examples/streaming-chat/main.js'
 import { run_suspend_resume } from '../examples/suspend-resume/main.js'
 import { run_trajectory_logger } from '../examples/trajectory-logger/main.js'
-import { open_session, read_turn } from '../src/acp/test/connect_client.js'
+import { connect_client, open_session, read_turn } from '../src/acp/test/connect_client.js'
 
 describe('examples smoke', () => {
   it('hello reverses the input words and preserves the input string', async () => {
@@ -167,6 +167,41 @@ describe('examples smoke', () => {
       efforts.push(requests[0]?.effort)
     }
     expect(efforts).toEqual(['none', 'high'])
+  })
+
+  it('acp_coder offers its login, refuses a thread until the key is there, and builds its engine once, for the first thread', async () => {
+    const { engine } = make_loop_engine(['hi', 'again'])
+    let key: string | undefined
+    const build = vi.fn(() => engine)
+    const app = await acp_agent(
+      coder_agent({
+        engine: build,
+        auth: { name: 'Example API key', ready: () => key !== undefined, instructions: 'set EXAMPLE_API_KEY', terminal_args: ['--login'] },
+        models: ['loop'],
+        command_env: {},
+      }),
+    )
+    const { agent } = connect_client(app)
+    const initialized = await agent.request('initialize', {
+      protocolVersion: PROTOCOL_VERSION,
+      clientCapabilities: { auth: { terminal: true } },
+    })
+    expect(initialized.authMethods).toEqual([
+      { id: 'login', name: 'Example API key' },
+      { type: 'terminal', id: 'terminal-login', name: 'Example API key', args: ['--login'] },
+    ])
+    await expect(agent.request('session/new', { cwd: tmpdir(), mcpServers: [] })).rejects.toMatchObject({
+      code: -32000,
+      message: 'Authentication required: set EXAMPLE_API_KEY',
+    })
+    expect(build).not.toHaveBeenCalled()
+    key = 'sk-entered-at-the-terminal'
+    const first = await agent.request('session/new', { cwd: tmpdir(), mcpServers: [] })
+    await agent.request('session/new', { cwd: tmpdir(), mcpServers: [] })
+    expect(build).toHaveBeenCalledOnce()
+    await expect(
+      agent.request('session/prompt', { sessionId: first.sessionId, prompt: [{ type: 'text', text: 'hello' }] }),
+    ).resolves.toEqual({ stopReason: 'end_turn' })
   })
 
   it('acp_coder answers on the model picked in Zed, asking for the cache that model takes', async () => {

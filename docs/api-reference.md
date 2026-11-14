@@ -641,7 +641,9 @@ an agent starts. See [acp.md](./acp.md).
 | `serve_acp(config)` | fn | serve the flow over stdin and stdout until the client disconnects, then dispose the engine; sends `console.log` and its siblings to stderr, and SIGTERM or SIGINT aborts every run and exits |
 | `acp_agent(config)` | fn | the same agent as the SDK's `AgentApp`, its handlers registered but not connected, for another transport or an in-process client. It serves one connection, so build one for each connection that you accept |
 | `workspace_tools(session, options?)` | fn | the six tools of a coding session (`read_file`, `list_files`, `search`, `write_file`, `edit_file`, `run_command`) as plain `Tool` values; the file tools reach only paths whose real path lands under the session's roots, and the writes and `run_command` ask before they run as the session's mode says. `list_files` returns at most 1,000 paths a call. See [Coding Sessions](./acp.md#coding-sessions) |
-| `filesystem_session_store(config)` | fn | an `AcpSessionStore` that keeps each session as one JSON file under `root_dir`, readable by its owner alone, so a thread survives a restart of the agent. See [Keeping Sessions](./acp.md#keeping-sessions) |
+| `filesystem_session_store(config)` | fn | an `AcpSessionStore` that keeps each session as one JSON file under `root_dir`, and each of its turns in a file beside it, readable by its owner alone, so a thread survives a restart of the agent. See [Keeping Sessions](./acp.md#keeping-sessions) |
+| `checkpoint_session_store(store)` | fn | an `AcpSessionStore` over any `CheckpointStore`: a session under `acp/session/<id>`, each turn under `acp/session/<id>/turn/<n>`, and the index that `session/list` reads under `acp/sessions`, updated through `set_if` where the store has it, so two agent processes can share one store |
+| `api_key_login(config)` | fn | a login that keeps one API key: `key()` reads `variable` from `env` and then `file`, `auth` is the `AcpAuth` for `serve_acp`, and `run(terminal)` reads a key without echoing it, writes `file` with mode 0600 in a 0700 directory, and resolves with an exit code. See [Logging In](./acp.md#logging-in) |
 | `to_session_updates(event, state)` | fn | map one run event to zero or more ACP `SessionUpdate`s, with no I/O; the default `to_updates`, which a custom one can wrap as long as it passes every event through, since each `span_start` advances the state's run count |
 | `create_acp_mapper_state(options?)` | fn | fresh per-turn mapper state for the low-level API: `turn_id`, `stream`, `runs` (the count that keeps a model call's cards apart when it runs again), `tools` (each card's tool), and `session`, which gives the workspace tools' cards their titles, diffs, and command output |
 | `acp_sdk_missing_error` | error | missing optional peer |
@@ -649,7 +651,9 @@ an agent starts. See [acp.md](./acp.md).
 Types: `ServeAcpConfig`, `AcpSession`, `AcpTurn`, `AcpHistoryEntry`,
 `AcpStreamRoute`, `AcpMapperState`, `AcpMapperOptions`, `AcpMode`, `AcpModel`,
 `WorkspaceToolsOptions`, `AcpSessionStore`, `AcpStoredSession`,
-`AcpSessionSummary`, `AcpSessionUsage`, `FilesystemSessionStoreConfig`. In
+`AcpSessionSummary`, `AcpSessionUsage`, `AcpFullSessionStore`,
+`FilesystemSessionStoreConfig`, `AcpAuth`, `ApiKeyLogin`, `ApiKeyLoginConfig`,
+`LoginTerminal`. In
 `ServeAcpConfig`, `to_input` is required unless the
 flow takes a string, `modes` and `default_mode` set the modes that a session
 offers and the one it starts in, and `additional_directories: false` keeps each
@@ -658,7 +662,13 @@ session to `cwd`. `models` and `default_model` give the editor a model picker
 that the editor has configured, `context_window` turns on the usage reports,
 `to_title` replaces the rule that titles a session from its first prompt, and
 `session_store` keeps sessions past a restart, where a store is any object
-with `save`, `load`, and `list`. `AcpMode` is one of `manual`, which asks before edits and
+with `save`, `load`, and `list`. A store that also has `delete` adds
+`session/delete`, and one with `save_turn` and `load_turns` replays a loaded
+thread with its tool cards, which is what `AcpFullSessionStore` names. `auth`
+(an `AcpAuth`: `name`, `ready`, `instructions`, and optionally `description`,
+`terminal_args`, and `logout`) offers the editor a login and answers
+`auth_required` until `ready` says yes. `flow` may be a function of the
+session that returns a promise. `AcpMode` is one of `manual`, which asks before edits and
 commands and is the default whenever an agent offers it, `accept_edits`, which
 asks only before commands, and `auto`, which never asks. `WorkspaceToolsOptions`
 holds `read_limit_lines`, `ignore`, `search_timeout_ms`, `command_timeout_ms`,

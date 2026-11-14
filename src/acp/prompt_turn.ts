@@ -9,15 +9,21 @@
  * finished. A turn that sent no message text sends `to_text(output)` as its
  * reply. And the history records what the client was actually sent, a
  * cancelled turn included, so it matches the thread the user sees.
+ *
+ * A turn that the history keeps also leaves its transcript, the prompt and
+ * every update the client was sent, for the agent to hand its session
+ * store, which is what a loaded thread is shown again from.
  */
 
 import type { ContentBlock, PromptResponse, SessionUpdate } from '@agentclientprotocol/sdk'
 import { aborted_error, run } from '#core'
 import type { Step, TrajectoryEvent } from '#core'
 import type { FinishReason } from '#engine'
+import { is_record } from '#schema'
 import type { CardSync } from './approve.js'
 import { context_window_of } from './models.js'
 import { create_acp_mapper_state, to_session_updates } from './to_session_updates.js'
+import { create_transcript } from './transcript.js'
 import { reset_previews } from './tools/previews.js'
 import { finish_reason_of, note_usage, stop_reason_for, usage_update } from './usage.js'
 import type { SessionUsage } from './usage.js'
@@ -36,7 +42,8 @@ type TurnHandle = {
 /**
  * A session between turns: its flow, its history, its latest turn, the sync
  * that lets its approvals wait for the client to catch up, what it has spent,
- * and its title, which stays null until its first turn names it.
+ * its title, which stays null until its first turn names it, and the
+ * transcripts of the turns the agent hasn't handed its store yet.
  */
 export type SessionRecord<i, o> = {
   readonly session: AcpSession
@@ -47,6 +54,7 @@ export type SessionRecord<i, o> = {
   readonly usage: SessionUsage
   last_turn: TurnHandle | null
   title: string | null
+  readonly unsaved_turns: SessionUpdate[][]
 }
 
 export type SendUpdate = (update: SessionUpdate) => Promise<void>
@@ -235,11 +243,49 @@ async function forward<i, o>(
 }
 
 /**
+ * The finish reason of a model call that threw because it ended before its
+ * schema validated, or undefined for any other failure. The engine throws
+ * `incomplete_generation_error` for that, known here by its `kind`, since
+ * the turn answers with a stop reason where the client can say what
+ * happened in its own words.
+ */
+function incomplete_finish(error: unknown): FinishReason | undefined {
+  if (!is_record(error) || error['kind'] !== 'incomplete_generation_error') return undefined
+  const finish = error['finish_reason']
+  return finish === 'length' || finish === 'max_steps' || finish === 'content_filter' ? finish : undefined
+}
+
+/**
+ * End a turn whose run has settled and wasn't cancelled. A run that
+ * finished sends `to_text(output)` as the reply when the turn sent none. A
+ * run that threw because a schema call ended early resolves with that
+ * call's finish reason, which decides the turn's stop reason, and any other
+ * failure is thrown on.
+ */
+async function end_run<i, o>(
+  config: ServeAcpConfig<i, o>,
+  result: Settled<o>,
+  reply: Reply,
+  send: SendUpdate,
+): Promise<FinishReason | undefined> {
+  if (result.ok) {
+    const final_text = (config.to_text ?? default_to_text)(result.output)
+    if (!reply.sent && final_text !== '') await send(agent_message(final_text))
+    return undefined
+  }
+  const finish = incomplete_finish(result.error)
+  if (finish === undefined) throw result.error
+  return finish
+}
+
+/**
  * Run the flow for one turn, forward its updates, and record the exchange.
  * The run has always settled by the time this returns or throws, so a turn
  * never leaves a run behind. A turn that ends in a refusal stays out of the
- * history, since the protocol has the client leave it out of the next prompt
- * too.
+ * history and leaves no transcript, since the protocol has the client leave
+ * it out of the next prompt too. A flow that throws because a schema call
+ * ran out of tokens or steps, or was filtered, ends the turn with that stop
+ * reason instead of failing the request.
  */
 async function run_turn<i, o>(
   config: ServeAcpConfig<i, o>,
@@ -256,9 +302,11 @@ async function run_turn<i, o>(
     history: [...record.history],
   }
   const reply: Reply = { sent: false, text: '', card_since_text: false }
+  const transcript = create_transcript(prompt)
   const send_update: SendUpdate = async (update) => {
     await send(update)
     note_reply(reply, update)
+    transcript.note(update)
   }
   const stop = new AbortController()
   // A turn cancelled before its consumer caught up leaves previews nobody
@@ -279,18 +327,17 @@ async function run_turn<i, o>(
     await name_session(config, record, turn, send_update)
     finish = await forward(handle.events, config, record, cancelled, send_update)
     const result = await outcome
-    if (!cancelled.aborted) {
-      if (!result.ok) throw result.error
-      const final_text = (config.to_text ?? default_to_text)(result.output)
-      if (!reply.sent && final_text !== '') await send_update(agent_message(final_text))
-    }
+    if (!cancelled.aborted) finish = (await end_run(config, result, reply, send_update)) ?? finish
   } catch (err: unknown) {
     stop.abort(new aborted_error('the prompt turn failed before its run finished'))
     await outcome
     if (!cancelled.aborted) throw err
   }
   const stop_reason = cancelled.aborted ? 'cancelled' : stop_reason_for(finish)
-  if (stop_reason !== 'refusal') record_exchange(record.history, turn.text, reply.text, cancelled.aborted)
+  if (stop_reason !== 'refusal') {
+    record_exchange(record.history, turn.text, reply.text, cancelled.aborted)
+    record.unsaved_turns.push(transcript.updates())
+  }
   return { stopReason: stop_reason }
 }
 
