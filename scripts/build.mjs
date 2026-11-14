@@ -364,6 +364,7 @@ async function main() {
     'a2a_step',
     'create_a2a_mapper_state',
     'end_task_events',
+    'failure_message',
     'serve_a2a',
     'sqlite_task_store',
     'to_task_events',

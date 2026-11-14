@@ -704,7 +704,11 @@ string. `runs` and `task_store` say where the runs and the task records live,
 and both default to memory. `gates` says which gates the client answers and
 which wait on something else, `to_resume` and `to_question` map a client's
 answer in and a gate's question out, and `to_parts` and `to_failure` map the
-output and an error. `stream` and `to_events` control what a drive streams,
+output and an error. A failed task's status reads a fixed sentence unless
+`to_failure` says otherwise, and `failure_message` is the one to pass when the
+caller should get the error's own message. `cancel_poll_ms` is how often a
+drive checks whether another process canceled its task (2,000 by default, and
+0 turns the check off). `stream` and `to_events` control what a drive streams,
 `history_limit` bounds `turn.history`, and `authenticate`, `rpc_path`,
 `max_body_bytes`, and `max_drives` shape the HTTP side. `ServeA2aConfig` adds
 `port`, `host`, and `engine`. Protocol shapes such as `Message`, `Part`, and

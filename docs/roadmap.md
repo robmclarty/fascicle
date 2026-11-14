@@ -216,9 +216,6 @@ likely to bite you first.
   even over a store that would have kept it. A task that waits at a gate
   survives. Drain the agent before a redeploy until a close can leave a
   running task for the next process.
-- **An A2A cancel can't stop a drive that another process holds.** The task
-  goes `CANCELED` at once and the drive's result is dropped, but the work runs
-  on to its end, and you pay for it.
 - **The viewer slows down on long runs and clips large flows.** Holding or
   playing the scrubber refolds the run from its first event at every position,
   so a long run lags. A flow that's still bigger than the window at the
