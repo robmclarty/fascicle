@@ -89,6 +89,7 @@ export type {
   StepOutput,
   TrajectoryEvent,
   TrajectoryLogger,
+  Versioned,
 } from './types.js'
 
 export { is_step } from './is_step.js'

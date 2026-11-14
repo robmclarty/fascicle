@@ -34,7 +34,7 @@ export type TrajectoryLogger = {
  * stored `null` or `undefined` reads as a miss, and so should a value the
  * store can't read back whole.
  *
- * The rest are optional capabilities, and `durable` needs all three. `scope`
+ * The rest are optional capabilities, and `durable` needs all five. `scope`
  * hands out a store whose keys, claims, and nested scopes are disjoint from
  * this one's, and the same prefix always reaches the same data. `claim` takes
  * `key` for `owner` until `ttl_ms` passes and resolves true when the caller
@@ -43,8 +43,18 @@ export type TrajectoryLogger = {
  * It resolves false while another owner holds the key. `release` frees a
  * claim `owner` holds and does nothing otherwise. Claims live apart from
  * values, so a claim never changes what `get` returns and `set` or `delete`
- * never touch a claim. `checkpoint_store_conformance` in `fascicle/testing`
- * checks a store against all of this.
+ * never touch a claim.
+ *
+ * `get_versioned` and `set_if` are the store's compare-and-set. A version is
+ * opaque, and a store may derive it from the content, as an S3 ETag is, so
+ * writing the same bytes twice can leave it where it was. `set_if` is atomic
+ * against every write to the key, `set` and `delete` included. Of several
+ * writers that race on one version exactly one wins, and of several that race
+ * to create an absent key exactly one creates it. `delete`, and a scope's
+ * `clear`, make a key absent, so a create lands on it again. A version read
+ * in one scope never satisfies a condition in another.
+ * `checkpoint_store_conformance` in `fascicle/testing` checks a store against
+ * all of this.
  */
 export type CheckpointStore = {
   readonly get: (key: string) => Promise<unknown>
@@ -53,6 +63,30 @@ export type CheckpointStore = {
   readonly scope?: (prefix: string) => ScopedCheckpointStore
   readonly claim?: (key: string, owner: string, ttl_ms: number) => Promise<boolean>
   readonly release?: (key: string, owner: string) => Promise<void>
+  /**
+   * The value at `key` and the version it was read at, or `undefined` when
+   * nothing is stored there. A stored `null`, or a value that can't be read
+   * back whole, reads as `{ value: undefined, version }`, so a writer can still
+   * replace it on that version.
+   */
+  readonly get_versioned?: (key: string) => Promise<Versioned | undefined>
+  /**
+   * Write `value` only while the key is still at `expected`, or only while
+   * nothing is stored there when `expected` is `null`. Resolves true when it
+   * wrote and false on a conflict. A conflict never throws, and a failure to
+   * reach the store does.
+   */
+  readonly set_if?: (key: string, value: unknown, expected: string | null) => Promise<boolean>
+}
+
+/**
+ * A stored value and the version it was read at. The version changes
+ * whenever the stored value changes, and `set_if` takes it back as the
+ * condition on a write.
+ */
+export type Versioned = {
+  readonly value: unknown
+  readonly version: string
 }
 
 /**

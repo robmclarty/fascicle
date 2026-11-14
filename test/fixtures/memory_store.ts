@@ -1,8 +1,10 @@
 type ClaimRecord = { owner: string; expires_at: number }
 
+type Entry = { readonly value: unknown; readonly version: string }
+
 type Space = {
   readonly path: ReadonlyArray<string>
-  readonly values: Map<string, unknown>
+  readonly values: Map<string, Entry>
   readonly claims: Map<string, ClaimRecord>
 }
 
@@ -19,6 +21,10 @@ type MemoryScope = {
   readonly clear: () => Promise<void>
   readonly claim: (key: string, owner: string, ttl_ms: number) => Promise<boolean>
   readonly release: (key: string, owner: string) => Promise<void>
+  readonly get_versioned: (
+    key: string,
+  ) => Promise<{ readonly value: unknown; readonly version: string } | undefined>
+  readonly set_if: (key: string, value: unknown, expected: string | null) => Promise<boolean>
 }
 
 export type MemoryStore = Omit<MemoryScope, 'clear'> & {
@@ -28,13 +34,16 @@ export type MemoryStore = Omit<MemoryScope, 'clear'> & {
 }
 
 // An in-memory CheckpointStore with every optional capability, so a suite can
-// drive scopes and claims without touching disk. Every scope lives in one map
-// keyed by the path of prefixes that reached it, so reopening a scope finds
-// its data and `clear` drops a whole subtree. Values are cloned in and out,
-// the way a store that serializes would hand back a copy.
+// drive scopes, claims, and conditional writes without touching disk. Every
+// scope lives in one map keyed by the path of prefixes that reached it, so
+// reopening a scope finds its data and `clear` drops a whole subtree. Values
+// are cloned in and out, the way a store that serializes would hand back a
+// copy. A version is a count of the store's writes, so no two writes share
+// one, in any scope.
 export function memory_store(options: MemoryStoreOptions = {}): MemoryStore {
   const now = options.now ?? (() => Date.now())
   const spaces = new Map<string, Space>()
+  let writes = 0
 
   const space_at = (path: ReadonlyArray<string>): Space => {
     const id = JSON.stringify(path)
@@ -51,13 +60,18 @@ export function memory_store(options: MemoryStoreOptions = {}): MemoryStore {
     }
   }
 
+  const write = (path: ReadonlyArray<string>, key: string, value: unknown): void => {
+    writes += 1
+    space_at(path).values.set(key, { value: structuredClone(value), version: `w${writes}` })
+  }
+
   const store_at = (path: ReadonlyArray<string>): Omit<MemoryScope, 'clear'> => ({
     get: async (key) => {
-      const value = space_at(path).values.get(key)
+      const value = space_at(path).values.get(key)?.value
       return value === undefined ? null : structuredClone(value)
     },
     set: async (key, value) => {
-      space_at(path).values.set(key, structuredClone(value))
+      write(path, key, value)
     },
     delete: async (key) => {
       space_at(path).values.delete(key)
@@ -78,12 +92,25 @@ export function memory_store(options: MemoryStoreOptions = {}): MemoryStore {
       const claims = space_at(path).claims
       if (claims.get(key)?.owner === owner) claims.delete(key)
     },
+    get_versioned: async (key) => {
+      const entry = space_at(path).values.get(key)
+      if (entry === undefined) return undefined
+      const value = entry.value === null ? undefined : structuredClone(entry.value)
+      return { value, version: entry.version }
+    },
+    set_if: async (key, value, expected) => {
+      const version = space_at(path).values.get(key)?.version ?? null
+      if (version !== expected) return false
+      write(path, key, value)
+      return true
+    },
   })
 
   const dump = (): Record<string, Record<string, unknown>> => {
     const out: Record<string, Record<string, unknown>> = {}
     for (const [id, space] of spaces) {
-      if (space.values.size > 0) out[id] = Object.fromEntries(space.values)
+      if (space.values.size === 0) continue
+      out[id] = Object.fromEntries([...space.values].map(([key, entry]) => [key, entry.value]))
     }
     return out
   }
