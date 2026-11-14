@@ -23,22 +23,18 @@ import type {
 import { provider_auth_error, provider_capability_error, provider_error } from '../errors.js'
 
 /**
- * The built-in providers that take no image parts on the ai_sdk transport
- * either, so the hint to switch transports would send a caller nowhere.
- */
-const NO_IMAGE_INPUT_ON_AI_SDK: ReadonlySet<string> = new Set(['ollama', 'lmstudio'])
-
-/**
  * The error for an image part on a native transport, none of which maps one.
- * A provider whose ai_sdk adapter supports `image_input` is told to switch
- * transports. The local providers support it on neither, so they're told to
- * drop the part or to route the call elsewhere.
+ * It sends every provider to `transport: 'ai_sdk'`, which forwards image
+ * parts whether or not the adapter declares `image_input`. That includes
+ * `ollama` and `lmstudio`, whose ai_sdk adapters declare nothing and whose
+ * vision models read the image all the same.
  */
 export function image_input_error(provider: string): provider_capability_error {
-  const detail = NO_IMAGE_INPUT_ON_AI_SDK.has(provider)
-    ? `image parts are not mapped on either ${provider} transport: drop the image part, or route the call to a provider that supports image_input`
-    : "image parts are not mapped on the native transport; use transport: 'ai_sdk'"
-  return new provider_capability_error(provider, 'image_input', detail)
+  return new provider_capability_error(
+    provider,
+    'image_input',
+    "image parts are not mapped on the native transport; use transport: 'ai_sdk'",
+  )
 }
 
 /**

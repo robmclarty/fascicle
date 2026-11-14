@@ -1081,7 +1081,7 @@ describe('to_ollama_messages (mutation hardening)', () => {
     expect((caught as provider_capability_error).provider).toBe('ollama')
     expect((caught as provider_capability_error).capability).toBe('image_input')
     expect((caught as Error).message).toBe(
-      "provider 'ollama' does not support 'image_input': image parts are not mapped on either ollama transport: drop the image part, or route the call to a provider that supports image_input",
+      "provider 'ollama' does not support 'image_input': image parts are not mapped on the native transport; use transport: 'ai_sdk'",
     )
   })
 

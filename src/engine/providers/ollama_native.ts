@@ -72,7 +72,7 @@ export type OllamaChatMessage =
 /**
  * Map user message content to a plain string, the shape this wire expects
  * (no part-array support). Image parts throw a capability error: they are
- * not mapped on either Ollama transport.
+ * not mapped on the native transport.
  */
 function to_user_content(content: string | UserContentPart[]): string {
   if (typeof content === 'string') return content

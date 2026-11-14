@@ -1352,7 +1352,9 @@ describe('to_chat_messages (mutation hardening)', () => {
     return undefined
   }
 
-  it.each(['openai', 'openrouter'])(
+  // lmstudio is in the list on purpose: its ai_sdk adapter declares no
+  // image_input, but that transport forwards image parts all the same.
+  it.each(['openai', 'openrouter', 'lmstudio'])(
     'names the image_input capability and the ai_sdk transport in the error %s throws',
     (provider) => {
       const caught = image_error(provider)
@@ -1363,15 +1365,6 @@ describe('to_chat_messages (mutation hardening)', () => {
       )
     },
   )
-
-  it('never sends lmstudio to the ai_sdk transport, which takes no image parts either', () => {
-    const caught = image_error('lmstudio')
-    expect(caught).toBeInstanceOf(provider_capability_error)
-    expect((caught as provider_capability_error).capability).toBe('image_input')
-    expect((caught as Error).message).toBe(
-      "provider 'lmstudio' does not support 'image_input': image parts are not mapped on either lmstudio transport: drop the image part, or route the call to a provider that supports image_input",
-    )
-  })
 
   it('maps a non-empty plain assistant string verbatim, adding no tool_calls key', () => {
     expect(to_chat_messages([{ role: 'assistant', content: 'all done' }], 'openai')).toEqual([
