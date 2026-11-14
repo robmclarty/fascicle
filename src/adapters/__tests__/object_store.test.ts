@@ -318,6 +318,26 @@ describe('object_store scopes', () => {
     expect(client.calls.filter((call) => call.op === 'delete')).toHaveLength(6)
   })
 
+  it("deletes a scope's own claims after everything else in it", async () => {
+    const client = memory_client()
+    const store = object_store({ client, prefix: 'runs/' })
+    const a = store.scope('a')
+    await a.claim('lease', 'owner', 60_000)
+    await a.claim('other', 'owner', 60_000)
+    await Promise.all(['one', 'two', 'three', 'four'].map((key) => a.set(key, key)))
+    // A claim inside a nested scope is no claim on this one, so it goes in turn.
+    await a.scope('inner').claim('k', 'owner', 60_000)
+    client.calls.length = 0
+    await a.clear()
+    expect(client.bucket.size).toBe(0)
+    const order = client.calls.flatMap((call) => (call.op === 'list' ? ['list'] : call.op === 'delete' ? [call.key] : []))
+    // The claims sort first, onto the first page, and outlast the last page.
+    expect(order.slice(0, 2)).toEqual(['list', 'runs/s/a/s/inner/c/k'])
+    expect(order.slice(-3)).toEqual(['runs/s/a/v/two', 'runs/s/a/c/lease', 'runs/s/a/c/other'])
+    expect(order.filter((entry) => entry === 'list')).toHaveLength(3)
+    expect(order).toHaveLength(10)
+  })
+
   it('keeps a cleared scope usable', async () => {
     const store = object_store({ client: memory_client() }).scope('a')
     await store.set('k', 1)

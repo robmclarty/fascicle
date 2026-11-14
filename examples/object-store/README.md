@@ -38,7 +38,10 @@ conformance suite checks each one.
   plain delete could erase a claim that another owner took in between, and
   not every service has a conditional delete.
 - **Clear.** It lists the scope's prefix a page at a time and deletes each
-  key, following the continuation the way every real listing needs.
+  key, following the continuation the way every real listing needs. The
+  scope's own claims go last. A listing is sorted, and `c/` comes ahead of
+  `s/` and `v/`, so deleting in listing order would free the lease that
+  `durable` deletes a run under while later pages still held the run.
 
 `run_object_store()` runs `checkpoint_store_conformance` with a fresh bucket for
 each check and a `corrupt` hook, so the damage checks run too, and

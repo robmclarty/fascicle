@@ -12,7 +12,9 @@
  * `docs/human-in-the-loop.md` shows one for `@aws-sdk/client-s3`.
  *
  * A scope is a key prefix, which makes `clear` a paginated list and a delete
- * per key. Every name is percent-encoded before it joins a key, dots
+ * per key, with the scope's own claims deleted last, so whoever holds a claim
+ * on the scope (the lease that `durable` deletes a run under) holds it until
+ * everything else is gone. Every name is percent-encoded before it joins a key, dots
  * included, and values, claims, and nested scopes each take a segment of
  * their own (`v/`, `c/`, `s/`), so two names can't land on one object however
  * alike they look. A name whose encoding runs past `MAX_SEGMENT` characters
@@ -210,16 +212,26 @@ async function release_at(client: ObjectClient, key: string, owner: string): Pro
 }
 
 /**
- * Delete every object whose key starts with `prefix`, a page at a time.
+ * Delete every object whose key starts with `prefix`, a page at a time, and
+ * the claims directly under it after everything else.
+ *
+ * A listing is sorted, and `c/` sorts ahead of `s/` and `v/`, so deleting in
+ * listing order would free a claim on the scope while later pages still held
+ * its values. A caller that clears under a claim, as `durable` deletes a run
+ * under its lease, keeps that claim until the rest of the scope is gone.
  */
 async function delete_prefix(client: ObjectClient, prefix: string): Promise<void> {
+  const claims = `${prefix}${CLAIM}`
+  const held: string[] = []
   let start_after: string | undefined
   for (;;) {
     const page = await client.list(prefix, start_after)
-    await Promise.all(page.keys.map((key) => client.delete(key)))
-    if (page.next === undefined) return
+    held.push(...page.keys.filter((key) => key.startsWith(claims)))
+    await Promise.all(page.keys.filter((key) => !key.startsWith(claims)).map((key) => client.delete(key)))
+    if (page.next === undefined) break
     start_after = page.next
   }
+  await Promise.all(held.map((key) => client.delete(key)))
 }
 
 /**
