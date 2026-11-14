@@ -57,12 +57,21 @@ export type Hold = {
 
 export type Holds = Map<string, Hold>
 
+/**
+ * The room each request for a new task has reserved, by the request's
+ * context. A reservation counts against `max_drives` from the moment the
+ * request is let in, and the drive gives it back as it takes its hold, so a
+ * burst of requests can't all find room before any of them has a hold.
+ */
+export type Slots = WeakMap<ServerCallContext, () => void>
+
 export type TaskRunnerConfig<i, o> = {
   readonly sdk: A2aServerSdk
   readonly config: A2aAgentConfig<i, o>
   readonly runs: DurableRuns
   readonly records: TaskRecords
   readonly holds: Holds
+  readonly slots: Slots
   readonly hooks: StatusHooks
   readonly to_parts: (output: unknown) => ReadonlyArray<Part>
   readonly buses: ExecutionEventBusManager
@@ -167,7 +176,7 @@ function exchange_of(sdk: A2aServerSdk, task: Task): A2aHistoryEntry[] {
  * Build the runner that drives tasks for one agent.
  */
 export function task_runner<i, o>(deps: TaskRunnerConfig<i, o>): TaskRunner {
-  const { sdk, config, runs, records, holds, hooks, buses } = deps
+  const { sdk, config, runs, records, holds, slots, hooks, buses } = deps
   const state = sdk.wire.TaskState
   const store: TaskStore = records.store
 
@@ -264,8 +273,10 @@ export function task_runner<i, o>(deps: TaskRunnerConfig<i, o>): TaskRunner {
     const ids: TaskIds = { task_id: request.taskId, context_id: request.contextId }
     const hold = holds.get(ids.task_id) ?? take_hold(holds, ids.task_id)
     hold.taken = true
+    // The hold counts from here on, so the room the request reserved is free.
+    slots.get(request.context)?.()
     const publish: Publish = (event) => {
-      bus.publish(event)
+      bus?.publish(event)
     }
     const message = request.userMessage
     const opening: Task = request.task ?? {
@@ -344,7 +355,7 @@ export function task_runner<i, o>(deps: TaskRunnerConfig<i, o>): TaskRunner {
     let writes: Promise<void> = Promise.resolve()
     const publish: Publish = (event) => {
       writes = writes.then(() => writer.processEvent(event))
-      bus?.publish(event)
+      bus.publish(event)
     }
     try {
       publish(status_event(ids, status_of(state.TASK_STATE_WORKING)))

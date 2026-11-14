@@ -33,8 +33,11 @@ export type HttpConfig = {
   readonly authenticate: ((request: Request) => A2aUser | null | Promise<A2aUser | null>) | undefined
   readonly rpc_path: string
   readonly max_body_bytes: number
-  /** Whether the agent has room for one more task. */
-  readonly has_room: () => boolean
+  /**
+   * Reserve room for one more task, for the request behind `context`.
+   * Returns what gives the room back, or `undefined` when the agent is full.
+   */
+  readonly reserve: (context: ServerCallContext) => (() => void) | undefined
   /** Whether the agent has closed. */
   readonly is_closed: () => boolean
 }
@@ -217,17 +220,24 @@ export function http_handler(config: HttpConfig): (request: Request) => Promise<
     } catch {
       return json({ jsonrpc: '2.0', id: null, error: { code: PARSE_ERROR, message: 'Invalid JSON payload.' } })
     }
-    if (starts_a_task(body) && !config.has_room()) {
+    const context = context_for(request, user)
+    // The room is reserved in the same step that finds it, with no await
+    // between, so requests that arrive together can't all find the last of it.
+    const release = starts_a_task(body) ? config.reserve(context) : () => {}
+    if (release === undefined) {
       return refusal(429, 'the agent is running as many tasks as it takes at once: try again shortly', {
         'retry-after': '1',
       })
     }
     try {
-      return await dispatch(body, context_for(request, user))
+      return await dispatch(body, context)
     } catch (err) {
       const mapped = error_response(id_of(body), err)
       const fault = is_record(mapped.error) && mapped.error['code'] === INTERNAL_ERROR
       return json(mapped, fault ? 500 : 200)
+    } finally {
+      // A request the SDK refused before any drive began still holds its room.
+      release()
     }
   }
 

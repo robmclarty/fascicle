@@ -18,6 +18,7 @@
  */
 
 import type { AgentCard } from '@a2a-js/sdk'
+import type { ServerCallContext } from '@a2a-js/sdk/server'
 import { memory_store } from '#adapters'
 import { describe, durable } from '#core'
 import { admitting_handler } from './admission.js'
@@ -26,7 +27,7 @@ import { output_parts } from './parts.js'
 import { load_a2a_server } from './sdk_loader.js'
 import { task_records } from './task_records.js'
 import { task_runner } from './task_runner.js'
-import type { Holds } from './task_runner.js'
+import type { Holds, Slots } from './task_runner.js'
 import { default_failure, default_question } from './task_status.js'
 import type { StatusHooks } from './task_status.js'
 import type { A2aAgent, A2aAgentConfig, A2aCard } from './types.js'
@@ -95,6 +96,7 @@ export async function a2a_agent<i, o>(config: A2aAgentConfig<i, o>): Promise<A2a
   const card = agent_card(config.card)
   const runs = config.runs ?? durable({ store: memory_store() })
   const holds: Holds = new Map()
+  const slots: Slots = new WeakMap()
   const custom_parts = config.to_parts
   // The run stored this output from the config's own flow.
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion
@@ -113,7 +115,7 @@ export async function a2a_agent<i, o>(config: A2aAgentConfig<i, o>): Promise<A2a
     is_live: (task_id) => holds.has(task_id),
   })
   const buses = new sdk.server.DefaultExecutionEventBusManager()
-  const runner = task_runner({ sdk, config, runs, records, holds, hooks, to_parts, buses })
+  const runner = task_runner({ sdk, config, runs, records, holds, slots, hooks, to_parts, buses })
   const request_handler = admitting_handler({
     sdk,
     inner: new sdk.server.DefaultRequestHandler(card, records.store, runner.executor, buses),
@@ -124,7 +126,24 @@ export async function a2a_agent<i, o>(config: A2aAgentConfig<i, o>): Promise<A2a
   })
   const max_drives = config.max_drives ?? DEFAULT_MAX_DRIVES
   let closed = false
+  let reserved = 0
   warn_about_replays(config)
+
+  // Room for one more task, taken as the request is let in. The check and
+  // the count are one synchronous step, and the drive gives the room back
+  // once its hold counts instead.
+  const reserve = (context: ServerCallContext): (() => void) | undefined => {
+    if (holds.size + reserved >= max_drives) return undefined
+    reserved += 1
+    let held = true
+    const release = (): void => {
+      if (!held) return
+      held = false
+      reserved -= 1
+    }
+    slots.set(context, release)
+    return release
+  }
 
   return {
     fetch: http_handler({
@@ -134,7 +153,7 @@ export async function a2a_agent<i, o>(config: A2aAgentConfig<i, o>): Promise<A2a
       authenticate: config.authenticate,
       rpc_path: config.rpc_path ?? '/',
       max_body_bytes: config.max_body_bytes ?? DEFAULT_MAX_BODY_BYTES,
-      has_room: () => holds.size < max_drives,
+      reserve,
       is_closed: () => closed,
     }),
     resume: runner.resume,

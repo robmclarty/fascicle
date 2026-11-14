@@ -239,6 +239,55 @@ describe('requests the handler refuses outside JSON-RPC', () => {
     expect(state_of(await send(agent, 'now there is room'))).toBe('TASK_STATE_COMPLETED')
   })
 
+  it('holds a burst of new tasks to max_drives, though none has started its drive yet', async () => {
+    const { flow, latch } = latched()
+    const agent = await agent_for({ flow, max_drives: 2 })
+    const burst = await Promise.all(
+      ['a', 'b', 'c', 'd', 'e'].map((text) =>
+        agent.fetch(
+          rpc_request('SendMessage', { message: user_message(text), configuration: { returnImmediately: true } }),
+        ),
+      ),
+    )
+    expect(burst.map((response) => response.status).toSorted((a, b) => a - b)).toEqual([200, 200, 429, 429, 429])
+    const taken = await Promise.all(burst.filter((response) => response.status === 200).map((response) => response.json()))
+    const ids = taken.map((body) => ((body as Json)['result'] as Json)['task'] as Json).map((task) => task['id'] as string)
+
+    latch.open()
+    await vi.waitFor(async () => {
+      for (const id of ids) expect(state_of(await get_task(agent, id))).toBe('TASK_STATE_COMPLETED')
+    })
+    // Every reservation was given back: the agent takes two at once again.
+    const next = await Promise.all(['f', 'g', 'h'].map((text) => agent.fetch(rpc_request('SendMessage', { message: user_message(text) }))))
+    expect(next.map((response) => response.status).toSorted((a, b) => a - b)).toEqual([200, 200, 429])
+  })
+
+  it('counts a task once, as a reservation and then as its drive', async () => {
+    const { flow, latch } = latched()
+    const agent = await agent_for({ flow, max_drives: 2 })
+    // A blocking request stays open for as long as its drive runs.
+    const blocking = agent.fetch(rpc_request('SendMessage', { message: user_message('one') }))
+    await latch.started
+    const second = await agent.fetch(
+      rpc_request('SendMessage', { message: user_message('two'), configuration: { returnImmediately: true } }),
+    )
+    expect(second.status).toBe(200)
+    const third = await agent.fetch(rpc_request('SendMessage', { message: user_message('three') }))
+    expect(third.status).toBe(429)
+    latch.open()
+    expect((await blocking).status).toBe(200)
+  })
+
+  it('gives the room back when the SDK refuses a new task before any drive starts', async () => {
+    const agent = await agent_for({ max_drives: 1 })
+    const malformed = await call(agent, 'SendMessage', { message: { role: 'ROLE_USER', parts: [{ text: 'no id' }] } })
+    expect(malformed.status).toBe(200)
+    expect(malformed.error).toBeDefined()
+    const streamed = await call(agent, 'SendStreamingMessage', { message: { role: 'ROLE_USER', parts: [{ text: 'no id' }] } })
+    expect(streamed.error).toBeDefined()
+    expect(state_of(await send(agent, 'there is still room'))).toBe('TASK_STATE_COMPLETED')
+  })
+
   it('lets an answer to a waiting task through at capacity, since it starts no task', async () => {
     const waiting_agent = await a2a_agent({ flow: gated_flow(), card: CARD, max_drives: 0 })
     agents.push(waiting_agent)
