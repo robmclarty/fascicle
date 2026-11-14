@@ -7,9 +7,9 @@ describe('memory_store', () => {
     const value = { list: [1] }
     await store.set('k', value)
     value.list.push(2)
-    const read = await store.get('k')
+    const read = (await store.get('k')) as { list: number[] }
     expect(read).toEqual({ list: [1] })
-    ;(read as { list: number[] }).list.push(3)
+    read.list.push(3)
     expect(await store.get('k')).toEqual({ list: [1] })
   })
 
