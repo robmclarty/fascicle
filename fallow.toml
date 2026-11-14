@@ -169,6 +169,10 @@ name = "acp"
 patterns = ["src/acp/**"]
 
 [[boundaries.zones]]
+name = "a2a"
+patterns = ["src/a2a/**"]
+
+[[boundaries.zones]]
 name = "stdio"
 patterns = ["src/stdio/**"]
 
@@ -231,6 +235,10 @@ allow = ["core", "engine", "schema"]
 [[boundaries.rules]] # acp: core + engine + schema (serves a flow as an ACP agent), process for the console reroute, mcp to connect the client's MCP servers; testing for its lifecycle tests' stub engine
 from = "acp"
 allow = ["core", "engine", "schema", "process", "mcp", "testing"]
+
+[[boundaries.rules]] # a2a: core + engine + schema (serves a flow as an A2A agent and calls remote ones), adapters for the default memory_store; testing for the stub engine in its tests
+from = "a2a"
+allow = ["core", "engine", "schema", "adapters", "testing"]
 
 [[boundaries.rules]] # stdio: core + adapters + schema (single-shot child-process entry helper), process for the console reroute
 from = "stdio"

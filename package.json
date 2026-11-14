@@ -47,6 +47,11 @@
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
+    "./a2a": {
+      "types": "./dist/a2a.d.ts",
+      "import": "./dist/a2a.js",
+      "default": "./dist/a2a.js"
+    },
     "./acp": {
       "types": "./dist/acp.d.ts",
       "import": "./dist/acp.js",
@@ -107,6 +112,7 @@
     "#agents": "./src/agents/index.ts",
     "#stdio": "./src/stdio/index.ts",
     "#acp": "./src/acp/index.ts",
+    "#a2a": "./src/a2a/index.ts",
     "#mcp": "./src/mcp/index.ts",
     "#ui": "./src/ui/index.ts",
     "#policy": "./src/policy/index.ts",
@@ -158,6 +164,7 @@
     "viewer:app:watch": "vite build --watch --config vite.viewer.config.ts"
   },
   "peerDependencies": {
+    "@a2a-js/sdk": "^1.3.0",
     "@agentclientprotocol/sdk": "^1.8.0 || ^2.0.0",
     "@ai-sdk/amazon-bedrock": "^5.0.0",
     "@ai-sdk/anthropic": "^4.0.0",
@@ -174,6 +181,9 @@
     "zod": "^4.2.0"
   },
   "peerDependenciesMeta": {
+    "@a2a-js/sdk": {
+      "optional": true
+    },
     "@ai-sdk/amazon-bedrock": {
       "optional": true
     },
@@ -218,6 +228,7 @@
     }
   },
   "devDependencies": {
+    "@a2a-js/sdk": "1.3.0",
     "@agentclientprotocol/sdk": "2.4.0",
     "@arethetypeswrong/cli": "0.18.5",
     "@ast-grep/cli": "0.51.1",

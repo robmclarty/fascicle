@@ -28,6 +28,11 @@ export default {
     // The serving loop and its disconnect path live in src/acp/serve_streams.ts,
     // which is mutated like any other module.
     '!src/acp/serve_acp.ts',
+    // serve_a2a's process glue (the node:http server, the signal exit),
+    // exercised by the spawn test in src/a2a/__tests__/e2e/. The agent it
+    // serves lives in src/a2a/a2a_agent.ts and the files beside it, which are
+    // mutated like any other module.
+    '!src/a2a/serve_a2a.ts',
     // The search worker's shell, which hands its thread's job to search_files
     // and posts the result back. Stryker switches a mutant on in the test's
     // own thread, never inside a worker, so every decision lives in

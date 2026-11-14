@@ -15,6 +15,7 @@ import { defineConfig } from 'tsdown';
 export default defineConfig({
   entry: {
     index: './src/index.ts',
+    a2a: './src/a2a/index.ts',
     acp: './src/acp/index.ts',
     adapters: './src/adapters/index.ts',
     agents: './src/agents/index.ts',
@@ -49,5 +50,6 @@ export default defineConfig({
     '@openrouter/ai-sdk-provider',
     /^@modelcontextprotocol\//,
     /^@agentclientprotocol\//,
+    /^@a2a-js\//,
   ],
 });

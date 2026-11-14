@@ -12,6 +12,7 @@ const INTERNAL_MODULES = [
   'agents',
   'stdio',
   'acp',
+  'a2a',
   'mcp',
   'ui',
   'policy',
@@ -22,7 +23,7 @@ const INTERNAL_MODULES = [
 ];
 
 /** Modules published as `fascicle/<module>` subpaths, mirroring `package.json` `exports`. */
-const PUBLISHED_MODULES = ['acp', 'adapters', 'mcp', 'otel', 'stdio', 'ui', 'viewer', 'agents', 'testing', 'web'];
+const PUBLISHED_MODULES = ['a2a', 'acp', 'adapters', 'mcp', 'otel', 'stdio', 'ui', 'viewer', 'agents', 'testing', 'web'];
 
 /**
  * Resolve a path beside this config to an absolute file path.
