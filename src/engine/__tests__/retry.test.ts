@@ -489,7 +489,7 @@ describe('retry_with_policy: a failure that retry_on leaves out', () => {
       body: 'overloaded',
       cause_kind: 'provider_5xx',
       attempts: 1,
-      message: 'provider_5xx left out of retry_on (status 503): Service Unavailable',
+      message: "provider_5xx left out of retry_on (status 503): Service Unavailable: add 'provider_5xx' to retry.retry_on to retry it",
     })
   })
 
@@ -506,21 +506,21 @@ describe('retry_with_policy: a failure that retry_on leaves out', () => {
       attempts: 1,
       status: 429,
       retry_after_ms: 2000,
-      message: 'rate_limit left out of retry_on (status 429): Too Many Requests',
+      message: "rate_limit left out of retry_on (status 429): Too Many Requests: add 'rate_limit' to retry.retry_on to retry it",
     })
   })
 
   it.each(['network', 'timeout'] as const)('throws provider_error with cause_kind network for a %s record', async (kind) => {
     const err = await rejection({ kind, message: 'socket hang up' })
     expect(err).toBeInstanceOf(provider_error)
-    expect(err).toMatchObject({ cause_kind: 'network', status: undefined, message: `${kind} left out of retry_on: socket hang up` })
+    expect(err).toMatchObject({ cause_kind: 'network', status: undefined, message: `${kind} left out of retry_on: socket hang up: add '${kind}' to retry.retry_on to retry it` })
   })
 
   it.each(['rate_limit', 'provider_5xx', 'network'] as const)(
     'says that retry_on leaves a %s record without a message out, and never counts attempts',
     async (kind) => {
       const err = await rejection({ kind })
-      expect((err as Error).message).toBe(`${kind} left out of retry_on`)
+      expect((err as Error).message).toBe(`${kind} left out of retry_on: add '${kind}' to retry.retry_on to retry it`)
     },
   )
 

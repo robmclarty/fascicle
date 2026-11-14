@@ -818,6 +818,14 @@ outran `turn_timeout_ms` before any chunk streamed), `claude_cli_error`.
 waiting for credentials, or a remote question reached a run with no checkpoint
 store), `a2a_sdk_missing_error`.
 
+A message that you can act on says what went wrong and ends with what to do,
+and it names the option, the config key, or the command. So
+`turn_timeout_error` names `turn_timeout_ms` to raise, an HTTP status that
+`retry_on` leaves out names the kind to add, and a `provider_capability_error`
+names the call option to drop. A `turn_timeout_error` or a native network
+failure that `retry_on` leaves out is rethrown as it is, so it doesn't name
+the kind (see [configuration.md](./configuration.md#retry-policy)).
+
 The [troubleshooting guide](./troubleshooting.md) maps the common ones to causes
 and fixes.
 

@@ -312,6 +312,8 @@ describe('claude_cli adapter generate', () => {
     await expect(adapter.generate(gen({}), RESOLVED)).rejects.toMatchObject({
       kind: 'claude_cli_error',
       reason: 'no_result_event',
+      message:
+        'claude CLI closed without emitting a terminal result event: retry the call, and if it happens again, run claude update, since an older CLI may not write one',
     })
   })
 

@@ -20,7 +20,22 @@ import type {
   TurnResult,
   UserContentPart,
 } from '../types.js'
-import { provider_auth_error, provider_error } from '../errors.js'
+import { provider_auth_error, provider_capability_error, provider_error } from '../errors.js'
+
+/**
+ * The error for an image part on a native transport, none of which maps one.
+ * It sends every provider to `transport: 'ai_sdk'`, which forwards image
+ * parts whether or not the adapter declares `image_input`. That includes
+ * `ollama` and `lmstudio`, whose ai_sdk adapters declare nothing and whose
+ * vision models read the image all the same.
+ */
+export function image_input_error(provider: string): provider_capability_error {
+  return new provider_capability_error(
+    provider,
+    'image_input',
+    "image parts are not mapped on the native transport; use transport: 'ai_sdk'",
+  )
+}
 
 /**
  * `value` when it is a non-empty string, or undefined.

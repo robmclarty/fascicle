@@ -42,7 +42,7 @@ export function validate_auth_config(config: ClaudeCliProviderConfig): void {
     const api_key = typeof config.api_key === 'string' ? config.api_key : ''
     if (api_key.length === 0) {
       throw new engine_config_error(
-        'api_key is required for auth_mode: api_key',
+        "claude_cli auth_mode 'api_key' requires a non-empty api_key: pass providers.claude_cli.api_key to create_engine, usually process.env.ANTHROPIC_API_KEY, or set auth_mode to 'oauth' to use the CLI's own login",
         'claude_cli',
       )
     }

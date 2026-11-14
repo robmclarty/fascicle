@@ -10,7 +10,10 @@ import {
   extract_call_opts,
   extract_prompt_text,
   extract_system_text,
+  no_result_error,
 } from '../../../providers/claude_cli/adapter.js'
+
+const EXIT_ACTION = ': run `claude -p hello` in the same directory to see whether the CLI works by itself'
 
 describe('effort_env_for_claude_cli', () => {
   it('sets no env for undefined or none', () => {
@@ -196,8 +199,22 @@ describe('classify_close_error', () => {
     const err = classify_close_error(127, null, 'bwrap: command not found')
     expect(err).toBeInstanceOf(claude_cli_error)
     expect((err as claude_cli_error).reason).toBe('sandbox_unavailable')
-    expect(err.message).toContain('sandbox')
+    expect(err.message).toBe(
+      "sandbox binary unavailable: bwrap: command not found: install the binary that it names and put it on PATH. A providers.claude_cli.sandbox.kind of 'bwrap' or 'greywall' can switch to kind: 'claude_code' instead, which needs no wrapper on macOS and needs bubblewrap and socat on Linux",
+    )
     expect((err as claude_cli_error).stderr_snippet).toBe('bwrap: command not found')
+  })
+
+  it('quotes a missing sandbox binary\'s stderr without its closing newline, and keeps the snippet raw', () => {
+    const err = classify_close_error(127, null, 'greywall: command not found\n')
+    expect(err.message).toMatch(/^sandbox binary unavailable: greywall: command not found: install the binary/)
+    expect((err as claude_cli_error).stderr_snippet).toBe('greywall: command not found\n')
+  })
+
+  it('never tells a missing-binary reader that claude_code needs nothing', () => {
+    const err = classify_close_error(127, null, 'bwrap: command not found')
+    expect(err.message).not.toMatch(/needs no wrapper$/)
+    expect(err.message).toContain('needs bubblewrap and socat on Linux')
   })
 
   it('blames the claude binary, not bwrap, when bwrap cannot exec it in the sandbox', () => {
@@ -205,8 +222,9 @@ describe('classify_close_error', () => {
     const err = classify_close_error(1, null, stderr)
     expect(err).toBeInstanceOf(claude_cli_error)
     expect((err as claude_cli_error).reason).toBe('binary_not_found')
-    expect(err.message).toContain(`'/home/me/.local/bin/claude' inside its sandbox`)
-    expect(err.message).toContain('additional_write_paths')
+    expect(err.message).toBe(
+      `bwrap ran but found no claude binary at '/home/me/.local/bin/claude' inside its sandbox, which binds only /usr, /bin, /lib, /lib64, and additional_write_paths: ${stderr.trim()}: point providers.claude_cli.binary at a claude under one of those, or switch the sandbox to kind: 'claude_code', which wraps nothing`,
+    )
     expect((err as claude_cli_error).stderr_snippet).toBe(stderr)
   })
 
@@ -225,16 +243,35 @@ describe('classify_close_error', () => {
     const err = classify_close_error(2, null, 'boom')
     expect(err).toBeInstanceOf(claude_cli_error)
     expect((err as claude_cli_error).reason).toBe('subprocess_exit')
-    expect(err.message).toContain('code 2')
-    expect(err.message).toContain('boom')
-    expect(err.message).not.toContain('(signal')
+    expect(err.message).toBe(`claude CLI exited with code 2: boom${EXIT_ACTION}`)
     expect((err as claude_cli_error).status).toBe(2)
     expect((err as claude_cli_error).stderr_snippet).toBe('boom')
   })
 
+  it('quotes stderr without its closing newline, so the action stays on the same line', () => {
+    const err = classify_close_error(1, null, 'boom\n')
+    expect(err.message).toBe(`claude CLI exited with code 1: boom${EXIT_ACTION}`)
+    expect((err as claude_cli_error).stderr_snippet).toBe('boom\n')
+  })
+
+  it('treats a stderr of only whitespace as no reason', () => {
+    const err = classify_close_error(1, null, ' \n')
+    expect(err.message).toBe(`claude CLI exited with code 1: it printed no reason${EXIT_ACTION}`)
+  })
+
+  it('falls back to the error result\'s text when stderr is only whitespace', () => {
+    const err = classify_close_error(1, null, '\n', { is_error: true, final_text: 'API Error: 529 overloaded\n' })
+    expect(err.message).toBe(`claude CLI exited with code 1: API Error: 529 overloaded${EXIT_ACTION}`)
+  })
+
+  it('says only what to run when an auth failure came with whitespace alone', () => {
+    const err = classify_close_error(1, null, '\n', { is_error: false, final_text: '', api_error: 'authentication_failed' })
+    expect(err.message).toBe('claude CLI reported an auth failure: run claude auth login')
+  })
+
   it('includes the signal and omits the status when terminated by a signal', () => {
     const err = classify_close_error(null, 'SIGTERM', 'killed')
-    expect(err.message).toContain('(signal SIGTERM)')
+    expect(err.message).toBe(`claude CLI exited with code null (signal SIGTERM): killed${EXIT_ACTION}`)
     expect((err as claude_cli_error).status).toBeUndefined()
   })
 
@@ -267,22 +304,48 @@ describe('classify_close_error', () => {
   it('carries an error result\'s text when stderr is empty', () => {
     const err = classify_close_error(1, null, '', { is_error: true, final_text: 'API Error: 529 overloaded' })
     expect((err as claude_cli_error).reason).toBe('subprocess_exit')
-    expect(err.message).toBe('claude CLI exited with code 1: API Error: 529 overloaded')
+    expect(err.message).toBe(`claude CLI exited with code 1: API Error: 529 overloaded${EXIT_ACTION}`)
     expect((err as claude_cli_error).stderr_snippet).toBe('')
   })
 
   it('prefers stderr over the error result\'s text', () => {
     const err = classify_close_error(1, null, 'boom', { is_error: true, final_text: 'reported' })
-    expect(err.message).toBe('claude CLI exited with code 1: boom')
+    expect(err.message).toBe(`claude CLI exited with code 1: boom${EXIT_ACTION}`)
   })
 
   it('leaves out the text of a run that reported no error', () => {
     const err = classify_close_error(1, null, '', { is_error: false, final_text: 'half an answer' })
-    expect(err.message).toBe('claude CLI exited with code 1: ')
+    expect(err.message).toBe(`claude CLI exited with code 1: it printed no reason${EXIT_ACTION}`)
   })
 
   it('truncates the error result\'s text to 512 characters', () => {
     const err = classify_close_error(1, null, '', { is_error: true, final_text: 'y'.repeat(600) })
-    expect(err.message).toBe(`claude CLI exited with code 1: ${'y'.repeat(512)}`)
+    expect(err.message).toBe(`claude CLI exited with code 1: ${'y'.repeat(512)}${EXIT_ACTION}`)
+  })
+})
+
+describe('no_result_error', () => {
+  const ACTION = ': retry the call, and if it happens again, run claude update, since an older CLI may not write one'
+
+  it('says what to do when the CLI wrote nothing to stderr', () => {
+    const err = no_result_error('')
+    expect(err).toBeInstanceOf(claude_cli_error)
+    expect(err.reason).toBe('no_result_event')
+    expect(err.message).toBe(`claude CLI closed without emitting a terminal result event${ACTION}`)
+    expect(err.stderr_snippet).toBe('')
+  })
+
+  it('treats whitespace on stderr as nothing said', () => {
+    expect(no_result_error(' \n').message).toBe(
+      `claude CLI closed without emitting a terminal result event${ACTION}`,
+    )
+  })
+
+  it('puts what the CLI wrote to stderr before the action, trimmed, and keeps the snippet as it came', () => {
+    const err = no_result_error('stream closed early\n')
+    expect(err.message).toBe(
+      `claude CLI closed without emitting a terminal result event: stream closed early${ACTION}`,
+    )
+    expect(err.stderr_snippet).toBe('stream closed early\n')
   })
 })

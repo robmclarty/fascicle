@@ -212,6 +212,10 @@ export function compile_schema<T>(schema: ToolSchema<T>): string {
  * the run from going ahead, whether Claude Code's own or a wrapper. Returns
  * `undefined` when neither does.
  *
+ * It reads the text alone and never learns which sandbox kind is configured,
+ * so the missing-binary message tells the reader to install what stderr
+ * names, and offers the switch to `claude_code` only to the wrapper kinds.
+ *
  * The bwrap check has to come before the wrapper check: bwrap's own
  * "execvp <binary>: No such file or directory" names bwrap and says the file
  * is missing, so the wrapper check would blame bwrap for the claude binary.
@@ -229,20 +233,49 @@ function classify_sandbox_failure(
       { stderr_snippet: snippet },
     )
   }
+  // stderr ends in a newline, which would strand the action on its own line.
+  const said = snippet.trim()
   const sandboxed_binary = BWRAP_EXEC_MISSING.exec(stderr)?.[1]
   if (sandboxed_binary !== undefined) {
     return new claude_cli_error(
       'binary_not_found',
-      `bwrap ran but found no claude binary at '${sandboxed_binary}' inside its sandbox, which binds only /usr, /bin, /lib, /lib64, and additional_write_paths: ${snippet}`,
+      `bwrap ran but found no claude binary at '${sandboxed_binary}' inside its sandbox, which binds only /usr, /bin, /lib, /lib64, and additional_write_paths: ${said}: point providers.claude_cli.binary at a claude under one of those, or switch the sandbox to kind: 'claude_code', which wraps nothing`,
       { stderr_snippet: snippet },
     )
   }
   if (/bwrap|greywall|sandbox/i.test(stderr) && /not found|no such file|enoent/i.test(stderr)) {
-    return new claude_cli_error('sandbox_unavailable', `sandbox binary unavailable: ${snippet}`, {
-      stderr_snippet: snippet,
-    })
+    return new claude_cli_error(
+      'sandbox_unavailable',
+      `sandbox binary unavailable: ${said}: install the binary that it names and put it on PATH. A providers.claude_cli.sandbox.kind of 'bwrap' or 'greywall' can switch to kind: 'claude_code' instead, which needs no wrapper on macOS and needs bubblewrap and socat on Linux`,
+      { stderr_snippet: snippet },
+    )
   }
   return undefined
+}
+
+/**
+ * What to do about a CLI that exited non-zero for a reason Fascicle doesn't
+ * recognize. Running it by hand is the one check that separates a CLI that
+ * can't run at all from one that this call's options upset.
+ */
+const CLI_EXIT_ACTION =
+  'run `claude -p hello` in the same directory to see whether the CLI works by itself'
+
+/**
+ * The error for a CLI that exited 0 without writing its result event, which
+ * leaves no answer, usage, or cost to return. What it wrote to stderr goes
+ * in the message when it wrote anything, since that's the only reason on
+ * offer. A CLI too old to write the stream-json events is the usual cause
+ * that outlasts a retry.
+ */
+export function no_result_error(stderr_snippet: string): claude_cli_error {
+  const said = stderr_snippet.trim()
+  const detail = said.length > 0 ? `: ${said}` : ''
+  return new claude_cli_error(
+    'no_result_event',
+    `claude CLI closed without emitting a terminal result event${detail}: retry the call, and if it happens again, run claude update, since an older CLI may not write one`,
+    { stderr_snippet },
+  )
 }
 
 /**
@@ -252,8 +285,10 @@ function classify_sandbox_failure(
  * Checks for an auth failure first, then for a sandbox that stopped the run
  * (Claude Code's own failing to start, a claude binary that bwrap couldn't
  * find inside its sandbox, or a missing wrapper), then falls back to a
- * generic exit-code error. The stderr snippet attached to each error is
- * truncated to 512 bytes.
+ * generic exit-code error, which says so when the CLI printed no reason and
+ * closes with a check to run by hand. The stderr snippet attached to each
+ * error is truncated to 512 bytes and otherwise raw, and the message quotes
+ * it trimmed, so the action never lands on a line of its own.
  *
  * A logged-out CLI says so on stdout and leaves stderr empty: it writes an
  * assistant message with the `authentication_failed` error code and an error
@@ -268,9 +303,11 @@ export function classify_close_error(
   parsed?: Pick<ParsedStream, 'is_error' | 'final_text' | 'api_error'>,
 ): Error {
   const snippet = stderr.slice(0, 512)
+  // A stderr of nothing but its closing newline gave no reason either.
+  const said = snippet.trim()
   // Text from a run that reported no error is the model's, not a reason.
-  const reported = parsed?.is_error === true ? parsed.final_text.slice(0, 512) : ''
-  const detail = snippet.length > 0 ? snippet : reported
+  const reported = parsed?.is_error === true ? parsed.final_text.slice(0, 512).trim() : ''
+  const detail = said.length > 0 ? said : reported
   if (stderr_is_auth_failure(stderr) || parsed?.api_error === CLI_AUTH_FAILED_ERROR) {
     const reason = detail.length > 0 ? `${detail}: ` : ''
     return new provider_auth_error(
@@ -283,7 +320,8 @@ export function classify_close_error(
   if (sandbox_failure !== undefined) return sandbox_failure
   const status = typeof code === 'number' ? code : undefined
   const signal_part = signal !== null ? ` (signal ${signal})` : ''
-  const message = `claude CLI exited with code ${String(code)}${signal_part}: ${detail}`
+  const reason = detail.length > 0 ? detail : 'it printed no reason'
+  const message = `claude CLI exited with code ${String(code)}${signal_part}: ${reason}: ${CLI_EXIT_ACTION}`
   const metadata: { status?: number; stderr_snippet?: string } = {
     stderr_snippet: snippet,
   }
@@ -385,11 +423,7 @@ async function run_cli(
     throw classify_close_error(close_outcome.code, close_outcome.signal, close_outcome.stderr, parsed)
   }
   if (!parsed.received_result) {
-    throw new claude_cli_error(
-      'no_result_event',
-      'claude CLI closed without emitting a terminal result event',
-      { stderr_snippet: close_outcome.stderr.slice(0, 512) },
-    )
+    throw no_result_error(close_outcome.stderr.slice(0, 512))
   }
 
   return { parsed, chunks }

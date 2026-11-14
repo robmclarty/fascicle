@@ -47,7 +47,7 @@ export function get_provider_factory(name: string): ProviderFactory {
   const factory = BUILTIN_PROVIDERS.get(name)
   if (factory === undefined) {
     throw new engine_config_error(
-      `unknown provider '${name}'; built-in providers are: ${list_builtin_providers().join(', ')}`,
+      `unknown provider '${name}': use a built-in provider (${list_builtin_providers().join(', ')}), or register a factory for '${name}' in custom_providers`,
       name,
     )
   }

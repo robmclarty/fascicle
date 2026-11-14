@@ -25,9 +25,9 @@ a different error, and the timing tells the two apart.
 - **At construction**, a key in your `create_engine({ providers })` matches no
   built-in provider and no `custom_providers` entry, so the engine can't
   build an adapter for that name at all. That throws `engine_config_error`
-  (`unknown provider '<name>'; built-in providers are: ...`) rather than this
-  error. Fix the spelling, or register the custom provider factory under
-  `custom_providers`.
+  (`unknown provider '<name>': use a built-in provider (...), or register a
+  factory for '<name>' in custom_providers`) rather than this error. Fix the
+  spelling, or register the custom provider factory under `custom_providers`.
 - **At call time**, the resolved `provider` for a `generate` call names an
   adapter that the engine wasn't configured with. Constructing an engine never
   fails for a *missing* provider; that failure is deferred to the first call
@@ -171,16 +171,23 @@ and `fetch failed` on the `ai_sdk` one, without a retry.
 | Symptom                                            | Cause and fix                                                                 |
 | -------------------------------------------------- | ----------------------------------------------------------------------------- |
 | `claude_cli_error` with `reason: 'binary_not_found'` | The `claude` binary isn't on `PATH`. Install Claude Code, or set `binary`. |
-| `binary_not_found` whose message says `bwrap` found no binary | The `claude` binary sits outside the paths that the `bwrap` sandbox binds, such as in your home directory. The [roadmap](./roadmap.md#known-issues) tracks this. |
+| `binary_not_found` whose message says `bwrap` found no binary | The `claude` binary sits outside the paths that the `bwrap` sandbox binds, such as in your home directory. Point `binary` at a `claude` under one of the paths that the message lists, or switch the sandbox to `kind: 'claude_code'`. The [roadmap](./roadmap.md#known-issues) tracks this. |
 | `provider_auth_error` with `refresh_command: 'claude auth login'` | The CLI session is missing or expired. Run `claude auth login`. |
 | `claude_cli_error` with `reason: 'startup_timeout' \| 'stall_timeout'` | No first chunk within 120s, or a 300s gap mid-stream. Check connectivity; raise `startup_timeout_ms` / `stall_timeout_ms`. |
 | `claude_cli_error` with `reason: 'sandbox_unavailable'` | A `claude_code` sandbox can't start, so on Linux and WSL2 install `bubblewrap` and `socat`. Or Claude Code is older than 2.1.314, so run `claude update`. Under the deprecated `bwrap` and `greywall` kinds, the wrapper isn't installed. |
+| `claude_cli_error` with `reason: 'subprocess_exit'` | The CLI exited non-zero for a reason that the adapter doesn't recognize. The message carries what the CLI wrote, or says that it printed no reason. Run `claude -p hello` in the same directory to see whether the CLI works by itself. |
+| `claude_cli_error` with `reason: 'no_result_event'` | The CLI exited cleanly and never wrote its result event, so the call has no answer to return. Retry the call. When it happens again, run `claude update`, since an older CLI may not write one. |
+| `claude_cli_error` with `reason: 'result_error'` | The CLI reported the run as failed, and the message gives the CLI's own text after `claude CLI returned an error result`. Set `trajectory` on the call to see the turns that led to it. |
 | A sandboxed Bash command fails with "the read block does not allow without asking" | Under a `claude_code` sandbox, a command that names a path outside the working directories is refused before it runs, `/dev/null` included. Point the output at a file inside the working directory, or add the directory that it names with `--add-dir` in `extra_args`. |
 | Your tools silently do nothing                     | Default `tool_bridge: 'allowlist_only'` drops `execute` closures and records a `cli_tool_bridge_allowlist_only` trajectory event. Use `tool_bridge: 'forbid'` to turn that into an error. |
 
 Releases after 0.17.4 put the fix in the message as well: a missing binary
 says to install Claude Code or set `providers.claude_cli.binary`, an auth
 failure ends `run claude auth login`, and a timeout names the option to raise.
+Releases after 0.18.1 do the same for the rest of the table. The `bwrap` and
+missing-wrapper messages name the config to change, an exit that printed no
+reason says so, and the exit, missing-result, and error-result messages each
+end with the check or the retry that the table gives.
 Every `claude_cli_error` carries a `stderr_snippet` (first 512 bytes of stderr).
 The full guide is [cli.md](./cli.md).
 
@@ -206,7 +213,10 @@ of any loop that doesn't otherwise await something abortable. See
   you've seen part of a stream, a failure partway through it isn't retried,
   since a retry would hand you that part again; the orchestrator enforces that
   boundary. With no `on_chunk`, nothing reached you, so a turn that fails
-  mid-stream retries the whole turn. See
+  mid-stream retries the whole turn. The failure is a `provider_error` that
+  opens `stream interrupted`, and in releases after 0.18.1 it ends by saying
+  that it wasn't retried because `on_chunk` had already received output, so
+  retry the whole call yourself when a repeated first half is acceptable. See
   [configuration.md](./configuration.md#retry-policy).
 - The bundled `filesystem_logger` writes synchronously, so it's meant for dev
   tools and short runs; roll your own `TrajectoryLogger` for a long-running

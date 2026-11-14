@@ -286,6 +286,9 @@ describe('generate: dispatch gating', () => {
     }
     expect(err).toBeInstanceOf(provider_capability_error)
     expect((err as provider_capability_error).capability).toBe('schema')
+    expect((err as Error).message).toBe(
+      "provider 'anthropic' does not support 'schema': drop `schema` from the call, or route it to a provider that supports 'schema'",
+    )
     expect(mock_state.generate_text_call_count).toBe(0)
   })
 
@@ -310,6 +313,9 @@ describe('generate: dispatch gating', () => {
     }
     expect(err).toBeInstanceOf(provider_capability_error)
     expect((err as provider_capability_error).capability).toBe('tools')
+    expect((err as Error).message).toBe(
+      "provider 'anthropic' does not support 'tools': drop `tools` from the call, or route it to a provider that supports 'tools'",
+    )
     expect(mock_state.generate_text_call_count).toBe(0)
   })
 
@@ -327,6 +333,9 @@ describe('generate: dispatch gating', () => {
     }
     expect(err).toBeInstanceOf(provider_capability_error)
     expect((err as provider_capability_error).capability).toBe('streaming')
+    expect((err as Error).message).toBe(
+      "provider 'anthropic' does not support 'streaming': drop `on_chunk` from the call, or route it to a provider that supports 'streaming'",
+    )
   })
 
   it('does not gate a schema-free call on an adapter that lacks schema support', async () => {
@@ -1450,7 +1459,7 @@ describe('generate: retry', () => {
     expect(err).toMatchObject({
       status: 503,
       cause_kind: 'provider_5xx',
-      message: 'provider_5xx left out of retry_on (status 503): server error',
+      message: "provider_5xx left out of retry_on (status 503): server error: add 'provider_5xx' to retry.retry_on to retry it",
     })
     expect(mock_state.generate_text_call_count).toBe(1)
   })
@@ -1830,7 +1839,7 @@ describe('generate: the native retry rule across the first chunk', () => {
       .generate({ model: 'm', prompt: 'hi', retry: NO_WAIT, on_chunk: (c) => void seen.push(c) })
       .catch((e: unknown) => e)
     expect(interrupted).toBeInstanceOf(provider_error)
-    expect(interrupted).toMatchObject({ message: 'stream interrupted: connection reset', cause_kind: 'unknown' })
+    expect(interrupted).toMatchObject({ message: 'stream interrupted: connection reset: not retried because on_chunk had already received output, so retry the whole call', cause_kind: 'unknown' })
     expect(watched.attempts()).toBe(1)
     expect(seen.map((c) => c.kind)).toStrictEqual(['text'])
 

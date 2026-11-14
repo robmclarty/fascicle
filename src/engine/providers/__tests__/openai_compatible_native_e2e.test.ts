@@ -668,7 +668,7 @@ describe('openai-compatible native e2e error frame mid-stream', () => {
     const { thrown, chunks } = await stream_once()
     expect(thrown).toBeInstanceOf(provider_error)
     expect((thrown as provider_error).message).toBe(
-      'stream interrupted: compat native: the server reported an error mid-stream (code 502): Upstream gave out',
+      'stream interrupted: compat native: the server reported an error mid-stream (code 502): Upstream gave out: not retried because on_chunk had already received output, so retry the whole call',
     )
     expect(chunks.filter((chunk) => chunk.kind === 'text')).toHaveLength(1)
     expect(mock).toHaveBeenCalledTimes(1)
@@ -736,7 +736,7 @@ describe('openai-compatible native e2e reply shapes', () => {
       .catch((e: unknown) => e)
     expect(caught).toBeInstanceOf(provider_error)
     expect((caught as Error).message).toBe(
-      'stream interrupted: compat native: stream ended before [DONE]; the result would be truncated',
+      'stream interrupted: compat native: stream ended before [DONE]; the result would be truncated: not retried because on_chunk had already received output, so retry the whole call',
     )
     expect(watched).toHaveBeenCalledTimes(1)
   })

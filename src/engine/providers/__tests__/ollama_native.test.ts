@@ -1004,7 +1004,7 @@ describe('ollama native through the engine', () => {
     const mock = stub_fetch_queue([dropped_stream_response(THINKING_STREAM.slice(0, 1)), ndjson_response(TEXT_STREAM)])
     const { thrown, chunks } = await generate_streamed()
     expect(thrown).toBeInstanceOf(provider_error)
-    expect((thrown as Error).message).toBe('stream interrupted: ollama connection dropped while reading the response: terminated')
+    expect((thrown as Error).message).toBe('stream interrupted: ollama connection dropped while reading the response: terminated: not retried because on_chunk had already received output, so retry the whole call')
     expect(chunks.filter((chunk) => chunk.kind === 'reasoning')).toEqual([
       { kind: 'reasoning', text: 'The user wants ', step_index: 0 },
     ])
@@ -1596,7 +1596,7 @@ describe('ollama native through generate: every turn streams', () => {
       .catch((e: unknown) => e)
     expect(caught).toBeInstanceOf(provider_error)
     expect((caught as Error).message).toBe(
-      'stream interrupted: ollama native: stream ended before its done frame; the result would be truncated',
+      'stream interrupted: ollama native: stream ended before its done frame; the result would be truncated: not retried because on_chunk had already received output, so retry the whole call',
     )
     expect(watched).toHaveBeenCalledTimes(1)
   })
