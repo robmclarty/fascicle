@@ -188,4 +188,46 @@ describe('checkpoint_session_store: two writers', () => {
     ])
     expect((await checkpoint_session_store(memory.store).list()).map((entry) => entry.id).toSorted()).toEqual(['a', 'b'])
   })
+
+  it('makes one process\'s updates one after another on a store that cannot compare and set, so two saves both land', async () => {
+    const memory = memory_store({ versioned: false })
+    // A store that takes a moment to answer, as one over a network does.
+    const slow: CheckpointStore = {
+      ...memory.store,
+      get: async (key) => {
+        const value = await memory.store.get(key)
+        await new Promise((resolve) => setTimeout(resolve, 5))
+        return value
+      },
+    }
+    const sessions = checkpoint_session_store(slow)
+    await Promise.all([
+      sessions.save(stored({ id: 'a' })),
+      checkpoint_session_store(slow).save(stored({ id: 'b' })),
+      sessions.save(stored({ id: 'c' })),
+    ])
+    expect((await sessions.list()).map((entry) => entry.id)).toEqual(['c', 'b', 'a'])
+    await Promise.all([sessions.delete('a'), sessions.save(stored({ id: 'd' }))])
+    expect((await sessions.list()).map((entry) => entry.id)).toEqual(['d', 'c', 'b'])
+  })
+
+  it('fails the save whose index write failed, and goes on to the next update', async () => {
+    const memory = memory_store({ versioned: false })
+    let failed = false
+    const flaky: CheckpointStore = {
+      ...memory.store,
+      set: async (key, value) => {
+        if (key === 'acp/sessions' && !failed) {
+          failed = true
+          throw new Error('the store went away')
+        }
+        await memory.store.set(key, value)
+      },
+    }
+    const sessions = checkpoint_session_store(flaky)
+    const [first, second] = await Promise.allSettled([sessions.save(stored({ id: 'a' })), sessions.save(stored({ id: 'b' }))])
+    expect(first).toMatchObject({ status: 'rejected', reason: new Error('the store went away') })
+    expect(second).toMatchObject({ status: 'fulfilled' })
+    expect((await sessions.list()).map((entry) => entry.id)).toEqual(['b'])
+  })
 })

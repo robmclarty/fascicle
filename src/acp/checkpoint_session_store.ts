@@ -12,7 +12,9 @@
  * `get_versioned` and `set_if`, the write goes through only while the index
  * is still as it was read, and a writer that lost reads it again, so two
  * agent processes sharing a store never drop each other's entries. A store
- * without them is safe for one agent process at a time.
+ * without them is safe for one agent process at a time, which makes its
+ * updates one after another, so two of its sessions that save together
+ * both land in the index.
  *
  * A stored session holds the conversation, which can carry code or a key
  * the user pasted, so who can read it is up to the store underneath.
@@ -28,6 +30,14 @@ const INDEX_KEY = 'acp/sessions'
 
 /** How many times an index update reads again after losing its write to another writer. */
 const INDEX_ATTEMPTS = 50
+
+/**
+ * The latest index update on each store that can't compare and set, which
+ * the next one waits on, so two updates in one process never read the same
+ * index and write over each other. It's keyed by the store, since two
+ * session stores can share one.
+ */
+const index_updates = new WeakMap<CheckpointStore, Promise<void>>()
 
 /**
  * The key a session is kept under.
@@ -70,7 +80,9 @@ function index_of(value: unknown): AcpSessionSummary[] {
 /**
  * Replace the index with `change` applied to it. On a store that can
  * compare and set, a write that lost to another writer reads the index
- * again and applies the change to what it finds.
+ * again and applies the change to what it finds. On any other store, the
+ * update waits for every one this process already started there, whether
+ * or not that one failed, since nothing else keeps two of them apart.
  */
 async function update_index(
   store: CheckpointStore,
@@ -78,8 +90,14 @@ async function update_index(
 ): Promise<void> {
   const { get_versioned, set_if } = store
   if (get_versioned === undefined || set_if === undefined) {
-    await store.set(INDEX_KEY, change(index_of(await store.get(INDEX_KEY))))
-    return
+    const update = (index_updates.get(store) ?? Promise.resolve()).then(async () =>
+      store.set(INDEX_KEY, change(index_of(await store.get(INDEX_KEY)))),
+    )
+    index_updates.set(
+      store,
+      update.catch(() => {}),
+    )
+    return update
   }
   for (let attempt = 0; attempt < INDEX_ATTEMPTS; attempt += 1) {
     const read = await get_versioned(INDEX_KEY)
