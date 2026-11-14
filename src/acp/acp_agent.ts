@@ -63,6 +63,7 @@ import type {
   AcpHistoryEntry,
   AcpMode,
   AcpSession,
+  AcpSessionStore,
   AcpSessionSummary,
   AcpStoredSession,
   ServeAcpConfig,
@@ -76,9 +77,10 @@ type AcpSdk = Awaited<ReturnType<typeof load_acp_sdk>>
  * A session as the agent holds it: what a turn needs, its mode, its model,
  * its MCP servers as the client sent them and as connected, the warnings
  * about them the client hasn't been shown, how many of its turns the store
- * keeps (null for a session whose turns aren't kept), and the latest save,
- * which the next save waits on so two never write at once. A deleted
- * session saves nothing more.
+ * keeps (null for a session whose turns aren't kept), how many turns have
+ * left `unsaved_turns`, the latest save, which the next save waits on so
+ * two never write at once, and the prompts that haven't answered yet, each
+ * done once its turn is saved. A deleted session saves nothing more.
  */
 type AgentSession<i, o> = SessionRecord<i, o> & {
   readonly modes: SessionModes
@@ -89,7 +91,9 @@ type AgentSession<i, o> = SessionRecord<i, o> & {
   readonly use_mcp: (connections: McpConnections) => void
   readonly notices: McpWarning[]
   turns: number | null
+  flushed: number
   saving: Promise<void>
+  readonly prompts: Set<Promise<void>>
   deleted: boolean
 }
 
@@ -103,6 +107,14 @@ type SessionStart = {
   readonly additional_directories: ReadonlyArray<string>
   readonly mcp_servers: ReadonlyArray<McpServer>
   readonly stored?: AcpStoredSession | undefined
+}
+
+/** What a load or a resume asks for, once its directories are checked. */
+type ReopenRequest = {
+  readonly sessionId: string
+  readonly cwd: string
+  readonly additional_directories: ReadonlyArray<string>
+  readonly mcp_servers: ReadonlyArray<McpServer> | undefined
 }
 
 /** Every config option id a session can have, as a refusal lists them. */
@@ -142,6 +154,17 @@ function unknown_session(sdk: AcpSdk, sessionId: string): Error {
  */
 function login_required(sdk: AcpSdk, auth: AcpAuth): Error {
   return new sdk.RequestError(-32000, `Authentication required: ${auth.instructions}`)
+}
+
+/**
+ * The error for a load or a resume that names a session with another cwd
+ * than the one it started in, which the protocol has the client send.
+ */
+function other_cwd(sdk: AcpSdk, method: string, sessionId: string, started_in: string, cwd: string): Error {
+  return sdk.RequestError.invalidParams(
+    { sessionId, cwd },
+    `session ${sessionId} started in ${started_in}; send that cwd with ${method}`,
+  )
 }
 
 /**
@@ -249,26 +272,36 @@ function stored_session<i, o>(record: AgentSession<i, o>): AcpStoredSession {
 /**
  * Save a session after the save before it: first each turn the store hasn't
  * been handed, for a store that keeps turns, then the session, whose count
- * of turns then reaches them. A session with no history yet isn't saved, so
- * a thread the user never wrote in doesn't fill the list, and neither is a
- * deleted one. A failed save is reported on stderr rather than failing the
- * turn the user already watched finish, and it leaves the session as it was
- * in the store.
+ * of turns then reaches them. A turn leaves `unsaved_turns` and joins the
+ * count only once it's written, so a turn whose write failed goes with the
+ * next save instead of leaving a hole in the thread. A session with no
+ * history yet isn't saved, so a thread the user never wrote in doesn't fill
+ * the list, and neither is a deleted one. A failed save is reported on
+ * stderr rather than failing the turn the user already watched finish, and
+ * it leaves the session as it was in the store.
  */
 function save_session<i, o>(config: ServeAcpConfig<i, o>, record: AgentSession<i, o>): Promise<void> {
   const store = config.session_store
-  const unsaved = record.unsaved_turns.splice(0)
-  if (store === undefined || record.deleted || record.history.length === 0) return Promise.resolve()
+  if (store === undefined || record.deleted || record.history.length === 0) {
+    record.flushed += record.unsaved_turns.splice(0).length
+    return Promise.resolve()
+  }
   const { save_turn } = store
-  const first = record.turns
-  if (first !== null) record.turns = first + unsaved.length
+  if (record.turns === null || save_turn === undefined) record.flushed += record.unsaved_turns.splice(0).length
+  // The history is copied now and names the turns that go with it, so a
+  // turn that ends while this save waits its place isn't written by it.
   const snapshot = stored_session(record)
+  const through = record.flushed + record.unsaved_turns.length
   record.saving = record.saving
     .then(async () => {
-      if (first !== null && save_turn !== undefined) {
-        await Promise.all(unsaved.map((updates, offset) => save_turn(snapshot.id, first + offset, updates)))
-      }
-      await store.save(snapshot)
+      const first = record.turns
+      if (first === null || save_turn === undefined) return store.save(snapshot)
+      const unsaved = record.unsaved_turns.slice(0, through - record.flushed)
+      await Promise.all(unsaved.map((updates, offset) => save_turn(snapshot.id, first + offset, updates)))
+      record.unsaved_turns.splice(0, unsaved.length)
+      record.flushed += unsaved.length
+      record.turns = first + unsaved.length
+      return store.save({ ...snapshot, turns: record.turns })
     })
     .catch((err: unknown) => {
       process.stderr.write(`fascicle/acp: couldn't save session ${snapshot.id}: ${message_of(err)}\n`)
@@ -315,6 +348,9 @@ export async function acp_agent<i, o>(config: ServeAcpConfig<i, o>): Promise<Age
   const models = model_offer(config)
   const sdk = await load_acp_sdk()
   const sessions = new Map<string, AgentSession<i, o>>()
+  // The stored sessions being opened, so a second request for one waits
+  // for the first instead of opening it again.
+  const opening = new Map<string, Promise<AgentSession<i, o>>>()
   const store = config.session_store
   const identity = { name: config.name, version: config.version ?? '0.0.0' }
   let client_capabilities: ClientCapabilities = {}
@@ -417,7 +453,9 @@ export async function acp_agent<i, o>(config: ServeAcpConfig<i, o>): Promise<Age
         },
         notices: [...mcp.warnings],
         turns: keeps_turns ? (stored === undefined ? 0 : (stored.turns ?? null)) : null,
+        flushed: 0,
         saving: Promise.resolve(),
+        prompts: new Set(),
         deleted: false,
       }
       sessions.set(id, record)
@@ -449,10 +487,34 @@ export async function acp_agent<i, o>(config: ServeAcpConfig<i, o>): Promise<Age
     record.notices.push(...next.warnings)
     void Promise.resolve(record.last_turn?.settled).then(() => previous.close())
   }
+  // A stored session is opened from the store with the cwd it started in,
+  // which the client must send. The directories the request sends replace
+  // the stored ones, and a request that sends none keeps them, unless the
+  // agent works in cwd alone.
+  const restore = async (
+    client: AgentContext,
+    method: 'session/load' | 'session/resume',
+    request: ReopenRequest,
+    session_store: AcpSessionStore,
+  ): Promise<AgentSession<i, o>> => {
+    const { sessionId, cwd } = request
+    const stored = await session_store.load(sessionId).catch((err: unknown) => {
+      throw internal_error(sdk, err)
+    })
+    if (stored === undefined) throw unknown_session(sdk, sessionId)
+    if (stored.cwd !== cwd) throw other_cwd(sdk, method, sessionId, stored.cwd, cwd)
+    const kept = config.additional_directories === false ? [] : stored.additional_directories
+    return open_session(client, {
+      id: sessionId,
+      cwd,
+      additional_directories: request.additional_directories.length > 0 ? request.additional_directories : kept,
+      mcp_servers: request.mcp_servers ?? [],
+      stored,
+    })
+  }
   // A session this connection already holds is picked up as it is, and a
-  // stored one is opened from the store. Either way the client must send the
-  // cwd the session started in, which the protocol lets the roots beside it
-  // change.
+  // stored one is opened from the store, once: a second request for it that
+  // arrives meanwhile waits and picks up the session the first one opened.
   const reopen = async (
     client: AgentContext,
     method: 'session/load' | 'session/resume',
@@ -467,21 +529,17 @@ export async function acp_agent<i, o>(config: ServeAcpConfig<i, o>): Promise<Age
     await require_login()
     const { sessionId, cwd } = params
     const additional_directories = requested_directories(sdk, config, method, params.additionalDirectories)
+    for (let pending = opening.get(sessionId); pending !== undefined; pending = opening.get(sessionId)) {
+      await pending.catch(() => {})
+    }
     const live = sessions.get(sessionId)
-    const stored = live === undefined ? await store.load(sessionId).catch((err: unknown) => {
-      throw internal_error(sdk, err)
-    }) : undefined
-    const started_in = live?.session.cwd ?? stored?.cwd
-    if (started_in === undefined) throw unknown_session(sdk, sessionId)
-    if (started_in !== cwd) {
-      throw sdk.RequestError.invalidParams(
-        { sessionId, cwd },
-        `session ${sessionId} started in ${started_in}; send that cwd with ${method}`,
-      )
-    }
     if (live === undefined) {
-      return open_session(client, { id: sessionId, cwd, additional_directories, mcp_servers: params.mcpServers ?? [], stored })
+      const request = { sessionId, cwd, additional_directories, mcp_servers: params.mcpServers }
+      const opened = restore(client, method, request, store).finally(() => opening.delete(sessionId))
+      opening.set(sessionId, opened)
+      return opened
     }
+    if (live.session.cwd !== cwd) throw other_cwd(sdk, method, sessionId, live.session.cwd, cwd)
     if (params.mcpServers !== undefined) await switch_servers(live, params.mcpServers)
     return live
   }
@@ -497,7 +555,10 @@ export async function acp_agent<i, o>(config: ServeAcpConfig<i, o>): Promise<Age
           })
         : undefined
     const send = sender(sdk, client, record.session.id)
-    for (const update of kept?.flat() ?? record.history.map(replayed)) await send(update)
+    // A store that kept none of the turns it was handed still has the
+    // history, so the thread shows its text instead of nothing.
+    const turns = kept === undefined || kept.length === 0 ? record.history.map(replayed) : kept.flat()
+    for (const update of turns) await send(update)
   }
   // A reopened thread shows its title and its usage again, which the client
   // can't keep for an agent that restarted, and the answer carries its mode
@@ -529,11 +590,15 @@ export async function acp_agent<i, o>(config: ServeAcpConfig<i, o>): Promise<Age
   }
   // Closing cancels the session's turn as session/cancel does, and waits for
   // its run to settle before the MCP servers close, so no tool call is left
-  // talking to one. The session leaves memory, and the store keeps it.
+  // talking to one. It waits for the cancelled turn's save too, so a load
+  // sent as soon as the close answers finds that turn in the store. The
+  // session leaves memory, and the store keeps it.
   const close_session = async (record: AgentSession<i, o>): Promise<void> => {
     sessions.delete(record.session.id)
     cancel_turn(record)
     await record.last_turn?.settled
+    await Promise.all(record.prompts)
+    await record.saving
     await record.mcp.close()
   }
   return sdk
@@ -652,12 +717,16 @@ export async function acp_agent<i, o>(config: ServeAcpConfig<i, o>): Promise<Age
       // first prompt, since the client didn't know the session's id while
       // the session was being made.
       await send_notices(ctx.client, record)
+      const saved = Promise.withResolvers<void>()
+      record.prompts.add(saved.promise)
       try {
         return await prompt_turn(config, record, prompt, ctx.signal, sender(sdk, ctx.client, sessionId))
       } catch (err: unknown) {
         throw internal_error(sdk, err)
       } finally {
         await save_session(config, record)
+        record.prompts.delete(saved.promise)
+        saved.resolve()
       }
     })
     .onRequest('session/set_mode', async (ctx) => {

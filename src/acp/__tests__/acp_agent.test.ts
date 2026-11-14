@@ -2060,3 +2060,256 @@ describe('acp_agent: login', () => {
     await expect(agent.request('logout', {})).rejects.toThrow('Method not found')
   })
 })
+
+describe('acp_agent: saves that race', () => {
+  /** A checkpoint store in memory that can't compare and set, and takes a moment to read. */
+  function slow_plain_store(): CheckpointStore {
+    const { get, set, delete: remove } = memory_checkpoint_store()
+    return {
+      set,
+      delete: remove,
+      get: async (key) => {
+        const value = await get(key)
+        await new Promise((resolve) => setTimeout(resolve, 5))
+        return value
+      },
+    }
+  }
+
+  it('lists both of two sessions on one connection whose turns end together, on a store that cannot compare and set', async () => {
+    const app = await acp_agent({
+      name: 'test-agent',
+      flow: numbered_replies().flow,
+      to_input: (turn: AcpTurn) => turn,
+      session_store: checkpoint_session_store(slow_plain_store()),
+    })
+    const { agent } = await connect_collecting(app)
+    const [a, b] = await Promise.all([
+      agent.request('session/new', { cwd: tmpdir(), mcpServers: [] }),
+      agent.request('session/new', { cwd: tmpdir(), mcpServers: [] }),
+    ])
+    await Promise.all([
+      agent.request('session/prompt', { sessionId: a.sessionId, prompt: [{ type: 'text', text: 'from a' }] }),
+      agent.request('session/prompt', { sessionId: b.sessionId, prompt: [{ type: 'text', text: 'from b' }] }),
+    ])
+    const listed = await agent.request('session/list', {})
+    expect(listed.sessions.map((info) => info.title ?? '').toSorted()).toEqual(['from a', 'from b'])
+  })
+
+  /** A filesystem store whose session save takes a moment, as a slow disk's does. */
+  async function slow_store() {
+    const base = filesystem_session_store({ root_dir: await scratch() })
+    return {
+      ...base,
+      save: async (session: AcpStoredSession) => {
+        await new Promise((resolve) => setTimeout(resolve, 20))
+        await base.save(session)
+      },
+    }
+  }
+
+  it("answers session/close once the cancelled turn is saved, so a load sent at once restores a session's first turn", async () => {
+    const session_store = await slow_store()
+    const { flow, started } = history_probe({ reply_first: false })
+    const app = await acp_agent({ name: 'test-agent', flow, to_input: (turn) => turn, session_store })
+    const { agent, updates } = await connect_collecting(app)
+    const { sessionId } = await agent.request('session/new', { cwd: tmpdir(), mcpServers: [] })
+    const running = agent.request('session/prompt', { sessionId, prompt: [{ type: 'text', text: 'hello' }] })
+    await started
+    await agent.request('session/close', { sessionId })
+    expect(await session_store.load(sessionId)).toMatchObject({ history: [{ role: 'user', text: 'hello', cancelled: true }], turns: 1 })
+    updates.length = 0
+    await agent.request('session/load', { sessionId, cwd: tmpdir(), mcpServers: [] })
+    expect(updates.map(({ update }) => update)).toEqual([user('hello'), title('hello')])
+    await expect(running).resolves.toEqual({ stopReason: 'cancelled' })
+  })
+
+  it('keeps the cancelled turn of a session that already had turns, for the load that follows its close', async () => {
+    const session_store = await slow_store()
+    const { flow, started, histories } = history_probe({ reply_first: true })
+    const later = step('later', async (turn: AcpTurn, ctx) => (turn.history.length === 0 ? 'first reply' : ctx.call(flow, turn)))
+    const app = await acp_agent({ name: 'test-agent', flow: later, to_input: (turn) => turn, session_store })
+    const { agent, updates } = await connect_collecting(app)
+    const { sessionId } = await agent.request('session/new', { cwd: tmpdir(), mcpServers: [] })
+    await agent.request('session/prompt', { sessionId, prompt: [{ type: 'text', text: 'first' }] })
+    const running = agent.request('session/prompt', { sessionId, prompt: [{ type: 'text', text: 'second' }] })
+    await started
+    await vi.waitFor(() => {
+      expect(updates.at(-1)?.update).toEqual(message('partial'))
+    })
+    await agent.request('session/close', { sessionId })
+    updates.length = 0
+    await agent.request('session/load', { sessionId, cwd: tmpdir(), mcpServers: [] })
+    expect(updates.map(({ update }) => update)).toEqual([
+      user('first'),
+      message('first reply'),
+      user('second'),
+      message('partial'),
+      title('first'),
+    ])
+    await running
+    await agent.request('session/prompt', { sessionId, prompt: [{ type: 'text', text: 'third' }] })
+    expect(histories.at(-1)).toEqual([
+      { role: 'user', text: 'first' },
+      { role: 'agent', text: 'first reply' },
+      { role: 'user', text: 'second' },
+      { role: 'agent', text: 'partial', cancelled: true },
+    ])
+    expect(await session_store.load(sessionId)).toMatchObject({ turns: 3 })
+  })
+
+  it('opens a stored session once for two resumes that arrive together, and again after an open that failed', async () => {
+    const base = filesystem_session_store({ root_dir: await scratch() })
+    let broken = false
+    const session_store = {
+      ...base,
+      load: async (id: string) => {
+        if (broken) throw new Error('the disk went away')
+        return base.load(id)
+      },
+    }
+    const built: AcpSession[] = []
+    const make = () =>
+      acp_agent({
+        name: 'test-agent',
+        flow: (session) => {
+          built.push(session)
+          return reply_step()
+        },
+        session_store,
+      })
+    const { session } = await open_session(await make())
+    await session.prompt('hello')
+    await read_turn(session)
+    built.length = 0
+
+    const { agent } = await connect_collecting(await make())
+    const resume = () => agent.request('session/resume', { sessionId: session.sessionId, cwd: tmpdir() })
+    broken = true
+    const failed = await Promise.allSettled([resume(), resume()])
+    expect(failed.map((result) => result.status)).toEqual(['rejected', 'rejected'])
+    expect(built).toEqual([])
+    broken = false
+    const answers = await Promise.all([resume(), resume(), agent.request('session/load', { sessionId: session.sessionId, cwd: tmpdir(), mcpServers: [] })])
+    expect(answers.map((answer) => answer.modes?.currentModeId)).toEqual(['manual', 'manual', 'manual'])
+    expect(built.map((opened) => opened.id)).toEqual([session.sessionId])
+    await expect(agent.request('session/resume', { sessionId: session.sessionId, cwd: join(tmpdir(), 'elsewhere') })).rejects.toThrow(
+      `Invalid params: session ${session.sessionId} started in ${tmpdir()}; send that cwd with session/resume`,
+    )
+  })
+})
+
+describe('acp_agent: the directories of a session opened again', () => {
+  async function directories_agent(options: { additional_directories?: boolean } = {}) {
+    const root_dir = await scratch()
+    const extra = await scratch()
+    const other = await scratch()
+    const built: AcpSession[] = []
+    const store = filesystem_session_store({ root_dir })
+    const make = (overrides: { additional_directories?: boolean } = options) =>
+      acp_agent({
+        name: 'test-agent',
+        flow: (session) => {
+          built.push(session)
+          return reply_step()
+        },
+        session_store: filesystem_session_store({ root_dir }),
+        ...overrides,
+      })
+    const { session } = await open_session(await make({}), { session: { additionalDirectories: [extra] } })
+    await session.prompt('hello')
+    await read_turn(session)
+    return { make, built, store, extra, other, sessionId: session.sessionId }
+  }
+
+  it.each<[string, { additionalDirectories?: string[] }]>([
+    ['none', {}],
+    ['an empty list', { additionalDirectories: [] }],
+  ])('keeps the stored directories for a resume that sends %s, in its roots and in the next save', async (_, sent) => {
+    const { make, built, store, extra, sessionId } = await directories_agent()
+    const { agent } = await connect_collecting(await make())
+    await agent.request('session/resume', { sessionId, cwd: tmpdir(), ...sent })
+    expect(built.at(-1)?.additional_directories).toEqual([extra])
+    expect(built.at(-1)?.roots).toEqual([await realpath(tmpdir()), await realpath(extra)])
+    await agent.request('session/set_mode', { sessionId, modeId: 'accept_edits' })
+    expect(await store.load(sessionId)).toMatchObject({ mode: 'accept_edits', additional_directories: [extra] })
+  })
+
+  it('replaces the stored directories with the ones a load sends', async () => {
+    const { make, built, store, other, sessionId } = await directories_agent()
+    const { agent } = await connect_collecting(await make())
+    await agent.request('session/load', { sessionId, cwd: tmpdir(), mcpServers: [], additionalDirectories: [other] })
+    expect(built.at(-1)?.additional_directories).toEqual([other])
+    await agent.request('session/set_mode', { sessionId, modeId: 'accept_edits' })
+    expect(await store.load(sessionId)).toMatchObject({ additional_directories: [other] })
+  })
+
+  it('opens a stored session on cwd alone in an agent that works in cwd alone', async () => {
+    const { make, built, sessionId } = await directories_agent()
+    const { agent } = await connect_collecting(await make({ additional_directories: false }))
+    await agent.request('session/resume', { sessionId, cwd: tmpdir() })
+    expect(built.at(-1)?.additional_directories).toEqual([])
+    expect(built.at(-1)?.roots).toEqual([await realpath(tmpdir())])
+  })
+})
+
+describe('acp_agent: a turn the store could not take', () => {
+  it('keeps a turn whose write failed for the next save, so a later load replays every turn in order', async () => {
+    const stderr = vi.spyOn(process.stderr, 'write').mockReturnValue(true)
+    const base = filesystem_session_store({ root_dir: await scratch() })
+    const written: number[] = []
+    let full = false
+    const session_store = {
+      ...base,
+      save_turn: async (id: string, index: number, updates: ReadonlyArray<SessionUpdate>) => {
+        if (full) throw new Error('disk full')
+        written.push(index)
+        await base.save_turn(id, index, updates)
+      },
+    }
+    const make = () => acp_agent({ name: 'test-agent', flow: numbered_replies().flow, to_input: (turn: AcpTurn) => turn, session_store })
+    const { session } = await open_session(await make())
+    const { sessionId } = session
+    await session.prompt('one')
+    await read_turn(session)
+    full = true
+    await session.prompt('two')
+    await read_turn(session)
+    expect(stderr).toHaveBeenCalledWith(`fascicle/acp: couldn't save session ${sessionId}: disk full\n`)
+    expect(await base.load(sessionId)).toMatchObject({ turns: 1, history: [{ text: 'one' }, { text: 'reply 1' }] })
+    full = false
+    await session.prompt('three')
+    await read_turn(session)
+    expect(written).toEqual([0, 1, 2])
+    expect(await base.load(sessionId)).toMatchObject({ turns: 3 })
+    await session.prompt('four')
+    await read_turn(session)
+    expect(written).toEqual([0, 1, 2, 3])
+
+    const { agent, updates } = await connect_collecting(await make())
+    await agent.request('session/load', { sessionId, cwd: tmpdir(), mcpServers: [] })
+    expect(updates.map(({ update }) => update)).toEqual([
+      user('one'),
+      message('reply 1'),
+      user('two'),
+      message('reply 2'),
+      user('three'),
+      message('reply 3'),
+      user('four'),
+      message('reply 4'),
+      title('one'),
+    ])
+  })
+
+  it("replays the history's text when the store can read none of the session's turns", async () => {
+    const base = filesystem_session_store({ root_dir: await scratch() })
+    const session_store = { ...base, load_turns: async () => [] }
+    const make = () => acp_agent({ name: 'test-agent', flow: numbered_replies().flow, to_input: (turn: AcpTurn) => turn, session_store })
+    const { session } = await open_session(await make())
+    await session.prompt('one')
+    await read_turn(session)
+    const { agent, updates } = await connect_collecting(await make())
+    await agent.request('session/load', { sessionId: session.sessionId, cwd: tmpdir(), mcpServers: [] })
+    expect(updates.map(({ update }) => update)).toEqual([user('one'), message('reply 1'), title('one')])
+  })
+})
