@@ -13,7 +13,7 @@ import {
 import type { CheckpointStore, DurableStore, FlowNode, RunOutcome } from '#core'
 import { describe, expect, it, vi } from 'vitest'
 import { gate } from '../gate.js'
-import { memory_store as durable_memory_store, type MemoryStore } from '../../../test/fixtures/memory_store.js'
+import { memory_store as durable_memory_store, type MemoryStore } from '#adapters'
 import { recording_logger } from '../../../test/fixtures/trajectory.js'
 
 const QUIET = { install_signal_handlers: false } as const

@@ -8,9 +8,9 @@
  * implementation without touching the rest of the public surface.
  *
  * Limits to be aware of:
- * - `filesystem_store` holds between the processes of one machine. A run that
- *   events reach on several hosts wants `object_store`, over a client for the
- *   bucket.
+ * - `filesystem_store` and `sqlite_store` hold between the processes of one
+ *   machine. A run that events reach on several hosts wants `object_store`,
+ *   over a client for the bucket. `memory_store` ends with the process.
  * - `filesystem_logger` uses synchronous `appendFileSync` on every event. It
  *   is intended for dev tools and short-lived runs; pair with a different
  *   sink for hot-path production logging.
@@ -37,6 +37,12 @@ export type {
   FilesystemStore,
   FilesystemStoreConfig,
 } from './filesystem_store.js'
+
+export { memory_store } from './memory_store.js'
+export type { MemoryScopedStore, MemoryStore, MemoryStoreOptions } from './memory_store.js'
+
+export { sqlite_store } from './sqlite_store.js'
+export type { SqliteScopedStore, SqliteStore, SqliteStoreConfig } from './sqlite_store.js'
 
 export { object_store } from './object_store.js'
 export type {

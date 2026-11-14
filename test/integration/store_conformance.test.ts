@@ -1,9 +1,10 @@
 import { mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { DatabaseSync } from 'node:sqlite'
 import { afterAll, describe, expect, it } from 'vitest'
 import { durable, sequence, step, suspend, type CheckpointStore, type DurableStore } from 'fascicle'
-import { filesystem_store, object_store } from 'fascicle/adapters'
+import { filesystem_store, memory_store, object_store, sqlite_store, type SqliteStore } from 'fascicle/adapters'
 import { checkpoint_store_conformance } from 'fascicle/testing'
 import { z } from 'zod'
 import { losing_answers, memory_client, type MemoryClient } from '../fixtures/memory_object_client.js'
@@ -155,5 +156,63 @@ describe('object_store against the store conformance suite', () => {
     expect(report.failed).toEqual([])
     expect(report.skipped).toEqual([])
     expect(report.passed).toHaveLength(47)
+  }, 30_000)
+})
+
+describe('memory_store against the store conformance suite', () => {
+  it('keeps the whole contract but the damage checks, which nothing in memory can cause', async () => {
+    const report = await checkpoint_store_conformance(() => memory_store(), { ttl_ms: 60 })
+    expect(report.failed).toEqual([])
+    expect(report.skipped).toEqual(['a damaged value reads as a miss', 'a damaged value reads with a version'])
+    expect(report.passed).toHaveLength(45)
+  }, 30_000)
+})
+
+describe('sqlite_store against the store conformance suite', () => {
+  // The file behind each store, so the damage hook can reach its rows.
+  const files = new Map<CheckpointStore, string>()
+  const stores: SqliteStore[] = []
+
+  afterAll(() => {
+    for (const store of stores) store.close()
+    for (const file of files.values()) rmSync(join(file, '..'), { recursive: true, force: true })
+  })
+
+  function on_file(): CheckpointStore {
+    const file = join(mkdtempSync(join(tmpdir(), 'fascicle-sqlite-conformance-')), 'store.db')
+    const store = sqlite_store({ path: file })
+    stores.push(store)
+    files.set(store, file)
+    return store
+  }
+
+  // Overwrite the row for `key` with half a JSON document.
+  function tear_row(store: CheckpointStore, key: string): void {
+    const file = files.get(store)
+    if (file === undefined) throw new Error('corrupt was handed a store this suite never built')
+    const db = new DatabaseSync(file)
+    db.prepare('UPDATE fascicle_values SET value = ? WHERE key = ?').run('{ "ok": tr', key)
+    db.close()
+  }
+
+  it('keeps the whole contract on a file, with scopes, claims, and conditional writes', async () => {
+    const report = await checkpoint_store_conformance(on_file, { corrupt: tear_row, ttl_ms: 60 })
+    expect(report.failed).toEqual([])
+    expect(report.skipped).toEqual([])
+    expect(report.passed).toHaveLength(47)
+  }, 30_000)
+
+  it("keeps it on ':memory:', where only the damage checks have nothing to damage", async () => {
+    const report = await checkpoint_store_conformance(
+      () => {
+        const store = sqlite_store({ path: ':memory:' })
+        stores.push(store)
+        return store
+      },
+      { ttl_ms: 60 },
+    )
+    expect(report.failed).toEqual([])
+    expect(report.skipped).toEqual(['a damaged value reads as a miss', 'a damaged value reads with a version'])
+    expect(report.passed).toHaveLength(45)
   }, 30_000)
 })

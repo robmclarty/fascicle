@@ -1,6 +1,6 @@
 import { describe as vdescribe, expect, it } from 'vitest'
 import { z } from 'zod'
-import { aborted_error, checkpoint, describe, run, sequence, suspend } from '#core'
+import { aborted_error, checkpoint, describe, durable, run, sequence, suspend } from '#core'
 import type { RunContext, TrajectoryEvent } from '#core'
 import type {
   Engine,
@@ -12,7 +12,8 @@ import type {
   Tool,
   ToolApprovalHandler,
 } from '#engine'
-import { make_loop_engine } from '#testing'
+import { memory_store } from '#adapters'
+import { make_loop_engine, make_stub_engine } from '#testing'
 import { model_call, model_step } from '../model_call.js'
 import { recording_logger } from '../../test/fixtures/trajectory.js'
 
@@ -930,5 +931,59 @@ vdescribe('model_step over a provider failure that retry_on leaves out', () => {
       error_cause_kind: 'provider_5xx',
       error_attempts: 1,
     })
+  })
+})
+
+vdescribe('record_chunks', () => {
+  const QUIET = { install_signal_handlers: false } as const
+
+  function chunks_of(events: ReadonlyArray<TrajectoryEvent>): unknown[] {
+    return events.filter((e) => e.kind === 'model_chunk').map((e) => e['chunk'])
+  }
+
+  it('records every chunk of a model call on the run logger, in order, without run.stream', async () => {
+    const engine = make_stub_engine([{ prefix: '', content: 'hello there' }])
+    const { logger, events } = recording_logger()
+    const s = model_step({ engine, model: 'stub', id: 'greet' })
+
+    const output = await run(s, 'hi', { ...QUIET, trajectory: logger, record_chunks: true })
+
+    expect(output).toBe('hello there')
+    const recorded = events.filter((e) => e.kind === 'model_chunk')
+    expect(recorded.map((e) => e['step_id'])).toEqual(recorded.map(() => 'greet'))
+    expect(chunks_of(events)).toMatchObject([{ kind: 'text', text: 'hello there' }, { kind: 'finish' }])
+  })
+
+  it('records none when the flag is off or left out', async () => {
+    const engine = make_stub_engine([{ prefix: '', content: 'hello there' }])
+    const s = model_step({ engine, model: 'stub', id: 'greet' })
+    const off = recording_logger()
+    const unset = recording_logger()
+
+    await run(s, 'hi', { ...QUIET, trajectory: off.logger, record_chunks: false })
+    await run(s, 'hi', { ...QUIET, trajectory: unset.logger })
+
+    expect(chunks_of(off.events)).toEqual([])
+    expect(chunks_of(unset.events)).toEqual([])
+  })
+
+  it('reaches a durable drive, which records the chunks of the call before its gate', async () => {
+    const engine = make_stub_engine([{ prefix: '', content: 'a draft' }])
+    const flow = sequence([
+      model_step({ engine, model: 'stub', id: 'draft' }),
+      suspend({
+        id: 'approve',
+        on: () => {},
+        resume_schema: z.object({ ok: z.boolean() }),
+        combine: (draft: string) => draft,
+      }),
+    ])
+    const runs = durable({ store: memory_store() })
+    const { logger, events } = recording_logger()
+
+    const outcome = await runs.start('r', flow, 'hi', { ...QUIET, trajectory: logger, record_chunks: true })
+
+    expect(outcome).toMatchObject({ kind: 'suspended', id: 'approve' })
+    expect(chunks_of(events)).toMatchObject([{ kind: 'text', text: 'a draft' }, { kind: 'finish' }])
   })
 })
