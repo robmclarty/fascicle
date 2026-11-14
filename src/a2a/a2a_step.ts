@@ -38,6 +38,7 @@ import { data_of, data_part, from_plain, text_of, text_part } from './parts.js'
 import { send_round } from './remote_task.js'
 import type { Outgoing, Remote, Round } from './remote_task.js'
 import { load_a2a_client } from './sdk_loader.js'
+import { scoped_fetch } from './scoped_fetch.js'
 import type { A2aRequest, A2aResult, A2aStepConfig } from './types.js'
 
 type Question = Extract<Round, { readonly kind: 'question' }>
@@ -97,16 +98,12 @@ function result_of(round: Extract<Round, { readonly kind: 'completed' }>): A2aRe
 
 /**
  * Reach the remote agent: read its card, and build a client that sends the
- * config's headers with every request, the card's included.
+ * config's headers with every request to the configured URL's origin, the
+ * card's included.
  */
 async function connect(config: A2aStepConfig): Promise<Remote> {
   const sdk = await load_a2a_client()
-  const fetch_with_headers: typeof fetch = async (input, init) => {
-    const extra = typeof config.headers === 'function' ? await config.headers() : (config.headers ?? {})
-    const headers = new Headers(init?.headers)
-    for (const [name, value] of Object.entries(extra)) headers.set(name, value)
-    return fetch(input, { ...init, headers })
-  }
+  const fetch_with_headers = scoped_fetch(config.url, config.headers)
   const factory = new sdk.client.ClientFactory({
     transports: [new sdk.client.JsonRpcTransportFactory({ fetchImpl: fetch_with_headers })],
     cardResolver: new sdk.client.DefaultAgentCardResolver({ fetchImpl: fetch_with_headers }),

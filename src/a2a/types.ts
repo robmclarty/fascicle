@@ -264,7 +264,11 @@ export type A2aStepConfig = {
   readonly id: string
   /** The agent's base URL. The card is read from `/.well-known/agent-card.json` under it. */
   readonly url: string
-  /** Sent with every request; a function runs before each one, for a token that refreshes. */
+  /**
+   * Sent with every request to the origin of `url`; a function runs before each
+   * one, for a token that refreshes. A request that the agent's card points at
+   * another origin goes out without them.
+   */
   readonly headers?:
     | Readonly<Record<string, string>>
     | (() => Promise<Readonly<Record<string, string>>>)

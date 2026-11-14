@@ -266,7 +266,7 @@ The step reads the agent's card from `/.well-known/agent-card.json` under `url`,
 - **Without streaming**, the step sends a blocking `SendMessage`. Either way, while the task is still working it polls `GetTask`, on a backoff that starts at half a second and stops growing at five.
 - **Failures.** A task that ends `FAILED`, `REJECTED`, or `CANCELED`, or that wants credentials partway through, throws `a2a_error`, which carries the state and the status text.
 - **Abort** stops the stream and asks the remote agent to cancel the task before the step throws.
-- **Headers.** `headers` go with every request, the card's included. A function runs before each request, for a token that refreshes.
+- **Headers.** `headers` go with every request to the origin of `url`, the card's included. A function runs before each request, for a token that refreshes. The agent's card chooses where messages are sent, so a card that names another origin gets its requests without your headers, and your token stays with the host that you named.
 
 A remote question becomes a local `suspend`. When the remote task stops at `INPUT_REQUIRED`, the step suspends its own run at a gate named `<step id>_<round>` (`notes_1` above), with the remote question as the gate's payload. Resuming that gate sends the answer to the same remote task as its next message, a string as text and anything else as data.
 
