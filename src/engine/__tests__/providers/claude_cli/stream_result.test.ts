@@ -42,12 +42,24 @@ describe('is_error result', () => {
     }
     expect(caught).toBeInstanceOf(claude_cli_error)
     expect((caught as claude_cli_error).reason).toBe('result_error')
-    expect((caught as claude_cli_error).message).toBe('CLI failed: rate limited')
+    expect((caught as claude_cli_error).message).toBe(
+      "claude CLI returned an error result: CLI failed: rate limited: the reason is the CLI's own, and a trajectory on the call shows the turns that led to it",
+    )
   })
 
-  it('falls back to a default message when final_text is empty', () => {
-    const parsed = make_parsed({ is_error: true })
-    expect(() => build_generate_result({ parsed, resolved })).toThrow(claude_cli_error)
+  it.each(['', '  \n'])('says the result had no text, and to set a trajectory, when final_text is %j', (final_text) => {
+    const parsed = make_parsed({ is_error: true, final_text })
+    let caught: unknown
+    try {
+      build_generate_result({ parsed, resolved })
+    } catch (err) {
+      caught = err
+    }
+    expect(caught).toBeInstanceOf(claude_cli_error)
+    expect((caught as claude_cli_error).reason).toBe('result_error')
+    expect((caught as claude_cli_error).message).toBe(
+      'claude CLI returned an error result with no text: retry the call with a trajectory set to see the turns that lead to it',
+    )
   })
 })
 

@@ -192,6 +192,20 @@ export type BuildResultInput<T> = {
 }
 
 /**
+ * The message for a run that the CLI itself reported as failed. The CLI's
+ * text is the reason, and it's the CLI's wording, so the lead says who is
+ * speaking. Either way it points at the trajectory, which holds the turns
+ * the CLI ran before it gave up.
+ */
+function error_result_message(final_text: string): string {
+  const said = final_text.trim()
+  if (said.length > 0) {
+    return `claude CLI returned an error result: ${said}: the reason is the CLI's own, and a trajectory on the call shows the turns that led to it`
+  }
+  return 'claude CLI returned an error result with no text: retry the call with a trajectory set to see the turns that lead to it'
+}
+
+/**
  * Assemble a `GenerateResult<T>` from a parsed CLI stream.
  *
  * Throws a `claude_cli_error` instead of returning when the CLI reported
@@ -206,12 +220,7 @@ export function build_generate_result<T>(input: BuildResultInput<T>): GenerateRe
   // finish_reason 'stop' would make a CLI-side error look like success; throw
   // instead so the caller sees the failure. FinishReason has no 'error' member.
   if (parsed.is_error) {
-    throw new claude_cli_error(
-      'result_error',
-      parsed.final_text.length > 0
-        ? parsed.final_text
-        : 'claude_cli returned an error result',
-    )
+    throw new claude_cli_error('result_error', error_result_message(parsed.final_text))
   }
 
   const turns = normalize_turns(parsed)
