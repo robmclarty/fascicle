@@ -93,6 +93,12 @@ export type AcpStoredSession = {
   readonly updated_at: string
   readonly history: ReadonlyArray<AcpHistoryEntry>
   readonly usage: AcpSessionUsage
+  /**
+   * How many of the session's turns the store keeps as the client saw them,
+   * which `session/load` replays. Left out by a store that keeps none, and a
+   * load of that session replays the history's text instead.
+   */
+  readonly turns?: number | undefined
 }
 
 /** What `session/list` reports of a stored session, without its history. */
@@ -100,8 +106,11 @@ export type AcpSessionSummary = Pick<AcpStoredSession, 'id' | 'cwd' | 'additiona
 
 /**
  * Where an agent keeps its sessions between processes.
- * `filesystem_session_store` keeps one JSON file for each, and any other
- * store needs only these three functions.
+ * `filesystem_session_store` keeps one JSON file for each, and
+ * `checkpoint_session_store` keeps them in any `CheckpointStore`. A store of
+ * your own needs only `save`, `load`, and `list`. Each of the other three
+ * adds one thing: `delete` lets a client delete a thread, and `save_turn`
+ * with `load_turns` lets a loaded thread come back with its tool cards.
  */
 export type AcpSessionStore = {
   /** Keeps the session, in place of any earlier copy with its id. */
@@ -110,7 +119,27 @@ export type AcpSessionStore = {
   readonly load: (id: string) => Promise<AcpStoredSession | undefined>
   /** Every session the store holds, in any order. */
   readonly list: () => Promise<ReadonlyArray<AcpSessionSummary>>
+  /**
+   * Removes the session and every turn kept for it, and resolves for an id
+   * the store doesn't hold. With it, the agent answers `session/delete`.
+   */
+  readonly delete?: ((id: string) => Promise<void>) | undefined
+  /**
+   * Keeps turn `index` of a session as the client saw it: the prompt, then
+   * every update the turn sent. The agent calls it before the `save` that
+   * counts the turn, so a turn the count doesn't reach was never finished.
+   */
+  readonly save_turn?: ((id: string, index: number, updates: ReadonlyArray<SessionUpdate>) => Promise<void>) | undefined
+  /** The first `count` turns kept for a session, oldest first, each as `save_turn` was given it. */
+  readonly load_turns?: ((id: string, count: number) => Promise<ReadonlyArray<ReadonlyArray<SessionUpdate>>>) | undefined
 }
+
+/**
+ * A session store with every optional part, which is what
+ * `filesystem_session_store` and `checkpoint_session_store` build: one that
+ * can delete a session and keeps each turn as the client saw it.
+ */
+export type AcpFullSessionStore = { readonly [key in keyof AcpSessionStore]-?: NonNullable<AcpSessionStore[key]> }
 
 /**
  * Everything a flow sees of one prompt turn. `text` joins the prompt's text
@@ -150,6 +179,29 @@ export type AcpModel = {
    * `context_window` while a session runs on this model.
    */
   readonly context_window?: number | undefined
+}
+
+/**
+ * How a user logs in to an agent from the client. With it, the agent offers
+ * a login method in `initialize`, and refuses to start, load, or resume a
+ * session with `auth_required` until `ready` says yes, which is the error a
+ * client answers by offering the login.
+ */
+export type AcpAuth = {
+  /** What the client shows for the login. */
+  readonly name: string
+  readonly description?: string | undefined
+  /** Whether the agent can start a session now, asked as each session starts. */
+  readonly ready: () => boolean | Promise<boolean>
+  /** What the user has to do when `ready` says no, which is the message of every refusal. */
+  readonly instructions: string
+  /**
+   * The arguments that run the agent's own command as a login in a terminal,
+   * offered only to a client that says it can run one.
+   */
+  readonly terminal_args?: ReadonlyArray<string> | undefined
+  /** Forgets a stored login. With it, the agent offers `logout`. */
+  readonly logout?: (() => Promise<void>) | undefined
 }
 
 /**
@@ -230,9 +282,11 @@ export type WorkspaceToolsOptions = {
 type ServeAcpCommon<i, o> = {
   /**
    * The flow each prompt turn runs, or a function that builds one per
-   * session, for a flow whose tools or approval handler close over it.
+   * session, for a flow whose tools or approval handler close over it. The
+   * function may return a promise, for a builder that has to wait on
+   * something first.
    */
-  readonly flow: Step<i, o> | ((session: AcpSession) => Step<i, o>)
+  readonly flow: Step<i, o> | ((session: AcpSession) => Step<i, o> | Promise<Step<i, o>>)
   /** Reported to the client as `agentInfo.name`. */
   readonly name: string
   /** Reported to the client as `agentInfo.version`; default: `'0.0.0'`. */
@@ -298,9 +352,17 @@ type ServeAcpCommon<i, o> = {
    * session after each turn and each mode switch, and a client can list its
    * threads (`session/list`), load one back with its messages
    * (`session/load`), or pick one up without them (`session/resume`).
-   * Without one, sessions live in memory and end with the process.
+   * Without one, sessions live in memory and end with the process. A store
+   * with `delete` adds `session/delete`, and one that keeps turns replays a
+   * loaded thread as the client saw it, tool cards included.
    */
   readonly session_store?: AcpSessionStore | undefined
+  /**
+   * How a user logs in from the client. Without it the agent offers no login
+   * and never answers `auth_required`, so the provider's key has to be in
+   * the environment the client launches the agent with.
+   */
+  readonly auth?: AcpAuth | undefined
   /** Where each model call's text goes, by its `step_id`; default: `'message'`. */
   readonly stream?: ((step_id: string) => AcpStreamRoute) | undefined
   /** Maps each run event to the updates sent to the client; default: `to_session_updates`. */
