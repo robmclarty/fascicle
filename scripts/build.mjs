@@ -32,6 +32,8 @@ const REPO_ROOT = resolve(__dirname, '..');
 const DIST_DIR = join(REPO_ROOT, 'dist');
 const DIST_JS = join(DIST_DIR, 'index.js');
 const DIST_DTS = join(DIST_DIR, 'index.d.ts');
+const DIST_A2A_JS = join(DIST_DIR, 'a2a.js');
+const DIST_A2A_DTS = join(DIST_DIR, 'a2a.d.ts');
 const DIST_ACP_JS = join(DIST_DIR, 'acp.js');
 const DIST_ACP_DTS = join(DIST_DIR, 'acp.d.ts');
 const DIST_ADAPTERS_JS = join(DIST_DIR, 'adapters.js');
@@ -301,6 +303,19 @@ async function main() {
     process.exit(1);
   }
 
+  // fascicle/a2a makes the same promise about @a2a-js/sdk: the subpath
+  // imports on a machine without the peer, and a2a_agent or a2a_step is what
+  // reaches for it.
+  const a2a_text = [...static_closure(chunk_texts, 'a2a.js')]
+    .map((f) => chunk_texts.get(f) ?? '')
+    .join('\n');
+  if (/(?:from\s+|import\s+)["']@a2a-js\//.test(a2a_text)) {
+    console.error(
+      `\nbuild: dist/a2a.js statically imports @a2a-js/sdk; the optional peer must load through a dynamic import()`,
+    );
+    process.exit(1);
+  }
+
   process.stderr.write(`▸ build: compiling the viewer canvas app\n`);
   const app_res = await run_subprocess('pnpm', ['exec', 'vite', 'build', '--config', VIEWER_APP_CONFIG]);
   if (app_res.code !== 0) {
@@ -333,6 +348,29 @@ async function main() {
   }
   if (typeof mod.describe?.json !== 'function') {
     console.error(`\nbuild: smoke test missing describe.json namespace member`);
+    process.exit(1);
+  }
+
+  process.stderr.write(`▸ build: smoke-importing ${DIST_A2A_JS}\n`);
+  if (!existsSync(DIST_A2A_JS) || !existsSync(DIST_A2A_DTS)) {
+    console.error(`\nbuild: dist/a2a.{js,d.ts} were not produced (the ./a2a subpath)`);
+    process.exit(1);
+  }
+  const a2a_mod = await import(pathToFileURL(DIST_A2A_JS).href);
+  const EXPECTED_A2A = [
+    'a2a_agent',
+    'a2a_error',
+    'a2a_sdk_missing_error',
+    'a2a_step',
+    'create_a2a_mapper_state',
+    'end_task_events',
+    'serve_a2a',
+    'sqlite_task_store',
+    'to_task_events',
+  ];
+  const missing_a2a = EXPECTED_A2A.filter((name) => typeof a2a_mod[name] === 'undefined');
+  if (missing_a2a.length > 0) {
+    console.error(`\nbuild: a2a smoke test missing exports: ${missing_a2a.join(', ')}`);
     process.exit(1);
   }
 
@@ -370,6 +408,9 @@ async function main() {
     'stderr_logger',
     'tee_logger',
     'filesystem_store',
+    'memory_store',
+    'object_store',
+    'sqlite_store',
   ];
   const missing_adapters = EXPECTED_ADAPTERS.filter((name) => typeof adapters_mod[name] === 'undefined');
   if (missing_adapters.length > 0) {
@@ -489,7 +530,7 @@ async function main() {
   }
 
   process.stderr.write(
-    `\n✔ build ok (${js_stat.size} bytes js, ${dts_stat.size} bytes d.ts, ${EXPECTED_NAMED.length} named exports + describe.json + ${EXPECTED_ACP.length} acp + ${EXPECTED_ADAPTERS.length} adapters + ${EXPECTED_AGENTS.length} agents + ${EXPECTED_MCP.length} mcp + ${EXPECTED_OTEL.length} otel + ${EXPECTED_STDIO.length} stdio + ${EXPECTED_TESTING.length} testing + ${EXPECTED_UI.length} ui + ${EXPECTED_VIEWER.length} viewer + ${EXPECTED_WEB.length} web verified)\n`,
+    `\n✔ build ok (${js_stat.size} bytes js, ${dts_stat.size} bytes d.ts, ${EXPECTED_NAMED.length} named exports + describe.json + ${EXPECTED_A2A.length} a2a + ${EXPECTED_ACP.length} acp + ${EXPECTED_ADAPTERS.length} adapters + ${EXPECTED_AGENTS.length} agents + ${EXPECTED_MCP.length} mcp + ${EXPECTED_OTEL.length} otel + ${EXPECTED_STDIO.length} stdio + ${EXPECTED_TESTING.length} testing + ${EXPECTED_UI.length} ui + ${EXPECTED_VIEWER.length} viewer + ${EXPECTED_WEB.length} web verified)\n`,
   );
 }
 
