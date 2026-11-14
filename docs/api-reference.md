@@ -757,6 +757,12 @@ by the call or `defaults.provider`), `provider_not_configured_error`,
 `tool_approval_denied_error`, `on_chunk_error`, `turn_timeout_error` (a turn
 outran `turn_timeout_ms` before any chunk streamed), `claude_cli_error`.
 
+A message that you can act on says what went wrong and ends with what to do,
+and it names the option, the config key, or the command. So
+`turn_timeout_error` names `turn_timeout_ms` to raise, a failure that
+`retry_on` leaves out names the kind to add, and a `provider_capability_error`
+names the call option to drop.
+
 The [troubleshooting guide](./troubleshooting.md) maps the common ones to causes
 and fixes.
 

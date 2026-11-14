@@ -278,15 +278,15 @@ The `bwrap` wrapper read-only binds `/usr`, `/bin`, `/lib`, `/lib64`, `/etc/reso
 
 `greywall` takes its policy from a JSON settings file that's passed with `--settings`. The adapter writes one for each run, with `network_allowlist` as `network.allowHosts` and `additional_write_paths` as `filesystem.allowWrite`, or forwards your own file untouched when you set `settings_path`. `greywall` honors the write paths directly and ignores `network.allowHosts`, since greyproxy is what enforces host allowlisting, and the adapter writes no greyproxy rules, so nothing filters the hosts unless you add those rules yourself.
 
-A missing sandbox binary triggers `claude_cli_error` with `reason: 'sandbox_unavailable'`. A `claude` binary outside the paths that `bwrap` binds, such as one in your home directory, isn't there inside the sandbox, so `bwrap` can't run it, and the error has `reason: 'binary_not_found'` and names the binary.
+A missing sandbox binary triggers `claude_cli_error` with `reason: 'sandbox_unavailable'`. A `claude` binary outside the paths that `bwrap` binds, such as one in your home directory, isn't there inside the sandbox, so `bwrap` can't run it, and the error has `reason: 'binary_not_found'` and names the binary. Both messages end with what to change, which is the wrapper to install or the `binary` to move, and both offer `kind: 'claude_code'` as the way out, since it wraps nothing.
 
 ## Errors You May Hit
 
 | Error                    | Cause                                                                       |
 | ------------------------ | --------------------------------------------------------------------------- |
-| `engine_config_error`    | `api_key` missing under `auth_mode: 'api_key'`, a relative path in a `claude_code` sandbox, or `--settings` in a call's `extra_args` under one. |
+| `engine_config_error`    | `api_key` missing under `auth_mode: 'api_key'` (the message names `providers.claude_cli.api_key` and `auth_mode: 'oauth'` as the other way in), a relative path in a `claude_code` sandbox, or `--settings` in a call's `extra_args` under one. |
 | `provider_auth_error`    | Stderr matched an auth-failure pattern, so surface `refresh_command` to whoever is running this. |
-| `claude_cli_error`       | Subprocess failure. Check `.reason` for `binary_not_found`, `startup_timeout`, `stall_timeout`, `no_result_event`, `result_error`, `subprocess_exit`, or `sandbox_unavailable`. |
+| `claude_cli_error`       | Subprocess failure. Check `.reason` for `binary_not_found`, `startup_timeout`, `stall_timeout`, `no_result_event`, `result_error`, `subprocess_exit`, or `sandbox_unavailable`. The message ends with what to do about each one, and [troubleshooting.md](./troubleshooting.md#claude_cli-problems) lists them. |
 | `aborted_error`          | Your `abort` fired, or the engine was disposed while the call ran, in which case `.reason` is `'engine_disposed'`. |
 | `engine_disposed_error`  | `generate` was called after `engine.dispose()`.                             |
 | `provider_capability_error` | Multi-turn `prompt: Message[]` with two or more user messages, or `tool_bridge: 'forbid'` with a tool that has an `execute` closure. |
