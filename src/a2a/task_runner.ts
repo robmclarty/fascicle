@@ -210,7 +210,7 @@ export function task_runner<i, o>(deps: TaskRunnerConfig<i, o>): TaskRunner {
   const store: TaskStore = records.store
   const cancel_poll_ms = config.cancel_poll_ms ?? DEFAULT_CANCEL_POLL_MS
 
-  let closing = false
+  let shutting_down = false
 
   // Tell the server side why a drive failed, whatever the caller is told. A
   // drive that `close` aborted says so in one line on stderr, since the stack
@@ -221,7 +221,7 @@ export function task_runner<i, o>(deps: TaskRunnerConfig<i, o>): TaskRunner {
       config.trajectory.record(event)
       return
     }
-    const by_close = closing && hold.abort.signal.aborted
+    const by_close = shutting_down && hold.abort.signal.aborted
     const detail = !by_close && typeof event['error_stack'] === 'string' ? event['error_stack'] : String(event['error'])
     process.stderr.write(`a2a_agent: task ${ids.task_id} failed: ${detail}\n`)
   }
@@ -466,7 +466,7 @@ export function task_runner<i, o>(deps: TaskRunnerConfig<i, o>): TaskRunner {
   }
 
   const close = async (): Promise<void> => {
-    closing = true
+    shutting_down = true
     const open = [...holds.values()]
     for (const hold of open) hold.abort.abort(new aborted_error('the agent closed while the task was running'))
     await Promise.all(open.map((hold) => hold.settled))
