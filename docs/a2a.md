@@ -246,7 +246,7 @@ const response = await agent.fetch(new Request('https://agents.example.com/.well
 console.log(response.status)
 ```
 
-`agent.fetch` is a web handler from a `Request` to a `Response`, so the agent runs under whatever framework you already have, and `rpc_path` moves JSON-RPC off the root. `agent.request_handler` is the SDK's own handler, for mounting the REST or gRPC binding with the SDK's helpers. `agent.close` aborts every drive and waits for each to settle, and it leaves the stores to you, since you opened them. A task that was running when the agent closed ends `FAILED`, while a task that waits at a gate is untouched and takes its answer after a restart. A closed agent answers 503 to everything.
+`agent.fetch` is a web handler from a `Request` to a `Response`, so the agent runs under whatever framework you already have, and `rpc_path` moves JSON-RPC off the root. `agent.request_handler` is the SDK's own handler, for mounting the REST or gRPC binding with the SDK's helpers. `agent.close` aborts every drive and waits for each to settle, and it leaves the stores to you, since you opened them. A task that was running when the agent closed ends `FAILED`, and an agent with no `trajectory` writes one line for it to stderr, without a stack, while a task that waits at a gate is untouched and takes its answer after a restart. A closed agent answers 503 to everything.
 
 ## Calling a Remote Agent
 

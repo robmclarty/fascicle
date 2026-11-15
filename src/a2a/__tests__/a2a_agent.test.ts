@@ -1183,7 +1183,7 @@ describe('a2a_agent: close', () => {
     await agent.close()
 
     expect(written).toHaveLength(1)
-    expect(written[0]).toContain(`a2a_agent: task ${task_id} failed: aborted_error: the agent closed while the task was running\n`)
+    expect(written[0]).toBe(`a2a_agent: task ${task_id} failed: the agent closed while the task was running\n`)
 
     expect(latch.aborted()).toMatchObject({
       kind: 'aborted_error',

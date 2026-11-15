@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { GenerateOptions, GenerateResult, Message } from '../types.js'
-import { provider_auth_error, provider_error } from '../errors.js'
+import { provider_auth_error, provider_capability_error, provider_error } from '../errors.js'
 import {
   aggregate_cost,
   build_initial_messages,
@@ -308,6 +308,33 @@ describe('classify_ai_sdk_error', () => {
     expect(anthropic(down)).toStrictEqual({ kind: 'provider_5xx', status: 500, cause: down })
     const reset = { code: 'ECONNRESET' }
     expect(anthropic(reset)).toStrictEqual({ kind: 'network', cause: reset })
+  })
+
+  it('makes a refused image a capability error, so a 500 that no retry can change is not retried', () => {
+    const err = Object.assign(new Error('image input is not supported'), { statusCode: 500 })
+    const out = classify_ai_sdk_error('ollama')(err)
+    expect(out).toBeInstanceOf(provider_capability_error)
+    expect(out).toMatchObject({
+      provider: 'ollama',
+      capability: 'image_input',
+      message:
+        "provider 'ollama' does not support 'image_input': the model refused the image (image input is not supported): send it to a model that takes images, or drop the image part",
+    })
+    expect((out as provider_capability_error).cause).toBe(err)
+    expect(Object.keys(out as object)).not.toContain('cause')
+  })
+
+  it('reads the refusal off the body, at any status, and leaves every other 500 a provider_5xx', () => {
+    const from_body = Object.assign(new Error('Bad Request'), {
+      statusCode: 400,
+      responseBody: '{"error":{"message":"This model does not support image inputs."}}',
+    })
+    expect(classify_ai_sdk_error('openai')(from_body)).toBeInstanceOf(provider_capability_error)
+
+    const other = Object.assign(new Error('model runner has unexpectedly stopped'), { statusCode: 500 })
+    expect(classify_ai_sdk_error('ollama')(other)).toMatchObject({ kind: 'provider_5xx', status: 500 })
+    const near = Object.assign(new Error('this endpoint does not support imagery'), { statusCode: 500 })
+    expect(classify_ai_sdk_error('ollama')(near)).toMatchObject({ kind: 'provider_5xx' })
   })
 
   it("names the URL that the SDK couldn't reach, in the words the native transport uses", () => {

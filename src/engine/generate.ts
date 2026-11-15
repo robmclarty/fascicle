@@ -380,17 +380,43 @@ function name_unreachable_url(
   return { ...record, message: unreachable_message(provider, url, detail) }
 }
 
+const REFUSED_IMAGE = /image input is not supported|does not support images?\b/i
+
+/**
+ * The capability error for a response that says the model can't take the
+ * image it was sent, or `undefined` for any other failure.
+ *
+ * Ollama answers this with a 500, which would otherwise retry as a
+ * `provider_5xx` until the attempts run out, though no retry can change what
+ * the model takes.
+ */
+function refused_image(provider: string, err: object): provider_capability_error | undefined {
+  const message = provider_message(err)
+  if (message === undefined || !REFUSED_IMAGE.test(message)) return undefined
+  const refusal = new provider_capability_error(
+    provider,
+    'image_input',
+    `the model refused the image (${message}): send it to a model that takes images, or drop the image part`,
+  )
+  Object.defineProperty(refusal, 'cause', { value: err, enumerable: false })
+  return refusal
+}
+
 /**
  * Build the classifier for one ai_sdk provider. A 429, a 5xx, or a network
  * failure becomes the record classify_provider_error builds for it, with a
  * network failure's message naming the URL, and any other 4xx becomes the
  * typed error the native transport throws, closed over `provider` so that
- * its message can name the config key to check. Anything already classified
+ * its message can name the config key to check. A response that says the
+ * model can't take an image becomes a `provider_capability_error`, whatever
+ * its status. Anything already classified
  * or typed, and anything with no status, passes through as it is.
  */
 export function classify_ai_sdk_error(provider: string): (err: unknown) => unknown {
   return (err: unknown): unknown => {
     if (err === null || typeof err !== 'object' || has_retry_kind(err)) return err
+    const refused = refused_image(provider, err)
+    if (refused !== undefined) return refused
     const record = classify_retryable(err)
     if (record !== undefined) return name_unreachable_url(provider, err, record)
     if (has_kind(err)) return err
