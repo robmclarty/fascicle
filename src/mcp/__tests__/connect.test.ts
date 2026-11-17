@@ -35,10 +35,22 @@ class FakeClient {
   closed = false
   connected_transport: unknown
   callTool = vi.fn(async () => ({ content: [{ type: 'text', text: 'ok' }] }))
-  constructor(public info: unknown) {
+  // Every argument the constructor was given, to tell one from two.
+  constructor_args: unknown[]
+  // What happened to this client, in order.
+  log: string[] = []
+  setRequestHandler = vi.fn(() => {
+    this.log.push('setRequestHandler')
+  })
+  constructor(
+    public info: unknown,
+    ...rest: unknown[]
+  ) {
+    this.constructor_args = [info, ...rest]
     captured.clients.push(this)
   }
   async connect(transport: unknown): Promise<void> {
+    this.log.push('connect')
     this.connected_transport = transport
   }
   // Undefined is what the SDK reports for a connection that skipped the
@@ -72,6 +84,8 @@ const fake_sdk = {
   StreamableHTTPClientTransport: FakeHttpTransport,
   StreamableHTTPError: FakeStreamableHTTPError,
   UnauthorizedError: FakeUnauthorizedError,
+  McpError: Error,
+  CreateMessageRequestSchema: { fake: 'CreateMessageRequestSchema' },
 }
 
 /** Swaps the fake SDK's Client for one whose `method` rejects with `failure`. */
@@ -298,6 +312,30 @@ describe('mcp_client connect path', () => {
       message: 'MCP tool alpha aborted before invocation',
     })
     expect(client.callTool).not.toHaveBeenCalled()
+  })
+
+  describe('sampling', () => {
+    const sampling = { engine: { generate: vi.fn() } as never, model: 'm' }
+
+    it('constructs the client with its identity alone and registers nothing when sampling is unset', async () => {
+      await mcp_client({ transport: 'stdio', command: 'x' })
+      const client = sole(captured.clients)
+      expect(client.constructor_args).toStrictEqual([{ name: 'fascicle', version: '0.0.0' }])
+      expect(client.setRequestHandler).not.toHaveBeenCalled()
+    })
+
+    it('declares the sampling capability and registers the handler before connecting when it is set', async () => {
+      await mcp_client({ transport: 'stdio', command: 'x' }, { client_info: { name: 'me', version: '1' }, sampling })
+      const client = sole(captured.clients)
+      expect(client.constructor_args).toStrictEqual([
+        { name: 'me', version: '1' },
+        { capabilities: { sampling: {} } },
+      ])
+      expect(client.setRequestHandler.mock.calls).toEqual([
+        [fake_sdk.CreateMessageRequestSchema, expect.any(Function)],
+      ])
+      expect(client.log).toEqual(['setRequestHandler', 'connect'])
+    })
   })
 
   describe('a server with no tools', () => {

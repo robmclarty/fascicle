@@ -17,6 +17,7 @@ export type {
   McpResources,
   McpResourceTemplate,
 } from './resources.js'
+export type { McpSamplingConfig, McpSamplingRequest } from './sampling.js'
 export { serve_flow } from './serve.js'
 export type { ServeFlowConfig } from './serve.js'
 export { json_schema_to_standard } from '#schema'

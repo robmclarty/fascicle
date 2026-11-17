@@ -11,6 +11,7 @@ import { is_record, json_schema_to_standard } from '#schema'
 import { mcp_auth_required_error, mcp_error } from './errors.js'
 import { create_resources, type McpResources } from './resources.js'
 import { call_result_to_output } from './result_mapping.js'
+import { register_sampling, type McpSamplingConfig } from './sampling.js'
 import { load_client_sdk, type McpClientSdk } from './sdk_loader.js'
 
 const DEFAULT_CLIENT_INFO = { name: 'fascicle', version: '0.0.0' }
@@ -84,6 +85,10 @@ export type McpClientOptions = {
   // `on_tool_approval` before each call and refuses the call when no handler
   // is set. Unset (the default) gates nothing. See McpApprovalPolicy.
   needs_approval?: McpApprovalPolicy
+  // Lets the server ask this client for completions (MCP sampling), answered
+  // by the engine and model named here. Setting it is what declares the
+  // capability to the server, and unset declares nothing.
+  sampling?: McpSamplingConfig
 }
 
 /**
@@ -193,17 +198,30 @@ type Connection = {
  * failures into `mcp_auth_required_error`, for the handshake and for every
  * later request. A client the caller connected keeps the SDK's errors as they
  * are, since the caller built its transport and already holds the SDK.
+ *
+ * With `sampling` set, a fresh client declares the capability and has its
+ * handler in place before it connects. A client the caller connected gets
+ * the handler only, since its capabilities were declared when it was built.
  */
 async function open_connection(
   config: McpClientConfig,
   options: McpClientOptions,
 ): Promise<Connection> {
+  const sampling = options.sampling
   if (config.transport === 'client') {
+    if (sampling !== undefined) register_sampling(await load_client_sdk(), config.client, sampling)
     return { client: config.client, owned: false, translate: same_error }
   }
   const sdk = await load_client_sdk()
   const translate = config.transport === 'http' ? auth_translator(sdk, config.url) : same_error
-  const client = new sdk.Client(options.client_info ?? DEFAULT_CLIENT_INFO)
+  const info = options.client_info ?? DEFAULT_CLIENT_INFO
+  // Capabilities are fixed when the Client is constructed, and the SDK
+  // refuses a sampling handler on a client that declared none.
+  const client =
+    sampling !== undefined
+      ? new sdk.Client(info, { capabilities: { sampling: {} } })
+      : new sdk.Client(info)
+  if (sampling !== undefined) register_sampling(sdk, client, sampling)
   await client.connect(build_transport(sdk, config)).catch((err: unknown) => {
     throw translate(err)
   })

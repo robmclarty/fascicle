@@ -27,6 +27,12 @@ describe('load_client_sdk', () => {
     expect(sdk.ResourceListChangedNotificationSchema.shape.method.value).toBe('notifications/resources/list_changed')
   })
 
+  it('resolves the sampling request schema and the error a refusal is answered with', async () => {
+    const sdk = await load_client_sdk()
+    expect(sdk.CreateMessageRequestSchema.shape.method.value).toBe('sampling/createMessage')
+    expect(new sdk.McpError(-1, 'refused').code).toBe(-1)
+  })
+
   it('throws a typed mcp_sdk_missing_error with install guidance when a sub-import fails', async () => {
     vi.resetModules()
     vi.doMock('@modelcontextprotocol/sdk/client/stdio.js', () => {

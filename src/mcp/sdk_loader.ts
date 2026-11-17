@@ -36,6 +36,8 @@ export async function load_client_sdk() {
       StreamableHTTPClientTransport: http_mod.StreamableHTTPClientTransport,
       StreamableHTTPError: http_mod.StreamableHTTPError,
       UnauthorizedError: auth_mod.UnauthorizedError,
+      McpError: types_mod.McpError,
+      CreateMessageRequestSchema: types_mod.CreateMessageRequestSchema,
       ResourceUpdatedNotificationSchema: types_mod.ResourceUpdatedNotificationSchema,
       ResourceListChangedNotificationSchema: types_mod.ResourceListChangedNotificationSchema,
     }
