@@ -180,26 +180,14 @@ The published surface as of v0.19.0:
 
 - **ACP hosts beyond Zed.** An ACP agent now offers the login that the ACP
   registry asks for, a thread that you open again comes back with its tool
-  cards, and an unknown session answers the way the protocol says. What's left
-  is to run it by hand in Zed and in kandev, to run the suite on the 1.x SDK,
-  and to list an agent in the registry.
+  cards, and an unknown session answers the way the protocol says. The suite passes
+  on the 1.x SDK as well as 2.x. What's left is to run it by hand in Zed and in
+  runciter, and to list an agent in the registry.
 - **A live run of `object_store` against a real bucket.** The store passes the
   conformance suite over in-memory clients only, and the S3 client in
   [human-in-the-loop.md](./human-in-the-loop.md#the-store-a-run-lives-in) has
   never been compiled against the SDK. I'll run both against a real bucket
   before I call the store proven.
-- **A live check of prompt caching.** Since 0.17.0 an Anthropic tool loop
-  caches by default, and the mocked suite proves that `cache_control` goes out
-  on the wire, but not that a provider caches or what a loop saves. The live
-  test that measures it has never run. I'll run it through OpenRouter, record
-  the hit ratio and the cost beside the same loop with `cache: 'off'`, find out
-  what OpenRouter does with `cache` on another vendor's model, and fix
-  [providers.md](./providers.md#prompt-caching) wherever the run settles
-  something that it hedges on.
-- **Triage from checkride's digest.** Since 0.19, checkride prints an excerpt
-  of what failed when it's run with `--digest`, but the triage steps in
-  [AGENTS.md](../AGENTS.md) still send an agent to the summary and then to each
-  raw report. They'll read the digest instead.
 - **MCP hardening.** Auth on the HTTP transport, MCP `sampling`, per-tool
   approval gating, and `resources` subscriptions were all deferred out of the
   first bridge.

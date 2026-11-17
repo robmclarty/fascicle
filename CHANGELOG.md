@@ -40,6 +40,12 @@
 - **An MCP server left out of a session reaches the user, without its credentials.** The warning went to stderr alone. A client that advertises `session.notices`, as Zed does, now gets it as a `notice`, at the first prompt of a new session and before the answer to a load or a resume. A server's `env` and `headers` values of eight characters or more are cut out of the error text on both paths.
 - **An ACP session that closes, loads, or resumes keeps what it had.** `session/close` answered before the turn that it cancelled was saved, so a `session/load` or `session/resume` sent straight after could miss that turn. It now answers once the turn is written. A load or resume that sends no `additionalDirectories` keeps the stored ones where it used to drop them, and two loads or resumes of one stored session that arrive together open it once.
 
+### Internal
+
+- **A red check run says what failed.** The triage steps in `AGENTS.md` sent an agent to `.check/summary.json` and then to each tool's report. They now start from `pnpm check --digest`, which prints an excerpt of what each failing check said, and CI runs the suite with the flag, so a red step's log ends with the reason.
+- **The live prompt-cache check ran.** A Claude tool loop through OpenRouter wrote its prefix on the first turn and read it on the next two, on the Messages endpoint and on OpenRouter's native transport, and [providers.md](./docs/providers.md#prompt-caching) says the two things the run settled: another vendor's model takes `cache` and ignores it, and a loop that sends a `session_id` stayed on one upstream. The test gives each run a prefix of its own, since a shared one let the second case read the cache that the first had written.
+- **Five tests no longer depend on an idle machine.** The linear-time tests in `html_to_text`, the concurrency test in `parallel`, two in `timeout`, `run_shell`, and a `claude_cli` cancellation test held a wall-clock bound that a loaded machine missed. Each now holds what it guards: growth between two sizes, both children started, fake timers, and the first chunk.
+
 ## v0.18.1 — 2026-11-11
 
 ### Changed

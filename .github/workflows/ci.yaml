@@ -24,13 +24,13 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Check suite
-        run: pnpm check
+        run: pnpm check --digest
       - name: Build
         run: pnpm build
       # Consumes dist/: publint, attw, the pack manifest, the import smoke test,
       # and the doc snippets typechecked against the built .d.ts.
       - name: Validate publish surface
-        run: pnpm check:publish
+        run: pnpm check:publish --digest
       # checkride prints a pass/fail line per slot and writes the actual tool
       # output to .check/<slot>.stdout.txt, so a red run is unreadable from the
       # log alone. coverage/ and mutation/ are browsable HTML nobody reads while

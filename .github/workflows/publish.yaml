@@ -97,13 +97,13 @@ jobs:
       # The full gate. Publishing a packed tarball runs no scripts, so
       # prepublishOnly never reruns it: this job is where it runs.
       - name: Check
-        run: pnpm check
+        run: pnpm check --digest
 
       - name: Build
         run: pnpm build
 
       - name: Check publish surface
-        run: pnpm check:publish
+        run: pnpm check:publish --digest
 
       # A publish blocked by the gate is the worst place to be reading a bare
       # pass/fail line, so keep the slot output from .check/ for the postmortem.

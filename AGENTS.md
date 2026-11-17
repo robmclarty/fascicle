@@ -17,12 +17,12 @@ The suite is [checkride](https://www.npmjs.com/package/checkride), configured in
 Before declaring a task finished:
 
 1. Run `pnpm check:all`.
-2. If it fails, read `.check/summary.json` to find which check failed.
-3. Read the corresponding per-tool JSON (`.check/lint.json`, `.check/dead.json`, etc) for structured diagnostics.
+2. If it fails, run `pnpm check --digest` (or `pnpm check:all --digest`) and read what it prints below the report. The digest is an excerpt of what each failing check said, and `.check/digest.md` keeps a copy.
+3. When the digest cuts a check short, read `.check/summary.json` and then the per-tool JSON it names (`.check/lint.json`, `.check/dead.json`, etc) for the full diagnostics.
 4. Fix the root cause, not the symptom.
 5. Re-run `pnpm check:all`.
 
-The same reports exist for a red CI run. checkride prints one pass/fail line per slot and writes the tool's actual output to `.check/`, so the workflow log alone will tell you *that* `types` failed without telling you *why*. Every workflow that runs the suite uploads `.check/` as an artifact when it fails, so steps 2 and 3 work the same way against a remote run: download the artifact from the run page, open `summary.json`, then read the per-tool report it names. The `coverage/` and `mutation/` HTML trees are left out because they are the bulk of the directory and nobody reads them during triage.
+The same reports exist for a red CI run. checkride prints one pass/fail line per slot and writes the tool's actual output to `.check/`, so the workflow log alone will tell you *that* `types` failed without telling you *why*. Every workflow that runs the suite uploads `.check/` as an artifact when it fails, so steps 2 and 3 work the same way against a remote run. CI runs the suite with `--digest`, so the failing step's log ends with the digest, and the artifact holds `digest.md`, `summary.json`, and the per-tool reports for whatever the digest cut short. The `coverage/` and `mutation/` HTML trees are left out because they are the bulk of the directory and nobody reads them during triage.
 
 ### The baseline
 
@@ -39,6 +39,7 @@ pnpm check                     # default set (excludes the opt-in slots)
 pnpm check --bail              # stop at first failure
 pnpm check --only types,lint   # just the fast checks
 pnpm check --changed           # affected-only, against the git diff
+pnpm check --digest            # print an excerpt of what each failing check said
 pnpm check --include mutation  # default set plus opt-in mutation
 pnpm check:security            # the dependency audit, which no other run includes
 pnpm test:watch                # watch-mode tests while implementing
