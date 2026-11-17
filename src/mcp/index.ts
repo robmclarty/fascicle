@@ -1,5 +1,7 @@
 export { mcp_client } from './client.js'
 export type {
+  McpAdvertisedTool,
+  McpApprovalPolicy,
   McpClientConfig,
   McpClientHandle,
   McpClientOptions,

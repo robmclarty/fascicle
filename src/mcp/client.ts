@@ -51,7 +51,33 @@ export type McpClientOptions = {
   // tools can share a call without colliding. The server is still called by
   // its own name, and `include` and `default_description` see that name too.
   name_prefix?: string
+  // Marks surfaced tools as needing approval, so the engine asks
+  // `on_tool_approval` before each call and refuses the call when no handler
+  // is set. Unset (the default) gates nothing. See McpApprovalPolicy.
+  needs_approval?: McpApprovalPolicy
 }
+
+/**
+ * What a server advertised about one tool, as an approval policy sees it. The
+ * name is the server's own, without `name_prefix`. `annotations` holds the
+ * hints the server sent (`readOnlyHint`, `destructiveHint`, and so on), and it
+ * is absent when the server sent none. The server wrote those hints, so a
+ * policy that trusts them trusts the server.
+ */
+export type McpAdvertisedTool = {
+  name: string
+  annotations?: Record<string, unknown>
+}
+
+/**
+ * Which surfaced tools need approval. `true` gates every tool and `false`
+ * gates none. A function is called once for each tool as it is surfaced, and
+ * answers for that tool with a boolean or with a predicate over the call's
+ * input, which becomes the tool's own `needs_approval`.
+ */
+export type McpApprovalPolicy =
+  | boolean
+  | ((tool: McpAdvertisedTool) => boolean | ((input: unknown) => boolean | Promise<boolean>))
 
 export type McpClientHandle = {
   readonly tools: ReadonlyArray<Tool>
@@ -135,6 +161,33 @@ function build_transport(
   return new sdk.StreamableHTTPClientTransport(new URL(config.url), opts)
 }
 
+type AdvertisedTool = {
+  name: string
+  description?: string | undefined
+  inputSchema: unknown
+  annotations?: Record<string, unknown> | undefined
+}
+
+/**
+ * Settles the approval policy for one advertised tool into the value its
+ * `Tool.needs_approval` carries, or undefined when no policy is set.
+ *
+ * A function policy runs here, once, with the server's own name for the tool
+ * and the annotations it advertised. Nothing in this module reads the
+ * annotations: they are the server's claims about itself, and whether to
+ * believe them is the policy's decision.
+ */
+function resolve_needs_approval(
+  policy: McpApprovalPolicy | undefined,
+  advertised: AdvertisedTool,
+): Tool['needs_approval'] {
+  if (typeof policy !== 'function') return policy
+  return policy({
+    name: advertised.name,
+    ...(advertised.annotations !== undefined ? { annotations: advertised.annotations } : {}),
+  })
+}
+
 /**
  * Wraps one advertised MCP tool as a Fascicle `Tool` whose `execute` forwards
  * to `callTool` on the shared client. Only the `Tool`'s name carries
@@ -146,16 +199,18 @@ function build_transport(
  */
 function to_fascicle_tool(
   client: Client,
-  advertised: { name: string; description?: string | undefined; inputSchema: unknown },
+  advertised: AdvertisedTool,
   options: McpClientOptions,
 ): Tool {
   const name = advertised.name
   const description =
     advertised.description ?? options.default_description?.(name) ?? `MCP tool ${name}`
+  const needs_approval = resolve_needs_approval(options.needs_approval, advertised)
   return {
     name: `${options.name_prefix ?? ''}${name}`,
     description,
     input_schema: json_schema_to_standard(advertised.inputSchema),
+    ...(needs_approval !== undefined ? { needs_approval } : {}),
     execute: async (input: unknown, ctx: ToolExecContext) => {
       if (ctx.abort.aborted) {
         throw ctx.abort.reason instanceof Error
