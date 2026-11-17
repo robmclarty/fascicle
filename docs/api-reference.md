@@ -594,18 +594,22 @@ Types: `StubEngineOptions`, `StubResponse`, `StubContent`, `StubContentFn`,
 
 Connects flows to the Model Context Protocol both ways. Pure adapter glue over
 the existing `Tool` and `run` contracts; `@modelcontextprotocol/sdk` is an
-optional peer dependency, installed only when this subpath is used.
+optional peer dependency, installed only when this subpath is used. See
+[mcp.md](./mcp.md).
 
 | Export | Kind | Notes |
 | --- | --- | --- |
-| `mcp_client(config, options?)` | fn | connect to an MCP server (stdio / HTTP / existing client), returns `{ tools, close }`, and `options.name_prefix` puts a prefix, as written, on each tool's name while the server is still called by its own |
-| `serve_flow(config)` | fn | register a composed flow as an MCP tool on a caller-provided `McpServer` |
+| `mcp_client(config, options?)` | fn | connect to an MCP server (stdio / HTTP / existing client) and resolve `{ tools, close, resources }`. The options gate tools behind approval (`needs_approval`), answer the server's sampling requests from an engine (`sampling`), and put a prefix on each tool's name (`name_prefix`). See [Options](./mcp.md#options) |
+| `serve_flow(config)` | fn | register a composed flow as an MCP tool on a caller-provided `McpServer`. See [Serving a Flow](./mcp.md#serving-a-flow) |
 | `json_schema_to_standard(schema)` | fn | wraps a server's JSON Schema as the `ToolSchema` inbound tools carry; emits it back verbatim, save for the `additionalProperties: false` every tool schema is closed with |
-| `mcp_error`, `mcp_sdk_missing_error` | error | tool-level failure / missing optional peer |
+| `mcp_error`, `mcp_auth_required_error`, `mcp_sdk_missing_error` | error | tool-level or capability failure / an HTTP server that answered 401 / missing optional peer. See [Errors](./mcp.md#errors) |
 
 Types: `McpClientConfig`, which is one of `McpStdioConfig`,
-`McpStreamableHttpConfig`, and `McpExistingClientConfig`, plus
-`McpClientOptions`, `McpClientHandle`, and `ServeFlowConfig`.
+`McpStreamableHttpConfig` (with `McpFetch` and `McpReconnectionOptions`), and
+`McpExistingClientConfig`, plus `McpClientOptions`, `McpApprovalPolicy`,
+`McpAdvertisedTool`, `McpSamplingConfig`, `McpSamplingRequest`,
+`McpClientHandle`, `McpResources`, `McpResource`, `McpResourceTemplate`,
+`McpResourceContent`, and `ServeFlowConfig`.
 
 `serve_flow` over a stdio transport is a stateful session for MCP hosts. For a
 single-shot child under a plain JSON-over-stdio parent, use `run_stdio` below.

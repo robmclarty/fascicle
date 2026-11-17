@@ -198,6 +198,34 @@ tool can refuse for you.
 [docs/web.md](./docs/web.md#untrusted-text-and-a-way-out) covers both risks
 and the defenses in full.
 
+## MCP tools (`fascicle/mcp`)
+
+`mcp_client` hands a model the tools of an MCP server, which is code that you
+didn't write and that runs with whatever rights its server has.
+
+- **An MCP tool runs without asking unless you say otherwise.** Pass
+  `needs_approval` to `mcp_client` and the engine asks your `on_tool_approval`
+  handler before each call, and refuses the call when the run has no handler.
+  `true` gates every tool, and a function decides tool by tool. Nothing is
+  gated by default, so for a server that you don't run, set it.
+- **A server's hints are the server's word.** A tool can advertise
+  `readOnlyHint` or `destructiveHint`. Fascicle passes those to your policy
+  and never acts on them, since a server that means harm would call itself
+  harmless.
+- **Sampling spends your tokens.** With the `sampling` option, a server can
+  ask your engine for completions. The model is the one you named, a request
+  that carries tools is refused, `max_tokens` caps what one request can ask
+  for, and `on_request` can refuse a request before the engine is called.
+  Sampling is off until you configure it.
+- **Credentials are arguments.** A header, an `auth_provider`, and a stdio
+  server's `env` are all passed in by you. An auth failure names the server
+  without its query string or any password
+  written into its address.
+
+What a tool returns is text that somebody else wrote, as a fetched page is.
+[docs/mcp.md](./docs/mcp.md#asking-before-a-tool-runs) covers the gate in
+full.
+
 ## Supply-chain posture
 
 Every dependency you add is attack surface, and an agent library that handles

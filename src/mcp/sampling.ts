@@ -88,7 +88,7 @@ export function register_sampling(sdk: McpClientSdk, client: Client, config: Mcp
  * `includeContext`, and `metadata` are dropped. A failure inside the engine is
  * left to the SDK, which answers the server with the error's message.
  */
-export function create_sampling_handler(
+function create_sampling_handler(
   config: McpSamplingConfig,
   refuse: Refuse,
 ): (request: CreateMessageRequest, extra: { signal: AbortSignal }) => Promise<CreateMessageResult> {
