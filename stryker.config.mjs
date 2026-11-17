@@ -72,17 +72,14 @@ export default {
     // fails a run.
     high: 90,
     low: 86,
-    // Ratchet: the real score sits at 89.00% (clean full-repo gate after closing
-    // the last un-hardened wire adapter, providers/anthropic.ts 66.1% -> 100%),
-    // so the floor is raised from 84 to 86.
+    // Ratchet: the full-repo score sat at 93.57% on 2026-11-14 (24,309 killed
+    // and 206 timed out of 26,199 scored), so the floor of 86 leaves about 7.5
+    // points of headroom.
     //
-    // Headroom is sized from the measured flake surface, not a guess. Only
-    // Timeout mutants can flip on a slow run, and there are 91 of 10677 scored
-    // = 0.85pt worst case if every one flipped at once. 3 points is ~3.5x that,
-    // which is why this step is +2 rather than the +1 of earlier ratchets: the
-    // old comment justified ~4.3pt with the same 91 Timeouts, overestimating
-    // their weight by roughly 5x. Bump further as coverage climbs; never lower
-    // it to make a failing run pass.
+    // Only Timeout mutants can flip on a slow run, and all 206 flipping at
+    // once would cost 0.79 points, so the headroom is far more than the flake
+    // surface needs. Raise the floor as a deliberate step in its own commit;
+    // never lower it to make a failing run pass.
     break: 86,
   },
   tempDirName: '.stryker-tmp',

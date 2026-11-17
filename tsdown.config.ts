@@ -1,17 +1,9 @@
 import { defineConfig } from 'tsdown';
 
-// Two non-default settings, narrowly scoped:
-//   - `dts: { eager: true }` (vs. `dts: true`): works around a
-//     rolldown-plugin-dts bug that fails to resolve transitively re-exported
-//     engine types through the umbrella. Eager mode compiles declarations via
-//     tsc first. Semantically equivalent to `dts: true`, since both emit
-//     ./dist/index.d.ts. Under TypeScript 7 the plugin emits through tsgo,
-//     which compiles every declaration up front anyway, so the flag only
-//     matters to a build on TypeScript 6 or older.
-//   - `fixedExtension: false`: makes ESM output land as `index.js` (not
-//     `index.mjs`), which the root package.json `exports` map references.
-//     The default would be `.mjs` because platform=node implies
-//     fixedExtension=true.
+// One non-default setting: `fixedExtension: false` makes the ESM output land
+// as `index.js` (not `index.mjs`), which the root package.json `exports` map
+// references. The default would be `.mjs`, because platform=node implies
+// fixedExtension=true.
 export default defineConfig({
   entry: {
     index: './src/index.ts',
@@ -36,20 +28,22 @@ export default defineConfig({
   },
   outDir: './dist',
   format: ['esm'],
-  dts: { eager: true },
+  dts: true,
   sourcemap: true,
   clean: true,
   target: 'node24',
   platform: 'node',
   fixedExtension: false,
-  external: [
-    'ai',
-    'zod',
-    /^@ai-sdk\//,
-    'ai-sdk-ollama',
-    '@openrouter/ai-sdk-provider',
-    /^@modelcontextprotocol\//,
-    /^@agentclientprotocol\//,
-    /^@a2a-js\//,
-  ],
+  deps: {
+    neverBundle: [
+      'ai',
+      'zod',
+      /^@ai-sdk\//,
+      'ai-sdk-ollama',
+      '@openrouter/ai-sdk-provider',
+      /^@modelcontextprotocol\//,
+      /^@agentclientprotocol\//,
+      /^@a2a-js\//,
+    ],
+  },
 });

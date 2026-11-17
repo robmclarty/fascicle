@@ -70,16 +70,16 @@ importers:
         specifier: 3.1167.0
         version: 3.1167.0
       '@modelcontextprotocol/sdk':
-        specifier: ^1.32.2
+        specifier: 1.32.2
         version: 1.32.2(supports-color@7.2.0)(zod@4.6.7)
       '@opentelemetry/exporter-metrics-otlp-http':
-        specifier: ^0.300.0
+        specifier: 0.300.0
         version: 0.300.0(@opentelemetry/api@1.10.0)
       '@opentelemetry/exporter-trace-otlp-http':
-        specifier: ^0.300.0
+        specifier: 0.300.0
         version: 0.300.0(@opentelemetry/api@1.10.0)
       '@opentelemetry/resources':
-        specifier: ^3.0.0
+        specifier: 3.0.0
         version: 3.0.0(@opentelemetry/api@1.10.0)
       '@opentelemetry/sdk-metrics':
         specifier: 3.0.0
