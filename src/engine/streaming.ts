@@ -1,8 +1,9 @@
 /**
- * Streaming chunk normalization and dispatch.
+ * Streaming chunk dispatch.
  *
- * Provider events are normalized into the discriminated `StreamChunk` union.
- * The dispatcher synchronously invokes on_chunk per provider event; on throw
+ * Each transport turns its provider's events into the discriminated
+ * `StreamChunk` union. The dispatcher synchronously invokes on_chunk per
+ * provider event; on throw
  * or rejected promise it signals the caller to abort the in-flight request
  * (the request-abort itself is wired up in the generate orchestrator) and
  * surfaces on_chunk_error.
@@ -21,57 +22,8 @@
  *   - finish is the last chunk of the call.
  */
 
-import type { FinishReason, StreamChunk, UsageTotals } from './types.js'
+import type { StreamChunk } from './types.js'
 import { on_chunk_error } from './errors.js'
-
-export type RawProviderStreamEvent =
-  | { type: 'text-delta'; id?: string; delta: string }
-  | { type: 'reasoning-delta'; id?: string; delta: string }
-  | { type: 'tool-input-start'; id: string; tool_name: string }
-  | { type: 'tool-input-delta'; id: string; delta: string }
-  | { type: 'tool-input-end'; id: string; input: unknown }
-  | { type: 'tool-result'; id: string; output?: unknown; error?: { message: string } }
-  | { type: 'finish-step'; finish_reason: FinishReason; usage: UsageTotals }
-  | { type: 'finish'; finish_reason: FinishReason; usage: UsageTotals }
-
-/**
- * Normalize a single AI SDK v6 stream event into a StreamChunk with the
- * supplied step_index. Unknown event types return undefined (caller drops).
- */
-export function normalize_chunk(
-  event: RawProviderStreamEvent,
-  step_index: number,
-): StreamChunk | undefined {
-  switch (event.type) {
-    case 'text-delta':
-      return { kind: 'text', text: event.delta, step_index }
-    case 'reasoning-delta':
-      return { kind: 'reasoning', text: event.delta, step_index }
-    case 'tool-input-start':
-      return { kind: 'tool_call_start', id: event.id, name: event.tool_name, step_index }
-    case 'tool-input-delta':
-      return { kind: 'tool_call_input_delta', id: event.id, delta: event.delta, step_index }
-    case 'tool-input-end':
-      return { kind: 'tool_call_end', id: event.id, input: event.input, step_index }
-    case 'tool-result': {
-      const chunk: StreamChunk = { kind: 'tool_result', id: event.id, step_index }
-      if (event.output !== undefined) chunk.output = event.output
-      if (event.error !== undefined) chunk.error = event.error
-      return chunk
-    }
-    case 'finish-step':
-      return {
-        kind: 'step_finish',
-        step_index,
-        finish_reason: event.finish_reason,
-        usage: event.usage,
-      }
-    case 'finish':
-      return { kind: 'finish', finish_reason: event.finish_reason, usage: event.usage }
-    default:
-      return undefined
-  }
-}
 
 export type ChunkDispatcher = {
   readonly dispatch: (chunk: StreamChunk) => Promise<void>
