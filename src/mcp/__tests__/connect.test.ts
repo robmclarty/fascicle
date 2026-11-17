@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ToolExecContext } from '#engine'
 import { mcp_client } from '../client.js'
+import { mcp_auth_required_error } from '../errors.js'
 import { load_client_sdk } from '../sdk_loader.js'
 
 // These tests cover the SDK-backed connect path that the InMemoryTransport
@@ -48,11 +49,41 @@ class FakeClient {
   }
 }
 
+class FakeUnauthorizedError extends Error {}
+
+class FakeStreamableHTTPError extends Error {
+  constructor(
+    public code: number | undefined,
+    message: string,
+  ) {
+    super(message)
+  }
+}
+
 const fake_sdk = {
   Client: FakeClient,
   StdioClientTransport: FakeStdioTransport,
   StreamableHTTPClientTransport: FakeHttpTransport,
+  StreamableHTTPError: FakeStreamableHTTPError,
+  UnauthorizedError: FakeUnauthorizedError,
 }
+
+/** Swaps the fake SDK's Client for one whose `method` rejects with `failure`. */
+function fail_client(method: 'connect' | 'listTools', failure: unknown): void {
+  class FailingClient extends FakeClient {
+    override async connect(transport: unknown): Promise<void> {
+      if (method === 'connect') throw failure
+      await super.connect(transport)
+    }
+    override async listTools(): Promise<{ tools: Array<Record<string, unknown>> }> {
+      if (method === 'listTools') throw failure
+      return super.listTools()
+    }
+  }
+  vi.mocked(load_client_sdk).mockResolvedValue({ ...fake_sdk, Client: FailingClient } as never)
+}
+
+const HTTP = { transport: 'http', url: 'https://example.com/mcp' } as const
 
 beforeEach(() => {
   captured.transports = []
@@ -108,12 +139,73 @@ describe('mcp_client connect path', () => {
     const transport = sole(captured.transports)
     expect(transport.kind).toBe('http')
     expect((transport.args[0] as URL).href).toBe('https://example.com/mcp')
-    expect(transport.args[1]).toEqual({ requestInit: { headers: { Authorization: 'Bearer t' } } })
+    expect(transport.args[1]).toStrictEqual({ requestInit: { headers: { Authorization: 'Bearer t' } } })
   })
 
-  it('builds an http transport with empty options when no headers are given', async () => {
-    await mcp_client({ transport: 'http', url: 'https://example.com/mcp' })
-    expect(sole(captured.transports).args[1]).toEqual({})
+  it('builds an http transport with empty options when nothing but the url is given', async () => {
+    await mcp_client(HTTP)
+    expect(sole(captured.transports).args[1]).toStrictEqual({})
+  })
+
+  it('hands the auth provider to the transport as authProvider, and nothing else with it', async () => {
+    const auth_provider = { tokens: () => undefined } as never
+    await mcp_client({ ...HTTP, auth_provider })
+    const opts = sole(captured.transports).args[1] as Record<string, unknown>
+    expect(opts).toStrictEqual({ authProvider: auth_provider })
+    expect(opts['authProvider']).toBe(auth_provider)
+  })
+
+  it('hands a custom fetch to the transport, and nothing else with it', async () => {
+    const fetch_double = async (): Promise<Response> => new Response('')
+    await mcp_client({ ...HTTP, fetch: fetch_double })
+    const opts = sole(captured.transports).args[1] as Record<string, unknown>
+    expect(opts).toStrictEqual({ fetch: fetch_double })
+    expect(opts['fetch']).toBe(fetch_double)
+  })
+
+  it('hands a session id to the transport as sessionId, and nothing else with it', async () => {
+    await mcp_client({ ...HTTP, session_id: 'sess-1' })
+    expect(sole(captured.transports).args[1]).toStrictEqual({ sessionId: 'sess-1' })
+  })
+
+  it('hands the reconnection backoff to the transport under the SDK\'s names, and nothing else with it', async () => {
+    await mcp_client({
+      ...HTTP,
+      reconnection: { max_retries: 5, initial_delay_ms: 250, max_delay_ms: 8000, delay_grow_factor: 2 },
+    })
+    expect(sole(captured.transports).args[1]).toStrictEqual({
+      reconnectionOptions: {
+        maxRetries: 5,
+        initialReconnectionDelay: 250,
+        maxReconnectionDelay: 8000,
+        reconnectionDelayGrowFactor: 2,
+      },
+    })
+  })
+
+  it('forwards every http option together', async () => {
+    const auth_provider = { tokens: () => undefined } as never
+    const fetch_double = async (): Promise<Response> => new Response('')
+    await mcp_client({
+      ...HTTP,
+      headers: { 'X-Trace': '1' },
+      auth_provider,
+      fetch: fetch_double,
+      session_id: 'sess-2',
+      reconnection: { max_retries: 1, initial_delay_ms: 10, max_delay_ms: 20, delay_grow_factor: 1.5 },
+    })
+    expect(sole(captured.transports).args[1]).toStrictEqual({
+      requestInit: { headers: { 'X-Trace': '1' } },
+      authProvider: auth_provider,
+      fetch: fetch_double,
+      sessionId: 'sess-2',
+      reconnectionOptions: {
+        maxRetries: 1,
+        initialReconnectionDelay: 10,
+        maxReconnectionDelay: 20,
+        reconnectionDelayGrowFactor: 1.5,
+      },
+    })
   })
 
   it('passes a custom client identity through the handshake', async () => {
@@ -200,5 +292,106 @@ describe('mcp_client connect path', () => {
       message: 'MCP tool alpha aborted before invocation',
     })
     expect(client.callTool).not.toHaveBeenCalled()
+  })
+
+  describe('auth failures', () => {
+    const MESSAGE =
+      "MCP server at https://example.com/mcp requires authorization (Unauthorized): pass `auth_provider` in the http config with a token the server accepts, or finish an interactive OAuth flow on a transport of your own and pass its client as `transport: 'client'`"
+
+    /** The rejection of `promise`, or a failure when it resolves. */
+    async function rejection(promise: Promise<unknown>): Promise<unknown> {
+      return promise.then(
+        () => {
+          throw new Error('expected a rejection')
+        },
+        (err: unknown) => err,
+      )
+    }
+
+    it('turns an UnauthorizedError from an http connect into mcp_auth_required_error', async () => {
+      const cause = new FakeUnauthorizedError('Unauthorized')
+      fail_client('connect', cause)
+      const err = await rejection(
+        mcp_client({ transport: 'http', url: 'https://user:pw@example.com/mcp?token=secret#frag' }),
+      )
+      expect(err).toBeInstanceOf(mcp_auth_required_error)
+      // The userinfo, the query, and the fragment stay out of the error.
+      expect(err).toMatchObject({
+        kind: 'mcp_auth_required_error',
+        url: 'https://example.com/mcp',
+        message: MESSAGE,
+      })
+      expect((err as Error).cause).toBe(cause)
+    })
+
+    it('turns a 401 StreamableHTTPError from an http connect into mcp_auth_required_error', async () => {
+      const cause = new FakeStreamableHTTPError(401, 'Error POSTing to endpoint: denied')
+      fail_client('connect', cause)
+      const err = await rejection(mcp_client(HTTP))
+      expect(err).toBeInstanceOf(mcp_auth_required_error)
+      expect((err as Error).message).toContain('requires authorization (Error POSTing to endpoint: denied)')
+      expect((err as Error).cause).toBe(cause)
+    })
+
+    it('leaves any other connect failure as the SDK threw it', async () => {
+      for (const failure of [
+        new FakeStreamableHTTPError(403, 'forbidden'),
+        new FakeStreamableHTTPError(undefined, 'no status'),
+        Object.assign(new Error('looks like one'), { code: 401 }),
+        new Error('ECONNREFUSED'),
+      ]) {
+        fail_client('connect', failure)
+        expect(await rejection(mcp_client(HTTP))).toBe(failure)
+      }
+    })
+
+    it('leaves an UnauthorizedError from a stdio connect alone, since only http has an auth story', async () => {
+      const failure = new FakeUnauthorizedError('Unauthorized')
+      fail_client('connect', failure)
+      expect(await rejection(mcp_client({ transport: 'stdio', command: 'x' }))).toBe(failure)
+    })
+
+    it('translates an auth failure from listing the tools, and still closes the client', async () => {
+      const cause = new FakeUnauthorizedError('Unauthorized')
+      fail_client('listTools', cause)
+      const err = await rejection(mcp_client(HTTP))
+      expect(err).toBeInstanceOf(mcp_auth_required_error)
+      expect((err as Error).cause).toBe(cause)
+      expect(sole(captured.clients).closed).toBe(true)
+    })
+
+    it('translates an auth failure from a tool call after the connect went through', async () => {
+      const handle = await mcp_client(HTTP)
+      const client = sole(captured.clients)
+      const controller = new AbortController()
+
+      const expired = new FakeUnauthorizedError('Unauthorized')
+      client.callTool.mockRejectedValueOnce(expired)
+      const err = await rejection(Promise.resolve(sole(handle.tools).execute({}, exec_ctx(controller.signal))))
+      expect(err).toMatchObject({ kind: 'mcp_auth_required_error', url: 'https://example.com/mcp', message: MESSAGE })
+      expect((err as Error).cause).toBe(expired)
+
+      const other = new Error('socket hang up')
+      client.callTool.mockRejectedValueOnce(other)
+      expect(await rejection(Promise.resolve(sole(handle.tools).execute({}, exec_ctx(controller.signal))))).toBe(other)
+    })
+
+    it('leaves a tool call failure on a stdio connection as it was thrown', async () => {
+      const handle = await mcp_client({ transport: 'stdio', command: 'x' })
+      const failure = new FakeUnauthorizedError('Unauthorized')
+      sole(captured.clients).callTool.mockRejectedValueOnce(failure)
+      const call = Promise.resolve(sole(handle.tools).execute({}, exec_ctx(new AbortController().signal)))
+      expect(await rejection(call)).toBe(failure)
+    })
+
+    it('never loads the SDK for an injected client, and leaves its errors as they are', async () => {
+      const client = new FakeClient({ name: 'caller', version: '0.0.0' })
+      const failure = new FakeUnauthorizedError('Unauthorized')
+      client.callTool.mockRejectedValueOnce(failure)
+      const handle = await mcp_client({ transport: 'client', client: client as never })
+      const call = Promise.resolve(sole(handle.tools).execute({}, exec_ctx(new AbortController().signal)))
+      expect(await rejection(call)).toBe(failure)
+      expect(load_client_sdk).not.toHaveBeenCalled()
+    })
   })
 })

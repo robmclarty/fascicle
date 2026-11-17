@@ -6,10 +6,12 @@ export type {
   McpClientHandle,
   McpClientOptions,
   McpExistingClientConfig,
+  McpFetch,
+  McpReconnectionOptions,
   McpStdioConfig,
   McpStreamableHttpConfig,
 } from './client.js'
 export { serve_flow } from './serve.js'
 export type { ServeFlowConfig } from './serve.js'
 export { json_schema_to_standard } from '#schema'
-export { mcp_error, mcp_sdk_missing_error } from './errors.js'
+export { mcp_auth_required_error, mcp_error, mcp_sdk_missing_error } from './errors.js'

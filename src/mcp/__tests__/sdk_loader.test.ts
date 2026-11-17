@@ -14,6 +14,13 @@ describe('load_client_sdk', () => {
     expect(typeof sdk.StreamableHTTPClientTransport).toBe('function')
   })
 
+  it('resolves the two error classes an auth failure is told by', async () => {
+    const sdk = await load_client_sdk()
+    expect(new sdk.UnauthorizedError('nope')).toBeInstanceOf(Error)
+    expect(new sdk.UnauthorizedError('nope').message).toBe('nope')
+    expect(new sdk.StreamableHTTPError(401, 'denied').code).toBe(401)
+  })
+
   it('throws a typed mcp_sdk_missing_error with install guidance when a sub-import fails', async () => {
     vi.resetModules()
     vi.doMock('@modelcontextprotocol/sdk/client/stdio.js', () => {

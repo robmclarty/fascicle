@@ -3,11 +3,12 @@
  * Fascicle `Tool[]`.
  */
 
+import type { OAuthClientProvider } from '@modelcontextprotocol/sdk/client/auth.js'
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
 import type { Tool, ToolExecContext } from '#engine'
 import { is_record, json_schema_to_standard } from '#schema'
-import { mcp_error } from './errors.js'
+import { mcp_auth_required_error, mcp_error } from './errors.js'
 import { call_result_to_output } from './result_mapping.js'
 import { load_client_sdk, type McpClientSdk } from './sdk_loader.js'
 
@@ -25,6 +26,33 @@ export type McpStreamableHttpConfig = {
   transport: 'http'
   url: string
   headers?: Record<string, string>
+  // The SDK's OAuth provider interface, for a token that expires, refreshes,
+  // or comes from a `client_credentials` grant. The transport asks it for a
+  // token on each request. A flow that needs the user in a browser doesn't
+  // fit here: run it on a transport of your own and pass `transport: 'client'`.
+  auth_provider?: OAuthClientProvider
+  // Replaces the global `fetch` for every request the transport makes, the
+  // OAuth ones included (a proxy, a recorder, a test double).
+  fetch?: McpFetch
+  // Rejoins a session the server already knows. The handshake is skipped, so
+  // the server's capabilities are unknown to this connection.
+  session_id?: string
+  // How the transport retries a dropped event stream.
+  reconnection?: McpReconnectionOptions
+}
+
+export type McpFetch = (url: string | URL, init?: RequestInit) => Promise<Response>
+
+/**
+ * The backoff for reopening a dropped event stream. The wait before retry
+ * `n` (counting from zero) is `initial_delay_ms * delay_grow_factor^n`, capped
+ * at `max_delay_ms`, and the transport gives up after `max_retries`.
+ */
+export type McpReconnectionOptions = {
+  max_retries: number
+  initial_delay_ms: number
+  max_delay_ms: number
+  delay_grow_factor: number
 }
 
 // Escape hatch: hand in an already-connected Client (a transport the adapter
@@ -101,49 +129,97 @@ export async function mcp_client(
   config: McpClientConfig,
   options: McpClientOptions = {},
 ): Promise<McpClientHandle> {
-  const owns_client = config.transport !== 'client'
-  const client = await connect_client(config, options)
+  const { client, owned, translate } = await open_connection(config, options)
 
   const include = options.include !== undefined ? new Set(options.include) : undefined
   const listed = await client.listTools().catch(async (err: unknown) => {
     // A client this call connected has no other owner yet, so it closes here,
     // taking a spawned stdio server with it. The listing failure is the one
     // the caller sees, even if the close fails too.
-    if (owns_client) await client.close().catch(() => undefined)
-    throw err
+    if (owned) await client.close().catch(() => undefined)
+    throw translate(err)
   })
   const tools: Tool[] = []
   for (const advertised of listed.tools) {
     if (include !== undefined && !include.has(advertised.name)) continue
-    tools.push(to_fascicle_tool(client, advertised, options))
+    tools.push(to_fascicle_tool(client, advertised, options, translate))
   }
 
   return {
     tools,
     close: async () => {
-      if (owns_client) await client.close()
+      if (owned) await client.close()
     },
   }
+}
+
+/** Turns an error from the SDK into the one the caller should see. */
+type ErrorTranslator = (err: unknown) => unknown
+
+type Connection = {
+  client: Client
+  // False for a client the caller connected, whose lifecycle stays theirs.
+  owned: boolean
+  translate: ErrorTranslator
 }
 
 /**
  * Returns the caller's already-connected client as-is, or lazily loads the
  * SDK and connects a fresh client over the configured transport.
+ *
+ * An `http` connection carries a translator that turns the SDK's auth
+ * failures into `mcp_auth_required_error`, for the handshake and for every
+ * later request. A client the caller connected keeps the SDK's errors as they
+ * are, since the caller built its transport and already holds the SDK.
  */
-async function connect_client(
+async function open_connection(
   config: McpClientConfig,
   options: McpClientOptions,
-): Promise<Client> {
-  if (config.transport === 'client') return config.client
+): Promise<Connection> {
+  if (config.transport === 'client') {
+    return { client: config.client, owned: false, translate: same_error }
+  }
   const sdk = await load_client_sdk()
+  const translate = config.transport === 'http' ? auth_translator(sdk, config.url) : same_error
   const client = new sdk.Client(options.client_info ?? DEFAULT_CLIENT_INFO)
-  await client.connect(build_transport(sdk, config))
-  return client
+  await client.connect(build_transport(sdk, config)).catch((err: unknown) => {
+    throw translate(err)
+  })
+  return { client, owned: true, translate }
+}
+
+/** The translator for a connection whose errors pass through untouched. */
+function same_error(err: unknown): unknown {
+  return err
+}
+
+/**
+ * Builds the translator for one HTTP server: an auth failure becomes
+ * `mcp_auth_required_error`, and anything else passes through.
+ *
+ * The SDK reports an auth failure two ways. With an `authProvider` whose
+ * flow ends short of a usable token it throws `UnauthorizedError`, from the
+ * handshake or from any later request. With no provider, or when the server
+ * still answers 401 to a fresh token, the POST fails as a
+ * `StreamableHTTPError` whose `code` is 401. The error names the server by
+ * origin and path only, since a query string or userinfo can hold a secret.
+ */
+function auth_translator(sdk: McpClientSdk, url: string): ErrorTranslator {
+  const parsed = new URL(url)
+  const shown = `${parsed.origin}${parsed.pathname}`
+  return (err) => {
+    const unauthorized =
+      err instanceof sdk.UnauthorizedError ||
+      (err instanceof sdk.StreamableHTTPError && err.code === 401)
+    return unauthorized ? new mcp_auth_required_error(shown, err) : err
+  }
 }
 
 /**
  * Constructs the SDK transport matching the config: a spawned child process
- * for `stdio`, a Streamable HTTP connection for `http`.
+ * for `stdio`, a Streamable HTTP connection for `http`. Each option reaches
+ * the SDK only when the config sets it, so the SDK's own defaults hold for
+ * the rest.
  */
 function build_transport(
   sdk: McpClientSdk,
@@ -157,8 +233,23 @@ function build_transport(
       ...(config.cwd !== undefined ? { cwd: config.cwd } : {}),
     })
   }
-  const opts = config.headers !== undefined ? { requestInit: { headers: config.headers } } : {}
-  return new sdk.StreamableHTTPClientTransport(new URL(config.url), opts)
+  const reconnection = config.reconnection
+  return new sdk.StreamableHTTPClientTransport(new URL(config.url), {
+    ...(config.headers !== undefined ? { requestInit: { headers: config.headers } } : {}),
+    ...(config.auth_provider !== undefined ? { authProvider: config.auth_provider } : {}),
+    ...(config.fetch !== undefined ? { fetch: config.fetch } : {}),
+    ...(config.session_id !== undefined ? { sessionId: config.session_id } : {}),
+    ...(reconnection !== undefined
+      ? {
+          reconnectionOptions: {
+            maxRetries: reconnection.max_retries,
+            initialReconnectionDelay: reconnection.initial_delay_ms,
+            maxReconnectionDelay: reconnection.max_delay_ms,
+            reconnectionDelayGrowFactor: reconnection.delay_grow_factor,
+          },
+        }
+      : {}),
+  })
 }
 
 type AdvertisedTool = {
@@ -195,12 +286,15 @@ function resolve_needs_approval(
  * server's own name.
  *
  * An already-aborted signal short-circuits before the wire call; otherwise the
- * signal is passed through so cancelling the run cancels the remote call.
+ * signal is passed through so cancelling the run cancels the remote call. A
+ * failed call goes through `translate`, so a token that expired mid-session
+ * reads the same as one that was refused at connect.
  */
 function to_fascicle_tool(
   client: Client,
   advertised: AdvertisedTool,
   options: McpClientOptions,
+  translate: ErrorTranslator,
 ): Tool {
   const name = advertised.name
   const description =
@@ -217,11 +311,13 @@ function to_fascicle_tool(
           ? ctx.abort.reason
           : new mcp_error(`MCP tool ${name} aborted before invocation`, { tool_name: name })
       }
-      const result = await client.callTool(
-        { name, arguments: is_record(input) ? input : undefined },
-        undefined,
-        { signal: ctx.abort },
-      )
+      const result = await client
+        .callTool({ name, arguments: is_record(input) ? input : undefined }, undefined, {
+          signal: ctx.abort,
+        })
+        .catch((err: unknown) => {
+          throw translate(err)
+        })
       return call_result_to_output(result, name)
     },
   }
