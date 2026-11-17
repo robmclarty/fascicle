@@ -82,7 +82,6 @@ async function connect(server: McpServer | Server): Promise<Client> {
 /** The `resources` namespace `mcp_client` builds over `client`. */
 async function resources_over(client: Client): Promise<McpResources> {
   const handle = await mcp_client({ transport: 'client', client })
-  if (handle.resources === undefined) throw new Error('mcp_client set no resources')
   return handle.resources
 }
 
@@ -157,7 +156,7 @@ describe('mcp_client over a server that only publishes resources', () => {
     const handle = await mcp_client({ transport: 'client', client })
     expect(handle.tools).toEqual([])
     expect(list_tools).not.toHaveBeenCalled()
-    expect((await handle.resources?.list())?.map((r) => r.name)).toEqual(['readme', 'logo'])
+    expect((await handle.resources.list()).map((r) => r.name)).toEqual(['readme', 'logo'])
   })
 })
 

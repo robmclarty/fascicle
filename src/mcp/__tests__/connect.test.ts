@@ -378,7 +378,7 @@ describe('mcp_client connect path', () => {
   describe('resources on the handle', () => {
     it('are always set, over the same client the tools use', async () => {
       const handle = await mcp_client({ transport: 'stdio', command: 'x' })
-      expect(await handle.resources?.list()).toStrictEqual([{ uri: 'file:///a', name: 'a' }])
+      expect(await handle.resources.list()).toStrictEqual([{ uri: 'file:///a', name: 'a' }])
       expect(sole(captured.clients).listResources).toHaveBeenCalledTimes(1)
     })
 
@@ -386,7 +386,7 @@ describe('mcp_client connect path', () => {
       const handle = await mcp_client(HTTP)
       const cause = new FakeUnauthorizedError('Unauthorized')
       sole(captured.clients).listResources.mockRejectedValueOnce(cause)
-      const failed = handle.resources?.list()
+      const failed = handle.resources.list()
       await expect(failed).rejects.toBeInstanceOf(mcp_auth_required_error)
       await expect(failed).rejects.toMatchObject({ url: 'https://example.com/mcp', cause })
     })
@@ -395,7 +395,7 @@ describe('mcp_client connect path', () => {
       const handle = await mcp_client({ transport: 'stdio', command: 'x' })
       const failure = new FakeUnauthorizedError('Unauthorized')
       sole(captured.clients).listResources.mockRejectedValueOnce(failure)
-      await expect(handle.resources?.list()).rejects.toBe(failure)
+      await expect(handle.resources.list()).rejects.toBe(failure)
     })
   })
 

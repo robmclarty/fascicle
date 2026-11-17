@@ -116,11 +116,9 @@ export type McpApprovalPolicy =
 export type McpClientHandle = {
   readonly tools: ReadonlyArray<Tool>
   readonly close: () => Promise<void>
-  // What the server publishes besides tools. `mcp_client` always sets it, and
-  // it costs nothing until a method is called. The type leaves it optional so
-  // a handle built by hand (a test double, say) can stop at `tools` and
-  // `close`.
-  readonly resources?: McpResources
+  // What the server publishes besides tools. It costs nothing until a method
+  // is called.
+  readonly resources: McpResources
 }
 
 /**

@@ -27,9 +27,19 @@ function tool(name: string): Tool {
   return { name, description: name, input_schema: json_schema_to_standard({ type: 'object' }), execute: () => `${name} ran` }
 }
 
+/** A handle's `resources` for a server that publishes none. */
+const NO_RESOURCES: McpClientHandle['resources'] = {
+  list: async () => [],
+  templates: async () => [],
+  read: async () => [],
+  subscribe: async () => {},
+  unsubscribe: async () => {},
+  on_list_changed: async () => {},
+}
+
 /** A connection whose `close` is a spy, offering `names`. */
 function handle(...names: string[]): McpClientHandle & { readonly close: ReturnType<typeof vi.fn> } {
-  return { tools: names.map(tool), close: vi.fn(async () => {}) }
+  return { tools: names.map(tool), close: vi.fn(async () => {}), resources: NO_RESOURCES }
 }
 
 const stdio: McpServer = { name: 'files', command: '/bin/files-mcp', args: ['--root', '.'], env: [{ name: 'TOKEN', value: 't' }] }
@@ -224,7 +234,7 @@ describe('connect_mcp_servers', () => {
 
   it('gives the second of two tools that share a name one of its own, ending in a hash', async () => {
     const first = handle('mcp__my_server__x')
-    const second = { tools: [{ ...tool('mcp__my_server__x'), description: 'second' }, tool('mcp__my_server__y')], close: vi.fn(async () => {}) }
+    const second = { tools: [{ ...tool('mcp__my_server__x'), description: 'second' }, tool('mcp__my_server__y')], close: vi.fn(async () => {}), resources: NO_RESOURCES }
     vi.mocked(mcp_client).mockResolvedValueOnce(first).mockResolvedValueOnce(second)
     const connected = await connect_mcp_servers([{ ...stdio, name: 'my server' }, { ...http, name: 'my.server' }], '/work', IDENTITY)
     const names = connected.tools.map((entry) => entry.name)

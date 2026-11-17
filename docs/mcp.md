@@ -141,7 +141,6 @@ A resource is something a server publishes for reading (a file, a row, a log), n
 
 ```ts
 const resources = handle.resources
-if (resources === undefined) throw new Error('unreachable: mcp_client always sets resources')
 
 for (const resource of await resources.list()) {
   console.log(resource.uri, resource.name, resource.mime_type)
@@ -171,8 +170,6 @@ Several callbacks on one URI share a single subscription on the server. When a c
 Nothing is registered on the connection until the first `subscribe` or `on_list_changed`, so an app that only wants tools pays nothing for this. On a client that you passed in, that registration replaces any handler of your own for the same two notifications.
 
 A server says in its handshake what it supports, and a call it has ruled out throws `mcp_error` before any request is sent. `list`, `templates`, and `read` need the `resources` capability. `subscribe` needs `resources.subscribe`, and `on_list_changed` needs `resources.listChanged`. A server that publishes resources and no tools connects fine, with an empty `tools`.
-
-`resources` is optional in the `McpClientHandle` type, which is why the example narrows it. `mcp_client` always sets it. The type leaves it out so that a handle built by hand, such as a double in a test, can stop at `tools` and `close`.
 
 ## Sampling
 
