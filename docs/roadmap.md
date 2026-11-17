@@ -91,7 +91,12 @@ The published surface as of v0.19.0:
 - **MCP, both directions** (`fascicle/mcp`). `mcp_client()` turns an MCP
   server's tools into plain Fascicle `Tool[]` over stdio or streamable HTTP, and
   `serve_flow()` exposes your composed flows as MCP tools to external hosts.
-  `@modelcontextprotocol/sdk` rides as an optional peer.
+  `needs_approval` puts a server's tools behind the same approval a local tool
+  takes. The HTTP transport takes an OAuth provider, and a 401 throws
+  `mcp_auth_required_error`. The handle's `resources` lists, reads, and watches
+  what a server publishes, and `sampling` answers a server's own model requests
+  from your engine. `@modelcontextprotocol/sdk` rides as an optional peer, and
+  [mcp.md](./mcp.md) covers the rest.
 - **Editor agents over ACP** (`fascicle/acp`). `serve_acp` serves a flow as an
   [Agent Client Protocol](https://agentclientprotocol.com) agent over stdio, so
   you can talk to it in Zed's agent panel beside Claude Code, Codex, and Gemini
@@ -188,9 +193,9 @@ The published surface as of v0.19.0:
   [human-in-the-loop.md](./human-in-the-loop.md#the-store-a-run-lives-in) has
   never been compiled against the SDK. I'll run both against a real bucket
   before I call the store proven.
-- **MCP hardening.** Auth on the HTTP transport, MCP `sampling`, per-tool
-  approval gating, and `resources` subscriptions were all deferred out of the
-  first bridge.
+- **A suspended flow over MCP.** `serve_flow` flattens a `suspend` gate into
+  an error result, so a host can't answer it. MCP's elicitation is the way to
+  ask, and bridging a gate to it is the next piece of the MCP work.
 - **`claude_cli` on the Agent SDK.** Rebasing the subprocess adapter onto
   Anthropic's Agent SDK, slotted in wherever provider metering forces it.
 
@@ -228,11 +233,6 @@ likely to bite you first.
   authenticating. No release has made the switch yet, and none documents a
   flag that opts a run back out. When one ships, I'll have `claude_cli` pass
   that flag under `auto` and `oauth`, and let `api_key` calls go bare.
-- **Housekeeping.** Engine code that only tests call (`normalize_chunk`), a
-  schema-issue formatter that `fascicle/testing`
-  repeats, a viewer test that runs before the build that it checks, tsdown
-  options that are dead or deprecated, four devDependencies on caret ranges, and
-  a mutation-ratchet comment with stale numbers.
 
 ## Under Consideration
 

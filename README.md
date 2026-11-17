@@ -126,7 +126,7 @@ const reviewer = define_agent({
 
 This is the [blueprint's](./docs/blueprint.md) recommended shape for simple one-prompt agents; reference agents built on it (reviewer, documenter, researcher) live in [examples/agents/](./examples/agents/).
 
-**MCP bridge.** The `fascicle/mcp` subpath connects flows to the Model Context Protocol both ways. `mcp_client` turns an external MCP server's tools into plain `Tool[]`; `serve_flow` exposes a composed flow as an MCP tool to hosts like Claude Desktop or Cursor. It is pure adapter glue over the existing `Tool` and `run` contracts, and `@modelcontextprotocol/sdk` is an optional peer you only install when you use it.
+**MCP bridge.** The `fascicle/mcp` subpath connects flows to the Model Context Protocol both ways. `mcp_client` turns an external MCP server's tools into plain `Tool[]`; `serve_flow` exposes a composed flow as an MCP tool to hosts like Claude Desktop or Cursor. The client can put a server's tools behind your approval, sign in to a server that wants a token, read and watch the resources that a server publishes, and answer a server's sampling requests from your engine. It is pure adapter glue over the existing `Tool` and `run` contracts, and `@modelcontextprotocol/sdk` is an optional peer you only install when you use it.
 
 <!-- snippet: check -->
 ```typescript
@@ -286,6 +286,7 @@ The canonical worked example is [examples/pr-improve/](./examples/pr-improve/), 
 - [docs/writing-a-harness.md](./docs/writing-a-harness.md) — building a runner around Fascicle
 - [docs/embedding-under-a-harness.md](./docs/embedding-under-a-harness.md) — running a Fascicle agent as somebody's child process
 - [docs/acp.md](./docs/acp.md) covers serving a flow as an agent that you talk to in Zed's agent panel, over the Agent Client Protocol
+- [docs/mcp.md](./docs/mcp.md) covers both MCP bridges, with approval for a server's tools, auth, resources, and sampling
 - [docs/a2a.md](./docs/a2a.md) covers serving a flow as a network agent that other agents hand work to, over Agent2Agent, and calling one from a flow
 - [docs/web.md](./docs/web.md) covers the two tools that let an agent search the web and read a page, and how to keep one that holds private data from leaking it
 - [docs/troubleshooting.md](./docs/troubleshooting.md) — first-run errors and what they mean
