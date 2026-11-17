@@ -54,8 +54,8 @@ const TIMEOUT_MS = 300_000
 // row registered under the id it calls before it can carry a cost.
 const SONNET_PRICE = DEFAULT_PRICING['anthropic:claude-sonnet-5-5']
 
-// About 7,000 tokens of reference text, the same on every turn, so the
-// prefix clears every Claude model's minimum and stays byte-identical.
+// About 12,000 tokens of reference text, the same on every turn of a run,
+// so the prefix clears every Claude model's minimum and stays byte-identical.
 const SYSTEM = [
   'You are a careful bookkeeper who follows instructions exactly.',
   'The audit codes below are reference material for other tasks. Never mention them.',
@@ -184,13 +184,18 @@ async function run_loop(c: LoopCase, cache: CacheSetting | undefined): Promise<R
     )
     return response
   }
-  const provider_options = routing_options(c, `fascicle-live-cache-${randomUUID()}`)
+  const run_id = randomUUID()
+  const provider_options = routing_options(c, `fascicle-live-cache-${run_id}`)
+  // Each run opens its prefix with its own id, so it writes a cache of its
+  // own. With one shared prefix, a run finds the cache that the run before it
+  // wrote and reads on its first turn, where the assertion wants a write.
+  const system = `Reference set ${run_id}.\n${SYSTEM}`
   const { tool, ledger } = make_tool()
   try {
     run.result = await engine.generate({
       provider: c.provider,
       model: c.model,
-      system: SYSTEM,
+      system,
       prompt: PROMPT,
       tools: [tool],
       max_steps: 5,
