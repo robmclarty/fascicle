@@ -21,6 +21,12 @@ describe('load_client_sdk', () => {
     expect(new sdk.StreamableHTTPError(401, 'denied').code).toBe(401)
   })
 
+  it('resolves the notification schemas a resources listener is registered under', async () => {
+    const sdk = await load_client_sdk()
+    expect(sdk.ResourceUpdatedNotificationSchema.shape.method.value).toBe('notifications/resources/updated')
+    expect(sdk.ResourceListChangedNotificationSchema.shape.method.value).toBe('notifications/resources/list_changed')
+  })
+
   it('throws a typed mcp_sdk_missing_error with install guidance when a sub-import fails', async () => {
     vi.resetModules()
     vi.doMock('@modelcontextprotocol/sdk/client/stdio.js', () => {

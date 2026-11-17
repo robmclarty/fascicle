@@ -2,8 +2,8 @@
  * Lazy loader for the optional `@modelcontextprotocol/sdk` peer.
  *
  * `mcp_client` needs SDK values (the Client and transport constructors, and
- * the error classes it tells an auth failure by), so it imports them
- * dynamically rather than statically: a consumer can import
+ * the error classes it tells an auth failure by, the schemas a handler is
+ * registered under), so it imports them dynamically rather than statically: a consumer can import
  * `fascicle/mcp` without the SDK installed and only pays the cost when they
  * actually connect. A missing peer surfaces as a typed `mcp_sdk_missing_error`
  * with install guidance, mirroring the engine's `load_optional_peer`.
@@ -23,11 +23,12 @@ export type McpClientSdk = Awaited<ReturnType<typeof load_client_sdk>>
  */
 export async function load_client_sdk() {
   try {
-    const [client_mod, stdio_mod, http_mod, auth_mod] = await Promise.all([
+    const [client_mod, stdio_mod, http_mod, auth_mod, types_mod] = await Promise.all([
       import('@modelcontextprotocol/sdk/client/index.js'),
       import('@modelcontextprotocol/sdk/client/stdio.js'),
       import('@modelcontextprotocol/sdk/client/streamableHttp.js'),
       import('@modelcontextprotocol/sdk/client/auth.js'),
+      import('@modelcontextprotocol/sdk/types.js'),
     ])
     return {
       Client: client_mod.Client,
@@ -35,6 +36,8 @@ export async function load_client_sdk() {
       StreamableHTTPClientTransport: http_mod.StreamableHTTPClientTransport,
       StreamableHTTPError: http_mod.StreamableHTTPError,
       UnauthorizedError: auth_mod.UnauthorizedError,
+      ResourceUpdatedNotificationSchema: types_mod.ResourceUpdatedNotificationSchema,
+      ResourceListChangedNotificationSchema: types_mod.ResourceListChangedNotificationSchema,
     }
   } catch (err: unknown) {
     const detail = err instanceof Error ? err.message : String(err)

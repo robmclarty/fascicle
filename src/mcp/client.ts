@@ -9,6 +9,7 @@ import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
 import type { Tool, ToolExecContext } from '#engine'
 import { is_record, json_schema_to_standard } from '#schema'
 import { mcp_auth_required_error, mcp_error } from './errors.js'
+import { create_resources, type McpResources } from './resources.js'
 import { call_result_to_output } from './result_mapping.js'
 import { load_client_sdk, type McpClientSdk } from './sdk_loader.js'
 
@@ -110,6 +111,11 @@ export type McpApprovalPolicy =
 export type McpClientHandle = {
   readonly tools: ReadonlyArray<Tool>
   readonly close: () => Promise<void>
+  // What the server publishes besides tools. `mcp_client` always sets it, and
+  // it costs nothing until a method is called. The type leaves it optional so
+  // a handle built by hand (a test double, say) can stop at `tools` and
+  // `close`.
+  readonly resources?: McpResources
 }
 
 /**
@@ -123,7 +129,8 @@ export type McpClientHandle = {
  * `execute` forwards to `callTool`, propagating the run's abort signal. For the
  * `client` transport variant the caller keeps ownership of the connection, so
  * `close` is a no-op. A connection this call opened is closed again when
- * listing its tools fails.
+ * listing its tools fails. A server that advertises no tools is not asked
+ * for any, and its handle carries an empty `tools` beside its `resources`.
  */
 export async function mcp_client(
   config: McpClientConfig,
@@ -132,13 +139,15 @@ export async function mcp_client(
   const { client, owned, translate } = await open_connection(config, options)
 
   const include = options.include !== undefined ? new Set(options.include) : undefined
-  const listed = await client.listTools().catch(async (err: unknown) => {
-    // A client this call connected has no other owner yet, so it closes here,
-    // taking a spawned stdio server with it. The listing failure is the one
-    // the caller sees, even if the close fails too.
-    if (owned) await client.close().catch(() => undefined)
-    throw translate(err)
-  })
+  const listed = advertises_no_tools(client)
+    ? { tools: [] }
+    : await client.listTools().catch(async (err: unknown) => {
+        // A client this call connected has no other owner yet, so it closes
+        // here, taking a spawned stdio server with it. The listing failure is
+        // the one the caller sees, even if the close fails too.
+        if (owned) await client.close().catch(() => undefined)
+        throw translate(err)
+      })
   const tools: Tool[] = []
   for (const advertised of listed.tools) {
     if (include !== undefined && !include.has(advertised.name)) continue
@@ -150,7 +159,20 @@ export async function mcp_client(
     close: async () => {
       if (owned) await client.close()
     },
+    resources: create_resources(client, translate),
   }
+}
+
+/**
+ * True when the handshake said the server has no tools at all, as a server
+ * that only publishes resources does. Asking such a server to list its tools
+ * is answered with a JSON-RPC error, so the handle carries an empty `tools`
+ * instead. A connection with no handshake to read (a session rejoined by
+ * `session_id`) is asked.
+ */
+function advertises_no_tools(client: Client): boolean {
+  const capabilities = client.getServerCapabilities()
+  return capabilities !== undefined && capabilities.tools === undefined
 }
 
 /** Turns an error from the SDK into the one the caller should see. */

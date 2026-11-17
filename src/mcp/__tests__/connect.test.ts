@@ -41,6 +41,12 @@ class FakeClient {
   async connect(transport: unknown): Promise<void> {
     this.connected_transport = transport
   }
+  // Undefined is what the SDK reports for a connection that skipped the
+  // handshake, which leaves every request unchecked.
+  getServerCapabilities(): Record<string, unknown> | undefined {
+    return undefined
+  }
+  listResources = vi.fn(async () => ({ resources: [{ uri: 'file:///a', name: 'a' }] }))
   async listTools(): Promise<{ tools: Array<Record<string, unknown>> }> {
     return { tools: [{ name: 'alpha', description: 'a', inputSchema: { type: 'object', properties: {} } }] }
   }
@@ -292,6 +298,67 @@ describe('mcp_client connect path', () => {
       message: 'MCP tool alpha aborted before invocation',
     })
     expect(client.callTool).not.toHaveBeenCalled()
+  })
+
+  describe('a server with no tools', () => {
+    /** Swaps the fake SDK's Client for one reporting `capabilities` from its handshake. */
+    function with_capabilities(capabilities: Record<string, unknown>): { listed: () => number } {
+      let listed = 0
+      class CapableClient extends FakeClient {
+        override getServerCapabilities(): Record<string, unknown> {
+          return capabilities
+        }
+        override async listTools(): Promise<{ tools: Array<Record<string, unknown>> }> {
+          listed += 1
+          return super.listTools()
+        }
+      }
+      vi.mocked(load_client_sdk).mockResolvedValue({ ...fake_sdk, Client: CapableClient } as never)
+      return { listed: () => listed }
+    }
+
+    it('is not asked to list any, and its handle carries none', async () => {
+      const probe = with_capabilities({ resources: {} })
+      const handle = await mcp_client({ transport: 'stdio', command: 'x' })
+      expect(handle.tools).toEqual([])
+      expect(probe.listed()).toBe(0)
+    })
+
+    it('is asked when its handshake advertised tools', async () => {
+      const probe = with_capabilities({ tools: {} })
+      const handle = await mcp_client({ transport: 'stdio', command: 'x' })
+      expect(handle.tools.map((t) => t.name)).toEqual(['alpha'])
+      expect(probe.listed()).toBe(1)
+    })
+
+    it('is asked when the handshake was skipped and nothing is known', async () => {
+      const handle = await mcp_client({ transport: 'http', url: 'https://example.com/mcp', session_id: 's' })
+      expect(handle.tools.map((t) => t.name)).toEqual(['alpha'])
+    })
+  })
+
+  describe('resources on the handle', () => {
+    it('are always set, over the same client the tools use', async () => {
+      const handle = await mcp_client({ transport: 'stdio', command: 'x' })
+      expect(await handle.resources?.list()).toStrictEqual([{ uri: 'file:///a', name: 'a' }])
+      expect(sole(captured.clients).listResources).toHaveBeenCalledTimes(1)
+    })
+
+    it('report an auth failure on an http connection the way a tool call does', async () => {
+      const handle = await mcp_client(HTTP)
+      const cause = new FakeUnauthorizedError('Unauthorized')
+      sole(captured.clients).listResources.mockRejectedValueOnce(cause)
+      const failed = handle.resources?.list()
+      await expect(failed).rejects.toBeInstanceOf(mcp_auth_required_error)
+      await expect(failed).rejects.toMatchObject({ url: 'https://example.com/mcp', cause })
+    })
+
+    it('leave a failure on a stdio connection as it was thrown', async () => {
+      const handle = await mcp_client({ transport: 'stdio', command: 'x' })
+      const failure = new FakeUnauthorizedError('Unauthorized')
+      sole(captured.clients).listResources.mockRejectedValueOnce(failure)
+      await expect(handle.resources?.list()).rejects.toBe(failure)
+    })
   })
 
   describe('auth failures', () => {

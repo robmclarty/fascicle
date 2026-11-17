@@ -11,6 +11,12 @@ export type {
   McpStdioConfig,
   McpStreamableHttpConfig,
 } from './client.js'
+export type {
+  McpResource,
+  McpResourceContent,
+  McpResources,
+  McpResourceTemplate,
+} from './resources.js'
 export { serve_flow } from './serve.js'
 export type { ServeFlowConfig } from './serve.js'
 export { json_schema_to_standard } from '#schema'
