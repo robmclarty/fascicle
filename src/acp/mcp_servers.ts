@@ -147,6 +147,9 @@ function without_secrets(server: McpServer, text: string): string {
   return values.toSorted((a, b) => b.length - a.length).reduce(without_value, text)
 }
 
+const NEEDS_AUTHORIZATION =
+  "it answered 401, which means that its entry in your editor's MCP settings sends no token it accepts (fix the entry's headers)"
+
 /**
  * The warning for a server left out of the session, also written to
  * stderr, for a client that shows no notices. `error` is the server's own
@@ -176,6 +179,9 @@ async function connect_server(
     return await mcp_client(config, { client_info: identity, name_prefix })
   } catch (err: unknown) {
     if (err instanceof Error && err.name === 'mcp_sdk_missing_error') throw err
+    // The error's own advice is for the app that called `mcp_client`. Here
+    // the entry came from the editor, so the fix is in the editor's settings.
+    if (err instanceof Error && err.name === 'mcp_auth_required_error') return left_out(server, NEEDS_AUTHORIZATION)
     return left_out(server, "it couldn't be reached", err instanceof Error ? err.message : String(err))
   }
 }

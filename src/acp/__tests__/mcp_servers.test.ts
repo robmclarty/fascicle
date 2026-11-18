@@ -232,6 +232,23 @@ describe('connect_mcp_servers', () => {
     expect(warnings()).toEqual([])
   })
 
+  it('says that a server which answered 401 wants a token in the editor settings, without the app-side advice', async () => {
+    const refused = Object.assign(new Error('MCP server at https://mcp.example.com/mcp requires authorization (Unauthorized): pass `auth_provider` in the http config'), {
+      name: 'mcp_auth_required_error',
+    })
+    vi.mocked(mcp_client).mockRejectedValueOnce(refused)
+    const connected = await connect_mcp_servers([http], '/work', IDENTITY)
+    expect(connected.tools).toEqual([])
+    expect(connected.warnings).toEqual([
+      {
+        title: `MCP server ${http.name} isn't connected`,
+        description:
+          "it answered 401, which means that its entry in your editor's MCP settings sends no token it accepts (fix the entry's headers), so its tools are left out of the session",
+      },
+    ])
+    expect(JSON.stringify(connected.warnings)).not.toContain('auth_provider')
+  })
+
   it('gives the second of two tools that share a name one of its own, ending in a hash', async () => {
     const first = handle('mcp__my_server__x')
     const second = { tools: [{ ...tool('mcp__my_server__x'), description: 'second' }, tool('mcp__my_server__y')], close: vi.fn(async () => {}), resources: NO_RESOURCES }
