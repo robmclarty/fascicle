@@ -5,7 +5,7 @@
 ### Internal
 
 - checkride moved to 0.24.0, with no change to the config or the baseline.
-- picomatch carries a patch for GHSA-fc5q-39xc-vjpf, a high advisory that no release fixes. A repeated extglob with a `*` wildcard in its body, such as `+(*a)`, compiled to a regex that backtracks exponentially, and it now matches as literal text. Both copies in the tree are patched (4.0.7 and 2.3.2), both reach it through dev tools only, and the advisory is named under `audit.ignore`, so `pnpm check:security` is green.
+- picomatch carries a patch for a high advisory that no release fixes. A repeated glob group with a `*` wildcard in its body, such as `+(*a)`, compiled to a regex that backtracks exponentially, and it now matches as literal text. Both copies in the tree are patched (4.0.7 and 2.3.2), both reach it through dev tools only, and the advisory is named under `audit.ignore` in `pnpm-workspace.yaml`, so `pnpm check:security` is green.
 
 ## v0.19.0 — 2026-11-17
 
