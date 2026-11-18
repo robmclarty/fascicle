@@ -18,6 +18,7 @@
 
 import type { EffortLevel, ProviderInit } from '../types.js'
 import {
+  LOCAL_TOOL_CALL_REPAIR_ATTEMPTS,
   load_optional_peer,
   missing_config_error,
   normalize_local_usage,
@@ -104,6 +105,7 @@ const create_lmstudio_native_adapter = (init: ProviderInit): NativeProviderAdapt
     tolerant_usage: true,
     reports_cost: false,
     clamp_effort: true,
+    tool_call_repair_attempts: LOCAL_TOOL_CALL_REPAIR_ATTEMPTS,
   }
   return create_openai_compatible_adapter(dialect)
 }
@@ -136,5 +138,6 @@ const create_lmstudio_ai_sdk_adapter = (init: ProviderInit): AiSdkProviderAdapte
     translate_effort: translate_lmstudio_effort,
     normalize_usage: normalize_lmstudio_usage,
     supports: (capability) => SUPPORTED.has(capability),
+    tool_call_repair_attempts: LOCAL_TOOL_CALL_REPAIR_ATTEMPTS,
   }
 }

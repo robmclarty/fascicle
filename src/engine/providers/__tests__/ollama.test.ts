@@ -82,6 +82,18 @@ describe('create_ollama_adapter', () => {
     expect(create_ollama_adapter({ base_url, transport: 'native' }).supports('image_input')).toBe(false)
   })
 
+  it('declares a salvage budget of 3 on both transports', () => {
+    const base_url = 'http://localhost:11434'
+    expect(create_ollama_adapter({ base_url, transport: 'ai_sdk' })).toHaveProperty(
+      'tool_call_repair_attempts',
+      3,
+    )
+    expect(create_ollama_adapter({ base_url, transport: 'native' })).toHaveProperty(
+      'tool_call_repair_attempts',
+      3,
+    )
+  })
+
   it("build_model returns the package's model, read through for everything but doStream", async () => {
     const adapter = create_ollama_adapter({ base_url: 'http://localhost:11434' })
     if (adapter.kind !== 'ai_sdk') throw new Error('expected the ai_sdk adapter')

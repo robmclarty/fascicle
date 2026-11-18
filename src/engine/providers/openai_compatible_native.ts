@@ -69,7 +69,9 @@ import {
  * reasoning at all, and another server's field would be a new value here.
  * `reports_cost` reads the charge the server puts on its usage object as
  * `usage.cost` (OpenRouter's), which the loop records in place of a pricing
- * row. `prompt_cache` is the caching the adapter declares, copied onto it.
+ * row. `prompt_cache` is the caching the adapter declares, copied onto it,
+ * and `tool_call_repair_attempts` is the salvage budget it declares, copied
+ * the same way.
  */
 export type OpenAICompatibleDialect = {
   readonly name: string
@@ -84,6 +86,7 @@ export type OpenAICompatibleDialect = {
   readonly clamp_effort?: boolean
   readonly reasoning?: 'reasoning_details'
   readonly prompt_cache?: NativeProviderAdapter['prompt_cache']
+  readonly tool_call_repair_attempts?: number
 }
 
 /**
@@ -854,6 +857,9 @@ export const create_openai_compatible_adapter = (
     kind: 'native',
     name: dialect.name,
     ...(dialect.prompt_cache !== undefined ? { prompt_cache: dialect.prompt_cache } : {}),
+    ...(dialect.tool_call_repair_attempts !== undefined
+      ? { tool_call_repair_attempts: dialect.tool_call_repair_attempts }
+      : {}),
     async invoke_turn(req: TurnRequest): Promise<TurnResult> {
       return invoke_http_turn(
         req,

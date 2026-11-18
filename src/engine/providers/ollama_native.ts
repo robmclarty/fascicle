@@ -53,6 +53,7 @@ import {
 } from './native_shared.js'
 import { to_chat_tools } from './openai_compatible_native.js'
 import {
+  LOCAL_TOOL_CALL_REPAIR_ATTEMPTS,
   missing_config_error,
   type NativeProviderAdapter,
   type ProviderCapability,
@@ -459,6 +460,7 @@ export const create_ollama_native_adapter = (init: ProviderInit): NativeProvider
   return {
     kind: 'native',
     name: 'ollama',
+    tool_call_repair_attempts: LOCAL_TOOL_CALL_REPAIR_ATTEMPTS,
     async invoke_turn(req: TurnRequest): Promise<TurnResult> {
       return invoke_http_turn(
         req,

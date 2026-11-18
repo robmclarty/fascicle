@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- **Tool-call salvage is on by default for `ollama` and `lmstudio`.** `tool_call_repair_attempts` defaulted to `0` everywhere, so the option that exists for local runtimes ran only for a caller who knew to set it. Both providers' adapters now declare a budget of 3, on either transport, and a call on them recovers a tool call that the model wrote into its text with no option set. What changes for an app already on one of them is a turn whose text holds a call that names one of the call's tools, with arguments that validate against that tool's schema. It used to end the loop as the answer, and it now runs the tool. A value on the call still wins, then `defaults.tool_call_repair_attempts`, so a `0` at either place turns salvage off. Every other provider keeps `0`, the `openai` provider pointed at a local server included. An adapter of your own declares a budget with the new optional `tool_call_repair_attempts` field on `AiSdkProviderAdapter` and `NativeProviderAdapter`.
+
 ## v0.19.1 — 2026-11-18
 
 ### Internal

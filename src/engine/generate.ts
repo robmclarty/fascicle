@@ -1011,13 +1011,21 @@ type LoopLimits = {
  * Resolve the tool-call salvage budget. Returned as a holder rather than a
  * count: one holder per generate call so schema-repair re-invocations of the
  * loop cannot refill the salvage budget. undefined disables salvage.
+ *
+ * The call's own setting wins, then the engine's default, then the budget
+ * the adapter declares (the local backends declare one), so an explicit 0 at
+ * either of the first two turns salvage off on any adapter.
  */
 function resolve_salvage_budget<T>(
   opts: GenerateOptions<T>,
   engine: EngineInternals,
+  adapter: AiSdkProviderAdapter | NativeProviderAdapter,
 ): { remaining: number } | undefined {
   const tool_call_repair_attempts =
-    opts.tool_call_repair_attempts ?? engine.default_tool_call_repair_attempts ?? 0
+    opts.tool_call_repair_attempts ??
+    engine.default_tool_call_repair_attempts ??
+    adapter.tool_call_repair_attempts ??
+    0
   if (tool_call_repair_attempts < 0) {
     throw new engine_config_error(
       `tool_call_repair_attempts must be >= 0, got ${String(tool_call_repair_attempts)}`,
@@ -1035,6 +1043,7 @@ function resolve_salvage_budget<T>(
 function resolve_loop_limits<T>(
   opts: GenerateOptions<T>,
   engine: EngineInternals,
+  adapter: AiSdkProviderAdapter | NativeProviderAdapter,
 ): LoopLimits {
   const max_steps = opts.max_steps ?? engine.default_max_steps
   const tool_error_policy =
@@ -1042,7 +1051,7 @@ function resolve_loop_limits<T>(
     opts.tool_error_policy ?? engine.default_tool_error_policy ?? 'feed_back'
   const schema_repair_attempts =
     opts.schema_repair_attempts ?? engine.default_schema_repair_attempts ?? 1
-  const salvage_budget = resolve_salvage_budget(opts, engine)
+  const salvage_budget = resolve_salvage_budget(opts, engine, adapter)
   const max_tool_calls_per_step =
     opts.max_tool_calls_per_step ?? engine.default_max_tool_calls_per_step
   if (max_tool_calls_per_step !== undefined && max_tool_calls_per_step < 1) {
@@ -1570,7 +1579,7 @@ export async function generate<T = string>(
     })
   }
 
-  const limits = resolve_loop_limits(opts, engine)
+  const limits = resolve_loop_limits(opts, engine, adapter)
   const initial_messages = build_prompt_messages(opts)
 
   const generate_span = start_generate_span(trajectory, {

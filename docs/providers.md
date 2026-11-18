@@ -76,6 +76,8 @@ await engine.generate({
 
 The same recipe reaches vLLM, LiteLLM, or any other OpenAI-compatible gateway, and all you swap is the `base_url`. It rides the shared OpenAI-compatible core: the openai dialect's Bearer auth (hence the placeholder key), the streaming aggregator, and the usage math, all identical to the hosted `openai` transport. Ollama's compat endpoint reports token usage, so usage accounting works out of the box. A cost is another matter, because the call runs under the `openai` name, which isn't free the way `ollama` is, so it records `pricing_missing` until you add an `openai:<tag>` row to the engine's pricing table. For local backends that report approximate or no usage, the `lmstudio` provider (tolerant usage, no auth) is the better fit.
 
+Tool-call salvage is off under the `openai` name, where it's on by default under `ollama` and `lmstudio`. Set [`tool_call_repair_attempts`](./configuration.md#local-runtime-tool-reliability) yourself when the server behind the recipe is a local runtime.
+
 ## The Agent-Layer Boundary
 
 Fascicle uses the AI SDK strictly as a single-turn provider layer, so every AI SDK call is a `streamText` pinned to one model turn, issued from the one `ai_sdk` transport module, and the loop above it (multi-turn execution, tool approval, salvage, `ends_turn`, cost, retry, trajectory) is Fascicle's own. The SDK's agent layer (`ToolLoopAgent`, `WorkflowAgent`, `HarnessAgent`, `toolApproval`, scoped tool context, `@ai-sdk/otel`) is declined by design; the litmus test is that a framework must let you call one turn below its own loop. Anything the agent layer would own belongs above the seam, in Fascicle's composition surface, so that swapping a provider never means swapping a loop.
@@ -496,6 +498,8 @@ await engine.generate({
 
 No API key; `base_url` is required (the adapter throws `engine_config_error` otherwise). No reasoning support — `effort` is silently dropped and the trajectory records `effort_ignored`. Image parts are forwarded as the daemon's `images` field, so a vision model (one whose `ollama show` lists the `vision` capability) reads them. A model without vision is refused by the daemon with a 500 that says `image input is not supported`, which surfaces as a `provider_error` once the retries run out. Cache tokens are stripped from usage — local models don't report them. The daemon's own `eval_duration` reaches `provider_reported.ollama` from the provider's metadata, and `throughput()` takes it as each step's window.
 
+Tool-call salvage is on by default here, with a budget of 3, because a local runtime is where a model writes its call into the text instead of returning it. [`tool_call_repair_attempts`](./configuration.md#local-runtime-tool-reliability) changes the budget, and `0` turns it off.
+
 ### `transport: 'native'`
 
 Ollama's native transport targets its own `/api/chat` endpoint (NDJSON streaming), **not** the OpenAI-compatible core, because that endpoint exposes what the compat `/v1` tail hides: the `options` runtime bag (`num_predict`, `temperature`, `top_p`, and every other knob), `keep_alive`, and `think`. If you only want OpenAI-compatible behavior against Ollama, the [compat recipe](#openai-compatible-servers-the-compat-recipe) via the `openai` provider is the simpler path; go native here when you need those raw Ollama knobs.
@@ -540,7 +544,7 @@ await engine.generate({
 });
 ```
 
-Same constraints as Ollama, so no API key, `base_url` required, no reasoning, and cache tokens stripped. Image parts are forwarded as `image_url` content parts, and the model that the server has loaded decides whether it can read them.
+Same constraints as Ollama, so no API key, `base_url` required, no reasoning, and cache tokens stripped. Tool-call salvage is on by default here too, with the same budget of 3. Image parts are forwarded as `image_url` content parts, and the model that the server has loaded decides whether it can read them.
 
 ### `transport: 'native'`
 
@@ -712,6 +716,8 @@ A custom provider is a `ProviderFactory`, a synchronous function that takes the 
 Pick the kind by how much of the loop you want to inherit (see [Three integration depths](#three-integration-depths)); whichever you pick, the adapter plugs into the same `generate`, tool loop, cost accounting, and trajectory.
 
 A call that asks for something your adapter's `supports` denies fails before any request goes out. It throws `provider_capability_error` for `schema`, `tools`, or `streaming`, and the message names the call option to drop (`schema`, `tools`, or `on_chunk`) or says to route the call to a provider that supports it. Every built-in adapter supports all three, so only a custom provider's callers see these.
+
+An `ai_sdk` or `native` adapter that fronts a local runtime can declare `tool_call_repair_attempts`, the salvage budget that its calls get when neither the call nor the engine's defaults set one. The built-in `ollama` and `lmstudio` adapters declare 3, and an adapter that declares nothing gets 0.
 
 ### `kind: 'ai_sdk'`: Wrap an AI SDK Community Provider
 

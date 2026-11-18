@@ -538,8 +538,9 @@ export type GenerateOptions<t = string> = {
   /**
    * Budget for salvaging tool calls the model emitted as assistant text
    * instead of structured tool_calls (a common local-runtime failure).
-   * 0 (the default) disables salvage entirely. The budget is shared across
-   * the whole generate call, including schema-repair re-invocations.
+   * 0 disables salvage entirely, and it is the default on every provider but
+   * `ollama` and `lmstudio`, whose adapters declare 3. The budget is shared
+   * across the whole generate call, including schema-repair re-invocations.
    */
   tool_call_repair_attempts?: number
   /**

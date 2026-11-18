@@ -49,10 +49,14 @@ type NativeLog = {
 function make_fake_native_factory(
   log: NativeLog,
   turns: ReadonlyArray<ScriptedTurn>,
+  declared_salvage_budget?: number,
 ): ProviderFactory {
   return () => ({
     kind: 'native',
     name: PROVIDER,
+    ...(declared_salvage_budget !== undefined
+      ? { tool_call_repair_attempts: declared_salvage_budget }
+      : {}),
     invoke_turn: async (req) => {
       log.requests.push(req)
       const turn = turns[log.requests.length - 1]
@@ -69,10 +73,13 @@ function make_engine(
   log: NativeLog,
   turns: ReadonlyArray<ScriptedTurn>,
   config?: Partial<EngineConfig>,
+  declared_salvage_budget?: number,
 ): ReturnType<typeof create_engine> {
   return create_engine({
     providers: { [PROVIDER]: {} },
-    custom_providers: { [PROVIDER]: make_fake_native_factory(log, turns) },
+    custom_providers: {
+      [PROVIDER]: make_fake_native_factory(log, turns, declared_salvage_budget),
+    },
     ...config,
   })
 }
@@ -208,6 +215,87 @@ describe('native adapter inherits tool-call salvage', () => {
     expect(result.content).toBe(raw_text)
     expect(result.tool_calls).toEqual([])
     expect(log.requests).toHaveLength(1)
+  })
+})
+
+describe('an adapter can declare a salvage budget', () => {
+  const RAW_CALL = '<tool_call>{"name":"echo","arguments":{"value":"ping"}}</tool_call>'
+
+  it('salvages with no option set, and spends the declared budget one turn at a time', async () => {
+    const log: NativeLog = { requests: [] }
+    const echo = make_echo_tool()
+    // Two turns in a row write their call as text, and the adapter declares
+    // a budget of 1, so the first is salvaged and the second is the answer.
+    const engine = make_engine(log, [text_turn(RAW_CALL), text_turn(RAW_CALL)], undefined, 1)
+
+    const result = await engine.generate({ model: MODEL, prompt: 'use the tool', tools: [echo] })
+
+    expect(echo.calls).toEqual([{ value: 'ping' }])
+    expect(result.tool_calls).toHaveLength(1)
+    expect(result.tool_calls[0]).toMatchObject({ id: 'salvaged_0_0', salvaged: true })
+    expect(result.content).toBe(RAW_CALL)
+    expect(log.requests).toHaveLength(2)
+  })
+
+  it("lets a call's own 0 turn the declared budget off", async () => {
+    const log: NativeLog = { requests: [] }
+    const echo = make_echo_tool()
+    const engine = make_engine(log, [text_turn(RAW_CALL)], undefined, 3)
+
+    const result = await engine.generate({
+      model: MODEL,
+      prompt: 'use the tool',
+      tools: [echo],
+      tool_call_repair_attempts: 0,
+    })
+
+    expect(echo.calls).toEqual([])
+    expect(result.content).toBe(RAW_CALL)
+    expect(log.requests).toHaveLength(1)
+  })
+
+  it("lets the engine's default 0 turn the declared budget off", async () => {
+    const log: NativeLog = { requests: [] }
+    const echo = make_echo_tool()
+    const engine = make_engine(
+      log,
+      [text_turn(RAW_CALL)],
+      { defaults: { tool_call_repair_attempts: 0 } },
+      3,
+    )
+
+    const result = await engine.generate({ model: MODEL, prompt: 'use the tool', tools: [echo] })
+
+    expect(echo.calls).toEqual([])
+    expect(result.content).toBe(RAW_CALL)
+    expect(log.requests).toHaveLength(1)
+  })
+
+  it("lets the engine's default outrank the declared budget when it's larger too", async () => {
+    const log: NativeLog = { requests: [] }
+    const echo = make_echo_tool()
+    const engine = make_engine(
+      log,
+      [text_turn(RAW_CALL), text_turn(RAW_CALL), text_turn('done')],
+      { defaults: { tool_call_repair_attempts: 2 } },
+      1,
+    )
+
+    const result = await engine.generate({ model: MODEL, prompt: 'use the tool', tools: [echo] })
+
+    expect(echo.calls).toEqual([{ value: 'ping' }, { value: 'ping' }])
+    expect(result.content).toBe('done')
+    expect(log.requests).toHaveLength(3)
+  })
+
+  it('rejects a negative declared budget with the exact message', async () => {
+    const log: NativeLog = { requests: [] }
+    const engine = make_engine(log, [text_turn('never sent')], undefined, -1)
+
+    await expect(
+      engine.generate({ model: MODEL, prompt: 'use the tool', tools: [make_echo_tool()] }),
+    ).rejects.toThrow('tool_call_repair_attempts must be >= 0, got -1')
+    expect(log.requests).toHaveLength(0)
   })
 })
 

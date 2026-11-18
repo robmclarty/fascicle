@@ -123,6 +123,13 @@ describe('transport dispatch', () => {
     expect(adapter.name).toBe('openai')
   })
 
+  it('declares no salvage budget on either transport', () => {
+    for (const transport of ['ai_sdk', 'native']) {
+      const adapter = create_openai_adapter({ api_key: 'sk-test', transport })
+      expect('tool_call_repair_attempts' in adapter).toBe(false)
+    }
+  })
+
   it('throws engine_config_error on an unknown transport', () => {
     expect(() => create_openai_adapter({ api_key: 'sk-test', transport: 'grpc' })).toThrow(
       engine_config_error,

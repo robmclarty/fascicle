@@ -75,6 +75,18 @@ describe('create_lmstudio_adapter', () => {
     expect(create_lmstudio_adapter({ base_url, transport: 'native' }).supports('image_input')).toBe(false)
   })
 
+  it('declares a salvage budget of 3 on both transports', () => {
+    const base_url = 'http://localhost:1234/v1'
+    expect(create_lmstudio_adapter({ base_url, transport: 'ai_sdk' })).toHaveProperty(
+      'tool_call_repair_attempts',
+      3,
+    )
+    expect(create_lmstudio_adapter({ base_url, transport: 'native' })).toHaveProperty(
+      'tool_call_repair_attempts',
+      3,
+    )
+  })
+
   it('build_model returns a value when the @ai-sdk/openai-compatible peer resolves', async () => {
     const adapter = create_lmstudio_adapter({ base_url: 'http://localhost:1234/v1' })
     if (adapter.kind !== 'ai_sdk') throw new Error('expected the ai_sdk adapter')

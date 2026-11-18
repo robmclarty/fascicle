@@ -133,6 +133,12 @@ export type AiSdkProviderAdapter = {
   readonly supports: (capability: ProviderCapability) => boolean
   readonly prompt_cache?: PromptCacheDeclaration
   /**
+   * The salvage budget a call on this adapter gets when neither the call nor
+   * the engine's defaults set `tool_call_repair_attempts`. An adapter that
+   * declares nothing gets 0, which is salvage off.
+   */
+  readonly tool_call_repair_attempts?: number
+  /**
    * Turn the call's resolved cache setting into call-level provider options,
    * given the caller's own (engine defaults merged with the call's). The
    * engine merges the result beneath the caller's options, where effort's
@@ -159,6 +165,8 @@ export type NativeProviderAdapter = {
   readonly invoke_turn: (req: TurnRequest) => Promise<TurnResult>
   readonly supports: (capability: ProviderCapability) => boolean
   readonly prompt_cache?: PromptCacheDeclaration
+  /** The salvage budget this adapter declares, as on AiSdkProviderAdapter. */
+  readonly tool_call_repair_attempts?: number
   readonly dispose?: () => Promise<void>
   readonly classify_error?: (err: unknown) => unknown
 }
@@ -209,6 +217,15 @@ export function default_normalize_usage(
   }
   return totals
 }
+
+/**
+ * The salvage budget that the local backends (Ollama, LM Studio) declare. A
+ * local runtime is where a model writes its tool call into the text, so
+ * salvage is on there unless a call or the engine's defaults say otherwise.
+ * Each salvaged turn spends one, so three covers a model that slips now and
+ * then, and a runtime that never returns a structured call still runs out.
+ */
+export const LOCAL_TOOL_CALL_REPAIR_ATTEMPTS = 3
 
 /**
  * Usage mapper for local backends (Ollama, LM Studio) whose servers never

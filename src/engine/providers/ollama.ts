@@ -16,6 +16,7 @@
 
 import type { EffortLevel, ProviderInit } from '../types.js'
 import {
+  LOCAL_TOOL_CALL_REPAIR_ATTEMPTS,
   load_optional_peer,
   missing_config_error,
   normalize_local_usage,
@@ -137,5 +138,6 @@ const create_ollama_ai_sdk_adapter = (init: ProviderInit): AiSdkProviderAdapter 
     translate_effort: translate_ollama_effort,
     normalize_usage: normalize_ollama_usage,
     supports: (capability) => SUPPORTED.has(capability),
+    tool_call_repair_attempts: LOCAL_TOOL_CALL_REPAIR_ATTEMPTS,
   }
 }
