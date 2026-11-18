@@ -188,11 +188,12 @@ The published surface as of v0.19.0:
   cards, and an unknown session answers the way the protocol says. The suite passes
   on the 1.x SDK as well as 2.x. What's left is to run it by hand in Zed and in
   runciter, and to list an agent in the registry.
-- **A live run of `object_store` against a real bucket.** The store passes the
-  conformance suite over in-memory clients only, and the S3 client in
-  [human-in-the-loop.md](./human-in-the-loop.md#the-store-a-run-lives-in) has
-  never been compiled against the SDK. I'll run both against a real bucket
-  before I call the store proven.
+- **A run of `object_store` against a real service.** The store passes the
+  conformance suite over real HTTP against LocalStack's S3, with the client
+  that [human-in-the-loop.md](./human-in-the-loop.md#the-store-a-run-lives-in)
+  prints. An emulator can't say whether S3, R2, or Tigris checks a condition
+  under a race, so I'll run it against a real bucket before I call the store
+  proven there.
 - **A suspended flow over MCP.** `serve_flow` flattens a `suspend` gate into
   an error result, so a host can't answer it. MCP's elicitation is the way to
   ask, and bridging a gate to it is the next piece of the MCP work.

@@ -40,6 +40,7 @@
 
 ### Fixed
 
+- **An ACP session says when an editor's MCP server wants a token.** A server that answered 401 was left out of the session with "it couldn't be reached" and the SDK's error. Its warning now says that the entry in your editor's MCP settings sends no token the server accepts, and to fix the entry's headers.
 - **A model that refuses an image fails once, with a capability error.** Ollama answers an image sent to a model that can't see with a 500, and the `ai_sdk` transport retried it as a `provider_5xx` until the attempts ran out. A response that says the model doesn't take images is now a `provider_capability_error` for `image_input`, at any status, and its message carries the provider's words and says to send the image to a model that takes one or to drop the part.
 - **`fascicle/acp` leaves an MCP value of one or two characters in a warning.** An `env` or `headers` value is cut out of a warning before it reaches stderr or the client, and a value such as `1` took the `1` out of `exit 1` and the last octet out of `127.0.0.1`. A value under three characters now stays where it is, so a secret that short isn't cut.
 - **The `ai_sdk` transport for `ollama` and `lmstudio` declares `image_input`.** Both already carried an image part to a local vision model, and `supports('image_input')` said that they didn't. The native transports still refuse an image and point at `transport: 'ai_sdk'`.
@@ -52,6 +53,7 @@
 ### Internal
 
 - **A red check run says what failed.** The triage steps in `AGENTS.md` sent an agent to `.check/summary.json` and then to each tool's report. They now start from `pnpm check --digest`, which prints an excerpt of what each failing check said, and CI runs the suite with the flag, so a red step's log ends with the reason.
+- **`object_store` passed the conformance suite over real HTTP.** The live test ran against LocalStack's S3, through `@aws-sdk/client-s3` and the client that [human-in-the-loop.md](./docs/human-in-the-loop.md#the-store-a-run-lives-in) prints, and all 49 checks passed. An emulator checks the client and the store, and a run against the service you'll use is still what says that the service checks its conditions.
 - **The live prompt-cache check ran.** A Claude tool loop through OpenRouter wrote its prefix on the first turn and read it on the next two, on the Messages endpoint and on OpenRouter's native transport, and [providers.md](./docs/providers.md#prompt-caching) says the two things the run settled: another vendor's model takes `cache` and ignores it, and a loop that sends a `session_id` stayed on one upstream. The test gives each run a prefix of its own, since a shared one let the second case read the cache that the first had written.
 - **Five tests no longer depend on an idle machine.** The linear-time tests in `html_to_text`, the concurrency test in `parallel`, two in `timeout`, `run_shell`, and a `claude_cli` cancellation test held a wall-clock bound that a loaded machine missed. Each now holds what it guards: growth between two sizes, both children started, fake timers, and the first chunk.
 
