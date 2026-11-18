@@ -1,0 +1,77 @@
+diff --git a/lib/parse.js b/lib/parse.js
+index caa2b86aa5a567df33cef4bda3c7a97794f439f8..ef9202597d21d4fc9226b03efac26d66a6bfb5c3 100644
+--- a/lib/parse.js
++++ b/lib/parse.js
+@@ -280,6 +280,61 @@ const repeatedExtglobRecursion = pattern => {
+   return depth;
+ };
+ 
++/**
++ * True when a repeated extglob's body holds a `*` wildcard: one that is not
++ * escaped, quoted or inside a bracket expression, and does not open a nested
++ * `*(...)`. Such a body puts an unbounded quantifier inside the outer repeat,
++ * as in `+(*a)` -> `(?:[^/]*?a)+`, which backtracks exponentially on a short
++ * string that almost matches (GHSA-fc5q-39xc-vjpf). The count of branches and
++ * the depth of the wildcard make no difference: `+(*a|b)` and `+(@(*a))`
++ * compile to the same shape.
++ */
++
++const hasUnboundedWildcard = body => {
++  let bracket = 0;
++  let quote = 0;
++  let escaped = false;
++
++  for (let i = 0; i < body.length; i++) {
++    const ch = body[i];
++
++    if (escaped === true) {
++      escaped = false;
++      continue;
++    }
++
++    if (ch === '\\') {
++      escaped = true;
++      continue;
++    }
++
++    if (ch === '"') {
++      quote = quote === 1 ? 0 : 1;
++      continue;
++    }
++
++    if (quote === 1) {
++      continue;
++    }
++
++    if (ch === '[') {
++      bracket++;
++      continue;
++    }
++
++    if (ch === ']' && bracket > 0) {
++      bracket--;
++      continue;
++    }
++
++    if (bracket === 0 && ch === '*' && body[i + 1] !== '(') {
++      return true;
++    }
++  }
++
++  return false;
++};
++
+ const analyzeRepeatedExtglob = (body, options) => {
+   if (options.maxExtglobRecursion === false) {
+     return { risky: false };
+@@ -290,6 +345,10 @@ const analyzeRepeatedExtglob = (body, options) => {
+       ? options.maxExtglobRecursion
+       : constants.DEFAULT_MAX_EXTGLOB_RECURSION;
+ 
++  if (hasUnboundedWildcard(body)) {
++    return { risky: true };
++  }
++
+   const branches = splitTopLevel(body).map(branch => branch.trim());
+ 
+   if (branches.length > 1) {

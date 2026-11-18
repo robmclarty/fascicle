@@ -107,14 +107,37 @@ overrides:
 #
 # Retire it when braces ships a fix: delete the entry, the patch file, and
 # the `audit.ignore` line below, re-install, and run `pnpm check:security`.
+#
+# picomatch through 4.0.7 guards a repeated extglob against backtracking only
+# when its body has more than one branch or nests another repeat, so a body
+# with a `*` wildcard in it gets through: `+(*a)` compiles to
+# `(?:[^/]*?a)+`, which takes two seconds to refuse 26 a's and a `!` and
+# doubles with each a after that (GHSA-fc5q-39xc-vjpf, high). No release
+# fixes it, 4.0.7 being the latest, and the pull request the advisory links
+# (micromatch/picomatch#194) leaves `+(*a)` as it was. The patch is this
+# repo's own: `analyzeRepeatedExtglob` calls any `+(...)` or `*(...)` whose
+# body holds an unescaped `*` wildcard risky, at any depth and for any count
+# of branches, and such a pattern then matches as literal text, which is
+# what picomatch already does with `*(*|a)`. `maxExtglobRecursion: false`
+# still turns the guard off. Both copies in the tree carry it: 4.0.7 under
+# vite, tinyglobby, and cspell, and 2.3.2 under markdownlint-cli2's globbing.
+# All of them are dev tools that read patterns from this repo.
+#
+# Retire it when picomatch ships a fix: delete both entries, both patch
+# files, and the `audit.ignore` line below, re-install, and run
+# `pnpm check:security`. A picomatch release without the fix needs the patch
+# made again for the new version, since an entry names the version it patches.
 patchedDependencies:
   braces@3.0.3: patches/braces@3.0.3.patch
+  picomatch@2.3.2: patches/picomatch@2.3.2.patch
+  picomatch@4.0.7: patches/picomatch@4.0.7.patch
 
 # pnpm audit matches advisories by version, so it can't see a patch. This
-# tells it the braces advisory is handled above, so `pnpm audit` passes, and
-# so does checkride's `security` slot from 0.15 on. That slot counts the
-# advisories that the report lists rather than its per-severity totals, which
-# pnpm 11 still fills with ignored advisories.
+# tells it the braces and picomatch advisories are handled above, so
+# `pnpm audit` passes, and so does checkride's `security` slot from 0.15 on.
+# That slot counts the advisories that the report lists rather than its
+# per-severity totals, which pnpm 11 still fills with ignored advisories.
 audit:
   ignore:
     - GHSA-vfj7-8cjw-p6xm # braces 3.0.3, patched above
+    - GHSA-fc5q-39xc-vjpf # picomatch 2.3.2 and 4.0.7, patched above
