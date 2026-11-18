@@ -44,13 +44,18 @@ export type McpSamplingConfig = {
   model: string
   provider?: string
   // The most output tokens one request may ask for. A request that asks for
-  // more is answered within this, and unset leaves the request's own number.
+  // more is answered within this. Unset caps a request at 4,096.
   max_tokens?: number
   // Called before each completion. A false answer refuses the request
-  // before the engine is called. Unset allows every request.
-  on_request?: (request: McpSamplingRequest) => boolean | Promise<boolean>
+  // before the engine is called. Required, since a server that you connect
+  // to is asking to spend your tokens, and the answer is yours to give. Pass
+  // `() => true` to allow every request.
+  on_request: (request: McpSamplingRequest) => boolean | Promise<boolean>
   trajectory?: TrajectoryLogger
 }
+
+// What one sampling request may ask for when the config sets no `max_tokens`.
+const DEFAULT_SAMPLING_MAX_TOKENS = 4096
 
 type Refuse = (code: number, message: string) => Error
 
@@ -101,18 +106,15 @@ function create_sampling_handler(
       )
     }
     const messages = params.messages.map((message) => to_message(message, refuse))
-    const max_tokens =
-      config.max_tokens !== undefined ? Math.min(params.maxTokens, config.max_tokens) : params.maxTokens
+    const max_tokens = Math.min(params.maxTokens, config.max_tokens ?? DEFAULT_SAMPLING_MAX_TOKENS)
 
-    if (config.on_request !== undefined) {
-      const allowed = await config.on_request({
-        messages,
-        ...(params.systemPrompt !== undefined ? { system: params.systemPrompt } : {}),
-        max_tokens,
-        ...(params.modelPreferences !== undefined ? { model_preferences: params.modelPreferences } : {}),
-      })
-      if (!allowed) throw refuse(REJECTED, 'sampling request rejected by the client')
-    }
+    const allowed = await config.on_request({
+      messages,
+      ...(params.systemPrompt !== undefined ? { system: params.systemPrompt } : {}),
+      max_tokens,
+      ...(params.modelPreferences !== undefined ? { model_preferences: params.modelPreferences } : {}),
+    })
+    if (!allowed) throw refuse(REJECTED, 'sampling request rejected by the client')
 
     const result = await config.engine.generate({
       model: config.model,

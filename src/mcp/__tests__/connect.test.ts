@@ -315,7 +315,7 @@ describe('mcp_client connect path', () => {
   })
 
   describe('sampling', () => {
-    const sampling = { engine: { generate: vi.fn() } as never, model: 'm' }
+    const sampling = { engine: { generate: vi.fn() } as never, model: 'm', on_request: () => true }
 
     it('constructs the client with its identity alone and registers nothing when sampling is unset', async () => {
       await mcp_client({ transport: 'stdio', command: 'x' })

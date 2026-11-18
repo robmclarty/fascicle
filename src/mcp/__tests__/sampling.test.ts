@@ -43,9 +43,11 @@ function plain_server(): McpServer {
 
 /**
  * Connects `mcp_client` to a fresh server as a connection it owns, with
- * `sampling` as its option when given.
+ * `sampling` as its option when given. A config with no hook gets one that
+ * allows every request.
  */
-async function connect_owned(sampling?: McpSamplingConfig): Promise<McpServer> {
+async function connect_owned(given?: Omit<McpSamplingConfig, 'on_request'> & Partial<Pick<McpSamplingConfig, 'on_request'>>): Promise<McpServer> {
+  const sampling: McpSamplingConfig | undefined = given === undefined ? undefined : { on_request: () => true, ...given }
   const server = plain_server()
   const [client_transport, server_transport] = InMemoryTransport.createLinkedPair()
   await server.connect(server_transport)
@@ -170,6 +172,20 @@ describe('mcp_client sampling', () => {
     await server.server.createMessage({ ...HELLO, maxTokens: 20 })
     await server.server.createMessage({ ...HELLO, maxTokens: 50 })
     expect(calls.map((c) => c.max_tokens)).toEqual([50, 20, 50])
+  })
+
+  it('caps a request at 4,096 when the config sets no max_tokens, and lets the config raise the cap', async () => {
+    const { engine, calls } = stub_engine()
+    const server = await connect_owned({ engine, model: 'm' })
+    await server.server.createMessage({ ...HELLO, maxTokens: 100_000 })
+    await server.server.createMessage({ ...HELLO, maxTokens: 4096 })
+    await server.server.createMessage({ ...HELLO, maxTokens: 4095 })
+    expect(calls.map((c) => c.max_tokens)).toEqual([4096, 4096, 4095])
+
+    const raised = stub_engine()
+    const roomy = await connect_owned({ engine: raised.engine, model: 'm', max_tokens: 8000 })
+    await roomy.server.createMessage({ ...HELLO, maxTokens: 100_000 })
+    expect(raised.calls.map((c) => c.max_tokens)).toEqual([8000])
   })
 
   it('maps the engine\'s finish reason to stopReason, and passes on one MCP has no name for', async () => {
@@ -403,7 +419,7 @@ describe('mcp_client sampling on a client the caller connected', () => {
   it('serves sampling when that client declared the capability', async () => {
     const { server, client } = await connect_injected({ sampling: {} })
     const { engine, calls } = stub_engine()
-    await mcp_client({ transport: 'client', client }, { sampling: { engine, model: 'cfg-model' } })
+    await mcp_client({ transport: 'client', client }, { sampling: { engine, model: 'cfg-model', on_request: () => true } })
     const result = await server.server.createMessage(HELLO)
     expect(result.content).toEqual({ type: 'text', text: 'pong' })
     expect(calls.map((c) => c.model)).toEqual(['cfg-model'])
@@ -412,7 +428,7 @@ describe('mcp_client sampling on a client the caller connected', () => {
   it('says how to fix a client that declared no sampling capability', async () => {
     const { client } = await connect_injected({})
     const err = await rejection(
-      mcp_client({ transport: 'client', client }, { sampling: { engine: stub_engine().engine, model: 'm' } }),
+      mcp_client({ transport: 'client', client }, { sampling: { engine: stub_engine().engine, model: 'm', on_request: () => true } }),
     )
     expect(err).toBeInstanceOf(mcp_error)
     expect((err as Error).message).toBe(
@@ -430,7 +446,7 @@ describe('mcp_client sampling on a client the caller connected', () => {
     const err = await rejection(
       mcp_client(
         { transport: 'client', client: client as never },
-        { sampling: { engine: stub_engine().engine, model: 'm' } },
+        { sampling: { engine: stub_engine().engine, model: 'm', on_request: () => true } },
       ),
     )
     expect(err).toBeInstanceOf(mcp_error)

@@ -194,8 +194,8 @@ const handle = await mcp_client(config, {
 | `engine` | the engine that runs the completion |
 | `model` | the model, sent to the engine as written. Required |
 | `provider` | the provider, when the engine has more than one |
-| `max_tokens` | the most output tokens one request may ask for. A request that asks for more is answered within the cap |
-| `on_request` | called before each completion with `{ messages, system?, max_tokens, model_preferences? }`. A false answer refuses the request before the engine is called |
+| `max_tokens` | the most output tokens one request may ask for, 4,096 when unset. A request that asks for more is answered within the cap |
+| `on_request` | called before each completion with `{ messages, system?, max_tokens, model_preferences? }`. Required. Anything but `true` refuses the request before the engine is called |
 | `trajectory` | passed to the engine's `generate` call |
 
 Setting `sampling` is what declares the capability to the server. Leave it out and the server is told nothing, and a request it sends anyway is answered "Method not found".
@@ -210,7 +210,7 @@ Setting `sampling` is what declares the capability to the server. Leave it out a
 
 **No tools.** A sampling request can ask for tools of its own. This client doesn't advertise that and refuses a request that carries `tools` or `toolChoice`. A remote server that picked which of your tools ran would be making the decision that approval exists to keep with you.
 
-**The default allows.** With no `on_request`, every request is answered. That's the opposite of tool approval, on purpose. You gate a tool one at a time, so a missing handler has to refuse. Sampling is off until you configure it, and configuring it is the consent. `max_tokens` is what bounds the bill, so set it. The MCP specification asks a client to let a person see a sampling request before it runs, and `on_request` is where you do that.
+**You answer every request.** `on_request` is required, so a server never spends your tokens on a default. It's called before each completion, and anything but `true` refuses the request before the engine is called. The MCP specification asks a client to let a person see a sampling request before it runs, and this is where you do that. An app that trusts its server passes `() => true`. `max_tokens` bounds what one request can cost, and a request is held to 4,096 output tokens when you don't set it.
 
 When the engine fails, the server is answered with the error's message, so a server that you don't trust reads whatever that message says.
 

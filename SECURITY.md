@@ -215,7 +215,8 @@ didn't write and that runs with whatever rights its server has.
 - **Sampling spends your tokens.** With the `sampling` option, a server can
   ask your engine for completions. The model is the one you named, a request
   that carries tools is refused, `max_tokens` caps what one request can ask
-  for, and `on_request` can refuse a request before the engine is called.
+  for (4,096 when you set none), and the required `on_request` answers each
+  request before the engine is called.
   Sampling is off until you configure it.
 - **Credentials are arguments.** A header, an `auth_provider`, and a stdio
   server's `env` are all passed in by you. An auth failure names the server
