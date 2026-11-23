@@ -232,6 +232,7 @@ const engine = create_engine({
       sandbox: {
         kind: 'claude_code',
         network_allowlist: ['registry.npmjs.org', '*.github.com'],
+        allow_local_binding: true,
         additional_write_paths: ['~/.cache/pnpm'],
         additional_read_paths: ['~/.npmrc'],
         deny_read_paths: ['~/.ssh', '~/.aws'],
@@ -244,9 +245,12 @@ const engine = create_engine({
 | Field                    | What it confines                                                                 |
 | ------------------------ | -------------------------------------------------------------------------------- |
 | `network_allowlist`      | The domains that Bash commands may reach, with `*.example.com` for the subdomains. Empty or absent means no network, and a host off the list is refused rather than asked about. |
+| `allow_local_binding`    | Whether Bash commands may bind ports on localhost and reach them, so a command can start a server and talk to it. Outbound hosts are still held to `network_allowlist`. It's off unless you set it, and it matters on macOS only (see below). |
 | `additional_write_paths` | Where Bash may write, beyond the working directory and the per-user temp directory. |
 | `additional_read_paths`  | What Bash may still read outside the working directory. The sandbox shuts Bash out of your home directory, apart from the working directory and git's global config. |
 | `deny_read_paths`        | What neither Bash nor the file tools may read, even inside the working directory. |
+
+On macOS a sandboxed command can't bind a port, so a server that a command starts dies with `listen EPERM`, and `allow_local_binding: true` lets it listen. A command that binds can then reach every other port on localhost too, so a local service that takes no authentication, such as a debugger, can act for it outside the sandbox. On Linux and WSL2 the setting has no effect, because each sandboxed command has a loopback interface of its own. A command there can already start a server and reach it, and it can't reach a server on the host's localhost, with the setting or without it.
 
 Give each path as an absolute path or one that starts with `~/`. A relative one throws `engine_config_error` when you build the engine, since Claude Code resolves a relative path differently in each of its lists.
 

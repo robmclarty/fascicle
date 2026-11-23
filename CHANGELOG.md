@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Added
+
+- **A `claude_code` sandbox can let Bash start a server on localhost, with `allow_local_binding`.** On macOS the sandbox stops every command from binding a port, so a session that has to start the product it's checking and talk to it couldn't, because the server died with `listen EPERM`. `network_allowlist` didn't help, since it names the hosts a command may reach and has nothing to do with binding, and a call can't pass its own `--settings` under the sandbox. `allow_local_binding: true` renders `allowLocalBinding: true` under `sandbox.network`, and Bash commands may then bind ports on localhost and reach them, while outbound hosts are still held to `network_allowlist`. A command that binds can reach every other port on localhost as well. Without the option the rendered settings are the same as they were, so no existing call's argv changes. On Linux and WSL2 the key has no effect, because each sandboxed command has a loopback interface of its own where it can already start a server and reach it. The `bwrap` and `greywall` kinds don't take it. See [Sandboxing](./docs/cli.md#sandboxing).
+
 ### Changed
 
 - **Tool-call salvage is on by default for `ollama` and `lmstudio`.** `tool_call_repair_attempts` defaulted to `0` everywhere, so the option that exists for local runtimes ran only for a caller who knew to set it. Both providers' adapters now declare a budget of 3, on either transport, and a call on them recovers a tool call that the model wrote into its text with no option set. What changes for an app already on one of them is a turn whose text holds a call that names one of the call's tools, with arguments that validate against that tool's schema. It used to end the loop as the answer, and it now runs the tool. A value on the call still wins, then `defaults.tool_call_repair_attempts`, so a `0` at either place turns salvage off. Every other provider keeps `0`, the `openai` provider pointed at a local server included. An adapter of your own declares a budget with the new optional `tool_call_repair_attempts` field on `AiSdkProviderAdapter` and `NativeProviderAdapter`.

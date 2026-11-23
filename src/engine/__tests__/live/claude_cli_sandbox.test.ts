@@ -10,6 +10,11 @@
  * model's word for it, and each Bash probe prints its exit code, so a
  * command the CLI refused to run can't pass for one the sandbox stopped.
  *
+ * A second engine runs the same policy with `allow_local_binding` on, and
+ * the localhost probes compare the two: a server that Bash starts answers
+ * under that engine and dies at bind under the first. On Linux the first
+ * one lets it bind too, so those probes are for macOS.
+ *
  * The Bash probes reach outside through symlinks in the working directory.
  * A command that names an outside path is refused before it runs, since the
  * read block can't ask under `-p`, and going through a symlink leaves the
@@ -39,6 +44,7 @@ const BLOCKED_DOMAIN = 'example.com'
 // The body lands inside the working directory: naming /dev/null would get
 // the command refused before curl ran.
 const HTTP_CODE = "curl -s -m 20 -o page.html -w 'HTTP_%{http_code}'"
+const LOCAL_PORT = 18_000 + (process.pid % 1_000)
 
 const SYSTEM = [
   'You are a probe in a test of a sandbox.',
@@ -80,6 +86,41 @@ describe.skipIf(!enabled)('live: claude_cli under the claude_code sandbox', () =
   let outside = ''
   let denied = ''
   let engine: Engine | undefined
+  let binding_engine: Engine | undefined
+
+  /** An engine under the probe's policy, plus whatever `extra` turns on. */
+  function sandboxed_engine(extra: { allow_local_binding?: boolean }): Engine {
+    return create_engine({
+      providers: {
+        claude_cli: {
+          auth_mode: 'oauth',
+          default_cwd: cwd,
+          sandbox: {
+            kind: 'claude_code',
+            network_allowlist: [ALLOWED_DOMAIN],
+            deny_read_paths: [denied],
+            ...extra,
+          },
+        },
+      },
+    })
+  }
+
+  /**
+   * A command that starts a server on 127.0.0.1, fetches from it into a
+   * file in the working directory, and stops it. The server answers with
+   * a nonce, so only a server this command started can produce the file.
+   */
+  function local_server_command(port: number, body_file: string, served: string): string {
+    const server = `require('http').createServer((q,s)=>s.end('${served}')).listen(${String(port)},'127.0.0.1')`
+    return [
+      `node -e "${server}" & sleep 2`,
+      `curl -s -m 10 -o ${body_file} -w 'HTTP_%{http_code}' http://127.0.0.1:${String(port)}/`,
+      'echo',
+      'kill $!',
+      'echo EXIT_$?',
+    ].join('; ')
+  }
 
   beforeAll(async () => {
     const version = execFileSync('claude', ['--version'], { encoding: 'utf8' }).trim()
@@ -95,23 +136,13 @@ describe.skipIf(!enabled)('live: claude_cli under the claude_code sandbox', () =
     await mkdir(home_target)
     await symlink(home_target, join(cwd, 'home'))
     await symlink(join(denied, 'canary.txt'), join(cwd, 'peek.txt'))
-    engine = create_engine({
-      providers: {
-        claude_cli: {
-          auth_mode: 'oauth',
-          default_cwd: cwd,
-          sandbox: {
-            kind: 'claude_code',
-            network_allowlist: [ALLOWED_DOMAIN],
-            deny_read_paths: [denied],
-          },
-        },
-      },
-    })
+    engine = sandboxed_engine({})
+    binding_engine = sandboxed_engine({ allow_local_binding: true })
   })
 
   afterAll(async () => {
     await engine?.dispose()
+    await binding_engine?.dispose()
     // The links go first, so nothing below can reach through them.
     await Promise.all(['home', 'peek.txt'].map((name) => rm(join(cwd, name), { force: true })))
     const leftovers = [cwd, outside, denied, home_target, hook_marker]
@@ -119,9 +150,13 @@ describe.skipIf(!enabled)('live: claude_cli under the claude_code sandbox', () =
   })
 
   /** One probe call: the prompt names the action, the allowlist names the tools. */
-  async function probe(prompt: string, allowed_tools: ReadonlyArray<string>): Promise<GenerateResult> {
-    if (engine === undefined) throw new Error('the engine was never built')
-    return engine.generate({
+  async function probe(
+    prompt: string,
+    allowed_tools: ReadonlyArray<string>,
+    on: Engine | undefined = engine,
+  ): Promise<GenerateResult> {
+    if (on === undefined) throw new Error('the engine was never built')
+    return on.generate({
       provider: 'claude_cli',
       model: 'haiku',
       system: SYSTEM,
@@ -166,6 +201,35 @@ describe.skipIf(!enabled)('live: claude_cli under the claude_code sandbox', () =
     const outputs = tool_outputs(result)
     expect(outputs, 'curl never ran, so the sandbox went untested').toMatch(/HTTP_\d{3}/)
     expect(outputs).not.toContain('HTTP_200')
+  }, TIMEOUT_MS)
+
+  it('blocks a localhost server without allow_local_binding', async () => {
+    const served = `local-${nonce}`
+    const body_file = `local-off-${nonce}.txt`
+    const command = local_server_command(LOCAL_PORT, body_file, served)
+    const result = await probe(`Run this with the Bash tool: ${command}`, ['Bash'])
+    expect_tool_ran(result, 'Bash')
+    const outputs = tool_outputs(result)
+    console.log(`localhost without allow_local_binding: ${outputs.match(/HTTP_\d{3}/)?.[0] ?? 'no code'}`)
+    expect(outputs, 'curl never ran, so the sandbox went untested').toMatch(/HTTP_\d{3}/)
+    expect(outputs).not.toContain('HTTP_200')
+    const body_path = join(cwd, body_file)
+    expect(existsSync(body_path) ? readFileSync(body_path, 'utf8') : '').not.toContain(served)
+  }, TIMEOUT_MS)
+
+  it('lets a localhost server answer with allow_local_binding, still blocking a domain off the list', async () => {
+    const served = `local-${nonce}`
+    const body_file = `local-on-${nonce}.txt`
+    const command = `${local_server_command(LOCAL_PORT + 1, body_file, served)}; ${HTTP_CODE} https://${BLOCKED_DOMAIN}`
+    const result = await probe(`Run this with the Bash tool: ${command}`, ['Bash'], binding_engine)
+    expect_tool_ran(result, 'Bash')
+    const outputs = tool_outputs(result)
+    const codes = outputs.match(/HTTP_\d{3}/g) ?? []
+    console.log(`localhost with allow_local_binding, then ${BLOCKED_DOMAIN}: ${codes.join(' ') || 'no codes'}`)
+    expect(codes, 'curl never ran twice, so the sandbox went untested').toHaveLength(2)
+    expect(codes[0]).toBe('HTTP_200')
+    expect(codes[1]).not.toBe('HTTP_200')
+    expect(readFileSync(join(cwd, body_file), 'utf8')).toBe(served)
   }, TIMEOUT_MS)
 
   it('lets the Write tool create a file inside the working directory', async () => {

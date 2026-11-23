@@ -65,6 +65,36 @@ describe('render_sandbox_settings', () => {
     ])
   })
 
+  it('leaves allowLocalBinding out by default and when allow_local_binding is false', () => {
+    for (const sandbox of [
+      { kind: 'claude_code' },
+      { kind: 'claude_code', allow_local_binding: false },
+    ] as const) {
+      const settings = JSON.parse(render_sandbox_settings(sandbox)) as {
+        sandbox: { network: Record<string, unknown> }
+      }
+      expect(settings.sandbox.network).not.toHaveProperty('allowLocalBinding')
+    }
+    expect(render_sandbox_settings({ kind: 'claude_code', allow_local_binding: false })).toBe(
+      render_sandbox_settings({ kind: 'claude_code' }),
+    )
+  })
+
+  it('renders allowLocalBinding true under network when allow_local_binding is set', () => {
+    const settings = JSON.parse(
+      render_sandbox_settings({
+        kind: 'claude_code',
+        network_allowlist: ['openrouter.ai'],
+        allow_local_binding: true,
+      }),
+    ) as { sandbox: { network: unknown } }
+    expect(settings.sandbox.network).toEqual({
+      allowedDomains: ['openrouter.ai'],
+      strictAllowlist: true,
+      allowLocalBinding: true,
+    })
+  })
+
   it('drops trailing slashes so a directory renders the same rules either way', () => {
     const settings = JSON.parse(
       render_sandbox_settings({

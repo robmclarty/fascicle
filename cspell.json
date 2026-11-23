@@ -74,6 +74,7 @@
     "ECONNREFUSED",
     "ENOENT",
     "ENOTFOUND",
+    "EPERM",
     "envrc",
     "fascicle",
     "esbuild",

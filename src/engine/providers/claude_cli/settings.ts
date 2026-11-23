@@ -96,6 +96,8 @@ export function validate_sandbox_extra_args(
  * - `autoAllowBashIfSandboxed: false` leaves the call's allowlist deciding
  *   whether Bash runs at all, rather than the sandbox approving it.
  * - `strictAllowlist` refuses a host off the list rather than asking for it.
+ * - `allowLocalBinding` appears only when the policy sets
+ *   `allow_local_binding`, so binding a port stays blocked otherwise.
  * - The two `permissions` blocks hold the file tools inside the working
  *   directories in every permission mode, and the Read deny rules keep them
  *   off the denied paths too.
@@ -113,6 +115,7 @@ export function render_sandbox_settings(sandbox: ClaudeCodeSandbox): string {
       network: {
         allowedDomains: [...(sandbox.network_allowlist ?? [])],
         strictAllowlist: true,
+        ...(sandbox.allow_local_binding === true ? { allowLocalBinding: true } : {}),
       },
       filesystem: {
         allowWrite: (sandbox.additional_write_paths ?? []).map(trim_path),

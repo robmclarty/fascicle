@@ -27,6 +27,21 @@ export type SandboxProviderConfig =
        */
       readonly network_allowlist?: ReadonlyArray<string>
       /**
+       * Let Bash commands bind ports on localhost and reach them, so a
+       * command can start a server and talk to it. Outbound hosts are still
+       * held to `network_allowlist`, and absent or false keeps binding
+       * blocked.
+       *
+       * The key matters on macOS only. On Linux and WSL2 each sandboxed
+       * command gets a loopback interface of its own, where it can already
+       * listen and reach the servers it started, and the key has no effect.
+       * There a command still can't reach a server on the host's localhost,
+       * with the key or without it. On macOS a command that binds can reach
+       * every other port on localhost too, so a local service that takes no
+       * authentication can act for the command outside the sandbox.
+       */
+      readonly allow_local_binding?: boolean
+      /**
        * Absolute or `~/` paths that Bash commands may write, beyond the
        * working directory and the per-user temp directory.
        */
