@@ -73,7 +73,7 @@ export function translate_anthropic_cache(
   const own: unknown = provider_options?.['anthropic']
   const read = (key: string): unknown =>
     typeof own === 'object' && own !== null ? Reflect.get(own, key) : undefined
-  if (read('cacheControl') !== undefined) return {}
+  if (typeof own === 'object' && own !== null && 'cacheControl' in own) return {}
   const raw = read('cache_control')
   if (raw !== undefined) return { anthropic: { cacheControl: raw } }
   if (cache === 'off') return {}

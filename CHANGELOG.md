@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **The `bedrock` provider takes the `cache` option.** Its adapter declared no caching, so a call that set `cache: '5m'` recorded `option_ignored` and sent nothing, and the only way to cache on Bedrock was to write the wire field by hand. The adapter now declares `'opt_in'`: `cache: '5m'` sends `cache_control: { type: 'ephemeral' }` inside `additionalModelRequestFields`, which turns on Bedrock's automatic prompt caching on the Claude models that support it, and `'1h'` adds `ttl: '1h'`. Whatever else you pass in `additionalModelRequestFields` stays beside it, a `cache_control` of your own there wins, and options that you pass under `amazonBedrock` get the field under that key, since `@ai-sdk/amazon-bedrock` reads only one of the two. Left unset, nothing changes, tools or not, because every other model, an older Claude model included, answers the field with a `ValidationException` and the adapter reads no model id. For the same reason, set `cache` on the calls that go to a model that supports it and not as `defaults.cache` on an engine that calls other models too. A one-hour write is priced as one, since the adapter reads the one-hour part of a write from the `cacheDetails` that Converse reports into `usage.cache_write_1h_tokens`. See [providers.md](./docs/providers.md#bedrock).
+
+### Changed
+
+- **An `ai_sdk` adapter's `translate_cache` result goes over the caller's provider options, not beneath them.** The engine merged it under `provider_options` one key deep, so a hook that returned an object for a key the caller had also set lost the whole object, even when it had folded the caller's entries in. The result is now laid over the caller's options, key by key under each provider, and the hook settles precedence, as it already could, since it receives those options. It returns nothing for a key that the caller's value should win, the way `translate_anthropic_cache` does for `cacheControl`. The built-in adapters send what they sent before, and `translate_anthropic_cache` now counts a `cacheControl` key as the caller's whenever it is present, so one that holds `undefined` still switches the derived value off. A custom adapter whose hook returns a key without looking at the caller's options now overrides the caller's value for that key, so read `provider_options` in the hook and leave the key out when the caller set it.
+
 ## v0.19.2 — 2026-11-22
 
 ### Added

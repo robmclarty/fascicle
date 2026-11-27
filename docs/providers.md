@@ -472,6 +472,26 @@ const res = await engine.generate({
 
 Add `guardContentQualifiers` to say what a marked part is for. `'grounding_source'` and `'query'` feed the contextual grounding check, and `'guard_content'` is the plain mark. Image parts take `guardContent` too. Releases of `@ai-sdk/amazon-bedrock` before 5.0.65 ignore part-level options and send a marked part as ordinary text, so the guardrail goes back to checking the whole turn. An old peer errs toward the broader check, not a narrower one.
 
+Prompt caching is opt-in on Bedrock. A call that sets `cache: '5m'` sends `cache_control: { type: 'ephemeral' }` inside `additionalModelRequestFields`, and `'1h'` adds `ttl: '1h'`. That one model field turns on Bedrock's automatic caching on the Claude models that support it, and automatic caching puts the breakpoint on the last block that the request can cache and moves it forward as the conversation grows. The adapter keeps whatever else you put in `additionalModelRequestFields` beside it, and a `cache_control` of your own there wins over the one that the setting derives. If you pass your options under `amazonBedrock` and not `bedrock`, the field goes there too, because the peer reads only the first of the two.
+
+```ts
+await engine.generate({
+  provider: 'bedrock',
+  model: 'us.anthropic.claude-sonnet-5-5',
+  prompt: 'What changed in this diff?',
+  tools,
+  cache: '5m',
+});
+```
+
+It's opt-in because only some models take the field. Recent Claude models do, and AWS keeps the list on its [prompt caching page](https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-caching.html). Every other model on Bedrock, an older Claude model included, answers a top-level `cache_control` with a `ValidationException`. The adapter reads no model id, so it can't tell which kind of model a call is going to. Set `cache` on the calls that go to a model on that list. On an engine that also calls Llama, Nova, or an older Claude model, don't set it as `defaults.cache`, since the default would reach those calls too.
+
+Three things about Bedrock's cache are worth knowing before you read the usage numbers:
+
+- **A short prefix isn't cached.** Each model has a minimum length for a cached prefix, from 512 tokens on the newest Claude models to 4,096 on Claude Opus 4.7 and Claude Haiku 4.5. A request under it goes through as an ordinary one, with no error and no cache tokens in `usage`.
+- **A cross-region profile can write twice.** A cache lives in the region that wrote it, so when an inference profile like `us.anthropic...` serves the next request from another region, that request writes the prefix again.
+- **A one-hour write is priced as one.** Converse reports its cache writes by lifetime in `cacheDetails`, and the adapter reads the one-hour part from it into `usage.cache_write_1h_tokens`, so a `'1h'` write is estimated at the one-hour rate.
+
 No default pricing ships for Bedrock (ids are region- and profile-specific). Add your own with `engine.register_price('bedrock', '<model-id>', { ... })`; until then cost is omitted, not an error.
 
 ## `ollama`
@@ -623,7 +643,7 @@ type UsageTotals = {
 };
 ```
 
-Fields that a provider can't report are absent from the result (not zero). `cache_write_1h_tokens` comes from Anthropic's `cache_creation` split, on the native transport and, through the raw usage that `@ai-sdk/anthropic` keeps in its metadata, on the `ai_sdk` transport too. A write that no provider splits out counts as a five-minute write. `GenerateResult.usage` is the sum across all model turns, and each model turn's own totals live in `steps[i].usage`.
+Fields that a provider can't report are absent from the result (not zero). `cache_write_1h_tokens` comes from Anthropic's `cache_creation` split, on the native transport and, through the raw usage that `@ai-sdk/anthropic` keeps in its metadata, on the `ai_sdk` transport too. On `bedrock` it comes from the `cacheDetails` that Converse reports. A write that no provider splits out counts as a five-minute write. `GenerateResult.usage` is the sum across all model turns, and each model turn's own totals live in `steps[i].usage`.
 
 ## Provider-Reported Detail
 
@@ -679,10 +699,11 @@ The built-in adapters declare this:
 | `openai` | Both transports declare `'automatic'`, since OpenAI caches a long prompt on its own. |
 | `google` | Declares `'automatic'`, since Gemini 2.5 and later cache on their own. |
 | `openrouter` | `transport: 'native'` declares `'opt_in'` and sends the same top-level `cache_control` that Anthropic takes, which is meant for Claude models (see [`openrouter`](#openrouter)). The `ai_sdk` transport declares nothing. |
-| `bedrock`, `ollama`, `lmstudio` | Declare nothing on either transport. |
+| `bedrock` | Declares `'opt_in'` and sends a `cache_control` inside `additionalModelRequestFields`, which only the Claude models that support automatic caching take (see [`bedrock`](#bedrock)). |
+| `ollama`, `lmstudio` | Declare nothing on either transport. |
 | `claude_cli` | Claude Code caches its own prompts, so a per-call `cache`, `'off'` included, records `option_ignored` with the reason "the provider caches on its own". |
 
-A custom adapter can declare any of the three values (see [Writing Your Own](#writing-your-own)), and one that declares nothing asks for no cache. An `ai_sdk` adapter that declares `'with_tools'` or `'opt_in'` also needs a `translate_cache`, which turns the setting into call-level provider options, since the engine can't know where a provider package reads one. Without it, the adapter counts as declaring nothing.
+A custom adapter can declare any of the three values (see [Writing Your Own](#writing-your-own)), and one that declares nothing asks for no cache. An `ai_sdk` adapter that declares `'with_tools'` or `'opt_in'` also needs a `translate_cache`, which turns the setting into call-level provider options, since the engine can't know where a provider package reads one. The engine lays what it returns over the caller's `provider_options`, key by key under each provider, so the hook receives those options and leaves out any key that the caller's value should win. Without a `translate_cache`, the adapter counts as declaring nothing.
 
 On Anthropic's native transport, a setting of `'5m'` sends `cache_control: { type: 'ephemeral' }` at the top of the request, and `'1h'` adds `ttl: '1h'`. That one field turns on Anthropic's automatic caching, which puts the breakpoint on the last block that the request can cache and moves it forward as the conversation grows. A `cache_control` of your own under `provider_options.anthropic` wins over the one that the setting derives, since an explicit wire key always does. The `ai_sdk` transport sends the same field through `@ai-sdk/anthropic`'s `cacheControl`, and a `cacheControl` of your own under `provider_options.anthropic` wins there. That package drops a call-level `cache_control`, so if you spell it that way, the adapter sends it as `cacheControl` for you. OpenRouter's native transport sends the same field, and a `cache_control` under `provider_options.openrouter` wins over it. If the API answers with a 400 that names `cache_control`, see [troubleshooting](./troubleshooting.md#a-400-that-names-cache_control).
 

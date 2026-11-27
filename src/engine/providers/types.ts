@@ -141,9 +141,13 @@ export type AiSdkProviderAdapter = {
   /**
    * Turn the call's resolved cache setting into call-level provider options,
    * given the caller's own (engine defaults merged with the call's). The
-   * engine merges the result beneath the caller's options, where effort's
-   * translation goes. An adapter that declares `'with_tools'` or `'opt_in'`
-   * without this hook asks for no cache, as one that declares nothing.
+   * engine lays the result over the caller's options, key by key under each
+   * provider, so a key the hook returns replaces the caller's value for it.
+   * Precedence is the hook's to settle: it returns nothing for a key the
+   * caller's value should win, and folds the caller's entries into an object
+   * it returns when both have to reach the wire. An adapter that declares
+   * `'with_tools'` or `'opt_in'` without this hook asks for no cache, as one
+   * that declares nothing.
    */
   readonly translate_cache?: (
     cache: CacheSetting,

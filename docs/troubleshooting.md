@@ -417,6 +417,17 @@ under `provider_options.anthropic` still goes out, because an explicit wire key
 always wins over the setting, so drop that key too. See
 [providers.md](./providers.md#prompt-caching).
 
+The `bedrock` provider sends the field only when you ask, so there the 400 is a
+`ValidationException` on a call that set `cache` (or inherited it from
+`defaults.cache`) and went to a model that doesn't take the field. That's an
+older Claude model, or any model that isn't Claude. Take `cache` off that call,
+and keep it on the calls that go to a Claude model that supports automatic
+caching. A `cache_control` that you put in
+`provider_options.bedrock.additionalModelRequestFields` yourself (or under
+`amazonBedrock`, if that's where you pass your options) goes out whatever the
+setting says, so check for that key too. See the
+[`bedrock`](./providers.md#bedrock) section.
+
 ## The Model Ignored an Instruction
 
 Before you blame the model, read the request that it answered. An

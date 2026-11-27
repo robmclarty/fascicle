@@ -376,6 +376,54 @@ describe('create_engine folds the capture default into generate', () => {
     await expect(call).rejects.toThrow(`capture must be one of 'off', 'turns', 'wire', got "on"`)
   })
 
+  it("lays the cache translation over the caller's provider_options, key by key under the provider", async () => {
+    enqueue_generate_text(make_text_result('ok'))
+    const seen: unknown[] = []
+    const engine = create_engine({
+      providers: { fake_ai_sdk: {} },
+      custom_providers: {
+        fake_ai_sdk: (init) => ({
+          ...(make_ai_sdk_factory()(init) as Extract<ProviderAdapter, { kind: 'ai_sdk' }>),
+          prompt_cache: 'opt_in',
+          translate_effort: () => ({ provider_options: { fake_ai_sdk: { thinking: 'deep', fields: 'effort' } }, effort_ignored: false }),
+          translate_cache: (cache, provider_options) => {
+            seen.push(cache, provider_options)
+            return { fake_ai_sdk: { fields: { own: 1, cache: true } }, other: { added: 1 } }
+          },
+        }),
+      },
+    })
+
+    await engine.generate({
+      model: 'm',
+      provider: 'fake_ai_sdk',
+      prompt: 'hi',
+      effort: 'high',
+      cache: '5m',
+      provider_options: { fake_ai_sdk: { fields: { own: 1 }, sibling: 2 } },
+    })
+
+    expect(seen).toStrictEqual(['5m', { fake_ai_sdk: { fields: { own: 1 }, sibling: 2 } }])
+    const sent = mock_state.last_generate_text_params as { providerOptions?: Record<string, unknown> }
+    expect(sent.providerOptions).toStrictEqual({
+      fake_ai_sdk: { thinking: 'deep', fields: { own: 1, cache: true }, sibling: 2 },
+      other: { added: 1 },
+    })
+
+    // A caller's value that is no object has no keys to keep, so the
+    // translation stands in its place whole.
+    enqueue_generate_text(make_text_result('ok'))
+    await engine.generate({
+      model: 'm',
+      provider: 'fake_ai_sdk',
+      prompt: 'hi',
+      cache: '5m',
+      provider_options: { other: 'x' },
+    })
+    const again = mock_state.last_generate_text_params as { providerOptions?: Record<string, unknown> }
+    expect(again.providerOptions?.['other']).toStrictEqual({ added: 1 })
+  })
+
   it("captures the caller's provider_options on ai_sdk, without the keys effort and cache derive", async () => {
     enqueue_generate_text(make_text_result('ok'))
     const engine = create_engine({

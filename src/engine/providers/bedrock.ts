@@ -31,9 +31,16 @@
  * in-process evidence that a guardrail whose PII action is `NONE` ran at all:
  * that action detects and reports without rewriting, so the output is identical
  * whether such a guardrail is attached or absent.
+ *
+ * Caching is `'opt_in'`. A cache setting of `'5m'` or `'1h'` goes out as a
+ * `cache_control` inside `additionalModelRequestFields`, the model field that
+ * turns on Bedrock's automatic prompt caching for the Claude models that
+ * support it. Every other model, an older Claude included, answers that field
+ * with a ValidationException and the adapter reads no model id, so nothing is
+ * sent unless the call or the engine asks.
  */
 
-import type { BedrockCredentialProvider, ProviderInit, UsageTotals } from '../types.js'
+import type { BedrockCredentialProvider, CacheSetting, ProviderInit, UsageTotals } from '../types.js'
 import {
   default_normalize_usage,
   load_optional_peer,
@@ -65,11 +72,74 @@ type CredentialProvidersSdk = {
   fromNodeProviderChain: () => BedrockCredentialProvider
 }
 
+/** Narrow `value` to a plain (non-null, non-array) object. */
+function is_plain_object(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
+
 /**
- * Normalize Bedrock's raw usage payload into UsageTotals.
+ * Read the one-hour part of a cache write from Converse's `cacheDetails`, a
+ * list of `{ ttl, inputTokens }` entries with one entry to a lifetime, or
+ * undefined when the usage carries no such list.
  */
-export function normalize_bedrock_usage(raw: RawProviderUsage | undefined): UsageTotals {
-  return default_normalize_usage(raw)
+function read_one_hour_cache_details(cache_details: unknown): number | undefined {
+  if (!Array.isArray(cache_details)) return undefined
+  const entries: ReadonlyArray<unknown> = cache_details
+  let total = 0
+  for (const entry of entries) {
+    if (!is_plain_object(entry) || entry['ttl'] !== '1h') continue
+    const tokens = entry['inputTokens']
+    if (typeof tokens === 'number') total += tokens
+  }
+  return total
+}
+
+/**
+ * Normalize Bedrock's usage via the shared default mapper, since the AI SDK
+ * already reports cache reads and writes in the fields the default reads.
+ * The one-hour part of a cache write comes from the `cacheDetails` that
+ * @ai-sdk/amazon-bedrock keeps in `providerMetadata.bedrock.usage`, and stays
+ * out when the metadata carries no split.
+ */
+export function normalize_bedrock_usage(
+  raw: RawProviderUsage | undefined,
+  provider_metadata?: unknown,
+): UsageTotals {
+  const totals = default_normalize_usage(raw)
+  const reported = is_plain_object(provider_metadata) ? provider_metadata['bedrock'] : undefined
+  const usage = is_plain_object(reported) ? reported['usage'] : undefined
+  const cache_write_1h = read_one_hour_cache_details(is_plain_object(usage) ? usage['cacheDetails'] : undefined)
+  if (cache_write_1h !== undefined) totals.cache_write_1h_tokens = cache_write_1h
+  return totals
+}
+
+/**
+ * Turn a cache setting into the `cache_control` model field that turns on
+ * Bedrock's automatic prompt caching for the Claude models that support it,
+ * inside `additionalModelRequestFields`. `'off'` adds nothing.
+ *
+ * The result goes under the key that @ai-sdk/amazon-bedrock reads, which is
+ * `amazonBedrock` when the caller set one and `bedrock` otherwise, since the
+ * package ignores `bedrock` beside an `amazonBedrock`. The engine lays the
+ * result over the caller's options one key deep, so the returned
+ * `additionalModelRequestFields` carries the caller's own entries beside the
+ * derived field. A caller's own `cache_control` there wins, so nothing is
+ * derived beside it, and an entry or fields that aren't a plain object are
+ * left alone for the package to refuse.
+ */
+export function translate_bedrock_cache(
+  cache: CacheSetting,
+  provider_options: Readonly<Record<string, unknown>> | undefined,
+): Record<string, Record<string, unknown>> {
+  if (cache === 'off') return {}
+  const alias: unknown = provider_options?.['amazonBedrock']
+  const key = alias === undefined || alias === null ? 'bedrock' : 'amazonBedrock'
+  const own: unknown = provider_options?.[key] ?? {}
+  if (!is_plain_object(own)) return {}
+  const fields: unknown = own['additionalModelRequestFields'] ?? {}
+  if (!is_plain_object(fields) || 'cache_control' in fields) return {}
+  const cache_control = cache === '1h' ? { type: 'ephemeral', ttl: '1h' } : { type: 'ephemeral' }
+  return { [key]: { additionalModelRequestFields: { ...fields, cache_control } } }
 }
 
 const SUPPORTED: ReadonlySet<ProviderCapability> = new Set([
@@ -209,5 +279,7 @@ export const create_bedrock_adapter = (init: ProviderInit): AiSdkProviderAdapter
     translate_effort: translate_effort_to_sdk_reasoning,
     normalize_usage: normalize_bedrock_usage,
     supports: (capability) => SUPPORTED.has(capability),
+    prompt_cache: 'opt_in',
+    translate_cache: translate_bedrock_cache,
   }
 }

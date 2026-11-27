@@ -159,6 +159,8 @@ describe('translate_anthropic_cache', () => {
   })
 
   it("derives nothing when the caller set cacheControl under anthropic", () => {
+    // A key that is present counts as set, whatever it holds.
+    expect(translate_anthropic_cache('5m', { anthropic: { cacheControl: undefined } })).toStrictEqual({})
     expect(
       translate_anthropic_cache('1h', { anthropic: { cacheControl: { type: 'ephemeral' } } }),
     ).toStrictEqual({})

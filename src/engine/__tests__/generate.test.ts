@@ -2183,7 +2183,7 @@ describe('generate: the caching each built-in adapter declares', () => {
     ['google', 'automatic', create_google_adapter, { api_key: 'k' }],
     ['openrouter native', 'opt_in', create_openrouter_adapter, { api_key: 'k', transport: 'native' }],
     ['openrouter ai_sdk', undefined, create_openrouter_adapter, { api_key: 'k' }],
-    ['bedrock', undefined, create_bedrock_adapter, { region: 'us-east-1', api_key: 'k' }],
+    ['bedrock', 'opt_in', create_bedrock_adapter, { region: 'us-east-1', api_key: 'k' }],
     ['ollama native', undefined, create_ollama_adapter, { base_url: 'http://x', transport: 'native' }],
     ['ollama ai_sdk', undefined, create_ollama_adapter, { base_url: 'http://x' }],
     ['lmstudio native', undefined, create_lmstudio_adapter, { base_url: 'http://x', transport: 'native' }],

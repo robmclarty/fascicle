@@ -1076,15 +1076,20 @@ function resolve_loop_limits<T>(
 }
 
 /**
- * Merge two of an adapter's translations into call-level provider options,
- * key by key under each provider, with `over` winning where both set a key.
+ * Lay an adapter's cache translation over the caller's provider options, key
+ * by key under each provider, with the translation winning where both set a
+ * key. The hook that built it has read the caller's options, so a key it
+ * returns already holds whatever of the caller's it means to keep.
  */
-function merge_translations(
-  base: Readonly<Record<string, Readonly<Record<string, unknown>>>>,
-  over: Readonly<Record<string, Readonly<Record<string, unknown>>>>,
-): Record<string, Record<string, unknown>> {
-  const out: Record<string, Record<string, unknown>> = { ...base }
-  for (const [provider, inner] of Object.entries(over)) out[provider] = { ...base[provider], ...inner }
+function lay_cache_over(
+  options: Readonly<Record<string, unknown>> | undefined,
+  cache_options: Readonly<Record<string, Readonly<Record<string, unknown>>>>,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...options }
+  for (const [provider, inner] of Object.entries(cache_options)) {
+    const own = out[provider]
+    out[provider] = typeof own === 'object' ? { ...own, ...inner } : inner
+  }
   return out
 }
 
@@ -1117,19 +1122,17 @@ async function build_ai_sdk_transport<T>(
   if (effort !== 'none' && effort_translation.effort_ignored) {
     record_effort_ignored(cfg.trajectory, cfg.target.model_id)
   }
-  // The effort and cache translations are the lowest-precedence layer;
-  // engine defaults and per-call provider_options (already merged into
-  // opts.provider_options, with per-call winning) override them.
+  // The effort translation is the lowest-precedence layer: engine defaults
+  // and per-call provider_options (already merged into opts.provider_options,
+  // with per-call winning) override it. The cache translation goes on top,
+  // because its hook reads the caller's options and settles precedence itself.
   const cache_options = adapter.translate_cache?.(cfg.cache, opts.provider_options) ?? {}
-  const combined_provider_options = merge_provider_options(
-    merge_translations(effort_translation.provider_options, cache_options),
-    opts.provider_options,
+  const combined_provider_options = lay_cache_over(
+    merge_provider_options(effort_translation.provider_options, opts.provider_options),
+    cache_options,
   )
   const provider_options =
-    combined_provider_options !== undefined &&
-    Object.keys(combined_provider_options).length > 0
-      ? combined_provider_options
-      : undefined
+    Object.keys(combined_provider_options).length > 0 ? combined_provider_options : undefined
 
   // All SDK specifics (message/tool mapping, Output.object structured-output
   // gating, the streamText call) live behind create_ai_sdk_turn;
